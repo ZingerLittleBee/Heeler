@@ -61,6 +61,46 @@ struct SSHTransportE2ETests {
         }
     }
 
+    @Test func sessionSnapshotRoundTrips() async throws {
+        // The Console's snapshot source (#8): one call carries agents plus
+        // the workspace context (labels, worktrees) that agent.list lacks.
+        try await withTransport { request in
+            [
+                #"{"id":"\#(request.id)","result":{"type":"session_snapshot","snapshot":{"version":"9.9.9-fake","protocol":16,"workspaces":[{"workspace_id":"w1","number":1,"label":"Proj","focused":false,"pane_count":1,"tab_count":1,"active_tab_id":"w1:t1","agent_status":"unknown","worktree":{"repo_key":"/work/a/.git","repo_name":"Proj","repo_root":"/work/a","checkout_path":"/work/a","is_linked_worktree":false}}],"tabs":[],"panes":[],"layouts":[],"agents":[{"terminal_id":"term_a","agent":"claude","terminal_title":"⠐ Fix","terminal_title_stripped":"Fix","agent_status":"blocked","workspace_id":"w1","tab_id":"w1:t1","pane_id":"w1:p1","focused":true,"cwd":"/work/a","foreground_cwd":"/work/a","revision":3}]}}}"#
+            ]
+        } body: { transport, server in
+            let snapshot = try await transport.sessionSnapshot()
+
+            #expect(snapshot.agents.map(\.paneID) == ["w1:p1"])
+            #expect(snapshot.agents.first?.agentStatus == .blocked)
+            #expect(snapshot.workspaces.first?.label == "Proj")
+            #expect(snapshot.workspaces.first?.worktree?.repoName == "Proj")
+            #expect(server.receivedRequests.map(\.method) == ["session.snapshot"])
+        }
+    }
+
+    @Test func paneReadSendsItsParamsAndRoundTrips() async throws {
+        // The Console's last-output snippet source (#8). Wire shape verified
+        // against live herdr 0.7.4: pane_id/source/lines/strip_ansi params,
+        // pane_read result envelope.
+        try await withTransport { request in
+            [
+                #"{"id":"\#(request.id)","result":{"type":"pane_read","read":{"pane_id":"w1:p1","workspace_id":"w1","tab_id":"w1:t1","source":"recent","format":"text","text":"› waiting for input\n","revision":4,"truncated":false}}}"#
+            ]
+        } body: { transport, server in
+            let read = try await transport.readPane(
+                PaneReadParams(paneID: "w1:p1", source: .recent, lines: 5, stripANSI: true))
+
+            #expect(read.text == "› waiting for input\n")
+            #expect(read.paneID == "w1:p1")
+            let request = try #require(server.receivedRequests.first)
+            #expect(request.method == "pane.read")
+            #expect(
+                request.params
+                    == #"{"lines":5,"pane_id":"w1:p1","source":"recent","strip_ansi":true}"#)
+        }
+    }
+
     @Test func serverErrorSurfacesAsHerdrAPIError() async throws {
         try await withTransport { request in
             [#"{"id":"\#(request.id)","error":{"code":500,"message":"scripted failure"}}"#]

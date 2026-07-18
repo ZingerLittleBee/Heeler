@@ -77,7 +77,8 @@ enum HerdrWire {
         let params: P
     }
 
-    private struct EmptyParams: Encodable {}
+    /// The empty `params` object herdr expects on parameterless methods.
+    struct EmptyParams: Encodable, Sendable {}
 
     private struct SubscribeParams: Encodable {
         let subscriptions: [WireSubscription]

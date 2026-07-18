@@ -10,6 +10,15 @@ protocol Transport: Sendable {
     /// Lists the Agents herdr has detected across all workspaces.
     func listAgents() async throws -> [Agent]
 
+    /// The full session tree in one call: agents plus the workspace context
+    /// (labels, worktrees) that `listAgents()` lacks. The Console's snapshot
+    /// source (#8) — re-fetched on every events-session `.connected`.
+    func sessionSnapshot() async throws -> SessionSnapshot
+
+    /// Reads a Pane's terminal output; the Console's last-output snippet
+    /// source (`source: .recent`, ANSI stripped) and the Observe backfill.
+    func readPane(_ params: PaneReadParams) async throws -> PaneReadResult
+
     /// Opens this Host's dedicated long-lived events channel and subscribes.
     /// Returns once the server acknowledges the subscription; the stream then
     /// carries events in canonical naming until `end()` closes the channel
@@ -53,7 +62,9 @@ struct Agent: Sendable, Equatable {
     let kind: String
     /// Terminal title with spinner/status glyphs stripped.
     let title: String
-    let status: AgentStatus
+    /// Mutable: the Console applies `pane.agent_status_changed` deltas in
+    /// place between snapshots.
+    var status: AgentStatus
     let workspaceID: String
     let tabID: String
     /// The Pane address used for per-pane subscriptions and attach.

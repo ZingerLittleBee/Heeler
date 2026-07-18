@@ -19,6 +19,16 @@ final actor FakeTransport: Transport {
         []
     }
 
+    func sessionSnapshot() async throws -> SessionSnapshot {
+        SessionSnapshot(
+            agents: [], layouts: [], panes: [], protocolVersion: 16, tabs: [],
+            version: "0.7.4-fake", workspaces: [])
+    }
+
+    func readPane(_ params: PaneReadParams) async throws -> PaneReadResult {
+        throw TransportError.channelFailed(detail: "FakeTransport does not script pane reads")
+    }
+
     func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream {
         throw TransportError.channelFailed(detail: "FakeTransport does not script events")
     }

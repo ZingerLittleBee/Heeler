@@ -402,6 +402,14 @@ struct EventsSessionE2ETests {
             try await inner.listAgents()
         }
 
+        func sessionSnapshot() async throws -> SessionSnapshot {
+            try await inner.sessionSnapshot()
+        }
+
+        func readPane(_ params: PaneReadParams) async throws -> PaneReadResult {
+            try await inner.readPane(params)
+        }
+
         func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws
             -> HerdrEventStream
         {

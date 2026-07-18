@@ -198,6 +198,16 @@ actor SSHTransport: Transport {
             .agents.map(Agent.init)
     }
 
+    func sessionSnapshot() async throws -> SessionSnapshot {
+        try await request(method: "session.snapshot", decoding: SessionSnapshotResponse.self)
+            .snapshot
+    }
+
+    func readPane(_ params: PaneReadParams) async throws -> PaneReadResult {
+        try await request(method: "pane.read", params: params, decoding: PaneReadResponse.self)
+            .read
+    }
+
     // MARK: Events channel (#4)
     //
     // One dedicated long-lived exec+socat channel per Host holds the
@@ -403,10 +413,17 @@ actor SSHTransport: Transport {
         try await client.close()
     }
 
-    /// Executes one request with cold-start recovery.
+    /// Executes one parameterless request with cold-start recovery.
     private func request<R: Decodable>(method: String, decoding type: R.Type) async throws -> R {
+        try await request(method: method, params: HerdrWire.EmptyParams(), decoding: type)
+    }
+
+    /// Executes one request with cold-start recovery.
+    private func request<P: Encodable, R: Decodable>(
+        method: String, params: P, decoding type: R.Type
+    ) async throws -> R {
         try await withColdStartWake {
-            try await self.performRequest(method: method, decoding: type)
+            try await self.performRequest(method: method, params: params, decoding: type)
         }
     }
 
@@ -465,12 +482,12 @@ actor SSHTransport: Transport {
     /// as soon as a full response line has arrived (Citadel closes the
     /// channel on return) — never by task cancellation, which a live exec
     /// channel does not respond to.
-    private func performRequest<R: Decodable>(method: String, decoding type: R.Type) async throws
-        -> R
-    {
+    private func performRequest<P: Encodable, R: Decodable>(
+        method: String, params: P, decoding type: R.Type
+    ) async throws -> R {
         let socketPath = try await resolvedSocketPath()
         let requestID = UUID().uuidString
-        let line = try HerdrWire.requestLine(id: requestID, method: method)
+        let line = try HerdrWire.requestLine(id: requestID, method: method, params: params)
         let responseLine = try await Self.withRequestDeadline(requestTimeout) {
             try await self.performExchange(line: line, socketPath: socketPath, method: method)
         }
