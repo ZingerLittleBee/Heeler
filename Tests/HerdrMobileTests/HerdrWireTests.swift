@@ -78,6 +78,22 @@ import Testing
         }
     }
 
+    @Test func errorEnvelopeWithBlankIDStillThrowsAPIError() throws {
+        // Live capture: herdr answers a request it could not parse with
+        // id "" — the error must surface, not an id-mismatch complaint.
+        let line =
+            #"{"id":"","error":{"code":"invalid_request","message":"invalid request: missing field `source` at line 1 column 123"}}"#
+
+        #expect(
+            throws: HerdrAPIError(
+                code: "invalid_request",
+                message: "invalid request: missing field `source` at line 1 column 123")
+        ) {
+            try HerdrWire.decodeResult(
+                ServerInfo.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
+        }
+    }
+
     @Test func responseIDMismatchIsMalformed() throws {
         let line = #"{"id":"someone-else","result":{"version":"0.7.4","protocol":16}}"#
 

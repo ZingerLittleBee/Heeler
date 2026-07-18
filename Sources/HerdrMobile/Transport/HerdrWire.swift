@@ -7,7 +7,12 @@ import Foundation
 enum HerdrWire {
     /// Encodes a single request line, trailing newline included.
     static func requestLine(id: String, method: String) throws -> String {
-        let request = Request(id: id, method: method)
+        try requestLine(id: id, method: method, params: EmptyParams())
+    }
+
+    /// Encodes a single request line with a params payload.
+    static func requestLine<P: Encodable>(id: String, method: String, params: P) throws -> String {
+        let request = Request(id: id, method: method, params: params)
         let data: Data
         do {
             data = try JSONEncoder().encode(request)
@@ -16,6 +21,25 @@ enum HerdrWire {
                 "failed to encode request for \(method): \(error)")
         }
         return String(decoding: data, as: UTF8.self) + "\n"
+    }
+
+    /// Encodes an `events.subscribe` request line. Subscription kinds go out
+    /// in their canonical dotted spelling; pane-scoped entries carry the
+    /// pane id the server requires.
+    static func subscribeRequestLine(id: String, subscriptions: [EventSubscription]) throws
+        -> String
+    {
+        try requestLine(
+            id: id, method: "events.subscribe",
+            params: SubscribeParams(subscriptions: subscriptions.map(WireSubscription.init)))
+    }
+
+    /// Decodes one events-channel line. Returns nil for anything that is not
+    /// an event line — lenient by design: junk on the stream is dropped,
+    /// never fatal.
+    static func decodeEvent(fromLine data: Data) -> HerdrEvent? {
+        guard let line = try? JSONDecoder().decode(EventLine.self, from: data) else { return nil }
+        return HerdrEvent(kind: HerdrEventKind(wireName: line.event), data: line.data ?? .null)
     }
 
     /// Decodes one response line: unwraps the envelope, checks id correlation,
@@ -31,12 +55,15 @@ enum HerdrWire {
             let preview = String(decoding: lineData.prefix(200), as: UTF8.self)
             throw TransportError.malformedResponse("undecodable response line: \(preview)")
         }
+        // Server-reported errors win even when id correlation is off: herdr
+        // answers a request it could not parse with id "" (live-captured
+        // shape), and the error is the actionable part.
+        if let error = envelope.error {
+            throw error
+        }
         guard envelope.id == requestID else {
             throw TransportError.malformedResponse(
                 "response id \(envelope.id ?? "<none>") does not match request id \(requestID)")
-        }
-        if let error = envelope.error {
-            throw error
         }
         guard let result = envelope.result else {
             throw TransportError.malformedResponse("response has neither result nor error")
@@ -44,13 +71,42 @@ enum HerdrWire {
         return result
     }
 
-    private struct Request: Encodable {
+    private struct Request<P: Encodable>: Encodable {
         let id: String
         let method: String
-        // All M0 methods take empty params; grows a payload when one needs it.
-        let params = EmptyParams()
+        let params: P
+    }
 
-        struct EmptyParams: Encodable {}
+    private struct EmptyParams: Encodable {}
+
+    private struct SubscribeParams: Encodable {
+        let subscriptions: [WireSubscription]
+    }
+
+    private struct WireSubscription: Encodable {
+        let type: String
+        let paneID: String?
+
+        init(_ subscription: EventSubscription) {
+            switch subscription {
+            case .global(let kind):
+                type = kind.rawValue
+                paneID = nil
+            case .pane(let kind, let paneID):
+                type = kind.rawValue
+                self.paneID = paneID
+            }
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case type
+            case paneID = "pane_id"
+        }
+    }
+
+    private struct EventLine: Decodable {
+        let event: String
+        let data: JSONValue?
     }
 
     private struct ResponseEnvelope<R: Decodable>: Decodable {
@@ -81,3 +137,8 @@ extension HerdrAPIError: Decodable {
 struct AgentListResult: Decodable {
     let agents: [Agent]
 }
+
+/// Result payload of the `events.subscribe` ack line
+/// (`{"type":"subscription_started"}`). Shape intentionally unchecked: the
+/// envelope carrying a result at all is the acknowledgement.
+struct SubscriptionStartedResult: Decodable {}
