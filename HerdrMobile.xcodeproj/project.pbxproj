@@ -18,6 +18,7 @@
 		27C44B69FBE155A397F54B77 /* HostStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AECAD39A269D97DAB4ED194 /* HostStore.swift */; };
 		298FA49167E3CB1402B7B86B /* DeviceKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D04EAA030D8329A1716714A8 /* DeviceKeyStore.swift */; };
 		2C5A21065C48B7C40AE9A760 /* KnownHostsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87B0377EAC5265E7A6FCD212 /* KnownHostsStoreTests.swift */; };
+		2E4C392847F96047AF0510DD /* PreflightReportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB88AD0F4E9EE776B17FAFAA /* PreflightReportTests.swift */; };
 		3DC1B4DCC0E2CD73A0C13B64 /* SSHAuthE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BE2EC235A2ACCB61A98881E /* SSHAuthE2ETests.swift */; };
 		49CDAC5FE4566D912F72FFCA /* Transport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 259E51D58B1094AC5B389EDA /* Transport.swift */; };
 		4C80E23F09C8CFB3A93101B8 /* JSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E3E2308A50D4744A24A874B /* JSONValue.swift */; };
@@ -34,6 +35,7 @@
 		9F3F748E722FD8059A59ECBD /* HostStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6434D31A79422C0BAE80993F /* HostStoreTests.swift */; };
 		A0C9B80A4139A6FA73261805 /* HerdrWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4FC9B455C6266F12DA82A07 /* HerdrWire.swift */; };
 		B0D87D1783C80597B66EDDFC /* HerdrAPITypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD390F4EE653187BCF20037F /* HerdrAPITypes.swift */; };
+		B34AF64884F29EB050E5B9AF /* Preflight.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCA39340517CEF3DAA35A09B /* Preflight.swift */; };
 		B6FE3517A821A081D9F6262C /* KnownHostsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C232163905675760F37FD7A0 /* KnownHostsStore.swift */; };
 		C174C223DBE1F1DD4085A2F8 /* UnixSockets.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCB59377D34D0C652DF70F01 /* UnixSockets.swift */; };
 		C60E8E0398665C36520DDA8E /* HerdrEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = CABFC5E35C19F809355619E7 /* HerdrEvents.swift */; };
@@ -105,6 +107,8 @@
 		CADA0E8C1DC6D30FCC6CEDC2 /* HostKeyPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostKeyPolicy.swift; sourceTree = "<group>"; };
 		D04EAA030D8329A1716714A8 /* DeviceKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKeyStore.swift; sourceTree = "<group>"; };
 		D6FCFE74BB45C0D8B600FFD3 /* SkeletonTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonTests.swift; sourceTree = "<group>"; };
+		DB88AD0F4E9EE776B17FAFAA /* PreflightReportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreflightReportTests.swift; sourceTree = "<group>"; };
+		DCA39340517CEF3DAA35A09B /* Preflight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preflight.swift; sourceTree = "<group>"; };
 		E87B816CE7206B37622287C4 /* GeneratedWireTypesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedWireTypesTests.swift; sourceTree = "<group>"; };
 		F3D159C84E98A59AA47EBE6C /* HerdrMobileTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HerdrMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F4FC9B455C6266F12DA82A07 /* HerdrWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrWire.swift; sourceTree = "<group>"; };
@@ -180,6 +184,7 @@
 				6434D31A79422C0BAE80993F /* HostStoreTests.swift */,
 				17F86744BFAC66D732CE7833 /* JSONValueTests.swift */,
 				87B0377EAC5265E7A6FCD212 /* KnownHostsStoreTests.swift */,
+				DB88AD0F4E9EE776B17FAFAA /* PreflightReportTests.swift */,
 				B66B41C393D38FA09388E3E2 /* ReconnectPolicyTests.swift */,
 				D6FCFE74BB45C0D8B600FFD3 /* SkeletonTests.swift */,
 				6BE2EC235A2ACCB61A98881E /* SSHAuthE2ETests.swift */,
@@ -205,6 +210,7 @@
 			children = (
 				806A90DBCA99FD02E76D68C6 /* Host.swift */,
 				9AECAD39A269D97DAB4ED194 /* HostStore.swift */,
+				DCA39340517CEF3DAA35A09B /* Preflight.swift */,
 			);
 			path = Hosts;
 			sourceTree = "<group>";
@@ -343,6 +349,7 @@
 				27C44B69FBE155A397F54B77 /* HostStore.swift in Sources */,
 				4C80E23F09C8CFB3A93101B8 /* JSONValue.swift in Sources */,
 				B6FE3517A821A081D9F6262C /* KnownHostsStore.swift in Sources */,
+				B34AF64884F29EB050E5B9AF /* Preflight.swift in Sources */,
 				8C514AFC85DAED69A4988C13 /* SSHCredentials.swift in Sources */,
 				073427C275CFEDBD5D3176DC /* SSHTransport.swift in Sources */,
 				693B0173C07DAF4BFC89B094 /* SecretStore.swift in Sources */,
@@ -371,6 +378,7 @@
 				969057C35F7E5F162B0CF41D /* JSONValueTests.swift in Sources */,
 				2C5A21065C48B7C40AE9A760 /* KnownHostsStoreTests.swift in Sources */,
 				F2CC5A27CA8B0623C486D9B2 /* LocalSSHTestEnvironment.swift in Sources */,
+				2E4C392847F96047AF0510DD /* PreflightReportTests.swift in Sources */,
 				1BBEEF5478D91222F48C2048 /* ReconnectPolicyTests.swift in Sources */,
 				3DC1B4DCC0E2CD73A0C13B64 /* SSHAuthE2ETests.swift in Sources */,
 				5C41DBF68FFE6D2924709A5A /* SSHHostKeyE2ETests.swift in Sources */,
