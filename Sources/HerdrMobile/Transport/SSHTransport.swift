@@ -197,20 +197,217 @@ actor SSHTransport: Transport {
         try await request(method: "agent.list", decoding: AgentListResult.self).agents
     }
 
+    // MARK: Events channel (#4)
+    //
+    // One dedicated long-lived exec+socat channel per Host holds the
+    // events.subscribe stream: one ack line, then event lines until the
+    // channel is closed explicitly. It is exempt from the exec-slot queue —
+    // the queue's bound of 8 exists precisely to leave MaxSessions headroom
+    // for this channel (and a future Attach terminal) — and the state below
+    // keeps it to exactly one channel per Host.
+
+    private enum EventsChannelState: Equatable {
+        case idle
+        /// A subscribe call is setting the channel up (including a cold-start
+        /// wake retry); further subscribes are refused meanwhile.
+        case opening
+        case streaming(readerID: UInt64)
+    }
+
+    private var eventsChannelState: EventsChannelState = .idle
+    private var nextEventsReaderID: UInt64 = 0
+    /// Readers that ended while the channel was still `.opening` (e.g. the
+    /// remote closed right after the ack); the subscribe path reconciles so
+    /// the state can never stick at `.streaming` for a dead reader.
+    private var endedEventsReaders: Set<UInt64> = []
+
+    func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream {
+        guard eventsChannelState == .idle else {
+            throw TransportError.eventsChannelAlreadyOpen
+        }
+        eventsChannelState = .opening
+        do {
+            let (stream, readerID) = try await withColdStartWake {
+                try await self.openEventsChannel(subscriptions)
+            }
+            if endedEventsReaders.remove(readerID) != nil {
+                // The reader already died (remote closed straight after the
+                // ack); the stream the caller gets is finished, not live.
+                eventsChannelState = .idle
+            } else {
+                eventsChannelState = .streaming(readerID: readerID)
+            }
+            return stream
+        } catch {
+            // openEventsChannel tears its reader down and awaits it before
+            // throwing, so no live channel can outlast this reset.
+            eventsChannelState = .idle
+            throw error
+        }
+    }
+
+    /// Opens the dedicated channel, sends the subscribe request, and waits
+    /// for the ack line under the per-request deadline. On any failure the
+    /// reader is torn down and awaited before the error propagates.
+    private func openEventsChannel(_ subscriptions: [EventSubscription]) async throws
+        -> (HerdrEventStream, readerID: UInt64)
+    {
+        let socketPath = try await resolvedSocketPath()
+        let requestID = UUID().uuidString
+        let requestLine = try HerdrWire.subscribeRequestLine(
+            id: requestID, subscriptions: subscriptions)
+        let (events, eventContinuation) = AsyncThrowingStream<HerdrEvent, any Error>.makeStream()
+        let (ackLines, ackContinuation) = AsyncThrowingStream<Data, any Error>.makeStream()
+        nextEventsReaderID += 1
+        let readerID = nextEventsReaderID
+        let readerTask = Task {
+            await self.runEventsChannel(
+                readerID: readerID, requestLine: requestLine, socketPath: socketPath,
+                ack: ackContinuation, events: eventContinuation)
+        }
+        do {
+            let ackLine = try await Self.withRequestDeadline(requestTimeout) {
+                var iterator = ackLines.makeAsyncIterator()
+                guard let line = try await iterator.next() else {
+                    throw TransportError.channelFailed(detail: "events channel ended before ack")
+                }
+                return line
+            }
+            _ = try HerdrWire.decodeResult(
+                SubscriptionStartedResult.self, fromResponseLine: ackLine, requestID: requestID)
+        } catch {
+            readerTask.cancel()
+            await readerTask.value
+            endedEventsReaders.remove(readerID)
+            throw error
+        }
+        let stream = HerdrEventStream(events: events) {
+            readerTask.cancel()
+            await readerTask.value
+        }
+        return (stream, readerID)
+    }
+
+    /// The events channel's read loop: writes the subscribe request, hands
+    /// the first stdout line to the ack stream, then yields every complete
+    /// event line until the channel ends. Ending is always by explicit
+    /// close: cancelling the reader task only ends the *local* inbound
+    /// stream, the exec body then returns, Citadel closes the channel on the
+    /// way out, and socat exits on stdin EOF. Takes no exec slot (see MARK).
+    private func runEventsChannel(
+        readerID: UInt64,
+        requestLine: String,
+        socketPath: String,
+        ack ackContinuation: AsyncThrowingStream<Data, any Error>.Continuation,
+        events eventContinuation: AsyncThrowingStream<HerdrEvent, any Error>.Continuation
+    ) async {
+        var stderr = Data()
+        var pending = Data()
+        var sawAck = false
+        /// nil means the stream ends gracefully (explicit `end()`).
+        var streamFailure: TransportError?
+        /// Backstop for an ack that never arrived; a finish after finish is
+        /// a no-op, so this is only observed when the ack line never came.
+        var ackFailure = TransportError.cancelled
+        do {
+            try await client.withExec("\(socatPath) - UNIX-CONNECT:\(socketPath)") {
+                inbound, outbound in
+                try? await outbound.write(ByteBuffer(string: requestLine))
+                for try await chunk in inbound {
+                    switch chunk {
+                    case .stdout(let buffer):
+                        pending.append(contentsOf: buffer.readableBytesView)
+                        while let lineData = Self.takeLine(from: &pending) {
+                            if !sawAck {
+                                sawAck = true
+                                ackContinuation.yield(lineData)
+                                ackContinuation.finish()
+                            } else if let event = HerdrWire.decodeEvent(fromLine: lineData) {
+                                eventContinuation.yield(event)
+                            }
+                            // Undecodable lines are dropped: junk on the
+                            // stream must never kill it.
+                        }
+                    case .stderr(let buffer):
+                        stderr.append(contentsOf: buffer.readableBytesView)
+                    }
+                }
+            }
+            if Task.isCancelled {
+                // Explicit end(): the consumer closed the channel.
+                streamFailure = nil
+            } else if sawAck {
+                streamFailure = TransportError.channelFailed(
+                    detail: "events channel closed by remote")
+            } else {
+                ackFailure =
+                    classifyExecFailure(stderr: stderr, socketPath: socketPath)
+                    ?? TransportError.channelFailed(
+                        detail:
+                            "events channel closed before ack; stderr: \(Self.preview(stderr))")
+                streamFailure = ackFailure
+            }
+        } catch is CancellationError {
+            streamFailure = nil
+        } catch {
+            let failure =
+                classifyExecFailure(stderr: stderr, socketPath: socketPath)
+                ?? TransportError.channelFailed(
+                    detail: "events channel: \(error); stderr: \(Self.preview(stderr))")
+            ackFailure = failure
+            streamFailure = failure
+        }
+        // State first, continuations second: a consumer resuming on the
+        // stream's end must already see the channel as free.
+        eventsChannelReaderDidEnd(readerID)
+        ackContinuation.finish(throwing: ackFailure)
+        if let streamFailure {
+            eventContinuation.finish(throwing: streamFailure)
+        } else {
+            eventContinuation.finish()
+        }
+    }
+
+    private func eventsChannelReaderDidEnd(_ readerID: UInt64) {
+        if eventsChannelState == .streaming(readerID: readerID) {
+            eventsChannelState = .idle
+        } else {
+            // Ended mid-open: the subscribe path reconciles (and cleans up
+            // this marker on its failure path).
+            endedEventsReaders.insert(readerID)
+        }
+    }
+
+    /// Removes and returns the first complete line (newline stripped) from
+    /// `buffer`, or nil if no full line has arrived yet.
+    private static func takeLine(from buffer: inout Data) -> Data? {
+        guard let newline = buffer.firstIndex(of: 0x0A) else { return nil }
+        let line = Data(buffer[buffer.startIndex..<newline])
+        buffer = Data(buffer[buffer.index(after: newline)...])
+        return line
+    }
+
     /// Closes the SSH connection. Explicit close is the only way to end
     /// Citadel channels — a live exec channel ignores task cancellation.
     func close() async throws {
         try await client.close()
     }
 
-    /// Executes one request, with cold-start recovery (#6): connection
-    /// refused means the socket exists but the server is stopped, so run the
-    /// wake command and retry the socket. Strictly bounded — one wake, one
-    /// retry — so a wake that does not help surfaces `.serverNotRunning` to
-    /// the user instead of looping silently.
+    /// Executes one request with cold-start recovery.
     private func request<R: Decodable>(method: String, decoding type: R.Type) async throws -> R {
+        try await withColdStartWake {
+            try await self.performRequest(method: method, decoding: type)
+        }
+    }
+
+    /// Runs `operation` with cold-start recovery (#6): connection refused
+    /// means the socket exists but the server is stopped, so run the wake
+    /// command and retry. Strictly bounded — one wake, one retry — so a wake
+    /// that does not help surfaces `.serverNotRunning` to the user instead
+    /// of looping silently.
+    private func withColdStartWake<T>(_ operation: () async throws -> T) async throws -> T {
         do {
-            return try await performRequest(method: method, decoding: type)
+            return try await operation()
         } catch TransportError.serverNotRunning(let path) {
             do {
                 try await wakeServer()
@@ -224,7 +421,7 @@ actor SSHTransport: Transport {
                 // running on this Host.
                 throw TransportError.serverNotRunning(path: path)
             }
-            return try await performRequest(method: method, decoding: type)
+            return try await operation()
         }
     }
 

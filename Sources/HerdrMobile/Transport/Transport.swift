@@ -9,6 +9,16 @@ protocol Transport: Sendable {
 
     /// Lists the Agents herdr has detected across all workspaces.
     func listAgents() async throws -> [Agent]
+
+    /// Opens this Host's dedicated long-lived events channel and subscribes.
+    /// Returns once the server acknowledges the subscription; the stream then
+    /// carries events in canonical naming until `end()` closes the channel
+    /// explicitly. One events channel per Host: a second call while one is
+    /// live throws `.eventsChannelAlreadyOpen`.
+    ///
+    /// Subscribing does not replay existing state (verified against herdr
+    /// 0.7.4): sync initial state with `listAgents()` alongside subscribing.
+    func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream
 }
 
 /// herdr server identity as reported by `ping`.
@@ -138,6 +148,9 @@ enum TransportError: Error, Sendable, Equatable {
     /// The remote home directory could not be resolved, so a home-relative
     /// socket location has no path.
     case homeDirectoryUnresolvable(detail: String)
+    /// A second events channel was requested while one is live; each Host
+    /// keeps exactly one dedicated events channel (ADR 0002 headroom).
+    case eventsChannelAlreadyOpen
     /// The request exceeded its per-request deadline; its exec channel was
     /// closed.
     case timedOut
