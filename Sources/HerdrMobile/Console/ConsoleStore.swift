@@ -228,6 +228,17 @@ final class ConsoleStore {
         return nil
     }
 
+    // MARK: Detail-screen transport access
+
+    /// The Host's live transport for detail-screen RPCs (Observe backfill
+    /// and live-follow, #9). A closure rather than a value: the events
+    /// session may reconnect onto a fresh transport at any time, so it is
+    /// re-queried per use; nil while the Host is disconnected or gone.
+    func transportProvider(for hostID: Host.ID) -> @Sendable () async -> (any Transport)? {
+        let session = feeds[hostID]?.session
+        return { await session?.currentTransport }
+    }
+
     // MARK: Subscriptions
 
     /// Global membership/context kinds; each triggers a Host re-snapshot.

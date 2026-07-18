@@ -270,6 +270,27 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    @Test func transportProviderHandsOutTheHostsLiveTransport() async throws {
+        // The Agent detail screen (#9) runs its backfill and live-follow
+        // through the Host's events-session transport, re-queried per use.
+        let host = Host.fixture()
+        let transport = ScriptedTransport(snapshot: .fixture())
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Host should connect") {
+            store.hostStatuses[host.id] == .connected
+        }
+
+        let provider = store.transportProvider(for: host.id)
+        #expect(await provider() as? ScriptedTransport === transport)
+        let missing = await store.transportProvider(for: UUID())()
+        #expect(missing == nil)
+
+        store.setHosts([])
+    }
+
     @Test func hostStatusesExposeStalenessPerHost() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(snapshot: .fixture())

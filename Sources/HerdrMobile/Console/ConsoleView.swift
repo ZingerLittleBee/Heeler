@@ -50,10 +50,23 @@ struct ConsoleView: View {
                         .foregroundStyle(.secondary)
                 }
                 ForEach(console.agents) { agent in
-                    AgentCardView(agent: agent)
+                    NavigationLink(value: agent.id) {
+                        AgentCardView(agent: agent)
+                    }
                 }
             }
             .listStyle(.plain)
+            .navigationDestination(for: ConsoleAgent.ID.self) { id in
+                // Looked up live so the toolbar status stays current; the
+                // pane closing while open collapses to the empty state.
+                if let agent = console.agents.first(where: { $0.id == id }) {
+                    AgentDetailView(agent: agent, console: console)
+                } else {
+                    ContentUnavailableView(
+                        "Agent Gone", systemImage: "rectangle.on.rectangle.slash",
+                        description: Text("This Agent's pane is no longer reported."))
+                }
+            }
         }
     }
 
