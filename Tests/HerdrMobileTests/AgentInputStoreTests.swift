@@ -16,6 +16,19 @@ struct AgentInputStoreTests {
         AgentInputStore(target: target) { transport }
     }
 
+    /// Polls until `condition` holds, yielding so the store's tasks progress.
+    private func waitUntil(
+        _ comment: Comment, timeout: Duration = .seconds(5),
+        condition: () async -> Bool
+    ) async throws {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if await condition() { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(await condition(), comment)
+    }
+
     @Test func sendDraftDeliversViaAgentSendAndClearsTheBox() async throws {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport)
@@ -30,6 +43,36 @@ struct AgentInputStoreTests {
             await transport.agentSends == [
                 AgentSendParams(target: "w1:p1", text: "yes, proceed")
             ])
+    }
+
+    @Test func rapidDoubleTapSendsTheDraftOnce() async throws {
+        // Two taps landing before the first send returns must not send the
+        // reply twice: the in-flight guard flips synchronously, so the second
+        // tap bails while the first is still parked at the transport hop.
+        let transport = ScriptedTransport()
+        let gate = Gate()
+        let store = AgentInputStore(target: "w1:p1") {
+            await gate.waitUntilOpen()
+            return transport
+        }
+        store.draft = "reply once"
+
+        let first = Task { await store.sendDraft() }
+        try await waitUntil("the first send should reach the gate") {
+            await gate.enteredCount == 1
+        }
+        let second = Task { await store.sendDraft() }
+        await second.value  // the guard makes this return without touching the gate.
+        #expect(await gate.enteredCount == 1)
+
+        await gate.open()
+        await first.value
+
+        #expect(
+            await transport.agentSends == [
+                AgentSendParams(target: "w1:p1", text: "reply once")
+            ])
+        #expect(store.draft.isEmpty)
     }
 
     @Test func blankDraftSendsNothing() async throws {
@@ -126,6 +169,28 @@ struct AgentInputStoreTests {
         await transport.setSendFailure(nil)
         await store.send(.enter)
         #expect(store.state == .idle)
+    }
+}
+
+/// A one-shot gate that parks its awaiters until opened, recording how many
+/// have entered: lets a test hold one send in flight (parked at the transport
+/// provider) while it fires the second tap.
+private actor Gate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private(set) var enteredCount = 0
+
+    func waitUntilOpen() async {
+        enteredCount += 1
+        if isOpen { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        let resuming = waiters
+        waiters.removeAll()
+        for waiter in resuming { waiter.resume() }
     }
 }
 

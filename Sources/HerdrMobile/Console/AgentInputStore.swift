@@ -87,6 +87,12 @@ final class AgentInputStore {
     var draft: String = ""
     private(set) var state: SendState = .idle
 
+    /// Draft-send in-flight guard, flipped synchronously before the first
+    /// await so a rapid double-tap cannot send the same reply twice: the
+    /// button's `state == .sending` disable only latches after the transport
+    /// hop, leaving a window the second tap slips through.
+    private var isSendingDraft = false
+
     /// The Agent's pane id — the target for both `agent.send` and
     /// `pane.send_keys`.
     private let target: String
@@ -108,8 +114,11 @@ final class AgentInputStore {
     /// Sends the composed message via `agent.send`, clearing the box on
     /// success. Whitespace-only drafts are ignored.
     func sendDraft() async {
+        guard !isSendingDraft else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        isSendingDraft = true
+        defer { isSendingDraft = false }
         let sent = await run { transport in
             try await transport.sendToAgent(AgentSendParams(target: target, text: text))
         }
