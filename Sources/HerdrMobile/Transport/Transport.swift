@@ -83,6 +83,32 @@ struct Agent: Sendable, Equatable, Decodable {
     }
 }
 
+/// Where the herdr API socket lives on a Host. Home-relative locations are
+/// resolved against the remote home directory, which the Transport resolves
+/// over exec once per Host and caches.
+enum HerdrSocketLocation: Sendable, Equatable {
+    /// The default herdr session: `~/.config/herdr/herdr.sock`.
+    case defaultSession
+    /// A named session: `~/.config/herdr/sessions/<name>/herdr.sock`.
+    case namedSession(String)
+    /// An absolute path known in advance; needs no remote resolution.
+    case absolutePath(String)
+
+    /// The absolute socket path, given the Host's home directory.
+    func path(homeDirectory: String) -> String {
+        let home =
+            homeDirectory.hasSuffix("/") ? String(homeDirectory.dropLast()) : homeDirectory
+        switch self {
+        case .defaultSession:
+            return "\(home)/.config/herdr/herdr.sock"
+        case .namedSession(let name):
+            return "\(home)/.config/herdr/sessions/\(name)/herdr.sock"
+        case .absolutePath(let path):
+            return path
+        }
+    }
+}
+
 /// Transport-level failures: a closed taxonomy so every screen maps errors to
 /// user guidance consistently instead of string-matching. `timedOut` and
 /// `cancelled` exist as cases now; their enforcement machinery (request
@@ -98,6 +124,9 @@ enum TransportError: Error, Sendable, Equatable {
     case socatMissing(path: String)
     /// The server speaks a herdr protocol version this build does not support.
     case protocolVersionMismatch(server: Int, supported: Int)
+    /// The remote home directory could not be resolved, so a home-relative
+    /// socket location has no path.
+    case homeDirectoryUnresolvable(detail: String)
     /// The request exceeded its deadline.
     case timedOut
     /// The request was cancelled before completing.

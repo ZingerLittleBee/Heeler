@@ -6,16 +6,15 @@ import CryptoKit
 import Foundation
 import NIOCore
 
-/// How to reach one Host and its herdr socket. Tracer-bullet subset: Ed25519
-/// key auth and an explicit socket path; remote socket path resolution and the
-/// full error taxonomy are #17, richer auth is the SSH core work.
+/// How to reach one Host and its herdr socket. Auth is the tracer-bullet
+/// Ed25519 subset; richer auth and host key policy are the SSH core work (#2).
 struct SSHTransportSettings: Sendable {
     var host: String
     var port: Int
     var username: String
     var privateKey: Curve25519.Signing.PrivateKey
-    /// Absolute path of the herdr API socket on the Host.
-    var socketPath: String
+    /// Which herdr socket to reach on the Host.
+    var socket: HerdrSocketLocation
     /// Absolute path of socat on the Host. Remote commands run through the
     /// user's login shell, whose PATH cannot be trusted.
     var socatPath: String
@@ -29,12 +28,15 @@ actor SSHTransport: Transport {
     static let supportedProtocolVersion = 16
 
     private let client: SSHClient
-    private let socketPath: String
+    private let socketLocation: HerdrSocketLocation
     private let socatPath: String
+    /// In-flight or completed remote home directory resolution; see
+    /// `remoteHomeDirectory()`.
+    private var homeDirectoryTask: Task<String, Error>?
 
-    private init(client: SSHClient, socketPath: String, socatPath: String) {
+    private init(client: SSHClient, socketLocation: HerdrSocketLocation, socatPath: String) {
         self.client = client
-        self.socketPath = socketPath
+        self.socketLocation = socketLocation
         self.socatPath = socatPath
     }
 
@@ -54,7 +56,7 @@ actor SSHTransport: Transport {
             reconnect: .never
         )
         return SSHTransport(
-            client: client, socketPath: settings.socketPath, socatPath: settings.socatPath)
+            client: client, socketLocation: settings.socket, socatPath: settings.socatPath)
     }
 
     func ping() async throws -> ServerInfo {
@@ -81,6 +83,7 @@ actor SSHTransport: Transport {
     /// (Citadel closes the channel on return) — never by task cancellation,
     /// which a live exec channel does not respond to.
     private func request<R: Decodable>(method: String, decoding type: R.Type) async throws -> R {
+        let socketPath = try await resolvedSocketPath()
         let requestID = UUID().uuidString
         let line = try HerdrWire.requestLine(id: requestID, method: method)
         var stdout = Data()
@@ -105,14 +108,56 @@ actor SSHTransport: Transport {
         } catch is CancellationError {
             throw TransportError.cancelled
         } catch {
-            throw classifyExecFailure(stderr: stderr)
+            throw classifyExecFailure(stderr: stderr, socketPath: socketPath)
                 ?? TransportError.channelFailed(
                     detail: "\(method): \(error); stderr: \(Self.preview(stderr))")
         }
-        if !stdout.contains(0x0A), let failure = classifyExecFailure(stderr: stderr) {
+        if !stdout.contains(0x0A),
+            let failure = classifyExecFailure(stderr: stderr, socketPath: socketPath)
+        {
             throw failure
         }
         return try HerdrWire.decodeResult(type, fromResponseLine: stdout, requestID: requestID)
+    }
+
+    /// The absolute socket path on this Host, resolving the remote home
+    /// directory for home-relative locations.
+    private func resolvedSocketPath() async throws -> String {
+        if case .absolutePath(let path) = socketLocation { return path }
+        return socketLocation.path(homeDirectory: try await remoteHomeDirectory())
+    }
+
+    /// The remote home directory, resolved over exec once per Host:
+    /// concurrent first requests share one in-flight resolution, and the
+    /// result is cached for the lifetime of the connection. A failed
+    /// resolution is not cached, so the next request retries.
+    private func remoteHomeDirectory() async throws -> String {
+        let task = homeDirectoryTask ?? Task { try await self.resolveHomeDirectoryOverExec() }
+        homeDirectoryTask = task
+        do {
+            return try await task.value
+        } catch {
+            homeDirectoryTask = nil
+            throw error
+        }
+    }
+
+    private func resolveHomeDirectoryOverExec() async throws -> String {
+        let output: ByteBuffer
+        do {
+            // $HOME expands in every mainstream login shell, fish included.
+            output = try await client.executeCommand("echo $HOME")
+        } catch is CancellationError {
+            throw TransportError.cancelled
+        } catch {
+            throw TransportError.homeDirectoryUnresolvable(detail: String(describing: error))
+        }
+        let home = String(buffer: output).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard home.hasPrefix("/") else {
+            throw TransportError.homeDirectoryUnresolvable(
+                detail: "echo $HOME printed: \(home.prefix(200))")
+        }
+        return home
     }
 
     /// Maps the observable failure shapes (verified against herdr 0.7.4 in
@@ -125,7 +170,7 @@ actor SSHTransport: Transport {
     /// the quoted socket path: shells like fish echo the whole failing
     /// command line (which contains both paths), so path presence alone
     /// cannot distinguish the shapes.
-    private func classifyExecFailure(stderr: Data) -> TransportError? {
+    private func classifyExecFailure(stderr: Data, socketPath: String) -> TransportError? {
         let text = String(decoding: stderr, as: UTF8.self)
         if text.contains("E connect"), text.contains("\"\(socketPath)\"") {
             if text.contains("No such file or directory") {

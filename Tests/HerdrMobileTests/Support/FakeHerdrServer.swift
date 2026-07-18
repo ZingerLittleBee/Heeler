@@ -42,17 +42,18 @@ final class FakeHerdrServer: Sendable {
     /// connection, so this equals the number of exec+socat channels opened.
     var connectionCount: Int { state.mutex.withLock { $0.connections } }
 
-    init(script: @escaping Script) throws {
-        // Short path: sun_path caps at 104 bytes and the simulator's
-        // NSTemporaryDirectory is far longer than that.
-        self.socketPath = "/tmp/herdr-fake-\(UUID().uuidString.prefix(8)).sock"
+    /// `socketPath` defaults to a fresh path under /tmp: sun_path caps at 104
+    /// bytes and the simulator's NSTemporaryDirectory is far longer than
+    /// that. Pass an explicit path to model a real herdr socket layout.
+    init(socketPath: String? = nil, script: @escaping Script) throws {
+        self.socketPath = socketPath ?? "/tmp/herdr-fake-\(UUID().uuidString.prefix(8)).sock"
         self.script = script
 
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw ServerError.socketSetupFailed(step: "socket", errno: errno) }
-        unlink(socketPath)
+        unlink(self.socketPath)
 
-        let bindResult = UnixSockets.withSockaddr(path: socketPath) { bind(fd, $0, $1) }
+        let bindResult = UnixSockets.withSockaddr(path: self.socketPath) { bind(fd, $0, $1) }
         guard bindResult == 0 else {
             close(fd)
             throw ServerError.socketSetupFailed(step: "bind", errno: errno)

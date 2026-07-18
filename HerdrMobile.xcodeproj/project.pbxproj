@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		073427C275CFEDBD5D3176DC /* SSHTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B1C4EC65B71F33394E7DA9F /* SSHTransport.swift */; };
 		49CDAC5FE4566D912F72FFCA /* Transport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 259E51D58B1094AC5B389EDA /* Transport.swift */; };
+		535C6AF099A43002029F2C2F /* HerdrSocketLocationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200BC80136A26B477439ACFA /* HerdrSocketLocationTests.swift */; };
 		6680D1827A0A0E5A60BE44F8 /* SkeletonTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6FCFE74BB45C0D8B600FFD3 /* SkeletonTests.swift */; };
 		724AEEB52CDF4B28AFF8E3E5 /* HerdrWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6970DEB7C22EFDB1A26F6F9 /* HerdrWireTests.swift */; };
 		782980ECE8E7005A672D25A3 /* TransportFailureModesE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02807C329084D58137461EF8 /* TransportFailureModesE2ETests.swift */; };
@@ -35,6 +36,7 @@
 
 /* Begin PBXFileReference section */
 		02807C329084D58137461EF8 /* TransportFailureModesE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportFailureModesE2ETests.swift; sourceTree = "<group>"; };
+		200BC80136A26B477439ACFA /* HerdrSocketLocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrSocketLocationTests.swift; sourceTree = "<group>"; };
 		20B781425ADF5353CEEED6A1 /* FakeHerdrServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeHerdrServer.swift; sourceTree = "<group>"; };
 		259E51D58B1094AC5B389EDA /* Transport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transport.swift; sourceTree = "<group>"; };
 		78545B74736FD98DCA33B3C4 /* HerdrMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrMobileApp.swift; sourceTree = "<group>"; };
@@ -85,6 +87,7 @@
 		8474CB954CA9DE980DA822F2 /* HerdrMobileTests */ = {
 			isa = PBXGroup;
 			children = (
+				200BC80136A26B477439ACFA /* HerdrSocketLocationTests.swift */,
 				C6970DEB7C22EFDB1A26F6F9 /* HerdrWireTests.swift */,
 				D6FCFE74BB45C0D8B600FFD3 /* SkeletonTests.swift */,
 				F62C94D6B84C468B0A4D991C /* SSHTransportE2ETests.swift */,
@@ -233,6 +236,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				EF7F36C0E1C3ED3F6117B1EB /* FakeHerdrServer.swift in Sources */,
+				535C6AF099A43002029F2C2F /* HerdrSocketLocationTests.swift in Sources */,
 				724AEEB52CDF4B28AFF8E3E5 /* HerdrWireTests.swift in Sources */,
 				F2CC5A27CA8B0623C486D9B2 /* LocalSSHTestEnvironment.swift in Sources */,
 				E4CC508EF3C28A14A4EE2901 /* SSHTransportE2ETests.swift in Sources */,

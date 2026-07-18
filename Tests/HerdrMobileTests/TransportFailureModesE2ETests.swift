@@ -65,7 +65,7 @@ struct TransportFailureModesE2ETests {
                 port: environment.port,
                 username: environment.username,
                 privateKey: environment.privateKey,
-                socketPath: socketPath,
+                socket: .absolutePath(socketPath),
                 socatPath: socatPath ?? environment.socatPath))
         do {
             try await body(transport)

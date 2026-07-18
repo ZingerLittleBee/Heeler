@@ -91,6 +91,52 @@ struct SSHTransportE2ETests {
         }
     }
 
+    @Test func namedSessionSocketPathResolvesOverRemoteHome() async throws {
+        // The transport is given only a session name; it must resolve the
+        // remote home directory over exec and find the socket at
+        // ~/.config/herdr/sessions/<name>/herdr.sock. The fake server is
+        // bound at exactly that spot in the real home directory (the
+        // simulator shares the host filesystem, where home is /Users/<user>).
+        let environment = try #require(LocalSSHTestEnvironment.current)
+        let sessionName = "hm-e2e-\(UUID().uuidString.prefix(8))"
+        let sessionDir = "/Users/\(environment.username)/.config/herdr/sessions/\(sessionName)"
+        try FileManager.default.createDirectory(
+            atPath: sessionDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: sessionDir) }
+
+        let server = try FakeHerdrServer(socketPath: sessionDir + "/herdr.sock") { request in
+            switch request.method {
+            case "ping":
+                [#"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":16}}"#]
+            default:
+                [#"{"id":"\#(request.id)","result":{"type":"agent_list","agents":[]}}"#]
+            }
+        }
+        defer { server.stop() }
+
+        let transport = try await SSHTransport.connect(
+            settings: SSHTransportSettings(
+                host: environment.host,
+                port: environment.port,
+                username: environment.username,
+                privateKey: environment.privateKey,
+                socket: .namedSession(sessionName),
+                socatPath: environment.socatPath))
+        do {
+            // Two requests: the second reuses the cached home directory.
+            _ = try await transport.ping()
+            let agents = try await transport.listAgents()
+
+            #expect(agents.isEmpty)
+            #expect(server.receivedRequests.map(\.method) == ["ping", "agent.list"])
+            #expect(server.connectionCount == 2)
+        } catch {
+            try? await transport.close()
+            throw error
+        }
+        try await transport.close()
+    }
+
     /// Boots a fake herdr server plus a real SSH connection to localhost and
     /// tears both down afterwards. The transport is handed to `body` as the
     /// concrete actor; assertions go through its public Transport surface.
@@ -108,7 +154,7 @@ struct SSHTransportE2ETests {
                     port: environment.port,
                     username: environment.username,
                     privateKey: environment.privateKey,
-                    socketPath: server.socketPath,
+                    socket: .absolutePath(server.socketPath),
                     socatPath: environment.socatPath))
         } catch {
             server.stop()
