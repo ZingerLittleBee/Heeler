@@ -18,6 +18,14 @@ struct SSHTransportSettings: Sendable {
     /// Absolute path of socat on the Host. Remote commands run through the
     /// user's login shell, whose PATH cannot be trusted.
     var socatPath: String
+    /// Command that wakes a stopped herdr server, run over a no-PTY exec
+    /// channel when a request hits connection-refused (#6). The default is
+    /// the strategy from spec #16: `herdr remote-client-bridge` ensures the
+    /// server is running (spawn + wait for socket) before bridging, then
+    /// exits on stdin EOF. Injectable so tests can substitute a script at
+    /// the environment boundary; per-Host override also covers hosts where
+    /// herdr is not on the login shell's PATH.
+    var wakeCommand: String = "herdr remote-client-bridge"
 }
 
 /// Transport over SSH exec channels running `socat - UNIX-CONNECT:<sock>`,
@@ -30,14 +38,23 @@ actor SSHTransport: Transport {
     private let client: SSHClient
     private let socketLocation: HerdrSocketLocation
     private let socatPath: String
+    private let wakeCommand: String
     /// In-flight or completed remote home directory resolution; see
     /// `remoteHomeDirectory()`.
     private var homeDirectoryTask: Task<String, Error>?
+    /// In-flight cold-start wake; concurrent refused requests share one wake
+    /// instead of racing exec channels. Cleared on completion so a later
+    /// cold start can wake again.
+    private var wakeTask: Task<Void, Error>?
 
-    private init(client: SSHClient, socketLocation: HerdrSocketLocation, socatPath: String) {
+    private init(
+        client: SSHClient, socketLocation: HerdrSocketLocation, socatPath: String,
+        wakeCommand: String
+    ) {
         self.client = client
         self.socketLocation = socketLocation
         self.socatPath = socatPath
+        self.wakeCommand = wakeCommand
     }
 
     /// Connects and authenticates, but sends nothing yet: callers must `ping`
@@ -56,7 +73,8 @@ actor SSHTransport: Transport {
             reconnect: .never
         )
         return SSHTransport(
-            client: client, socketLocation: settings.socket, socatPath: settings.socatPath)
+            client: client, socketLocation: settings.socket, socatPath: settings.socatPath,
+            wakeCommand: settings.wakeCommand)
     }
 
     func ping() async throws -> ServerInfo {
@@ -78,11 +96,62 @@ actor SSHTransport: Transport {
         try await client.close()
     }
 
+    /// Executes one request, with cold-start recovery (#6): connection
+    /// refused means the socket exists but the server is stopped, so run the
+    /// wake command and retry the socket. Strictly bounded — one wake, one
+    /// retry — so a wake that does not help surfaces `.serverNotRunning` to
+    /// the user instead of looping silently.
+    private func request<R: Decodable>(method: String, decoding type: R.Type) async throws -> R {
+        do {
+            return try await performRequest(method: method, decoding: type)
+        } catch TransportError.serverNotRunning(let path) {
+            do {
+                try await wakeServer()
+            } catch TransportError.cancelled {
+                throw TransportError.cancelled
+            } catch {
+                // The wake itself failed (herdr missing, command errored):
+                // the actionable problem is still a server that is not
+                // running on this Host.
+                throw TransportError.serverNotRunning(path: path)
+            }
+            return try await performRequest(method: method, decoding: type)
+        }
+    }
+
+    /// Wakes the herdr server via the Host's wake command; concurrent
+    /// refused requests share one in-flight wake.
+    private func wakeServer() async throws {
+        if let task = wakeTask {
+            return try await task.value
+        }
+        let task = Task { try await self.runWakeCommand() }
+        wakeTask = task
+        defer { wakeTask = nil }
+        return try await task.value
+    }
+
+    /// Runs the wake command over a no-PTY exec channel with stdin at EOF
+    /// from the start (`< /dev/null`). The bridge's entry point ensures the
+    /// server is running (spawn + wait for socket) before it starts
+    /// bridging; the bridge then reads EOF and exits — so the command
+    /// completing implies a live socket, and its own lifetime bounds the
+    /// channel without writing or closing anything mid-flight.
+    private func runWakeCommand() async throws {
+        do {
+            _ = try await client.executeCommand("\(wakeCommand) < /dev/null")
+        } catch is CancellationError {
+            throw TransportError.cancelled
+        }
+    }
+
     /// One no-PTY exec channel per request. The channel is ended by returning
     /// from the `withExec` body as soon as a full response line has arrived
     /// (Citadel closes the channel on return) — never by task cancellation,
     /// which a live exec channel does not respond to.
-    private func request<R: Decodable>(method: String, decoding type: R.Type) async throws -> R {
+    private func performRequest<R: Decodable>(method: String, decoding type: R.Type) async throws
+        -> R
+    {
         let socketPath = try await resolvedSocketPath()
         let requestID = UUID().uuidString
         let line = try HerdrWire.requestLine(id: requestID, method: method)
