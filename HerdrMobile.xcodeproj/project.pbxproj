@@ -15,12 +15,14 @@
 		0700F97FBF6A714C5D9EA5CD /* ColdStartE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 646861C32DDA14D63389C518 /* ColdStartE2ETests.swift */; };
 		073427C275CFEDBD5D3176DC /* SSHTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B1C4EC65B71F33394E7DA9F /* SSHTransport.swift */; };
 		0A0657501E1164D7672A8B39 /* InMemorySecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B106E427EE5358088B615CE /* InMemorySecretStore.swift */; };
+		0CF1AA5AF7F2357186A5E486 /* TerminalAttachTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE8796AB629EF68A90C96B3D /* TerminalAttachTests.swift */; };
 		1302E0DD26A3F6C629A753D8 /* HostKeyPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = CADA0E8C1DC6D30FCC6CEDC2 /* HostKeyPolicy.swift */; };
 		13F083CF14791D0BA253D743 /* AgentInputStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8539E6605BEB89CC3760FAE /* AgentInputStoreTests.swift */; };
 		1BAA5950B7FDE0E6F09811F9 /* DeviceKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC995A571D7659F3307B6E54 /* DeviceKey.swift */; };
 		1BBEEF5478D91222F48C2048 /* ReconnectPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B66B41C393D38FA09388E3E2 /* ReconnectPolicyTests.swift */; };
 		1BF53C7A5E6402747F26096A /* HostCredentialsProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDC07C7B3772EEED1EB8BA9C /* HostCredentialsProvider.swift */; };
 		1F4B065DFCAF8E6656600F1E /* TOFUHostKeyValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC1CA00EE3CB38A822FEA4B2 /* TOFUHostKeyValidator.swift */; };
+		225ECBDC69A7785559BC4D20 /* AttachTerminalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97970F4D535CC80592333995 /* AttachTerminalStore.swift */; };
 		27C44B69FBE155A397F54B77 /* HostStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AECAD39A269D97DAB4ED194 /* HostStore.swift */; };
 		298FA49167E3CB1402B7B86B /* DeviceKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D04EAA030D8329A1716714A8 /* DeviceKeyStore.swift */; };
 		2C5A21065C48B7C40AE9A760 /* KnownHostsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87B0377EAC5265E7A6FCD212 /* KnownHostsStoreTests.swift */; };
@@ -31,6 +33,7 @@
 		37869E9A03F1FAFC11B9CD41 /* AgentInputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BFCCCC442C462B42B203D62 /* AgentInputBar.swift */; };
 		3DC1B4DCC0E2CD73A0C13B64 /* SSHAuthE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BE2EC235A2ACCB61A98881E /* SSHAuthE2ETests.swift */; };
 		3ECB4DD848A1C73AF0ED4B5F /* ConsoleAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 498ECBCD631F9734C28861EA /* ConsoleAgent.swift */; };
+		41BBA40C97BAE65E56D0E3B5 /* TerminalAttach.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8007AF9894BE8BAFFA7A6372 /* TerminalAttach.swift */; };
 		46CF6496D795837D483F9EC5 /* TerminalObserve.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E17A13DE5AFEC11CFD78274 /* TerminalObserve.swift */; };
 		473F834A4C680F18BA303DB9 /* ScriptedTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AFE5C640586747D567E1CF1 /* ScriptedTransport.swift */; };
 		49CDAC5FE4566D912F72FFCA /* Transport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 259E51D58B1094AC5B389EDA /* Transport.swift */; };
@@ -67,6 +70,7 @@
 		CDF8E14EC629CBD8F946FE05 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D95D580BCF4FE792AEFE974 /* ContentView.swift */; };
 		D11D524FCF49C49763C9F9D7 /* Host.swift in Sources */ = {isa = PBXBuildFile; fileRef = 806A90DBCA99FD02E76D68C6 /* Host.swift */; };
 		D6E9D6545089932306C4704F /* HostKeyFingerprint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CBE401E4A5FA5871809E540 /* HostKeyFingerprint.swift */; };
+		D818864671292BE9F965CAA6 /* AttachTerminalStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A549DEB5B5CE8FDD29CE2A28 /* AttachTerminalStoreTests.swift */; };
 		DBB9FF4BC72D3AA244E2ECE0 /* HostFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 278668F4D5B3EB85E6CDA16A /* HostFormView.swift */; };
 		DC564E76486D243AD1741F7E /* SharedAsyncOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CE658EA3C6364BCC0D8CE14 /* SharedAsyncOperation.swift */; };
 		DE84101EE6E1BF5878C76C49 /* ConsoleStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A95E62CA572C71B2C746E972 /* ConsoleStore.swift */; };
@@ -75,10 +79,12 @@
 		E30244FD0231DD02EC9978D0 /* EventsSubscribeE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4076B0E816625CD09EB29F2E /* EventsSubscribeE2ETests.swift */; };
 		E37B688F0A59B1E4085C2C18 /* HostDraftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25E3451A4ECA518B0AE43F93 /* HostDraftTests.swift */; };
 		E4CC508EF3C28A14A4EE2901 /* SSHTransportE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F62C94D6B84C468B0A4D991C /* SSHTransportE2ETests.swift */; };
+		E8E50DCA9F56799E022F9252 /* TerminalAttachE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D83F34B22988623AD8E2093C /* TerminalAttachE2ETests.swift */; };
 		E908289DF03C6732F7D91328 /* HerdrEventsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A696EC4D243B31D1B22C13F0 /* HerdrEventsTests.swift */; };
 		EB02A35634A4D6572637DEF4 /* HerdrMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78545B74736FD98DCA33B3C4 /* HerdrMobileApp.swift */; };
 		EF7F36C0E1C3ED3F6117B1EB /* FakeHerdrServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20B781425ADF5353CEEED6A1 /* FakeHerdrServer.swift */; };
 		F2CC5A27CA8B0623C486D9B2 /* LocalSSHTestEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 904FF6BF3E76BDFB2F76784D /* LocalSSHTestEnvironment.swift */; };
+		F4959E8AB9994866FEE7C928 /* AttachTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC477204D571531A1B9AAC5A /* AttachTerminalView.swift */; };
 		F62A9CD06CFB784550AF4977 /* DeviceKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 558159B2AF61C28F6B1391A2 /* DeviceKeyTests.swift */; };
 		F96C5D15E14B947BE426B2F3 /* TerminalScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 597ACEE9D688E433B20108D7 /* TerminalScreenView.swift */; };
 		FE4ADC78CA6113FFFBCEC693 /* EventsSessionE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9291334E33C85C7588F86281 /* EventsSessionE2ETests.swift */; };
@@ -134,14 +140,17 @@
 		7D95D580BCF4FE792AEFE974 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		7DCAF31058B6430B514B2188 /* HostOnboardingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostOnboardingStore.swift; sourceTree = "<group>"; };
 		7E538BF75AE58E16C58782F7 /* HostOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostOnboardingView.swift; sourceTree = "<group>"; };
+		8007AF9894BE8BAFFA7A6372 /* TerminalAttach.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAttach.swift; sourceTree = "<group>"; };
 		806A90DBCA99FD02E76D68C6 /* Host.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Host.swift; sourceTree = "<group>"; };
 		8323C68B13826B7388800B1F /* DeviceKeyStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKeyStoreTests.swift; sourceTree = "<group>"; };
 		87B0377EAC5265E7A6FCD212 /* KnownHostsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnownHostsStoreTests.swift; sourceTree = "<group>"; };
 		904FF6BF3E76BDFB2F76784D /* LocalSSHTestEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSSHTestEnvironment.swift; sourceTree = "<group>"; };
 		90875ADAF6E348E186C8125A /* SSHCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHCredentials.swift; sourceTree = "<group>"; };
 		9291334E33C85C7588F86281 /* EventsSessionE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsSessionE2ETests.swift; sourceTree = "<group>"; };
+		97970F4D535CC80592333995 /* AttachTerminalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachTerminalStore.swift; sourceTree = "<group>"; };
 		9AECAD39A269D97DAB4ED194 /* HostStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostStore.swift; sourceTree = "<group>"; };
 		9B106E427EE5358088B615CE /* InMemorySecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InMemorySecretStore.swift; sourceTree = "<group>"; };
+		A549DEB5B5CE8FDD29CE2A28 /* AttachTerminalStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachTerminalStoreTests.swift; sourceTree = "<group>"; };
 		A696EC4D243B31D1B22C13F0 /* HerdrEventsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrEventsTests.swift; sourceTree = "<group>"; };
 		A95E62CA572C71B2C746E972 /* ConsoleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleStore.swift; sourceTree = "<group>"; };
 		A9EC4F17AFC933FBA45CCA09 /* TransportConcurrencyE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportConcurrencyE2ETests.swift; sourceTree = "<group>"; };
@@ -150,6 +159,7 @@
 		BC1CA00EE3CB38A822FEA4B2 /* TOFUHostKeyValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOFUHostKeyValidator.swift; sourceTree = "<group>"; };
 		BC995A571D7659F3307B6E54 /* DeviceKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKey.swift; sourceTree = "<group>"; };
 		BD390F4EE653187BCF20037F /* HerdrAPITypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrAPITypes.swift; sourceTree = "<group>"; };
+		BE8796AB629EF68A90C96B3D /* TerminalAttachTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAttachTests.swift; sourceTree = "<group>"; };
 		C14983BD8988E4AAE79DC46A /* FakeTransportConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeTransportConnector.swift; sourceTree = "<group>"; };
 		C232163905675760F37FD7A0 /* KnownHostsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnownHostsStore.swift; sourceTree = "<group>"; };
 		C44D9663DAB1E8942FBFCD1C /* ConsoleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleView.swift; sourceTree = "<group>"; };
@@ -157,9 +167,11 @@
 		C8539E6605BEB89CC3760FAE /* AgentInputStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentInputStoreTests.swift; sourceTree = "<group>"; };
 		CABFC5E35C19F809355619E7 /* HerdrEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrEvents.swift; sourceTree = "<group>"; };
 		CADA0E8C1DC6D30FCC6CEDC2 /* HostKeyPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostKeyPolicy.swift; sourceTree = "<group>"; };
+		CC477204D571531A1B9AAC5A /* AttachTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachTerminalView.swift; sourceTree = "<group>"; };
 		D04EAA030D8329A1716714A8 /* DeviceKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKeyStore.swift; sourceTree = "<group>"; };
 		D092BB7D5F4E3BF63F6B60B7 /* ObserveTerminalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObserveTerminalStore.swift; sourceTree = "<group>"; };
 		D6FCFE74BB45C0D8B600FFD3 /* SkeletonTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonTests.swift; sourceTree = "<group>"; };
+		D83F34B22988623AD8E2093C /* TerminalAttachE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAttachE2ETests.swift; sourceTree = "<group>"; };
 		DB88AD0F4E9EE776B17FAFAA /* PreflightReportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreflightReportTests.swift; sourceTree = "<group>"; };
 		DCA39340517CEF3DAA35A09B /* Preflight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preflight.swift; sourceTree = "<group>"; };
 		DD6107DA82C2AC6705955ABD /* TerminalObserveE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalObserveE2ETests.swift; sourceTree = "<group>"; };
@@ -218,6 +230,7 @@
 				3CE658EA3C6364BCC0D8CE14 /* SharedAsyncOperation.swift */,
 				90875ADAF6E348E186C8125A /* SSHCredentials.swift */,
 				7B1C4EC65B71F33394E7DA9F /* SSHTransport.swift */,
+				8007AF9894BE8BAFFA7A6372 /* TerminalAttach.swift */,
 				3E17A13DE5AFEC11CFD78274 /* TerminalObserve.swift */,
 				BC1CA00EE3CB38A822FEA4B2 /* TOFUHostKeyValidator.swift */,
 				259E51D58B1094AC5B389EDA /* Transport.swift */,
@@ -248,6 +261,7 @@
 			isa = PBXGroup;
 			children = (
 				C8539E6605BEB89CC3760FAE /* AgentInputStoreTests.swift */,
+				A549DEB5B5CE8FDD29CE2A28 /* AttachTerminalStoreTests.swift */,
 				646861C32DDA14D63389C518 /* ColdStartE2ETests.swift */,
 				079394F4C6AC8FE4D7B0779C /* ConsoleStoreTests.swift */,
 				8323C68B13826B7388800B1F /* DeviceKeyStoreTests.swift */,
@@ -271,6 +285,8 @@
 				6BE2EC235A2ACCB61A98881E /* SSHAuthE2ETests.swift */,
 				5582E1837DE62FBC4C5DDC5A /* SSHHostKeyE2ETests.swift */,
 				F62C94D6B84C468B0A4D991C /* SSHTransportE2ETests.swift */,
+				D83F34B22988623AD8E2093C /* TerminalAttachE2ETests.swift */,
+				BE8796AB629EF68A90C96B3D /* TerminalAttachTests.swift */,
 				71A2DB2B666DE2534DDE075B /* TerminalFrameTests.swift */,
 				DD6107DA82C2AC6705955ABD /* TerminalObserveE2ETests.swift */,
 				A9EC4F17AFC933FBA45CCA09 /* TransportConcurrencyE2ETests.swift */,
@@ -321,6 +337,8 @@
 				5ADF336771A3F757F2AD441D /* AgentDetailView.swift */,
 				6BFCCCC442C462B42B203D62 /* AgentInputBar.swift */,
 				1E863C1D76B5403FBF1DF247 /* AgentInputStore.swift */,
+				97970F4D535CC80592333995 /* AttachTerminalStore.swift */,
+				CC477204D571531A1B9AAC5A /* AttachTerminalView.swift */,
 				498ECBCD631F9734C28861EA /* ConsoleAgent.swift */,
 				A95E62CA572C71B2C746E972 /* ConsoleStore.swift */,
 				C44D9663DAB1E8942FBFCD1C /* ConsoleView.swift */,
@@ -450,6 +468,8 @@
 				2CE9115816E7CE945ABCF7A8 /* AgentDetailView.swift in Sources */,
 				37869E9A03F1FAFC11B9CD41 /* AgentInputBar.swift in Sources */,
 				BD8609187B3F0CB952F26D05 /* AgentInputStore.swift in Sources */,
+				225ECBDC69A7785559BC4D20 /* AttachTerminalStore.swift in Sources */,
+				F4959E8AB9994866FEE7C928 /* AttachTerminalView.swift in Sources */,
 				3ECB4DD848A1C73AF0ED4B5F /* ConsoleAgent.swift in Sources */,
 				DE84101EE6E1BF5878C76C49 /* ConsoleStore.swift in Sources */,
 				006767F8F679B28FDC853D69 /* ConsoleView.swift in Sources */,
@@ -480,6 +500,7 @@
 				693B0173C07DAF4BFC89B094 /* SecretStore.swift in Sources */,
 				DC564E76486D243AD1741F7E /* SharedAsyncOperation.swift in Sources */,
 				1F4B065DFCAF8E6656600F1E /* TOFUHostKeyValidator.swift in Sources */,
+				41BBA40C97BAE65E56D0E3B5 /* TerminalAttach.swift in Sources */,
 				BAC9F51A72EA9774DEDBC193 /* TerminalByteFeed.swift in Sources */,
 				46CF6496D795837D483F9EC5 /* TerminalObserve.swift in Sources */,
 				F96C5D15E14B947BE426B2F3 /* TerminalScreenView.swift in Sources */,
@@ -493,6 +514,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				13F083CF14791D0BA253D743 /* AgentInputStoreTests.swift in Sources */,
+				D818864671292BE9F965CAA6 /* AttachTerminalStoreTests.swift in Sources */,
 				0700F97FBF6A714C5D9EA5CD /* ColdStartE2ETests.swift in Sources */,
 				93851E040C292A16F5ECB10D /* ConsoleStoreTests.swift in Sources */,
 				05A6F31F9CAC1CA1C57D7C71 /* DeviceKeyStoreTests.swift in Sources */,
@@ -521,6 +543,8 @@
 				E4CC508EF3C28A14A4EE2901 /* SSHTransportE2ETests.swift in Sources */,
 				473F834A4C680F18BA303DB9 /* ScriptedTransport.swift in Sources */,
 				6680D1827A0A0E5A60BE44F8 /* SkeletonTests.swift in Sources */,
+				E8E50DCA9F56799E022F9252 /* TerminalAttachE2ETests.swift in Sources */,
+				0CF1AA5AF7F2357186A5E486 /* TerminalAttachTests.swift in Sources */,
 				06B1CE9615AF78A90F3436CE /* TerminalFrameTests.swift in Sources */,
 				54B68E64112970D45E0B0525 /* TerminalObserveE2ETests.swift in Sources */,
 				E23937EC4DC9148C2A7F8D18 /* TransportConcurrencyE2ETests.swift in Sources */,
