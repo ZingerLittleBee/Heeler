@@ -1,25 +1,34 @@
 import SwiftUI
 
-/// The Agent detail screen (#9): scrollback plus live output in a real
-/// terminal, read-only (Observe semantics per CONTEXT.md). Input surfaces
-/// arrive with #10 (message box) and #11 (Attach).
+/// The Agent detail screen (#9, #10): scrollback plus live output in a real
+/// terminal, read-only (Observe semantics per CONTEXT.md), with a native
+/// input bar below it (#10) for answering a Blocked agent without Attach.
+/// The full interactive Attach terminal arrives with #11.
 struct AgentDetailView: View {
     let agent: ConsoleAgent
     @State private var store: ObserveTerminalStore
+    @State private var input: AgentInputStore
 
     init(agent: ConsoleAgent, console: ConsoleStore) {
         self.agent = agent
+        let transport = console.transportProvider(for: agent.hostID)
         _store = State(
             initialValue: ObserveTerminalStore(
-                target: agent.agent.paneID,
-                transport: console.transportProvider(for: agent.hostID)))
+                target: agent.agent.paneID, transport: transport))
+        _input = State(
+            initialValue: AgentInputStore(
+                target: agent.agent.paneID, transport: transport))
     }
 
     var body: some View {
-        TerminalScreenView(feed: store.feed) { cols, rows in
-            store.viewDidResize(cols: cols, rows: rows)
+        VStack(spacing: 0) {
+            TerminalScreenView(feed: store.feed) { cols, rows in
+                store.viewDidResize(cols: cols, rows: rows)
+            }
+            .overlay { statusOverlay }
+
+            AgentInputBar(store: input)
         }
-        .overlay { statusOverlay }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
