@@ -416,6 +416,12 @@ struct EventsSessionE2ETests {
             try await inner.subscribeToEvents(subscriptions)
         }
 
+        func observeTerminal(_ request: TerminalObserveRequest) async throws
+            -> TerminalFrameStream
+        {
+            try await inner.observeTerminal(request)
+        }
+
         func close() async throws {
             closeEntered.open()
             await closeRelease.waitUntilOpen()

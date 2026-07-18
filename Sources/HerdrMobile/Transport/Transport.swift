@@ -29,6 +29,14 @@ protocol Transport: Sendable {
     /// 0.7.4): sync initial state with `listAgents()` alongside subscribing.
     func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream
 
+    /// Opens this Host's dedicated terminal channel and starts the read-only
+    /// Observe live-follow (#9): NDJSON frame lines from `herdr terminal
+    /// session observe`, decoded and base64-unwrapped, until `end()` closes
+    /// the channel explicitly. One terminal channel per Host — the session
+    /// slot budgeted for the terminal surface — so a second call while one
+    /// is live throws `.terminalChannelAlreadyOpen`.
+    func observeTerminal(_ request: TerminalObserveRequest) async throws -> TerminalFrameStream
+
     /// Whether the underlying connection to the Host is still alive. The
     /// reconnect machinery (#18) decides "re-subscribe on this connection or
     /// re-establish it" from this flag.
@@ -163,6 +171,10 @@ enum TransportError: Error, Sendable, Equatable {
     /// A second events channel was requested while one is live; each Host
     /// keeps exactly one dedicated events channel (ADR 0002 headroom).
     case eventsChannelAlreadyOpen
+    /// A second terminal channel was requested while one is live; each Host
+    /// keeps exactly one (Observe now, Attach in #11 — the UI enforces one
+    /// terminal surface at a time, this backstops the slot budget).
+    case terminalChannelAlreadyOpen
     /// The request exceeded its per-request deadline; its exec channel was
     /// closed.
     case timedOut

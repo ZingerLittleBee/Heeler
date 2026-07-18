@@ -119,7 +119,7 @@ struct PreflightReport: Equatable, Sendable {
         case .channelFailed(let detail):
             check = .connection
             hint = "The connection failed unexpectedly. (\(detail))"
-        case .eventsChannelAlreadyOpen:
+        case .eventsChannelAlreadyOpen, .terminalChannelAlreadyOpen:
             // Not reachable from a connect+ping preflight; keep the closed
             // taxonomy total anyway.
             check = .connection

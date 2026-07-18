@@ -12,6 +12,9 @@ final actor ScriptedTransport: Transport {
     private(set) var capturedSubscriptions: [[EventSubscription]] = []
     private(set) var paneReadParams: [PaneReadParams] = []
     private(set) var snapshotFetchCount = 0
+    /// Every observe request received, in order; the Observe store's
+    /// restart-on-resize/gap behavior asserts on this.
+    private(set) var observeRequests: [TerminalObserveRequest] = []
 
     private var serverInfo: ServerInfo
     private var snapshot: SessionSnapshot
@@ -19,6 +22,9 @@ final actor ScriptedTransport: Transport {
     private var nextStreamID: UInt64 = 0
     private var liveStreamID: UInt64?
     private var eventContinuation: AsyncThrowingStream<HerdrEvent, any Error>.Continuation?
+    private var nextFrameStreamID: UInt64 = 0
+    private var liveFrameStreamID: UInt64?
+    private var frameContinuation: AsyncThrowingStream<TerminalFrame, any Error>.Continuation?
 
     init(
         snapshot: SessionSnapshot = .fixture(),
@@ -54,6 +60,27 @@ final actor ScriptedTransport: Transport {
         eventContinuation?.finish(throwing: failure)
         eventContinuation = nil
         liveStreamID = nil
+    }
+
+    /// Pushes one frame onto the live observe stream; false if none is live.
+    @discardableResult
+    func emitFrame(_ frame: TerminalFrame) -> Bool {
+        guard let frameContinuation else { return false }
+        frameContinuation.yield(frame)
+        return true
+    }
+
+    /// Kills the live observe stream with `failure`, as a remotely dropped
+    /// terminal channel would.
+    func failFrameStream(_ failure: TransportError) {
+        frameContinuation?.finish(throwing: failure)
+        frameContinuation = nil
+        liveFrameStreamID = nil
+    }
+
+    /// Whether an observe stream is currently live.
+    var hasLiveFrameStream: Bool {
+        frameContinuation != nil
     }
 
     // MARK: Transport
@@ -94,6 +121,21 @@ final actor ScriptedTransport: Transport {
         }
     }
 
+    func observeTerminal(_ request: TerminalObserveRequest) async throws -> TerminalFrameStream {
+        guard liveFrameStreamID == nil else {
+            throw TransportError.terminalChannelAlreadyOpen
+        }
+        observeRequests.append(request)
+        nextFrameStreamID += 1
+        let streamID = nextFrameStreamID
+        let (frames, continuation) = AsyncThrowingStream<TerminalFrame, any Error>.makeStream()
+        liveFrameStreamID = streamID
+        frameContinuation = continuation
+        return TerminalFrameStream(frames: frames) {
+            await self.endFrameStream(id: streamID)
+        }
+    }
+
     var isConnected: Bool {
         !isClosed
     }
@@ -103,6 +145,9 @@ final actor ScriptedTransport: Transport {
         eventContinuation?.finish()
         eventContinuation = nil
         liveStreamID = nil
+        frameContinuation?.finish()
+        frameContinuation = nil
+        liveFrameStreamID = nil
     }
 
     /// Explicit `end()` on the stream: finishes it gracefully, exactly like
@@ -112,6 +157,13 @@ final actor ScriptedTransport: Transport {
         eventContinuation?.finish()
         eventContinuation = nil
         liveStreamID = nil
+    }
+
+    private func endFrameStream(id: UInt64) {
+        guard liveFrameStreamID == id else { return }
+        frameContinuation?.finish()
+        frameContinuation = nil
+        liveFrameStreamID = nil
     }
 }
 

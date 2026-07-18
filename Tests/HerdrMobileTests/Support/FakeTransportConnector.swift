@@ -33,6 +33,10 @@ final actor FakeTransport: Transport {
         throw TransportError.channelFailed(detail: "FakeTransport does not script events")
     }
 
+    func observeTerminal(_ request: TerminalObserveRequest) async throws -> TerminalFrameStream {
+        throw TransportError.channelFailed(detail: "FakeTransport does not script observe")
+    }
+
     var isConnected: Bool {
         !isClosed
     }
