@@ -15,7 +15,7 @@ struct SSHTransportE2ETests {
     @Test func pingRoundTripsAndChecksProtocolVersion() async throws {
         try await withTransport { request in
             [
-                #"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":16,"capabilities":{"future_capability":true}}}"#
+                #"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":16,"capabilities":{"live_handoff":true,"future_capability":true}}}"#
             ]
         } body: { transport, server in
             let info = try await transport.ping()

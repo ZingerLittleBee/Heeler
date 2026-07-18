@@ -31,7 +31,7 @@ protocol Transport: Sendable {
 }
 
 /// herdr server identity as reported by `ping`.
-struct ServerInfo: Sendable, Equatable, Decodable {
+struct ServerInfo: Sendable, Equatable {
     let version: String
     let protocolVersion: Int
 
@@ -39,28 +39,15 @@ struct ServerInfo: Sendable, Equatable, Decodable {
         self.version = version
         self.protocolVersion = protocolVersion
     }
-
-    private enum CodingKeys: String, CodingKey {
-        case version
-        case protocolVersion = "protocol"
-    }
-}
-
-/// herdr's detected state of an Agent. Blocked means the agent is waiting on
-/// human input and drives sort order and (later) notifications.
-enum AgentStatus: String, Sendable, Equatable, Decodable {
-    case idle, working, blocked, done, unknown
-
-    /// Lenient: herdr's API has no stability guarantee, so a status value we
-    /// do not know degrades to `.unknown` instead of failing the decode.
-    init(from decoder: any Decoder) throws {
-        let raw = try decoder.singleValueContainer().decode(String.self)
-        self = AgentStatus(rawValue: raw) ?? .unknown
-    }
 }
 
 /// A coding agent process running inside a herdr Pane.
-struct Agent: Sendable, Equatable, Decodable {
+///
+/// The domain view of the generated wire type `AgentInfo`: only the fields
+/// the app consumes, with wire-level optionality resolved. `AgentStatus` is
+/// the generated raw-string wrapper; Blocked drives sort order and (later)
+/// notifications.
+struct Agent: Sendable, Equatable {
     let terminalID: String
     /// The agent program herdr detected: "claude", "codex", ...
     let kind: String
@@ -89,16 +76,21 @@ struct Agent: Sendable, Equatable, Decodable {
         self.revision = revision
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case terminalID = "terminal_id"
-        case kind = "agent"
-        case title = "terminal_title_stripped"
-        case status = "agent_status"
-        case workspaceID = "workspace_id"
-        case tabID = "tab_id"
-        case paneID = "pane_id"
-        case cwd
-        case revision
+    /// Maps the generated wire type onto the domain view. Wire-optional
+    /// fields degrade instead of failing: herdr's API has no stability
+    /// guarantee, and a missing title must not drop the Agent from the list.
+    init(_ info: AgentInfo) {
+        self.init(
+            terminalID: info.terminalID,
+            kind: info.agent ?? "unknown",
+            title: info.terminalTitleStripped ?? info.terminalTitle ?? "",
+            status: info.agentStatus,
+            workspaceID: info.workspaceID,
+            tabID: info.tabID,
+            paneID: info.paneID,
+            cwd: info.cwd ?? "",
+            revision: info.revision
+        )
     }
 }
 

@@ -23,18 +23,19 @@ import Testing
         // Live capture; "type" and "capabilities" are unknown fields to us.
         let line = #"{"id":"req-1","result":{"type":"pong","version":"0.7.4","protocol":16,"capabilities":{"live_handoff":true,"detached_server_daemon":true}}}"#
 
-        let info = try HerdrWire.decodeResult(
-            ServerInfo.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
+        let pong = try HerdrWire.decodeResult(
+            PongResponse.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
 
-        #expect(info == ServerInfo(version: "0.7.4", protocolVersion: 16))
+        #expect(pong.version == "0.7.4")
+        #expect(pong.protocolVersion == 16)
     }
 
-    @Test func agentListResultDecodes() throws {
+    @Test func agentListResponseMapsToDomainAgents() throws {
         // Live capture, trimmed to one agent; unknown fields left in place.
         let line = #"{"id":"req-1","result":{"type":"agent_list","agents":[{"terminal_id":"term_656c59f7b902d1e","agent":"codex","terminal_title":"✳ GoDrop","terminal_title_stripped":"GoDrop","agent_status":"working","workspace_id":"w3","tab_id":"w3:t2","pane_id":"w3:pB","focused":false,"cwd":"/Users/u/GoDrop","foreground_cwd":"/Users/u/GoDrop","revision":5}]}}"#
 
         let result = try HerdrWire.decodeResult(
-            AgentListResult.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
+            AgentListResponse.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
 
         let expected = Agent(
             terminalID: "term_656c59f7b902d1e",
@@ -47,17 +48,29 @@ import Testing
             cwd: "/Users/u/GoDrop",
             revision: 5
         )
-        #expect(result.agents == [expected])
+        #expect(result.agents.map(Agent.init) == [expected])
     }
 
-    @Test func unknownAgentStatusDecodesToUnknown() throws {
-        // herdr's API has no stability guarantee: a new status value must not
-        // break decoding, it degrades to .unknown.
-        let json = #"{"agents":[{"terminal_id":"t","agent":"claude","terminal_title_stripped":"x","agent_status":"haunted","workspace_id":"w","tab_id":"w:t","pane_id":"w:p","cwd":"/","revision":0}]}"#
+    @Test func agentMappingDegradesMissingWireFields() throws {
+        // herdr's API has no stability guarantee: nullable wire fields must
+        // degrade in the domain mapping, never drop the Agent.
+        let json = #"{"terminal_id":"t","agent_status":"haunted","workspace_id":"w","tab_id":"w:t","pane_id":"w:p","focused":false,"revision":0}"#
 
-        let result = try JSONDecoder().decode(AgentListResult.self, from: Data(json.utf8))
+        let agent = Agent(try JSONDecoder().decode(AgentInfo.self, from: Data(json.utf8)))
 
-        #expect(result.agents.first?.status == .unknown)
+        #expect(agent.kind == "unknown")
+        #expect(agent.title == "")
+        #expect(agent.cwd == "")
+        // An unrecognized status survives with its raw value intact.
+        #expect(agent.status == AgentStatus(rawValue: "haunted"))
+    }
+
+    @Test func agentMappingFallsBackToUnstrippedTitle() throws {
+        let json = #"{"terminal_id":"t","agent":"claude","terminal_title":"⠐ Fix","agent_status":"working","workspace_id":"w","tab_id":"w:t","pane_id":"w:p","focused":true,"revision":1}"#
+
+        let agent = Agent(try JSONDecoder().decode(AgentInfo.self, from: Data(json.utf8)))
+
+        #expect(agent.title == "⠐ Fix")
     }
 
     @Test func errorEnvelopeThrowsHerdrAPIError() throws {
@@ -65,7 +78,7 @@ import Testing
 
         #expect(throws: HerdrAPIError(code: "404", message: "no such method")) {
             try HerdrWire.decodeResult(
-                ServerInfo.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
+                PongResponse.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
         }
     }
 
@@ -74,7 +87,7 @@ import Testing
 
         #expect(throws: HerdrAPIError(code: "not_found", message: "gone")) {
             try HerdrWire.decodeResult(
-                ServerInfo.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
+                PongResponse.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
         }
     }
 
@@ -90,7 +103,7 @@ import Testing
                 message: "invalid request: missing field `source` at line 1 column 123")
         ) {
             try HerdrWire.decodeResult(
-                ServerInfo.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
+                PongResponse.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
         }
     }
 
@@ -99,7 +112,7 @@ import Testing
 
         #expect(throws: TransportError.self) {
             try HerdrWire.decodeResult(
-                ServerInfo.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
+                PongResponse.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
         }
     }
 
@@ -108,7 +121,7 @@ import Testing
 
         #expect(throws: TransportError.self) {
             try HerdrWire.decodeResult(
-                ServerInfo.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
+                PongResponse.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
         }
     }
 
@@ -117,7 +130,7 @@ import Testing
 
         #expect(throws: TransportError.self) {
             try HerdrWire.decodeResult(
-                ServerInfo.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
+                PongResponse.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
         }
     }
 }

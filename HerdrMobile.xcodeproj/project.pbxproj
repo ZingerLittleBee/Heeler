@@ -26,10 +26,12 @@
 		693B0173C07DAF4BFC89B094 /* SecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 567573855DCC8571BC02096D /* SecretStore.swift */; };
 		724AEEB52CDF4B28AFF8E3E5 /* HerdrWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6970DEB7C22EFDB1A26F6F9 /* HerdrWireTests.swift */; };
 		782980ECE8E7005A672D25A3 /* TransportFailureModesE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02807C329084D58137461EF8 /* TransportFailureModesE2ETests.swift */; };
+		86C5F3E2D17523948343DF09 /* GeneratedWireTypesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E87B816CE7206B37622287C4 /* GeneratedWireTypesTests.swift */; };
 		8C514AFC85DAED69A4988C13 /* SSHCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90875ADAF6E348E186C8125A /* SSHCredentials.swift */; };
 		950D74A1B92239CDB2DDE5DC /* EventsSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C3ACB2A319C5C1298A29F3F /* EventsSession.swift */; };
 		969057C35F7E5F162B0CF41D /* JSONValueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17F86744BFAC66D732CE7833 /* JSONValueTests.swift */; };
 		A0C9B80A4139A6FA73261805 /* HerdrWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4FC9B455C6266F12DA82A07 /* HerdrWire.swift */; };
+		B0D87D1783C80597B66EDDFC /* HerdrAPITypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD390F4EE653187BCF20037F /* HerdrAPITypes.swift */; };
 		B6FE3517A821A081D9F6262C /* KnownHostsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C232163905675760F37FD7A0 /* KnownHostsStore.swift */; };
 		C174C223DBE1F1DD4085A2F8 /* UnixSockets.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCB59377D34D0C652DF70F01 /* UnixSockets.swift */; };
 		C60E8E0398665C36520DDA8E /* HerdrEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = CABFC5E35C19F809355619E7 /* HerdrEvents.swift */; };
@@ -90,12 +92,14 @@
 		B66B41C393D38FA09388E3E2 /* ReconnectPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReconnectPolicyTests.swift; sourceTree = "<group>"; };
 		BC1CA00EE3CB38A822FEA4B2 /* TOFUHostKeyValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOFUHostKeyValidator.swift; sourceTree = "<group>"; };
 		BC995A571D7659F3307B6E54 /* DeviceKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKey.swift; sourceTree = "<group>"; };
+		BD390F4EE653187BCF20037F /* HerdrAPITypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrAPITypes.swift; sourceTree = "<group>"; };
 		C232163905675760F37FD7A0 /* KnownHostsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnownHostsStore.swift; sourceTree = "<group>"; };
 		C6970DEB7C22EFDB1A26F6F9 /* HerdrWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrWireTests.swift; sourceTree = "<group>"; };
 		CABFC5E35C19F809355619E7 /* HerdrEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrEvents.swift; sourceTree = "<group>"; };
 		CADA0E8C1DC6D30FCC6CEDC2 /* HostKeyPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostKeyPolicy.swift; sourceTree = "<group>"; };
 		D04EAA030D8329A1716714A8 /* DeviceKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKeyStore.swift; sourceTree = "<group>"; };
 		D6FCFE74BB45C0D8B600FFD3 /* SkeletonTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonTests.swift; sourceTree = "<group>"; };
+		E87B816CE7206B37622287C4 /* GeneratedWireTypesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedWireTypesTests.swift; sourceTree = "<group>"; };
 		F3D159C84E98A59AA47EBE6C /* HerdrMobileTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HerdrMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F4FC9B455C6266F12DA82A07 /* HerdrWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrWire.swift; sourceTree = "<group>"; };
 		F62C94D6B84C468B0A4D991C /* SSHTransportE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHTransportE2ETests.swift; sourceTree = "<group>"; };
@@ -115,6 +119,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		1E109F809AACADFF5FCB7385 /* Generated */ = {
+			isa = PBXGroup;
+			children = (
+				BD390F4EE653187BCF20037F /* HerdrAPITypes.swift */,
+			);
+			path = Generated;
+			sourceTree = "<group>";
+		};
 		41C75ABDF8DC22F0282957C5 /* Transport */ = {
 			isa = PBXGroup;
 			children = (
@@ -133,6 +145,7 @@
 				7B1C4EC65B71F33394E7DA9F /* SSHTransport.swift */,
 				BC1CA00EE3CB38A822FEA4B2 /* TOFUHostKeyValidator.swift */,
 				259E51D58B1094AC5B389EDA /* Transport.swift */,
+				1E109F809AACADFF5FCB7385 /* Generated */,
 			);
 			path = Transport;
 			sourceTree = "<group>";
@@ -154,6 +167,7 @@
 				558159B2AF61C28F6B1391A2 /* DeviceKeyTests.swift */,
 				9291334E33C85C7588F86281 /* EventsSessionE2ETests.swift */,
 				4076B0E816625CD09EB29F2E /* EventsSubscribeE2ETests.swift */,
+				E87B816CE7206B37622287C4 /* GeneratedWireTypesTests.swift */,
 				A696EC4D243B31D1B22C13F0 /* HerdrEventsTests.swift */,
 				200BC80136A26B477439ACFA /* HerdrSocketLocationTests.swift */,
 				C6970DEB7C22EFDB1A26F6F9 /* HerdrWireTests.swift */,
@@ -302,6 +316,7 @@
 				1BAA5950B7FDE0E6F09811F9 /* DeviceKey.swift in Sources */,
 				298FA49167E3CB1402B7B86B /* DeviceKeyStore.swift in Sources */,
 				950D74A1B92239CDB2DDE5DC /* EventsSession.swift in Sources */,
+				B0D87D1783C80597B66EDDFC /* HerdrAPITypes.swift in Sources */,
 				C60E8E0398665C36520DDA8E /* HerdrEvents.swift in Sources */,
 				EB02A35634A4D6572637DEF4 /* HerdrMobileApp.swift in Sources */,
 				A0C9B80A4139A6FA73261805 /* HerdrWire.swift in Sources */,
@@ -328,6 +343,7 @@
 				FE4ADC78CA6113FFFBCEC693 /* EventsSessionE2ETests.swift in Sources */,
 				E30244FD0231DD02EC9978D0 /* EventsSubscribeE2ETests.swift in Sources */,
 				EF7F36C0E1C3ED3F6117B1EB /* FakeHerdrServer.swift in Sources */,
+				86C5F3E2D17523948343DF09 /* GeneratedWireTypesTests.swift in Sources */,
 				E908289DF03C6732F7D91328 /* HerdrEventsTests.swift in Sources */,
 				535C6AF099A43002029F2C2F /* HerdrSocketLocationTests.swift in Sources */,
 				724AEEB52CDF4B28AFF8E3E5 /* HerdrWireTests.swift in Sources */,

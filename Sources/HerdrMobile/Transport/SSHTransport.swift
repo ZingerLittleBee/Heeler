@@ -185,16 +185,17 @@ actor SSHTransport: Transport {
     }
 
     func ping() async throws -> ServerInfo {
-        let info = try await request(method: "ping", decoding: ServerInfo.self)
-        guard info.protocolVersion == Self.supportedProtocolVersion else {
+        let pong = try await request(method: "ping", decoding: PongResponse.self)
+        guard pong.protocolVersion == Self.supportedProtocolVersion else {
             throw TransportError.protocolVersionMismatch(
-                server: info.protocolVersion, supported: Self.supportedProtocolVersion)
+                server: pong.protocolVersion, supported: Self.supportedProtocolVersion)
         }
-        return info
+        return ServerInfo(version: pong.version, protocolVersion: pong.protocolVersion)
     }
 
     func listAgents() async throws -> [Agent] {
-        try await request(method: "agent.list", decoding: AgentListResult.self).agents
+        try await request(method: "agent.list", decoding: AgentListResponse.self)
+            .agents.map(Agent.init)
     }
 
     // MARK: Events channel (#4)
@@ -274,7 +275,7 @@ actor SSHTransport: Transport {
                 return line
             }
             _ = try HerdrWire.decodeResult(
-                SubscriptionStartedResult.self, fromResponseLine: ackLine, requestID: requestID)
+                SubscriptionStartedResponse.self, fromResponseLine: ackLine, requestID: requestID)
         } catch {
             readerTask.cancel()
             await readerTask.value

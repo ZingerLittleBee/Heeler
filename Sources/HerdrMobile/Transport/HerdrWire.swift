@@ -132,13 +132,3 @@ extension HerdrAPIError: Decodable {
         }
     }
 }
-
-/// Result payload of `agent.list`.
-struct AgentListResult: Decodable {
-    let agents: [Agent]
-}
-
-/// Result payload of the `events.subscribe` ack line
-/// (`{"type":"subscription_started"}`). Shape intentionally unchecked: the
-/// envelope carrying a result at all is the acknowledgement.
-struct SubscriptionStartedResult: Decodable {}
