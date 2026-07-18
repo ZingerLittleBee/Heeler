@@ -1,0 +1,70 @@
+name: HerdrMobile
+options:
+  bundleIdPrefix: dev.herdr.mobile
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+  minimumXcodeGenVersion: "2.42.0"
+
+settings:
+  base:
+    # Swift 6 language mode implies complete strict concurrency checking.
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+
+packages:
+  # Pinned exactly: Citadel resolves swift-nio-ssh from the Wellz26 fork,
+  # a supply-chain-sensitive dependency that must never drift silently.
+  Citadel:
+    url: https://github.com/orlandos-nl/Citadel.git
+    exactVersion: "0.12.1"
+  # Added for the future Attach terminal; unused in M0.
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm.git
+    minVersion: "1.2.0"
+    maxVersion: "2.0.0"
+
+targets:
+  HerdrMobile:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/HerdrMobile
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: dev.herdr.mobile.HerdrMobile
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        # iPhone + iPad.
+        TARGETED_DEVICE_FAMILY: "1,2"
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+    dependencies:
+      - package: Citadel
+      - package: SwiftTerm
+
+  HerdrMobileTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests/HerdrMobileTests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: dev.herdr.mobile.HerdrMobileTests
+    dependencies:
+      - target: HerdrMobile
+
+schemes:
+  HerdrMobile:
+    build:
+      targets:
+        HerdrMobile: all
+    test:
+      targets:
+        - HerdrMobileTests
+    run:
+      config: Debug
