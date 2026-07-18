@@ -19,6 +19,7 @@ final actor ScriptedTransport: Transport {
     private var serverInfo: ServerInfo
     private var snapshot: SessionSnapshot
     private var paneTexts: [String: String] = [:]
+    private var paneReadFailure: TransportError?
     private var nextStreamID: UInt64 = 0
     private var liveStreamID: UInt64?
     private var eventContinuation: AsyncThrowingStream<HerdrEvent, any Error>.Continuation?
@@ -44,6 +45,11 @@ final actor ScriptedTransport: Transport {
     /// Scripts the text `readPane` returns for `paneID`.
     func setPaneText(_ text: String, paneID: String) {
         paneTexts[paneID] = text
+    }
+
+    /// Makes every subsequent `readPane` throw `failure`.
+    func setPaneReadFailure(_ failure: TransportError?) {
+        paneReadFailure = failure
     }
 
     /// Pushes one event onto the live stream; false if none is live.
@@ -100,6 +106,9 @@ final actor ScriptedTransport: Transport {
 
     func readPane(_ params: PaneReadParams) async throws -> PaneReadResult {
         paneReadParams.append(params)
+        if let paneReadFailure {
+            throw paneReadFailure
+        }
         return PaneReadResult(
             format: .text, paneID: params.paneID, revision: 0,
             source: params.source, tabID: "t", text: paneTexts[params.paneID] ?? "",
