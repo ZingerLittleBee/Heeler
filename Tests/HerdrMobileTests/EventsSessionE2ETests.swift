@@ -269,6 +269,60 @@ struct EventsSessionE2ETests {
         }
     }
 
+    @Test func resumeRacingIntoSuspendTeardownWaitsForTeardownToFinish() async throws {
+        // Quick background→foreground bounce: resume() lands while
+        // suspend()'s teardown is still mid-flight. The session must
+        // serialize lifecycle transitions itself — the teardown completes
+        // fully (channel ended, run loop exited, transport closed) before
+        // the new activation dials; the app layer never has to serialize
+        // its own calls. Deterministic interleaving: the transport's
+        // close() is gated by the test, so suspend() is provably parked
+        // inside its teardown when resume() is issued.
+        let closeEntered = AsyncGate()
+        let closeRelease = AsyncGate()
+        try await withSession(wrap: {
+            GatedCloseTransport(inner: $0, closeEntered: closeEntered, closeRelease: closeRelease)
+        }) { request in
+            switch request.method {
+            case "ping":
+                return [Self.pingResult(request.id)]
+            case "events.subscribe":
+                return .streamThenHold([.write(Self.ack(request.id))])
+            default:
+                return nil
+            }
+        } body: { session, _, factory in
+            await session.resume()
+            var iterator = session.updates.makeAsyncIterator()
+            #expect(await iterator.next() == .status(.connected))
+
+            let suspending = Task { await session.suspend() }
+            await closeEntered.waitUntilOpen()
+            let resuming = Task { await session.resume() }
+            // The bounce must not jump the queue: no new SSH dial while the
+            // teardown is parked at the gated close.
+            try await Task.sleep(for: .milliseconds(200))
+            #expect(factory.connectCount == 1)
+
+            closeRelease.open()
+            await suspending.value
+            await resuming.value
+
+            #expect(await iterator.next() == .status(.suspended))
+            #expect(await iterator.next() == .status(.connected))
+            #expect(factory.connectCount == 2)
+            #expect(await !factory.transports[0].isConnected)
+            #expect(await factory.transports[1].isConnected)
+
+            // The run loop reference survived the bounce: end() still tears
+            // the second transport down — nothing leaks.
+            await session.end()
+            #expect(await iterator.next() == .status(.ended))
+            #expect(await iterator.next() == nil)
+            #expect(await !factory.transports[1].isConnected)
+        }
+    }
+
     private static func pingResult(_ id: String) -> String {
         #"{"id":"\#(id)","result":{"type":"pong","version":"9.9.9-fake","protocol":16}}"#
     }
@@ -278,13 +332,20 @@ struct EventsSessionE2ETests {
     }
 
     /// Connect closure for an EventsSession that counts SSH dials and keeps
-    /// every transport it created, so tests can kill or inspect the live one.
+    /// every transport it created, so tests can kill or inspect the live
+    /// one. `wrap` lets a test decorate the transport the session sees
+    /// (e.g. gate its close) while the raw SSHTransport stays inspectable.
     private final class TransportFactory: Sendable {
         private let settings: SSHTransportSettings
+        private let wrap: @Sendable (SSHTransport) -> any Transport
         private let created = Mutex<[SSHTransport]>([])
 
-        init(settings: SSHTransportSettings) {
+        init(
+            settings: SSHTransportSettings,
+            wrap: @escaping @Sendable (SSHTransport) -> any Transport = { $0 }
+        ) {
             self.settings = settings
+            self.wrap = wrap
         }
 
         var connectCount: Int { created.withLock { $0.count } }
@@ -293,7 +354,64 @@ struct EventsSessionE2ETests {
         @Sendable func connect() async throws -> any Transport {
             let transport = try await SSHTransport.connect(settings: settings)
             created.withLock { $0.append(transport) }
-            return transport
+            return wrap(transport)
+        }
+    }
+
+    /// One-shot async gate for deterministic interleavings: `open()` lets
+    /// every subsequent (or currently parked) `waitUntilOpen()` through.
+    private final class AsyncGate: Sendable {
+        private let stream: AsyncStream<Void>
+        private let continuation: AsyncStream<Void>.Continuation
+
+        init() {
+            (stream, continuation) = AsyncStream.makeStream(of: Void.self)
+        }
+
+        func open() {
+            continuation.finish()
+        }
+
+        func waitUntilOpen() async {
+            for await _ in stream {}
+        }
+    }
+
+    /// Delegates to a real SSHTransport but parks `close()` on test-held
+    /// gates, pinning a session teardown mid-flight deterministically.
+    private final class GatedCloseTransport: Transport {
+        private let inner: SSHTransport
+        private let closeEntered: AsyncGate
+        private let closeRelease: AsyncGate
+
+        init(inner: SSHTransport, closeEntered: AsyncGate, closeRelease: AsyncGate) {
+            self.inner = inner
+            self.closeEntered = closeEntered
+            self.closeRelease = closeRelease
+        }
+
+        var isConnected: Bool {
+            get async { await inner.isConnected }
+        }
+
+        func ping() async throws -> ServerInfo {
+            try await inner.ping()
+        }
+
+        func listAgents() async throws -> [Agent] {
+            try await inner.listAgents()
+        }
+
+        func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws
+            -> HerdrEventStream
+        {
+            try await inner.subscribeToEvents(subscriptions)
+        }
+
+        func close() async throws {
+            closeEntered.open()
+            await closeRelease.waitUntilOpen()
+            try await inner.close()
         }
     }
 
@@ -305,6 +423,7 @@ struct EventsSessionE2ETests {
             initialDelay: .milliseconds(50), multiplier: 2, maxDelay: .milliseconds(200)),
         keepalive: KeepalivePolicy? = nil,
         requestTimeout: Duration = .seconds(15),
+        wrap: @escaping @Sendable (SSHTransport) -> any Transport = { $0 },
         script: @escaping FakeHerdrServer.Script,
         body: (EventsSession, FakeHerdrServer, TransportFactory) async throws -> Void
     ) async throws {
@@ -314,7 +433,8 @@ struct EventsSessionE2ETests {
             settings: environment.makeSettings(
                 socket: .absolutePath(server.socketPath),
                 wakeCommand: "false",
-                requestTimeout: requestTimeout))
+                requestTimeout: requestTimeout),
+            wrap: wrap)
         let session = EventsSession(
             subscriptions: [.global(.paneCreated)],
             connect: factory.connect,

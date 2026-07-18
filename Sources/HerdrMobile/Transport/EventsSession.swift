@@ -82,7 +82,11 @@ enum EventsSessionUpdate: Sendable, Equatable {
 /// connection down deliberately (call on backgrounding — iOS suspends
 /// sockets anyway, an explicit close makes resume cheap and deterministic),
 /// `end()` is terminal. All teardown is by explicit close, never by
-/// cancelling a live exec channel (ADR 0002).
+/// cancelling a live exec channel (ADR 0002). Lifecycle calls serialize
+/// internally — a `resume()` racing into a `suspend()`'s in-flight teardown
+/// waits for it instead of interleaving (quick background→foreground
+/// bounces are routine on iOS; callers never need to serialize their own
+/// calls).
 ///
 /// `updates` supports a single consumer and buffers without bound, exactly
 /// like the underlying event stream (fine foregrounded in M0).
@@ -116,6 +120,10 @@ actor EventsSession {
     private var runTask: Task<Void, Never>?
     private var keepaliveTask: Task<Void, Never>?
     private var backoffSleep: Task<Void, any Error>?
+    /// The most recently enqueued lifecycle transition; each new one chains
+    /// behind it, so transitions never interleave across the suspension
+    /// points inside a teardown (see the actor doc).
+    private var lifecycleTransition: Task<Void, Never>?
 
     init(
         subscriptions: [EventSubscription],
@@ -132,31 +140,60 @@ actor EventsSession {
 
     /// Activates the session (initially, or after `suspend()`): establishes
     /// the transport and channel, emitting `.connected` on success and
-    /// `.reconnecting` transitions until then. No-op while active or ended.
-    func resume() {
-        guard phase == .suspended else { return }
-        phase = .active
-        runTask = Task { await self.run() }
+    /// `.reconnecting` transitions until then. Returns once any in-flight
+    /// teardown has finished and the activation is underway. No-op while
+    /// active or ended.
+    func resume() async {
+        await enqueueLifecycleTransition { await self.activate() }
     }
 
     /// Deliberate teardown for backgrounding: ends the events channel by
     /// explicit close, closes the SSH connection, and stops all reconnect
     /// activity. Returns once everything is down. No-op unless active.
     func suspend() async {
+        await enqueueLifecycleTransition { await self.deactivate() }
+    }
+
+    /// Terminal teardown: like `suspend()`, then finishes `updates` for
+    /// good. Idempotent.
+    func end() async {
+        await enqueueLifecycleTransition { await self.finish() }
+    }
+
+    private func activate() {
+        guard phase == .suspended else { return }
+        phase = .active
+        runTask = Task { await self.run() }
+    }
+
+    private func deactivate() async {
         guard phase == .active else { return }
         phase = .suspended
         await windDown()
         updatesContinuation.yield(.status(.suspended))
     }
 
-    /// Terminal teardown: like `suspend()`, then finishes `updates` for
-    /// good. Idempotent.
-    func end() async {
+    private func finish() async {
         guard phase != .ended else { return }
         phase = .ended
         await windDown()
         updatesContinuation.yield(.status(.ended))
         updatesContinuation.finish()
+    }
+
+    /// Chains `transition` behind the previously enqueued one and waits for
+    /// it. Enqueueing is synchronous on the actor, so the chain order is the
+    /// call order and no transition ever observes another one mid-teardown.
+    private func enqueueLifecycleTransition(
+        _ transition: @escaping @Sendable () async -> Void
+    ) async {
+        let previous = lifecycleTransition
+        let task = Task {
+            await previous?.value
+            await transition()
+        }
+        lifecycleTransition = task
+        await task.value
     }
 
     // MARK: Reconnect loop
