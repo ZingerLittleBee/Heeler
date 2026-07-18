@@ -112,6 +112,19 @@ enum HerdrSocketLocation: Sendable, Equatable {
 /// Transport-level failures: a closed taxonomy so every screen maps errors to
 /// user guidance consistently instead of string-matching.
 enum TransportError: Error, Sendable, Equatable {
+    /// The SSH server could not be reached: connection refused, no route,
+    /// or the connection died before authentication.
+    case sshUnreachable(detail: String)
+    /// The Host rejected our credentials (key not authorized, wrong
+    /// password, or the offered auth method is unavailable).
+    case authenticationFailed
+    /// First connect to an unknown Host and the user declined its key
+    /// fingerprint; nothing was stored.
+    case hostKeyRejected(presented: HostKeyFingerprint)
+    /// The Host presented a key that differs from the trusted fingerprint —
+    /// possibly a man-in-the-middle. Hard failure; the stored fingerprint is
+    /// left untouched.
+    case hostKeyMismatch(known: HostKeyFingerprint, presented: HostKeyFingerprint)
     /// The herdr API socket path does not exist on the Host: herdr is not
     /// installed there, or the socket path is wrong.
     case socketNotFound(path: String)

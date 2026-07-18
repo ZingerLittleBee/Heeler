@@ -1,6 +1,8 @@
 import CryptoKit
 import Foundation
 
+@testable import HerdrMobile
+
 /// Probes for the local e2e prerequisites: an sshd on localhost, a socat
 /// binary, and an Ed25519 key seed whose public half is authorized for the
 /// current user. Tests that need real SSH are skipped when any piece is
@@ -64,6 +66,32 @@ struct LocalSSHTestEnvironment: Sendable {
         let components = URL(fileURLWithPath: NSHomeDirectory()).pathComponents
         guard components.count >= 3, components[1] == "Users" else { return nil }
         return components[2]
+    }
+
+    /// Transport settings for the harness Host with test defaults: seeded-key
+    /// credentials and an auto-accepting TOFU policy over a fresh in-memory
+    /// store. Host key behavior itself is under test only in
+    /// `SSHHostKeyE2ETests`, which passes its own policy.
+    func makeSettings(
+        socket: HerdrSocketLocation,
+        socatPath: String? = nil,
+        wakeCommand: String? = nil,
+        requestTimeout: Duration? = nil,
+        credentials: SSHCredentials? = nil,
+        hostKeyPolicy: HostKeyPolicy? = nil
+    ) -> SSHTransportSettings {
+        var settings = SSHTransportSettings(
+            host: host,
+            port: port,
+            username: username,
+            credentials: credentials ?? .ed25519(privateKey),
+            hostKeyPolicy: hostKeyPolicy
+                ?? HostKeyPolicy(knownHosts: InMemoryKnownHostsStore()) { _ in true },
+            socket: socket,
+            socatPath: socatPath ?? self.socatPath)
+        if let wakeCommand { settings.wakeCommand = wakeCommand }
+        if let requestTimeout { settings.requestTimeout = requestTimeout }
+        return settings
     }
 
     private static func sshdIsListening(onPort port: Int) -> Bool {

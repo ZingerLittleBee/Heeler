@@ -121,13 +121,8 @@ struct ColdStartE2ETests {
     ) async throws {
         let environment = try #require(LocalSSHTestEnvironment.current)
         let transport = try await SSHTransport.connect(
-            settings: SSHTransportSettings(
-                host: environment.host,
-                port: environment.port,
-                username: environment.username,
-                privateKey: environment.privateKey,
+            settings: environment.makeSettings(
                 socket: .absolutePath(socketPath),
-                socatPath: environment.socatPath,
                 wakeCommand: wakeCommand,
                 requestTimeout: requestTimeout))
         do {
@@ -184,7 +179,8 @@ struct WakeCommandDefaultTests {
             host: "example.invalid",
             port: 22,
             username: "u",
-            privateKey: Curve25519.Signing.PrivateKey(),
+            credentials: .ed25519(Curve25519.Signing.PrivateKey()),
+            hostKeyPolicy: HostKeyPolicy(knownHosts: InMemoryKnownHostsStore()) { _ in false },
             socket: .defaultSession,
             socatPath: "/opt/homebrew/bin/socat")
 

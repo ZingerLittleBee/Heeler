@@ -108,13 +108,8 @@ struct TransportConcurrencyE2ETests {
         let transport: SSHTransport
         do {
             transport = try await SSHTransport.connect(
-                settings: SSHTransportSettings(
-                    host: environment.host,
-                    port: environment.port,
-                    username: environment.username,
-                    privateKey: environment.privateKey,
+                settings: environment.makeSettings(
                     socket: .absolutePath(server.socketPath),
-                    socatPath: environment.socatPath,
                     wakeCommand: "false",
                     requestTimeout: requestTimeout))
         } catch {

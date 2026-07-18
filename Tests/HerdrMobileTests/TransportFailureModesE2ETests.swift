@@ -60,13 +60,8 @@ struct TransportFailureModesE2ETests {
     ) async throws {
         let environment = try #require(LocalSSHTestEnvironment.current)
         let transport = try await SSHTransport.connect(
-            settings: SSHTransportSettings(
-                host: environment.host,
-                port: environment.port,
-                username: environment.username,
-                privateKey: environment.privateKey,
-                socket: .absolutePath(socketPath),
-                socatPath: socatPath ?? environment.socatPath))
+            settings: environment.makeSettings(
+                socket: .absolutePath(socketPath), socatPath: socatPath))
         do {
             try await body(transport)
         } catch {

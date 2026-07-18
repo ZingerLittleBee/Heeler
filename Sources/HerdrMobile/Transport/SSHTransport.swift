@@ -2,17 +2,18 @@
 // marked Sendable; its async methods hop off the actor executor, which would
 // otherwise be an error. The actor still serializes all access to the client.
 @preconcurrency import Citadel
-import CryptoKit
 import Foundation
 import NIOCore
 
-/// How to reach one Host and its herdr socket. Auth is the tracer-bullet
-/// Ed25519 subset; richer auth and host key policy are the SSH core work (#2).
+/// How to reach one Host, authenticate against it, and find its herdr socket.
 struct SSHTransportSettings: Sendable {
     var host: String
     var port: Int
     var username: String
-    var privateKey: Curve25519.Signing.PrivateKey
+    var credentials: SSHCredentials
+    /// TOFU host key policy (#2): the trusted-fingerprint store plus the
+    /// first-connect confirmation the UI implements.
+    var hostKeyPolicy: HostKeyPolicy
     /// Which herdr socket to reach on the Host.
     var socket: HerdrSocketLocation
     /// Absolute path of socat on the Host. Remote commands run through the
@@ -139,24 +140,48 @@ actor SSHTransport: Transport {
         self.requestTimeout = requestTimeout
     }
 
-    /// Connects and authenticates, but sends nothing yet: callers must `ping`
-    /// first to verify the protocol version.
-    ///
-    /// Host key verification is not implemented yet (TOFU with fingerprint
-    /// confirmation ships with the SSH core work); until then the server's
-    /// host key is accepted without verification.
+    /// Connects, verifies the host key per the TOFU policy, and
+    /// authenticates — but sends nothing yet: callers must `ping` first to
+    /// verify the protocol version.
     static func connect(settings: SSHTransportSettings) async throws -> SSHTransport {
-        let client = try await SSHClient.connect(
-            host: settings.host,
-            port: settings.port,
-            authenticationMethod: .ed25519(
-                username: settings.username, privateKey: settings.privateKey),
-            hostKeyValidator: .acceptAnything(),
-            reconnect: .never
-        )
+        let validator = TOFUHostKeyValidator(
+            host: settings.host, port: settings.port, policy: settings.hostKeyPolicy)
+        let client: SSHClient
+        do {
+            client = try await SSHClient.connect(
+                host: settings.host,
+                port: settings.port,
+                authenticationMethod: settings.credentials.citadelMethod(
+                    username: settings.username),
+                hostKeyValidator: .custom(validator),
+                reconnect: .never
+            )
+        } catch {
+            // NIOSSH may wrap the validator's error on its way out of the
+            // handshake; the recorded verdict is the source of truth.
+            if let hostKeyFailure = validator.failure {
+                throw hostKeyFailure
+            }
+            throw Self.classifyConnectFailure(error)
+        }
         return SSHTransport(
             client: client, socketLocation: settings.socket, socatPath: settings.socatPath,
             wakeCommand: settings.wakeCommand, requestTimeout: settings.requestTimeout)
+    }
+
+    /// Maps connect-time failures onto the taxonomy: credential rejection is
+    /// actionable ("fix your key/password"), everything else is a Host that
+    /// could not be reached.
+    private static func classifyConnectFailure(_ error: any Error) -> TransportError {
+        switch error {
+        case SSHClientError.allAuthenticationOptionsFailed,
+            SSHClientError.unsupportedPasswordAuthentication,
+            SSHClientError.unsupportedPrivateKeyAuthentication,
+            SSHClientError.unsupportedHostBasedAuthentication:
+            return .authenticationFailed
+        default:
+            return .sshUnreachable(detail: String(describing: error))
+        }
     }
 
     func ping() async throws -> ServerInfo {
@@ -388,5 +413,18 @@ actor SSHTransport: Transport {
 
     private static func preview(_ stderr: Data) -> String {
         String(decoding: stderr.prefix(200), as: UTF8.self)
+    }
+}
+
+extension SSHCredentials {
+    /// The Citadel authentication method for these credentials. Lives here so
+    /// the credentials type itself stays free of SSH library types.
+    fileprivate func citadelMethod(username: String) -> SSHAuthenticationMethod {
+        switch self {
+        case .ed25519(let privateKey):
+            .ed25519(username: username, privateKey: privateKey)
+        case .password(let password):
+            .passwordBased(username: username, password: password)
+        }
     }
 }

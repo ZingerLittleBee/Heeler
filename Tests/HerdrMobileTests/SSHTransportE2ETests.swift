@@ -115,13 +115,7 @@ struct SSHTransportE2ETests {
         defer { server.stop() }
 
         let transport = try await SSHTransport.connect(
-            settings: SSHTransportSettings(
-                host: environment.host,
-                port: environment.port,
-                username: environment.username,
-                privateKey: environment.privateKey,
-                socket: .namedSession(sessionName),
-                socatPath: environment.socatPath))
+            settings: environment.makeSettings(socket: .namedSession(sessionName)))
         do {
             // Two requests: the second reuses the cached home directory.
             _ = try await transport.ping()
@@ -149,13 +143,7 @@ struct SSHTransportE2ETests {
         let transport: SSHTransport
         do {
             transport = try await SSHTransport.connect(
-                settings: SSHTransportSettings(
-                    host: environment.host,
-                    port: environment.port,
-                    username: environment.username,
-                    privateKey: environment.privateKey,
-                    socket: .absolutePath(server.socketPath),
-                    socatPath: environment.socatPath))
+                settings: environment.makeSettings(socket: .absolutePath(server.socketPath)))
         } catch {
             server.stop()
             throw error
