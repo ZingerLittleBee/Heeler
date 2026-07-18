@@ -13,6 +13,7 @@
 		0A0657501E1164D7672A8B39 /* InMemorySecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B106E427EE5358088B615CE /* InMemorySecretStore.swift */; };
 		1302E0DD26A3F6C629A753D8 /* HostKeyPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = CADA0E8C1DC6D30FCC6CEDC2 /* HostKeyPolicy.swift */; };
 		1BAA5950B7FDE0E6F09811F9 /* DeviceKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC995A571D7659F3307B6E54 /* DeviceKey.swift */; };
+		1BBEEF5478D91222F48C2048 /* ReconnectPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B66B41C393D38FA09388E3E2 /* ReconnectPolicyTests.swift */; };
 		1F4B065DFCAF8E6656600F1E /* TOFUHostKeyValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC1CA00EE3CB38A822FEA4B2 /* TOFUHostKeyValidator.swift */; };
 		298FA49167E3CB1402B7B86B /* DeviceKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D04EAA030D8329A1716714A8 /* DeviceKeyStore.swift */; };
 		2C5A21065C48B7C40AE9A760 /* KnownHostsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87B0377EAC5265E7A6FCD212 /* KnownHostsStoreTests.swift */; };
@@ -26,6 +27,7 @@
 		724AEEB52CDF4B28AFF8E3E5 /* HerdrWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6970DEB7C22EFDB1A26F6F9 /* HerdrWireTests.swift */; };
 		782980ECE8E7005A672D25A3 /* TransportFailureModesE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02807C329084D58137461EF8 /* TransportFailureModesE2ETests.swift */; };
 		8C514AFC85DAED69A4988C13 /* SSHCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90875ADAF6E348E186C8125A /* SSHCredentials.swift */; };
+		950D74A1B92239CDB2DDE5DC /* EventsSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C3ACB2A319C5C1298A29F3F /* EventsSession.swift */; };
 		969057C35F7E5F162B0CF41D /* JSONValueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17F86744BFAC66D732CE7833 /* JSONValueTests.swift */; };
 		A0C9B80A4139A6FA73261805 /* HerdrWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4FC9B455C6266F12DA82A07 /* HerdrWire.swift */; };
 		B6FE3517A821A081D9F6262C /* KnownHostsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C232163905675760F37FD7A0 /* KnownHostsStore.swift */; };
@@ -43,6 +45,7 @@
 		EF7F36C0E1C3ED3F6117B1EB /* FakeHerdrServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20B781425ADF5353CEEED6A1 /* FakeHerdrServer.swift */; };
 		F2CC5A27CA8B0623C486D9B2 /* LocalSSHTestEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 904FF6BF3E76BDFB2F76784D /* LocalSSHTestEnvironment.swift */; };
 		F62A9CD06CFB784550AF4977 /* DeviceKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 558159B2AF61C28F6B1391A2 /* DeviceKeyTests.swift */; };
+		FE4ADC78CA6113FFFBCEC693 /* EventsSessionE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9291334E33C85C7588F86281 /* EventsSessionE2ETests.swift */; };
 		FEDD78DD422954EEBA415E8E /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 1A747BD14B4EC28AE6E73458 /* SwiftTerm */; };
 /* End PBXBuildFile section */
 
@@ -59,6 +62,7 @@
 /* Begin PBXFileReference section */
 		02807C329084D58137461EF8 /* TransportFailureModesE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportFailureModesE2ETests.swift; sourceTree = "<group>"; };
 		17F86744BFAC66D732CE7833 /* JSONValueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONValueTests.swift; sourceTree = "<group>"; };
+		1C3ACB2A319C5C1298A29F3F /* EventsSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsSession.swift; sourceTree = "<group>"; };
 		1CBE401E4A5FA5871809E540 /* HostKeyFingerprint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostKeyFingerprint.swift; sourceTree = "<group>"; };
 		1E3E2308A50D4744A24A874B /* JSONValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONValue.swift; sourceTree = "<group>"; };
 		200BC80136A26B477439ACFA /* HerdrSocketLocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrSocketLocationTests.swift; sourceTree = "<group>"; };
@@ -78,10 +82,12 @@
 		87B0377EAC5265E7A6FCD212 /* KnownHostsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnownHostsStoreTests.swift; sourceTree = "<group>"; };
 		904FF6BF3E76BDFB2F76784D /* LocalSSHTestEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSSHTestEnvironment.swift; sourceTree = "<group>"; };
 		90875ADAF6E348E186C8125A /* SSHCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHCredentials.swift; sourceTree = "<group>"; };
+		9291334E33C85C7588F86281 /* EventsSessionE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsSessionE2ETests.swift; sourceTree = "<group>"; };
 		9B106E427EE5358088B615CE /* InMemorySecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InMemorySecretStore.swift; sourceTree = "<group>"; };
 		A696EC4D243B31D1B22C13F0 /* HerdrEventsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrEventsTests.swift; sourceTree = "<group>"; };
 		A9EC4F17AFC933FBA45CCA09 /* TransportConcurrencyE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportConcurrencyE2ETests.swift; sourceTree = "<group>"; };
 		B383994C2C8492694D5F3690 /* HerdrMobile.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HerdrMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B66B41C393D38FA09388E3E2 /* ReconnectPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReconnectPolicyTests.swift; sourceTree = "<group>"; };
 		BC1CA00EE3CB38A822FEA4B2 /* TOFUHostKeyValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOFUHostKeyValidator.swift; sourceTree = "<group>"; };
 		BC995A571D7659F3307B6E54 /* DeviceKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKey.swift; sourceTree = "<group>"; };
 		C232163905675760F37FD7A0 /* KnownHostsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnownHostsStore.swift; sourceTree = "<group>"; };
@@ -114,6 +120,7 @@
 			children = (
 				BC995A571D7659F3307B6E54 /* DeviceKey.swift */,
 				D04EAA030D8329A1716714A8 /* DeviceKeyStore.swift */,
+				1C3ACB2A319C5C1298A29F3F /* EventsSession.swift */,
 				CABFC5E35C19F809355619E7 /* HerdrEvents.swift */,
 				F4FC9B455C6266F12DA82A07 /* HerdrWire.swift */,
 				1CBE401E4A5FA5871809E540 /* HostKeyFingerprint.swift */,
@@ -145,12 +152,14 @@
 				646861C32DDA14D63389C518 /* ColdStartE2ETests.swift */,
 				8323C68B13826B7388800B1F /* DeviceKeyStoreTests.swift */,
 				558159B2AF61C28F6B1391A2 /* DeviceKeyTests.swift */,
+				9291334E33C85C7588F86281 /* EventsSessionE2ETests.swift */,
 				4076B0E816625CD09EB29F2E /* EventsSubscribeE2ETests.swift */,
 				A696EC4D243B31D1B22C13F0 /* HerdrEventsTests.swift */,
 				200BC80136A26B477439ACFA /* HerdrSocketLocationTests.swift */,
 				C6970DEB7C22EFDB1A26F6F9 /* HerdrWireTests.swift */,
 				17F86744BFAC66D732CE7833 /* JSONValueTests.swift */,
 				87B0377EAC5265E7A6FCD212 /* KnownHostsStoreTests.swift */,
+				B66B41C393D38FA09388E3E2 /* ReconnectPolicyTests.swift */,
 				D6FCFE74BB45C0D8B600FFD3 /* SkeletonTests.swift */,
 				6BE2EC235A2ACCB61A98881E /* SSHAuthE2ETests.swift */,
 				5582E1837DE62FBC4C5DDC5A /* SSHHostKeyE2ETests.swift */,
@@ -292,6 +301,7 @@
 				CDF8E14EC629CBD8F946FE05 /* ContentView.swift in Sources */,
 				1BAA5950B7FDE0E6F09811F9 /* DeviceKey.swift in Sources */,
 				298FA49167E3CB1402B7B86B /* DeviceKeyStore.swift in Sources */,
+				950D74A1B92239CDB2DDE5DC /* EventsSession.swift in Sources */,
 				C60E8E0398665C36520DDA8E /* HerdrEvents.swift in Sources */,
 				EB02A35634A4D6572637DEF4 /* HerdrMobileApp.swift in Sources */,
 				A0C9B80A4139A6FA73261805 /* HerdrWire.swift in Sources */,
@@ -315,6 +325,7 @@
 				0700F97FBF6A714C5D9EA5CD /* ColdStartE2ETests.swift in Sources */,
 				05A6F31F9CAC1CA1C57D7C71 /* DeviceKeyStoreTests.swift in Sources */,
 				F62A9CD06CFB784550AF4977 /* DeviceKeyTests.swift in Sources */,
+				FE4ADC78CA6113FFFBCEC693 /* EventsSessionE2ETests.swift in Sources */,
 				E30244FD0231DD02EC9978D0 /* EventsSubscribeE2ETests.swift in Sources */,
 				EF7F36C0E1C3ED3F6117B1EB /* FakeHerdrServer.swift in Sources */,
 				E908289DF03C6732F7D91328 /* HerdrEventsTests.swift in Sources */,
@@ -324,6 +335,7 @@
 				969057C35F7E5F162B0CF41D /* JSONValueTests.swift in Sources */,
 				2C5A21065C48B7C40AE9A760 /* KnownHostsStoreTests.swift in Sources */,
 				F2CC5A27CA8B0623C486D9B2 /* LocalSSHTestEnvironment.swift in Sources */,
+				1BBEEF5478D91222F48C2048 /* ReconnectPolicyTests.swift in Sources */,
 				3DC1B4DCC0E2CD73A0C13B64 /* SSHAuthE2ETests.swift in Sources */,
 				5C41DBF68FFE6D2924709A5A /* SSHHostKeyE2ETests.swift in Sources */,
 				E4CC508EF3C28A14A4EE2901 /* SSHTransportE2ETests.swift in Sources */,
