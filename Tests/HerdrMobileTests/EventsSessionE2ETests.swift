@@ -440,6 +440,10 @@ struct EventsSessionE2ETests {
             try await inner.sendKeys(params)
         }
 
+        func closePane(_ params: PaneTarget) async throws {
+            try await inner.closePane(params)
+        }
+
         func close() async throws {
             closeEntered.open()
             await closeRelease.waitUntilOpen()

@@ -12,6 +12,10 @@ struct AgentDetailView: View {
     @State private var store: ObserveTerminalStore
     @State private var input: AgentInputStore
     @State private var attach: AttachTerminalStore?
+    @State private var close: ClosePaneStore
+    @State private var isConfirmingClose = false
+    @State private var closeErrorMessage: String?
+    @Environment(\.dismiss) private var dismiss
 
     init(agent: ConsoleAgent, console: ConsoleStore) {
         self.agent = agent
@@ -23,6 +27,10 @@ struct AgentDetailView: View {
         _input = State(
             initialValue: AgentInputStore(
                 target: agent.agent.paneID, transport: transport))
+        _close = State(
+            initialValue: ClosePaneStore(paneTitle: Self.displayTitle(for: agent)) {
+                try await console.closePane(agent.agent.paneID, on: agent.hostID)
+            })
     }
 
     var body: some View {
@@ -48,6 +56,40 @@ struct AgentDetailView: View {
                     openAttach()
                 }
             }
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    // Destructive, explicit-confirmation only: closing a pane
+                    // destroys the agent, so there is deliberately no
+                    // swipe-to-close anywhere (#13, User Story 9).
+                    Button("Close Agent", systemImage: "trash", role: .destructive) {
+                        isConfirmingClose = true
+                    }
+                } label: {
+                    Label("More", systemImage: "ellipsis.circle")
+                }
+            }
+        }
+        .confirmationDialog(
+            "Close \(title)?", isPresented: $isConfirmingClose, titleVisibility: .visible
+        ) {
+            Button("Close Agent", role: .destructive) {
+                Task { await performClose() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "This closes the pane on the Host and removes the agent everywhere. "
+                    + "This can't be undone.")
+        }
+        .alert(
+            "Couldn't Close Agent",
+            isPresented: Binding(
+                get: { closeErrorMessage != nil },
+                set: { if !$0 { closeErrorMessage = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(closeErrorMessage ?? "")
         }
         .fullScreenCover(item: $attach, onDismiss: resumeObserve) { attachStore in
             AttachTerminalView(store: attachStore, title: title)
@@ -79,6 +121,23 @@ struct AgentDetailView: View {
         store = ObserveTerminalStore(target: agent.agent.paneID, transport: transport)
     }
 
+    /// Confirmed close: fire `pane.close`, and only on success stop Observe
+    /// (the closed pane ends its stream — stopping first keeps that teardown
+    /// from flashing the failure overlay) and leave the now-gone Agent's
+    /// screen. A failed close leaves everything untouched and surfaces why.
+    private func performClose() async {
+        await close.confirmClose()
+        switch close.state {
+        case .closed:
+            await store.stop()
+            dismiss()
+        case .failed(let message):
+            closeErrorMessage = message
+        case .idle, .closing:
+            break
+        }
+    }
+
     @ViewBuilder
     private var statusOverlay: some View {
         switch store.status {
@@ -99,6 +158,12 @@ struct AgentDetailView: View {
     }
 
     private var title: String {
+        Self.displayTitle(for: agent)
+    }
+
+    /// The Agent's screen title, shared with the close store's dialog copy so
+    /// both name the same thing.
+    private static func displayTitle(for agent: ConsoleAgent) -> String {
         agent.agent.title.isEmpty ? agent.agent.kind : agent.agent.title
     }
 }

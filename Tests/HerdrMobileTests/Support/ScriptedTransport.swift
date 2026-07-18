@@ -20,6 +20,11 @@ final actor ScriptedTransport: Transport {
     /// Every `agent.start` received, in order; the new-agent flow (#12)
     /// asserts on the params it forwarded.
     private(set) var agentStarts: [AgentStartParams] = []
+    /// Every `pane.close` received, in order; the close-pane flow (#13)
+    /// asserts on the pane it targeted (and that the cancel path never
+    /// appends here).
+    private(set) var closedPanes: [PaneTarget] = []
+    private var closeFailure: TransportError?
     private var startFailure: TransportError?
     private var startedAgent: AgentInfo?
     private var sendFailure: TransportError?
@@ -88,6 +93,11 @@ final actor ScriptedTransport: Transport {
     /// Makes every subsequent `startAgent` throw `failure`.
     func setStartFailure(_ failure: TransportError?) {
         startFailure = failure
+    }
+
+    /// Makes every subsequent `closePane` throw `failure`.
+    func setCloseFailure(_ failure: TransportError?) {
+        closeFailure = failure
     }
 
     /// Pushes one event onto the live stream; false if none is live.
@@ -204,6 +214,11 @@ final actor ScriptedTransport: Transport {
     func sendKeys(_ params: PaneSendKeysParams) async throws {
         if let sendFailure { throw sendFailure }
         sentKeys.append(params)
+    }
+
+    func closePane(_ params: PaneTarget) async throws {
+        if let closeFailure { throw closeFailure }
+        closedPanes.append(params)
     }
 
     func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream {

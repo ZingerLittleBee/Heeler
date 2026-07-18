@@ -244,6 +244,10 @@ actor SSHTransport: Transport {
         _ = try await request(method: "pane.send_keys", params: params, decoding: OkResponse.self)
     }
 
+    func closePane(_ params: PaneTarget) async throws {
+        _ = try await request(method: "pane.close", params: params, decoding: OkResponse.self)
+    }
+
     // MARK: Events channel (#4)
     //
     // One dedicated long-lived exec+socat channel per Host holds the

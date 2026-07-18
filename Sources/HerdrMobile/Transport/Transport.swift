@@ -42,6 +42,16 @@ protocol Transport: Sendable {
     /// rejects e.g. `ctrl-c` with `invalid_key`).
     func sendKeys(_ params: PaneSendKeysParams) async throws
 
+    /// Closes a Pane (`pane.close`): the Agent detail screen's destructive
+    /// close action (#13, User Story 9 — a Done agent must not be destroyed
+    /// by a stray swipe, so the UI gates this behind an explicit
+    /// confirmation). herdr removes the pane and its agent everywhere; the
+    /// removal surfaces in the Console through the normal snapshot/delta
+    /// machinery (a `pane.closed` membership event triggers a re-snapshot),
+    /// so callers do not prune the list themselves. Targeted by the Pane's
+    /// id; returns once the server acknowledges.
+    func closePane(_ params: PaneTarget) async throws
+
     /// Opens this Host's dedicated long-lived events channel and subscribes.
     /// Returns once the server acknowledges the subscription; the stream then
     /// carries events in canonical naming until `end()` closes the channel

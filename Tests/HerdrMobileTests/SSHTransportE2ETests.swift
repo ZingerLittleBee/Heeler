@@ -131,6 +131,21 @@ struct SSHTransportE2ETests {
         }
     }
 
+    @Test func closePaneRoundTripsItsParams() async throws {
+        // The destructive close action (#13, User Story 9): pane.close
+        // carries the pane id and is answered with the bare `ok` envelope
+        // (verified against herdr 0.7.4's schema).
+        try await withTransport { request in
+            [#"{"id":"\#(request.id)","result":{"type":"ok"}}"#]
+        } body: { transport, server in
+            try await transport.closePane(PaneTarget(paneID: "w1:p1"))
+
+            let request = try #require(server.receivedRequests.first)
+            #expect(request.method == "pane.close")
+            #expect(request.params == #"{"pane_id":"w1:p1"}"#)
+        }
+    }
+
     @Test func agentStartSendsItsParamsAndMapsTheStartedAgent() async throws {
         // The new-agent flow (#12): agent.start carries argv/name/workspace,
         // answered with the agent_started envelope; the started AgentInfo

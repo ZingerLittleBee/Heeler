@@ -207,6 +207,7 @@ private actor RejectingTransport: Transport {
     func startAgent(_ params: AgentStartParams) async throws -> Agent { throw error }
     func sendToAgent(_ params: AgentSendParams) async throws { throw error }
     func sendKeys(_ params: PaneSendKeysParams) async throws { throw error }
+    func closePane(_ params: PaneTarget) async throws { throw error }
 
     func ping() async throws -> ServerInfo { throw error }
     func listAgents() async throws -> [Agent] { throw error }

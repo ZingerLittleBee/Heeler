@@ -269,6 +269,26 @@ final class ConsoleStore {
         return agent
     }
 
+    // MARK: Close-pane flow (#13)
+
+    /// Closes a Pane on a Host (#13, User Story 9): the thin `pane.close` RPC
+    /// on the Host's live transport, then one explicit resync so the removed
+    /// pane disappears promptly instead of waiting on its `pane.closed`
+    /// membership event. Throws `.sshUnreachable` when the Host is not
+    /// currently connected, and propagates the server's error when herdr
+    /// rejects the close (leaving the Console untouched — the cancel/failure
+    /// path never mutates state).
+    func closePane(_ paneID: String, on hostID: Host.ID) async throws {
+        guard let feed = feeds[hostID], let transport = await feed.session.currentTransport
+        else {
+            throw TransportError.sshUnreachable(detail: "The Host is not connected.")
+        }
+        try await transport.closePane(PaneTarget(paneID: paneID))
+        // The pane.closed membership event will re-snapshot too; this just
+        // drops the closed pane without waiting for it.
+        scheduleResync(feed: feed)
+    }
+
     // MARK: Subscriptions
 
     /// Global membership/context kinds; each triggers a Host re-snapshot.

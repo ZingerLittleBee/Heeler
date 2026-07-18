@@ -364,6 +364,70 @@ struct ConsoleStoreTests {
         }
     }
 
+    @Test func closePaneForwardsItsTargetAndResnapshots() async throws {
+        // pane.close (#13, User Story 9): the target reaches the Host's
+        // transport, and the removed pane disappears via one explicit resync
+        // rather than waiting on the pane.closed membership event.
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [
+                .fixture(paneID: "w1:p1", status: .idle),
+                .fixture(paneID: "w1:p2", status: .idle),
+            ]))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("both agents should arrive") { store.agents.count == 2 }
+        let snapshotsBefore = await transport.snapshotFetchCount
+
+        // The closed pane is gone from the next snapshot the server reports.
+        await transport.setSnapshot(
+            .fixture(agents: [.fixture(paneID: "w1:p1", status: .idle)]))
+        try await store.closePane("w1:p2", on: host.id)
+
+        let closed = await transport.closedPanes
+        #expect(closed.map(\.paneID) == ["w1:p2"])
+        try await waitUntil("the resync should drop the closed pane") {
+            store.agents.map(\.agent.paneID) == ["w1:p1"]
+        }
+        #expect(await transport.snapshotFetchCount > snapshotsBefore)
+
+        store.setHosts([])
+    }
+
+    @Test func closePaneThrowsWhenTheHostIsUnknown() async throws {
+        let host = Host.fixture()
+        let store = makeStore(transports: [:])
+
+        // No feed for this Host at all: nothing to close against.
+        await #expect(throws: TransportError.self) {
+            try await store.closePane("w1:p1", on: host.id)
+        }
+    }
+
+    @Test func closePaneFailureLeavesTheAgentsUntouched() async throws {
+        // The cancel/failure path must never mutate the list: a rejected
+        // close propagates and leaves every agent in place.
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .idle)]))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the agent should arrive") { store.agents.count == 1 }
+
+        await transport.setCloseFailure(.timedOut)
+        await #expect(throws: TransportError.timedOut) {
+            try await store.closePane("w1:p1", on: host.id)
+        }
+        #expect(store.agents.map(\.agent.paneID) == ["w1:p1"])
+        #expect(await transport.closedPanes.isEmpty)
+
+        store.setHosts([])
+    }
+
     @Test func hostStatusesExposeStalenessPerHost() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(snapshot: .fixture())
