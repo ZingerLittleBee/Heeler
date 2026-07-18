@@ -637,6 +637,11 @@ actor SSHTransport: Transport {
         /// nil means the stream ends gracefully: explicit `end()`, or the
         /// remote attach exiting cleanly (the user detached inside the TUI).
         var failure: TransportError?
+        /// The read loop draining to a clean end (exit status 0). The remote
+        /// exiting closes the channel before `withPTY` gets to close it on
+        /// the way out, and that close's "already closed" error must not
+        /// repaint a clean detach as a failure (found by the #11 e2e).
+        var sawCleanEnd = false
         do {
             try await client.withPTY(pty) { inbound, outbound in
                 try await outbound.write(ByteBuffer(string: bootstrapLine))
@@ -669,14 +674,15 @@ actor SSHTransport: Transport {
                         continuation.yield(Data(buffer.readableBytesView))
                     }
                 }
+                sawCleanEnd = true
             }
             failure = nil
         } catch is CancellationError {
             failure = nil
         } catch {
             failure =
-                Task.isCancelled
-                ? nil  // Explicit end(): the consumer closed the channel.
+                Task.isCancelled || sawCleanEnd
+                ? nil  // Explicit end() or a clean remote exit.
                 : TransportError.channelFailed(detail: "attach channel: \(error)")
         }
         // State first, continuation second: a consumer resuming on the
