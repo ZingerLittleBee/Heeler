@@ -35,6 +35,11 @@ actor SSHTransport: Transport {
     /// The herdr wire protocol version this build speaks (herdr 0.7.4).
     static let supportedProtocolVersion = 16
 
+    /// Exec channels are SSH session channels, capped by sshd's MaxSessions
+    /// (default 10) per connection. Bound at 8 to leave headroom for the
+    /// events channel and a future Attach terminal.
+    static let maxConcurrentExecChannels = 8
+
     private let client: SSHClient
     private let socketLocation: HerdrSocketLocation
     private let socatPath: String
@@ -46,6 +51,75 @@ actor SSHTransport: Transport {
     /// instead of racing exec channels. Cleared on completion so a later
     /// cold start can wake again.
     private var wakeTask: Task<Void, Error>?
+
+    // MARK: Exec channel slots
+    //
+    // The actor-based request queue (#5): every exec channel — RPC, home
+    // resolution, wake — holds a slot for the channel's lifetime, bounding
+    // concurrency at `maxConcurrentExecChannels`. Slots are never held
+    // across another slot acquisition, so the queue cannot deadlock.
+
+    private struct SlotWaiter {
+        let id: UInt64
+        let continuation: CheckedContinuation<Void, any Error>
+    }
+
+    private var execSlotsInUse = 0
+    private var slotWaiters: [SlotWaiter] = []
+    /// Waiter ids whose cancellation raced ahead: the cancellation handler
+    /// hops onto the actor via a Task, so it can run before the waiter's
+    /// continuation is stored (marker consumed on arrival) or after the
+    /// waiter was already resumed (marker swept by `acquireExecChannelSlot`'s
+    /// defer, keyed on `pendingSlotRequests`).
+    private var cancelledSlotRequests: Set<UInt64> = []
+    private var pendingSlotRequests: Set<UInt64> = []
+    private var nextSlotRequestID: UInt64 = 0
+
+    /// Waits for a free exec channel slot. Throws `CancellationError` without
+    /// consuming a slot if the task is cancelled while queued.
+    private func acquireExecChannelSlot() async throws {
+        try Task.checkCancellation()
+        nextSlotRequestID += 1
+        let id = nextSlotRequestID
+        pendingSlotRequests.insert(id)
+        defer {
+            pendingSlotRequests.remove(id)
+            cancelledSlotRequests.remove(id)
+        }
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, any Error>) in
+                if cancelledSlotRequests.contains(id) {
+                    continuation.resume(throwing: CancellationError())
+                } else if execSlotsInUse < Self.maxConcurrentExecChannels {
+                    execSlotsInUse += 1
+                    continuation.resume()
+                } else {
+                    slotWaiters.append(SlotWaiter(id: id, continuation: continuation))
+                }
+            }
+        } onCancel: {
+            Task { await self.cancelSlotWaiter(id: id) }
+        }
+    }
+
+    /// Frees a slot, handing it to the oldest waiter if any.
+    private func releaseExecChannelSlot() {
+        if slotWaiters.isEmpty {
+            execSlotsInUse -= 1
+        } else {
+            slotWaiters.removeFirst().continuation.resume()
+        }
+    }
+
+    private func cancelSlotWaiter(id: UInt64) {
+        guard pendingSlotRequests.contains(id) else { return }
+        if let index = slotWaiters.firstIndex(where: { $0.id == id }) {
+            slotWaiters.remove(at: index).continuation.resume(throwing: CancellationError())
+        } else {
+            cancelledSlotRequests.insert(id)
+        }
+    }
 
     private init(
         client: SSHClient, socketLocation: HerdrSocketLocation, socatPath: String,
@@ -139,6 +213,12 @@ actor SSHTransport: Transport {
     /// channel without writing or closing anything mid-flight.
     private func runWakeCommand() async throws {
         do {
+            try await acquireExecChannelSlot()
+        } catch {
+            throw TransportError.cancelled
+        }
+        defer { releaseExecChannelSlot() }
+        do {
             _ = try await client.executeCommand("\(wakeCommand) < /dev/null")
         } catch is CancellationError {
             throw TransportError.cancelled
@@ -157,6 +237,12 @@ actor SSHTransport: Transport {
         let line = try HerdrWire.requestLine(id: requestID, method: method)
         var stdout = Data()
         var stderr = Data()
+        do {
+            try await acquireExecChannelSlot()
+        } catch {
+            throw TransportError.cancelled
+        }
+        defer { releaseExecChannelSlot() }
         do {
             try await client.withExec("\(socatPath) - UNIX-CONNECT:\(socketPath)") {
                 inbound, outbound in
@@ -212,6 +298,12 @@ actor SSHTransport: Transport {
     }
 
     private func resolveHomeDirectoryOverExec() async throws -> String {
+        do {
+            try await acquireExecChannelSlot()
+        } catch {
+            throw TransportError.cancelled
+        }
+        defer { releaseExecChannelSlot() }
         let output: ByteBuffer
         do {
             // $HOME expands in every mainstream login shell, fish included.

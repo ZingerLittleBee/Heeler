@@ -58,7 +58,10 @@ final class FakeHerdrServer: Sendable {
             close(fd)
             throw ServerError.socketSetupFailed(step: "bind", errno: errno)
         }
-        guard listen(fd, 8) == 0 else {
+        // Backlog sized for the transport's concurrent-channel bound plus
+        // slack; the accept loop drains fast, but a burst must never bounce
+        // off the queue and masquerade as "connection refused".
+        guard listen(fd, 32) == 0 else {
             close(fd)
             throw ServerError.socketSetupFailed(step: "listen", errno: errno)
         }
