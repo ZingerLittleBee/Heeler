@@ -428,6 +428,10 @@ struct EventsSessionE2ETests {
             try await inner.attachTerminal(request)
         }
 
+        func startAgent(_ params: AgentStartParams) async throws -> Agent {
+            try await inner.startAgent(params)
+        }
+
         func sendToAgent(_ params: AgentSendParams) async throws {
             try await inner.sendToAgent(params)
         }

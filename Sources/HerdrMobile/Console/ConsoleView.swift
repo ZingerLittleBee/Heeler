@@ -6,6 +6,7 @@ struct ConsoleView: View {
     let hosts: HostStore
     let console: ConsoleStore
     @State private var isManagingHosts = false
+    @State private var isStartingAgent = false
 
     var body: some View {
         NavigationStack {
@@ -29,10 +30,21 @@ struct ConsoleView: View {
                             isManagingHosts = true
                         }
                     }
+                    if !hosts.hosts.isEmpty {
+                        ToolbarItem(placement: .primaryAction) {
+                            Button("New Agent", systemImage: "plus") {
+                                isStartingAgent = true
+                            }
+                        }
+                    }
                 }
                 .sheet(isPresented: $isManagingHosts) {
                     // HostListView brings its own NavigationStack.
                     HostListView(store: hosts)
+                }
+                .sheet(isPresented: $isStartingAgent) {
+                    // StartAgentView brings its own NavigationStack.
+                    StartAgentView(hosts: hosts.hosts, console: console)
                 }
         }
     }

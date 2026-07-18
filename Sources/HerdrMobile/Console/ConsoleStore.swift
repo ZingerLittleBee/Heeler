@@ -162,6 +162,9 @@ final class ConsoleStore {
                 lastOutputSnippet: feed.byPane[agent.paneID]?.lastOutputSnippet)
         }
         feed.byPane = byPane
+        feed.workspaces = snapshot.workspaces
+            .map { ConsoleWorkspace(id: $0.workspaceID, label: $0.label) }
+            .sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
         rebuild()
     }
 
@@ -239,6 +242,33 @@ final class ConsoleStore {
         return { await session?.currentTransport }
     }
 
+    // MARK: New-agent flow (#12)
+
+    /// The workspaces the store knows for a Host, from its latest snapshot —
+    /// the new-agent picker's target list. Empty until the Host's first
+    /// snapshot lands, or when the Host is unknown.
+    func workspaces(for hostID: Host.ID) -> [ConsoleWorkspace] {
+        feeds[hostID]?.workspaces ?? []
+    }
+
+    /// Starts a new Agent on a Host (#12): the thin `agent.start` RPC on the
+    /// Host's live transport, then one explicit resync so the new pane
+    /// surfaces promptly instead of waiting on its membership event. Throws
+    /// `.sshUnreachable` when the Host is not currently connected, and
+    /// propagates the server's error when herdr rejects the start.
+    @discardableResult
+    func startAgent(_ params: AgentStartParams, on hostID: Host.ID) async throws -> Agent {
+        guard let feed = feeds[hostID], let transport = await feed.session.currentTransport
+        else {
+            throw TransportError.sshUnreachable(detail: "The Host is not connected.")
+        }
+        let agent = try await transport.startAgent(params)
+        // The membership event will re-snapshot too; this just makes the new
+        // pane appear without waiting for it.
+        scheduleResync(feed: feed)
+        return agent
+    }
+
     // MARK: Subscriptions
 
     /// Global membership/context kinds; each triggers a Host re-snapshot.
@@ -292,6 +322,8 @@ private final class HostFeed {
     var resyncTask: Task<Void, Never>?
     var resyncPending = false
     var byPane: [String: ConsoleAgent] = [:]
+    /// Workspaces from this Host's latest snapshot, for the new-agent picker.
+    var workspaces: [ConsoleWorkspace] = []
     var snippetFetchesInFlight: Set<String> = []
 
     init(host: Host, session: EventsSession) {

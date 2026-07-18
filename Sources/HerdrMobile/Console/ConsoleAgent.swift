@@ -27,6 +27,14 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     var id: ID { ID(hostID: hostID, paneID: agent.paneID) }
 }
 
+/// A workspace known for a Host from its latest session snapshot, offered as
+/// a target in the new-agent flow (#12). Identity is herdr's opaque
+/// `workspace_id`; the label is what the picker shows.
+struct ConsoleWorkspace: Identifiable, Hashable, Sendable {
+    let id: String
+    let label: String
+}
+
 extension AgentStatus {
     /// Console sort bucket: Blocked > Working > everything else. Idle, Done,
     /// Unknown, and any status this build does not recognize (herdr's API

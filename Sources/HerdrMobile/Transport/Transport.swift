@@ -26,6 +26,15 @@ protocol Transport: Sendable {
     /// the Observe stream.
     func sendToAgent(_ params: AgentSendParams) async throws
 
+    /// Starts a new Agent (`agent.start`): the new-agent flow (#12, User
+    /// Story 8 — dispatch work from the road). Runs the given command as a
+    /// fresh herdr pane in the chosen workspace and returns the started Agent
+    /// once the server acknowledges. The new pane also surfaces in the
+    /// Console through the normal snapshot/delta machinery (a membership
+    /// event triggers a re-snapshot), so callers do not thread the return
+    /// value into the list themselves.
+    func startAgent(_ params: AgentStartParams) async throws -> Agent
+
     /// Sends control keys to a Pane (`pane.send_keys`): the detail screen's
     /// quick-key bar (Enter/Esc/Ctrl-C/arrows/y-n, #10). Key names are
     /// herdr's own spellings — verified empirically against herdr 0.7.4:

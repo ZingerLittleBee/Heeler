@@ -131,6 +131,30 @@ struct SSHTransportE2ETests {
         }
     }
 
+    @Test func agentStartSendsItsParamsAndMapsTheStartedAgent() async throws {
+        // The new-agent flow (#12): agent.start carries argv/name/workspace,
+        // answered with the agent_started envelope; the started AgentInfo
+        // maps onto the domain Agent the Console consumes.
+        try await withTransport { request in
+            [
+                #"{"id":"\#(request.id)","result":{"type":"agent_started","argv":["claude","--continue"],"agent":{"terminal_id":"term_new","agent":"claude","terminal_title":"⠐ claude","terminal_title_stripped":"claude","agent_status":"working","workspace_id":"w1","tab_id":"w1:t1","pane_id":"w1:p9","focused":true,"cwd":"/work/a","foreground_cwd":"/work/a","revision":1}}}"#
+            ]
+        } body: { transport, server in
+            let agent = try await transport.startAgent(
+                AgentStartParams(
+                    argv: ["claude", "--continue"], name: "claude", workspaceID: "w1"))
+
+            #expect(agent.paneID == "w1:p9")
+            #expect(agent.kind == "claude")
+            #expect(agent.status == .working)
+            let request = try #require(server.receivedRequests.first)
+            #expect(request.method == "agent.start")
+            #expect(
+                request.params
+                    == #"{"argv":["claude","--continue"],"name":"claude","workspace_id":"w1"}"#)
+        }
+    }
+
     @Test func serverErrorSurfacesAsHerdrAPIError() async throws {
         try await withTransport { request in
             [#"{"id":"\#(request.id)","error":{"code":500,"message":"scripted failure"}}"#]

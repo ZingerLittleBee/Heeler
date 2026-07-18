@@ -204,6 +204,7 @@ private actor RejectingTransport: Transport {
         self.error = error
     }
 
+    func startAgent(_ params: AgentStartParams) async throws -> Agent { throw error }
     func sendToAgent(_ params: AgentSendParams) async throws { throw error }
     func sendKeys(_ params: PaneSendKeysParams) async throws { throw error }
 

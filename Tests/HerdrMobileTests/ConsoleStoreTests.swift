@@ -291,6 +291,79 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    @Test func workspacesExposeTheHostsSnapshotWorkspaces() async throws {
+        // The new-agent picker (#12) offers the workspaces the store already
+        // knows for a Host, including ones with no agents in them yet.
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(
+                agents: [.fixture(paneID: "w1:p1", workspaceID: "w1")],
+                workspaces: [
+                    .fixture(workspaceID: "w2", label: "Api"),
+                    .fixture(workspaceID: "w1", label: "Proj"),
+                ]))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the snapshot's workspaces should land") {
+            store.workspaces(for: host.id).count == 2
+        }
+
+        // Sorted by label; a Host the store never saw offers none.
+        #expect(store.workspaces(for: host.id).map(\.label) == ["Api", "Proj"])
+        #expect(store.workspaces(for: host.id).map(\.id) == ["w2", "w1"])
+        #expect(store.workspaces(for: UUID()).isEmpty)
+
+        store.setHosts([])
+    }
+
+    @Test func startAgentForwardsItsParamsAndResnapshots() async throws {
+        // agent.start (#12): the params reach the Host's transport, and the
+        // started pane surfaces via one explicit resync rather than waiting
+        // on the membership event.
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .idle)]))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the initial agent should arrive") { store.agents.count == 1 }
+        let snapshotsBefore = await transport.snapshotFetchCount
+
+        // The started pane joins the next snapshot the server would report.
+        await transport.setSnapshot(
+            .fixture(agents: [
+                .fixture(paneID: "w1:p1", status: .idle),
+                .fixture(paneID: "w1:pnew", status: .working),
+            ]))
+        let started = try await store.startAgent(
+            AgentStartParams(argv: ["claude"], name: "claude", workspaceID: "w1"), on: host.id)
+
+        #expect(started.status == .working)
+        let starts = await transport.agentStarts
+        #expect(starts.map(\.argv) == [["claude"]])
+        #expect(starts.first?.workspaceID == "w1")
+        try await waitUntil("the resync should surface the new pane") {
+            store.agents.map(\.agent.paneID) == ["w1:pnew", "w1:p1"]
+        }
+        #expect(await transport.snapshotFetchCount > snapshotsBefore)
+
+        store.setHosts([])
+    }
+
+    @Test func startAgentThrowsWhenTheHostIsUnknown() async throws {
+        let host = Host.fixture()
+        let store = makeStore(transports: [:])
+
+        // No feed for this Host at all: nothing to start against.
+        await #expect(throws: TransportError.self) {
+            try await store.startAgent(
+                AgentStartParams(argv: ["claude"], name: "claude"), on: host.id)
+        }
+    }
+
     @Test func hostStatusesExposeStalenessPerHost() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(snapshot: .fixture())

@@ -230,6 +230,12 @@ actor SSHTransport: Transport {
             .read
     }
 
+    func startAgent(_ params: AgentStartParams) async throws -> Agent {
+        let response = try await request(
+            method: "agent.start", params: params, decoding: AgentStartedResponse.self)
+        return Agent(response.agent)
+    }
+
     func sendToAgent(_ params: AgentSendParams) async throws {
         _ = try await request(method: "agent.send", params: params, decoding: OkResponse.self)
     }

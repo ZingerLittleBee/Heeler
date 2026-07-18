@@ -17,6 +17,11 @@ final actor ScriptedTransport: Transport {
     /// Every key batch sent through `pane.send_keys`, in order; the input
     /// store's quick-key behavior asserts on this.
     private(set) var sentKeys: [PaneSendKeysParams] = []
+    /// Every `agent.start` received, in order; the new-agent flow (#12)
+    /// asserts on the params it forwarded.
+    private(set) var agentStarts: [AgentStartParams] = []
+    private var startFailure: TransportError?
+    private var startedAgent: AgentInfo?
     private var sendFailure: TransportError?
     private(set) var snapshotFetchCount = 0
     /// Every observe request received, in order; the Observe store's
@@ -72,6 +77,17 @@ final actor ScriptedTransport: Transport {
     /// Makes every subsequent `sendToAgent`/`sendKeys` throw `failure`.
     func setSendFailure(_ failure: TransportError?) {
         sendFailure = failure
+    }
+
+    /// Scripts the `AgentInfo` `startAgent` returns; without it the fake
+    /// synthesizes a Working agent from the start params.
+    func setStartedAgent(_ agent: AgentInfo) {
+        startedAgent = agent
+    }
+
+    /// Makes every subsequent `startAgent` throw `failure`.
+    func setStartFailure(_ failure: TransportError?) {
+        startFailure = failure
     }
 
     /// Pushes one event onto the live stream; false if none is live.
@@ -165,6 +181,19 @@ final actor ScriptedTransport: Transport {
             format: .text, paneID: params.paneID, revision: 0,
             source: params.source, tabID: "t", text: paneTexts[params.paneID] ?? "",
             truncated: false, workspaceID: "w")
+    }
+
+    func startAgent(_ params: AgentStartParams) async throws -> Agent {
+        agentStarts.append(params)
+        if let startFailure { throw startFailure }
+        if let startedAgent { return Agent(startedAgent) }
+        // Synthesize a freshly-Working agent so the caller and the follow-up
+        // snapshot see the same pane the real server would report.
+        return Agent(
+            .fixture(
+                paneID: "\(params.workspaceID ?? "w1"):pnew", status: .working,
+                workspaceID: params.workspaceID ?? "w1", kind: params.name,
+                title: params.name))
     }
 
     func sendToAgent(_ params: AgentSendParams) async throws {

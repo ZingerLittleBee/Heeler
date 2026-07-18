@@ -41,6 +41,10 @@ final actor FakeTransport: Transport {
         throw TransportError.channelFailed(detail: "FakeTransport does not script attach")
     }
 
+    func startAgent(_ params: AgentStartParams) async throws -> Agent {
+        throw TransportError.channelFailed(detail: "FakeTransport does not script agent starts")
+    }
+
     func sendToAgent(_ params: AgentSendParams) async throws {
         throw TransportError.channelFailed(detail: "FakeTransport does not script sends")
     }
