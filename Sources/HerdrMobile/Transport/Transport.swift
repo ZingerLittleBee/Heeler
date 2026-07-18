@@ -110,9 +110,7 @@ enum HerdrSocketLocation: Sendable, Equatable {
 }
 
 /// Transport-level failures: a closed taxonomy so every screen maps errors to
-/// user guidance consistently instead of string-matching. `timedOut` and
-/// `cancelled` exist as cases now; their enforcement machinery (request
-/// queue, per-request deadline) is #5.
+/// user guidance consistently instead of string-matching.
 enum TransportError: Error, Sendable, Equatable {
     /// The herdr API socket path does not exist on the Host: herdr is not
     /// installed there, or the socket path is wrong.
@@ -127,9 +125,11 @@ enum TransportError: Error, Sendable, Equatable {
     /// The remote home directory could not be resolved, so a home-relative
     /// socket location has no path.
     case homeDirectoryUnresolvable(detail: String)
-    /// The request exceeded its deadline.
+    /// The request exceeded its per-request deadline; its exec channel was
+    /// closed.
     case timedOut
-    /// The request was cancelled before completing.
+    /// The request's task was cancelled before completing; any exec channel
+    /// it held was closed.
     case cancelled
     /// The channel produced bytes that do not decode as a herdr response.
     case malformedResponse(String)

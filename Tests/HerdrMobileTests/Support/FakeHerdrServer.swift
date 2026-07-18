@@ -13,8 +13,10 @@ final class FakeHerdrServer: Sendable {
 
     /// Returns the NDJSON lines to write back, without trailing newlines.
     /// One line for a plain response; several lines model the
-    /// ack-then-event-lines shape of subscription replies.
-    typealias Script = @Sendable (ReceivedRequest) -> [String]
+    /// ack-then-event-lines shape of subscription replies. `nil` models a
+    /// hung herdr: the connection is held open without a response until the
+    /// peer goes away.
+    typealias Script = @Sendable (ReceivedRequest) -> [String]?
 
     enum ServerError: Error {
         case socketSetupFailed(step: String, errno: Int32)
@@ -34,6 +36,7 @@ final class FakeHerdrServer: Sendable {
     private struct State {
         var requests: [ReceivedRequest] = []
         var connections = 0
+        var closedConnections = 0
         var stopped = false
     }
 
@@ -41,6 +44,23 @@ final class FakeHerdrServer: Sendable {
     /// Number of accepted connections; herdr serves one request per
     /// connection, so this equals the number of exec+socat channels opened.
     var connectionCount: Int { state.mutex.withLock { $0.connections } }
+    /// Number of connections that have ended. A held-open (`nil`-scripted)
+    /// connection only ends when its socat dies, so this observes the
+    /// transport closing an exec channel from the server side.
+    var closedConnectionCount: Int { state.mutex.withLock { $0.closedConnections } }
+
+    /// Polls until `condition` holds; false if `timeout` elapses first.
+    func wait(
+        for condition: @Sendable (FakeHerdrServer) -> Bool,
+        timeout: Duration = .seconds(5)
+    ) async -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if condition(self) { return true }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        return condition(self)
+    }
 
     /// `socketPath` defaults to a fresh path under /tmp: sun_path caps at 104
     /// bytes and the simulator's NSTemporaryDirectory is far longer than
@@ -75,7 +95,11 @@ final class FakeHerdrServer: Sendable {
                     close(connection)
                     break
                 }
-                Self.handle(connection: connection, script: script, state: state)
+                // One thread per connection: a held-open (`nil`-scripted)
+                // connection must not block the accept loop.
+                Thread {
+                    Self.handle(connection: connection, script: script, state: state)
+                }.start()
             }
         }
         thread.name = "FakeHerdrServer(\(socketPath))"
@@ -105,7 +129,10 @@ final class FakeHerdrServer: Sendable {
     }
 
     private static func handle(connection: Int32, script: Script, state: StateBox) {
-        defer { close(connection) }
+        defer {
+            close(connection)
+            state.mutex.withLock { $0.closedConnections += 1 }
+        }
         state.mutex.withLock { $0.connections += 1 }
 
         var received = Data()
@@ -127,7 +154,13 @@ final class FakeHerdrServer: Sendable {
         let request = ReceivedRequest(id: id, method: method)
         state.mutex.withLock { $0.requests.append(request) }
 
-        for line in script(request) {
+        guard let lines = script(request) else {
+            // Hung herdr: hold the connection open until the peer's socat
+            // dies, which is how an explicit exec channel close reaches us.
+            while read(connection, &buffer, buffer.count) > 0 {}
+            return
+        }
+        for line in lines {
             writeAll(connection, bytes: Array((line + "\n").utf8))
         }
     }

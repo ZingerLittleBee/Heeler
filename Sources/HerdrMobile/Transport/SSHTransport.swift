@@ -26,6 +26,11 @@ struct SSHTransportSettings: Sendable {
     /// the environment boundary; per-Host override also covers hosts where
     /// herdr is not on the login shell's PATH.
     var wakeCommand: String = "herdr remote-client-bridge"
+    /// Per-request deadline covering the queue wait and the exec exchange;
+    /// on expiry the request fails with `.timedOut` and its channel is
+    /// closed. Short in tests, generous by default: a hung host should
+    /// degrade gracefully, a slow one should still answer.
+    var requestTimeout: Duration = .seconds(15)
 }
 
 /// Transport over SSH exec channels running `socat - UNIX-CONNECT:<sock>`,
@@ -44,6 +49,7 @@ actor SSHTransport: Transport {
     private let socketLocation: HerdrSocketLocation
     private let socatPath: String
     private let wakeCommand: String
+    private let requestTimeout: Duration
     /// In-flight or completed remote home directory resolution; see
     /// `remoteHomeDirectory()`.
     private var homeDirectoryTask: Task<String, Error>?
@@ -123,12 +129,13 @@ actor SSHTransport: Transport {
 
     private init(
         client: SSHClient, socketLocation: HerdrSocketLocation, socatPath: String,
-        wakeCommand: String
+        wakeCommand: String, requestTimeout: Duration
     ) {
         self.client = client
         self.socketLocation = socketLocation
         self.socatPath = socatPath
         self.wakeCommand = wakeCommand
+        self.requestTimeout = requestTimeout
     }
 
     /// Connects and authenticates, but sends nothing yet: callers must `ping`
@@ -148,7 +155,7 @@ actor SSHTransport: Transport {
         )
         return SSHTransport(
             client: client, socketLocation: settings.socket, socatPath: settings.socatPath,
-            wakeCommand: settings.wakeCommand)
+            wakeCommand: settings.wakeCommand, requestTimeout: settings.requestTimeout)
     }
 
     func ping() async throws -> ServerInfo {
@@ -225,24 +232,32 @@ actor SSHTransport: Transport {
         }
     }
 
-    /// One no-PTY exec channel per request. The channel is ended by returning
-    /// from the `withExec` body as soon as a full response line has arrived
-    /// (Citadel closes the channel on return) — never by task cancellation,
-    /// which a live exec channel does not respond to.
+    /// One no-PTY exec channel per request, raced against the per-request
+    /// deadline. The channel is ended by returning from the `withExec` body
+    /// as soon as a full response line has arrived (Citadel closes the
+    /// channel on return) — never by task cancellation, which a live exec
+    /// channel does not respond to.
     private func performRequest<R: Decodable>(method: String, decoding type: R.Type) async throws
         -> R
     {
         let socketPath = try await resolvedSocketPath()
         let requestID = UUID().uuidString
         let line = try HerdrWire.requestLine(id: requestID, method: method)
+        let responseLine = try await Self.withRequestDeadline(requestTimeout) {
+            try await self.performExchange(line: line, socketPath: socketPath, method: method)
+        }
+        return try HerdrWire.decodeResult(type, fromResponseLine: responseLine, requestID: requestID)
+    }
+
+    /// Takes a channel slot, runs one exec+socat exchange, and returns the
+    /// raw response bytes (guaranteed to contain a full line).
+    private func performExchange(line: String, socketPath: String, method: String) async throws
+        -> Data
+    {
+        try await acquireExecChannelSlot()
+        defer { releaseExecChannelSlot() }
         var stdout = Data()
         var stderr = Data()
-        do {
-            try await acquireExecChannelSlot()
-        } catch {
-            throw TransportError.cancelled
-        }
-        defer { releaseExecChannelSlot() }
         do {
             try await client.withExec("\(socatPath) - UNIX-CONNECT:\(socketPath)") {
                 inbound, outbound in
@@ -267,12 +282,51 @@ actor SSHTransport: Transport {
                 ?? TransportError.channelFailed(
                     detail: "\(method): \(error); stderr: \(Self.preview(stderr))")
         }
+        // A cancelled exchange ends its read through the local inbound
+        // stream, after which withExec has already closed the channel;
+        // surface that instead of misreading the truncated output as a
+        // protocol error.
+        try Task.checkCancellation()
         if !stdout.contains(0x0A),
             let failure = classifyExecFailure(stderr: stderr, socketPath: socketPath)
         {
             throw failure
         }
-        return try HerdrWire.decodeResult(type, fromResponseLine: stdout, requestID: requestID)
+        return stdout
+    }
+
+    /// Races `operation` against the per-request deadline, mapping expiry to
+    /// `.timedOut` and caller cancellation to `.cancelled`.
+    ///
+    /// A live exec channel ignores Swift task cancellation, so the losing
+    /// operation is never cancel-and-awaited at the channel: cancelling it
+    /// only ends the *local* inbound stream (an `AsyncThrowingStream`, whose
+    /// iterator resumes on task cancellation), the exec body then returns,
+    /// and Citadel closes the channel explicitly on the way out. A queued
+    /// operation that has no channel yet leaves the slot queue the same way.
+    private static func withRequestDeadline<T: Sendable>(
+        _ timeout: Duration,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T?.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(for: timeout)
+                return nil
+            }
+            defer { group.cancelAll() }
+            do {
+                guard let finished = try await group.next(), let value = finished else {
+                    throw TransportError.timedOut
+                }
+                // The operation may have completed with junk after the
+                // caller's task was cancelled mid-read; cancellation wins.
+                try Task.checkCancellation()
+                return value
+            } catch is CancellationError {
+                throw TransportError.cancelled
+            }
+        }
     }
 
     /// The absolute socket path on this Host, resolving the remote home
