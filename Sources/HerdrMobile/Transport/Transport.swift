@@ -10,6 +10,48 @@ protocol Transport: Sendable {
     /// Lists the Agents herdr has detected across all workspaces.
     func listAgents() async throws -> [Agent]
 
+    /// The full session tree in one call: agents plus the workspace context
+    /// (labels, worktrees) that `listAgents()` lacks. The Console's snapshot
+    /// source (#8) — re-fetched on every events-session `.connected`.
+    func sessionSnapshot() async throws -> SessionSnapshot
+
+    /// Reads a Pane's terminal output; the Console's last-output snippet
+    /// source (`source: .recent`, ANSI stripped) and the Observe backfill.
+    func readPane(_ params: PaneReadParams) async throws -> PaneReadResult
+
+    /// Delivers a typed message to an Agent (`agent.send`): the detail
+    /// screen's message box (#10, User Story 6 — answering a Blocked agent
+    /// without Attach). herdr's agent-aware send, targeted by the Agent's
+    /// pane id. Returns once the server acknowledges; the effect shows up on
+    /// the Observe stream.
+    func sendToAgent(_ params: AgentSendParams) async throws
+
+    /// Starts a new Agent (`agent.start`): the new-agent flow (#12, User
+    /// Story 8 — dispatch work from the road). Runs the given command as a
+    /// fresh herdr pane in the chosen workspace and returns the started Agent
+    /// once the server acknowledges. The new pane also surfaces in the
+    /// Console through the normal snapshot/delta machinery (a membership
+    /// event triggers a re-snapshot), so callers do not thread the return
+    /// value into the list themselves.
+    func startAgent(_ params: AgentStartParams) async throws -> Agent
+
+    /// Sends control keys to a Pane (`pane.send_keys`): the detail screen's
+    /// quick-key bar (Enter/Esc/Ctrl-C/arrows/y-n, #10). Key names are
+    /// herdr's own spellings — verified empirically against herdr 0.7.4:
+    /// `enter`, `esc`, `ctrl+c`, `up`/`down`/`left`/`right`, `y`, `n` (herdr
+    /// rejects e.g. `ctrl-c` with `invalid_key`).
+    func sendKeys(_ params: PaneSendKeysParams) async throws
+
+    /// Closes a Pane (`pane.close`): the Agent detail screen's destructive
+    /// close action (#13, User Story 9 — a Done agent must not be destroyed
+    /// by a stray swipe, so the UI gates this behind an explicit
+    /// confirmation). herdr removes the pane and its agent everywhere; the
+    /// removal surfaces in the Console through the normal snapshot/delta
+    /// machinery (a `pane.closed` membership event triggers a re-snapshot),
+    /// so callers do not prune the list themselves. Targeted by the Pane's
+    /// id; returns once the server acknowledges.
+    func closePane(_ params: PaneTarget) async throws
+
     /// Opens this Host's dedicated long-lived events channel and subscribes.
     /// Returns once the server acknowledges the subscription; the stream then
     /// carries events in canonical naming until `end()` closes the channel
@@ -19,6 +61,22 @@ protocol Transport: Sendable {
     /// Subscribing does not replay existing state (verified against herdr
     /// 0.7.4): sync initial state with `listAgents()` alongside subscribing.
     func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream
+
+    /// Opens this Host's dedicated terminal channel and starts the read-only
+    /// Observe live-follow (#9): NDJSON frame lines from `herdr terminal
+    /// session observe`, decoded and base64-unwrapped, until `end()` closes
+    /// the channel explicitly. One terminal channel per Host — the session
+    /// slot budgeted for the terminal surface — so a second call while one
+    /// is live throws `.terminalChannelAlreadyOpen`.
+    func observeTerminal(_ request: TerminalObserveRequest) async throws -> TerminalFrameStream
+
+    /// Opens this Host's dedicated terminal channel as a full interactive
+    /// Attach (#11): a PTY running `herdr agent attach`, raw bytes both ways
+    /// until `end()` closes the channel explicitly. Attach and Observe share
+    /// the one terminal channel per Host — the session slot budgeted for the
+    /// terminal surface — so a call while either is live throws
+    /// `.terminalChannelAlreadyOpen`; the UI hands over explicitly.
+    func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession
 
     /// Whether the underlying connection to the Host is still alive. The
     /// reconnect machinery (#18) decides "re-subscribe on this connection or
@@ -31,7 +89,7 @@ protocol Transport: Sendable {
 }
 
 /// herdr server identity as reported by `ping`.
-struct ServerInfo: Sendable, Equatable, Decodable {
+struct ServerInfo: Sendable, Equatable {
     let version: String
     let protocolVersion: Int
 
@@ -39,34 +97,23 @@ struct ServerInfo: Sendable, Equatable, Decodable {
         self.version = version
         self.protocolVersion = protocolVersion
     }
-
-    private enum CodingKeys: String, CodingKey {
-        case version
-        case protocolVersion = "protocol"
-    }
-}
-
-/// herdr's detected state of an Agent. Blocked means the agent is waiting on
-/// human input and drives sort order and (later) notifications.
-enum AgentStatus: String, Sendable, Equatable, Decodable {
-    case idle, working, blocked, done, unknown
-
-    /// Lenient: herdr's API has no stability guarantee, so a status value we
-    /// do not know degrades to `.unknown` instead of failing the decode.
-    init(from decoder: any Decoder) throws {
-        let raw = try decoder.singleValueContainer().decode(String.self)
-        self = AgentStatus(rawValue: raw) ?? .unknown
-    }
 }
 
 /// A coding agent process running inside a herdr Pane.
-struct Agent: Sendable, Equatable, Decodable {
+///
+/// The domain view of the generated wire type `AgentInfo`: only the fields
+/// the app consumes, with wire-level optionality resolved. `AgentStatus` is
+/// the generated raw-string wrapper; Blocked drives sort order and (later)
+/// notifications.
+struct Agent: Sendable, Equatable {
     let terminalID: String
     /// The agent program herdr detected: "claude", "codex", ...
     let kind: String
     /// Terminal title with spinner/status glyphs stripped.
     let title: String
-    let status: AgentStatus
+    /// Mutable: the Console applies `pane.agent_status_changed` deltas in
+    /// place between snapshots.
+    var status: AgentStatus
     let workspaceID: String
     let tabID: String
     /// The Pane address used for per-pane subscriptions and attach.
@@ -89,16 +136,21 @@ struct Agent: Sendable, Equatable, Decodable {
         self.revision = revision
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case terminalID = "terminal_id"
-        case kind = "agent"
-        case title = "terminal_title_stripped"
-        case status = "agent_status"
-        case workspaceID = "workspace_id"
-        case tabID = "tab_id"
-        case paneID = "pane_id"
-        case cwd
-        case revision
+    /// Maps the generated wire type onto the domain view. Wire-optional
+    /// fields degrade instead of failing: herdr's API has no stability
+    /// guarantee, and a missing title must not drop the Agent from the list.
+    init(_ info: AgentInfo) {
+        self.init(
+            terminalID: info.terminalID,
+            kind: info.agent ?? "unknown",
+            title: info.terminalTitleStripped ?? info.terminalTitle ?? "",
+            status: info.agentStatus,
+            workspaceID: info.workspaceID,
+            tabID: info.tabID,
+            paneID: info.paneID,
+            cwd: info.cwd ?? "",
+            revision: info.revision
+        )
     }
 }
 
@@ -160,6 +212,10 @@ enum TransportError: Error, Sendable, Equatable {
     /// A second events channel was requested while one is live; each Host
     /// keeps exactly one dedicated events channel (ADR 0002 headroom).
     case eventsChannelAlreadyOpen
+    /// A second terminal channel was requested while one is live; each Host
+    /// keeps exactly one (Observe now, Attach in #11 — the UI enforces one
+    /// terminal surface at a time, this backstops the slot budget).
+    case terminalChannelAlreadyOpen
     /// The request exceeded its per-request deadline; its exec channel was
     /// closed.
     case timedOut

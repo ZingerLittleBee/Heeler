@@ -402,10 +402,46 @@ struct EventsSessionE2ETests {
             try await inner.listAgents()
         }
 
+        func sessionSnapshot() async throws -> SessionSnapshot {
+            try await inner.sessionSnapshot()
+        }
+
+        func readPane(_ params: PaneReadParams) async throws -> PaneReadResult {
+            try await inner.readPane(params)
+        }
+
         func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws
             -> HerdrEventStream
         {
             try await inner.subscribeToEvents(subscriptions)
+        }
+
+        func observeTerminal(_ request: TerminalObserveRequest) async throws
+            -> TerminalFrameStream
+        {
+            try await inner.observeTerminal(request)
+        }
+
+        func attachTerminal(_ request: TerminalAttachRequest) async throws
+            -> TerminalAttachSession
+        {
+            try await inner.attachTerminal(request)
+        }
+
+        func startAgent(_ params: AgentStartParams) async throws -> Agent {
+            try await inner.startAgent(params)
+        }
+
+        func sendToAgent(_ params: AgentSendParams) async throws {
+            try await inner.sendToAgent(params)
+        }
+
+        func sendKeys(_ params: PaneSendKeysParams) async throws {
+            try await inner.sendKeys(params)
+        }
+
+        func closePane(_ params: PaneTarget) async throws {
+            try await inner.closePane(params)
         }
 
         func close() async throws {

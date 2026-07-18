@@ -23,6 +23,26 @@ enum JSONValue: Sendable, Equatable {
     }
 }
 
+extension JSONValue: Encodable {
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .null:
+            try container.encodeNil()
+        case .bool(let value):
+            try container.encode(value)
+        case .number(let value):
+            try container.encode(value)
+        case .string(let value):
+            try container.encode(value)
+        case .array(let value):
+            try container.encode(value)
+        case .object(let value):
+            try container.encode(value)
+        }
+    }
+}
+
 extension JSONValue: Decodable {
     init(from decoder: any Decoder) throws {
         let container = try decoder.singleValueContainer()

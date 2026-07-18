@@ -77,7 +77,8 @@ enum HerdrWire {
         let params: P
     }
 
-    private struct EmptyParams: Encodable {}
+    /// The empty `params` object herdr expects on parameterless methods.
+    struct EmptyParams: Encodable, Sendable {}
 
     private struct SubscribeParams: Encodable {
         let subscriptions: [WireSubscription]
@@ -132,13 +133,3 @@ extension HerdrAPIError: Decodable {
         }
     }
 }
-
-/// Result payload of `agent.list`.
-struct AgentListResult: Decodable {
-    let agents: [Agent]
-}
-
-/// Result payload of the `events.subscribe` ack line
-/// (`{"type":"subscription_started"}`). Shape intentionally unchecked: the
-/// envelope carrying a result at all is the acknowledgement.
-struct SubscriptionStartedResult: Decodable {}

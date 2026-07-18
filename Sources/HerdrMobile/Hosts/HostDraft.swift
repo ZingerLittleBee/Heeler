@@ -1,0 +1,64 @@
+import Foundation
+
+/// Editable form state behind `HostFormView`, validated before it becomes a
+/// catalog Host. Text-field friendly (port is a string) so the view stays
+/// dumb and the rules stay testable.
+struct HostDraft: Equatable, Sendable {
+    var name = ""
+    var address = ""
+    var port = "22"
+    var username = ""
+    var authMethod: Host.AuthMethod = .deviceKey
+    /// Blank means "keep the stored password" when editing.
+    var password = ""
+    var sessionName = ""
+    var socatPath = Host.defaultSocatPath
+
+    init() {}
+
+    /// Prefill for editing an existing Host.
+    init(host: Host) {
+        name = host.name
+        address = host.address
+        port = String(host.port)
+        username = host.username
+        authMethod = host.authMethod
+        sessionName = host.sessionName
+        socatPath = host.socatPath
+    }
+
+    var portNumber: Int? {
+        guard let value = Int(port), (1...65535).contains(value) else { return nil }
+        return value
+    }
+
+    var isValid: Bool {
+        !address.trimmingCharacters(in: .whitespaces).isEmpty
+            && !username.trimmingCharacters(in: .whitespaces).isEmpty
+            && portNumber != nil
+            && socatPath.hasPrefix("/")  // remote PATH is untrusted (ADR 0002)
+    }
+
+    /// The catalog Host this draft describes, or nil while invalid. Pass the
+    /// existing id when editing so the Host keeps its identity (and its
+    /// Keychain password account).
+    func makeHost(id: UUID = UUID()) -> Host? {
+        guard isValid, let portNumber else { return nil }
+        return Host(
+            id: id,
+            name: name.trimmingCharacters(in: .whitespaces),
+            address: address.trimmingCharacters(in: .whitespaces),
+            port: portNumber,
+            username: username.trimmingCharacters(in: .whitespaces),
+            authMethod: authMethod,
+            sessionName: sessionName.trimmingCharacters(in: .whitespaces),
+            socatPath: socatPath.trimmingCharacters(in: .whitespaces))
+    }
+
+    /// What to hand `HostStore.add/update` as the password argument: a new
+    /// secret to store, or nil for "leave storage as it is".
+    var passwordUpdate: String? {
+        guard authMethod == .password, !password.isEmpty else { return nil }
+        return password
+    }
+}

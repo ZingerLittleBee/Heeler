@@ -99,7 +99,7 @@ actor EventsSession {
     nonisolated let updates: AsyncStream<EventsSessionUpdate>
     private let updatesContinuation: AsyncStream<EventsSessionUpdate>.Continuation
 
-    private let subscriptions: [EventSubscription]
+    private var subscriptions: [EventSubscription]
     private let connect: @Sendable () async throws -> any Transport
     private let reconnectPolicy: ReconnectPolicy
     private let keepalive: KeepalivePolicy?
@@ -116,6 +116,11 @@ actor EventsSession {
     /// The keepalive failure that forced the current teardown, surfaced in
     /// the following `.reconnecting` status.
     private var pendingKeepaliveFailure: TransportError?
+    /// Set while `updateSubscriptions` tears the live channel down on
+    /// purpose: the run loop then re-subscribes immediately — same
+    /// connection, no backoff, no `.reconnecting` — instead of treating the
+    /// graceful stream end as a failure.
+    private var resubscribeRequested = false
     private var liveStream: HerdrEventStream?
     private var runTask: Task<Void, Never>?
     private var keepaliveTask: Task<Void, Never>?
@@ -158,6 +163,22 @@ actor EventsSession {
     /// good. Idempotent.
     func end() async {
         await enqueueLifecycleTransition { await self.finish() }
+    }
+
+    /// Replaces the subscription set. Needed because pane-scoped kinds
+    /// (`pane.agent_status_changed`) subscribe per pane id, and panes come
+    /// and go. While the channel is live it is ended by explicit close and
+    /// re-subscribed immediately on the same connection; the fresh
+    /// `.connected` that follows is the consumer's usual re-snapshot signal,
+    /// so anything missed in the gap rides the normal snapshot-then-delta
+    /// path. While suspended or between reconnects the new set simply takes
+    /// effect on the next subscribe. No-op when the set is unchanged.
+    func updateSubscriptions(_ subscriptions: [EventSubscription]) async {
+        guard self.subscriptions != subscriptions else { return }
+        self.subscriptions = subscriptions
+        guard phase == .active, let stream = liveStream else { return }
+        resubscribeRequested = true
+        await stream.end()
     }
 
     private func activate() {
@@ -245,6 +266,14 @@ actor EventsSession {
             stopKeepalive()
             liveStream = nil
             guard phase == .active else { break }
+            if resubscribeRequested {
+                // Deliberate teardown by updateSubscriptions: re-subscribe
+                // right away (the connection is still trusted), even if the
+                // stream happened to die on its own in the same instant —
+                // the subscribe path re-checks the connection anyway.
+                resubscribeRequested = false
+                continue
+            }
             let failure =
                 streamFailure ?? pendingKeepaliveFailure
                 ?? .channelFailed(detail: "events stream ended unexpectedly")
@@ -306,6 +335,7 @@ actor EventsSession {
         }
         transportSuspect = false
         pendingKeepaliveFailure = nil
+        resubscribeRequested = false
     }
 
     // MARK: Keepalive
