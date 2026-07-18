@@ -1,0 +1,30 @@
+# herdr-mobile
+
+Native iOS companion app for herdr (https://herdr.dev): an agent console over SSH, not a terminal app. Read `CONTEXT.md` for vocabulary and `docs/adr/` before challenging architecture decisions — the transport design in particular was reached after eliminating several dead ends.
+
+## Architecture
+
+- **Stack**: SwiftUI, iOS 18+, iPhone + iPad. SSH via Citadel, terminal rendering via SwiftTerm. See ADR 0001.
+- **Transport**: herdr's JSON API (NDJSON over a remote Unix socket) reached through SSH exec channels running `socat - UNIX-CONNECT:<sock>`. Interactive terminals use a PTY exec channel running `herdr agent attach`. See ADR 0002.
+- The UI layer must depend on a transport abstraction (protocol), never on Citadel types directly.
+
+## Load-bearing herdr facts
+
+Rediscovering these is expensive; they were verified against herdr 0.7.4 source and a live server:
+
+- The herdr API socket serves **one request per connection** (read one line, write one line, close). Only `events.subscribe` and `pane.graphics.stream` keep the connection open. Plan channel usage accordingly.
+- Wire format: request `{"id": "<any string>", "method": "...", "params": {...}}` + `\n`. Success `{"id", "result"}`, failure `{"id", "error": {"code", "message"}}`, subscription event lines `{"event", "data"}` with no id.
+- The first message on any new connection path should be `ping` — it returns the server protocol version. herdr's API has no stability guarantee; parse leniently (ignore unknown fields) and surface version mismatches.
+- The API schema is exported offline via `herdr api schema --json` (JSON Schema 2020-12, ~85 methods). Its `$ref` paths are non-standard nested (`#/schemas/request/$defs/X`) — preprocess before feeding codegen tools. 26 event kinds are subscribable but only 3 have typed payloads; verify others empirically.
+- SSH exec channels are session channels, capped by sshd's `MaxSessions` (default 10) per connection. All RPC traffic must go through a request queue that bounds concurrency.
+- `herdr agent attach` requires a TTY (ratatui). It works over an exec channel only when a PTY is requested.
+- Default remote socket: `~/.config/herdr/herdr.sock`; named sessions live under `~/.config/herdr/sessions/<name>/herdr.sock`. Resolve `$HOME` over exec once per host.
+- If the herdr server is not running, connecting to the socket fails outright; there is no auto-start on the socket path. Fallback: run a herdr CLI command over exec (verify auto-spawn behavior — open question).
+
+## Conventions
+
+- Swift 6 strict concurrency. No force unwraps or `try!` outside tests.
+- Secrets never leave the Keychain; private keys are generated on device (CryptoKit Ed25519) where possible. Host key policy is TOFU with fingerprint confirmation.
+- Pin Citadel exactly in `Package.resolved` and review updates: Citadel 0.12.1 depends on a third-party fork of swift-nio-ssh (Wellz26), not Apple's repo.
+- Tracker is GitHub issues in this repo (`gh issue ...`). Reference issues from commits with `refs #<n>`.
+- Update `CONTEXT.md` when domain terms change; add an ADR only for hard-to-reverse, surprising trade-offs.
