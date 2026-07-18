@@ -71,7 +71,7 @@ final class HostStore {
 
     /// Keychain account for a Host's password; shared with
     /// `HostCredentialsProvider` so lookup and storage cannot drift.
-    static func passwordAccount(for id: Host.ID) -> String {
+    nonisolated static func passwordAccount(for id: Host.ID) -> String {
         "host-password-\(id.uuidString)"
     }
 
