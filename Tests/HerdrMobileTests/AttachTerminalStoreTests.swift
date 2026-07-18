@@ -185,6 +185,45 @@ struct AttachTerminalStoreTests {
         #expect(store.status == .stopped)
     }
 
+    @Test func stopIsIdempotentAcrossDetachAndBackstopPaths() async throws {
+        // The Detach button stops before dismissing; the cover's onDisappear
+        // backstop then stops again. The first stop must end the session for
+        // real, the second must be a harmless no-op.
+        let transport = ScriptedTransport()
+        let (store, _) = makeStore(transport: transport)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("store should go live") { store.status == .live }
+
+        await store.stop()
+        #expect(store.status == .stopped)
+        #expect(await transport.hasLiveAttachSession == false)
+
+        await store.stop()
+        #expect(store.status == .stopped)
+        #expect(await transport.attachRequests.count == 1)
+        #expect(await transport.hasLiveAttachSession == false)
+    }
+
+    @Test func concurrentStopsFromDetachAndBackstopBothComplete() async throws {
+        // The two paths can overlap (the backstop fires while the Detach
+        // stop is still awaiting teardown); both must complete and the
+        // session must be gone.
+        let transport = ScriptedTransport()
+        let (store, _) = makeStore(transport: transport)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("store should go live") { store.status == .live }
+
+        async let detachStop: Void = store.stop()
+        async let backstopStop: Void = store.stop()
+        _ = await (detachStop, backstopStop)
+
+        #expect(store.status == .stopped)
+        #expect(await transport.hasLiveAttachSession == false)
+        #expect(await transport.attachRequests.count == 1)
+    }
+
     @Test func resizeRacingThePendingOpenIsForwardedOnceLive() async throws {
         // The view can resize (keyboard, rotation) while the channel is
         // still coming up; the session must end up at the latest geometry.

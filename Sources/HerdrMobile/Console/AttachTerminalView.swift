@@ -37,6 +37,14 @@ struct AttachTerminalView: View {
                     }
                 }
             }
+            .onDisappear {
+                // Backstop for dismissals that bypass Detach (e.g. the
+                // presenting screen being torn down takes the cover with it,
+                // handler uninvoked): the attach channel must never outlive
+                // this surface. Idempotent with the Detach path — a second
+                // stop() is a no-op.
+                Task { await store.stop() }
+            }
         }
     }
 
