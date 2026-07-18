@@ -1,0 +1,625 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		05A6F31F9CAC1CA1C57D7C71 /* DeviceKeyStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8323C68B13826B7388800B1F /* DeviceKeyStoreTests.swift */; };
+		0700F97FBF6A714C5D9EA5CD /* ColdStartE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 646861C32DDA14D63389C518 /* ColdStartE2ETests.swift */; };
+		073427C275CFEDBD5D3176DC /* SSHTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B1C4EC65B71F33394E7DA9F /* SSHTransport.swift */; };
+		0A0657501E1164D7672A8B39 /* InMemorySecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B106E427EE5358088B615CE /* InMemorySecretStore.swift */; };
+		1302E0DD26A3F6C629A753D8 /* HostKeyPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = CADA0E8C1DC6D30FCC6CEDC2 /* HostKeyPolicy.swift */; };
+		1BAA5950B7FDE0E6F09811F9 /* DeviceKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC995A571D7659F3307B6E54 /* DeviceKey.swift */; };
+		1BBEEF5478D91222F48C2048 /* ReconnectPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B66B41C393D38FA09388E3E2 /* ReconnectPolicyTests.swift */; };
+		1F4B065DFCAF8E6656600F1E /* TOFUHostKeyValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC1CA00EE3CB38A822FEA4B2 /* TOFUHostKeyValidator.swift */; };
+		298FA49167E3CB1402B7B86B /* DeviceKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D04EAA030D8329A1716714A8 /* DeviceKeyStore.swift */; };
+		2C5A21065C48B7C40AE9A760 /* KnownHostsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87B0377EAC5265E7A6FCD212 /* KnownHostsStoreTests.swift */; };
+		3DC1B4DCC0E2CD73A0C13B64 /* SSHAuthE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BE2EC235A2ACCB61A98881E /* SSHAuthE2ETests.swift */; };
+		49CDAC5FE4566D912F72FFCA /* Transport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 259E51D58B1094AC5B389EDA /* Transport.swift */; };
+		4C80E23F09C8CFB3A93101B8 /* JSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E3E2308A50D4744A24A874B /* JSONValue.swift */; };
+		535C6AF099A43002029F2C2F /* HerdrSocketLocationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200BC80136A26B477439ACFA /* HerdrSocketLocationTests.swift */; };
+		5C41DBF68FFE6D2924709A5A /* SSHHostKeyE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5582E1837DE62FBC4C5DDC5A /* SSHHostKeyE2ETests.swift */; };
+		6680D1827A0A0E5A60BE44F8 /* SkeletonTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6FCFE74BB45C0D8B600FFD3 /* SkeletonTests.swift */; };
+		693B0173C07DAF4BFC89B094 /* SecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 567573855DCC8571BC02096D /* SecretStore.swift */; };
+		724AEEB52CDF4B28AFF8E3E5 /* HerdrWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6970DEB7C22EFDB1A26F6F9 /* HerdrWireTests.swift */; };
+		782980ECE8E7005A672D25A3 /* TransportFailureModesE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02807C329084D58137461EF8 /* TransportFailureModesE2ETests.swift */; };
+		8C514AFC85DAED69A4988C13 /* SSHCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90875ADAF6E348E186C8125A /* SSHCredentials.swift */; };
+		950D74A1B92239CDB2DDE5DC /* EventsSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C3ACB2A319C5C1298A29F3F /* EventsSession.swift */; };
+		969057C35F7E5F162B0CF41D /* JSONValueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17F86744BFAC66D732CE7833 /* JSONValueTests.swift */; };
+		A0C9B80A4139A6FA73261805 /* HerdrWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4FC9B455C6266F12DA82A07 /* HerdrWire.swift */; };
+		B6FE3517A821A081D9F6262C /* KnownHostsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C232163905675760F37FD7A0 /* KnownHostsStore.swift */; };
+		C174C223DBE1F1DD4085A2F8 /* UnixSockets.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCB59377D34D0C652DF70F01 /* UnixSockets.swift */; };
+		C60E8E0398665C36520DDA8E /* HerdrEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = CABFC5E35C19F809355619E7 /* HerdrEvents.swift */; };
+		C6C215AB0B03BCFD20CFF1C4 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = 03BEAFDD98C535CDCE9AE335 /* Citadel */; };
+		CDF8E14EC629CBD8F946FE05 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D95D580BCF4FE792AEFE974 /* ContentView.swift */; };
+		D6E9D6545089932306C4704F /* HostKeyFingerprint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CBE401E4A5FA5871809E540 /* HostKeyFingerprint.swift */; };
+		DC564E76486D243AD1741F7E /* SharedAsyncOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CE658EA3C6364BCC0D8CE14 /* SharedAsyncOperation.swift */; };
+		E23937EC4DC9148C2A7F8D18 /* TransportConcurrencyE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9EC4F17AFC933FBA45CCA09 /* TransportConcurrencyE2ETests.swift */; };
+		E30244FD0231DD02EC9978D0 /* EventsSubscribeE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4076B0E816625CD09EB29F2E /* EventsSubscribeE2ETests.swift */; };
+		E4CC508EF3C28A14A4EE2901 /* SSHTransportE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F62C94D6B84C468B0A4D991C /* SSHTransportE2ETests.swift */; };
+		E908289DF03C6732F7D91328 /* HerdrEventsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A696EC4D243B31D1B22C13F0 /* HerdrEventsTests.swift */; };
+		EB02A35634A4D6572637DEF4 /* HerdrMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78545B74736FD98DCA33B3C4 /* HerdrMobileApp.swift */; };
+		EF7F36C0E1C3ED3F6117B1EB /* FakeHerdrServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20B781425ADF5353CEEED6A1 /* FakeHerdrServer.swift */; };
+		F2CC5A27CA8B0623C486D9B2 /* LocalSSHTestEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 904FF6BF3E76BDFB2F76784D /* LocalSSHTestEnvironment.swift */; };
+		F62A9CD06CFB784550AF4977 /* DeviceKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 558159B2AF61C28F6B1391A2 /* DeviceKeyTests.swift */; };
+		FE4ADC78CA6113FFFBCEC693 /* EventsSessionE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9291334E33C85C7588F86281 /* EventsSessionE2ETests.swift */; };
+		FEDD78DD422954EEBA415E8E /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 1A747BD14B4EC28AE6E73458 /* SwiftTerm */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		E598AC0E82E1533AAB51919C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E7318A512AF22F69E093E6A6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0D343AAE6E2F9C2B803C9AE9;
+			remoteInfo = HerdrMobile;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		02807C329084D58137461EF8 /* TransportFailureModesE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportFailureModesE2ETests.swift; sourceTree = "<group>"; };
+		17F86744BFAC66D732CE7833 /* JSONValueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONValueTests.swift; sourceTree = "<group>"; };
+		1C3ACB2A319C5C1298A29F3F /* EventsSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsSession.swift; sourceTree = "<group>"; };
+		1CBE401E4A5FA5871809E540 /* HostKeyFingerprint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostKeyFingerprint.swift; sourceTree = "<group>"; };
+		1E3E2308A50D4744A24A874B /* JSONValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONValue.swift; sourceTree = "<group>"; };
+		200BC80136A26B477439ACFA /* HerdrSocketLocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrSocketLocationTests.swift; sourceTree = "<group>"; };
+		20B781425ADF5353CEEED6A1 /* FakeHerdrServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeHerdrServer.swift; sourceTree = "<group>"; };
+		259E51D58B1094AC5B389EDA /* Transport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transport.swift; sourceTree = "<group>"; };
+		3CE658EA3C6364BCC0D8CE14 /* SharedAsyncOperation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedAsyncOperation.swift; sourceTree = "<group>"; };
+		4076B0E816625CD09EB29F2E /* EventsSubscribeE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsSubscribeE2ETests.swift; sourceTree = "<group>"; };
+		558159B2AF61C28F6B1391A2 /* DeviceKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKeyTests.swift; sourceTree = "<group>"; };
+		5582E1837DE62FBC4C5DDC5A /* SSHHostKeyE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHHostKeyE2ETests.swift; sourceTree = "<group>"; };
+		567573855DCC8571BC02096D /* SecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretStore.swift; sourceTree = "<group>"; };
+		646861C32DDA14D63389C518 /* ColdStartE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColdStartE2ETests.swift; sourceTree = "<group>"; };
+		6BE2EC235A2ACCB61A98881E /* SSHAuthE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHAuthE2ETests.swift; sourceTree = "<group>"; };
+		78545B74736FD98DCA33B3C4 /* HerdrMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrMobileApp.swift; sourceTree = "<group>"; };
+		7B1C4EC65B71F33394E7DA9F /* SSHTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHTransport.swift; sourceTree = "<group>"; };
+		7D95D580BCF4FE792AEFE974 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		8323C68B13826B7388800B1F /* DeviceKeyStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKeyStoreTests.swift; sourceTree = "<group>"; };
+		87B0377EAC5265E7A6FCD212 /* KnownHostsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnownHostsStoreTests.swift; sourceTree = "<group>"; };
+		904FF6BF3E76BDFB2F76784D /* LocalSSHTestEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSSHTestEnvironment.swift; sourceTree = "<group>"; };
+		90875ADAF6E348E186C8125A /* SSHCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHCredentials.swift; sourceTree = "<group>"; };
+		9291334E33C85C7588F86281 /* EventsSessionE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsSessionE2ETests.swift; sourceTree = "<group>"; };
+		9B106E427EE5358088B615CE /* InMemorySecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InMemorySecretStore.swift; sourceTree = "<group>"; };
+		A696EC4D243B31D1B22C13F0 /* HerdrEventsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrEventsTests.swift; sourceTree = "<group>"; };
+		A9EC4F17AFC933FBA45CCA09 /* TransportConcurrencyE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportConcurrencyE2ETests.swift; sourceTree = "<group>"; };
+		B383994C2C8492694D5F3690 /* HerdrMobile.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HerdrMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B66B41C393D38FA09388E3E2 /* ReconnectPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReconnectPolicyTests.swift; sourceTree = "<group>"; };
+		BC1CA00EE3CB38A822FEA4B2 /* TOFUHostKeyValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOFUHostKeyValidator.swift; sourceTree = "<group>"; };
+		BC995A571D7659F3307B6E54 /* DeviceKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKey.swift; sourceTree = "<group>"; };
+		C232163905675760F37FD7A0 /* KnownHostsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnownHostsStore.swift; sourceTree = "<group>"; };
+		C6970DEB7C22EFDB1A26F6F9 /* HerdrWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrWireTests.swift; sourceTree = "<group>"; };
+		CABFC5E35C19F809355619E7 /* HerdrEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrEvents.swift; sourceTree = "<group>"; };
+		CADA0E8C1DC6D30FCC6CEDC2 /* HostKeyPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostKeyPolicy.swift; sourceTree = "<group>"; };
+		D04EAA030D8329A1716714A8 /* DeviceKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKeyStore.swift; sourceTree = "<group>"; };
+		D6FCFE74BB45C0D8B600FFD3 /* SkeletonTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonTests.swift; sourceTree = "<group>"; };
+		F3D159C84E98A59AA47EBE6C /* HerdrMobileTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HerdrMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F4FC9B455C6266F12DA82A07 /* HerdrWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrWire.swift; sourceTree = "<group>"; };
+		F62C94D6B84C468B0A4D991C /* SSHTransportE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHTransportE2ETests.swift; sourceTree = "<group>"; };
+		FCB59377D34D0C652DF70F01 /* UnixSockets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnixSockets.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		0E81AC9535C8CAB6E6C756D9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C6C215AB0B03BCFD20CFF1C4 /* Citadel in Frameworks */,
+				FEDD78DD422954EEBA415E8E /* SwiftTerm in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		41C75ABDF8DC22F0282957C5 /* Transport */ = {
+			isa = PBXGroup;
+			children = (
+				BC995A571D7659F3307B6E54 /* DeviceKey.swift */,
+				D04EAA030D8329A1716714A8 /* DeviceKeyStore.swift */,
+				1C3ACB2A319C5C1298A29F3F /* EventsSession.swift */,
+				CABFC5E35C19F809355619E7 /* HerdrEvents.swift */,
+				F4FC9B455C6266F12DA82A07 /* HerdrWire.swift */,
+				1CBE401E4A5FA5871809E540 /* HostKeyFingerprint.swift */,
+				CADA0E8C1DC6D30FCC6CEDC2 /* HostKeyPolicy.swift */,
+				1E3E2308A50D4744A24A874B /* JSONValue.swift */,
+				C232163905675760F37FD7A0 /* KnownHostsStore.swift */,
+				567573855DCC8571BC02096D /* SecretStore.swift */,
+				3CE658EA3C6364BCC0D8CE14 /* SharedAsyncOperation.swift */,
+				90875ADAF6E348E186C8125A /* SSHCredentials.swift */,
+				7B1C4EC65B71F33394E7DA9F /* SSHTransport.swift */,
+				BC1CA00EE3CB38A822FEA4B2 /* TOFUHostKeyValidator.swift */,
+				259E51D58B1094AC5B389EDA /* Transport.swift */,
+			);
+			path = Transport;
+			sourceTree = "<group>";
+		};
+		55902E0ABDF1F168FA193448 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B383994C2C8492694D5F3690 /* HerdrMobile.app */,
+				F3D159C84E98A59AA47EBE6C /* HerdrMobileTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		8474CB954CA9DE980DA822F2 /* HerdrMobileTests */ = {
+			isa = PBXGroup;
+			children = (
+				646861C32DDA14D63389C518 /* ColdStartE2ETests.swift */,
+				8323C68B13826B7388800B1F /* DeviceKeyStoreTests.swift */,
+				558159B2AF61C28F6B1391A2 /* DeviceKeyTests.swift */,
+				9291334E33C85C7588F86281 /* EventsSessionE2ETests.swift */,
+				4076B0E816625CD09EB29F2E /* EventsSubscribeE2ETests.swift */,
+				A696EC4D243B31D1B22C13F0 /* HerdrEventsTests.swift */,
+				200BC80136A26B477439ACFA /* HerdrSocketLocationTests.swift */,
+				C6970DEB7C22EFDB1A26F6F9 /* HerdrWireTests.swift */,
+				17F86744BFAC66D732CE7833 /* JSONValueTests.swift */,
+				87B0377EAC5265E7A6FCD212 /* KnownHostsStoreTests.swift */,
+				B66B41C393D38FA09388E3E2 /* ReconnectPolicyTests.swift */,
+				D6FCFE74BB45C0D8B600FFD3 /* SkeletonTests.swift */,
+				6BE2EC235A2ACCB61A98881E /* SSHAuthE2ETests.swift */,
+				5582E1837DE62FBC4C5DDC5A /* SSHHostKeyE2ETests.swift */,
+				F62C94D6B84C468B0A4D991C /* SSHTransportE2ETests.swift */,
+				A9EC4F17AFC933FBA45CCA09 /* TransportConcurrencyE2ETests.swift */,
+				02807C329084D58137461EF8 /* TransportFailureModesE2ETests.swift */,
+				CB45F25667AE3C5C2EFD76CB /* Support */,
+			);
+			path = HerdrMobileTests;
+			sourceTree = "<group>";
+		};
+		859D599DFA07BF9B6E1632DC /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				8474CB954CA9DE980DA822F2 /* HerdrMobileTests */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		92BF3289E67D5AE641333441 = {
+			isa = PBXGroup;
+			children = (
+				DCFD134B630B84B0F5FA6115 /* Sources */,
+				859D599DFA07BF9B6E1632DC /* Tests */,
+				55902E0ABDF1F168FA193448 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B5CBF3555504362CC1FFDFE5 /* HerdrMobile */ = {
+			isa = PBXGroup;
+			children = (
+				7D95D580BCF4FE792AEFE974 /* ContentView.swift */,
+				78545B74736FD98DCA33B3C4 /* HerdrMobileApp.swift */,
+				41C75ABDF8DC22F0282957C5 /* Transport */,
+			);
+			path = HerdrMobile;
+			sourceTree = "<group>";
+		};
+		CB45F25667AE3C5C2EFD76CB /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				20B781425ADF5353CEEED6A1 /* FakeHerdrServer.swift */,
+				9B106E427EE5358088B615CE /* InMemorySecretStore.swift */,
+				904FF6BF3E76BDFB2F76784D /* LocalSSHTestEnvironment.swift */,
+				FCB59377D34D0C652DF70F01 /* UnixSockets.swift */,
+			);
+			path = Support;
+			sourceTree = "<group>";
+		};
+		DCFD134B630B84B0F5FA6115 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				B5CBF3555504362CC1FFDFE5 /* HerdrMobile */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0D343AAE6E2F9C2B803C9AE9 /* HerdrMobile */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CEBFA8DB94A8EBC2E21D50C2 /* Build configuration list for PBXNativeTarget "HerdrMobile" */;
+			buildPhases = (
+				8A7F6144162C733E402E680E /* Sources */,
+				0E81AC9535C8CAB6E6C756D9 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HerdrMobile;
+			packageProductDependencies = (
+				03BEAFDD98C535CDCE9AE335 /* Citadel */,
+				1A747BD14B4EC28AE6E73458 /* SwiftTerm */,
+			);
+			productName = HerdrMobile;
+			productReference = B383994C2C8492694D5F3690 /* HerdrMobile.app */;
+			productType = "com.apple.product-type.application";
+		};
+		CC604196196FFA00A41E9CD7 /* HerdrMobileTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0D85695648C7ED60972632BD /* Build configuration list for PBXNativeTarget "HerdrMobileTests" */;
+			buildPhases = (
+				B4B9C6FCBEEBB72725BFF787 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				F6B76D58924DEA698DB1ACBF /* PBXTargetDependency */,
+			);
+			name = HerdrMobileTests;
+			packageProductDependencies = (
+			);
+			productName = HerdrMobileTests;
+			productReference = F3D159C84E98A59AA47EBE6C /* HerdrMobileTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		E7318A512AF22F69E093E6A6 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 8596E4CF7DAE6E1B5A35229D /* Build configuration list for PBXProject "HerdrMobile" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 92BF3289E67D5AE641333441;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A5BAC52972885D4D487901C1 /* XCRemoteSwiftPackageReference "Citadel" */,
+				EEB0F61C1AFE903B668B0AA0 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 55902E0ABDF1F168FA193448 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				0D343AAE6E2F9C2B803C9AE9 /* HerdrMobile */,
+				CC604196196FFA00A41E9CD7 /* HerdrMobileTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		8A7F6144162C733E402E680E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CDF8E14EC629CBD8F946FE05 /* ContentView.swift in Sources */,
+				1BAA5950B7FDE0E6F09811F9 /* DeviceKey.swift in Sources */,
+				298FA49167E3CB1402B7B86B /* DeviceKeyStore.swift in Sources */,
+				950D74A1B92239CDB2DDE5DC /* EventsSession.swift in Sources */,
+				C60E8E0398665C36520DDA8E /* HerdrEvents.swift in Sources */,
+				EB02A35634A4D6572637DEF4 /* HerdrMobileApp.swift in Sources */,
+				A0C9B80A4139A6FA73261805 /* HerdrWire.swift in Sources */,
+				D6E9D6545089932306C4704F /* HostKeyFingerprint.swift in Sources */,
+				1302E0DD26A3F6C629A753D8 /* HostKeyPolicy.swift in Sources */,
+				4C80E23F09C8CFB3A93101B8 /* JSONValue.swift in Sources */,
+				B6FE3517A821A081D9F6262C /* KnownHostsStore.swift in Sources */,
+				8C514AFC85DAED69A4988C13 /* SSHCredentials.swift in Sources */,
+				073427C275CFEDBD5D3176DC /* SSHTransport.swift in Sources */,
+				693B0173C07DAF4BFC89B094 /* SecretStore.swift in Sources */,
+				DC564E76486D243AD1741F7E /* SharedAsyncOperation.swift in Sources */,
+				1F4B065DFCAF8E6656600F1E /* TOFUHostKeyValidator.swift in Sources */,
+				49CDAC5FE4566D912F72FFCA /* Transport.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B4B9C6FCBEEBB72725BFF787 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0700F97FBF6A714C5D9EA5CD /* ColdStartE2ETests.swift in Sources */,
+				05A6F31F9CAC1CA1C57D7C71 /* DeviceKeyStoreTests.swift in Sources */,
+				F62A9CD06CFB784550AF4977 /* DeviceKeyTests.swift in Sources */,
+				FE4ADC78CA6113FFFBCEC693 /* EventsSessionE2ETests.swift in Sources */,
+				E30244FD0231DD02EC9978D0 /* EventsSubscribeE2ETests.swift in Sources */,
+				EF7F36C0E1C3ED3F6117B1EB /* FakeHerdrServer.swift in Sources */,
+				E908289DF03C6732F7D91328 /* HerdrEventsTests.swift in Sources */,
+				535C6AF099A43002029F2C2F /* HerdrSocketLocationTests.swift in Sources */,
+				724AEEB52CDF4B28AFF8E3E5 /* HerdrWireTests.swift in Sources */,
+				0A0657501E1164D7672A8B39 /* InMemorySecretStore.swift in Sources */,
+				969057C35F7E5F162B0CF41D /* JSONValueTests.swift in Sources */,
+				2C5A21065C48B7C40AE9A760 /* KnownHostsStoreTests.swift in Sources */,
+				F2CC5A27CA8B0623C486D9B2 /* LocalSSHTestEnvironment.swift in Sources */,
+				1BBEEF5478D91222F48C2048 /* ReconnectPolicyTests.swift in Sources */,
+				3DC1B4DCC0E2CD73A0C13B64 /* SSHAuthE2ETests.swift in Sources */,
+				5C41DBF68FFE6D2924709A5A /* SSHHostKeyE2ETests.swift in Sources */,
+				E4CC508EF3C28A14A4EE2901 /* SSHTransportE2ETests.swift in Sources */,
+				6680D1827A0A0E5A60BE44F8 /* SkeletonTests.swift in Sources */,
+				E23937EC4DC9148C2A7F8D18 /* TransportConcurrencyE2ETests.swift in Sources */,
+				782980ECE8E7005A672D25A3 /* TransportFailureModesE2ETests.swift in Sources */,
+				C174C223DBE1F1DD4085A2F8 /* UnixSockets.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		F6B76D58924DEA698DB1ACBF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0D343AAE6E2F9C2B803C9AE9 /* HerdrMobile */;
+			targetProxy = E598AC0E82E1533AAB51919C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		44F2EFDD3DBF37B52E264995 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.herdr.mobile.HerdrMobile;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		53AD5580C6657F0EFAD79F4F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.herdr.mobile.HerdrMobileTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HerdrMobile.app/HerdrMobile";
+			};
+			name = Release;
+		};
+		7FA6A216EE1007A7FC5139CC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.herdr.mobile.HerdrMobile;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		870F49BB47917D0F9EC01A11 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		A48F0E727B4C1F97FD9DCB96 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.herdr.mobile.HerdrMobileTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HerdrMobile.app/HerdrMobile";
+			};
+			name = Debug;
+		};
+		DE5246CC93E8C961BEC3D4D6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0D85695648C7ED60972632BD /* Build configuration list for PBXNativeTarget "HerdrMobileTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A48F0E727B4C1F97FD9DCB96 /* Debug */,
+				53AD5580C6657F0EFAD79F4F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		8596E4CF7DAE6E1B5A35229D /* Build configuration list for PBXProject "HerdrMobile" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				870F49BB47917D0F9EC01A11 /* Debug */,
+				DE5246CC93E8C961BEC3D4D6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		CEBFA8DB94A8EBC2E21D50C2 /* Build configuration list for PBXNativeTarget "HerdrMobile" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7FA6A216EE1007A7FC5139CC /* Debug */,
+				44F2EFDD3DBF37B52E264995 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A5BAC52972885D4D487901C1 /* XCRemoteSwiftPackageReference "Citadel" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/orlandos-nl/Citadel.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.12.1;
+			};
+		};
+		EEB0F61C1AFE903B668B0AA0 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm.git";
+			requirement = {
+				kind = versionRange;
+				maximumVersion = 2.0.0;
+				minimumVersion = 1.2.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		03BEAFDD98C535CDCE9AE335 /* Citadel */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A5BAC52972885D4D487901C1 /* XCRemoteSwiftPackageReference "Citadel" */;
+			productName = Citadel;
+		};
+		1A747BD14B4EC28AE6E73458 /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = EEB0F61C1AFE903B668B0AA0 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			productName = SwiftTerm;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = E7318A512AF22F69E093E6A6 /* Project object */;
+}
