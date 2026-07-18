@@ -1,12 +1,32 @@
 import SwiftUI
 
-/// Root view: Host management (#14) for now. The flat Console agent list
-/// (#8) takes over as root once it exists; Hosts then move behind it.
+/// Root view: the Console (#8), with Host management (#14) behind it. Scene
+/// phase drives the events sessions' suspend/resume (spec #20): background
+/// tears connections down deliberately, foreground re-syncs.
 struct ContentView: View {
     @State private var hostStore = HostStore()
+    @State private var console = ConsoleStore()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        HostListView(store: hostStore)
+        ConsoleView(hosts: hostStore, console: console)
+            .task {
+                console.setHosts(hostStore.hosts)
+                await console.resume()
+            }
+            .onChange(of: hostStore.hosts) {
+                console.setHosts(hostStore.hosts)
+            }
+            .onChange(of: scenePhase) {
+                switch scenePhase {
+                case .active:
+                    Task { await console.resume() }
+                case .background:
+                    Task { await console.suspend() }
+                default:
+                    break
+                }
+            }
     }
 }
 
