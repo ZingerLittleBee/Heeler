@@ -3,10 +3,10 @@ import SwiftUI
 import UIKit
 
 /// The shared SwiftTerm surface: Observe (#9) renders it read-only, Attach
-/// (#11) will drive the same view with `allowsInput` and `onSend` wired.
-/// Bytes arrive through a `TerminalByteFeed`; geometry flows out through
-/// `onSizeChanged` so the store can (re)start the remote stream with the
-/// real cols/rows.
+/// (#11) drives the same view with `allowsInput` and `onSend` wired. Bytes
+/// arrive through a `TerminalByteFeed`; geometry flows out through
+/// `onSizeChanged` so the store can start (or resize) the remote stream with
+/// the real cols/rows.
 struct TerminalScreenView: UIViewRepresentable {
     let feed: TerminalByteFeed
     var allowsInput = false
@@ -39,7 +39,9 @@ struct TerminalScreenView: UIViewRepresentable {
     }
 
     /// SwiftTerm's delegate protocol is not actor-annotated but the view
-    /// only calls it on the main thread; the nonisolated shims hop back in.
+    /// only calls it on the main thread (a UIView driving UIKit callbacks);
+    /// the nonisolated shims hop back in via `assumeIsolated`, which traps —
+    /// loudly, by design — if SwiftTerm ever grows an off-main call site.
     @MainActor
     final class Coordinator: TerminalViewDelegate {
         var onSizeChanged: ((Int, Int) -> Void)?
@@ -69,11 +71,12 @@ struct TerminalScreenView: UIViewRepresentable {
     }
 }
 
-/// TerminalView with two app-side behaviors: input is opt-in (read-only
-/// Observe must never pop a keyboard), and the current cols/rows are
-/// reported from layout — the stock view only reports *changes*, which
-/// would leave a store waiting forever when the laid-out size happens to
-/// equal SwiftTerm's 80x25 default.
+/// TerminalView with three app-side behaviors: input is opt-in (read-only
+/// Observe must never pop a keyboard) and grabs focus on appearance so both
+/// the soft keyboard and iPad hardware keyboards work without a preliminary
+/// tap, and the current cols/rows are reported from layout — the stock view
+/// only reports *changes*, which would leave a store waiting forever when
+/// the laid-out size happens to equal SwiftTerm's 80x25 default.
 final class SizeReportingTerminalView: TerminalView {
     var allowsInput = false
     var onSizeReport: ((_ cols: Int, _ rows: Int) -> Void)?
@@ -83,12 +86,19 @@ final class SizeReportingTerminalView: TerminalView {
         allowsInput && super.canBecomeFirstResponder
     }
 
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil, allowsInput {
+            _ = becomeFirstResponder()
+        }
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         guard bounds.width > 0, bounds.height > 0 else { return }
         let terminal = getTerminal()
         let size = (cols: terminal.cols, rows: terminal.rows)
-        guard lastReported == nil || lastReported! != size else { return }
+        if let lastReported, lastReported == size { return }
         lastReported = size
         onSizeReport?(size.cols, size.rows)
     }

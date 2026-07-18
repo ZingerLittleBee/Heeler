@@ -157,3 +157,8 @@ final class AttachTerminalStore {
         }
     }
 }
+
+/// Object identity (the default `id` for classes) is the full-screen-cover
+/// presentation identity: every Observe -> Attach handover mints a fresh
+/// store.
+extension AttachTerminalStore: Identifiable {}

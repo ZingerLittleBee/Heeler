@@ -2,16 +2,21 @@ import SwiftUI
 
 /// The Agent detail screen (#9, #10): scrollback plus live output in a real
 /// terminal, read-only (Observe semantics per CONTEXT.md), with a native
-/// input bar below it (#10) for answering a Blocked agent without Attach.
-/// The full interactive Attach terminal arrives with #11.
+/// input bar below it (#10) for answering a Blocked agent without Attach,
+/// and the full interactive Attach terminal (#11) behind the toolbar button.
 struct AgentDetailView: View {
     let agent: ConsoleAgent
+    /// Kept for the Observe/Attach handover: fresh stores are minted per
+    /// surface switch, all sharing this provider.
+    private let transport: @Sendable () async -> (any Transport)?
     @State private var store: ObserveTerminalStore
     @State private var input: AgentInputStore
+    @State private var attach: AttachTerminalStore?
 
     init(agent: ConsoleAgent, console: ConsoleStore) {
         self.agent = agent
         let transport = console.transportProvider(for: agent.hostID)
+        self.transport = transport
         _store = State(
             initialValue: ObserveTerminalStore(
                 target: agent.agent.paneID, transport: transport))
@@ -25,6 +30,9 @@ struct AgentDetailView: View {
             TerminalScreenView(feed: store.feed) { cols, rows in
                 store.viewDidResize(cols: cols, rows: rows)
             }
+            // Keyed on the store: resuming Observe after Attach mints a
+            // fresh store, whose feed must get a freshly attached view.
+            .id(ObjectIdentifier(store))
             .overlay { statusOverlay }
 
             AgentInputBar(store: input)
@@ -35,12 +43,40 @@ struct AgentDetailView: View {
             ToolbarItem(placement: .primaryAction) {
                 AgentStatusBadge(status: agent.agent.status)
             }
+            ToolbarItem(placement: .primaryAction) {
+                Button("Attach", systemImage: "keyboard") {
+                    openAttach()
+                }
+            }
+        }
+        .fullScreenCover(item: $attach, onDismiss: resumeObserve) { attachStore in
+            AttachTerminalView(store: attachStore, title: title)
         }
         .onDisappear {
             // Explicit close, never abandonment: a live exec channel ignores
             // task cancellation (ADR 0002).
             Task { await store.stop() }
         }
+    }
+
+    /// Observe -> Attach handover: the two surfaces share the Host's single
+    /// terminal channel, so Observe must be fully stopped (channel torn
+    /// down) before the Attach screen appears and opens its own.
+    private func openAttach() {
+        let observe = store
+        let attachStore = AttachTerminalStore(target: agent.agent.paneID, transport: transport)
+        Task {
+            await observe.stop()
+            attach = attachStore
+        }
+    }
+
+    /// Attach -> Observe handover, after the cover is dismissed (its Detach
+    /// button stops the session before dismissing). `stop()` is terminal, so
+    /// resuming means a fresh store; the `.id` above rebuilds the terminal
+    /// view around it.
+    private func resumeObserve() {
+        store = ObserveTerminalStore(target: agent.agent.paneID, transport: transport)
     }
 
     @ViewBuilder
