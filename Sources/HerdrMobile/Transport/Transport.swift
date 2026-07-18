@@ -83,11 +83,30 @@ struct Agent: Sendable, Equatable, Decodable {
     }
 }
 
-/// Transport-level failures. This is the tracer-bullet subset; the full error
-/// taxonomy (socat missing, socket absent, server down, ...) is #17.
+/// Transport-level failures: a closed taxonomy so every screen maps errors to
+/// user guidance consistently instead of string-matching. `timedOut` and
+/// `cancelled` exist as cases now; their enforcement machinery (request
+/// queue, per-request deadline) is #5.
 enum TransportError: Error, Sendable, Equatable {
+    /// The herdr API socket path does not exist on the Host: herdr is not
+    /// installed there, or the socket path is wrong.
+    case socketNotFound(path: String)
+    /// The socket file exists but nothing accepts connections: the herdr
+    /// server is not running (cold-start wake is #6).
+    case serverNotRunning(path: String)
+    /// socat is not at its configured absolute path on the Host.
+    case socatMissing(path: String)
+    /// The server speaks a herdr protocol version this build does not support.
     case protocolVersionMismatch(server: Int, supported: Int)
+    /// The request exceeded its deadline.
+    case timedOut
+    /// The request was cancelled before completing.
+    case cancelled
+    /// The channel produced bytes that do not decode as a herdr response.
     case malformedResponse(String)
+    /// The exec channel failed outside the known failure shapes; carries the
+    /// underlying description for diagnostics.
+    case channelFailed(detail: String)
 }
 
 /// An error returned by the herdr server inside a response envelope.

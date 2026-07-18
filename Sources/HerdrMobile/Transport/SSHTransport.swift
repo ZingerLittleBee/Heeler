@@ -84,15 +84,64 @@ actor SSHTransport: Transport {
         let requestID = UUID().uuidString
         let line = try HerdrWire.requestLine(id: requestID, method: method)
         var stdout = Data()
-        try await client.withExec("\(socatPath) - UNIX-CONNECT:\(socketPath)") {
-            inbound, outbound in
-            try await outbound.write(ByteBuffer(string: line))
-            for try await chunk in inbound {
-                guard case .stdout(let buffer) = chunk else { continue }
-                stdout.append(contentsOf: buffer.readableBytesView)
-                if stdout.contains(0x0A) { return }
+        var stderr = Data()
+        do {
+            try await client.withExec("\(socatPath) - UNIX-CONNECT:\(socketPath)") {
+                inbound, outbound in
+                // A fast-failing command (socat missing, socket absent) can
+                // close the channel before this write lands; the read loop
+                // below still drains stderr and surfaces the real failure.
+                try? await outbound.write(ByteBuffer(string: line))
+                for try await chunk in inbound {
+                    switch chunk {
+                    case .stdout(let buffer):
+                        stdout.append(contentsOf: buffer.readableBytesView)
+                        if stdout.contains(0x0A) { return }
+                    case .stderr(let buffer):
+                        stderr.append(contentsOf: buffer.readableBytesView)
+                    }
+                }
             }
+        } catch is CancellationError {
+            throw TransportError.cancelled
+        } catch {
+            throw classifyExecFailure(stderr: stderr)
+                ?? TransportError.channelFailed(
+                    detail: "\(method): \(error); stderr: \(Self.preview(stderr))")
+        }
+        if !stdout.contains(0x0A), let failure = classifyExecFailure(stderr: stderr) {
+            throw failure
         }
         return try HerdrWire.decodeResult(type, fromResponseLine: stdout, requestID: requestID)
+    }
+
+    /// Maps the observable failure shapes (verified against herdr 0.7.4 in
+    /// the #3 spike) onto taxonomy cases:
+    /// - missing socket:  socat stderr `E connect(... "<sock>" ...): No such file or directory`
+    /// - stale socket:    socat stderr `E connect(... "<sock>" ...): Connection refused`
+    /// - socat missing:   login-shell stderr naming the socat path
+    ///
+    /// socat connect diagnostics are keyed on their `E connect` marker plus
+    /// the quoted socket path: shells like fish echo the whole failing
+    /// command line (which contains both paths), so path presence alone
+    /// cannot distinguish the shapes.
+    private func classifyExecFailure(stderr: Data) -> TransportError? {
+        let text = String(decoding: stderr, as: UTF8.self)
+        if text.contains("E connect"), text.contains("\"\(socketPath)\"") {
+            if text.contains("No such file or directory") {
+                return .socketNotFound(path: socketPath)
+            }
+            if text.contains("Connection refused") {
+                return .serverNotRunning(path: socketPath)
+            }
+        }
+        if text.contains(socatPath) {
+            return .socatMissing(path: socatPath)
+        }
+        return nil
+    }
+
+    private static func preview(_ stderr: Data) -> String {
+        String(decoding: stderr.prefix(200), as: UTF8.self)
     }
 }

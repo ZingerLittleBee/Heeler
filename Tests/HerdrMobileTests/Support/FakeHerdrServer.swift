@@ -52,19 +52,7 @@ final class FakeHerdrServer: Sendable {
         guard fd >= 0 else { throw ServerError.socketSetupFailed(step: "socket", errno: errno) }
         unlink(socketPath)
 
-        var address = sockaddr_un()
-        address.sun_family = sa_family_t(AF_UNIX)
-        let pathBytes = socketPath.utf8CString
-        precondition(pathBytes.count <= MemoryLayout.size(ofValue: address.sun_path))
-        withUnsafeMutableBytes(of: &address.sun_path) { destination in
-            pathBytes.withUnsafeBytes { destination.copyMemory(from: $0) }
-        }
-
-        let bindResult = withUnsafePointer(to: &address) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
-            }
-        }
+        let bindResult = UnixSockets.withSockaddr(path: socketPath) { bind(fd, $0, $1) }
         guard bindResult == 0 else {
             close(fd)
             throw ServerError.socketSetupFailed(step: "bind", errno: errno)
@@ -101,17 +89,7 @@ final class FakeHerdrServer: Sendable {
 
         let wakeFD = socket(AF_UNIX, SOCK_STREAM, 0)
         if wakeFD >= 0 {
-            var address = sockaddr_un()
-            address.sun_family = sa_family_t(AF_UNIX)
-            let pathBytes = socketPath.utf8CString
-            withUnsafeMutableBytes(of: &address.sun_path) { destination in
-                pathBytes.withUnsafeBytes { destination.copyMemory(from: $0) }
-            }
-            _ = withUnsafePointer(to: &address) {
-                $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                    connect(wakeFD, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
-                }
-            }
+            _ = UnixSockets.withSockaddr(path: socketPath) { connect(wakeFD, $0, $1) }
             close(wakeFD)
         }
         close(listenerFD)
