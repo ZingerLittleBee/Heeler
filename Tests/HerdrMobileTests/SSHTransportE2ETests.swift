@@ -101,6 +101,36 @@ struct SSHTransportE2ETests {
         }
     }
 
+    @Test func agentSendRoundTripsItsParams() async throws {
+        // The message box (#10): agent.send carries the reply to a Blocked
+        // agent, targeted by pane id, answered with the bare `ok` envelope.
+        try await withTransport { request in
+            [#"{"id":"\#(request.id)","result":{"type":"ok"}}"#]
+        } body: { transport, server in
+            try await transport.sendToAgent(
+                AgentSendParams(target: "w1:p1", text: "yes, proceed"))
+
+            let request = try #require(server.receivedRequests.first)
+            #expect(request.method == "agent.send")
+            #expect(request.params == #"{"target":"w1:p1","text":"yes, proceed"}"#)
+        }
+    }
+
+    @Test func sendKeysRoundTripsItsParams() async throws {
+        // The quick-key bar (#10): pane.send_keys carries herdr's own key
+        // spellings (verified against herdr 0.7.4), answered with `ok`.
+        try await withTransport { request in
+            [#"{"id":"\#(request.id)","result":{"type":"ok"}}"#]
+        } body: { transport, server in
+            try await transport.sendKeys(
+                PaneSendKeysParams(keys: ["ctrl+c", "enter"], paneID: "w1:p1"))
+
+            let request = try #require(server.receivedRequests.first)
+            #expect(request.method == "pane.send_keys")
+            #expect(request.params == #"{"keys":["ctrl+c","enter"],"pane_id":"w1:p1"}"#)
+        }
+    }
+
     @Test func serverErrorSurfacesAsHerdrAPIError() async throws {
         try await withTransport { request in
             [#"{"id":"\#(request.id)","error":{"code":500,"message":"scripted failure"}}"#]

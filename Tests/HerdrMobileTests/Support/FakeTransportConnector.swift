@@ -37,6 +37,14 @@ final actor FakeTransport: Transport {
         throw TransportError.channelFailed(detail: "FakeTransport does not script observe")
     }
 
+    func sendToAgent(_ params: AgentSendParams) async throws {
+        throw TransportError.channelFailed(detail: "FakeTransport does not script sends")
+    }
+
+    func sendKeys(_ params: PaneSendKeysParams) async throws {
+        throw TransportError.channelFailed(detail: "FakeTransport does not script sends")
+    }
+
     var isConnected: Bool {
         !isClosed
     }

@@ -422,6 +422,14 @@ struct EventsSessionE2ETests {
             try await inner.observeTerminal(request)
         }
 
+        func sendToAgent(_ params: AgentSendParams) async throws {
+            try await inner.sendToAgent(params)
+        }
+
+        func sendKeys(_ params: PaneSendKeysParams) async throws {
+            try await inner.sendKeys(params)
+        }
+
         func close() async throws {
             closeEntered.open()
             await closeRelease.waitUntilOpen()

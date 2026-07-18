@@ -219,6 +219,14 @@ actor SSHTransport: Transport {
             .read
     }
 
+    func sendToAgent(_ params: AgentSendParams) async throws {
+        _ = try await request(method: "agent.send", params: params, decoding: OkResponse.self)
+    }
+
+    func sendKeys(_ params: PaneSendKeysParams) async throws {
+        _ = try await request(method: "pane.send_keys", params: params, decoding: OkResponse.self)
+    }
+
     // MARK: Events channel (#4)
     //
     // One dedicated long-lived exec+socat channel per Host holds the

@@ -19,6 +19,20 @@ protocol Transport: Sendable {
     /// source (`source: .recent`, ANSI stripped) and the Observe backfill.
     func readPane(_ params: PaneReadParams) async throws -> PaneReadResult
 
+    /// Delivers a typed message to an Agent (`agent.send`): the detail
+    /// screen's message box (#10, User Story 6 — answering a Blocked agent
+    /// without Attach). herdr's agent-aware send, targeted by the Agent's
+    /// pane id. Returns once the server acknowledges; the effect shows up on
+    /// the Observe stream.
+    func sendToAgent(_ params: AgentSendParams) async throws
+
+    /// Sends control keys to a Pane (`pane.send_keys`): the detail screen's
+    /// quick-key bar (Enter/Esc/Ctrl-C/arrows/y-n, #10). Key names are
+    /// herdr's own spellings — verified empirically against herdr 0.7.4:
+    /// `enter`, `esc`, `ctrl+c`, `up`/`down`/`left`/`right`, `y`, `n` (herdr
+    /// rejects e.g. `ctrl-c` with `invalid_key`).
+    func sendKeys(_ params: PaneSendKeysParams) async throws
+
     /// Opens this Host's dedicated long-lived events channel and subscribes.
     /// Returns once the server acknowledges the subscription; the stream then
     /// carries events in canonical naming until `end()` closes the channel

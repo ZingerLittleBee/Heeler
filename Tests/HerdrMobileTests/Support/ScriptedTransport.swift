@@ -11,6 +11,13 @@ final actor ScriptedTransport: Transport {
     /// resubscribe-on-membership-change behavior asserts on this.
     private(set) var capturedSubscriptions: [[EventSubscription]] = []
     private(set) var paneReadParams: [PaneReadParams] = []
+    /// Every message sent through `agent.send`, in order; the input store's
+    /// message-box behavior asserts on this.
+    private(set) var agentSends: [AgentSendParams] = []
+    /// Every key batch sent through `pane.send_keys`, in order; the input
+    /// store's quick-key behavior asserts on this.
+    private(set) var sentKeys: [PaneSendKeysParams] = []
+    private var sendFailure: TransportError?
     private(set) var snapshotFetchCount = 0
     /// Every observe request received, in order; the Observe store's
     /// restart-on-resize/gap behavior asserts on this.
@@ -50,6 +57,11 @@ final actor ScriptedTransport: Transport {
     /// Makes every subsequent `readPane` throw `failure`.
     func setPaneReadFailure(_ failure: TransportError?) {
         paneReadFailure = failure
+    }
+
+    /// Makes every subsequent `sendToAgent`/`sendKeys` throw `failure`.
+    func setSendFailure(_ failure: TransportError?) {
+        sendFailure = failure
     }
 
     /// Pushes one event onto the live stream; false if none is live.
@@ -113,6 +125,16 @@ final actor ScriptedTransport: Transport {
             format: .text, paneID: params.paneID, revision: 0,
             source: params.source, tabID: "t", text: paneTexts[params.paneID] ?? "",
             truncated: false, workspaceID: "w")
+    }
+
+    func sendToAgent(_ params: AgentSendParams) async throws {
+        if let sendFailure { throw sendFailure }
+        agentSends.append(params)
+    }
+
+    func sendKeys(_ params: PaneSendKeysParams) async throws {
+        if let sendFailure { throw sendFailure }
+        sentKeys.append(params)
     }
 
     func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream {
