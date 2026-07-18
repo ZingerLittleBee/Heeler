@@ -113,6 +113,10 @@ final class ObserveTerminalStore {
                 await backfillScrollback(transport: transport)
                 if stopRequested { return }
             }
+            // The stream below opens with the latest geometry, satisfying
+            // any restart requested while no stream was live; a resize
+            // racing past this point is caught by the post-live dims check.
+            restartRequested = false
             guard let cols, let rows else { return }
             let stream: TerminalFrameStream
             do {

@@ -10,6 +10,18 @@ struct ConsoleView: View {
     var body: some View {
         NavigationStack {
             content
+                // On the always-present node, not the List branch: the
+                // destination must survive the list emptying while an
+                // Agent detail screen is pushed.
+                .navigationDestination(for: ConsoleAgent.ID.self) { id in
+                    if let agent = console.agents.first(where: { $0.id == id }) {
+                        AgentDetailView(agent: agent, console: console)
+                    } else {
+                        ContentUnavailableView(
+                            "Agent Gone", systemImage: "rectangle.on.rectangle.slash",
+                            description: Text("This Agent's pane is no longer reported."))
+                    }
+                }
                 .navigationTitle("Console")
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
@@ -56,17 +68,6 @@ struct ConsoleView: View {
                 }
             }
             .listStyle(.plain)
-            .navigationDestination(for: ConsoleAgent.ID.self) { id in
-                // Looked up live so the toolbar status stays current; the
-                // pane closing while open collapses to the empty state.
-                if let agent = console.agents.first(where: { $0.id == id }) {
-                    AgentDetailView(agent: agent, console: console)
-                } else {
-                    ContentUnavailableView(
-                        "Agent Gone", systemImage: "rectangle.on.rectangle.slash",
-                        description: Text("This Agent's pane is no longer reported."))
-                }
-            }
         }
     }
 
