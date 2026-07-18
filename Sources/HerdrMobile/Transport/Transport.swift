@@ -51,6 +51,14 @@ protocol Transport: Sendable {
     /// is live throws `.terminalChannelAlreadyOpen`.
     func observeTerminal(_ request: TerminalObserveRequest) async throws -> TerminalFrameStream
 
+    /// Opens this Host's dedicated terminal channel as a full interactive
+    /// Attach (#11): a PTY running `herdr agent attach`, raw bytes both ways
+    /// until `end()` closes the channel explicitly. Attach and Observe share
+    /// the one terminal channel per Host — the session slot budgeted for the
+    /// terminal surface — so a call while either is live throws
+    /// `.terminalChannelAlreadyOpen`; the UI hands over explicitly.
+    func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession
+
     /// Whether the underlying connection to the Host is still alive. The
     /// reconnect machinery (#18) decides "re-subscribe on this connection or
     /// re-establish it" from this flag.

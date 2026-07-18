@@ -4,6 +4,7 @@
 @preconcurrency import Citadel
 import Foundation
 import NIOCore
+@preconcurrency import NIOSSH
 
 /// How to reach one Host, authenticate against it, and find its herdr socket.
 struct SSHTransportSettings: Sendable {
@@ -35,6 +36,13 @@ struct SSHTransportSettings: Sendable {
     /// frame-emitting script at the environment boundary; per-Host override
     /// also covers hosts where herdr is not on the login shell's PATH.
     var observeCommand: String = "herdr terminal session observe"
+    /// Command that attaches interactively to a Pane, run on the Host's
+    /// dedicated terminal channel with a PTY (#11); the attach target and
+    /// takeover flag are appended (see `attachBootstrapLine`). Injectable so
+    /// tests can substitute a script at the environment boundary; per-Host
+    /// override also covers hosts where herdr is not on the login shell's
+    /// PATH.
+    var attachCommand: String = "herdr agent attach"
     /// Per-request deadline covering the queue wait and the exec exchange;
     /// on expiry the request fails with `.timedOut` and its channel is
     /// closed. Short in tests, generous by default: a hung host should
@@ -59,6 +67,7 @@ actor SSHTransport: Transport {
     private let socatPath: String
     private let wakeCommand: String
     private let observeCommand: String
+    private let attachCommand: String
     private let requestTimeout: Duration
     /// Remote home directory resolution, resolved over exec once per Host:
     /// concurrent first requests share one in-flight run, success is cached
@@ -140,13 +149,15 @@ actor SSHTransport: Transport {
 
     private init(
         client: SSHClient, socketLocation: HerdrSocketLocation, socatPath: String,
-        wakeCommand: String, observeCommand: String, requestTimeout: Duration
+        wakeCommand: String, observeCommand: String, attachCommand: String,
+        requestTimeout: Duration
     ) {
         self.client = client
         self.socketLocation = socketLocation
         self.socatPath = socatPath
         self.wakeCommand = wakeCommand
         self.observeCommand = observeCommand
+        self.attachCommand = attachCommand
         self.requestTimeout = requestTimeout
     }
 
@@ -177,7 +188,7 @@ actor SSHTransport: Transport {
         return SSHTransport(
             client: client, socketLocation: settings.socket, socatPath: settings.socatPath,
             wakeCommand: settings.wakeCommand, observeCommand: settings.observeCommand,
-            requestTimeout: settings.requestTimeout)
+            attachCommand: settings.attachCommand, requestTimeout: settings.requestTimeout)
     }
 
     /// Maps connect-time failures onto the taxonomy: credential rejection is
@@ -524,6 +535,149 @@ actor SSHTransport: Transport {
         } catch {
             failure = TransportError.channelFailed(
                 detail: "terminal channel: \(error); stderr: \(Self.preview(stderr))")
+        }
+        // State first, continuation second: a consumer resuming on the
+        // stream's end must already see the channel as free.
+        if terminalChannelState == .streaming(readerID: readerID) {
+            terminalChannelState = .idle
+        }
+        if let failure {
+            continuation.finish(throwing: failure)
+        } else {
+            continuation.finish()
+        }
+    }
+
+    // MARK: Attach (#11)
+    //
+    // The interactive terminal shares the Host's single terminal channel
+    // with Observe (the session slot budget is 8 RPC + events + one terminal
+    // channel = sshd's default MaxSessions 10): whichever surface is live
+    // holds `terminalChannelState`, and the other is refused until it ends.
+    //
+    // Citadel 0.12.1's public API has no PTY + exec-request combination —
+    // `withPTY` sends a PTY request followed by a *shell* request — so the
+    // attach command rides in as the shell's first input line, `exec`'d to
+    // replace the shell outright: when attach exits, nothing is left on the
+    // channel and it closes. No kill-on-EOF wrapper is needed either, unlike
+    // Observe: closing a PTY channel HUPs the remote process group, which
+    // ends attach promptly (verified against localhost sshd in the #11 e2e).
+
+    func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession {
+        guard terminalChannelState == .idle else {
+            throw TransportError.terminalChannelAlreadyOpen
+        }
+        let bootstrapLine = try Self.attachBootstrapLine(
+            attachCommand: attachCommand, request: request)
+        let (output, outputContinuation) = AsyncThrowingStream<Data, any Error>.makeStream()
+        let (input, inputContinuation) = AsyncStream<TerminalAttachInput>.makeStream()
+        nextTerminalReaderID += 1
+        let readerID = nextTerminalReaderID
+        let readerTask = Task {
+            await self.runAttachChannel(
+                readerID: readerID, request: request, bootstrapLine: bootstrapLine,
+                input: input, output: outputContinuation)
+        }
+        // No suspension between the idle guard and here (attachBootstrapLine
+        // is synchronous), so the reader cannot have observed — let alone
+        // ended — a state it is only now being recorded into.
+        terminalChannelState = .streaming(readerID: readerID)
+        return TerminalAttachSession(output: output, input: inputContinuation) {
+            readerTask.cancel()
+            await readerTask.value
+        }
+    }
+
+    /// The line typed into the attach channel's login shell to become the
+    /// attach process (see the MARK above for why a shell is involved at
+    /// all). `exec` replaces the shell so the attach process's exit is the
+    /// channel's end. The line must parse identically in POSIX shells and
+    /// fish — both treat single-quoted text literally as long as it contains
+    /// no quote, backslash, or control characters, so targets are restricted
+    /// to exactly that (a Pane id that violates it could only come from a
+    /// hostile server, and refusing beats handing it a shell).
+    static func attachBootstrapLine(
+        attachCommand: String, request: TerminalAttachRequest
+    ) throws -> String {
+        let unquotable: (Character) -> Bool = { character in
+            character == "'" || character == "\\"
+                || character.unicodeScalars.contains(where: {
+                    CharacterSet.controlCharacters.contains($0)
+                })
+        }
+        guard !request.target.isEmpty, !request.target.contains(where: unquotable) else {
+            throw TransportError.channelFailed(
+                detail: "attach target cannot be quoted for the remote shell")
+        }
+        let takeover = request.takeover ? " --takeover" : ""
+        return "exec \(attachCommand) '\(request.target)'\(takeover)\n"
+    }
+
+    /// The attach channel's lifetime: opens the PTY, types the bootstrap
+    /// line, then pumps bytes both ways until the channel ends. Ending is by
+    /// explicit close or the remote attach exiting: cancelling the reader
+    /// task only ends the *local* inbound stream, the PTY body then returns,
+    /// and Citadel closes the channel on the way out. Takes no exec slot
+    /// (see MARK).
+    private func runAttachChannel(
+        readerID: UInt64,
+        request: TerminalAttachRequest,
+        bootstrapLine: String,
+        input: AsyncStream<TerminalAttachInput>,
+        output continuation: AsyncThrowingStream<Data, any Error>.Continuation
+    ) async {
+        let pty = SSHChannelRequestEvent.PseudoTerminalRequest(
+            wantReply: true,
+            term: "xterm-256color",
+            terminalCharacterWidth: request.cols,
+            terminalRowHeight: request.rows,
+            terminalPixelWidth: 0,
+            terminalPixelHeight: 0,
+            terminalModes: SSHTerminalModes([:]))
+        /// nil means the stream ends gracefully: explicit `end()`, or the
+        /// remote attach exiting cleanly (the user detached inside the TUI).
+        var failure: TransportError?
+        do {
+            try await client.withPTY(pty) { inbound, outbound in
+                try await outbound.write(ByteBuffer(string: bootstrapLine))
+                // The writer rides alongside the read loop; the one input
+                // stream keeps keystrokes and resizes ordered. Write
+                // failures are swallowed: the channel death they signal
+                // surfaces through the read loop.
+                let writer = Task {
+                    for await item in input {
+                        do {
+                            switch item {
+                            case .keystrokes(let data):
+                                try await outbound.write(ByteBuffer(bytes: data))
+                            case .resize(let cols, let rows):
+                                try await outbound.changeSize(
+                                    cols: cols, rows: rows, pixelWidth: 0, pixelHeight: 0)
+                            }
+                        } catch {
+                            return
+                        }
+                    }
+                }
+                defer { writer.cancel() }
+                for try await chunk in inbound {
+                    switch chunk {
+                    case .stdout(let buffer), .stderr(let buffer):
+                        // A PTY merges everything into one byte stream;
+                        // stderr chunks should not occur, but any that do
+                        // belong on the terminal too.
+                        continuation.yield(Data(buffer.readableBytesView))
+                    }
+                }
+            }
+            failure = nil
+        } catch is CancellationError {
+            failure = nil
+        } catch {
+            failure =
+                Task.isCancelled
+                ? nil  // Explicit end(): the consumer closed the channel.
+                : TransportError.channelFailed(detail: "attach channel: \(error)")
         }
         // State first, continuation second: a consumer resuming on the
         // stream's end must already see the channel as free.

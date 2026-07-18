@@ -217,6 +217,9 @@ private actor RejectingTransport: Transport {
     func observeTerminal(_ request: TerminalObserveRequest) async throws -> TerminalFrameStream {
         throw error
     }
+    func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession {
+        throw error
+    }
     var isConnected: Bool { true }
     func close() async throws {}
 }

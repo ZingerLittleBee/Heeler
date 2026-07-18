@@ -422,6 +422,12 @@ struct EventsSessionE2ETests {
             try await inner.observeTerminal(request)
         }
 
+        func attachTerminal(_ request: TerminalAttachRequest) async throws
+            -> TerminalAttachSession
+        {
+            try await inner.attachTerminal(request)
+        }
+
         func sendToAgent(_ params: AgentSendParams) async throws {
             try await inner.sendToAgent(params)
         }

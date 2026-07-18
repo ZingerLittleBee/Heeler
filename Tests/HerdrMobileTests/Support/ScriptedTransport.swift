@@ -22,6 +22,12 @@ final actor ScriptedTransport: Transport {
     /// Every observe request received, in order; the Observe store's
     /// restart-on-resize/gap behavior asserts on this.
     private(set) var observeRequests: [TerminalObserveRequest] = []
+    /// Every attach request received, in order; the Attach store's
+    /// open-once behavior asserts on this.
+    private(set) var attachRequests: [TerminalAttachRequest] = []
+    /// Everything sent down the live attach session, in order — keystrokes
+    /// and resizes interleaved exactly as the store issued them.
+    private(set) var attachInputs: [TerminalAttachInput] = []
 
     private var serverInfo: ServerInfo
     private var snapshot: SessionSnapshot
@@ -33,6 +39,10 @@ final actor ScriptedTransport: Transport {
     private var nextFrameStreamID: UInt64 = 0
     private var liveFrameStreamID: UInt64?
     private var frameContinuation: AsyncThrowingStream<TerminalFrame, any Error>.Continuation?
+    private var nextAttachID: UInt64 = 0
+    private var liveAttachID: UInt64?
+    private var attachContinuation: AsyncThrowingStream<Data, any Error>.Continuation?
+    private var attachInputTask: Task<Void, Never>?
 
     init(
         snapshot: SessionSnapshot = .fixture(),
@@ -101,6 +111,36 @@ final actor ScriptedTransport: Transport {
         frameContinuation != nil
     }
 
+    /// Pushes raw PTY bytes onto the live attach session; false if none is
+    /// live.
+    @discardableResult
+    func emitAttachOutput(_ bytes: Data) -> Bool {
+        guard let attachContinuation else { return false }
+        attachContinuation.yield(bytes)
+        return true
+    }
+
+    /// Ends the live attach session gracefully, as the remote attach exiting
+    /// cleanly (the user detached inside the TUI) would.
+    func endAttachFromRemote() {
+        attachContinuation?.finish()
+        attachContinuation = nil
+        liveAttachID = nil
+    }
+
+    /// Kills the live attach session with `failure`, as a remotely dropped
+    /// terminal channel would.
+    func failAttachStream(_ failure: TransportError) {
+        attachContinuation?.finish(throwing: failure)
+        attachContinuation = nil
+        liveAttachID = nil
+    }
+
+    /// Whether an attach session is currently live.
+    var hasLiveAttachSession: Bool {
+        attachContinuation != nil
+    }
+
     // MARK: Transport
 
     func ping() async throws -> ServerInfo {
@@ -153,7 +193,7 @@ final actor ScriptedTransport: Transport {
     }
 
     func observeTerminal(_ request: TerminalObserveRequest) async throws -> TerminalFrameStream {
-        guard liveFrameStreamID == nil else {
+        guard liveFrameStreamID == nil, liveAttachID == nil else {
             throw TransportError.terminalChannelAlreadyOpen
         }
         observeRequests.append(request)
@@ -164,6 +204,29 @@ final actor ScriptedTransport: Transport {
         frameContinuation = continuation
         return TerminalFrameStream(frames: frames) {
             await self.endFrameStream(id: streamID)
+        }
+    }
+
+    func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession {
+        // Observe and Attach share the one terminal channel, like the real
+        // transport.
+        guard liveFrameStreamID == nil, liveAttachID == nil else {
+            throw TransportError.terminalChannelAlreadyOpen
+        }
+        attachRequests.append(request)
+        nextAttachID += 1
+        let attachID = nextAttachID
+        let (output, outputContinuation) = AsyncThrowingStream<Data, any Error>.makeStream()
+        let (input, inputContinuation) = AsyncStream<TerminalAttachInput>.makeStream()
+        liveAttachID = attachID
+        attachContinuation = outputContinuation
+        attachInputTask = Task {
+            for await item in input {
+                await self.recordAttachInput(item)
+            }
+        }
+        return TerminalAttachSession(output: output, input: inputContinuation) {
+            await self.endAttach(id: attachID)
         }
     }
 
@@ -179,6 +242,9 @@ final actor ScriptedTransport: Transport {
         frameContinuation?.finish()
         frameContinuation = nil
         liveFrameStreamID = nil
+        attachContinuation?.finish()
+        attachContinuation = nil
+        liveAttachID = nil
     }
 
     /// Explicit `end()` on the stream: finishes it gracefully, exactly like
@@ -195,6 +261,23 @@ final actor ScriptedTransport: Transport {
         frameContinuation?.finish()
         frameContinuation = nil
         liveFrameStreamID = nil
+    }
+
+    private func recordAttachInput(_ input: TerminalAttachInput) {
+        attachInputs.append(input)
+    }
+
+    /// Explicit `end()` on the session: finishes it gracefully, exactly like
+    /// the real channel closed by its consumer. Drains the input recording
+    /// first — `end()` finishes the input stream before calling this — so
+    /// tests can assert on `attachInputs` without polling.
+    private func endAttach(id: UInt64) async {
+        await attachInputTask?.value
+        attachInputTask = nil
+        guard liveAttachID == id else { return }
+        attachContinuation?.finish()
+        attachContinuation = nil
+        liveAttachID = nil
     }
 }
 

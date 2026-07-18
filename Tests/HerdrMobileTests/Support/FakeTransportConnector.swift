@@ -37,6 +37,10 @@ final actor FakeTransport: Transport {
         throw TransportError.channelFailed(detail: "FakeTransport does not script observe")
     }
 
+    func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession {
+        throw TransportError.channelFailed(detail: "FakeTransport does not script attach")
+    }
+
     func sendToAgent(_ params: AgentSendParams) async throws {
         throw TransportError.channelFailed(detail: "FakeTransport does not script sends")
     }
