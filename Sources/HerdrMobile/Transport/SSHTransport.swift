@@ -50,13 +50,14 @@ actor SSHTransport: Transport {
     private let socatPath: String
     private let wakeCommand: String
     private let requestTimeout: Duration
-    /// In-flight or completed remote home directory resolution; see
-    /// `remoteHomeDirectory()`.
-    private var homeDirectoryTask: Task<String, Error>?
-    /// In-flight cold-start wake; concurrent refused requests share one wake
-    /// instead of racing exec channels. Cleared on completion so a later
-    /// cold start can wake again.
-    private var wakeTask: Task<Void, Error>?
+    /// Remote home directory resolution, resolved over exec once per Host:
+    /// concurrent first requests share one in-flight run, success is cached
+    /// for the connection's lifetime, failure is not (the next request
+    /// retries).
+    private let homeDirectory = SharedAsyncOperation<String>(cachesSuccess: true)
+    /// Cold-start wake; concurrent refused requests share one wake instead
+    /// of racing exec channels, and a later cold start wakes again.
+    private let wake = SharedAsyncOperation<Void>(cachesSuccess: false)
 
     // MARK: Exec channel slots
     //
@@ -190,6 +191,8 @@ actor SSHTransport: Transport {
                 try await wakeServer()
             } catch TransportError.cancelled {
                 throw TransportError.cancelled
+            } catch TransportError.timedOut {
+                throw TransportError.timedOut
             } catch {
                 // The wake itself failed (herdr missing, command errored):
                 // the actionable problem is still a server that is not
@@ -201,35 +204,28 @@ actor SSHTransport: Transport {
     }
 
     /// Wakes the herdr server via the Host's wake command; concurrent
-    /// refused requests share one in-flight wake.
+    /// refused requests share one in-flight wake. The wait — not the wake —
+    /// is deadline-bounded: a hung wake command cannot be ended client-side
+    /// (sshd holds the channel until the command exits), so waiters abandon
+    /// it with `.timedOut` while it keeps its slot until it really ends.
     private func wakeServer() async throws {
-        if let task = wakeTask {
-            return try await task.value
+        try await Self.withRequestDeadline(requestTimeout) {
+            try await self.wake.value {
+                try await self.runWakeCommand()
+            }
         }
-        let task = Task { try await self.runWakeCommand() }
-        wakeTask = task
-        defer { wakeTask = nil }
-        return try await task.value
     }
 
-    /// Runs the wake command over a no-PTY exec channel with stdin at EOF
-    /// from the start (`< /dev/null`). The bridge's entry point ensures the
-    /// server is running (spawn + wait for socket) before it starts
-    /// bridging; the bridge then reads EOF and exits — so the command
+    /// Runs the wake command over a slot-gated no-PTY exec channel with
+    /// stdin at EOF from the start (`< /dev/null`). The bridge's entry point
+    /// ensures the server is running (spawn + wait for socket) before it
+    /// starts bridging; the bridge then reads EOF and exits — so the command
     /// completing implies a live socket, and its own lifetime bounds the
     /// channel without writing or closing anything mid-flight.
     private func runWakeCommand() async throws {
-        do {
-            try await acquireExecChannelSlot()
-        } catch {
-            throw TransportError.cancelled
-        }
+        try await acquireExecChannelSlot()
         defer { releaseExecChannelSlot() }
-        do {
-            _ = try await client.executeCommand("\(wakeCommand) < /dev/null")
-        } catch is CancellationError {
-            throw TransportError.cancelled
-        }
+        _ = try await client.executeCommand("\(wakeCommand) < /dev/null")
     }
 
     /// One no-PTY exec channel per request, raced against the per-request
@@ -336,34 +332,23 @@ actor SSHTransport: Transport {
         return socketLocation.path(homeDirectory: try await remoteHomeDirectory())
     }
 
-    /// The remote home directory, resolved over exec once per Host:
-    /// concurrent first requests share one in-flight resolution, and the
-    /// result is cached for the lifetime of the connection. A failed
-    /// resolution is not cached, so the next request retries.
+    /// The shared home resolution, with the wait — not the resolution —
+    /// deadline-bounded, exactly like `wakeServer()`.
     private func remoteHomeDirectory() async throws -> String {
-        let task = homeDirectoryTask ?? Task { try await self.resolveHomeDirectoryOverExec() }
-        homeDirectoryTask = task
-        do {
-            return try await task.value
-        } catch {
-            homeDirectoryTask = nil
-            throw error
+        try await Self.withRequestDeadline(requestTimeout) {
+            try await self.homeDirectory.value {
+                try await self.resolveHomeDirectoryOverExec()
+            }
         }
     }
 
     private func resolveHomeDirectoryOverExec() async throws -> String {
-        do {
-            try await acquireExecChannelSlot()
-        } catch {
-            throw TransportError.cancelled
-        }
+        try await acquireExecChannelSlot()
         defer { releaseExecChannelSlot() }
         let output: ByteBuffer
         do {
             // $HOME expands in every mainstream login shell, fish included.
             output = try await client.executeCommand("echo $HOME")
-        } catch is CancellationError {
-            throw TransportError.cancelled
         } catch {
             throw TransportError.homeDirectoryUnresolvable(detail: String(describing: error))
         }

@@ -13,7 +13,8 @@ import Testing
     "Cold start e2e",
     .enabled(
         if: LocalSSHTestEnvironment.isAvailable,
-        "requires localhost sshd, socat, and an authorized Ed25519 test key"))
+        "requires localhost sshd, socat, and an authorized Ed25519 test key"),
+    .timeLimit(.minutes(1)))
 struct ColdStartE2ETests {
     @Test func wakeStartsServerAndRetriedRequestSucceeds() async throws {
         // Server "stopped": stale socket at the configured path. The wake
@@ -76,6 +77,25 @@ struct ColdStartE2ETests {
         }
     }
 
+    @Test func hungWakeCommandSurfacesTimedOut() async throws {
+        // The wake command starts but never exits (hung host): the request
+        // must surface .timedOut at the deadline — not hang forever pinning
+        // an exec slot — and end the wake channel by explicit close.
+        let stale = try StaleUnixSocket()
+        defer { stale.remove() }
+        let wake = try WakeScript(commands: ["sleep 600"])
+        defer { wake.remove() }
+
+        try await withTransport(
+            socketPath: stale.path, wakeCommand: wake.command, requestTimeout: .seconds(2)
+        ) { transport in
+            await #expect(throws: TransportError.timedOut) {
+                try await transport.ping()
+            }
+        }
+        #expect(wake.invocationCount == 1)
+    }
+
     @Test func missingSocketDoesNotTriggerWake() async throws {
         // No socket file means herdr is not installed there (or the path is
         // wrong) — waking cannot help, so the wake must not run.
@@ -96,6 +116,7 @@ struct ColdStartE2ETests {
     private func withTransport(
         socketPath: String,
         wakeCommand: String,
+        requestTimeout: Duration = .seconds(15),
         body: (SSHTransport) async throws -> Void
     ) async throws {
         let environment = try #require(LocalSSHTestEnvironment.current)
@@ -107,7 +128,8 @@ struct ColdStartE2ETests {
                 privateKey: environment.privateKey,
                 socket: .absolutePath(socketPath),
                 socatPath: environment.socatPath,
-                wakeCommand: wakeCommand))
+                wakeCommand: wakeCommand,
+                requestTimeout: requestTimeout))
         do {
             try await body(transport)
         } catch {
