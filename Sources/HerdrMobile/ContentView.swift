@@ -1,14 +1,12 @@
 import SwiftUI
 
-/// Placeholder root view. Exists only to make the skeleton build and launch;
-/// the flat Console agent list replaces it in M1 (#8).
+/// Root view: Host management (#14) for now. The flat Console agent list
+/// (#8) takes over as root once it exists; Hosts then move behind it.
 struct ContentView: View {
+    @State private var hostStore = HostStore()
+
     var body: some View {
-        ContentUnavailableView(
-            "herdr",
-            systemImage: "terminal",
-            description: Text("Console coming soon.")
-        )
+        HostListView(store: hostStore)
     }
 }
 
