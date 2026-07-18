@@ -9,14 +9,34 @@ final class FakeHerdrServer: Sendable {
     struct ReceivedRequest: Sendable, Equatable {
         let id: String
         let method: String
+        /// The request's params object re-serialized with sorted keys, so
+        /// tests can assert exact wire shapes; "" when params are absent.
+        let params: String
     }
 
-    /// Returns the NDJSON lines to write back, without trailing newlines.
-    /// One line for a plain response; several lines model the
-    /// ack-then-event-lines shape of subscription replies. `nil` models a
-    /// hung herdr: the connection is held open without a response until the
-    /// peer goes away.
-    typealias Script = @Sendable (ReceivedRequest) -> [String]?
+    /// How one connection answers its request. `nil` models a hung herdr:
+    /// the connection is held open without a response until the peer goes
+    /// away.
+    enum Response: Sendable, ExpressibleByArrayLiteral {
+        /// Write these NDJSON lines (no trailing newlines) and close — the
+        /// one-request-per-connection RPC shape. Array literals convert.
+        case lines([String])
+        /// Subscription shape: run the steps, then hold the connection open
+        /// until the peer closes it — `events.subscribe` never closes
+        /// server-side.
+        case streamThenHold([Step])
+
+        enum Step: Sendable {
+            case write(String)
+            case pause(Duration)
+        }
+
+        init(arrayLiteral elements: String...) {
+            self = .lines(elements)
+        }
+    }
+
+    typealias Script = @Sendable (ReceivedRequest) -> Response?
 
     enum ServerError: Error {
         case socketSetupFailed(step: String, errno: Int32)
@@ -102,7 +122,7 @@ final class FakeHerdrServer: Sendable {
                 }.start()
             }
         }
-        thread.name = "FakeHerdrServer(\(socketPath))"
+        thread.name = "FakeHerdrServer(\(self.socketPath))"
         thread.start()
     }
 
@@ -151,17 +171,37 @@ final class FakeHerdrServer: Sendable {
             let method = fields["method"] as? String
         else { return }
 
-        let request = ReceivedRequest(id: id, method: method)
+        let params: String
+        if let object = fields["params"],
+            let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        {
+            params = String(decoding: data, as: UTF8.self)
+        } else {
+            params = ""
+        }
+
+        let request = ReceivedRequest(id: id, method: method, params: params)
         state.mutex.withLock { $0.requests.append(request) }
 
-        guard let lines = script(request) else {
+        switch script(request) {
+        case nil:
             // Hung herdr: hold the connection open until the peer's socat
             // dies, which is how an explicit exec channel close reaches us.
             while read(connection, &buffer, buffer.count) > 0 {}
-            return
-        }
-        for line in lines {
-            writeAll(connection, bytes: Array((line + "\n").utf8))
+        case .lines(let lines):
+            for line in lines {
+                writeAll(connection, bytes: Array((line + "\n").utf8))
+            }
+        case .streamThenHold(let steps):
+            for step in steps {
+                switch step {
+                case .write(let line):
+                    writeAll(connection, bytes: Array((line + "\n").utf8))
+                case .pause(let duration):
+                    Thread.sleep(forTimeInterval: duration.timeInterval)
+                }
+            }
+            while read(connection, &buffer, buffer.count) > 0 {}
         }
     }
 
@@ -174,5 +214,12 @@ final class FakeHerdrServer: Sendable {
             guard written > 0 else { return }
             offset += written
         }
+    }
+}
+
+extension Duration {
+    /// Seconds as a TimeInterval, for Thread.sleep in the blocking handler.
+    fileprivate var timeInterval: TimeInterval {
+        TimeInterval(components.seconds) + TimeInterval(components.attoseconds) / 1e18
     }
 }
