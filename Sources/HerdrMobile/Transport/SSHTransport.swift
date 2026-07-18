@@ -387,6 +387,15 @@ actor SSHTransport: Transport {
         return line
     }
 
+    /// Whether the SSH connection is still alive (Citadel tracks the
+    /// underlying channel's liveness). False after `close()` or a remote
+    /// death; this transport is then dead for good — Citadel's auto-reconnect
+    /// is deliberately off (`.never`), re-establishing is the reconnect
+    /// machinery's job (#18) so backoff stays bounded and observable.
+    var isConnected: Bool {
+        client.isConnected
+    }
+
     /// Closes the SSH connection. Explicit close is the only way to end
     /// Citadel channels — a live exec channel ignores task cancellation.
     func close() async throws {

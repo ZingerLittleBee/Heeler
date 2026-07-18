@@ -91,6 +91,21 @@ struct SSHTransportE2ETests {
         }
     }
 
+    @Test func isConnectedTracksTheSSHConnectionLifecycle() async throws {
+        // The reconnect machinery (#18) decides "re-subscribe or re-dial"
+        // from this flag; it must be honest about the SSH layer's liveness.
+        let environment = try #require(LocalSSHTestEnvironment.current)
+        let server = try FakeHerdrServer { _ in nil }
+        defer { server.stop() }
+
+        let transport = try await SSHTransport.connect(
+            settings: environment.makeSettings(socket: .absolutePath(server.socketPath)))
+        #expect(await transport.isConnected)
+
+        try await transport.close()
+        #expect(await !transport.isConnected)
+    }
+
     @Test func namedSessionSocketPathResolvesOverRemoteHome() async throws {
         // The transport is given only a session name; it must resolve the
         // remote home directory over exec and find the socket at

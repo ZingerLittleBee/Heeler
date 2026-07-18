@@ -19,6 +19,15 @@ protocol Transport: Sendable {
     /// Subscribing does not replay existing state (verified against herdr
     /// 0.7.4): sync initial state with `listAgents()` alongside subscribing.
     func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream
+
+    /// Whether the underlying connection to the Host is still alive. The
+    /// reconnect machinery (#18) decides "re-subscribe on this connection or
+    /// re-establish it" from this flag.
+    var isConnected: Bool { get async }
+
+    /// Tears the connection down explicitly, ending every channel it
+    /// carries. Terminal: a closed Transport is not reusable.
+    func close() async throws
 }
 
 /// herdr server identity as reported by `ping`.
