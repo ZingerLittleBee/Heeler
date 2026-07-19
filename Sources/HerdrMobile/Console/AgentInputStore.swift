@@ -63,9 +63,10 @@ enum QuickKey: String, CaseIterable, Identifiable, Sendable {
 }
 
 /// The Agent detail screen's input pipeline (#10): a message box that sends
-/// typed replies via `agent.send`, and a quick-key bar that sends control
-/// keys via `pane.send_keys`. This is the User Story 6 surface — answering a
-/// Blocked agent from native controls, never entering Attach.
+/// typed replies and Enter atomically via `pane.send_input`, and a quick-key
+/// bar that sends control keys via `pane.send_keys`. This is the User Story
+/// 6 surface — answering a Blocked agent from native controls, never entering
+/// Attach.
 ///
 /// Kept separate from `ObserveTerminalStore`, which is deliberately read-only
 /// (CONTEXT.md): Observe never sends input, so the send path lives here.
@@ -93,7 +94,7 @@ final class AgentInputStore {
     /// hop, leaving a window the second tap slips through.
     private var isSendingDraft = false
 
-    /// The Agent's pane id — the target for both `agent.send` and
+    /// The Agent's pane id — the target for both `pane.send_input` and
     /// `pane.send_keys`.
     private let target: String
     /// The Host's current transport, re-queried per send: the events session
@@ -111,8 +112,8 @@ final class AgentInputStore {
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// Sends the composed message via `agent.send`, clearing the box on
-    /// success. Whitespace-only drafts are ignored.
+    /// Writes the composed message and presses Enter in one RPC, clearing the
+    /// box on success. Whitespace-only drafts are ignored.
     func sendDraft() async {
         guard !isSendingDraft else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -120,7 +121,8 @@ final class AgentInputStore {
         isSendingDraft = true
         defer { isSendingDraft = false }
         let sent = await run { transport in
-            try await transport.sendToAgent(AgentSendParams(target: target, text: text))
+            try await transport.sendInput(
+                PaneSendInputParams(paneID: target, keys: ["enter"], text: text))
         }
         if sent {
             draft = ""

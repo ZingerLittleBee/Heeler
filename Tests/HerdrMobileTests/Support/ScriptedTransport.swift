@@ -11,9 +11,8 @@ final actor ScriptedTransport: Transport {
     /// resubscribe-on-membership-change behavior asserts on this.
     private(set) var capturedSubscriptions: [[EventSubscription]] = []
     private(set) var paneReadParams: [PaneReadParams] = []
-    /// Every message sent through `agent.send`, in order; the input store's
-    /// message-box behavior asserts on this.
-    private(set) var agentSends: [AgentSendParams] = []
+    /// Every atomic text-and-key batch sent through `pane.send_input`.
+    private(set) var sentInputs: [PaneSendInputParams] = []
     /// Every key batch sent through `pane.send_keys`, in order; the input
     /// store's quick-key behavior asserts on this.
     private(set) var sentKeys: [PaneSendKeysParams] = []
@@ -79,7 +78,7 @@ final actor ScriptedTransport: Transport {
         paneReadFailure = failure
     }
 
-    /// Makes every subsequent `sendToAgent`/`sendKeys` throw `failure`.
+    /// Makes every subsequent `sendInput`/`sendKeys` throw `failure`.
     func setSendFailure(_ failure: TransportError?) {
         sendFailure = failure
     }
@@ -206,9 +205,9 @@ final actor ScriptedTransport: Transport {
                 title: params.name))
     }
 
-    func sendToAgent(_ params: AgentSendParams) async throws {
+    func sendInput(_ params: PaneSendInputParams) async throws {
         if let sendFailure { throw sendFailure }
-        agentSends.append(params)
+        sentInputs.append(params)
     }
 
     func sendKeys(_ params: PaneSendKeysParams) async throws {

@@ -2,6 +2,23 @@ import SwiftTerm
 import SwiftUI
 import UIKit
 
+/// Presentation-specific terminal typography. Observe prioritizes fitting a
+/// useful amount of a desktop transcript on a phone; Attach keeps SwiftTerm's
+/// default size for interactive use.
+enum TerminalScreenStyle: Equatable {
+    case observe
+    case attach
+
+    fileprivate var font: UIFont? {
+        switch self {
+        case .observe:
+            UIFont.monospacedSystemFont(ofSize: 9.5, weight: .regular)
+        case .attach:
+            nil
+        }
+    }
+}
+
 /// The shared SwiftTerm surface: Observe (#9) renders it read-only, Attach
 /// (#11) drives the same view with `allowsInput` and `onSend` wired. Bytes
 /// arrive through a `TerminalByteFeed`; geometry flows out through
@@ -9,21 +26,31 @@ import UIKit
 /// the real cols/rows.
 struct TerminalScreenView: UIViewRepresentable {
     let feed: TerminalByteFeed
+    var style: TerminalScreenStyle = .observe
     var allowsInput = false
     var onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)?
+    var onLoadEarlier: (() -> Bool)?
     /// Keystrokes the terminal wants sent to the remote; nil (Observe)
     /// discards them — this surface never sends input (CONTEXT.md).
     var onSend: ((Data) -> Void)?
 
     func makeUIView(context: Context) -> SizeReportingTerminalView {
-        let view = SizeReportingTerminalView(frame: .zero)
+        let view = SizeReportingTerminalView(frame: .zero, font: style.font)
         view.allowsInput = allowsInput
+        if style == .observe {
+            // herdr exposes up to 1,000 logical lines. Phone-width wrapping
+            // can turn those into several thousand terminal rows.
+            view.changeScrollback(5_000)
+        }
         view.terminalDelegate = context.coordinator
         view.onSizeReport = { [weak coordinator = context.coordinator] cols, rows in
             coordinator?.onSizeChanged?(cols, rows)
         }
-        feed.attach { [weak view] data in
-            view?.feed(byteArray: ArraySlice([UInt8](data)))
+        view.onLoadEarlier = { [weak coordinator = context.coordinator] in
+            coordinator?.onLoadEarlier?() ?? false
+        }
+        feed.attachDeliveries { [weak view] delivery in
+            view?.consume(delivery)
         }
         return view
     }
@@ -31,11 +58,13 @@ struct TerminalScreenView: UIViewRepresentable {
     func updateUIView(_ view: SizeReportingTerminalView, context: Context) {
         view.allowsInput = allowsInput
         context.coordinator.onSizeChanged = onSizeChanged
+        context.coordinator.onLoadEarlier = onLoadEarlier
         context.coordinator.onSend = onSend
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onSizeChanged: onSizeChanged, onSend: onSend)
+        Coordinator(
+            onSizeChanged: onSizeChanged, onLoadEarlier: onLoadEarlier, onSend: onSend)
     }
 
     /// SwiftTerm's delegate protocol is not actor-annotated but the view
@@ -45,10 +74,15 @@ struct TerminalScreenView: UIViewRepresentable {
     @MainActor
     final class Coordinator: TerminalViewDelegate {
         var onSizeChanged: ((Int, Int) -> Void)?
+        var onLoadEarlier: (() -> Bool)?
         var onSend: ((Data) -> Void)?
 
-        init(onSizeChanged: ((Int, Int) -> Void)?, onSend: ((Data) -> Void)?) {
+        init(
+            onSizeChanged: ((Int, Int) -> Void)?, onLoadEarlier: (() -> Bool)? = nil,
+            onSend: ((Data) -> Void)?
+        ) {
             self.onSizeChanged = onSizeChanged
+            self.onLoadEarlier = onLoadEarlier
             self.onSend = onSend
         }
 
@@ -72,15 +106,192 @@ struct TerminalScreenView: UIViewRepresentable {
 }
 
 /// TerminalView with three app-side behaviors: input is opt-in (read-only
-/// Observe must never pop a keyboard) and grabs focus on appearance so both
-/// the soft keyboard and iPad hardware keyboards work without a preliminary
-/// tap, and the current cols/rows are reported from layout — the stock view
-/// only reports *changes*, which would leave a store waiting forever when
-/// the laid-out size happens to equal SwiftTerm's 80x25 default.
+/// Observe never pops a keyboard or displays a cursor), interactive Attach
+/// grabs focus on appearance, and the current cols/rows are reported from
+/// layout. The stock view only reports *changes*, which would leave a store
+/// waiting forever when the laid-out size equals SwiftTerm's 80x25 default.
 final class SizeReportingTerminalView: TerminalView {
-    var allowsInput = false
+    var allowsInput = true {
+        didSet {
+            guard oldValue != allowsInput else { return }
+            if allowsInput {
+                getTerminal().showCursor()
+            } else {
+                getTerminal().hideCursor()
+            }
+        }
+    }
     var onSizeReport: ((_ cols: Int, _ rows: Int) -> Void)?
+    var onLoadEarlier: (() -> Bool)?
     private var lastReported: (cols: Int, rows: Int)?
+    private var defersScrollerUpdates = false
+    private var pendingReadOnlySnapshot: Data?
+    private var appliesReadOnlySnapshot = false
+    private var browsesHistory = false
+    private var requestedEarlierAtTop = false
+
+    private struct ViewportAnchor {
+        let signature: [String]
+        let row: Int
+        let totalRows: Int
+    }
+
+    /// Feeds one transport delivery as an atomic visual update. Observe
+    /// replaces its entire snapshot in one delivery; SwiftTerm otherwise
+    /// updates `contentSize` for every rebuilt line, which makes the scroll
+    /// indicator collapse and grow. While the user browses history, keep only
+    /// the latest snapshot pending and apply it on returning to the bottom.
+    /// Attach keeps SwiftTerm's normal incremental behavior.
+    func consume(_ delivery: TerminalByteFeed.Delivery) {
+        let data = delivery.data
+        guard !data.isEmpty else { return }
+        guard !allowsInput else {
+            feed(byteArray: ArraySlice([UInt8](data)))
+            return
+        }
+
+        if case .historySnapshot = delivery {
+            let anchor = captureViewportAnchor()
+            pendingReadOnlySnapshot = nil
+            applyReadOnlySnapshot(data)
+            restoreViewportAnchor(anchor)
+            requestedEarlierAtTop = false
+            browsesHistory = !isAtBottom
+            return
+        }
+
+        if browsesHistory, !appliesReadOnlySnapshot {
+            pendingReadOnlySnapshot = data
+            return
+        }
+
+        applyReadOnlySnapshot(data)
+    }
+
+    private func applyReadOnlySnapshot(_ data: Data) {
+        let terminal = getTerminal()
+        appliesReadOnlySnapshot = true
+        defersScrollerUpdates = true
+        feed(byteArray: ArraySlice([UInt8](data)))
+        defersScrollerUpdates = false
+        super.scrolled(source: terminal, yDisp: terminal.getTopVisibleRow())
+        appliesReadOnlySnapshot = false
+    }
+
+    private func captureViewportAnchor() -> ViewportAnchor? {
+        let terminal = getTerminal()
+        let row = terminal.getTopVisibleRow()
+        let signature = (0..<min(8, terminal.rows)).compactMap { visibleRow in
+            terminal.getLine(row: visibleRow)?.translateToString(
+                trimRight: true, skipNullCellsFollowingWide: true)
+        }
+        guard !signature.isEmpty else { return nil }
+        return ViewportAnchor(signature: signature, row: row, totalRows: totalTerminalRows)
+    }
+
+    private func restoreViewportAnchor(_ anchor: ViewportAnchor?) {
+        guard let anchor else { return }
+        let terminal = getTerminal()
+        let maximumTopRow = max(0, totalTerminalRows - terminal.rows)
+        let predictedRow = min(
+            maximumTopRow, max(0, anchor.row + totalTerminalRows - anchor.totalRows))
+        var matchingRow: Int?
+        var matchingDistance = Int.max
+
+        for candidate in 0...maximumTopRow {
+            let matches = anchor.signature.enumerated().allSatisfy { offset, expected in
+                terminal.getScrollInvariantLine(row: candidate + offset)?.translateToString(
+                    trimRight: true, skipNullCellsFollowingWide: true) == expected
+            }
+            guard matches else { continue }
+            let distance = abs(candidate - predictedRow)
+            if distance < matchingDistance {
+                matchingRow = candidate
+                matchingDistance = distance
+            }
+        }
+
+        scrollTo(row: matchingRow ?? predictedRow, notifyAccessibility: false)
+    }
+
+    private var totalTerminalRows: Int {
+        let lineHeight = max(1, ceil(font.lineHeight))
+        return max(0, Int((contentSize.height / lineHeight).rounded()))
+    }
+
+    override func scrolled(source: Terminal, yDisp: Int) {
+        guard !defersScrollerUpdates else { return }
+        super.scrolled(source: source, yDisp: yDisp)
+    }
+
+    override var contentOffset: CGPoint {
+        didSet {
+            guard !allowsInput, !appliesReadOnlySnapshot else { return }
+            guard isTracking || (browsesHistory && isDecelerating) else { return }
+            handleUserScroll()
+        }
+    }
+
+    override func accessibilityScroll(_ direction: UIAccessibilityScrollDirection) -> Bool {
+        guard !allowsInput else { return super.accessibilityScroll(direction) }
+        let terminal = getTerminal()
+        let originalRow = terminal.getTopVisibleRow()
+        switch direction {
+        case .up, .left, .previous:
+            scrollUp(lines: terminal.rows)
+        case .down, .right, .next:
+            scrollDown(lines: terminal.rows)
+        default:
+            return super.accessibilityScroll(direction)
+        }
+
+        let didScroll = terminal.getTopVisibleRow() != originalRow
+        guard didScroll else { return false }
+        handleUserScroll()
+        UIAccessibility.post(notification: .pageScrolled, argument: nil)
+        return didScroll
+    }
+
+    private func handleUserScroll() {
+        if isAtTop {
+            if !requestedEarlierAtTop {
+                requestedEarlierAtTop = true
+                _ = onLoadEarlier?()
+            }
+        } else {
+            requestedEarlierAtTop = false
+        }
+        updateHistoryBrowsing()
+    }
+
+    private func updateHistoryBrowsing() {
+        if isAtBottom {
+            browsesHistory = false
+            guard let pendingReadOnlySnapshot else { return }
+            self.pendingReadOnlySnapshot = nil
+            consume(.bytes(pendingReadOnlySnapshot))
+        } else {
+            browsesHistory = true
+        }
+    }
+
+    private var isAtBottom: Bool {
+        let maximumOffset = max(
+            0, contentSize.height - bounds.height + adjustedContentInset.bottom)
+        return contentOffset.y >= maximumOffset - max(1, font.lineHeight / 2)
+    }
+
+    private var isAtTop: Bool {
+        contentOffset.y <= max(1, font.lineHeight / 2)
+    }
+
+    override func showCursor(source: Terminal) {
+        guard allowsInput else {
+            source.hideCursor()
+            return
+        }
+        super.showCursor(source: source)
+    }
 
     override var canBecomeFirstResponder: Bool {
         allowsInput && super.canBecomeFirstResponder

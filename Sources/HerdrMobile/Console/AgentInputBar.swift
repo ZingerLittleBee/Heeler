@@ -27,6 +27,10 @@ struct AgentInputBar: View {
                     .lineLimit(1...5)
                     .focused($messageFocused)
                     .submitLabel(.send)
+                    .onSubmit {
+                        messageFocused = false
+                        Task { await store.sendDraft() }
+                    }
 
                 Button {
                     messageFocused = false

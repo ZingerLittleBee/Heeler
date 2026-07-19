@@ -1,5 +1,8 @@
 import Foundation
+import SwiftTerm
+import SwiftUI
 import Testing
+import UIKit
 
 @testable import HerdrMobile
 
@@ -27,6 +30,18 @@ struct ObserveTerminalStoreTests {
         }
     }
 
+    private func terminalView(in root: UIView) -> SizeReportingTerminalView? {
+        if let terminal = root as? SizeReportingTerminalView {
+            return terminal
+        }
+        for subview in root.subviews {
+            if let terminal = terminalView(in: subview) {
+                return terminal
+            }
+        }
+        return nil
+    }
+
     /// Polls until `condition` holds, yielding so the store's tasks progress.
     private func waitUntil(
         _ comment: Comment, timeout: Duration = .seconds(5),
@@ -49,12 +64,12 @@ struct ObserveTerminalStoreTests {
         store.viewDidResize(cols: 80, rows: 24)
         try await waitUntil("store should go live") { store.status == .live }
 
-        // Backfill first: `pane.read --format ansi --source recent`, bare
-        // newlines normalized for a raw-mode terminal.
+        // The mobile view reads logical lines instead of the PC-width screen
+        // so SwiftTerm can wrap them to the local geometry.
         let read = try #require(await transport.paneReadParams.first)
         #expect(read.paneID == "w1:p1")
         #expect(read.format == .ansi)
-        #expect(read.source == .recent)
+        #expect(read.source == .recentUnwrapped)
         #expect(read.stripANSI != true)
         #expect(captured.text == "old line 1\r\nold line 2")
 
@@ -62,13 +77,233 @@ struct ObserveTerminalStoreTests {
         let request = try #require(await transport.observeRequests.first)
         #expect(request == TerminalObserveRequest(target: "w1:p1", cols: 80, rows: 24))
 
+        let completeLine = "This line is wider than the phone and must keep its final words."
+        await transport.setPaneText(completeLine, paneID: "w1:p1")
         await transport.emitFrame(
-            TerminalFrame(seq: 1, isFull: true, bytes: Data("SCREEN".utf8)))
-        try await waitUntil("the frame should reach the feed") {
-            captured.text == "old line 1\r\nold line 2SCREEN"
+            TerminalFrame(seq: 1, isFull: true, bytes: Data("This line is cropped".utf8)))
+        try await waitUntil("a frame should refresh the complete logical transcript") {
+            await transport.paneReadParams.count == 2
+                && captured.text.contains("must keep its final words.")
         }
+        #expect(!captured.text.contains("This line is cropped"))
+
+        // A second frame arriving during the coalescing interval must still
+        // produce a trailing refresh after output becomes quiet.
+        await transport.setPaneText(
+            "The final answer has a distinct complete ending.", paneID: "w1:p1")
+        await transport.emitFrame(
+            TerminalFrame(seq: 2, isFull: false, bytes: Data("cropped ending".utf8)))
+        try await waitUntil("the quiet tail should receive its final refresh") {
+            await transport.paneReadParams.count == 3
+                && captured.text.contains("distinct complete ending.")
+        }
+        #expect(!captured.text.contains("cropped ending"))
 
         await store.stop()
+    }
+
+    @Test func observeOmitsTheRemoteTerminalInputArea() async throws {
+        let transport = ScriptedTransport()
+        await transport.setPaneText(
+            """
+            › Previous submitted input
+
+            Agent answer stays visible.
+
+            \u{1B}[2m• Worked for 12s\u{1B}[0m
+
+            \u{1B}[7m› Draft input owned by the remote terminal\u{1B}[0m
+
+              Context 54% used · ~/project · model
+            """,
+            paneID: "w1:p1")
+        let (store, captured) = makeStore(transport: transport)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the output-only transcript should render") {
+            store.status == .live && captured.text.contains("Agent answer stays visible.")
+        }
+
+        #expect(!captured.text.contains("Draft input owned by the remote terminal"))
+        #expect(!captured.text.contains("Context 54% used"))
+        #expect(!captured.text.contains("Worked for 12s"))
+        #expect(captured.text.contains("Previous submitted input"))
+
+        await store.stop()
+    }
+
+    @Test func observeUsesEnoughColumnsToLimitWidePaneReflow() throws {
+        // A 393-point iPhone showing the default 12-point terminal only fits
+        // about 52 columns. A 185-column desktop line then expands to four
+        // mobile rows, which makes the transcript unnecessarily tall.
+        let host = UIHostingController(
+            rootView: TerminalScreenView(feed: TerminalByteFeed(), style: .observe))
+        let frame = CGRect(x: 0, y: 0, width: 393, height: 600)
+        let window = UIWindow(frame: frame)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        host.view.frame = frame
+        host.view.layoutIfNeeded()
+
+        let terminal = try #require(terminalView(in: host.view))
+        terminal.layoutIfNeeded()
+
+        #expect(terminal.font.pointSize < 12)
+        #expect(terminal.getTerminal().options.scrollback == 5_000)
+        let columns = terminal.getTerminal().cols
+        let rowsForDesktopLine = (185 + columns - 1) / columns
+        #expect(columns >= 64)
+        #expect(rowsForDesktopLine <= 3)
+    }
+
+    @Test func replacingObserveSnapshotKeepsScrollExtentAndViewportStable() async throws {
+        let feed = TerminalByteFeed()
+        let host = UIHostingController(
+            rootView: TerminalScreenView(feed: feed, style: .observe))
+        let frame = CGRect(x: 0, y: 0, width: 393, height: 600)
+        let window = UIWindow(frame: frame)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        host.view.frame = frame
+        host.view.layoutIfNeeded()
+
+        let terminal = try #require(terminalView(in: host.view))
+        terminal.layoutIfNeeded()
+        let transcript = (0..<120)
+            .map { String(format: "line %03d", $0) }
+            .joined(separator: "\r\n")
+        let updatedTranscript = transcript + "\r\nline 120"
+        feed.write(Data(transcript.utf8))
+        #expect(terminal.accessibilityScroll(.up))
+        let originalExtent = terminal.contentSize.height
+        let originalTopRow = terminal.getTerminal().getTopVisibleRow()
+
+        feed.write(Data("\u{1B}[3J\u{1B}[2J\u{1B}[H\(updatedTranscript)".utf8))
+        try await Task.sleep(for: .milliseconds(30))
+
+        #expect(terminal.contentSize.height == originalExtent)
+        #expect(terminal.getTerminal().getTopVisibleRow() == originalTopRow)
+
+        for _ in 0..<10 {
+            if !terminal.accessibilityScroll(.down) { break }
+        }
+        #expect(terminal.contentSize.height > originalExtent)
+        #expect(terminal.scrollPosition == 1)
+    }
+
+    @Test func reachingTheTopLoadsEarlierHistoryWithoutMovingTheViewport() async throws {
+        let feed = TerminalByteFeed()
+        var loadRequests = 0
+        let host = UIHostingController(
+            rootView: TerminalScreenView(
+                feed: feed, style: .observe,
+                onLoadEarlier: {
+                    loadRequests += 1
+                    return true
+                }))
+        let frame = CGRect(x: 0, y: 0, width: 393, height: 600)
+        let window = UIWindow(frame: frame)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        host.view.frame = frame
+        host.view.layoutIfNeeded()
+
+        let terminal = try #require(terminalView(in: host.view))
+        terminal.layoutIfNeeded()
+        let initialTranscript = (200..<320)
+            .map { String(format: "line %03d", $0) }
+            .joined(separator: "\r\n")
+        feed.write(Data(initialTranscript.utf8))
+        while terminal.accessibilityScroll(.up) {}
+
+        #expect(loadRequests == 1)
+        let originalTopLine = try #require(terminal.getTerminal().getLine(row: 0))
+            .translateToString(trimRight: true)
+        #expect(originalTopLine == "line 200")
+
+        let expandedTranscript = (0..<320)
+            .map { String(format: "line %03d", $0) }
+            .joined(separator: "\r\n")
+        feed.writeHistorySnapshot(
+            Data("\u{1B}[3J\u{1B}[2J\u{1B}[H\(expandedTranscript)".utf8))
+        try await Task.sleep(for: .milliseconds(30))
+
+        let restoredTopLine = try #require(terminal.getTerminal().getLine(row: 0))
+            .translateToString(trimRight: true)
+        #expect(restoredTopLine == originalTopLine)
+        #expect(terminal.getTerminal().getTopVisibleRow() > 0)
+        #expect(loadRequests == 1)
+
+        while terminal.accessibilityScroll(.up) {}
+        #expect(loadRequests == 2)
+    }
+
+    @Test func loadingEarlierExpandsTheReadWindowUntilHistoryEnds() async throws {
+        let transport = ScriptedTransport()
+        let initial = (120..<200).map(String.init).joined(separator: "\n")
+        await transport.setPaneText(initial, paneID: "w1:p1")
+        let (store, _) = makeStore(transport: transport)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("store should go live") { store.status == .live }
+        #expect(await transport.paneReadParams.first?.lines == 80)
+
+        // recent_unwrapped counts terminal rows before joining wrapped rows,
+        // so a 280-row request can legitimately return fewer than 280
+        // logical lines while still adding earlier history.
+        let expanded = (0..<200).map(String.init).joined(separator: "\n")
+        await transport.setPaneText(expanded, paneID: "w1:p1")
+        #expect(store.loadEarlier())
+        try await waitUntil("the first pull should request 280 lines") {
+            await transport.paneReadParams.count == 2 && !store.isLoadingEarlier
+        }
+        #expect(await transport.paneReadParams.last?.lines == 280)
+        #expect(store.canLoadEarlier)
+
+        // The next, wider request returning the same transcript proves that
+        // the retained history is exhausted.
+        #expect(store.loadEarlier())
+        try await waitUntil("an unchanged response should mark history exhausted") {
+            await transport.paneReadParams.count == 3 && !store.isLoadingEarlier
+        }
+        #expect(await transport.paneReadParams.last?.lines == 480)
+        #expect(!store.canLoadEarlier)
+        #expect(!store.loadEarlier())
+
+        await store.stop()
+    }
+
+    @Test func readOnlyTerminalKeepsCursorHiddenWhenRemoteShowsIt() {
+        var responses = Data()
+        let coordinator = TerminalScreenView.Coordinator(
+            onSizeChanged: nil,
+            onSend: { responses.append($0) })
+        let terminalView = SizeReportingTerminalView(frame: .zero, font: nil)
+        terminalView.terminalDelegate = coordinator
+        terminalView.allowsInput = false
+
+        // Simulate a remote TUI showing its cursor, then query DECTCEM.
+        terminalView.feed(byteArray: ArraySlice([UInt8]("\u{1B}[?25h\u{1B}[?25$p".utf8)))
+
+        #expect(String(decoding: responses, as: UTF8.self) == "\u{1B}[?25;2$y")
+    }
+
+    @Test func interactiveTerminalStillHonorsRemoteCursorVisibility() {
+        var responses = Data()
+        let coordinator = TerminalScreenView.Coordinator(
+            onSizeChanged: nil,
+            onSend: { responses.append($0) })
+        let terminalView = SizeReportingTerminalView(frame: .zero, font: nil)
+        terminalView.terminalDelegate = coordinator
+        terminalView.allowsInput = true
+
+        terminalView.feed(
+            byteArray: ArraySlice([UInt8]("\u{1B}[?25l\u{1B}[?25h\u{1B}[?25$p".utf8)))
+
+        #expect(String(decoding: responses, as: UTF8.self) == "\u{1B}[?25;1$y")
     }
 
     @Test func duplicateSizeReportsDoNotRestartTheStream() async throws {
@@ -111,34 +346,39 @@ struct ObserveTerminalStoreTests {
     }
 
     @Test func sequenceGapRestartsForAFreshFullRepaint() async throws {
-        // Dropped frames leave the screen undefined; there is no
-        // request-repaint on the wire, so the store re-observes (the first
-        // frame of a new stream is always a full repaint).
+        // A gap means change notifications were lost, so the store
+        // re-observes before trusting later notifications.
         let transport = ScriptedTransport()
         let (store, captured) = makeStore(transport: transport)
 
         store.viewDidResize(cols: 80, rows: 24)
         try await waitUntil("store should go live") { store.status == .live }
 
+        await transport.setPaneText("one two", paneID: "w1:p1")
         await transport.emitFrame(TerminalFrame(seq: 1, isFull: true, bytes: Data("one".utf8)))
         await transport.emitFrame(TerminalFrame(seq: 2, isFull: false, bytes: Data("two".utf8)))
+        try await waitUntil("accepted notifications should refresh the transcript") {
+            captured.text.contains("one two")
+        }
         await transport.emitFrame(TerminalFrame(seq: 5, isFull: false, bytes: Data("FIVE".utf8)))
 
         try await waitUntil("the gap should trigger a re-observe") {
             await transport.observeRequests.count == 2
         }
-        // The post-gap frame was not fed; the fresh repaint recovers instead.
-        #expect(captured.text == "onetwo")
+        // The post-gap cropped payload was not rendered.
+        #expect(!captured.text.contains("FIVE"))
 
         try await waitUntil("the restarted stream should be live") {
             guard store.status == .live else { return false }
             return await transport.hasLiveFrameStream
         }
+        await transport.setPaneText("fresh complete transcript", paneID: "w1:p1")
         await transport.emitFrame(
             TerminalFrame(seq: 1, isFull: true, bytes: Data("REPAINT".utf8)))
-        try await waitUntil("the repaint should reach the feed") {
-            captured.text == "onetwoREPAINT"
+        try await waitUntil("the restarted notification should refresh the transcript") {
+            captured.text.contains("fresh complete transcript")
         }
+        #expect(!captured.text.contains("REPAINT"))
 
         await store.stop()
     }

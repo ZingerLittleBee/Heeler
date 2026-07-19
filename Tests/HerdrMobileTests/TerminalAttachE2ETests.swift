@@ -218,6 +218,7 @@ struct TerminalAttachE2ETests {
         settings.attachCommand = "/bin/sh \(try write(script, prefix: "attach").path)"
         if let observeScript {
             settings.observeCommand = "/bin/sh \(try write(observeScript, prefix: "observe").path)"
+            settings.observeCommandHandlesStdinEOF = false
         }
         let transport = try await SSHTransport.connect(settings: settings)
         do {

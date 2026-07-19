@@ -16,15 +16,16 @@ protocol Transport: Sendable {
     func sessionSnapshot() async throws -> SessionSnapshot
 
     /// Reads a Pane's terminal output; the Console's last-output snippet
-    /// source (`source: .recent`, ANSI stripped) and the Observe backfill.
+    /// uses `.recent`, while Observe uses `.recentUnwrapped` so the phone can
+    /// wrap complete logical lines at its own width.
     func readPane(_ params: PaneReadParams) async throws -> PaneReadResult
 
-    /// Delivers a typed message to an Agent (`agent.send`): the detail
-    /// screen's message box (#10, User Story 6 — answering a Blocked agent
-    /// without Attach). herdr's agent-aware send, targeted by the Agent's
-    /// pane id. Returns once the server acknowledges; the effect shows up on
-    /// the Observe stream.
-    func sendToAgent(_ params: AgentSendParams) async throws
+    /// Atomically writes text and key presses to a Pane (`pane.send_input`):
+    /// the detail screen's message box (#10, User Story 6 — answering a
+    /// Blocked agent without Attach). Keeping the text and Enter key in one
+    /// RPC prevents a half-complete state where the reply is typed but not
+    /// submitted.
+    func sendInput(_ params: PaneSendInputParams) async throws
 
     /// Starts a new Agent (`agent.start`): the new-agent flow (#12, User
     /// Story 8 — dispatch work from the road). Runs the given command as a
@@ -63,11 +64,12 @@ protocol Transport: Sendable {
     func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream
 
     /// Opens this Host's dedicated terminal channel and starts the read-only
-    /// Observe live-follow (#9): NDJSON frame lines from `herdr terminal
-    /// session observe`, decoded and base64-unwrapped, until `end()` closes
-    /// the channel explicitly. One terminal channel per Host — the session
-    /// slot budgeted for the terminal surface — so a second call while one
-    /// is live throws `.terminalChannelAlreadyOpen`.
+    /// Observe live-follow (#9): a non-takeover `herdr terminal session
+    /// control` applies the phone geometry to the Agent's PTY and emits NDJSON
+    /// frames, while the app exposes no terminal-input path. Frames are
+    /// decoded and base64-unwrapped until `end()` closes the channel. One
+    /// terminal channel per Host, so a second call while one is live throws
+    /// `.terminalChannelAlreadyOpen`.
     func observeTerminal(_ request: TerminalObserveRequest) async throws -> TerminalFrameStream
 
     /// Opens this Host's dedicated terminal channel as a full interactive

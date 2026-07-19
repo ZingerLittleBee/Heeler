@@ -432,8 +432,8 @@ struct EventsSessionE2ETests {
             try await inner.startAgent(params)
         }
 
-        func sendToAgent(_ params: AgentSendParams) async throws {
-            try await inner.sendToAgent(params)
+        func sendInput(_ params: PaneSendInputParams) async throws {
+            try await inner.sendInput(params)
         }
 
         func sendKeys(_ params: PaneSendKeysParams) async throws {

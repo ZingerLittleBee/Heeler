@@ -4,9 +4,9 @@ import Testing
 @testable import HerdrMobile
 
 /// The detail screen's input store (#10) against a scripted transport: the
-/// message box sends via `agent.send`, the quick-key bar via
-/// `pane.send_keys`, failures surface, and success clears the box — protocol
-/// level, no SSH, no UI.
+/// message box sends text plus Enter via `pane.send_input`, the quick-key bar
+/// via `pane.send_keys`, failures surface, and success clears the box —
+/// protocol level, no SSH, no UI.
 @MainActor
 @Suite("Agent input store")
 struct AgentInputStoreTests {
@@ -29,7 +29,7 @@ struct AgentInputStoreTests {
         #expect(await condition(), comment)
     }
 
-    @Test func sendDraftDeliversViaAgentSendAndClearsTheBox() async throws {
+    @Test func sendDraftAtomicallyWritesTextAndEnterThenClearsTheBox() async throws {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport)
         store.draft = "  yes, proceed  "
@@ -40,8 +40,9 @@ struct AgentInputStoreTests {
         #expect(store.draft.isEmpty)
         // The draft is trimmed on the way out, targeted by pane id.
         #expect(
-            await transport.agentSends == [
-                AgentSendParams(target: "w1:p1", text: "yes, proceed")
+            await transport.sentInputs == [
+                PaneSendInputParams(
+                    paneID: "w1:p1", keys: ["enter"], text: "yes, proceed")
             ])
     }
 
@@ -69,8 +70,8 @@ struct AgentInputStoreTests {
         await first.value
 
         #expect(
-            await transport.agentSends == [
-                AgentSendParams(target: "w1:p1", text: "reply once")
+            await transport.sentInputs == [
+                PaneSendInputParams(paneID: "w1:p1", keys: ["enter"], text: "reply once")
             ])
         #expect(store.draft.isEmpty)
     }
@@ -82,7 +83,7 @@ struct AgentInputStoreTests {
 
         await store.sendDraft()
 
-        #expect(await transport.agentSends.isEmpty)
+        #expect(await transport.sentInputs.isEmpty)
         #expect(store.state == .idle)
     }
 
@@ -128,7 +129,7 @@ struct AgentInputStoreTests {
         #expect(store.state == .failed("The Host did not answer in time."))
         // The draft survives so the user can retry rather than retype.
         #expect(store.draft == "important reply")
-        #expect(await transport.agentSends.isEmpty)
+        #expect(await transport.sentInputs.isEmpty)
     }
 
     @Test func serverRejectionSurfacesTheHerdrMessage() async throws {
@@ -205,7 +206,7 @@ private actor RejectingTransport: Transport {
     }
 
     func startAgent(_ params: AgentStartParams) async throws -> Agent { throw error }
-    func sendToAgent(_ params: AgentSendParams) async throws { throw error }
+    func sendInput(_ params: PaneSendInputParams) async throws { throw error }
     func sendKeys(_ params: PaneSendKeysParams) async throws { throw error }
     func closePane(_ params: PaneTarget) async throws { throw error }
 

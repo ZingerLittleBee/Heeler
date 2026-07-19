@@ -8,6 +8,8 @@ import NIOCore
 
 /// How to reach one Host, authenticate against it, and find its herdr socket.
 struct SSHTransportSettings: Sendable {
+    static let defaultObserveCommand = "herdr terminal session control"
+
     var host: String
     var port: Int
     var username: String
@@ -29,13 +31,17 @@ struct SSHTransportSettings: Sendable {
     /// herdr is not on the login shell's PATH.
     var wakeCommand: String = "herdr remote-client-bridge"
     /// Command that streams a Pane's terminal as NDJSON frame lines over a
-    /// no-PTY exec channel (#9 probe: observe needs no PTY); the observe
-    /// target and geometry are appended, and the whole thing runs inside a
-    /// kill-on-stdin-EOF wrapper (see `observeChannelCommand`), so it must
-    /// contain no single quotes. Injectable so tests can substitute a
+    /// no-PTY exec channel. The default claims a non-takeover control
+    /// session so herdr applies the phone geometry to the Agent's PTY; the
+    /// app never writes control input on this channel. The target and
+    /// geometry are appended. Injectable so tests can substitute a
     /// frame-emitting script at the environment boundary; per-Host override
     /// also covers hosts where herdr is not on the login shell's PATH.
-    var observeCommand: String = "herdr terminal session observe"
+    var observeCommand: String = Self.defaultObserveCommand
+    /// Whether `observeCommand` treats stdin EOF as a graceful detach. The
+    /// production control command does; inert test commands can opt into the
+    /// legacy kill-on-EOF wrapper instead.
+    var observeCommandHandlesStdinEOF = true
     /// Command that attaches interactively to a Pane, run on the Host's
     /// dedicated terminal channel with a PTY (#11); the attach target and
     /// takeover flag are appended (see `attachBootstrapLine`). Injectable so
@@ -67,6 +73,7 @@ actor SSHTransport: Transport {
     private let socatPath: String
     private let wakeCommand: String
     private let observeCommand: String
+    private let observeCommandHandlesStdinEOF: Bool
     private let attachCommand: String
     private let requestTimeout: Duration
     /// Remote home directory resolution, resolved over exec once per Host:
@@ -149,7 +156,8 @@ actor SSHTransport: Transport {
 
     private init(
         client: SSHClient, socketLocation: HerdrSocketLocation, socatPath: String,
-        wakeCommand: String, observeCommand: String, attachCommand: String,
+        wakeCommand: String, observeCommand: String, observeCommandHandlesStdinEOF: Bool,
+        attachCommand: String,
         requestTimeout: Duration
     ) {
         self.client = client
@@ -157,6 +165,7 @@ actor SSHTransport: Transport {
         self.socatPath = socatPath
         self.wakeCommand = wakeCommand
         self.observeCommand = observeCommand
+        self.observeCommandHandlesStdinEOF = observeCommandHandlesStdinEOF
         self.attachCommand = attachCommand
         self.requestTimeout = requestTimeout
     }
@@ -188,6 +197,7 @@ actor SSHTransport: Transport {
         return SSHTransport(
             client: client, socketLocation: settings.socket, socatPath: settings.socatPath,
             wakeCommand: settings.wakeCommand, observeCommand: settings.observeCommand,
+            observeCommandHandlesStdinEOF: settings.observeCommandHandlesStdinEOF,
             attachCommand: settings.attachCommand, requestTimeout: settings.requestTimeout)
     }
 
@@ -236,8 +246,8 @@ actor SSHTransport: Transport {
         return Agent(response.agent)
     }
 
-    func sendToAgent(_ params: AgentSendParams) async throws {
-        _ = try await request(method: "agent.send", params: params, decoding: OkResponse.self)
+    func sendInput(_ params: PaneSendInputParams) async throws {
+        _ = try await request(method: "pane.send_input", params: params, decoding: OkResponse.self)
     }
 
     func sendKeys(_ params: PaneSendKeysParams) async throws {
@@ -448,14 +458,14 @@ actor SSHTransport: Transport {
 
     // MARK: Terminal channel (#9)
     //
-    // One dedicated exec channel carries the terminal surface: the Observe
-    // live-follow runs `herdr terminal session observe <target>` (no PTY —
-    // verified against herdr 0.7.4) and streams NDJSON frame lines until
-    // the channel is closed explicitly. Like the events channel it is
-    // exempt from the exec-slot queue: the session budget is 8 RPC slots +
-    // events + this terminal channel = sshd's default MaxSessions 10.
-    // Attach (#11) will reuse this single-channel budget; the state below
-    // keeps it to exactly one terminal channel per Host.
+    // One dedicated exec channel carries the terminal surface. Observe runs
+    // `herdr terminal session control <target>` without a PTY or takeover:
+    // herdr applies the phone geometry to the Agent's PTY, while the app
+    // exposes no terminal-input path and renders the NDJSON frames read-only.
+    // Like the events channel it is exempt from the exec-slot queue: the
+    // session budget is 8 RPC slots + events + this terminal channel = sshd's
+    // default MaxSessions 10. Attach (#11) reuses this single-channel budget;
+    // the state below keeps it to exactly one terminal channel per Host.
 
     private enum TerminalChannelState: Equatable {
         case idle
@@ -470,7 +480,9 @@ actor SSHTransport: Transport {
             throw TransportError.terminalChannelAlreadyOpen
         }
         let command = Self.observeChannelCommand(
-            observeCommand: observeCommand, request: request)
+            observeCommand: observeCommand,
+            handlesStdinEOF: observeCommandHandlesStdinEOF,
+            request: request)
         // Bounded like the events path (#22): a shed frame leaves a hole in
         // the `seq` counter, and the observe consumer already treats any
         // seq gap as "re-observe for a fresh full repaint" — local drops
@@ -495,29 +507,33 @@ actor SSHTransport: Transport {
     }
 
     /// The full remote command for one observe channel. Everything this
-    /// transport runs must die on stdin EOF — explicit close is the only way
+    /// transport runs must die on stdin EOF: explicit close is the only way
     /// to end a Citadel channel, and the close only completes once the
-    /// remote command exits (verified against localhost sshd: a command that
-    /// ignores EOF pins the teardown for its whole lifetime). socat has that
-    /// property natively; `herdr terminal session observe` does not (probed
-    /// against herdr 0.7.4: it streams on regardless), so a POSIX wrapper
-    /// adds it: a watcher waits for stdin EOF and kills observe.
+    /// remote command exits. The production control CLI handles EOF by
+    /// sending Detach, so it stays in the foreground with stdin intact.
+    /// Injectable commands that ignore EOF use a POSIX wrapper whose watcher
+    /// kills the command instead.
     ///
     /// Runs under `/bin/sh` explicitly because the login shell owning the
     /// exec command line may not speak POSIX (fish). The target rides as a
     /// positional argument so only the outer shell ever quotes it.
     ///
-    /// The stdin dance: POSIX hands `/dev/null` to backgrounded (`&`)
-    /// commands, so the real stdin is saved to fd 3 first and the watcher
-    /// reads that. Observe exiting on its own (pane closed, herdr died)
-    /// takes the `wait` path: the watcher is killed and the wrapper exits,
-    /// so the remote death still surfaces as the stream ending.
+    /// In the fallback stdin dance, POSIX hands `/dev/null` to backgrounded
+    /// (`&`) commands, so the real stdin is saved to fd 3 first and the
+    /// watcher reads that. The command exiting on its own takes the `wait`
+    /// path: the watcher is killed and the wrapper exits, so the remote death
+    /// still surfaces as the stream ending.
     static func observeChannelCommand(
-        observeCommand: String, request: TerminalObserveRequest
+        observeCommand: String,
+        handlesStdinEOF: Bool,
+        request: TerminalObserveRequest
     ) -> String {
         let quotedTarget =
             "'" + request.target.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
         let observe = "\(observeCommand) \"$1\" --cols \(request.cols) --rows \(request.rows)"
+        if handlesStdinEOF {
+            return "/bin/sh -c 'exec \(observe)' observe \(quotedTarget)"
+        }
         let wrapper =
             "exec 3<&0 0</dev/null; \(observe) & p=$!; "
             + "(cat <&3 >/dev/null 2>&1 3<&-; kill $p 2>/dev/null) & w=$!; "
