@@ -35,12 +35,26 @@ struct AgentDetailView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TerminalScreenView(feed: store.feed) { cols, rows in
-                store.viewDidResize(cols: cols, rows: rows)
-            }
+            TerminalScreenView(
+                feed: store.feed,
+                onSizeChanged: { cols, rows in
+                    store.viewDidResize(cols: cols, rows: rows)
+                },
+                onLoadEarlier: { store.loadEarlier() })
             // Keyed on the store: resuming Observe after Attach mints a
             // fresh store, whose feed must get a freshly attached view.
             .id(ObjectIdentifier(store))
+            .overlay(alignment: .top) {
+                if store.isLoadingEarlier {
+                    ProgressView()
+                        .controlSize(.small)
+                        .padding(8)
+                        .background(.thinMaterial, in: Capsule())
+                        .padding(.top, 8)
+                        .accessibilityLabel("Loading earlier output")
+                        .allowsHitTesting(false)
+                }
+            }
             .overlay { statusOverlay }
 
             AgentInputBar(store: input)

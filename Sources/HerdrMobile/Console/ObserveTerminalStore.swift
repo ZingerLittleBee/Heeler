@@ -17,6 +17,10 @@ import Observation
 @MainActor
 @Observable
 final class ObserveTerminalStore {
+    private static let initialTranscriptLines = 80
+    private static let transcriptPageLines = 200
+    private static let maximumTranscriptLines = 1_000
+
     enum Status: Equatable {
         /// Waiting for the terminal view's first layout to report cols/rows.
         case waitingForSize
@@ -31,6 +35,8 @@ final class ObserveTerminalStore {
     }
 
     private(set) var status: Status = .waitingForSize
+    private(set) var isLoadingEarlier = false
+    private(set) var canLoadEarlier = true
     /// The byte pipe the terminal view consumes.
     let feed = TerminalByteFeed()
 
@@ -50,6 +56,9 @@ final class ObserveTerminalStore {
     private var runTask: Task<Void, Never>?
     private var transcriptRefreshTask: Task<Void, Never>?
     private var transcriptRefreshPending = false
+    private var historyLoadTask: Task<Void, Never>?
+    private var transcriptLineLimit = ObserveTerminalStore.initialTranscriptLines
+    private var loadedTranscriptLineLimit = 0
 
     init(
         target: String, transcriptRefreshInterval: Duration = .milliseconds(150),
@@ -90,6 +99,7 @@ final class ObserveTerminalStore {
         stopRequested = true
         transcriptRefreshPending = false
         transcriptRefreshTask?.cancel()
+        historyLoadTask?.cancel()
         if let stream = liveStream {
             await stream.end()
         }
@@ -99,7 +109,52 @@ final class ObserveTerminalStore {
         if let task = transcriptRefreshTask {
             await task.value
         }
+        if let task = historyLoadTask {
+            await task.value
+        }
         status = .stopped
+    }
+
+    /// Expands the recent-unwrapped window when the terminal reaches the top.
+    /// herdr 0.7.4 has no offset pagination and caps reads at 1,000 lines, so
+    /// each accepted pull grows the window by one page until that boundary or
+    /// the beginning of retained history is reached.
+    @discardableResult
+    func loadEarlier() -> Bool {
+        guard case .live = status else { return false }
+        guard hasLoadedTranscript, canLoadEarlier, !isLoadingEarlier else { return false }
+        guard transcriptLineLimit < Self.maximumTranscriptLines else {
+            canLoadEarlier = false
+            return false
+        }
+
+        let previousLimit = transcriptLineLimit
+        let requestedLimit = min(
+            Self.maximumTranscriptLines, previousLimit + Self.transcriptPageLines)
+        transcriptLineLimit = requestedLimit
+        isLoadingEarlier = true
+        historyLoadTask = Task {
+            await self.runHistoryLoad(previousLimit: previousLimit, requestedLimit: requestedLimit)
+        }
+        return true
+    }
+
+    private func runHistoryLoad(previousLimit: Int, requestedLimit: Int) async {
+        let succeeded: Bool
+        if let transport = await transport() {
+            succeeded = await refreshTranscript(
+                transport: transport, replacing: true, requestedLines: requestedLimit)
+        } else {
+            succeeded = false
+        }
+
+        if !succeeded, loadedTranscriptLineLimit < requestedLimit,
+            transcriptLineLimit == requestedLimit
+        {
+            transcriptLineLimit = previousLimit
+        }
+        isLoadingEarlier = false
+        historyLoadTask = nil
     }
 
     private func start() {
@@ -227,12 +282,25 @@ final class ObserveTerminalStore {
     /// Reads and renders the complete logical transcript. Failure is not
     /// fatal: the stream remains live and a later frame retries the read.
     @discardableResult
-    private func refreshTranscript(transport: any Transport, replacing: Bool) async -> Bool {
+    private func refreshTranscript(
+        transport: any Transport, replacing: Bool, requestedLines: Int? = nil
+    ) async -> Bool {
+        let requestedLines = requestedLines ?? transcriptLineLimit
         guard
             let read = try? await transport.readPane(
-                PaneReadParams(paneID: target, source: .recentUnwrapped, format: .ansi))
+                PaneReadParams(
+                    paneID: target, source: .recentUnwrapped, format: .ansi,
+                    lines: requestedLines))
         else { return false }
         guard !stopRequested else { return false }
+        // An older in-flight read must not replace a larger history window
+        // accepted by a later pull-to-load request.
+        guard requestedLines >= transcriptLineLimit else { return false }
+        let expandsHistory = replacing && loadedTranscriptLineLimit > 0
+            && requestedLines > loadedTranscriptLineLimit
+        loadedTranscriptLineLimit = max(loadedTranscriptLineLimit, requestedLines)
+        canLoadEarlier = requestedLines < Self.maximumTranscriptLines
+            && Self.logicalLineCount(read.text) >= requestedLines
         // pane.read joins lines with bare newlines; a raw-mode terminal
         // needs CR+LF or the lines stair-step.
         let normalized = Self.outputOnlyTranscript(read.text)
@@ -245,9 +313,18 @@ final class ObserveTerminalStore {
             bytes.append(Data("\u{1B}[3J\u{1B}[2J\u{1B}[H".utf8))
         }
         bytes.append(Data(normalized.utf8))
-        feed.write(bytes)
+        if expandsHistory {
+            feed.writeHistorySnapshot(bytes)
+        } else {
+            feed.write(bytes)
+        }
         hasLoadedTranscript = true
         return true
+    }
+
+    private static func logicalLineCount(_ transcript: String) -> Int {
+        guard !transcript.isEmpty else { return 0 }
+        return transcript.components(separatedBy: "\n").count
     }
 
     /// herdr exposes terminal rows, not an agent-output-only stream. Remove

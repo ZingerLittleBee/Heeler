@@ -150,6 +150,7 @@ struct ObserveTerminalStoreTests {
         terminal.layoutIfNeeded()
 
         #expect(terminal.font.pointSize < 12)
+        #expect(terminal.getTerminal().options.scrollback == 5_000)
         let columns = terminal.getTerminal().cols
         let rowsForDesktopLine = (185 + columns - 1) / columns
         #expect(columns >= 64)
@@ -190,6 +191,83 @@ struct ObserveTerminalStoreTests {
         }
         #expect(terminal.contentSize.height > originalExtent)
         #expect(terminal.scrollPosition == 1)
+    }
+
+    @Test func reachingTheTopLoadsEarlierHistoryWithoutMovingTheViewport() async throws {
+        let feed = TerminalByteFeed()
+        var loadRequests = 0
+        let host = UIHostingController(
+            rootView: TerminalScreenView(
+                feed: feed, style: .observe,
+                onLoadEarlier: {
+                    loadRequests += 1
+                    return true
+                }))
+        let frame = CGRect(x: 0, y: 0, width: 393, height: 600)
+        let window = UIWindow(frame: frame)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        host.view.frame = frame
+        host.view.layoutIfNeeded()
+
+        let terminal = try #require(terminalView(in: host.view))
+        terminal.layoutIfNeeded()
+        let initialTranscript = (200..<320)
+            .map { String(format: "line %03d", $0) }
+            .joined(separator: "\r\n")
+        feed.write(Data(initialTranscript.utf8))
+        while terminal.accessibilityScroll(.up) {}
+
+        #expect(loadRequests == 1)
+        let originalTopLine = try #require(terminal.getTerminal().getLine(row: 0))
+            .translateToString(trimRight: true)
+        #expect(originalTopLine == "line 200")
+
+        let expandedTranscript = (0..<320)
+            .map { String(format: "line %03d", $0) }
+            .joined(separator: "\r\n")
+        feed.writeHistorySnapshot(
+            Data("\u{1B}[3J\u{1B}[2J\u{1B}[H\(expandedTranscript)".utf8))
+        try await Task.sleep(for: .milliseconds(30))
+
+        let restoredTopLine = try #require(terminal.getTerminal().getLine(row: 0))
+            .translateToString(trimRight: true)
+        #expect(restoredTopLine == originalTopLine)
+        #expect(terminal.getTerminal().getTopVisibleRow() > 0)
+        #expect(loadRequests == 1)
+    }
+
+    @Test func loadingEarlierExpandsTheReadWindowUntilHistoryEnds() async throws {
+        let transport = ScriptedTransport()
+        let initial = (0..<80).map(String.init).joined(separator: "\n")
+        await transport.setPaneText(initial, paneID: "w1:p1")
+        let (store, _) = makeStore(transport: transport)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("store should go live") { store.status == .live }
+        #expect(await transport.paneReadParams.first?.lines == 80)
+
+        let expanded = (0..<280).map(String.init).joined(separator: "\n")
+        await transport.setPaneText(expanded, paneID: "w1:p1")
+        #expect(store.loadEarlier())
+        try await waitUntil("the first pull should request 280 lines") {
+            await transport.paneReadParams.count == 2 && !store.isLoadingEarlier
+        }
+        #expect(await transport.paneReadParams.last?.lines == 280)
+        #expect(store.canLoadEarlier)
+
+        let exhausted = (0..<350).map(String.init).joined(separator: "\n")
+        await transport.setPaneText(exhausted, paneID: "w1:p1")
+        #expect(store.loadEarlier())
+        try await waitUntil("a short response should mark history exhausted") {
+            await transport.paneReadParams.count == 3 && !store.isLoadingEarlier
+        }
+        #expect(await transport.paneReadParams.last?.lines == 480)
+        #expect(!store.canLoadEarlier)
+        #expect(!store.loadEarlier())
+
+        await store.stop()
     }
 
     @Test func readOnlyTerminalKeepsCursorHiddenWhenRemoteShowsIt() {
