@@ -89,6 +89,14 @@ enum EventSubscription: Sendable, Equatable {
     case pane(PaneEventKind, paneID: String)
 }
 
+extension HerdrEventKind {
+    /// Synthetic, local-only kind (#22): stands in for updates a bounded
+    /// event buffer shed under overflow. Never sent by herdr and not
+    /// subscribable (deliberately absent from `known`). Consumers treat it
+    /// like a membership event — re-snapshot, because deltas may be missing.
+    static let eventsDropped = HerdrEventKind(name: "local.events_dropped")
+}
+
 /// One event from the Host's events channel, in canonical naming.
 struct HerdrEvent: Sendable, Equatable {
     let kind: HerdrEventKind
@@ -97,12 +105,34 @@ struct HerdrEvent: Sendable, Equatable {
     let data: JSONValue
 }
 
+extension HerdrEvent {
+    /// The drop marker (#22), yielded in place of updates a bounded buffer
+    /// shed. Snapshot-then-delta (spec #20) makes dropping events safe
+    /// exactly when the consumer learns it happened — this event is how it
+    /// learns. AsyncStream's `.bufferingNewest` drops silently, so producers
+    /// inspect every yield's result and follow any `.dropped` with this
+    /// marker: bufferingNewest guarantees the marker itself lands, and if a
+    /// later flood sheds the marker too, that shed surfaces as another
+    /// `.dropped` result and re-arms it — a consumer that eventually drains
+    /// always sees a marker newer than everything it lost.
+    static let eventsDropped = HerdrEvent(kind: .eventsDropped, data: .null)
+}
+
 /// A live `events.subscribe` stream over its Host's dedicated exec channel.
 ///
 /// Ending is explicit: call `end()`. A live exec channel does not respond to
 /// Swift task cancellation (ADR 0002), so abandoning the stream without
 /// `end()` leaks the channel until the SSH connection closes.
 final class HerdrEventStream: Sendable {
+    /// Buffer bound for the event delivery path (#22), sized for stall
+    /// absorption, not history: events are single JSON lines (hundreds of
+    /// bytes), and bursts are pane-churn or status-flap scale — tens of
+    /// events — so 256 rides out a multi-second consumer stall at a few
+    /// hundred KB worst case. Anything beyond that means the consumer is
+    /// badly behind, and one snapshot resync (the designed recovery for
+    /// dropped events) beats replaying a stale backlog.
+    static let bufferLimit = 256
+
     /// Events in arrival order. Finishes without error after `end()`,
     /// finishes throwing if the channel dies remotely.
     let events: AsyncThrowingStream<HerdrEvent, any Error>

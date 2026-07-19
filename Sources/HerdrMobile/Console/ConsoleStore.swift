@@ -9,7 +9,9 @@ import Observation
 /// snapshots, `pane.agent_status_changed` deltas mutate rows in place.
 /// Membership and context changes (agent detected, pane closed, workspace
 /// renamed, ...) re-snapshot the Host instead of patching state
-/// speculatively — one cheap RPC beats replicating herdr's tree logic.
+/// speculatively — one cheap RPC beats replicating herdr's tree logic. The
+/// drop marker a bounded events buffer emits under overflow (#22) rides the
+/// same path: lost deltas cost one re-snapshot, never corrupted state.
 ///
 /// Because `pane.agent_status_changed` subscribes per pane id, each snapshot
 /// also pushes the current pane set into the session via
@@ -296,7 +298,11 @@ final class ConsoleStore {
         .paneAgentDetected, .paneClosed, .paneExited,
         .workspaceRenamed, .workspaceMetadataUpdated, .workspaceClosed,
     ]
-    private static let resyncEventKinds = Set(membershipKinds.map(\.kind))
+    /// The membership kinds plus the local drop marker (#22): a bounded
+    /// event buffer that shed updates means the deltas are incomplete, so
+    /// the marker rides the same re-snapshot path membership changes do.
+    private static let resyncEventKinds =
+        Set(membershipKinds.map(\.kind)).union([HerdrEventKind.eventsDropped])
 
     /// One Host's Console subscription set: the global kinds plus a per-pane
     /// `pane.agent_status_changed` for every known Agent pane — the status
