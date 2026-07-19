@@ -2,6 +2,23 @@ import SwiftTerm
 import SwiftUI
 import UIKit
 
+/// Presentation-specific terminal typography. Observe prioritizes fitting a
+/// useful amount of a desktop transcript on a phone; Attach keeps SwiftTerm's
+/// default size for interactive use.
+enum TerminalScreenStyle {
+    case observe
+    case attach
+
+    fileprivate var font: UIFont? {
+        switch self {
+        case .observe:
+            UIFont.monospacedSystemFont(ofSize: 9.5, weight: .regular)
+        case .attach:
+            nil
+        }
+    }
+}
+
 /// The shared SwiftTerm surface: Observe (#9) renders it read-only, Attach
 /// (#11) drives the same view with `allowsInput` and `onSend` wired. Bytes
 /// arrive through a `TerminalByteFeed`; geometry flows out through
@@ -9,6 +26,7 @@ import UIKit
 /// the real cols/rows.
 struct TerminalScreenView: UIViewRepresentable {
     let feed: TerminalByteFeed
+    var style: TerminalScreenStyle = .observe
     var allowsInput = false
     var onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)?
     /// Keystrokes the terminal wants sent to the remote; nil (Observe)
@@ -16,7 +34,7 @@ struct TerminalScreenView: UIViewRepresentable {
     var onSend: ((Data) -> Void)?
 
     func makeUIView(context: Context) -> SizeReportingTerminalView {
-        let view = SizeReportingTerminalView(frame: .zero)
+        let view = SizeReportingTerminalView(frame: .zero, font: style.font)
         view.allowsInput = allowsInput
         view.terminalDelegate = context.coordinator
         view.onSizeReport = { [weak coordinator = context.coordinator] cols, rows in

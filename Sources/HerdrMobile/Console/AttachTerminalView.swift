@@ -18,6 +18,7 @@ struct AttachTerminalView: View {
         NavigationStack {
             TerminalScreenView(
                 feed: store.feed,
+                style: .attach,
                 allowsInput: true,
                 onSizeChanged: { cols, rows in store.viewDidResize(cols: cols, rows: rows) },
                 onSend: { keystrokes in store.send(keystrokes) }

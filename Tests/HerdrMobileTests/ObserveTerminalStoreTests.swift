@@ -1,5 +1,7 @@
 import Foundation
+import SwiftUI
 import Testing
+import UIKit
 
 @testable import HerdrMobile
 
@@ -25,6 +27,18 @@ struct ObserveTerminalStoreTests {
         var text: String {
             String(decoding: chunks.reduce(Data(), +), as: UTF8.self)
         }
+    }
+
+    private func terminalView(in root: UIView) -> SizeReportingTerminalView? {
+        if let terminal = root as? SizeReportingTerminalView {
+            return terminal
+        }
+        for subview in root.subviews {
+            if let terminal = terminalView(in: subview) {
+                return terminal
+            }
+        }
+        return nil
     }
 
     /// Polls until `condition` holds, yielding so the store's tasks progress.
@@ -85,6 +99,30 @@ struct ObserveTerminalStoreTests {
         #expect(!captured.text.contains("cropped ending"))
 
         await store.stop()
+    }
+
+    @Test func observeUsesEnoughColumnsToLimitWidePaneReflow() throws {
+        // A 393-point iPhone showing the default 12-point terminal only fits
+        // about 52 columns. A 185-column desktop line then expands to four
+        // mobile rows, which makes the transcript unnecessarily tall.
+        let host = UIHostingController(
+            rootView: TerminalScreenView(feed: TerminalByteFeed(), style: .observe))
+        let frame = CGRect(x: 0, y: 0, width: 393, height: 600)
+        let window = UIWindow(frame: frame)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        host.view.frame = frame
+        host.view.layoutIfNeeded()
+
+        let terminal = try #require(terminalView(in: host.view))
+        terminal.layoutIfNeeded()
+
+        #expect(terminal.font.pointSize < 12)
+        let columns = terminal.getTerminal().cols
+        let rowsForDesktopLine = (185 + columns - 1) / columns
+        #expect(columns >= 64)
+        #expect(rowsForDesktopLine <= 3)
     }
 
     @Test func duplicateSizeReportsDoNotRestartTheStream() async throws {
