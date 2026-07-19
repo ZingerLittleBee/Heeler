@@ -1,0 +1,68 @@
+# Headless build + test suite for every PR (User Story 12, refs #23).
+#
+# Runs the full XCTest suite on an iOS simulator. Kept deliberately minimal:
+# no signing certificates, no archive, no xcodegen. Simulator builds use free
+# ad-hoc signing ("Sign to Run Locally"), so no certificate or provisioning
+# profile is needed. We must NOT pass CODE_SIGNING_ALLOWED=NO: it strips the
+# app's signature and with it the keychain-access entitlement, which breaks the
+# tests that run against the real simulator keychain (errSecMissingEntitlement).
+#
+# Notes:
+# - The committed HerdrMobile.xcodeproj (project + shared HerdrMobile scheme)
+#   is the source of truth for CI. project.yml/xcodegen is a local convenience
+#   only; CI never regenerates the project.
+# - The sshd-dependent e2e suites gate on LocalSSHTestEnvironment.isAvailable
+#   (Tests/HerdrMobileTests/Support/LocalSSHTestEnvironment.swift): they probe
+#   for a local sshd, a socat binary, and a seeded Ed25519 key, and each test
+#   is annotated `.enabled(if: LocalSSHTestEnvironment.isAvailable)`. On a bare
+#   runner none of that exists, so those tests skip cleanly. We deliberately do
+#   NOT provision sshd here; the pure suite still runs.
+# - Wire-type codegen drift is checked against a committed schema snapshot
+#   (scripts/herdr-schema.json), captured from herdr 0.7.4 via
+#   `herdr api schema --json`. CI has no herdr binary, so `--schema` feeds the
+#   snapshot instead of shelling out. The snapshot also pins the exact schema
+#   version the generated types were built from.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# One in-flight run per ref; a new push cancels the previous run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codegen-drift:
+    name: Wire-type codegen drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check generated wire types are up to date
+        run: scripts/generate-wire-types.py --check --schema scripts/herdr-schema.json
+
+  build-test:
+    name: Build & test (iOS Simulator)
+    # macos-26 ships Xcode 26.x and the iOS 26 simulator runtimes. Pinned
+    # rather than macos-latest for reproducibility.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode and simulator versions
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes
+
+      # OS=latest targets whatever iOS runtime the image currently ships, so a
+      # runtime-version bump on the runner image does not break the build. The
+      # app deployment target is iOS 18, which runs on newer simulator OSes.
+      - name: Build and test
+        run: |
+          xcodebuild test \
+            -project HerdrMobile.xcodeproj \
+            -scheme HerdrMobile \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
