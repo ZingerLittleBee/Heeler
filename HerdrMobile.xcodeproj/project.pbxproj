@@ -24,6 +24,7 @@
 		1F4B065DFCAF8E6656600F1E /* TOFUHostKeyValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC1CA00EE3CB38A822FEA4B2 /* TOFUHostKeyValidator.swift */; };
 		225ECBDC69A7785559BC4D20 /* AttachTerminalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97970F4D535CC80592333995 /* AttachTerminalStore.swift */; };
 		27C44B69FBE155A397F54B77 /* HostStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AECAD39A269D97DAB4ED194 /* HostStore.swift */; };
+		29832666B5E02B0D33453DB1 /* EventsSessionBufferingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 641088A470B51F40C898830F /* EventsSessionBufferingTests.swift */; };
 		298FA49167E3CB1402B7B86B /* DeviceKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D04EAA030D8329A1716714A8 /* DeviceKeyStore.swift */; };
 		2C5A21065C48B7C40AE9A760 /* KnownHostsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87B0377EAC5265E7A6FCD212 /* KnownHostsStoreTests.swift */; };
 		2CE9115816E7CE945ABCF7A8 /* AgentDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADF336771A3F757F2AD441D /* AgentDetailView.swift */; };
@@ -133,6 +134,7 @@
 		567573855DCC8571BC02096D /* SecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretStore.swift; sourceTree = "<group>"; };
 		597ACEE9D688E433B20108D7 /* TerminalScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalScreenView.swift; sourceTree = "<group>"; };
 		5ADF336771A3F757F2AD441D /* AgentDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDetailView.swift; sourceTree = "<group>"; };
+		641088A470B51F40C898830F /* EventsSessionBufferingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsSessionBufferingTests.swift; sourceTree = "<group>"; };
 		6434D31A79422C0BAE80993F /* HostStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostStoreTests.swift; sourceTree = "<group>"; };
 		646861C32DDA14D63389C518 /* ColdStartE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColdStartE2ETests.swift; sourceTree = "<group>"; };
 		6BE2EC235A2ACCB61A98881E /* SSHAuthE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHAuthE2ETests.swift; sourceTree = "<group>"; };
@@ -277,6 +279,7 @@
 				079394F4C6AC8FE4D7B0779C /* ConsoleStoreTests.swift */,
 				8323C68B13826B7388800B1F /* DeviceKeyStoreTests.swift */,
 				558159B2AF61C28F6B1391A2 /* DeviceKeyTests.swift */,
+				641088A470B51F40C898830F /* EventsSessionBufferingTests.swift */,
 				9291334E33C85C7588F86281 /* EventsSessionE2ETests.swift */,
 				6CA5E9DDE1AB0F68F6EC56EB /* EventsSessionSubscriptionsTests.swift */,
 				4076B0E816625CD09EB29F2E /* EventsSubscribeE2ETests.swift */,
@@ -538,6 +541,7 @@
 				93851E040C292A16F5ECB10D /* ConsoleStoreTests.swift in Sources */,
 				05A6F31F9CAC1CA1C57D7C71 /* DeviceKeyStoreTests.swift in Sources */,
 				F62A9CD06CFB784550AF4977 /* DeviceKeyTests.swift in Sources */,
+				29832666B5E02B0D33453DB1 /* EventsSessionBufferingTests.swift in Sources */,
 				FE4ADC78CA6113FFFBCEC693 /* EventsSessionE2ETests.swift in Sources */,
 				033E8DCA2F64ABE6CA898758 /* EventsSessionSubscriptionsTests.swift in Sources */,
 				E30244FD0231DD02EC9978D0 /* EventsSubscribeE2ETests.swift in Sources */,
