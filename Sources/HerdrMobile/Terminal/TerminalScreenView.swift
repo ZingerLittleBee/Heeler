@@ -90,15 +90,31 @@ struct TerminalScreenView: UIViewRepresentable {
 }
 
 /// TerminalView with three app-side behaviors: input is opt-in (read-only
-/// Observe must never pop a keyboard) and grabs focus on appearance so both
-/// the soft keyboard and iPad hardware keyboards work without a preliminary
-/// tap, and the current cols/rows are reported from layout — the stock view
-/// only reports *changes*, which would leave a store waiting forever when
-/// the laid-out size happens to equal SwiftTerm's 80x25 default.
+/// Observe never pops a keyboard or displays a cursor), interactive Attach
+/// grabs focus on appearance, and the current cols/rows are reported from
+/// layout. The stock view only reports *changes*, which would leave a store
+/// waiting forever when the laid-out size equals SwiftTerm's 80x25 default.
 final class SizeReportingTerminalView: TerminalView {
-    var allowsInput = false
+    var allowsInput = true {
+        didSet {
+            guard oldValue != allowsInput else { return }
+            if allowsInput {
+                getTerminal().showCursor()
+            } else {
+                getTerminal().hideCursor()
+            }
+        }
+    }
     var onSizeReport: ((_ cols: Int, _ rows: Int) -> Void)?
     private var lastReported: (cols: Int, rows: Int)?
+
+    override func showCursor(source: Terminal) {
+        guard allowsInput else {
+            source.hideCursor()
+            return
+        }
+        super.showCursor(source: source)
+    }
 
     override var canBecomeFirstResponder: Bool {
         allowsInput && super.canBecomeFirstResponder

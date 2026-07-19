@@ -1,4 +1,5 @@
 import Foundation
+import SwiftTerm
 import SwiftUI
 import Testing
 import UIKit
@@ -153,6 +154,36 @@ struct ObserveTerminalStoreTests {
         let rowsForDesktopLine = (185 + columns - 1) / columns
         #expect(columns >= 64)
         #expect(rowsForDesktopLine <= 3)
+    }
+
+    @Test func readOnlyTerminalKeepsCursorHiddenWhenRemoteShowsIt() {
+        var responses = Data()
+        let coordinator = TerminalScreenView.Coordinator(
+            onSizeChanged: nil,
+            onSend: { responses.append($0) })
+        let terminalView = SizeReportingTerminalView(frame: .zero, font: nil)
+        terminalView.terminalDelegate = coordinator
+        terminalView.allowsInput = false
+
+        // Simulate a remote TUI showing its cursor, then query DECTCEM.
+        terminalView.feed(byteArray: ArraySlice([UInt8]("\u{1B}[?25h\u{1B}[?25$p".utf8)))
+
+        #expect(String(decoding: responses, as: UTF8.self) == "\u{1B}[?25;2$y")
+    }
+
+    @Test func interactiveTerminalStillHonorsRemoteCursorVisibility() {
+        var responses = Data()
+        let coordinator = TerminalScreenView.Coordinator(
+            onSizeChanged: nil,
+            onSend: { responses.append($0) })
+        let terminalView = SizeReportingTerminalView(frame: .zero, font: nil)
+        terminalView.terminalDelegate = coordinator
+        terminalView.allowsInput = true
+
+        terminalView.feed(
+            byteArray: ArraySlice([UInt8]("\u{1B}[?25l\u{1B}[?25h\u{1B}[?25$p".utf8)))
+
+        #expect(String(decoding: responses, as: UTF8.self) == "\u{1B}[?25;1$y")
     }
 
     @Test func duplicateSizeReportsDoNotRestartTheStream() async throws {
