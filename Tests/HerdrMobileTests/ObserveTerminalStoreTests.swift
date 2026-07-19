@@ -236,11 +236,14 @@ struct ObserveTerminalStoreTests {
         #expect(restoredTopLine == originalTopLine)
         #expect(terminal.getTerminal().getTopVisibleRow() > 0)
         #expect(loadRequests == 1)
+
+        while terminal.accessibilityScroll(.up) {}
+        #expect(loadRequests == 2)
     }
 
     @Test func loadingEarlierExpandsTheReadWindowUntilHistoryEnds() async throws {
         let transport = ScriptedTransport()
-        let initial = (0..<80).map(String.init).joined(separator: "\n")
+        let initial = (120..<200).map(String.init).joined(separator: "\n")
         await transport.setPaneText(initial, paneID: "w1:p1")
         let (store, _) = makeStore(transport: transport)
 
@@ -248,7 +251,10 @@ struct ObserveTerminalStoreTests {
         try await waitUntil("store should go live") { store.status == .live }
         #expect(await transport.paneReadParams.first?.lines == 80)
 
-        let expanded = (0..<280).map(String.init).joined(separator: "\n")
+        // recent_unwrapped counts terminal rows before joining wrapped rows,
+        // so a 280-row request can legitimately return fewer than 280
+        // logical lines while still adding earlier history.
+        let expanded = (0..<200).map(String.init).joined(separator: "\n")
         await transport.setPaneText(expanded, paneID: "w1:p1")
         #expect(store.loadEarlier())
         try await waitUntil("the first pull should request 280 lines") {
@@ -257,10 +263,10 @@ struct ObserveTerminalStoreTests {
         #expect(await transport.paneReadParams.last?.lines == 280)
         #expect(store.canLoadEarlier)
 
-        let exhausted = (0..<350).map(String.init).joined(separator: "\n")
-        await transport.setPaneText(exhausted, paneID: "w1:p1")
+        // The next, wider request returning the same transcript proves that
+        // the retained history is exhausted.
         #expect(store.loadEarlier())
-        try await waitUntil("a short response should mark history exhausted") {
+        try await waitUntil("an unchanged response should mark history exhausted") {
             await transport.paneReadParams.count == 3 && !store.isLoadingEarlier
         }
         #expect(await transport.paneReadParams.last?.lines == 480)

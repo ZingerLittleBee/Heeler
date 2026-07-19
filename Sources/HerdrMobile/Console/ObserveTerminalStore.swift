@@ -59,6 +59,7 @@ final class ObserveTerminalStore {
     private var historyLoadTask: Task<Void, Never>?
     private var transcriptLineLimit = ObserveTerminalStore.initialTranscriptLines
     private var loadedTranscriptLineLimit = 0
+    private var latestTranscript: String?
 
     init(
         target: String, transcriptRefreshInterval: Duration = .milliseconds(150),
@@ -299,11 +300,19 @@ final class ObserveTerminalStore {
         let expandsHistory = replacing && loadedTranscriptLineLimit > 0
             && requestedLines > loadedTranscriptLineLimit
         loadedTranscriptLineLimit = max(loadedTranscriptLineLimit, requestedLines)
-        canLoadEarlier = requestedLines < Self.maximumTranscriptLines
-            && Self.logicalLineCount(read.text) >= requestedLines
+        let transcript = Self.outputOnlyTranscript(read.text)
+        if expandsHistory {
+            canLoadEarlier = requestedLines < Self.maximumTranscriptLines
+                && latestTranscript.map {
+                    Self.addsEarlierHistory(transcript, than: $0)
+                } ?? true
+        } else if requestedLines >= Self.maximumTranscriptLines {
+            canLoadEarlier = false
+        }
+        latestTranscript = transcript
         // pane.read joins lines with bare newlines; a raw-mode terminal
         // needs CR+LF or the lines stair-step.
-        let normalized = Self.outputOnlyTranscript(read.text)
+        let normalized = transcript
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\n", with: "\r\n")
         var bytes = Data()
@@ -322,9 +331,19 @@ final class ObserveTerminalStore {
         return true
     }
 
-    private static func logicalLineCount(_ transcript: String) -> Int {
-        guard !transcript.isEmpty else { return 0 }
-        return transcript.components(separatedBy: "\n").count
+    private static func addsEarlierHistory(_ transcript: String, than previous: String) -> Bool {
+        guard !previous.isEmpty, transcript != previous else { return false }
+        let previousLines = previous.components(separatedBy: "\n").map(terminalPlainText)
+        let transcriptLines = transcript.components(separatedBy: "\n").map(terminalPlainText)
+        let signature = Array(previousLines.prefix(8))
+        guard !signature.isEmpty, transcriptLines.count >= signature.count else { return false }
+
+        for start in 0...(transcriptLines.count - signature.count) {
+            if transcriptLines[start..<(start + signature.count)].elementsEqual(signature) {
+                return start > 0
+            }
+        }
+        return false
     }
 
     /// herdr exposes terminal rows, not an agent-output-only stream. Remove
