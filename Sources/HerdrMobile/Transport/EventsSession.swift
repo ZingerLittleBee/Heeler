@@ -88,8 +88,15 @@ enum EventsSessionUpdate: Sendable, Equatable {
 /// bounces are routine on iOS; callers never need to serialize their own
 /// calls).
 ///
-/// `updates` supports a single consumer and buffers without bound, exactly
-/// like the underlying event stream (fine foregrounded in M0).
+/// `updates` supports a single consumer and buffers at most
+/// `updatesBufferLimit` updates (#22): under overflow the oldest are shed
+/// and an `.event(.eventsDropped)` marker is yielded in their place (see
+/// `HerdrEvent.eventsDropped` for the delivery guarantee), so the consumer
+/// always learns it must resync instead of trusting incomplete deltas.
+/// Statuses can be shed too — they are state, not edges, so the newest one
+/// wins: terminal transitions (`.suspended`, `.ended`) are always the last
+/// thing yielded and therefore survive, and a shed `.connected`'s resync
+/// duty is covered by the marker.
 actor EventsSession {
     private enum Phase {
         case suspended, active, ended
@@ -98,6 +105,10 @@ actor EventsSession {
     /// Status transitions and events, in order. Finishes after `end()`.
     nonisolated let updates: AsyncStream<EventsSessionUpdate>
     private let updatesContinuation: AsyncStream<EventsSessionUpdate>.Continuation
+    /// How many updates the bounded buffer has shed so far. Every shed
+    /// update is covered by a marker (see `yieldUpdate`), so this is
+    /// observability for diagnostics and tests, not a consumer signal.
+    private(set) var droppedUpdateCount = 0
 
     private var subscriptions: [EventSubscription]
     private let connect: @Sendable () async throws -> any Transport
@@ -134,13 +145,19 @@ actor EventsSession {
         subscriptions: [EventSubscription],
         connect: @escaping @Sendable () async throws -> any Transport,
         reconnectPolicy: ReconnectPolicy = .default,
-        keepalive: KeepalivePolicy? = .default
+        keepalive: KeepalivePolicy? = .default,
+        updatesBufferLimit: Int = HerdrEventStream.bufferLimit
     ) {
         self.subscriptions = subscriptions
         self.connect = connect
         self.reconnectPolicy = reconnectPolicy
         self.keepalive = keepalive
-        (updates, updatesContinuation) = AsyncStream.makeStream(of: EventsSessionUpdate.self)
+        // Bounded (#22): dropping is safe because every drop is surfaced
+        // through `yieldUpdate`'s marker; see the actor doc for the policy
+        // and HerdrEventStream.bufferLimit for the sizing rationale.
+        (updates, updatesContinuation) = AsyncStream.makeStream(
+            of: EventsSessionUpdate.self,
+            bufferingPolicy: .bufferingNewest(updatesBufferLimit))
     }
 
     /// Activates the session (initially, or after `suspend()`): establishes
@@ -191,15 +208,28 @@ actor EventsSession {
         guard phase == .active else { return }
         phase = .suspended
         await windDown()
-        updatesContinuation.yield(.status(.suspended))
+        yieldUpdate(.status(.suspended))
     }
 
     private func finish() async {
         guard phase != .ended else { return }
         phase = .ended
         await windDown()
-        updatesContinuation.yield(.status(.ended))
+        yieldUpdate(.status(.ended))
         updatesContinuation.finish()
+    }
+
+    /// The single gate every update leaves through: yields it and, when the
+    /// bounded buffer sheds something to make room, follows up with the drop
+    /// marker. One marker covers every update shed before it; a marker that
+    /// is later shed itself lands right back here and is re-armed (see
+    /// `HerdrEvent.eventsDropped`).
+    private func yieldUpdate(_ update: EventsSessionUpdate) {
+        guard case .dropped = updatesContinuation.yield(update) else { return }
+        droppedUpdateCount += 1
+        if case .dropped = updatesContinuation.yield(.event(.eventsDropped)) {
+            droppedUpdateCount += 1
+        }
     }
 
     /// Chains `transition` behind the previously enqueued one and waits for
@@ -250,13 +280,13 @@ actor EventsSession {
             liveStream = stream
             attempt = 0
             pendingKeepaliveFailure = nil
-            updatesContinuation.yield(.status(.connected))
+            yieldUpdate(.status(.connected))
             startKeepalive(stream: stream)
 
             var streamFailure: TransportError?
             do {
                 for try await event in stream.events {
-                    updatesContinuation.yield(.event(event))
+                    yieldUpdate(.event(event))
                 }
                 // Graceful finish: the channel was ended explicitly, by
                 // suspend()/end() or by a failed keepalive.
@@ -308,8 +338,7 @@ actor EventsSession {
 
     private func emitReconnectingAndBackOff(attempt: Int, failure: TransportError) async {
         let delay = reconnectPolicy.delay(beforeAttempt: attempt)
-        updatesContinuation.yield(
-            .status(.reconnecting(attempt: attempt, delay: delay, failure: failure)))
+        yieldUpdate(.status(.reconnecting(attempt: attempt, delay: delay, failure: failure)))
         let sleep = Task { try await Task.sleep(for: delay) }
         backoffSleep = sleep
         try? await sleep.value

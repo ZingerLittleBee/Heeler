@@ -200,6 +200,63 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    @Test func forcedEventOverflowConvergesViaTheDropMarkerResync() async throws {
+        // The #22 acceptance criterion: force the bounded events buffer to
+        // overflow and prove the Console converges anyway. The server state
+        // changes with no membership event — only ignorable noise — so the
+        // drop marker's resync is the one path to the new snapshot.
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .idle)]))
+        let box = SessionBox()
+        let store = ConsoleStore { _, subscriptions in
+            let session = EventsSession(
+                subscriptions: subscriptions,
+                connect: { transport },
+                reconnectPolicy: Self.fastPolicy,
+                keepalive: nil,
+                updatesBufferLimit: 2)
+            Task { await box.set(session) }
+            return session
+        }
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the initial agent should arrive") { store.agents.count == 1 }
+        // Let the connect→snapshot→resubscribe→re-snapshot cycle settle, so
+        // no in-flight resync can fetch the updated snapshot by accident.
+        try await waitUntil("the pane subscription should be live") {
+            await transport.capturedSubscriptions.last?
+                .contains(.pane(.agentStatusChanged, paneID: "w1:p1")) == true
+        }
+        try await waitUntil("the post-resubscribe resync should settle") {
+            await transport.snapshotFetchCount >= 2
+        }
+        let session = try #require(await box.session)
+
+        await transport.setSnapshot(
+            .fixture(agents: [
+                .fixture(paneID: "w1:p1", status: .idle),
+                .fixture(paneID: "w1:p9", status: .blocked),
+            ]))
+        // Flood with events the Console ignores until the bounded buffer
+        // demonstrably sheds updates.
+        try await waitUntil("the bounded buffer should shed updates") {
+            for _ in 0..<50 {
+                await transport.emit(
+                    HerdrEvent(kind: PaneEventKind.scrollChanged.kind, data: .object([:])))
+            }
+            return await session.droppedUpdateCount > 0
+        }
+
+        try await waitUntil("the marker resync should surface the pane changed during the gap") {
+            store.agents.map(\.agent.paneID) == ["w1:p9", "w1:p1"]
+        }
+        #expect(store.agents.first?.agent.status == .blocked)
+
+        store.setHosts([])
+    }
+
     @Test func membershipEventTriggersAResnapshot() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(
@@ -445,5 +502,15 @@ struct ConsoleStoreTests {
         }
 
         store.setHosts([])
+    }
+}
+
+/// Captures the session a store's factory built, so overflow tests can
+/// observe its drop diagnostics.
+private actor SessionBox {
+    private(set) var session: EventsSession?
+
+    func set(_ session: EventsSession) {
+        self.session = session
     }
 }

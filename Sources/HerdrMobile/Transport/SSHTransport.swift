@@ -307,8 +307,17 @@ actor SSHTransport: Transport {
         let requestID = UUID().uuidString
         let requestLine = try HerdrWire.subscribeRequestLine(
             id: requestID, subscriptions: subscriptions)
-        let (events, eventContinuation) = AsyncThrowingStream<HerdrEvent, any Error>.makeStream()
-        let (ackLines, ackContinuation) = AsyncThrowingStream<Data, any Error>.makeStream()
+        // Bounded event-path buffering (#22): under overflow the oldest
+        // event is shed and the loss surfaces as a drop marker (see the
+        // yield in runEventsChannel); the events session forwards it and
+        // the Console resyncs from a snapshot. Sizing rationale lives on
+        // HerdrEventStream.bufferLimit.
+        let (events, eventContinuation) = AsyncThrowingStream<HerdrEvent, any Error>.makeStream(
+            bufferingPolicy: .bufferingNewest(HerdrEventStream.bufferLimit))
+        // Carries exactly one ack line and is finished right after it; one
+        // slot is all it can ever hold.
+        let (ackLines, ackContinuation) = AsyncThrowingStream<Data, any Error>.makeStream(
+            bufferingPolicy: .bufferingNewest(1))
         nextEventsReaderID += 1
         let readerID = nextEventsReaderID
         let readerTask = Task {
@@ -374,7 +383,15 @@ actor SSHTransport: Transport {
                                 ackContinuation.yield(lineData)
                                 ackContinuation.finish()
                             } else if let event = HerdrWire.decodeEvent(fromLine: lineData) {
-                                eventContinuation.yield(event)
+                                if case .dropped = eventContinuation.yield(event) {
+                                    // The bounded buffer shed its oldest
+                                    // event; one marker covers everything
+                                    // shed before it, and a marker the
+                                    // flood later sheds lands right back
+                                    // here and is re-armed (see
+                                    // HerdrEvent.eventsDropped).
+                                    _ = eventContinuation.yield(.eventsDropped)
+                                }
                             }
                             // Undecodable lines are dropped: junk on the
                             // stream must never kill it.
@@ -454,7 +471,13 @@ actor SSHTransport: Transport {
         }
         let command = Self.observeChannelCommand(
             observeCommand: observeCommand, request: request)
-        let (frames, continuation) = AsyncThrowingStream<TerminalFrame, any Error>.makeStream()
+        // Bounded like the events path (#22): a shed frame leaves a hole in
+        // the `seq` counter, and the observe consumer already treats any
+        // seq gap as "re-observe for a fresh full repaint" — local drops
+        // recover exactly like wire-level frame loss, no extra signal
+        // needed.
+        let (frames, continuation) = AsyncThrowingStream<TerminalFrame, any Error>.makeStream(
+            bufferingPolicy: .bufferingNewest(HerdrEventStream.bufferLimit))
         nextTerminalReaderID += 1
         let readerID = nextTerminalReaderID
         let readerTask = Task {
@@ -579,7 +602,15 @@ actor SSHTransport: Transport {
         }
         let bootstrapLine = try Self.attachBootstrapLine(
             attachCommand: attachCommand, request: request)
+        // Deliberately unbounded (#22): raw PTY bytes have no framing, no
+        // seq, and no snapshot to resync from, so a shed chunk would corrupt
+        // the escape stream for the rest of the session. Volume is
+        // interactive TUI output bounded by SSH channel flow control, and
+        // the consumer is a synchronous terminal feed.
         let (output, outputContinuation) = AsyncThrowingStream<Data, any Error>.makeStream()
+        // Deliberately unbounded (#22): keystrokes and resizes arrive at
+        // human rate, and silently shedding input would type the wrong
+        // thing; the writer task drains it for the channel's whole life.
         let (input, inputContinuation) = AsyncStream<TerminalAttachInput>.makeStream()
         nextTerminalReaderID += 1
         let readerID = nextTerminalReaderID
