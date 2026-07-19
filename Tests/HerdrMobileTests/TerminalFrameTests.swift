@@ -11,6 +11,12 @@ struct TerminalFrameTests {
         Data(text.utf8)
     }
 
+    @Test func observeClaimsAControlSessionSoHerdrAppliesPhoneGeometry() {
+        #expect(
+            SSHTransportSettings.defaultObserveCommand
+                == "herdr terminal session control")
+    }
+
     @Test func decodesAFullRepaintFrame() throws {
         // The live-captured shape from the #9 probe: base64 of ANSI bytes.
         let payload = Data("\u{1B}[2J\u{1B}[Hhello".utf8)

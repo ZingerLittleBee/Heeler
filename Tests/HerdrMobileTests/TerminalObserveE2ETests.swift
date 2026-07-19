@@ -6,9 +6,9 @@ import Testing
 
 /// The Observe terminal channel (#9) over the real stack: Citadel ->
 /// localhost sshd -> a frame-emitting script standing in for `herdr terminal
-/// session observe` (injectable at the environment boundary, like the wake
-/// command). No PTY anywhere — the #9 probe verified observe does not need
-/// one.
+/// session control` (injectable at the environment boundary, like the wake
+/// command). No PTY exists on this SSH channel; herdr controls the Agent's
+/// existing PTY remotely.
 @Suite(
     "Terminal observe e2e",
     .enabled(
@@ -104,11 +104,9 @@ struct TerminalObserveE2ETests {
     @Test func endClosesTheChannelPromptlyAndFreesTheHost() async throws {
         // The spike gotcha again: a live exec channel ignores task
         // cancellation, so end() must close it explicitly, after which a
-        // new observe must be possible. Promptness is load-bearing: the real
-        // observe CLI ignores stdin EOF and the channel close only completes
-        // once the remote command exits, so without the kill-on-EOF wrapper
-        // this end() would sit out the script's full 15s hold (and in
-        // production, hang until the SSH connection died).
+        // new observe must be possible. This injected command ignores stdin
+        // EOF, exercising the fallback kill-on-EOF wrapper; without it,
+        // end() would sit out the script's full 15s hold.
         try await withObserveTransport(
             script: """
             echo '\(Self.frameLine(seq: 1, full: true, bytes: "one"))'
@@ -130,6 +128,27 @@ struct TerminalObserveE2ETests {
             var secondIterator = second.frames.makeAsyncIterator()
             _ = try #require(try await secondIterator.next())
             await second.end()
+        }
+    }
+
+    @Test func stdinAwareControlCommandDetachesOnChannelEOF() async throws {
+        try await withObserveTransport(
+            script: """
+            echo '\(Self.frameLine(seq: 1, full: true, bytes: "one"))'
+            cat >/dev/null
+            """,
+            commandHandlesStdinEOF: true
+        ) { transport in
+            let stream = try await transport.observeTerminal(
+                TerminalObserveRequest(target: "w1:p1", cols: 64, rows: 30))
+            var iterator = stream.frames.makeAsyncIterator()
+            _ = try #require(try await iterator.next())
+
+            let start = ContinuousClock.now
+            await stream.end()
+            let elapsed = ContinuousClock.now - start
+            #expect(elapsed < .seconds(5), "EOF-aware command took \(elapsed) to detach")
+            #expect(try await iterator.next() == nil)
         }
     }
 
@@ -220,6 +239,7 @@ struct TerminalObserveE2ETests {
         script: String,
         socketPath: String? = nil,
         requestTimeout: Duration = .seconds(15),
+        commandHandlesStdinEOF: Bool = false,
         body: (SSHTransport) async throws -> Void
     ) async throws {
         let environment = try #require(LocalSSHTestEnvironment.current)
@@ -233,6 +253,7 @@ struct TerminalObserveE2ETests {
             wakeCommand: "false",
             requestTimeout: requestTimeout)
         settings.observeCommand = "/bin/sh \(scriptURL.path)"
+        settings.observeCommandHandlesStdinEOF = commandHandlesStdinEOF
         let transport = try await SSHTransport.connect(settings: settings)
         do {
             try await body(transport)

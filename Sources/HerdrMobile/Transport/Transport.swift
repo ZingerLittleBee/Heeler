@@ -64,11 +64,12 @@ protocol Transport: Sendable {
     func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream
 
     /// Opens this Host's dedicated terminal channel and starts the read-only
-    /// Observe live-follow (#9): NDJSON frame lines from `herdr terminal
-    /// session observe`, decoded and base64-unwrapped, until `end()` closes
-    /// the channel explicitly. One terminal channel per Host — the session
-    /// slot budgeted for the terminal surface — so a second call while one
-    /// is live throws `.terminalChannelAlreadyOpen`.
+    /// Observe live-follow (#9): a non-takeover `herdr terminal session
+    /// control` applies the phone geometry to the Agent's PTY and emits NDJSON
+    /// frames, while the app exposes no terminal-input path. Frames are
+    /// decoded and base64-unwrapped until `end()` closes the channel. One
+    /// terminal channel per Host, so a second call while one is live throws
+    /// `.terminalChannelAlreadyOpen`.
     func observeTerminal(_ request: TerminalObserveRequest) async throws -> TerminalFrameStream
 
     /// Opens this Host's dedicated terminal channel as a full interactive

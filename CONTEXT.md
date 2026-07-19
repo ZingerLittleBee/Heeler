@@ -25,7 +25,9 @@ The native dashboard surface: the flat, status-sorted list of Agents across Host
 _Avoid_: dashboard, home
 
 **Observe**:
-Read-only live view of an Agent's terminal output. Never sends input.
+Read-only live view of an Agent's terminal output. It temporarily claims a
+non-takeover herdr control session so the Agent's PTY matches the phone
+geometry, but never sends terminal input; replies and keys use native controls.
 _Avoid_: watch, monitor, preview
 
 **Attach**:

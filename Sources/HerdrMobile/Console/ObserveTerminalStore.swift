@@ -5,9 +5,9 @@ import Observation
 /// transcript from `pane.read --format ansi --source recent-unwrapped`, then
 /// use the terminal stream as a low-latency change signal. Each coalesced
 /// refresh removes the remote TUI's input chrome, then replaces the local
-/// SwiftTerm screen, where long PC-width output can wrap to the phone instead
-/// of being cropped by a narrow server-side frame. Input belongs exclusively
-/// to the native `AgentInputBar` below Observe.
+/// SwiftTerm screen. The transport applies the phone geometry to the Agent's
+/// PTY, but input belongs exclusively to the native `AgentInputBar` below
+/// Observe.
 ///
 /// The store is driven by the terminal view's geometry: nothing starts until
 /// the first size report (the observe command needs cols/rows), and a
@@ -168,10 +168,9 @@ final class ObserveTerminalStore {
                         break
                     }
                     lastSeq = frame.seq
-                    // The server renders this frame at the requested mobile
-                    // width by cropping an already-laid-out PC terminal. Use
-                    // it as a change signal, then fetch logical lines that
-                    // SwiftTerm can wrap locally.
+                    // The server renders this frame after applying the mobile
+                    // width to the Agent's PTY. Use it as a change signal,
+                    // then fetch complete logical lines for local rendering.
                     if !hasLoadedTranscript {
                         // Degrade to the raw frame while pane.read is failing;
                         // the next successful transcript refresh replaces it.

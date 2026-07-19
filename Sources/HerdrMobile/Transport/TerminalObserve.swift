@@ -1,8 +1,7 @@
 import Foundation
 
-/// One Observe live-follow request (#9): the `herdr terminal session
-/// observe` target (a Pane address) plus the terminal geometry the server
-/// should render frames for.
+/// One Observe live-follow request (#9): the Pane address plus the phone
+/// geometry that a non-takeover control session applies to the Agent's PTY.
 struct TerminalObserveRequest: Sendable, Equatable {
     let target: String
     let cols: Int
