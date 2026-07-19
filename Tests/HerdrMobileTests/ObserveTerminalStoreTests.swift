@@ -101,6 +101,36 @@ struct ObserveTerminalStoreTests {
         await store.stop()
     }
 
+    @Test func observeOmitsTheRemoteTerminalInputArea() async throws {
+        let transport = ScriptedTransport()
+        await transport.setPaneText(
+            """
+            › Previous submitted input
+
+            Agent answer stays visible.
+
+            \u{1B}[2m• Worked for 12s\u{1B}[0m
+
+            \u{1B}[7m› Draft input owned by the remote terminal\u{1B}[0m
+
+              Context 54% used · ~/project · model
+            """,
+            paneID: "w1:p1")
+        let (store, captured) = makeStore(transport: transport)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the output-only transcript should render") {
+            store.status == .live && captured.text.contains("Agent answer stays visible.")
+        }
+
+        #expect(!captured.text.contains("Draft input owned by the remote terminal"))
+        #expect(!captured.text.contains("Context 54% used"))
+        #expect(!captured.text.contains("Worked for 12s"))
+        #expect(captured.text.contains("Previous submitted input"))
+
+        await store.stop()
+    }
+
     @Test func observeUsesEnoughColumnsToLimitWidePaneReflow() throws {
         // A 393-point iPhone showing the default 12-point terminal only fits
         // about 52 columns. A 185-column desktop line then expands to four

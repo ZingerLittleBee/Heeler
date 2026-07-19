@@ -4,8 +4,10 @@ import Observation
 /// The Agent detail screen's Observe pipeline (#9): render the Pane's logical
 /// transcript from `pane.read --format ansi --source recent-unwrapped`, then
 /// use the terminal stream as a low-latency change signal. Each coalesced
-/// refresh replaces the local SwiftTerm screen, where long PC-width lines can
-/// wrap to the phone instead of being cropped by a narrow server-side frame.
+/// refresh removes the remote TUI's input chrome, then replaces the local
+/// SwiftTerm screen, where long PC-width output can wrap to the phone instead
+/// of being cropped by a narrow server-side frame. Input belongs exclusively
+/// to the native `AgentInputBar` below Observe.
 ///
 /// The store is driven by the terminal view's geometry: nothing starts until
 /// the first size report (the observe command needs cols/rows), and a
@@ -234,7 +236,7 @@ final class ObserveTerminalStore {
         guard !stopRequested else { return false }
         // pane.read joins lines with bare newlines; a raw-mode terminal
         // needs CR+LF or the lines stair-step.
-        let normalized = read.text
+        let normalized = Self.outputOnlyTranscript(read.text)
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\n", with: "\r\n")
         var bytes = Data()
@@ -247,6 +249,87 @@ final class ObserveTerminalStore {
         feed.write(bytes)
         hasLoadedTranscript = true
         return true
+    }
+
+    /// herdr exposes terminal rows, not an agent-output-only stream. Remove
+    /// the final interactive prompt and its footer while retaining earlier
+    /// prompts from the conversation history. ANSI is preserved for the
+    /// retained output; a plain-text projection is used only to find chrome.
+    private static func outputOnlyTranscript(_ transcript: String) -> String {
+        var lines = transcript.components(separatedBy: "\n")
+        guard
+            let inputStart = lines.lastIndex(where: { line in
+                let plain = terminalPlainText(line).trimmingCharacters(in: .whitespaces)
+                return plain == "›" || plain.hasPrefix("› ")
+                    || plain == "❯" || plain.hasPrefix("❯ ")
+            })
+        else { return transcript }
+
+        lines.removeSubrange(inputStart...)
+        trimTrailingBlankLines(&lines)
+        if let last = lines.last {
+            let status = terminalPlainText(last).trimmingCharacters(in: .whitespaces)
+            if status.hasPrefix("• Working (") || status.hasPrefix("• Worked for ") {
+                lines.removeLast()
+                trimTrailingBlankLines(&lines)
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func trimTrailingBlankLines(_ lines: inout [String]) {
+        while let last = lines.last,
+            terminalPlainText(last).trimmingCharacters(in: .whitespaces).isEmpty
+        {
+            lines.removeLast()
+        }
+    }
+
+    /// Removes CSI/OSC control sequences for matching only. The original ANSI
+    /// line remains untouched when it is kept in the transcript.
+    private static func terminalPlainText(_ line: String) -> String {
+        let scalars = Array(line.unicodeScalars)
+        var result = String.UnicodeScalarView()
+        var index = 0
+        while index < scalars.count {
+            guard scalars[index].value == 0x1B else {
+                if scalars[index].value != 0x0D {
+                    result.append(scalars[index])
+                }
+                index += 1
+                continue
+            }
+
+            index += 1
+            guard index < scalars.count else { break }
+            switch scalars[index].value {
+            case 0x5B:  // CSI: ESC [ ... final-byte
+                index += 1
+                while index < scalars.count {
+                    let value = scalars[index].value
+                    index += 1
+                    if (0x40...0x7E).contains(value) { break }
+                }
+            case 0x5D:  // OSC: ESC ] ... BEL or ST
+                index += 1
+                while index < scalars.count {
+                    if scalars[index].value == 0x07 {
+                        index += 1
+                        break
+                    }
+                    if scalars[index].value == 0x1B, index + 1 < scalars.count,
+                        scalars[index + 1].value == 0x5C
+                    {
+                        index += 2
+                        break
+                    }
+                    index += 1
+                }
+            default:
+                index += 1
+            }
+        }
+        return String(result)
     }
 
     private static func message(for error: any Error) -> String {
