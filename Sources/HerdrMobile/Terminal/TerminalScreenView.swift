@@ -41,7 +41,7 @@ struct TerminalScreenView: UIViewRepresentable {
             coordinator?.onSizeChanged?(cols, rows)
         }
         feed.attach { [weak view] data in
-            view?.feed(byteArray: ArraySlice([UInt8](data)))
+            view?.consume(data)
         }
         return view
     }
@@ -107,6 +107,74 @@ final class SizeReportingTerminalView: TerminalView {
     }
     var onSizeReport: ((_ cols: Int, _ rows: Int) -> Void)?
     private var lastReported: (cols: Int, rows: Int)?
+    private var defersScrollerUpdates = false
+    private var pendingReadOnlySnapshot: Data?
+    private var appliesReadOnlySnapshot = false
+    private var browsesHistory = false
+
+    /// Feeds one transport delivery as an atomic visual update. Observe
+    /// replaces its entire snapshot in one delivery; SwiftTerm otherwise
+    /// updates `contentSize` for every rebuilt line, which makes the scroll
+    /// indicator collapse and grow. While the user browses history, keep only
+    /// the latest snapshot pending and apply it on returning to the bottom.
+    /// Attach keeps SwiftTerm's normal incremental behavior.
+    func consume(_ data: Data) {
+        guard !data.isEmpty else { return }
+        guard !allowsInput else {
+            feed(byteArray: ArraySlice([UInt8](data)))
+            return
+        }
+        if browsesHistory, !appliesReadOnlySnapshot {
+            pendingReadOnlySnapshot = data
+            return
+        }
+
+        let terminal = getTerminal()
+        appliesReadOnlySnapshot = true
+        defersScrollerUpdates = true
+        feed(byteArray: ArraySlice([UInt8](data)))
+        defersScrollerUpdates = false
+        super.scrolled(source: terminal, yDisp: terminal.getTopVisibleRow())
+        appliesReadOnlySnapshot = false
+    }
+
+    override func scrolled(source: Terminal, yDisp: Int) {
+        guard !defersScrollerUpdates else { return }
+        super.scrolled(source: source, yDisp: yDisp)
+    }
+
+    override var contentOffset: CGPoint {
+        didSet {
+            guard !allowsInput, !appliesReadOnlySnapshot else { return }
+            guard isTracking || (browsesHistory && isDecelerating) else { return }
+            updateHistoryBrowsing()
+        }
+    }
+
+    override func accessibilityScroll(_ direction: UIAccessibilityScrollDirection) -> Bool {
+        let didScroll = super.accessibilityScroll(direction)
+        if didScroll, !allowsInput {
+            updateHistoryBrowsing()
+        }
+        return didScroll
+    }
+
+    private func updateHistoryBrowsing() {
+        if isAtBottom {
+            browsesHistory = false
+            guard let pendingReadOnlySnapshot else { return }
+            self.pendingReadOnlySnapshot = nil
+            consume(pendingReadOnlySnapshot)
+        } else {
+            browsesHistory = true
+        }
+    }
+
+    private var isAtBottom: Bool {
+        let maximumOffset = max(
+            0, contentSize.height - bounds.height + adjustedContentInset.bottom)
+        return contentOffset.y >= maximumOffset - max(1, font.lineHeight / 2)
+    }
 
     override func showCursor(source: Terminal) {
         guard allowsInput else {

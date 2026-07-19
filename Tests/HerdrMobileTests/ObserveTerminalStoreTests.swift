@@ -156,6 +156,42 @@ struct ObserveTerminalStoreTests {
         #expect(rowsForDesktopLine <= 3)
     }
 
+    @Test func replacingObserveSnapshotKeepsScrollExtentAndViewportStable() async throws {
+        let feed = TerminalByteFeed()
+        let host = UIHostingController(
+            rootView: TerminalScreenView(feed: feed, style: .observe))
+        let frame = CGRect(x: 0, y: 0, width: 393, height: 600)
+        let window = UIWindow(frame: frame)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        host.view.frame = frame
+        host.view.layoutIfNeeded()
+
+        let terminal = try #require(terminalView(in: host.view))
+        terminal.layoutIfNeeded()
+        let transcript = (0..<120)
+            .map { String(format: "line %03d", $0) }
+            .joined(separator: "\r\n")
+        let updatedTranscript = transcript + "\r\nline 120"
+        feed.write(Data(transcript.utf8))
+        #expect(terminal.accessibilityScroll(.up))
+        let originalExtent = terminal.contentSize.height
+        let originalTopRow = terminal.getTerminal().getTopVisibleRow()
+
+        feed.write(Data("\u{1B}[3J\u{1B}[2J\u{1B}[H\(updatedTranscript)".utf8))
+        try await Task.sleep(for: .milliseconds(30))
+
+        #expect(terminal.contentSize.height == originalExtent)
+        #expect(terminal.getTerminal().getTopVisibleRow() == originalTopRow)
+
+        for _ in 0..<10 {
+            if !terminal.accessibilityScroll(.down) { break }
+        }
+        #expect(terminal.contentSize.height > originalExtent)
+        #expect(terminal.scrollPosition == 1)
+    }
+
     @Test func readOnlyTerminalKeepsCursorHiddenWhenRemoteShowsIt() {
         var responses = Data()
         let coordinator = TerminalScreenView.Coordinator(
