@@ -1,16 +1,16 @@
 import Foundation
 import Observation
 
-/// The Agent detail screen's Observe pipeline (#9): backfill scrollback with
-/// `pane.read --format ansi --source recent`, then live-follow the Pane over
-/// the Host's terminal channel, feeding decoded bytes to the terminal view
-/// through a `TerminalByteFeed`.
+/// The Agent detail screen's Observe pipeline (#9): render the Pane's logical
+/// transcript from `pane.read --format ansi --source recent-unwrapped`, then
+/// use the terminal stream as a low-latency change signal. Each coalesced
+/// refresh replaces the local SwiftTerm screen, where long PC-width lines can
+/// wrap to the phone instead of being cropped by a narrow server-side frame.
 ///
 /// The store is driven by the terminal view's geometry: nothing starts until
 /// the first size report (the observe command needs cols/rows), and a
-/// changed size restarts the live-follow — the server renders frames for
-/// exactly one geometry, and every fresh stream opens with a full repaint,
-/// which is also how sequence gaps recover. Observe is read-only
+/// changed size restarts the live-follow. Sequence gaps also restart the
+/// stream so future change signals remain trustworthy. Observe is read-only
 /// (CONTEXT.md): no input path exists here.
 @MainActor
 @Observable
@@ -36,17 +36,25 @@ final class ObserveTerminalStore {
     /// The Host's current transport, re-queried per (re)start: the events
     /// session underneath may have reconnected onto a fresh one.
     private let transport: @Sendable () async -> (any Transport)?
+    private let transcriptRefreshInterval: Duration
 
     private var cols: Int?
     private var rows: Int?
-    private var didBackfill = false
+    private var didLoadInitialTranscript = false
+    private var hasLoadedTranscript = false
     private var stopRequested = false
     private var restartRequested = false
     private var liveStream: TerminalFrameStream?
     private var runTask: Task<Void, Never>?
+    private var transcriptRefreshTask: Task<Void, Never>?
+    private var transcriptRefreshPending = false
 
-    init(target: String, transport: @escaping @Sendable () async -> (any Transport)?) {
+    init(
+        target: String, transcriptRefreshInterval: Duration = .milliseconds(150),
+        transport: @escaping @Sendable () async -> (any Transport)?
+    ) {
         self.target = target
+        self.transcriptRefreshInterval = transcriptRefreshInterval
         self.transport = transport
     }
 
@@ -78,10 +86,15 @@ final class ObserveTerminalStore {
     /// the detail screen creates a fresh store per visit.
     func stop() async {
         stopRequested = true
+        transcriptRefreshPending = false
+        transcriptRefreshTask?.cancel()
         if let stream = liveStream {
             await stream.end()
         }
         if let task = runTask {
+            await task.value
+        }
+        if let task = transcriptRefreshTask {
             await task.value
         }
         status = .stopped
@@ -109,8 +122,9 @@ final class ObserveTerminalStore {
                 status = .failed("The Host is not connected.")
                 return
             }
-            if !didBackfill {
-                await backfillScrollback(transport: transport)
+            if !didLoadInitialTranscript {
+                didLoadInitialTranscript = true
+                _ = await refreshTranscript(transport: transport, replacing: false)
                 if stopRequested { return }
             }
             // The stream below opens with the latest geometry, satisfying
@@ -152,7 +166,16 @@ final class ObserveTerminalStore {
                         break
                     }
                     lastSeq = frame.seq
-                    feed.write(frame.bytes)
+                    // The server renders this frame at the requested mobile
+                    // width by cropping an already-laid-out PC terminal. Use
+                    // it as a change signal, then fetch logical lines that
+                    // SwiftTerm can wrap locally.
+                    if !hasLoadedTranscript {
+                        // Degrade to the raw frame while pane.read is failing;
+                        // the next successful transcript refresh replaces it.
+                        feed.write(frame.bytes)
+                    }
+                    requestTranscriptRefresh(transport: transport)
                 }
             } catch {
                 failure = error
@@ -176,21 +199,54 @@ final class ObserveTerminalStore {
         }
     }
 
-    /// Scrollback backfill, once per store: the observe stream's first full
-    /// frame repaints the visible screen, so only history needs fetching.
-    /// Failure is not fatal — live output alone beats no terminal at all.
-    private func backfillScrollback(transport: any Transport) async {
-        didBackfill = true
+    /// Coalesces frame bursts into one immediate read plus at most one read
+    /// per interval. The pending bit guarantees a final refresh after output
+    /// becomes quiet without opening one SSH request per frame.
+    private func requestTranscriptRefresh(transport: any Transport) {
+        transcriptRefreshPending = true
+        guard transcriptRefreshTask == nil else { return }
+        transcriptRefreshTask = Task {
+            await self.runTranscriptRefreshes(transport: transport)
+        }
+    }
+
+    private func runTranscriptRefreshes(transport: any Transport) async {
+        defer { transcriptRefreshTask = nil }
+        while !Task.isCancelled, !stopRequested, transcriptRefreshPending {
+            transcriptRefreshPending = false
+            _ = await refreshTranscript(transport: transport, replacing: true)
+            do {
+                try await Task.sleep(for: transcriptRefreshInterval)
+            } catch {
+                return
+            }
+        }
+    }
+
+    /// Reads and renders the complete logical transcript. Failure is not
+    /// fatal: the stream remains live and a later frame retries the read.
+    @discardableResult
+    private func refreshTranscript(transport: any Transport, replacing: Bool) async -> Bool {
         guard
             let read = try? await transport.readPane(
-                PaneReadParams(paneID: target, source: .recent, format: .ansi))
-        else { return }
+                PaneReadParams(paneID: target, source: .recentUnwrapped, format: .ansi))
+        else { return false }
+        guard !stopRequested else { return false }
         // pane.read joins lines with bare newlines; a raw-mode terminal
         // needs CR+LF or the lines stair-step.
         let normalized = read.text
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\n", with: "\r\n")
-        feed.write(Data(normalized.utf8))
+        var bytes = Data()
+        if replacing {
+            // Clear scrollback and the visible screen before painting the
+            // latest snapshot, otherwise every refresh duplicates history.
+            bytes.append(Data("\u{1B}[3J\u{1B}[2J\u{1B}[H".utf8))
+        }
+        bytes.append(Data(normalized.utf8))
+        feed.write(bytes)
+        hasLoadedTranscript = true
+        return true
     }
 
     private static func message(for error: any Error) -> String {

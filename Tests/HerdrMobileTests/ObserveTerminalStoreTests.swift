@@ -49,12 +49,12 @@ struct ObserveTerminalStoreTests {
         store.viewDidResize(cols: 80, rows: 24)
         try await waitUntil("store should go live") { store.status == .live }
 
-        // Backfill first: `pane.read --format ansi --source recent`, bare
-        // newlines normalized for a raw-mode terminal.
+        // The mobile view reads logical lines instead of the PC-width screen
+        // so SwiftTerm can wrap them to the local geometry.
         let read = try #require(await transport.paneReadParams.first)
         #expect(read.paneID == "w1:p1")
         #expect(read.format == .ansi)
-        #expect(read.source == .recent)
+        #expect(read.source == .recentUnwrapped)
         #expect(read.stripANSI != true)
         #expect(captured.text == "old line 1\r\nold line 2")
 
@@ -62,11 +62,27 @@ struct ObserveTerminalStoreTests {
         let request = try #require(await transport.observeRequests.first)
         #expect(request == TerminalObserveRequest(target: "w1:p1", cols: 80, rows: 24))
 
+        let completeLine = "This line is wider than the phone and must keep its final words."
+        await transport.setPaneText(completeLine, paneID: "w1:p1")
         await transport.emitFrame(
-            TerminalFrame(seq: 1, isFull: true, bytes: Data("SCREEN".utf8)))
-        try await waitUntil("the frame should reach the feed") {
-            captured.text == "old line 1\r\nold line 2SCREEN"
+            TerminalFrame(seq: 1, isFull: true, bytes: Data("This line is cropped".utf8)))
+        try await waitUntil("a frame should refresh the complete logical transcript") {
+            await transport.paneReadParams.count == 2
+                && captured.text.contains("must keep its final words.")
         }
+        #expect(!captured.text.contains("This line is cropped"))
+
+        // A second frame arriving during the coalescing interval must still
+        // produce a trailing refresh after output becomes quiet.
+        await transport.setPaneText(
+            "The final answer has a distinct complete ending.", paneID: "w1:p1")
+        await transport.emitFrame(
+            TerminalFrame(seq: 2, isFull: false, bytes: Data("cropped ending".utf8)))
+        try await waitUntil("the quiet tail should receive its final refresh") {
+            await transport.paneReadParams.count == 3
+                && captured.text.contains("distinct complete ending.")
+        }
+        #expect(!captured.text.contains("cropped ending"))
 
         await store.stop()
     }
@@ -111,34 +127,39 @@ struct ObserveTerminalStoreTests {
     }
 
     @Test func sequenceGapRestartsForAFreshFullRepaint() async throws {
-        // Dropped frames leave the screen undefined; there is no
-        // request-repaint on the wire, so the store re-observes (the first
-        // frame of a new stream is always a full repaint).
+        // A gap means change notifications were lost, so the store
+        // re-observes before trusting later notifications.
         let transport = ScriptedTransport()
         let (store, captured) = makeStore(transport: transport)
 
         store.viewDidResize(cols: 80, rows: 24)
         try await waitUntil("store should go live") { store.status == .live }
 
+        await transport.setPaneText("one two", paneID: "w1:p1")
         await transport.emitFrame(TerminalFrame(seq: 1, isFull: true, bytes: Data("one".utf8)))
         await transport.emitFrame(TerminalFrame(seq: 2, isFull: false, bytes: Data("two".utf8)))
+        try await waitUntil("accepted notifications should refresh the transcript") {
+            captured.text.contains("one two")
+        }
         await transport.emitFrame(TerminalFrame(seq: 5, isFull: false, bytes: Data("FIVE".utf8)))
 
         try await waitUntil("the gap should trigger a re-observe") {
             await transport.observeRequests.count == 2
         }
-        // The post-gap frame was not fed; the fresh repaint recovers instead.
-        #expect(captured.text == "onetwo")
+        // The post-gap cropped payload was not rendered.
+        #expect(!captured.text.contains("FIVE"))
 
         try await waitUntil("the restarted stream should be live") {
             guard store.status == .live else { return false }
             return await transport.hasLiveFrameStream
         }
+        await transport.setPaneText("fresh complete transcript", paneID: "w1:p1")
         await transport.emitFrame(
             TerminalFrame(seq: 1, isFull: true, bytes: Data("REPAINT".utf8)))
-        try await waitUntil("the repaint should reach the feed") {
-            captured.text == "onetwoREPAINT"
+        try await waitUntil("the restarted notification should refresh the transcript") {
+            captured.text.contains("fresh complete transcript")
         }
+        #expect(!captured.text.contains("REPAINT"))
 
         await store.stop()
     }

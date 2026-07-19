@@ -53,11 +53,10 @@ METHODS = [
     "agent.list",
     "agent.read",
     "agent.rename",
-    "agent.send",
     "agent.start",
     "events.subscribe",
     "pane.read",
-    "pane.send_text",
+    "pane.send_input",
     "pane.send_keys",
     "pane.close",
     "session.snapshot",
@@ -86,7 +85,7 @@ RESULT_TAGS = [
     "pane_read",  # pane.read, agent.read
     "session_snapshot",  # session.snapshot
     "subscription_started",  # events.subscribe ack
-    "ok",  # pane.send_text, pane.send_keys, pane.close, agent.send
+    "ok",  # pane.send_input, pane.send_keys, pane.close
 ]
 
 # Wire-name overrides for members whose mechanical camelCase would be a Swift

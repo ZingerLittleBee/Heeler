@@ -101,18 +101,21 @@ struct SSHTransportE2ETests {
         }
     }
 
-    @Test func agentSendRoundTripsItsParams() async throws {
-        // The message box (#10): agent.send carries the reply to a Blocked
-        // agent, targeted by pane id, answered with the bare `ok` envelope.
+    @Test func sendInputRoundTripsTextAndEnterAtomically() async throws {
+        // The message box (#10): pane.send_input writes the reply and presses
+        // Enter in one request, targeted by pane id and answered with `ok`.
         try await withTransport { request in
             [#"{"id":"\#(request.id)","result":{"type":"ok"}}"#]
         } body: { transport, server in
-            try await transport.sendToAgent(
-                AgentSendParams(target: "w1:p1", text: "yes, proceed"))
+            try await transport.sendInput(
+                PaneSendInputParams(
+                    paneID: "w1:p1", keys: ["enter"], text: "yes, proceed"))
 
             let request = try #require(server.receivedRequests.first)
-            #expect(request.method == "agent.send")
-            #expect(request.params == #"{"target":"w1:p1","text":"yes, proceed"}"#)
+            #expect(request.method == "pane.send_input")
+            #expect(
+                request.params
+                    == #"{"keys":["enter"],"pane_id":"w1:p1","text":"yes, proceed"}"#)
         }
     }
 

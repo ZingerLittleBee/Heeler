@@ -236,8 +236,8 @@ actor SSHTransport: Transport {
         return Agent(response.agent)
     }
 
-    func sendToAgent(_ params: AgentSendParams) async throws {
-        _ = try await request(method: "agent.send", params: params, decoding: OkResponse.self)
+    func sendInput(_ params: PaneSendInputParams) async throws {
+        _ = try await request(method: "pane.send_input", params: params, decoding: OkResponse.self)
     }
 
     func sendKeys(_ params: PaneSendKeysParams) async throws {
