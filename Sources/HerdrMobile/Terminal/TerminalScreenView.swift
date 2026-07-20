@@ -19,6 +19,18 @@ enum TerminalScreenStyle: Equatable {
     }
 }
 
+/// Remote terminal output is untrusted. Only ordinary web links cross from
+/// SwiftTerm into the system URL opener; local files and executable schemes do not.
+enum TerminalLinkPolicy {
+    static func url(for link: String) -> URL? {
+        guard let url = URL(string: link), let scheme = url.scheme?.lowercased() else {
+            return nil
+        }
+        guard (scheme == "http" || scheme == "https"), url.host != nil else { return nil }
+        return url
+    }
+}
+
 /// The shared SwiftTerm surface: Observe (#9) renders it read-only, Attach
 /// (#11) drives the same view with `allowsInput` and `onSend` wired. Bytes
 /// arrive through a `TerminalByteFeed`; geometry flows out through
@@ -33,6 +45,7 @@ struct TerminalScreenView: UIViewRepresentable {
     /// Keystrokes the terminal wants sent to the remote; nil (Observe)
     /// discards them — this surface never sends input (CONTEXT.md).
     var onSend: ((Data) -> Void)?
+    @Environment(\.openURL) private var openURL
 
     func makeUIView(context: Context) -> SizeReportingTerminalView {
         let view = SizeReportingTerminalView(frame: .zero, font: style.font)
@@ -60,11 +73,13 @@ struct TerminalScreenView: UIViewRepresentable {
         context.coordinator.onSizeChanged = onSizeChanged
         context.coordinator.onLoadEarlier = onLoadEarlier
         context.coordinator.onSend = onSend
+        context.coordinator.onOpenLink = { url in openURL(url) }
     }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
-            onSizeChanged: onSizeChanged, onLoadEarlier: onLoadEarlier, onSend: onSend)
+            onSizeChanged: onSizeChanged, onLoadEarlier: onLoadEarlier, onSend: onSend,
+            onOpenLink: { url in openURL(url) })
     }
 
     /// SwiftTerm's delegate protocol is not actor-annotated but the view
@@ -76,14 +91,16 @@ struct TerminalScreenView: UIViewRepresentable {
         var onSizeChanged: ((Int, Int) -> Void)?
         var onLoadEarlier: (() -> Bool)?
         var onSend: ((Data) -> Void)?
+        var onOpenLink: ((URL) -> Void)?
 
         init(
             onSizeChanged: ((Int, Int) -> Void)?, onLoadEarlier: (() -> Bool)? = nil,
-            onSend: ((Data) -> Void)?
+            onSend: ((Data) -> Void)?, onOpenLink: ((URL) -> Void)? = nil
         ) {
             self.onSizeChanged = onSizeChanged
             self.onLoadEarlier = onLoadEarlier
             self.onSend = onSend
+            self.onOpenLink = onOpenLink
         }
 
         nonisolated func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
@@ -100,7 +117,10 @@ struct TerminalScreenView: UIViewRepresentable {
         nonisolated func scrolled(source: TerminalView, position: Double) {}
         nonisolated func requestOpenLink(
             source: TerminalView, link: String, params: [String: String]
-        ) {}
+        ) {
+            guard let url = TerminalLinkPolicy.url(for: link) else { return }
+            MainActor.assumeIsolated { onOpenLink?(url) }
+        }
         nonisolated func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
     }
 }

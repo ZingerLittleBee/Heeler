@@ -17,6 +17,17 @@ struct TerminalFrameTests {
                 == "herdr terminal session control")
     }
 
+    @Test func terminalLinksOpenOnlySafeWebURLs() {
+        #expect(
+            TerminalLinkPolicy.url(for: "https://example.com/docs?q=ssh")
+                == URL(string: "https://example.com/docs?q=ssh"))
+        #expect(TerminalLinkPolicy.url(for: "http://127.0.0.1:8080") != nil)
+        #expect(TerminalLinkPolicy.url(for: "file:///etc/passwd") == nil)
+        #expect(TerminalLinkPolicy.url(for: "javascript:alert(1)") == nil)
+        #expect(TerminalLinkPolicy.url(for: "https://") == nil)
+        #expect(TerminalLinkPolicy.url(for: "not a URL") == nil)
+    }
+
     @Test func decodesAFullRepaintFrame() throws {
         // The live-captured shape from the #9 probe: base64 of ANSI bytes.
         let payload = Data("\u{1B}[2J\u{1B}[Hhello".utf8)
