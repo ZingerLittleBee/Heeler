@@ -253,7 +253,7 @@ actor SSHTransport: Transport {
         try await acquireExecChannelSlot()
         defer { releaseExecChannelSlot() }
         do {
-            let output = try await client.executeCommand(sessionListCommand)
+            let output = try await client.executeCommand(Self.cLocaleCommand(sessionListCommand))
             return Data(output.readableBytesView)
         } catch is CancellationError {
             throw TransportError.cancelled
@@ -417,7 +417,8 @@ actor SSHTransport: Transport {
         /// a no-op, so this is only observed when the ack line never came.
         var ackFailure = TransportError.cancelled
         do {
-            try await client.withExec("\(socatPath) - UNIX-CONNECT:\(socketPath)") {
+            try await client.withExec(
+                Self.cLocaleCommand("\(socatPath) - UNIX-CONNECT:\(socketPath)")) {
                 inbound, outbound in
                 try? await outbound.write(ByteBuffer(string: requestLine))
                 for try await chunk in inbound {
@@ -531,7 +532,7 @@ actor SSHTransport: Transport {
         let readerID = nextTerminalReaderID
         let readerTask = Task {
             await self.runTerminalChannel(
-                readerID: readerID, command: command, frames: continuation)
+                readerID: readerID, command: Self.cLocaleCommand(command), frames: continuation)
         }
         // No suspension between the idle guard and here, and the reader is
         // actor-isolated too, so it cannot have observed — let alone ended —
@@ -876,7 +877,8 @@ actor SSHTransport: Transport {
     private func runWakeCommand() async throws {
         try await acquireExecChannelSlot()
         defer { releaseExecChannelSlot() }
-        _ = try await client.executeCommand("\(wakeCommand) < /dev/null")
+        _ = try await client.executeCommand(
+            Self.cLocaleCommand("\(wakeCommand) < /dev/null"))
     }
 
     /// One no-PTY exec channel per request, raced against the per-request
@@ -906,7 +908,8 @@ actor SSHTransport: Transport {
         var stdout = Data()
         var stderr = Data()
         do {
-            try await client.withExec("\(socatPath) - UNIX-CONNECT:\(socketPath)") {
+            try await client.withExec(
+                Self.cLocaleCommand("\(socatPath) - UNIX-CONNECT:\(socketPath)")) {
                 inbound, outbound in
                 // A fast-failing command (socat missing, socket absent) can
                 // close the channel before this write lands; the read loop
@@ -999,7 +1002,7 @@ actor SSHTransport: Transport {
         let output: ByteBuffer
         do {
             // $HOME expands in every mainstream login shell, fish included.
-            output = try await client.executeCommand("echo $HOME")
+            output = try await client.executeCommand(Self.cLocaleCommand("echo $HOME"))
         } catch {
             throw TransportError.homeDirectoryUnresolvable(detail: String(describing: error))
         }
@@ -1039,6 +1042,12 @@ actor SSHTransport: Transport {
 
     private static func preview(_ stderr: Data) -> String {
         String(decoding: stderr.prefix(200), as: UTF8.self)
+    }
+
+    /// Stabilizes every parsed remote exec surface. Error classification and
+    /// JSON diagnostics must not change with the Host account's locale.
+    private static func cLocaleCommand(_ command: String) -> String {
+        "LC_ALL=C \(command)"
     }
 }
 

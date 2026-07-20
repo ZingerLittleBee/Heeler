@@ -224,6 +224,7 @@ struct SSHTransportE2ETests {
             .appendingPathComponent("herdr-session-list-\(UUID().uuidString).sh")
         let script = """
             #!/bin/sh
+            [ "$LC_ALL" = C ] || exit 2
             printf '%s' '{"sessions":[{"name":"default","default":true,"running":false},{"name":"work","default":false,"running":true}]}'
             """
         try Data(script.utf8).write(to: scriptURL, options: .atomic)
