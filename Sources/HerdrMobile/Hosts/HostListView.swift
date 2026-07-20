@@ -1,11 +1,46 @@
+import Observation
 import SwiftUI
+
+@MainActor
+@Observable
+final class HostRemovalStore {
+    private(set) var errorMessage: String?
+
+    @ObservationIgnored
+    private let store: HostStore
+
+    init(store: HostStore) {
+        self.store = store
+    }
+
+    func remove(_ ids: [Host.ID]) {
+        for id in ids {
+            do {
+                try store.remove(id)
+            } catch {
+                errorMessage = "The Host could not be removed. Its saved credentials may still be in the Keychain."
+                return
+            }
+        }
+    }
+
+    func dismissError() {
+        errorMessage = nil
+    }
+}
 
 /// Host management (#14): the catalog of Hosts with add/edit/remove, each
 /// row leading into that Host's onboarding checklist.
 struct HostListView: View {
     let store: HostStore
+    @State private var removal: HostRemovalStore
     @State private var isAddingHost = false
     @State private var path: [Host.ID] = []
+
+    init(store: HostStore) {
+        self.store = store
+        _removal = State(initialValue: HostRemovalStore(store: store))
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -51,13 +86,28 @@ struct HostListView: View {
                     path.append(saved.id)
                 }
             }
+            .alert(
+                "Could Not Remove Host",
+                isPresented: Binding(
+                    get: { removal.errorMessage != nil },
+                    set: { isPresented in
+                        if !isPresented {
+                            removal.dismissError()
+                        }
+                    }
+                )
+            ) {
+                Button("OK", role: .cancel) {
+                    removal.dismissError()
+                }
+            } message: {
+                Text(removal.errorMessage ?? "")
+            }
         }
     }
 
     private func removeHosts(at offsets: IndexSet) {
-        for id in offsets.map({ store.hosts[$0].id }) {
-            try? store.remove(id)
-        }
+        removal.remove(offsets.map { store.hosts[$0].id })
     }
 }
 

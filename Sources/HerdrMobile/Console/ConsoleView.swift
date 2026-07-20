@@ -68,8 +68,8 @@ struct ConsoleView: View {
             }
         } else {
             List {
-                ForEach(reconnectingHosts, id: \.0) { _, message in
-                    Label(message, systemImage: "wifi.exclamationmark")
+                ForEach(hostIssues, id: \.0) { _, issue in
+                    Label(issue.message, systemImage: issue.systemImage)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -84,18 +84,27 @@ struct ConsoleView: View {
     }
 
     private var emptyDescription: String {
-        if reconnectingHosts.isEmpty {
+        if hostIssues.isEmpty {
             return "Agents detected on your Hosts appear here."
         }
-        return reconnectingHosts.map(\.1).joined(separator: "\n")
+        return hostIssues.map(\.1.message).joined(separator: "\n")
     }
 
-    /// Hosts whose events session is down, with a staleness message; what is
-    /// on screen for them may be out of date.
-    private var reconnectingHosts: [(Host.ID, String)] {
+    /// One actionable status per Host. A disconnected session takes priority;
+    /// otherwise a connected Host can still have a failing snapshot RPC.
+    private var hostIssues: [(Host.ID, (message: String, systemImage: String))] {
         hosts.hosts.compactMap { host in
-            guard case .reconnecting = console.hostStatuses[host.id] else { return nil }
-            return (host.id, "Reconnecting to \(host.displayName)…")
+            if case .reconnecting = console.hostStatuses[host.id] {
+                return (
+                    host.id,
+                    ("Reconnecting to \(host.displayName)…", "wifi.exclamationmark"))
+            }
+            if let message = console.hostSyncErrors[host.id] {
+                return (
+                    host.id,
+                    ("\(host.displayName): \(message)", "arrow.trianglehead.2.clockwise"))
+            }
+            return nil
         }
     }
 }

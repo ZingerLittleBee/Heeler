@@ -9,6 +9,7 @@ import NIOCore
 /// How to reach one Host, authenticate against it, and find its herdr socket.
 struct SSHTransportSettings: Sendable {
     static let defaultObserveCommand = "herdr terminal session control"
+    static let defaultSessionListCommand = "herdr session list --json"
 
     var host: String
     var port: Int
@@ -30,6 +31,9 @@ struct SSHTransportSettings: Sendable {
     /// the environment boundary; per-Host override also covers hosts where
     /// herdr is not on the login shell's PATH.
     var wakeCommand: String = "herdr remote-client-bridge"
+    /// Official Host-local CLI command for discovering default and named
+    /// sessions. It does not depend on a running API socket.
+    var sessionListCommand: String = Self.defaultSessionListCommand
     /// Command that streams a Pane's terminal as NDJSON frame lines over a
     /// no-PTY exec channel. The default claims a non-takeover control
     /// session so herdr applies the phone geometry to the Agent's PTY; the
@@ -56,6 +60,10 @@ struct SSHTransportSettings: Sendable {
     var requestTimeout: Duration = .seconds(15)
 }
 
+private struct HerdrSessionListResponse: Decodable {
+    let sessions: [HerdrSession]
+}
+
 /// Transport over SSH exec channels running `socat - UNIX-CONNECT:<sock>`,
 /// one channel per request because herdr serves one request per connection
 /// (ADR 0002). An actor because Citadel's SSHClient is not Sendable.
@@ -72,6 +80,7 @@ actor SSHTransport: Transport {
     private let socketLocation: HerdrSocketLocation
     private let socatPath: String
     private let wakeCommand: String
+    private let sessionListCommand: String
     private let observeCommand: String
     private let observeCommandHandlesStdinEOF: Bool
     private let attachCommand: String
@@ -156,7 +165,8 @@ actor SSHTransport: Transport {
 
     private init(
         client: SSHClient, socketLocation: HerdrSocketLocation, socatPath: String,
-        wakeCommand: String, observeCommand: String, observeCommandHandlesStdinEOF: Bool,
+        wakeCommand: String, sessionListCommand: String, observeCommand: String,
+        observeCommandHandlesStdinEOF: Bool,
         attachCommand: String,
         requestTimeout: Duration
     ) {
@@ -164,6 +174,7 @@ actor SSHTransport: Transport {
         self.socketLocation = socketLocation
         self.socatPath = socatPath
         self.wakeCommand = wakeCommand
+        self.sessionListCommand = sessionListCommand
         self.observeCommand = observeCommand
         self.observeCommandHandlesStdinEOF = observeCommandHandlesStdinEOF
         self.attachCommand = attachCommand
@@ -196,7 +207,8 @@ actor SSHTransport: Transport {
         }
         return SSHTransport(
             client: client, socketLocation: settings.socket, socatPath: settings.socatPath,
-            wakeCommand: settings.wakeCommand, observeCommand: settings.observeCommand,
+            wakeCommand: settings.wakeCommand, sessionListCommand: settings.sessionListCommand,
+            observeCommand: settings.observeCommand,
             observeCommandHandlesStdinEOF: settings.observeCommandHandlesStdinEOF,
             attachCommand: settings.attachCommand, requestTimeout: settings.requestTimeout)
     }
@@ -223,6 +235,31 @@ actor SSHTransport: Transport {
                 server: pong.protocolVersion, supported: Self.supportedProtocolVersion)
         }
         return ServerInfo(version: pong.version, protocolVersion: pong.protocolVersion)
+    }
+
+    func listSessions() async throws -> [HerdrSession] {
+        let output = try await Self.withRequestDeadline(requestTimeout) {
+            try await self.runSessionListCommand()
+        }
+        do {
+            return try JSONDecoder().decode(HerdrSessionListResponse.self, from: output).sessions
+        } catch {
+            throw TransportError.malformedResponse(
+                "herdr session list returned invalid JSON: \(Self.preview(output))")
+        }
+    }
+
+    private func runSessionListCommand() async throws -> Data {
+        try await acquireExecChannelSlot()
+        defer { releaseExecChannelSlot() }
+        do {
+            let output = try await client.executeCommand(Self.cLocaleCommand(sessionListCommand))
+            return Data(output.readableBytesView)
+        } catch is CancellationError {
+            throw TransportError.cancelled
+        } catch {
+            throw TransportError.channelFailed(detail: String(describing: error))
+        }
     }
 
     func listAgents() async throws -> [Agent] {
@@ -380,7 +417,8 @@ actor SSHTransport: Transport {
         /// a no-op, so this is only observed when the ack line never came.
         var ackFailure = TransportError.cancelled
         do {
-            try await client.withExec("\(socatPath) - UNIX-CONNECT:\(socketPath)") {
+            try await client.withExec(
+                Self.cLocaleCommand("\(socatPath) - UNIX-CONNECT:\(socketPath)")) {
                 inbound, outbound in
                 try? await outbound.write(ByteBuffer(string: requestLine))
                 for try await chunk in inbound {
@@ -494,7 +532,7 @@ actor SSHTransport: Transport {
         let readerID = nextTerminalReaderID
         let readerTask = Task {
             await self.runTerminalChannel(
-                readerID: readerID, command: command, frames: continuation)
+                readerID: readerID, command: Self.cLocaleCommand(command), frames: continuation)
         }
         // No suspension between the idle guard and here, and the reader is
         // actor-isolated too, so it cannot have observed — let alone ended —
@@ -839,7 +877,8 @@ actor SSHTransport: Transport {
     private func runWakeCommand() async throws {
         try await acquireExecChannelSlot()
         defer { releaseExecChannelSlot() }
-        _ = try await client.executeCommand("\(wakeCommand) < /dev/null")
+        _ = try await client.executeCommand(
+            Self.cLocaleCommand("\(wakeCommand) < /dev/null"))
     }
 
     /// One no-PTY exec channel per request, raced against the per-request
@@ -869,7 +908,8 @@ actor SSHTransport: Transport {
         var stdout = Data()
         var stderr = Data()
         do {
-            try await client.withExec("\(socatPath) - UNIX-CONNECT:\(socketPath)") {
+            try await client.withExec(
+                Self.cLocaleCommand("\(socatPath) - UNIX-CONNECT:\(socketPath)")) {
                 inbound, outbound in
                 // A fast-failing command (socat missing, socket absent) can
                 // close the channel before this write lands; the read loop
@@ -962,7 +1002,7 @@ actor SSHTransport: Transport {
         let output: ByteBuffer
         do {
             // $HOME expands in every mainstream login shell, fish included.
-            output = try await client.executeCommand("echo $HOME")
+            output = try await client.executeCommand(Self.cLocaleCommand("echo $HOME"))
         } catch {
             throw TransportError.homeDirectoryUnresolvable(detail: String(describing: error))
         }
@@ -1002,6 +1042,12 @@ actor SSHTransport: Transport {
 
     private static func preview(_ stderr: Data) -> String {
         String(decoding: stderr.prefix(200), as: UTF8.self)
+    }
+
+    /// Stabilizes every parsed remote exec surface. Error classification and
+    /// JSON diagnostics must not change with the Host account's locale.
+    private static func cLocaleCommand(_ command: String) -> String {
+        "LC_ALL=C \(command)"
     }
 }
 

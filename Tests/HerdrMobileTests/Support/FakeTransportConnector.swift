@@ -5,14 +5,20 @@ import Foundation
 /// Scripted `Transport` for store tests: protocol-level, no SSH.
 final actor FakeTransport: Transport {
     private let pingResult: Result<ServerInfo, TransportError>
+    private let sessions: [HerdrSession]
     private(set) var isClosed = false
 
-    init(pingResult: Result<ServerInfo, TransportError>) {
+    init(pingResult: Result<ServerInfo, TransportError>, sessions: [HerdrSession] = []) {
         self.pingResult = pingResult
+        self.sessions = sessions
     }
 
     func ping() async throws -> ServerInfo {
         try pingResult.get()
+    }
+
+    func listSessions() async throws -> [HerdrSession] {
+        sessions
     }
 
     func listAgents() async throws -> [Agent] {
@@ -80,12 +86,17 @@ final actor FakeTransportConnector: TransportConnector {
     /// The host key the fake "server" presents; nil skips host key
     /// evaluation entirely.
     private let presentedKeyBlob: Data?
+    private let sessions: [HerdrSession]
     private(set) var capturedSettings: [SSHTransportSettings] = []
     private(set) var transports: [FakeTransport] = []
 
-    init(outcome: Outcome, presentedKeyBlob: Data? = nil) {
+    init(
+        outcome: Outcome, presentedKeyBlob: Data? = nil,
+        sessions: [HerdrSession] = []
+    ) {
         self.outcome = outcome
         self.presentedKeyBlob = presentedKeyBlob
+        self.sessions = sessions
     }
 
     func connect(settings: SSHTransportSettings) async throws -> any Transport {
@@ -98,7 +109,7 @@ final actor FakeTransportConnector: TransportConnector {
         case .connectFails(let error):
             throw error
         case .connects(let pingResult):
-            let transport = FakeTransport(pingResult: pingResult)
+            let transport = FakeTransport(pingResult: pingResult, sessions: sessions)
             transports.append(transport)
             return transport
         }

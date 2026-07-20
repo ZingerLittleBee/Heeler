@@ -39,4 +39,10 @@ struct HostCredentialsProvider: Sendable {
     func deviceKey() throws -> DeviceKey {
         try deviceKeys.loadOrCreate()
     }
+
+    /// User-approved recovery for a corrupt device key. Callers must explain
+    /// that every device-key Host will need the replacement public key.
+    func replaceDeviceKey() throws -> DeviceKey {
+        try deviceKeys.replaceStoredKey()
+    }
 }

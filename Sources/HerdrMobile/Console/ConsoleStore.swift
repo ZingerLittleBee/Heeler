@@ -24,18 +24,24 @@ final class ConsoleStore {
     private(set) var agents: [ConsoleAgent] = []
     /// Per-Host events-session status; the UI derives staleness from it.
     private(set) var hostStatuses: [Host.ID: EventsSessionStatus] = [:]
+    /// Snapshot failures are separate from connection state: an events
+    /// channel can remain connected while the Console data RPC is failing.
+    private(set) var hostSyncErrors: [Host.ID: String] = [:]
 
     @ObservationIgnored private var feeds: [Host.ID: HostFeed] = [:]
     @ObservationIgnored private let makeSession:
         @Sendable (Host, [EventSubscription]) -> EventsSession
+    @ObservationIgnored private let snapshotRetryDelay: Duration
     /// Whether the Console should hold live connections (foregrounded);
     /// feeds started while suspended stay down until `resume()`.
     @ObservationIgnored private var isActive = false
 
     init(
+        snapshotRetryDelay: Duration = .seconds(2),
         makeSession: @escaping @Sendable (Host, [EventSubscription]) -> EventsSession =
             ConsoleStore.sshSessionFactory()
     ) {
+        self.snapshotRetryDelay = snapshotRetryDelay
         self.makeSession = makeSession
     }
 
@@ -50,6 +56,7 @@ final class ConsoleStore {
             endFeed(feed)
             feeds[id] = nil
             hostStatuses[id] = nil
+            hostSyncErrors[id] = nil
         }
         for host in hosts where feeds[host.id] == nil {
             startFeed(for: host)
@@ -90,6 +97,8 @@ final class ConsoleStore {
 
     private func endFeed(_ feed: HostFeed) {
         feed.resyncPending = false
+        feed.resyncRetryTask?.cancel()
+        feed.resyncRetryTask = nil
         Task { await feed.session.end() }
     }
 
@@ -137,14 +146,46 @@ final class ConsoleStore {
         do {
             let snapshot = try await transport.sessionSnapshot()
             guard feeds[feed.host.id] === feed else { return }
+            feed.resyncRetryTask?.cancel()
+            feed.resyncRetryTask = nil
+            hostSyncErrors[feed.host.id] = nil
             apply(snapshot, to: feed)
             await feed.session.updateSubscriptions(
                 Self.subscriptions(paneIDs: feed.byPane.keys))
             refreshSnippets(feed: feed, transport: transport)
         } catch {
-            // Keep the last known rows. If the connection is actually dead,
-            // the session's own machinery notices and re-issues `.connected`
-            // after reconnecting, which schedules the next attempt.
+            guard feeds[feed.host.id] === feed else { return }
+            hostSyncErrors[feed.host.id] = Self.snapshotErrorMessage(error)
+            scheduleSnapshotRetry(feed: feed)
+        }
+    }
+
+    /// Snapshot RPC failures do not necessarily drop the events channel, so
+    /// they need their own bounded-rate retry instead of waiting for a future
+    /// membership event or reconnect that may never happen.
+    private func scheduleSnapshotRetry(feed: HostFeed) {
+        guard feed.resyncRetryTask == nil else { return }
+        feed.resyncRetryTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await Task.sleep(for: snapshotRetryDelay)
+            } catch {
+                return
+            }
+            guard self.feeds[feed.host.id] === feed else { return }
+            feed.resyncRetryTask = nil
+            self.scheduleResync(feed: feed)
+        }
+    }
+
+    private static func snapshotErrorMessage(_ error: any Error) -> String {
+        switch error {
+        case TransportError.timedOut:
+            "The Host did not answer while syncing Agents. Retrying…"
+        case let apiError as HerdrAPIError:
+            "herdr rejected the Console sync: \(apiError.message). Retrying…"
+        default:
+            "Could not sync this Host's Agents. Retrying…"
         }
     }
 
@@ -296,7 +337,7 @@ final class ConsoleStore {
     /// Global membership/context kinds; each triggers a Host re-snapshot.
     private static let membershipKinds: [GlobalEventKind] = [
         .paneAgentDetected, .paneClosed, .paneExited,
-        .workspaceRenamed, .workspaceMetadataUpdated, .workspaceClosed,
+        .workspaceCreated, .workspaceRenamed, .workspaceMetadataUpdated, .workspaceClosed,
     ]
     /// The membership kinds plus the local drop marker (#22): a bounded
     /// event buffer that shed updates means the deltas are incomplete, so
@@ -346,6 +387,7 @@ private final class HostFeed {
     let session: EventsSession
     var consumeTask: Task<Void, Never>?
     var resyncTask: Task<Void, Never>?
+    var resyncRetryTask: Task<Void, Never>?
     var resyncPending = false
     var byPane: [String: ConsoleAgent] = [:]
     /// Workspaces from this Host's latest snapshot, for the new-agent picker.

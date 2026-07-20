@@ -218,6 +218,38 @@ struct SSHTransportE2ETests {
         #expect(await !transport.isConnected)
     }
 
+    @Test func sessionDiscoveryDecodesTheOfficialCLIJSON() async throws {
+        let environment = try #require(LocalSSHTestEnvironment.current)
+        let scriptURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("herdr-session-list-\(UUID().uuidString).sh")
+        let script = """
+            #!/bin/sh
+            [ "$LC_ALL" = C ] || exit 2
+            printf '%s' '{"sessions":[{"name":"default","default":true,"running":false},{"name":"work","default":false,"running":true}]}'
+            """
+        try Data(script.utf8).write(to: scriptURL, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
+        defer { try? FileManager.default.removeItem(at: scriptURL) }
+        var settings = environment.makeSettings(
+            socket: .absolutePath("/tmp/herdr-irrelevant.sock"))
+        settings.sessionListCommand = scriptURL.path
+        let transport = try await SSHTransport.connect(settings: settings)
+        do {
+            let sessions = try await transport.listSessions()
+
+            #expect(
+                sessions == [
+                    HerdrSession(name: "default", isDefault: true, isRunning: false),
+                    HerdrSession(name: "work", isDefault: false, isRunning: true),
+                ])
+        } catch {
+            try? await transport.close()
+            throw error
+        }
+        try await transport.close()
+    }
+
     @Test func namedSessionSocketPathResolvesOverRemoteHome() async throws {
         // The transport is given only a session name; it must resolve the
         // remote home directory over exec and find the socket at

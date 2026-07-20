@@ -8,6 +8,8 @@ struct HostOnboardingView: View {
     let catalog: HostStore
     @State private var store: HostOnboardingStore
     @State private var isEditing = false
+    @State private var isConfirmingHostKeyReplacement = false
+    @State private var sessionSelectionError: String?
 
     init(host: Host, catalog: HostStore) {
         self.catalog = catalog
@@ -43,6 +45,8 @@ struct HostOnboardingView: View {
                 }
             }
 
+            availableSessionsSection
+
             Section {
                 Button {
                     Task { await store.runChecks() }
@@ -50,6 +54,16 @@ struct HostOnboardingView: View {
                     Label("Run Checks Again", systemImage: "arrow.clockwise")
                 }
                 .disabled(store.phase == .running)
+            }
+
+            if store.pendingHostKeyReplacement != nil {
+                Section {
+                    Button("Trust New Host Key", systemImage: "key.horizontal", role: .destructive) {
+                        isConfirmingHostKeyReplacement = true
+                    }
+                } footer: {
+                    Text("Only continue after verifying the new fingerprint with the Host owner.")
+                }
             }
         }
         .navigationTitle(store.host.displayName)
@@ -74,6 +88,33 @@ struct HostOnboardingView: View {
                 "First connection to \(candidate.host):\(String(candidate.port)).\n\n"
                     + "Key fingerprint:\n\(candidate.fingerprint.displayString)\n\n"
                     + "Verify it matches the Host's key before trusting.")
+        }
+        .confirmationDialog(
+            "Replace the trusted Host key?",
+            isPresented: $isConfirmingHostKeyReplacement,
+            titleVisibility: .visible
+        ) {
+            Button("Trust New Key", role: .destructive) {
+                Task { await store.trustPresentedHostKey() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if let replacement = store.pendingHostKeyReplacement {
+                Text(
+                    "Trusted: \(replacement.known.displayString)\n\n"
+                        + "Presented: \(replacement.presented.displayString)\n\n"
+                        + "A changed key can indicate a reinstalled Host or an attack.")
+            }
+        }
+        .alert(
+            "Could Not Select Session",
+            isPresented: Binding(
+                get: { sessionSelectionError != nil },
+                set: { if !$0 { sessionSelectionError = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(sessionSelectionError ?? "")
         }
         .task {
             if store.phase == .idle {
@@ -104,6 +145,54 @@ struct HostOnboardingView: View {
 
     private func status(for check: PreflightCheck) -> PreflightCheckStatus? {
         store.report?[check]
+    }
+
+    @ViewBuilder
+    private var availableSessionsSection: some View {
+        if !store.availableSessions.isEmpty || store.sessionDiscoveryError != nil {
+            Section {
+                ForEach(store.availableSessions, id: \.name) { session in
+                    Button {
+                        select(session)
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(session.name)
+                                Text(session.isRunning ? "Running" : "Stopped")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if isSelected(session) {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                    .disabled(isSelected(session) || (!session.isDefault && !session.isRunning))
+                }
+                if let error = store.sessionDiscoveryError {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Available Sessions")
+            } footer: {
+                Text("Stopped named sessions must be started on the Host before selection.")
+            }
+        }
+    }
+
+    private func isSelected(_ session: HerdrSession) -> Bool {
+        session.isDefault ? store.host.sessionName.isEmpty : store.host.sessionName == session.name
+    }
+
+    private func select(_ session: HerdrSession) {
+        do {
+            try store.selectSession(session, in: catalog)
+        } catch {
+            sessionSelectionError = "The selected session could not be saved."
+        }
     }
 }
 

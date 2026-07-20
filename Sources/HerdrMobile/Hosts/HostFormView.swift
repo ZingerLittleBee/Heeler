@@ -12,6 +12,9 @@ struct HostFormView: View {
     @State private var authorizedKeysLine: String?
     @State private var didCopyKeyLine = false
     @State private var saveFailed = false
+    @State private var deviceKeyIsCorrupt = false
+    @State private var isConfirmingDeviceKeyReplacement = false
+    @State private var deviceKeyReplacementError: String?
     @Environment(\.dismiss) private var dismiss
 
     private let credentials = HostCredentialsProvider()
@@ -99,9 +102,30 @@ struct HostFormView: View {
             .alert("Could not save the Host", isPresented: $saveFailed) {
                 Button("OK", role: .cancel) {}
             }
+            .alert(
+                "Could not replace the Device Key",
+                isPresented: Binding(
+                    get: { deviceKeyReplacementError != nil },
+                    set: { if !$0 { deviceKeyReplacementError = nil } })
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(deviceKeyReplacementError ?? "")
+            }
+            .confirmationDialog(
+                "Replace the Device Key?",
+                isPresented: $isConfirmingDeviceKeyReplacement,
+                titleVisibility: .visible
+            ) {
+                Button("Replace Device Key", role: .destructive) { replaceDeviceKey() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(
+                    "Every Host using Device Key authentication will reject the replacement "
+                        + "until you add its new public key to ~/.ssh/authorized_keys.")
+            }
             .task {
-                authorizedKeysLine = try? credentials.deviceKey()
-                    .authorizedKeysLine(comment: "herdr-mobile")
+                loadDeviceKey()
             }
         }
     }
@@ -123,10 +147,42 @@ struct HostFormView: View {
                     systemImage: didCopyKeyLine ? "checkmark" : "doc.on.doc")
             }
         } else {
-            // Only reachable when the Keychain is unavailable or the stored
-            // key is corrupt; there is nothing actionable in-form.
-            Label("Device key unavailable", systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.secondary)
+            Label(
+                deviceKeyIsCorrupt ? "Device key is corrupted" : "Device key unavailable",
+                systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.red)
+            if deviceKeyIsCorrupt {
+                Button("Replace Device Key", role: .destructive) {
+                    isConfirmingDeviceKeyReplacement = true
+                }
+            } else {
+                Button("Try Again") { loadDeviceKey() }
+            }
+        }
+    }
+
+    private func loadDeviceKey() {
+        do {
+            let key = try credentials.deviceKey()
+            authorizedKeysLine = key.authorizedKeysLine(comment: "herdr-mobile")
+            deviceKeyIsCorrupt = false
+        } catch DeviceKeyStoreError.storedKeyCorrupt {
+            authorizedKeysLine = nil
+            deviceKeyIsCorrupt = true
+        } catch {
+            authorizedKeysLine = nil
+            deviceKeyIsCorrupt = false
+        }
+    }
+
+    private func replaceDeviceKey() {
+        do {
+            let key = try credentials.replaceDeviceKey()
+            authorizedKeysLine = key.authorizedKeysLine(comment: "herdr-mobile")
+            deviceKeyIsCorrupt = false
+            didCopyKeyLine = false
+        } catch {
+            deviceKeyReplacementError = "The replacement could not be saved to the Keychain."
         }
     }
 

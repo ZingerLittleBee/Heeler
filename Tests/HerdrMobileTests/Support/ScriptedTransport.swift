@@ -40,6 +40,7 @@ final actor ScriptedTransport: Transport {
 
     private var serverInfo: ServerInfo
     private var snapshot: SessionSnapshot
+    private var snapshotFailure: TransportError?
     private var paneTexts: [String: String] = [:]
     private var paneReadFailure: TransportError?
     private var nextStreamID: UInt64 = 0
@@ -66,6 +67,11 @@ final actor ScriptedTransport: Transport {
     /// Replaces the snapshot subsequent `sessionSnapshot()` calls return.
     func setSnapshot(_ snapshot: SessionSnapshot) {
         self.snapshot = snapshot
+    }
+
+    /// Makes every subsequent `sessionSnapshot` throw `failure`.
+    func setSnapshotFailure(_ failure: TransportError?) {
+        snapshotFailure = failure
     }
 
     /// Scripts the text `readPane` returns for `paneID`.
@@ -178,6 +184,7 @@ final actor ScriptedTransport: Transport {
 
     func sessionSnapshot() async throws -> SessionSnapshot {
         snapshotFetchCount += 1
+        if let snapshotFailure { throw snapshotFailure }
         return snapshot
     }
 
@@ -265,7 +272,7 @@ final actor ScriptedTransport: Transport {
         attachContinuation = outputContinuation
         attachInputTask = Task {
             for await item in input {
-                await self.recordAttachInput(item)
+                self.recordAttachInput(item)
             }
         }
         return TerminalAttachSession(output: output, input: inputContinuation) {

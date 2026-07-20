@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 
 @testable import HerdrMobile
@@ -123,6 +124,41 @@ struct HostStoreTests {
         try store.update(host)
 
         #expect(try store.password(for: host) == nil)
+    }
+
+    @Test func removalFailureStaysVisibleAndKeepsTheHost() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = RemovalFailingSecretStore()
+        let store = HostStore(defaults: defaults, secrets: secrets)
+        let host = Host.fixture(authMethod: .password)
+        try store.add(host, password: "hunter2")
+        secrets.failRemovals()
+        let removal = HostRemovalStore(store: store)
+
+        removal.remove([host.id])
+
+        #expect(store.hosts == [host])
+        #expect(removal.errorMessage != nil)
+        removal.dismissError()
+        #expect(removal.errorMessage == nil)
+    }
+}
+
+private final class RemovalFailingSecretStore: SecretStore {
+    private let shouldFailRemoval = Mutex(false)
+
+    func failRemovals() {
+        shouldFailRemoval.withLock { $0 = true }
+    }
+
+    func read(account: String) throws -> Data? { nil }
+    func write(_ secret: Data, account: String) throws {}
+
+    func removeSecret(account: String) throws {
+        if shouldFailRemoval.withLock({ $0 }) {
+            throw KeychainError.unexpectedStatus(-1)
+        }
     }
 }
 

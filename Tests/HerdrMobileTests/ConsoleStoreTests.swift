@@ -16,7 +16,7 @@ struct ConsoleStoreTests {
     /// A store whose session factory routes each Host to its scripted
     /// transport; unknown Hosts fail the connect.
     private func makeStore(transports: [Host.ID: ScriptedTransport]) -> ConsoleStore {
-        ConsoleStore { host, subscriptions in
+        ConsoleStore(snapshotRetryDelay: .milliseconds(10)) { host, subscriptions in
             EventsSession(
                 subscriptions: subscriptions,
                 connect: {
@@ -277,6 +277,59 @@ struct ConsoleStoreTests {
         try await waitUntil("the detected agent should appear via re-snapshot") {
             store.agents.count == 2
         }
+
+        store.setHosts([])
+    }
+
+    @Test func workspaceCreationRefreshesTheNewAgentPicker() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(workspaces: [.fixture(workspaceID: "w1", label: "Proj")]))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the initial workspace should arrive") {
+            store.workspaces(for: host.id).map(\.id) == ["w1"]
+        }
+        try await waitUntil("workspace creation should be subscribed") {
+            await transport.capturedSubscriptions.last?.contains(.global(.workspaceCreated)) == true
+        }
+
+        await transport.setSnapshot(
+            .fixture(workspaces: [
+                .fixture(workspaceID: "w1", label: "Proj"),
+                .fixture(workspaceID: "w2", label: "Api"),
+            ]))
+        await transport.emit(
+            HerdrEvent(kind: GlobalEventKind.workspaceCreated.kind, data: .object([:])))
+
+        try await waitUntil("the new workspace should appear without reconnecting") {
+            store.workspaces(for: host.id).map(\.id) == ["w2", "w1"]
+        }
+
+        store.setHosts([])
+    }
+
+    @Test func snapshotFailureSurfacesAndRetriesUntilRecovery() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        await transport.setSnapshotFailure(.timedOut)
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the sync failure should be visible") {
+            store.hostSyncErrors[host.id] != nil
+        }
+
+        await transport.setSnapshotFailure(nil)
+        try await waitUntil("the retry should recover the snapshot") {
+            store.agents.map(\.agent.paneID) == ["w1:p1"]
+                && store.hostSyncErrors[host.id] == nil
+        }
+        #expect(await transport.snapshotFetchCount >= 2)
 
         store.setHosts([])
     }

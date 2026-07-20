@@ -9,7 +9,7 @@ Instead of squeezing a desktop TUI onto a phone, herdr-mobile is an **agent cons
 The app speaks herdr's JSON API (newline-delimited JSON over a Unix socket) through SSH:
 
 - **RPC + events**: a no-PTY SSH exec channel running `socat - UNIX-CONNECT:<herdr.sock>` per request, plus one long-lived channel for `events.subscribe`.
-- **Interactive terminal**: an SSH exec channel with a PTY running `herdr agent attach <pane>`, rendered by SwiftTerm.
+- **Interactive terminal**: an SSH PTY shell channel bootstrapped with an injection-safe `exec herdr agent attach <pane>` line, then rendered by SwiftTerm.
 
 No herdr server changes required. The only remote prerequisite is `socat` installed on the host.
 
