@@ -56,6 +56,12 @@ struct TerminalScreenView: UIViewRepresentable {
             view.changeScrollback(5_000)
         }
         view.terminalDelegate = context.coordinator
+        view.onTerminalKeyboardSend = { [weak coordinator = context.coordinator] data in
+            coordinator?.onSend?(data)
+        }
+        if style == .attach, allowsInput {
+            view.installTerminalKeyboard()
+        }
         view.onSizeReport = { [weak coordinator = context.coordinator] cols, rows in
             coordinator?.onSizeChanged?(cols, rows)
         }
@@ -143,6 +149,8 @@ final class SizeReportingTerminalView: TerminalView {
     }
     var onSizeReport: ((_ cols: Int, _ rows: Int) -> Void)?
     var onLoadEarlier: (() -> Bool)?
+    var onTerminalKeyboardSend: ((Data) -> Void)?
+    var terminalKeyboardHost: TerminalKeyboardHost?
     private var lastReported: (cols: Int, rows: Int)?
     private var defersScrollerUpdates = false
     private var pendingReadOnlySnapshot: Data?

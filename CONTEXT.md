@@ -34,6 +34,10 @@ _Avoid_: watch, monitor, preview
 Full interactive terminal control of an Agent's pane through the embedded terminal.
 _Avoid_: takeover (that's herdr's flag, not our surface), connect
 
+**Terminal Keyboard**:
+The input surface used only within Attach to send text and terminal key sequences to an Agent's pane. It models terminal input, not remote-computer hardware events, and never appears in Observe.
+_Avoid_: computer keyboard, remote keyboard, Observe keyboard, reply keyboard
+
 **Transport**:
 The app-side abstraction that executes herdr API requests and delivers event streams over SSH. UI code talks to Transport, never to SSH primitives.
 _Avoid_: client, bridge, tunnel
