@@ -69,6 +69,23 @@ struct TerminalKeyboardTests {
         #expect(session.state.activeModifiers.isEmpty)
     }
 
+    @MainActor
+    @Test func movingPagesStopsAtTheKeyboardBoundaries() {
+        let session = TerminalKeyboardSession()
+
+        session.movePage(by: -1)
+        #expect(session.state.page == .typing)
+
+        session.movePage(by: 1)
+        #expect(session.state.page == .navigation)
+
+        session.movePage(by: 1)
+        #expect(session.state.page == .navigation)
+
+        session.movePage(by: -1)
+        #expect(session.state.page == .typing)
+    }
+
     @Test func typingLayoutContainsEveryDecidedPrintableKey() {
         let keys = TerminalKeyboardPage.typing.rows.flatMap { $0 }
         let baseCharacters = Set(

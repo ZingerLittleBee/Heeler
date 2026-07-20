@@ -147,7 +147,6 @@ private final class TerminalKeyboardHostingView: UIInputView, UIInputViewAudioFe
 
     private let role: Role
     private let hostingController: UIHostingController<AnyView>
-    private var lastVerticalSizeClass: UIUserInterfaceSizeClass?
 
     init(role: Role, rootView: AnyView) {
         self.role = role
@@ -184,10 +183,6 @@ private final class TerminalKeyboardHostingView: UIInputView, UIInputViewAudioFe
     override func layoutSubviews() {
         super.layoutSubviews()
         hostingController.view.frame = bounds
-        if lastVerticalSizeClass != traitCollection.verticalSizeClass {
-            lastVerticalSizeClass = traitCollection.verticalSizeClass
-            invalidateIntrinsicContentSize()
-        }
     }
 
     func playClick() {
@@ -199,8 +194,7 @@ private final class TerminalKeyboardHostingView: UIInputView, UIInputViewAudioFe
         case .accessory:
             return UIDevice.current.userInterfaceIdiom == .pad ? 56 : 50
         case .keyboard:
-            if UIDevice.current.userInterfaceIdiom == .pad { return 360 }
-            return traitCollection.verticalSizeClass == .compact ? 244 : 306
+            return UIDevice.current.userInterfaceIdiom == .pad ? 360 : 244
         }
     }
 
@@ -209,7 +203,7 @@ private final class TerminalKeyboardHostingView: UIInputView, UIInputViewAudioFe
         case .accessory:
             UIDevice.current.userInterfaceIdiom == .pad ? 56 : 50
         case .keyboard:
-            UIDevice.current.userInterfaceIdiom == .pad ? 360 : 306
+            UIDevice.current.userInterfaceIdiom == .pad ? 360 : 244
         }
     }
 }
@@ -267,6 +261,16 @@ private struct TerminalKeyboardView: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 20)
+                    .onEnded { value in
+                        let translation = value.translation
+                        guard abs(translation.width) > abs(translation.height) else { return }
+
+                        let projectedWidth = value.predictedEndTranslation.width
+                        guard abs(projectedWidth) >= 80 else { return }
+                        session.movePage(by: projectedWidth < 0 ? 1 : -1)
+                    })
             .accessibilityLabel("Terminal keyboard pages")
             .accessibilityAdjustableAction { direction in
                 switch direction {
