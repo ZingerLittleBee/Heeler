@@ -17,10 +17,11 @@ struct HostOnboardingStoreTests {
         presentedKeyBlob: Data? = nil,
         knownHosts: InMemoryKnownHostsStore = InMemoryKnownHostsStore(),
         password: String? = nil,
+        sessions: [HerdrSession] = [],
         fingerprintTimeout: Duration = .seconds(5)
     ) throws -> (HostOnboardingStore, FakeTransportConnector) {
         let connector = FakeTransportConnector(
-            outcome: outcome, presentedKeyBlob: presentedKeyBlob)
+            outcome: outcome, presentedKeyBlob: presentedKeyBlob, sessions: sessions)
         let secrets = InMemorySecretStore()
         if let password {
             try secrets.write(
@@ -57,6 +58,34 @@ struct HostOnboardingStoreTests {
         #expect(store.serverInfo == ServerInfo(version: "0.7.4", protocolVersion: 16))
         let transport = try #require(await connector.transports.last)
         #expect(await transport.isClosed)
+    }
+
+    @Test func sessionDiscoveryPublishesDefaultAndNamedSessions() async throws {
+        let sessions = [
+            HerdrSession(name: "default", isDefault: true, isRunning: true),
+            HerdrSession(name: "work", isDefault: false, isRunning: true),
+        ]
+        let (store, _) = try makeStore(sessions: sessions)
+
+        await store.runChecks()
+
+        #expect(store.availableSessions == sessions)
+    }
+
+    @Test func selectingADiscoveredSessionUpdatesTheCatalogHost() throws {
+        let host = Host.fixture()
+        let suiteName = "HostOnboardingStoreTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let catalog = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+        try catalog.add(host)
+        let (store, _) = try makeStore(host: host)
+
+        try store.selectSession(
+            HerdrSession(name: "work", isDefault: false, isRunning: true),
+            in: catalog)
+
+        #expect(catalog.hosts.first?.sessionName == "work")
     }
 
     @Test func connectFailureFailsTheConnectionCheck() async throws {

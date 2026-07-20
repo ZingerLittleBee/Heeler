@@ -30,6 +30,8 @@ final class HostOnboardingStore {
     private(set) var pendingHostKeyReplacement: HostKeyReplacement?
     private(set) var report: PreflightReport?
     private(set) var serverInfo: ServerInfo?
+    private(set) var availableSessions: [HerdrSession] = []
+    private(set) var sessionDiscoveryError: String?
 
     let host: Host
 
@@ -62,6 +64,8 @@ final class HostOnboardingStore {
         phase = .running
         report = nil
         serverInfo = nil
+        availableSessions = []
+        sessionDiscoveryError = nil
         pendingHostKeyReplacement = nil
         defer { phase = .finished }
 
@@ -88,6 +92,11 @@ final class HostOnboardingStore {
         do {
             let transport = try await connector.connect(settings: settings)
             do {
+                availableSessions = try await transport.listSessions()
+            } catch {
+                sessionDiscoveryError = "Could not discover herdr sessions. You can still enter a session name manually."
+            }
+            do {
                 serverInfo = try await transport.ping()
                 report = .allPassed
             } catch {
@@ -105,6 +114,15 @@ final class HostOnboardingStore {
     /// The user's verdict on the pending fingerprint.
     func confirmFingerprint(trusted: Bool) {
         resolveFingerprint(trusted)
+    }
+
+    /// Persists a discovered session through the Host catalog. The enclosing
+    /// navigation destination is keyed by the Host value, so this recreates
+    /// onboarding and immediately checks the selected socket.
+    func selectSession(_ session: HerdrSession, in catalog: HostStore) throws {
+        var updated = host
+        updated.sessionName = session.isDefault ? "" : session.name
+        try catalog.update(updated)
     }
 
     /// Replaces a mismatched pin only after the UI has obtained an explicit

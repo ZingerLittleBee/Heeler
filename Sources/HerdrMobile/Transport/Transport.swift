@@ -7,6 +7,11 @@ protocol Transport: Sendable {
     /// its identity. Must be the first call on every new connection path.
     func ping() async throws -> ServerInfo
 
+    /// Lists the local herdr sessions visible to this SSH account. This is a
+    /// Host-level capability and does not depend on the currently selected
+    /// API socket, so onboarding can recover from a stale manual selection.
+    func listSessions() async throws -> [HerdrSession]
+
     /// Lists the Agents herdr has detected across all workspaces.
     func listAgents() async throws -> [Agent]
 
@@ -90,6 +95,12 @@ protocol Transport: Sendable {
     func close() async throws
 }
 
+extension Transport {
+    /// Test doubles and alternative transports that do not expose Host-level
+    /// session discovery can opt out without inventing sessions.
+    func listSessions() async throws -> [HerdrSession] { [] }
+}
+
 /// herdr server identity as reported by `ping`.
 struct ServerInfo: Sendable, Equatable {
     let version: String
@@ -98,6 +109,25 @@ struct ServerInfo: Sendable, Equatable {
     init(version: String, protocolVersion: Int) {
         self.version = version
         self.protocolVersion = protocolVersion
+    }
+}
+
+/// One entry from `herdr session list --json` on a Host.
+struct HerdrSession: Sendable, Equatable, Decodable {
+    let name: String
+    let isDefault: Bool
+    let isRunning: Bool
+
+    init(name: String, isDefault: Bool, isRunning: Bool) {
+        self.name = name
+        self.isDefault = isDefault
+        self.isRunning = isRunning
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name
+        case isDefault = "default"
+        case isRunning = "running"
     }
 }
 

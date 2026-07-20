@@ -9,6 +9,7 @@ import NIOCore
 /// How to reach one Host, authenticate against it, and find its herdr socket.
 struct SSHTransportSettings: Sendable {
     static let defaultObserveCommand = "herdr terminal session control"
+    static let defaultSessionListCommand = "herdr session list --json"
 
     var host: String
     var port: Int
@@ -30,6 +31,9 @@ struct SSHTransportSettings: Sendable {
     /// the environment boundary; per-Host override also covers hosts where
     /// herdr is not on the login shell's PATH.
     var wakeCommand: String = "herdr remote-client-bridge"
+    /// Official Host-local CLI command for discovering default and named
+    /// sessions. It does not depend on a running API socket.
+    var sessionListCommand: String = Self.defaultSessionListCommand
     /// Command that streams a Pane's terminal as NDJSON frame lines over a
     /// no-PTY exec channel. The default claims a non-takeover control
     /// session so herdr applies the phone geometry to the Agent's PTY; the
@@ -56,6 +60,10 @@ struct SSHTransportSettings: Sendable {
     var requestTimeout: Duration = .seconds(15)
 }
 
+private struct HerdrSessionListResponse: Decodable {
+    let sessions: [HerdrSession]
+}
+
 /// Transport over SSH exec channels running `socat - UNIX-CONNECT:<sock>`,
 /// one channel per request because herdr serves one request per connection
 /// (ADR 0002). An actor because Citadel's SSHClient is not Sendable.
@@ -72,6 +80,7 @@ actor SSHTransport: Transport {
     private let socketLocation: HerdrSocketLocation
     private let socatPath: String
     private let wakeCommand: String
+    private let sessionListCommand: String
     private let observeCommand: String
     private let observeCommandHandlesStdinEOF: Bool
     private let attachCommand: String
@@ -156,7 +165,8 @@ actor SSHTransport: Transport {
 
     private init(
         client: SSHClient, socketLocation: HerdrSocketLocation, socatPath: String,
-        wakeCommand: String, observeCommand: String, observeCommandHandlesStdinEOF: Bool,
+        wakeCommand: String, sessionListCommand: String, observeCommand: String,
+        observeCommandHandlesStdinEOF: Bool,
         attachCommand: String,
         requestTimeout: Duration
     ) {
@@ -164,6 +174,7 @@ actor SSHTransport: Transport {
         self.socketLocation = socketLocation
         self.socatPath = socatPath
         self.wakeCommand = wakeCommand
+        self.sessionListCommand = sessionListCommand
         self.observeCommand = observeCommand
         self.observeCommandHandlesStdinEOF = observeCommandHandlesStdinEOF
         self.attachCommand = attachCommand
@@ -196,7 +207,8 @@ actor SSHTransport: Transport {
         }
         return SSHTransport(
             client: client, socketLocation: settings.socket, socatPath: settings.socatPath,
-            wakeCommand: settings.wakeCommand, observeCommand: settings.observeCommand,
+            wakeCommand: settings.wakeCommand, sessionListCommand: settings.sessionListCommand,
+            observeCommand: settings.observeCommand,
             observeCommandHandlesStdinEOF: settings.observeCommandHandlesStdinEOF,
             attachCommand: settings.attachCommand, requestTimeout: settings.requestTimeout)
     }
@@ -223,6 +235,31 @@ actor SSHTransport: Transport {
                 server: pong.protocolVersion, supported: Self.supportedProtocolVersion)
         }
         return ServerInfo(version: pong.version, protocolVersion: pong.protocolVersion)
+    }
+
+    func listSessions() async throws -> [HerdrSession] {
+        let output = try await Self.withRequestDeadline(requestTimeout) {
+            try await self.runSessionListCommand()
+        }
+        do {
+            return try JSONDecoder().decode(HerdrSessionListResponse.self, from: output).sessions
+        } catch {
+            throw TransportError.malformedResponse(
+                "herdr session list returned invalid JSON: \(Self.preview(output))")
+        }
+    }
+
+    private func runSessionListCommand() async throws -> Data {
+        try await acquireExecChannelSlot()
+        defer { releaseExecChannelSlot() }
+        do {
+            let output = try await client.executeCommand(sessionListCommand)
+            return Data(output.readableBytesView)
+        } catch is CancellationError {
+            throw TransportError.cancelled
+        } catch {
+            throw TransportError.channelFailed(detail: String(describing: error))
+        }
     }
 
     func listAgents() async throws -> [Agent] {
