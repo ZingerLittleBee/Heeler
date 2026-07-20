@@ -341,6 +341,58 @@ struct SSHTransportE2ETests {
         try await transport.close()
     }
 
+    @Test func homeResolutionIgnoresLoginShellStdoutNoise() async throws {
+        let environment = try #require(LocalSSHTestEnvironment.current)
+        let home = "/tmp/hm home \(UUID().uuidString.prefix(8))"
+        let sessionName = "work"
+        let sessionDirectory = "\(home)/.config/herdr/sessions/\(sessionName)"
+        try FileManager.default.createDirectory(
+            atPath: sessionDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: home) }
+        let server = try FakeHerdrServer(socketPath: "\(sessionDirectory)/herdr.sock") { request in
+            [#"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":16}}"#]
+        }
+        defer { server.stop() }
+        let homeCommand =
+            "printf 'login banner\\n__HERDR_MOBILE_HOME__=%s\\nlast login\\n' '\(home)'"
+        let transport = try await SSHTransport.connect(
+            settings: environment.makeSettings(
+                socket: .namedSession(sessionName), homeCommand: homeCommand))
+
+        let info = try await transport.ping()
+
+        #expect(info.protocolVersion == SSHTransport.supportedProtocolVersion)
+        try await transport.close()
+    }
+
+    @Test func firstHomeRelativeRequestUsesOneTotalDeadline() async throws {
+        let environment = try #require(LocalSSHTestEnvironment.current)
+        let home = "/tmp/hm-deadline-\(UUID().uuidString.prefix(8))"
+        let sessionName = "work"
+        let sessionDirectory = "\(home)/.config/herdr/sessions/\(sessionName)"
+        try FileManager.default.createDirectory(
+            atPath: sessionDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: home) }
+        let server = try FakeHerdrServer(socketPath: "\(sessionDirectory)/herdr.sock") { _ in nil }
+        defer { server.stop() }
+        let homeCommand =
+            "sleep 0.6; printf '__HERDR_MOBILE_HOME__=%s\\n' '\(home)'"
+        let transport = try await SSHTransport.connect(
+            settings: environment.makeSettings(
+                socket: .namedSession(sessionName), requestTimeout: .seconds(1),
+                homeCommand: homeCommand))
+        let clock = ContinuousClock()
+        let started = clock.now
+
+        await #expect(throws: TransportError.timedOut) {
+            try await transport.ping()
+        }
+
+        let elapsed = started.duration(to: clock.now)
+        #expect(elapsed < .milliseconds(1_400))
+        try await transport.close()
+    }
+
     /// Boots a fake herdr server plus a real SSH connection to localhost and
     /// tears both down afterwards. The transport is handed to `body` as the
     /// concrete actor; assertions go through its public Transport surface.
