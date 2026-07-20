@@ -11,7 +11,7 @@ struct AgentInputBar: View {
     var body: some View {
         VStack(spacing: 8) {
             QuickKeyBar { key in
-                Task { await store.send(key) }
+                _ = store.queue(key)
             }
 
             if case .failed(let message) = store.state {
@@ -29,12 +29,12 @@ struct AgentInputBar: View {
                     .submitLabel(.send)
                     .onSubmit {
                         messageFocused = false
-                        Task { await store.sendDraft() }
+                        store.submitDraft()
                     }
 
                 Button {
                     messageFocused = false
-                    Task { await store.sendDraft() }
+                    store.submitDraft()
                 } label: {
                     Image(systemName: "paperplane.fill")
                         .font(.title2)

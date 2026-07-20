@@ -114,4 +114,28 @@ struct HostDraftTests {
         draft.password = "hunter2"
         #expect(draft.passwordUpdate == nil)
     }
+
+    @Test func newPasswordHostRequiresAPassword() {
+        var draft = HostDraft()
+        draft.address = "host.example"
+        draft.username = "dev"
+        draft.authMethod = .password
+
+        #expect(!draft.canSave(editing: nil))
+
+        draft.password = "secret"
+        #expect(draft.canSave(editing: nil))
+    }
+
+    @Test func blankPasswordOnlyKeepsAnExistingPasswordCredential() {
+        let passwordHost = Host.fixture(authMethod: .password)
+        let keyHost = Host.fixture(authMethod: .deviceKey)
+        var draft = HostDraft(host: passwordHost)
+
+        #expect(draft.canSave(editing: passwordHost))
+
+        draft = HostDraft(host: keyHost)
+        draft.authMethod = .password
+        #expect(!draft.canSave(editing: keyHost))
+    }
 }

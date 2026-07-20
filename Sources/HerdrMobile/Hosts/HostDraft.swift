@@ -42,6 +42,16 @@ struct HostDraft: Equatable, Sendable {
             && RemoteShellPath.isQuotableAbsolute(trimmedSocatPath)
     }
 
+    /// Form-level validity including credential intent. A blank password can
+    /// only mean "keep current" when the existing Host already used password
+    /// authentication; new Hosts and Device Key -> Password changes require
+    /// an actual secret to persist.
+    func canSave(editing existingHost: Host?) -> Bool {
+        guard isValid else { return false }
+        guard authMethod == .password, password.isEmpty else { return true }
+        return existingHost?.authMethod == .password
+    }
+
     /// The catalog Host this draft describes, or nil while invalid. Pass the
     /// existing id when editing so the Host keeps its identity (and its
     /// Keychain password account).
