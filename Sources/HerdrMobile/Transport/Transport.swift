@@ -4,7 +4,8 @@ import Foundation
 /// UI code talks to Transport, never to SSH primitives (ADR 0002).
 protocol Transport: Sendable {
     /// Verifies the server speaks a protocol version we support and returns
-    /// its identity. Must be the first call on every new connection path.
+    /// its identity. Must be the first herdr API call on every new connection
+    /// path; Host-local session discovery may run before it.
     func ping() async throws -> ServerInfo
 
     /// Lists the local herdr sessions visible to this SSH account. This is a

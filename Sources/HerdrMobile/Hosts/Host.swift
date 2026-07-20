@@ -23,8 +23,9 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     var port: Int
     var username: String
     var authMethod: AuthMethod
-    /// Manual named-session field (#14: no enumeration); blank means the
-    /// default herdr session.
+    /// Persisted session selection; onboarding discovers available sessions,
+    /// while this field remains editable for older herdr versions. Blank
+    /// means the default herdr session.
     var sessionName: String
     /// Absolute socat path on the Host.
     var socatPath: String

@@ -9,9 +9,8 @@ struct HostKeyReplacement: Equatable, Sendable {
 }
 
 /// Drives one Host's onboarding preflight (#14): resolve credentials,
-/// connect (surfacing the TOFU first-connect prompt), ping, and render the
-/// outcome as the checklist. One connect + ping is the whole probe —
-/// preflight is the M0 error taxonomy, not new machinery (spec #20).
+/// connect (surfacing the TOFU first-connect prompt), discover sessions,
+/// ping the selected session, and render the outcome as the checklist.
 @MainActor
 @Observable
 final class HostOnboardingStore {
