@@ -56,6 +56,12 @@ struct TerminalScreenView: UIViewRepresentable {
             view.changeScrollback(5_000)
         }
         view.terminalDelegate = context.coordinator
+        view.onTerminalKeyboardSend = { [weak coordinator = context.coordinator] data in
+            coordinator?.onSend?(data)
+        }
+        if style == .attach, allowsInput {
+            view.installTerminalKeyboard()
+        }
         view.onSizeReport = { [weak coordinator = context.coordinator] cols, rows in
             coordinator?.onSizeChanged?(cols, rows)
         }
@@ -143,7 +149,10 @@ final class SizeReportingTerminalView: TerminalView {
     }
     var onSizeReport: ((_ cols: Int, _ rows: Int) -> Void)?
     var onLoadEarlier: (() -> Bool)?
+    var onTerminalKeyboardSend: ((Data) -> Void)?
+    var terminalKeyboardHost: TerminalKeyboardHost?
     private var lastReported: (cols: Int, rows: Int)?
+    private var lastInputWindowSize: CGSize?
     private var defersScrollerUpdates = false
     private var pendingReadOnlySnapshot: Data?
     private var appliesReadOnlySnapshot = false
@@ -326,11 +335,27 @@ final class SizeReportingTerminalView: TerminalView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        reloadInputViewsAfterWindowResize()
         guard bounds.width > 0, bounds.height > 0 else { return }
         let terminal = getTerminal()
         let size = (cols: terminal.cols, rows: terminal.rows)
         if let lastReported, lastReported == size { return }
         lastReported = size
         onSizeReport?(size.cols, size.rows)
+    }
+
+    private func reloadInputViewsAfterWindowResize() {
+        guard allowsInput, let windowSize = window?.bounds.size else { return }
+        defer { lastInputWindowSize = windowSize }
+        guard let lastInputWindowSize, lastInputWindowSize != windowSize, isFirstResponder else {
+            return
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isFirstResponder else { return }
+            UIView.performWithoutAnimation {
+                self.reloadInputViews()
+            }
+        }
     }
 }
