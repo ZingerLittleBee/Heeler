@@ -45,7 +45,15 @@ struct HostListView: View {
     var body: some View {
         NavigationStack(path: $path) {
             Group {
-                if store.hosts.isEmpty {
+                if store.catalogLoadError != nil {
+                    ContentUnavailableView {
+                        Label("Hosts Unavailable", systemImage: "externaldrive.badge.exclamationmark")
+                    } description: {
+                        Text(
+                            "The saved Host catalog could not be read. Its original data was preserved; "
+                                + "reinstalling or adding a Host would risk losing it.")
+                    }
+                } else if store.hosts.isEmpty {
                     ContentUnavailableView {
                         Label("No Hosts", systemImage: "server.rack")
                     } description: {
@@ -69,6 +77,7 @@ struct HostListView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Add Host", systemImage: "plus") { isAddingHost = true }
+                        .disabled(store.catalogLoadError != nil)
                 }
             }
             .navigationDestination(for: Host.ID.self) { id in

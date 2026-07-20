@@ -33,10 +33,13 @@ struct HostDraft: Equatable, Sendable {
     }
 
     var isValid: Bool {
-        !address.trimmingCharacters(in: .whitespaces).isEmpty
+        let trimmedSessionName = sessionName.trimmingCharacters(in: .whitespaces)
+        let trimmedSocatPath = socatPath.trimmingCharacters(in: .whitespaces)
+        return !address.trimmingCharacters(in: .whitespaces).isEmpty
             && !username.trimmingCharacters(in: .whitespaces).isEmpty
             && portNumber != nil
-            && socatPath.hasPrefix("/")  // remote PATH is untrusted (ADR 0002)
+            && (trimmedSessionName.isEmpty || HerdrSessionName.isValid(trimmedSessionName))
+            && RemoteShellPath.isQuotableAbsolute(trimmedSocatPath)
     }
 
     /// The catalog Host this draft describes, or nil while invalid. Pass the

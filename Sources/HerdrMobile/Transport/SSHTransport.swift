@@ -242,7 +242,12 @@ actor SSHTransport: Transport {
             try await self.runSessionListCommand()
         }
         do {
-            return try JSONDecoder().decode(HerdrSessionListResponse.self, from: output).sessions
+            let sessions = try JSONDecoder().decode(HerdrSessionListResponse.self, from: output).sessions
+            guard sessions.allSatisfy({ HerdrSessionName.isValid($0.name) }) else {
+                throw TransportError.malformedResponse(
+                    "herdr session list returned an invalid session name")
+            }
+            return sessions
         } catch {
             throw TransportError.malformedResponse(
                 "herdr session list returned invalid JSON: \(Self.preview(output))")
@@ -417,8 +422,8 @@ actor SSHTransport: Transport {
         /// a no-op, so this is only observed when the ack line never came.
         var ackFailure = TransportError.cancelled
         do {
-            try await client.withExec(
-                Self.cLocaleCommand("\(socatPath) - UNIX-CONNECT:\(socketPath)")) {
+            let command = try Self.socatCommand(socatPath: socatPath, socketPath: socketPath)
+            try await client.withExec(command) {
                 inbound, outbound in
                 try? await outbound.write(ByteBuffer(string: requestLine))
                 for try await chunk in inbound {
@@ -908,8 +913,8 @@ actor SSHTransport: Transport {
         var stdout = Data()
         var stderr = Data()
         do {
-            try await client.withExec(
-                Self.cLocaleCommand("\(socatPath) - UNIX-CONNECT:\(socketPath)")) {
+            let command = try Self.socatCommand(socatPath: socatPath, socketPath: socketPath)
+            try await client.withExec(command) {
                 inbound, outbound in
                 // A fast-failing command (socat missing, socket absent) can
                 // close the channel before this write lands; the read loop
@@ -1042,6 +1047,17 @@ actor SSHTransport: Transport {
 
     private static func preview(_ stderr: Data) -> String {
         String(decoding: stderr.prefix(200), as: UTF8.self)
+    }
+
+    private static func socatCommand(socatPath: String, socketPath: String) throws -> String {
+        guard
+            let quotedSocatPath = RemoteShellPath.quotedAbsolute(socatPath),
+            let quotedSocketPath = RemoteShellPath.quotedAbsolute(socketPath)
+        else {
+            throw TransportError.channelFailed(
+                detail: "The remote socat or socket path cannot be quoted safely.")
+        }
+        return cLocaleCommand("\(quotedSocatPath) - UNIX-CONNECT:\(quotedSocketPath)")
     }
 
     /// Stabilizes every parsed remote exec surface. Error classification and
