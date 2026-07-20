@@ -53,7 +53,9 @@ struct TransportConcurrencyE2ETests {
     }
 
     @Test func requestsAfterATimeoutStillSucceed() async throws {
-        // A timed-out request must not wedge the queue: afterwards, a full
+        // Citadel upgrade guard: its inbound stream must resume when the
+        // request task is cancelled. A timed-out request must therefore
+        // close its channel and release its slot; afterwards, a full
         // queue-width burst still completes.
         try await withTransport(requestTimeout: .seconds(2)) { request in
             switch request.method {
