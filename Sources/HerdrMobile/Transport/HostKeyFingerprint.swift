@@ -29,6 +29,14 @@ struct HostKeyFingerprint: Sendable, Hashable {
         "SHA256:" + digest.base64EncodedString().trimmingCharacters(in: ["="])
     }
 
+    static func == (lhs: HostKeyFingerprint, rhs: HostKeyFingerprint) -> Bool {
+        lhs.digest == rhs.digest
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(digest)
+    }
+
     private static func readAlgorithm(from blob: Data) -> String? {
         guard blob.count >= MemoryLayout<UInt32>.size else { return nil }
         let length = blob.prefix(4).reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
