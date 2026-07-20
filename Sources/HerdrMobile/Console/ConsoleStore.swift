@@ -413,7 +413,7 @@ extension ConsoleStore {
     /// its onboarding checklist trusts it.
     static func sshSessionFactory(
         connector: any TransportConnector = SSHTransportConnector(),
-        knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore(),
+        knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
         credentials: HostCredentialsProvider = HostCredentialsProvider()
     ) -> @Sendable (Host, [EventSubscription]) -> EventsSession {
         { host, subscriptions in

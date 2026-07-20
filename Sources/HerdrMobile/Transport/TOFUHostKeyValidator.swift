@@ -53,9 +53,19 @@ final class TOFUHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, Send
     }
 
     private func evaluate(fingerprint: HostKeyFingerprint) async -> TransportError? {
-        if let known = await policy.knownHosts.fingerprint(host: host, port: port) {
-            return known == fingerprint
-                ? nil : .hostKeyMismatch(known: known, presented: fingerprint)
+        if let known = await policy.knownHosts.fingerprint(
+            host: host, port: port, algorithm: fingerprint.algorithm)
+        {
+            guard known.digest == fingerprint.digest else {
+                return .hostKeyMismatch(known: known, presented: fingerprint)
+            }
+            if known.algorithm == HostKeyFingerprint.unknownAlgorithm {
+                // A pre-v2 digest had no algorithm metadata. A matching key
+                // proves which algorithm it belongs to, so migrate it before
+                // allowing the handshake to continue.
+                await policy.knownHosts.setFingerprint(fingerprint, host: host, port: port)
+            }
+            return nil
         }
         let candidate = HostKeyCandidate(host: host, port: port, fingerprint: fingerprint)
         guard await policy.confirmFirstConnect(candidate) else {

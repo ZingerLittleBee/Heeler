@@ -46,7 +46,7 @@ final class HostOnboardingStore {
     init(
         host: Host,
         connector: any TransportConnector = SSHTransportConnector(),
-        knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore(),
+        knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
         credentials: HostCredentialsProvider = HostCredentialsProvider(),
         fingerprintTimeout: Duration = .seconds(60)
     ) {
