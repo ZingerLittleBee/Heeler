@@ -298,6 +298,21 @@ enum TransportError: Error, Sendable, Equatable {
     /// The exec channel failed outside the known failure shapes; carries the
     /// underlying description for diagnostics.
     case channelFailed(detail: String)
+
+    /// Whether reconnecting without user intervention can plausibly recover.
+    /// Configuration, trust, authentication, and protocol failures instead
+    /// stop so the UI can explain the required action.
+    var isRetryable: Bool {
+        switch self {
+        case .sshUnreachable, .serverNotRunning, .timedOut, .cancelled, .channelFailed:
+            true
+        case .authenticationFailed, .hostKeyRejected, .hostKeyMismatch,
+            .socketNotFound, .socatMissing, .protocolVersionMismatch,
+            .homeDirectoryUnresolvable, .eventsChannelAlreadyOpen,
+            .terminalChannelAlreadyOpen, .malformedResponse:
+            false
+        }
+    }
 }
 
 /// An error returned by the herdr server inside a response envelope.

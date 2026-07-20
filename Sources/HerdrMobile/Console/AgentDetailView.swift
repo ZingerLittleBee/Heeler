@@ -6,6 +6,7 @@ import SwiftUI
 /// and the full interactive Attach terminal (#11) behind the toolbar button.
 struct AgentDetailView: View {
     let agent: ConsoleAgent
+    private let console: ConsoleStore
     /// Kept for the Observe/Attach handover: fresh stores are minted per
     /// surface switch, all sharing this provider.
     private let transport: @Sendable () async -> (any Transport)?
@@ -19,6 +20,7 @@ struct AgentDetailView: View {
 
     init(agent: ConsoleAgent, console: ConsoleStore) {
         self.agent = agent
+        self.console = console
         let transport = console.transportProvider(for: agent.hostID)
         self.transport = transport
         _store = State(
@@ -110,8 +112,12 @@ struct AgentDetailView: View {
         }
         .onDisappear {
             // Explicit close, never abandonment: a live exec channel ignores
-            // task cancellation (ADR 0002).
-            Task { await store.stop() }
+            // task cancellation (ADR 0002). Registering with the Console is
+            // synchronous, so the next detail waits for this channel close.
+            let observe = store
+            console.scheduleTerminalTeardown(for: agent.hostID) {
+                await observe.stop()
+            }
         }
     }
 

@@ -401,6 +401,40 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    @Test func transportProviderWaitsForPreviousTerminalTeardown() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(snapshot: .fixture())
+        let store = makeStore(transports: [host.id: transport])
+        let gate = TerminalTeardownGate()
+        let result = TerminalTransportResult()
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Host should connect") {
+            store.hostStatuses[host.id] == .connected
+        }
+
+        store.scheduleTerminalTeardown(for: host.id) {
+            await gate.waitUntilOpen()
+        }
+        let provider = store.transportProvider(for: host.id)
+        let request = Task {
+            await result.set(await provider())
+        }
+
+        try await waitUntil("the previous teardown should start") {
+            await gate.enteredCount == 1
+        }
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(await !result.wasSet)
+
+        await gate.open()
+        await request.value
+        #expect(await result.transport as? ScriptedTransport === transport)
+
+        store.setHosts([])
+    }
+
     @Test func workspacesExposeTheHostsSnapshotWorkspaces() async throws {
         // The new-agent picker (#12) offers the workspaces the store already
         // knows for a Host, including ones with no agents in them yet.
@@ -565,5 +599,34 @@ private actor SessionBox {
 
     func set(_ session: EventsSession) {
         self.session = session
+    }
+}
+
+private actor TerminalTeardownGate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private(set) var enteredCount = 0
+
+    func waitUntilOpen() async {
+        enteredCount += 1
+        if isOpen { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        let resuming = waiters
+        waiters.removeAll()
+        for waiter in resuming { waiter.resume() }
+    }
+}
+
+private actor TerminalTransportResult {
+    private(set) var wasSet = false
+    private(set) var transport: (any Transport)?
+
+    func set(_ transport: (any Transport)?) {
+        wasSet = true
+        self.transport = transport
     }
 }
