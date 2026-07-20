@@ -108,6 +108,33 @@ struct AgentInputStoreTests {
         #expect(store.state == .idle)
     }
 
+    @Test func overlappingQuickKeysStayInTapOrder() async throws {
+        let transport = ScriptedTransport()
+        let gate = Gate()
+        let store = AgentInputStore(target: "w1:p1") {
+            await gate.waitUntilOpen()
+            return transport
+        }
+
+        let first = Task { await store.send(.up) }
+        try await waitUntil("the first key should reach the transport provider") {
+            await gate.enteredCount == 1
+        }
+        let second = Task { await store.send(.enter) }
+
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(await gate.enteredCount == 1)
+
+        await gate.open()
+        await first.value
+        await second.value
+        #expect(
+            await transport.sentKeys == [
+                PaneSendKeysParams(keys: ["up"], paneID: "w1:p1"),
+                PaneSendKeysParams(keys: ["enter"], paneID: "w1:p1"),
+            ])
+    }
+
     @Test func everyQuickKeyMapsToANonEmptySpelling() {
         // Guards the bar against shipping a key that sends nothing.
         for key in QuickKey.allCases {

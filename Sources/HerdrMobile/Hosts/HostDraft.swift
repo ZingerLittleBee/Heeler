@@ -33,10 +33,23 @@ struct HostDraft: Equatable, Sendable {
     }
 
     var isValid: Bool {
-        !address.trimmingCharacters(in: .whitespaces).isEmpty
+        let trimmedSessionName = sessionName.trimmingCharacters(in: .whitespaces)
+        let trimmedSocatPath = socatPath.trimmingCharacters(in: .whitespaces)
+        return !address.trimmingCharacters(in: .whitespaces).isEmpty
             && !username.trimmingCharacters(in: .whitespaces).isEmpty
             && portNumber != nil
-            && socatPath.hasPrefix("/")  // remote PATH is untrusted (ADR 0002)
+            && (trimmedSessionName.isEmpty || HerdrSessionName.isValid(trimmedSessionName))
+            && RemoteShellPath.isQuotableAbsolute(trimmedSocatPath)
+    }
+
+    /// Form-level validity including credential intent. A blank password can
+    /// only mean "keep current" when the existing Host already used password
+    /// authentication; new Hosts and Device Key -> Password changes require
+    /// an actual secret to persist.
+    func canSave(editing existingHost: Host?) -> Bool {
+        guard isValid else { return false }
+        guard authMethod == .password, password.isEmpty else { return true }
+        return existingHost?.authMethod == .password
     }
 
     /// The catalog Host this draft describes, or nil while invalid. Pass the

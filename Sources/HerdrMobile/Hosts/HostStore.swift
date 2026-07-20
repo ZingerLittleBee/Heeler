@@ -4,6 +4,9 @@ import Observation
 enum HostStoreError: Error, Equatable {
     /// `update`/`remove` addressed a Host id the catalog does not contain.
     case unknownHost
+    /// Persisted bytes could not be decoded. They are deliberately left
+    /// untouched so a later write cannot turn a recoverable catalog into loss.
+    case catalogUnreadable
 }
 
 /// Owns the Host catalog: add/edit/remove plus persistence. Host records go
@@ -13,8 +16,15 @@ enum HostStoreError: Error, Equatable {
 @Observable
 final class HostStore {
     private static let defaultsKey = "hosts"
+    private static let catalogVersion = 1
+
+    private struct PersistedCatalog: Codable {
+        let version: Int
+        let hosts: [Host]
+    }
 
     private(set) var hosts: [Host]
+    private(set) var catalogLoadError: HostStoreError?
     // UserDefaults is documented thread-safe; Sendable modulo that promise.
     @ObservationIgnored private nonisolated(unsafe) let defaults: UserDefaults
     @ObservationIgnored private let secrets: any SecretStore
@@ -25,17 +35,34 @@ final class HostStore {
     ) {
         self.defaults = defaults
         self.secrets = secrets
-        if let data = defaults.data(forKey: Self.defaultsKey),
-            let stored = try? JSONDecoder().decode([Host].self, from: data)
-        {
-            hosts = stored
-        } else {
+        guard let data = defaults.data(forKey: Self.defaultsKey) else {
             hosts = []
+            catalogLoadError = nil
+            return
+        }
+        do {
+            let decoder = JSONDecoder()
+            if let catalog = try? decoder.decode(PersistedCatalog.self, from: data) {
+                guard catalog.version == Self.catalogVersion else {
+                    throw HostStoreError.catalogUnreadable
+                }
+                hosts = catalog.hosts
+            } else {
+                // Version 0 was the bare Host array. Decode it once, then
+                // immediately persist the versioned envelope.
+                hosts = try decoder.decode([Host].self, from: data)
+                defaults.set(try Self.encodedCatalog(hosts), forKey: Self.defaultsKey)
+            }
+            catalogLoadError = nil
+        } catch {
+            hosts = []
+            catalogLoadError = .catalogUnreadable
         }
     }
 
     /// Adds a Host, storing `password` in the secret store when given.
     func add(_ host: Host, password: String? = nil) throws {
+        try ensureCatalogIsWritable()
         try applyPassword(password, to: host)
         hosts.append(host)
         try persist()
@@ -45,6 +72,7 @@ final class HostStore {
     /// stored password untouched, so editing unrelated fields never requires
     /// re-entering it.
     func update(_ host: Host, password: String? = nil) throws {
+        try ensureCatalogIsWritable()
         guard let index = hosts.firstIndex(where: { $0.id == host.id }) else {
             throw HostStoreError.unknownHost
         }
@@ -55,6 +83,7 @@ final class HostStore {
 
     /// Removes the Host and its stored password.
     func remove(_ id: Host.ID) throws {
+        try ensureCatalogIsWritable()
         guard let index = hosts.firstIndex(where: { $0.id == id }) else {
             throw HostStoreError.unknownHost
         }
@@ -89,7 +118,17 @@ final class HostStore {
         }
     }
 
+    private func ensureCatalogIsWritable() throws {
+        if catalogLoadError != nil {
+            throw HostStoreError.catalogUnreadable
+        }
+    }
+
     private func persist() throws {
-        defaults.set(try JSONEncoder().encode(hosts), forKey: Self.defaultsKey)
+        defaults.set(try Self.encodedCatalog(hosts), forKey: Self.defaultsKey)
+    }
+
+    private static func encodedCatalog(_ hosts: [Host]) throws -> Data {
+        try JSONEncoder().encode(PersistedCatalog(version: catalogVersion, hosts: hosts))
     }
 }

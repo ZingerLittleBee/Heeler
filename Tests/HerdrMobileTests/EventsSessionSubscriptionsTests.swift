@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 
 @testable import HerdrMobile
@@ -74,6 +75,28 @@ struct EventsSessionSubscriptionsTests {
 
         #expect(await updates.next() == .status(.connected))
         #expect(await transport.capturedSubscriptions == [updated])
+        await session.end()
+    }
+
+    @Test func permanentFailureStopsTheReconnectLoop() async throws {
+        let connectionAttempts = Mutex(0)
+        let session = EventsSession(
+            subscriptions: initial,
+            connect: { () async throws -> any Transport in
+                connectionAttempts.withLock { $0 += 1 }
+                throw TransportError.authenticationFailed
+            },
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .milliseconds(1), multiplier: 1, maxDelay: .milliseconds(1)),
+            keepalive: nil)
+        var updates = session.updates.makeAsyncIterator()
+
+        await session.resume()
+
+        #expect(await updates.next() == .status(.failed(.authenticationFailed)))
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(connectionAttempts.withLock { $0 } == 1)
+
         await session.end()
     }
 }

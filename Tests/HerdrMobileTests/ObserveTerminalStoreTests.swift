@@ -42,6 +42,20 @@ struct ObserveTerminalStoreTests {
         return nil
     }
 
+    private func show(_ host: UIViewController, frame: CGRect) async -> UIWindow {
+        let window = UIWindow(frame: frame)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        try? await Task.sleep(for: .milliseconds(20))
+        return window
+    }
+
+    private func hide(_ window: UIWindow) async {
+        window.isHidden = true
+        try? await Task.sleep(for: .milliseconds(20))
+        window.rootViewController = nil
+    }
+
     /// Polls until `condition` holds, yielding so the store's tasks progress.
     private func waitUntil(
         _ comment: Comment, timeout: Duration = .seconds(5),
@@ -132,17 +146,14 @@ struct ObserveTerminalStoreTests {
         await store.stop()
     }
 
-    @Test func observeUsesEnoughColumnsToLimitWidePaneReflow() throws {
+    @Test func observeUsesEnoughColumnsToLimitWidePaneReflow() async throws {
         // A 393-point iPhone showing the default 12-point terminal only fits
         // about 52 columns. A 185-column desktop line then expands to four
         // mobile rows, which makes the transcript unnecessarily tall.
         let host = UIHostingController(
             rootView: TerminalScreenView(feed: TerminalByteFeed(), style: .observe))
         let frame = CGRect(x: 0, y: 0, width: 393, height: 600)
-        let window = UIWindow(frame: frame)
-        window.rootViewController = host
-        window.makeKeyAndVisible()
-        defer { window.isHidden = true }
+        let window = await show(host, frame: frame)
         host.view.frame = frame
         host.view.layoutIfNeeded()
 
@@ -155,6 +166,7 @@ struct ObserveTerminalStoreTests {
         let rowsForDesktopLine = (185 + columns - 1) / columns
         #expect(columns >= 64)
         #expect(rowsForDesktopLine <= 3)
+        await hide(window)
     }
 
     @Test func replacingObserveSnapshotKeepsScrollExtentAndViewportStable() async throws {
@@ -162,10 +174,7 @@ struct ObserveTerminalStoreTests {
         let host = UIHostingController(
             rootView: TerminalScreenView(feed: feed, style: .observe))
         let frame = CGRect(x: 0, y: 0, width: 393, height: 600)
-        let window = UIWindow(frame: frame)
-        window.rootViewController = host
-        window.makeKeyAndVisible()
-        defer { window.isHidden = true }
+        let window = await show(host, frame: frame)
         host.view.frame = frame
         host.view.layoutIfNeeded()
 
@@ -191,6 +200,7 @@ struct ObserveTerminalStoreTests {
         }
         #expect(terminal.contentSize.height > originalExtent)
         #expect(terminal.scrollPosition == 1)
+        await hide(window)
     }
 
     @Test func reachingTheTopLoadsEarlierHistoryWithoutMovingTheViewport() async throws {
@@ -204,10 +214,7 @@ struct ObserveTerminalStoreTests {
                     return true
                 }))
         let frame = CGRect(x: 0, y: 0, width: 393, height: 600)
-        let window = UIWindow(frame: frame)
-        window.rootViewController = host
-        window.makeKeyAndVisible()
-        defer { window.isHidden = true }
+        let window = await show(host, frame: frame)
         host.view.frame = frame
         host.view.layoutIfNeeded()
 
@@ -239,6 +246,7 @@ struct ObserveTerminalStoreTests {
 
         while terminal.accessibilityScroll(.up) {}
         #expect(loadRequests == 2)
+        await hide(window)
     }
 
     @Test func loadingEarlierExpandsTheReadWindowUntilHistoryEnds() async throws {

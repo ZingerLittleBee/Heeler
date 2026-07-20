@@ -7,6 +7,8 @@ import Foundation
 enum PreflightCheck: CaseIterable, Sendable {
     /// SSH reachable, credentials accepted, host key trusted.
     case connection
+    /// The login shell exposes a usable absolute home directory.
+    case remoteEnvironment
     /// socat answers at its configured absolute path.
     case socat
     /// The herdr socket path exists on the Host.
@@ -19,6 +21,7 @@ enum PreflightCheck: CaseIterable, Sendable {
     var title: String {
         switch self {
         case .connection: "SSH connection"
+        case .remoteEnvironment: "remote environment"
         case .socat: "socat installed"
         case .herdrInstalled: "herdr installed"
         case .serverRunning: "herdr server running"
@@ -93,7 +96,7 @@ struct PreflightReport: Equatable, Sendable {
                 "No herdr socket at \(path). Install and start herdr on the Host, "
                 + "or fix the session name."
         case .homeDirectoryUnresolvable(let detail):
-            check = .herdrInstalled
+            check = .remoteEnvironment
             hint =
                 "Could not resolve the remote home directory, so the herdr socket "
                 + "path is unknown. (\(detail))"

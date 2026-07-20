@@ -30,6 +30,10 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     /// Absolute socat path on the Host.
     var socatPath: String
 
+    private enum CodingKeys: String, CodingKey {
+        case id, name, address, port, username, authMethod, sessionName, socatPath
+    }
+
     init(
         id: UUID = UUID(),
         name: String = "",
@@ -48,6 +52,29 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         self.authMethod = authMethod
         self.sessionName = sessionName
         self.socatPath = socatPath
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        address = try container.decode(String.self, forKey: .address)
+        port = try container.decode(Int.self, forKey: .port)
+        username = try container.decode(String.self, forKey: .username)
+        authMethod = try container.decode(AuthMethod.self, forKey: .authMethod)
+        sessionName = try container.decodeIfPresent(String.self, forKey: .sessionName) ?? ""
+        socatPath =
+            try container.decodeIfPresent(String.self, forKey: .socatPath) ?? Self.defaultSocatPath
+
+        let trimmedSessionName = sessionName.trimmingCharacters(in: .whitespaces)
+        guard trimmedSessionName.isEmpty || HerdrSessionName.isValid(trimmedSessionName) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .sessionName, in: container, debugDescription: "Invalid herdr session name")
+        }
+        guard RemoteShellPath.isQuotableAbsolute(socatPath) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .socatPath, in: container, debugDescription: "Invalid remote socat path")
+        }
     }
 
     var displayName: String {

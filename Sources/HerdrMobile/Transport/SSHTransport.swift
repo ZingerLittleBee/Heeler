@@ -53,6 +53,9 @@ struct SSHTransportSettings: Sendable {
     /// override also covers hosts where herdr is not on the login shell's
     /// PATH.
     var attachCommand: String = "herdr agent attach"
+    /// Command used to print a marker-delimited remote home directory. It is
+    /// injectable only at the environment boundary for real-SSH tests.
+    var homeCommand: String = "printf '__HERDR_MOBILE_HOME__=%s\\n' \"$HOME\""
     /// Per-request deadline covering the queue wait and the exec exchange;
     /// on expiry the request fails with `.timedOut` and its channel is
     /// closed. Short in tests, generous by default: a hung host should
@@ -84,6 +87,7 @@ actor SSHTransport: Transport {
     private let observeCommand: String
     private let observeCommandHandlesStdinEOF: Bool
     private let attachCommand: String
+    private let homeCommand: String
     private let requestTimeout: Duration
     /// Remote home directory resolution, resolved over exec once per Host:
     /// concurrent first requests share one in-flight run, success is cached
@@ -167,7 +171,7 @@ actor SSHTransport: Transport {
         client: SSHClient, socketLocation: HerdrSocketLocation, socatPath: String,
         wakeCommand: String, sessionListCommand: String, observeCommand: String,
         observeCommandHandlesStdinEOF: Bool,
-        attachCommand: String,
+        attachCommand: String, homeCommand: String,
         requestTimeout: Duration
     ) {
         self.client = client
@@ -178,6 +182,7 @@ actor SSHTransport: Transport {
         self.observeCommand = observeCommand
         self.observeCommandHandlesStdinEOF = observeCommandHandlesStdinEOF
         self.attachCommand = attachCommand
+        self.homeCommand = homeCommand
         self.requestTimeout = requestTimeout
     }
 
@@ -210,7 +215,8 @@ actor SSHTransport: Transport {
             wakeCommand: settings.wakeCommand, sessionListCommand: settings.sessionListCommand,
             observeCommand: settings.observeCommand,
             observeCommandHandlesStdinEOF: settings.observeCommandHandlesStdinEOF,
-            attachCommand: settings.attachCommand, requestTimeout: settings.requestTimeout)
+            attachCommand: settings.attachCommand, homeCommand: settings.homeCommand,
+            requestTimeout: settings.requestTimeout)
     }
 
     /// Maps connect-time failures onto the taxonomy: credential rejection is
@@ -242,7 +248,12 @@ actor SSHTransport: Transport {
             try await self.runSessionListCommand()
         }
         do {
-            return try JSONDecoder().decode(HerdrSessionListResponse.self, from: output).sessions
+            let sessions = try JSONDecoder().decode(HerdrSessionListResponse.self, from: output).sessions
+            guard sessions.allSatisfy({ HerdrSessionName.isValid($0.name) }) else {
+                throw TransportError.malformedResponse(
+                    "herdr session list returned an invalid session name")
+            }
+            return sessions
         } catch {
             throw TransportError.malformedResponse(
                 "herdr session list returned invalid JSON: \(Self.preview(output))")
@@ -417,8 +428,8 @@ actor SSHTransport: Transport {
         /// a no-op, so this is only observed when the ack line never came.
         var ackFailure = TransportError.cancelled
         do {
-            try await client.withExec(
-                Self.cLocaleCommand("\(socatPath) - UNIX-CONNECT:\(socketPath)")) {
+            let command = try Self.socatCommand(socatPath: socatPath, socketPath: socketPath)
+            try await client.withExec(command) {
                 inbound, outbound in
                 try? await outbound.write(ByteBuffer(string: requestLine))
                 for try await chunk in inbound {
@@ -889,11 +900,12 @@ actor SSHTransport: Transport {
     private func performRequest<P: Encodable, R: Decodable>(
         method: String, params: P, decoding type: R.Type
     ) async throws -> R {
-        let socketPath = try await resolvedSocketPath()
         let requestID = UUID().uuidString
         let line = try HerdrWire.requestLine(id: requestID, method: method, params: params)
         let responseLine = try await Self.withRequestDeadline(requestTimeout) {
-            try await self.performExchange(line: line, socketPath: socketPath, method: method)
+            let socketPath = try await self.resolvedSocketPath()
+            return try await self.performExchange(
+                line: line, socketPath: socketPath, method: method)
         }
         return try HerdrWire.decodeResult(type, fromResponseLine: responseLine, requestID: requestID)
     }
@@ -908,8 +920,8 @@ actor SSHTransport: Transport {
         var stdout = Data()
         var stderr = Data()
         do {
-            try await client.withExec(
-                Self.cLocaleCommand("\(socatPath) - UNIX-CONNECT:\(socketPath)")) {
+            let command = try Self.socatCommand(socatPath: socatPath, socketPath: socketPath)
+            try await client.withExec(command) {
                 inbound, outbound in
                 // A fast-failing command (socat missing, socket absent) can
                 // close the channel before this write lands; the read loop
@@ -1001,17 +1013,11 @@ actor SSHTransport: Transport {
         defer { releaseExecChannelSlot() }
         let output: ByteBuffer
         do {
-            // $HOME expands in every mainstream login shell, fish included.
-            output = try await client.executeCommand(Self.cLocaleCommand("echo $HOME"))
+            output = try await client.executeCommand(Self.cLocaleCommand(homeCommand))
         } catch {
             throw TransportError.homeDirectoryUnresolvable(detail: String(describing: error))
         }
-        let home = String(buffer: output).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard home.hasPrefix("/") else {
-            throw TransportError.homeDirectoryUnresolvable(
-                detail: "echo $HOME printed: \(home.prefix(200))")
-        }
-        return home
+        return try Self.parseRemoteHome(output)
     }
 
     /// Maps the observable failure shapes (verified against herdr 0.7.4 in
@@ -1042,6 +1048,36 @@ actor SSHTransport: Transport {
 
     private static func preview(_ stderr: Data) -> String {
         String(decoding: stderr.prefix(200), as: UTF8.self)
+    }
+
+    private static let homeOutputPrefix = "__HERDR_MOBILE_HOME__="
+
+    private static func parseRemoteHome(_ output: ByteBuffer) throws -> String {
+        let text = String(buffer: output)
+        let home = text.split(separator: "\n", omittingEmptySubsequences: false)
+            .reversed()
+            .first { $0.hasPrefix(homeOutputPrefix) }
+            .map { line in
+                var value = String(line.dropFirst(homeOutputPrefix.count))
+                if value.last == "\r" { value.removeLast() }
+                return value
+            }
+        guard let home, RemoteShellPath.isQuotableAbsolute(home) else {
+            throw TransportError.homeDirectoryUnresolvable(
+                detail: "home command printed: \(text.prefix(200))")
+        }
+        return home
+    }
+
+    private static func socatCommand(socatPath: String, socketPath: String) throws -> String {
+        guard
+            let quotedSocatPath = RemoteShellPath.quotedAbsolute(socatPath),
+            let quotedSocketPath = RemoteShellPath.quotedAbsolute(socketPath)
+        else {
+            throw TransportError.channelFailed(
+                detail: "The remote socat or socket path cannot be quoted safely.")
+        }
+        return cLocaleCommand("\(quotedSocatPath) - UNIX-CONNECT:\(quotedSocketPath)")
     }
 
     /// Stabilizes every parsed remote exec surface. Error classification and

@@ -64,6 +64,41 @@ struct HostDraftTests {
         #expect(draft.isValid)
     }
 
+    @Test func rejectsSessionNamesHerdrWouldReject() {
+        let invalidNames = [
+            "work session", "../prod", ".", "..", "work/session", String(repeating: "a", count: 65),
+        ]
+
+        for sessionName in invalidNames {
+            var draft = HostDraft()
+            draft.address = "host.example"
+            draft.username = "dev"
+            draft.sessionName = sessionName
+
+            #expect(!draft.isValid, "unexpectedly accepted session name: \(sessionName)")
+        }
+    }
+
+    @Test func acceptsHerdrSessionNameCharacterSetAndLengthLimit() {
+        var draft = HostDraft()
+        draft.address = "host.example"
+        draft.username = "dev"
+        draft.sessionName = String(repeating: "a", count: 60) + "._-9"
+
+        #expect(draft.isValid)
+    }
+
+    @Test func rejectsSocatPathsThatCannotBeQuotedForTheRemoteShell() {
+        for path in ["/tmp/socat'bad", "/tmp/socat\\bad", "/tmp/socat\nbad"] {
+            var draft = HostDraft()
+            draft.address = "host.example"
+            draft.username = "dev"
+            draft.socatPath = path
+
+            #expect(!draft.isValid, "unexpectedly accepted socat path: \(path)")
+        }
+    }
+
     @Test func passwordUpdateOnlyForPasswordAuthWithAnEntry() {
         var draft = HostDraft()
         draft.authMethod = .password
@@ -78,5 +113,29 @@ struct HostDraftTests {
         draft.authMethod = .deviceKey
         draft.password = "hunter2"
         #expect(draft.passwordUpdate == nil)
+    }
+
+    @Test func newPasswordHostRequiresAPassword() {
+        var draft = HostDraft()
+        draft.address = "host.example"
+        draft.username = "dev"
+        draft.authMethod = .password
+
+        #expect(!draft.canSave(editing: nil))
+
+        draft.password = "secret"
+        #expect(draft.canSave(editing: nil))
+    }
+
+    @Test func blankPasswordOnlyKeepsAnExistingPasswordCredential() {
+        let passwordHost = Host.fixture(authMethod: .password)
+        let keyHost = Host.fixture(authMethod: .deviceKey)
+        var draft = HostDraft(host: passwordHost)
+
+        #expect(draft.canSave(editing: passwordHost))
+
+        draft = HostDraft(host: keyHost)
+        draft.authMethod = .password
+        #expect(!draft.canSave(editing: keyHost))
     }
 }

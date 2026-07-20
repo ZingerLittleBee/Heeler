@@ -93,6 +93,11 @@ final class AgentInputStore {
     /// button's `state == .sending` disable only latches after the transport
     /// hop, leaving a window the second tap slips through.
     private var isSendingDraft = false
+    /// One FIFO for draft and quick-key RPCs. Separate fire-and-forget Tasks
+    /// can otherwise overtake each other before the transport's request queue
+    /// sees them, making rapid navigation keys arrive out of tap order.
+    private var pendingSend: PendingSend?
+    private var nextSendID: UInt64 = 0
 
     /// The Agent's pane id — the target for both `pane.send_input` and
     /// `pane.send_keys`.
@@ -115,25 +120,65 @@ final class AgentInputStore {
     /// Writes the composed message and presses Enter in one RPC, clearing the
     /// box on success. Whitespace-only drafts are ignored.
     func sendDraft() async {
-        guard !isSendingDraft else { return }
+        _ = await queueDraft()?.value
+    }
+
+    /// Synchronous UI entry point: records the draft in the FIFO during the
+    /// button callback, before a later tap can overtake a newly spawned Task.
+    func submitDraft() {
+        _ = queueDraft()
+    }
+
+    private func queueDraft() -> Task<Bool, Never>? {
+        guard !isSendingDraft else { return nil }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty else { return nil }
         isSendingDraft = true
-        defer { isSendingDraft = false }
-        let sent = await run { transport in
-            try await transport.sendInput(
-                PaneSendInputParams(paneID: target, keys: ["enter"], text: text))
-        }
-        if sent {
-            draft = ""
+        return enqueue { [self] in
+            defer { isSendingDraft = false }
+            let sent = await run { transport in
+                try await transport.sendInput(
+                    PaneSendInputParams(paneID: target, keys: ["enter"], text: text))
+            }
+            // Do not erase a follow-up the user typed while this RPC was in
+            // flight; only clear the exact draft that succeeded.
+            if sent, draft.trimmingCharacters(in: .whitespacesAndNewlines) == text {
+                draft = ""
+            }
+            return sent
         }
     }
 
     /// Sends one quick-key's key sequence via `pane.send_keys`.
     func send(_ key: QuickKey) async {
-        _ = await run { transport in
-            try await transport.sendKeys(PaneSendKeysParams(keys: key.keys, paneID: target))
+        _ = await queue(key).value
+    }
+
+    /// Synchronous UI entry point preserving callback order exactly.
+    func queue(_ key: QuickKey) -> Task<Bool, Never> {
+        enqueue { [self] in
+            await run { transport in
+                try await transport.sendKeys(PaneSendKeysParams(keys: key.keys, paneID: target))
+            }
         }
+    }
+
+    private func enqueue(
+        _ action: @escaping @MainActor @Sendable () async -> Bool
+    ) -> Task<Bool, Never> {
+        let previous = pendingSend?.task
+        nextSendID &+= 1
+        let id = nextSendID
+        let task = Task { @MainActor in
+            _ = await previous?.value
+            let result = await action()
+            if pendingSend?.id == id {
+                pendingSend = nil
+            }
+            return result
+        }
+        pendingSend = PendingSend(id: id, task: task)
+        return task
     }
 
     /// Resolves the transport, runs one send under the `.sending` state, and
@@ -164,5 +209,10 @@ final class AgentInputStore {
         default:
             "Sending failed: \(error)"
         }
+    }
+
+    private struct PendingSend {
+        let id: UInt64
+        let task: Task<Bool, Never>
     }
 }

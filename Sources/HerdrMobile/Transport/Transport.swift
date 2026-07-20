@@ -132,6 +132,44 @@ struct HerdrSession: Sendable, Equatable, Decodable {
     }
 }
 
+/// The grammar enforced by herdr 0.7.4 for named sessions. Keeping it at the
+/// transport boundary prevents malformed discovery output from becoming part
+/// of a remote socket path; forms reuse it for immediate feedback.
+enum HerdrSessionName {
+    static let maximumUTF8Length = 64
+
+    static func isValid(_ name: String) -> Bool {
+        guard !name.isEmpty, name != ".", name != ".." else { return false }
+        guard name.utf8.count <= maximumUTF8Length else { return false }
+        return name.utf8.allSatisfy { byte in
+            (0x30...0x39).contains(byte) || (0x41...0x5A).contains(byte)
+                || (0x61...0x7A).contains(byte)
+                || byte == 0x2E || byte == 0x5F || byte == 0x2D
+        }
+    }
+}
+
+/// Paths passed through the Host's login shell use the conservative quoting
+/// subset shared by POSIX shells and fish. Spaces are safe inside single
+/// quotes; quote, backslash, and control characters are refused because their
+/// single-quote behavior differs across those shells.
+enum RemoteShellPath {
+    static func quotedAbsolute(_ path: String) -> String? {
+        guard path.hasPrefix("/") else { return nil }
+        guard path.unicodeScalars.allSatisfy(isQuotable) else { return nil }
+        return "'\(path)'"
+    }
+
+    static func isQuotableAbsolute(_ path: String) -> Bool {
+        quotedAbsolute(path) != nil
+    }
+
+    private static func isQuotable(_ scalar: Unicode.Scalar) -> Bool {
+        scalar.value >= 0x20 && scalar.value != 0x7F
+            && scalar.value != 0x27 && scalar.value != 0x5C
+    }
+}
+
 /// A coding agent process running inside a herdr Pane.
 ///
 /// The domain view of the generated wire type `AgentInfo`: only the fields
@@ -260,6 +298,21 @@ enum TransportError: Error, Sendable, Equatable {
     /// The exec channel failed outside the known failure shapes; carries the
     /// underlying description for diagnostics.
     case channelFailed(detail: String)
+
+    /// Whether reconnecting without user intervention can plausibly recover.
+    /// Configuration, trust, authentication, and protocol failures instead
+    /// stop so the UI can explain the required action.
+    var isRetryable: Bool {
+        switch self {
+        case .sshUnreachable, .serverNotRunning, .timedOut, .cancelled, .channelFailed:
+            true
+        case .authenticationFailed, .hostKeyRejected, .hostKeyMismatch,
+            .socketNotFound, .socatMissing, .protocolVersionMismatch,
+            .homeDirectoryUnresolvable, .eventsChannelAlreadyOpen,
+            .terminalChannelAlreadyOpen, .malformedResponse:
+            false
+        }
+    }
 }
 
 /// An error returned by the herdr server inside a response envelope.

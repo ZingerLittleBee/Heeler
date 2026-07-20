@@ -1,8 +1,8 @@
 import Foundation
 
-/// Bounded backoff for events-channel reconnects (#18): capped exponential
-/// delay, unlimited attempts. The Console keeps trying forever and shows
-/// staleness through the session's status; the user decides when to give up.
+/// Bounded backoff for transient events-channel failures (#18): capped
+/// exponential delay, unlimited attempts. Action-required failures stop and
+/// surface their exact cause instead of burning retries forever.
 struct ReconnectPolicy: Sendable, Equatable {
     var initialDelay: Duration
     var multiplier: Int
@@ -51,6 +51,9 @@ enum EventsSessionStatus: Sendable, Equatable {
     /// everything shown since the last `.connected` may be stale. `failure`
     /// is what killed the previous attempt, for actionable user guidance.
     case reconnecting(attempt: Int, delay: Duration, failure: TransportError)
+    /// Reconnecting cannot repair this failure. The session remains stopped
+    /// until the caller retries after the Host's configuration is corrected.
+    case failed(TransportError)
     /// Deliberately torn down (app backgrounded); no reconnect activity
     /// until `resume()`.
     case suspended
@@ -162,11 +165,18 @@ actor EventsSession {
 
     /// Activates the session (initially, or after `suspend()`): establishes
     /// the transport and channel, emitting `.connected` on success and
-    /// `.reconnecting` transitions until then. Returns once any in-flight
-    /// teardown has finished and the activation is underway. No-op while
-    /// active or ended.
+    /// `.reconnecting` transitions for transient failures. Returns once any
+    /// in-flight teardown has finished and the activation is underway. No-op
+    /// while active or ended.
     func resume() async {
         await enqueueLifecycleTransition { await self.activate() }
+    }
+
+    /// Restarts an active session whose reconnect loop stopped on a
+    /// non-retryable failure. Also provides an explicit retry for a currently
+    /// reconnecting session after the user changes Host settings.
+    func retry() async {
+        await enqueueLifecycleTransition { await self.restart() }
     }
 
     /// Deliberate teardown for backgrounding: ends the events channel by
@@ -202,6 +212,16 @@ actor EventsSession {
         guard phase == .suspended else { return }
         phase = .active
         runTask = Task { await self.run() }
+    }
+
+    private func restart() async {
+        guard phase == .active else {
+            activate()
+            return
+        }
+        phase = .suspended
+        await windDown()
+        activate()
     }
 
     private func deactivate() async {
@@ -269,6 +289,10 @@ actor EventsSession {
                     // it for the retry even if it still looks alive.
                     transportSuspect = true
                 }
+                guard failure.isRetryable else {
+                    yieldUpdate(.status(.failed(failure)))
+                    return
+                }
                 attempt += 1
                 await emitReconnectingAndBackOff(attempt: attempt, failure: failure)
                 continue
@@ -308,6 +332,10 @@ actor EventsSession {
                 streamFailure ?? pendingKeepaliveFailure
                 ?? .channelFailed(detail: "events stream ended unexpectedly")
             pendingKeepaliveFailure = nil
+            guard failure.isRetryable else {
+                yieldUpdate(.status(.failed(failure)))
+                return
+            }
             attempt += 1
             await emitReconnectingAndBackOff(attempt: attempt, failure: failure)
         }

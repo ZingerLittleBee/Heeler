@@ -96,7 +96,7 @@ struct HostFormView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save() }
-                        .disabled(!draft.isValid)
+                        .disabled(!draft.canSave(editing: editing))
                 }
             }
             .alert("Could not save the Host", isPresented: $saveFailed) {
@@ -187,6 +187,7 @@ struct HostFormView: View {
     }
 
     private func save() {
+        guard draft.canSave(editing: editing) else { return }
         guard let host = draft.makeHost(id: editing?.id ?? UUID()) else { return }
         do {
             if editing == nil {

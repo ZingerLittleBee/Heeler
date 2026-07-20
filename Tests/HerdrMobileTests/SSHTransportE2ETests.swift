@@ -250,6 +250,57 @@ struct SSHTransportE2ETests {
         try await transport.close()
     }
 
+    @Test func sessionDiscoveryRejectsNamesOutsideHerdrsGrammar() async throws {
+        let environment = try #require(LocalSSHTestEnvironment.current)
+        let scriptURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("herdr-session-list-\(UUID().uuidString).sh")
+        let script = """
+            #!/bin/sh
+            printf '%s' '{"sessions":[{"name":"work; false","default":false,"running":true}]}'
+            """
+        try Data(script.utf8).write(to: scriptURL, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
+        defer { try? FileManager.default.removeItem(at: scriptURL) }
+        var settings = environment.makeSettings(
+            socket: .absolutePath("/tmp/herdr-irrelevant.sock"))
+        settings.sessionListCommand = scriptURL.path
+        let transport = try await SSHTransport.connect(settings: settings)
+        await #expect(throws: TransportError.self) {
+            _ = try await transport.listSessions()
+        }
+        try await transport.close()
+    }
+
+    @Test func socketAndSocatPathsWithSpacesRoundTripSafely() async throws {
+        let environment = try #require(LocalSSHTestEnvironment.current)
+        let directory = URL(
+            fileURLWithPath: "/tmp/hm paths \(UUID().uuidString.prefix(8))", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let socketPath = directory.appendingPathComponent("herdr socket.sock").path
+        let socatPath = directory.appendingPathComponent("socat binary").path
+        try FileManager.default.createSymbolicLink(
+            atPath: socatPath, withDestinationPath: environment.socatPath)
+        let server = try FakeHerdrServer(socketPath: socketPath) { request in
+            [#"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":16}}"#]
+        }
+        defer { server.stop() }
+        let transport = try await SSHTransport.connect(
+            settings: environment.makeSettings(
+                socket: .absolutePath(socketPath), socatPath: socatPath))
+        do {
+            let info = try await transport.ping()
+
+            #expect(info.protocolVersion == SSHTransport.supportedProtocolVersion)
+            #expect(server.receivedRequests.map(\.method) == ["ping"])
+        } catch {
+            try? await transport.close()
+            throw error
+        }
+        try await transport.close()
+    }
+
     @Test func namedSessionSocketPathResolvesOverRemoteHome() async throws {
         // The transport is given only a session name; it must resolve the
         // remote home directory over exec and find the socket at
@@ -287,6 +338,58 @@ struct SSHTransportE2ETests {
             try? await transport.close()
             throw error
         }
+        try await transport.close()
+    }
+
+    @Test func homeResolutionIgnoresLoginShellStdoutNoise() async throws {
+        let environment = try #require(LocalSSHTestEnvironment.current)
+        let home = "/tmp/hm home \(UUID().uuidString.prefix(8))"
+        let sessionName = "work"
+        let sessionDirectory = "\(home)/.config/herdr/sessions/\(sessionName)"
+        try FileManager.default.createDirectory(
+            atPath: sessionDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: home) }
+        let server = try FakeHerdrServer(socketPath: "\(sessionDirectory)/herdr.sock") { request in
+            [#"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":16}}"#]
+        }
+        defer { server.stop() }
+        let homeCommand =
+            "printf 'login banner\\n__HERDR_MOBILE_HOME__=%s\\nlast login\\n' '\(home)'"
+        let transport = try await SSHTransport.connect(
+            settings: environment.makeSettings(
+                socket: .namedSession(sessionName), homeCommand: homeCommand))
+
+        let info = try await transport.ping()
+
+        #expect(info.protocolVersion == SSHTransport.supportedProtocolVersion)
+        try await transport.close()
+    }
+
+    @Test func firstHomeRelativeRequestUsesOneTotalDeadline() async throws {
+        let environment = try #require(LocalSSHTestEnvironment.current)
+        let home = "/tmp/hm-deadline-\(UUID().uuidString.prefix(8))"
+        let sessionName = "work"
+        let sessionDirectory = "\(home)/.config/herdr/sessions/\(sessionName)"
+        try FileManager.default.createDirectory(
+            atPath: sessionDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: home) }
+        let server = try FakeHerdrServer(socketPath: "\(sessionDirectory)/herdr.sock") { _ in nil }
+        defer { server.stop() }
+        let homeCommand =
+            "sleep 0.6; printf '__HERDR_MOBILE_HOME__=%s\\n' '\(home)'"
+        let transport = try await SSHTransport.connect(
+            settings: environment.makeSettings(
+                socket: .namedSession(sessionName), requestTimeout: .seconds(1),
+                homeCommand: homeCommand))
+        let clock = ContinuousClock()
+        let started = clock.now
+
+        await #expect(throws: TransportError.timedOut) {
+            try await transport.ping()
+        }
+
+        let elapsed = started.duration(to: clock.now)
+        #expect(elapsed < .milliseconds(1_400))
         try await transport.close()
     }
 

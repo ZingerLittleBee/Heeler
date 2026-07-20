@@ -21,6 +21,7 @@ struct PreflightReportTests {
             .socatMissing(path: "/usr/bin/socat"), authMethod: .deviceKey)
 
         #expect(report[.connection] == .passed)
+        #expect(report[.remoteEnvironment] == .passed)
         guard case .failed(let hint) = report[.socat] else {
             Issue.record("socat check should fail")
             return
@@ -43,7 +44,7 @@ struct PreflightReportTests {
         (.eventsChannelAlreadyOpen, .connection),
         (.socatMissing(path: "/usr/bin/socat"), .socat),
         (.socketNotFound(path: "/home/dev/.config/herdr/herdr.sock"), .herdrInstalled),
-        (.homeDirectoryUnresolvable(detail: "no $HOME"), .herdrInstalled),
+        (.homeDirectoryUnresolvable(detail: "no $HOME"), .remoteEnvironment),
         (.serverNotRunning(path: "/home/dev/.config/herdr/herdr.sock"), .serverRunning),
         (.protocolVersionMismatch(server: 17, supported: 16), .protocolCompatible),
         (.malformedResponse("junk"), .protocolCompatible),

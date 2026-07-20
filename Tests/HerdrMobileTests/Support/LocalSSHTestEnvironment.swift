@@ -77,6 +77,7 @@ struct LocalSSHTestEnvironment: Sendable {
         socatPath: String? = nil,
         wakeCommand: String? = nil,
         requestTimeout: Duration? = nil,
+        homeCommand: String? = nil,
         credentials: SSHCredentials? = nil,
         hostKeyPolicy: HostKeyPolicy? = nil
     ) -> SSHTransportSettings {
@@ -91,6 +92,7 @@ struct LocalSSHTestEnvironment: Sendable {
             socatPath: socatPath ?? self.socatPath)
         if let wakeCommand { settings.wakeCommand = wakeCommand }
         if let requestTimeout { settings.requestTimeout = requestTimeout }
+        if let homeCommand { settings.homeCommand = homeCommand }
         return settings
     }
 

@@ -38,7 +38,10 @@ struct ConsoleView: View {
                         }
                     }
                 }
-                .sheet(isPresented: $isManagingHosts) {
+                .sheet(
+                    isPresented: $isManagingHosts,
+                    onDismiss: { Task { await console.retryFailedHosts() } }
+                ) {
                     // HostListView brings its own NavigationStack.
                     HostListView(store: hosts)
                 }
@@ -65,13 +68,21 @@ struct ConsoleView: View {
                 Label("No Agents", systemImage: "rectangle.on.rectangle.slash")
             } description: {
                 Text(emptyDescription)
+            } actions: {
+                if !hostIssues.isEmpty {
+                    Button("Manage Hosts") { isManagingHosts = true }
+                        .buttonStyle(.borderedProminent)
+                }
             }
         } else {
             List {
-                ForEach(hostIssues, id: \.0) { _, issue in
-                    Label(issue.message, systemImage: issue.systemImage)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                ForEach(hostIssues, id: \.id) { issue in
+                    Button { isManagingHosts = true } label: {
+                        Label(issue.message, systemImage: issue.systemImage)
+                            .font(.footnote)
+                            .foregroundStyle(issue.isCritical ? Color.red : Color.secondary)
+                    }
+                    .buttonStyle(.plain)
                 }
                 ForEach(console.agents) { agent in
                     NavigationLink(value: agent.id) {
@@ -87,24 +98,90 @@ struct ConsoleView: View {
         if hostIssues.isEmpty {
             return "Agents detected on your Hosts appear here."
         }
-        return hostIssues.map(\.1.message).joined(separator: "\n")
+        return hostIssues.map(\.message).joined(separator: "\n")
+    }
+
+    private struct HostIssue {
+        let id: Host.ID
+        let message: String
+        let systemImage: String
+        let isCritical: Bool
     }
 
     /// One actionable status per Host. A disconnected session takes priority;
     /// otherwise a connected Host can still have a failing snapshot RPC.
-    private var hostIssues: [(Host.ID, (message: String, systemImage: String))] {
+    private var hostIssues: [HostIssue] {
         hosts.hosts.compactMap { host in
-            if case .reconnecting = console.hostStatuses[host.id] {
-                return (
-                    host.id,
-                    ("Reconnecting to \(host.displayName)…", "wifi.exclamationmark"))
+            switch console.hostStatuses[host.id] {
+            case .reconnecting(_, _, let failure):
+                return HostIssue(
+                    id: host.id,
+                    message: "Reconnecting to \(host.displayName): \(summary(for: failure))",
+                    systemImage: "wifi.exclamationmark",
+                    isCritical: false)
+            case .failed(let failure):
+                return HostIssue(
+                    id: host.id,
+                    message: "\(host.displayName): \(guidance(for: failure))",
+                    systemImage: failure.isHostKeySecurityFailure
+                        ? "exclamationmark.shield.fill" : "exclamationmark.triangle.fill",
+                    isCritical: failure.isHostKeySecurityFailure)
+            case .connected, .suspended, .ended, nil:
+                break
             }
             if let message = console.hostSyncErrors[host.id] {
-                return (
-                    host.id,
-                    ("\(host.displayName): \(message)", "arrow.trianglehead.2.clockwise"))
+                return HostIssue(
+                    id: host.id,
+                    message: "\(host.displayName): \(message)",
+                    systemImage: "arrow.trianglehead.2.clockwise",
+                    isCritical: false)
             }
             return nil
+        }
+    }
+
+    private func summary(for failure: TransportError) -> String {
+        switch failure {
+        case .sshUnreachable: "SSH unavailable"
+        case .serverNotRunning: "herdr is not answering"
+        case .timedOut: "request timed out"
+        case .cancelled: "request was cancelled"
+        case .channelFailed: "connection dropped"
+        default: "connection failed"
+        }
+    }
+
+    private func guidance(for failure: TransportError) -> String {
+        switch failure {
+        case .authenticationFailed:
+            "Authentication failed. Update the credentials in Hosts."
+        case .hostKeyRejected:
+            "The host key is not trusted. Verify it in Hosts."
+        case .hostKeyMismatch:
+            "Host key changed. Verify the machine before updating trust in Hosts."
+        case .protocolVersionMismatch(let server, let supported):
+            "herdr protocol \(server) is incompatible with app protocol \(supported). Update herdr or the app."
+        case .socketNotFound:
+            "The herdr socket was not found. Check the session in Hosts."
+        case .socatMissing:
+            "socat was not found. Check its path in Hosts."
+        case .homeDirectoryUnresolvable:
+            "The remote home directory could not be resolved. Check the Host login shell."
+        case .malformedResponse:
+            "herdr returned an invalid response. Check its version, then retry."
+        case .eventsChannelAlreadyOpen, .terminalChannelAlreadyOpen:
+            "The connection is busy. Close the other terminal, then retry."
+        default:
+            "Connection failed. Check this Host, then retry."
+        }
+    }
+}
+
+private extension TransportError {
+    var isHostKeySecurityFailure: Bool {
+        switch self {
+        case .hostKeyMismatch: true
+        default: false
         }
     }
 }

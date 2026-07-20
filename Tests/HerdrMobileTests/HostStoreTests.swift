@@ -49,6 +49,36 @@ struct HostStoreTests {
         #expect(reloaded.hosts == [host])
     }
 
+    @Test func legacyCatalogMissingNewFieldsMigratesWithDefaults() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let id = UUID()
+        let legacy = """
+            [{"id":"\(id.uuidString)","name":"Old","address":"old.example","port":22,
+              "username":"dev","authMethod":"deviceKey"}]
+            """
+        defaults.set(Data(legacy.utf8), forKey: "hosts")
+
+        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+
+        let host = try #require(store.hosts.first)
+        #expect(host.sessionName == "")
+        #expect(host.socatPath == Host.defaultSocatPath)
+    }
+
+    @Test func corruptCatalogCannotBeSilentlyOverwritten() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let corrupt = Data("not-json".utf8)
+        defaults.set(corrupt, forKey: "hosts")
+        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+
+        #expect(throws: HostStoreError.catalogUnreadable) {
+            try store.add(Host.fixture())
+        }
+        #expect(defaults.data(forKey: "hosts") == corrupt)
+    }
+
     @Test func updateReplacesTheStoredHost() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }

@@ -32,6 +32,11 @@ final class ConsoleStore {
     @ObservationIgnored private let makeSession:
         @Sendable (Host, [EventSubscription]) -> EventsSession
     @ObservationIgnored private let snapshotRetryDelay: Duration
+    /// Explicit terminal-channel teardowns registered synchronously by a
+    /// disappearing detail screen. A new detail waits for the latest task,
+    /// preventing Observe from racing the previous screen's channel close.
+    @ObservationIgnored private var terminalTeardowns: [Host.ID: TerminalTeardown] = [:]
+    @ObservationIgnored private var nextTerminalTeardownID: UInt64 = 0
     /// Whether the Console should hold live connections (foregrounded);
     /// feeds started while suspended stay down until `resume()`.
     @ObservationIgnored private var isActive = false
@@ -281,8 +286,47 @@ final class ConsoleStore {
     /// session may reconnect onto a fresh transport at any time, so it is
     /// re-queried per use; nil while the Host is disconnected or gone.
     func transportProvider(for hostID: Host.ID) -> @Sendable () async -> (any Transport)? {
-        let session = feeds[hostID]?.session
-        return { await session?.currentTransport }
+        return { [weak self] in
+            await self?.transportAfterTerminalTeardown(for: hostID)
+        }
+    }
+
+    /// Registers teardown before `onDisappear` returns. Merely launching an
+    /// untracked Task here is insufficient: the next detail screen can ask
+    /// for the terminal slot before that Task begins executing.
+    func scheduleTerminalTeardown(
+        for hostID: Host.ID,
+        operation: @escaping @MainActor @Sendable () async -> Void
+    ) {
+        let previous = terminalTeardowns[hostID]?.task
+        nextTerminalTeardownID &+= 1
+        let id = nextTerminalTeardownID
+        let task = Task { @MainActor in
+            await previous?.value
+            await operation()
+        }
+        terminalTeardowns[hostID] = TerminalTeardown(id: id, task: task)
+        Task { @MainActor [weak self] in
+            await task.value
+            guard self?.terminalTeardowns[hostID]?.id == id else { return }
+            self?.terminalTeardowns[hostID] = nil
+        }
+    }
+
+    private func transportAfterTerminalTeardown(for hostID: Host.ID) async -> (any Transport)? {
+        let teardown = terminalTeardowns[hostID]
+        await teardown?.task.value
+        return await feeds[hostID]?.session.currentTransport
+    }
+
+    /// Retries Hosts whose session stopped on an action-required failure.
+    /// Host management calls this after dismissal so corrected credentials,
+    /// trust, paths, or protocol versions take effect immediately.
+    func retryFailedHosts() async {
+        for (id, feed) in feeds {
+            guard case .failed = hostStatuses[id] else { continue }
+            await feed.session.retry()
+        }
     }
 
     // MARK: New-agent flow (#12)
@@ -355,6 +399,12 @@ final class ConsoleStore {
     }
 }
 
+@MainActor
+private struct TerminalTeardown {
+    let id: UInt64
+    let task: Task<Void, Never>
+}
+
 extension ConsoleStore {
     /// The production session factory: SSH transports built from the Host
     /// catalog's credentials. TOFU is restricted to already-trusted
@@ -363,12 +413,17 @@ extension ConsoleStore {
     /// its onboarding checklist trusts it.
     static func sshSessionFactory(
         connector: any TransportConnector = SSHTransportConnector(),
-        knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore(),
+        knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
         credentials: HostCredentialsProvider = HostCredentialsProvider()
     ) -> @Sendable (Host, [EventSubscription]) -> EventsSession {
         { host, subscriptions in
             EventsSession(subscriptions: subscriptions) {
-                let resolved = try credentials.credentials(for: host)
+                let resolved: SSHCredentials
+                do {
+                    resolved = try credentials.credentials(for: host)
+                } catch HostCredentialsError.passwordNotSet {
+                    throw TransportError.authenticationFailed
+                }
                 let policy = HostKeyPolicy(knownHosts: knownHosts) { _ in false }
                 return try await connector.connect(
                     settings: SSHTransportSettings(
