@@ -30,6 +30,21 @@ struct DeviceKeyStoreTests {
 
         #expect(first.openSSHPublicKey != second.openSSHPublicKey)
     }
+
+    @Test func explicitReplacementRecoversACorruptStoredKey() throws {
+        let secrets = InMemorySecretStore()
+        let account = "corrupt-device-key"
+        try secrets.write(Data("not-an-ed25519-key".utf8), account: account)
+        let store = DeviceKeyStore(secrets: secrets, account: account)
+
+        #expect(throws: DeviceKeyStoreError.storedKeyCorrupt) {
+            try store.loadOrCreate()
+        }
+
+        let replacement = try store.replaceStoredKey()
+
+        #expect(try store.loadOrCreate().openSSHPublicKey == replacement.openSSHPublicKey)
+    }
 }
 
 // The real Keychain works in simulator test bundles for generic passwords;

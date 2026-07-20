@@ -154,6 +154,27 @@ struct HostOnboardingStoreTests {
         #expect(store.report?.isFullyPassed == true)
     }
 
+    @Test func explicitTrustReplacesThePresentedHostKeyAndReconnects() async throws {
+        let knownHosts = InMemoryKnownHostsStore()
+        let trusted = HostKeyFingerprint(publicKeyBlob: Data("trusted-host-key".utf8))
+        let presented = HostKeyFingerprint(publicKeyBlob: keyBlob)
+        await knownHosts.setFingerprint(trusted, host: "host.example", port: 22)
+        let (store, _) = try makeStore(presentedKeyBlob: keyBlob, knownHosts: knownHosts)
+
+        await store.runChecks()
+
+        #expect(
+            store.pendingHostKeyReplacement
+                == HostKeyReplacement(known: trusted, presented: presented))
+        #expect(await knownHosts.fingerprint(host: "host.example", port: 22) == trusted)
+
+        await store.trustPresentedHostKey()
+
+        #expect(store.pendingHostKeyReplacement == nil)
+        #expect(store.report?.isFullyPassed == true)
+        #expect(await knownHosts.fingerprint(host: "host.example", port: 22) == presented)
+    }
+
     @Test func settingsCarryTheHostCoordinatesAndStoredPassword() async throws {
         var host = Host.fixture(address: "box.example", username: "dev", authMethod: .password)
         host.port = 2222

@@ -1,6 +1,13 @@
 import Foundation
 import Observation
 
+/// A verified mismatch awaiting the user's explicit decision to replace the
+/// trusted pin. Merely observing a mismatch never mutates the known-hosts store.
+struct HostKeyReplacement: Equatable, Sendable {
+    let known: HostKeyFingerprint
+    let presented: HostKeyFingerprint
+}
+
 /// Drives one Host's onboarding preflight (#14): resolve credentials,
 /// connect (surfacing the TOFU first-connect prompt), ping, and render the
 /// outcome as the checklist. One connect + ping is the whole probe —
@@ -18,6 +25,9 @@ final class HostOnboardingStore {
     /// Set while the transport waits on the user's first-connect trust
     /// decision; the UI renders it as the fingerprint confirmation sheet.
     private(set) var pendingFingerprint: HostKeyCandidate?
+    /// Set only after a hard-failed mismatch, for the UI's explicit re-trust
+    /// flow. The old pin remains authoritative until the user confirms.
+    private(set) var pendingHostKeyReplacement: HostKeyReplacement?
     private(set) var report: PreflightReport?
     private(set) var serverInfo: ServerInfo?
 
@@ -52,6 +62,7 @@ final class HostOnboardingStore {
         phase = .running
         report = nil
         serverInfo = nil
+        pendingHostKeyReplacement = nil
         defer { phase = .finished }
 
         let resolved: SSHCredentials
@@ -80,11 +91,13 @@ final class HostOnboardingStore {
                 serverInfo = try await transport.ping()
                 report = .allPassed
             } catch {
+                captureHostKeyReplacement(error)
                 report = failureReport(error)
             }
             // Preflight only probes; the Console owns long-lived connections.
             try? await transport.close()
         } catch {
+            captureHostKeyReplacement(error)
             report = failureReport(error)
         }
     }
@@ -92,6 +105,20 @@ final class HostOnboardingStore {
     /// The user's verdict on the pending fingerprint.
     func confirmFingerprint(trusted: Bool) {
         resolveFingerprint(trusted)
+    }
+
+    /// Replaces a mismatched pin only after the UI has obtained an explicit
+    /// confirmation, then immediately proves the new pin by rerunning preflight.
+    func trustPresentedHostKey() async {
+        guard phase != .running, let replacement = pendingHostKeyReplacement else { return }
+        await knownHosts.setFingerprint(replacement.presented, host: host.address, port: host.port)
+        pendingHostKeyReplacement = nil
+        await runChecks()
+    }
+
+    private func captureHostKeyReplacement(_ error: any Error) {
+        guard case let TransportError.hostKeyMismatch(known, presented) = error else { return }
+        pendingHostKeyReplacement = HostKeyReplacement(known: known, presented: presented)
     }
 
     private func failureReport(_ error: any Error) -> PreflightReport {

@@ -34,4 +34,13 @@ struct DeviceKeyStore: Sendable {
         try secrets.write(key.rawRepresentation, account: account)
         return DeviceKey(privateKey: key)
     }
+
+    /// Replaces the stored key only after a user-approved recovery flow. This
+    /// is deliberately separate from `loadOrCreate`: silent replacement would
+    /// invalidate access to every Host that trusts the previous public key.
+    func replaceStoredKey() throws -> DeviceKey {
+        let key = Curve25519.Signing.PrivateKey()
+        try secrets.write(key.rawRepresentation, account: account)
+        return DeviceKey(privateKey: key)
+    }
 }

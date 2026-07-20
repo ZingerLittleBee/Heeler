@@ -8,6 +8,7 @@ struct HostOnboardingView: View {
     let catalog: HostStore
     @State private var store: HostOnboardingStore
     @State private var isEditing = false
+    @State private var isConfirmingHostKeyReplacement = false
 
     init(host: Host, catalog: HostStore) {
         self.catalog = catalog
@@ -51,6 +52,16 @@ struct HostOnboardingView: View {
                 }
                 .disabled(store.phase == .running)
             }
+
+            if store.pendingHostKeyReplacement != nil {
+                Section {
+                    Button("Trust New Host Key", systemImage: "key.horizontal", role: .destructive) {
+                        isConfirmingHostKeyReplacement = true
+                    }
+                } footer: {
+                    Text("Only continue after verifying the new fingerprint with the Host owner.")
+                }
+            }
         }
         .navigationTitle(store.host.displayName)
         .navigationBarTitleDisplayMode(.inline)
@@ -74,6 +85,23 @@ struct HostOnboardingView: View {
                 "First connection to \(candidate.host):\(String(candidate.port)).\n\n"
                     + "Key fingerprint:\n\(candidate.fingerprint.displayString)\n\n"
                     + "Verify it matches the Host's key before trusting.")
+        }
+        .confirmationDialog(
+            "Replace the trusted Host key?",
+            isPresented: $isConfirmingHostKeyReplacement,
+            titleVisibility: .visible
+        ) {
+            Button("Trust New Key", role: .destructive) {
+                Task { await store.trustPresentedHostKey() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if let replacement = store.pendingHostKeyReplacement {
+                Text(
+                    "Trusted: \(replacement.known.displayString)\n\n"
+                        + "Presented: \(replacement.presented.displayString)\n\n"
+                        + "A changed key can indicate a reinstalled Host or an attack.")
+            }
         }
         .task {
             if store.phase == .idle {
