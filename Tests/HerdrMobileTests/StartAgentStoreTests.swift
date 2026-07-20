@@ -92,10 +92,9 @@ struct StartAgentStoreTests {
 
         #expect(store.state == .started)
         #expect(recorder.hostIDs == [host.id])
-        let params = try? #require(recorder.params.first)
-        #expect(params?.argv == ["claude", "--continue"])
-        #expect(params?.name == "claude")
-        #expect(params?.workspaceID == "w1")
+        #expect(recorder.params.first?.argv == ["claude", "--continue"])
+        #expect(recorder.params.first?.name == "claude")
+        #expect(recorder.params.first?.workspaceID == "w1")
     }
 
     @Test func submitOmitsTheWorkspaceWhenTargetingTheCurrentOne() async {

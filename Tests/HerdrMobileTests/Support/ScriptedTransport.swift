@@ -272,7 +272,7 @@ final actor ScriptedTransport: Transport {
         attachContinuation = outputContinuation
         attachInputTask = Task {
             for await item in input {
-                await self.recordAttachInput(item)
+                self.recordAttachInput(item)
             }
         }
         return TerminalAttachSession(output: output, input: inputContinuation) {
