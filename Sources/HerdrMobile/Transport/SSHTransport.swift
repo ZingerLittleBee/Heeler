@@ -879,7 +879,7 @@ actor SSHTransport: Transport {
             return try await operation()
         } catch TransportError.serverNotRunning(let path) {
             do {
-                try await wakeServer()
+                try await wakeServer(socketPath: path)
             } catch TransportError.cancelled {
                 throw TransportError.cancelled
             } catch TransportError.timedOut {
@@ -899,25 +899,43 @@ actor SSHTransport: Transport {
     /// is deadline-bounded: a hung wake command cannot be ended client-side
     /// (sshd holds the channel until the command exits), so waiters abandon
     /// it with `.timedOut` while it keeps its slot until it really ends.
-    private func wakeServer() async throws {
+    private func wakeServer(socketPath: String) async throws {
         try await Self.withRequestDeadline(requestTimeout) {
             try await self.wake.value {
-                try await self.runWakeCommand()
+                try await self.runWakeCommand(socketPath: socketPath)
             }
         }
     }
 
     /// Runs the wake command over a slot-gated no-PTY exec channel with
-    /// stdin at EOF from the start (`< /dev/null`). The bridge's entry point
-    /// ensures the server is running (spawn + wait for socket) before it
-    /// starts bridging; the bridge then reads EOF and exits — so the command
-    /// completing implies a live socket, and its own lifetime bounds the
-    /// channel without writing or closing anything mid-flight.
-    private func runWakeCommand() async throws {
+    /// stdin at EOF from the start (`< /dev/null`). `HERDR_SOCKET_PATH` pins
+    /// the bridge and the server it spawns to this Host's configured socket.
+    /// The path rides as a positional argument so only the outer shell ever
+    /// quotes it. The bridge's entry point ensures the server is running
+    /// (spawn + wait for socket) before it starts bridging; the bridge then
+    /// reads EOF and exits — so the command completing implies a live socket,
+    /// and its own lifetime bounds the channel without writing or closing
+    /// anything mid-flight.
+    private func runWakeCommand(socketPath: String) async throws {
+        let command = try Self.wakeExecCommand(
+            wakeCommand: wakeCommand, socketPath: socketPath)
         try await acquireExecChannelSlot()
         defer { releaseExecChannelSlot() }
-        _ = try await client.executeCommand(
-            Self.cLocaleCommand("\(wakeCommand) < /dev/null"))
+        _ = try await client.executeCommand(command)
+    }
+
+    /// The full remote command for waking this Host's configured herdr
+    /// server. It runs under POSIX sh because login shells such as fish do
+    /// not share assignment syntax, and passes the socket as an argument so
+    /// the wrapper script never interpolates path bytes.
+    static func wakeExecCommand(wakeCommand: String, socketPath: String) throws -> String {
+        guard let quotedSocketPath = RemoteShellPath.quotedAbsolute(socketPath) else {
+            throw TransportError.channelFailed(
+                detail: "The remote socket path cannot be quoted safely.")
+        }
+        let command = "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
+            + "\(wakeCommand) < /dev/null' wake \(quotedSocketPath)"
+        return cLocaleCommand(command)
     }
 
     /// One no-PTY exec channel per request, raced against the per-request

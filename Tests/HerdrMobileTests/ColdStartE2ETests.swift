@@ -16,7 +16,7 @@ import Testing
         "requires localhost sshd, socat, and an authorized Ed25519 test key"),
     .timeLimit(.minutes(1)))
 struct ColdStartE2ETests {
-    @Test func wakeStartsServerAndRetriedRequestSucceeds() async throws {
+    @Test func wakeReceivesConfiguredSocketAndRetriedRequestSucceeds() async throws {
         // Server "stopped": stale socket at the configured path. The wake
         // script brings the fake server online at that path, exactly like
         // the bridge entry point ensures a live socket before returning.
@@ -29,6 +29,7 @@ struct ColdStartE2ETests {
         }
         defer { server.stop() }
         let wake = try WakeScript(commands: [
+            "test \"$HERDR_SOCKET_PATH\" = '\(stale.path)' || exit 1",
             "rm -f '\(stale.path)'",
             "ln -s '\(server.socketPath)' '\(stale.path)'",
         ])
@@ -185,5 +186,24 @@ struct WakeCommandDefaultTests {
             socatPath: "/opt/homebrew/bin/socat")
 
         #expect(settings.wakeCommand == "herdr remote-client-bridge")
+    }
+
+    @Test func scopesWakeCommandToConfiguredSocket() throws {
+        let command = try SSHTransport.wakeExecCommand(
+            wakeCommand: "herdr remote-client-bridge",
+            socketPath: "/home/u/My Config/herdr.sock")
+
+        #expect(
+            command == "LC_ALL=C /bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
+                + "herdr remote-client-bridge < /dev/null' wake "
+                + "'/home/u/My Config/herdr.sock'")
+    }
+
+    @Test func refusesUnquotableSocketPath() {
+        #expect(throws: TransportError.self) {
+            _ = try SSHTransport.wakeExecCommand(
+                wakeCommand: "herdr remote-client-bridge",
+                socketPath: "/tmp/it's-a.sock")
+        }
     }
 }

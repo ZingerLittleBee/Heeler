@@ -25,11 +25,14 @@ struct TransportFailureModesE2ETests {
     }
 
     @Test func staleSocketMapsToServerNotRunning() async throws {
-        // socat exits with stderr `E connect(...): Connection refused`.
+        // socat exits with stderr `E connect(...): Connection refused`, and
+        // an ineffective wake leaves the configured server stopped.
         let stale = try StaleUnixSocket()
         defer { stale.remove() }
 
-        try await withFailingTransport(socketPath: stale.path) { transport in
+        try await withFailingTransport(
+            socketPath: stale.path, wakeCommand: "false"
+        ) { transport in
             await #expect(throws: TransportError.serverNotRunning(path: stale.path)) {
                 try await transport.ping()
             }
@@ -56,12 +59,14 @@ struct TransportFailureModesE2ETests {
     private func withFailingTransport(
         socketPath: String,
         socatPath: String? = nil,
+        wakeCommand: String? = nil,
         body: (SSHTransport) async throws -> Void
     ) async throws {
         let environment = try #require(LocalSSHTestEnvironment.current)
         let transport = try await SSHTransport.connect(
             settings: environment.makeSettings(
-                socket: .absolutePath(socketPath), socatPath: socatPath))
+                socket: .absolutePath(socketPath), socatPath: socatPath,
+                wakeCommand: wakeCommand))
         do {
             try await body(transport)
         } catch {
