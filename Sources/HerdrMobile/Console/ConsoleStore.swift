@@ -269,7 +269,10 @@ final class ConsoleStore {
     private func refreshSnippet(feed: HostFeed, paneID: String, transport: any Transport) {
         // One in-flight read per pane; a burst of status flips must not pile
         // requests onto the slot queue.
-        guard feed.snippetFetchesInFlight.insert(paneID).inserted else { return }
+        guard feed.snippetFetchesInFlight.insert(paneID).inserted else {
+            feed.pendingSnippetRefreshes.insert(paneID)
+            return
+        }
         Task { [weak self] in
             let read = try? await transport.readPane(
                 PaneReadParams(
@@ -277,13 +280,19 @@ final class ConsoleStore {
                     stripANSI: true))
             guard let self else { return }
             feed.snippetFetchesInFlight.remove(paneID)
+            guard self.feeds[feed.host.id] === feed else { return }
+            if let read, var row = feed.byPane[paneID] {
+                row.lastOutputSnippet = Self.snippet(fromPaneText: read.text)
+                feed.byPane[paneID] = row
+                self.rebuild()
+            }
             guard
-                let read, self.feeds[feed.host.id] === feed,
-                var row = feed.byPane[paneID]
+                feed.pendingSnippetRefreshes.remove(paneID) != nil,
+                feed.byPane[paneID] != nil,
+                let currentTransport = await feed.session.currentTransport,
+                self.feeds[feed.host.id] === feed
             else { return }
-            row.lastOutputSnippet = Self.snippet(fromPaneText: read.text)
-            feed.byPane[paneID] = row
-            self.rebuild()
+            self.refreshSnippet(feed: feed, paneID: paneID, transport: currentTransport)
         }
     }
 
@@ -469,6 +478,8 @@ private final class HostFeed {
     /// Workspaces from this Host's latest snapshot, for the new-agent picker.
     var workspaces: [ConsoleWorkspace] = []
     var snippetFetchesInFlight: Set<String> = []
+    /// Coalesced follow-up reads for panes refreshed while a read was active.
+    var pendingSnippetRefreshes: Set<String> = []
 
     init(host: Host, session: EventsSession) {
         self.host = host

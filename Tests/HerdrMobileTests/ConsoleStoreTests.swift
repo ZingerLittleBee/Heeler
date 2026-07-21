@@ -397,6 +397,57 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    @Test func blockedStatusDuringSnippetFetchSchedulesAFollowUpRead() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .working)]))
+        await transport.setPaneText("Ready", paneID: "w1:p1")
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the initial snapshot cycle should settle") {
+            let reads = await transport.paneReadParams
+            let subscriptions = await transport.capturedSubscriptions
+            return reads.count >= 2
+                && subscriptions.last?.contains(
+                    .pane(.agentStatusChanged, paneID: "w1:p1")) == true
+                && store.agents.first?.lastOutputSnippet == "Ready"
+        }
+
+        let staleReadGate = ScriptedTransportCallGate()
+        await transport.setPaneText("Still working", paneID: "w1:p1")
+        await transport.gateNextPaneRead(using: staleReadGate)
+        #expect(
+            await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .working))
+                == true)
+        try await waitUntil("the stale snippet read should be in flight") {
+            await staleReadGate.entryCount == 1
+        }
+
+        let followUpReadGate = ScriptedTransportCallGate()
+        await transport.setPaneText("Allow this command?", paneID: "w1:p1")
+        await transport.gateNextPaneRead(using: followUpReadGate)
+        #expect(
+            await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .blocked))
+                == true)
+        try await waitUntil("the Blocked status should land during the stale read") {
+            store.agents.first?.agent.status == .blocked
+        }
+        for _ in 0..<10 { await Task.yield() }
+
+        await staleReadGate.open()
+        try await waitUntil("the Blocked refresh should start a follow-up read") {
+            await followUpReadGate.entryCount == 1
+        }
+        await followUpReadGate.open()
+        try await waitUntil("the Blocked prompt should replace the stale snippet") {
+            store.agents.first?.lastOutputSnippet == "Allow this command?"
+        }
+
+        store.setHosts([])
+    }
+
     @Test func removingAHostDropsItsAgentsAndEndsItsSession() async throws {
         let hostA = Host.fixture(name: "alpha", address: "a.example")
         let hostB = Host.fixture(name: "beta", address: "b.example")
