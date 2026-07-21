@@ -38,7 +38,7 @@ concurrency:
 jobs:
   codegen-drift:
     name: Wire-type codegen drift
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: [self-hosted, Linux, X64, vps]
     steps:
       - uses: actions/checkout@v4
       - name: Check generated wire types are up to date
