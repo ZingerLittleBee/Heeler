@@ -178,8 +178,12 @@ enum RemoteShellPath {
 /// notifications.
 struct Agent: Sendable, Equatable {
     let terminalID: String
-    /// The agent program herdr detected: "claude", "codex", ...
+    /// The agent program herdr detected: "claude", "codex", ... Behavior
+    /// stays keyed off this; labels prefer `displayName`.
     let kind: String
+    /// The server-reported agent name the herdr TUI shows (`display_agent`,
+    /// falling back to `name`); nil when the server reports neither.
+    let name: String?
     /// Terminal title with spinner/status glyphs stripped.
     let title: String
     /// Mutable: the Console applies `pane.agent_status_changed` deltas in
@@ -192,12 +196,18 @@ struct Agent: Sendable, Equatable {
     let cwd: String
     let revision: Int
 
+    /// The card's primary label (#41): the server-reported name when present,
+    /// otherwise the detected kind.
+    var displayName: String { name ?? kind }
+
     init(
         terminalID: String, kind: String, title: String, status: AgentStatus,
-        workspaceID: String, tabID: String, paneID: String, cwd: String, revision: Int
+        workspaceID: String, tabID: String, paneID: String, cwd: String, revision: Int,
+        name: String? = nil
     ) {
         self.terminalID = terminalID
         self.kind = kind
+        self.name = name
         self.title = title
         self.status = status
         self.workspaceID = workspaceID
@@ -220,8 +230,15 @@ struct Agent: Sendable, Equatable {
             tabID: info.tabID,
             paneID: info.paneID,
             cwd: info.cwd ?? "",
-            revision: info.revision
+            revision: info.revision,
+            name: Self.nonEmpty(info.displayAgent) ?? Self.nonEmpty(info.name)
         )
+    }
+
+    /// An empty wire string carries no name; treating it as missing keeps the
+    /// fallback chain from rendering a blank card label.
+    private static func nonEmpty(_ value: String?) -> String? {
+        value.flatMap { $0.isEmpty ? nil : $0 }
     }
 }
 

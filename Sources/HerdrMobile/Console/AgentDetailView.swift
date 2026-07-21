@@ -203,6 +203,6 @@ struct AgentDetailView: View {
     /// The Agent's screen title, shared with the close store's dialog copy so
     /// both name the same thing.
     private static func displayTitle(for agent: ConsoleAgent) -> String {
-        agent.agent.title.isEmpty ? agent.agent.kind : agent.agent.title
+        agent.agent.title.isEmpty ? agent.agent.displayName : agent.agent.title
     }
 }
