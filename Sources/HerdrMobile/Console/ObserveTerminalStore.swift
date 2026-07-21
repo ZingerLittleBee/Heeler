@@ -52,6 +52,8 @@ final class ObserveTerminalStore {
     private var hasLoadedTranscript = false
     private var stopRequested = false
     private var restartRequested = false
+    private var isAwaitingTransport = false
+    private var activeTransport: (any Transport)?
     private var liveStream: TerminalFrameStream?
     private var runTask: Task<Void, Never>?
     private var transcriptRefreshTask: Task<Void, Never>?
@@ -112,7 +114,12 @@ final class ObserveTerminalStore {
         if let stream = liveStream {
             await stream.end()
         }
-        if let task = runTask {
+        // A run waiting for Console's teardown barrier owns no terminal
+        // resource yet. Waiting for that run here can make the barrier wait
+        // on itself during back-to-back replacements. `stopRequested` makes
+        // the run exit before backfill or stream creation once its provider
+        // is released.
+        if !isAwaitingTransport, let task = runTask {
             await task.value
         }
         if let task = transcriptRefreshTask {
@@ -131,6 +138,7 @@ final class ObserveTerminalStore {
     @discardableResult
     func loadEarlier() -> Bool {
         guard case .live = status else { return false }
+        guard let activeTransport else { return false }
         guard hasLoadedTranscript, canLoadEarlier, !isLoadingEarlier else { return false }
         guard transcriptLineLimit < Self.maximumTranscriptLines else {
             canLoadEarlier = false
@@ -143,27 +151,30 @@ final class ObserveTerminalStore {
         transcriptLineLimit = requestedLimit
         isLoadingEarlier = true
         historyLoadTask = Task {
-            await self.runHistoryLoad(previousLimit: previousLimit, requestedLimit: requestedLimit)
+            await self.runHistoryLoad(
+                transport: activeTransport, previousLimit: previousLimit,
+                requestedLimit: requestedLimit)
         }
         return true
     }
 
-    private func runHistoryLoad(previousLimit: Int, requestedLimit: Int) async {
-        let succeeded: Bool
-        if let transport = await transport() {
-            succeeded = await refreshTranscript(
-                transport: transport, replacing: true, requestedLines: requestedLimit)
-        } else {
-            succeeded = false
+    private func runHistoryLoad(
+        transport: any Transport, previousLimit: Int, requestedLimit: Int
+    ) async {
+        defer {
+            isLoadingEarlier = false
+            historyLoadTask = nil
         }
+        guard !stopRequested, !Task.isCancelled else { return }
+        let succeeded = await refreshTranscript(
+            transport: transport, replacing: true, requestedLines: requestedLimit)
+        guard !stopRequested, !Task.isCancelled else { return }
 
         if !succeeded, loadedTranscriptLineLimit < requestedLimit,
             transcriptLineLimit == requestedLimit
         {
             transcriptLineLimit = previousLimit
         }
-        isLoadingEarlier = false
-        historyLoadTask = nil
     }
 
     private func start() {
@@ -182,12 +193,21 @@ final class ObserveTerminalStore {
     /// One pipeline lifetime: backfill once, then observe/consume/restart
     /// until stopped or failed. Exactly one run loop exists at a time.
     private func run() async {
-        defer { runTask = nil }
+        defer {
+            activeTransport = nil
+            runTask = nil
+        }
         while !stopRequested {
-            guard let transport = await transport() else {
+            activeTransport = nil
+            isAwaitingTransport = true
+            let currentTransport = await transport()
+            isAwaitingTransport = false
+            guard !stopRequested else { return }
+            guard let transport = currentTransport else {
                 status = .failed("The Host is not connected.")
                 return
             }
+            activeTransport = transport
             if !didLoadInitialTranscript {
                 didLoadInitialTranscript = true
                 _ = await refreshTranscript(transport: transport, replacing: false)
