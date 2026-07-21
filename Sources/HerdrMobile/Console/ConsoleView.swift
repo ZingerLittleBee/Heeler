@@ -6,6 +6,9 @@ struct ConsoleView: View {
     let hosts: HostStore
     let console: ConsoleStore
     let dictationSettings: DictationSettingsStore
+    /// The shared on-device speech engine, threaded to each Agent detail's
+    /// reply-box dictation so there is one microphone owner across the app.
+    let dictationEngine: any DictationEngine
     @State private var isManagingHosts = false
     @State private var isStartingAgent = false
     @State private var isShowingSettings = false
@@ -20,7 +23,8 @@ struct ConsoleView: View {
                     if let agent = console.agents.first(where: { $0.id == id }) {
                         AgentDetailView(
                             agent: agent, console: console,
-                            dictationSettings: dictationSettings)
+                            dictationSettings: dictationSettings,
+                            dictationEngine: dictationEngine)
                     } else {
                         ContentUnavailableView(
                             "Agent Gone", systemImage: "rectangle.on.rectangle.slash",

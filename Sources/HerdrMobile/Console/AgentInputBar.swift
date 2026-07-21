@@ -7,6 +7,10 @@ import SwiftUI
 struct AgentInputBar: View {
     @Bindable var store: AgentInputStore
     let dictation: DictationStore
+    /// Presents the app's Settings sheet, so a model-not-ready hint in the error
+    /// row can route the user to download the model (User Story 15). Injected by
+    /// the owner, which holds the sheet state (no duplicate state here).
+    let onOpenSettings: () -> Void
     @FocusState private var messageFocused: Bool
     /// The message box's text selection, mirrored into `store.cursorOffset` so
     /// Dictation inserts at the caret, and updated back so the caret follows
@@ -19,12 +23,7 @@ struct AgentInputBar: View {
                 _ = store.queue(key)
             }
 
-            if let message = errorRowMessage {
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            errorRow
 
             HStack(alignment: .bottom, spacing: 8) {
                 TextField(
@@ -66,6 +65,29 @@ struct AgentInputBar: View {
         store.submitDraft()
     }
 
+    /// The error row shared by the send path and Dictation (#37): the message
+    /// plus, when the holding failure offers one, a tappable remedy. A missing
+    /// model routes to Settings so the hint is actionable, not a dead end
+    /// (User Story 15).
+    @ViewBuilder
+    private var errorRow: some View {
+        if let message = errorRowMessage {
+            HStack(spacing: 6) {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                if showsOpenSettings {
+                    Button("Open Settings", action: onOpenSettings)
+                        .font(.caption.weight(.semibold))
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.red)
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     /// The single error row shared by the send path and Dictation (#37). A live
     /// dictation failure wins when present — it is the gesture the user just
     /// made; otherwise a send failure holds the row.
@@ -73,6 +95,13 @@ struct AgentInputBar: View {
         if let dictationMessage = dictation.errorRowMessage { return dictationMessage }
         if case .failed(let message) = store.state { return message }
         return nil
+    }
+
+    /// Whether the holding failure is a dictation one offering the Settings
+    /// remedy. Only a dictation failure carries a remedy, and it wins the row
+    /// whenever present, so this is enough to gate the affordance.
+    private var showsOpenSettings: Bool {
+        dictation.errorRowMessage != nil && dictation.errorRowRemedy == .openSettings
     }
 
     /// The caret offset of an insertion-point selection, or `nil` for no /
