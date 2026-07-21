@@ -76,6 +76,9 @@ final class HostOnboardingStore {
                 check: .connection,
                 hint: "No password is saved for this Host. Edit the Host and enter one.")
             return
+        } catch DeviceKeyStoreError.storedKeyCorrupt {
+            report = .failure(.deviceKeyCorrupt, authMethod: host.authMethod)
+            return
         } catch {
             report = .failure(
                 check: .connection,
