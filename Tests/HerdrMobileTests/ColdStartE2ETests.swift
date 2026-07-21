@@ -16,6 +16,54 @@ import Testing
         "requires localhost sshd, socat, and an authorized Ed25519 test key"),
     .timeLimit(.minutes(1)))
 struct ColdStartE2ETests {
+    @Test func namedSessionWakeScopesStateAndRetriesRequest() async throws {
+        let environment = try #require(LocalSSHTestEnvironment.current)
+        let sessionName = "testloop"
+        // Resolve the named session under an isolated fake home so this test
+        // never reads or writes the user's real herdr session state.
+        let fakeHome = "/tmp/hm-wake-\(UUID().uuidString.prefix(8))"
+        let sessionDirectory = "\(fakeHome)/.config/herdr/sessions/\(sessionName)"
+        try FileManager.default.createDirectory(
+            atPath: sessionDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: fakeHome) }
+
+        let socketPath = "\(sessionDirectory)/herdr.sock"
+        let stale = try StaleUnixSocket(path: socketPath)
+        defer { stale.remove() }
+        let server = try FakeHerdrServer { request in
+            [
+                #"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":16}}"#
+            ]
+        }
+        defer { server.stop() }
+        let wake = try WakeScript(commands: [
+            "test \"$HERDR_SESSION\" = '\(sessionName)' || exit 1",
+            "test \"$HERDR_SOCKET_PATH\" = '\(socketPath)' || exit 1",
+            "rm -f '\(socketPath)'",
+            "ln -s '\(server.socketPath)' '\(socketPath)'",
+        ])
+        defer { wake.remove() }
+        let homeCommand =
+            "printf '__HERDR_MOBILE_HOME__=%s\\n' '\(fakeHome)'"
+        let transport = try await SSHTransport.connect(
+            settings: environment.makeSettings(
+                socket: .namedSession(sessionName), wakeCommand: wake.command,
+                homeCommand: homeCommand))
+        do {
+            let info = try await transport.ping()
+
+            #expect(info == ServerInfo(version: "9.9.9-fake", protocolVersion: 16))
+        } catch {
+            try? await transport.close()
+            throw error
+        }
+        try await transport.close()
+
+        #expect(wake.invocationCount == 1)
+        #expect(server.receivedRequests.map(\.method) == ["ping"])
+        #expect(server.connectionCount == 1)
+    }
+
     @Test func wakeReceivesConfiguredSocketAndRetriedRequestSucceeds() async throws {
         // Server "stopped": stale socket at the configured path. The wake
         // script brings the fake server online at that path, exactly like
