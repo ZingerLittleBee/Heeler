@@ -94,6 +94,17 @@ final class DictationStore {
     /// The live session's consume task; non-nil exactly while a session is in
     /// flight. Doubles as the in-flight guard.
     private var sessionTask: Task<Void, Never>?
+    /// The generation handed to every engine call for the current hold. The
+    /// shared engine ignores teardown from older detail screens.
+    private var sessionID: DictationSessionID?
+    /// True only after the engine has finished its asynchronous startup and
+    /// returned a transcript stream. A release during startup cancels the
+    /// session task; a release after this point lets the stream flush its final.
+    private var engineDidStart = false
+    /// The one stop request for this session. Keeping the task lets startup
+    /// wait for an early no-op stop, then issue a second stop if the engine
+    /// nevertheless returned a late stream.
+    private var stopTask: Task<Void, Never>?
     /// Set by `cancelDictation()` so the consume loop stops touching the draft
     /// and the session ends at `idle` even if the engine still flushes a final.
     private var isCancelled = false
@@ -151,24 +162,31 @@ final class DictationStore {
         captureBase()
         latestTranscript = ""
         isCancelled = false
+        engineDidStart = false
+        stopTask = nil
         // Snapshot the selected language now so a change in Settings mid-hold
         // never swaps the engine's locale under a live recording.
         sessionLanguage = currentLanguage()
+        let sessionID = DictationSessionID()
+        self.sessionID = sessionID
         // Light the button immediately on touch-down; a first-use permission
         // or model-readiness check happens inside the engine's `start()`.
         state = .recording
-        sessionTask = Task { await self.runSession() }
+        sessionTask = Task { await self.runSession(sessionID: sessionID) }
     }
 
     /// Button release: stop recording. Moves to `finishing` and asks the
     /// engine to flush its final transcript, which ends the stream. Ignored if
     /// no session is active.
     func stopDictation() {
-        guard sessionTask != nil else { return }
+        guard sessionTask != nil, let sessionID else { return }
         if state == .recording {
             state = .finishing
         }
-        Task { await engine.stop() }
+        if !engineDidStart {
+            sessionTask?.cancel()
+        }
+        requestEngineStop(sessionID: sessionID)
     }
 
     /// Slide-off cancel: discard everything this session streamed in and
@@ -176,12 +194,23 @@ final class DictationStore {
     /// then wind the engine down. A botched take never pollutes the draft
     /// (User Story 5). Ignored if no session is active.
     func cancelDictation() {
-        guard sessionTask != nil else { return }
+        guard sessionTask != nil, let sessionID else { return }
+        switch state {
+        case .recording, .finishing:
+            break
+        case .idle, .failed:
+            // A failed session can still be tearing down. A rejected retry's
+            // slide-off must not discard partial text retained by that failure.
+            return
+        }
         isCancelled = true
         draftTarget.draft = basePrefix + baseSuffix
         draftTarget.cursorOffset = basePrefix.count
         // Wind the engine down; any final it flushes is ignored by the loop.
-        Task { await engine.stop() }
+        if !engineDidStart {
+            sessionTask?.cancel()
+        }
+        requestEngineStop(sessionID: sessionID)
     }
 
     /// Dismiss the permission-denied alert and return to idle. The mic button
@@ -210,25 +239,56 @@ final class DictationStore {
         baseSuffix = String(text[caret...])
     }
 
-    private func runSession() async {
+    private func runSession(sessionID: DictationSessionID) async {
         do {
-            let transcripts = try await engine.start(language: sessionLanguage)
+            let transcripts = try await engine.start(
+                sessionID: sessionID, language: sessionLanguage)
+            engineDidStart = true
+            if Task.isCancelled {
+                // An early stop can reach an engine while `start()` is still
+                // suspended and therefore be a no-op. Once a late start
+                // returns, stop again before exposing a live session.
+                await stopTask?.value
+                await engine.stop(sessionID: sessionID)
+                endSession(.idle, sessionID: sessionID)
+                return
+            }
             for try await transcript in transcripts {
                 guard !isCancelled else { continue }
                 latestTranscript = transcript.text
                 applyToDraft()
             }
-            endSession(.idle)
+            await stopTask?.value
+            endSession(.idle, sessionID: sessionID)
         } catch {
             // A cancel that races the stream still ends clean; otherwise keep
             // whatever partial already landed in the draft (User Story 16) and
             // report why it stopped.
-            endSession(isCancelled ? .idle : .failed(Self.failure(for: error)))
+            if isCancelled || Task.isCancelled {
+                await stopTask?.value
+                await engine.stop(sessionID: sessionID)
+                endSession(.idle, sessionID: sessionID)
+            } else {
+                let finalState = State.failed(Self.failure(for: error))
+                state = finalState
+                requestEngineStop(sessionID: sessionID)
+                await stopTask?.value
+                endSession(finalState, sessionID: sessionID)
+            }
         }
     }
 
-    private func endSession(_ finalState: State) {
+    private func requestEngineStop(sessionID: DictationSessionID) {
+        guard self.sessionID == sessionID, stopTask == nil else { return }
+        stopTask = Task { await engine.stop(sessionID: sessionID) }
+    }
+
+    private func endSession(_ finalState: State, sessionID: DictationSessionID) {
+        guard self.sessionID == sessionID else { return }
         sessionTask = nil
+        self.sessionID = nil
+        engineDidStart = false
+        stopTask = nil
         isCancelled = false
         state = finalState
     }

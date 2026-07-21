@@ -15,13 +15,26 @@ import Speech
 /// exercised manually on device; stores test against a scripted engine
 /// (ADR 0003).
 actor SpeechDictationEngine: DictationEngine {
-    private let audioEngine = AVAudioEngine()
-    private let converter = BufferConverter()
+    private enum SessionPhase {
+        case idle
+        case starting
+        case active
+        case stopping
+    }
 
+    private let microphone: MicrophoneCapture
+
+    private var phase: SessionPhase = .idle
+    private var sessionID: DictationSessionID?
+    private var stopRequestedDuringStart = false
     private var analyzer: SpeechAnalyzer?
     private var transcriber: SpeechTranscriber?
     private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
     private var resultsTask: Task<Void, Never>?
+
+    init(microphone: MicrophoneCapture = MicrophoneCapture()) {
+        self.microphone = microphone
+    }
 
     func modelStatus(for language: DictationLanguage) async -> DictationModelStatus {
         guard let resolved = await Self.resolvedLocale(for: language) else {
@@ -73,112 +86,180 @@ actor SpeechDictationEngine: DictationEngine {
         }
     }
 
-    func start(language: DictationLanguage) async throws
+    func start(sessionID: DictationSessionID, language: DictationLanguage) async throws
         -> AsyncThrowingStream<DictationTranscript, any Error>
     {
-        guard await Self.ensureMicrophonePermission() else {
-            throw DictationEngineError.microphonePermissionDenied
+        guard self.sessionID == nil else {
+            throw DictationEngineError.captureFailed("another dictation session is active")
         }
+        self.sessionID = sessionID
+        phase = .starting
+        stopRequestedDuringStart = false
 
-        // Locale identity is unreliable across the Speech framework's own
-        // canonicalization, so resolve through its equivalence lookup (ADR
-        // 0003); a nil result means no on-device support (also the Simulator).
-        guard let resolvedLocale = await Self.resolvedLocale(for: language) else {
-            throw DictationEngineError.localeUnsupported
-        }
-
-        // Downloads happen from Settings, not mid-gesture: if the model is not
-        // installed, fail fast and let the store route the user to Settings.
-        guard await Self.isInstalled(resolvedLocale) else {
-            throw DictationEngineError.modelUnavailable
-        }
-
-        let transcriber = SpeechTranscriber(
-            locale: resolvedLocale,
-            transcriptionOptions: [],
-            reportingOptions: [.volatileResults, .fastResults],
-            attributeOptions: [])
-        self.transcriber = transcriber
-
-        let analyzer = SpeechAnalyzer(modules: [transcriber])
-        self.analyzer = analyzer
-
-        guard let targetFormat = await SpeechAnalyzer.bestAvailableAudioFormat(
-            compatibleWith: [transcriber])
-        else {
-            throw DictationEngineError.captureFailed("no compatible audio format")
-        }
-        try await analyzer.prepareToAnalyze(in: targetFormat)
-
-        let inputStream = AsyncStream<AnalyzerInput> { continuation in
-            self.inputContinuation = continuation
-        }
-        try await analyzer.start(inputSequence: inputStream)
-
-        let (transcripts, continuation) = AsyncThrowingStream<
+        var startupAnalyzer: SpeechAnalyzer?
+        var transcriptContinuation: AsyncThrowingStream<
             DictationTranscript, any Error
-        >.makeStream()
+        >.Continuation?
 
-        // Bridge the transcriber's results onto our transcript stream, then
-        // tear the audio session down once results end.
-        resultsTask = Task { [weak self] in
-            do {
-                for try await result in transcriber.results {
-                    continuation.yield(
-                        DictationTranscript(
-                            text: String(result.text.characters), isFinal: result.isFinal))
-                }
-                continuation.finish()
-            } catch {
-                continuation.finish(throwing: error)
+        do {
+            try checkStartupStillRequested(sessionID: sessionID)
+            guard await Self.ensureMicrophonePermission() else {
+                throw DictationEngineError.microphonePermissionDenied
             }
-            await self?.deactivateAudioSession()
-        }
+            try checkStartupStillRequested(sessionID: sessionID)
 
-        try startCapturingAudio(into: targetFormat)
-        return transcripts
+            // Locale identity is unreliable across the Speech framework's own
+            // canonicalization, so resolve through its equivalence lookup (ADR
+            // 0003); a nil result means no on-device support (also the Simulator).
+            guard let resolvedLocale = await Self.resolvedLocale(for: language) else {
+                throw DictationEngineError.localeUnsupported
+            }
+            try checkStartupStillRequested(sessionID: sessionID)
+
+            // Downloads happen from Settings, not mid-gesture: if the model is
+            // not installed, fail fast and route the user to Settings.
+            guard await Self.isInstalled(resolvedLocale) else {
+                throw DictationEngineError.modelUnavailable
+            }
+            try checkStartupStillRequested(sessionID: sessionID)
+
+            let transcriber = SpeechTranscriber(
+                locale: resolvedLocale,
+                transcriptionOptions: [],
+                reportingOptions: [.volatileResults, .fastResults],
+                attributeOptions: [])
+            self.transcriber = transcriber
+
+            let analyzer = SpeechAnalyzer(modules: [transcriber])
+            startupAnalyzer = analyzer
+            self.analyzer = analyzer
+
+            guard let targetFormat = await SpeechAnalyzer.bestAvailableAudioFormat(
+                compatibleWith: [transcriber])
+            else {
+                throw DictationEngineError.captureFailed("no compatible audio format")
+            }
+            try checkStartupStillRequested(sessionID: sessionID)
+            try await analyzer.prepareToAnalyze(in: targetFormat)
+            try checkStartupStillRequested(sessionID: sessionID)
+
+            let inputStream = AsyncStream<AnalyzerInput> { continuation in
+                self.inputContinuation = continuation
+            }
+            try await analyzer.start(inputSequence: inputStream)
+            try checkStartupStillRequested(sessionID: sessionID)
+
+            let (transcripts, continuation) = AsyncThrowingStream<
+                DictationTranscript, any Error
+            >.makeStream()
+            transcriptContinuation = continuation
+
+            let inputContinuation = inputContinuation
+            try microphone.start(into: targetFormat) { buffer in
+                inputContinuation?.yield(AnalyzerInput(buffer: buffer))
+            }
+            // A stop can arrive at any earlier suspension point. This final
+            // check prevents a microphone that started late from escaping.
+            try checkStartupStillRequested(sessionID: sessionID)
+
+            phase = .active
+            resultsTask = Task { [weak self] in
+                do {
+                    for try await result in transcriber.results {
+                        continuation.yield(
+                            DictationTranscript(
+                                text: String(result.text.characters), isFinal: result.isFinal))
+                    }
+                    await self?.finishActiveSession(
+                        sessionID: sessionID, analyzer: analyzer)
+                    continuation.finish()
+                } catch {
+                    await self?.finishActiveSession(
+                        sessionID: sessionID, analyzer: analyzer)
+                    continuation.finish(throwing: error)
+                }
+            }
+            return transcripts
+        } catch {
+            transcriptContinuation?.finish(throwing: error)
+            await rollBackStartup(sessionID: sessionID, analyzer: startupAnalyzer)
+            throw error
+        }
     }
 
-    func stop() async {
-        // Stop the mic first so no further audio queues, then finalize the
-        // analyzer so it flushes the last (final) result and ends the results
-        // stream — which finishes the transcript stream.
-        audioEngine.inputNode.removeTap(onBus: 0)
-        audioEngine.stop()
+    func stop(sessionID: DictationSessionID) async {
+        guard self.sessionID == sessionID else { return }
+        switch phase {
+        case .idle:
+            return
+        case .starting:
+            // Keep the startup claim until its task observes this request and
+            // rolls back. A second caller cannot start against half-torn-down
+            // Speech resources in the meantime.
+            stopRequestedDuringStart = true
+            microphone.stop()
+            inputContinuation?.finish()
+            inputContinuation = nil
+            let analyzer = analyzer
+            await analyzer?.cancelAndFinishNow()
+        case .active:
+            // Stop the mic first so no further audio queues, then finalize the
+            // analyzer so it flushes the last result and ends the stream. The
+            // stopping phase keeps this generation claimed across the await.
+            phase = .stopping
+            microphone.stop()
+            inputContinuation?.finish()
+            inputContinuation = nil
+            let analyzer = analyzer
+            try? await analyzer?.finalizeAndFinishThroughEndOfInput()
+            clearSession(sessionID: sessionID)
+        case .stopping:
+            return
+        }
+    }
+
+    private func checkStartupStillRequested(sessionID: DictationSessionID) throws {
+        if self.sessionID != sessionID || stopRequestedDuringStart {
+            throw CancellationError()
+        }
+        try Task.checkCancellation()
+    }
+
+    private func rollBackStartup(
+        sessionID: DictationSessionID, analyzer: SpeechAnalyzer?
+    ) async {
+        guard self.sessionID == sessionID else { return }
+        microphone.stop()
         inputContinuation?.finish()
         inputContinuation = nil
-        try? await analyzer?.finalizeAndFinishThroughEndOfInput()
+        resultsTask?.cancel()
+        resultsTask = nil
+        await analyzer?.cancelAndFinishNow()
+        clearSession(sessionID: sessionID)
+    }
+
+    private func finishActiveSession(
+        sessionID: DictationSessionID, analyzer: SpeechAnalyzer
+    ) {
+        guard
+            self.sessionID == sessionID,
+            phase == .active,
+            self.analyzer === analyzer
+        else { return }
+        microphone.stop()
+        inputContinuation?.finish()
+        inputContinuation = nil
+        clearSession(sessionID: sessionID)
+    }
+
+    private func clearSession(sessionID: DictationSessionID) {
+        guard self.sessionID == sessionID else { return }
         analyzer = nil
         transcriber = nil
         resultsTask = nil
-    }
-
-    private func startCapturingAudio(into targetFormat: AVAudioFormat) throws {
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.record, mode: .spokenAudio)
-        try session.setActive(true, options: .notifyOthersOnDeactivation)
-
-        let inputNode = audioEngine.inputNode
-        let hardwareFormat = inputNode.outputFormat(forBus: 0)
-        // Capture at the hardware format and convert to the analyzer's format
-        // per buffer; the tap runs on a realtime audio thread, so it captures
-        // only Sendable values (never the actor).
-        let converter = self.converter
-        let continuation = inputContinuation
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: hardwareFormat) { buffer, _ in
-            guard let converted = try? converter.convertBuffer(buffer, to: targetFormat) else {
-                return
-            }
-            continuation?.yield(AnalyzerInput(buffer: converted))
-        }
-
-        audioEngine.prepare()
-        try audioEngine.start()
-    }
-
-    private func deactivateAudioSession() {
-        try? AVAudioSession.sharedInstance().setActive(
-            false, options: .notifyOthersOnDeactivation)
+        stopRequestedDuringStart = false
+        phase = .idle
+        self.sessionID = nil
     }
 
     /// Resolves a language to an on-device-supported locale via the Speech
@@ -212,6 +293,117 @@ actor SpeechDictationEngine: DictationEngine {
     }
 }
 
+/// The narrow AVFoundation boundary used by `MicrophoneCapture`. Tests replace
+/// it with deterministic hardware while production owns the real audio engine
+/// and shared audio session here.
+protocol MicrophoneCaptureHardware: Sendable {
+    func activateSession() throws
+    func installTap(_ receive: @escaping @Sendable (AVAudioPCMBuffer) -> Void)
+    func prepareEngine()
+    func startEngine() throws
+    func removeTap()
+    func stopEngine()
+    func deactivateSession()
+}
+
+/// Owns microphone startup as one transaction. Once the tap has been installed,
+/// every later failure removes it, stops the engine, and deactivates the audio
+/// session before the error escapes, leaving the same instance safe to retry.
+final class MicrophoneCapture: @unchecked Sendable {
+    private let hardware: any MicrophoneCaptureHardware
+    private var isTapInstalled = false
+
+    init(hardware: any MicrophoneCaptureHardware = AVFoundationMicrophoneCaptureHardware()) {
+        self.hardware = hardware
+    }
+
+    func start(
+        into targetFormat: AVAudioFormat,
+        receive: @escaping @Sendable (AVAudioPCMBuffer) -> Void
+    ) throws {
+        // Input formats may change with the audio route between sessions. A
+        // converter is valid only for this tap's input/output format pair.
+        let converter = BufferConverter()
+        do {
+            try hardware.activateSession()
+            hardware.installTap { buffer in
+                guard let converted = try? converter.convertBuffer(buffer, to: targetFormat) else {
+                    return
+                }
+                receive(converted)
+            }
+            isTapInstalled = true
+            hardware.prepareEngine()
+            try hardware.startEngine()
+        } catch {
+            cleanUp()
+            throw error
+        }
+    }
+
+    func stop() {
+        cleanUp()
+    }
+
+    private func cleanUp() {
+        if isTapInstalled {
+            hardware.removeTap()
+            isTapInstalled = false
+        }
+        hardware.stopEngine()
+        hardware.deactivateSession()
+    }
+}
+
+private final class AVFoundationMicrophoneCaptureHardware: MicrophoneCaptureHardware,
+    @unchecked Sendable
+{
+    private let audioEngine: AVAudioEngine
+    private let audioSession: AVAudioSession
+
+    init(
+        audioEngine: AVAudioEngine = AVAudioEngine(),
+        audioSession: AVAudioSession = .sharedInstance()
+    ) {
+        self.audioEngine = audioEngine
+        self.audioSession = audioSession
+    }
+
+    func activateSession() throws {
+        try audioSession.setCategory(.record, mode: .spokenAudio)
+        try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+    }
+
+    func installTap(_ receive: @escaping @Sendable (AVAudioPCMBuffer) -> Void) {
+        let inputFormat = audioEngine.inputNode.outputFormat(forBus: 0)
+        audioEngine.inputNode.installTap(
+            onBus: 0, bufferSize: 4096, format: inputFormat
+        ) { buffer, _ in
+            receive(buffer)
+        }
+    }
+
+    func prepareEngine() {
+        audioEngine.prepare()
+    }
+
+    func startEngine() throws {
+        try audioEngine.start()
+    }
+
+    func removeTap() {
+        audioEngine.inputNode.removeTap(onBus: 0)
+    }
+
+    func stopEngine() {
+        audioEngine.stop()
+    }
+
+    func deactivateSession() {
+        try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+    }
+}
+
 /// Converts captured microphone buffers to the analyzer's requested format.
 /// Adapted from Apple's SpeechAnalyzer sample; the tap thread is realtime, so
 /// this is `@unchecked Sendable` and holds no actor state.
@@ -230,7 +422,10 @@ private final class BufferConverter: @unchecked Sendable {
         let inputFormat = buffer.format
         guard inputFormat != format else { return buffer }
 
-        if converter == nil || converter?.outputFormat != format {
+        if converter == nil
+            || converter?.inputFormat != inputFormat
+            || converter?.outputFormat != format
+        {
             converter = AVAudioConverter(from: inputFormat, to: format)
             // Sacrifice the first samples' quality to avoid timestamp drift.
             converter?.primeMethod = .none

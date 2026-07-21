@@ -1,5 +1,31 @@
 import SwiftUI
 
+/// Owns Dictation for one Agent detail and translates every surface-level
+/// interruption into the same discard-and-release behavior. Keeping these
+/// events together prevents a shared microphone engine from surviving a
+/// navigation, Attach handover, or app background transition.
+@MainActor
+final class AgentDetailDictationSession {
+    enum Interruption: CaseIterable, Sendable {
+        case detailDisappeared
+        case openingAttach
+        case appBackgrounded
+    }
+
+    let dictation: DictationStore
+
+    init(dictation: DictationStore) {
+        self.dictation = dictation
+    }
+
+    func handle(_ interruption: Interruption) {
+        switch interruption {
+        case .detailDisappeared, .openingAttach, .appBackgrounded:
+            dictation.cancelDictation()
+        }
+    }
+}
+
 /// The Agent detail screen (#9, #10): scrollback plus live output in a real
 /// terminal, read-only (Observe semantics per CONTEXT.md), with a native
 /// input bar below it (#10) for answering a Blocked agent without Attach,
@@ -15,13 +41,14 @@ struct AgentDetailView: View {
     private let transport: @Sendable () async -> (any Transport)?
     @State private var store: ObserveTerminalStore
     @State private var input: AgentInputStore
-    @State private var dictation: DictationStore
+    @State private var dictationSession: AgentDetailDictationSession
     @State private var attach: AttachTerminalStore?
     @State private var close: ClosePaneStore
     @State private var isConfirmingClose = false
     @State private var closeErrorMessage: String?
     @State private var isShowingSettings = false
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     init(
         agent: ConsoleAgent, console: ConsoleStore,
@@ -37,10 +64,11 @@ struct AgentDetailView: View {
                 target: agent.agent.paneID, transport: transport))
         let inputStore = AgentInputStore(target: agent.agent.paneID, transport: transport)
         _input = State(initialValue: inputStore)
-        _dictation = State(
-            initialValue: DictationStore(
-                engine: dictationEngine, draft: inputStore,
-                language: { dictationSettings.selectedLanguage }))
+        _dictationSession = State(
+            initialValue: AgentDetailDictationSession(
+                dictation: DictationStore(
+                    engine: dictationEngine, draft: inputStore,
+                    language: { dictationSettings.selectedLanguage })))
         _close = State(
             initialValue: ClosePaneStore(paneTitle: Self.displayTitle(for: agent)) {
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
@@ -72,7 +100,7 @@ struct AgentDetailView: View {
             .overlay { statusOverlay }
 
             AgentInputBar(
-                store: input, dictation: dictation,
+                store: input, dictation: dictationSession.dictation,
                 onOpenSettings: { isShowingSettings = true })
         }
         .navigationTitle(title)
@@ -133,7 +161,15 @@ struct AgentDetailView: View {
             guard generation != nil, attach == nil else { return }
             reconnectObserve()
         }
+        .onChange(of: scenePhase) {
+            // First-use microphone permission can make the scene inactive; only
+            // actual backgrounding should cancel that same startup attempt.
+            if scenePhase == .background {
+                dictationSession.handle(.appBackgrounded)
+            }
+        }
         .onDisappear {
+            dictationSession.handle(.detailDisappeared)
             // Explicit close, never abandonment: a live exec channel ignores
             // task cancellation (ADR 0002). Registering with the Console is
             // synchronous, so the next detail waits for this channel close.
@@ -148,6 +184,7 @@ struct AgentDetailView: View {
     /// terminal channel, so Observe must be fully stopped (channel torn
     /// down) before the Attach screen appears and opens its own.
     private func openAttach() {
+        dictationSession.handle(.openingAttach)
         let observe = store
         let attachStore = AttachTerminalStore(target: agent.agent.paneID, transport: transport)
         Task {
