@@ -38,6 +38,12 @@ _Avoid_: takeover (that's herdr's flag, not our surface), connect
 The input surface used only within Attach to send text and terminal key sequences to an Agent's pane. It models terminal input, not remote-computer hardware events, and never appears in Observe.
 _Avoid_: computer keyboard, remote keyboard, Observe keyboard, reply keyboard
 
+**Dictation**:
+Hold-to-talk voice input on the Agent reply box. Speech is transcribed on
+device into the draft for the user to review and send; it never sends by
+itself and never produces terminal input directly.
+_Avoid_: voice message, audio recording, voice command
+
 **Transport**:
 The app-side abstraction that executes herdr API requests and delivers event streams over SSH. UI code talks to Transport, never to SSH primitives.
 _Avoid_: client, bridge, tunnel
