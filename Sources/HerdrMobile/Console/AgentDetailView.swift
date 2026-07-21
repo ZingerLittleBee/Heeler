@@ -12,6 +12,7 @@ struct AgentDetailView: View {
     private let transport: @Sendable () async -> (any Transport)?
     @State private var store: ObserveTerminalStore
     @State private var input: AgentInputStore
+    @State private var dictation: DictationStore
     @State private var attach: AttachTerminalStore?
     @State private var close: ClosePaneStore
     @State private var isConfirmingClose = false
@@ -26,9 +27,10 @@ struct AgentDetailView: View {
         _store = State(
             initialValue: ObserveTerminalStore(
                 target: agent.agent.paneID, transport: transport))
-        _input = State(
-            initialValue: AgentInputStore(
-                target: agent.agent.paneID, transport: transport))
+        let inputStore = AgentInputStore(target: agent.agent.paneID, transport: transport)
+        _input = State(initialValue: inputStore)
+        _dictation = State(
+            initialValue: DictationStore(engine: SpeechDictationEngine(), draft: inputStore))
         _close = State(
             initialValue: ClosePaneStore(paneTitle: Self.displayTitle(for: agent)) {
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
@@ -59,7 +61,7 @@ struct AgentDetailView: View {
             }
             .overlay { statusOverlay }
 
-            AgentInputBar(store: input)
+            AgentInputBar(store: input, dictation: dictation)
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)

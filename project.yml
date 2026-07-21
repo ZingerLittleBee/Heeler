@@ -36,6 +36,10 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: dev.herdr.mobile.HerdrMobile
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
+        # Dictation captures the microphone to transcribe on device (#36). No
+        # speech-recognition usage key is set: the iOS 26 SpeechAnalyzer stack
+        # is on-device and needs no legacy SFSpeechRecognizer authorization.
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "herdr uses the microphone to transcribe your spoken reply into the message box. Audio is processed on device and never leaves your phone."
         # iPhone + iPad.
         TARGETED_DEVICE_FAMILY: "1,2"
         INFOPLIST_KEY_UILaunchScreen_Generation: YES

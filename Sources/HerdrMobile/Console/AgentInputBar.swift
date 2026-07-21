@@ -6,6 +6,7 @@ import SwiftUI
 /// Ctrl-C — without ever opening Attach (User Story 6).
 struct AgentInputBar: View {
     @Bindable var store: AgentInputStore
+    let dictation: DictationStore
     @FocusState private var messageFocused: Bool
 
     var body: some View {
@@ -31,6 +32,8 @@ struct AgentInputBar: View {
                         messageFocused = false
                         store.submitDraft()
                     }
+
+                DictationMicButton(store: dictation)
 
                 Button {
                     messageFocused = false
