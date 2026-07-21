@@ -7,28 +7,40 @@ import SwiftUI
 struct AgentDetailView: View {
     let agent: ConsoleAgent
     private let console: ConsoleStore
+    /// Shared app-level Dictation settings, held so the error row's
+    /// model-not-ready hint can present the Settings sheet (User Story 15).
+    private let dictationSettings: DictationSettingsStore
     /// Kept for the Observe/Attach handover: fresh stores are minted per
     /// surface switch, all sharing this provider.
     private let transport: @Sendable () async -> (any Transport)?
     @State private var store: ObserveTerminalStore
     @State private var input: AgentInputStore
+    @State private var dictation: DictationStore
     @State private var attach: AttachTerminalStore?
     @State private var close: ClosePaneStore
     @State private var isConfirmingClose = false
     @State private var closeErrorMessage: String?
+    @State private var isShowingSettings = false
     @Environment(\.dismiss) private var dismiss
 
-    init(agent: ConsoleAgent, console: ConsoleStore) {
+    init(
+        agent: ConsoleAgent, console: ConsoleStore,
+        dictationSettings: DictationSettingsStore, dictationEngine: any DictationEngine
+    ) {
         self.agent = agent
         self.console = console
+        self.dictationSettings = dictationSettings
         let transport = console.transportProvider(for: agent.hostID)
         self.transport = transport
         _store = State(
             initialValue: ObserveTerminalStore(
                 target: agent.agent.paneID, transport: transport))
-        _input = State(
-            initialValue: AgentInputStore(
-                target: agent.agent.paneID, transport: transport))
+        let inputStore = AgentInputStore(target: agent.agent.paneID, transport: transport)
+        _input = State(initialValue: inputStore)
+        _dictation = State(
+            initialValue: DictationStore(
+                engine: dictationEngine, draft: inputStore,
+                language: { dictationSettings.selectedLanguage }))
         _close = State(
             initialValue: ClosePaneStore(paneTitle: Self.displayTitle(for: agent)) {
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
@@ -59,7 +71,9 @@ struct AgentDetailView: View {
             }
             .overlay { statusOverlay }
 
-            AgentInputBar(store: input)
+            AgentInputBar(
+                store: input, dictation: dictation,
+                onOpenSettings: { isShowingSettings = true })
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
@@ -109,6 +123,11 @@ struct AgentDetailView: View {
         }
         .fullScreenCover(item: $attach, onDismiss: resumeObserve) { attachStore in
             AttachTerminalView(store: attachStore, title: title)
+        }
+        .sheet(isPresented: $isShowingSettings) {
+            // Same shared settings store the Console gear opens; the error row's
+            // model-not-ready hint routes here to download the model (#34).
+            SettingsView(store: dictationSettings)
         }
         .onDisappear {
             // Explicit close, never abandonment: a live exec channel ignores

@@ -6,10 +6,26 @@ import SwiftUI
 struct ContentView: View {
     @State private var hostStore = HostStore()
     @State private var console = ConsoleStore()
+    /// The single on-device speech engine, composed once and shared by Settings'
+    /// model management and the reply box's recording path so there is one
+    /// microphone owner across the app (#34, #38).
+    @State private var dictationEngine: any DictationEngine
+    /// App-level Dictation settings: the selected language (persisted) and the
+    /// on-device model lifecycle, shared by the Settings screen and the reply
+    /// box's recording path (#38).
+    @State private var dictationSettings: DictationSettingsStore
     @Environment(\.scenePhase) private var scenePhase
 
+    init() {
+        let engine = SpeechDictationEngine()
+        _dictationEngine = State(initialValue: engine)
+        _dictationSettings = State(initialValue: DictationSettingsStore(engine: engine))
+    }
+
     var body: some View {
-        ConsoleView(hosts: hostStore, console: console)
+        ConsoleView(
+            hosts: hostStore, console: console,
+            dictationSettings: dictationSettings, dictationEngine: dictationEngine)
             .task {
                 console.setHosts(hostStore.hosts)
                 await console.resume()

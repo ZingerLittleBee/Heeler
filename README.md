@@ -15,7 +15,7 @@ No herdr server changes required. The only remote prerequisite is `socat` instal
 
 ## Stack
 
-- SwiftUI, iOS 18+, iPhone + iPad
+- SwiftUI, iOS 26+, iPhone + iPad
 - [Citadel](https://github.com/orlandos-nl/Citadel) for SSH
 - [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) for terminal rendering
 
