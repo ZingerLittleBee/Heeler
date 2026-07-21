@@ -8,6 +8,10 @@ struct AgentInputBar: View {
     @Bindable var store: AgentInputStore
     let dictation: DictationStore
     @FocusState private var messageFocused: Bool
+    /// The message box's text selection, mirrored into `store.cursorOffset` so
+    /// Dictation inserts at the caret, and updated back so the caret follows
+    /// the streaming transcript (#37).
+    @State private var selection: TextSelection?
 
     var body: some View {
         VStack(spacing: 8) {
@@ -15,7 +19,7 @@ struct AgentInputBar: View {
                 _ = store.queue(key)
             }
 
-            if case .failed(let message) = store.state {
+            if let message = errorRowMessage {
                 Text(message)
                     .font(.caption)
                     .foregroundStyle(.red)
@@ -23,15 +27,20 @@ struct AgentInputBar: View {
             }
 
             HStack(alignment: .bottom, spacing: 8) {
-                TextField("Reply to the agent", text: $store.draft, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(1...5)
-                    .focused($messageFocused)
-                    .submitLabel(.send)
-                    .onSubmit {
-                        messageFocused = false
-                        store.submitDraft()
-                    }
+                TextField(
+                    "Reply to the agent", text: $store.draft, selection: $selection,
+                    axis: .vertical
+                )
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(1...5)
+                .focused($messageFocused)
+                .submitLabel(.send)
+                .onSubmit {
+                    messageFocused = false
+                    store.submitDraft()
+                }
+                .onChange(of: selection) { store.cursorOffset = cursorOffset(of: selection) }
+                .onChange(of: store.cursorOffset) { moveCaret(to: store.cursorOffset) }
 
                 DictationMicButton(store: dictation)
 
@@ -48,6 +57,44 @@ struct AgentInputBar: View {
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(.bar)
+    }
+
+    /// The single error row shared by the send path and Dictation (#37). A live
+    /// dictation failure wins when present — it is the gesture the user just
+    /// made; otherwise a send failure holds the row.
+    private var errorRowMessage: String? {
+        if let dictationMessage = dictation.errorRowMessage { return dictationMessage }
+        if case .failed(let message) = store.state { return message }
+        return nil
+    }
+
+    /// The caret offset of an insertion-point selection, or `nil` for no /
+    /// ranged selection (Dictation then composes at the end).
+    private func cursorOffset(of selection: TextSelection?) -> Int? {
+        guard let selection else { return nil }
+        let text = store.draft
+        switch selection.indices {
+        case .selection(let range) where range.isEmpty:
+            return text.distance(from: text.startIndex, to: range.lowerBound)
+        case .selection, .multiSelection:
+            return nil
+        @unknown default:
+            return nil
+        }
+    }
+
+    /// Places the caret at `offset` characters into the draft, so it follows
+    /// the transcript the store streams in. A no-op when already there, which
+    /// stops the two `onChange`s from ping-ponging.
+    private func moveCaret(to offset: Int?) {
+        guard let offset else { return }
+        let text = store.draft
+        let clamped = min(max(offset, 0), text.count)
+        let caret = text.index(text.startIndex, offsetBy: clamped)
+        let next = TextSelection(insertionPoint: caret)
+        if cursorOffset(of: selection) != clamped {
+            selection = next
+        }
     }
 }
 
