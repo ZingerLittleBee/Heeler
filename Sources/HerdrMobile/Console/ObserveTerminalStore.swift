@@ -70,6 +70,14 @@ final class ObserveTerminalStore {
         self.transport = transport
     }
 
+    /// Starts a replacement pipeline with the geometry already reported by
+    /// the same on-screen terminal. SwiftUI can replace its representable
+    /// without another layout pass when the bounds have not changed.
+    func reuseViewSize(from previous: ObserveTerminalStore) {
+        guard let cols = previous.cols, let rows = previous.rows else { return }
+        viewDidResize(cols: cols, rows: rows)
+    }
+
     /// The terminal view's geometry, reported on first layout and on every
     /// change (rotation, split view). The first report starts the pipeline;
     /// a change restarts the live-follow with the new size.

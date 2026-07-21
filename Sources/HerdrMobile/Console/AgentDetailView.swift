@@ -129,6 +129,10 @@ struct AgentDetailView: View {
             // model-not-ready hint routes here to download the model (#34).
             SettingsView(store: dictationSettings)
         }
+        .onChange(of: console.hostConnectionGenerations[agent.hostID]) { _, generation in
+            guard generation != nil, attach == nil else { return }
+            reconnectObserve()
+        }
         .onDisappear {
             // Explicit close, never abandonment: a live exec channel ignores
             // task cancellation (ADR 0002). Registering with the Console is
@@ -157,7 +161,23 @@ struct AgentDetailView: View {
     /// resuming means a fresh store; the `.id` above rebuilds the terminal
     /// view around it.
     private func resumeObserve() {
-        store = ObserveTerminalStore(target: agent.agent.paneID, transport: transport)
+        let previous = store
+        let replacement = ObserveTerminalStore(
+            target: agent.agent.paneID, transport: transport)
+        replacement.reuseViewSize(from: previous)
+        store = replacement
+    }
+
+    /// A real Host reconnect means the old terminal stream is permanently
+    /// closed. Register its teardown before minting the replacement; the new
+    /// store's transport provider waits for that task before taking the Host's
+    /// single terminal channel.
+    private func reconnectObserve() {
+        let observe = store
+        console.scheduleTerminalTeardown(for: agent.hostID) {
+            await observe.stop()
+        }
+        resumeObserve()
     }
 
     /// Confirmed close: fire `pane.close`, and only on success stop Observe

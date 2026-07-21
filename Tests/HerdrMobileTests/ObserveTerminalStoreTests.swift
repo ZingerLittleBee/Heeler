@@ -456,6 +456,75 @@ struct ObserveTerminalStoreTests {
         #expect(store.status == .stopped)
     }
 
+    @Test func detailReobservesAfterHostSuspendsAndResumes() async throws {
+        let host = Host.fixture()
+        let firstTransport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        let resumedTransport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        let transports = ObserveTransportSequence([firstTransport, resumedTransport])
+        let console = ConsoleStore(snapshotRetryDelay: .milliseconds(10)) {
+            _, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: { try await transports.next() },
+                reconnectPolicy: ReconnectPolicy(
+                    initialDelay: .milliseconds(10), multiplier: 2,
+                    maxDelay: .milliseconds(50)),
+                keepalive: nil)
+        }
+        console.setHosts([host])
+        await console.resume()
+        try await waitUntil("the Host and Agent should be ready") {
+            console.hostStatuses[host.id] == .connected && console.agents.count == 1
+        }
+
+        let agent = try #require(console.agents.first)
+        let defaultsName = "ObserveTerminalStoreTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: defaultsName))
+        defer { defaults.removePersistentDomain(forName: defaultsName) }
+        let dictationEngine = ScriptedDictationEngine()
+        let dictationSettings = DictationSettingsStore(
+            engine: dictationEngine, defaults: defaults)
+        let controller = UIHostingController(
+            rootView: NavigationStack {
+                AgentDetailView(
+                    agent: agent, console: console,
+                    dictationSettings: dictationSettings,
+                    dictationEngine: dictationEngine)
+            })
+        let window = await show(
+            controller, frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        controller.view.frame = window.bounds
+        controller.view.layoutIfNeeded()
+        try await waitUntil("the detail should open its first Observe stream") {
+            let requestCount = await firstTransport.observeRequests.count
+            let hasLiveStream = await firstTransport.hasLiveFrameStream
+            return requestCount == 1 && hasLiveStream
+        }
+
+        await console.suspend()
+        try await waitUntil("the Host should finish suspending") {
+            let hasLiveStream = await firstTransport.hasLiveFrameStream
+            return console.hostStatuses[host.id] == .suspended && !hasLiveStream
+        }
+        await console.resume()
+        try await waitUntil("the Host should reconnect") {
+            console.hostStatuses[host.id] == .connected
+        }
+        try await waitUntil(
+            "the visible detail should Observe again after foregrounding",
+            timeout: .seconds(1)
+        ) {
+            let requestCount = await resumedTransport.observeRequests.count
+            let hasLiveStream = await resumedTransport.hasLiveFrameStream
+            return requestCount == 1 && hasLiveStream
+        }
+
+        await hide(window)
+        console.setHosts([])
+    }
+
     @Test func feedBuffersBytesUntilASinkAttaches() {
         // The terminal view attaches after layout; backfill written before
         // that must not be lost.
@@ -465,5 +534,20 @@ struct ObserveTerminalStoreTests {
         feed.attach { seen.append($0) }
         feed.write(Data("late".utf8))
         #expect(seen == [Data("early".utf8), Data("late".utf8)])
+    }
+}
+
+private actor ObserveTransportSequence {
+    private var transports: [ScriptedTransport]
+
+    init(_ transports: [ScriptedTransport]) {
+        self.transports = transports
+    }
+
+    func next() throws -> any Transport {
+        guard !transports.isEmpty else {
+            throw TransportError.sshUnreachable(detail: "no scripted transport remains")
+        }
+        return transports.removeFirst()
     }
 }
