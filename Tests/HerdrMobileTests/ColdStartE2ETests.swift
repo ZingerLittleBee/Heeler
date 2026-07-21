@@ -188,22 +188,57 @@ struct WakeCommandTests {
         #expect(settings.wakeCommand == "herdr remote-client-bridge")
     }
 
-    @Test func scopesWakeCommandToConfiguredSocket() throws {
+    @Test func scopesNamedSessionWakeCommandToSessionState() throws {
         let command = try SSHTransport.wakeExecCommand(
             wakeCommand: "herdr remote-client-bridge",
-            socketPath: "/home/u/My Config/herdr.sock")
+            socketPath: "/home/u/.config/herdr/sessions/testloop/herdr.sock",
+            socketLocation: .namedSession("testloop"))
 
         #expect(
             command == "LC_ALL=C /bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
-                + "herdr remote-client-bridge < /dev/null' wake "
+                + "export HERDR_SESSION=\"$2\"; herdr remote-client-bridge < /dev/null' wake "
+                + "'/home/u/.config/herdr/sessions/testloop/herdr.sock' testloop")
+    }
+
+    @Test func defaultSessionWakeCommandDoesNotOverrideSessionState() throws {
+        let command = try SSHTransport.wakeExecCommand(
+            wakeCommand: "/opt/herdr-wake --foreground",
+            socketPath: "/home/u/.config/herdr/herdr.sock",
+            socketLocation: .defaultSession)
+
+        #expect(
+            command == "LC_ALL=C /bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
+                + "/opt/herdr-wake --foreground < /dev/null' wake "
+                + "'/home/u/.config/herdr/herdr.sock'")
+    }
+
+    @Test func absolutePathWakeCommandDoesNotOverrideSessionState() throws {
+        let command = try SSHTransport.wakeExecCommand(
+            wakeCommand: "/opt/herdr-wake --foreground",
+            socketPath: "/home/u/My Config/herdr.sock",
+            socketLocation: .absolutePath("/home/u/My Config/herdr.sock"))
+
+        #expect(
+            command == "LC_ALL=C /bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
+                + "/opt/herdr-wake --foreground < /dev/null' wake "
                 + "'/home/u/My Config/herdr.sock'")
+    }
+
+    @Test func refusesInvalidNamedSession() {
+        #expect(throws: TransportError.self) {
+            _ = try SSHTransport.wakeExecCommand(
+                wakeCommand: "herdr remote-client-bridge",
+                socketPath: "/home/u/.config/herdr/sessions/work session/herdr.sock",
+                socketLocation: .namedSession("work session"))
+        }
     }
 
     @Test func refusesUnquotableSocketPath() {
         #expect(throws: TransportError.self) {
             _ = try SSHTransport.wakeExecCommand(
                 wakeCommand: "herdr remote-client-bridge",
-                socketPath: "/tmp/it's-a.sock")
+                socketPath: "/tmp/it's-a.sock",
+                socketLocation: .absolutePath("/tmp/it's-a.sock"))
         }
     }
 }
