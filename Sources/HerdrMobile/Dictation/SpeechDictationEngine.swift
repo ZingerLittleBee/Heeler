@@ -3,17 +3,18 @@ import Foundation
 import Speech
 
 /// The production `DictationEngine`: on-device speech-to-text on the iOS 26
-/// `SpeechAnalyzer` / `SpeechTranscriber` stack, hardcoded to Simplified
-/// Chinese for the tracer bullet (#36). It owns microphone capture
-/// (`AVAudioEngine`), ensures the language-model asset is installed on first
-/// use, and streams partial→final transcripts.
+/// `SpeechAnalyzer` / `SpeechTranscriber` stack, driven by the language the
+/// user selected in Settings (#38). It owns microphone capture
+/// (`AVAudioEngine`), resolves and reports the on-device language model, and
+/// streams partial→final transcripts. Model downloads are triggered explicitly
+/// from Settings, so `start()` fails fast when the model is missing rather than
+/// blocking a hold-to-talk on a multi-megabyte download.
 ///
 /// This type cannot run in CI or the Simulator: `SpeechTranscriber` reports no
 /// supported locales there, so `start()` throws `.localeUnsupported`. It is
 /// exercised manually on device; stores test against a scripted engine
 /// (ADR 0003).
 actor SpeechDictationEngine: DictationEngine {
-    private let locale: Locale
     private let audioEngine = AVAudioEngine()
     private let converter = BufferConverter()
 
@@ -22,11 +23,59 @@ actor SpeechDictationEngine: DictationEngine {
     private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
     private var resultsTask: Task<Void, Never>?
 
-    init(locale: Locale = Locale(identifier: "zh_CN")) {
-        self.locale = locale
+    func modelStatus(for language: DictationLanguage) async -> DictationModelStatus {
+        guard let resolved = await Self.resolvedLocale(for: language) else {
+            return .unsupported
+        }
+        return await Self.isInstalled(resolved) ? .installed : .notInstalled
     }
 
-    func start() async throws -> AsyncThrowingStream<DictationTranscript, any Error> {
+    nonisolated func downloadModel(for language: DictationLanguage) async
+        -> AsyncThrowingStream<Double, any Error>
+    {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    guard let resolved = await Self.resolvedLocale(for: language) else {
+                        throw DictationEngineError.localeUnsupported
+                    }
+                    let transcriber = SpeechTranscriber(
+                        locale: resolved,
+                        transcriptionOptions: [],
+                        reportingOptions: [.volatileResults, .fastResults],
+                        attributeOptions: [])
+                    guard
+                        let request = try await AssetInventory.assetInstallationRequest(
+                            supporting: [transcriber])
+                    else {
+                        // Nothing to install — the model is already present.
+                        continuation.yield(1)
+                        continuation.finish()
+                        return
+                    }
+                    let observation = request.progress.observe(\.fractionCompleted) {
+                        progress, _ in
+                        continuation.yield(progress.fractionCompleted)
+                    }
+                    defer { observation.invalidate() }
+                    try await request.downloadAndInstall()
+                    continuation.yield(1)
+                    continuation.finish()
+                } catch is CancellationError {
+                    continuation.finish()
+                } catch let error as DictationEngineError {
+                    continuation.finish(throwing: error)
+                } catch {
+                    continuation.finish(throwing: DictationEngineError.modelUnavailable)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    func start(language: DictationLanguage) async throws
+        -> AsyncThrowingStream<DictationTranscript, any Error>
+    {
         guard await Self.ensureMicrophonePermission() else {
             throw DictationEngineError.microphonePermissionDenied
         }
@@ -34,9 +83,14 @@ actor SpeechDictationEngine: DictationEngine {
         // Locale identity is unreliable across the Speech framework's own
         // canonicalization, so resolve through its equivalence lookup (ADR
         // 0003); a nil result means no on-device support (also the Simulator).
-        guard let resolvedLocale = await SpeechTranscriber.supportedLocale(equivalentTo: locale)
-        else {
+        guard let resolvedLocale = await Self.resolvedLocale(for: language) else {
             throw DictationEngineError.localeUnsupported
+        }
+
+        // Downloads happen from Settings, not mid-gesture: if the model is not
+        // installed, fail fast and let the store route the user to Settings.
+        guard await Self.isInstalled(resolvedLocale) else {
+            throw DictationEngineError.modelUnavailable
         }
 
         let transcriber = SpeechTranscriber(
@@ -45,8 +99,6 @@ actor SpeechDictationEngine: DictationEngine {
             reportingOptions: [.volatileResults, .fastResults],
             attributeOptions: [])
         self.transcriber = transcriber
-
-        try await ensureModelInstalled(for: transcriber, locale: resolvedLocale)
 
         let analyzer = SpeechAnalyzer(modules: [transcriber])
         self.analyzer = analyzer
@@ -129,21 +181,17 @@ actor SpeechDictationEngine: DictationEngine {
             false, options: .notifyOthersOnDeactivation)
     }
 
-    private func ensureModelInstalled(
-        for transcriber: SpeechTranscriber, locale: Locale
-    ) async throws {
-        let installed = await Set(SpeechTranscriber.installedLocales.map { $0.identifier(.bcp47) })
-        if installed.contains(locale.identifier(.bcp47)) { return }
+    /// Resolves a language to an on-device-supported locale via the Speech
+    /// framework's equivalence lookup, or `nil` when there is no support (also
+    /// the Simulator and CI). Locale identity is never compared directly.
+    private static func resolvedLocale(for language: DictationLanguage) async -> Locale? {
+        await SpeechTranscriber.supportedLocale(equivalentTo: language.locale)
+    }
 
-        do {
-            if let request = try await AssetInventory.assetInstallationRequest(
-                supporting: [transcriber])
-            {
-                try await request.downloadAndInstall()
-            }
-        } catch {
-            throw DictationEngineError.modelUnavailable
-        }
+    private static func isInstalled(_ locale: Locale) async -> Bool {
+        let installed = await Set(
+            SpeechTranscriber.installedLocales.map { $0.identifier(.bcp47) })
+        return installed.contains(locale.identifier(.bcp47))
     }
 
     private static func ensureMicrophonePermission() async -> Bool {

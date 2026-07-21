@@ -37,7 +37,7 @@ struct AgentInputBar: View {
                 .submitLabel(.send)
                 .onSubmit {
                     messageFocused = false
-                    store.submitDraft()
+                    submit()
                 }
                 .onChange(of: selection) { store.cursorOffset = cursorOffset(of: selection) }
                 .onChange(of: store.cursorOffset) { moveCaret(to: store.cursorOffset) }
@@ -46,7 +46,7 @@ struct AgentInputBar: View {
 
                 Button {
                     messageFocused = false
-                    store.submitDraft()
+                    submit()
                 } label: {
                     Image(systemName: "paperplane.fill")
                         .font(.title2)
@@ -57,6 +57,13 @@ struct AgentInputBar: View {
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(.bar)
+    }
+
+    /// Sends the draft, first clearing any lingering dictation error so it
+    /// can't mask this send's own failure in the shared error row (#38).
+    private func submit() {
+        dictation.clearErrorRow()
+        store.submitDraft()
     }
 
     /// The single error row shared by the send path and Dictation (#37). A live

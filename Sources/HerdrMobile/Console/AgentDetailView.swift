@@ -19,7 +19,7 @@ struct AgentDetailView: View {
     @State private var closeErrorMessage: String?
     @Environment(\.dismiss) private var dismiss
 
-    init(agent: ConsoleAgent, console: ConsoleStore) {
+    init(agent: ConsoleAgent, console: ConsoleStore, dictationSettings: DictationSettingsStore) {
         self.agent = agent
         self.console = console
         let transport = console.transportProvider(for: agent.hostID)
@@ -30,7 +30,9 @@ struct AgentDetailView: View {
         let inputStore = AgentInputStore(target: agent.agent.paneID, transport: transport)
         _input = State(initialValue: inputStore)
         _dictation = State(
-            initialValue: DictationStore(engine: SpeechDictationEngine(), draft: inputStore))
+            initialValue: DictationStore(
+                engine: SpeechDictationEngine(), draft: inputStore,
+                language: { dictationSettings.selectedLanguage }))
         _close = State(
             initialValue: ClosePaneStore(paneTitle: Self.displayTitle(for: agent)) {
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)

@@ -69,6 +69,10 @@ final class DictationStore {
     /// The reply draft to compose into; reached only through the protocol so
     /// the store touches only `draft` and its caret.
     private let draftTarget: any ReplyDraft
+    /// Reads the language the user selected in Settings, snapshotted at
+    /// touch-down so mid-session changes never swap engines under a live
+    /// recording (#38). Replaces the tracer bullet's hardcoded `zh_CN`.
+    private let currentLanguage: @MainActor () -> DictationLanguage
 
     /// The draft split at the caret as it stood when the session started: the
     /// dictated span is composed between these two, so text typed before *and
@@ -84,10 +88,18 @@ final class DictationStore {
     /// Set by `cancelDictation()` so the consume loop stops touching the draft
     /// and the session ends at `idle` even if the engine still flushes a final.
     private var isCancelled = false
+    /// The language snapshotted at touch-down and handed to the engine for this
+    /// session.
+    private var sessionLanguage: DictationLanguage = .default
 
-    init(engine: any DictationEngine, draft: any ReplyDraft) {
+    init(
+        engine: any DictationEngine,
+        draft: any ReplyDraft,
+        language: @escaping @MainActor () -> DictationLanguage = { .default }
+    ) {
         self.engine = engine
         self.draftTarget = draft
+        self.currentLanguage = language
     }
 
     /// Whether the mic is live from the button's point of view: true while
@@ -122,8 +134,11 @@ final class DictationStore {
         captureBase()
         latestTranscript = ""
         isCancelled = false
+        // Snapshot the selected language now so a change in Settings mid-hold
+        // never swaps the engine's locale under a live recording.
+        sessionLanguage = currentLanguage()
         // Light the button immediately on touch-down; a first-use permission
-        // or model-download hop happens inside the engine's `start()`.
+        // or model-readiness check happens inside the engine's `start()`.
         state = .recording
         sessionTask = Task { await self.runSession() }
     }
@@ -160,6 +175,16 @@ final class DictationStore {
         }
     }
 
+    /// Clears a lingering error-row message (e.g. a model-not-ready hint) so a
+    /// later send failure isn't masked by it — the reply box calls this when
+    /// the user attempts a send. The permission alert and any in-flight session
+    /// are left untouched.
+    func clearErrorRow() {
+        if sessionTask == nil, case .failed(.message) = state {
+            state = .idle
+        }
+    }
+
     private func captureBase() {
         let text = draftTarget.draft
         let offset = min(max(draftTarget.cursorOffset ?? text.count, 0), text.count)
@@ -170,7 +195,7 @@ final class DictationStore {
 
     private func runSession() async {
         do {
-            let transcripts = try await engine.start()
+            let transcripts = try await engine.start(language: sessionLanguage)
             for try await transcript in transcripts {
                 guard !isCancelled else { continue }
                 latestTranscript = transcript.text

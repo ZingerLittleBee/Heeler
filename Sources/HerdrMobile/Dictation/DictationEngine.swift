@@ -38,13 +38,29 @@ enum DictationEngineError: Error, Sendable, Equatable {
 /// never on Speech framework types — the same discipline the app keeps between
 /// Transport and Citadel (ADR 0002, ADR 0003).
 protocol DictationEngine: Sendable {
-    /// Begins a recording session and returns a stream of partial→final
-    /// transcripts. Ensures microphone permission and the on-device language
-    /// model on first use; throws a `DictationEngineError` before yielding if
-    /// the session cannot start. The stream finishes normally after `stop()`
-    /// flushes the final transcript, and finishes throwing if capture fails
+    /// Resolves whether `language` is supported on device and whether its model
+    /// is installed, via the Speech framework's supported-locale equivalence
+    /// lookup (never raw `Locale` comparison, ADR 0003). Used by Settings to
+    /// show per-language readiness.
+    func modelStatus(for language: DictationLanguage) async -> DictationModelStatus
+
+    /// Downloads and installs `language`'s on-device model, yielding progress
+    /// fractions in `0...1` and finishing once installed. The stream finishes
+    /// throwing a `DictationEngineError` if the language is unsupported or the
+    /// download fails. Triggered from Settings so a hold-to-talk never blocks
+    /// on a multi-megabyte download.
+    func downloadModel(for language: DictationLanguage) async
+        -> AsyncThrowingStream<Double, any Error>
+
+    /// Begins a recording session in `language` and returns a stream of
+    /// partial→final transcripts. Ensures microphone permission and resolves
+    /// the on-device model; throws a `DictationEngineError` before yielding if
+    /// the session cannot start (permission denied, model not installed,
+    /// unsupported locale). The stream finishes normally after `stop()` flushes
+    /// the final transcript, and finishes throwing if capture fails
     /// mid-recording.
-    func start() async throws -> AsyncThrowingStream<DictationTranscript, any Error>
+    func start(language: DictationLanguage) async throws
+        -> AsyncThrowingStream<DictationTranscript, any Error>
 
     /// Stops capture and finalizes the current utterance: the stream yields
     /// its final transcript, then finishes. A no-op if no session is active.

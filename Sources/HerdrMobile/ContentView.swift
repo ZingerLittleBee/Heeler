@@ -6,10 +6,14 @@ import SwiftUI
 struct ContentView: View {
     @State private var hostStore = HostStore()
     @State private var console = ConsoleStore()
+    /// App-level Dictation settings: the selected language (persisted) and the
+    /// on-device model lifecycle, shared by the Settings screen and the reply
+    /// box's recording path (#38).
+    @State private var dictationSettings = DictationSettingsStore()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        ConsoleView(hosts: hostStore, console: console)
+        ConsoleView(hosts: hostStore, console: console, dictationSettings: dictationSettings)
             .task {
                 console.setHosts(hostStore.hosts)
                 await console.resume()
