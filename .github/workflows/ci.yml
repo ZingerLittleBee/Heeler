@@ -38,7 +38,7 @@ concurrency:
 jobs:
   codegen-drift:
     name: Wire-type codegen drift
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
       - name: Check generated wire types are up to date
@@ -48,7 +48,7 @@ jobs:
     name: Build & test (iOS Simulator)
     # macos-26 ships Xcode 26.x and the iOS 26 simulator runtimes. Pinned
     # rather than macos-latest for reproducibility.
-    runs-on: macos-26
+    runs-on: blacksmith-6vcpu-macos-26
     steps:
       - uses: actions/checkout@v4
 
