@@ -173,8 +173,8 @@ private struct WakeScript {
 
 // The default wake command is the real herdr invocation from spec #16: the
 // remote bridge's entry point ensures the server is running before bridging.
-@Suite("Wake command default")
-struct WakeCommandDefaultTests {
+@Suite("Wake command")
+struct WakeCommandTests {
     @Test func defaultsToHerdrRemoteClientBridge() {
         let settings = SSHTransportSettings(
             host: "example.invalid",
