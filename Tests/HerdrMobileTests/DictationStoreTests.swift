@@ -244,6 +244,43 @@ struct DictationStoreTests {
         #expect(!store.isRecording)
     }
 
+    @Test func recordsInTheSelectedLanguageNotAHardcodedDefault() async throws {
+        // The store forwards the persisted selection to the engine, replacing
+        // the tracer bullet's hardcoded zh_CN (#38).
+        let engine = ScriptedDictationEngine()
+        let input = makeInput()
+        let store = DictationStore(engine: engine, draft: input) { .english }
+
+        try await startAndAwaitLiveStream(store, engine)
+        #expect(await engine.lastStartLanguage == .english)
+    }
+
+    @Test func clearErrorRowClearsAStaleMessageButNotThePermissionAlert() async throws {
+        // A send attempt clears a lingering model-not-ready hint so it can't
+        // mask a later send failure (#38)…
+        let engine = ScriptedDictationEngine()
+        await engine.setStartError(DictationEngineError.modelUnavailable)
+        let input = makeInput()
+        let store = DictationStore(engine: engine, draft: input)
+
+        store.startDictation()
+        try await waitUntil("the missing model should surface in the error row") {
+            store.errorRowMessage != nil
+        }
+        store.clearErrorRow()
+        #expect(store.errorRowMessage == nil)
+        #expect(store.state == .idle)
+
+        // …but a denied-mic alert is a different remedy and must not be cleared.
+        await engine.setStartError(DictationEngineError.microphonePermissionDenied)
+        store.startDictation()
+        try await waitUntil("a denied mic should surface the alert") {
+            store.showsPermissionAlert
+        }
+        store.clearErrorRow()
+        #expect(store.showsPermissionAlert)
+    }
+
     @Test func composeInsertsOneSpaceOnlyWhenNeeded() {
         // The insertion seam: no leading space into an empty prefix, exactly one
         // space where the dictated span abuts a non-space on either side, and
