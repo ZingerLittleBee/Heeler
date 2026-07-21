@@ -27,6 +27,9 @@ final class ConsoleStore {
     /// Snapshot failures are separate from connection state: an events
     /// channel can remain connected while the Console data RPC is failing.
     private(set) var hostSyncErrors: [Host.ID: String] = [:]
+    /// Monotonic reconnect epochs per Host. Initial connection is generation
+    /// zero; only a return to connected after a real disconnect advances it.
+    private(set) var hostConnectionGenerations: [Host.ID: UInt64] = [:]
 
     @ObservationIgnored private var feeds: [Host.ID: HostFeed] = [:]
     @ObservationIgnored private let makeSession:
@@ -62,6 +65,7 @@ final class ConsoleStore {
             feeds[id] = nil
             hostStatuses[id] = nil
             hostSyncErrors[id] = nil
+            hostConnectionGenerations[id] = nil
         }
         for host in hosts where feeds[host.id] == nil {
             startFeed(for: host)
@@ -89,6 +93,7 @@ final class ConsoleStore {
         let session = makeSession(host, Self.subscriptions(paneIDs: []))
         let feed = HostFeed(host: host, session: session)
         feeds[host.id] = feed
+        hostConnectionGenerations[host.id] = 0
         feed.consumeTask = Task { [weak self] in
             for await update in session.updates {
                 guard let self else { return }
@@ -115,6 +120,15 @@ final class ConsoleStore {
         guard feeds[feed.host.id] === feed else { return }
         switch update {
         case .status(let status):
+            if status == .connected {
+                if feed.hasConnected, feed.connectionWasInterrupted {
+                    hostConnectionGenerations[feed.host.id, default: 0] &+= 1
+                }
+                feed.hasConnected = true
+                feed.connectionWasInterrupted = false
+            } else if feed.hasConnected {
+                feed.connectionWasInterrupted = true
+            }
             hostStatuses[feed.host.id] = status
             if status == .connected {
                 scheduleResync(feed: feed)
@@ -470,6 +484,8 @@ private final class HostFeed {
     var resyncTask: Task<Void, Never>?
     var resyncRetryTask: Task<Void, Never>?
     var resyncPending = false
+    var hasConnected = false
+    var connectionWasInterrupted = false
     var byPane: [String: ConsoleAgent] = [:]
     /// Latest status deltas by pane, versioned so a snapshot only preserves
     /// events that arrived after that snapshot request began.

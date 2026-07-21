@@ -462,11 +462,13 @@ struct ConsoleStoreTests {
         store.setHosts([hostA, hostB])
         await store.resume()
         try await waitUntil("both agents should arrive") { store.agents.count == 2 }
+        #expect(store.hostConnectionGenerations[hostB.id] == 0)
 
         store.setHosts([hostA])
 
         #expect(store.agents.map(\.agent.paneID) == ["w1:p1"])
         #expect(store.hostStatuses[hostB.id] == nil)
+        #expect(store.hostConnectionGenerations[hostB.id] == nil)
         try await waitUntil("the removed Host's transport should close") {
             await transports[hostB.id]?.isClosed == true
         }
@@ -681,6 +683,69 @@ struct ConsoleStoreTests {
         try await waitUntil("the Host should report suspended") {
             store.hostStatuses[host.id] == .suspended
         }
+
+        store.setHosts([])
+    }
+
+    @Test func realReconnectAdvancesHostConnectionGeneration() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the initial subscribe cycle should settle") {
+            let subscriptions = await transport.capturedSubscriptions
+            return subscriptions.count >= 2
+                && store.hostStatuses[host.id] == .connected
+        }
+        #expect(store.hostConnectionGenerations[host.id] == 0)
+
+        await transport.failEventStream(.channelFailed(detail: "connection dropped"))
+        try await waitUntil("the real reconnect should advance the generation") {
+            let subscriptions = await transport.capturedSubscriptions
+            return subscriptions.count >= 3
+                && store.hostConnectionGenerations[host.id] == 1
+                && store.hostStatuses[host.id] == .connected
+        }
+
+        store.setHosts([])
+    }
+
+    @Test func subscriptionResubscribeDoesNotAdvanceConnectionGeneration() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the initial subscribe cycle should settle") {
+            let snapshotCount = await transport.snapshotFetchCount
+            let subscriptions = await transport.capturedSubscriptions
+            return snapshotCount >= 2 && subscriptions.count >= 2
+        }
+        let snapshotsBeforeMembershipChange = await transport.snapshotFetchCount
+
+        await transport.setSnapshot(
+            .fixture(agents: [
+                .fixture(paneID: "w1:p1"),
+                .fixture(paneID: "w1:p2"),
+            ]))
+        #expect(
+            await transport.emit(
+                HerdrEvent(kind: GlobalEventKind.paneAgentDetected.kind, data: .object([:])))
+                == true)
+        try await waitUntil("the changed pane subscription should reconnect its event stream") {
+            let subscriptions = await transport.capturedSubscriptions
+            let snapshotCount = await transport.snapshotFetchCount
+            return snapshotCount >= snapshotsBeforeMembershipChange + 2
+                && subscriptions.last?.contains(
+                    .pane(.agentStatusChanged, paneID: "w1:p2")) == true
+                && store.hostStatuses[host.id] == .connected
+        }
+        #expect(store.hostConnectionGenerations[host.id] == 0)
 
         store.setHosts([])
     }
