@@ -3,11 +3,17 @@ import Observation
 
 /// The Agent reply draft that dictation composes into. AgentInputStore is the
 /// production conformer; keeping the seam this narrow is deliberate — the
-/// dictation store may only append into the draft the reply box already owns,
+/// dictation store may only compose into the draft the reply box already owns,
 /// never reach into the send pipeline (the send path stays untouched, #36).
 @MainActor
 protocol ReplyDraft: AnyObject {
     var draft: String { get set }
+    /// Caret position within `draft` as a character offset, mirrored from the
+    /// reply box's text selection so dictation inserts at the cursor instead of
+    /// overwriting (#37, User Story 6). `nil` means the caret is unknown (field
+    /// unfocused), which composes at the end. The store writes it back so the
+    /// caret follows the streaming transcript.
+    var cursorOffset: Int? { get set }
 }
 
 extension AgentInputStore: ReplyDraft {}
@@ -22,9 +28,11 @@ extension AgentInputStore: ReplyDraft {}
 /// engine is verified manually on device.
 ///
 /// ```
-/// idle ──startDictation()──▶ recording ──stopDictation()──▶ finishing ──▶ idle
-///                               │                                          ▲
-///                               └────────── engine error ──────────────▶ failed
+///                            ┌─ stopDictation() ─▶ finishing ─▶ idle
+/// idle ─startDictation()─▶ recording                            ▲
+///          ▲    │            ├─ cancelDictation() ──────────────┤
+///          │    │            └─ engine error ──▶ failed(reason)
+///          └────┴─ dismiss / next hold
 /// ```
 @MainActor
 @Observable
@@ -37,28 +45,45 @@ final class DictationStore {
         /// The user released; waiting for the engine to flush the final
         /// transcript and end the stream.
         case finishing
-        /// The session failed; the message is user-facing. Any partial text
-        /// already streamed into the draft is left in place (User Story 16).
-        case failed(String)
+        /// The session failed. Any partial text already composed into the draft
+        /// is left in place (User Story 16); the reason routes the failure to
+        /// its own remedy.
+        case failed(Failure)
+    }
+
+    /// Why a session failed, split by where the failure is surfaced. A denied
+    /// mic gets its own alert with a Settings shortcut (User Story 13); every
+    /// other failure gets a line in the reply box's existing error row.
+    enum Failure: Equatable {
+        /// Microphone access is off — surfaced as an alert, not in the error
+        /// row, and the mic button stays visible (User Stories 13, 14).
+        case microphonePermissionDenied
+        /// Any other failure, with a user-facing message for the error row
+        /// (model missing → Settings, mid-recording capture failure, …).
+        case message(String)
     }
 
     private(set) var state: State = .idle
 
     private let engine: any DictationEngine
-    /// The reply draft to compose into; unowned-by-value via the protocol so
-    /// the store touches only `draft`.
+    /// The reply draft to compose into; reached only through the protocol so
+    /// the store touches only `draft` and its caret.
     private let draftTarget: any ReplyDraft
 
-    /// The draft text as it stood when the current session started. Dictated
-    /// text is composed onto this base, so typing done before dictation is
-    /// preserved and dictation never overwrites it.
-    private var baseText = ""
+    /// The draft split at the caret as it stood when the session started: the
+    /// dictated span is composed between these two, so text typed before *and
+    /// after* the caret is preserved and dictation never overwrites it.
+    private var basePrefix = ""
+    private var baseSuffix = ""
     /// The latest transcript from the engine — the entire dictated span, which
     /// each update replaces.
     private var latestTranscript = ""
     /// The live session's consume task; non-nil exactly while a session is in
     /// flight. Doubles as the in-flight guard.
     private var sessionTask: Task<Void, Never>?
+    /// Set by `cancelDictation()` so the consume loop stops touching the draft
+    /// and the session ends at `idle` even if the engine still flushes a final.
+    private var isCancelled = false
 
     init(engine: any DictationEngine, draft: any ReplyDraft) {
         self.engine = engine
@@ -75,13 +100,28 @@ final class DictationStore {
         }
     }
 
-    /// Button touch-down: begin a hold-to-talk session. Captures the current
-    /// draft as the base and starts the engine. Ignored if a session is
-    /// already in flight.
+    /// True while the permission-denied alert should be presented. Distinct
+    /// from the error row: a denied mic gets an alert with a Settings shortcut,
+    /// never a line in the row (User Story 13).
+    var showsPermissionAlert: Bool {
+        state == .failed(.microphonePermissionDenied)
+    }
+
+    /// The message for the reply box's existing error row, or `nil` when there
+    /// is nothing to show there. Permission denial is an alert, not a row line.
+    var errorRowMessage: String? {
+        if case .failed(.message(let text)) = state { return text }
+        return nil
+    }
+
+    /// Button touch-down: begin a hold-to-talk session. Splits the current
+    /// draft at the caret as the base and starts the engine. Ignored if a
+    /// session is already in flight.
     func startDictation() {
         guard sessionTask == nil else { return }
-        baseText = draftTarget.draft
+        captureBase()
         latestTranscript = ""
+        isCancelled = false
         // Light the button immediately on touch-down; a first-use permission
         // or model-download hop happens inside the engine's `start()`.
         state = .recording
@@ -99,52 +139,94 @@ final class DictationStore {
         Task { await engine.stop() }
     }
 
+    /// Slide-off cancel: discard everything this session streamed in and
+    /// restore the draft (and caret) to exactly what it was before the hold,
+    /// then wind the engine down. A botched take never pollutes the draft
+    /// (User Story 5). Ignored if no session is active.
+    func cancelDictation() {
+        guard sessionTask != nil else { return }
+        isCancelled = true
+        draftTarget.draft = basePrefix + baseSuffix
+        draftTarget.cursorOffset = basePrefix.count
+        // Wind the engine down; any final it flushes is ignored by the loop.
+        Task { await engine.stop() }
+    }
+
+    /// Dismiss the permission-denied alert and return to idle. The mic button
+    /// stays visible regardless (User Story 14).
+    func dismissPermissionAlert() {
+        if state == .failed(.microphonePermissionDenied) {
+            state = .idle
+        }
+    }
+
+    private func captureBase() {
+        let text = draftTarget.draft
+        let offset = min(max(draftTarget.cursorOffset ?? text.count, 0), text.count)
+        let caret = text.index(text.startIndex, offsetBy: offset)
+        basePrefix = String(text[..<caret])
+        baseSuffix = String(text[caret...])
+    }
+
     private func runSession() async {
         do {
             let transcripts = try await engine.start()
             for try await transcript in transcripts {
+                guard !isCancelled else { continue }
                 latestTranscript = transcript.text
                 applyToDraft()
             }
             endSession(.idle)
         } catch {
-            // Keep whatever partial already landed in the draft (User Story
-            // 16); only report why it stopped.
-            endSession(.failed(Self.message(for: error)))
+            // A cancel that races the stream still ends clean; otherwise keep
+            // whatever partial already landed in the draft (User Story 16) and
+            // report why it stopped.
+            endSession(isCancelled ? .idle : .failed(Self.failure(for: error)))
         }
     }
 
     private func endSession(_ finalState: State) {
         sessionTask = nil
+        isCancelled = false
         state = finalState
     }
 
     private func applyToDraft() {
-        draftTarget.draft = Self.compose(base: baseText, dictated: latestTranscript)
+        let composed = Self.compose(
+            prefix: basePrefix, dictated: latestTranscript, suffix: baseSuffix)
+        draftTarget.draft = composed
+        // Keep the caret at the end of the dictated span so it follows the
+        // streaming transcript and further typing lands after it.
+        draftTarget.cursorOffset = composed.count - baseSuffix.count
     }
 
-    /// Appends the dictated span onto the pre-dictation draft, inserting a
-    /// single space only when the base ends in a non-space so words do not run
-    /// together. Cursor-aware insertion is a later slice (#37); this appends at
-    /// the end, which is where a phone caret sits after typing.
-    static func compose(base: String, dictated: String) -> String {
-        guard !dictated.isEmpty else { return base }
-        guard let last = base.last else { return dictated }
-        return last.isWhitespace ? base + dictated : base + " " + dictated
+    /// Inserts the dictated span at the caret, between the pre-dictation prefix
+    /// and suffix, adding a single space on either side only when that side
+    /// abuts a non-space so words do not run together.
+    static func compose(prefix: String, dictated: String, suffix: String) -> String {
+        guard !dictated.isEmpty else { return prefix + suffix }
+        var middle = dictated
+        if let last = prefix.last, !last.isWhitespace {
+            middle = " " + middle
+        }
+        if let first = suffix.first, !first.isWhitespace {
+            middle += " "
+        }
+        return prefix + middle + suffix
     }
 
-    private static func message(for error: any Error) -> String {
+    private static func failure(for error: any Error) -> Failure {
         switch error {
         case DictationEngineError.microphonePermissionDenied:
-            "Microphone access is off. Turn it on in Settings to dictate."
+            .microphonePermissionDenied
         case DictationEngineError.modelUnavailable:
-            "The speech model isn't ready yet."
+            .message("The speech model isn't ready yet. Download it in Settings.")
         case DictationEngineError.localeUnsupported:
-            "On-device dictation isn't available for this language."
+            .message("On-device dictation isn't available for this language.")
         case DictationEngineError.captureFailed(let detail):
-            "Dictation stopped: \(detail)"
+            .message("Dictation stopped: \(detail)")
         default:
-            "Dictation failed: \(error)"
+            .message("Dictation failed: \(error)")
         }
     }
 }

@@ -86,6 +86,11 @@ final class AgentInputStore {
 
     /// The message box's text, bound to the field.
     var draft: String = ""
+    /// Caret position within `draft` as a character offset, mirrored from the
+    /// message box's text selection so Dictation inserts at the cursor (#37).
+    /// `nil` when the field isn't focused / the selection is unknown, which
+    /// composes at the end.
+    var cursorOffset: Int?
     private(set) var state: SendState = .idle
 
     /// Draft-send in-flight guard, flipped synchronously before the first

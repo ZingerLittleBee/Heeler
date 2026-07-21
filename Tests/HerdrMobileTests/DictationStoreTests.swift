@@ -132,7 +132,59 @@ struct DictationStoreTests {
             await transport.sentKeys == [PaneSendKeysParams(keys: ["enter"], paneID: "w1:p1")])
     }
 
-    @Test func midRecordingFailureKeepsPartialText() async throws {
+    @Test func slideOffCancelDiscardsInFlightTranscription() async throws {
+        // Sliding the finger off the button cancels: everything streamed this
+        // session is thrown away and the prior draft is restored (User Story 5).
+        let engine = ScriptedDictationEngine()
+        let input = makeInput()
+        input.draft = "keep this"
+        input.cursorOffset = input.draft.count
+        let store = DictationStore(engine: engine, draft: input)
+
+        try await startAndAwaitLiveStream(store, engine)
+        await engine.emitPartial("garbage take")
+        try await waitUntil("the partial should stream into the draft") {
+            input.draft == "keep this garbage take"
+        }
+
+        // A final flushed by stop() after a cancel must not leak into the draft.
+        await engine.setFinalOnStop(DictationTranscript(text: "garbage take two", isFinal: true))
+        store.cancelDictation()
+
+        try await waitUntil("cancel should wind the session back to idle") {
+            store.state == .idle
+        }
+        #expect(input.draft == "keep this")
+        #expect(input.cursorOffset == "keep this".count)
+        #expect(await engine.stopCount == 1)
+        #expect(!store.isRecording)
+    }
+
+    @Test func dictationInsertsAtTheCursorWithinExistingDraft() async throws {
+        // With the caret in the middle of a typed draft, dictation inserts
+        // there; text on both sides of the caret is preserved (User Story 6).
+        let engine = ScriptedDictationEngine()
+        let input = makeInput()
+        input.draft = "please it"
+        input.cursorOffset = "please ".count  // caret between "please " and "it"
+        let store = DictationStore(engine: engine, draft: input)
+
+        try await startAndAwaitLiveStream(store, engine)
+        await engine.emitPartial("restart")
+        try await waitUntil("dictation should insert at the caret, not the end") {
+            input.draft == "please restart it"
+        }
+        // The caret follows the dictated span, landing after the separating
+        // space so further typing goes right before "it".
+        #expect(input.cursorOffset == "please restart ".count)
+
+        await engine.setFinalOnStop(DictationTranscript(text: "restart", isFinal: true))
+        store.stopDictation()
+        try await waitUntil("the final keeps the same insertion") { store.state == .idle }
+        #expect(input.draft == "please restart it")
+    }
+
+    @Test func midRecordingFailureKeepsPartialsAndSurfacesInTheErrorRow() async throws {
         let engine = ScriptedDictationEngine()
         let input = makeInput()
         let store = DictationStore(engine: engine, draft: input)
@@ -146,11 +198,14 @@ struct DictationStoreTests {
             if case .failed = store.state { return true }
             return false
         }
-        // Half a spoken reply is never silently thrown away (User Story 16).
+        // Half a spoken reply is never silently thrown away (User Story 16)…
         #expect(input.draft == "half a reply")
+        // …and the failure goes to the existing error row, not the alert.
+        #expect(store.errorRowMessage != nil)
+        #expect(!store.showsPermissionAlert)
     }
 
-    @Test func startFailureLeavesTheDraftUntouched() async throws {
+    @Test func permissionDeniedShowsAlertNotErrorRowAndDraftUntouched() async throws {
         let engine = ScriptedDictationEngine()
         await engine.setStartError(DictationEngineError.microphonePermissionDenied)
         let input = makeInput()
@@ -158,22 +213,48 @@ struct DictationStoreTests {
         let store = DictationStore(engine: engine, draft: input)
 
         store.startDictation()
-        try await waitUntil("a start failure should surface") {
-            if case .failed = store.state { return true }
-            return false
+        try await waitUntil("a denied mic should surface the permission alert") {
+            store.showsPermissionAlert
         }
+        // The alert carries the remedy; the error row stays empty for it.
+        #expect(store.errorRowMessage == nil)
         // Nothing was captured, so the pre-existing draft is left alone.
+        #expect(input.draft == "typed already")
+        #expect(!store.isRecording)
+
+        // Dismissing the alert returns to idle; the button never went away.
+        store.dismissPermissionAlert()
+        #expect(store.state == .idle)
+        #expect(!store.showsPermissionAlert)
+    }
+
+    @Test func modelUnavailableRoutesToTheErrorRowNotTheAlert() async throws {
+        let engine = ScriptedDictationEngine()
+        await engine.setStartError(DictationEngineError.modelUnavailable)
+        let input = makeInput()
+        input.draft = "typed already"
+        let store = DictationStore(engine: engine, draft: input)
+
+        store.startDictation()
+        try await waitUntil("a missing model should surface in the error row") {
+            store.errorRowMessage != nil
+        }
+        #expect(!store.showsPermissionAlert)
         #expect(input.draft == "typed already")
         #expect(!store.isRecording)
     }
 
     @Test func composeInsertsOneSpaceOnlyWhenNeeded() {
-        // The append seam: no leading space into an empty base, exactly one
-        // space after a non-space, none after existing whitespace.
-        #expect(DictationStore.compose(base: "", dictated: "hi") == "hi")
-        #expect(DictationStore.compose(base: "a", dictated: "b") == "a b")
-        #expect(DictationStore.compose(base: "a ", dictated: "b") == "a b")
-        #expect(DictationStore.compose(base: "a", dictated: "") == "a")
+        // The insertion seam: no leading space into an empty prefix, exactly one
+        // space where the dictated span abuts a non-space on either side, and
+        // none next to existing whitespace or an empty side.
+        #expect(DictationStore.compose(prefix: "", dictated: "hi", suffix: "") == "hi")
+        #expect(DictationStore.compose(prefix: "a", dictated: "b", suffix: "") == "a b")
+        #expect(DictationStore.compose(prefix: "a ", dictated: "b", suffix: "") == "a b")
+        #expect(DictationStore.compose(prefix: "a", dictated: "", suffix: "c") == "ac")
+        // Caret in the middle: a space is added on each abutting non-space side.
+        #expect(DictationStore.compose(prefix: "a", dictated: "b", suffix: "c") == "a b c")
+        #expect(DictationStore.compose(prefix: "a ", dictated: "b", suffix: " c") == "a b c")
     }
 }
 
