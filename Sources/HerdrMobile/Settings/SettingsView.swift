@@ -68,38 +68,62 @@ private struct ModelStatusRow: View {
     let onDownload: () -> Void
 
     var body: some View {
+        let presentation = presentation
         HStack {
             Text(language.displayName)
             Spacer()
-            trailing
+            trailing(presentation.control)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(language.displayName) model")
-        .accessibilityValue(accessibilityValue)
+        .accessibilityValue(presentation.accessibilityValue)
+    }
+
+    /// The one derivation from `ModelState`: the trailing control and its
+    /// accessibility value come from a single switch so they can never describe
+    /// different states (adding a `ModelState` forces both here).
+    private var presentation: Presentation {
+        switch state {
+        case .unknown:
+            Presentation(control: .checking, accessibilityValue: "Checking")
+        case .unsupported:
+            Presentation(
+                control: .note("Not available on this device"),
+                accessibilityValue: "Not available on this device")
+        case .notDownloaded:
+            Presentation(
+                control: .button(title: "Download", tint: nil),
+                accessibilityValue: "Not downloaded")
+        case .downloading(let progress):
+            Presentation(
+                control: .progress(progress),
+                accessibilityValue: "Downloading, \(Int(progress * 100)) percent")
+        case .failed(let message):
+            Presentation(
+                control: .button(title: "Retry", tint: .red), accessibilityValue: message)
+        case .ready:
+            Presentation(control: .ready, accessibilityValue: "Ready")
+        }
     }
 
     @ViewBuilder
-    private var trailing: some View {
-        switch state {
-        case .unknown:
+    private func trailing(_ control: Presentation.Control) -> some View {
+        switch control {
+        case .checking:
             ProgressView().controlSize(.small)
-        case .unsupported:
-            Text("Not available on this device")
+        case .note(let text):
+            Text(text)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-        case .notDownloaded:
-            Button("Download", action: onDownload)
+        case .button(let title, let tint):
+            Button(title, action: onDownload)
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-        case .downloading(let progress):
+                .tint(tint)
+        case .progress(let progress):
             ProgressView(value: progress)
                 .progressViewStyle(.circular)
                 .controlSize(.small)
-        case .failed:
-            Button("Retry", action: onDownload)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .tint(.red)
         case .ready:
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)
@@ -107,14 +131,18 @@ private struct ModelStatusRow: View {
         }
     }
 
-    private var accessibilityValue: String {
-        switch state {
-        case .unknown: "Checking"
-        case .unsupported: "Not available on this device"
-        case .notDownloaded: "Not downloaded"
-        case .downloading(let progress): "Downloading, \(Int(progress * 100)) percent"
-        case .failed(let message): message
-        case .ready: "Ready"
+    /// The trailing control and accessibility value for one `ModelState`,
+    /// produced together so the two can't drift.
+    private struct Presentation {
+        let control: Control
+        let accessibilityValue: String
+
+        enum Control {
+            case checking
+            case note(String)
+            case button(title: String, tint: Color?)
+            case progress(Double)
+            case ready
         }
     }
 }
