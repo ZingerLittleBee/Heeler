@@ -14,3 +14,6 @@ DerivedData/
 
 # Local-only notes and experiments
 .local/
+
+# testloop scratch artifacts
+.testloop/
