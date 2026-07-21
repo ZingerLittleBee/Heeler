@@ -203,6 +203,10 @@ struct DictationStoreTests {
         // …and the failure goes to the existing error row, not the alert.
         #expect(store.errorRowMessage != nil)
         #expect(!store.showsPermissionAlert)
+        // An untyped engine failure never leaks its description to the user and
+        // offers no remedy — it is not a missing-model, download-in-Settings case.
+        #expect(store.errorRowMessage == "Dictation stopped unexpectedly. Try again.")
+        #expect(store.errorRowRemedy == nil)
     }
 
     @Test func permissionDeniedShowsAlertNotErrorRowAndDraftUntouched() async throws {
@@ -242,6 +246,9 @@ struct DictationStoreTests {
         #expect(!store.showsPermissionAlert)
         #expect(input.draft == "typed already")
         #expect(!store.isRecording)
+        // The hint is actionable: the reply box can route the user to Settings
+        // to download the model (User Story 15).
+        #expect(store.errorRowRemedy == .openSettings)
     }
 
     @Test func recordsInTheSelectedLanguageNotAHardcodedDefault() async throws {

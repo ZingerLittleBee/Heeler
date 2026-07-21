@@ -58,9 +58,18 @@ final class DictationStore {
         /// Microphone access is off — surfaced as an alert, not in the error
         /// row, and the mic button stays visible (User Stories 13, 14).
         case microphonePermissionDenied
-        /// Any other failure, with a user-facing message for the error row
-        /// (model missing → Settings, mid-recording capture failure, …).
-        case message(String)
+        /// Any other failure: a user-facing message for the error row, plus an
+        /// optional remedy the reply box renders as a tappable affordance (a
+        /// missing model routes to Settings; a capture failure has none).
+        case message(String, remedy: ErrorRowRemedy?)
+    }
+
+    /// A remedy an error-row failure offers, so the reply box can surface an
+    /// action next to the message instead of a dead-end string (User Story 15).
+    enum ErrorRowRemedy: Equatable {
+        /// The on-device model is missing; route the user to in-app Settings,
+        /// where the language's model can be downloaded.
+        case openSettings
     }
 
     private(set) var state: State = .idle
@@ -122,7 +131,15 @@ final class DictationStore {
     /// The message for the reply box's existing error row, or `nil` when there
     /// is nothing to show there. Permission denial is an alert, not a row line.
     var errorRowMessage: String? {
-        if case .failed(.message(let text)) = state { return text }
+        if case .failed(.message(let text, _)) = state { return text }
+        return nil
+    }
+
+    /// The remedy the current error-row failure offers, or `nil` when the row
+    /// is empty or the failure has no action (e.g. a mid-recording capture
+    /// failure). The reply box renders it as a tappable affordance.
+    var errorRowRemedy: ErrorRowRemedy? {
+        if case .failed(.message(_, let remedy)) = state { return remedy }
         return nil
     }
 
@@ -245,13 +262,17 @@ final class DictationStore {
         case DictationEngineError.microphonePermissionDenied:
             .microphonePermissionDenied
         case DictationEngineError.modelUnavailable:
-            .message("The speech model isn't ready yet. Download it in Settings.")
+            .message(
+                "The speech model isn't ready yet. Download it in Settings.",
+                remedy: .openSettings)
         case DictationEngineError.localeUnsupported:
-            .message("On-device dictation isn't available for this language.")
+            .message("On-device dictation isn't available for this language.", remedy: nil)
         case DictationEngineError.captureFailed(let detail):
-            .message("Dictation stopped: \(detail)")
+            .message("Dictation stopped: \(detail)", remedy: nil)
         default:
-            .message("Dictation failed: \(error)")
+            // Never leak the underlying error's description to the user; the
+            // typed cases above carry the actionable messages.
+            .message("Dictation stopped unexpectedly. Try again.", remedy: nil)
         }
     }
 }
