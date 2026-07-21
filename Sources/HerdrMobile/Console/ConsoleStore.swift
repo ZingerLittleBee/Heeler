@@ -247,12 +247,12 @@ final class ConsoleStore {
     private func applyStatusChange(_ data: JSONValue, feed: HostFeed) {
         guard
             let paneID = data["pane_id"]?.stringValue,
-            let rawStatus = data["agent_status"]?.stringValue,
-            var row = feed.byPane[paneID]
+            let rawStatus = data["agent_status"]?.stringValue
         else { return }
         let status = AgentStatus(rawValue: rawStatus)
         feed.statusChangeRevision &+= 1
         feed.latestStatusChanges[paneID] = (feed.statusChangeRevision, status)
+        guard var row = feed.byPane[paneID] else { return }
         row.agent.status = status
         feed.byPane[paneID] = row
         rebuild()

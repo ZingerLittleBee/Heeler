@@ -15,7 +15,10 @@ struct ConsoleStoreTests {
 
     /// A store whose session factory routes each Host to its scripted
     /// transport; unknown Hosts fail the connect.
-    private func makeStore(transports: [Host.ID: ScriptedTransport]) -> ConsoleStore {
+    private func makeStore(
+        transports: [Host.ID: ScriptedTransport],
+        reconnectPolicy: ReconnectPolicy = Self.fastPolicy
+    ) -> ConsoleStore {
         ConsoleStore(snapshotRetryDelay: .milliseconds(10)) { host, subscriptions in
             EventsSession(
                 subscriptions: subscriptions,
@@ -25,7 +28,7 @@ struct ConsoleStoreTests {
                     }
                     return transport
                 },
-                reconnectPolicy: Self.fastPolicy,
+                reconnectPolicy: reconnectPolicy,
                 keepalive: nil)
         }
     }
@@ -186,6 +189,42 @@ struct ConsoleStoreTests {
         await snapshotGate.open()
         try await waitUntil("the stale snapshot response should finish applying") {
             await transport.paneReadParams.count > readsBeforeRace
+        }
+        #expect(store.agents.first?.agent.status == .blocked)
+
+        store.setHosts([])
+    }
+
+    @Test func statusChangeForNewPaneDuringInitialSnapshotSurvives() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .idle)]))
+        let snapshotGate = ScriptedTransportCallGate()
+        await transport.gateNextSnapshot(using: snapshotGate)
+        let store = makeStore(
+            transports: [host.id: transport],
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .seconds(30), multiplier: 1, maxDelay: .seconds(30)))
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the initial stale snapshot should be in flight") {
+            await snapshotGate.entryCount == 1
+        }
+        #expect(store.agents.isEmpty)
+
+        #expect(
+            await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .blocked))
+                == true)
+        await transport.failEventStream(.channelFailed(detail: "test ordering barrier"))
+        try await waitUntil("the status event should be consumed before the disconnect") {
+            guard case .reconnecting = store.hostStatuses[host.id] else { return false }
+            return true
+        }
+
+        await snapshotGate.open()
+        try await waitUntil("the initial snapshot should create the Agent row") {
+            store.agents.count == 1
         }
         #expect(store.agents.first?.agent.status == .blocked)
 
