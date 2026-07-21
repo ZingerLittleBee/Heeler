@@ -525,13 +525,15 @@ actor SSHTransport: Transport {
     private var nextTerminalReaderID: UInt64 = 0
 
     func observeTerminal(_ request: TerminalObserveRequest) async throws -> TerminalFrameStream {
+        let socketPath = try await resolvedSocketPath()
         guard terminalChannelState == .idle else {
             throw TransportError.terminalChannelAlreadyOpen
         }
-        let command = Self.observeChannelCommand(
+        let command = try Self.observeChannelCommand(
             observeCommand: observeCommand,
             handlesStdinEOF: observeCommandHandlesStdinEOF,
-            request: request)
+            request: request,
+            socketPath: socketPath)
         // Bounded like the events path (#22): a shed frame leaves a hole in
         // the `seq` counter, and the observe consumer already treats any
         // seq gap as "re-observe for a fresh full repaint" — local drops
@@ -564,8 +566,15 @@ actor SSHTransport: Transport {
     /// kills the command instead.
     ///
     /// Runs under `/bin/sh` explicitly because the login shell owning the
-    /// exec command line may not speak POSIX (fish). The target rides as a
-    /// positional argument so only the outer shell ever quotes it.
+    /// exec command line may not speak POSIX (fish). The target and socket
+    /// path ride as positional arguments so only the outer shell ever quotes
+    /// them.
+    ///
+    /// `HERDR_SOCKET_PATH` pins the herdr CLI to this Host's configured
+    /// socket: without it the CLI resolves the default session, and a
+    /// named-session terminal id is "not found" there — the channel dies
+    /// instantly with nothing on stderr (the CLI reports the close reason on
+    /// stdout).
     ///
     /// In the fallback stdin dance, POSIX hands `/dev/null` to backgrounded
     /// (`&`) commands, so the real stdin is saved to fd 3 first and the
@@ -575,19 +584,25 @@ actor SSHTransport: Transport {
     static func observeChannelCommand(
         observeCommand: String,
         handlesStdinEOF: Bool,
-        request: TerminalObserveRequest
-    ) -> String {
+        request: TerminalObserveRequest,
+        socketPath: String
+    ) throws -> String {
+        guard let quotedSocketPath = RemoteShellPath.quotedAbsolute(socketPath) else {
+            throw TransportError.channelFailed(
+                detail: "The remote socket path cannot be quoted safely.")
+        }
         let quotedTarget =
             "'" + request.target.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
         let observe = "\(observeCommand) \"$1\" --cols \(request.cols) --rows \(request.rows)"
+        let scope = "export HERDR_SOCKET_PATH=\"$2\"; "
         if handlesStdinEOF {
-            return "/bin/sh -c 'exec \(observe)' observe \(quotedTarget)"
+            return "/bin/sh -c '\(scope)exec \(observe)' observe \(quotedTarget) \(quotedSocketPath)"
         }
         let wrapper =
-            "exec 3<&0 0</dev/null; \(observe) & p=$!; "
+            scope + "exec 3<&0 0</dev/null; \(observe) & p=$!; "
             + "(cat <&3 >/dev/null 2>&1 3<&-; kill $p 2>/dev/null) & w=$!; "
             + "wait $p; kill $w 2>/dev/null; exit 0"
-        return "/bin/sh -c '\(wrapper)' observe \(quotedTarget)"
+        return "/bin/sh -c '\(wrapper)' observe \(quotedTarget) \(quotedSocketPath)"
     }
 
     /// The terminal channel's read loop: yields every complete frame line
@@ -662,11 +677,12 @@ actor SSHTransport: Transport {
     // ends attach promptly (verified against localhost sshd in the #11 e2e).
 
     func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession {
+        let socketPath = try await resolvedSocketPath()
         guard terminalChannelState == .idle else {
             throw TransportError.terminalChannelAlreadyOpen
         }
         let bootstrapLine = try Self.attachBootstrapLine(
-            attachCommand: attachCommand, request: request)
+            attachCommand: attachCommand, request: request, socketPath: socketPath)
         // Deliberately unbounded (#22): raw PTY bytes have no framing, no
         // seq, and no snapshot to resync from, so a shed chunk would corrupt
         // the escape stream for the rest of the session. Volume is
@@ -702,8 +718,14 @@ actor SSHTransport: Transport {
     /// no quote, backslash, or control characters, so targets are restricted
     /// to exactly that (a Pane id that violates it could only come from a
     /// hostile server, and refusing beats handing it a shell).
+    ///
+    /// The attach process runs under `/bin/sh` so `HERDR_SOCKET_PATH` can pin
+    /// the herdr CLI to this Host's configured socket (fish parses prefix
+    /// assignments differently, so the login shell cannot set it portably);
+    /// without it the CLI resolves the default session and a named-session
+    /// target is "not found" there.
     static func attachBootstrapLine(
-        attachCommand: String, request: TerminalAttachRequest
+        attachCommand: String, request: TerminalAttachRequest, socketPath: String
     ) throws -> String {
         let unquotable: (Character) -> Bool = { character in
             character == "'" || character == "\\"
@@ -715,8 +737,14 @@ actor SSHTransport: Transport {
             throw TransportError.channelFailed(
                 detail: "attach target cannot be quoted for the remote shell")
         }
+        guard let quotedSocketPath = RemoteShellPath.quotedAbsolute(socketPath) else {
+            throw TransportError.channelFailed(
+                detail: "The remote socket path cannot be quoted safely.")
+        }
         let takeover = request.takeover ? " --takeover" : ""
-        return "exec \(attachCommand) '\(request.target)'\(takeover)\n"
+        return "exec /bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
+            + "exec \(attachCommand) \"$1\"\(takeover)' attach "
+            + "'\(request.target)' \(quotedSocketPath)\n"
     }
 
     /// The attach channel's lifetime: opens the PTY, types the bootstrap
