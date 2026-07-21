@@ -111,6 +111,11 @@ struct AgentInputBar: View {
         let text = store.draft
         switch selection.indices {
         case .selection(let range) where range.isEmpty:
+            // The field can publish a selection indexed into text the draft no
+            // longer holds (observed trapping on first render with an empty
+            // draft); measuring a foreign index traps, so treat out-of-bounds
+            // as "selection unknown".
+            guard range.lowerBound <= text.endIndex else { return nil }
             return text.distance(from: text.startIndex, to: range.lowerBound)
         case .selection, .multiSelection:
             return nil
