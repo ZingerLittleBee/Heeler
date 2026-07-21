@@ -2,7 +2,7 @@ name: HerdrMobile
 options:
   bundleIdPrefix: dev.herdr.mobile
   deploymentTarget:
-    iOS: "18.0"
+    iOS: "26.0"
   createIntermediateGroups: true
   minimumXcodeGenVersion: "2.42.0"
 
