@@ -41,6 +41,7 @@ final actor ScriptedTransport: Transport {
     private var serverInfo: ServerInfo
     private var snapshot: SessionSnapshot
     private var snapshotFailure: TransportError?
+    private var nextSnapshotGate: ScriptedTransportCallGate?
     private var paneTexts: [String: String] = [:]
     private var paneReadFailure: TransportError?
     private var nextStreamID: UInt64 = 0
@@ -72,6 +73,12 @@ final actor ScriptedTransport: Transport {
     /// Makes every subsequent `sessionSnapshot` throw `failure`.
     func setSnapshotFailure(_ failure: TransportError?) {
         snapshotFailure = failure
+    }
+
+    /// Pauses the next snapshot after capturing its response, so tests can
+    /// deterministically deliver events while that stale response is in flight.
+    func gateNextSnapshot(using gate: ScriptedTransportCallGate) {
+        nextSnapshotGate = gate
     }
 
     /// Scripts the text `readPane` returns for `paneID`.
@@ -184,8 +191,13 @@ final actor ScriptedTransport: Transport {
 
     func sessionSnapshot() async throws -> SessionSnapshot {
         snapshotFetchCount += 1
-        if let snapshotFailure { throw snapshotFailure }
-        return snapshot
+        let response = snapshot
+        let failure = snapshotFailure
+        let gate = nextSnapshotGate
+        nextSnapshotGate = nil
+        await gate?.waitUntilOpen()
+        if let failure { throw failure }
+        return response
     }
 
     func readPane(_ params: PaneReadParams) async throws -> PaneReadResult {
@@ -328,6 +340,27 @@ final actor ScriptedTransport: Transport {
         attachContinuation?.finish()
         attachContinuation = nil
         liveAttachID = nil
+    }
+}
+
+/// A one-shot test gate that exposes when a scripted transport call has
+/// captured its response, then holds that response until the test releases it.
+actor ScriptedTransportCallGate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private(set) var entryCount = 0
+
+    func waitUntilOpen() async {
+        entryCount += 1
+        if isOpen { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        let resuming = waiters
+        waiters.removeAll()
+        for waiter in resuming { waiter.resume() }
     }
 }
 

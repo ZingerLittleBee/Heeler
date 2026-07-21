@@ -147,6 +147,7 @@ final class ConsoleStore {
     }
 
     private func runResync(feed: HostFeed) async {
+        let statusRevisionBeforeSnapshot = feed.statusChangeRevision
         guard let transport = await feed.session.currentTransport else { return }
         do {
             let snapshot = try await transport.sessionSnapshot()
@@ -154,7 +155,9 @@ final class ConsoleStore {
             feed.resyncRetryTask?.cancel()
             feed.resyncRetryTask = nil
             hostSyncErrors[feed.host.id] = nil
-            apply(snapshot, to: feed)
+            apply(
+                snapshot, to: feed,
+                preservingStatusChangesAfter: statusRevisionBeforeSnapshot)
             await feed.session.updateSubscriptions(
                 Self.subscriptions(paneIDs: feed.byPane.keys))
             refreshSnippets(feed: feed, transport: transport)
@@ -194,7 +197,11 @@ final class ConsoleStore {
         }
     }
 
-    private func apply(_ snapshot: SessionSnapshot, to feed: HostFeed) {
+    private func apply(
+        _ snapshot: SessionSnapshot,
+        to feed: HostFeed,
+        preservingStatusChangesAfter snapshotStartRevision: UInt64
+    ) {
         let workspaces = Dictionary(
             snapshot.workspaces.map { ($0.workspaceID, $0) }) { first, _ in first }
         var byPane: [String: ConsoleAgent] = [:]
@@ -209,6 +216,13 @@ final class ConsoleStore {
                 repoName: workspace?.worktree?.repoName,
                 lastOutputSnippet: feed.byPane[agent.paneID]?.lastOutputSnippet)
         }
+        for (paneID, change) in feed.latestStatusChanges
+        where change.revision > snapshotStartRevision {
+            guard var row = byPane[paneID] else { continue }
+            row.agent.status = change.status
+            byPane[paneID] = row
+        }
+        feed.latestStatusChanges.removeAll(keepingCapacity: true)
         feed.byPane = byPane
         feed.workspaces = snapshot.workspaces
             .map { ConsoleWorkspace(id: $0.workspaceID, label: $0.label) }
@@ -222,7 +236,10 @@ final class ConsoleStore {
             let rawStatus = data["agent_status"]?.stringValue,
             var row = feed.byPane[paneID]
         else { return }
-        row.agent.status = AgentStatus(rawValue: rawStatus)
+        let status = AgentStatus(rawValue: rawStatus)
+        feed.statusChangeRevision &+= 1
+        feed.latestStatusChanges[paneID] = (feed.statusChangeRevision, status)
+        row.agent.status = status
         feed.byPane[paneID] = row
         rebuild()
         // A status flip usually means fresh output worth showing — for
@@ -445,6 +462,10 @@ private final class HostFeed {
     var resyncRetryTask: Task<Void, Never>?
     var resyncPending = false
     var byPane: [String: ConsoleAgent] = [:]
+    /// Latest status deltas by pane, versioned so a snapshot only preserves
+    /// events that arrived after that snapshot request began.
+    var statusChangeRevision: UInt64 = 0
+    var latestStatusChanges: [String: (revision: UInt64, status: AgentStatus)] = [:]
     /// Workspaces from this Host's latest snapshot, for the new-agent picker.
     var workspaces: [ConsoleWorkspace] = []
     var snippetFetchesInFlight: Set<String> = []

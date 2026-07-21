@@ -149,6 +149,49 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    @Test func statusChangeDuringSnapshotSurvivesTheStaleResponse() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .idle)]))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the pane subscription should settle") {
+            let paneReads = await transport.paneReadParams
+            let subscriptions = await transport.capturedSubscriptions
+            return paneReads.count >= 2
+                && subscriptions.last?.contains(
+                    .pane(.agentStatusChanged, paneID: "w1:p1")) == true
+        }
+
+        let snapshotGate = ScriptedTransportCallGate()
+        await transport.gateNextSnapshot(using: snapshotGate)
+        let readsBeforeRace = await transport.paneReadParams.count
+        #expect(
+            await transport.emit(
+                HerdrEvent(kind: GlobalEventKind.paneAgentDetected.kind, data: .object([:])))
+                == true)
+        try await waitUntil("the stale snapshot should be in flight") {
+            await snapshotGate.entryCount == 1
+        }
+
+        #expect(
+            await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .blocked))
+                == true)
+        try await waitUntil("the live status event should land first") {
+            store.agents.first?.agent.status == .blocked
+        }
+
+        await snapshotGate.open()
+        try await waitUntil("the stale snapshot response should finish applying") {
+            await transport.paneReadParams.count > readsBeforeRace
+        }
+        #expect(store.agents.first?.agent.status == .blocked)
+
+        store.setHosts([])
+    }
+
     @Test func snapshotPushesPaneSubscriptionsIntoTheSession() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(
