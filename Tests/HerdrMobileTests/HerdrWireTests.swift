@@ -59,10 +59,47 @@ import Testing
         let agent = Agent(try JSONDecoder().decode(AgentInfo.self, from: Data(json.utf8)))
 
         #expect(agent.kind == "unknown")
+        #expect(agent.name == nil)
+        #expect(agent.displayName == "unknown")
         #expect(agent.title == "")
         #expect(agent.cwd == "")
         // An unrecognized status survives with its raw value intact.
         #expect(agent.status == AgentStatus(rawValue: "haunted"))
+    }
+
+    @Test func agentMappingResolvesNameWithDisplayAgentPrecedence() throws {
+        // `herdr agent start testbash` shape: unrecognized program, but the
+        // server reports a meaningful name (#41).
+        let json = #"{"terminal_id":"t","display_agent":"testbash","name":"agent-3","agent_status":"working","workspace_id":"w","tab_id":"w:t","pane_id":"w:p","focused":false,"revision":1}"#
+
+        let agent = Agent(try JSONDecoder().decode(AgentInfo.self, from: Data(json.utf8)))
+
+        #expect(agent.name == "testbash")
+        #expect(agent.displayName == "testbash")
+        #expect(agent.kind == "unknown")
+    }
+
+    @Test func agentMappingFallsBackToWireNameThenKind() throws {
+        let named = #"{"terminal_id":"t","name":"agent-3","agent_status":"working","workspace_id":"w","tab_id":"w:t","pane_id":"w:p","focused":false,"revision":1}"#
+        let detectedOnly = #"{"terminal_id":"t","agent":"claude","agent_status":"working","workspace_id":"w","tab_id":"w:t","pane_id":"w:p","focused":false,"revision":1}"#
+
+        let namedAgent = Agent(try JSONDecoder().decode(AgentInfo.self, from: Data(named.utf8)))
+        let detectedAgent = Agent(
+            try JSONDecoder().decode(AgentInfo.self, from: Data(detectedOnly.utf8)))
+
+        #expect(namedAgent.displayName == "agent-3")
+        // A recognized agent without a server-reported name renders as today.
+        #expect(detectedAgent.name == nil)
+        #expect(detectedAgent.displayName == "claude")
+    }
+
+    @Test func agentMappingTreatsEmptyWireNamesAsMissing() throws {
+        let json = #"{"terminal_id":"t","agent":"codex","display_agent":"","name":"","agent_status":"working","workspace_id":"w","tab_id":"w:t","pane_id":"w:p","focused":false,"revision":1}"#
+
+        let agent = Agent(try JSONDecoder().decode(AgentInfo.self, from: Data(json.utf8)))
+
+        #expect(agent.name == nil)
+        #expect(agent.displayName == "codex")
     }
 
     @Test func agentMappingFallsBackToUnstrippedTitle() throws {

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// One Console card (#8): agent kind and status up front, Host, pane
+/// One Console card (#8): agent name and status up front, Host, pane
 /// address, and workspace as context, plus the last-output snippet.
 struct AgentCardView: View {
     let agent: ConsoleAgent
@@ -8,7 +8,7 @@ struct AgentCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
-                Text(agent.agent.kind)
+                Text(agent.agent.displayName)
                     .font(.headline)
                 AgentStatusBadge(status: agent.agent.status)
                 Spacer()

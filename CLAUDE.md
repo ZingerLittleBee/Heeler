@@ -28,3 +28,17 @@ Rediscovering these is expensive; they were verified against herdr 0.7.4 source 
 - Pin Citadel exactly in `Package.resolved` and review updates: Citadel 0.12.1 depends on a third-party fork of swift-nio-ssh (Wellz26), not Apple's repo.
 - Tracker is GitHub issues in this repo (`gh issue ...`). Reference issues from commits with `refs #<n>`.
 - Update `CONTEXT.md` when domain terms change; add an ADR only for hard-to-reverse, surprising trade-offs.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in this repo's GitHub Issues (`gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles map 1:1 to repo labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
