@@ -49,6 +49,10 @@ the native text-selection presentation requested by Ghostty's iOS delegate.
   encode SGR or legacy terminal wheel events through the session's public input
   seam. DEC private-mode tracking is incremental so split SSH packets remain
   correct.
+- Theme selection uses the package's `GhosttyTheme` catalog but exposes only a
+  small curated set. The persisted selection resolves to a light/dark
+  `TerminalTheme`; `TerminalController.setTheme` updates existing Attach
+  surfaces and the settings preview without rebuilding their in-memory session.
 - Xcode may retain an empty binary-artifact directory after an interrupted
   first download. Resolving packages with fresh DerivedData repairs that cache
   state without changing the pinned dependency.

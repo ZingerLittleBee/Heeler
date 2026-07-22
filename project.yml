@@ -49,6 +49,8 @@ targets:
     dependencies:
       - package: Citadel
       - package: GhosttyTerminal
+      - package: GhosttyTerminal
+        product: GhosttyTheme
 
   HerdrMobileTests:
     type: bundle.unit-test

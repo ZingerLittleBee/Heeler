@@ -20,12 +20,14 @@ struct TerminalScreenView: UIViewRepresentable {
     let feed: TerminalByteFeed
     var onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)?
     var onSend: ((Data) -> Void)?
+    var theme: TerminalTheme = .default
     @Environment(\.openURL) private var openURL
 
     func makeUIView(context: Context) -> HerdrTerminalView {
         let view = Self.makeConfiguredTerminal(
             onSizeChanged: onSizeChanged,
-            onSend: onSend)
+            onSend: onSend,
+            theme: theme)
         view.delegate = context.coordinator
         context.coordinator.terminalView = view
         feed.attach { [weak view] data in
@@ -37,18 +39,21 @@ struct TerminalScreenView: UIViewRepresentable {
     @MainActor
     static func makeConfiguredTerminal(
         onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)? = nil,
-        onSend: ((Data) -> Void)? = nil
+        onSend: ((Data) -> Void)? = nil,
+        theme: TerminalTheme = .default
     ) -> HerdrTerminalView {
         let view = HerdrTerminalView(
             frame: .zero,
             onSizeChanged: onSizeChanged,
-            onSend: onSend)
+            onSend: onSend,
+            theme: theme)
         view.installKeyboardSwitcher()
         return view
     }
 
     func updateUIView(_ view: HerdrTerminalView, context: Context) {
         view.updateCallbacks(onSizeChanged: onSizeChanged, onSend: onSend)
+        view.applyTheme(theme)
         context.coordinator.onOpenLink = { url in openURL(url) }
     }
 
@@ -113,7 +118,9 @@ private final class TerminalSessionCallbackBridge {
 /// host-managed session lifecycle out of the SwiftUI screen.
 final class HerdrTerminalView: UITerminalView {
     private let callbackBridge: TerminalSessionCallbackBridge
+    private let terminalController: TerminalController
     let terminalSession: InMemoryTerminalSession
+    private(set) var appliedTheme: TerminalTheme
     private var terminalInputView: UIView?
     private var modeTracker = TerminalModeTracker()
     private var lastInputWindowSize: CGSize?
@@ -157,7 +164,8 @@ final class HerdrTerminalView: UITerminalView {
     init(
         frame: CGRect,
         onSizeChanged: ((Int, Int) -> Void)?,
-        onSend: ((Data) -> Void)?
+        onSend: ((Data) -> Void)?,
+        theme: TerminalTheme
     ) {
         let callbackBridge = TerminalSessionCallbackBridge(
             onSizeChanged: onSizeChanged,
@@ -170,10 +178,12 @@ final class HerdrTerminalView: UITerminalView {
             resize: { [weak callbackBridge] viewport in
                 callbackBridge?.resize(viewport)
             })
+        terminalController = TerminalController(theme: theme)
+        appliedTheme = theme
         super.init(frame: frame)
         inputAccessoryItems = []
         configuration = TerminalSurfaceOptions(backend: .inMemory(terminalSession))
-        controller = TerminalController()
+        controller = terminalController
         callbackBridge.onViewport = { [weak self] viewport in
             self?.updateTouchScrollMetrics(viewport)
         }
@@ -191,6 +201,15 @@ final class HerdrTerminalView: UITerminalView {
     ) {
         callbackBridge.onSizeChanged = onSizeChanged
         callbackBridge.onSend = onSend
+    }
+
+    @discardableResult
+    func applyTheme(_ theme: TerminalTheme) -> Bool {
+        guard theme != appliedTheme, terminalController.setTheme(theme) else {
+            return false
+        }
+        appliedTheme = theme
+        return true
     }
 
     func receive(_ data: Data) {
