@@ -113,6 +113,8 @@ enum TerminalControlKey: Equatable {
 }
 
 final class TerminalKeyboardAccessory: UIInputView {
+    static let preferredHeight: CGFloat = 48
+
     private weak var terminalView: SizeReportingTerminalView?
     private let modeControl = UISegmentedControl(items: ["Text", "Keys"])
 
@@ -133,7 +135,7 @@ final class TerminalKeyboardAccessory: UIInputView {
     }
 
     override var intrinsicContentSize: CGSize {
-        CGSize(width: UIView.noIntrinsicMetric, height: 48)
+        CGSize(width: UIView.noIntrinsicMetric, height: Self.preferredHeight)
     }
 
     func update(mode: TerminalKeyboardMode) {
@@ -188,12 +190,16 @@ final class TerminalKeyboardAccessory: UIInputView {
 }
 
 final class TerminalControlKeyboardView: UIInputView, UIInputViewAudioFeedback {
+    static let defaultHeight: CGFloat = 224
+
     private weak var terminalView: SizeReportingTerminalView?
+    private let keyboardHeight: CGFloat
 
     var enableInputClicksWhenVisible: Bool { true }
 
-    init(frame: CGRect, terminalView: SizeReportingTerminalView) {
+    init(frame: CGRect, keyboardHeight: CGFloat, terminalView: SizeReportingTerminalView) {
         self.terminalView = terminalView
+        self.keyboardHeight = keyboardHeight
         super.init(frame: frame, inputViewStyle: .keyboard)
         allowsSelfSizing = true
         autoresizingMask = [.flexibleWidth]
@@ -207,7 +213,7 @@ final class TerminalControlKeyboardView: UIInputView, UIInputViewAudioFeedback {
     }
 
     override var intrinsicContentSize: CGSize {
-        CGSize(width: UIView.noIntrinsicMetric, height: 224)
+        CGSize(width: UIView.noIntrinsicMetric, height: keyboardHeight)
     }
 
     private func configureKeys() {
@@ -338,7 +344,13 @@ extension SizeReportingTerminalView {
         inputAssistantItem.leadingBarButtonGroups = []
         inputAssistantItem.trailingBarButtonGroups = []
         inputAccessoryView = TerminalKeyboardAccessory(
-            frame: CGRect(x: 0, y: 0, width: bounds.width, height: 48), terminalView: self)
+            frame: CGRect(
+                x: 0, y: 0, width: bounds.width,
+                height: TerminalKeyboardAccessory.preferredHeight),
+            terminalView: self)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(textKeyboardFrameDidChange(_:)),
+            name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
     }
 
     func setKeyboardMode(_ mode: TerminalKeyboardMode) {
@@ -349,7 +361,9 @@ extension SizeReportingTerminalView {
             inputView = nil
         case .controls:
             inputView = TerminalControlKeyboardView(
-                frame: CGRect(x: 0, y: 0, width: bounds.width, height: 224), terminalView: self)
+                frame: CGRect(
+                    x: 0, y: 0, width: bounds.width, height: controlKeyboardHeight),
+                keyboardHeight: controlKeyboardHeight, terminalView: self)
         }
         (inputAccessoryView as? TerminalKeyboardAccessory)?.update(mode: mode)
         UIView.performWithoutAnimation {
@@ -359,5 +373,26 @@ extension SizeReportingTerminalView {
 
     func sendControlKey(_ key: TerminalControlKey) {
         send(key.bytes(applicationCursor: getTerminal().applicationCursor))
+    }
+
+    func recordTextKeyboardHeight(totalHeight: CGFloat, accessoryHeight: CGFloat) {
+        let inputViewHeight = totalHeight - accessoryHeight
+        guard inputViewHeight >= 100 else { return }
+        controlKeyboardHeight = inputViewHeight.rounded(.up)
+    }
+
+    @objc private func textKeyboardFrameDidChange(_ notification: Notification) {
+        guard keyboardMode == .text, isFirstResponder, let window,
+              let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]
+                as? CGRect
+        else { return }
+
+        let frameInWindow = window.convert(endFrame, from: window.screen.coordinateSpace)
+        let totalHeight = window.bounds.intersection(frameInWindow).height
+        let accessoryHeight = max(
+            inputAccessoryView?.bounds.height ?? 0,
+            TerminalKeyboardAccessory.preferredHeight)
+        recordTextKeyboardHeight(
+            totalHeight: totalHeight, accessoryHeight: accessoryHeight)
     }
 }

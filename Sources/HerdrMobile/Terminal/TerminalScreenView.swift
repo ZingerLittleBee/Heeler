@@ -97,6 +97,7 @@ struct TerminalScreenView: UIViewRepresentable {
 /// for the normal buffer and its local scrollback.
 final class SizeReportingTerminalView: TerminalView, UIGestureRecognizerDelegate {
     var onSizeReport: ((_ cols: Int, _ rows: Int) -> Void)?
+    var controlKeyboardHeight = TerminalControlKeyboardView.defaultHeight
     private var lastReported: (cols: Int, rows: Int)?
     private var lastInputWindowSize: CGSize?
     private var installedAlternateScreenScrolling = false

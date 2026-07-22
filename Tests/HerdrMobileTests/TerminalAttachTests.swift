@@ -34,6 +34,18 @@ struct TerminalAttachTests {
         #expect(terminal.inputView == nil)
     }
 
+    @MainActor
+    @Test func terminalKeysReuseTheMeasuredSystemKeyboardHeight() throws {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        terminal.recordTextKeyboardHeight(totalHeight: 336, accessoryHeight: 48)
+        terminal.recordTextKeyboardHeight(totalHeight: 48, accessoryHeight: 48)
+
+        terminal.setKeyboardMode(.controls)
+        let keyboard = try #require(terminal.inputView as? TerminalControlKeyboardView)
+        #expect(keyboard.intrinsicContentSize.height == 288)
+        #expect(keyboard.frame.height == 288)
+    }
+
     @Test func terminalControlKeyboardContainsOnlyUsefulMobileKeys() {
         #expect(TerminalControlKey.rows == [
             [.escape, .tab, .controlC, .controlD, .controlZ],
