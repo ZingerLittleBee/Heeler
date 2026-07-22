@@ -8,7 +8,6 @@ import NIOCore
 
 /// How to reach one Host, authenticate against it, and find its herdr socket.
 struct SSHTransportSettings: Sendable {
-    static let defaultObserveCommand = "herdr terminal session control"
     static let defaultSessionListCommand = "herdr session list --json"
 
     var host: String
@@ -34,18 +33,6 @@ struct SSHTransportSettings: Sendable {
     /// Official Host-local CLI command for discovering default and named
     /// sessions. It does not depend on a running API socket.
     var sessionListCommand: String = Self.defaultSessionListCommand
-    /// Command that streams a Pane's terminal as NDJSON frame lines over a
-    /// no-PTY exec channel. The default claims a non-takeover control
-    /// session so herdr applies the phone geometry to the Agent's PTY; the
-    /// app never writes control input on this channel. The target and
-    /// geometry are appended. Injectable so tests can substitute a
-    /// frame-emitting script at the environment boundary; per-Host override
-    /// also covers hosts where herdr is not on the login shell's PATH.
-    var observeCommand: String = Self.defaultObserveCommand
-    /// Whether `observeCommand` treats stdin EOF as a graceful detach. The
-    /// production control command does; inert test commands can opt into the
-    /// legacy kill-on-EOF wrapper instead.
-    var observeCommandHandlesStdinEOF = true
     /// Command that attaches interactively to a Pane, run on the Host's
     /// dedicated terminal channel with a PTY (#11); the attach target and
     /// takeover flag are appended (see `attachBootstrapLine`). Injectable so
@@ -76,7 +63,7 @@ actor SSHTransport: Transport {
 
     /// Exec channels are SSH session channels, capped by sshd's MaxSessions
     /// (default 10) per connection. Bound at 8 to leave headroom for the
-    /// events channel and a future Attach terminal.
+    /// events channel and the interactive terminal.
     static let maxConcurrentExecChannels = 8
 
     private let client: SSHClient
@@ -84,8 +71,6 @@ actor SSHTransport: Transport {
     private let socatPath: String
     private let wakeCommand: String
     private let sessionListCommand: String
-    private let observeCommand: String
-    private let observeCommandHandlesStdinEOF: Bool
     private let attachCommand: String
     private let homeCommand: String
     private let requestTimeout: Duration
@@ -169,9 +154,8 @@ actor SSHTransport: Transport {
 
     private init(
         client: SSHClient, socketLocation: HerdrSocketLocation, socatPath: String,
-        wakeCommand: String, sessionListCommand: String, observeCommand: String,
-        observeCommandHandlesStdinEOF: Bool,
-        attachCommand: String, homeCommand: String,
+        wakeCommand: String, sessionListCommand: String, attachCommand: String,
+        homeCommand: String,
         requestTimeout: Duration
     ) {
         self.client = client
@@ -179,8 +163,6 @@ actor SSHTransport: Transport {
         self.socatPath = socatPath
         self.wakeCommand = wakeCommand
         self.sessionListCommand = sessionListCommand
-        self.observeCommand = observeCommand
-        self.observeCommandHandlesStdinEOF = observeCommandHandlesStdinEOF
         self.attachCommand = attachCommand
         self.homeCommand = homeCommand
         self.requestTimeout = requestTimeout
@@ -213,8 +195,6 @@ actor SSHTransport: Transport {
         return SSHTransport(
             client: client, socketLocation: settings.socket, socatPath: settings.socatPath,
             wakeCommand: settings.wakeCommand, sessionListCommand: settings.sessionListCommand,
-            observeCommand: settings.observeCommand,
-            observeCommandHandlesStdinEOF: settings.observeCommandHandlesStdinEOF,
             attachCommand: settings.attachCommand, homeCommand: settings.homeCommand,
             requestTimeout: settings.requestTimeout)
     }
@@ -515,16 +495,11 @@ actor SSHTransport: Transport {
         }
     }
 
-    // MARK: Terminal channel (#9)
+    // MARK: Terminal channel
     //
-    // One dedicated exec channel carries the terminal surface. Observe runs
-    // `herdr terminal session control <target>` without a PTY or takeover:
-    // herdr applies the phone geometry to the Agent's PTY, while the app
-    // exposes no terminal-input path and renders the NDJSON frames read-only.
-    // Like the events channel it is exempt from the exec-slot queue: the
-    // session budget is 8 RPC slots + events + this terminal channel = sshd's
-    // default MaxSessions 10. Attach (#11) reuses this single-channel budget;
-    // the state below keeps it to exactly one terminal channel per Host.
+    // One dedicated interactive terminal channel is exempt from the exec-slot
+    // queue. The session budget is 8 RPC slots + events + terminal = sshd's
+    // default MaxSessions 10.
 
     private enum TerminalChannelState: Equatable {
         case idle
@@ -534,157 +509,15 @@ actor SSHTransport: Transport {
     private var terminalChannelState: TerminalChannelState = .idle
     private var nextTerminalReaderID: UInt64 = 0
 
-    func observeTerminal(_ request: TerminalObserveRequest) async throws -> TerminalFrameStream {
-        let socketPath = try await resolvedSocketPath()
-        guard terminalChannelState == .idle else {
-            throw TransportError.terminalChannelAlreadyOpen
-        }
-        let command = try Self.observeChannelCommand(
-            observeCommand: observeCommand,
-            handlesStdinEOF: observeCommandHandlesStdinEOF,
-            request: request,
-            socketPath: socketPath)
-        // Bounded like the events path (#22): a shed frame leaves a hole in
-        // the `seq` counter, and the observe consumer already treats any
-        // seq gap as "re-observe for a fresh full repaint" — local drops
-        // recover exactly like wire-level frame loss, no extra signal
-        // needed.
-        let (frames, continuation) = AsyncThrowingStream<TerminalFrame, any Error>.makeStream(
-            bufferingPolicy: .bufferingNewest(HerdrEventStream.bufferLimit))
-        nextTerminalReaderID += 1
-        let readerID = nextTerminalReaderID
-        let readerTask = Task {
-            await self.runTerminalChannel(
-                readerID: readerID, command: Self.cLocaleCommand(command), frames: continuation)
-        }
-        // No suspension between the idle guard and here, and the reader is
-        // actor-isolated too, so it cannot have observed — let alone ended —
-        // a state it is only now being recorded into.
-        terminalChannelState = .streaming(readerID: readerID)
-        return TerminalFrameStream(frames: frames) {
-            readerTask.cancel()
-            await readerTask.value
-        }
-    }
-
-    /// The full remote command for one observe channel. Everything this
-    /// transport runs must die on stdin EOF: explicit close is the only way
-    /// to end a Citadel channel, and the close only completes once the
-    /// remote command exits. The production control CLI handles EOF by
-    /// sending Detach, so it stays in the foreground with stdin intact.
-    /// Injectable commands that ignore EOF use a POSIX wrapper whose watcher
-    /// kills the command instead.
-    ///
-    /// Runs under `/bin/sh` explicitly because the login shell owning the
-    /// exec command line may not speak POSIX (fish). The target and socket
-    /// path ride as positional arguments so only the outer shell ever quotes
-    /// them.
-    ///
-    /// `HERDR_SOCKET_PATH` pins the herdr CLI to this Host's configured
-    /// socket: without it the CLI resolves the default session, and a
-    /// named-session terminal id is "not found" there — the channel dies
-    /// instantly with nothing on stderr (the CLI reports the close reason on
-    /// stdout).
-    ///
-    /// In the fallback stdin dance, POSIX hands `/dev/null` to backgrounded
-    /// (`&`) commands, so the real stdin is saved to fd 3 first and the
-    /// watcher reads that. The command exiting on its own takes the `wait`
-    /// path: the watcher is killed and the wrapper exits, so the remote death
-    /// still surfaces as the stream ending.
-    static func observeChannelCommand(
-        observeCommand: String,
-        handlesStdinEOF: Bool,
-        request: TerminalObserveRequest,
-        socketPath: String
-    ) throws -> String {
-        guard let quotedSocketPath = RemoteShellPath.quotedAbsolute(socketPath) else {
-            throw TransportError.channelFailed(
-                detail: "The remote socket path cannot be quoted safely.")
-        }
-        let quotedTarget =
-            "'" + request.target.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
-        let observe = "\(observeCommand) \"$1\" --cols \(request.cols) --rows \(request.rows)"
-        let scope = "export HERDR_SOCKET_PATH=\"$2\"; "
-        if handlesStdinEOF {
-            return "/bin/sh -c '\(scope)exec \(observe)' observe \(quotedTarget) \(quotedSocketPath)"
-        }
-        let wrapper =
-            scope + "exec 3<&0 0</dev/null; \(observe) & p=$!; "
-            + "(cat <&3 >/dev/null 2>&1 3<&-; kill $p 2>/dev/null) & w=$!; "
-            + "wait $p; kill $w 2>/dev/null; exit 0"
-        return "/bin/sh -c '\(wrapper)' observe \(quotedTarget) \(quotedSocketPath)"
-    }
-
-    /// The terminal channel's read loop: yields every complete frame line
-    /// until the channel ends. Ending is always by explicit close, exactly
-    /// like the events channel: cancelling the reader task only ends the
-    /// *local* inbound stream, the exec body then returns, and Citadel
-    /// closes the channel on the way out. Takes no exec slot (see MARK).
-    private func runTerminalChannel(
-        readerID: UInt64,
-        command: String,
-        frames continuation: AsyncThrowingStream<TerminalFrame, any Error>.Continuation
-    ) async {
-        var stderr = Data()
-        var pending = Data()
-        /// nil means the stream ends gracefully (explicit `end()`).
-        var failure: TransportError?
-        do {
-            try await client.withExec(command) { inbound, _ in
-                for try await chunk in inbound {
-                    switch chunk {
-                    case .stdout(let buffer):
-                        pending.append(contentsOf: buffer.readableBytesView)
-                        while let lineData = Self.takeLine(from: &pending) {
-                            if let frame = TerminalFrame.decode(fromLine: lineData) {
-                                continuation.yield(frame)
-                            }
-                            // Undecodable lines are dropped: junk on the
-                            // stream must never kill it.
-                        }
-                    case .stderr(let buffer):
-                        stderr.append(contentsOf: buffer.readableBytesView)
-                    }
-                }
-            }
-            failure =
-                Task.isCancelled
-                ? nil  // Explicit end(): the consumer closed the channel.
-                : TransportError.channelFailed(
-                    detail:
-                        "terminal channel closed by remote; stderr: \(Self.preview(stderr))")
-        } catch is CancellationError {
-            failure = nil
-        } catch {
-            failure = TransportError.channelFailed(
-                detail: "terminal channel: \(error); stderr: \(Self.preview(stderr))")
-        }
-        // State first, continuation second: a consumer resuming on the
-        // stream's end must already see the channel as free.
-        if terminalChannelState == .streaming(readerID: readerID) {
-            terminalChannelState = .idle
-        }
-        if let failure {
-            continuation.finish(throwing: failure)
-        } else {
-            continuation.finish()
-        }
-    }
-
-    // MARK: Attach (#11)
-    //
-    // The interactive terminal shares the Host's single terminal channel
-    // with Observe (the session slot budget is 8 RPC + events + one terminal
-    // channel = sshd's default MaxSessions 10): whichever surface is live
-    // holds `terminalChannelState`, and the other is refused until it ends.
+    // MARK: Attach
     //
     // Citadel 0.12.1's public API has no PTY + exec-request combination —
     // `withPTY` sends a PTY request followed by a *shell* request — so the
     // attach command rides in as the shell's first input line, `exec`'d to
     // replace the shell outright: when attach exits, nothing is left on the
-    // channel and it closes. No kill-on-EOF wrapper is needed either, unlike
-    // Observe: closing a PTY channel HUPs the remote process group, which
-    // ends attach promptly (verified against localhost sshd in the #11 e2e).
+    // channel and it closes. Closing a PTY channel HUPs the remote process
+    // group, which ends attach promptly (verified against localhost sshd in
+    // the #11 e2e).
 
     func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession {
         let socketPath = try await resolvedSocketPath()

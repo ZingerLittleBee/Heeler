@@ -1,13 +1,13 @@
 import Foundation
 import Observation
 
-/// The Attach screen's session pipeline (#11): a full interactive terminal
+/// The Agent detail screen's session pipeline: a full interactive terminal
 /// over the Host's terminal channel — raw PTY bytes into the view through a
 /// `TerminalByteFeed`, keystrokes back out, geometry changes as SSH
 /// window-change on the live channel.
 ///
-/// Like Observe, nothing starts until the terminal view's first size report
-/// (the PTY opens with real cols/rows). Unlike Observe, a later resize never
+/// Nothing starts until the terminal view's first size report (the PTY opens
+/// with real cols/rows). A later resize never
 /// restarts anything: it rides in-band, which is the whole point of the PTY.
 /// One session per run; the remote attach exiting (the user detached inside
 /// the TUI, the pane closed) surfaces as `.ended` with reattach offered.
@@ -84,7 +84,7 @@ final class AttachTerminalStore {
 
     /// Ends the session by explicit close (a live exec channel ignores task
     /// cancellation, ADR 0002) and waits for the teardown. Terminal: the
-    /// Attach screen creates a fresh store per visit.
+    /// The detail screen creates a fresh store after a Host reconnect.
     func stop() async {
         stopRequested = true
         if let session {
@@ -157,8 +157,3 @@ final class AttachTerminalStore {
         }
     }
 }
-
-/// Object identity (the default `id` for classes) is the full-screen-cover
-/// presentation identity: every Observe -> Attach handover mints a fresh
-/// store.
-extension AttachTerminalStore: Identifiable {}

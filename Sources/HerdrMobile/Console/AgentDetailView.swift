@@ -1,17 +1,13 @@
 import SwiftUI
 
-/// The Agent detail screen (#9, #10): scrollback plus live output in a real
-/// terminal, read-only (Observe semantics per CONTEXT.md), with the full
-/// interactive Attach terminal (#11) behind the toolbar button. Input exists
-/// only in Attach, where SwiftTerm uses the iOS system keyboard directly.
+/// The Agent detail screen: one interactive Attach terminal with the iOS
+/// system keyboard. The normal terminal buffer scrolls locally; full-screen
+/// alternate buffers translate vertical drags into Page Up and Page Down.
 struct AgentDetailView: View {
     let agent: ConsoleAgent
     private let console: ConsoleStore
-    /// Kept for the Observe/Attach handover: fresh stores are minted per
-    /// surface switch, all sharing this provider.
     private let transport: @Sendable () async -> (any Transport)?
-    @State private var store: ObserveTerminalStore
-    @State private var attach: AttachTerminalStore?
+    @State private var store: AttachTerminalStore
     @State private var close: ClosePaneStore
     @State private var isConfirmingClose = false
     @State private var closeErrorMessage: String?
@@ -23,7 +19,7 @@ struct AgentDetailView: View {
         let transport = console.transportProvider(for: agent.hostID)
         self.transport = transport
         _store = State(
-            initialValue: ObserveTerminalStore(
+            initialValue: AttachTerminalStore(
                 target: agent.agent.paneID, transport: transport))
         _close = State(
             initialValue: ClosePaneStore(paneTitle: Self.displayTitle(for: agent)) {
@@ -32,30 +28,15 @@ struct AgentDetailView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            TerminalScreenView(
-                feed: store.feed,
-                onSizeChanged: { cols, rows in
-                    store.viewDidResize(cols: cols, rows: rows)
-                },
-                onLoadEarlier: { store.loadEarlier() })
-            // Keyed on the store: resuming Observe after Attach mints a
-            // fresh store, whose feed must get a freshly attached view.
-            .id(ObjectIdentifier(store))
-            .overlay(alignment: .top) {
-                if store.isLoadingEarlier {
-                    ProgressView()
-                        .controlSize(.small)
-                        .padding(8)
-                        .background(.thinMaterial, in: Capsule())
-                        .padding(.top, 8)
-                        .accessibilityLabel("Loading earlier output")
-                        .allowsHitTesting(false)
-                }
-            }
-            .overlay { statusOverlay }
-
-        }
+        TerminalScreenView(
+            feed: store.feed,
+            onSizeChanged: { cols, rows in
+                store.viewDidResize(cols: cols, rows: rows)
+            },
+            onSend: { keystrokes in store.send(keystrokes) }
+        )
+        .id(ObjectIdentifier(store))
+        .overlay { statusOverlay }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -63,15 +44,7 @@ struct AgentDetailView: View {
                 AgentStatusBadge(status: agent.agent.status)
             }
             ToolbarItem(placement: .primaryAction) {
-                Button("Attach", systemImage: "keyboard") {
-                    openAttach()
-                }
-            }
-            ToolbarItem(placement: .primaryAction) {
                 Menu {
-                    // Destructive, explicit-confirmation only: closing a pane
-                    // destroys the agent, so there is deliberately no
-                    // swipe-to-close anywhere (#13, User Story 9).
                     Button("Close Agent", systemImage: "trash", role: .destructive) {
                         isConfirmingClose = true
                     }
@@ -102,64 +75,26 @@ struct AgentDetailView: View {
         } message: {
             Text(closeErrorMessage ?? "")
         }
-        .fullScreenCover(item: $attach, onDismiss: resumeObserve) { attachStore in
-            AttachTerminalView(store: attachStore, title: title)
-        }
         .onChange(of: console.hostConnectionGenerations[agent.hostID]) { _, generation in
-            guard generation != nil, attach == nil else { return }
-            reconnectObserve()
+            guard generation != nil else { return }
+            reconnect()
         }
         .onDisappear {
-            // Explicit close, never abandonment: a live exec channel ignores
-            // task cancellation (ADR 0002). Registering with the Console is
-            // synchronous, so the next detail waits for this channel close.
-            let observe = store
+            let terminal = store
             console.scheduleTerminalTeardown(for: agent.hostID) {
-                await observe.stop()
+                await terminal.stop()
             }
         }
     }
 
-    /// Observe -> Attach handover: the two surfaces share the Host's single
-    /// terminal channel, so Observe must be fully stopped (channel torn
-    /// down) before the Attach screen appears and opens its own.
-    private func openAttach() {
-        let observe = store
-        let attachStore = AttachTerminalStore(target: agent.agent.paneID, transport: transport)
-        Task {
-            await observe.stop()
-            attach = attachStore
-        }
-    }
-
-    /// Attach -> Observe handover, after the cover is dismissed (its Detach
-    /// button stops the session before dismissing). `stop()` is terminal, so
-    /// resuming means a fresh store; the `.id` above rebuilds the terminal
-    /// view around it.
-    private func resumeObserve() {
+    private func reconnect() {
         let previous = store
-        let replacement = ObserveTerminalStore(
-            target: agent.agent.paneID, transport: transport)
-        replacement.reuseViewSize(from: previous)
-        store = replacement
-    }
-
-    /// A real Host reconnect means the old terminal stream is permanently
-    /// closed. Register its teardown before minting the replacement; the new
-    /// store's transport provider waits for that task before taking the Host's
-    /// single terminal channel.
-    private func reconnectObserve() {
-        let observe = store
         console.scheduleTerminalTeardown(for: agent.hostID) {
-            await observe.stop()
+            await previous.stop()
         }
-        resumeObserve()
+        store = AttachTerminalStore(target: agent.agent.paneID, transport: transport)
     }
 
-    /// Confirmed close: fire `pane.close`, and only on success stop Observe
-    /// (the closed pane ends its stream — stopping first keeps that teardown
-    /// from flashing the failure overlay) and leave the now-gone Agent's
-    /// screen. A failed close leaves everything untouched and surfaces why.
     private func performClose() async {
         await close.confirmClose()
         switch close.state {
@@ -178,13 +113,13 @@ struct AgentDetailView: View {
         switch store.status {
         case .waitingForSize, .connecting:
             ProgressView()
-        case .failed(let message):
+        case .ended(let message):
             ContentUnavailableView {
-                Label("Live View Unavailable", systemImage: "tv.slash")
+                Label("Session Ended", systemImage: "cable.connector.slash")
             } description: {
                 Text(message)
             } actions: {
-                Button("Retry") { store.retry() }
+                Button("Reattach") { store.retry() }
                     .buttonStyle(.borderedProminent)
             }
         case .live, .stopped:
@@ -196,8 +131,6 @@ struct AgentDetailView: View {
         Self.displayTitle(for: agent)
     }
 
-    /// The Agent's screen title, shared with the close store's dialog copy so
-    /// both name the same thing.
     private static func displayTitle(for agent: ConsoleAgent) -> String {
         agent.agent.title.isEmpty ? agent.agent.displayName : agent.agent.title
     }

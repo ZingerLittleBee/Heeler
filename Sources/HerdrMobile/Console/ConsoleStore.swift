@@ -37,7 +37,7 @@ final class ConsoleStore {
     @ObservationIgnored private let snapshotRetryDelay: Duration
     /// Explicit terminal-channel teardowns registered synchronously by a
     /// disappearing detail screen. A new detail waits for the latest task,
-    /// preventing Observe from racing the previous screen's channel close.
+    /// preventing Attach from racing the previous screen's channel close.
     @ObservationIgnored private var terminalTeardowns: [Host.ID: TerminalTeardown] = [:]
     @ObservationIgnored private var nextTerminalTeardownID: UInt64 = 0
     /// Whether the Console should hold live connections (foregrounded);
@@ -321,8 +321,8 @@ final class ConsoleStore {
 
     // MARK: Detail-screen transport access
 
-    /// The Host's live transport for detail-screen RPCs (Observe backfill
-    /// and live-follow, #9). A closure rather than a value: the events
+    /// The Host's live transport for the interactive terminal. A closure
+    /// rather than a value: the events
     /// session may reconnect onto a fresh transport at any time, so it is
     /// re-queried per use; nil while the Host is disconnected or gone.
     func transportProvider(for hostID: Host.ID) -> @Sendable () async -> (any Transport)? {

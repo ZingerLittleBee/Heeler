@@ -5,7 +5,7 @@ import Testing
 
 /// The Attach terminal channel (#11) over the real stack: Citadel `withPTY`
 /// -> localhost sshd -> a script standing in for `herdr agent attach`
-/// (injectable at the environment boundary, like the observe command). The
+/// (injectable at the environment boundary). The
 /// M1 spec's required proof: attach round-trips keystrokes through a real
 /// PTY, and window-change reaches the remote terminal.
 ///
@@ -80,8 +80,8 @@ struct TerminalAttachE2ETests {
     }
 
     @Test func endClosesTheChannelPromptlyAndFreesTheHost() async throws {
-        // Unlike Observe's exec channel, a PTY channel needs no kill-on-EOF
-        // wrapper: closing it HUPs the remote process group. Promptness is
+        // A PTY channel needs no kill-on-EOF wrapper: closing it HUPs the
+        // remote process group. Promptness is
         // load-bearing — without the HUP this end() would sit out the
         // script's full 15s hold.
         try await withAttachTransport(
@@ -135,45 +135,6 @@ struct TerminalAttachE2ETests {
         }
     }
 
-    @Test func attachAndObserveShareTheSingleTerminalChannel() async throws {
-        // The session slot budget: 8 RPC + events + ONE terminal channel.
-        // Whichever surface is live blocks the other until it ends — the UI
-        // hands over explicitly (Observe stop -> Attach open and back).
-        let frameLine =
-            #"{"type":"terminal.frame","seq":1,"full":true,"encoding":"ansi","bytes":""}"#
-        try await withAttachTransport(
-            script: """
-            printf 'READY\\n'
-            exec sleep 15
-            """,
-            observeScript: """
-            echo '\(frameLine)'
-            exec sleep 15
-            """
-        ) { transport in
-            let observe = try await transport.observeTerminal(
-                TerminalObserveRequest(target: "w1:p1", cols: 80, rows: 24))
-            var frames = observe.frames.makeAsyncIterator()
-            _ = try #require(try await frames.next())
-            await #expect(throws: TransportError.terminalChannelAlreadyOpen) {
-                _ = try await transport.attachTerminal(
-                    TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24))
-            }
-            await observe.end()
-
-            let attach = try await transport.attachTerminal(
-                TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24))
-            var iterator = attach.output.makeAsyncIterator()
-            var seen = ""
-            try await expectOutput(&iterator, accumulated: &seen, contains: "READY")
-            await #expect(throws: TransportError.terminalChannelAlreadyOpen) {
-                _ = try await transport.observeTerminal(
-                    TerminalObserveRequest(target: "w1:p1", cols: 80, rows: 24))
-            }
-            await attach.end()
-        }
-    }
-
     /// Reads the session's output until `accumulated` contains `marker`,
     /// recording an issue if the stream ends first. The suite's time limit
     /// bounds a marker that never comes.
@@ -198,7 +159,6 @@ struct TerminalAttachE2ETests {
     /// real herdr server.
     private func withAttachTransport(
         script: String,
-        observeScript: String? = nil,
         body: (SSHTransport) async throws -> Void
     ) async throws {
         let environment = try #require(LocalSSHTestEnvironment.current)
@@ -216,10 +176,6 @@ struct TerminalAttachE2ETests {
             socket: .absolutePath("/tmp/herdr-unused.sock"),
             wakeCommand: "false")
         settings.attachCommand = "/bin/sh \(try write(script, prefix: "attach").path)"
-        if let observeScript {
-            settings.observeCommand = "/bin/sh \(try write(observeScript, prefix: "observe").path)"
-            settings.observeCommandHandlesStdinEOF = false
-        }
         let transport = try await SSHTransport.connect(settings: settings)
         do {
             try await body(transport)

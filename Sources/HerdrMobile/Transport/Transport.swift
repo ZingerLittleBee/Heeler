@@ -21,9 +21,7 @@ protocol Transport: Sendable {
     /// source (#8) — re-fetched on every events-session `.connected`.
     func sessionSnapshot() async throws -> SessionSnapshot
 
-    /// Reads a Pane's terminal output; the Console's last-output snippet
-    /// uses `.recent`, while Observe uses `.recentUnwrapped` so the phone can
-    /// wrap complete logical lines at its own width.
+    /// Reads a Pane's recent terminal output for the Console card snippet.
     func readPane(_ params: PaneReadParams) async throws -> PaneReadResult
 
     /// Starts a new Agent: the new-agent flow (#12, User Story 8 — dispatch
@@ -55,21 +53,11 @@ protocol Transport: Sendable {
     /// 0.7.4): sync initial state with `listAgents()` alongside subscribing.
     func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream
 
-    /// Opens this Host's dedicated terminal channel and starts the read-only
-    /// Observe live-follow (#9): a non-takeover `herdr terminal session
-    /// control` applies the phone geometry to the Agent's PTY and emits NDJSON
-    /// frames, while the app exposes no terminal-input path. Frames are
-    /// decoded and base64-unwrapped until `end()` closes the channel. One
-    /// terminal channel per Host, so a second call while one is live throws
-    /// `.terminalChannelAlreadyOpen`.
-    func observeTerminal(_ request: TerminalObserveRequest) async throws -> TerminalFrameStream
-
     /// Opens this Host's dedicated terminal channel as a full interactive
-    /// Attach (#11): a PTY running `herdr agent attach`, raw bytes both ways
-    /// until `end()` closes the channel explicitly. Attach and Observe share
-    /// the one terminal channel per Host — the session slot budgeted for the
-    /// terminal surface — so a call while either is live throws
-    /// `.terminalChannelAlreadyOpen`; the UI hands over explicitly.
+    /// Attach: a PTY running `herdr agent attach`, raw bytes both ways until
+    /// `end()` closes the channel explicitly. One terminal channel is allowed
+    /// per Host, so a second call while one is live throws
+    /// `.terminalChannelAlreadyOpen`.
     func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession
 
     /// Whether the underlying connection to the Host is still alive. The
@@ -310,8 +298,7 @@ enum TransportError: Error, Sendable, Equatable {
     /// keeps exactly one dedicated events channel (ADR 0002 headroom).
     case eventsChannelAlreadyOpen
     /// A second terminal channel was requested while one is live; each Host
-    /// keeps exactly one (Observe now, Attach in #11 — the UI enforces one
-    /// terminal surface at a time, this backstops the slot budget).
+    /// keeps exactly one interactive terminal surface at a time.
     case terminalChannelAlreadyOpen
     /// The request exceeded its per-request deadline; its exec channel was
     /// closed.

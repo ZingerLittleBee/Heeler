@@ -14,11 +14,35 @@ import UIKit
 struct TerminalAttachTests {
     @MainActor
     @Test func attachUsesOnlyTheIOSSystemKeyboard() {
-        let terminal = TerminalScreenView.makeConfiguredTerminal(
-            style: .attach, allowsInput: true)
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
         #expect(terminal.inputView == nil)
         #expect(terminal.inputAccessoryView == nil)
-        #expect(terminal.allowsInput)
+        #expect(terminal.keyboardDismissMode == .interactive)
+    }
+
+    @MainActor
+    @Test func alternateScreenVerticalDragSendsPageCommands() {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        terminal.bounds = CGRect(x: 0, y: 0, width: 390, height: 800)
+        var sent = Data()
+        let coordinator = TerminalScreenView.Coordinator(
+            onSizeChanged: nil,
+            onSend: { sent.append($0) })
+        terminal.terminalDelegate = coordinator
+
+        terminal.feed(text: "\u{1B}[?1049h")
+        #expect(!terminal.scrollAlternateScreen(translationY: 20))
+        #expect(terminal.scrollAlternateScreen(translationY: 160))
+        #expect(sent == Data([0x1B, 0x5B, 0x35, 0x7E]))
+
+        sent.removeAll()
+        #expect(terminal.scrollAlternateScreen(translationY: -160))
+        #expect(sent == Data([0x1B, 0x5B, 0x36, 0x7E]))
+
+        sent.removeAll()
+        terminal.feed(text: "\u{1B}[?1049l")
+        #expect(!terminal.scrollAlternateScreen(translationY: 160))
+        #expect(sent.isEmpty)
     }
 
     @Test func execsTheAttachCommandWithQuotedTargetAndSocketScope() throws {
@@ -45,7 +69,7 @@ struct TerminalAttachTests {
 
     @Test func injectableAttachCommandRidesThrough() throws {
         // Tests substitute a script at the environment boundary, like the
-        // wake and observe commands.
+        // wake command.
         let line = try SSHTransport.attachBootstrapLine(
             attachCommand: "/bin/sh /tmp/fake-attach.sh",
             request: TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24),

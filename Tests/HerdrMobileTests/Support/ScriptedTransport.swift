@@ -22,9 +22,6 @@ final actor ScriptedTransport: Transport {
     private var startFailure: TransportError?
     private var startedAgent: AgentInfo?
     private(set) var snapshotFetchCount = 0
-    /// Every observe request received, in order; the Observe store's
-    /// restart-on-resize/gap behavior asserts on this.
-    private(set) var observeRequests: [TerminalObserveRequest] = []
     /// Every attach request received, in order; the Attach store's
     /// open-once behavior asserts on this.
     private(set) var attachRequests: [TerminalAttachRequest] = []
@@ -42,9 +39,6 @@ final actor ScriptedTransport: Transport {
     private var nextStreamID: UInt64 = 0
     private var liveStreamID: UInt64?
     private var eventContinuation: AsyncThrowingStream<HerdrEvent, any Error>.Continuation?
-    private var nextFrameStreamID: UInt64 = 0
-    private var liveFrameStreamID: UInt64?
-    private var frameContinuation: AsyncThrowingStream<TerminalFrame, any Error>.Continuation?
     private var nextAttachID: UInt64 = 0
     private var liveAttachID: UInt64?
     private var attachContinuation: AsyncThrowingStream<Data, any Error>.Continuation?
@@ -121,27 +115,6 @@ final actor ScriptedTransport: Transport {
         eventContinuation?.finish(throwing: failure)
         eventContinuation = nil
         liveStreamID = nil
-    }
-
-    /// Pushes one frame onto the live observe stream; false if none is live.
-    @discardableResult
-    func emitFrame(_ frame: TerminalFrame) -> Bool {
-        guard let frameContinuation else { return false }
-        frameContinuation.yield(frame)
-        return true
-    }
-
-    /// Kills the live observe stream with `failure`, as a remotely dropped
-    /// terminal channel would.
-    func failFrameStream(_ failure: TransportError) {
-        frameContinuation?.finish(throwing: failure)
-        frameContinuation = nil
-        liveFrameStreamID = nil
-    }
-
-    /// Whether an observe stream is currently live.
-    var hasLiveFrameStream: Bool {
-        frameContinuation != nil
     }
 
     /// Pushes raw PTY bytes onto the live attach session; false if none is
@@ -242,25 +215,8 @@ final actor ScriptedTransport: Transport {
         }
     }
 
-    func observeTerminal(_ request: TerminalObserveRequest) async throws -> TerminalFrameStream {
-        guard liveFrameStreamID == nil, liveAttachID == nil else {
-            throw TransportError.terminalChannelAlreadyOpen
-        }
-        observeRequests.append(request)
-        nextFrameStreamID += 1
-        let streamID = nextFrameStreamID
-        let (frames, continuation) = AsyncThrowingStream<TerminalFrame, any Error>.makeStream()
-        liveFrameStreamID = streamID
-        frameContinuation = continuation
-        return TerminalFrameStream(frames: frames) {
-            await self.endFrameStream(id: streamID)
-        }
-    }
-
     func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession {
-        // Observe and Attach share the one terminal channel, like the real
-        // transport.
-        guard liveFrameStreamID == nil, liveAttachID == nil else {
+        guard liveAttachID == nil else {
             throw TransportError.terminalChannelAlreadyOpen
         }
         attachRequests.append(request)
@@ -289,9 +245,6 @@ final actor ScriptedTransport: Transport {
         eventContinuation?.finish()
         eventContinuation = nil
         liveStreamID = nil
-        frameContinuation?.finish()
-        frameContinuation = nil
-        liveFrameStreamID = nil
         attachContinuation?.finish()
         attachContinuation = nil
         liveAttachID = nil
@@ -304,13 +257,6 @@ final actor ScriptedTransport: Transport {
         eventContinuation?.finish()
         eventContinuation = nil
         liveStreamID = nil
-    }
-
-    private func endFrameStream(id: UInt64) {
-        guard liveFrameStreamID == id else { return }
-        frameContinuation?.finish()
-        frameContinuation = nil
-        liveFrameStreamID = nil
     }
 
     private func recordAttachInput(_ input: TerminalAttachInput) {
