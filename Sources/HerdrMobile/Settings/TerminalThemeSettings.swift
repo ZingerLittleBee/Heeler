@@ -9,6 +9,11 @@ enum TerminalThemeOption: String, CaseIterable, Identifiable, Sendable {
     case appleSystemColors = "apple-system-colors"
     case dracula
     case solarized
+    case catppuccin
+    case tokyoNight = "tokyo-night"
+    case gruvbox
+    case nord
+    case monokaiPro = "monokai-pro"
 
     var id: Self { self }
 
@@ -19,6 +24,11 @@ enum TerminalThemeOption: String, CaseIterable, Identifiable, Sendable {
         case .appleSystemColors: "Apple System Colors"
         case .dracula: "Dracula"
         case .solarized: "Solarized"
+        case .catppuccin: "Catppuccin"
+        case .tokyoNight: "Tokyo Night"
+        case .gruvbox: "Gruvbox"
+        case .nord: "Nord"
+        case .monokaiPro: "Monokai Pro"
         }
     }
 
@@ -29,6 +39,11 @@ enum TerminalThemeOption: String, CaseIterable, Identifiable, Sendable {
         case .appleSystemColors: "Apple's terminal palette for each appearance"
         case .dracula: "The classic high-contrast dark palette"
         case .solarized: "Paired iTerm2 Solarized light and dark themes"
+        case .catppuccin: "Latte in Light Mode, Mocha in Dark Mode"
+        case .tokyoNight: "Day in Light Mode, Night in Dark Mode"
+        case .gruvbox: "A warm retro palette for both appearances"
+        case .nord: "A calm arctic palette for both appearances"
+        case .monokaiPro: "The popular editor palette for both appearances"
         }
     }
 
@@ -48,6 +63,26 @@ enum TerminalThemeOption: String, CaseIterable, Identifiable, Sendable {
             Self.pairedTheme(
                 light: "iTerm2 Solarized Light",
                 dark: "iTerm2 Solarized Dark")
+        case .catppuccin:
+            Self.pairedTheme(
+                light: "Catppuccin Latte",
+                dark: "Catppuccin Mocha")
+        case .tokyoNight:
+            Self.pairedTheme(
+                light: "TokyoNight Day",
+                dark: "TokyoNight Night")
+        case .gruvbox:
+            Self.pairedTheme(
+                light: "Gruvbox Light",
+                dark: "Gruvbox Dark")
+        case .nord:
+            Self.pairedTheme(
+                light: "Nord Light",
+                dark: "Nord")
+        case .monokaiPro:
+            Self.pairedTheme(
+                light: "Monokai Pro Light",
+                dark: "Monokai Pro")
         }
     }
 
@@ -58,6 +93,16 @@ enum TerminalThemeOption: String, CaseIterable, Identifiable, Sendable {
         "Dracula",
         "iTerm2 Solarized Light",
         "iTerm2 Solarized Dark",
+        "Catppuccin Latte",
+        "Catppuccin Mocha",
+        "TokyoNight Day",
+        "TokyoNight Night",
+        "Gruvbox Light",
+        "Gruvbox Dark",
+        "Nord Light",
+        "Nord",
+        "Monokai Pro Light",
+        "Monokai Pro",
     ]
 
     static var missingCatalogThemeNames: [String] {
