@@ -37,6 +37,10 @@ native text-selection presentation requested by Ghostty's iOS delegate.
 - Long-press selection is intentionally presented in a native selectable text
   sheet. The wrapper supplies a viewport snapshot and anchor range; it does not
   present selection handles on behalf of the host app.
+- libghostty-spm normally makes every direct terminal touch request first
+  responder status. herdr-mobile gates that behavior behind the navigation-bar
+  keyboard button so touch scrolling cannot be interrupted by keyboard-driven
+  viewport resizing.
 - Xcode may retain an empty binary-artifact directory after an interrupted
   first download. Resolving packages with fresh DerivedData repairs that cache
   state without changing the pinned dependency.

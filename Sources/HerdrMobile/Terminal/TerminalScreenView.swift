@@ -20,6 +20,7 @@ struct TerminalScreenView: UIViewRepresentable {
     let feed: TerminalByteFeed
     var onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)?
     var onSend: ((Data) -> Void)?
+    var keyboardRequestID = 0
     @Environment(\.openURL) private var openURL
 
     func makeUIView(context: Context) -> HerdrTerminalView {
@@ -50,10 +51,16 @@ struct TerminalScreenView: UIViewRepresentable {
     func updateUIView(_ view: HerdrTerminalView, context: Context) {
         view.updateCallbacks(onSizeChanged: onSizeChanged, onSend: onSend)
         context.coordinator.onOpenLink = { url in openURL(url) }
+        if context.coordinator.keyboardRequestID != keyboardRequestID {
+            context.coordinator.keyboardRequestID = keyboardRequestID
+            view.requestKeyboard()
+        }
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onOpenLink: { url in openURL(url) })
+        Coordinator(
+            keyboardRequestID: keyboardRequestID,
+            onOpenLink: { url in openURL(url) })
     }
 
     @MainActor
@@ -61,9 +68,11 @@ struct TerminalScreenView: UIViewRepresentable {
         TerminalSurfaceTextSelectionRequestDelegate
     {
         weak var terminalView: HerdrTerminalView?
+        var keyboardRequestID: Int
         var onOpenLink: ((URL) -> Void)?
 
-        init(onOpenLink: ((URL) -> Void)? = nil) {
+        init(keyboardRequestID: Int, onOpenLink: ((URL) -> Void)? = nil) {
+            self.keyboardRequestID = keyboardRequestID
             self.onOpenLink = onOpenLink
         }
 
@@ -115,6 +124,7 @@ final class HerdrTerminalView: UITerminalView {
     private var terminalInputView: UIView?
     private var cursorMode = TerminalCursorModeTracker()
     private var lastInputWindowSize: CGSize?
+    private var allowsKeyboardActivation = false
     var controlKeyboardHeight = TerminalControlKeyboardView.defaultHeight
 
     private lazy var terminalKeyboardAccessory = TerminalKeyboardAccessory(
@@ -131,6 +141,10 @@ final class HerdrTerminalView: UITerminalView {
 
     override var inputAccessoryView: UIView? {
         terminalKeyboardAccessory
+    }
+
+    override var canBecomeFirstResponder: Bool {
+        allowsKeyboardActivation
     }
 
     init(
@@ -173,11 +187,16 @@ final class HerdrTerminalView: UITerminalView {
         terminalSession.receive(data)
     }
 
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        if window != nil {
-            _ = becomeFirstResponder()
-        }
+    func requestKeyboard() {
+        allowsKeyboardActivation = true
+        _ = becomeFirstResponder()
+    }
+
+    @discardableResult
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        allowsKeyboardActivation = false
+        return resigned
     }
 
     override func layoutSubviews() {

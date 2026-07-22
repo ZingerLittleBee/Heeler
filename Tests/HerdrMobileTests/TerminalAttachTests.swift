@@ -21,6 +21,25 @@ struct TerminalAttachTests {
     }
 
     @MainActor
+    @Test func terminalTouchPolicyPreservesScrollingUntilExplicitKeyboardActivation() {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+
+        #expect(!terminal.canBecomeFirstResponder)
+        #expect(
+            terminal.gestureRecognizers?.contains { gesture in
+                guard let pan = gesture as? UIPanGestureRecognizer else { return false }
+                return pan.allowedTouchTypes.contains(
+                    NSNumber(value: UITouch.TouchType.direct.rawValue))
+            } == true)
+
+        terminal.requestKeyboard()
+        #expect(terminal.canBecomeFirstResponder)
+
+        _ = terminal.resignFirstResponder()
+        #expect(!terminal.canBecomeFirstResponder)
+    }
+
+    @MainActor
     @Test func attachSwitchesBetweenTextAndTerminalKeys() {
         let terminal = TerminalScreenView.makeConfiguredTerminal()
 
