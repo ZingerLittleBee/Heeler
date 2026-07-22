@@ -456,6 +456,224 @@ struct ObserveTerminalStoreTests {
         #expect(store.status == .stopped)
     }
 
+    @Test func detailReobservesAfterHostSuspendsAndResumes() async throws {
+        let host = Host.fixture()
+        let firstTransport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        let resumedTransport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        let transports = ObserveTransportSequence([firstTransport, resumedTransport])
+        let console = ConsoleStore(snapshotRetryDelay: .milliseconds(10)) {
+            _, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: { try await transports.next() },
+                reconnectPolicy: ReconnectPolicy(
+                    initialDelay: .milliseconds(10), multiplier: 2,
+                    maxDelay: .milliseconds(50)),
+                keepalive: nil)
+        }
+        console.setHosts([host])
+        await console.resume()
+        try await waitUntil("the Host and Agent should be ready") {
+            console.hostStatuses[host.id] == .connected && console.agents.count == 1
+        }
+
+        let agent = try #require(console.agents.first)
+        let defaultsName = "ObserveTerminalStoreTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: defaultsName))
+        defer { defaults.removePersistentDomain(forName: defaultsName) }
+        let dictationEngine = ScriptedDictationEngine()
+        let dictationSettings = DictationSettingsStore(
+            engine: dictationEngine, defaults: defaults)
+        let controller = UIHostingController(
+            rootView: NavigationStack {
+                AgentDetailView(
+                    agent: agent, console: console,
+                    dictationSettings: dictationSettings,
+                    dictationEngine: dictationEngine)
+            })
+        let window = await show(
+            controller, frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        controller.view.frame = window.bounds
+        controller.view.layoutIfNeeded()
+        try await waitUntil("the detail should open its first Observe stream") {
+            let requestCount = await firstTransport.observeRequests.count
+            let hasLiveStream = await firstTransport.hasLiveFrameStream
+            return requestCount == 1 && hasLiveStream
+        }
+
+        await console.suspend()
+        try await waitUntil("the Host should finish suspending") {
+            let hasLiveStream = await firstTransport.hasLiveFrameStream
+            return console.hostStatuses[host.id] == .suspended && !hasLiveStream
+        }
+        await console.resume()
+        try await waitUntil("the Host should reconnect") {
+            console.hostStatuses[host.id] == .connected
+        }
+        try await waitUntil(
+            "the visible detail should Observe again after foregrounding",
+            timeout: .seconds(1)
+        ) {
+            let requestCount = await resumedTransport.observeRequests.count
+            let hasLiveStream = await resumedTransport.hasLiveFrameStream
+            return requestCount == 1 && hasLiveStream
+        }
+
+        await hide(window)
+        console.setHosts([])
+    }
+
+    @Test func backToBackReconnectReplacementsStartOnlyTheLatestObserve() async throws {
+        // Model two reconnect generations at their shared teardown seam.
+        // The middle replacement waits for the second teardown, while that
+        // teardown stops the middle replacement. The latest Observe must be
+        // released after the stop without letting the stopped store open.
+        let transport = ScriptedTransport()
+        let replacementProviderGate = ScriptedTransportCallGate()
+        let teardownBarrier = ScriptedTransportCallGate()
+        let replacement = ObserveTerminalStore(target: "w1:p1") {
+            await replacementProviderGate.waitUntilOpen()
+            await teardownBarrier.waitUntilOpen()
+            return transport
+        }
+        replacement.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the replacement should wait to acquire its transport") {
+            await replacementProviderGate.entryCount == 1
+        }
+
+        let teardown = Task {
+            await replacement.stop()
+        }
+        let releaseAfterTeardown = Task {
+            await teardown.value
+            await teardownBarrier.open()
+        }
+        let latest = ObserveTerminalStore(target: "w1:p1") {
+            await teardownBarrier.waitUntilOpen()
+            return transport
+        }
+        latest.reuseViewSize(from: replacement)
+        try await waitUntil("the latest Observe should wait for teardown") {
+            await teardownBarrier.entryCount == 1
+        }
+
+        await replacementProviderGate.open()
+        try await waitUntil("both Observe runs should be in the teardown chain") {
+            await teardownBarrier.entryCount == 2
+        }
+
+        try await waitUntil(
+            "the latest replacement should Observe after teardown",
+            timeout: .seconds(1)
+        ) {
+            latest.status == .live
+        }
+        #expect(replacement.status == .stopped)
+        #expect(await transport.observeRequests.count == 1)
+        #expect(await transport.paneReadParams.count == 1)
+
+        // Opens only on the pre-fix failure path, breaking the deliberately
+        // constructed cycle so the red test also exits without leaked tasks.
+        if latest.status != .live {
+            await teardownBarrier.open()
+        }
+        await teardown.value
+        await releaseAfterTeardown.value
+        try await waitUntil("cleanup should release the latest Observe") {
+            latest.status == .live
+        }
+        await latest.stop()
+    }
+
+    @Test func loadingEarlierReusesTheLiveTransportAcrossTeardown() async throws {
+        let transport = ScriptedTransport()
+        let repeatedCallGate = ScriptedTransportCallGate()
+        let provider = ObserveCountingTransportProvider(
+            transport: transport, repeatedCallGate: repeatedCallGate)
+        let store = ObserveTerminalStore(target: "w1:p1") {
+            await provider.next()
+        }
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("Observe should be live") { store.status == .live }
+        #expect(await provider.callCount == 1)
+
+        #expect(store.loadEarlier())
+        try await waitUntil(
+            "history should finish without re-entering the transport provider",
+            timeout: .seconds(1)
+        ) {
+            let providerCallCount = await provider.callCount
+            return !store.isLoadingEarlier || providerCallCount > 1
+        }
+
+        let stopCompletion = ObserveCompletion()
+        let stop = Task {
+            await store.stop()
+            await stopCompletion.finish()
+        }
+        try await waitUntil(
+            "teardown should not wait on a history-provider cycle",
+            timeout: .seconds(1)
+        ) {
+            await stopCompletion.isFinished
+        }
+        #expect(await provider.callCount == 1)
+        #expect(await transport.paneReadParams.count == 2)
+
+        // Releases only the old provider-reentry behavior, so a red run is
+        // bounded and leaves no history or stop task behind.
+        await repeatedCallGate.open()
+        await stop.value
+    }
+
+    @Test func attachHandoverStopsObserveWhileItsTransportIsPending() async throws {
+        let transport = ScriptedTransport()
+        let providerGate = ScriptedTransportCallGate()
+        let observe = ObserveTerminalStore(target: "w1:p1") {
+            await providerGate.waitUntilOpen()
+            return transport
+        }
+        observe.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("Observe should wait for its transport") {
+            await providerGate.entryCount == 1
+        }
+
+        let stopCompletion = ObserveCompletion()
+        let stop = Task {
+            await observe.stop()
+            await stopCompletion.finish()
+        }
+        let attach = AttachTerminalStore(target: "w1:p1") {
+            await providerGate.waitUntilOpen()
+            return transport
+        }
+        attach.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("Attach should wait behind the same teardown") {
+            await providerGate.entryCount == 2
+        }
+        try await waitUntil(
+            "Observe stop should finish before the transport is released",
+            timeout: .seconds(1)
+        ) {
+            await stopCompletion.isFinished
+        }
+
+        // Also releases the old behavior after its bounded failure, allowing
+        // the stop and Attach tasks to finish instead of leaking into later tests.
+        await providerGate.open()
+        await stop.value
+        try await waitUntil("Attach should own the terminal channel") {
+            attach.status == .live
+        }
+        #expect(observe.status == .stopped)
+        #expect(await transport.observeRequests.isEmpty)
+        #expect(await transport.attachRequests.count == 1)
+        await attach.stop()
+    }
+
     @Test func feedBuffersBytesUntilASinkAttaches() {
         // The terminal view attaches after layout; backfill written before
         // that must not be lost.
@@ -465,5 +683,47 @@ struct ObserveTerminalStoreTests {
         feed.attach { seen.append($0) }
         feed.write(Data("late".utf8))
         #expect(seen == [Data("early".utf8), Data("late".utf8)])
+    }
+}
+
+private actor ObserveTransportSequence {
+    private var transports: [ScriptedTransport]
+
+    init(_ transports: [ScriptedTransport]) {
+        self.transports = transports
+    }
+
+    func next() throws -> any Transport {
+        guard !transports.isEmpty else {
+            throw TransportError.sshUnreachable(detail: "no scripted transport remains")
+        }
+        return transports.removeFirst()
+    }
+}
+
+private actor ObserveCountingTransportProvider {
+    private let transport: any Transport
+    private let repeatedCallGate: ScriptedTransportCallGate
+    private(set) var callCount = 0
+
+    init(transport: any Transport, repeatedCallGate: ScriptedTransportCallGate) {
+        self.transport = transport
+        self.repeatedCallGate = repeatedCallGate
+    }
+
+    func next() async -> (any Transport)? {
+        callCount += 1
+        if callCount > 1 {
+            await repeatedCallGate.waitUntilOpen()
+        }
+        return transport
+    }
+}
+
+private actor ObserveCompletion {
+    private(set) var isFinished = false
+
+    func finish() {
+        isFinished = true
     }
 }

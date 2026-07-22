@@ -909,7 +909,9 @@ actor SSHTransport: Transport {
 
     /// Runs the wake command over a slot-gated no-PTY exec channel with
     /// stdin at EOF from the start (`< /dev/null`). `HERDR_SOCKET_PATH` pins
-    /// the bridge and the server it spawns to this Host's configured socket.
+    /// the bridge and the server it spawns to this Host's configured socket;
+    /// named locations also set `HERDR_SESSION` so the spawned server uses
+    /// that session's state directory instead of the default session's state.
     /// The path rides as a positional argument so only the outer shell ever
     /// quotes it. The bridge's entry point ensures the server is running
     /// (spawn + wait for socket) before it starts bridging; the bridge then
@@ -918,7 +920,7 @@ actor SSHTransport: Transport {
     /// anything mid-flight.
     private func runWakeCommand(socketPath: String) async throws {
         let command = try Self.wakeExecCommand(
-            wakeCommand: wakeCommand, socketPath: socketPath)
+            wakeCommand: wakeCommand, socketPath: socketPath, socketLocation: socketLocation)
         try await acquireExecChannelSlot()
         defer { releaseExecChannelSlot() }
         _ = try await client.executeCommand(command)
@@ -926,15 +928,30 @@ actor SSHTransport: Transport {
 
     /// The full remote command for waking this Host's configured herdr
     /// server. It runs under POSIX sh because login shells such as fish do
-    /// not share assignment syntax, and passes the socket as an argument so
-    /// the wrapper script never interpolates path bytes.
-    static func wakeExecCommand(wakeCommand: String, socketPath: String) throws -> String {
+    /// not share assignment syntax, and passes the socket and optional named
+    /// session as arguments so the wrapper script never interpolates their
+    /// bytes.
+    static func wakeExecCommand(
+        wakeCommand: String, socketPath: String, socketLocation: HerdrSocketLocation
+    ) throws -> String {
         guard let quotedSocketPath = RemoteShellPath.quotedAbsolute(socketPath) else {
             throw TransportError.channelFailed(
                 detail: "The remote socket path cannot be quoted safely.")
         }
-        let command = "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
-            + "\(wakeCommand) < /dev/null' wake \(quotedSocketPath)"
+        let command: String
+        switch socketLocation {
+        case .namedSession(let sessionName):
+            guard HerdrSessionName.isValid(sessionName) else {
+                throw TransportError.channelFailed(
+                    detail: "The herdr session name is invalid.")
+            }
+            command = "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
+                + "export HERDR_SESSION=\"$2\"; \(wakeCommand) < /dev/null' wake "
+                + "\(quotedSocketPath) \(sessionName)"
+        case .defaultSession, .absolutePath:
+            command = "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
+                + "\(wakeCommand) < /dev/null' wake \(quotedSocketPath)"
+        }
         return cLocaleCommand(command)
     }
 

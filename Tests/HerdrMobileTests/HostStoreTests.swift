@@ -116,6 +116,36 @@ struct HostStoreTests {
         #expect(try store.password(for: host) == nil)
     }
 
+    @Test func removalRequestRequiresExplicitConfirmation() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = InMemorySecretStore()
+        let store = HostStore(defaults: defaults, secrets: secrets)
+        let host = Host.fixture(name: "Workbox", authMethod: .password)
+        try store.add(host, password: "hunter2")
+        let removal = HostRemovalStore(store: store)
+
+        removal.requestRemoval([host.id])
+
+        #expect(store.hosts == [host])
+        #expect(try store.password(for: host) == "hunter2")
+        let request = try #require(removal.pendingRequest)
+        #expect(request.title == "Remove Workbox?")
+        #expect(request.message.contains("Keychain"))
+        #expect(request.message.contains("cannot be undone"))
+
+        removal.cancelRemoval()
+        #expect(removal.pendingRequest == nil)
+        #expect(store.hosts == [host])
+
+        removal.requestRemoval([host.id])
+        removal.confirmRemoval(try #require(removal.pendingRequest))
+
+        #expect(removal.pendingRequest == nil)
+        #expect(store.hosts.isEmpty)
+        #expect(try store.password(for: host) == nil)
+    }
+
     @Test func passwordRoundTripsThroughTheSecretStore() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
@@ -166,7 +196,8 @@ struct HostStoreTests {
         secrets.failRemovals()
         let removal = HostRemovalStore(store: store)
 
-        removal.remove([host.id])
+        removal.requestRemoval([host.id])
+        removal.confirmRemoval(try #require(removal.pendingRequest))
 
         #expect(store.hosts == [host])
         #expect(removal.errorMessage != nil)

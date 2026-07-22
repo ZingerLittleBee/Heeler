@@ -31,6 +31,8 @@ struct AgentInputBar: View {
                     axis: .vertical
                 )
                 .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
                 .lineLimit(1...5)
                 .focused($messageFocused)
                 .submitLabel(.send)

@@ -1,5 +1,12 @@
 import Foundation
 
+/// Identifies one owner's recording attempt across asynchronous startup and
+/// teardown. A stop for an older screen must never affect a newer session on
+/// the app-wide shared engine.
+struct DictationSessionID: Hashable, Sendable {
+    private let rawValue = UUID()
+}
+
 /// One transcription update from a `DictationEngine`. `text` is the best
 /// transcription of the current utterance so far: the engine revises it as
 /// more audio arrives (volatile partials), then emits a last value with
@@ -56,13 +63,14 @@ protocol DictationEngine: Sendable {
     /// partial→final transcripts. Ensures microphone permission and resolves
     /// the on-device model; throws a `DictationEngineError` before yielding if
     /// the session cannot start (permission denied, model not installed,
-    /// unsupported locale). The stream finishes normally after `stop()` flushes
-    /// the final transcript, and finishes throwing if capture fails
-    /// mid-recording.
-    func start(language: DictationLanguage) async throws
+    /// unsupported locale). The stream finishes normally after the matching
+    /// `stop(sessionID:)` flushes the final transcript, and finishes throwing
+    /// if capture fails mid-recording.
+    func start(sessionID: DictationSessionID, language: DictationLanguage) async throws
         -> AsyncThrowingStream<DictationTranscript, any Error>
 
-    /// Stops capture and finalizes the current utterance: the stream yields
-    /// its final transcript, then finishes. A no-op if no session is active.
-    func stop() async
+    /// Stops capture and finalizes the matching utterance: the stream yields
+    /// its final transcript, then finishes. A no-op when `sessionID` is stale
+    /// or no matching session is active.
+    func stop(sessionID: DictationSessionID) async
 }

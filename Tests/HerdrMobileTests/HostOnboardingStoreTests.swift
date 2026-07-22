@@ -101,6 +101,29 @@ struct HostOnboardingStoreTests {
         #expect(store.serverInfo == nil)
     }
 
+    @Test func corruptDeviceKeyExplainsTheReplacementRecovery() async throws {
+        let account = "corrupt-device-key"
+        let secrets = InMemorySecretStore()
+        try secrets.write(Data("not-an-ed25519-key".utf8), account: account)
+        let connector = FakeTransportConnector(outcome: .connects(pingResult: Self.healthyPing))
+        let store = HostOnboardingStore(
+            host: .fixture(authMethod: .deviceKey),
+            connector: connector,
+            knownHosts: InMemoryKnownHostsStore(),
+            credentials: HostCredentialsProvider(
+                deviceKeys: DeviceKeyStore(secrets: secrets, account: account), secrets: secrets))
+
+        await store.runChecks()
+
+        guard case .failed(let hint) = try #require(store.report)[.connection] else {
+            Issue.record("a corrupt Device Key should fail the connection check")
+            return
+        }
+        #expect(hint.contains("Replace Device Key"))
+        #expect(hint.contains("authorized_keys"))
+        #expect(await connector.capturedSettings.isEmpty)
+    }
+
     @Test func pingFailureFailsItsCheckAndStillClosesTheTransport() async throws {
         let (store, connector) = try makeStore(
             outcome: .connects(

@@ -277,6 +277,9 @@ enum TransportError: Error, Sendable, Equatable {
     /// The Host rejected our credentials (key not authorized, wrong
     /// password, or the offered auth method is unavailable).
     case authenticationFailed
+    /// The device's stored Ed25519 private key cannot be decoded. Reconnecting
+    /// cannot repair it; the user must explicitly replace the Device Key.
+    case deviceKeyCorrupt
     /// First connect to an unknown Host and the user declined its key
     /// fingerprint; nothing was stored.
     case hostKeyRejected(presented: HostKeyFingerprint)
@@ -323,7 +326,7 @@ enum TransportError: Error, Sendable, Equatable {
         switch self {
         case .sshUnreachable, .serverNotRunning, .timedOut, .cancelled, .channelFailed:
             true
-        case .authenticationFailed, .hostKeyRejected, .hostKeyMismatch,
+        case .authenticationFailed, .deviceKeyCorrupt, .hostKeyRejected, .hostKeyMismatch,
             .socketNotFound, .socatMissing, .protocolVersionMismatch,
             .homeDirectoryUnresolvable, .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse:

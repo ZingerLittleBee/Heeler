@@ -36,6 +36,7 @@ struct PreflightReportTests {
     @Test(arguments: [
         (TransportError.sshUnreachable(detail: "refused"), PreflightCheck.connection),
         (.authenticationFailed, .connection),
+        (.deviceKeyCorrupt, .connection),
         (.hostKeyRejected(
             presented: HostKeyFingerprint(publicKeyBlob: Data("blob-a".utf8))), .connection),
         (.timedOut, .connection),

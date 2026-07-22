@@ -32,13 +32,13 @@ enum UnixSockets {
 struct StaleUnixSocket {
     let path: String
 
-    init() throws {
-        path = "/tmp/herdr-stale-\(UUID().uuidString.prefix(8)).sock"
+    init(path: String? = nil) throws {
+        self.path = path ?? "/tmp/herdr-stale-\(UUID().uuidString.prefix(8)).sock"
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw UnixSockets.SetupError.failed(step: "socket", errno: errno) }
         // Bind creates the file; closing without listening or unlinking
         // leaves it stale.
-        let bindResult = UnixSockets.withSockaddr(path: path) { bind(fd, $0, $1) }
+        let bindResult = UnixSockets.withSockaddr(path: self.path) { bind(fd, $0, $1) }
         close(fd)
         guard bindResult == 0 else {
             throw UnixSockets.SetupError.failed(step: "bind", errno: errno)

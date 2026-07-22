@@ -1,10 +1,30 @@
 import Observation
 import SwiftUI
 
+struct HostRemovalRequest: Equatable {
+    let hosts: [Host]
+
+    var title: String {
+        if hosts.count == 1, let host = hosts.first {
+            return "Remove \(host.displayName)?"
+        }
+        return "Remove \(hosts.count) Hosts?"
+    }
+
+    var actionTitle: String {
+        hosts.count == 1 ? "Remove Host" : "Remove Hosts"
+    }
+
+    let message =
+        "This permanently deletes the Host configuration and any saved password "
+        + "from the Keychain. This cannot be undone."
+}
+
 @MainActor
 @Observable
 final class HostRemovalStore {
     private(set) var errorMessage: String?
+    private(set) var pendingRequest: HostRemovalRequest?
 
     @ObservationIgnored
     private let store: HostStore
@@ -13,10 +33,22 @@ final class HostRemovalStore {
         self.store = store
     }
 
-    func remove(_ ids: [Host.ID]) {
-        for id in ids {
+    func requestRemoval(_ ids: [Host.ID]) {
+        let requestedIDs = Set(ids)
+        let hosts = store.hosts.filter { requestedIDs.contains($0.id) }
+        guard !hosts.isEmpty else { return }
+        pendingRequest = HostRemovalRequest(hosts: hosts)
+    }
+
+    func cancelRemoval() {
+        pendingRequest = nil
+    }
+
+    func confirmRemoval(_ request: HostRemovalRequest) {
+        pendingRequest = nil
+        for host in request.hosts {
             do {
-                try store.remove(id)
+                try store.remove(host.id)
             } catch {
                 errorMessage = "The Host could not be removed. Its saved credentials may still be in the Keychain."
                 return
@@ -96,6 +128,20 @@ struct HostListView: View {
                 }
             }
             .alert(
+                removal.pendingRequest?.title ?? "Remove Host?",
+                isPresented: removalConfirmationPresented,
+                presenting: removal.pendingRequest
+            ) { request in
+                Button(request.actionTitle, role: .destructive) {
+                    removal.confirmRemoval(request)
+                }
+                Button("Cancel", role: .cancel) {
+                    removal.cancelRemoval()
+                }
+            } message: { request in
+                Text(request.message)
+            }
+            .alert(
                 "Could Not Remove Host",
                 isPresented: Binding(
                     get: { removal.errorMessage != nil },
@@ -115,8 +161,14 @@ struct HostListView: View {
         }
     }
 
+    private var removalConfirmationPresented: Binding<Bool> {
+        Binding(
+            get: { removal.pendingRequest != nil },
+            set: { if !$0 { removal.cancelRemoval() } })
+    }
+
     private func removeHosts(at offsets: IndexSet) {
-        removal.remove(offsets.map { store.hosts[$0].id })
+        removal.requestRemoval(offsets.map { store.hosts[$0].id })
     }
 }
 

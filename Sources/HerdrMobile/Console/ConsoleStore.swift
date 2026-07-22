@@ -27,6 +27,9 @@ final class ConsoleStore {
     /// Snapshot failures are separate from connection state: an events
     /// channel can remain connected while the Console data RPC is failing.
     private(set) var hostSyncErrors: [Host.ID: String] = [:]
+    /// Monotonic reconnect epochs per Host. Initial connection is generation
+    /// zero; only a return to connected after a real disconnect advances it.
+    private(set) var hostConnectionGenerations: [Host.ID: UInt64] = [:]
 
     @ObservationIgnored private var feeds: [Host.ID: HostFeed] = [:]
     @ObservationIgnored private let makeSession:
@@ -62,6 +65,7 @@ final class ConsoleStore {
             feeds[id] = nil
             hostStatuses[id] = nil
             hostSyncErrors[id] = nil
+            hostConnectionGenerations[id] = nil
         }
         for host in hosts where feeds[host.id] == nil {
             startFeed(for: host)
@@ -89,6 +93,7 @@ final class ConsoleStore {
         let session = makeSession(host, Self.subscriptions(paneIDs: []))
         let feed = HostFeed(host: host, session: session)
         feeds[host.id] = feed
+        hostConnectionGenerations[host.id] = 0
         feed.consumeTask = Task { [weak self] in
             for await update in session.updates {
                 guard let self else { return }
@@ -115,6 +120,15 @@ final class ConsoleStore {
         guard feeds[feed.host.id] === feed else { return }
         switch update {
         case .status(let status):
+            if status == .connected {
+                if feed.hasConnected, feed.connectionWasInterrupted {
+                    hostConnectionGenerations[feed.host.id, default: 0] &+= 1
+                }
+                feed.hasConnected = true
+                feed.connectionWasInterrupted = false
+            } else if feed.hasConnected {
+                feed.connectionWasInterrupted = true
+            }
             hostStatuses[feed.host.id] = status
             if status == .connected {
                 scheduleResync(feed: feed)
@@ -147,6 +161,7 @@ final class ConsoleStore {
     }
 
     private func runResync(feed: HostFeed) async {
+        let statusRevisionBeforeSnapshot = feed.statusChangeRevision
         guard let transport = await feed.session.currentTransport else { return }
         do {
             let snapshot = try await transport.sessionSnapshot()
@@ -154,7 +169,9 @@ final class ConsoleStore {
             feed.resyncRetryTask?.cancel()
             feed.resyncRetryTask = nil
             hostSyncErrors[feed.host.id] = nil
-            apply(snapshot, to: feed)
+            apply(
+                snapshot, to: feed,
+                preservingStatusChangesAfter: statusRevisionBeforeSnapshot)
             await feed.session.updateSubscriptions(
                 Self.subscriptions(paneIDs: feed.byPane.keys))
             refreshSnippets(feed: feed, transport: transport)
@@ -194,7 +211,11 @@ final class ConsoleStore {
         }
     }
 
-    private func apply(_ snapshot: SessionSnapshot, to feed: HostFeed) {
+    private func apply(
+        _ snapshot: SessionSnapshot,
+        to feed: HostFeed,
+        preservingStatusChangesAfter snapshotStartRevision: UInt64
+    ) {
         let workspaces = Dictionary(
             snapshot.workspaces.map { ($0.workspaceID, $0) }) { first, _ in first }
         var byPane: [String: ConsoleAgent] = [:]
@@ -209,6 +230,13 @@ final class ConsoleStore {
                 repoName: workspace?.worktree?.repoName,
                 lastOutputSnippet: feed.byPane[agent.paneID]?.lastOutputSnippet)
         }
+        for (paneID, change) in feed.latestStatusChanges
+        where change.revision > snapshotStartRevision {
+            guard var row = byPane[paneID] else { continue }
+            row.agent.status = change.status
+            byPane[paneID] = row
+        }
+        feed.latestStatusChanges.removeAll(keepingCapacity: true)
         feed.byPane = byPane
         feed.workspaces = snapshot.workspaces
             .map { ConsoleWorkspace(id: $0.workspaceID, label: $0.label) }
@@ -219,10 +247,13 @@ final class ConsoleStore {
     private func applyStatusChange(_ data: JSONValue, feed: HostFeed) {
         guard
             let paneID = data["pane_id"]?.stringValue,
-            let rawStatus = data["agent_status"]?.stringValue,
-            var row = feed.byPane[paneID]
+            let rawStatus = data["agent_status"]?.stringValue
         else { return }
-        row.agent.status = AgentStatus(rawValue: rawStatus)
+        let status = AgentStatus(rawValue: rawStatus)
+        feed.statusChangeRevision &+= 1
+        feed.latestStatusChanges[paneID] = (feed.statusChangeRevision, status)
+        guard var row = feed.byPane[paneID] else { return }
+        row.agent.status = status
         feed.byPane[paneID] = row
         rebuild()
         // A status flip usually means fresh output worth showing — for
@@ -252,7 +283,10 @@ final class ConsoleStore {
     private func refreshSnippet(feed: HostFeed, paneID: String, transport: any Transport) {
         // One in-flight read per pane; a burst of status flips must not pile
         // requests onto the slot queue.
-        guard feed.snippetFetchesInFlight.insert(paneID).inserted else { return }
+        guard feed.snippetFetchesInFlight.insert(paneID).inserted else {
+            feed.pendingSnippetRefreshes.insert(paneID)
+            return
+        }
         Task { [weak self] in
             let read = try? await transport.readPane(
                 PaneReadParams(
@@ -260,13 +294,19 @@ final class ConsoleStore {
                     stripANSI: true))
             guard let self else { return }
             feed.snippetFetchesInFlight.remove(paneID)
+            guard self.feeds[feed.host.id] === feed else { return }
+            if let read, var row = feed.byPane[paneID] {
+                row.lastOutputSnippet = Self.snippet(fromPaneText: read.text)
+                feed.byPane[paneID] = row
+                self.rebuild()
+            }
             guard
-                let read, self.feeds[feed.host.id] === feed,
-                var row = feed.byPane[paneID]
+                feed.pendingSnippetRefreshes.remove(paneID) != nil,
+                feed.byPane[paneID] != nil,
+                let currentTransport = await feed.session.currentTransport,
+                self.feeds[feed.host.id] === feed
             else { return }
-            row.lastOutputSnippet = Self.snippet(fromPaneText: read.text)
-            feed.byPane[paneID] = row
-            self.rebuild()
+            self.refreshSnippet(feed: feed, paneID: paneID, transport: currentTransport)
         }
     }
 
@@ -444,10 +484,18 @@ private final class HostFeed {
     var resyncTask: Task<Void, Never>?
     var resyncRetryTask: Task<Void, Never>?
     var resyncPending = false
+    var hasConnected = false
+    var connectionWasInterrupted = false
     var byPane: [String: ConsoleAgent] = [:]
+    /// Latest status deltas by pane, versioned so a snapshot only preserves
+    /// events that arrived after that snapshot request began.
+    var statusChangeRevision: UInt64 = 0
+    var latestStatusChanges: [String: (revision: UInt64, status: AgentStatus)] = [:]
     /// Workspaces from this Host's latest snapshot, for the new-agent picker.
     var workspaces: [ConsoleWorkspace] = []
     var snippetFetchesInFlight: Set<String> = []
+    /// Coalesced follow-up reads for panes refreshed while a read was active.
+    var pendingSnippetRefreshes: Set<String> = []
 
     init(host: Host, session: EventsSession) {
         self.host = host

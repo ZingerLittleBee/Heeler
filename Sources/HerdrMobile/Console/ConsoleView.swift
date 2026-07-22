@@ -172,6 +172,8 @@ struct ConsoleView: View {
         switch failure {
         case .authenticationFailed:
             "Authentication failed. Update the credentials in Hosts."
+        case .deviceKeyCorrupt:
+            "The Device Key is corrupted. Edit this Host, replace the Device Key, then install its new public key on every Device Key Host."
         case .hostKeyRejected:
             "The host key is not trusted. Verify it in Hosts."
         case .hostKeyMismatch:

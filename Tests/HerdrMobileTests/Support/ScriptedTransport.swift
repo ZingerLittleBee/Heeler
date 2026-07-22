@@ -41,8 +41,10 @@ final actor ScriptedTransport: Transport {
     private var serverInfo: ServerInfo
     private var snapshot: SessionSnapshot
     private var snapshotFailure: TransportError?
+    private var nextSnapshotGate: ScriptedTransportCallGate?
     private var paneTexts: [String: String] = [:]
     private var paneReadFailure: TransportError?
+    private var nextPaneReadGate: ScriptedTransportCallGate?
     private var nextStreamID: UInt64 = 0
     private var liveStreamID: UInt64?
     private var eventContinuation: AsyncThrowingStream<HerdrEvent, any Error>.Continuation?
@@ -74,6 +76,12 @@ final actor ScriptedTransport: Transport {
         snapshotFailure = failure
     }
 
+    /// Pauses the next snapshot after capturing its response, so tests can
+    /// deterministically deliver events while that stale response is in flight.
+    func gateNextSnapshot(using gate: ScriptedTransportCallGate) {
+        nextSnapshotGate = gate
+    }
+
     /// Scripts the text `readPane` returns for `paneID`.
     func setPaneText(_ text: String, paneID: String) {
         paneTexts[paneID] = text
@@ -82,6 +90,11 @@ final actor ScriptedTransport: Transport {
     /// Makes every subsequent `readPane` throw `failure`.
     func setPaneReadFailure(_ failure: TransportError?) {
         paneReadFailure = failure
+    }
+
+    /// Pauses the next pane read after capturing its response.
+    func gateNextPaneRead(using gate: ScriptedTransportCallGate) {
+        nextPaneReadGate = gate
     }
 
     /// Makes every subsequent `sendInput`/`sendKeys` throw `failure`.
@@ -184,18 +197,26 @@ final actor ScriptedTransport: Transport {
 
     func sessionSnapshot() async throws -> SessionSnapshot {
         snapshotFetchCount += 1
-        if let snapshotFailure { throw snapshotFailure }
-        return snapshot
+        let response = snapshot
+        let failure = snapshotFailure
+        let gate = nextSnapshotGate
+        nextSnapshotGate = nil
+        await gate?.waitUntilOpen()
+        if let failure { throw failure }
+        return response
     }
 
     func readPane(_ params: PaneReadParams) async throws -> PaneReadResult {
         paneReadParams.append(params)
-        if let paneReadFailure {
-            throw paneReadFailure
-        }
+        let responseText = paneTexts[params.paneID] ?? ""
+        let failure = paneReadFailure
+        let gate = nextPaneReadGate
+        nextPaneReadGate = nil
+        await gate?.waitUntilOpen()
+        if let failure { throw failure }
         return PaneReadResult(
             format: .text, paneID: params.paneID, revision: 0,
-            source: params.source, tabID: "t", text: paneTexts[params.paneID] ?? "",
+            source: params.source, tabID: "t", text: responseText,
             truncated: false, workspaceID: "w")
     }
 
@@ -328,6 +349,27 @@ final actor ScriptedTransport: Transport {
         attachContinuation?.finish()
         attachContinuation = nil
         liveAttachID = nil
+    }
+}
+
+/// A one-shot test gate that exposes when a scripted transport call has
+/// captured its response, then holds that response until the test releases it.
+actor ScriptedTransportCallGate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private(set) var entryCount = 0
+
+    func waitUntilOpen() async {
+        entryCount += 1
+        if isOpen { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        let resuming = waiters
+        waiters.removeAll()
+        for waiter in resuming { waiter.resume() }
     }
 }
 

@@ -75,6 +75,11 @@ struct PreflightReport: Equatable, Sendable {
             case .password:
                 hint = "The Host rejected the login. Check the username and password."
             }
+        case .deviceKeyCorrupt:
+            check = .connection
+            hint =
+                "The Device Key is corrupted. Edit this Host and choose Replace Device Key, "
+                + "then add the new public key to ~/.ssh/authorized_keys on every Device Key Host."
         case .hostKeyRejected:
             check = .connection
             hint = "The host key was not confirmed. Run the checks again and confirm the fingerprint."

@@ -433,6 +433,12 @@ actor EventsSession {
     }
 
     private static func transportFailure(_ error: any Error) -> TransportError {
-        (error as? TransportError) ?? .channelFailed(detail: String(describing: error))
+        if let failure = error as? TransportError {
+            return failure
+        }
+        if case DeviceKeyStoreError.storedKeyCorrupt = error {
+            return .deviceKeyCorrupt
+        }
+        return .channelFailed(detail: String(describing: error))
     }
 }

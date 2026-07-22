@@ -15,7 +15,10 @@ struct ConsoleStoreTests {
 
     /// A store whose session factory routes each Host to its scripted
     /// transport; unknown Hosts fail the connect.
-    private func makeStore(transports: [Host.ID: ScriptedTransport]) -> ConsoleStore {
+    private func makeStore(
+        transports: [Host.ID: ScriptedTransport],
+        reconnectPolicy: ReconnectPolicy = Self.fastPolicy
+    ) -> ConsoleStore {
         ConsoleStore(snapshotRetryDelay: .milliseconds(10)) { host, subscriptions in
             EventsSession(
                 subscriptions: subscriptions,
@@ -25,7 +28,7 @@ struct ConsoleStoreTests {
                     }
                     return transport
                 },
-                reconnectPolicy: Self.fastPolicy,
+                reconnectPolicy: reconnectPolicy,
                 keepalive: nil)
         }
     }
@@ -145,6 +148,85 @@ struct ConsoleStoreTests {
         }
         let elapsed = ContinuousClock.now - start
         #expect(elapsed < .seconds(1), "took \(elapsed)")
+
+        store.setHosts([])
+    }
+
+    @Test func statusChangeDuringSnapshotSurvivesTheStaleResponse() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .idle)]))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the pane subscription should settle") {
+            let paneReads = await transport.paneReadParams
+            let subscriptions = await transport.capturedSubscriptions
+            return paneReads.count >= 2
+                && subscriptions.last?.contains(
+                    .pane(.agentStatusChanged, paneID: "w1:p1")) == true
+        }
+
+        let snapshotGate = ScriptedTransportCallGate()
+        await transport.gateNextSnapshot(using: snapshotGate)
+        let readsBeforeRace = await transport.paneReadParams.count
+        #expect(
+            await transport.emit(
+                HerdrEvent(kind: GlobalEventKind.paneAgentDetected.kind, data: .object([:])))
+                == true)
+        try await waitUntil("the stale snapshot should be in flight") {
+            await snapshotGate.entryCount == 1
+        }
+
+        #expect(
+            await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .blocked))
+                == true)
+        try await waitUntil("the live status event should land first") {
+            store.agents.first?.agent.status == .blocked
+        }
+
+        await snapshotGate.open()
+        try await waitUntil("the stale snapshot response should finish applying") {
+            await transport.paneReadParams.count > readsBeforeRace
+        }
+        #expect(store.agents.first?.agent.status == .blocked)
+
+        store.setHosts([])
+    }
+
+    @Test func statusChangeForNewPaneDuringInitialSnapshotSurvives() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .idle)]))
+        let snapshotGate = ScriptedTransportCallGate()
+        await transport.gateNextSnapshot(using: snapshotGate)
+        let store = makeStore(
+            transports: [host.id: transport],
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .seconds(30), multiplier: 1, maxDelay: .seconds(30)))
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the initial stale snapshot should be in flight") {
+            await snapshotGate.entryCount == 1
+        }
+        #expect(store.agents.isEmpty)
+
+        #expect(
+            await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .blocked))
+                == true)
+        await transport.failEventStream(.channelFailed(detail: "test ordering barrier"))
+        try await waitUntil("the status event should be consumed before the disconnect") {
+            guard case .reconnecting = store.hostStatuses[host.id] else { return false }
+            return true
+        }
+
+        await snapshotGate.open()
+        try await waitUntil("the initial snapshot should create the Agent row") {
+            store.agents.count == 1
+        }
+        #expect(store.agents.first?.agent.status == .blocked)
 
         store.setHosts([])
     }
@@ -354,6 +436,57 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    @Test func blockedStatusDuringSnippetFetchSchedulesAFollowUpRead() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .working)]))
+        await transport.setPaneText("Ready", paneID: "w1:p1")
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the initial snapshot cycle should settle") {
+            let reads = await transport.paneReadParams
+            let subscriptions = await transport.capturedSubscriptions
+            return reads.count >= 2
+                && subscriptions.last?.contains(
+                    .pane(.agentStatusChanged, paneID: "w1:p1")) == true
+                && store.agents.first?.lastOutputSnippet == "Ready"
+        }
+
+        let staleReadGate = ScriptedTransportCallGate()
+        await transport.setPaneText("Still working", paneID: "w1:p1")
+        await transport.gateNextPaneRead(using: staleReadGate)
+        #expect(
+            await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .working))
+                == true)
+        try await waitUntil("the stale snippet read should be in flight") {
+            await staleReadGate.entryCount == 1
+        }
+
+        let followUpReadGate = ScriptedTransportCallGate()
+        await transport.setPaneText("Allow this command?", paneID: "w1:p1")
+        await transport.gateNextPaneRead(using: followUpReadGate)
+        #expect(
+            await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .blocked))
+                == true)
+        try await waitUntil("the Blocked status should land during the stale read") {
+            store.agents.first?.agent.status == .blocked
+        }
+        for _ in 0..<10 { await Task.yield() }
+
+        await staleReadGate.open()
+        try await waitUntil("the Blocked refresh should start a follow-up read") {
+            await followUpReadGate.entryCount == 1
+        }
+        await followUpReadGate.open()
+        try await waitUntil("the Blocked prompt should replace the stale snippet") {
+            store.agents.first?.lastOutputSnippet == "Allow this command?"
+        }
+
+        store.setHosts([])
+    }
+
     @Test func removingAHostDropsItsAgentsAndEndsItsSession() async throws {
         let hostA = Host.fixture(name: "alpha", address: "a.example")
         let hostB = Host.fixture(name: "beta", address: "b.example")
@@ -368,11 +501,13 @@ struct ConsoleStoreTests {
         store.setHosts([hostA, hostB])
         await store.resume()
         try await waitUntil("both agents should arrive") { store.agents.count == 2 }
+        #expect(store.hostConnectionGenerations[hostB.id] == 0)
 
         store.setHosts([hostA])
 
         #expect(store.agents.map(\.agent.paneID) == ["w1:p1"])
         #expect(store.hostStatuses[hostB.id] == nil)
+        #expect(store.hostConnectionGenerations[hostB.id] == nil)
         try await waitUntil("the removed Host's transport should close") {
             await transports[hostB.id]?.isClosed == true
         }
@@ -587,6 +722,69 @@ struct ConsoleStoreTests {
         try await waitUntil("the Host should report suspended") {
             store.hostStatuses[host.id] == .suspended
         }
+
+        store.setHosts([])
+    }
+
+    @Test func realReconnectAdvancesHostConnectionGeneration() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the initial subscribe cycle should settle") {
+            let subscriptions = await transport.capturedSubscriptions
+            return subscriptions.count >= 2
+                && store.hostStatuses[host.id] == .connected
+        }
+        #expect(store.hostConnectionGenerations[host.id] == 0)
+
+        await transport.failEventStream(.channelFailed(detail: "connection dropped"))
+        try await waitUntil("the real reconnect should advance the generation") {
+            let subscriptions = await transport.capturedSubscriptions
+            return subscriptions.count >= 3
+                && store.hostConnectionGenerations[host.id] == 1
+                && store.hostStatuses[host.id] == .connected
+        }
+
+        store.setHosts([])
+    }
+
+    @Test func subscriptionResubscribeDoesNotAdvanceConnectionGeneration() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the initial subscribe cycle should settle") {
+            let snapshotCount = await transport.snapshotFetchCount
+            let subscriptions = await transport.capturedSubscriptions
+            return snapshotCount >= 2 && subscriptions.count >= 2
+        }
+        let snapshotsBeforeMembershipChange = await transport.snapshotFetchCount
+
+        await transport.setSnapshot(
+            .fixture(agents: [
+                .fixture(paneID: "w1:p1"),
+                .fixture(paneID: "w1:p2"),
+            ]))
+        #expect(
+            await transport.emit(
+                HerdrEvent(kind: GlobalEventKind.paneAgentDetected.kind, data: .object([:])))
+                == true)
+        try await waitUntil("the changed pane subscription should reconnect its event stream") {
+            let subscriptions = await transport.capturedSubscriptions
+            let snapshotCount = await transport.snapshotFetchCount
+            return snapshotCount >= snapshotsBeforeMembershipChange + 2
+                && subscriptions.last?.contains(
+                    .pane(.agentStatusChanged, paneID: "w1:p2")) == true
+                && store.hostStatuses[host.id] == .connected
+        }
+        #expect(store.hostConnectionGenerations[host.id] == 0)
 
         store.setHosts([])
     }

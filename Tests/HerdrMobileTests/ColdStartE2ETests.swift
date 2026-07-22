@@ -16,6 +16,54 @@ import Testing
         "requires localhost sshd, socat, and an authorized Ed25519 test key"),
     .timeLimit(.minutes(1)))
 struct ColdStartE2ETests {
+    @Test func namedSessionWakeScopesStateAndRetriesRequest() async throws {
+        let environment = try #require(LocalSSHTestEnvironment.current)
+        let sessionName = "testloop"
+        // Resolve the named session under an isolated fake home so this test
+        // never reads or writes the user's real herdr session state.
+        let fakeHome = "/tmp/hm-wake-\(UUID().uuidString.prefix(8))"
+        let sessionDirectory = "\(fakeHome)/.config/herdr/sessions/\(sessionName)"
+        try FileManager.default.createDirectory(
+            atPath: sessionDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: fakeHome) }
+
+        let socketPath = "\(sessionDirectory)/herdr.sock"
+        let stale = try StaleUnixSocket(path: socketPath)
+        defer { stale.remove() }
+        let server = try FakeHerdrServer { request in
+            [
+                #"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":16}}"#
+            ]
+        }
+        defer { server.stop() }
+        let wake = try WakeScript(commands: [
+            "test \"$HERDR_SESSION\" = '\(sessionName)' || exit 1",
+            "test \"$HERDR_SOCKET_PATH\" = '\(socketPath)' || exit 1",
+            "rm -f '\(socketPath)'",
+            "ln -s '\(server.socketPath)' '\(socketPath)'",
+        ])
+        defer { wake.remove() }
+        let homeCommand =
+            "printf '__HERDR_MOBILE_HOME__=%s\\n' '\(fakeHome)'"
+        let transport = try await SSHTransport.connect(
+            settings: environment.makeSettings(
+                socket: .namedSession(sessionName), wakeCommand: wake.command,
+                homeCommand: homeCommand))
+        do {
+            let info = try await transport.ping()
+
+            #expect(info == ServerInfo(version: "9.9.9-fake", protocolVersion: 16))
+        } catch {
+            try? await transport.close()
+            throw error
+        }
+        try await transport.close()
+
+        #expect(wake.invocationCount == 1)
+        #expect(server.receivedRequests.map(\.method) == ["ping"])
+        #expect(server.connectionCount == 1)
+    }
+
     @Test func wakeReceivesConfiguredSocketAndRetriedRequestSucceeds() async throws {
         // Server "stopped": stale socket at the configured path. The wake
         // script brings the fake server online at that path, exactly like
@@ -188,22 +236,57 @@ struct WakeCommandTests {
         #expect(settings.wakeCommand == "herdr remote-client-bridge")
     }
 
-    @Test func scopesWakeCommandToConfiguredSocket() throws {
+    @Test func scopesNamedSessionWakeCommandToSessionState() throws {
         let command = try SSHTransport.wakeExecCommand(
             wakeCommand: "herdr remote-client-bridge",
-            socketPath: "/home/u/My Config/herdr.sock")
+            socketPath: "/home/u/.config/herdr/sessions/testloop/herdr.sock",
+            socketLocation: .namedSession("testloop"))
 
         #expect(
             command == "LC_ALL=C /bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
-                + "herdr remote-client-bridge < /dev/null' wake "
+                + "export HERDR_SESSION=\"$2\"; herdr remote-client-bridge < /dev/null' wake "
+                + "'/home/u/.config/herdr/sessions/testloop/herdr.sock' testloop")
+    }
+
+    @Test func defaultSessionWakeCommandDoesNotOverrideSessionState() throws {
+        let command = try SSHTransport.wakeExecCommand(
+            wakeCommand: "/opt/herdr-wake --foreground",
+            socketPath: "/home/u/.config/herdr/herdr.sock",
+            socketLocation: .defaultSession)
+
+        #expect(
+            command == "LC_ALL=C /bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
+                + "/opt/herdr-wake --foreground < /dev/null' wake "
+                + "'/home/u/.config/herdr/herdr.sock'")
+    }
+
+    @Test func absolutePathWakeCommandDoesNotOverrideSessionState() throws {
+        let command = try SSHTransport.wakeExecCommand(
+            wakeCommand: "/opt/herdr-wake --foreground",
+            socketPath: "/home/u/My Config/herdr.sock",
+            socketLocation: .absolutePath("/home/u/My Config/herdr.sock"))
+
+        #expect(
+            command == "LC_ALL=C /bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
+                + "/opt/herdr-wake --foreground < /dev/null' wake "
                 + "'/home/u/My Config/herdr.sock'")
+    }
+
+    @Test func refusesInvalidNamedSession() {
+        #expect(throws: TransportError.self) {
+            _ = try SSHTransport.wakeExecCommand(
+                wakeCommand: "herdr remote-client-bridge",
+                socketPath: "/home/u/.config/herdr/sessions/work session/herdr.sock",
+                socketLocation: .namedSession("work session"))
+        }
     }
 
     @Test func refusesUnquotableSocketPath() {
         #expect(throws: TransportError.self) {
             _ = try SSHTransport.wakeExecCommand(
                 wakeCommand: "herdr remote-client-bridge",
-                socketPath: "/tmp/it's-a.sock")
+                socketPath: "/tmp/it's-a.sock",
+                socketLocation: .absolutePath("/tmp/it's-a.sock"))
         }
     }
 }
