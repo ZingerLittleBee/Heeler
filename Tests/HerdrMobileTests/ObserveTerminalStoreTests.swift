@@ -69,6 +69,22 @@ struct ObserveTerminalStoreTests {
         #expect(await condition(), comment)
     }
 
+    @Test func historySnapshotDoesNotRearmTopLoadDuringTheSameGesture() {
+        var gate = ObserveHistoryLoadGate()
+
+        let firstTopVisit = gate.handle(.userScrolled(isAtTop: true))
+        let snapshot = gate.handle(.historySnapshotApplied)
+        let sameGestureAtTop = gate.handle(.userScrolled(isAtTop: true))
+        #expect(firstTopVisit)
+        #expect(!snapshot)
+        #expect(!sameGestureAtTop)
+
+        let leftTop = gate.handle(.userScrolled(isAtTop: false))
+        let nextTopVisit = gate.handle(.userScrolled(isAtTop: true))
+        #expect(!leftTop)
+        #expect(nextTopVisit)
+    }
+
     @Test func firstSizeReportBackfillsScrollbackThenFollowsLive() async throws {
         let transport = ScriptedTransport()
         await transport.setPaneText("old line 1\nold line 2", paneID: "w1:p1")

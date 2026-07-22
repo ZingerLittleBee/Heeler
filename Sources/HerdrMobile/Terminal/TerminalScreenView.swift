@@ -31,6 +31,32 @@ enum TerminalLinkPolicy {
     }
 }
 
+/// Gates Observe history pagination to one request per visit to the top.
+/// History snapshots are explicit events because applying one can move the
+/// viewport while the original drag is still decelerating.
+struct ObserveHistoryLoadGate {
+    enum Event {
+        case userScrolled(isAtTop: Bool)
+        case historySnapshotApplied
+    }
+
+    private var requestedAtTop = false
+
+    mutating func handle(_ event: Event) -> Bool {
+        switch event {
+        case .userScrolled(isAtTop: true):
+            guard !requestedAtTop else { return false }
+            requestedAtTop = true
+            return true
+        case .userScrolled(isAtTop: false):
+            requestedAtTop = false
+            return false
+        case .historySnapshotApplied:
+            return false
+        }
+    }
+}
+
 /// The shared SwiftTerm surface: Observe (#9) renders it read-only, Attach
 /// (#11) drives the same view with `allowsInput` and `onSend` wired. Bytes
 /// arrive through a `TerminalByteFeed`; geometry flows out through
@@ -160,7 +186,7 @@ final class SizeReportingTerminalView: TerminalView {
     private var pendingReadOnlySnapshot: Data?
     private var appliesReadOnlySnapshot = false
     private var browsesHistory = false
-    private var requestedEarlierAtTop = false
+    private var historyLoadGate = ObserveHistoryLoadGate()
 
     private struct ViewportAnchor {
         let signature: [String]
@@ -187,7 +213,7 @@ final class SizeReportingTerminalView: TerminalView {
             pendingReadOnlySnapshot = nil
             applyReadOnlySnapshot(data)
             restoreViewportAnchor(anchor)
-            requestedEarlierAtTop = false
+            _ = historyLoadGate.handle(.historySnapshotApplied)
             browsesHistory = !isAtBottom
             return
         }
@@ -285,13 +311,8 @@ final class SizeReportingTerminalView: TerminalView {
     }
 
     private func handleUserScroll() {
-        if isAtTop {
-            if !requestedEarlierAtTop {
-                requestedEarlierAtTop = true
-                _ = onLoadEarlier?()
-            }
-        } else {
-            requestedEarlierAtTop = false
+        if historyLoadGate.handle(.userScrolled(isAtTop: isAtTop)) {
+            _ = onLoadEarlier?()
         }
         updateHistoryBrowsing()
     }
