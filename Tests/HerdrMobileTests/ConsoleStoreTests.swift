@@ -598,7 +598,7 @@ struct ConsoleStoreTests {
     }
 
     @Test func startAgentForwardsItsParamsAndResnapshots() async throws {
-        // agent.start (#12): the params reach the Host's transport, and the
+        // Agent launch (#12): the request reaches the Host's transport, and the
         // started pane surfaces via one explicit resync rather than waiting
         // on the membership event.
         let host = Host.fixture()
@@ -618,11 +618,12 @@ struct ConsoleStoreTests {
                 .fixture(paneID: "w1:pnew", status: .working),
             ]))
         let started = try await store.startAgent(
-            AgentStartParams(argv: ["claude"], name: "claude", workspaceID: "w1"), on: host.id)
+            AgentLaunchRequest(kind: "claude", name: "claude", workspaceID: "w1"), on: host.id)
 
         #expect(started.status == .working)
         let starts = await transport.agentStarts
-        #expect(starts.map(\.argv) == [["claude"]])
+        #expect(starts.map(\.kind) == ["claude"])
+        #expect(starts.map(\.arguments) == [[]])
         #expect(starts.first?.workspaceID == "w1")
         try await waitUntil("the resync should surface the new pane") {
             store.agents.map(\.agent.paneID) == ["w1:pnew", "w1:p1"]
@@ -639,7 +640,7 @@ struct ConsoleStoreTests {
         // No feed for this Host at all: nothing to start against.
         await #expect(throws: TransportError.self) {
             try await store.startAgent(
-                AgentStartParams(argv: ["claude"], name: "claude"), on: host.id)
+                AgentLaunchRequest(kind: "claude", name: "claude"), on: host.id)
         }
     }
 

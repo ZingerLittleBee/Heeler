@@ -8,7 +8,7 @@ import Testing
 @Suite("Host onboarding store")
 struct HostOnboardingStoreTests {
     private static let healthyPing = Result<ServerInfo, TransportError>.success(
-        ServerInfo(version: "0.7.4", protocolVersion: 16))
+        ServerInfo(version: "0.7.5", protocolVersion: 17))
     private let keyBlob = Data("fake-host-key".utf8)
 
     private func makeStore(
@@ -55,7 +55,7 @@ struct HostOnboardingStoreTests {
 
         #expect(store.phase == .finished)
         #expect(store.report?.isFullyPassed == true)
-        #expect(store.serverInfo == ServerInfo(version: "0.7.4", protocolVersion: 16))
+        #expect(store.serverInfo == ServerInfo(version: "0.7.5", protocolVersion: 17))
         let transport = try #require(await connector.transports.last)
         #expect(await transport.isClosed)
     }
@@ -127,7 +127,7 @@ struct HostOnboardingStoreTests {
     @Test func pingFailureFailsItsCheckAndStillClosesTheTransport() async throws {
         let (store, connector) = try makeStore(
             outcome: .connects(
-                pingResult: .failure(.protocolVersionMismatch(server: 17, supported: 16))))
+                pingResult: .failure(.protocolVersionMismatch(server: 18, supported: 17))))
 
         await store.runChecks()
 

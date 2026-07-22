@@ -21,33 +21,17 @@ protocol Transport: Sendable {
     /// source (#8) — re-fetched on every events-session `.connected`.
     func sessionSnapshot() async throws -> SessionSnapshot
 
-    /// Reads a Pane's terminal output; the Console's last-output snippet
-    /// uses `.recent`, while Observe uses `.recentUnwrapped` so the phone can
-    /// wrap complete logical lines at its own width.
+    /// Reads a Pane's recent terminal output for the Console card snippet.
     func readPane(_ params: PaneReadParams) async throws -> PaneReadResult
 
-    /// Atomically writes text and key presses to a Pane (`pane.send_input`):
-    /// the detail screen's message box (#10, User Story 6 — answering a
-    /// Blocked agent without Attach). Keeping the text and Enter key in one
-    /// RPC prevents a half-complete state where the reply is typed but not
-    /// submitted.
-    func sendInput(_ params: PaneSendInputParams) async throws
-
-    /// Starts a new Agent (`agent.start`): the new-agent flow (#12, User
-    /// Story 8 — dispatch work from the road). Runs the given command as a
-    /// fresh herdr pane in the chosen workspace and returns the started Agent
-    /// once the server acknowledges. The new pane also surfaces in the
+    /// Starts a new Agent: the new-agent flow (#12, User Story 8 — dispatch
+    /// work from the road). Creates a fresh herdr tab in the chosen workspace,
+    /// starts the requested agent in its root pane, and returns the Agent once
+    /// the server acknowledges. The new pane also surfaces in the
     /// Console through the normal snapshot/delta machinery (a membership
     /// event triggers a re-snapshot), so callers do not thread the return
     /// value into the list themselves.
-    func startAgent(_ params: AgentStartParams) async throws -> Agent
-
-    /// Sends control keys to a Pane (`pane.send_keys`): the detail screen's
-    /// quick-key bar (Enter/Esc/Ctrl-C/arrows/y-n, #10). Key names are
-    /// herdr's own spellings — verified empirically against herdr 0.7.4:
-    /// `enter`, `esc`, `ctrl+c`, `up`/`down`/`left`/`right`, `y`, `n` (herdr
-    /// rejects e.g. `ctrl-c` with `invalid_key`).
-    func sendKeys(_ params: PaneSendKeysParams) async throws
+    func startAgent(_ request: AgentLaunchRequest) async throws -> Agent
 
     /// Closes a Pane (`pane.close`): the Agent detail screen's destructive
     /// close action (#13, User Story 9 — a Done agent must not be destroyed
@@ -69,21 +53,11 @@ protocol Transport: Sendable {
     /// 0.7.4): sync initial state with `listAgents()` alongside subscribing.
     func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream
 
-    /// Opens this Host's dedicated terminal channel and starts the read-only
-    /// Observe live-follow (#9): a non-takeover `herdr terminal session
-    /// control` applies the phone geometry to the Agent's PTY and emits NDJSON
-    /// frames, while the app exposes no terminal-input path. Frames are
-    /// decoded and base64-unwrapped until `end()` closes the channel. One
-    /// terminal channel per Host, so a second call while one is live throws
-    /// `.terminalChannelAlreadyOpen`.
-    func observeTerminal(_ request: TerminalObserveRequest) async throws -> TerminalFrameStream
-
     /// Opens this Host's dedicated terminal channel as a full interactive
-    /// Attach (#11): a PTY running `herdr agent attach`, raw bytes both ways
-    /// until `end()` closes the channel explicitly. Attach and Observe share
-    /// the one terminal channel per Host — the session slot budgeted for the
-    /// terminal surface — so a call while either is live throws
-    /// `.terminalChannelAlreadyOpen`; the UI hands over explicitly.
+    /// Attach: a PTY running `herdr agent attach`, raw bytes both ways until
+    /// `end()` closes the channel explicitly. One terminal channel is allowed
+    /// per Host, so a second call while one is live throws
+    /// `.terminalChannelAlreadyOpen`.
     func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession
 
     /// Whether the underlying connection to the Host is still alive. The
@@ -100,6 +74,26 @@ extension Transport {
     /// Test doubles and alternative transports that do not expose Host-level
     /// session discovery can opt out without inventing sessions.
     func listSessions() async throws -> [HerdrSession] { [] }
+}
+
+/// App-domain request for launching a fresh coding agent.
+///
+/// herdr protocol 17 split the old topology-changing `agent.start` into
+/// `tab.create` followed by a pane-targeted `agent.start`. Keeping that wire
+/// choreography behind `Transport` prevents UI code from depending on the
+/// server's transport-level request shapes.
+struct AgentLaunchRequest: Sendable, Equatable {
+    let kind: String
+    let name: String
+    let arguments: [String]
+    let workspaceID: String?
+
+    init(kind: String, name: String, arguments: [String] = [], workspaceID: String? = nil) {
+        self.kind = kind
+        self.name = name
+        self.arguments = arguments
+        self.workspaceID = workspaceID
+    }
 }
 
 /// herdr server identity as reported by `ping`.
@@ -304,8 +298,7 @@ enum TransportError: Error, Sendable, Equatable {
     /// keeps exactly one dedicated events channel (ADR 0002 headroom).
     case eventsChannelAlreadyOpen
     /// A second terminal channel was requested while one is live; each Host
-    /// keeps exactly one (Observe now, Attach in #11 — the UI enforces one
-    /// terminal surface at a time, this backstops the slot budget).
+    /// keeps exactly one interactive terminal surface at a time.
     case terminalChannelAlreadyOpen
     /// The request exceeded its per-request deadline; its exec channel was
     /// closed.

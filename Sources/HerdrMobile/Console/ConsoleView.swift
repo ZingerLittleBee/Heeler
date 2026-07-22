@@ -5,13 +5,8 @@ import SwiftUI
 struct ConsoleView: View {
     let hosts: HostStore
     let console: ConsoleStore
-    let dictationSettings: DictationSettingsStore
-    /// The shared on-device speech engine, threaded to each Agent detail's
-    /// reply-box dictation so there is one microphone owner across the app.
-    let dictationEngine: any DictationEngine
     @State private var isManagingHosts = false
     @State private var isStartingAgent = false
-    @State private var isShowingSettings = false
 
     var body: some View {
         NavigationStack {
@@ -21,10 +16,7 @@ struct ConsoleView: View {
                 // Agent detail screen is pushed.
                 .navigationDestination(for: ConsoleAgent.ID.self) { id in
                     if let agent = console.agents.first(where: { $0.id == id }) {
-                        AgentDetailView(
-                            agent: agent, console: console,
-                            dictationSettings: dictationSettings,
-                            dictationEngine: dictationEngine)
+                        AgentDetailView(agent: agent, console: console)
                     } else {
                         ContentUnavailableView(
                             "Agent Gone", systemImage: "rectangle.on.rectangle.slash",
@@ -33,11 +25,6 @@ struct ConsoleView: View {
                 }
                 .navigationTitle("Console")
                 .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Settings", systemImage: "gearshape") {
-                            isShowingSettings = true
-                        }
-                    }
                     ToolbarItem(placement: .primaryAction) {
                         Button("Hosts", systemImage: "server.rack") {
                             isManagingHosts = true
@@ -61,10 +48,6 @@ struct ConsoleView: View {
                 .sheet(isPresented: $isStartingAgent) {
                     // StartAgentView brings its own NavigationStack.
                     StartAgentView(hosts: hosts.hosts, console: console)
-                }
-                .sheet(isPresented: $isShowingSettings) {
-                    // SettingsView brings its own NavigationStack.
-                    SettingsView(store: dictationSettings)
                 }
         }
     }

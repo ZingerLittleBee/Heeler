@@ -93,7 +93,7 @@ struct AttachTerminalStoreTests {
     @Test func resizeForwardsWindowChangeWithoutReattaching() async throws {
         // The acceptance criterion's rotation path: geometry changes ride
         // SSH window-change on the live channel — attach is never reopened
-        // (the whole point of the PTY over Observe's fixed-size frames).
+        // (the whole point of a live PTY rather than fixed-size snapshots).
         let transport = ScriptedTransport()
         let (store, _) = makeStore(transport: transport)
 

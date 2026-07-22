@@ -61,8 +61,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: dev.herdr.mobile.HerdrMobileTests
     dependencies:
       - target: HerdrMobile
-      # The observe e2e feeds decoded frames through a headless SwiftTerm
-      # Terminal to prove the pipeline renders (#9).
+      # Terminal interaction tests exercise SwiftTerm directly.
       - package: SwiftTerm
 
 schemes:

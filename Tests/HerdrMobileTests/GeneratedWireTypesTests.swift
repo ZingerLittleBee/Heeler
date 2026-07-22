@@ -4,9 +4,8 @@ import Testing
 @testable import HerdrMobile
 
 // Round-trip tests for the schema-generated wire types (#7). Response
-// fixtures are captured verbatim from a live herdr 0.7.4 (protocol 16)
-// server, trimmed to representative size and with local paths/titles
-// sanitized; field sets and value shapes are untouched.
+// fixtures mirror herdr 0.7.5 (protocol 17) responses, trimmed to
+// representative size and with local paths/titles sanitized.
 //
 // Round-trip = decode the capture, re-encode, decode again, compare. Key
 // order and dropped unknown fields make byte equality meaningless; value
@@ -28,15 +27,15 @@ import Testing
     // MARK: Result payloads
 
     @Test func pongResponseRoundTripsLiveCapture() throws {
-        let line = #"{"id":"fix-1","result":{"type":"pong","version":"0.7.4","protocol":16,"capabilities":{"live_handoff":true,"detached_server_daemon":true}}}"#
+        let line = #"{"id":"fix-1","result":{"type":"pong","version":"0.7.5","protocol":17,"capabilities":{"live_handoff":true,"detached_server_daemon":true}}}"#
 
         let pong = try HerdrWire.decodeResult(
             PongResponse.self, fromResponseLine: Data(line.utf8), requestID: "fix-1")
 
-        #expect(pong.version == "0.7.4")
-        #expect(pong.protocolVersion == 16)
+        #expect(pong.version == "0.7.5")
+        #expect(pong.protocolVersion == 17)
         #expect(pong.capabilities == ServerCapabilities(liveHandoff: true, detachedServerDaemon: true))
-        _ = try roundTrip(PongResponse.self, #"{"type":"pong","version":"0.7.4","protocol":16,"capabilities":{"live_handoff":true,"detached_server_daemon":true}}"#)
+        _ = try roundTrip(PongResponse.self, #"{"type":"pong","version":"0.7.5","protocol":17,"capabilities":{"live_handoff":true,"detached_server_daemon":true}}"#)
     }
 
     @Test func agentListResponseRoundTripsLiveCapture() throws {
@@ -76,14 +75,14 @@ import Testing
         // Trimmed to one workspace/tab/pane/layout/agent; the layout keeps a
         // real split so PaneLayoutSplit is exercised.
         let json = #"""
-            {"type":"session_snapshot","snapshot":{"version":"0.7.4","protocol":16,"workspaces":[{"workspace_id":"w1","number":1,"label":"Proj","focused":false,"pane_count":3,"tab_count":3,"active_tab_id":"w1:t1","agent_status":"unknown","worktree":{"repo_key":"/Users/u/Proj/.git","repo_name":"Proj","repo_root":"/Users/u/Proj","checkout_path":"/Users/u/Proj","is_linked_worktree":false}}],"tabs":[{"tab_id":"w1:t1","workspace_id":"w1","number":1,"label":"1","focused":false,"pane_count":1,"agent_status":"unknown"}],"panes":[{"pane_id":"w1:pA","terminal_id":"term_656c4d830ea7d1","workspace_id":"w1","tab_id":"w1:t1","focused":false,"cwd":"/Users/u/Proj","foreground_cwd":"/Users/u/Proj","terminal_title":"~/D/Proj","terminal_title_stripped":"~/D/Proj","agent_status":"unknown","scroll":{"offset_from_bottom":0,"max_offset_from_bottom":0,"viewport_rows":49},"revision":1}],"layouts":[{"workspace_id":"w1","tab_id":"w1:t1","zoomed":false,"area":{"x":26,"y":1,"width":186,"height":49},"focused_pane_id":"w1:pA","panes":[{"pane_id":"w1:pA","focused":true,"rect":{"x":26,"y":1,"width":93,"height":49}},{"pane_id":"w1:pB","focused":false,"rect":{"x":119,"y":1,"width":93,"height":49}}],"splits":[{"id":"split_0_root","direction":"right","ratio":0.5,"rect":{"x":26,"y":1,"width":186,"height":49}}]}],"agents":[{"terminal_id":"term_656c59f7b902d1e","agent":"codex","terminal_title":"GoDrop","terminal_title_stripped":"GoDrop","agent_status":"idle","workspace_id":"w3","tab_id":"w3:t2","pane_id":"w3:pB","focused":false,"cwd":"/Users/u/GoDrop","foreground_cwd":"/Users/u/GoDrop","revision":5}],"focused_workspace_id":"wS","focused_tab_id":"wS:t1","focused_pane_id":"wS:p1"}}
+            {"type":"session_snapshot","snapshot":{"version":"0.7.5","protocol":17,"workspaces":[{"workspace_id":"w1","number":1,"label":"Proj","focused":false,"pane_count":3,"tab_count":3,"active_tab_id":"w1:t1","agent_status":"unknown","worktree":{"repo_key":"/Users/u/Proj/.git","repo_name":"Proj","repo_root":"/Users/u/Proj","checkout_path":"/Users/u/Proj","is_linked_worktree":false}}],"tabs":[{"tab_id":"w1:t1","workspace_id":"w1","number":1,"label":"1","focused":false,"pane_count":1,"agent_status":"unknown"}],"panes":[{"pane_id":"w1:pA","terminal_id":"term_656c4d830ea7d1","workspace_id":"w1","tab_id":"w1:t1","focused":false,"cwd":"/Users/u/Proj","foreground_cwd":"/Users/u/Proj","terminal_title":"~/D/Proj","terminal_title_stripped":"~/D/Proj","agent_status":"unknown","scroll":{"offset_from_bottom":0,"max_offset_from_bottom":0,"viewport_rows":49},"revision":1}],"layouts":[{"workspace_id":"w1","tab_id":"w1:t1","zoomed":false,"area":{"x":26,"y":1,"width":186,"height":49},"focused_pane_id":"w1:pA","panes":[{"pane_id":"w1:pA","focused":true,"rect":{"x":26,"y":1,"width":93,"height":49}},{"pane_id":"w1:pB","focused":false,"rect":{"x":119,"y":1,"width":93,"height":49}}],"splits":[{"id":"split_0_root","direction":"right","ratio":0.5,"rect":{"x":26,"y":1,"width":186,"height":49}}]}],"agents":[{"terminal_id":"term_656c59f7b902d1e","agent":"codex","terminal_title":"GoDrop","terminal_title_stripped":"GoDrop","agent_status":"idle","workspace_id":"w3","tab_id":"w3:t2","pane_id":"w3:pB","focused":false,"cwd":"/Users/u/GoDrop","foreground_cwd":"/Users/u/GoDrop","revision":5}],"focused_workspace_id":"wS","focused_tab_id":"wS:t1","focused_pane_id":"wS:p1"}}
             """#
 
         let response = try roundTrip(SessionSnapshotResponse.self, json)
         let snapshot = response.snapshot
 
-        #expect(snapshot.version == "0.7.4")
-        #expect(snapshot.protocolVersion == 16)
+        #expect(snapshot.version == "0.7.5")
+        #expect(snapshot.protocolVersion == 17)
         #expect(snapshot.focusedPaneID == "wS:p1")
         #expect(snapshot.workspaces.first?.worktree?.repoName == "Proj")
         #expect(snapshot.tabs.first?.paneCount == 1)
@@ -126,7 +125,7 @@ import Testing
     }
 
     @Test func okResponseDecodes() throws {
-        // The bare-acknowledgement result shape (`pane.send_input` et al.).
+        // The bare-acknowledgement result shape (`pane.close`).
         _ = try roundTrip(OkResponse.self, #"{"type":"ok"}"#)
     }
 
@@ -169,8 +168,8 @@ import Testing
 
     @Test func agentStartParamsRoundTrip() throws {
         let params = AgentStartParams(
-            argv: ["claude", "--continue"], name: "claude",
-            cwd: "/Users/u/Proj", split: .right)
+            kind: "claude", name: "reviewer", paneID: "w1:p1",
+            args: ["--continue"], timeoutMs: 5_000)
 
         let data = try JSONEncoder().encode(params)
         let decoded = try JSONDecoder().decode(AgentStartParams.self, from: data)
@@ -178,7 +177,19 @@ import Testing
         #expect(decoded == params)
         let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let fields = try #require(object)
-        #expect(fields.keys.sorted() == ["argv", "cwd", "name", "split"])
+        #expect(fields.keys.sorted() == ["args", "kind", "name", "pane_id", "timeout_ms"])
+    }
+
+    @Test func tabCreateParamsEncodeProtocolSeventeenFields() throws {
+        let params = TabCreateParams(focus: false, workspaceID: "w1")
+
+        let data = try JSONEncoder().encode(params)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let fields = try #require(object)
+
+        #expect(fields.keys.sorted() == ["focus", "workspace_id"])
+        #expect(fields["focus"] as? Bool == false)
+        #expect(fields["workspace_id"] as? String == "w1")
     }
 
     @Test func paneTargetTravelsThroughTheRequestEnvelope() throws {
@@ -190,18 +201,7 @@ import Testing
         #expect((envelope["params"] as? [String: Any])?["pane_id"] as? String == "w1:p1")
     }
 
-    @Test func sendInputAndKeysParamsEncodeWireNames() throws {
-        let input = try JSONSerialization.jsonObject(
-            with: JSONEncoder().encode(
-                PaneSendInputParams(paneID: "w1:p1", keys: ["enter"], text: "y"))
-        ) as? [String: Any]
-        #expect(input?.keys.sorted() == ["keys", "pane_id", "text"])
-
-        let keys = try JSONSerialization.jsonObject(
-            with: JSONEncoder().encode(PaneSendKeysParams(keys: ["Enter"], paneID: "w1:p1"))
-        ) as? [String: Any]
-        #expect(keys?.keys.sorted() == ["keys", "pane_id"])
-
+    @Test func agentTargetEncodesItsWireName() throws {
         let target = try JSONSerialization.jsonObject(
             with: JSONEncoder().encode(AgentTarget(target: "w1:p1"))
         ) as? [String: Any]

@@ -25,9 +25,8 @@ enum TerminalAttachInput: Sendable, Equatable {
 }
 
 /// A live interactive Attach session over its Host's dedicated terminal
-/// channel: raw PTY bytes out, keystrokes and window changes in. Unlike
-/// Observe there is no framing — the byte stream feeds the terminal emulator
-/// directly, never `TerminalFrame` decoding.
+/// channel: raw PTY bytes out, keystrokes and window changes in. The byte
+/// stream feeds the terminal emulator directly without app-level framing.
 ///
 /// Ending is explicit: call `end()`. A live exec channel does not respond to
 /// Swift task cancellation (ADR 0002), so abandoning the session without

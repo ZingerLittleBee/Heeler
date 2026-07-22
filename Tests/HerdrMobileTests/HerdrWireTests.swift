@@ -3,8 +3,8 @@ import Testing
 
 @testable import HerdrMobile
 
-// Pure wire-format tests: no sshd, no sockets. Response fixtures are captured
-// verbatim from a live herdr 0.7.4 (protocol 16) server.
+// Pure wire-format tests: no sshd, no sockets. Response fixtures mirror
+// herdr 0.7.5 (protocol 17) server responses.
 @Suite struct HerdrWireTests {
     @Test func requestLineHasEnvelopeShapeAndTrailingNewline() throws {
         let line = try HerdrWire.requestLine(id: "req-1", method: "agent.list")
@@ -21,13 +21,13 @@ import Testing
 
     @Test func pingResultDecodesLeniently() throws {
         // Live capture; "type" and "capabilities" are unknown fields to us.
-        let line = #"{"id":"req-1","result":{"type":"pong","version":"0.7.4","protocol":16,"capabilities":{"live_handoff":true,"detached_server_daemon":true}}}"#
+        let line = #"{"id":"req-1","result":{"type":"pong","version":"0.7.5","protocol":17,"capabilities":{"live_handoff":true,"detached_server_daemon":true}}}"#
 
         let pong = try HerdrWire.decodeResult(
             PongResponse.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
 
-        #expect(pong.version == "0.7.4")
-        #expect(pong.protocolVersion == 16)
+        #expect(pong.version == "0.7.5")
+        #expect(pong.protocolVersion == 17)
     }
 
     @Test func agentListResponseMapsToDomainAgents() throws {
@@ -145,7 +145,7 @@ import Testing
     }
 
     @Test func responseIDMismatchIsMalformed() throws {
-        let line = #"{"id":"someone-else","result":{"version":"0.7.4","protocol":16}}"#
+        let line = #"{"id":"someone-else","result":{"version":"0.7.5","protocol":17}}"#
 
         #expect(throws: TransportError.self) {
             try HerdrWire.decodeResult(

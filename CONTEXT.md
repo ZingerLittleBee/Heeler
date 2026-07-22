@@ -24,25 +24,19 @@ _Avoid_: window, tile
 The native dashboard surface: the flat, status-sorted list of Agents across Hosts, plus the Agent detail screen.
 _Avoid_: dashboard, home
 
-**Observe**:
-Read-only live view of an Agent's terminal output. It temporarily claims a
-non-takeover herdr control session so the Agent's PTY matches the phone
-geometry, but never sends terminal input; replies and keys use native controls.
-_Avoid_: watch, monitor, preview
-
 **Attach**:
-Full interactive terminal control of an Agent's pane through the embedded terminal.
+The Agent detail surface: full interactive terminal control of the pane through
+the embedded terminal. The normal terminal buffer uses native local scrollback.
+Alternate-screen TUIs map vertical touch drags and momentum to terminal wheel rows.
 _Avoid_: takeover (that's herdr's flag, not our surface), connect
 
 **Terminal Keyboard**:
-The input surface used only within Attach to send text and terminal key sequences to an Agent's pane. It models terminal input, not remote-computer hardware events, and never appears in Observe.
-_Avoid_: computer keyboard, remote keyboard, Observe keyboard, reply keyboard
-
-**Dictation**:
-Hold-to-talk voice input on the Agent reply box. Speech is transcribed on
-device into the draft for the user to review and send; it never sends by
-itself and never produces terminal input directly.
-_Avoid_: voice message, audio recording, voice command
+The two input modes used within Attach. Text keeps the standard iOS input method
+for composition, autocorrection, dictation, and language switching. The Keys mode
+replaces it with a compact terminal control pad for navigation and common control
+signals.
+Both modes send directly to the Agent's pane.
+_Avoid_: desktop keyboard, reply keyboard
 
 **Transport**:
 The app-side abstraction that executes herdr API requests and delivers event streams over SSH. UI code talks to Transport, never to SSH primitives.

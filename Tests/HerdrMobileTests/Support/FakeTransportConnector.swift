@@ -27,8 +27,8 @@ final actor FakeTransport: Transport {
 
     func sessionSnapshot() async throws -> SessionSnapshot {
         SessionSnapshot(
-            agents: [], layouts: [], panes: [], protocolVersion: 16, tabs: [],
-            version: "0.7.4-fake", workspaces: [])
+            agents: [], layouts: [], panes: [], protocolVersion: 17, tabs: [],
+            version: "0.7.5-fake", workspaces: [])
     }
 
     func readPane(_ params: PaneReadParams) async throws -> PaneReadResult {
@@ -39,24 +39,12 @@ final actor FakeTransport: Transport {
         throw TransportError.channelFailed(detail: "FakeTransport does not script events")
     }
 
-    func observeTerminal(_ request: TerminalObserveRequest) async throws -> TerminalFrameStream {
-        throw TransportError.channelFailed(detail: "FakeTransport does not script observe")
-    }
-
     func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession {
         throw TransportError.channelFailed(detail: "FakeTransport does not script attach")
     }
 
-    func startAgent(_ params: AgentStartParams) async throws -> Agent {
+    func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
         throw TransportError.channelFailed(detail: "FakeTransport does not script agent starts")
-    }
-
-    func sendInput(_ params: PaneSendInputParams) async throws {
-        throw TransportError.channelFailed(detail: "FakeTransport does not script sends")
-    }
-
-    func sendKeys(_ params: PaneSendKeysParams) async throws {
-        throw TransportError.channelFailed(detail: "FakeTransport does not script sends")
     }
 
     func closePane(_ params: PaneTarget) async throws {

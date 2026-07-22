@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import UIKit
 
 @testable import HerdrMobile
 
@@ -11,6 +12,113 @@ import Testing
 /// targets that cannot be quoted safely for both.
 @Suite("Terminal attach bootstrap line")
 struct TerminalAttachTests {
+    @MainActor
+    @Test func attachStartsWithTheIOSInputMethodAndKeyboardSwitcher() {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        #expect(terminal.keyboardMode == .text)
+        #expect(terminal.inputView == nil)
+        #expect(terminal.inputAccessoryView is TerminalKeyboardAccessory)
+        #expect(terminal.keyboardDismissMode == .interactive)
+    }
+
+    @MainActor
+    @Test func attachSwitchesBetweenTextAndTerminalKeys() {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+
+        terminal.setKeyboardMode(.controls)
+        #expect(terminal.keyboardMode == .controls)
+        #expect(terminal.inputView is TerminalControlKeyboardView)
+
+        terminal.setKeyboardMode(.text)
+        #expect(terminal.keyboardMode == .text)
+        #expect(terminal.inputView == nil)
+    }
+
+    @MainActor
+    @Test func terminalKeysReuseTheMeasuredSystemKeyboardHeight() throws {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        terminal.recordTextKeyboardHeight(totalHeight: 336, accessoryHeight: 48)
+        terminal.recordTextKeyboardHeight(totalHeight: 48, accessoryHeight: 48)
+
+        terminal.setKeyboardMode(.controls)
+        let keyboard = try #require(terminal.inputView as? TerminalControlKeyboardView)
+        #expect(keyboard.intrinsicContentSize.height == 288)
+        #expect(keyboard.frame.height == 288)
+    }
+
+    @Test func terminalControlKeyboardContainsOnlyUsefulMobileKeys() {
+        #expect(TerminalControlKey.rows == [
+            [.escape, .tab, .controlC, .controlD, .controlZ],
+            [.home, .pageUp, .up, .pageDown, .end],
+            [.backspace, .left, .down, .right, .enter],
+        ])
+    }
+
+    @Test func terminalControlKeysEncodeExpectedBytes() {
+        #expect(TerminalControlKey.escape.bytes(applicationCursor: false) == [0x1B])
+        #expect(TerminalControlKey.tab.bytes(applicationCursor: false) == [0x09])
+        #expect(TerminalControlKey.controlC.bytes(applicationCursor: false) == [0x03])
+        #expect(TerminalControlKey.controlD.bytes(applicationCursor: false) == [0x04])
+        #expect(TerminalControlKey.controlZ.bytes(applicationCursor: false) == [0x1A])
+        #expect(TerminalControlKey.backspace.bytes(applicationCursor: false) == [0x7F])
+        #expect(TerminalControlKey.enter.bytes(applicationCursor: false) == [0x0D])
+        #expect(TerminalControlKey.up.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x41])
+        #expect(TerminalControlKey.up.bytes(applicationCursor: true) == [0x1B, 0x4F, 0x41])
+        #expect(TerminalControlKey.pageUp.bytes(applicationCursor: false) == [
+            0x1B, 0x5B, 0x35, 0x7E,
+        ])
+    }
+
+    @MainActor
+    @Test func terminalControlKeysFlowThroughTheAttachDelegate() {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        var sent = Data()
+        let coordinator = TerminalScreenView.Coordinator(
+            onSizeChanged: nil,
+            onSend: { sent.append($0) })
+        terminal.terminalDelegate = coordinator
+
+        terminal.sendControlKey(.controlC)
+        #expect(sent == Data([0x03]))
+
+        sent.removeAll()
+        terminal.feed(text: "\u{1B}[?1h")
+        terminal.sendControlKey(.up)
+        #expect(sent == Data([0x1B, 0x4F, 0x41]))
+    }
+
+    @MainActor
+    @Test func alternateScreenVerticalDragSendsContinuousWheelEvents() {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        terminal.bounds = CGRect(x: 0, y: 0, width: 390, height: 800)
+        var sent = Data()
+        let coordinator = TerminalScreenView.Coordinator(
+            onSizeChanged: nil,
+            onSend: { sent.append($0) })
+        terminal.terminalDelegate = coordinator
+
+        terminal.feed(text: "\u{1B}[?1049h\u{1B}[?1000h\u{1B}[?1006h")
+        #expect(
+            terminal.scrollAlternateScreen(
+                translationY: terminal.alternateScrollStep * 3.2) == 3)
+        let olderEvents = String(decoding: sent, as: UTF8.self)
+        #expect(olderEvents.filter { $0 == "M" }.count == 3)
+        #expect(olderEvents.contains("\u{1B}[<64;"))
+
+        sent.removeAll()
+        #expect(
+            terminal.scrollAlternateScreen(
+                translationY: -terminal.alternateScrollStep * 2.2) == 2)
+        let newerEvents = String(decoding: sent, as: UTF8.self)
+        #expect(newerEvents.filter { $0 == "M" }.count == 2)
+        #expect(newerEvents.contains("\u{1B}[<65;"))
+
+        sent.removeAll()
+        terminal.feed(text: "\u{1B}[?1000l\u{1B}[?1049l")
+        #expect(terminal.scrollAlternateScreen(translationY: 160) == 0)
+        #expect(sent.isEmpty)
+    }
+
     @Test func execsTheAttachCommandWithQuotedTargetAndSocketScope() throws {
         let line = try SSHTransport.attachBootstrapLine(
             attachCommand: "herdr agent attach",
@@ -35,7 +143,7 @@ struct TerminalAttachTests {
 
     @Test func injectableAttachCommandRidesThrough() throws {
         // Tests substitute a script at the environment boundary, like the
-        // wake and observe commands.
+        // wake command.
         let line = try SSHTransport.attachBootstrapLine(
             attachCommand: "/bin/sh /tmp/fake-attach.sh",
             request: TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24),

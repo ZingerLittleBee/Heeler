@@ -1,473 +1,398 @@
-import Foundation
 import SwiftTerm
+import UIKit
 
-enum TerminalKeyboardMode: Hashable, Sendable {
-    case inputMethod
-    case terminal
+enum TerminalKeyboardMode: Int {
+    case text
+    case controls
 }
 
-enum TerminalKeyboardPage: Int, CaseIterable, Hashable, Sendable {
-    case typing
-    case navigation
-}
+enum TerminalControlKey: Equatable {
+    case escape
+    case tab
+    case controlC
+    case controlD
+    case controlZ
+    case home
+    case pageUp
+    case up
+    case pageDown
+    case end
+    case backspace
+    case left
+    case down
+    case right
+    case enter
 
-enum TerminalModifier: CaseIterable, Hashable, Sendable {
-    case control
-    case shift
-    case alt
-}
+    static let rows: [[Self]] = [
+        [.escape, .tab, .controlC, .controlD, .controlZ],
+        [.home, .pageUp, .up, .pageDown, .end],
+        [.backspace, .left, .down, .right, .enter],
+    ]
 
-enum TerminalModifierPhase: Equatable, Sendable {
-    case inactive
-    case armed
-    case locked
-}
-
-struct TerminalKeyboardState: Equatable, Sendable {
-    private(set) var mode: TerminalKeyboardMode = .inputMethod
-    private(set) var page: TerminalKeyboardPage = .typing
-    private(set) var armedModifiers: Set<TerminalModifier> = []
-    private(set) var lockedModifiers: Set<TerminalModifier> = []
-
-    var activeModifiers: Set<TerminalModifier> {
-        armedModifiers.union(lockedModifiers)
-    }
-
-    func phase(of modifier: TerminalModifier) -> TerminalModifierPhase {
-        if lockedModifiers.contains(modifier) { return .locked }
-        if armedModifiers.contains(modifier) { return .armed }
-        return .inactive
-    }
-
-    mutating func selectMode(_ mode: TerminalKeyboardMode) {
-        guard self.mode != mode else { return }
-        self.mode = mode
-        clearModifiers()
-    }
-
-    mutating func selectPage(_ page: TerminalKeyboardPage) {
-        self.page = page
-    }
-
-    mutating func toggle(_ modifier: TerminalModifier, locks: Bool = false) {
-        switch phase(of: modifier) {
-        case .inactive:
-            if modifier == .shift, locks {
-                lockedModifiers.insert(modifier)
-            } else {
-                armedModifiers.insert(modifier)
-            }
-        case .armed:
-            armedModifiers.remove(modifier)
-            if modifier == .shift, locks {
-                lockedModifiers.insert(modifier)
-            }
-        case .locked:
-            lockedModifiers.remove(modifier)
+    var title: String? {
+        switch self {
+        case .escape: "Esc"
+        case .tab: "Tab"
+        case .controlC: "⌃C"
+        case .controlD: "⌃D"
+        case .controlZ: "⌃Z"
+        case .home: "Home"
+        case .pageUp: "PgUp"
+        case .pageDown: "PgDn"
+        case .end: "End"
+        case .up, .backspace, .left, .down, .right, .enter: nil
         }
     }
 
-    mutating func consumeOneShotModifiers() {
-        armedModifiers.removeAll()
-    }
-
-    mutating func clearModifiers() {
-        armedModifiers.removeAll()
-        lockedModifiers.removeAll()
-    }
-}
-
-enum TerminalFunctionKey: Int, CaseIterable, Hashable, Sendable {
-    case f1 = 1
-    case f2
-    case f3
-    case f4
-    case f5
-    case f6
-    case f7
-    case f8
-    case f9
-    case f10
-    case f11
-    case f12
-}
-
-enum TerminalKey: Hashable, Sendable {
-    case character(base: Character, shifted: Character)
-    case escape
-    case tab
-    case backspace
-    case enter
-    case insert
-    case delete
-    case home
-    case end
-    case pageUp
-    case pageDown
-    case up
-    case down
-    case left
-    case right
-    case function(TerminalFunctionKey)
-
-    var isRepeatable: Bool {
+    var systemImageName: String? {
         switch self {
-        case .backspace, .delete, .up, .down, .left, .right:
+        case .up: "arrow.up"
+        case .backspace: "delete.left"
+        case .left: "arrow.left"
+        case .down: "arrow.down"
+        case .right: "arrow.right"
+        case .enter: "return"
+        default: nil
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .escape: "Escape"
+        case .tab: "Tab"
+        case .controlC: "Control C"
+        case .controlD: "Control D"
+        case .controlZ: "Control Z"
+        case .home: "Home"
+        case .pageUp: "Page Up"
+        case .up: "Up Arrow"
+        case .pageDown: "Page Down"
+        case .end: "End"
+        case .backspace: "Backspace"
+        case .left: "Left Arrow"
+        case .down: "Down Arrow"
+        case .right: "Right Arrow"
+        case .enter: "Enter"
+        }
+    }
+
+    var repeats: Bool {
+        switch self {
+        case .home, .pageUp, .up, .pageDown, .end, .backspace, .left, .down, .right:
             true
-        default:
+        case .escape, .tab, .controlC, .controlD, .controlZ, .enter:
             false
         }
     }
 
-    var id: String {
+    func bytes(applicationCursor: Bool) -> [UInt8] {
         switch self {
-        case .character(let base, _): "character-\(base)"
-        case .escape: "escape"
-        case .tab: "tab"
-        case .backspace: "backspace"
-        case .enter: "enter"
-        case .insert: "insert"
-        case .delete: "delete"
-        case .home: "home"
-        case .end: "end"
-        case .pageUp: "page-up"
-        case .pageDown: "page-down"
-        case .up: "up"
-        case .down: "down"
-        case .left: "left"
-        case .right: "right"
-        case .function(let function): "f\(function.rawValue)"
-        }
-    }
-
-    var width: Double {
-        switch self {
-        case .backspace:
-            1.35
-        case .enter:
-            1.65
-        case .character(let base, _) where base == " ":
-            2.7
-        default:
-            1
-        }
-    }
-}
-
-extension TerminalKeyboardPage {
-    var rows: [[TerminalKey]] {
-        switch self {
-        case .typing:
-            [
-                [
-                    .character(base: "`", shifted: "~"),
-                    .character(base: "-", shifted: "_"),
-                    .character(base: "=", shifted: "+"),
-                    .character(base: "[", shifted: "{"),
-                    .character(base: "]", shifted: "}"),
-                    .character(base: "\\", shifted: "|"),
-                    .character(base: ";", shifted: ":"),
-                    .character(base: "'", shifted: "\""),
-                    .character(base: ",", shifted: "<"),
-                    .character(base: ".", shifted: ">"),
-                    .character(base: "/", shifted: "?"),
-                ],
-                "1234567890".map { key(for: $0) },
-                "qwertyuiop".map { key(for: $0) },
-                "asdfghjkl".map { key(for: $0) } + [.backspace],
-                "zxcvbnm".map { key(for: $0) }
-                    + [.character(base: " ", shifted: " "), .enter],
-            ]
-        case .navigation:
-            [
-                TerminalFunctionKey.allCases.prefix(6).map(TerminalKey.function),
-                TerminalFunctionKey.allCases.suffix(6).map(TerminalKey.function),
-                [.insert, .home, .pageUp],
-                [.delete, .end, .pageDown],
-                [.left, .down, .up, .right],
-            ]
-        }
-    }
-
-    private func key(for character: Character) -> TerminalKey {
-        let shiftedCharacters: [Character: Character] = [
-            "1": "!", "2": "@", "3": "#", "4": "$", "5": "%",
-            "6": "^", "7": "&", "8": "*", "9": "(", "0": ")",
-        ]
-        if let shifted = shiftedCharacters[character] {
-            return .character(base: character, shifted: shifted)
-        }
-        return .character(
-            base: character,
-            shifted: Character(String(character).uppercased()))
-    }
-}
-
-struct TerminalKeyEncodingContext {
-    var kittyFlags: KittyKeyboardFlags = []
-    var applicationCursor = false
-    var backspaceSendsControlH = false
-}
-
-enum TerminalKeyEncoder {
-    static func encode(
-        _ key: TerminalKey,
-        modifiers: Set<TerminalModifier>,
-        context: TerminalKeyEncodingContext
-    ) -> Data {
-        Data(bytes(for: key, modifiers: modifiers, context: context))
-    }
-
-    private static func bytes(
-        for key: TerminalKey,
-        modifiers: Set<TerminalModifier>,
-        context: TerminalKeyEncodingContext
-    ) -> [UInt8] {
-        if case .character(let base, let shifted) = key {
-            return textBytes(
-                base: base, shifted: shifted, modifiers: modifiers, context: context)
-        }
-
-        let disambiguates = context.kittyFlags.contains(.disambiguate)
-            || context.kittyFlags.contains(.reportAllKeys)
-        let modifierValue = kittyModifierValue(modifiers)
-
-        switch key {
-        case .escape:
-            if disambiguates {
-                return csiU(codepoint: 27, modifiers: modifierValue)
-            }
-            return legacy(bytes: EscapeSequences.cmdEsc, modifiers: modifiers)
-        case .enter:
-            return characterLikeSpecialKey(
-                codepoint: 13,
-                legacy: EscapeSequences.cmdRet,
-                modifiers: modifiers,
-                context: context)
-        case .tab:
-            let legacyBytes = modifiers.contains(.shift)
-                ? EscapeSequences.cmdBackTab : EscapeSequences.cmdTab
-            return characterLikeSpecialKey(
-                codepoint: 9,
-                legacy: legacyBytes,
-                modifiers: modifiers,
-                context: context)
-        case .backspace:
-            let byte: UInt8 = modifiers.contains(.control) || context.backspaceSendsControlH
-                ? 0x08 : 0x7F
-            return characterLikeSpecialKey(
-                codepoint: 127,
-                legacy: [byte],
-                modifiers: modifiers,
-                context: context)
-        case .up:
-            return cursorBytes(
-                letter: "A", appBytes: EscapeSequences.moveUpApp,
-                normalBytes: EscapeSequences.moveUpNormal,
-                modifiers: modifiers, context: context)
-        case .down:
-            return cursorBytes(
-                letter: "B", appBytes: EscapeSequences.moveDownApp,
-                normalBytes: EscapeSequences.moveDownNormal,
-                modifiers: modifiers, context: context)
-        case .right:
-            return cursorBytes(
-                letter: "C", appBytes: EscapeSequences.moveRightApp,
-                normalBytes: EscapeSequences.moveRightNormal,
-                modifiers: modifiers, context: context)
-        case .left:
-            return cursorBytes(
-                letter: "D", appBytes: EscapeSequences.moveLeftApp,
-                normalBytes: EscapeSequences.moveLeftNormal,
-                modifiers: modifiers, context: context)
+        case .escape: EscapeSequences.cmdEsc
+        case .tab: EscapeSequences.cmdTab
+        case .controlC: [0x03]
+        case .controlD: [0x04]
+        case .controlZ: [0x1A]
         case .home:
-            return cursorBytes(
-                letter: "H", appBytes: EscapeSequences.moveHomeApp,
-                normalBytes: EscapeSequences.moveHomeNormal,
-                modifiers: modifiers, context: context)
+            applicationCursor ? EscapeSequences.moveHomeApp : EscapeSequences.moveHomeNormal
+        case .pageUp: EscapeSequences.cmdPageUp
+        case .up:
+            applicationCursor ? EscapeSequences.moveUpApp : EscapeSequences.moveUpNormal
+        case .pageDown: EscapeSequences.cmdPageDown
         case .end:
-            return cursorBytes(
-                letter: "F", appBytes: EscapeSequences.moveEndApp,
-                normalBytes: EscapeSequences.moveEndNormal,
-                modifiers: modifiers, context: context)
-        case .insert:
-            return tildeBytes(
-                number: 2, legacyBytes: EscapeSequences.cmdInsert,
-                modifiers: modifiers, context: context)
-        case .delete:
-            return tildeBytes(
-                number: 3, legacyBytes: EscapeSequences.cmdDelKey,
-                modifiers: modifiers, context: context)
-        case .pageUp:
-            return tildeBytes(
-                number: 5, legacyBytes: EscapeSequences.cmdPageUp,
-                modifiers: modifiers, context: context)
-        case .pageDown:
-            return tildeBytes(
-                number: 6, legacyBytes: EscapeSequences.cmdPageDown,
-                modifiers: modifiers, context: context)
-        case .function(let function):
-            return functionBytes(function, modifiers: modifiers, context: context)
-        case .character:
-            return []
+            applicationCursor ? EscapeSequences.moveEndApp : EscapeSequences.moveEndNormal
+        case .backspace: EscapeSequences.cmdDel
+        case .left:
+            applicationCursor ? EscapeSequences.moveLeftApp : EscapeSequences.moveLeftNormal
+        case .down:
+            applicationCursor ? EscapeSequences.moveDownApp : EscapeSequences.moveDownNormal
+        case .right:
+            applicationCursor ? EscapeSequences.moveRightApp : EscapeSequences.moveRightNormal
+        case .enter: EscapeSequences.cmdRet
         }
     }
+}
 
-    private static func textBytes(
-        base: Character,
-        shifted: Character,
-        modifiers: Set<TerminalModifier>,
-        context: TerminalKeyEncodingContext
-    ) -> [UInt8] {
-        let output = modifiers.contains(.shift) ? shifted : base
-        guard let baseScalar = String(base).unicodeScalars.first,
-              let outputScalar = String(output).unicodeScalars.first else {
-            return Array(String(output).utf8)
-        }
+final class TerminalKeyboardAccessory: UIInputView {
+    static let preferredHeight: CGFloat = 48
 
-        let reportsAll = context.kittyFlags.contains(.reportAllKeys)
-        let disambiguates = context.kittyFlags.contains(.disambiguate) || reportsAll
-        let reportsAlternates = context.kittyFlags.contains(.reportAlternates)
-        let hasControlOrAlt = modifiers.contains(.control) || modifiers.contains(.alt)
+    private weak var terminalView: SizeReportingTerminalView?
+    private let modeControl = UISegmentedControl(items: ["Text", "Keys"])
 
-        if disambiguates
-            && (reportsAll || hasControlOrAlt
-                || (reportsAlternates && modifiers.contains(.shift)))
-        {
-            let shiftedScalar = modifiers.contains(.shift) ? outputScalar : nil
-            return csiU(
-                codepoint: Int(baseScalar.value),
-                shiftedCodepoint: shiftedScalar.map { Int($0.value) },
-                modifiers: kittyModifierValue(modifiers))
-        }
-
-        var bytes: [UInt8] = modifiers.contains(.alt) ? EscapeSequences.cmdEsc : []
-        if modifiers.contains(.control), let control = controlByte(for: outputScalar) {
-            bytes.append(control)
-        } else {
-            bytes.append(contentsOf: String(output).utf8)
-        }
-        return bytes
+    init(frame: CGRect, terminalView: SizeReportingTerminalView) {
+        self.terminalView = terminalView
+        super.init(frame: frame, inputViewStyle: .keyboard)
+        allowsSelfSizing = true
+        autoresizingMask = [.flexibleWidth]
+        backgroundColor = .secondarySystemBackground
+        configureModeControl()
+        configureDismissButton()
+        update(mode: terminalView.keyboardMode)
     }
 
-    private static func characterLikeSpecialKey(
-        codepoint: Int,
-        legacy: [UInt8],
-        modifiers: Set<TerminalModifier>,
-        context: TerminalKeyEncodingContext
-    ) -> [UInt8] {
-        let reportsAll = context.kittyFlags.contains(.reportAllKeys)
-        let disambiguates = context.kittyFlags.contains(.disambiguate) || reportsAll
-        if reportsAll || (disambiguates && !modifiers.isEmpty) {
-            return csiU(codepoint: codepoint, modifiers: kittyModifierValue(modifiers))
-        }
-        return self.legacy(bytes: legacy, modifiers: modifiers)
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is unavailable")
     }
 
-    private static func cursorBytes(
-        letter: Character,
-        appBytes: [UInt8],
-        normalBytes: [UInt8],
-        modifiers: Set<TerminalModifier>,
-        context: TerminalKeyEncodingContext
-    ) -> [UInt8] {
-        let disambiguates = context.kittyFlags.contains(.disambiguate)
-            || context.kittyFlags.contains(.reportAllKeys)
-        if disambiguates || !modifiers.isEmpty {
-            return csi(number: 1, modifiers: kittyModifierValue(modifiers), terminator: letter)
-        }
-        return context.applicationCursor ? appBytes : normalBytes
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: UIView.noIntrinsicMetric, height: Self.preferredHeight)
     }
 
-    private static func tildeBytes(
-        number: Int,
-        legacyBytes: [UInt8],
-        modifiers: Set<TerminalModifier>,
-        context: TerminalKeyEncodingContext
-    ) -> [UInt8] {
-        let disambiguates = context.kittyFlags.contains(.disambiguate)
-            || context.kittyFlags.contains(.reportAllKeys)
-        if disambiguates || !modifiers.isEmpty {
-            return csi(number: number, modifiers: kittyModifierValue(modifiers), terminator: "~")
-        }
-        return legacyBytes
+    func update(mode: TerminalKeyboardMode) {
+        modeControl.selectedSegmentIndex = mode.rawValue
     }
 
-    private static func functionBytes(
-        _ function: TerminalFunctionKey,
-        modifiers: Set<TerminalModifier>,
-        context: TerminalKeyEncodingContext
-    ) -> [UInt8] {
-        let disambiguates = context.kittyFlags.contains(.disambiguate)
-            || context.kittyFlags.contains(.reportAllKeys)
-        let modifierValue = kittyModifierValue(modifiers)
-        switch function {
-        case .f1, .f2, .f3, .f4:
-            let letters: [Character] = ["P", "Q", "R", "S"]
-            if disambiguates || !modifiers.isEmpty {
-                return csi(
-                    number: 1, modifiers: modifierValue,
-                    terminator: letters[function.rawValue - 1])
+    private func configureModeControl() {
+        modeControl.translatesAutoresizingMaskIntoConstraints = false
+        modeControl.selectedSegmentTintColor = .tertiarySystemBackground
+        modeControl.setTitleTextAttributes(
+            [.font: UIFont.preferredFont(forTextStyle: .subheadline)], for: .normal)
+        modeControl.addTarget(self, action: #selector(modeChanged), for: .valueChanged)
+        modeControl.accessibilityLabel = "Terminal keyboard mode"
+        addSubview(modeControl)
+
+        NSLayoutConstraint.activate([
+            modeControl.centerXAnchor.constraint(equalTo: centerXAnchor),
+            modeControl.centerYAnchor.constraint(equalTo: centerYAnchor),
+            modeControl.widthAnchor.constraint(equalToConstant: 184),
+            modeControl.heightAnchor.constraint(equalToConstant: 32),
+        ])
+    }
+
+    private func configureDismissButton() {
+        var configuration = UIButton.Configuration.plain()
+        configuration.image = UIImage(systemName: "keyboard.chevron.compact.down")
+        configuration.baseForegroundColor = .label
+        let button = UIButton(configuration: configuration)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(dismissKeyboard), for: .touchUpInside)
+        button.accessibilityLabel = "Dismiss keyboard"
+        addSubview(button)
+
+        NSLayoutConstraint.activate([
+            button.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            button.centerYAnchor.constraint(equalTo: centerYAnchor),
+            button.widthAnchor.constraint(equalToConstant: 44),
+            button.heightAnchor.constraint(equalToConstant: 44),
+        ])
+    }
+
+    @objc private func modeChanged() {
+        guard let mode = TerminalKeyboardMode(rawValue: modeControl.selectedSegmentIndex) else {
+            return
+        }
+        terminalView?.setKeyboardMode(mode)
+    }
+
+    @objc private func dismissKeyboard() {
+        _ = terminalView?.resignFirstResponder()
+    }
+}
+
+final class TerminalControlKeyboardView: UIInputView, UIInputViewAudioFeedback {
+    static let defaultHeight: CGFloat = 224
+
+    private weak var terminalView: SizeReportingTerminalView?
+    private let keyboardHeight: CGFloat
+
+    var enableInputClicksWhenVisible: Bool { true }
+
+    init(frame: CGRect, keyboardHeight: CGFloat, terminalView: SizeReportingTerminalView) {
+        self.terminalView = terminalView
+        self.keyboardHeight = keyboardHeight
+        super.init(frame: frame, inputViewStyle: .keyboard)
+        allowsSelfSizing = true
+        autoresizingMask = [.flexibleWidth]
+        backgroundColor = .systemBackground
+        configureKeys()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is unavailable")
+    }
+
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: UIView.noIntrinsicMetric, height: keyboardHeight)
+    }
+
+    private func configureKeys() {
+        let rows = UIStackView()
+        rows.translatesAutoresizingMaskIntoConstraints = false
+        rows.axis = .vertical
+        rows.distribution = .fillEqually
+        rows.spacing = 8
+        addSubview(rows)
+
+        for keys in TerminalControlKey.rows {
+            let row = UIStackView()
+            row.axis = .horizontal
+            row.distribution = .fillEqually
+            row.spacing = 8
+            for key in keys {
+                row.addArrangedSubview(makeButton(for: key))
             }
-            return EscapeSequences.cmdF[function.rawValue - 1]
-        case .f5, .f6, .f7, .f8, .f9, .f10, .f11, .f12:
-            let numbers = [15, 17, 18, 19, 20, 21, 23, 24]
-            if disambiguates || !modifiers.isEmpty {
-                return csi(
-                    number: numbers[function.rawValue - 5],
-                    modifiers: modifierValue, terminator: "~")
-            }
-            return EscapeSequences.cmdF[function.rawValue - 1]
+            rows.addArrangedSubview(row)
+        }
+
+        NSLayoutConstraint.activate([
+            rows.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+            rows.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            rows.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            rows.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor, constant: -8),
+        ])
+    }
+
+    private func makeButton(for key: TerminalControlKey) -> TerminalKeyButton {
+        var configuration = UIButton.Configuration.gray()
+        configuration.title = key.title
+        configuration.image = key.systemImageName.flatMap {
+            UIImage(systemName: $0, withConfiguration: UIImage.SymbolConfiguration(
+                textStyle: .body, scale: .medium))
+        }
+        configuration.baseForegroundColor = .label
+        configuration.baseBackgroundColor = .secondarySystemFill
+        configuration.cornerStyle = .medium
+        configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
+            incoming in
+            var outgoing = incoming
+            outgoing.font = .preferredFont(forTextStyle: .body)
+            return outgoing
+        }
+
+        let button = TerminalKeyButton(configuration: configuration, repeats: key.repeats) {
+            [weak terminalView] in
+            guard let terminalView else { return }
+            UIDevice.current.playInputClick()
+            terminalView.sendControlKey(key)
+        }
+        button.accessibilityLabel = key.accessibilityLabel
+        return button
+    }
+}
+
+private final class TerminalKeyButton: UIButton {
+    private let keyAction: () -> Void
+    private let repeats: Bool
+    private var repeatDelayTimer: Timer?
+    private var repeatTimer: Timer?
+
+    init(configuration: UIButton.Configuration, repeats: Bool, action: @escaping () -> Void) {
+        self.keyAction = action
+        self.repeats = repeats
+        super.init(frame: .zero)
+        self.configuration = configuration
+        isExclusiveTouch = true
+        addTarget(self, action: #selector(pressed), for: .touchDown)
+        addTarget(
+            self, action: #selector(released),
+            for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is unavailable")
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil {
+            cancelTimers()
         }
     }
 
-    private static func legacy(
-        bytes: [UInt8], modifiers: Set<TerminalModifier>
-    ) -> [UInt8] {
-        modifiers.contains(.alt) ? EscapeSequences.cmdEsc + bytes : bytes
+    @objc private func pressed() {
+        keyAction()
+        guard repeats else { return }
+
+        let timer = Timer(timeInterval: 0.45, target: self, selector: #selector(beginRepeating),
+                          userInfo: nil, repeats: false)
+        repeatDelayTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
-    private static func kittyModifierValue(_ modifiers: Set<TerminalModifier>) -> Int {
-        var value = 0
-        if modifiers.contains(.shift) { value |= 1 }
-        if modifiers.contains(.alt) { value |= 2 }
-        if modifiers.contains(.control) { value |= 4 }
-        return value
+    @objc private func beginRepeating() {
+        repeatDelayTimer = nil
+        let timer = Timer(timeInterval: 0.075, target: self, selector: #selector(repeatKey),
+                          userInfo: nil, repeats: true)
+        repeatTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
-    private static func csiU(
-        codepoint: Int,
-        shiftedCodepoint: Int? = nil,
-        modifiers: Int
-    ) -> [UInt8] {
-        var payload = "\(codepoint)"
-        if let shiftedCodepoint {
-            payload += ":\(shiftedCodepoint)"
+    @objc private func repeatKey() {
+        keyAction()
+    }
+
+    @objc private func released() {
+        cancelTimers()
+    }
+
+    private func cancelTimers() {
+        repeatDelayTimer?.invalidate()
+        repeatDelayTimer = nil
+        repeatTimer?.invalidate()
+        repeatTimer = nil
+    }
+}
+
+extension SizeReportingTerminalView {
+    var keyboardMode: TerminalKeyboardMode {
+        inputView is TerminalControlKeyboardView ? .controls : .text
+    }
+
+    func installKeyboardSwitcher() {
+        inputAssistantItem.leadingBarButtonGroups = []
+        inputAssistantItem.trailingBarButtonGroups = []
+        inputAccessoryView = TerminalKeyboardAccessory(
+            frame: CGRect(
+                x: 0, y: 0, width: bounds.width,
+                height: TerminalKeyboardAccessory.preferredHeight),
+            terminalView: self)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(textKeyboardFrameDidChange(_:)),
+            name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
+    }
+
+    func setKeyboardMode(_ mode: TerminalKeyboardMode) {
+        guard mode != keyboardMode else { return }
+
+        switch mode {
+        case .text:
+            inputView = nil
+        case .controls:
+            inputView = TerminalControlKeyboardView(
+                frame: CGRect(
+                    x: 0, y: 0, width: bounds.width, height: controlKeyboardHeight),
+                keyboardHeight: controlKeyboardHeight, terminalView: self)
         }
-        if modifiers != 0 {
-            payload += ";\(modifiers + 1)"
+        (inputAccessoryView as? TerminalKeyboardAccessory)?.update(mode: mode)
+        UIView.performWithoutAnimation {
+            reloadInputViews()
         }
-        return Array("\u{1B}[\(payload)u".utf8)
     }
 
-    private static func csi(
-        number: Int,
-        modifiers: Int,
-        terminator: Character
-    ) -> [UInt8] {
-        let modifierField = modifiers == 0 ? "" : ";\(modifiers + 1)"
-        return Array("\u{1B}[\(number)\(modifierField)\(terminator)".utf8)
+    func sendControlKey(_ key: TerminalControlKey) {
+        send(key.bytes(applicationCursor: getTerminal().applicationCursor))
     }
 
-    private static func controlByte(for scalar: UnicodeScalar) -> UInt8? {
-        let lower = Character(String(scalar).lowercased())
-        if let ascii = lower.asciiValue, ascii >= 0x61, ascii <= 0x7A {
-            return ascii - 0x60
-        }
-        let mapping: [UnicodeScalar: UInt8] = [
-            " ": 0, "@": 0, "[": 27, "\\": 28, "]": 29,
-            "^": 30, "_": 31, "?": 127,
-        ]
-        return mapping[scalar]
+    func recordTextKeyboardHeight(totalHeight: CGFloat, accessoryHeight: CGFloat) {
+        let inputViewHeight = totalHeight - accessoryHeight
+        guard inputViewHeight >= 100 else { return }
+        controlKeyboardHeight = inputViewHeight.rounded(.up)
+    }
+
+    @objc private func textKeyboardFrameDidChange(_ notification: Notification) {
+        guard keyboardMode == .text, isFirstResponder, let window,
+              let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]
+                as? CGRect
+        else { return }
+
+        let frameInWindow = window.convert(endFrame, from: window.screen.coordinateSpace)
+        let totalHeight = window.bounds.intersection(frameInWindow).height
+        let accessoryHeight = max(
+            inputAccessoryView?.bounds.height ?? 0,
+            TerminalKeyboardAccessory.preferredHeight)
+        recordTextKeyboardHeight(
+            totalHeight: totalHeight, accessoryHeight: accessoryHeight)
     }
 }

@@ -1,5 +1,9 @@
 # Raise deployment target to iOS 26 for SpeechAnalyzer Dictation
 
+Status: Superseded. The custom reply bar and Dictation feature were removed in
+favor of direct terminal input through the standard iOS keyboard. The iOS 26
+deployment target remains unchanged.
+
 Dictation (hold-to-talk voice input on the Agent reply box, see CONTEXT.md) transcribes speech on device. We adopt the iOS 26 Speech framework's `SpeechAnalyzer` / `SpeechTranscriber` and raise the app's minimum deployment target from iOS 18 to iOS 26, giving the whole app a single code path with no `#available` branches. This drops support for devices that cannot run iOS 26, which we accept: the app is early, has no installed base to protect, and the modern speech stack is the reason Dictation is worth building at all.
 
 ## Considered Options

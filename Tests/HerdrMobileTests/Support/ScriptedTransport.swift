@@ -11,14 +11,9 @@ final actor ScriptedTransport: Transport {
     /// resubscribe-on-membership-change behavior asserts on this.
     private(set) var capturedSubscriptions: [[EventSubscription]] = []
     private(set) var paneReadParams: [PaneReadParams] = []
-    /// Every atomic text-and-key batch sent through `pane.send_input`.
-    private(set) var sentInputs: [PaneSendInputParams] = []
-    /// Every key batch sent through `pane.send_keys`, in order; the input
-    /// store's quick-key behavior asserts on this.
-    private(set) var sentKeys: [PaneSendKeysParams] = []
     /// Every `agent.start` received, in order; the new-agent flow (#12)
     /// asserts on the params it forwarded.
-    private(set) var agentStarts: [AgentStartParams] = []
+    private(set) var agentStarts: [AgentLaunchRequest] = []
     /// Every `pane.close` received, in order; the close-pane flow (#13)
     /// asserts on the pane it targeted (and that the cancel path never
     /// appends here).
@@ -26,11 +21,7 @@ final actor ScriptedTransport: Transport {
     private var closeFailure: TransportError?
     private var startFailure: TransportError?
     private var startedAgent: AgentInfo?
-    private var sendFailure: TransportError?
     private(set) var snapshotFetchCount = 0
-    /// Every observe request received, in order; the Observe store's
-    /// restart-on-resize/gap behavior asserts on this.
-    private(set) var observeRequests: [TerminalObserveRequest] = []
     /// Every attach request received, in order; the Attach store's
     /// open-once behavior asserts on this.
     private(set) var attachRequests: [TerminalAttachRequest] = []
@@ -48,9 +39,6 @@ final actor ScriptedTransport: Transport {
     private var nextStreamID: UInt64 = 0
     private var liveStreamID: UInt64?
     private var eventContinuation: AsyncThrowingStream<HerdrEvent, any Error>.Continuation?
-    private var nextFrameStreamID: UInt64 = 0
-    private var liveFrameStreamID: UInt64?
-    private var frameContinuation: AsyncThrowingStream<TerminalFrame, any Error>.Continuation?
     private var nextAttachID: UInt64 = 0
     private var liveAttachID: UInt64?
     private var attachContinuation: AsyncThrowingStream<Data, any Error>.Continuation?
@@ -58,7 +46,7 @@ final actor ScriptedTransport: Transport {
 
     init(
         snapshot: SessionSnapshot = .fixture(),
-        serverInfo: ServerInfo = ServerInfo(version: "0.7.4-fake", protocolVersion: 16)
+        serverInfo: ServerInfo = ServerInfo(version: "0.7.5-fake", protocolVersion: 17)
     ) {
         self.snapshot = snapshot
         self.serverInfo = serverInfo
@@ -97,11 +85,6 @@ final actor ScriptedTransport: Transport {
         nextPaneReadGate = gate
     }
 
-    /// Makes every subsequent `sendInput`/`sendKeys` throw `failure`.
-    func setSendFailure(_ failure: TransportError?) {
-        sendFailure = failure
-    }
-
     /// Scripts the `AgentInfo` `startAgent` returns; without it the fake
     /// synthesizes a Working agent from the start params.
     func setStartedAgent(_ agent: AgentInfo) {
@@ -132,27 +115,6 @@ final actor ScriptedTransport: Transport {
         eventContinuation?.finish(throwing: failure)
         eventContinuation = nil
         liveStreamID = nil
-    }
-
-    /// Pushes one frame onto the live observe stream; false if none is live.
-    @discardableResult
-    func emitFrame(_ frame: TerminalFrame) -> Bool {
-        guard let frameContinuation else { return false }
-        frameContinuation.yield(frame)
-        return true
-    }
-
-    /// Kills the live observe stream with `failure`, as a remotely dropped
-    /// terminal channel would.
-    func failFrameStream(_ failure: TransportError) {
-        frameContinuation?.finish(throwing: failure)
-        frameContinuation = nil
-        liveFrameStreamID = nil
-    }
-
-    /// Whether an observe stream is currently live.
-    var hasLiveFrameStream: Bool {
-        frameContinuation != nil
     }
 
     /// Pushes raw PTY bytes onto the live attach session; false if none is
@@ -220,27 +182,17 @@ final actor ScriptedTransport: Transport {
             truncated: false, workspaceID: "w")
     }
 
-    func startAgent(_ params: AgentStartParams) async throws -> Agent {
-        agentStarts.append(params)
+    func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
+        agentStarts.append(request)
         if let startFailure { throw startFailure }
         if let startedAgent { return Agent(startedAgent) }
         // Synthesize a freshly-Working agent so the caller and the follow-up
         // snapshot see the same pane the real server would report.
         return Agent(
             .fixture(
-                paneID: "\(params.workspaceID ?? "w1"):pnew", status: .working,
-                workspaceID: params.workspaceID ?? "w1", kind: params.name,
-                title: params.name))
-    }
-
-    func sendInput(_ params: PaneSendInputParams) async throws {
-        if let sendFailure { throw sendFailure }
-        sentInputs.append(params)
-    }
-
-    func sendKeys(_ params: PaneSendKeysParams) async throws {
-        if let sendFailure { throw sendFailure }
-        sentKeys.append(params)
+                paneID: "\(request.workspaceID ?? "w1"):pnew", status: .working,
+                workspaceID: request.workspaceID ?? "w1", kind: request.kind,
+                title: request.name))
     }
 
     func closePane(_ params: PaneTarget) async throws {
@@ -263,25 +215,8 @@ final actor ScriptedTransport: Transport {
         }
     }
 
-    func observeTerminal(_ request: TerminalObserveRequest) async throws -> TerminalFrameStream {
-        guard liveFrameStreamID == nil, liveAttachID == nil else {
-            throw TransportError.terminalChannelAlreadyOpen
-        }
-        observeRequests.append(request)
-        nextFrameStreamID += 1
-        let streamID = nextFrameStreamID
-        let (frames, continuation) = AsyncThrowingStream<TerminalFrame, any Error>.makeStream()
-        liveFrameStreamID = streamID
-        frameContinuation = continuation
-        return TerminalFrameStream(frames: frames) {
-            await self.endFrameStream(id: streamID)
-        }
-    }
-
     func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession {
-        // Observe and Attach share the one terminal channel, like the real
-        // transport.
-        guard liveFrameStreamID == nil, liveAttachID == nil else {
+        guard liveAttachID == nil else {
             throw TransportError.terminalChannelAlreadyOpen
         }
         attachRequests.append(request)
@@ -310,9 +245,6 @@ final actor ScriptedTransport: Transport {
         eventContinuation?.finish()
         eventContinuation = nil
         liveStreamID = nil
-        frameContinuation?.finish()
-        frameContinuation = nil
-        liveFrameStreamID = nil
         attachContinuation?.finish()
         attachContinuation = nil
         liveAttachID = nil
@@ -325,13 +257,6 @@ final actor ScriptedTransport: Transport {
         eventContinuation?.finish()
         eventContinuation = nil
         liveStreamID = nil
-    }
-
-    private func endFrameStream(id: UInt64) {
-        guard liveFrameStreamID == id else { return }
-        frameContinuation?.finish()
-        frameContinuation = nil
-        liveFrameStreamID = nil
     }
 
     private func recordAttachInput(_ input: TerminalAttachInput) {
@@ -380,8 +305,8 @@ extension SessionSnapshot {
         agents: [AgentInfo] = [], workspaces: [WorkspaceInfo] = []
     ) -> SessionSnapshot {
         SessionSnapshot(
-            agents: agents, layouts: [], panes: [], protocolVersion: 16, tabs: [],
-            version: "0.7.4-fake", workspaces: workspaces)
+            agents: agents, layouts: [], panes: [], protocolVersion: 17, tabs: [],
+            version: "0.7.5-fake", workspaces: workspaces)
     }
 }
 

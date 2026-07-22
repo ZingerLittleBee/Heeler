@@ -324,7 +324,7 @@ struct EventsSessionE2ETests {
     }
 
     private static func pingResult(_ id: String) -> String {
-        #"{"id":"\#(id)","result":{"type":"pong","version":"9.9.9-fake","protocol":16}}"#
+        #"{"id":"\#(id)","result":{"type":"pong","version":"9.9.9-fake","protocol":17}}"#
     }
 
     private static func ack(_ id: String) -> String {
@@ -416,28 +416,14 @@ struct EventsSessionE2ETests {
             try await inner.subscribeToEvents(subscriptions)
         }
 
-        func observeTerminal(_ request: TerminalObserveRequest) async throws
-            -> TerminalFrameStream
-        {
-            try await inner.observeTerminal(request)
-        }
-
         func attachTerminal(_ request: TerminalAttachRequest) async throws
             -> TerminalAttachSession
         {
             try await inner.attachTerminal(request)
         }
 
-        func startAgent(_ params: AgentStartParams) async throws -> Agent {
-            try await inner.startAgent(params)
-        }
-
-        func sendInput(_ params: PaneSendInputParams) async throws {
-            try await inner.sendInput(params)
-        }
-
-        func sendKeys(_ params: PaneSendKeysParams) async throws {
-            try await inner.sendKeys(params)
+        func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
+            try await inner.startAgent(request)
         }
 
         func closePane(_ params: PaneTarget) async throws {
