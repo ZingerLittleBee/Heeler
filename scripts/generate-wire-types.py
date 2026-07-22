@@ -57,8 +57,6 @@ METHODS = [
     "events.subscribe",
     "tab.create",
     "pane.read",
-    "pane.send_input",
-    "pane.send_keys",
     "pane.close",
     "session.snapshot",
 ]
@@ -87,7 +85,7 @@ RESULT_TAGS = [
     "session_snapshot",  # session.snapshot
     "subscription_started",  # events.subscribe ack
     "tab_created",  # tab.create
-    "ok",  # pane.send_input, pane.send_keys, pane.close
+    "ok",  # pane.close
 ]
 
 # Wire-name overrides for members whose mechanical camelCase would be a Swift

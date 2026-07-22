@@ -11,11 +11,6 @@ final actor ScriptedTransport: Transport {
     /// resubscribe-on-membership-change behavior asserts on this.
     private(set) var capturedSubscriptions: [[EventSubscription]] = []
     private(set) var paneReadParams: [PaneReadParams] = []
-    /// Every atomic text-and-key batch sent through `pane.send_input`.
-    private(set) var sentInputs: [PaneSendInputParams] = []
-    /// Every key batch sent through `pane.send_keys`, in order; the input
-    /// store's quick-key behavior asserts on this.
-    private(set) var sentKeys: [PaneSendKeysParams] = []
     /// Every `agent.start` received, in order; the new-agent flow (#12)
     /// asserts on the params it forwarded.
     private(set) var agentStarts: [AgentLaunchRequest] = []
@@ -26,7 +21,6 @@ final actor ScriptedTransport: Transport {
     private var closeFailure: TransportError?
     private var startFailure: TransportError?
     private var startedAgent: AgentInfo?
-    private var sendFailure: TransportError?
     private(set) var snapshotFetchCount = 0
     /// Every observe request received, in order; the Observe store's
     /// restart-on-resize/gap behavior asserts on this.
@@ -95,11 +89,6 @@ final actor ScriptedTransport: Transport {
     /// Pauses the next pane read after capturing its response.
     func gateNextPaneRead(using gate: ScriptedTransportCallGate) {
         nextPaneReadGate = gate
-    }
-
-    /// Makes every subsequent `sendInput`/`sendKeys` throw `failure`.
-    func setSendFailure(_ failure: TransportError?) {
-        sendFailure = failure
     }
 
     /// Scripts the `AgentInfo` `startAgent` returns; without it the fake
@@ -231,16 +220,6 @@ final actor ScriptedTransport: Transport {
                 paneID: "\(request.workspaceID ?? "w1"):pnew", status: .working,
                 workspaceID: request.workspaceID ?? "w1", kind: request.kind,
                 title: request.name))
-    }
-
-    func sendInput(_ params: PaneSendInputParams) async throws {
-        if let sendFailure { throw sendFailure }
-        sentInputs.append(params)
-    }
-
-    func sendKeys(_ params: PaneSendKeysParams) async throws {
-        if let sendFailure { throw sendFailure }
-        sentKeys.append(params)
     }
 
     func closePane(_ params: PaneTarget) async throws {

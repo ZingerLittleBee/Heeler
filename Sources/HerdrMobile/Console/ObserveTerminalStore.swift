@@ -6,8 +6,7 @@ import Observation
 /// use the terminal stream as a low-latency change signal. Each coalesced
 /// refresh removes the remote TUI's input chrome, then replaces the local
 /// SwiftTerm screen. The transport applies the phone geometry to the Agent's
-/// PTY, but input belongs exclusively to the native `AgentInputBar` below
-/// Observe.
+/// PTY. Input belongs exclusively to the interactive Attach surface.
 ///
 /// The store is driven by the terminal view's geometry: nothing starts until
 /// the first size report (the observe command needs cols/rows), and a

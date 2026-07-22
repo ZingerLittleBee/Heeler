@@ -101,39 +101,6 @@ struct SSHTransportE2ETests {
         }
     }
 
-    @Test func sendInputRoundTripsTextAndEnterAtomically() async throws {
-        // The message box (#10): pane.send_input writes the reply and presses
-        // Enter in one request, targeted by pane id and answered with `ok`.
-        try await withTransport { request in
-            [#"{"id":"\#(request.id)","result":{"type":"ok"}}"#]
-        } body: { transport, server in
-            try await transport.sendInput(
-                PaneSendInputParams(
-                    paneID: "w1:p1", keys: ["enter"], text: "yes, proceed"))
-
-            let request = try #require(server.receivedRequests.first)
-            #expect(request.method == "pane.send_input")
-            #expect(
-                request.params
-                    == #"{"keys":["enter"],"pane_id":"w1:p1","text":"yes, proceed"}"#)
-        }
-    }
-
-    @Test func sendKeysRoundTripsItsParams() async throws {
-        // The quick-key bar (#10): pane.send_keys carries herdr's own key
-        // spellings (verified against herdr 0.7.4), answered with `ok`.
-        try await withTransport { request in
-            [#"{"id":"\#(request.id)","result":{"type":"ok"}}"#]
-        } body: { transport, server in
-            try await transport.sendKeys(
-                PaneSendKeysParams(keys: ["ctrl+c", "enter"], paneID: "w1:p1"))
-
-            let request = try #require(server.receivedRequests.first)
-            #expect(request.method == "pane.send_keys")
-            #expect(request.params == #"{"keys":["ctrl+c","enter"],"pane_id":"w1:p1"}"#)
-        }
-    }
-
     @Test func closePaneRoundTripsItsParams() async throws {
         // The destructive close action (#13, User Story 9): pane.close
         // carries the pane id and is answered with the bare `ok` envelope

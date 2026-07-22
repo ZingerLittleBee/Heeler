@@ -558,41 +558,6 @@ struct PaneScrollInfo: Codable, Equatable, Sendable {
     }
 }
 
-/// herdr schema `$defs/PaneSendInputParams`.
-struct PaneSendInputParams: Codable, Equatable, Sendable {
-    let keys: [String]?
-    let paneID: String
-    let text: String?
-
-    init(paneID: String, keys: [String]? = nil, text: String? = nil) {
-        self.paneID = paneID
-        self.keys = keys
-        self.text = text
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case keys
-        case paneID = "pane_id"
-        case text
-    }
-}
-
-/// herdr schema `$defs/PaneSendKeysParams`.
-struct PaneSendKeysParams: Codable, Equatable, Sendable {
-    let keys: [String]
-    let paneID: String
-
-    init(keys: [String], paneID: String) {
-        self.keys = keys
-        self.paneID = paneID
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case keys
-        case paneID = "pane_id"
-    }
-}
-
 /// herdr schema `$defs/PaneTarget`.
 struct PaneTarget: Codable, Equatable, Sendable {
     let paneID: String

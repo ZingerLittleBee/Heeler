@@ -125,7 +125,7 @@ import Testing
     }
 
     @Test func okResponseDecodes() throws {
-        // The bare-acknowledgement result shape (`pane.send_input` et al.).
+        // The bare-acknowledgement result shape (`pane.close`).
         _ = try roundTrip(OkResponse.self, #"{"type":"ok"}"#)
     }
 
@@ -201,18 +201,7 @@ import Testing
         #expect((envelope["params"] as? [String: Any])?["pane_id"] as? String == "w1:p1")
     }
 
-    @Test func sendInputAndKeysParamsEncodeWireNames() throws {
-        let input = try JSONSerialization.jsonObject(
-            with: JSONEncoder().encode(
-                PaneSendInputParams(paneID: "w1:p1", keys: ["enter"], text: "y"))
-        ) as? [String: Any]
-        #expect(input?.keys.sorted() == ["keys", "pane_id", "text"])
-
-        let keys = try JSONSerialization.jsonObject(
-            with: JSONEncoder().encode(PaneSendKeysParams(keys: ["Enter"], paneID: "w1:p1"))
-        ) as? [String: Any]
-        #expect(keys?.keys.sorted() == ["keys", "pane_id"])
-
+    @Test func agentTargetEncodesItsWireName() throws {
         let target = try JSONSerialization.jsonObject(
             with: JSONEncoder().encode(AgentTarget(target: "w1:p1"))
         ) as? [String: Any]

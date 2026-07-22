@@ -480,18 +480,9 @@ struct ObserveTerminalStoreTests {
         }
 
         let agent = try #require(console.agents.first)
-        let defaultsName = "ObserveTerminalStoreTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: defaultsName))
-        defer { defaults.removePersistentDomain(forName: defaultsName) }
-        let dictationEngine = ScriptedDictationEngine()
-        let dictationSettings = DictationSettingsStore(
-            engine: dictationEngine, defaults: defaults)
         let controller = UIHostingController(
             rootView: NavigationStack {
-                AgentDetailView(
-                    agent: agent, console: console,
-                    dictationSettings: dictationSettings,
-                    dictationEngine: dictationEngine)
+                AgentDetailView(agent: agent, console: console)
             })
         let window = await show(
             controller, frame: CGRect(x: 0, y: 0, width: 393, height: 852))

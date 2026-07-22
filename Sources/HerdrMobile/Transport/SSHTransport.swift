@@ -312,14 +312,6 @@ actor SSHTransport: Transport {
         }
     }
 
-    func sendInput(_ params: PaneSendInputParams) async throws {
-        _ = try await request(method: "pane.send_input", params: params, decoding: OkResponse.self)
-    }
-
-    func sendKeys(_ params: PaneSendKeysParams) async throws {
-        _ = try await request(method: "pane.send_keys", params: params, decoding: OkResponse.self)
-    }
-
     func closePane(_ params: PaneTarget) async throws {
         _ = try await request(method: "pane.close", params: params, decoding: OkResponse.self)
     }

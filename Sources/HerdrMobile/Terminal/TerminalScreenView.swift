@@ -48,20 +48,8 @@ struct TerminalScreenView: UIViewRepresentable {
     @Environment(\.openURL) private var openURL
 
     func makeUIView(context: Context) -> SizeReportingTerminalView {
-        let view = SizeReportingTerminalView(frame: .zero, font: style.font)
-        view.allowsInput = allowsInput
-        if style == .observe {
-            // herdr exposes up to 1,000 logical lines. Phone-width wrapping
-            // can turn those into several thousand terminal rows.
-            view.changeScrollback(5_000)
-        }
+        let view = Self.makeConfiguredTerminal(style: style, allowsInput: allowsInput)
         view.terminalDelegate = context.coordinator
-        view.onTerminalKeyboardSend = { [weak coordinator = context.coordinator] data in
-            coordinator?.onSend?(data)
-        }
-        if style == .attach, allowsInput {
-            view.installTerminalKeyboard()
-        }
         view.onSizeReport = { [weak coordinator = context.coordinator] cols, rows in
             coordinator?.onSizeChanged?(cols, rows)
         }
@@ -70,6 +58,23 @@ struct TerminalScreenView: UIViewRepresentable {
         }
         feed.attachDeliveries { [weak view] delivery in
             view?.consume(delivery)
+        }
+        return view
+    }
+
+    @MainActor
+    static func makeConfiguredTerminal(
+        style: TerminalScreenStyle, allowsInput: Bool
+    ) -> SizeReportingTerminalView {
+        let view = SizeReportingTerminalView(frame: .zero, font: style.font)
+        // SwiftTerm installs a terminal shortcut bar by default. Attach uses
+        // only the standard iOS keyboard, with no app-provided accessory UI.
+        view.inputAccessoryView = nil
+        view.allowsInput = allowsInput
+        if style == .observe {
+            // herdr exposes up to 1,000 logical lines. Phone-width wrapping
+            // can turn those into several thousand terminal rows.
+            view.changeScrollback(5_000)
         }
         return view
     }
@@ -149,8 +154,6 @@ final class SizeReportingTerminalView: TerminalView {
     }
     var onSizeReport: ((_ cols: Int, _ rows: Int) -> Void)?
     var onLoadEarlier: (() -> Bool)?
-    var onTerminalKeyboardSend: ((Data) -> Void)?
-    var terminalKeyboardHost: TerminalKeyboardHost?
     private var lastReported: (cols: Int, rows: Int)?
     private var lastInputWindowSize: CGSize?
     private var defersScrollerUpdates = false

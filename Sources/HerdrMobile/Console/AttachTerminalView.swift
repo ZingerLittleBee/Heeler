@@ -1,9 +1,8 @@
 import SwiftUI
 
 /// The full-screen interactive Attach terminal (#11): SwiftTerm both ways —
-/// PTY bytes feed the view; keystrokes from the soft keyboard, SwiftTerm's
-/// accessory bar (Esc/Ctrl/Tab/arrows), and iPad hardware keyboards forward
-/// to the remote. Geometry changes (rotation, split view, keyboard) ride SSH
+/// PTY bytes feed the view; keystrokes from the iOS system keyboard and iPad
+/// hardware keyboards forward directly to the remote. Geometry changes ride SSH
 /// window-change through the store.
 ///
 /// Presented full-screen over the Agent detail screen, which owns the

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import UIKit
 
 @testable import HerdrMobile
 
@@ -11,6 +12,15 @@ import Testing
 /// targets that cannot be quoted safely for both.
 @Suite("Terminal attach bootstrap line")
 struct TerminalAttachTests {
+    @MainActor
+    @Test func attachUsesOnlyTheIOSSystemKeyboard() {
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            style: .attach, allowsInput: true)
+        #expect(terminal.inputView == nil)
+        #expect(terminal.inputAccessoryView == nil)
+        #expect(terminal.allowsInput)
+    }
+
     @Test func execsTheAttachCommandWithQuotedTargetAndSocketScope() throws {
         let line = try SSHTransport.attachBootstrapLine(
             attachCommand: "herdr agent attach",

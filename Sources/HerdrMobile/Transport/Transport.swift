@@ -26,13 +26,6 @@ protocol Transport: Sendable {
     /// wrap complete logical lines at its own width.
     func readPane(_ params: PaneReadParams) async throws -> PaneReadResult
 
-    /// Atomically writes text and key presses to a Pane (`pane.send_input`):
-    /// the detail screen's message box (#10, User Story 6 — answering a
-    /// Blocked agent without Attach). Keeping the text and Enter key in one
-    /// RPC prevents a half-complete state where the reply is typed but not
-    /// submitted.
-    func sendInput(_ params: PaneSendInputParams) async throws
-
     /// Starts a new Agent: the new-agent flow (#12, User Story 8 — dispatch
     /// work from the road). Creates a fresh herdr tab in the chosen workspace,
     /// starts the requested agent in its root pane, and returns the Agent once
@@ -41,13 +34,6 @@ protocol Transport: Sendable {
     /// event triggers a re-snapshot), so callers do not thread the return
     /// value into the list themselves.
     func startAgent(_ request: AgentLaunchRequest) async throws -> Agent
-
-    /// Sends control keys to a Pane (`pane.send_keys`): the detail screen's
-    /// quick-key bar (Enter/Esc/Ctrl-C/arrows/y-n, #10). Key names are
-    /// herdr's own spellings — verified empirically against herdr 0.7.4:
-    /// `enter`, `esc`, `ctrl+c`, `up`/`down`/`left`/`right`, `y`, `n` (herdr
-    /// rejects e.g. `ctrl-c` with `invalid_key`).
-    func sendKeys(_ params: PaneSendKeysParams) async throws
 
     /// Closes a Pane (`pane.close`): the Agent detail screen's destructive
     /// close action (#13, User Story 9 — a Done agent must not be destroyed
