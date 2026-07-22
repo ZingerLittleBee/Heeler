@@ -1,6 +1,21 @@
 import CoreGraphics
 import Foundation
 
+enum TerminalKeyboardTapTarget {
+    static let minimumHeight: CGFloat = 44
+
+    static func region(caretRect: CGRect, in bounds: CGRect) -> CGRect {
+        guard caretRect.height > 0, !bounds.isEmpty else { return .null }
+        let height = max(caretRect.height, minimumHeight)
+        let region = CGRect(
+            x: bounds.minX,
+            y: caretRect.midY - height / 2,
+            width: bounds.width,
+            height: height)
+        return region.intersection(bounds)
+    }
+}
+
 struct TerminalModeTracker {
     private static let privateModePrefix: [UInt8] = [0x1B, 0x5B, 0x3F]
 

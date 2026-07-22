@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// The Agent detail screen: one interactive Attach terminal with an explicitly
-/// activated iOS keyboard. Ghostty owns rendering, scrollback, and IME; the
-/// adapter routes touch scrolling to local history or the remote TUI.
+/// The Agent detail screen: one interactive Attach terminal. Ghostty owns
+/// rendering, scrollback, and IME; the adapter routes input-row taps and touch
+/// scrolling without adding separate terminal chrome.
 struct AgentDetailView: View {
     let agent: ConsoleAgent
     private let console: ConsoleStore
@@ -11,7 +11,6 @@ struct AgentDetailView: View {
     @State private var close: ClosePaneStore
     @State private var isConfirmingClose = false
     @State private var closeErrorMessage: String?
-    @State private var keyboardRequestID = 0
     @Environment(\.dismiss) private var dismiss
 
     init(agent: ConsoleAgent, console: ConsoleStore) {
@@ -34,8 +33,7 @@ struct AgentDetailView: View {
             onSizeChanged: { cols, rows in
                 store.viewDidResize(cols: cols, rows: rows)
             },
-            onSend: { keystrokes in store.send(keystrokes) },
-            keyboardRequestID: keyboardRequestID
+            onSend: { keystrokes in store.send(keystrokes) }
         )
         .id(ObjectIdentifier(store))
         .overlay { statusOverlay }
@@ -44,13 +42,6 @@ struct AgentDetailView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 AgentStatusBadge(status: agent.agent.status)
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    keyboardRequestID &+= 1
-                } label: {
-                    Label("Keyboard", systemImage: "keyboard")
-                }
             }
             ToolbarItem(placement: .primaryAction) {
                 Menu {

@@ -21,15 +21,21 @@ struct TerminalAttachTests {
     }
 
     @MainActor
-    @Test func terminalTouchPolicyPreservesScrollingUntilExplicitKeyboardActivation() {
+    @Test func terminalTouchPolicyKeepsKeyboardBehindTheCurrentInputRow() {
         let terminal = TerminalScreenView.makeConfiguredTerminal()
+        let directTouch = NSNumber(value: UITouch.TouchType.direct.rawValue)
 
         #expect(!terminal.canBecomeFirstResponder)
         #expect(
             terminal.gestureRecognizers?.contains { gesture in
                 guard let pan = gesture as? UIPanGestureRecognizer else { return false }
                 return pan.allowedTouchTypes.contains(
-                    NSNumber(value: UITouch.TouchType.direct.rawValue))
+                    directTouch)
+            } == true)
+        #expect(
+            terminal.gestureRecognizers?.contains { gesture in
+                guard let tap = gesture as? UITapGestureRecognizer else { return false }
+                return tap.isEnabled && tap.allowedTouchTypes.contains(directTouch)
             } == true)
 
         terminal.requestKeyboard()
@@ -37,6 +43,39 @@ struct TerminalAttachTests {
 
         _ = terminal.resignFirstResponder()
         #expect(!terminal.canBecomeFirstResponder)
+    }
+
+    @Test func keyboardTapTargetCoversOnlyTheCurrentInputRow() {
+        let bounds = CGRect(x: 0, y: 0, width: 390, height: 720)
+        let region = TerminalKeyboardTapTarget.region(
+            caretRect: CGRect(x: 72, y: 650, width: 9, height: 20),
+            in: bounds)
+
+        #expect(region == CGRect(x: 0, y: 638, width: 390, height: 44))
+        #expect(region.contains(CGPoint(x: 20, y: 660)))
+        #expect(!region.contains(CGPoint(x: 20, y: 500)))
+    }
+
+    @MainActor
+    @Test func ghosttyCursorProvidesAVisibleKeyboardTapTarget() async throws {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
+        let controller = UIViewController()
+        controller.view = terminal
+        let windowScene = try #require(
+            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: windowScene)
+        window.frame = terminal.bounds
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+
+        terminal.receive(Data("$ ".utf8))
+        terminal.layoutIfNeeded()
+        await Task.yield()
+
+        #expect(!terminal.keyboardActivationRegion.isNull)
+        #expect(terminal.bounds.contains(terminal.keyboardActivationRegion))
     }
 
     @MainActor

@@ -38,9 +38,10 @@ the native text-selection presentation requested by Ghostty's iOS delegate.
   sheet. The wrapper supplies a viewport snapshot and anchor range; it does not
   present selection handles on behalf of the host app.
 - libghostty-spm normally makes every direct terminal touch request first
-  responder status. herdr-mobile gates that behavior behind the navigation-bar
-  keyboard button so touch scrolling cannot be interrupted by keyboard-driven
-  viewport resizing.
+  responder status. herdr-mobile instead gates first-responder eligibility on
+  taps within the current IME cursor row. The full-width target is at least 44
+  points tall, while pans and long presses remain dedicated to scrolling and
+  selection.
 - libghostty-spm 1.3.2's internal iOS touch-scroll path does not emit remote TUI
   wheel input through an in-memory session, and its mouse-scroll API is not
   public. The adapter therefore owns one vertical Pan gesture: normal-buffer

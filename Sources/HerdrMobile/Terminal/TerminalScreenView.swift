@@ -20,7 +20,6 @@ struct TerminalScreenView: UIViewRepresentable {
     let feed: TerminalByteFeed
     var onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)?
     var onSend: ((Data) -> Void)?
-    var keyboardRequestID = 0
     @Environment(\.openURL) private var openURL
 
     func makeUIView(context: Context) -> HerdrTerminalView {
@@ -51,16 +50,10 @@ struct TerminalScreenView: UIViewRepresentable {
     func updateUIView(_ view: HerdrTerminalView, context: Context) {
         view.updateCallbacks(onSizeChanged: onSizeChanged, onSend: onSend)
         context.coordinator.onOpenLink = { url in openURL(url) }
-        if context.coordinator.keyboardRequestID != keyboardRequestID {
-            context.coordinator.keyboardRequestID = keyboardRequestID
-            view.requestKeyboard()
-        }
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(
-            keyboardRequestID: keyboardRequestID,
-            onOpenLink: { url in openURL(url) })
+        Coordinator(onOpenLink: { url in openURL(url) })
     }
 
     @MainActor
@@ -68,11 +61,9 @@ struct TerminalScreenView: UIViewRepresentable {
         TerminalSurfaceTextSelectionRequestDelegate
     {
         weak var terminalView: HerdrTerminalView?
-        var keyboardRequestID: Int
         var onOpenLink: ((URL) -> Void)?
 
-        init(keyboardRequestID: Int, onOpenLink: ((URL) -> Void)? = nil) {
-            self.keyboardRequestID = keyboardRequestID
+        init(onOpenLink: ((URL) -> Void)? = nil) {
             self.onOpenLink = onOpenLink
         }
 
@@ -138,6 +129,10 @@ final class HerdrTerminalView: UITerminalView {
     private lazy var touchScrollGesture = UIPanGestureRecognizer(
         target: self,
         action: #selector(handleHerdrTouchScrollGesture(_:)))
+
+    private lazy var keyboardActivationTapGesture = UITapGestureRecognizer(
+        target: self,
+        action: #selector(handleKeyboardActivationTap(_:)))
 
     private lazy var terminalKeyboardAccessory = TerminalKeyboardAccessory(
         frame: CGRect(
@@ -234,6 +229,10 @@ final class HerdrTerminalView: UITerminalView {
             let velocity = touchScrollGesture.velocity(in: self)
             return abs(velocity.y) > abs(velocity.x)
         }
+        if gestureRecognizer === keyboardActivationTapGesture {
+            return keyboardActivationRegion.contains(
+                keyboardActivationTapGesture.location(in: self))
+        }
         return super.gestureRecognizerShouldBegin(gestureRecognizer)
     }
 
@@ -258,6 +257,11 @@ final class HerdrTerminalView: UITerminalView {
 
     func setTerminalInputView(_ inputView: UIView?) {
         terminalInputView = inputView
+    }
+
+    var keyboardActivationRegion: CGRect {
+        let caret = caretRect(for: endOfDocument)
+        return TerminalKeyboardTapTarget.region(caretRect: caret, in: bounds)
     }
 
     @discardableResult
@@ -296,6 +300,17 @@ final class HerdrTerminalView: UITerminalView {
         touchScrollGesture.cancelsTouchesInView = false
         touchScrollGesture.delegate = self
         addGestureRecognizer(touchScrollGesture)
+
+        keyboardActivationTapGesture.allowedTouchTypes = [directTouch]
+        keyboardActivationTapGesture.numberOfTouchesRequired = 1
+        keyboardActivationTapGesture.cancelsTouchesInView = false
+        keyboardActivationTapGesture.delegate = self
+        addGestureRecognizer(keyboardActivationTapGesture)
+    }
+
+    @objc private func handleKeyboardActivationTap(_ gesture: UITapGestureRecognizer) {
+        guard gesture.state == .ended else { return }
+        requestKeyboard()
     }
 
     @objc private func handleHerdrTouchScrollGesture(_ gesture: UIPanGestureRecognizer) {
