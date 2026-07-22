@@ -33,14 +33,14 @@ protocol Transport: Sendable {
     /// submitted.
     func sendInput(_ params: PaneSendInputParams) async throws
 
-    /// Starts a new Agent (`agent.start`): the new-agent flow (#12, User
-    /// Story 8 — dispatch work from the road). Runs the given command as a
-    /// fresh herdr pane in the chosen workspace and returns the started Agent
-    /// once the server acknowledges. The new pane also surfaces in the
+    /// Starts a new Agent: the new-agent flow (#12, User Story 8 — dispatch
+    /// work from the road). Creates a fresh herdr tab in the chosen workspace,
+    /// starts the requested agent in its root pane, and returns the Agent once
+    /// the server acknowledges. The new pane also surfaces in the
     /// Console through the normal snapshot/delta machinery (a membership
     /// event triggers a re-snapshot), so callers do not thread the return
     /// value into the list themselves.
-    func startAgent(_ params: AgentStartParams) async throws -> Agent
+    func startAgent(_ request: AgentLaunchRequest) async throws -> Agent
 
     /// Sends control keys to a Pane (`pane.send_keys`): the detail screen's
     /// quick-key bar (Enter/Esc/Ctrl-C/arrows/y-n, #10). Key names are
@@ -100,6 +100,26 @@ extension Transport {
     /// Test doubles and alternative transports that do not expose Host-level
     /// session discovery can opt out without inventing sessions.
     func listSessions() async throws -> [HerdrSession] { [] }
+}
+
+/// App-domain request for launching a fresh coding agent.
+///
+/// herdr protocol 17 split the old topology-changing `agent.start` into
+/// `tab.create` followed by a pane-targeted `agent.start`. Keeping that wire
+/// choreography behind `Transport` prevents UI code from depending on the
+/// server's transport-level request shapes.
+struct AgentLaunchRequest: Sendable, Equatable {
+    let kind: String
+    let name: String
+    let arguments: [String]
+    let workspaceID: String?
+
+    init(kind: String, name: String, arguments: [String] = [], workspaceID: String? = nil) {
+        self.kind = kind
+        self.name = name
+        self.arguments = arguments
+        self.workspaceID = workspaceID
+    }
 }
 
 /// herdr server identity as reported by `ping`.

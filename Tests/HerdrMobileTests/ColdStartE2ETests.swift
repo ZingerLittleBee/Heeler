@@ -32,7 +32,7 @@ struct ColdStartE2ETests {
         defer { stale.remove() }
         let server = try FakeHerdrServer { request in
             [
-                #"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":16}}"#
+                #"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":17}}"#
             ]
         }
         defer { server.stop() }
@@ -52,7 +52,7 @@ struct ColdStartE2ETests {
         do {
             let info = try await transport.ping()
 
-            #expect(info == ServerInfo(version: "9.9.9-fake", protocolVersion: 16))
+            #expect(info == ServerInfo(version: "9.9.9-fake", protocolVersion: 17))
         } catch {
             try? await transport.close()
             throw error
@@ -72,7 +72,7 @@ struct ColdStartE2ETests {
         defer { stale.remove() }
         let server = try FakeHerdrServer { request in
             [
-                #"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":16}}"#
+                #"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":17}}"#
             ]
         }
         defer { server.stop() }
@@ -86,7 +86,7 @@ struct ColdStartE2ETests {
         try await withTransport(socketPath: stale.path, wakeCommand: wake.command) { transport in
             let info = try await transport.ping()
 
-            #expect(info == ServerInfo(version: "9.9.9-fake", protocolVersion: 16))
+            #expect(info == ServerInfo(version: "9.9.9-fake", protocolVersion: 17))
         }
         #expect(wake.invocationCount == 1)
         // Only the post-wake retry reaches the server; the refused first

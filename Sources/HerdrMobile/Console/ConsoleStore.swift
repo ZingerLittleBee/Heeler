@@ -378,18 +378,18 @@ final class ConsoleStore {
         feeds[hostID]?.workspaces ?? []
     }
 
-    /// Starts a new Agent on a Host (#12): the thin `agent.start` RPC on the
-    /// Host's live transport, then one explicit resync so the new pane
+    /// Starts a new Agent on a Host (#12): the transport's protocol-specific
+    /// launch flow, then one explicit resync so the new pane
     /// surfaces promptly instead of waiting on its membership event. Throws
     /// `.sshUnreachable` when the Host is not currently connected, and
     /// propagates the server's error when herdr rejects the start.
     @discardableResult
-    func startAgent(_ params: AgentStartParams, on hostID: Host.ID) async throws -> Agent {
+    func startAgent(_ request: AgentLaunchRequest, on hostID: Host.ID) async throws -> Agent {
         guard let feed = feeds[hostID], let transport = await feed.session.currentTransport
         else {
             throw TransportError.sshUnreachable(detail: "The Host is not connected.")
         }
-        let agent = try await transport.startAgent(params)
+        let agent = try await transport.startAgent(request)
         // The membership event will re-snapshot too; this just makes the new
         // pane appear without waiting for it.
         scheduleResync(feed: feed)

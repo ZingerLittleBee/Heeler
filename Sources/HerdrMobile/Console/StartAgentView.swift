@@ -1,9 +1,10 @@
 import SwiftUI
 
 /// The new-agent sheet (#12, User Story 8): pick a Host and workspace, type a
-/// command, and dispatch it via `agent.start`. The started agent appears in
-/// the Console through the store's normal snapshot/delta machinery, so this
-/// screen dismisses on success rather than navigating anywhere itself.
+/// command, and dispatch it through the Transport launch flow. The started
+/// agent appears in the Console through the store's normal snapshot/delta
+/// machinery, so this screen dismisses on success rather than navigating
+/// anywhere itself.
 struct StartAgentView: View {
     @State private var store: StartAgentStore
     @Environment(\.dismiss) private var dismiss
@@ -42,6 +43,16 @@ struct StartAgentView: View {
                     Text("Workspace")
                 } footer: {
                     Text("Where the agent runs. Leave on the Host's current workspace if unsure.")
+                }
+
+                Section {
+                    TextField("e.g. reviewer", text: $store.name)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                } header: {
+                    Text("Agent Name")
+                } footer: {
+                    Text("A unique name for this running agent on the Host.")
                 }
 
                 Section {

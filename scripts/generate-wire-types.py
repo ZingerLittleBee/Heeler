@@ -18,7 +18,7 @@ Scope and shape are deliberate (see issue #7 and spec #20):
   (`#/schemas/<schema>/$defs/X`) and type names repeat across the five
   top-level schemas. Preprocessing flattens all `$defs` into one namespace
   and fails loudly if two same-named defs ever stop being structurally
-  identical (they all are in herdr 0.7.4).
+  identical (verified against herdr 0.7.5).
 - String enums are emitted as raw-string `RawRepresentable` structs, not
   Swift enums: herdr's API has no stability guarantee, so unknown values
   must decode intact instead of failing.
@@ -55,6 +55,7 @@ METHODS = [
     "agent.rename",
     "agent.start",
     "events.subscribe",
+    "tab.create",
     "pane.read",
     "pane.send_input",
     "pane.send_keys",
@@ -85,6 +86,7 @@ RESULT_TAGS = [
     "pane_read",  # pane.read, agent.read
     "session_snapshot",  # session.snapshot
     "subscription_started",  # events.subscribe ack
+    "tab_created",  # tab.create
     "ok",  # pane.send_input, pane.send_keys, pane.close
 ]
 

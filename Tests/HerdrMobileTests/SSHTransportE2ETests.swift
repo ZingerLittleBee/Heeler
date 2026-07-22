@@ -15,12 +15,12 @@ struct SSHTransportE2ETests {
     @Test func pingRoundTripsAndChecksProtocolVersion() async throws {
         try await withTransport { request in
             [
-                #"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":16,"capabilities":{"live_handoff":true,"future_capability":true}}}"#
+                #"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":17,"capabilities":{"live_handoff":true,"future_capability":true}}}"#
             ]
         } body: { transport, server in
             let info = try await transport.ping()
 
-            #expect(info == ServerInfo(version: "9.9.9-fake", protocolVersion: 16))
+            #expect(info == ServerInfo(version: "9.9.9-fake", protocolVersion: 17))
             #expect(server.receivedRequests.map(\.method) == ["ping"])
         }
     }
@@ -66,7 +66,7 @@ struct SSHTransportE2ETests {
         // the workspace context (labels, worktrees) that agent.list lacks.
         try await withTransport { request in
             [
-                #"{"id":"\#(request.id)","result":{"type":"session_snapshot","snapshot":{"version":"9.9.9-fake","protocol":16,"workspaces":[{"workspace_id":"w1","number":1,"label":"Proj","focused":false,"pane_count":1,"tab_count":1,"active_tab_id":"w1:t1","agent_status":"unknown","worktree":{"repo_key":"/work/a/.git","repo_name":"Proj","repo_root":"/work/a","checkout_path":"/work/a","is_linked_worktree":false}}],"tabs":[],"panes":[],"layouts":[],"agents":[{"terminal_id":"term_a","agent":"claude","terminal_title":"⠐ Fix","terminal_title_stripped":"Fix","agent_status":"blocked","workspace_id":"w1","tab_id":"w1:t1","pane_id":"w1:p1","focused":true,"cwd":"/work/a","foreground_cwd":"/work/a","revision":3}]}}}"#
+                #"{"id":"\#(request.id)","result":{"type":"session_snapshot","snapshot":{"version":"9.9.9-fake","protocol":17,"workspaces":[{"workspace_id":"w1","number":1,"label":"Proj","focused":false,"pane_count":1,"tab_count":1,"active_tab_id":"w1:t1","agent_status":"unknown","worktree":{"repo_key":"/work/a/.git","repo_name":"Proj","repo_root":"/work/a","checkout_path":"/work/a","is_linked_worktree":false}}],"tabs":[],"panes":[],"layouts":[],"agents":[{"terminal_id":"term_a","agent":"claude","terminal_title":"⠐ Fix","terminal_title_stripped":"Fix","agent_status":"blocked","workspace_id":"w1","tab_id":"w1:t1","pane_id":"w1:p1","focused":true,"cwd":"/work/a","foreground_cwd":"/work/a","revision":3}]}}}"#
             ]
         } body: { transport, server in
             let snapshot = try await transport.sessionSnapshot()
@@ -150,26 +150,72 @@ struct SSHTransportE2ETests {
     }
 
     @Test func agentStartSendsItsParamsAndMapsTheStartedAgent() async throws {
-        // The new-agent flow (#12): agent.start carries argv/name/workspace,
-        // answered with the agent_started envelope; the started AgentInfo
-        // maps onto the domain Agent the Console consumes.
+        // Protocol 17 splits the new-agent flow into topology creation and a
+        // pane-targeted start. Both requests stay behind the Transport seam.
         try await withTransport { request in
-            [
-                #"{"id":"\#(request.id)","result":{"type":"agent_started","argv":["claude","--continue"],"agent":{"terminal_id":"term_new","agent":"claude","terminal_title":"⠐ claude","terminal_title_stripped":"claude","agent_status":"working","workspace_id":"w1","tab_id":"w1:t1","pane_id":"w1:p9","focused":true,"cwd":"/work/a","foreground_cwd":"/work/a","revision":1}}}"#
-            ]
+            switch request.method {
+            case "tab.create":
+                return [
+                    #"{"id":"\#(request.id)","result":{"type":"tab_created","tab":{"tab_id":"w1:t9","workspace_id":"w1","number":9,"label":"9","focused":false,"pane_count":1,"agent_status":"unknown"},"root_pane":{"pane_id":"w1:p9","terminal_id":"term_new","workspace_id":"w1","tab_id":"w1:t9","focused":false,"agent_status":"unknown","revision":0}}}"#
+                ]
+            case "agent.start":
+                return [
+                    #"{"id":"\#(request.id)","result":{"type":"agent_started","argv":["claude","--continue"],"agent":{"terminal_id":"term_new","agent":"claude","terminal_title":"⠐ claude","terminal_title_stripped":"claude","agent_status":"working","workspace_id":"w1","tab_id":"w1:t1","pane_id":"w1:p9","focused":true,"cwd":"/work/a","foreground_cwd":"/work/a","revision":1}}}"#
+                ]
+            default:
+                Issue.record("Unexpected request: \(request.method)")
+                return []
+            }
         } body: { transport, server in
             let agent = try await transport.startAgent(
-                AgentStartParams(
-                    argv: ["claude", "--continue"], name: "claude", workspaceID: "w1"))
+                AgentLaunchRequest(
+                    kind: "claude", name: "reviewer", arguments: ["--continue"],
+                    workspaceID: "w1"))
 
             #expect(agent.paneID == "w1:p9")
             #expect(agent.kind == "claude")
             #expect(agent.status == .working)
-            let request = try #require(server.receivedRequests.first)
-            #expect(request.method == "agent.start")
+            #expect(server.receivedRequests.map(\.method) == ["tab.create", "agent.start"])
+            let create = try #require(server.receivedRequests.first)
+            #expect(create.params == #"{"focus":false,"workspace_id":"w1"}"#)
+            let start = try #require(server.receivedRequests.last)
             #expect(
-                request.params
-                    == #"{"argv":["claude","--continue"],"name":"claude","workspace_id":"w1"}"#)
+                start.params
+                    == #"{"args":["--continue"],"kind":"claude","name":"reviewer","pane_id":"w1:p9"}"#
+            )
+        }
+    }
+
+    @Test func agentStartFailureClosesTheFreshPaneAndPreservesTheError() async throws {
+        try await withTransport { request in
+            switch request.method {
+            case "tab.create":
+                return [
+                    #"{"id":"\#(request.id)","result":{"type":"tab_created","tab":{"tab_id":"w1:t9","workspace_id":"w1","number":9,"label":"9","focused":false,"pane_count":1,"agent_status":"unknown"},"root_pane":{"pane_id":"w1:p9","terminal_id":"term_new","workspace_id":"w1","tab_id":"w1:t9","focused":false,"agent_status":"unknown","revision":0}}}"#
+                ]
+            case "agent.start":
+                return [
+                    #"{"id":"\#(request.id)","error":{"code":"unsupported_agent","message":"unsupported agent kind"}}"#
+                ]
+            case "pane.close":
+                return [#"{"id":"\#(request.id)","result":{"type":"ok"}}"#]
+            default:
+                Issue.record("Unexpected request: \(request.method)")
+                return []
+            }
+        } body: { transport, server in
+            await #expect(
+                throws: HerdrAPIError(
+                    code: "unsupported_agent", message: "unsupported agent kind")
+            ) {
+                try await transport.startAgent(
+                    AgentLaunchRequest(kind: "unsupported", name: "unsupported"))
+            }
+
+            #expect(
+                server.receivedRequests.map(\.method)
+                    == ["tab.create", "agent.start", "pane.close"])
+            #expect(server.receivedRequests.last?.params == #"{"pane_id":"w1:p9"}"#)
         }
     }
 
@@ -189,7 +235,7 @@ struct SSHTransportE2ETests {
         try await withTransport { request in
             switch request.method {
             case "ping":
-                [#"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":16}}"#]
+                [#"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":17}}"#]
             default:
                 [#"{"id":"\#(request.id)","result":{"type":"agent_list","agents":[]}}"#]
             }
@@ -283,7 +329,7 @@ struct SSHTransportE2ETests {
         try FileManager.default.createSymbolicLink(
             atPath: socatPath, withDestinationPath: environment.socatPath)
         let server = try FakeHerdrServer(socketPath: socketPath) { request in
-            [#"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":16}}"#]
+            [#"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":17}}"#]
         }
         defer { server.stop() }
         let transport = try await SSHTransport.connect(
@@ -317,7 +363,7 @@ struct SSHTransportE2ETests {
         let server = try FakeHerdrServer(socketPath: sessionDir + "/herdr.sock") { request in
             switch request.method {
             case "ping":
-                [#"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":16}}"#]
+                [#"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":17}}"#]
             default:
                 [#"{"id":"\#(request.id)","result":{"type":"agent_list","agents":[]}}"#]
             }
@@ -350,7 +396,7 @@ struct SSHTransportE2ETests {
             atPath: sessionDirectory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(atPath: home) }
         let server = try FakeHerdrServer(socketPath: "\(sessionDirectory)/herdr.sock") { request in
-            [#"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":16}}"#]
+            [#"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":17}}"#]
         }
         defer { server.stop() }
         let homeCommand =

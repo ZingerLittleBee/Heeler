@@ -47,7 +47,7 @@ struct PreflightReportTests {
         (.socketNotFound(path: "/home/dev/.config/herdr/herdr.sock"), .herdrInstalled),
         (.homeDirectoryUnresolvable(detail: "no $HOME"), .remoteEnvironment),
         (.serverNotRunning(path: "/home/dev/.config/herdr/herdr.sock"), .serverRunning),
-        (.protocolVersionMismatch(server: 17, supported: 16), .protocolCompatible),
+        (.protocolVersionMismatch(server: 18, supported: 17), .protocolCompatible),
         (.malformedResponse("junk"), .protocolCompatible),
     ])
     func mapsEveryTransportErrorOntoItsCheck(error: TransportError, check: PreflightCheck) {
@@ -84,13 +84,13 @@ struct PreflightReportTests {
 
     @Test func protocolMismatchHintNamesBothVersions() {
         let report = PreflightReport.failure(
-            .protocolVersionMismatch(server: 17, supported: 16), authMethod: .deviceKey)
+            .protocolVersionMismatch(server: 18, supported: 17), authMethod: .deviceKey)
         guard case .failed(let hint) = report[.protocolCompatible] else {
             Issue.record("protocol check should fail")
             return
         }
+        #expect(hint.contains("18"))
         #expect(hint.contains("17"))
-        #expect(hint.contains("16"))
     }
 
     @Test func plainFailureAttachesTheGivenHintToTheGivenCheck() {

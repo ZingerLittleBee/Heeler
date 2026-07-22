@@ -3,7 +3,7 @@ import Observation
 
 /// The new-agent flow's form logic (#12, User Story 8): pick a Host, pick a
 /// workspace (or the Host's current one), type a command, and dispatch it via
-/// `agent.start`. The started pane surfaces in the Console through the store's
+/// the Transport launch flow. The started pane surfaces in the Console through the store's
 /// normal snapshot/delta machinery — this screen only fires the RPC and
 /// reports its outcome.
 ///
@@ -35,13 +35,15 @@ final class StartAgentStore {
     }
     /// nil targets the Host's current workspace (omits `workspace_id`).
     var selectedWorkspaceID: String?
+    /// The unique live-agent name required by herdr protocol 17.
+    var name: String = ""
     /// The command line, tokenized into argv on submit.
     var command: String = ""
 
     private(set) var state: State = .editing
 
     private let workspacesProvider: (Host.ID) -> [ConsoleWorkspace]
-    private let start: (AgentStartParams, Host.ID) async throws -> Agent
+    private let start: (AgentLaunchRequest, Host.ID) async throws -> Agent
     /// In-flight guard flipped synchronously before the first await, so a
     /// double-tap cannot dispatch the same command twice through the window
     /// before `state == .starting` disables the button.
@@ -50,7 +52,7 @@ final class StartAgentStore {
     init(
         hosts: [Host],
         workspaces: @escaping (Host.ID) -> [ConsoleWorkspace],
-        start: @escaping (AgentStartParams, Host.ID) async throws -> Agent
+        start: @escaping (AgentLaunchRequest, Host.ID) async throws -> Agent
     ) {
         self.hosts = hosts
         self.workspacesProvider = workspaces
@@ -65,14 +67,15 @@ final class StartAgentStore {
         return workspacesProvider(selectedHostID)
     }
 
-    /// The command split into argv; the first token is also the agent name.
+    /// The command split into an agent kind followed by native arguments.
     var argv: [String] {
         Self.tokenize(command)
     }
 
     /// Whether the form is complete enough to dispatch.
     var canSubmit: Bool {
-        selectedHostID != nil && !argv.isEmpty && state != .starting
+        selectedHostID != nil && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !argv.isEmpty && state != .starting
     }
 
     /// Dispatches the command via `agent.start`. Whitespace-only or
@@ -81,14 +84,19 @@ final class StartAgentStore {
     func submit() async {
         guard !isStarting, let hostID = selectedHostID else { return }
         let tokens = argv
-        guard let name = tokens.first else { return }
+        guard let kind = tokens.first else { return }
+        let agentName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !agentName.isEmpty else { return }
         isStarting = true
         state = .starting
         defer { isStarting = false }
-        let params = AgentStartParams(
-            argv: tokens, name: name, workspaceID: selectedWorkspaceID)
+        let request = AgentLaunchRequest(
+            kind: kind,
+            name: agentName,
+            arguments: Array(tokens.dropFirst()),
+            workspaceID: selectedWorkspaceID)
         do {
-            _ = try await start(params, hostID)
+            _ = try await start(request, hostID)
             state = .started
         } catch {
             state = .failed(Self.message(for: error))

@@ -18,7 +18,7 @@ final actor ScriptedTransport: Transport {
     private(set) var sentKeys: [PaneSendKeysParams] = []
     /// Every `agent.start` received, in order; the new-agent flow (#12)
     /// asserts on the params it forwarded.
-    private(set) var agentStarts: [AgentStartParams] = []
+    private(set) var agentStarts: [AgentLaunchRequest] = []
     /// Every `pane.close` received, in order; the close-pane flow (#13)
     /// asserts on the pane it targeted (and that the cancel path never
     /// appends here).
@@ -58,7 +58,7 @@ final actor ScriptedTransport: Transport {
 
     init(
         snapshot: SessionSnapshot = .fixture(),
-        serverInfo: ServerInfo = ServerInfo(version: "0.7.4-fake", protocolVersion: 16)
+        serverInfo: ServerInfo = ServerInfo(version: "0.7.5-fake", protocolVersion: 17)
     ) {
         self.snapshot = snapshot
         self.serverInfo = serverInfo
@@ -220,17 +220,17 @@ final actor ScriptedTransport: Transport {
             truncated: false, workspaceID: "w")
     }
 
-    func startAgent(_ params: AgentStartParams) async throws -> Agent {
-        agentStarts.append(params)
+    func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
+        agentStarts.append(request)
         if let startFailure { throw startFailure }
         if let startedAgent { return Agent(startedAgent) }
         // Synthesize a freshly-Working agent so the caller and the follow-up
         // snapshot see the same pane the real server would report.
         return Agent(
             .fixture(
-                paneID: "\(params.workspaceID ?? "w1"):pnew", status: .working,
-                workspaceID: params.workspaceID ?? "w1", kind: params.name,
-                title: params.name))
+                paneID: "\(request.workspaceID ?? "w1"):pnew", status: .working,
+                workspaceID: request.workspaceID ?? "w1", kind: request.kind,
+                title: request.name))
     }
 
     func sendInput(_ params: PaneSendInputParams) async throws {
@@ -380,8 +380,8 @@ extension SessionSnapshot {
         agents: [AgentInfo] = [], workspaces: [WorkspaceInfo] = []
     ) -> SessionSnapshot {
         SessionSnapshot(
-            agents: agents, layouts: [], panes: [], protocolVersion: 16, tabs: [],
-            version: "0.7.4-fake", workspaces: workspaces)
+            agents: agents, layouts: [], panes: [], protocolVersion: 17, tabs: [],
+            version: "0.7.5-fake", workspaces: workspaces)
     }
 }
 

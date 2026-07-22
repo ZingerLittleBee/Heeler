@@ -232,7 +232,7 @@ private actor RejectingTransport: Transport {
         self.error = error
     }
 
-    func startAgent(_ params: AgentStartParams) async throws -> Agent { throw error }
+    func startAgent(_ request: AgentLaunchRequest) async throws -> Agent { throw error }
     func sendInput(_ params: PaneSendInputParams) async throws { throw error }
     func sendKeys(_ params: PaneSendKeysParams) async throws { throw error }
     func closePane(_ params: PaneTarget) async throws { throw error }

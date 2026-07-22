@@ -11,12 +11,12 @@ import Testing
 struct StartAgentStoreTests {
     /// Records the starts the store dispatches and scripts their outcome.
     private final class StartRecorder {
-        var params: [AgentStartParams] = []
+        var params: [AgentLaunchRequest] = []
         var hostIDs: [Host.ID] = []
         var error: (any Error)?
         var agent = Agent(.fixture(paneID: "w1:pnew", status: .working))
 
-        func record(_ params: AgentStartParams, _ hostID: Host.ID) throws -> Agent {
+        func record(_ params: AgentLaunchRequest, _ hostID: Host.ID) throws -> Agent {
             self.params.append(params)
             hostIDs.append(hostID)
             if let error { throw error }
@@ -59,6 +59,8 @@ struct StartAgentStoreTests {
         store.command = "claude"
         #expect(store.canSubmit == false)  // still no host
         store.selectedHostID = hostA.id
+        #expect(store.canSubmit == false)  // still no unique agent name
+        store.name = "reviewer"
         #expect(store.canSubmit == true)
         store.command = "   "
         #expect(store.canSubmit == false)  // whitespace is no command
@@ -86,14 +88,16 @@ struct StartAgentStoreTests {
         let recorder = StartRecorder()
         let store = makeStore(hosts: [host], recorder: recorder)
         store.selectedWorkspaceID = "w1"
+        store.name = "reviewer"
         store.command = "claude --continue"
 
         await store.submit()
 
         #expect(store.state == .started)
         #expect(recorder.hostIDs == [host.id])
-        #expect(recorder.params.first?.argv == ["claude", "--continue"])
-        #expect(recorder.params.first?.name == "claude")
+        #expect(recorder.params.first?.kind == "claude")
+        #expect(recorder.params.first?.name == "reviewer")
+        #expect(recorder.params.first?.arguments == ["--continue"])
         #expect(recorder.params.first?.workspaceID == "w1")
     }
 
@@ -101,6 +105,7 @@ struct StartAgentStoreTests {
         let host = Host.fixture()
         let recorder = StartRecorder()
         let store = makeStore(hosts: [host], recorder: recorder)
+        store.name = "writer"
         store.command = "codex"
 
         await store.submit()
@@ -113,6 +118,7 @@ struct StartAgentStoreTests {
         let recorder = StartRecorder()
         recorder.error = HerdrAPIError(code: "400", message: "no such workspace")
         let store = makeStore(hosts: [host], recorder: recorder)
+        store.name = "reviewer"
         store.command = "claude"
 
         await store.submit()

@@ -324,7 +324,7 @@ struct EventsSessionE2ETests {
     }
 
     private static func pingResult(_ id: String) -> String {
-        #"{"id":"\#(id)","result":{"type":"pong","version":"9.9.9-fake","protocol":16}}"#
+        #"{"id":"\#(id)","result":{"type":"pong","version":"9.9.9-fake","protocol":17}}"#
     }
 
     private static func ack(_ id: String) -> String {
@@ -428,8 +428,8 @@ struct EventsSessionE2ETests {
             try await inner.attachTerminal(request)
         }
 
-        func startAgent(_ params: AgentStartParams) async throws -> Agent {
-            try await inner.startAgent(params)
+        func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
+            try await inner.startAgent(request)
         }
 
         func sendInput(_ params: PaneSendInputParams) async throws {

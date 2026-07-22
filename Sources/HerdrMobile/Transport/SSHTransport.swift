@@ -71,8 +71,8 @@ private struct HerdrSessionListResponse: Decodable {
 /// one channel per request because herdr serves one request per connection
 /// (ADR 0002). An actor because Citadel's SSHClient is not Sendable.
 actor SSHTransport: Transport {
-    /// The herdr wire protocol version this build speaks (herdr 0.7.4).
-    static let supportedProtocolVersion = 16
+    /// The herdr wire protocol version this build speaks (herdr 0.7.5).
+    static let supportedProtocolVersion = 17
 
     /// Exec channels are SSH session channels, capped by sshd's MaxSessions
     /// (default 10) per connection. Bound at 8 to leave headroom for the
@@ -288,10 +288,28 @@ actor SSHTransport: Transport {
             .read
     }
 
-    func startAgent(_ params: AgentStartParams) async throws -> Agent {
-        let response = try await request(
-            method: "agent.start", params: params, decoding: AgentStartedResponse.self)
-        return Agent(response.agent)
+    func startAgent(_ launch: AgentLaunchRequest) async throws -> Agent {
+        let created = try await request(
+            method: "tab.create",
+            params: TabCreateParams(focus: false, workspaceID: launch.workspaceID),
+            decoding: TabCreatedResponse.self)
+        do {
+            let response = try await request(
+                method: "agent.start",
+                params: AgentStartParams(
+                    kind: launch.kind,
+                    name: launch.name,
+                    paneID: created.rootPane.paneID,
+                    args: launch.arguments.isEmpty ? nil : launch.arguments),
+                decoding: AgentStartedResponse.self)
+            return Agent(response.agent)
+        } catch let error as HerdrAPIError {
+            // A definitive rejection must not leave the fresh empty tab behind.
+            // Transport failures are ambiguous: the agent may have started even
+            // if its reply was lost, so preserving the pane is safer there.
+            try? await closePane(PaneTarget(paneID: created.rootPane.paneID))
+            throw error
+        }
     }
 
     func sendInput(_ params: PaneSendInputParams) async throws {
