@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The Agent detail screen: one interactive Attach terminal with the iOS
 /// system keyboard. The normal terminal buffer scrolls locally; full-screen
-/// alternate buffers translate vertical drags into Page Up and Page Down.
+/// alternate buffers translate vertical drags into continuous wheel events.
 struct AgentDetailView: View {
     let agent: ConsoleAgent
     private let console: ConsoleStore

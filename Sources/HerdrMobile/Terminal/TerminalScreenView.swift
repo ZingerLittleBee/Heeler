@@ -100,8 +100,16 @@ final class SizeReportingTerminalView: TerminalView, UIGestureRecognizerDelegate
     private var lastReported: (cols: Int, rows: Int)?
     private var lastInputWindowSize: CGSize?
     private var installedAlternateScreenScrolling = false
+    private var alternateScrollRemainder: CGFloat = 0
+    private var scrollMomentumDisplayLink: CADisplayLink?
+    private var scrollMomentumVelocityY: CGFloat = 0
+    private var scrollMomentumTimestamp: CFTimeInterval = 0
     private lazy var alternateScreenPan = UIPanGestureRecognizer(
         target: self, action: #selector(handleAlternateScreenPan(_:)))
+
+    var alternateScrollStep: CGFloat {
+        max(1, font.lineHeight)
+    }
 
     func installAlternateScreenScrolling() {
         guard !installedAlternateScreenScrolling else { return }
@@ -111,26 +119,109 @@ final class SizeReportingTerminalView: TerminalView, UIGestureRecognizerDelegate
         addGestureRecognizer(alternateScreenPan)
     }
 
-    /// Converts one vertical drag threshold into one terminal page command.
-    /// A downward finger movement requests older content; upward requests newer.
+    /// Converts finger travel into terminal wheel rows. Alternate buffers do
+    /// not own local scrollback, so the remote TUI remains the source of truth.
     @discardableResult
-    func scrollAlternateScreen(translationY: CGFloat) -> Bool {
-        guard getTerminal().isCurrentBufferAlternate, !hasActiveSelection else { return false }
-        let threshold = max(44, bounds.height * 0.18)
-        guard abs(translationY) >= threshold else { return false }
-        if translationY > 0 {
-            pageUp()
-        } else {
-            pageDown()
+    func scrollAlternateScreen(translationY: CGFloat) -> Int {
+        let terminal = getTerminal()
+        guard terminal.isCurrentBufferAlternate, !hasActiveSelection else {
+            alternateScrollRemainder = 0
+            return 0
         }
-        return true
+        if alternateScrollRemainder * translationY < 0 {
+            alternateScrollRemainder = 0
+        }
+        alternateScrollRemainder += translationY
+        let lineCount = Int(abs(alternateScrollRemainder) / alternateScrollStep)
+        guard lineCount > 0 else { return 0 }
+        let movesTowardOlderContent = alternateScrollRemainder > 0
+        alternateScrollRemainder.formTruncatingRemainder(dividingBy: alternateScrollStep)
+        sendScrollRows(lineCount, towardOlderContent: movesTowardOlderContent)
+        return lineCount
     }
 
     @objc private func handleAlternateScreenPan(_ gesture: UIPanGestureRecognizer) {
-        guard gesture.state == .changed else { return }
-        if scrollAlternateScreen(translationY: gesture.translation(in: self).y) {
+        switch gesture.state {
+        case .began:
+            stopScrollMomentum()
+            alternateScrollRemainder = 0
+        case .changed:
+            _ = scrollAlternateScreen(translationY: gesture.translation(in: self).y)
             gesture.setTranslation(.zero, in: self)
+        case .ended:
+            startScrollMomentum(velocityY: gesture.velocity(in: self).y)
+        case .cancelled, .failed:
+            stopScrollMomentum()
+            alternateScrollRemainder = 0
+        default:
+            break
         }
+    }
+
+    private func sendScrollRows(_ count: Int, towardOlderContent: Bool) {
+        let terminal = getTerminal()
+        switch terminal.mouseMode {
+        case .off:
+            let bytes =
+                towardOlderContent
+                ? (terminal.applicationCursor
+                    ? EscapeSequences.moveUpApp : EscapeSequences.moveUpNormal)
+                : (terminal.applicationCursor
+                    ? EscapeSequences.moveDownApp : EscapeSequences.moveDownNormal)
+            for _ in 0..<count {
+                send(bytes)
+            }
+        default:
+            let button = towardOlderContent ? 4 : 5
+            let buttonFlags = terminal.encodeButton(
+                button: button, release: false, shift: false, meta: false, control: false)
+            let column = max(0, (terminal.cols - 1) / 2)
+            let row = max(0, (terminal.rows - 1) / 2)
+            let scale = window?.screen.scale ?? traitCollection.displayScale
+            let pixelX = Int(bounds.midX * scale)
+            let pixelY = Int(bounds.midY * scale)
+            for _ in 0..<count {
+                terminal.sendEvent(
+                    buttonFlags: buttonFlags, x: column, y: row,
+                    pixelX: pixelX, pixelY: pixelY)
+            }
+        }
+    }
+
+    private func startScrollMomentum(velocityY: CGFloat) {
+        guard abs(velocityY) >= 80, getTerminal().isCurrentBufferAlternate else {
+            alternateScrollRemainder = 0
+            return
+        }
+        stopScrollMomentum()
+        scrollMomentumVelocityY = max(-4_000, min(4_000, velocityY))
+        scrollMomentumTimestamp = 0
+        let displayLink = CADisplayLink(target: self, selector: #selector(advanceScrollMomentum(_:)))
+        scrollMomentumDisplayLink = displayLink
+        displayLink.add(to: .main, forMode: .common)
+    }
+
+    @objc private func advanceScrollMomentum(_ displayLink: CADisplayLink) {
+        guard getTerminal().isCurrentBufferAlternate, abs(scrollMomentumVelocityY) >= 20 else {
+            stopScrollMomentum()
+            alternateScrollRemainder = 0
+            return
+        }
+        guard scrollMomentumTimestamp > 0 else {
+            scrollMomentumTimestamp = displayLink.timestamp
+            return
+        }
+        let elapsed = min(1.0 / 30.0, displayLink.timestamp - scrollMomentumTimestamp)
+        scrollMomentumTimestamp = displayLink.timestamp
+        _ = scrollAlternateScreen(translationY: scrollMomentumVelocityY * elapsed)
+        scrollMomentumVelocityY *= pow(0.998, elapsed * 1_000)
+    }
+
+    private func stopScrollMomentum() {
+        scrollMomentumDisplayLink?.invalidate()
+        scrollMomentumDisplayLink = nil
+        scrollMomentumVelocityY = 0
+        scrollMomentumTimestamp = 0
     }
 
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
@@ -145,13 +236,29 @@ final class SizeReportingTerminalView: TerminalView, UIGestureRecognizerDelegate
         _ gestureRecognizer: UIGestureRecognizer,
         shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
     ) -> Bool {
-        gestureRecognizer === alternateScreenPan || otherGestureRecognizer === alternateScreenPan
+        (gestureRecognizer === alternateScreenPan && otherGestureRecognizer === panGestureRecognizer)
+            || (otherGestureRecognizer === alternateScreenPan
+                && gestureRecognizer === panGestureRecognizer)
+    }
+
+    override func mouseModeChanged(source: Terminal) {
+        super.mouseModeChanged(source: source)
+        prioritizeAlternateScreenScrollGesture()
+    }
+
+    private func prioritizeAlternateScreenScrollGesture() {
+        for case let gesture as UIPanGestureRecognizer in gestureRecognizers ?? []
+        where gesture !== alternateScreenPan && gesture !== panGestureRecognizer {
+            gesture.require(toFail: alternateScreenPan)
+        }
     }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
         if window != nil {
             _ = becomeFirstResponder()
+        } else {
+            stopScrollMomentum()
         }
     }
 

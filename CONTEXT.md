@@ -27,7 +27,7 @@ _Avoid_: dashboard, home
 **Attach**:
 The Agent detail surface: full interactive terminal control of the pane through
 the embedded terminal. The normal terminal buffer uses native local scrollback.
-Alternate-screen TUIs map vertical touch drags to Page Up and Page Down.
+Alternate-screen TUIs map vertical touch drags and momentum to terminal wheel rows.
 _Avoid_: takeover (that's herdr's flag, not our surface), connect
 
 **Terminal Keyboard**:
