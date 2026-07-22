@@ -37,7 +37,7 @@ struct TerminalScreenView: UIViewRepresentable {
     @MainActor
     static func makeConfiguredTerminal() -> SizeReportingTerminalView {
         let view = SizeReportingTerminalView(frame: .zero, font: nil)
-        view.inputAccessoryView = nil
+        view.installKeyboardSwitcher()
         view.keyboardDismissMode = .interactive
         view.installAlternateScreenScrolling()
         return view

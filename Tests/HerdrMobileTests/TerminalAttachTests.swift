@@ -13,11 +13,66 @@ import UIKit
 @Suite("Terminal attach bootstrap line")
 struct TerminalAttachTests {
     @MainActor
-    @Test func attachUsesOnlyTheIOSSystemKeyboard() {
+    @Test func attachStartsWithTheIOSInputMethodAndKeyboardSwitcher() {
         let terminal = TerminalScreenView.makeConfiguredTerminal()
+        #expect(terminal.keyboardMode == .text)
         #expect(terminal.inputView == nil)
-        #expect(terminal.inputAccessoryView == nil)
+        #expect(terminal.inputAccessoryView is TerminalKeyboardAccessory)
         #expect(terminal.keyboardDismissMode == .interactive)
+    }
+
+    @MainActor
+    @Test func attachSwitchesBetweenTextAndTerminalKeys() {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+
+        terminal.setKeyboardMode(.controls)
+        #expect(terminal.keyboardMode == .controls)
+        #expect(terminal.inputView is TerminalControlKeyboardView)
+
+        terminal.setKeyboardMode(.text)
+        #expect(terminal.keyboardMode == .text)
+        #expect(terminal.inputView == nil)
+    }
+
+    @Test func terminalControlKeyboardContainsOnlyUsefulMobileKeys() {
+        #expect(TerminalControlKey.rows == [
+            [.escape, .tab, .controlC, .controlD, .controlZ],
+            [.home, .pageUp, .up, .pageDown, .end],
+            [.backspace, .left, .down, .right, .enter],
+        ])
+    }
+
+    @Test func terminalControlKeysEncodeExpectedBytes() {
+        #expect(TerminalControlKey.escape.bytes(applicationCursor: false) == [0x1B])
+        #expect(TerminalControlKey.tab.bytes(applicationCursor: false) == [0x09])
+        #expect(TerminalControlKey.controlC.bytes(applicationCursor: false) == [0x03])
+        #expect(TerminalControlKey.controlD.bytes(applicationCursor: false) == [0x04])
+        #expect(TerminalControlKey.controlZ.bytes(applicationCursor: false) == [0x1A])
+        #expect(TerminalControlKey.backspace.bytes(applicationCursor: false) == [0x7F])
+        #expect(TerminalControlKey.enter.bytes(applicationCursor: false) == [0x0D])
+        #expect(TerminalControlKey.up.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x41])
+        #expect(TerminalControlKey.up.bytes(applicationCursor: true) == [0x1B, 0x4F, 0x41])
+        #expect(TerminalControlKey.pageUp.bytes(applicationCursor: false) == [
+            0x1B, 0x5B, 0x35, 0x7E,
+        ])
+    }
+
+    @MainActor
+    @Test func terminalControlKeysFlowThroughTheAttachDelegate() {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        var sent = Data()
+        let coordinator = TerminalScreenView.Coordinator(
+            onSizeChanged: nil,
+            onSend: { sent.append($0) })
+        terminal.terminalDelegate = coordinator
+
+        terminal.sendControlKey(.controlC)
+        #expect(sent == Data([0x03]))
+
+        sent.removeAll()
+        terminal.feed(text: "\u{1B}[?1h")
+        terminal.sendControlKey(.up)
+        #expect(sent == Data([0x1B, 0x4F, 0x41]))
     }
 
     @MainActor

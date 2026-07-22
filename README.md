@@ -2,7 +2,7 @@
 
 A native iOS companion app for [herdr](https://herdr.dev) — an agent-first terminal runtime.
 
-herdr-mobile is an **agent console**: a native dashboard of every coding agent running on your machines, sorted by who needs you. Open an Agent to enter its real terminal with the standard iOS keyboard, native scrollback, and continuous touch scrolling for full-screen TUIs, all over plain SSH.
+herdr-mobile is an **agent console**: a native dashboard of every coding agent running on your machines, sorted by who needs you. Open an Agent to enter its real terminal with the standard iOS input method, a compact terminal control keyboard, native scrollback, and continuous touch scrolling for full-screen TUIs, all over plain SSH.
 
 ## How it connects
 

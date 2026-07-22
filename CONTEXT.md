@@ -31,10 +31,12 @@ Alternate-screen TUIs map vertical touch drags and momentum to terminal wheel ro
 _Avoid_: takeover (that's herdr's flag, not our surface), connect
 
 **Terminal Keyboard**:
-The standard iOS input method used within Attach to send text and terminal key
-sequences directly to an Agent's pane. The app adds no accessory bar or custom
-keyboard.
-_Avoid_: custom keyboard, reply keyboard
+The two input modes used within Attach. Text keeps the standard iOS input method
+for composition, autocorrection, dictation, and language switching. The Keys mode
+replaces it with a compact terminal control pad for navigation and common control
+signals.
+Both modes send directly to the Agent's pane.
+_Avoid_: desktop keyboard, reply keyboard
 
 **Transport**:
 The app-side abstraction that executes herdr API requests and delivers event streams over SSH. UI code talks to Transport, never to SSH primitives.
