@@ -7,9 +7,9 @@ feed the existing Attach transport. The transport layer remains independent of
 the terminal engine.
 
 libghostty-spm owns terminal parsing, Metal rendering, CoreText font handling,
-IME integration, scrollback, touch scrolling, and mouse reporting. herdr-mobile
-continues to own its two-mode keyboard UI, URL policy, Attach lifecycle, and the
-native text-selection presentation requested by Ghostty's iOS delegate.
+IME integration, and scrollback storage. herdr-mobile continues to own its
+two-mode keyboard UI, touch-scroll routing, URL policy, Attach lifecycle, and
+the native text-selection presentation requested by Ghostty's iOS delegate.
 
 ## Considered Options
 
@@ -41,6 +41,13 @@ native text-selection presentation requested by Ghostty's iOS delegate.
   responder status. herdr-mobile gates that behavior behind the navigation-bar
   keyboard button so touch scrolling cannot be interrupted by keyboard-driven
   viewport resizing.
+- libghostty-spm 1.3.2's internal iOS touch-scroll path does not emit remote TUI
+  wheel input through an in-memory session, and its mouse-scroll API is not
+  public. The adapter therefore owns one vertical Pan gesture: normal-buffer
+  drags invoke Ghostty scrollback actions, while tracked alternate-screen drags
+  encode SGR or legacy terminal wheel events through the session's public input
+  seam. DEC private-mode tracking is incremental so split SSH packets remain
+  correct.
 - Xcode may retain an empty binary-artifact directory after an interrupted
   first download. Resolving packages with fresh DerivedData repairs that cache
   state without changing the pinned dependency.

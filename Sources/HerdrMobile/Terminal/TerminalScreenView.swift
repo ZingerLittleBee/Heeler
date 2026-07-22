@@ -94,6 +94,7 @@ struct TerminalScreenView: UIViewRepresentable {
 private final class TerminalSessionCallbackBridge {
     var onSizeChanged: ((Int, Int) -> Void)?
     var onSend: ((Data) -> Void)?
+    var onViewport: ((InMemoryTerminalViewport) -> Void)?
 
     init(
         onSizeChanged: ((Int, Int) -> Void)?,
@@ -111,6 +112,7 @@ private final class TerminalSessionCallbackBridge {
 
     nonisolated func resize(_ viewport: InMemoryTerminalViewport) {
         Task { @MainActor [weak self] in
+            self?.onViewport?(viewport)
             self?.onSizeChanged?(Int(viewport.columns), Int(viewport.rows))
         }
     }
@@ -122,10 +124,20 @@ final class HerdrTerminalView: UITerminalView {
     private let callbackBridge: TerminalSessionCallbackBridge
     let terminalSession: InMemoryTerminalSession
     private var terminalInputView: UIView?
-    private var cursorMode = TerminalCursorModeTracker()
+    private var modeTracker = TerminalModeTracker()
     private var lastInputWindowSize: CGSize?
     private var allowsKeyboardActivation = false
+    private var terminalGridSize = (columns: 80, rows: 24)
+    private var touchScrollPointsPerRow: CGFloat = 16
+    private var touchScrollAccumulator = TerminalTouchScrollAccumulator()
+    private var touchScrollMomentumDisplayLink: CADisplayLink?
+    private var touchScrollMomentumVelocityY: CGFloat = 0
+    private var touchScrollMomentumTimestamp: CFTimeInterval = 0
     var controlKeyboardHeight = TerminalControlKeyboardView.defaultHeight
+
+    private lazy var touchScrollGesture = UIPanGestureRecognizer(
+        target: self,
+        action: #selector(handleHerdrTouchScrollGesture(_:)))
 
     private lazy var terminalKeyboardAccessory = TerminalKeyboardAccessory(
         frame: CGRect(
@@ -167,6 +179,10 @@ final class HerdrTerminalView: UITerminalView {
         inputAccessoryItems = []
         configuration = TerminalSurfaceOptions(backend: .inMemory(terminalSession))
         controller = TerminalController()
+        callbackBridge.onViewport = { [weak self] viewport in
+            self?.updateTouchScrollMetrics(viewport)
+        }
+        installTouchScrolling()
     }
 
     @available(*, unavailable)
@@ -183,7 +199,7 @@ final class HerdrTerminalView: UITerminalView {
     }
 
     func receive(_ data: Data) {
-        cursorMode.receive(data)
+        modeTracker.receive(data)
         terminalSession.receive(data)
     }
 
@@ -204,6 +220,23 @@ final class HerdrTerminalView: UITerminalView {
         reloadInputViewsAfterWindowResize()
     }
 
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil {
+            stopTouchScrollMomentum()
+        }
+    }
+
+    override func gestureRecognizerShouldBegin(
+        _ gestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        if gestureRecognizer === touchScrollGesture {
+            let velocity = touchScrollGesture.velocity(in: self)
+            return abs(velocity.y) > abs(velocity.x)
+        }
+        return super.gestureRecognizerShouldBegin(gestureRecognizer)
+    }
+
     private func reloadInputViewsAfterWindowResize() {
         guard let windowSize = window?.bounds.size else { return }
         defer { lastInputWindowSize = windowSize }
@@ -220,51 +253,113 @@ final class HerdrTerminalView: UITerminalView {
     }
 
     var usesApplicationCursorKeys: Bool {
-        cursorMode.usesApplicationCursorKeys
+        modeTracker.usesApplicationCursorKeys
     }
 
     func setTerminalInputView(_ inputView: UIView?) {
         terminalInputView = inputView
     }
-}
 
-struct TerminalCursorModeTracker {
-    private static let enableSequence = Data([0x1B, 0x5B, 0x3F, 0x31, 0x68])
-    private static let disableSequence = Data([0x1B, 0x5B, 0x3F, 0x31, 0x6C])
-    private static let retainedByteCount = max(enableSequence.count, disableSequence.count) - 1
+    @discardableResult
+    func scrollTouch(translationY: CGFloat) -> Int {
+        let rows = touchScrollAccumulator.rows(
+            for: translationY,
+            pointsPerRow: touchScrollPointsPerRow)
+        guard rows != 0 else { return 0 }
 
-    private var pending = Data()
-    private(set) var usesApplicationCursorKeys = false
-
-    mutating func receive(_ data: Data) {
-        pending.append(data)
-
-        while true {
-            let enableRange = pending.range(of: Self.enableSequence)
-            let disableRange = pending.range(of: Self.disableSequence)
-            let next: (range: Range<Data.Index>, enabled: Bool)?
-
-            switch (enableRange, disableRange) {
-            case (.some(let enable), .some(let disable)):
-                next =
-                    enable.lowerBound < disable.lowerBound
-                    ? (enable, true)
-                    : (disable, false)
-            case (.some(let enable), .none):
-                next = (enable, true)
-            case (.none, .some(let disable)):
-                next = (disable, false)
-            case (.none, .none):
-                next = nil
+        let towardOlderContent = rows > 0
+        let rowCount = abs(rows)
+        if let sequence = modeTracker.remoteScrollSequence(
+            towardOlderContent: towardOlderContent,
+            columns: terminalGridSize.columns,
+            rows: terminalGridSize.rows)
+        {
+            for _ in 0..<rowCount {
+                terminalSession.sendInput(sequence)
             }
+        } else {
+            let localRows = towardOlderContent ? -rowCount : rowCount
+            _ = performBindingAction("scroll_page_lines:\(localRows)")
+        }
+        return rows
+    }
 
-            guard let next else { break }
-            usesApplicationCursorKeys = next.enabled
-            pending.removeSubrange(pending.startIndex..<next.range.upperBound)
+    private func installTouchScrolling() {
+        let directTouch = NSNumber(value: UITouch.TouchType.direct.rawValue)
+        for case let pan as UIPanGestureRecognizer in gestureRecognizers ?? []
+        where pan.allowedTouchTypes.contains(directTouch) {
+            pan.isEnabled = false
         }
 
-        if pending.count > Self.retainedByteCount {
-            pending = Data(pending.suffix(Self.retainedByteCount))
+        touchScrollGesture.allowedTouchTypes = [directTouch]
+        touchScrollGesture.maximumNumberOfTouches = 1
+        touchScrollGesture.cancelsTouchesInView = false
+        touchScrollGesture.delegate = self
+        addGestureRecognizer(touchScrollGesture)
+    }
+
+    @objc private func handleHerdrTouchScrollGesture(_ gesture: UIPanGestureRecognizer) {
+        switch gesture.state {
+        case .began:
+            stopTouchScrollMomentum()
+            touchScrollAccumulator.reset()
+        case .changed:
+            _ = scrollTouch(translationY: gesture.translation(in: self).y)
+            gesture.setTranslation(.zero, in: self)
+        case .ended:
+            startTouchScrollMomentum(velocityY: gesture.velocity(in: self).y)
+        case .cancelled, .failed:
+            stopTouchScrollMomentum()
+            touchScrollAccumulator.reset()
+        default:
+            break
         }
+    }
+
+    private func updateTouchScrollMetrics(_ viewport: InMemoryTerminalViewport) {
+        terminalGridSize = (Int(viewport.columns), Int(viewport.rows))
+        guard viewport.cellHeightPixels > 0 else { return }
+        let scale = window?.screen.nativeScale ?? traitCollection.displayScale
+        guard scale > 0 else { return }
+        touchScrollPointsPerRow = max(8, CGFloat(viewport.cellHeightPixels) / scale)
+    }
+
+    private func startTouchScrollMomentum(velocityY: CGFloat) {
+        guard abs(velocityY) >= 80 else {
+            touchScrollAccumulator.reset()
+            return
+        }
+        stopTouchScrollMomentum()
+        touchScrollMomentumVelocityY = max(-4_000, min(4_000, velocityY))
+        touchScrollMomentumTimestamp = 0
+        let displayLink = CADisplayLink(
+            target: self,
+            selector: #selector(advanceTouchScrollMomentum(_:)))
+        touchScrollMomentumDisplayLink = displayLink
+        displayLink.add(to: .main, forMode: .common)
+    }
+
+    @objc private func advanceTouchScrollMomentum(_ displayLink: CADisplayLink) {
+        guard abs(touchScrollMomentumVelocityY) >= 20 else {
+            stopTouchScrollMomentum()
+            touchScrollAccumulator.reset()
+            return
+        }
+        guard touchScrollMomentumTimestamp > 0 else {
+            touchScrollMomentumTimestamp = displayLink.timestamp
+            return
+        }
+
+        let elapsed = min(1.0 / 30.0, displayLink.timestamp - touchScrollMomentumTimestamp)
+        touchScrollMomentumTimestamp = displayLink.timestamp
+        _ = scrollTouch(translationY: touchScrollMomentumVelocityY * elapsed)
+        touchScrollMomentumVelocityY *= pow(0.998, elapsed * 1_000)
+    }
+
+    private func stopTouchScrollMomentum() {
+        touchScrollMomentumDisplayLink?.invalidate()
+        touchScrollMomentumDisplayLink = nil
+        touchScrollMomentumVelocityY = 0
+        touchScrollMomentumTimestamp = 0
     }
 }

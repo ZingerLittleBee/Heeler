@@ -40,6 +40,30 @@ struct TerminalAttachTests {
     }
 
     @MainActor
+    @Test func terminalTouchPanEmitsRemoteTUIMouseWheelInput() async {
+        var sent = Data()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSend: { sent.append($0) })
+        let directTouch = NSNumber(value: UITouch.TouchType.direct.rawValue)
+        let enabledTouchPans: [UIPanGestureRecognizer] =
+            terminal.gestureRecognizers?.compactMap { gesture in
+                guard let pan = gesture as? UIPanGestureRecognizer,
+                    pan.isEnabled,
+                    pan.allowedTouchTypes.contains(directTouch)
+                else { return nil }
+                return pan
+            } ?? []
+        #expect(enabledTouchPans.count == 1)
+
+        terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))
+        #expect(terminal.scrollTouch(translationY: 32) == 2)
+        await Task.yield()
+
+        #expect(
+            sent == Data("\u{1B}[<64;40;12M\u{1B}[<64;40;12M".utf8))
+    }
+
+    @MainActor
     @Test func attachSwitchesBetweenTextAndTerminalKeys() {
         let terminal = TerminalScreenView.makeConfiguredTerminal()
 
@@ -106,8 +130,8 @@ struct TerminalAttachTests {
         #expect(sent == Data([0x1B, 0x4F, 0x41]))
     }
 
-    @Test func cursorModeTrackerHandlesSplitAndRepeatedModeChanges() {
-        var tracker = TerminalCursorModeTracker()
+    @Test func terminalModeTrackerHandlesSplitAndRepeatedModeChanges() {
+        var tracker = TerminalModeTracker()
         tracker.receive(Data([0x1B, 0x5B]))
         tracker.receive(Data([0x3F, 0x31, 0x68]))
         #expect(tracker.usesApplicationCursorKeys)
@@ -117,6 +141,47 @@ struct TerminalAttachTests {
 
         tracker.receive(Data("\u{1B}[?1l".utf8))
         #expect(!tracker.usesApplicationCursorKeys)
+    }
+
+    @Test func terminalModeTrackerEncodesMouseAndAlternateScreenScrolling() {
+        var tracker = TerminalModeTracker()
+        tracker.receive(Data("\u{1B}[?1049h\u{1B}[?1002;1006h".utf8))
+
+        #expect(tracker.isAlternateScreen)
+        #expect(tracker.tracksMouse)
+        #expect(tracker.usesSGRMouseEncoding)
+        #expect(
+            tracker.remoteScrollSequence(
+                towardOlderContent: true,
+                columns: 80,
+                rows: 24)
+                == Data("\u{1B}[<64;40;12M".utf8))
+
+        tracker.receive(Data("\u{1B}[?1002;1006l".utf8))
+        #expect(!tracker.tracksMouse)
+        #expect(!tracker.usesSGRMouseEncoding)
+        #expect(
+            tracker.remoteScrollSequence(
+                towardOlderContent: false,
+                columns: 80,
+                rows: 24)
+                == Data([0x1B, 0x5B, 0x42]))
+
+        tracker.receive(Data("\u{1B}[?1049l".utf8))
+        #expect(
+            tracker.remoteScrollSequence(
+                towardOlderContent: true,
+                columns: 80,
+                rows: 24) == nil)
+    }
+
+    @Test func touchScrollAccumulatorPreservesSubrowMovementAndDirectionChanges() {
+        var accumulator = TerminalTouchScrollAccumulator()
+
+        #expect(accumulator.rows(for: 7, pointsPerRow: 16) == 0)
+        #expect(accumulator.rows(for: 10, pointsPerRow: 16) == 1)
+        #expect(accumulator.rows(for: -15, pointsPerRow: 16) == 0)
+        #expect(accumulator.rows(for: -2, pointsPerRow: 16) == -1)
     }
 
     @MainActor
