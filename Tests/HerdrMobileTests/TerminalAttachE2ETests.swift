@@ -41,7 +41,7 @@ struct TerminalAttachE2ETests {
             session.send(Data("ping-1\n".utf8))
             try await expectOutput(&iterator, accumulated: &seen, contains: "GOT:ping-1")
 
-            // An Up-arrow escape sequence followed by text, as SwiftTerm
+            // An Up-arrow escape sequence followed by text, as the terminal
             // would emit while navigating a TUI menu.
             session.send(Data("\u{1B}[Aok\n".utf8))
             try await expectOutput(&iterator, accumulated: &seen, contains: "GOT:\u{1B}[Aok")

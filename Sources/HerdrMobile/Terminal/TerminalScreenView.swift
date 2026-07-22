@@ -1,277 +1,258 @@
-import SwiftTerm
+import GhosttyTerminal
 import SwiftUI
 import UIKit
 
 /// Remote terminal output is untrusted. Only ordinary web links cross from
-/// SwiftTerm into the system URL opener; local files and executable schemes do not.
+/// Ghostty into the system URL opener; local files and executable schemes do not.
 enum TerminalLinkPolicy {
     static func url(for link: String) -> URL? {
         guard let url = URL(string: link), let scheme = url.scheme?.lowercased() else {
             return nil
         }
-        guard (scheme == "http" || scheme == "https"), url.host != nil else { return nil }
+        guard scheme == "http" || scheme == "https", url.host != nil else { return nil }
         return url
     }
 }
 
-/// The interactive SwiftTerm surface. PTY bytes flow into the view, geometry
-/// changes flow to the remote PTY, and keystrokes flow back to Attach.
+/// The interactive Ghostty surface. PTY bytes flow into an in-memory Ghostty
+/// session, while its write and resize callbacks flow back to Attach.
 struct TerminalScreenView: UIViewRepresentable {
     let feed: TerminalByteFeed
     var onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)?
     var onSend: ((Data) -> Void)?
+    var theme: TerminalTheme = .default
     @Environment(\.openURL) private var openURL
 
-    func makeUIView(context: Context) -> SizeReportingTerminalView {
-        let view = Self.makeConfiguredTerminal()
-        view.terminalDelegate = context.coordinator
-        view.onSizeReport = { [weak coordinator = context.coordinator] cols, rows in
-            coordinator?.onSizeChanged?(cols, rows)
-        }
+    func makeUIView(context: Context) -> HerdrTerminalView {
+        let view = Self.makeConfiguredTerminal(
+            onSizeChanged: onSizeChanged,
+            onSend: onSend,
+            theme: theme)
+        view.delegate = context.coordinator
+        context.coordinator.terminalView = view
         feed.attach { [weak view] data in
-            view?.feed(byteArray: ArraySlice([UInt8](data)))
+            view?.receive(data)
         }
         return view
     }
 
     @MainActor
-    static func makeConfiguredTerminal() -> SizeReportingTerminalView {
-        let view = SizeReportingTerminalView(frame: .zero, font: nil)
+    static func makeConfiguredTerminal(
+        onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)? = nil,
+        onSend: ((Data) -> Void)? = nil,
+        theme: TerminalTheme = .default
+    ) -> HerdrTerminalView {
+        let view = HerdrTerminalView(
+            frame: .zero,
+            onSizeChanged: onSizeChanged,
+            onSend: onSend,
+            theme: theme)
         view.installKeyboardSwitcher()
-        view.keyboardDismissMode = .interactive
-        view.installAlternateScreenScrolling()
         return view
     }
 
-    func updateUIView(_ view: SizeReportingTerminalView, context: Context) {
-        context.coordinator.onSizeChanged = onSizeChanged
-        context.coordinator.onSend = onSend
+    func updateUIView(_ view: HerdrTerminalView, context: Context) {
+        view.updateCallbacks(onSizeChanged: onSizeChanged, onSend: onSend)
+        view.applyTheme(theme)
         context.coordinator.onOpenLink = { url in openURL(url) }
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(
-            onSizeChanged: onSizeChanged, onSend: onSend,
-            onOpenLink: { url in openURL(url) })
+        Coordinator(onOpenLink: { url in openURL(url) })
     }
 
     @MainActor
-    final class Coordinator: TerminalViewDelegate {
-        var onSizeChanged: ((Int, Int) -> Void)?
-        var onSend: ((Data) -> Void)?
+    final class Coordinator: NSObject, TerminalSurfaceOpenURLDelegate,
+        TerminalSurfaceTextSelectionRequestDelegate
+    {
+        weak var terminalView: HerdrTerminalView?
         var onOpenLink: ((URL) -> Void)?
 
-        init(
-            onSizeChanged: ((Int, Int) -> Void)?, onSend: ((Data) -> Void)?,
-            onOpenLink: ((URL) -> Void)? = nil
-        ) {
-            self.onSizeChanged = onSizeChanged
-            self.onSend = onSend
+        init(onOpenLink: ((URL) -> Void)? = nil) {
             self.onOpenLink = onOpenLink
         }
 
-        nonisolated func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
-            MainActor.assumeIsolated { onSizeChanged?(newCols, newRows) }
+        func terminalDidRequestOpenURL(_ url: String, kind _: TerminalOpenURLKind) {
+            guard let url = TerminalLinkPolicy.url(for: url) else { return }
+            onOpenLink?(url)
         }
 
-        nonisolated func send(source: TerminalView, data: ArraySlice<UInt8>) {
-            let bytes = Data(data)
-            MainActor.assumeIsolated { onSend?(bytes) }
+        func terminalDidRequestTextSelection(_ request: TerminalTextSelectionRequest) {
+            guard let terminalView else { return }
+            TerminalTextSelectionPresenter.present(request, from: terminalView)
         }
-
-        nonisolated func setTerminalTitle(source: TerminalView, title: String) {}
-        nonisolated func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
-        nonisolated func scrolled(source: TerminalView, position: Double) {}
-        nonisolated func requestOpenLink(
-            source: TerminalView, link: String, params: [String: String]
-        ) {
-            guard let url = TerminalLinkPolicy.url(for: link) else { return }
-            MainActor.assumeIsolated { onOpenLink?(url) }
-        }
-        nonisolated func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
     }
 }
 
-/// Reports initial terminal geometry and adds direct touch scrolling for
-/// alternate-screen TUIs. SwiftTerm's native UIScrollView remains untouched
-/// for the normal buffer and its local scrollback.
-final class SizeReportingTerminalView: TerminalView, UIGestureRecognizerDelegate {
-    var onSizeReport: ((_ cols: Int, _ rows: Int) -> Void)?
-    var controlKeyboardHeight = TerminalControlKeyboardView.defaultHeight
-    private var lastReported: (cols: Int, rows: Int)?
+/// Bridges Ghostty's sendable session callbacks onto the UI's main-actor
+/// closures without making the transport layer depend on Ghostty types.
+@MainActor
+private final class TerminalSessionCallbackBridge {
+    var onSizeChanged: ((Int, Int) -> Void)?
+    var onSend: ((Data) -> Void)?
+    var onViewport: ((InMemoryTerminalViewport) -> Void)?
+
+    init(
+        onSizeChanged: ((Int, Int) -> Void)?,
+        onSend: ((Data) -> Void)?
+    ) {
+        self.onSizeChanged = onSizeChanged
+        self.onSend = onSend
+    }
+
+    nonisolated func send(_ data: Data) {
+        Task { @MainActor [weak self] in
+            self?.onSend?(data)
+        }
+    }
+
+    nonisolated func resize(_ viewport: InMemoryTerminalViewport) {
+        Task { @MainActor [weak self] in
+            self?.onViewport?(viewport)
+            self?.onSizeChanged?(Int(viewport.columns), Int(viewport.rows))
+        }
+    }
+}
+
+/// The app-owned seam around libghostty-spm. It keeps keyboard policy and the
+/// host-managed session lifecycle out of the SwiftUI screen.
+final class HerdrTerminalView: UITerminalView {
+    private let callbackBridge: TerminalSessionCallbackBridge
+    private let terminalController: TerminalController
+    let terminalSession: InMemoryTerminalSession
+    private(set) var appliedTheme: TerminalTheme
+    private var terminalInputView: UIView?
+    private var modeTracker = TerminalModeTracker()
     private var lastInputWindowSize: CGSize?
-    private var installedAlternateScreenScrolling = false
-    private var alternateScrollRemainder: CGFloat = 0
-    private var scrollMomentumDisplayLink: CADisplayLink?
-    private var scrollMomentumVelocityY: CGFloat = 0
-    private var scrollMomentumTimestamp: CFTimeInterval = 0
-    private lazy var alternateScreenPan = UIPanGestureRecognizer(
-        target: self, action: #selector(handleAlternateScreenPan(_:)))
+    private var allowsKeyboardActivation = false
+    private var terminalGridSize = (columns: 80, rows: 24)
+    private var touchScrollPointsPerRow: CGFloat = 16
+    private var touchScrollAccumulator = TerminalTouchScrollAccumulator()
+    private var touchScrollMomentumDisplayLink: CADisplayLink?
+    private var touchScrollMomentumVelocityY: CGFloat = 0
+    private var touchScrollMomentumTimestamp: CFTimeInterval = 0
+    var controlKeyboardHeight = TerminalControlKeyboardView.defaultHeight
 
-    var alternateScrollStep: CGFloat {
-        max(1, font.lineHeight)
+    private lazy var touchScrollGesture = UIPanGestureRecognizer(
+        target: self,
+        action: #selector(handleHerdrTouchScrollGesture(_:)))
+
+    private lazy var keyboardActivationTapGesture = UITapGestureRecognizer(
+        target: self,
+        action: #selector(handleKeyboardActivationTap(_:)))
+
+    private lazy var terminalKeyboardAccessory = TerminalKeyboardAccessory(
+        frame: CGRect(
+            x: 0,
+            y: 0,
+            width: bounds.width,
+            height: TerminalKeyboardAccessory.preferredHeight),
+        terminalView: self)
+
+    override var inputView: UIView? {
+        terminalInputView
     }
 
-    func installAlternateScreenScrolling() {
-        guard !installedAlternateScreenScrolling else { return }
-        installedAlternateScreenScrolling = true
-        alternateScreenPan.delegate = self
-        alternateScreenPan.cancelsTouchesInView = false
-        addGestureRecognizer(alternateScreenPan)
+    override var inputAccessoryView: UIView? {
+        terminalKeyboardAccessory
     }
 
-    /// Converts finger travel into terminal wheel rows. Alternate buffers do
-    /// not own local scrollback, so the remote TUI remains the source of truth.
+    override var canBecomeFirstResponder: Bool {
+        allowsKeyboardActivation
+    }
+
+    init(
+        frame: CGRect,
+        onSizeChanged: ((Int, Int) -> Void)?,
+        onSend: ((Data) -> Void)?,
+        theme: TerminalTheme
+    ) {
+        let callbackBridge = TerminalSessionCallbackBridge(
+            onSizeChanged: onSizeChanged,
+            onSend: onSend)
+        self.callbackBridge = callbackBridge
+        terminalSession = InMemoryTerminalSession(
+            write: { [weak callbackBridge] data in
+                callbackBridge?.send(data)
+            },
+            resize: { [weak callbackBridge] viewport in
+                callbackBridge?.resize(viewport)
+            })
+        terminalController = TerminalController(theme: theme)
+        appliedTheme = theme
+        super.init(frame: frame)
+        inputAccessoryItems = []
+        configuration = TerminalSurfaceOptions(backend: .inMemory(terminalSession))
+        controller = terminalController
+        callbackBridge.onViewport = { [weak self] viewport in
+            self?.updateTouchScrollMetrics(viewport)
+        }
+        installTouchScrolling()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is unavailable")
+    }
+
+    func updateCallbacks(
+        onSizeChanged: ((Int, Int) -> Void)?,
+        onSend: ((Data) -> Void)?
+    ) {
+        callbackBridge.onSizeChanged = onSizeChanged
+        callbackBridge.onSend = onSend
+    }
+
     @discardableResult
-    func scrollAlternateScreen(translationY: CGFloat) -> Int {
-        let terminal = getTerminal()
-        guard terminal.isCurrentBufferAlternate, !hasActiveSelection else {
-            alternateScrollRemainder = 0
-            return 0
+    func applyTheme(_ theme: TerminalTheme) -> Bool {
+        guard theme != appliedTheme, terminalController.setTheme(theme) else {
+            return false
         }
-        if alternateScrollRemainder * translationY < 0 {
-            alternateScrollRemainder = 0
-        }
-        alternateScrollRemainder += translationY
-        let lineCount = Int(abs(alternateScrollRemainder) / alternateScrollStep)
-        guard lineCount > 0 else { return 0 }
-        let movesTowardOlderContent = alternateScrollRemainder > 0
-        alternateScrollRemainder.formTruncatingRemainder(dividingBy: alternateScrollStep)
-        sendScrollRows(lineCount, towardOlderContent: movesTowardOlderContent)
-        return lineCount
+        appliedTheme = theme
+        return true
     }
 
-    @objc private func handleAlternateScreenPan(_ gesture: UIPanGestureRecognizer) {
-        switch gesture.state {
-        case .began:
-            stopScrollMomentum()
-            alternateScrollRemainder = 0
-        case .changed:
-            _ = scrollAlternateScreen(translationY: gesture.translation(in: self).y)
-            gesture.setTranslation(.zero, in: self)
-        case .ended:
-            startScrollMomentum(velocityY: gesture.velocity(in: self).y)
-        case .cancelled, .failed:
-            stopScrollMomentum()
-            alternateScrollRemainder = 0
-        default:
-            break
-        }
+    func receive(_ data: Data) {
+        modeTracker.receive(data)
+        terminalSession.receive(data)
     }
 
-    private func sendScrollRows(_ count: Int, towardOlderContent: Bool) {
-        let terminal = getTerminal()
-        switch terminal.mouseMode {
-        case .off:
-            let bytes =
-                towardOlderContent
-                ? (terminal.applicationCursor
-                    ? EscapeSequences.moveUpApp : EscapeSequences.moveUpNormal)
-                : (terminal.applicationCursor
-                    ? EscapeSequences.moveDownApp : EscapeSequences.moveDownNormal)
-            for _ in 0..<count {
-                send(bytes)
-            }
-        default:
-            let button = towardOlderContent ? 4 : 5
-            let buttonFlags = terminal.encodeButton(
-                button: button, release: false, shift: false, meta: false, control: false)
-            let column = max(0, (terminal.cols - 1) / 2)
-            let row = max(0, (terminal.rows - 1) / 2)
-            let scale = window?.screen.scale ?? traitCollection.displayScale
-            let pixelX = Int(bounds.midX * scale)
-            let pixelY = Int(bounds.midY * scale)
-            for _ in 0..<count {
-                terminal.sendEvent(
-                    buttonFlags: buttonFlags, x: column, y: row,
-                    pixelX: pixelX, pixelY: pixelY)
-            }
-        }
+    func requestKeyboard() {
+        allowsKeyboardActivation = true
+        _ = becomeFirstResponder()
     }
 
-    private func startScrollMomentum(velocityY: CGFloat) {
-        guard abs(velocityY) >= 80, getTerminal().isCurrentBufferAlternate else {
-            alternateScrollRemainder = 0
-            return
-        }
-        stopScrollMomentum()
-        scrollMomentumVelocityY = max(-4_000, min(4_000, velocityY))
-        scrollMomentumTimestamp = 0
-        let displayLink = CADisplayLink(target: self, selector: #selector(advanceScrollMomentum(_:)))
-        scrollMomentumDisplayLink = displayLink
-        displayLink.add(to: .main, forMode: .common)
-    }
-
-    @objc private func advanceScrollMomentum(_ displayLink: CADisplayLink) {
-        guard getTerminal().isCurrentBufferAlternate, abs(scrollMomentumVelocityY) >= 20 else {
-            stopScrollMomentum()
-            alternateScrollRemainder = 0
-            return
-        }
-        guard scrollMomentumTimestamp > 0 else {
-            scrollMomentumTimestamp = displayLink.timestamp
-            return
-        }
-        let elapsed = min(1.0 / 30.0, displayLink.timestamp - scrollMomentumTimestamp)
-        scrollMomentumTimestamp = displayLink.timestamp
-        _ = scrollAlternateScreen(translationY: scrollMomentumVelocityY * elapsed)
-        scrollMomentumVelocityY *= pow(0.998, elapsed * 1_000)
-    }
-
-    private func stopScrollMomentum() {
-        scrollMomentumDisplayLink?.invalidate()
-        scrollMomentumDisplayLink = nil
-        scrollMomentumVelocityY = 0
-        scrollMomentumTimestamp = 0
-    }
-
-    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard gestureRecognizer === alternateScreenPan else { return true }
-        let velocity = alternateScreenPan.velocity(in: self)
-        return getTerminal().isCurrentBufferAlternate
-            && !hasActiveSelection
-            && abs(velocity.y) > abs(velocity.x)
-    }
-
-    func gestureRecognizer(
-        _ gestureRecognizer: UIGestureRecognizer,
-        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-    ) -> Bool {
-        (gestureRecognizer === alternateScreenPan && otherGestureRecognizer === panGestureRecognizer)
-            || (otherGestureRecognizer === alternateScreenPan
-                && gestureRecognizer === panGestureRecognizer)
-    }
-
-    override func mouseModeChanged(source: Terminal) {
-        super.mouseModeChanged(source: source)
-        prioritizeAlternateScreenScrollGesture()
-    }
-
-    private func prioritizeAlternateScreenScrollGesture() {
-        for case let gesture as UIPanGestureRecognizer in gestureRecognizers ?? []
-        where gesture !== alternateScreenPan && gesture !== panGestureRecognizer {
-            gesture.require(toFail: alternateScreenPan)
-        }
-    }
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        if window != nil {
-            _ = becomeFirstResponder()
-        } else {
-            stopScrollMomentum()
-        }
+    @discardableResult
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        allowsKeyboardActivation = false
+        return resigned
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         reloadInputViewsAfterWindowResize()
-        guard bounds.width > 0, bounds.height > 0 else { return }
-        let terminal = getTerminal()
-        let size = (cols: terminal.cols, rows: terminal.rows)
-        if let lastReported, lastReported == size { return }
-        lastReported = size
-        onSizeReport?(size.cols, size.rows)
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil {
+            stopTouchScrollMomentum()
+        }
+    }
+
+    override func gestureRecognizerShouldBegin(
+        _ gestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        if gestureRecognizer === touchScrollGesture {
+            let velocity = touchScrollGesture.velocity(in: self)
+            return abs(velocity.y) > abs(velocity.x)
+        }
+        if gestureRecognizer === keyboardActivationTapGesture {
+            return keyboardActivationRegion.contains(
+                keyboardActivationTapGesture.location(in: self))
+        }
+        return super.gestureRecognizerShouldBegin(gestureRecognizer)
     }
 
     private func reloadInputViewsAfterWindowResize() {
@@ -287,5 +268,132 @@ final class SizeReportingTerminalView: TerminalView, UIGestureRecognizerDelegate
                 self.reloadInputViews()
             }
         }
+    }
+
+    var usesApplicationCursorKeys: Bool {
+        modeTracker.usesApplicationCursorKeys
+    }
+
+    func setTerminalInputView(_ inputView: UIView?) {
+        terminalInputView = inputView
+    }
+
+    var keyboardActivationRegion: CGRect {
+        let caret = caretRect(for: endOfDocument)
+        return TerminalKeyboardTapTarget.region(caretRect: caret, in: bounds)
+    }
+
+    @discardableResult
+    func scrollTouch(translationY: CGFloat) -> Int {
+        let rows = touchScrollAccumulator.rows(
+            for: translationY,
+            pointsPerRow: touchScrollPointsPerRow)
+        guard rows != 0 else { return 0 }
+
+        let towardOlderContent = rows > 0
+        let rowCount = abs(rows)
+        if let sequence = modeTracker.remoteScrollSequence(
+            towardOlderContent: towardOlderContent,
+            columns: terminalGridSize.columns,
+            rows: terminalGridSize.rows)
+        {
+            for _ in 0..<rowCount {
+                terminalSession.sendInput(sequence)
+            }
+        } else {
+            let localRows = towardOlderContent ? -rowCount : rowCount
+            _ = performBindingAction("scroll_page_lines:\(localRows)")
+        }
+        return rows
+    }
+
+    private func installTouchScrolling() {
+        let directTouch = NSNumber(value: UITouch.TouchType.direct.rawValue)
+        for case let pan as UIPanGestureRecognizer in gestureRecognizers ?? []
+        where pan.allowedTouchTypes.contains(directTouch) {
+            pan.isEnabled = false
+        }
+
+        touchScrollGesture.allowedTouchTypes = [directTouch]
+        touchScrollGesture.maximumNumberOfTouches = 1
+        touchScrollGesture.cancelsTouchesInView = false
+        touchScrollGesture.delegate = self
+        addGestureRecognizer(touchScrollGesture)
+
+        keyboardActivationTapGesture.allowedTouchTypes = [directTouch]
+        keyboardActivationTapGesture.numberOfTouchesRequired = 1
+        keyboardActivationTapGesture.cancelsTouchesInView = false
+        keyboardActivationTapGesture.delegate = self
+        addGestureRecognizer(keyboardActivationTapGesture)
+    }
+
+    @objc private func handleKeyboardActivationTap(_ gesture: UITapGestureRecognizer) {
+        guard gesture.state == .ended else { return }
+        requestKeyboard()
+    }
+
+    @objc private func handleHerdrTouchScrollGesture(_ gesture: UIPanGestureRecognizer) {
+        switch gesture.state {
+        case .began:
+            stopTouchScrollMomentum()
+            touchScrollAccumulator.reset()
+        case .changed:
+            _ = scrollTouch(translationY: gesture.translation(in: self).y)
+            gesture.setTranslation(.zero, in: self)
+        case .ended:
+            startTouchScrollMomentum(velocityY: gesture.velocity(in: self).y)
+        case .cancelled, .failed:
+            stopTouchScrollMomentum()
+            touchScrollAccumulator.reset()
+        default:
+            break
+        }
+    }
+
+    private func updateTouchScrollMetrics(_ viewport: InMemoryTerminalViewport) {
+        terminalGridSize = (Int(viewport.columns), Int(viewport.rows))
+        guard viewport.cellHeightPixels > 0 else { return }
+        let scale = window?.screen.nativeScale ?? traitCollection.displayScale
+        guard scale > 0 else { return }
+        touchScrollPointsPerRow = max(8, CGFloat(viewport.cellHeightPixels) / scale)
+    }
+
+    private func startTouchScrollMomentum(velocityY: CGFloat) {
+        guard abs(velocityY) >= 80 else {
+            touchScrollAccumulator.reset()
+            return
+        }
+        stopTouchScrollMomentum()
+        touchScrollMomentumVelocityY = max(-4_000, min(4_000, velocityY))
+        touchScrollMomentumTimestamp = 0
+        let displayLink = CADisplayLink(
+            target: self,
+            selector: #selector(advanceTouchScrollMomentum(_:)))
+        touchScrollMomentumDisplayLink = displayLink
+        displayLink.add(to: .main, forMode: .common)
+    }
+
+    @objc private func advanceTouchScrollMomentum(_ displayLink: CADisplayLink) {
+        guard abs(touchScrollMomentumVelocityY) >= 20 else {
+            stopTouchScrollMomentum()
+            touchScrollAccumulator.reset()
+            return
+        }
+        guard touchScrollMomentumTimestamp > 0 else {
+            touchScrollMomentumTimestamp = displayLink.timestamp
+            return
+        }
+
+        let elapsed = min(1.0 / 30.0, displayLink.timestamp - touchScrollMomentumTimestamp)
+        touchScrollMomentumTimestamp = displayLink.timestamp
+        _ = scrollTouch(translationY: touchScrollMomentumVelocityY * elapsed)
+        touchScrollMomentumVelocityY *= pow(0.998, elapsed * 1_000)
+    }
+
+    private func stopTouchScrollMomentum() {
+        touchScrollMomentumDisplayLink?.invalidate()
+        touchScrollMomentumDisplayLink = nil
+        touchScrollMomentumVelocityY = 0
+        touchScrollMomentumTimestamp = 0
     }
 }

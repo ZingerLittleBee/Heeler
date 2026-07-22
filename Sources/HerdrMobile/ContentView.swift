@@ -6,10 +6,11 @@ import SwiftUI
 struct ContentView: View {
     @State private var hostStore = HostStore()
     @State private var console = ConsoleStore()
+    @State private var terminalThemes = TerminalThemeSettings()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        ConsoleView(hosts: hostStore, console: console)
+        ConsoleView(hosts: hostStore, console: console, terminalThemes: terminalThemes)
             .task {
                 console.setHosts(hostStore.hosts)
                 await console.resume()

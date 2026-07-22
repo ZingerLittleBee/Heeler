@@ -1,5 +1,8 @@
 # Native Swift stack (SwiftUI + Citadel + SwiftTerm), iOS-only
 
+Status: Partially superseded by ADR 0004. The native Swift and Citadel choices
+remain active; libghostty-spm replaced SwiftTerm as the terminal engine.
+
 We build natively in Swift for iOS 18+ (iPhone + iPad) with Citadel for SSH and SwiftTerm for terminal rendering, and accept dropping Android. The embedded terminal is a core UX surface, and SwiftTerm is the most mature mobile terminal component in any ecosystem, while the alternatives' terminal stories are structurally weaker.
 
 ## Considered Options

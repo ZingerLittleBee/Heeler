@@ -5,8 +5,10 @@ import SwiftUI
 struct ConsoleView: View {
     let hosts: HostStore
     let console: ConsoleStore
+    let terminalThemes: TerminalThemeSettings
     @State private var isManagingHosts = false
     @State private var isStartingAgent = false
+    @State private var isShowingSettings = false
 
     var body: some View {
         NavigationStack {
@@ -16,7 +18,10 @@ struct ConsoleView: View {
                 // Agent detail screen is pushed.
                 .navigationDestination(for: ConsoleAgent.ID.self) { id in
                     if let agent = console.agents.first(where: { $0.id == id }) {
-                        AgentDetailView(agent: agent, console: console)
+                        AgentDetailView(
+                            agent: agent,
+                            console: console,
+                            terminalThemes: terminalThemes)
                     } else {
                         ContentUnavailableView(
                             "Agent Gone", systemImage: "rectangle.on.rectangle.slash",
@@ -28,6 +33,11 @@ struct ConsoleView: View {
                     ToolbarItem(placement: .primaryAction) {
                         Button("Hosts", systemImage: "server.rack") {
                             isManagingHosts = true
+                        }
+                    }
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Settings", systemImage: "gearshape") {
+                            isShowingSettings = true
                         }
                     }
                     if !hosts.hosts.isEmpty {
@@ -48,6 +58,9 @@ struct ConsoleView: View {
                 .sheet(isPresented: $isStartingAgent) {
                     // StartAgentView brings its own NavigationStack.
                     StartAgentView(hosts: hosts.hosts, console: console)
+                }
+                .sheet(isPresented: $isShowingSettings) {
+                    SettingsView(terminalThemes: terminalThemes)
                 }
         }
     }

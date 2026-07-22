@@ -9,7 +9,7 @@ herdr-mobile is an **agent console**: a native dashboard of every coding agent r
 The app speaks herdr's JSON API (newline-delimited JSON over a Unix socket) through SSH:
 
 - **RPC + events**: a no-PTY SSH exec channel running `socat - UNIX-CONNECT:<herdr.sock>` per request, plus one long-lived channel for `events.subscribe`.
-- **Interactive terminal**: the Agent detail screen opens an SSH PTY shell channel bootstrapped with an injection-safe `exec herdr agent attach <pane>` line, then rendered by SwiftTerm with native normal-buffer scrolling and alternate-screen wheel gestures.
+- **Interactive terminal**: the Agent detail screen opens an SSH PTY shell channel bootstrapped with an injection-safe `exec herdr agent attach <pane>` line, then renders it through a host-managed libghostty-spm session with Metal output, persistent appearance-aware themes, input-row keyboard activation, IME input, long-press text selection, and app-routed touch scrolling for both local scrollback and remote TUIs.
 
 No herdr server changes required. The only remote prerequisite is `socat` installed on the host.
 
@@ -17,7 +17,7 @@ No herdr server changes required. The only remote prerequisite is `socat` instal
 
 - SwiftUI, iOS 26+, iPhone + iPad
 - [Citadel](https://github.com/orlandos-nl/Citadel) for SSH
-- [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) for terminal rendering
+- [libghostty-spm](https://github.com/lakr233/libghostty-spm) for terminal emulation and Metal rendering
 
 See `docs/adr/` for why these choices were made (the transport story in particular is not obvious).
 

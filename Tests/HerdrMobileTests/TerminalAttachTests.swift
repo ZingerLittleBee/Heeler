@@ -10,7 +10,7 @@ import UIKit
 /// (a named-session target is "not found" on the default socket), quote the
 /// target and socket safely for POSIX shells and fish alike, and refuse
 /// targets that cannot be quoted safely for both.
-@Suite("Terminal attach bootstrap line")
+@Suite("Terminal attach")
 struct TerminalAttachTests {
     @MainActor
     @Test func attachStartsWithTheIOSInputMethodAndKeyboardSwitcher() {
@@ -18,7 +18,88 @@ struct TerminalAttachTests {
         #expect(terminal.keyboardMode == .text)
         #expect(terminal.inputView == nil)
         #expect(terminal.inputAccessoryView is TerminalKeyboardAccessory)
-        #expect(terminal.keyboardDismissMode == .interactive)
+    }
+
+    @MainActor
+    @Test func terminalTouchPolicyKeepsKeyboardBehindTheCurrentInputRow() {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        let directTouch = NSNumber(value: UITouch.TouchType.direct.rawValue)
+
+        #expect(!terminal.canBecomeFirstResponder)
+        #expect(
+            terminal.gestureRecognizers?.contains { gesture in
+                guard let pan = gesture as? UIPanGestureRecognizer else { return false }
+                return pan.allowedTouchTypes.contains(
+                    directTouch)
+            } == true)
+        #expect(
+            terminal.gestureRecognizers?.contains { gesture in
+                guard let tap = gesture as? UITapGestureRecognizer else { return false }
+                return tap.isEnabled && tap.allowedTouchTypes.contains(directTouch)
+            } == true)
+
+        terminal.requestKeyboard()
+        #expect(terminal.canBecomeFirstResponder)
+
+        _ = terminal.resignFirstResponder()
+        #expect(!terminal.canBecomeFirstResponder)
+    }
+
+    @Test func keyboardTapTargetCoversOnlyTheCurrentInputRow() {
+        let bounds = CGRect(x: 0, y: 0, width: 390, height: 720)
+        let region = TerminalKeyboardTapTarget.region(
+            caretRect: CGRect(x: 72, y: 650, width: 9, height: 20),
+            in: bounds)
+
+        #expect(region == CGRect(x: 0, y: 638, width: 390, height: 44))
+        #expect(region.contains(CGPoint(x: 20, y: 660)))
+        #expect(!region.contains(CGPoint(x: 20, y: 500)))
+    }
+
+    @MainActor
+    @Test func ghosttyCursorProvidesAVisibleKeyboardTapTarget() async throws {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
+        let controller = UIViewController()
+        controller.view = terminal
+        let windowScene = try #require(
+            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: windowScene)
+        window.frame = terminal.bounds
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+
+        terminal.receive(Data("$ ".utf8))
+        terminal.layoutIfNeeded()
+        await Task.yield()
+
+        #expect(!terminal.keyboardActivationRegion.isNull)
+        #expect(terminal.bounds.contains(terminal.keyboardActivationRegion))
+    }
+
+    @MainActor
+    @Test func terminalTouchPanEmitsRemoteTUIMouseWheelInput() async {
+        var sent = Data()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSend: { sent.append($0) })
+        let directTouch = NSNumber(value: UITouch.TouchType.direct.rawValue)
+        let enabledTouchPans: [UIPanGestureRecognizer] =
+            terminal.gestureRecognizers?.compactMap { gesture in
+                guard let pan = gesture as? UIPanGestureRecognizer,
+                    pan.isEnabled,
+                    pan.allowedTouchTypes.contains(directTouch)
+                else { return nil }
+                return pan
+            } ?? []
+        #expect(enabledTouchPans.count == 1)
+
+        terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))
+        #expect(terminal.scrollTouch(translationY: 32) == 2)
+        await Task.yield()
+
+        #expect(
+            sent == Data("\u{1B}[<64;40;12M\u{1B}[<64;40;12M".utf8))
     }
 
     @MainActor
@@ -47,11 +128,12 @@ struct TerminalAttachTests {
     }
 
     @Test func terminalControlKeyboardContainsOnlyUsefulMobileKeys() {
-        #expect(TerminalControlKey.rows == [
-            [.escape, .tab, .controlC, .controlD, .controlZ],
-            [.home, .pageUp, .up, .pageDown, .end],
-            [.backspace, .left, .down, .right, .enter],
-        ])
+        #expect(
+            TerminalControlKey.rows == [
+                [.escape, .tab, .controlC, .controlD, .controlZ],
+                [.home, .pageUp, .up, .pageDown, .end],
+                [.backspace, .left, .down, .right, .enter],
+            ])
     }
 
     @Test func terminalControlKeysEncodeExpectedBytes() {
@@ -64,59 +146,97 @@ struct TerminalAttachTests {
         #expect(TerminalControlKey.enter.bytes(applicationCursor: false) == [0x0D])
         #expect(TerminalControlKey.up.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x41])
         #expect(TerminalControlKey.up.bytes(applicationCursor: true) == [0x1B, 0x4F, 0x41])
-        #expect(TerminalControlKey.pageUp.bytes(applicationCursor: false) == [
-            0x1B, 0x5B, 0x35, 0x7E,
-        ])
+        #expect(
+            TerminalControlKey.pageUp.bytes(applicationCursor: false) == [
+                0x1B, 0x5B, 0x35, 0x7E,
+            ])
     }
 
     @MainActor
-    @Test func terminalControlKeysFlowThroughTheAttachDelegate() {
-        let terminal = TerminalScreenView.makeConfiguredTerminal()
+    @Test func terminalControlKeysFlowThroughTheGhosttySession() async {
         var sent = Data()
-        let coordinator = TerminalScreenView.Coordinator(
-            onSizeChanged: nil,
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
             onSend: { sent.append($0) })
-        terminal.terminalDelegate = coordinator
 
         terminal.sendControlKey(.controlC)
+        await Task.yield()
         #expect(sent == Data([0x03]))
 
         sent.removeAll()
-        terminal.feed(text: "\u{1B}[?1h")
+        terminal.receive(Data("\u{1B}[?1h".utf8))
         terminal.sendControlKey(.up)
+        await Task.yield()
         #expect(sent == Data([0x1B, 0x4F, 0x41]))
     }
 
+    @Test func terminalModeTrackerHandlesSplitAndRepeatedModeChanges() {
+        var tracker = TerminalModeTracker()
+        tracker.receive(Data([0x1B, 0x5B]))
+        tracker.receive(Data([0x3F, 0x31, 0x68]))
+        #expect(tracker.usesApplicationCursorKeys)
+
+        tracker.receive(Data("noise\u{1B}[?1lmore\u{1B}[?1h".utf8))
+        #expect(tracker.usesApplicationCursorKeys)
+
+        tracker.receive(Data("\u{1B}[?1l".utf8))
+        #expect(!tracker.usesApplicationCursorKeys)
+    }
+
+    @Test func terminalModeTrackerEncodesMouseAndAlternateScreenScrolling() {
+        var tracker = TerminalModeTracker()
+        tracker.receive(Data("\u{1B}[?1049h\u{1B}[?1002;1006h".utf8))
+
+        #expect(tracker.isAlternateScreen)
+        #expect(tracker.tracksMouse)
+        #expect(tracker.usesSGRMouseEncoding)
+        #expect(
+            tracker.remoteScrollSequence(
+                towardOlderContent: true,
+                columns: 80,
+                rows: 24)
+                == Data("\u{1B}[<64;40;12M".utf8))
+
+        tracker.receive(Data("\u{1B}[?1002;1006l".utf8))
+        #expect(!tracker.tracksMouse)
+        #expect(!tracker.usesSGRMouseEncoding)
+        #expect(
+            tracker.remoteScrollSequence(
+                towardOlderContent: false,
+                columns: 80,
+                rows: 24)
+                == Data([0x1B, 0x5B, 0x42]))
+
+        tracker.receive(Data("\u{1B}[?1049l".utf8))
+        #expect(
+            tracker.remoteScrollSequence(
+                towardOlderContent: true,
+                columns: 80,
+                rows: 24) == nil)
+    }
+
+    @Test func touchScrollAccumulatorPreservesSubrowMovementAndDirectionChanges() {
+        var accumulator = TerminalTouchScrollAccumulator()
+
+        #expect(accumulator.rows(for: 7, pointsPerRow: 16) == 0)
+        #expect(accumulator.rows(for: 10, pointsPerRow: 16) == 1)
+        #expect(accumulator.rows(for: -15, pointsPerRow: 16) == 0)
+        #expect(accumulator.rows(for: -2, pointsPerRow: 16) == -1)
+    }
+
     @MainActor
-    @Test func alternateScreenVerticalDragSendsContinuousWheelEvents() {
-        let terminal = TerminalScreenView.makeConfiguredTerminal()
-        terminal.bounds = CGRect(x: 0, y: 0, width: 390, height: 800)
-        var sent = Data()
-        let coordinator = TerminalScreenView.Coordinator(
-            onSizeChanged: nil,
-            onSend: { sent.append($0) })
-        terminal.terminalDelegate = coordinator
-
-        terminal.feed(text: "\u{1B}[?1049h\u{1B}[?1000h\u{1B}[?1006h")
+    @Test func terminalSelectionRejectsOutOfBoundsAnchorRanges() {
         #expect(
-            terminal.scrollAlternateScreen(
-                translationY: terminal.alternateScrollStep * 3.2) == 3)
-        let olderEvents = String(decoding: sent, as: UTF8.self)
-        #expect(olderEvents.filter { $0 == "M" }.count == 3)
-        #expect(olderEvents.contains("\u{1B}[<64;"))
-
-        sent.removeAll()
+            TerminalTextSelectionViewController.normalizedSelectionRange(
+                NSRange(location: 2, length: 3), textLength: 8)
+                == NSRange(location: 2, length: 3))
         #expect(
-            terminal.scrollAlternateScreen(
-                translationY: -terminal.alternateScrollStep * 2.2) == 2)
-        let newerEvents = String(decoding: sent, as: UTF8.self)
-        #expect(newerEvents.filter { $0 == "M" }.count == 2)
-        #expect(newerEvents.contains("\u{1B}[<65;"))
-
-        sent.removeAll()
-        terminal.feed(text: "\u{1B}[?1000l\u{1B}[?1049l")
-        #expect(terminal.scrollAlternateScreen(translationY: 160) == 0)
-        #expect(sent.isEmpty)
+            TerminalTextSelectionViewController.normalizedSelectionRange(
+                NSRange(location: 7, length: 4), textLength: 8)
+                == NSRange(location: 0, length: 8))
+        #expect(
+            TerminalTextSelectionViewController.normalizedSelectionRange(
+                nil, textLength: 8)
+                == NSRange(location: 0, length: 8))
     }
 
     @Test func execsTheAttachCommandWithQuotedTargetAndSocketScope() throws {
