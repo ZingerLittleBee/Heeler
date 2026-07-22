@@ -1,5 +1,25 @@
-import SwiftTerm
 import UIKit
+
+private enum TerminalEscapeSequences {
+    static let escape: [UInt8] = [0x1B]
+    static let tab: [UInt8] = [0x09]
+    static let homeNormal: [UInt8] = [0x1B, 0x5B, 0x48]
+    static let homeApplication: [UInt8] = [0x1B, 0x4F, 0x48]
+    static let pageUp: [UInt8] = [0x1B, 0x5B, 0x35, 0x7E]
+    static let upNormal: [UInt8] = [0x1B, 0x5B, 0x41]
+    static let upApplication: [UInt8] = [0x1B, 0x4F, 0x41]
+    static let pageDown: [UInt8] = [0x1B, 0x5B, 0x36, 0x7E]
+    static let endNormal: [UInt8] = [0x1B, 0x5B, 0x46]
+    static let endApplication: [UInt8] = [0x1B, 0x4F, 0x46]
+    static let backspace: [UInt8] = [0x7F]
+    static let leftNormal: [UInt8] = [0x1B, 0x5B, 0x44]
+    static let leftApplication: [UInt8] = [0x1B, 0x4F, 0x44]
+    static let downNormal: [UInt8] = [0x1B, 0x5B, 0x42]
+    static let downApplication: [UInt8] = [0x1B, 0x4F, 0x42]
+    static let rightNormal: [UInt8] = [0x1B, 0x5B, 0x43]
+    static let rightApplication: [UInt8] = [0x1B, 0x4F, 0x43]
+    static let enter: [UInt8] = [0x0D]
+}
 
 enum TerminalKeyboardMode: Int {
     case text
@@ -87,27 +107,33 @@ enum TerminalControlKey: Equatable {
 
     func bytes(applicationCursor: Bool) -> [UInt8] {
         switch self {
-        case .escape: EscapeSequences.cmdEsc
-        case .tab: EscapeSequences.cmdTab
+        case .escape: TerminalEscapeSequences.escape
+        case .tab: TerminalEscapeSequences.tab
         case .controlC: [0x03]
         case .controlD: [0x04]
         case .controlZ: [0x1A]
         case .home:
-            applicationCursor ? EscapeSequences.moveHomeApp : EscapeSequences.moveHomeNormal
-        case .pageUp: EscapeSequences.cmdPageUp
+            applicationCursor
+                ? TerminalEscapeSequences.homeApplication : TerminalEscapeSequences.homeNormal
+        case .pageUp: TerminalEscapeSequences.pageUp
         case .up:
-            applicationCursor ? EscapeSequences.moveUpApp : EscapeSequences.moveUpNormal
-        case .pageDown: EscapeSequences.cmdPageDown
+            applicationCursor
+                ? TerminalEscapeSequences.upApplication : TerminalEscapeSequences.upNormal
+        case .pageDown: TerminalEscapeSequences.pageDown
         case .end:
-            applicationCursor ? EscapeSequences.moveEndApp : EscapeSequences.moveEndNormal
-        case .backspace: EscapeSequences.cmdDel
+            applicationCursor
+                ? TerminalEscapeSequences.endApplication : TerminalEscapeSequences.endNormal
+        case .backspace: TerminalEscapeSequences.backspace
         case .left:
-            applicationCursor ? EscapeSequences.moveLeftApp : EscapeSequences.moveLeftNormal
+            applicationCursor
+                ? TerminalEscapeSequences.leftApplication : TerminalEscapeSequences.leftNormal
         case .down:
-            applicationCursor ? EscapeSequences.moveDownApp : EscapeSequences.moveDownNormal
+            applicationCursor
+                ? TerminalEscapeSequences.downApplication : TerminalEscapeSequences.downNormal
         case .right:
-            applicationCursor ? EscapeSequences.moveRightApp : EscapeSequences.moveRightNormal
-        case .enter: EscapeSequences.cmdRet
+            applicationCursor
+                ? TerminalEscapeSequences.rightApplication : TerminalEscapeSequences.rightNormal
+        case .enter: TerminalEscapeSequences.enter
         }
     }
 }
@@ -115,10 +141,10 @@ enum TerminalControlKey: Equatable {
 final class TerminalKeyboardAccessory: UIInputView {
     static let preferredHeight: CGFloat = 48
 
-    private weak var terminalView: SizeReportingTerminalView?
+    private weak var terminalView: HerdrTerminalView?
     private let modeControl = UISegmentedControl(items: ["Text", "Keys"])
 
-    init(frame: CGRect, terminalView: SizeReportingTerminalView) {
+    init(frame: CGRect, terminalView: HerdrTerminalView) {
         self.terminalView = terminalView
         super.init(frame: frame, inputViewStyle: .keyboard)
         allowsSelfSizing = true
@@ -192,12 +218,12 @@ final class TerminalKeyboardAccessory: UIInputView {
 final class TerminalControlKeyboardView: UIInputView, UIInputViewAudioFeedback {
     static let defaultHeight: CGFloat = 224
 
-    private weak var terminalView: SizeReportingTerminalView?
+    private weak var terminalView: HerdrTerminalView?
     private let keyboardHeight: CGFloat
 
     var enableInputClicksWhenVisible: Bool { true }
 
-    init(frame: CGRect, keyboardHeight: CGFloat, terminalView: SizeReportingTerminalView) {
+    init(frame: CGRect, keyboardHeight: CGFloat, terminalView: HerdrTerminalView) {
         self.terminalView = terminalView
         self.keyboardHeight = keyboardHeight
         super.init(frame: frame, inputViewStyle: .keyboard)
@@ -335,7 +361,7 @@ private final class TerminalKeyButton: UIButton {
     }
 }
 
-extension SizeReportingTerminalView {
+extension HerdrTerminalView {
     var keyboardMode: TerminalKeyboardMode {
         inputView is TerminalControlKeyboardView ? .controls : .text
     }
@@ -343,11 +369,7 @@ extension SizeReportingTerminalView {
     func installKeyboardSwitcher() {
         inputAssistantItem.leadingBarButtonGroups = []
         inputAssistantItem.trailingBarButtonGroups = []
-        inputAccessoryView = TerminalKeyboardAccessory(
-            frame: CGRect(
-                x: 0, y: 0, width: bounds.width,
-                height: TerminalKeyboardAccessory.preferredHeight),
-            terminalView: self)
+        _ = inputAccessoryView
         NotificationCenter.default.addObserver(
             self, selector: #selector(textKeyboardFrameDidChange(_:)),
             name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
@@ -358,12 +380,13 @@ extension SizeReportingTerminalView {
 
         switch mode {
         case .text:
-            inputView = nil
+            setTerminalInputView(nil)
         case .controls:
-            inputView = TerminalControlKeyboardView(
-                frame: CGRect(
-                    x: 0, y: 0, width: bounds.width, height: controlKeyboardHeight),
-                keyboardHeight: controlKeyboardHeight, terminalView: self)
+            setTerminalInputView(
+                TerminalControlKeyboardView(
+                    frame: CGRect(
+                        x: 0, y: 0, width: bounds.width, height: controlKeyboardHeight),
+                    keyboardHeight: controlKeyboardHeight, terminalView: self))
         }
         (inputAccessoryView as? TerminalKeyboardAccessory)?.update(mode: mode)
         UIView.performWithoutAnimation {
@@ -372,7 +395,8 @@ extension SizeReportingTerminalView {
     }
 
     func sendControlKey(_ key: TerminalControlKey) {
-        send(key.bytes(applicationCursor: getTerminal().applicationCursor))
+        terminalSession.sendInput(
+            Data(key.bytes(applicationCursor: usesApplicationCursorKeys)))
     }
 
     func recordTextKeyboardHeight(totalHeight: CGFloat, accessoryHeight: CGFloat) {

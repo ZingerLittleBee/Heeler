@@ -18,11 +18,11 @@ packages:
   Citadel:
     url: https://github.com/orlandos-nl/Citadel.git
     exactVersion: "0.12.1"
-  # Added for the future Attach terminal; unused in M0.
-  SwiftTerm:
-    url: https://github.com/migueldeicaza/SwiftTerm.git
-    minVersion: "1.2.0"
-    maxVersion: "2.0.0"
+  # Pinned because this package embeds a prebuilt libghostty XCFramework and
+  # libghostty's public API is still evolving independently from Ghostty.
+  GhosttyTerminal:
+    url: https://github.com/lakr233/libghostty-spm.git
+    exactVersion: "1.3.2"
 
 targets:
   HerdrMobile:
@@ -48,7 +48,7 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
     dependencies:
       - package: Citadel
-      - package: SwiftTerm
+      - package: GhosttyTerminal
 
   HerdrMobileTests:
     type: bundle.unit-test
@@ -61,8 +61,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: dev.herdr.mobile.HerdrMobileTests
     dependencies:
       - target: HerdrMobile
-      # Terminal interaction tests exercise SwiftTerm directly.
-      - package: SwiftTerm
+      - package: GhosttyTerminal
 
 schemes:
   HerdrMobile:

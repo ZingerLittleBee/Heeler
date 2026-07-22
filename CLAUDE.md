@@ -4,7 +4,7 @@ Native iOS companion app for herdr (https://herdr.dev): an agent console over SS
 
 ## Architecture
 
-- **Stack**: SwiftUI, iOS 26+, iPhone + iPad. SSH via Citadel, terminal rendering via SwiftTerm. See ADR 0001 (stack) and ADR 0003 (iOS 26 target raise).
+- **Stack**: SwiftUI, iOS 26+, iPhone + iPad. SSH via Citadel, terminal rendering via the pinned libghostty-spm `GhosttyTerminal` product. See ADR 0001 (native stack), ADR 0003 (iOS 26 target raise), and ADR 0004 (terminal engine).
 - **Transport**: herdr's JSON API (NDJSON over a remote Unix socket) reached through SSH exec channels running `socat - UNIX-CONNECT:<sock>`. Interactive terminals use a PTY exec channel running `herdr agent attach`. See ADR 0002.
 - The UI layer must depend on a transport abstraction (protocol), never on Citadel types directly.
 
@@ -26,6 +26,7 @@ Rediscovering these is expensive; they were verified against herdr 0.7.4 source 
 - Swift 6 strict concurrency. No force unwraps or `try!` outside tests.
 - Secrets never leave the Keychain; private keys are generated on device (CryptoKit Ed25519) where possible. Host key policy is TOFU with fingerprint confirmation.
 - Pin Citadel exactly in `Package.resolved` and review updates: Citadel 0.12.1 depends on a third-party fork of swift-nio-ssh (Wellz26), not Apple's repo.
+- Pin libghostty-spm exactly and review both its Swift sources and prebuilt XCFramework checksum before updating.
 - Tracker is GitHub issues in this repo (`gh issue ...`). Reference issues from commits with `refs #<n>`.
 - Update `CONTEXT.md` when domain terms change; add an ADR only for hard-to-reverse, surprising trade-offs.
 

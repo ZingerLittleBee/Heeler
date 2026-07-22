@@ -1,277 +1,188 @@
-import SwiftTerm
+import GhosttyTerminal
 import SwiftUI
 import UIKit
 
 /// Remote terminal output is untrusted. Only ordinary web links cross from
-/// SwiftTerm into the system URL opener; local files and executable schemes do not.
+/// Ghostty into the system URL opener; local files and executable schemes do not.
 enum TerminalLinkPolicy {
     static func url(for link: String) -> URL? {
         guard let url = URL(string: link), let scheme = url.scheme?.lowercased() else {
             return nil
         }
-        guard (scheme == "http" || scheme == "https"), url.host != nil else { return nil }
+        guard scheme == "http" || scheme == "https", url.host != nil else { return nil }
         return url
     }
 }
 
-/// The interactive SwiftTerm surface. PTY bytes flow into the view, geometry
-/// changes flow to the remote PTY, and keystrokes flow back to Attach.
+/// The interactive Ghostty surface. PTY bytes flow into an in-memory Ghostty
+/// session, while its write and resize callbacks flow back to Attach.
 struct TerminalScreenView: UIViewRepresentable {
     let feed: TerminalByteFeed
     var onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)?
     var onSend: ((Data) -> Void)?
     @Environment(\.openURL) private var openURL
 
-    func makeUIView(context: Context) -> SizeReportingTerminalView {
-        let view = Self.makeConfiguredTerminal()
-        view.terminalDelegate = context.coordinator
-        view.onSizeReport = { [weak coordinator = context.coordinator] cols, rows in
-            coordinator?.onSizeChanged?(cols, rows)
-        }
+    func makeUIView(context: Context) -> HerdrTerminalView {
+        let view = Self.makeConfiguredTerminal(
+            onSizeChanged: onSizeChanged,
+            onSend: onSend)
+        view.delegate = context.coordinator
+        context.coordinator.terminalView = view
         feed.attach { [weak view] data in
-            view?.feed(byteArray: ArraySlice([UInt8](data)))
+            view?.receive(data)
         }
         return view
     }
 
     @MainActor
-    static func makeConfiguredTerminal() -> SizeReportingTerminalView {
-        let view = SizeReportingTerminalView(frame: .zero, font: nil)
+    static func makeConfiguredTerminal(
+        onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)? = nil,
+        onSend: ((Data) -> Void)? = nil
+    ) -> HerdrTerminalView {
+        let view = HerdrTerminalView(
+            frame: .zero,
+            onSizeChanged: onSizeChanged,
+            onSend: onSend)
         view.installKeyboardSwitcher()
-        view.keyboardDismissMode = .interactive
-        view.installAlternateScreenScrolling()
         return view
     }
 
-    func updateUIView(_ view: SizeReportingTerminalView, context: Context) {
-        context.coordinator.onSizeChanged = onSizeChanged
-        context.coordinator.onSend = onSend
+    func updateUIView(_ view: HerdrTerminalView, context: Context) {
+        view.updateCallbacks(onSizeChanged: onSizeChanged, onSend: onSend)
         context.coordinator.onOpenLink = { url in openURL(url) }
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(
-            onSizeChanged: onSizeChanged, onSend: onSend,
-            onOpenLink: { url in openURL(url) })
+        Coordinator(onOpenLink: { url in openURL(url) })
     }
 
     @MainActor
-    final class Coordinator: TerminalViewDelegate {
-        var onSizeChanged: ((Int, Int) -> Void)?
-        var onSend: ((Data) -> Void)?
+    final class Coordinator: NSObject, TerminalSurfaceOpenURLDelegate,
+        TerminalSurfaceTextSelectionRequestDelegate
+    {
+        weak var terminalView: HerdrTerminalView?
         var onOpenLink: ((URL) -> Void)?
 
-        init(
-            onSizeChanged: ((Int, Int) -> Void)?, onSend: ((Data) -> Void)?,
-            onOpenLink: ((URL) -> Void)? = nil
-        ) {
-            self.onSizeChanged = onSizeChanged
-            self.onSend = onSend
+        init(onOpenLink: ((URL) -> Void)? = nil) {
             self.onOpenLink = onOpenLink
         }
 
-        nonisolated func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
-            MainActor.assumeIsolated { onSizeChanged?(newCols, newRows) }
+        func terminalDidRequestOpenURL(_ url: String, kind _: TerminalOpenURLKind) {
+            guard let url = TerminalLinkPolicy.url(for: url) else { return }
+            onOpenLink?(url)
         }
 
-        nonisolated func send(source: TerminalView, data: ArraySlice<UInt8>) {
-            let bytes = Data(data)
-            MainActor.assumeIsolated { onSend?(bytes) }
+        func terminalDidRequestTextSelection(_ request: TerminalTextSelectionRequest) {
+            guard let terminalView else { return }
+            TerminalTextSelectionPresenter.present(request, from: terminalView)
         }
-
-        nonisolated func setTerminalTitle(source: TerminalView, title: String) {}
-        nonisolated func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
-        nonisolated func scrolled(source: TerminalView, position: Double) {}
-        nonisolated func requestOpenLink(
-            source: TerminalView, link: String, params: [String: String]
-        ) {
-            guard let url = TerminalLinkPolicy.url(for: link) else { return }
-            MainActor.assumeIsolated { onOpenLink?(url) }
-        }
-        nonisolated func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
     }
 }
 
-/// Reports initial terminal geometry and adds direct touch scrolling for
-/// alternate-screen TUIs. SwiftTerm's native UIScrollView remains untouched
-/// for the normal buffer and its local scrollback.
-final class SizeReportingTerminalView: TerminalView, UIGestureRecognizerDelegate {
-    var onSizeReport: ((_ cols: Int, _ rows: Int) -> Void)?
-    var controlKeyboardHeight = TerminalControlKeyboardView.defaultHeight
-    private var lastReported: (cols: Int, rows: Int)?
+/// Bridges Ghostty's sendable session callbacks onto the UI's main-actor
+/// closures without making the transport layer depend on Ghostty types.
+@MainActor
+private final class TerminalSessionCallbackBridge {
+    var onSizeChanged: ((Int, Int) -> Void)?
+    var onSend: ((Data) -> Void)?
+
+    init(
+        onSizeChanged: ((Int, Int) -> Void)?,
+        onSend: ((Data) -> Void)?
+    ) {
+        self.onSizeChanged = onSizeChanged
+        self.onSend = onSend
+    }
+
+    nonisolated func send(_ data: Data) {
+        Task { @MainActor [weak self] in
+            self?.onSend?(data)
+        }
+    }
+
+    nonisolated func resize(_ viewport: InMemoryTerminalViewport) {
+        Task { @MainActor [weak self] in
+            self?.onSizeChanged?(Int(viewport.columns), Int(viewport.rows))
+        }
+    }
+}
+
+/// The app-owned seam around libghostty-spm. It keeps keyboard policy and the
+/// host-managed session lifecycle out of the SwiftUI screen.
+final class HerdrTerminalView: UITerminalView {
+    private let callbackBridge: TerminalSessionCallbackBridge
+    let terminalSession: InMemoryTerminalSession
+    private var terminalInputView: UIView?
+    private var cursorMode = TerminalCursorModeTracker()
     private var lastInputWindowSize: CGSize?
-    private var installedAlternateScreenScrolling = false
-    private var alternateScrollRemainder: CGFloat = 0
-    private var scrollMomentumDisplayLink: CADisplayLink?
-    private var scrollMomentumVelocityY: CGFloat = 0
-    private var scrollMomentumTimestamp: CFTimeInterval = 0
-    private lazy var alternateScreenPan = UIPanGestureRecognizer(
-        target: self, action: #selector(handleAlternateScreenPan(_:)))
+    var controlKeyboardHeight = TerminalControlKeyboardView.defaultHeight
 
-    var alternateScrollStep: CGFloat {
-        max(1, font.lineHeight)
+    private lazy var terminalKeyboardAccessory = TerminalKeyboardAccessory(
+        frame: CGRect(
+            x: 0,
+            y: 0,
+            width: bounds.width,
+            height: TerminalKeyboardAccessory.preferredHeight),
+        terminalView: self)
+
+    override var inputView: UIView? {
+        terminalInputView
     }
 
-    func installAlternateScreenScrolling() {
-        guard !installedAlternateScreenScrolling else { return }
-        installedAlternateScreenScrolling = true
-        alternateScreenPan.delegate = self
-        alternateScreenPan.cancelsTouchesInView = false
-        addGestureRecognizer(alternateScreenPan)
+    override var inputAccessoryView: UIView? {
+        terminalKeyboardAccessory
     }
 
-    /// Converts finger travel into terminal wheel rows. Alternate buffers do
-    /// not own local scrollback, so the remote TUI remains the source of truth.
-    @discardableResult
-    func scrollAlternateScreen(translationY: CGFloat) -> Int {
-        let terminal = getTerminal()
-        guard terminal.isCurrentBufferAlternate, !hasActiveSelection else {
-            alternateScrollRemainder = 0
-            return 0
-        }
-        if alternateScrollRemainder * translationY < 0 {
-            alternateScrollRemainder = 0
-        }
-        alternateScrollRemainder += translationY
-        let lineCount = Int(abs(alternateScrollRemainder) / alternateScrollStep)
-        guard lineCount > 0 else { return 0 }
-        let movesTowardOlderContent = alternateScrollRemainder > 0
-        alternateScrollRemainder.formTruncatingRemainder(dividingBy: alternateScrollStep)
-        sendScrollRows(lineCount, towardOlderContent: movesTowardOlderContent)
-        return lineCount
+    init(
+        frame: CGRect,
+        onSizeChanged: ((Int, Int) -> Void)?,
+        onSend: ((Data) -> Void)?
+    ) {
+        let callbackBridge = TerminalSessionCallbackBridge(
+            onSizeChanged: onSizeChanged,
+            onSend: onSend)
+        self.callbackBridge = callbackBridge
+        terminalSession = InMemoryTerminalSession(
+            write: { [weak callbackBridge] data in
+                callbackBridge?.send(data)
+            },
+            resize: { [weak callbackBridge] viewport in
+                callbackBridge?.resize(viewport)
+            })
+        super.init(frame: frame)
+        inputAccessoryItems = []
+        configuration = TerminalSurfaceOptions(backend: .inMemory(terminalSession))
+        controller = TerminalController()
     }
 
-    @objc private func handleAlternateScreenPan(_ gesture: UIPanGestureRecognizer) {
-        switch gesture.state {
-        case .began:
-            stopScrollMomentum()
-            alternateScrollRemainder = 0
-        case .changed:
-            _ = scrollAlternateScreen(translationY: gesture.translation(in: self).y)
-            gesture.setTranslation(.zero, in: self)
-        case .ended:
-            startScrollMomentum(velocityY: gesture.velocity(in: self).y)
-        case .cancelled, .failed:
-            stopScrollMomentum()
-            alternateScrollRemainder = 0
-        default:
-            break
-        }
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is unavailable")
     }
 
-    private func sendScrollRows(_ count: Int, towardOlderContent: Bool) {
-        let terminal = getTerminal()
-        switch terminal.mouseMode {
-        case .off:
-            let bytes =
-                towardOlderContent
-                ? (terminal.applicationCursor
-                    ? EscapeSequences.moveUpApp : EscapeSequences.moveUpNormal)
-                : (terminal.applicationCursor
-                    ? EscapeSequences.moveDownApp : EscapeSequences.moveDownNormal)
-            for _ in 0..<count {
-                send(bytes)
-            }
-        default:
-            let button = towardOlderContent ? 4 : 5
-            let buttonFlags = terminal.encodeButton(
-                button: button, release: false, shift: false, meta: false, control: false)
-            let column = max(0, (terminal.cols - 1) / 2)
-            let row = max(0, (terminal.rows - 1) / 2)
-            let scale = window?.screen.scale ?? traitCollection.displayScale
-            let pixelX = Int(bounds.midX * scale)
-            let pixelY = Int(bounds.midY * scale)
-            for _ in 0..<count {
-                terminal.sendEvent(
-                    buttonFlags: buttonFlags, x: column, y: row,
-                    pixelX: pixelX, pixelY: pixelY)
-            }
-        }
+    func updateCallbacks(
+        onSizeChanged: ((Int, Int) -> Void)?,
+        onSend: ((Data) -> Void)?
+    ) {
+        callbackBridge.onSizeChanged = onSizeChanged
+        callbackBridge.onSend = onSend
     }
 
-    private func startScrollMomentum(velocityY: CGFloat) {
-        guard abs(velocityY) >= 80, getTerminal().isCurrentBufferAlternate else {
-            alternateScrollRemainder = 0
-            return
-        }
-        stopScrollMomentum()
-        scrollMomentumVelocityY = max(-4_000, min(4_000, velocityY))
-        scrollMomentumTimestamp = 0
-        let displayLink = CADisplayLink(target: self, selector: #selector(advanceScrollMomentum(_:)))
-        scrollMomentumDisplayLink = displayLink
-        displayLink.add(to: .main, forMode: .common)
-    }
-
-    @objc private func advanceScrollMomentum(_ displayLink: CADisplayLink) {
-        guard getTerminal().isCurrentBufferAlternate, abs(scrollMomentumVelocityY) >= 20 else {
-            stopScrollMomentum()
-            alternateScrollRemainder = 0
-            return
-        }
-        guard scrollMomentumTimestamp > 0 else {
-            scrollMomentumTimestamp = displayLink.timestamp
-            return
-        }
-        let elapsed = min(1.0 / 30.0, displayLink.timestamp - scrollMomentumTimestamp)
-        scrollMomentumTimestamp = displayLink.timestamp
-        _ = scrollAlternateScreen(translationY: scrollMomentumVelocityY * elapsed)
-        scrollMomentumVelocityY *= pow(0.998, elapsed * 1_000)
-    }
-
-    private func stopScrollMomentum() {
-        scrollMomentumDisplayLink?.invalidate()
-        scrollMomentumDisplayLink = nil
-        scrollMomentumVelocityY = 0
-        scrollMomentumTimestamp = 0
-    }
-
-    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard gestureRecognizer === alternateScreenPan else { return true }
-        let velocity = alternateScreenPan.velocity(in: self)
-        return getTerminal().isCurrentBufferAlternate
-            && !hasActiveSelection
-            && abs(velocity.y) > abs(velocity.x)
-    }
-
-    func gestureRecognizer(
-        _ gestureRecognizer: UIGestureRecognizer,
-        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-    ) -> Bool {
-        (gestureRecognizer === alternateScreenPan && otherGestureRecognizer === panGestureRecognizer)
-            || (otherGestureRecognizer === alternateScreenPan
-                && gestureRecognizer === panGestureRecognizer)
-    }
-
-    override func mouseModeChanged(source: Terminal) {
-        super.mouseModeChanged(source: source)
-        prioritizeAlternateScreenScrollGesture()
-    }
-
-    private func prioritizeAlternateScreenScrollGesture() {
-        for case let gesture as UIPanGestureRecognizer in gestureRecognizers ?? []
-        where gesture !== alternateScreenPan && gesture !== panGestureRecognizer {
-            gesture.require(toFail: alternateScreenPan)
-        }
+    func receive(_ data: Data) {
+        cursorMode.receive(data)
+        terminalSession.receive(data)
     }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
         if window != nil {
             _ = becomeFirstResponder()
-        } else {
-            stopScrollMomentum()
         }
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         reloadInputViewsAfterWindowResize()
-        guard bounds.width > 0, bounds.height > 0 else { return }
-        let terminal = getTerminal()
-        let size = (cols: terminal.cols, rows: terminal.rows)
-        if let lastReported, lastReported == size { return }
-        lastReported = size
-        onSizeReport?(size.cols, size.rows)
     }
 
     private func reloadInputViewsAfterWindowResize() {
@@ -286,6 +197,55 @@ final class SizeReportingTerminalView: TerminalView, UIGestureRecognizerDelegate
             UIView.performWithoutAnimation {
                 self.reloadInputViews()
             }
+        }
+    }
+
+    var usesApplicationCursorKeys: Bool {
+        cursorMode.usesApplicationCursorKeys
+    }
+
+    func setTerminalInputView(_ inputView: UIView?) {
+        terminalInputView = inputView
+    }
+}
+
+struct TerminalCursorModeTracker {
+    private static let enableSequence = Data([0x1B, 0x5B, 0x3F, 0x31, 0x68])
+    private static let disableSequence = Data([0x1B, 0x5B, 0x3F, 0x31, 0x6C])
+    private static let retainedByteCount = max(enableSequence.count, disableSequence.count) - 1
+
+    private var pending = Data()
+    private(set) var usesApplicationCursorKeys = false
+
+    mutating func receive(_ data: Data) {
+        pending.append(data)
+
+        while true {
+            let enableRange = pending.range(of: Self.enableSequence)
+            let disableRange = pending.range(of: Self.disableSequence)
+            let next: (range: Range<Data.Index>, enabled: Bool)?
+
+            switch (enableRange, disableRange) {
+            case (.some(let enable), .some(let disable)):
+                next =
+                    enable.lowerBound < disable.lowerBound
+                    ? (enable, true)
+                    : (disable, false)
+            case (.some(let enable), .none):
+                next = (enable, true)
+            case (.none, .some(let disable)):
+                next = (disable, false)
+            case (.none, .none):
+                next = nil
+            }
+
+            guard let next else { break }
+            usesApplicationCursorKeys = next.enabled
+            pending.removeSubrange(pending.startIndex..<next.range.upperBound)
+        }
+
+        if pending.count > Self.retainedByteCount {
+            pending = Data(pending.suffix(Self.retainedByteCount))
         }
     }
 }

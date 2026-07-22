@@ -80,7 +80,7 @@ struct AttachTerminalStoreTests {
         try await waitUntil("store should go live") { store.status == .live }
 
         store.send(Data("y".utf8))
-        store.send(Data([0x1B, 0x5B, 0x41]))  // Up arrow, as SwiftTerm emits it.
+        store.send(Data([0x1B, 0x5B, 0x41]))  // Up arrow from the terminal emulator.
         await store.stop()
 
         #expect(

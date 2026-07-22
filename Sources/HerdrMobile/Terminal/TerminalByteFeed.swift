@@ -1,6 +1,6 @@
 import Foundation
 
-/// The byte pipe between an Attach store and its SwiftTerm view. Bytes that
+/// The byte pipe between an Attach store and its terminal view. Bytes that
 /// arrive before the view exists are buffered, so opening output is never lost.
 @MainActor
 final class TerminalByteFeed {

@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// The Agent detail screen: one interactive Attach terminal with the iOS
-/// system keyboard. The normal terminal buffer scrolls locally; full-screen
-/// alternate buffers translate vertical drags into continuous wheel events.
+/// system keyboard. Ghostty owns local scrollback, touch scrolling, IME, and
+/// alternate-screen mouse reporting for the host-managed terminal session.
 struct AgentDetailView: View {
     let agent: ConsoleAgent
     private let console: ConsoleStore
