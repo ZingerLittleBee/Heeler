@@ -143,6 +143,14 @@ final class TerminalKeyboardAccessory: UIInputView {
 
     private weak var terminalView: HerdrTerminalView?
     private let modeControl = UISegmentedControl(items: ["Text", "Keys"])
+    private(set) lazy var pasteControl: UIPasteControl = {
+        var configuration = UIPasteControl.Configuration()
+        configuration.displayMode = .iconOnly
+        let control = UIPasteControl(configuration: configuration)
+        control.target = terminalView
+        control.accessibilityLabel = "Paste"
+        return control
+    }()
 
     init(frame: CGRect, terminalView: HerdrTerminalView) {
         self.terminalView = terminalView
@@ -151,6 +159,7 @@ final class TerminalKeyboardAccessory: UIInputView {
         autoresizingMask = [.flexibleWidth]
         backgroundColor = .secondarySystemBackground
         configureModeControl()
+        configurePasteControl()
         configureDismissButton()
         update(mode: terminalView.keyboardMode)
     }
@@ -168,6 +177,10 @@ final class TerminalKeyboardAccessory: UIInputView {
         modeControl.selectedSegmentIndex = mode.rawValue
     }
 
+    func setPasteEnabled(_ isEnabled: Bool) {
+        pasteControl.isEnabled = isEnabled
+    }
+
     private func configureModeControl() {
         modeControl.translatesAutoresizingMaskIntoConstraints = false
         modeControl.selectedSegmentTintColor = .tertiarySystemBackground
@@ -182,6 +195,18 @@ final class TerminalKeyboardAccessory: UIInputView {
             modeControl.centerYAnchor.constraint(equalTo: centerYAnchor),
             modeControl.widthAnchor.constraint(equalToConstant: 184),
             modeControl.heightAnchor.constraint(equalToConstant: 32),
+        ])
+    }
+
+    private func configurePasteControl() {
+        pasteControl.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(pasteControl)
+
+        NSLayoutConstraint.activate([
+            pasteControl.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            pasteControl.centerYAnchor.constraint(equalTo: centerYAnchor),
+            pasteControl.widthAnchor.constraint(equalToConstant: 44),
+            pasteControl.heightAnchor.constraint(equalToConstant: 44),
         ])
     }
 
@@ -388,6 +413,8 @@ extension HerdrTerminalView {
                         x: 0, y: 0, width: bounds.width, height: controlKeyboardHeight),
                     keyboardHeight: controlKeyboardHeight, terminalView: self))
         }
+        inputView?.isUserInteractionEnabled = isLocalInputEnabled
+        inputView?.alpha = isLocalInputEnabled ? 1 : 0.5
         (inputAccessoryView as? TerminalKeyboardAccessory)?.update(mode: mode)
         UIView.performWithoutAnimation {
             reloadInputViews()
@@ -395,6 +422,7 @@ extension HerdrTerminalView {
     }
 
     func sendControlKey(_ key: TerminalControlKey) {
+        guard isLocalInputEnabled else { return }
         terminalSession.sendInput(
             Data(key.bytes(applicationCursor: usesApplicationCursorKeys)))
     }

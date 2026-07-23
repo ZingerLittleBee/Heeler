@@ -78,6 +78,7 @@ struct LocalSSHTestEnvironment: Sendable {
         wakeCommand: String? = nil,
         requestTimeout: Duration? = nil,
         homeCommand: String? = nil,
+        stageDirectoryCommand: String? = nil,
         credentials: SSHCredentials? = nil,
         hostKeyPolicy: HostKeyPolicy? = nil
     ) -> SSHTransportSettings {
@@ -93,6 +94,7 @@ struct LocalSSHTestEnvironment: Sendable {
         if let wakeCommand { settings.wakeCommand = wakeCommand }
         if let requestTimeout { settings.requestTimeout = requestTimeout }
         if let homeCommand { settings.homeCommand = homeCommand }
+        if let stageDirectoryCommand { settings.stageDirectoryCommand = stageDirectoryCommand }
         return settings
     }
 

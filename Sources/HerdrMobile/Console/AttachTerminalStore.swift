@@ -34,6 +34,7 @@ final class AttachTerminalStore {
 
     private let target: String
     private let takeover: Bool
+    private let input: TerminalInputController
     /// The Host's current transport, re-queried per (re)attach: the events
     /// session underneath may have reconnected onto a fresh one.
     private let transport: @Sendable () async -> (any Transport)?
@@ -42,14 +43,17 @@ final class AttachTerminalStore {
     private var rows: Int?
     private var stopRequested = false
     private var session: TerminalAttachSession?
+    private var inputGeneration: TerminalInputController.SessionGeneration?
     private var runTask: Task<Void, Never>?
 
     init(
         target: String, takeover: Bool = false,
+        input: TerminalInputController = TerminalInputController(),
         transport: @escaping @Sendable () async -> (any Transport)?
     ) {
         self.target = target
         self.takeover = takeover
+        self.input = input
         self.transport = transport
     }
 
@@ -73,7 +77,7 @@ final class AttachTerminalStore {
     /// Keystrokes from the terminal view, forwarded raw. Dropped while no
     /// session is live — there is nothing to type into yet.
     func send(_ keystrokes: Data) {
-        session?.send(keystrokes)
+        input.send(keystrokes)
     }
 
     /// Reattaches after the session ended remotely.
@@ -124,6 +128,10 @@ final class AttachTerminalStore {
             return
         }
         self.session = session
+        let inputGeneration = input.beginSession { data in
+            session.send(data)
+        }
+        self.inputGeneration = inputGeneration
         status = .live
         if let latestCols = self.cols, let latestRows = self.rows,
             latestCols != cols || latestRows != rows
@@ -142,6 +150,10 @@ final class AttachTerminalStore {
             failure = error
         }
         self.session = nil
+        input.endSession(inputGeneration)
+        if self.inputGeneration == inputGeneration {
+            self.inputGeneration = nil
+        }
         guard !stopRequested else { return }
         status = .ended(failure.map(Self.message(for:)) ?? "The session ended.")
     }

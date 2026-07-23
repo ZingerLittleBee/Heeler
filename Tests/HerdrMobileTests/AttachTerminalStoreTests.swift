@@ -10,9 +10,12 @@ import Testing
 @Suite("Attach terminal store")
 struct AttachTerminalStoreTests {
     private func makeStore(
-        transport: ScriptedTransport?, target: String = "w1:p1", takeover: Bool = false
+        transport: ScriptedTransport?, target: String = "w1:p1", takeover: Bool = false,
+        input: TerminalInputController = TerminalInputController()
     ) -> (AttachTerminalStore, captured: Captured) {
-        let store = AttachTerminalStore(target: target, takeover: takeover) { transport }
+        let store = AttachTerminalStore(
+            target: target, takeover: takeover, input: input
+        ) { transport }
         let captured = Captured()
         store.feed.attach { data in captured.chunks.append(data) }
         return (store, captured)
@@ -88,6 +91,77 @@ struct AttachTerminalStoreTests {
                 .keystrokes(Data("y".utf8)),
                 .keystrokes(Data([0x1B, 0x5B, 0x41])),
             ])
+    }
+
+    @Test func inputControllerOwnsTheLiveWriterAndPauseGate() async throws {
+        let transport = ScriptedTransport()
+        let input = TerminalInputController()
+        let (store, _) = makeStore(transport: transport, input: input)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("store should go live") { store.status == .live }
+        #expect(input.liveGeneration != nil)
+
+        store.send(Data("before".utf8))
+        input.pause()
+        store.send(Data("blocked".utf8))
+        input.resume()
+        store.send(Data("after".utf8))
+        await store.stop()
+
+        #expect(
+            await transport.attachInputs == [
+                .keystrokes(Data("before".utf8)),
+                .keystrokes(Data("after".utf8)),
+            ])
+        #expect(input.liveGeneration == nil)
+    }
+
+    @Test func remoteOutputContinuesWhileLocalInputIsPaused() async throws {
+        let transport = ScriptedTransport()
+        let input = TerminalInputController()
+        let (store, captured) = makeStore(transport: transport, input: input)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("store should go live") { store.status == .live }
+
+        input.pause()
+        store.send(Data("blocked".utf8))
+        await transport.emitAttachOutput(Data("still rendering".utf8))
+        try await waitUntil("remote output should keep reaching the terminal feed") {
+            captured.text == "still rendering"
+        }
+
+        #expect(input.isPaused)
+        #expect(await transport.attachInputs.isEmpty)
+        #expect(captured.text == "still rendering")
+
+        input.resume()
+        await store.stop()
+    }
+
+    @Test func reattachAdvancesTheInputSessionGeneration() async throws {
+        let transport = ScriptedTransport()
+        let input = TerminalInputController()
+        let (store, _) = makeStore(transport: transport, input: input)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("store should go live") { store.status == .live }
+        let first = try #require(input.liveGeneration)
+
+        await transport.endAttachFromRemote()
+        try await waitUntil("the remote end should surface") {
+            if case .ended = store.status { return true }
+            return false
+        }
+        #expect(input.liveGeneration == nil)
+
+        store.retry()
+        try await waitUntil("store should reattach") { store.status == .live }
+        let second = try #require(input.liveGeneration)
+        #expect(first != second)
+
+        await store.stop()
     }
 
     @Test func resizeForwardsWindowChangeWithoutReattaching() async throws {

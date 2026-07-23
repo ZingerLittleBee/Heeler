@@ -4,6 +4,10 @@ import SwiftUI
 /// arrives in M1 once the Transport underneath it exists.
 @main
 struct HerdrMobileApp: App {
+    init() {
+        try? ImagePreparer.cleanupRemnants()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
