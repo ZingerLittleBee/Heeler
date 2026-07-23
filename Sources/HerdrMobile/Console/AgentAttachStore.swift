@@ -133,14 +133,15 @@ final class AgentAttachStore {
     }
 
     /// A new Transport requires a new terminal pipeline. The replacement is
-    /// serialized behind any earlier transition and starts only after image
-    /// work and the old terminal have both finished.
+    /// serialized behind any earlier transition and starts only after the
+    /// old terminal has finished. Image state deliberately survives: the
+    /// stager resolves the live Transport per call, so a retryable or
+    /// completed upload stays actionable across the reconnect.
     func transportGenerationDidChange(_ generation: UInt64?) {
         guard let generation, generation != transportGeneration, !hasLeft else { return }
         transportGeneration = generation
         enqueueLifecycleTransition { [weak self] in
             guard let self, !self.hasLeft, self.transportGeneration == generation else { return }
-            await self.image.leaveAttach()
             let previous = self.terminal
             await previous.stop()
             guard !self.hasLeft, self.transportGeneration == generation else { return }

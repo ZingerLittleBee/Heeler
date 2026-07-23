@@ -387,6 +387,64 @@ struct AgentAttachStoreTests {
         await store.leave()
     }
 
+    @Test func transportReplacementPreservesImageAttachState() async throws {
+        // A reconnect replaces the terminal pipeline but must not touch the
+        // image interaction: its stager resolves the live Transport per
+        // call, so surfaced failures and results stay actionable.
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+
+        // One byte of garbage: preparation fails and the failure surfaces.
+        store.selectImage(DataImageSelection(data: Data([0x01])))
+        try await waitUntil("the failed image attach should surface") {
+            store.imageState.isFailed
+        }
+        let surfacedFailure = store.imageState
+        let initialID = store.terminalID
+
+        store.transportGenerationDidChange(1)
+        try await waitUntil("the terminal pipeline should be replaced") {
+            store.terminalID != initialID
+        }
+
+        #expect(store.imageState == surfacedFailure)
+
+        await store.leave()
+        #expect(store.imageState == .idle)
+    }
+
+    @Test func leaveDuringQueuedReplacementDoesNotResurrectTheTerminal() async throws {
+        // leave() can race in behind a queued transport replacement; the
+        // replacement must observe it and never rebuild the pipeline.
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the initial terminal should go live") {
+            store.terminalStatus == .live
+        }
+        let initialID = store.terminalID
+
+        store.transportGenerationDidChange(1)
+        await store.leave()
+
+        #expect(store.terminalID == initialID)
+        #expect(store.terminalStatus == .stopped)
+        #expect(await transport.hasLiveAttachSession == false)
+        #expect(await transport.attachRequests.count == 1)
+
+        // Generation changes arriving after leave must stay dead too.
+        store.transportGenerationDidChange(2)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(store.terminalID == initialID)
+        #expect(await transport.attachRequests.count == 1)
+    }
+
     @Test func successfulCloseLeavesTheWholeAttachInteraction() async throws {
         let transport = ScriptedTransport()
         let closeCalls = CloseCallRecorder()
