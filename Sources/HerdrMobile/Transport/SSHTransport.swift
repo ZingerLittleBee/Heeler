@@ -231,14 +231,8 @@ actor SSHTransport: Transport {
             params: TabCreateParams(focus: false, workspaceID: launch.workspaceID),
             decoding: TabCreatedResponse.self)
         do {
-            let response = try await request(
-                method: "agent.start",
-                params: AgentStartParams(
-                    kind: launch.kind,
-                    name: launch.name,
-                    paneID: created.rootPane.paneID,
-                    args: launch.arguments.isEmpty ? nil : launch.arguments),
-                decoding: AgentStartedResponse.self)
+            let response = try await startAgentAwaitingShell(
+                launch, paneID: created.rootPane.paneID)
             return Agent(response.agent)
         } catch let error as HerdrAPIError {
             // A definitive rejection must not leave the fresh empty tab behind.
@@ -246,8 +240,43 @@ actor SSHTransport: Transport {
             // if its reply was lost, so preserving the pane is safer there.
             try? await closePane(PaneTarget(paneID: created.rootPane.paneID))
             throw error
+        } catch is CancellationError {
+            // Only thrown between readiness retries, after a definitive
+            // rejection — no agent is running in the fresh pane for sure.
+            try? await closePane(PaneTarget(paneID: created.rootPane.paneID))
+            throw CancellationError()
         }
     }
+
+    /// herdr (0.7.5+) rejects `agent.start` with `agent_pane_busy` until the
+    /// fresh pane's shell reaches its interactive prompt; shell boot takes a
+    /// few seconds on some hosts. The pane is ours and empty, so that code
+    /// can only mean "not ready yet" — retry briefly before giving up.
+    private func startAgentAwaitingShell(
+        _ launch: AgentLaunchRequest, paneID: String
+    ) async throws -> AgentStartedResponse {
+        let params = AgentStartParams(
+            kind: launch.kind,
+            name: launch.name,
+            paneID: paneID,
+            args: launch.arguments.isEmpty ? nil : launch.arguments)
+        let deadline = ContinuousClock.now + Self.shellReadinessBudget
+        while true {
+            do {
+                return try await request(
+                    method: "agent.start", params: params,
+                    decoding: AgentStartedResponse.self)
+            } catch let error as HerdrAPIError where error.code == "agent_pane_busy" {
+                guard ContinuousClock.now + Self.shellReadinessRetryDelay < deadline else {
+                    throw error
+                }
+                try await Task.sleep(for: Self.shellReadinessRetryDelay)
+            }
+        }
+    }
+
+    private static let shellReadinessBudget: Duration = .seconds(10)
+    private static let shellReadinessRetryDelay: Duration = .milliseconds(500)
 
     func closePane(_ params: PaneTarget) async throws {
         _ = try await request(method: "pane.close", params: params, decoding: OkResponse.self)

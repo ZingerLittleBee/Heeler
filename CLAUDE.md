@@ -18,6 +18,7 @@ Rediscovering these is expensive; they were verified against herdr 0.7.4 source 
 - The API schema is exported offline via `herdr api schema --json` (JSON Schema 2020-12, ~85 methods). Its `$ref` paths are non-standard nested (`#/schemas/request/$defs/X`) — preprocess before feeding codegen tools. 26 event kinds are subscribable but only 3 have typed payloads; verify others empirically.
 - SSH exec channels are session channels, capped by sshd's `MaxSessions` (default 10) per connection. All RPC traffic must go through a request queue that bounds concurrency.
 - `herdr agent attach` requires a TTY (ratatui). It works over an exec channel only when a PTY is requested.
+- herdr 0.7.5 tightened `agent.start` (verified against a live 0.7.5 server): the kind must be on its supported-agent list (arbitrary commands like `bash -i` are rejected with `unsupported interactive agent kind`), and a freshly created pane is rejected with `agent_pane_busy` ("not an available shell") until its shell reaches the interactive prompt — a few seconds. The transport retries on that code; see `SSHTransport.startAgentAwaitingShell`.
 - Default remote socket: `~/.config/herdr/herdr.sock`; named sessions live under `~/.config/herdr/sessions/<name>/herdr.sock`. Resolve `$HOME` over exec once per host.
 - If the herdr server is not running, connecting to the socket fails outright; there is no auto-start on the socket path. Fallback: run a herdr CLI command over exec (verify auto-spawn behavior — open question).
 
