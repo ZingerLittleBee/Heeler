@@ -134,7 +134,12 @@ final class HostConsoleProjection {
                     guard let self else { return }
                     let generation = await session.transportGeneration
                     guard !hasEnded else { return }
-                    transportGeneration = generation
+                    // These reads race across quick `.connected` bursts and
+                    // can land out of order; generations only grow, so the
+                    // newest write must win regardless of arrival order — a
+                    // regression here would spuriously replace a healthy
+                    // terminal downstream.
+                    transportGeneration = max(transportGeneration, generation)
                     publish()
                 }
                 scheduleResync()
