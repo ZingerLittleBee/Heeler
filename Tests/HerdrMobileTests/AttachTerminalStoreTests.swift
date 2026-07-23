@@ -334,3 +334,120 @@ struct AttachTerminalStoreTests {
         await store.stop()
     }
 }
+
+@MainActor
+@Suite("Agent Attach store")
+struct AgentAttachStoreTests {
+    @Test func transportReplacementStopsTheOldTerminalBeforeReattaching() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+        let initialID = store.terminalID
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the initial terminal should go live") {
+            store.terminalStatus == .live
+        }
+
+        store.transportGenerationDidChange(1)
+        try await waitUntil("the terminal pipeline should be replaced") {
+            store.terminalID != initialID
+        }
+        #expect(await transport.hasLiveAttachSession == false)
+
+        store.viewDidResize(cols: 100, rows: 30)
+        try await waitUntil("the replacement terminal should go live") {
+            store.terminalStatus == .live
+        }
+        #expect(await transport.attachRequests.count == 2)
+
+        await store.leave()
+    }
+
+    @Test func rapidTransportReplacementsCoalesceToTheLatestGeneration() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+        let initialID = store.terminalID
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the initial terminal should go live") {
+            store.terminalStatus == .live
+        }
+
+        store.transportGenerationDidChange(1)
+        store.transportGenerationDidChange(2)
+        try await waitUntil("the latest replacement should land") {
+            store.terminalID != initialID
+        }
+        store.viewDidResize(cols: 100, rows: 30)
+        try await waitUntil("the replacement terminal should go live") {
+            store.terminalStatus == .live
+        }
+        #expect(await transport.attachRequests.count == 2)
+
+        await store.leave()
+    }
+
+    @Test func successfulCloseLeavesTheWholeAttachInteraction() async throws {
+        let transport = ScriptedTransport()
+        let closeCalls = CloseCallRecorder()
+        let store = makeStore(transport: transport, generation: 0) {
+            await closeCalls.record()
+        }
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+
+        #expect(await store.confirmClose())
+        #expect(await closeCalls.count == 1)
+        #expect(store.terminalStatus == .stopped)
+        #expect(await transport.hasLiveAttachSession == false)
+    }
+
+    private func makeStore(
+        transport: ScriptedTransport,
+        generation: UInt64?,
+        close: @escaping () async throws -> Void = {}
+    ) -> AgentAttachStore {
+        AgentAttachStore(
+            target: "w1:p1",
+            paneTitle: "Agent",
+            transportGeneration: generation,
+            runTerminal: { request, handler in
+                let session = try await transport.attachTerminal(request)
+                do {
+                    try await handler.run(session)
+                    await session.end()
+                } catch {
+                    await session.end()
+                    throw error
+                }
+            },
+            stageImage: { _, _ in
+                throw ImageStagingError.transferFailed
+            },
+            closePane: close)
+    }
+
+    private func waitUntil(
+        _ comment: Comment,
+        timeout: Duration = .seconds(5),
+        condition: () async -> Bool
+    ) async throws {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if await condition() { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(await condition(), comment)
+    }
+}
+
+private actor CloseCallRecorder {
+    private(set) var count = 0
+
+    func record() {
+        count += 1
+    }
+}

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A2B3C4D5E6F7012345678901 /* AgentAttachStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F7012345678902 /* AgentAttachStore.swift */; };
 		006767F8F679B28FDC853D69 /* ConsoleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C44D9663DAB1E8942FBFCD1C /* ConsoleView.swift */; };
 		017151AEC5D404665A3FAB41 /* HostDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE12859365BC7A57B9EC256A /* HostDraft.swift */; };
 		033E8DCA2F64ABE6CA898758 /* EventsSessionSubscriptionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CA5E9DDE1AB0F68F6EC56EB /* EventsSessionSubscriptionsTests.swift */; };
@@ -118,6 +119,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A2B3C4D5E6F7012345678902 /* AgentAttachStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentAttachStore.swift; sourceTree = "<group>"; };
 		02807C329084D58137461EF8 /* TransportFailureModesE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportFailureModesE2ETests.swift; sourceTree = "<group>"; };
 		079394F4C6AC8FE4D7B0779C /* ConsoleStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleStoreTests.swift; sourceTree = "<group>"; };
 		08E14A4298DB015E6477F789 /* StartAgentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartAgentStore.swift; sourceTree = "<group>"; };
@@ -384,6 +386,7 @@
 		AEEB5E7751FD30413560D58D /* Console */ = {
 			isa = PBXGroup;
 			children = (
+				A2B3C4D5E6F7012345678902 /* AgentAttachStore.swift */,
 				0B3FA15CCDC83C72DDA81BEB /* AgentCardView.swift */,
 				5ADF336771A3F757F2AD441D /* AgentDetailView.swift */,
 				97970F4D535CC80592333995 /* AttachTerminalStore.swift */,
@@ -528,6 +531,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A2B3C4D5E6F7012345678901 /* AgentAttachStore.swift in Sources */,
 				6CBE7E0961FFD970A614ED4B /* AgentCardView.swift in Sources */,
 				2CE9115816E7CE945ABCF7A8 /* AgentDetailView.swift in Sources */,
 				225ECBDC69A7785559BC4D20 /* AttachTerminalStore.swift in Sources */,

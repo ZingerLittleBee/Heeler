@@ -8,11 +8,7 @@ struct AgentDetailView: View {
     let agent: ConsoleAgent
     private let console: ConsoleStore
     private let terminalThemes: TerminalThemeSettings
-    private let runTerminal: TerminalSessionRunner
-    @State private var input: TerminalInputController
-    @State private var store: AttachTerminalStore
-    @State private var imageAttach: ImageAttachStore
-    @State private var close: ClosePaneStore
+    @State private var attach: AgentAttachStore
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isConfirmingClose = false
     @State private var isShowingSettings = false
@@ -28,37 +24,30 @@ struct AgentDetailView: View {
         self.agent = agent
         self.console = console
         self.terminalThemes = terminalThemes
-        let runTerminal = console.terminalRunner(for: agent.hostID)
-        let input = TerminalInputController()
-        self.runTerminal = runTerminal
-        _input = State(initialValue: input)
-        _store = State(
-            initialValue: AttachTerminalStore(
+        _attach = State(
+            initialValue: AgentAttachStore(
                 target: agent.agent.paneID,
-                input: input,
-                runTerminal: runTerminal))
-        _imageAttach = State(
-            initialValue: ImageAttachStore(
-                stageImage: console.imageStager(for: agent.hostID),
-                input: input))
-        _close = State(
-            initialValue: ClosePaneStore(paneTitle: Self.displayTitle(for: agent)) {
+                paneTitle: Self.displayTitle(for: agent),
+                transportGeneration: console.hostConnectionGenerations[agent.hostID],
+                runTerminal: console.terminalRunner(for: agent.hostID),
+                stageImage: console.imageStager(for: agent.hostID)
+            ) {
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
             })
     }
 
     var body: some View {
         TerminalScreenView(
-            feed: store.feed,
+            feed: attach.terminalFeed,
             onSizeChanged: { cols, rows in
-                store.viewDidResize(cols: cols, rows: rows)
+                attach.viewDidResize(cols: cols, rows: rows)
             },
-            onSend: { keystrokes in store.send(keystrokes) },
-            onPaste: { text in _ = input.requestPaste(text) },
-            isLocalInputEnabled: !input.isPaused,
+            onSend: { keystrokes in attach.send(keystrokes) },
+            onPaste: { text in attach.requestPaste(text) },
+            isLocalInputEnabled: attach.isLocalInputEnabled,
             theme: terminalThemes.theme
         )
-        .id(ObjectIdentifier(store))
+        .id(attach.terminalID)
         .overlay { statusOverlay }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             imageAttachStatus
@@ -70,7 +59,7 @@ struct AgentDetailView: View {
                 PhotosPicker(selection: $selectedPhoto, matching: .images) {
                     Label("Attach Image", systemImage: "photo.badge.plus")
                 }
-                .disabled(store.status != .live || !imageAttach.canSelectImage)
+                .disabled(!attach.canSelectImage)
                 .accessibilityLabel("Attach Image")
             }
             ToolbarItem(placement: .primaryAction) {
@@ -94,8 +83,8 @@ struct AgentDetailView: View {
         }
         .sheet(
             isPresented: Binding(
-                get: { input.pendingPaste != nil },
-                set: { if !$0 { input.cancelPaste() } })
+                get: { attach.pendingPaste != nil },
+                set: { if !$0 { attach.cancelPaste() } })
         ) {
             pasteReviewSheet
         }
@@ -124,26 +113,26 @@ struct AgentDetailView: View {
         .alert(
             "Paste Blocked",
             isPresented: Binding(
-                get: { input.pasteErrorMessage != nil },
-                set: { if !$0 { input.clearPasteError() } })
+                get: { attach.pasteErrorMessage != nil },
+                set: { if !$0 { attach.clearPasteError() } })
         ) {
             Button("OK", role: .cancel) {
-                input.clearPasteError()
+                attach.clearPasteError()
             }
         } message: {
-            Text(input.pasteErrorMessage ?? "")
+            Text(attach.pasteErrorMessage ?? "")
         }
         .onChange(of: selectedPhoto) { _, item in
             guard let item else { return }
             selectedPhoto = nil
-            imageAttach.select(PhotosPickerImageSelection(item: item))
+            attach.selectImage(PhotosPickerImageSelection(item: item))
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active:
-                imageAttach.didBecomeActive()
+                attach.didBecomeActive()
             case .background:
-                imageAttach.didEnterBackground()
+                attach.didEnterBackground()
             case .inactive:
                 break
             @unknown default:
@@ -151,44 +140,24 @@ struct AgentDetailView: View {
             }
         }
         .onChange(of: console.hostConnectionGenerations[agent.hostID]) { _, generation in
-            guard generation != nil else { return }
-            reconnect()
+            attach.transportGenerationDidChange(generation)
         }
         .onDisappear {
-            let terminal = store
-            let imageAttach = imageAttach
-            Task {
-                await imageAttach.leaveAttach()
-                await terminal.stop()
-            }
+            Task { await attach.leave() }
         }
-    }
-
-    private func reconnect() {
-        let previous = store
-        Task { await previous.stop() }
-        store = AttachTerminalStore(
-            target: agent.agent.paneID,
-            input: input,
-            runTerminal: runTerminal)
     }
 
     private func performClose() async {
-        await close.confirmClose()
-        switch close.state {
-        case .closed:
-            await store.stop()
+        if await attach.confirmClose() {
             dismiss()
-        case .failed(let message):
-            closeErrorMessage = message
-        case .idle, .closing:
-            break
+        } else {
+            closeErrorMessage = attach.closeFailureMessage
         }
     }
 
     @ViewBuilder
     private var statusOverlay: some View {
-        switch store.status {
+        switch attach.terminalStatus {
         case .waitingForSize, .connecting:
             ProgressView()
         case .ended(let message):
@@ -197,7 +166,7 @@ struct AgentDetailView: View {
             } description: {
                 Text(message)
             } actions: {
-                Button("Reattach") { store.retry() }
+                Button("Reattach") { attach.retryTerminal() }
                     .buttonStyle(.borderedProminent)
             }
         case .live, .stopped:
@@ -207,7 +176,7 @@ struct AgentDetailView: View {
 
     @ViewBuilder
     private var imageAttachStatus: some View {
-        switch imageAttach.state {
+        switch attach.imageState {
         case .idle:
             EmptyView()
         case .preparing:
@@ -216,7 +185,7 @@ struct AgentDetailView: View {
                 title: "Preparing Image…",
                 accessibilityLabel: "Preparing Image"
             ) {
-                Button("Cancel", role: .cancel) { imageAttach.cancel() }
+                Button("Cancel", role: .cancel) { attach.cancelImage() }
             }
         case .uploading(let progress):
             ImageAttachStatusBar(
@@ -225,7 +194,7 @@ struct AgentDetailView: View {
                 accessibilityLabel:
                     "Uploading Image, \(Int(progress.fractionCompleted * 100)) percent"
             ) {
-                Button("Cancel", role: .cancel) { imageAttach.cancel() }
+                Button("Cancel", role: .cancel) { attach.cancelImage() }
             }
         case .failed(let failure), .backgroundInterrupted(let failure):
             ImageAttachStatusBar(
@@ -234,9 +203,9 @@ struct AgentDetailView: View {
                 accessibilityLabel: failure.message
             ) {
                 if failure.isRetryable {
-                    Button("Retry") { imageAttach.retry() }
+                    Button("Retry") { attach.retryImage() }
                 }
-                Button("Dismiss", role: .cancel) { imageAttach.dismissResult() }
+                Button("Dismiss", role: .cancel) { attach.dismissImageResult() }
             }
         case .completed(let result):
             ImageAttachStatusBar(
@@ -245,19 +214,19 @@ struct AgentDetailView: View {
                 accessibilityLabel: result.message
             ) {
                 if !result.copied {
-                    Button("Copy Path") { imageAttach.copyPath() }
+                    Button("Copy Path") { attach.copyImagePath() }
                 }
                 if !result.inserted {
-                    Button("Insert Path") { imageAttach.insertPath() }
+                    Button("Insert Path") { attach.insertImagePath() }
                 }
-                Button("Done", role: .cancel) { imageAttach.dismissResult() }
+                Button("Done", role: .cancel) { attach.dismissImageResult() }
             }
         }
     }
 
     @ViewBuilder
     private var pasteReviewSheet: some View {
-        if let review = input.pendingPaste {
+        if let review = attach.pendingPaste {
             NavigationStack {
                 VStack(alignment: .leading, spacing: 12) {
                     Text(
@@ -278,10 +247,10 @@ struct AgentDetailView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel", role: .cancel) { input.cancelPaste() }
+                        Button("Cancel", role: .cancel) { attach.cancelPaste() }
                     }
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Paste") { _ = input.confirmPaste() }
+                        Button("Paste") { attach.confirmPaste() }
                     }
                 }
             }
