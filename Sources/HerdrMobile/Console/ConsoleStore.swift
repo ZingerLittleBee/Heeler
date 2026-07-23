@@ -63,24 +63,38 @@ final class ConsoleStore {
         }
     }
 
+    /// The returned runner resolves the Host's live projection on every
+    /// call: editing a Host replaces its projection (and session), and a
+    /// runner captured by a long-lived Attach screen must follow it there
+    /// instead of staying bound to the ended session.
     func terminalRunner(for hostID: Host.ID) -> TerminalSessionRunner {
-        guard let projection = projections[hostID] else {
-            return { _, _ in
+        { [weak self] request, handler in
+            guard let runner = await self?.liveTerminalRunner(for: hostID) else {
                 throw TransportError.sshUnreachable(
                     detail: "The Host is not connected.")
             }
+            try await runner(request, handler)
         }
-        return projection.terminalRunner()
     }
 
+    /// Late-bound for the same reason as `terminalRunner(for:)`: a retryable
+    /// upload taken before a Host edit must stage over the new session.
     func imageStager(for hostID: Host.ID) -> ImageStager {
-        guard let projection = projections[hostID] else {
-            return { _, _ in
+        { [weak self] image, reporter in
+            guard let stager = await self?.liveImageStager(for: hostID) else {
                 throw TransportError.sshUnreachable(
                     detail: "The Host is not connected.")
             }
+            return try await stager(image, reporter)
         }
-        return projection.imageStager()
+    }
+
+    private func liveTerminalRunner(for hostID: Host.ID) -> TerminalSessionRunner? {
+        projections[hostID]?.terminalRunner()
+    }
+
+    private func liveImageStager(for hostID: Host.ID) -> ImageStager? {
+        projections[hostID]?.imageStager()
     }
 
     func workspaces(for hostID: Host.ID) -> [ConsoleWorkspace] {

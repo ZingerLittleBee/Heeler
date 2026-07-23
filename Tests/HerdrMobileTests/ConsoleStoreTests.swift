@@ -849,6 +849,119 @@ struct ConsoleStoreTests {
 
         store.setHosts([])
     }
+
+    /// A store whose session factory hands each Host the next transport in
+    /// its scripted sequence, so tests can drive SSH-level replacement.
+    private func makeStore(transportQueues: [Host.ID: TransportQueue]) -> ConsoleStore {
+        ConsoleStore(snapshotRetryDelay: .milliseconds(10)) { host, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: {
+                    guard let queue = transportQueues[host.id] else {
+                        throw TransportError.sshUnreachable(detail: "unscripted host")
+                    }
+                    return try await queue.next()
+                },
+                reconnectPolicy: Self.fastPolicy,
+                keepalive: nil)
+        }
+    }
+
+    @Test func transportReplacementAdvancesHostConnectionGeneration() async throws {
+        // The one path that must advance the projected generation: the SSH
+        // connection dies and the session installs a replacement Transport.
+        // This is the detail screen's only automatic-reattach trigger.
+        let host = Host.fixture()
+        let first = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        let second = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        let store = makeStore(
+            transportQueues: [host.id: TransportQueue([first, second])])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the first transport should connect") {
+            store.hostStatuses[host.id] == .connected
+        }
+        #expect(store.hostConnectionGenerations[host.id] == 0)
+
+        // Kill the SSH connection outright: the stream ends and
+        // `isConnected` flips false, so the reconnect must replace the
+        // Transport instead of resubscribing on it.
+        try await first.close()
+        try await waitUntil("the replacement transport should connect") {
+            let resubscribed = await second.capturedSubscriptions.isEmpty == false
+            return resubscribed && store.hostStatuses[host.id] == .connected
+        }
+        try await waitUntil("the projected generation should advance") {
+            store.hostConnectionGenerations[host.id] == 1
+        }
+
+        store.setHosts([])
+    }
+
+    @Test func terminalRunnerAndImageStagerSurviveAHostEdit() async throws {
+        // The Attach screen holds its runner and stager for its whole
+        // lifetime. Editing the Host replaces the projection and ends its
+        // session; a call through the old handles must resolve the live
+        // projection instead of staying bound to the ended session.
+        let host = Host.fixture(name: "alpha")
+        let first = ScriptedTransport(snapshot: .fixture())
+        let second = ScriptedTransport(snapshot: .fixture())
+        let store = makeStore(
+            transportQueues: [host.id: TransportQueue([first, second])])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the first transport should connect") {
+            store.hostStatuses[host.id] == .connected
+        }
+        let runner = store.terminalRunner(for: host.id)
+        let stager = store.imageStager(for: host.id)
+
+        var edited = host
+        edited.name = "alpha (renamed)"
+        store.setHosts([edited])
+        try await waitUntil("the replacement projection should connect") {
+            let resubscribed = await second.capturedSubscriptions.isEmpty == false
+            return resubscribed && store.hostStatuses[host.id] == .connected
+        }
+
+        let request = TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24)
+        try await runner(request, TerminalSessionHandler { _ in })
+        #expect(await second.attachRequests == [request])
+        #expect(await first.attachRequests.isEmpty)
+
+        let prepared = PreparedImage(
+            fileURL: URL(fileURLWithPath: "/tmp/attach-test.jpg"),
+            format: .jpeg, pixelWidth: 16, pixelHeight: 16, byteCount: 128)
+        await second.configureImageStaging(
+            outcomes: [.success(try StagedImage(path: "/tmp/staged/attach-test.jpg"))])
+        let staged = try await stager(prepared, ImageStageProgressReporter { _ in })
+        #expect(staged.path == "/tmp/staged/attach-test.jpg")
+        #expect(await second.stageRequests.count == 1)
+        #expect(await first.stageRequests.isEmpty)
+
+        store.setHosts([])
+    }
+}
+
+/// Hands out scripted transports in order, one per `connect`, so tests can
+/// drive SSH-level replacement deterministically.
+private actor TransportQueue {
+    private var remaining: [ScriptedTransport]
+
+    init(_ transports: [ScriptedTransport]) {
+        remaining = transports
+    }
+
+    func next() throws -> ScriptedTransport {
+        guard !remaining.isEmpty else {
+            throw TransportError.sshUnreachable(detail: "transport queue exhausted")
+        }
+        return remaining.removeFirst()
+    }
 }
 
 /// Captures the session a store's factory built, so overflow tests can
