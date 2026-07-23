@@ -31,12 +31,14 @@ struct EventsSessionSubscriptionsTests {
 
         await session.resume()
         #expect(await updates.next() == .status(.connected))
+        #expect(await session.transportGeneration == 0)
 
         await session.updateSubscriptions(updated)
 
         // A fresh `.connected` follows with no `.reconnecting` in between:
         // the teardown was deliberate, not a failure.
         #expect(await updates.next() == .status(.connected))
+        #expect(await session.transportGeneration == 0)
         #expect(await transport.capturedSubscriptions == [initial, updated])
         #expect(await !transport.isClosed, "resubscribe must reuse the SSH connection")
 

@@ -119,10 +119,14 @@ actor EventsSession {
     private let keepalive: KeepalivePolicy?
 
     private var phase: Phase = .suspended
-    /// The Host's live Transport; consumers run snapshot RPCs (`listAgents`)
-    /// through it after each `.connected`. Nil while suspended or between
-    /// SSH re-establishments.
-    private(set) var currentTransport: (any Transport)?
+    /// The Host's live Transport. It never escapes this module; consumers
+    /// use `withTransport` or `withTerminalTransport` so replacement and
+    /// terminal exclusivity remain local.
+    private var currentTransport: (any Transport)?
+    /// Monotonic identity for the installed Transport. Subscription-only
+    /// reconnects reuse the same Transport and therefore do not advance it.
+    private(set) var transportGeneration: UInt64 = 0
+    private var hasEstablishedTransport = false
     /// Set when the connection can no longer be trusted even though it may
     /// still look alive (a timed-out request or keepalive ping): the next
     /// reconnect replaces the transport instead of reusing it.
@@ -143,6 +147,12 @@ actor EventsSession {
     /// behind it, so transitions never interleave across the suspension
     /// points inside a teardown (see the actor doc).
     private var lifecycleTransition: Task<Void, Never>?
+    /// Exactly one Attach operation may hold the Host's terminal channel.
+    /// Waiters are FIFO and cancellation-safe; the permit spans the entire
+    /// operation, including explicit terminal teardown.
+    private var terminalInUse = false
+    private var terminalWaiters: [TerminalWaiter] = []
+    private var terminalIdleWaiters: [CheckedContinuation<Void, Never>] = []
 
     init(
         subscriptions: [EventSubscription],
@@ -206,6 +216,36 @@ actor EventsSession {
         guard phase == .active, let stream = liveStream else { return }
         resubscribeRequested = true
         await stream.end()
+    }
+
+    /// Runs an ordinary RPC against the currently installed Transport.
+    /// Calls are intentionally concurrent; `SSHTransport` owns its channel
+    /// budget. The Transport value never becomes caller-owned state.
+    func withTransport<Value: Sendable>(
+        _ operation: @escaping @Sendable (any Transport) async throws -> Value
+    ) async throws -> Value {
+        guard let transport = currentTransport else {
+            throw TransportError.sshUnreachable(detail: "The Host is not connected.")
+        }
+        return try await operation(transport)
+    }
+
+    /// Runs one terminal lifetime with exclusive access to the Host's
+    /// terminal channel. The next caller cannot observe a Transport until
+    /// the previous operation, including its teardown, has returned.
+    func withTerminalTransport<Value: Sendable>(
+        _ operation: @escaping @Sendable (any Transport) async throws -> Value
+    ) async throws -> Value {
+        try await acquireTerminal()
+        do {
+            try Task.checkCancellation()
+            let value = try await withTransport(operation)
+            releaseTerminal()
+            return value
+        } catch {
+            releaseTerminal()
+            throw error
+        }
     }
 
     private func activate() {
@@ -361,6 +401,11 @@ actor EventsSession {
         }
         transportSuspect = false
         currentTransport = transport
+        if hasEstablishedTransport {
+            transportGeneration &+= 1
+        } else {
+            hasEstablishedTransport = true
+        }
         return transport
     }
 
@@ -390,6 +435,7 @@ actor EventsSession {
             currentTransport = nil
             try? await transport.close()
         }
+        await waitForTerminalIdle()
         transportSuspect = false
         pendingKeepaliveFailure = nil
         resubscribeRequested = false
@@ -440,5 +486,58 @@ actor EventsSession {
             return .deviceKeyCorrupt
         }
         return .channelFailed(detail: String(describing: error))
+    }
+
+    // MARK: Terminal exclusivity
+
+    private struct TerminalWaiter {
+        let id: UUID
+        let continuation: CheckedContinuation<Void, any Error>
+    }
+
+    private func acquireTerminal() async throws {
+        let id = UUID()
+        try Task.checkCancellation()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, any Error>) in
+                if Task.isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                } else if terminalInUse {
+                    terminalWaiters.append(
+                        TerminalWaiter(id: id, continuation: continuation))
+                } else {
+                    terminalInUse = true
+                    continuation.resume()
+                }
+            }
+        } onCancel: {
+            Task { await self.cancelTerminalWaiter(id: id) }
+        }
+    }
+
+    private func cancelTerminalWaiter(id: UUID) {
+        guard let index = terminalWaiters.firstIndex(where: { $0.id == id }) else { return }
+        let waiter = terminalWaiters.remove(at: index)
+        waiter.continuation.resume(throwing: CancellationError())
+    }
+
+    private func releaseTerminal() {
+        while !terminalWaiters.isEmpty {
+            let waiter = terminalWaiters.removeFirst()
+            waiter.continuation.resume()
+            return
+        }
+        terminalInUse = false
+        let waiters = terminalIdleWaiters
+        terminalIdleWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
+    }
+
+    private func waitForTerminalIdle() async {
+        guard terminalInUse else { return }
+        await withCheckedContinuation { terminalIdleWaiters.append($0) }
     }
 }

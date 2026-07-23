@@ -3,6 +3,22 @@ import Observation
 import UniformTypeIdentifiers
 import UIKit
 
+typealias ImageStageProgressHandler = @Sendable (ImageStageProgress) async -> Void
+typealias ImageStager =
+    @Sendable (PreparedImage, ImageStageProgressReporter) async throws -> StagedImage
+
+struct ImageStageProgressReporter: Sendable {
+    private let handler: ImageStageProgressHandler
+
+    init(_ handler: @escaping ImageStageProgressHandler) {
+        self.handler = handler
+    }
+
+    func report(_ progress: ImageStageProgress) async {
+        await handler(progress)
+    }
+}
+
 @MainActor
 protocol ImageClipboard {
     func copy(_ path: String) throws
@@ -99,7 +115,7 @@ final class ImageAttachStore {
     private(set) var state: ImageAttachState = .idle
 
     private let preparer: any ImagePreparing
-    private let transport: @Sendable () async -> (any Transport)?
+    private let stageImage: ImageStager
     private let clipboard: any ImageClipboard
     private let input: TerminalInputController
 
@@ -110,12 +126,12 @@ final class ImageAttachStore {
 
     init(
         preparer: any ImagePreparing = ImagePreparer(),
-        transport: @escaping @Sendable () async -> (any Transport)?,
+        stageImage: @escaping ImageStager,
         clipboard: any ImageClipboard = SystemImageClipboard(),
         input: TerminalInputController
     ) {
         self.preparer = preparer
-        self.transport = transport
+        self.stageImage = stageImage
         self.clipboard = clipboard
         self.input = input
     }
@@ -245,12 +261,11 @@ final class ImageAttachStore {
         operationID: UInt64
     ) async {
         do {
-            guard let transport = await transport() else {
-                throw ImageAttachStoreError.hostDisconnected
-            }
-            let staged = try await transport.stageImage(image) { [weak self] progress in
-                await self?.receive(progress: progress, operationID: operationID)
-            }
+            let staged = try await stageImage(
+                image,
+                ImageStageProgressReporter { [weak self] progress in
+                    await self?.receive(progress: progress, operationID: operationID)
+                })
             try Task.checkCancellation()
             finishSuccess(staged, generation: generation, operationID: operationID)
         } catch {
@@ -325,7 +340,7 @@ final class ImageAttachStore {
 
     private static func failure(for error: any Error) -> ImageAttachFailure {
         switch error {
-        case ImageAttachStoreError.hostDisconnected:
+        case TransportError.sshUnreachable:
             ImageAttachFailure(
                 message: "The Host is not connected. Reconnect, then retry the upload.",
                 isRetryable: true)
@@ -363,8 +378,4 @@ final class ImageAttachStore {
                 isRetryable: false)
         }
     }
-}
-
-private enum ImageAttachStoreError: Error {
-    case hostDisconnected
 }

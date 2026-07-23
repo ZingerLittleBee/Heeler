@@ -515,9 +515,7 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
-    @Test func transportProviderHandsOutTheHostsLiveTransport() async throws {
-        // The Agent detail screen (#9) runs its backfill and live-follow
-        // through the Host's events-session transport, re-queried per use.
+    @Test func terminalRunnerOpensTheHostsLiveTransport() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(snapshot: .fixture())
         let store = makeStore(transports: [host.id: transport])
@@ -528,20 +526,26 @@ struct ConsoleStoreTests {
             store.hostStatuses[host.id] == .connected
         }
 
-        let provider = store.transportProvider(for: host.id)
-        #expect(await provider() as? ScriptedTransport === transport)
-        let missing = await store.transportProvider(for: UUID())()
-        #expect(missing == nil)
+        let runner = store.terminalRunner(for: host.id)
+        let request = TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24)
+        try await runner(request, TerminalSessionHandler { _ in })
+        #expect(await transport.attachRequests == [request])
+
+        let missing = store.terminalRunner(for: UUID())
+        await #expect(throws: TransportError.self) {
+            try await missing(request, TerminalSessionHandler { _ in })
+        }
 
         store.setHosts([])
     }
 
-    @Test func transportProviderWaitsForPreviousTerminalTeardown() async throws {
+    @Test func terminalRunnerWaitsForPreviousTerminalTeardown() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(snapshot: .fixture())
         let store = makeStore(transports: [host.id: transport])
         let gate = TerminalTeardownGate()
-        let result = TerminalTransportResult()
+        let result = TerminalOperationResult()
+        let request = TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24)
 
         store.setHosts([host])
         await store.resume()
@@ -549,12 +553,23 @@ struct ConsoleStoreTests {
             store.hostStatuses[host.id] == .connected
         }
 
-        store.scheduleTerminalTeardown(for: host.id) {
-            await gate.waitUntilOpen()
+        let runner = store.terminalRunner(for: host.id)
+        let first = Task {
+            try await runner(
+                request,
+                TerminalSessionHandler { _ in
+                    await gate.waitUntilOpen()
+                })
         }
-        let provider = store.transportProvider(for: host.id)
-        let request = Task {
-            await result.set(await provider())
+        try await waitUntil("the first terminal should open") {
+            await transport.attachRequests.count == 1
+        }
+        let second = Task {
+            try await runner(
+                request,
+                TerminalSessionHandler { _ in
+                    await result.set()
+                })
         }
 
         try await waitUntil("the previous teardown should start") {
@@ -562,10 +577,55 @@ struct ConsoleStoreTests {
         }
         try await Task.sleep(for: .milliseconds(30))
         #expect(await !result.wasSet)
+        #expect(await transport.attachRequests.count == 1)
 
         await gate.open()
-        await request.value
-        #expect(await result.transport as? ScriptedTransport === transport)
+        try await first.value
+        try await second.value
+        #expect(await result.wasSet)
+        #expect(await transport.attachRequests.count == 2)
+
+        store.setHosts([])
+    }
+
+    @Test func cancellingQueuedTerminalDoesNotLeakExclusiveAccess() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(snapshot: .fixture())
+        let store = makeStore(transports: [host.id: transport])
+        let gate = TerminalTeardownGate()
+        let request = TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24)
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Host should connect") {
+            store.hostStatuses[host.id] == .connected
+        }
+
+        let runner = store.terminalRunner(for: host.id)
+        let first = Task {
+            try await runner(
+                request,
+                TerminalSessionHandler { _ in
+                    await gate.waitUntilOpen()
+                })
+        }
+        try await waitUntil("the first terminal should open") {
+            await transport.attachRequests.count == 1
+        }
+
+        let cancelled = Task {
+            try await runner(request, TerminalSessionHandler { _ in })
+        }
+        try await Task.sleep(for: .milliseconds(30))
+        cancelled.cancel()
+        await #expect(throws: CancellationError.self) {
+            try await cancelled.value
+        }
+
+        await gate.open()
+        try await first.value
+        try await runner(request, TerminalSessionHandler { _ in })
+        #expect(await transport.attachRequests.count == 2)
 
         store.setHosts([])
     }
@@ -727,7 +787,7 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
-    @Test func realReconnectAdvancesHostConnectionGeneration() async throws {
+    @Test func eventChannelReconnectReusesHostConnectionGeneration() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(
             snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
@@ -743,12 +803,12 @@ struct ConsoleStoreTests {
         #expect(store.hostConnectionGenerations[host.id] == 0)
 
         await transport.failEventStream(.channelFailed(detail: "connection dropped"))
-        try await waitUntil("the real reconnect should advance the generation") {
+        try await waitUntil("the event channel should reconnect on the same transport") {
             let subscriptions = await transport.capturedSubscriptions
             return subscriptions.count >= 3
-                && store.hostConnectionGenerations[host.id] == 1
                 && store.hostStatuses[host.id] == .connected
         }
+        #expect(store.hostConnectionGenerations[host.id] == 0)
 
         store.setHosts([])
     }
@@ -789,6 +849,119 @@ struct ConsoleStoreTests {
 
         store.setHosts([])
     }
+
+    /// A store whose session factory hands each Host the next transport in
+    /// its scripted sequence, so tests can drive SSH-level replacement.
+    private func makeStore(transportQueues: [Host.ID: TransportQueue]) -> ConsoleStore {
+        ConsoleStore(snapshotRetryDelay: .milliseconds(10)) { host, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: {
+                    guard let queue = transportQueues[host.id] else {
+                        throw TransportError.sshUnreachable(detail: "unscripted host")
+                    }
+                    return try await queue.next()
+                },
+                reconnectPolicy: Self.fastPolicy,
+                keepalive: nil)
+        }
+    }
+
+    @Test func transportReplacementAdvancesHostConnectionGeneration() async throws {
+        // The one path that must advance the projected generation: the SSH
+        // connection dies and the session installs a replacement Transport.
+        // This is the detail screen's only automatic-reattach trigger.
+        let host = Host.fixture()
+        let first = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        let second = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        let store = makeStore(
+            transportQueues: [host.id: TransportQueue([first, second])])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the first transport should connect") {
+            store.hostStatuses[host.id] == .connected
+        }
+        #expect(store.hostConnectionGenerations[host.id] == 0)
+
+        // Kill the SSH connection outright: the stream ends and
+        // `isConnected` flips false, so the reconnect must replace the
+        // Transport instead of resubscribing on it.
+        try await first.close()
+        try await waitUntil("the replacement transport should connect") {
+            let resubscribed = await second.capturedSubscriptions.isEmpty == false
+            return resubscribed && store.hostStatuses[host.id] == .connected
+        }
+        try await waitUntil("the projected generation should advance") {
+            store.hostConnectionGenerations[host.id] == 1
+        }
+
+        store.setHosts([])
+    }
+
+    @Test func terminalRunnerAndImageStagerSurviveAHostEdit() async throws {
+        // The Attach screen holds its runner and stager for its whole
+        // lifetime. Editing the Host replaces the projection and ends its
+        // session; a call through the old handles must resolve the live
+        // projection instead of staying bound to the ended session.
+        let host = Host.fixture(name: "alpha")
+        let first = ScriptedTransport(snapshot: .fixture())
+        let second = ScriptedTransport(snapshot: .fixture())
+        let store = makeStore(
+            transportQueues: [host.id: TransportQueue([first, second])])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the first transport should connect") {
+            store.hostStatuses[host.id] == .connected
+        }
+        let runner = store.terminalRunner(for: host.id)
+        let stager = store.imageStager(for: host.id)
+
+        var edited = host
+        edited.name = "alpha (renamed)"
+        store.setHosts([edited])
+        try await waitUntil("the replacement projection should connect") {
+            let resubscribed = await second.capturedSubscriptions.isEmpty == false
+            return resubscribed && store.hostStatuses[host.id] == .connected
+        }
+
+        let request = TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24)
+        try await runner(request, TerminalSessionHandler { _ in })
+        #expect(await second.attachRequests == [request])
+        #expect(await first.attachRequests.isEmpty)
+
+        let prepared = PreparedImage(
+            fileURL: URL(fileURLWithPath: "/tmp/attach-test.jpg"),
+            format: .jpeg, pixelWidth: 16, pixelHeight: 16, byteCount: 128)
+        await second.configureImageStaging(
+            outcomes: [.success(try StagedImage(path: "/tmp/staged/attach-test.jpg"))])
+        let staged = try await stager(prepared, ImageStageProgressReporter { _ in })
+        #expect(staged.path == "/tmp/staged/attach-test.jpg")
+        #expect(await second.stageRequests.count == 1)
+        #expect(await first.stageRequests.isEmpty)
+
+        store.setHosts([])
+    }
+}
+
+/// Hands out scripted transports in order, one per `connect`, so tests can
+/// drive SSH-level replacement deterministically.
+private actor TransportQueue {
+    private var remaining: [ScriptedTransport]
+
+    init(_ transports: [ScriptedTransport]) {
+        remaining = transports
+    }
+
+    func next() throws -> ScriptedTransport {
+        guard !remaining.isEmpty else {
+            throw TransportError.sshUnreachable(detail: "transport queue exhausted")
+        }
+        return remaining.removeFirst()
+    }
 }
 
 /// Captures the session a store's factory built, so overflow tests can
@@ -820,12 +993,10 @@ private actor TerminalTeardownGate {
     }
 }
 
-private actor TerminalTransportResult {
+private actor TerminalOperationResult {
     private(set) var wasSet = false
-    private(set) var transport: (any Transport)?
 
-    func set(_ transport: (any Transport)?) {
+    func set() {
         wasSet = true
-        self.transport = transport
     }
 }

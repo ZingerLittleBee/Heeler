@@ -1,47 +1,23 @@
 import Foundation
 import Observation
 
-/// The Console's state store (#8): the flat, status-sorted Agent list across
-/// all Hosts, snapshot-then-delta from day one (spec #20).
-///
-/// There is no replay-on-subscribe, so every `.connected` from a Host's
-/// `EventsSession` triggers an explicit `session.snapshot` re-fetch; between
-/// snapshots, `pane.agent_status_changed` deltas mutate rows in place.
-/// Membership and context changes (agent detected, pane closed, workspace
-/// renamed, ...) re-snapshot the Host instead of patching state
-/// speculatively — one cheap RPC beats replicating herdr's tree logic. The
-/// drop marker a bounded events buffer emits under overflow (#22) rides the
-/// same path: lost deltas cost one re-snapshot, never corrupted state.
-///
-/// Because `pane.agent_status_changed` subscribes per pane id, each snapshot
-/// also pushes the current pane set into the session via
-/// `updateSubscriptions`; a changed set costs one immediate re-subscribe and
-/// converges on the follow-up snapshot.
+/// The Console aggregate: reconciles the Host catalog and publishes one
+/// status-sorted Agent list across every Host. Each HostConsoleProjection
+/// owns its own convergence, retry, snippets and Host-scoped RPC behavior.
 @MainActor
 @Observable
 final class ConsoleStore {
-    /// The Console list, sorted Blocked > Working > Idle/Done.
     private(set) var agents: [ConsoleAgent] = []
-    /// Per-Host events-session status; the UI derives staleness from it.
     private(set) var hostStatuses: [Host.ID: EventsSessionStatus] = [:]
-    /// Snapshot failures are separate from connection state: an events
-    /// channel can remain connected while the Console data RPC is failing.
     private(set) var hostSyncErrors: [Host.ID: String] = [:]
-    /// Monotonic reconnect epochs per Host. Initial connection is generation
-    /// zero; only a return to connected after a real disconnect advances it.
     private(set) var hostConnectionGenerations: [Host.ID: UInt64] = [:]
 
-    @ObservationIgnored private var feeds: [Host.ID: HostFeed] = [:]
+    @ObservationIgnored private var projections: [
+        Host.ID: HostConsoleProjection
+    ] = [:]
     @ObservationIgnored private let makeSession:
         @Sendable (Host, [EventSubscription]) -> EventsSession
     @ObservationIgnored private let snapshotRetryDelay: Duration
-    /// Explicit terminal-channel teardowns registered synchronously by a
-    /// disappearing detail screen. A new detail waits for the latest task,
-    /// preventing Attach from racing the previous screen's channel close.
-    @ObservationIgnored private var terminalTeardowns: [Host.ID: TerminalTeardown] = [:]
-    @ObservationIgnored private var nextTerminalTeardownID: UInt64 = 0
-    /// Whether the Console should hold live connections (foregrounded);
-    /// feeds started while suspended stay down until `resume()`.
     @ObservationIgnored private var isActive = false
 
     init(
@@ -53,404 +29,137 @@ final class ConsoleStore {
         self.makeSession = makeSession
     }
 
-    // MARK: Host reconciliation
-
-    /// Aligns the feeds with the Host catalog: new Hosts get a session,
-    /// removed Hosts lose theirs, edited Hosts get a fresh one (their
-    /// connection coordinates may have changed).
+    /// Aligns Host projections with the catalog. Editing a Host replaces its
+    /// projection because its connection coordinates may have changed.
     func setHosts(_ hosts: [Host]) {
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
-        for (id, feed) in feeds where incoming[id] != feed.host {
-            endFeed(feed)
-            feeds[id] = nil
-            hostStatuses[id] = nil
-            hostSyncErrors[id] = nil
-            hostConnectionGenerations[id] = nil
+        for (id, projection) in projections where incoming[id] != projection.host {
+            projection.end()
+            projections[id] = nil
         }
-        for host in hosts where feeds[host.id] == nil {
-            startFeed(for: host)
+        for host in hosts where projections[host.id] == nil {
+            startProjection(for: host)
         }
         rebuild()
     }
 
-    /// Brings every Host's events session up (launch, foregrounding).
     func resume() async {
         isActive = true
-        for feed in feeds.values {
-            await feed.session.resume()
+        for projection in projections.values {
+            await projection.resume()
         }
     }
 
-    /// Tears every session down deliberately (backgrounding).
     func suspend() async {
         isActive = false
-        for feed in feeds.values {
-            await feed.session.suspend()
+        for projection in projections.values {
+            await projection.suspend()
         }
     }
 
-    private func startFeed(for host: Host) {
-        let session = makeSession(host, Self.subscriptions(paneIDs: []))
-        let feed = HostFeed(host: host, session: session)
-        feeds[host.id] = feed
-        hostConnectionGenerations[host.id] = 0
-        feed.consumeTask = Task { [weak self] in
-            for await update in session.updates {
-                guard let self else { return }
-                self.handle(update, feed: feed)
+    func retryFailedHosts() async {
+        for projection in projections.values {
+            await projection.retry()
+        }
+    }
+
+    /// The returned runner resolves the Host's live projection on every
+    /// call: editing a Host replaces its projection (and session), and a
+    /// runner captured by a long-lived Attach screen must follow it there
+    /// instead of staying bound to the ended session.
+    func terminalRunner(for hostID: Host.ID) -> TerminalSessionRunner {
+        { [weak self] request, handler in
+            guard let runner = await self?.liveTerminalRunner(for: hostID) else {
+                throw TransportError.sshUnreachable(
+                    detail: "The Host is not connected.")
             }
-        }
-        if isActive {
-            Task { await session.resume() }
+            try await runner(request, handler)
         }
     }
 
-    private func endFeed(_ feed: HostFeed) {
-        feed.resyncPending = false
-        feed.resyncRetryTask?.cancel()
-        feed.resyncRetryTask = nil
-        Task { await feed.session.end() }
-    }
-
-    // MARK: Snapshot-then-delta
-
-    private func handle(_ update: EventsSessionUpdate, feed: HostFeed) {
-        // A removed Host's session still drains its final updates; they must
-        // not resurrect its rows or status.
-        guard feeds[feed.host.id] === feed else { return }
-        switch update {
-        case .status(let status):
-            if status == .connected {
-                if feed.hasConnected, feed.connectionWasInterrupted {
-                    hostConnectionGenerations[feed.host.id, default: 0] &+= 1
-                }
-                feed.hasConnected = true
-                feed.connectionWasInterrupted = false
-            } else if feed.hasConnected {
-                feed.connectionWasInterrupted = true
+    /// Late-bound for the same reason as `terminalRunner(for:)`: a retryable
+    /// upload taken before a Host edit must stage over the new session.
+    func imageStager(for hostID: Host.ID) -> ImageStager {
+        { [weak self] image, reporter in
+            guard let stager = await self?.liveImageStager(for: hostID) else {
+                throw TransportError.sshUnreachable(
+                    detail: "The Host is not connected.")
             }
-            hostStatuses[feed.host.id] = status
-            if status == .connected {
-                scheduleResync(feed: feed)
-            }
-        case .event(let event):
-            if event.kind == PaneEventKind.agentStatusChanged.kind {
-                applyStatusChange(event.data, feed: feed)
-            } else if Self.resyncEventKinds.contains(event.kind) {
-                scheduleResync(feed: feed)
-            }
+            return try await stager(image, reporter)
         }
     }
 
-    /// Runs one re-snapshot per Host at a time; signals arriving mid-run
-    /// coalesce into a single follow-up run.
-    private func scheduleResync(feed: HostFeed) {
-        if feed.resyncTask != nil {
-            feed.resyncPending = true
-            return
-        }
-        feed.resyncTask = Task { [weak self] in
-            await self?.runResync(feed: feed)
-            guard let self else { return }
-            feed.resyncTask = nil
-            if feed.resyncPending {
-                feed.resyncPending = false
-                self.scheduleResync(feed: feed)
-            }
-        }
+    private func liveTerminalRunner(for hostID: Host.ID) -> TerminalSessionRunner? {
+        projections[hostID]?.terminalRunner()
     }
 
-    private func runResync(feed: HostFeed) async {
-        let statusRevisionBeforeSnapshot = feed.statusChangeRevision
-        guard let transport = await feed.session.currentTransport else { return }
-        do {
-            let snapshot = try await transport.sessionSnapshot()
-            guard feeds[feed.host.id] === feed else { return }
-            feed.resyncRetryTask?.cancel()
-            feed.resyncRetryTask = nil
-            hostSyncErrors[feed.host.id] = nil
-            apply(
-                snapshot, to: feed,
-                preservingStatusChangesAfter: statusRevisionBeforeSnapshot)
-            await feed.session.updateSubscriptions(
-                Self.subscriptions(paneIDs: feed.byPane.keys))
-            refreshSnippets(feed: feed, transport: transport)
-        } catch {
-            guard feeds[feed.host.id] === feed else { return }
-            hostSyncErrors[feed.host.id] = Self.snapshotErrorMessage(error)
-            scheduleSnapshotRetry(feed: feed)
-        }
+    private func liveImageStager(for hostID: Host.ID) -> ImageStager? {
+        projections[hostID]?.imageStager()
     }
 
-    /// Snapshot RPC failures do not necessarily drop the events channel, so
-    /// they need their own bounded-rate retry instead of waiting for a future
-    /// membership event or reconnect that may never happen.
-    private func scheduleSnapshotRetry(feed: HostFeed) {
-        guard feed.resyncRetryTask == nil else { return }
-        feed.resyncRetryTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await Task.sleep(for: snapshotRetryDelay)
-            } catch {
-                return
-            }
-            guard self.feeds[feed.host.id] === feed else { return }
-            feed.resyncRetryTask = nil
-            self.scheduleResync(feed: feed)
-        }
+    func workspaces(for hostID: Host.ID) -> [ConsoleWorkspace] {
+        projections[hostID]?.workspaces ?? []
     }
 
-    private static func snapshotErrorMessage(_ error: any Error) -> String {
-        switch error {
-        case TransportError.timedOut:
-            "The Host did not answer while syncing Agents. Retrying…"
-        case let apiError as HerdrAPIError:
-            "herdr rejected the Console sync: \(apiError.message). Retrying…"
-        default:
-            "Could not sync this Host's Agents. Retrying…"
+    @discardableResult
+    func startAgent(
+        _ request: AgentLaunchRequest,
+        on hostID: Host.ID
+    ) async throws -> Agent {
+        guard let projection = projections[hostID] else {
+            throw TransportError.sshUnreachable(
+                detail: "The Host is not connected.")
         }
+        return try await projection.startAgent(request)
     }
 
-    private func apply(
-        _ snapshot: SessionSnapshot,
-        to feed: HostFeed,
-        preservingStatusChangesAfter snapshotStartRevision: UInt64
-    ) {
-        let workspaces = Dictionary(
-            snapshot.workspaces.map { ($0.workspaceID, $0) }) { first, _ in first }
-        var byPane: [String: ConsoleAgent] = [:]
-        for info in snapshot.agents {
-            let agent = Agent(info)
-            let workspace = workspaces[agent.workspaceID]
-            byPane[agent.paneID] = ConsoleAgent(
-                hostID: feed.host.id,
-                hostName: feed.host.displayName,
-                agent: agent,
-                workspaceLabel: workspace?.label,
-                repoName: workspace?.worktree?.repoName,
-                lastOutputSnippet: feed.byPane[agent.paneID]?.lastOutputSnippet)
+    func closePane(_ paneID: String, on hostID: Host.ID) async throws {
+        guard let projection = projections[hostID] else {
+            throw TransportError.sshUnreachable(
+                detail: "The Host is not connected.")
         }
-        for (paneID, change) in feed.latestStatusChanges
-        where change.revision > snapshotStartRevision {
-            guard var row = byPane[paneID] else { continue }
-            row.agent.status = change.status
-            byPane[paneID] = row
-        }
-        feed.latestStatusChanges.removeAll(keepingCapacity: true)
-        feed.byPane = byPane
-        feed.workspaces = snapshot.workspaces
-            .map { ConsoleWorkspace(id: $0.workspaceID, label: $0.label) }
-            .sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
-        rebuild()
+        try await projection.closePane(paneID)
     }
 
-    private func applyStatusChange(_ data: JSONValue, feed: HostFeed) {
-        guard
-            let paneID = data["pane_id"]?.stringValue,
-            let rawStatus = data["agent_status"]?.stringValue
-        else { return }
-        let status = AgentStatus(rawValue: rawStatus)
-        feed.statusChangeRevision &+= 1
-        feed.latestStatusChanges[paneID] = (feed.statusChangeRevision, status)
-        guard var row = feed.byPane[paneID] else { return }
-        row.agent.status = status
-        feed.byPane[paneID] = row
-        rebuild()
-        // A status flip usually means fresh output worth showing — for
-        // Blocked, it is the very question the user must answer.
-        Task { [weak self] in
-            guard let transport = await feed.session.currentTransport else { return }
-            self?.refreshSnippet(feed: feed, paneID: paneID, transport: transport)
+    private func startProjection(for host: Host) {
+        let session = makeSession(
+            host,
+            HostConsoleProjection.subscriptions(paneIDs: []))
+        let projection = HostConsoleProjection(
+            host: host,
+            session: session,
+            snapshotRetryDelay: snapshotRetryDelay
+        ) { [weak self] in
+            self?.rebuild()
         }
+        projections[host.id] = projection
+        projection.start(isActive: isActive)
     }
 
     private func rebuild() {
-        agents = feeds.values.flatMap { $0.byPane.values }.consoleSorted()
+        let current = Array(projections.values)
+        agents = current
+            .flatMap { $0.agentsByPane.values }
+            .consoleSorted()
+        hostStatuses = Dictionary(
+            uniqueKeysWithValues: current.compactMap { projection in
+                projection.status.map { (projection.host.id, $0) }
+            })
+        hostSyncErrors = Dictionary(
+            uniqueKeysWithValues: current.compactMap { projection in
+                projection.syncError.map { (projection.host.id, $0) }
+            })
+        hostConnectionGenerations = Dictionary(
+            uniqueKeysWithValues: current.map {
+                ($0.host.id, $0.transportGeneration)
+            })
     }
-
-    // MARK: Last-output snippets
-
-    /// `pane.read` line budget per snippet fetch; the card shows the
-    /// trailing non-blank line of that window.
-    private static let snippetReadLines = 6
-
-    private func refreshSnippets(feed: HostFeed, transport: any Transport) {
-        for paneID in feed.byPane.keys {
-            refreshSnippet(feed: feed, paneID: paneID, transport: transport)
-        }
-    }
-
-    private func refreshSnippet(feed: HostFeed, paneID: String, transport: any Transport) {
-        // One in-flight read per pane; a burst of status flips must not pile
-        // requests onto the slot queue.
-        guard feed.snippetFetchesInFlight.insert(paneID).inserted else {
-            feed.pendingSnippetRefreshes.insert(paneID)
-            return
-        }
-        Task { [weak self] in
-            let read = try? await transport.readPane(
-                PaneReadParams(
-                    paneID: paneID, source: .recent, lines: Self.snippetReadLines,
-                    stripANSI: true))
-            guard let self else { return }
-            feed.snippetFetchesInFlight.remove(paneID)
-            guard self.feeds[feed.host.id] === feed else { return }
-            if let read, var row = feed.byPane[paneID] {
-                row.lastOutputSnippet = Self.snippet(fromPaneText: read.text)
-                feed.byPane[paneID] = row
-                self.rebuild()
-            }
-            guard
-                feed.pendingSnippetRefreshes.remove(paneID) != nil,
-                feed.byPane[paneID] != nil,
-                let currentTransport = await feed.session.currentTransport,
-                self.feeds[feed.host.id] === feed
-            else { return }
-            self.refreshSnippet(feed: feed, paneID: paneID, transport: currentTransport)
-        }
-    }
-
-    /// The card snippet: the trailing non-blank line, whitespace-trimmed.
-    static func snippet(fromPaneText text: String) -> String? {
-        for line in text.split(separator: "\n").reversed() {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if !trimmed.isEmpty { return trimmed }
-        }
-        return nil
-    }
-
-    // MARK: Detail-screen transport access
-
-    /// The Host's live transport for the interactive terminal. A closure
-    /// rather than a value: the events
-    /// session may reconnect onto a fresh transport at any time, so it is
-    /// re-queried per use; nil while the Host is disconnected or gone.
-    func transportProvider(for hostID: Host.ID) -> @Sendable () async -> (any Transport)? {
-        return { [weak self] in
-            await self?.transportAfterTerminalTeardown(for: hostID)
-        }
-    }
-
-    /// Registers teardown before `onDisappear` returns. Merely launching an
-    /// untracked Task here is insufficient: the next detail screen can ask
-    /// for the terminal slot before that Task begins executing.
-    func scheduleTerminalTeardown(
-        for hostID: Host.ID,
-        operation: @escaping @MainActor @Sendable () async -> Void
-    ) {
-        let previous = terminalTeardowns[hostID]?.task
-        nextTerminalTeardownID &+= 1
-        let id = nextTerminalTeardownID
-        let task = Task { @MainActor in
-            await previous?.value
-            await operation()
-        }
-        terminalTeardowns[hostID] = TerminalTeardown(id: id, task: task)
-        Task { @MainActor [weak self] in
-            await task.value
-            guard self?.terminalTeardowns[hostID]?.id == id else { return }
-            self?.terminalTeardowns[hostID] = nil
-        }
-    }
-
-    private func transportAfterTerminalTeardown(for hostID: Host.ID) async -> (any Transport)? {
-        let teardown = terminalTeardowns[hostID]
-        await teardown?.task.value
-        return await feeds[hostID]?.session.currentTransport
-    }
-
-    /// Retries Hosts whose session stopped on an action-required failure.
-    /// Host management calls this after dismissal so corrected credentials,
-    /// trust, paths, or protocol versions take effect immediately.
-    func retryFailedHosts() async {
-        for (id, feed) in feeds {
-            guard case .failed = hostStatuses[id] else { continue }
-            await feed.session.retry()
-        }
-    }
-
-    // MARK: New-agent flow (#12)
-
-    /// The workspaces the store knows for a Host, from its latest snapshot —
-    /// the new-agent picker's target list. Empty until the Host's first
-    /// snapshot lands, or when the Host is unknown.
-    func workspaces(for hostID: Host.ID) -> [ConsoleWorkspace] {
-        feeds[hostID]?.workspaces ?? []
-    }
-
-    /// Starts a new Agent on a Host (#12): the transport's protocol-specific
-    /// launch flow, then one explicit resync so the new pane
-    /// surfaces promptly instead of waiting on its membership event. Throws
-    /// `.sshUnreachable` when the Host is not currently connected, and
-    /// propagates the server's error when herdr rejects the start.
-    @discardableResult
-    func startAgent(_ request: AgentLaunchRequest, on hostID: Host.ID) async throws -> Agent {
-        guard let feed = feeds[hostID], let transport = await feed.session.currentTransport
-        else {
-            throw TransportError.sshUnreachable(detail: "The Host is not connected.")
-        }
-        let agent = try await transport.startAgent(request)
-        // The membership event will re-snapshot too; this just makes the new
-        // pane appear without waiting for it.
-        scheduleResync(feed: feed)
-        return agent
-    }
-
-    // MARK: Close-pane flow (#13)
-
-    /// Closes a Pane on a Host (#13, User Story 9): the thin `pane.close` RPC
-    /// on the Host's live transport, then one explicit resync so the removed
-    /// pane disappears promptly instead of waiting on its `pane.closed`
-    /// membership event. Throws `.sshUnreachable` when the Host is not
-    /// currently connected, and propagates the server's error when herdr
-    /// rejects the close (leaving the Console untouched — the cancel/failure
-    /// path never mutates state).
-    func closePane(_ paneID: String, on hostID: Host.ID) async throws {
-        guard let feed = feeds[hostID], let transport = await feed.session.currentTransport
-        else {
-            throw TransportError.sshUnreachable(detail: "The Host is not connected.")
-        }
-        try await transport.closePane(PaneTarget(paneID: paneID))
-        // The pane.closed membership event will re-snapshot too; this just
-        // drops the closed pane without waiting for it.
-        scheduleResync(feed: feed)
-    }
-
-    // MARK: Subscriptions
-
-    /// Global membership/context kinds; each triggers a Host re-snapshot.
-    private static let membershipKinds: [GlobalEventKind] = [
-        .paneAgentDetected, .paneClosed, .paneExited,
-        .workspaceCreated, .workspaceRenamed, .workspaceMetadataUpdated, .workspaceClosed,
-    ]
-    /// The membership kinds plus the local drop marker (#22): a bounded
-    /// event buffer that shed updates means the deltas are incomplete, so
-    /// the marker rides the same re-snapshot path membership changes do.
-    private static let resyncEventKinds =
-        Set(membershipKinds.map(\.kind)).union([HerdrEventKind.eventsDropped])
-
-    /// One Host's Console subscription set: the global kinds plus a per-pane
-    /// `pane.agent_status_changed` for every known Agent pane — the status
-    /// kind is pane-scoped (verified against herdr 0.7.4: a bare
-    /// subscription is rejected with `missing field pane_id`).
-    static func subscriptions(paneIDs: some Sequence<String>) -> [EventSubscription] {
-        membershipKinds.map(EventSubscription.global)
-            + paneIDs.sorted().map { EventSubscription.pane(.agentStatusChanged, paneID: $0) }
-    }
-}
-
-@MainActor
-private struct TerminalTeardown {
-    let id: UInt64
-    let task: Task<Void, Never>
 }
 
 extension ConsoleStore {
     /// The production session factory: SSH transports built from the Host
     /// catalog's credentials. TOFU is restricted to already-trusted
-    /// fingerprints — the Console never prompts; a Host that was never
-    /// onboarded fails into `.reconnecting` with the host-key error until
-    /// its onboarding checklist trusts it.
+    /// fingerprints; the Console never prompts.
     static func sshSessionFactory(
         connector: any TransportConnector = SSHTransportConnector(),
         knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
@@ -467,38 +176,10 @@ extension ConsoleStore {
                 let policy = HostKeyPolicy(knownHosts: knownHosts) { _ in false }
                 return try await connector.connect(
                     settings: SSHTransportSettings(
-                        host: host, credentials: resolved, hostKeyPolicy: policy))
+                        host: host,
+                        credentials: resolved,
+                        hostKeyPolicy: policy))
             }
         }
-    }
-}
-
-/// One Host's live feed: its events session plus the rows built from its
-/// snapshots. A class so racing tasks can check identity (`===`) after the
-/// Host was removed or replaced.
-@MainActor
-private final class HostFeed {
-    let host: Host
-    let session: EventsSession
-    var consumeTask: Task<Void, Never>?
-    var resyncTask: Task<Void, Never>?
-    var resyncRetryTask: Task<Void, Never>?
-    var resyncPending = false
-    var hasConnected = false
-    var connectionWasInterrupted = false
-    var byPane: [String: ConsoleAgent] = [:]
-    /// Latest status deltas by pane, versioned so a snapshot only preserves
-    /// events that arrived after that snapshot request began.
-    var statusChangeRevision: UInt64 = 0
-    var latestStatusChanges: [String: (revision: UInt64, status: AgentStatus)] = [:]
-    /// Workspaces from this Host's latest snapshot, for the new-agent picker.
-    var workspaces: [ConsoleWorkspace] = []
-    var snippetFetchesInFlight: Set<String> = []
-    /// Coalesced follow-up reads for panes refreshed while a read was active.
-    var pendingSnippetRefreshes: Set<String> = []
-
-    init(host: Host, session: EventsSession) {
-        self.host = host
-        self.session = session
     }
 }

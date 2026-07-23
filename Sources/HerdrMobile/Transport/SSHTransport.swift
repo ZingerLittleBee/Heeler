@@ -79,7 +79,7 @@ actor SSHTransport: Transport {
     /// Exec channels are SSH session channels, capped by sshd's MaxSessions
     /// (default 10) per connection. Bound at 8 to leave headroom for the
     /// events channel and the interactive terminal.
-    static let maxConcurrentExecChannels = 8
+    static let maxConcurrentExecChannels = SSHChannelBudget.defaultOrdinaryChannelCapacity
 
     private let client: SSHClient
     private let socketLocation: HerdrSocketLocation
@@ -90,6 +90,7 @@ actor SSHTransport: Transport {
     private let homeCommand: String
     private let stageDirectoryCommand: String
     private let requestTimeout: Duration
+    private let execChannelBudget: SSHChannelBudget
     /// Remote home directory resolution, resolved over exec once per Host:
     /// concurrent first requests share one in-flight run, success is cached
     /// for the connection's lifetime, failure is not (the next request
@@ -99,78 +100,10 @@ actor SSHTransport: Transport {
     /// of racing exec channels, and a later cold start wakes again.
     private let wake = SharedAsyncOperation<Void>(cachesSuccess: false)
 
-    // MARK: Exec channel slots
-    //
-    // The actor-based request queue (#5): every exec channel — RPC, home
-    // resolution, wake — holds a slot for the channel's lifetime, bounding
-    // concurrency at `maxConcurrentExecChannels`. Slots are never held
-    // across another slot acquisition, so the queue cannot deadlock.
-
-    private struct SlotWaiter {
-        let id: UInt64
-        let continuation: CheckedContinuation<Void, any Error>
-    }
-
-    private var execSlotsInUse = 0
-    private var slotWaiters: [SlotWaiter] = []
-    /// Waiter ids whose cancellation raced ahead: the cancellation handler
-    /// hops onto the actor via a Task, so it can run before the waiter's
-    /// continuation is stored (marker consumed on arrival) or after the
-    /// waiter was already resumed (marker swept by `acquireExecChannelSlot`'s
-    /// defer, keyed on `pendingSlotRequests`).
-    private var cancelledSlotRequests: Set<UInt64> = []
-    private var pendingSlotRequests: Set<UInt64> = []
-    private var nextSlotRequestID: UInt64 = 0
     /// Active SFTP channels keyed by staging operation. Cancellation closes
     /// the exact channel so a blocked Citadel request cannot continue after
     /// the app reports an interrupted upload.
     private var imageStageClients: [UUID: SFTPClient] = [:]
-
-    /// Waits for a free exec channel slot. Throws `CancellationError` without
-    /// consuming a slot if the task is cancelled while queued.
-    private func acquireExecChannelSlot() async throws {
-        try Task.checkCancellation()
-        nextSlotRequestID += 1
-        let id = nextSlotRequestID
-        pendingSlotRequests.insert(id)
-        defer {
-            pendingSlotRequests.remove(id)
-            cancelledSlotRequests.remove(id)
-        }
-        try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation {
-                (continuation: CheckedContinuation<Void, any Error>) in
-                if cancelledSlotRequests.contains(id) {
-                    continuation.resume(throwing: CancellationError())
-                } else if execSlotsInUse < Self.maxConcurrentExecChannels {
-                    execSlotsInUse += 1
-                    continuation.resume()
-                } else {
-                    slotWaiters.append(SlotWaiter(id: id, continuation: continuation))
-                }
-            }
-        } onCancel: {
-            Task { await self.cancelSlotWaiter(id: id) }
-        }
-    }
-
-    /// Frees a slot, handing it to the oldest waiter if any.
-    private func releaseExecChannelSlot() {
-        if slotWaiters.isEmpty {
-            execSlotsInUse -= 1
-        } else {
-            slotWaiters.removeFirst().continuation.resume()
-        }
-    }
-
-    private func cancelSlotWaiter(id: UInt64) {
-        guard pendingSlotRequests.contains(id) else { return }
-        if let index = slotWaiters.firstIndex(where: { $0.id == id }) {
-            slotWaiters.remove(at: index).continuation.resume(throwing: CancellationError())
-        } else {
-            cancelledSlotRequests.insert(id)
-        }
-    }
 
     private init(
         client: SSHClient, socketLocation: HerdrSocketLocation, socatPath: String,
@@ -187,6 +120,7 @@ actor SSHTransport: Transport {
         self.homeCommand = homeCommand
         self.stageDirectoryCommand = stageDirectoryCommand
         self.requestTimeout = requestTimeout
+        execChannelBudget = SSHChannelBudget(capacity: Self.maxConcurrentExecChannels)
     }
 
     /// Connects, verifies the host key per the TOFU policy, and
@@ -263,15 +197,16 @@ actor SSHTransport: Transport {
     }
 
     private func runSessionListCommand() async throws -> Data {
-        try await acquireExecChannelSlot()
-        defer { releaseExecChannelSlot() }
-        do {
-            let output = try await client.executeCommand(Self.cLocaleCommand(sessionListCommand))
-            return Data(output.readableBytesView)
-        } catch is CancellationError {
-            throw TransportError.cancelled
-        } catch {
-            throw TransportError.channelFailed(detail: String(describing: error))
+        try await execChannelBudget.withChannel {
+            do {
+                let output = try await self.client.executeCommand(
+                    Self.cLocaleCommand(self.sessionListCommand))
+                return Data(output.readableBytesView)
+            } catch is CancellationError {
+                throw TransportError.cancelled
+            } catch {
+                throw TransportError.channelFailed(detail: String(describing: error))
+            }
         }
     }
 
@@ -296,14 +231,8 @@ actor SSHTransport: Transport {
             params: TabCreateParams(focus: false, workspaceID: launch.workspaceID),
             decoding: TabCreatedResponse.self)
         do {
-            let response = try await request(
-                method: "agent.start",
-                params: AgentStartParams(
-                    kind: launch.kind,
-                    name: launch.name,
-                    paneID: created.rootPane.paneID,
-                    args: launch.arguments.isEmpty ? nil : launch.arguments),
-                decoding: AgentStartedResponse.self)
+            let response = try await startAgentAwaitingShell(
+                launch, paneID: created.rootPane.paneID)
             return Agent(response.agent)
         } catch let error as HerdrAPIError {
             // A definitive rejection must not leave the fresh empty tab behind.
@@ -311,8 +240,43 @@ actor SSHTransport: Transport {
             // if its reply was lost, so preserving the pane is safer there.
             try? await closePane(PaneTarget(paneID: created.rootPane.paneID))
             throw error
+        } catch is CancellationError {
+            // Only thrown between readiness retries, after a definitive
+            // rejection — no agent is running in the fresh pane for sure.
+            try? await closePane(PaneTarget(paneID: created.rootPane.paneID))
+            throw CancellationError()
         }
     }
+
+    /// herdr (0.7.5+) rejects `agent.start` with `agent_pane_busy` until the
+    /// fresh pane's shell reaches its interactive prompt; shell boot takes a
+    /// few seconds on some hosts. The pane is ours and empty, so that code
+    /// can only mean "not ready yet" — retry briefly before giving up.
+    private func startAgentAwaitingShell(
+        _ launch: AgentLaunchRequest, paneID: String
+    ) async throws -> AgentStartedResponse {
+        let params = AgentStartParams(
+            kind: launch.kind,
+            name: launch.name,
+            paneID: paneID,
+            args: launch.arguments.isEmpty ? nil : launch.arguments)
+        let deadline = ContinuousClock.now + Self.shellReadinessBudget
+        while true {
+            do {
+                return try await request(
+                    method: "agent.start", params: params,
+                    decoding: AgentStartedResponse.self)
+            } catch let error as HerdrAPIError where error.code == "agent_pane_busy" {
+                guard ContinuousClock.now + Self.shellReadinessRetryDelay < deadline else {
+                    throw error
+                }
+                try await Task.sleep(for: Self.shellReadinessRetryDelay)
+            }
+        }
+    }
+
+    private static let shellReadinessBudget: Duration = .seconds(10)
+    private static let shellReadinessRetryDelay: Duration = .milliseconds(500)
 
     func closePane(_ params: PaneTarget) async throws {
         _ = try await request(method: "pane.close", params: params, decoding: OkResponse.self)
@@ -338,27 +302,22 @@ actor SSHTransport: Transport {
         }
 
         do {
-            try await acquireExecChannelSlot()
-        } catch {
-            throw ImageStagingError.cancelled
-        }
-        defer { releaseExecChannelSlot() }
+            return try await execChannelBudget.withChannel {
+                try Task.checkCancellation()
+                let remoteDirectory = try await self.createStageDirectory()
+                let operationID = UUID()
+                await progress(
+                    ImageStageProgress(transferredBytes: 0, totalBytes: image.byteCount))
 
-        try Task.checkCancellation()
-        let remoteDirectory = try await createStageDirectory()
-        let operationID = UUID()
-        await progress(
-            ImageStageProgress(transferredBytes: 0, totalBytes: image.byteCount))
-
-        do {
-            return try await withTaskCancellationHandler {
-                try await performImageStage(
-                    image,
-                    remoteDirectory: remoteDirectory,
-                    operationID: operationID,
-                    progress: progress)
-            } onCancel: {
-                Task { await self.cancelImageStage(operationID) }
+                return try await withTaskCancellationHandler {
+                    try await self.performImageStage(
+                        image,
+                        remoteDirectory: remoteDirectory,
+                        operationID: operationID,
+                        progress: progress)
+                } onCancel: {
+                    Task { await self.cancelImageStage(operationID) }
+                }
             }
         } catch let error as ImageStagingError {
             throw error
@@ -1009,9 +968,9 @@ actor SSHTransport: Transport {
     private func runWakeCommand(socketPath: String) async throws {
         let command = try Self.wakeExecCommand(
             wakeCommand: wakeCommand, socketPath: socketPath, socketLocation: socketLocation)
-        try await acquireExecChannelSlot()
-        defer { releaseExecChannelSlot() }
-        _ = try await client.executeCommand(command)
+        try await execChannelBudget.withChannel {
+            _ = try await self.client.executeCommand(command)
+        }
     }
 
     /// The full remote command for waking this Host's configured herdr
@@ -1066,46 +1025,48 @@ actor SSHTransport: Transport {
     private func performExchange(line: String, socketPath: String, method: String) async throws
         -> Data
     {
-        try await acquireExecChannelSlot()
-        defer { releaseExecChannelSlot() }
-        var stdout = Data()
-        var stderr = Data()
-        do {
-            let command = try Self.socatCommand(socatPath: socatPath, socketPath: socketPath)
-            try await client.withExec(command) {
-                inbound, outbound in
-                // A fast-failing command (socat missing, socket absent) can
-                // close the channel before this write lands; the read loop
-                // below still drains stderr and surfaces the real failure.
-                try? await outbound.write(ByteBuffer(string: line))
-                for try await chunk in inbound {
-                    switch chunk {
-                    case .stdout(let buffer):
-                        stdout.append(contentsOf: buffer.readableBytesView)
-                        if stdout.contains(0x0A) { return }
-                    case .stderr(let buffer):
-                        stderr.append(contentsOf: buffer.readableBytesView)
+        try await execChannelBudget.withChannel {
+            var stdout = Data()
+            var stderr = Data()
+            do {
+                let command = try Self.socatCommand(
+                    socatPath: self.socatPath, socketPath: socketPath)
+                try await self.client.withExec(command) {
+                    inbound, outbound in
+                    // A fast-failing command (socat missing, socket absent) can
+                    // close the channel before this write lands; the read loop
+                    // below still drains stderr and surfaces the real failure.
+                    try? await outbound.write(ByteBuffer(string: line))
+                    for try await chunk in inbound {
+                        switch chunk {
+                        case .stdout(let buffer):
+                            stdout.append(contentsOf: buffer.readableBytesView)
+                            if stdout.contains(0x0A) { return }
+                        case .stderr(let buffer):
+                            stderr.append(contentsOf: buffer.readableBytesView)
+                        }
                     }
                 }
+            } catch is CancellationError {
+                throw TransportError.cancelled
+            } catch {
+                throw await self.classifyExecFailure(stderr: stderr, socketPath: socketPath)
+                    ?? TransportError.channelFailed(
+                        detail: "\(method): \(error); stderr: \(Self.preview(stderr))")
             }
-        } catch is CancellationError {
-            throw TransportError.cancelled
-        } catch {
-            throw classifyExecFailure(stderr: stderr, socketPath: socketPath)
-                ?? TransportError.channelFailed(
-                    detail: "\(method): \(error); stderr: \(Self.preview(stderr))")
+            // A cancelled exchange ends its read through the local inbound
+            // stream, after which withExec has already closed the channel;
+            // surface that instead of misreading the truncated output as a
+            // protocol error.
+            try Task.checkCancellation()
+            if !stdout.contains(0x0A),
+                let failure = await self.classifyExecFailure(
+                    stderr: stderr, socketPath: socketPath)
+            {
+                throw failure
+            }
+            return stdout
         }
-        // A cancelled exchange ends its read through the local inbound
-        // stream, after which withExec has already closed the channel;
-        // surface that instead of misreading the truncated output as a
-        // protocol error.
-        try Task.checkCancellation()
-        if !stdout.contains(0x0A),
-            let failure = classifyExecFailure(stderr: stderr, socketPath: socketPath)
-        {
-            throw failure
-        }
-        return stdout
     }
 
     /// Races `operation` against the per-request deadline, mapping expiry to
@@ -1160,15 +1121,16 @@ actor SSHTransport: Transport {
     }
 
     private func resolveHomeDirectoryOverExec() async throws -> String {
-        try await acquireExecChannelSlot()
-        defer { releaseExecChannelSlot() }
-        let output: ByteBuffer
-        do {
-            output = try await client.executeCommand(Self.cLocaleCommand(homeCommand))
-        } catch {
-            throw TransportError.homeDirectoryUnresolvable(detail: String(describing: error))
+        try await execChannelBudget.withChannel {
+            let output: ByteBuffer
+            do {
+                output = try await self.client.executeCommand(
+                    Self.cLocaleCommand(self.homeCommand))
+            } catch {
+                throw TransportError.homeDirectoryUnresolvable(detail: String(describing: error))
+            }
+            return try Self.parseRemoteHome(output)
         }
-        return try Self.parseRemoteHome(output)
     }
 
     /// Maps the observable failure shapes (verified against herdr 0.7.4 in
