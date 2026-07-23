@@ -60,6 +60,14 @@ protocol Transport: Sendable {
     /// `.terminalChannelAlreadyOpen`.
     func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession
 
+    /// Stages one normalized app-owned image in private Host temporary
+    /// storage. Concrete transports own destination selection, restrictive
+    /// permissions, partial-file handling, and atomic completion (ADR 0006).
+    func stageImage(
+        _ image: PreparedImage,
+        progress: @escaping @Sendable (ImageStageProgress) async -> Void
+    ) async throws -> StagedImage
+
     /// Whether the underlying connection to the Host is still alive. The
     /// reconnect machinery (#18) decides "re-subscribe on this connection or
     /// re-establish it" from this flag.
@@ -74,6 +82,15 @@ extension Transport {
     /// Test doubles and alternative transports that do not expose Host-level
     /// session discovery can opt out without inventing sessions.
     func listSessions() async throws -> [HerdrSession] { [] }
+
+    /// Non-SSH test doubles and alternative transports can state that SFTP is
+    /// unavailable without importing or emulating Citadel.
+    func stageImage(
+        _ image: PreparedImage,
+        progress: @escaping @Sendable (ImageStageProgress) async -> Void
+    ) async throws -> StagedImage {
+        throw ImageStagingError.sftpUnavailable
+    }
 }
 
 /// App-domain request for launching a fresh coding agent.

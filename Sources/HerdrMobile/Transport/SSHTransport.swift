@@ -43,6 +43,13 @@ struct SSHTransportSettings: Sendable {
     /// Command used to print a marker-delimited remote home directory. It is
     /// injectable only at the environment boundary for real-SSH tests.
     var homeCommand: String = "printf '__HERDR_MOBILE_HOME__=%s\\n' \"$HOME\""
+    /// Creates one private directory beneath the Host operating system's
+    /// selected temporary root. The marker makes login-shell noise harmless;
+    /// callers never interpolate image names or paths into this command.
+    var stageDirectoryCommand: String =
+        "/bin/sh -c 'umask 077; "
+        + "directory=$(mktemp -d \"${TMPDIR:-/tmp}/herdr-mobile.XXXXXXXX\") || exit 1; "
+        + "printf \"__HERDR_MOBILE_STAGE_DIR__=%s\\n\" \"$directory\"'"
     /// Per-request deadline covering the queue wait and the exec exchange;
     /// on expiry the request fails with `.timedOut` and its channel is
     /// closed. Short in tests, generous by default: a hung host should
@@ -73,6 +80,7 @@ actor SSHTransport: Transport {
     private let sessionListCommand: String
     private let attachCommand: String
     private let homeCommand: String
+    private let stageDirectoryCommand: String
     private let requestTimeout: Duration
     /// Remote home directory resolution, resolved over exec once per Host:
     /// concurrent first requests share one in-flight run, success is cached
@@ -105,6 +113,10 @@ actor SSHTransport: Transport {
     private var cancelledSlotRequests: Set<UInt64> = []
     private var pendingSlotRequests: Set<UInt64> = []
     private var nextSlotRequestID: UInt64 = 0
+    /// Active SFTP channels keyed by staging operation. Cancellation closes
+    /// the exact channel so a blocked Citadel request cannot continue after
+    /// the app reports an interrupted upload.
+    private var imageStageClients: [UUID: SFTPClient] = [:]
 
     /// Waits for a free exec channel slot. Throws `CancellationError` without
     /// consuming a slot if the task is cancelled while queued.
@@ -155,7 +167,7 @@ actor SSHTransport: Transport {
     private init(
         client: SSHClient, socketLocation: HerdrSocketLocation, socatPath: String,
         wakeCommand: String, sessionListCommand: String, attachCommand: String,
-        homeCommand: String,
+        homeCommand: String, stageDirectoryCommand: String,
         requestTimeout: Duration
     ) {
         self.client = client
@@ -165,6 +177,7 @@ actor SSHTransport: Transport {
         self.sessionListCommand = sessionListCommand
         self.attachCommand = attachCommand
         self.homeCommand = homeCommand
+        self.stageDirectoryCommand = stageDirectoryCommand
         self.requestTimeout = requestTimeout
     }
 
@@ -196,6 +209,7 @@ actor SSHTransport: Transport {
             client: client, socketLocation: settings.socket, socatPath: settings.socatPath,
             wakeCommand: settings.wakeCommand, sessionListCommand: settings.sessionListCommand,
             attachCommand: settings.attachCommand, homeCommand: settings.homeCommand,
+            stageDirectoryCommand: settings.stageDirectoryCommand,
             requestTimeout: settings.requestTimeout)
     }
 
@@ -294,6 +308,213 @@ actor SSHTransport: Transport {
 
     func closePane(_ params: PaneTarget) async throws {
         _ = try await request(method: "pane.close", params: params, decoding: OkResponse.self)
+    }
+
+    // MARK: Image staging
+
+    func stageImage(
+        _ image: PreparedImage,
+        progress: @escaping @Sendable (ImageStageProgress) async -> Void
+    ) async throws -> StagedImage {
+        guard
+            image.byteCount > 0,
+            image.byteCount <= Int64(ImagePreparer.maximumEncodedByteCount),
+            let localSize = try? FileManager.default.attributesOfItem(
+                atPath: image.fileURL.path)[.size] as? NSNumber,
+            localSize.int64Value == image.byteCount
+        else {
+            throw ImageStagingError.invalidPreparedImage
+        }
+
+        do {
+            try await acquireExecChannelSlot()
+        } catch {
+            throw ImageStagingError.cancelled
+        }
+        defer { releaseExecChannelSlot() }
+
+        try Task.checkCancellation()
+        let remoteDirectory = try await createStageDirectory()
+        let operationID = UUID()
+        await progress(
+            ImageStageProgress(transferredBytes: 0, totalBytes: image.byteCount))
+
+        do {
+            return try await withTaskCancellationHandler {
+                try await performImageStage(
+                    image,
+                    remoteDirectory: remoteDirectory,
+                    operationID: operationID,
+                    progress: progress)
+            } onCancel: {
+                Task { await self.cancelImageStage(operationID) }
+            }
+        } catch let error as ImageStagingError {
+            throw error
+        } catch is CancellationError {
+            throw ImageStagingError.cancelled
+        } catch {
+            throw Task.isCancelled
+                ? ImageStagingError.cancelled : ImageStagingError.transferFailed
+        }
+    }
+
+    private func createStageDirectory() async throws -> String {
+        let output: ByteBuffer
+        do {
+            output = try await client.executeCommand(
+                Self.cLocaleCommand(stageDirectoryCommand))
+        } catch {
+            throw Task.isCancelled
+                ? ImageStagingError.cancelled
+                : ImageStagingError.remoteTemporaryDirectoryFailed
+        }
+        return try Self.parseStageDirectory(output)
+    }
+
+    private func performImageStage(
+        _ image: PreparedImage,
+        remoteDirectory: String,
+        operationID: UUID,
+        progress: @escaping @Sendable (ImageStageProgress) async -> Void
+    ) async throws -> StagedImage {
+        let sftp: SFTPClient
+        do {
+            sftp = try await client.openSFTP()
+        } catch {
+            throw Task.isCancelled
+                ? ImageStagingError.cancelled : ImageStagingError.sftpUnavailable
+        }
+        imageStageClients[operationID] = sftp
+
+        let randomName = UUID().uuidString.lowercased()
+        let finalPath = "\(remoteDirectory)/\(randomName).\(image.format.fileExtension)"
+        var partPath: String? = "\(finalPath).part"
+
+        do {
+            let directoryAttributes = try await sftp.getAttributes(at: remoteDirectory)
+            guard Self.permissionBits(directoryAttributes.permissions) == 0o700 else {
+                throw ImageStagingError.permissionEnforcementFailed
+            }
+            guard let currentPartPath = partPath else {
+                throw ImageStagingError.transferFailed
+            }
+            try await streamImage(
+                image,
+                to: currentPartPath,
+                over: sftp,
+                progress: progress)
+            try Task.checkCancellation()
+
+            let uploadedAttributes = try await sftp.getAttributes(at: currentPartPath)
+            guard
+                uploadedAttributes.size == UInt64(image.byteCount),
+                Self.permissionBits(uploadedAttributes.permissions) == 0o600
+            else {
+                throw ImageStagingError.byteCountMismatch
+            }
+            try await sftp.rename(at: currentPartPath, to: finalPath)
+            partPath = nil
+
+            let finalAttributes = try await sftp.getAttributes(at: finalPath)
+            guard
+                finalAttributes.size == UInt64(image.byteCount),
+                Self.permissionBits(finalAttributes.permissions) == 0o600
+            else {
+                // Rename completed, so ADR 0005 forbids deleting this final
+                // Host file even when the final verification response is bad.
+                throw ImageStagingError.byteCountMismatch
+            }
+            let staged = try StagedImage(path: finalPath)
+            imageStageClients[operationID] = nil
+            try await sftp.close()
+            return staged
+        } catch {
+            imageStageClients[operationID] = nil
+            try? await sftp.close()
+            if let partPath {
+                await bestEffortRemovePart(at: partPath)
+            }
+            if Task.isCancelled {
+                throw ImageStagingError.cancelled
+            }
+            if let stagingError = error as? ImageStagingError {
+                throw stagingError
+            }
+            throw ImageStagingError.transferFailed
+        }
+    }
+
+    private func streamImage(
+        _ image: PreparedImage,
+        to remotePath: String,
+        over sftp: SFTPClient,
+        progress: @escaping @Sendable (ImageStageProgress) async -> Void
+    ) async throws {
+        let localFile: FileHandle
+        do {
+            localFile = try FileHandle(forReadingFrom: image.fileURL)
+        } catch {
+            throw ImageStagingError.localReadFailed
+        }
+        defer { try? localFile.close() }
+
+        var creationAttributes = SFTPFileAttributes()
+        creationAttributes.permissions = 0o600
+        let remoteFile = try await sftp.openFile(
+            filePath: remotePath,
+            flags: [.write, .create, .forceCreate],
+            attributes: creationAttributes)
+        do {
+            let attributes = try await remoteFile.readAttributes()
+            guard Self.permissionBits(attributes.permissions) == 0o600 else {
+                throw ImageStagingError.permissionEnforcementFailed
+            }
+
+            let chunkSize = 64 * 1_024
+            var transferred: Int64 = 0
+            while transferred < image.byteCount {
+                try Task.checkCancellation()
+                let remaining = image.byteCount - transferred
+                let requested = min(chunkSize, Int(remaining))
+                guard
+                    let data = try localFile.read(upToCount: requested),
+                    !data.isEmpty
+                else {
+                    throw ImageStagingError.byteCountMismatch
+                }
+                var buffer = ByteBufferAllocator().buffer(capacity: data.count)
+                buffer.writeBytes(data)
+                try await remoteFile.write(buffer, at: UInt64(transferred))
+                transferred += Int64(data.count)
+                await progress(
+                    ImageStageProgress(
+                        transferredBytes: transferred,
+                        totalBytes: image.byteCount))
+            }
+            guard try localFile.read(upToCount: 1)?.isEmpty != false else {
+                throw ImageStagingError.byteCountMismatch
+            }
+            try await remoteFile.close()
+        } catch {
+            try? await remoteFile.close()
+            throw error
+        }
+    }
+
+    private func cancelImageStage(_ operationID: UUID) async {
+        guard let sftp = imageStageClients[operationID] else { return }
+        try? await sftp.close()
+    }
+
+    private func bestEffortRemovePart(at path: String) async {
+        guard let sftp = try? await client.openSFTP() else { return }
+        try? await sftp.remove(at: path)
+        try? await sftp.close()
+    }
+
+    private static func permissionBits(_ permissions: UInt32?) -> UInt32? {
+        permissions.map { $0 & 0o777 }
     }
 
     // MARK: Events channel (#4)
@@ -695,6 +916,11 @@ actor SSHTransport: Transport {
     /// Closes the SSH connection. Explicit close is the only way to end
     /// Citadel channels — a live exec channel ignores task cancellation.
     func close() async throws {
+        let stagingClients = Array(imageStageClients.values)
+        imageStageClients.removeAll()
+        for sftp in stagingClients {
+            try? await sftp.close()
+        }
         try await client.close()
     }
 
@@ -957,6 +1183,7 @@ actor SSHTransport: Transport {
     }
 
     private static let homeOutputPrefix = "__HERDR_MOBILE_HOME__="
+    private static let stageDirectoryOutputPrefix = "__HERDR_MOBILE_STAGE_DIR__="
 
     private static func parseRemoteHome(_ output: ByteBuffer) throws -> String {
         let text = String(buffer: output)
@@ -973,6 +1200,23 @@ actor SSHTransport: Transport {
                 detail: "home command printed: \(text.prefix(200))")
         }
         return home
+    }
+
+    private static func parseStageDirectory(_ output: ByteBuffer) throws -> String {
+        let text = String(buffer: output)
+        let directory = text.split(separator: "\n", omittingEmptySubsequences: false)
+            .reversed()
+            .first { $0.hasPrefix(stageDirectoryOutputPrefix) }
+            .map { line in
+                var value = String(line.dropFirst(stageDirectoryOutputPrefix.count))
+                if value.last == "\r" { value.removeLast() }
+                return value
+            }
+        guard let directory else {
+            throw ImageStagingError.remoteTemporaryDirectoryFailed
+        }
+        return try StagedImage(path: "\(directory)/placeholder").fileURL
+            .deletingLastPathComponent().path
     }
 
     private static func socatCommand(socatPath: String, socketPath: String) throws -> String {
