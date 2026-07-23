@@ -325,6 +325,9 @@ actor SSHTransport: Transport {
         else {
             throw ImageStagingError.invalidPreparedImage
         }
+        guard client.isConnected else {
+            throw ImageStagingError.transferFailed
+        }
 
         do {
             try await acquireExecChannelSlot()
@@ -365,9 +368,12 @@ actor SSHTransport: Transport {
             output = try await client.executeCommand(
                 Self.cLocaleCommand(stageDirectoryCommand))
         } catch {
-            throw Task.isCancelled
-                ? ImageStagingError.cancelled
-                : ImageStagingError.remoteTemporaryDirectoryFailed
+            if Task.isCancelled {
+                throw ImageStagingError.cancelled
+            }
+            throw client.isConnected
+                ? ImageStagingError.remoteTemporaryDirectoryFailed
+                : ImageStagingError.transferFailed
         }
         return try Self.parseStageDirectory(output)
     }
@@ -382,8 +388,11 @@ actor SSHTransport: Transport {
         do {
             sftp = try await client.openSFTP()
         } catch {
-            throw Task.isCancelled
-                ? ImageStagingError.cancelled : ImageStagingError.sftpUnavailable
+            if Task.isCancelled {
+                throw ImageStagingError.cancelled
+            }
+            throw client.isConnected
+                ? ImageStagingError.sftpUnavailable : ImageStagingError.transferFailed
         }
         imageStageClients[operationID] = sftp
 

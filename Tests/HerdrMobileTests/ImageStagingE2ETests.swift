@@ -118,6 +118,29 @@ struct ImageStagingE2ETests {
         try await transport.close()
     }
 
+    @Test func disconnectedTransportSurfacesRetryableTransferFailure() async throws {
+        let environment = try #require(LocalSSHTestEnvironment.current)
+        let localURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("image-stage-disconnected-\(UUID().uuidString).png")
+        let bytes = Data(repeating: 0x3C, count: 1_024)
+        try bytes.write(to: localURL)
+        defer { try? FileManager.default.removeItem(at: localURL) }
+        let image = PreparedImage(
+            fileURL: localURL,
+            format: .png,
+            pixelWidth: 32,
+            pixelHeight: 32,
+            byteCount: Int64(bytes.count))
+        let transport = try await SSHTransport.connect(
+            settings: environment.makeSettings(
+                socket: .absolutePath("/tmp/herdr-image-stage-unused.sock")))
+        try await transport.close()
+
+        await #expect(throws: ImageStagingError.transferFailed) {
+            _ = try await transport.stageImage(image) { _ in }
+        }
+    }
+
     @Test func stagingSharesCapacityWithRPCsWhileEventsAndAttachAreLive() async throws {
         let environment = try #require(LocalSSHTestEnvironment.current)
         let server = try FakeHerdrServer { request in
