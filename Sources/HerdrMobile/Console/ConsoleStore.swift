@@ -27,19 +27,14 @@ final class ConsoleStore {
     /// Snapshot failures are separate from connection state: an events
     /// channel can remain connected while the Console data RPC is failing.
     private(set) var hostSyncErrors: [Host.ID: String] = [:]
-    /// Monotonic reconnect epochs per Host. Initial connection is generation
-    /// zero; only a return to connected after a real disconnect advances it.
+    /// Monotonic Transport generations per Host, projected directly from
+    /// `EventsSession`. Subscription-only reconnects do not advance it.
     private(set) var hostConnectionGenerations: [Host.ID: UInt64] = [:]
 
     @ObservationIgnored private var feeds: [Host.ID: HostFeed] = [:]
     @ObservationIgnored private let makeSession:
         @Sendable (Host, [EventSubscription]) -> EventsSession
     @ObservationIgnored private let snapshotRetryDelay: Duration
-    /// Explicit terminal-channel teardowns registered synchronously by a
-    /// disappearing detail screen. A new detail waits for the latest task,
-    /// preventing Attach from racing the previous screen's channel close.
-    @ObservationIgnored private var terminalTeardowns: [Host.ID: TerminalTeardown] = [:]
-    @ObservationIgnored private var nextTerminalTeardownID: UInt64 = 0
     /// Whether the Console should hold live connections (foregrounded);
     /// feeds started while suspended stay down until `resume()`.
     @ObservationIgnored private var isActive = false
@@ -120,17 +115,13 @@ final class ConsoleStore {
         guard feeds[feed.host.id] === feed else { return }
         switch update {
         case .status(let status):
-            if status == .connected {
-                if feed.hasConnected, feed.connectionWasInterrupted {
-                    hostConnectionGenerations[feed.host.id, default: 0] &+= 1
-                }
-                feed.hasConnected = true
-                feed.connectionWasInterrupted = false
-            } else if feed.hasConnected {
-                feed.connectionWasInterrupted = true
-            }
             hostStatuses[feed.host.id] = status
             if status == .connected {
+                Task { [weak self] in
+                    let generation = await feed.session.transportGeneration
+                    guard let self, self.feeds[feed.host.id] === feed else { return }
+                    self.hostConnectionGenerations[feed.host.id] = generation
+                }
                 scheduleResync(feed: feed)
             }
         case .event(let event):
@@ -162,9 +153,10 @@ final class ConsoleStore {
 
     private func runResync(feed: HostFeed) async {
         let statusRevisionBeforeSnapshot = feed.statusChangeRevision
-        guard let transport = await feed.session.currentTransport else { return }
         do {
-            let snapshot = try await transport.sessionSnapshot()
+            let snapshot = try await feed.session.withTransport { transport in
+                try await transport.sessionSnapshot()
+            }
             guard feeds[feed.host.id] === feed else { return }
             feed.resyncRetryTask?.cancel()
             feed.resyncRetryTask = nil
@@ -174,7 +166,7 @@ final class ConsoleStore {
                 preservingStatusChangesAfter: statusRevisionBeforeSnapshot)
             await feed.session.updateSubscriptions(
                 Self.subscriptions(paneIDs: feed.byPane.keys))
-            refreshSnippets(feed: feed, transport: transport)
+            refreshSnippets(feed: feed)
         } catch {
             guard feeds[feed.host.id] === feed else { return }
             hostSyncErrors[feed.host.id] = Self.snapshotErrorMessage(error)
@@ -259,8 +251,7 @@ final class ConsoleStore {
         // A status flip usually means fresh output worth showing — for
         // Blocked, it is the very question the user must answer.
         Task { [weak self] in
-            guard let transport = await feed.session.currentTransport else { return }
-            self?.refreshSnippet(feed: feed, paneID: paneID, transport: transport)
+            self?.refreshSnippet(feed: feed, paneID: paneID)
         }
     }
 
@@ -274,13 +265,13 @@ final class ConsoleStore {
     /// trailing non-blank line of that window.
     private static let snippetReadLines = 6
 
-    private func refreshSnippets(feed: HostFeed, transport: any Transport) {
+    private func refreshSnippets(feed: HostFeed) {
         for paneID in feed.byPane.keys {
-            refreshSnippet(feed: feed, paneID: paneID, transport: transport)
+            refreshSnippet(feed: feed, paneID: paneID)
         }
     }
 
-    private func refreshSnippet(feed: HostFeed, paneID: String, transport: any Transport) {
+    private func refreshSnippet(feed: HostFeed, paneID: String) {
         // One in-flight read per pane; a burst of status flips must not pile
         // requests onto the slot queue.
         guard feed.snippetFetchesInFlight.insert(paneID).inserted else {
@@ -288,10 +279,12 @@ final class ConsoleStore {
             return
         }
         Task { [weak self] in
-            let read = try? await transport.readPane(
-                PaneReadParams(
-                    paneID: paneID, source: .recent, lines: Self.snippetReadLines,
-                    stripANSI: true))
+            let read = try? await feed.session.withTransport { transport in
+                try await transport.readPane(
+                    PaneReadParams(
+                        paneID: paneID, source: .recent, lines: Self.snippetReadLines,
+                        stripANSI: true))
+            }
             guard let self else { return }
             feed.snippetFetchesInFlight.remove(paneID)
             guard self.feeds[feed.host.id] === feed else { return }
@@ -303,10 +296,9 @@ final class ConsoleStore {
             guard
                 feed.pendingSnippetRefreshes.remove(paneID) != nil,
                 feed.byPane[paneID] != nil,
-                let currentTransport = await feed.session.currentTransport,
                 self.feeds[feed.host.id] === feed
             else { return }
-            self.refreshSnippet(feed: feed, paneID: paneID, transport: currentTransport)
+            self.refreshSnippet(feed: feed, paneID: paneID)
         }
     }
 
@@ -319,44 +311,41 @@ final class ConsoleStore {
         return nil
     }
 
-    // MARK: Detail-screen transport access
+    // MARK: Detail-screen Host operations
 
-    /// The Host's live transport for the interactive terminal. A closure
-    /// rather than a value: the events
-    /// session may reconnect onto a fresh transport at any time, so it is
-    /// re-queried per use; nil while the Host is disconnected or gone.
-    func transportProvider(for hostID: Host.ID) -> @Sendable () async -> (any Transport)? {
-        return { [weak self] in
-            await self?.transportAfterTerminalTeardown(for: hostID)
+    func terminalRunner(for hostID: Host.ID) -> TerminalSessionRunner {
+        { [weak self] request, handler in
+            guard let session = await self?.session(for: hostID) else {
+                throw TransportError.sshUnreachable(detail: "The Host is not connected.")
+            }
+            try await session.withTerminalTransport { transport in
+                let terminal = try await transport.attachTerminal(request)
+                do {
+                    try await handler.run(terminal)
+                    await terminal.end()
+                } catch {
+                    await terminal.end()
+                    throw error
+                }
+            }
         }
     }
 
-    /// Registers teardown before `onDisappear` returns. Merely launching an
-    /// untracked Task here is insufficient: the next detail screen can ask
-    /// for the terminal slot before that Task begins executing.
-    func scheduleTerminalTeardown(
-        for hostID: Host.ID,
-        operation: @escaping @MainActor @Sendable () async -> Void
-    ) {
-        let previous = terminalTeardowns[hostID]?.task
-        nextTerminalTeardownID &+= 1
-        let id = nextTerminalTeardownID
-        let task = Task { @MainActor in
-            await previous?.value
-            await operation()
-        }
-        terminalTeardowns[hostID] = TerminalTeardown(id: id, task: task)
-        Task { @MainActor [weak self] in
-            await task.value
-            guard self?.terminalTeardowns[hostID]?.id == id else { return }
-            self?.terminalTeardowns[hostID] = nil
+    func imageStager(for hostID: Host.ID) -> ImageStager {
+        { [weak self] image, reporter in
+            guard let session = await self?.session(for: hostID) else {
+                throw TransportError.sshUnreachable(detail: "The Host is not connected.")
+            }
+            return try await session.withTransport { transport in
+                try await transport.stageImage(image) { progress in
+                    await reporter.report(progress)
+                }
+            }
         }
     }
 
-    private func transportAfterTerminalTeardown(for hostID: Host.ID) async -> (any Transport)? {
-        let teardown = terminalTeardowns[hostID]
-        await teardown?.task.value
-        return await feeds[hostID]?.session.currentTransport
+    private func session(for hostID: Host.ID) -> EventsSession? {
+        feeds[hostID]?.session
     }
 
     /// Retries Hosts whose session stopped on an action-required failure.
@@ -385,11 +374,12 @@ final class ConsoleStore {
     /// propagates the server's error when herdr rejects the start.
     @discardableResult
     func startAgent(_ request: AgentLaunchRequest, on hostID: Host.ID) async throws -> Agent {
-        guard let feed = feeds[hostID], let transport = await feed.session.currentTransport
-        else {
+        guard let feed = feeds[hostID] else {
             throw TransportError.sshUnreachable(detail: "The Host is not connected.")
         }
-        let agent = try await transport.startAgent(request)
+        let agent = try await feed.session.withTransport { transport in
+            try await transport.startAgent(request)
+        }
         // The membership event will re-snapshot too; this just makes the new
         // pane appear without waiting for it.
         scheduleResync(feed: feed)
@@ -406,11 +396,12 @@ final class ConsoleStore {
     /// rejects the close (leaving the Console untouched — the cancel/failure
     /// path never mutates state).
     func closePane(_ paneID: String, on hostID: Host.ID) async throws {
-        guard let feed = feeds[hostID], let transport = await feed.session.currentTransport
-        else {
+        guard let feed = feeds[hostID] else {
             throw TransportError.sshUnreachable(detail: "The Host is not connected.")
         }
-        try await transport.closePane(PaneTarget(paneID: paneID))
+        try await feed.session.withTransport { transport in
+            try await transport.closePane(PaneTarget(paneID: paneID))
+        }
         // The pane.closed membership event will re-snapshot too; this just
         // drops the closed pane without waiting for it.
         scheduleResync(feed: feed)
@@ -437,12 +428,6 @@ final class ConsoleStore {
         membershipKinds.map(EventSubscription.global)
             + paneIDs.sorted().map { EventSubscription.pane(.agentStatusChanged, paneID: $0) }
     }
-}
-
-@MainActor
-private struct TerminalTeardown {
-    let id: UInt64
-    let task: Task<Void, Never>
 }
 
 extension ConsoleStore {
@@ -484,8 +469,6 @@ private final class HostFeed {
     var resyncTask: Task<Void, Never>?
     var resyncRetryTask: Task<Void, Never>?
     var resyncPending = false
-    var hasConnected = false
-    var connectionWasInterrupted = false
     var byPane: [String: ConsoleAgent] = [:]
     /// Latest status deltas by pane, versioned so a snapshot only preserves
     /// events that arrived after that snapshot request began.

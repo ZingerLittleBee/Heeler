@@ -8,7 +8,7 @@ struct AgentDetailView: View {
     let agent: ConsoleAgent
     private let console: ConsoleStore
     private let terminalThemes: TerminalThemeSettings
-    private let transport: @Sendable () async -> (any Transport)?
+    private let runTerminal: TerminalSessionRunner
     @State private var input: TerminalInputController
     @State private var store: AttachTerminalStore
     @State private var imageAttach: ImageAttachStore
@@ -28,18 +28,18 @@ struct AgentDetailView: View {
         self.agent = agent
         self.console = console
         self.terminalThemes = terminalThemes
-        let transport = console.transportProvider(for: agent.hostID)
+        let runTerminal = console.terminalRunner(for: agent.hostID)
         let input = TerminalInputController()
-        self.transport = transport
+        self.runTerminal = runTerminal
         _input = State(initialValue: input)
         _store = State(
             initialValue: AttachTerminalStore(
                 target: agent.agent.paneID,
                 input: input,
-                transport: transport))
+                runTerminal: runTerminal))
         _imageAttach = State(
             initialValue: ImageAttachStore(
-                transport: transport,
+                stageImage: console.imageStager(for: agent.hostID),
                 input: input))
         _close = State(
             initialValue: ClosePaneStore(paneTitle: Self.displayTitle(for: agent)) {
@@ -157,7 +157,7 @@ struct AgentDetailView: View {
         .onDisappear {
             let terminal = store
             let imageAttach = imageAttach
-            console.scheduleTerminalTeardown(for: agent.hostID) {
+            Task {
                 await imageAttach.leaveAttach()
                 await terminal.stop()
             }
@@ -166,13 +166,11 @@ struct AgentDetailView: View {
 
     private func reconnect() {
         let previous = store
-        console.scheduleTerminalTeardown(for: agent.hostID) {
-            await previous.stop()
-        }
+        Task { await previous.stop() }
         store = AttachTerminalStore(
             target: agent.agent.paneID,
             input: input,
-            transport: transport)
+            runTerminal: runTerminal)
     }
 
     private func performClose() async {

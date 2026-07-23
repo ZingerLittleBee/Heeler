@@ -142,6 +142,7 @@ struct EventsSessionE2ETests {
             await session.resume()
             var iterator = session.updates.makeAsyncIterator()
             #expect(await iterator.next() == .status(.connected))
+            #expect(await session.transportGeneration == 0)
 
             // Kill the SSH connection out from under the session, as a
             // network death would.
@@ -152,6 +153,7 @@ struct EventsSessionE2ETests {
                 return
             }
             #expect(await iterator.next() == .status(.connected))
+            #expect(await session.transportGeneration == 1)
 
             #expect(factory.connectCount == 2)
             #expect(await !factory.transports[0].isConnected)

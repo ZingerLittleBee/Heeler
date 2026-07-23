@@ -15,7 +15,19 @@ struct AttachTerminalStoreTests {
     ) -> (AttachTerminalStore, captured: Captured) {
         let store = AttachTerminalStore(
             target: target, takeover: takeover, input: input
-        ) { transport }
+        ) { request, handler in
+            guard let transport else {
+                throw TransportError.sshUnreachable(detail: "The Host is not connected.")
+            }
+            let session = try await transport.attachTerminal(request)
+            do {
+                try await handler.run(session)
+                await session.end()
+            } catch {
+                await session.end()
+                throw error
+            }
+        }
         let captured = Captured()
         store.feed.attach { data in captured.chunks.append(data) }
         return (store, captured)

@@ -1,6 +1,24 @@
 import Foundation
 import Observation
 
+typealias TerminalSessionOperation =
+    @MainActor @Sendable (TerminalAttachSession) async throws -> Void
+typealias TerminalSessionRunner =
+    @Sendable (TerminalAttachRequest, TerminalSessionHandler) async throws -> Void
+
+struct TerminalSessionHandler: Sendable {
+    private let operation: TerminalSessionOperation
+
+    init(_ operation: @escaping TerminalSessionOperation) {
+        self.operation = operation
+    }
+
+    @MainActor
+    func run(_ session: TerminalAttachSession) async throws {
+        try await operation(session)
+    }
+}
+
 /// The Agent detail screen's session pipeline: a full interactive terminal
 /// over the Host's terminal channel — raw PTY bytes into the view through a
 /// `TerminalByteFeed`, keystrokes back out, geometry changes as SSH
@@ -35,9 +53,9 @@ final class AttachTerminalStore {
     private let target: String
     private let takeover: Bool
     private let input: TerminalInputController
-    /// The Host's current transport, re-queried per (re)attach: the events
-    /// session underneath may have reconnected onto a fresh one.
-    private let transport: @Sendable () async -> (any Transport)?
+    /// Opens and owns exclusive Host terminal access for one complete run,
+    /// including explicit channel teardown.
+    private let runTerminal: TerminalSessionRunner
 
     private var cols: Int?
     private var rows: Int?
@@ -49,12 +67,12 @@ final class AttachTerminalStore {
     init(
         target: String, takeover: Bool = false,
         input: TerminalInputController = TerminalInputController(),
-        transport: @escaping @Sendable () async -> (any Transport)?
+        runTerminal: @escaping TerminalSessionRunner
     ) {
         self.target = target
         self.takeover = takeover
         self.input = input
-        self.transport = transport
+        self.runTerminal = runTerminal
     }
 
     /// The terminal view's geometry, reported on first layout and on every
@@ -109,20 +127,33 @@ final class AttachTerminalStore {
     /// the stream ends, surface how it ended.
     private func run() async {
         defer { runTask = nil }
-        guard let transport = await transport() else {
-            status = .ended("The Host is not connected.")
-            return
-        }
         guard let cols, let rows else { return }
-        let session: TerminalAttachSession
         do {
-            session = try await transport.attachTerminal(
-                TerminalAttachRequest(target: target, takeover: takeover, cols: cols, rows: rows))
+            try await runTerminal(
+                TerminalAttachRequest(
+                    target: target, takeover: takeover, cols: cols, rows: rows),
+                TerminalSessionHandler { [weak self] session in
+                    guard let self else {
+                        await session.end()
+                        return
+                    }
+                    try await self.consume(
+                        session, initialCols: cols, initialRows: rows)
+                })
         } catch {
             guard !stopRequested else { return }
             status = .ended(Self.message(for: error))
             return
         }
+        guard !stopRequested else { return }
+        status = .ended("The session ended.")
+    }
+
+    private func consume(
+        _ session: TerminalAttachSession,
+        initialCols: Int,
+        initialRows: Int
+    ) async throws {
         if stopRequested {
             await session.end()
             return
@@ -133,33 +164,37 @@ final class AttachTerminalStore {
         }
         self.inputGeneration = inputGeneration
         status = .live
-        if let latestCols = self.cols, let latestRows = self.rows,
-            latestCols != cols || latestRows != rows
+        if let latestCols = cols, let latestRows = rows,
+            latestCols != initialCols || latestRows != initialRows
         {
             // The view resized while the channel was coming up; catch the
             // remote PTY up to the latest geometry.
             session.resize(cols: latestCols, rows: latestRows)
         }
 
-        var failure: (any Error)?
         do {
             for try await bytes in session.output {
                 feed.write(bytes)
             }
         } catch {
-            failure = error
+            finishSession(inputGeneration)
+            throw error
         }
+        finishSession(inputGeneration)
+    }
+
+    private func finishSession(_ inputGeneration: TerminalInputController.SessionGeneration) {
         self.session = nil
         input.endSession(inputGeneration)
         if self.inputGeneration == inputGeneration {
             self.inputGeneration = nil
         }
-        guard !stopRequested else { return }
-        status = .ended(failure.map(Self.message(for:)) ?? "The session ended.")
     }
 
     private static func message(for error: any Error) -> String {
         switch error {
+        case TransportError.sshUnreachable:
+            "The Host is not connected."
         case TransportError.terminalChannelAlreadyOpen:
             "Another terminal is already open on this Host."
         case TransportError.timedOut:

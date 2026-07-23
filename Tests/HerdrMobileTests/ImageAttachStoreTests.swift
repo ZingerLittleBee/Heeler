@@ -343,7 +343,11 @@ struct ImageAttachStoreTests {
         let generation = input.beginSession { sent.value.append($0) }
         let store = ImageAttachStore(
             preparer: preparer,
-            transport: { transport },
+            stageImage: { image, reporter in
+                try await transport.stageImage(image) { progress in
+                    await reporter.report(progress)
+                }
+            },
             clipboard: clipboard,
             input: input)
         return Fixture(
