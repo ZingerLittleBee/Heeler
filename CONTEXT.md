@@ -12,6 +12,18 @@ _Avoid_: server, machine, connection
 A coding agent process (claude, codex, ...) running inside a herdr pane, as reported by herdr's detection. The primary object of the app.
 _Avoid_: bot, task, session
 
+**Staged Image**:
+A user-selected image that exists on a Host at a remote path, whether or not the Agent has accepted it into a prompt.
+_Avoid_: attachment, uploaded image
+
+**Image Attachment**:
+A Staged Image that the Agent has accepted into its current prompt as image input.
+_Avoid_: staged image, image path
+
+**Attach Image**:
+The Attach action that prepares one selected image, creates a Staged Image, and offers its path to the current terminal. The label expresses user intent; it does not assert that the Agent accepted an Image Attachment.
+_Avoid_: send image, upload image
+
 **Agent Status**:
 herdr's detected state of an Agent: Idle, Working, Blocked, Done, or Unknown. Blocked means the agent is waiting for human input and drives sort order and (later) notifications.
 _Avoid_: agent state, activity
@@ -40,6 +52,10 @@ replaces it with a compact terminal control pad for navigation and common contro
 signals.
 Both modes send directly to the Agent's pane.
 _Avoid_: desktop keyboard, reply keyboard
+
+**Terminal Paste**:
+A user-invoked insertion of plain text from the iOS clipboard into Attach. Single-line text proceeds directly; potentially executable multiline or control content requires review.
+_Avoid_: Control V, image paste
 
 **Transport**:
 The app-side abstraction that executes herdr API requests and delivers event streams over SSH. UI code talks to Transport, never to SSH primitives.
