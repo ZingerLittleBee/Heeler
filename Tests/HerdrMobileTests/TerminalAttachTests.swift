@@ -21,6 +21,66 @@ struct TerminalAttachTests {
     }
 
     @MainActor
+    @Test func keyboardAccessoryExposesSystemPasteControlInBothModes() throws {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        let accessory = try #require(
+            terminal.inputAccessoryView as? TerminalKeyboardAccessory)
+
+        #expect(accessory.pasteControl.target === terminal)
+        #expect(accessory.pasteControl.accessibilityLabel == "Paste")
+        #expect(accessory.pasteControl.isEnabled)
+
+        terminal.setKeyboardMode(.controls)
+        #expect(accessory.pasteControl.isDescendant(of: accessory))
+    }
+
+    @MainActor
+    @Test func pasteControlAndHardwarePasteUseTheReviewedPasteCallback() {
+        var pastes: [String] = []
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onPaste: { pastes.append($0) })
+
+        terminal.requestPaste("one\n two")
+        #expect(pastes == ["one\n two"])
+
+        terminal.setLocalInputEnabled(false)
+        terminal.requestPaste("blocked")
+        #expect(pastes == ["one\n two"])
+        #expect(
+            (terminal.inputAccessoryView as? TerminalKeyboardAccessory)?
+                .pasteControl.isEnabled == false)
+    }
+
+    @MainActor
+    @Test func systemPasteControlLoadsTextFromItsItemProvider() async throws {
+        var pastes: [String] = []
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onPaste: { pastes.append($0) })
+
+        terminal.paste(
+            itemProviders: [NSItemProvider(object: "provider paste" as NSString)])
+        let deadline = ContinuousClock.now + .seconds(2)
+        while pastes.isEmpty, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        #expect(pastes == ["provider paste"])
+    }
+
+    @MainActor
+    @Test func pausedTerminalControlsDoNotEmitInput() async {
+        var sent = Data()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSend: { sent.append($0) })
+
+        terminal.setLocalInputEnabled(false)
+        terminal.sendControlKey(.enter)
+        await Task.yield()
+
+        #expect(sent.isEmpty)
+    }
+
+    @MainActor
     @Test func terminalTouchPolicyKeepsKeyboardBehindTheCurrentInputRow() {
         let terminal = TerminalScreenView.makeConfiguredTerminal()
         let directTouch = NSNumber(value: UITouch.TouchType.direct.rawValue)

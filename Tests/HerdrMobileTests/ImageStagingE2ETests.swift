@@ -118,6 +118,95 @@ struct ImageStagingE2ETests {
         try await transport.close()
     }
 
+    @Test func stagingSharesCapacityWithRPCsWhileEventsAndAttachAreLive() async throws {
+        let environment = try #require(LocalSSHTestEnvironment.current)
+        let server = try FakeHerdrServer { request in
+            if request.method == "events.subscribe" {
+                return .streamThenHold([
+                    .write(
+                        #"{"id":"\#(request.id)","result":{"type":"subscription_started"}}"#)
+                ])
+            }
+            return nil
+        }
+        defer { server.stop() }
+
+        let identifier = UUID().uuidString.lowercased()
+        let attachScript = FileManager.default.temporaryDirectory
+            .appendingPathComponent("image-stage-attach-\(identifier).sh")
+        try """
+        printf 'READY\\n'
+        exec sleep 30
+        """.write(to: attachScript, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: attachScript) }
+
+        let localURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("image-stage-capacity-\(identifier).png")
+        let bytes = Data(repeating: 0x4B, count: 200_000)
+        try bytes.write(to: localURL)
+        defer { try? FileManager.default.removeItem(at: localURL) }
+        let image = PreparedImage(
+            fileURL: localURL,
+            format: .png,
+            pixelWidth: 320,
+            pixelHeight: 200,
+            byteCount: Int64(bytes.count))
+
+        var settings = environment.makeSettings(
+            socket: .absolutePath(server.socketPath),
+            wakeCommand: "false",
+            requestTimeout: .seconds(20))
+        settings.attachCommand = "/bin/sh \(attachScript.path)"
+        let transport = try await SSHTransport.connect(settings: settings)
+        let events = try await transport.subscribeToEvents([.global(.paneCreated)])
+        let attach = try await transport.attachTerminal(
+            TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24))
+        var attachOutput = attach.output.makeAsyncIterator()
+        var attachText = ""
+        while !attachText.contains("READY") {
+            guard let bytes = try await attachOutput.next() else {
+                Issue.record("Attach ended before the capacity test was ready.")
+                break
+            }
+            attachText += String(decoding: bytes, as: UTF8.self)
+        }
+
+        let requests = (0..<SSHTransport.maxConcurrentExecChannels).map { _ in
+            Task { try await transport.listAgents() }
+        }
+        #expect(
+            await server.wait(for: {
+                $0.receivedRequests.filter { $0.method == "agent.list" }.count
+                    == SSHTransport.maxConcurrentExecChannels
+            }))
+
+        let staging = Task {
+            try await transport.stageImage(image) { _ in }
+        }
+        try await Task.sleep(for: .milliseconds(150))
+
+        requests[0].cancel()
+        await #expect(throws: TransportError.cancelled) {
+            _ = try await requests[0].value
+        }
+        let staged = try await staging.value
+        defer {
+            try? FileManager.default.removeItem(
+                at: staged.fileURL.deletingLastPathComponent())
+        }
+        #expect(try Data(contentsOf: staged.fileURL) == bytes)
+
+        for request in requests.dropFirst() {
+            request.cancel()
+            await #expect(throws: TransportError.cancelled) {
+                _ = try await request.value
+            }
+        }
+        await attach.end()
+        await events.end()
+        try await transport.close()
+    }
+
     private func waitUntil(
         _ comment: Comment,
         timeout: Duration = .seconds(5),

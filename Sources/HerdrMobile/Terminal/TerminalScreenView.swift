@@ -20,6 +20,8 @@ struct TerminalScreenView: UIViewRepresentable {
     let feed: TerminalByteFeed
     var onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)?
     var onSend: ((Data) -> Void)?
+    var onPaste: ((String) -> Void)?
+    var isLocalInputEnabled = true
     var theme: TerminalTheme = .default
     @Environment(\.openURL) private var openURL
 
@@ -27,6 +29,7 @@ struct TerminalScreenView: UIViewRepresentable {
         let view = Self.makeConfiguredTerminal(
             onSizeChanged: onSizeChanged,
             onSend: onSend,
+            onPaste: onPaste,
             theme: theme)
         view.delegate = context.coordinator
         context.coordinator.terminalView = view
@@ -40,19 +43,25 @@ struct TerminalScreenView: UIViewRepresentable {
     static func makeConfiguredTerminal(
         onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)? = nil,
         onSend: ((Data) -> Void)? = nil,
+        onPaste: ((String) -> Void)? = nil,
         theme: TerminalTheme = .default
     ) -> HerdrTerminalView {
         let view = HerdrTerminalView(
             frame: .zero,
             onSizeChanged: onSizeChanged,
             onSend: onSend,
+            onPaste: onPaste,
             theme: theme)
         view.installKeyboardSwitcher()
         return view
     }
 
     func updateUIView(_ view: HerdrTerminalView, context: Context) {
-        view.updateCallbacks(onSizeChanged: onSizeChanged, onSend: onSend)
+        view.updateCallbacks(
+            onSizeChanged: onSizeChanged,
+            onSend: onSend,
+            onPaste: onPaste)
+        view.setLocalInputEnabled(isLocalInputEnabled)
         view.applyTheme(theme)
         context.coordinator.onOpenLink = { url in openURL(url) }
     }
@@ -90,14 +99,17 @@ struct TerminalScreenView: UIViewRepresentable {
 private final class TerminalSessionCallbackBridge {
     var onSizeChanged: ((Int, Int) -> Void)?
     var onSend: ((Data) -> Void)?
+    var onPaste: ((String) -> Void)?
     var onViewport: ((InMemoryTerminalViewport) -> Void)?
 
     init(
         onSizeChanged: ((Int, Int) -> Void)?,
-        onSend: ((Data) -> Void)?
+        onSend: ((Data) -> Void)?,
+        onPaste: ((String) -> Void)?
     ) {
         self.onSizeChanged = onSizeChanged
         self.onSend = onSend
+        self.onPaste = onPaste
     }
 
     nonisolated func send(_ data: Data) {
@@ -112,6 +124,10 @@ private final class TerminalSessionCallbackBridge {
             self?.onSizeChanged?(Int(viewport.columns), Int(viewport.rows))
         }
     }
+
+    func paste(_ text: String) {
+        onPaste?(text)
+    }
 }
 
 /// The app-owned seam around libghostty-spm. It keeps keyboard policy and the
@@ -125,6 +141,7 @@ final class HerdrTerminalView: UITerminalView {
     private var modeTracker = TerminalModeTracker()
     private var lastInputWindowSize: CGSize?
     private var allowsKeyboardActivation = false
+    private(set) var isLocalInputEnabled = true
     private var terminalGridSize = (columns: 80, rows: 24)
     private var touchScrollPointsPerRow: CGFloat = 16
     private var touchScrollAccumulator = TerminalTouchScrollAccumulator()
@@ -165,11 +182,13 @@ final class HerdrTerminalView: UITerminalView {
         frame: CGRect,
         onSizeChanged: ((Int, Int) -> Void)?,
         onSend: ((Data) -> Void)?,
+        onPaste: ((String) -> Void)?,
         theme: TerminalTheme
     ) {
         let callbackBridge = TerminalSessionCallbackBridge(
             onSizeChanged: onSizeChanged,
-            onSend: onSend)
+            onSend: onSend,
+            onPaste: onPaste)
         self.callbackBridge = callbackBridge
         terminalSession = InMemoryTerminalSession(
             write: { [weak callbackBridge] data in
@@ -181,6 +200,7 @@ final class HerdrTerminalView: UITerminalView {
         terminalController = TerminalController(theme: theme)
         appliedTheme = theme
         super.init(frame: frame)
+        pasteConfiguration = UIPasteConfiguration(forAccepting: String.self)
         inputAccessoryItems = []
         configuration = TerminalSurfaceOptions(backend: .inMemory(terminalSession))
         controller = terminalController
@@ -197,10 +217,12 @@ final class HerdrTerminalView: UITerminalView {
 
     func updateCallbacks(
         onSizeChanged: ((Int, Int) -> Void)?,
-        onSend: ((Data) -> Void)?
+        onSend: ((Data) -> Void)?,
+        onPaste: ((String) -> Void)?
     ) {
         callbackBridge.onSizeChanged = onSizeChanged
         callbackBridge.onSend = onSend
+        callbackBridge.onPaste = onPaste
     }
 
     @discardableResult
@@ -220,6 +242,50 @@ final class HerdrTerminalView: UITerminalView {
     func requestKeyboard() {
         allowsKeyboardActivation = true
         _ = becomeFirstResponder()
+    }
+
+    func setLocalInputEnabled(_ isEnabled: Bool) {
+        guard isLocalInputEnabled != isEnabled else { return }
+        isLocalInputEnabled = isEnabled
+        terminalKeyboardAccessory.setPasteEnabled(isEnabled)
+        terminalInputView?.isUserInteractionEnabled = isEnabled
+        terminalInputView?.alpha = isEnabled ? 1 : 0.5
+    }
+
+    func requestPaste(_ text: String?) {
+        guard isLocalInputEnabled, let text else { return }
+        callbackBridge.paste(text)
+    }
+
+    override func paste(_ sender: Any?) {
+        requestPaste(UIPasteboard.general.string)
+    }
+
+    override func paste(itemProviders: [NSItemProvider]) {
+        guard isLocalInputEnabled else { return }
+        for provider in itemProviders where provider.canLoadObject(ofClass: NSString.self) {
+            provider.loadObject(ofClass: NSString.self) { [weak self] object, _ in
+                guard let text = object as? String else { return }
+                Task { @MainActor [weak self] in
+                    self?.requestPaste(text)
+                }
+            }
+            return
+        }
+    }
+
+    override func canPaste(_ itemProviders: [NSItemProvider]) -> Bool {
+        isLocalInputEnabled
+            && itemProviders.contains {
+                $0.canLoadObject(ofClass: NSString.self)
+            }
+    }
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(paste(_:)) {
+            return isLocalInputEnabled && UIPasteboard.general.hasStrings
+        }
+        return super.canPerformAction(action, withSender: sender)
     }
 
     @discardableResult

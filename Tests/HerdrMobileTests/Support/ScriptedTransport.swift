@@ -43,6 +43,9 @@ final actor ScriptedTransport: Transport {
     private var liveAttachID: UInt64?
     private var attachContinuation: AsyncThrowingStream<Data, any Error>.Continuation?
     private var attachInputTask: Task<Void, Never>?
+    private(set) var stageRequests: [PreparedImage] = []
+    private var stageOutcomes: [Result<StagedImage, ImageStagingError>] = []
+    private var stageGate: ScriptedTransportCallGate?
 
     init(
         snapshot: SessionSnapshot = .fixture(),
@@ -99,6 +102,14 @@ final actor ScriptedTransport: Transport {
     /// Makes every subsequent `closePane` throw `failure`.
     func setCloseFailure(_ failure: TransportError?) {
         closeFailure = failure
+    }
+
+    func configureImageStaging(
+        outcomes: [Result<StagedImage, ImageStagingError>],
+        gate: ScriptedTransportCallGate? = nil
+    ) {
+        stageOutcomes = outcomes
+        stageGate = gate
     }
 
     /// Pushes one event onto the live stream; false if none is live.
@@ -234,6 +245,27 @@ final actor ScriptedTransport: Transport {
         return TerminalAttachSession(output: output, input: inputContinuation) {
             await self.endAttach(id: attachID)
         }
+    }
+
+    func stageImage(
+        _ image: PreparedImage,
+        progress: @escaping @Sendable (ImageStageProgress) async -> Void
+    ) async throws -> StagedImage {
+        stageRequests.append(image)
+        await progress(
+            ImageStageProgress(transferredBytes: 0, totalBytes: image.byteCount))
+        let gate = stageGate
+        stageGate = nil
+        await gate?.waitUntilOpen()
+        try Task.checkCancellation()
+        await progress(
+            ImageStageProgress(
+                transferredBytes: image.byteCount,
+                totalBytes: image.byteCount))
+        guard !stageOutcomes.isEmpty else {
+            throw ImageStagingError.transferFailed
+        }
+        return try stageOutcomes.removeFirst().get()
     }
 
     var isConnected: Bool {
