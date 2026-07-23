@@ -146,6 +146,24 @@ struct ImageAttachStoreTests {
         #expect(!FileManager.default.fileExists(atPath: fixture.prepared.fileURL.path))
     }
 
+    @Test func cancellationAtPreparationHandoffCleansTheUnclaimedFile() async throws {
+        let preparationGate = ScriptedTransportCallGate()
+        let fixture = try await makeFixture(preparationGate: preparationGate)
+
+        fixture.store.select(DataImageSelection(data: Data([0x01])))
+        try await waitUntil("preparation should reach the gate") {
+            await preparationGate.entryCount == 1
+        }
+        fixture.store.cancel()
+        await preparationGate.open()
+        try await waitUntil("cancellation should return to idle") {
+            fixture.store.state == .idle
+        }
+
+        #expect(!FileManager.default.fileExists(atPath: fixture.prepared.fileURL.path))
+        #expect(await fixture.transport.stageRequests.isEmpty)
+    }
+
     @Test func unavailableSFTPSurfacesActionableNonRetryableFailure() async throws {
         let fixture = try await makeFixture(stageOutcomes: [
             .failure(ImageStagingError.sftpUnavailable)
@@ -255,7 +273,8 @@ struct ImageAttachStoreTests {
         stageOutcomes: [Result<StagedImage, ImageStagingError>] = [
             .success(try! StagedImage(path: "/tmp/staged/image.jpg"))
         ],
-        stageGate: ScriptedTransportCallGate? = nil
+        stageGate: ScriptedTransportCallGate? = nil,
+        preparationGate: ScriptedTransportCallGate? = nil
     ) async throws -> Fixture {
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("image-attach-\(UUID().uuidString).jpg")
@@ -266,7 +285,9 @@ struct ImageAttachStoreTests {
             pixelWidth: 16,
             pixelHeight: 16,
             byteCount: 128)
-        let preparer = ScriptedImagePreparer(prepared: prepared)
+        let preparer = ScriptedImagePreparer(
+            prepared: prepared,
+            gate: preparationGate)
         let transport = ScriptedTransport()
         await transport.configureImageStaging(outcomes: stageOutcomes, gate: stageGate)
         let clipboard = RecordingImageClipboard()
@@ -304,13 +325,16 @@ struct ImageAttachStoreTests {
 
 private actor ScriptedImagePreparer: ImagePreparing {
     let prepared: PreparedImage
+    let gate: ScriptedTransportCallGate?
 
-    init(prepared: PreparedImage) {
+    init(prepared: PreparedImage, gate: ScriptedTransportCallGate?) {
         self.prepared = prepared
+        self.gate = gate
     }
 
     func prepare(_ selection: any ImageSelection) async throws -> PreparedImage {
-        prepared
+        await gate?.waitUntilOpen()
+        return prepared
     }
 }
 

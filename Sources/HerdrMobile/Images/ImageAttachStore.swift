@@ -210,18 +210,22 @@ final class ImageAttachStore {
         generation: TerminalInputController.SessionGeneration,
         operationID: UInt64
     ) async {
+        var unclaimedImage: PreparedImage?
         do {
             let image = try await preparer.prepare(selection)
+            unclaimedImage = image
             try Task.checkCancellation()
             guard operationID == self.operationID else {
                 try? image.remove()
                 return
             }
             preparedImage = image
+            unclaimedImage = nil
             state = .uploading(
                 ImageStageProgress(transferredBytes: 0, totalBytes: image.byteCount))
             await runUploadBody(image, generation: generation, operationID: operationID)
         } catch {
+            try? unclaimedImage?.remove()
             finish(error: error, operationID: operationID)
         }
     }
