@@ -191,6 +191,7 @@ final class ImageAttachStore {
 
     func dismissResult() {
         guard !state.isBusy else { return }
+        discardRetainedPreparedImage()
         state = .idle
     }
 

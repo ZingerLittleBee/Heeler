@@ -205,14 +205,19 @@ actor ImagePreparer: ImagePreparing {
         to url: URL,
         fileManager: FileManager
     ) throws {
-        try data.write(to: url, options: .atomic)
-        try fileManager.setAttributes(
-            [.protectionKey: FileProtectionType.complete],
-            ofItemAtPath: url.path)
-        var values = URLResourceValues()
-        values.isExcludedFromBackup = true
-        var mutableURL = url
-        try mutableURL.setResourceValues(values)
+        do {
+            try data.write(to: url, options: .atomic)
+            try fileManager.setAttributes(
+                [.protectionKey: FileProtectionType.complete],
+                ofItemAtPath: url.path)
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            var mutableURL = url
+            try mutableURL.setResourceValues(values)
+        } catch {
+            try? fileManager.removeItem(at: url)
+            throw error
+        }
     }
 
     private static func sourceDimensions(_ source: CGImageSource) throws -> (Int, Int) {
@@ -270,10 +275,12 @@ actor ImagePreparer: ImagePreparing {
         }
         var candidate = image
         while candidate.width >= minimumDimension, candidate.height >= minimumDimension {
+            try Task.checkCancellation()
             switch format {
             case .jpeg:
                 var smallestData: Data?
                 for quality in jpegQualities {
+                    try Task.checkCancellation()
                     let data = try encode(candidate, format: format, quality: quality)
                     if data.count <= maximumByteCount {
                         return EncodedImage(image: candidate, data: data)

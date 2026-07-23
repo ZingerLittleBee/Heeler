@@ -102,6 +102,21 @@ struct ImageAttachStoreTests {
         #expect(!FileManager.default.fileExists(atPath: fixture.prepared.fileURL.path))
     }
 
+    @Test func dismissingARetryableFailureAbandonsItsPreparedImage() async throws {
+        let fixture = try await makeFixture(stageOutcomes: [
+            .failure(ImageStagingError.transferFailed)
+        ])
+
+        fixture.store.select(DataImageSelection(data: Data([0x01])))
+        try await waitUntil("upload should fail") { fixture.store.state.isFailed }
+        #expect(FileManager.default.fileExists(atPath: fixture.prepared.fileURL.path))
+
+        fixture.store.dismissResult()
+
+        #expect(fixture.store.state == .idle)
+        #expect(!FileManager.default.fileExists(atPath: fixture.prepared.fileURL.path))
+    }
+
     @Test func backgroundCancelsWithoutAutomaticForegroundRetry() async throws {
         let stageGate = ScriptedTransportCallGate()
         let fixture = try await makeFixture(stageGate: stageGate)

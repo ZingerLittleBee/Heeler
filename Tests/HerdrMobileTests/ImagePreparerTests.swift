@@ -116,6 +116,24 @@ struct ImagePreparerTests {
         #expect(prepared.pixelHeight < 512)
     }
 
+    @Test func impossibleEncodedByteLimitFailsWithoutLeavingOutput() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = try encodedImage(
+            width: 64, height: 64, alpha: false, type: .jpeg)
+        let preparer = ImagePreparer(
+            configuration: .init(
+                maximumLongEdge: 4_096,
+                maximumEncodedByteCount: 1,
+                maximumSourcePixelCount: 200_000_000),
+            directory: directory)
+
+        await #expect(throws: ImagePreparationError.unableToProduceBoundedOutput) {
+            _ = try await preparer.prepare(DataImageSelection(data: source))
+        }
+        #expect((try FileManager.default.contentsOfDirectory(atPath: directory.path)).isEmpty)
+    }
+
     @Test func oversizedDecodedInputsAreRejectedBeforeFullResolutionRendering() async throws {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
