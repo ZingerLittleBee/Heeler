@@ -117,6 +117,29 @@ struct AttachTerminalStoreTests {
         #expect(input.liveGeneration == nil)
     }
 
+    @Test func remoteOutputContinuesWhileLocalInputIsPaused() async throws {
+        let transport = ScriptedTransport()
+        let input = TerminalInputController()
+        let (store, captured) = makeStore(transport: transport, input: input)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("store should go live") { store.status == .live }
+
+        input.pause()
+        store.send(Data("blocked".utf8))
+        await transport.emitAttachOutput(Data("still rendering".utf8))
+        try await waitUntil("remote output should keep reaching the terminal feed") {
+            captured.text == "still rendering"
+        }
+
+        #expect(input.isPaused)
+        #expect(await transport.attachInputs.isEmpty)
+        #expect(captured.text == "still rendering")
+
+        input.resume()
+        await store.stop()
+    }
+
     @Test func reattachAdvancesTheInputSessionGeneration() async throws {
         let transport = ScriptedTransport()
         let input = TerminalInputController()

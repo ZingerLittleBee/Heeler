@@ -213,6 +213,38 @@ struct ImageAttachStoreTests {
         #expect(await fixture.transport.stageRequests.count == 1)
     }
 
+    @Test func explicitInsertPathTargetsTheCurrentLiveSession() async throws {
+        let stageGate = ScriptedTransportCallGate()
+        let fixture = try await makeFixture(stageGate: stageGate)
+        let currentSessionBytes = DataBox()
+
+        fixture.store.select(DataImageSelection(data: Data([0x01])))
+        try await waitUntil("upload should reach the gate") {
+            await stageGate.entryCount == 1
+        }
+        fixture.input.endSession(fixture.generation)
+        let currentGeneration = fixture.input.beginSession {
+            currentSessionBytes.value.append($0)
+        }
+        await stageGate.open()
+        try await waitUntil("image attach should complete without automatic insertion") {
+            fixture.store.state.isCompleted
+        }
+        #expect(fixture.store.state.completedResult?.inserted == false)
+        #expect(currentSessionBytes.value.isEmpty)
+
+        fixture.store.insertPath()
+
+        #expect(fixture.input.liveGeneration == currentGeneration)
+        #expect(
+            currentSessionBytes.value
+                == Data("/tmp/staged/image.jpg ".utf8))
+        #expect(!currentSessionBytes.value.contains(0x0A))
+        #expect(!currentSessionBytes.value.contains(0x0D))
+        #expect(fixture.store.state.completedResult?.inserted == true)
+        #expect(await fixture.transport.stageRequests.count == 1)
+    }
+
     @Test func failureOfBothPostStageActionsKeepsRecoverableResult() async throws {
         let stageGate = ScriptedTransportCallGate()
         let fixture = try await makeFixture(stageGate: stageGate)

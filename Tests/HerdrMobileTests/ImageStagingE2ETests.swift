@@ -1,4 +1,5 @@
 import Foundation
+import Logging
 import Testing
 
 @testable import HerdrMobile
@@ -11,6 +12,67 @@ import Testing
     .serialized,
     .timeLimit(.minutes(1)))
 struct ImageStagingE2ETests {
+    @Test func stagingAndCompensationDoNotLogRemotePaths() async throws {
+        let environment = try #require(LocalSSHTestEnvironment.current)
+        let logRecorder = SFTPLogRecorder()
+        LoggingSystem.bootstrap { _ in
+            SFTPPathCapturingLogHandler(recorder: logRecorder)
+        }
+
+        let identifier = UUID().uuidString.lowercased()
+        let localURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("image-stage-log-\(identifier).png")
+        let bytes = Data(repeating: 0x7A, count: 1_024)
+        try bytes.write(to: localURL)
+        defer { try? FileManager.default.removeItem(at: localURL) }
+        let image = PreparedImage(
+            fileURL: localURL,
+            format: .png,
+            pixelWidth: 32,
+            pixelHeight: 32,
+            byteCount: Int64(bytes.count))
+
+        let successPrefix = "herdr-mobile-log-success-\(identifier)"
+        let successDirectoryCommand =
+            "/bin/sh -c 'umask 077; "
+            + "directory=$(mktemp -d \"/tmp/\(successPrefix).XXXXXXXX\") || exit 1; "
+            + "printf \"__HERDR_MOBILE_STAGE_DIR__=%s\\n\" \"$directory\"'"
+        let successTransport = try await SSHTransport.connect(
+            settings: environment.makeSettings(
+                socket: .absolutePath("/tmp/herdr-image-stage-unused.sock"),
+                stageDirectoryCommand: successDirectoryCommand))
+        let staged = try await successTransport.stageImage(image) { _ in }
+        let successDirectory = staged.fileURL.deletingLastPathComponent()
+        defer { try? FileManager.default.removeItem(at: successDirectory) }
+        try await successTransport.close()
+
+        let failurePrefix = "herdr-mobile-log-failure-\(identifier)"
+        let failureDirectoryCommand =
+            "/bin/sh -c 'umask 077; "
+            + "directory=$(mktemp -d \"/tmp/\(failurePrefix).XXXXXXXX\") || exit 1; "
+            + "chmod 0755 \"$directory\" || exit 1; "
+            + "printf \"__HERDR_MOBILE_STAGE_DIR__=%s\\n\" \"$directory\"'"
+        let failureTransport = try await SSHTransport.connect(
+            settings: environment.makeSettings(
+                socket: .absolutePath("/tmp/herdr-image-stage-unused.sock"),
+                stageDirectoryCommand: failureDirectoryCommand))
+        await #expect(throws: ImageStagingError.permissionEnforcementFailed) {
+            _ = try await failureTransport.stageImage(image) { _ in }
+        }
+        try await failureTransport.close()
+        let failureDirectory = try #require(
+            FileManager.default.contentsOfDirectory(
+                at: URL(fileURLWithPath: "/tmp"),
+                includingPropertiesForKeys: nil
+            ).first { $0.lastPathComponent.hasPrefix(failurePrefix) })
+        defer { try? FileManager.default.removeItem(at: failureDirectory) }
+
+        let messages = logRecorder.messages
+        #expect(!messages.contains { $0.contains(successPrefix) })
+        #expect(!messages.contains { $0.contains(staged.path) })
+        #expect(!messages.contains { $0.contains(failurePrefix) })
+    }
+
     @Test func streamsPrivateFileAndAtomicallyRenamesThePart() async throws {
         let environment = try #require(LocalSSHTestEnvironment.current)
         let localURL = FileManager.default.temporaryDirectory
@@ -249,5 +311,36 @@ struct ImageStagingE2ETests {
         func record(_ progress: ImageStageProgress) {
             values.append(progress)
         }
+    }
+}
+
+private final class SFTPLogRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String] = []
+
+    var messages: [String] {
+        lock.withLock { storage }
+    }
+
+    func record(_ message: String) {
+        lock.withLock {
+            storage.append(message)
+        }
+    }
+}
+
+private struct SFTPPathCapturingLogHandler: LogHandler {
+    let recorder: SFTPLogRecorder
+    var metadataProvider: Logger.MetadataProvider?
+    var metadata: Logger.Metadata = [:]
+    var logLevel: Logger.Level = .trace
+
+    subscript(metadataKey key: String) -> Logger.Metadata.Value? {
+        get { metadata[key] }
+        set { metadata[key] = newValue }
+    }
+
+    func log(event: LogEvent) {
+        recorder.record(event.message.description)
     }
 }

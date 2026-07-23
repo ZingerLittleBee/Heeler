@@ -3,6 +3,7 @@
 // otherwise be an error. The actor still serializes all access to the client.
 @preconcurrency import Citadel
 import Foundation
+import Logging
 import NIOCore
 @preconcurrency import NIOSSH
 
@@ -67,6 +68,13 @@ private struct HerdrSessionListResponse: Decodable {
 actor SSHTransport: Transport {
     /// The herdr wire protocol version this build speaks (herdr 0.7.5).
     static let supportedProtocolVersion = 17
+
+    /// Citadel logs full SFTP paths at info, debug, and trace levels. Staging
+    /// paths are private diagnostics data, so every SFTP channel uses a
+    /// per-instance sink rather than Citadel's stderr-backed default logger.
+    private static let restrictedSFTPLogger = Logger(
+        label: "dev.herdr.mobile.sftp",
+        factory: { _ in SwiftLogNoOpLogHandler() })
 
     /// Exec channels are SSH session channels, capped by sshd's MaxSessions
     /// (default 10) per connection. Bound at 8 to leave headroom for the
@@ -386,7 +394,7 @@ actor SSHTransport: Transport {
     ) async throws -> StagedImage {
         let sftp: SFTPClient
         do {
-            sftp = try await client.openSFTP()
+            sftp = try await client.openSFTP(logger: Self.restrictedSFTPLogger)
         } catch {
             if Task.isCancelled {
                 throw ImageStagingError.cancelled
@@ -517,7 +525,9 @@ actor SSHTransport: Transport {
     }
 
     private func bestEffortRemovePart(at path: String) async {
-        guard let sftp = try? await client.openSFTP() else { return }
+        guard
+            let sftp = try? await client.openSFTP(logger: Self.restrictedSFTPLogger)
+        else { return }
         try? await sftp.remove(at: path)
         try? await sftp.close()
     }
