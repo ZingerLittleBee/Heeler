@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		A2B3C4D5E6F7012345678901 /* AgentAttachStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F7012345678902 /* AgentAttachStore.swift */; };
+		A3B4C5D6E7F8012345678901 /* HostConsoleProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3B4C5D6E7F8012345678902 /* HostConsoleProjection.swift */; };
 		006767F8F679B28FDC853D69 /* ConsoleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C44D9663DAB1E8942FBFCD1C /* ConsoleView.swift */; };
 		017151AEC5D404665A3FAB41 /* HostDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE12859365BC7A57B9EC256A /* HostDraft.swift */; };
 		033E8DCA2F64ABE6CA898758 /* EventsSessionSubscriptionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CA5E9DDE1AB0F68F6EC56EB /* EventsSessionSubscriptionsTests.swift */; };
@@ -120,6 +121,7 @@
 
 /* Begin PBXFileReference section */
 		A2B3C4D5E6F7012345678902 /* AgentAttachStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentAttachStore.swift; sourceTree = "<group>"; };
+		A3B4C5D6E7F8012345678902 /* HostConsoleProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostConsoleProjection.swift; sourceTree = "<group>"; };
 		02807C329084D58137461EF8 /* TransportFailureModesE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportFailureModesE2ETests.swift; sourceTree = "<group>"; };
 		079394F4C6AC8FE4D7B0779C /* ConsoleStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleStoreTests.swift; sourceTree = "<group>"; };
 		08E14A4298DB015E6477F789 /* StartAgentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartAgentStore.swift; sourceTree = "<group>"; };
@@ -394,6 +396,7 @@
 				498ECBCD631F9734C28861EA /* ConsoleAgent.swift */,
 				A95E62CA572C71B2C746E972 /* ConsoleStore.swift */,
 				C44D9663DAB1E8942FBFCD1C /* ConsoleView.swift */,
+				A3B4C5D6E7F8012345678902 /* HostConsoleProjection.swift */,
 				08E14A4298DB015E6477F789 /* StartAgentStore.swift */,
 				18AE2DC88A745FB457350957 /* StartAgentView.swift */,
 			);
@@ -532,6 +535,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A2B3C4D5E6F7012345678901 /* AgentAttachStore.swift in Sources */,
+				A3B4C5D6E7F8012345678901 /* HostConsoleProjection.swift in Sources */,
 				6CBE7E0961FFD970A614ED4B /* AgentCardView.swift in Sources */,
 				2CE9115816E7CE945ABCF7A8 /* AgentDetailView.swift in Sources */,
 				225ECBDC69A7785559BC4D20 /* AttachTerminalStore.swift in Sources */,
