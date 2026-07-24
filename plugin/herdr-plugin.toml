@@ -1,6 +1,6 @@
 id = "herdr-mobile.pairing"
 name = "Herdr Mobile Pairing"
-version = "0.2.0"
+version = "0.3.0"
 min_herdr_version = "0.7.5"
 description = "Pair a herdr-mobile device by scanning a QR Pairing Code"
 platforms = ["linux", "macos"]
@@ -20,3 +20,7 @@ id = "pair"
 title = "Pair device"
 placement = "popup"
 command = ["node", "src/pair-popup.js"]
+
+[[events]]
+on = "pane.agent_status_changed"
+command = ["node", "src/notify-hook.js"]

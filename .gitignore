@@ -12,6 +12,13 @@ DerivedData/
 # Node (pairing plugin)
 plugin/node_modules/
 
+# Push Relay (Cloudflare Worker): local secrets and wrangler state.
+# The APNs .p8 is a deploy-time secret and must never land in the repo.
+relay/.dev.vars
+relay/.wrangler/
+relay/node_modules/
+*.p8
+
 # macOS
 .DS_Store
 

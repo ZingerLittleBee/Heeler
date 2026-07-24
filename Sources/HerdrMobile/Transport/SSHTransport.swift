@@ -11,6 +11,10 @@ import NIOCore
 struct SSHTransportSettings: Sendable {
     static let defaultSessionListCommand = "herdr session list --json"
 
+    /// The herdr-mobile plugin (ADR 0007/0008) whose config dir holds the
+    /// Notification Registration file.
+    static let notificationPluginID = "herdr-mobile.pairing"
+
     var host: String
     var port: Int
     var username: String
@@ -51,6 +55,19 @@ struct SSHTransportSettings: Sendable {
         "/bin/sh -c 'umask 077; "
         + "directory=$(mktemp -d \"${TMPDIR:-/tmp}/herdr-mobile.XXXXXXXX\") || exit 1; "
         + "printf \"__HERDR_MOBILE_STAGE_DIR__=%s\\n\" \"$directory\"'"
+    /// Official Host-local CLI for listing installed plugins (offline, like
+    /// session discovery). Notification Registration gates on the
+    /// herdr-mobile plugin being installed and enabled before touching its
+    /// config dir — `herdr plugin config-dir` happily prints (and creates) a
+    /// directory for any id, so it cannot carry the "is it installed" check.
+    var pluginListCommand: String = "herdr plugin list --json"
+    /// Prints the marker-delimited config dir of the herdr-mobile plugin;
+    /// herdr creates the directory if missing. Runs under POSIX sh because
+    /// login shells do not share substitution syntax; the marker makes
+    /// login-shell noise harmless.
+    var notificationConfigDirCommand: String =
+        "/bin/sh -c 'printf \"__HERDR_MOBILE_PLUGIN_CONFIG_DIR__=%s\\n\" "
+        + "\"$(herdr plugin config-dir \(SSHTransportSettings.notificationPluginID))\"'"
     /// Per-request deadline covering the queue wait and the exec exchange;
     /// on expiry the request fails with `.timedOut` and its channel is
     /// closed. Short in tests, generous by default: a hung host should
@@ -89,6 +106,8 @@ actor SSHTransport: Transport {
     private let attachCommand: String
     private let homeCommand: String
     private let stageDirectoryCommand: String
+    private let pluginListCommand: String
+    private let notificationConfigDirCommand: String
     private let requestTimeout: Duration
     private let execChannelBudget: SSHChannelBudget
     /// Remote home directory resolution, resolved over exec once per Host:
@@ -96,6 +115,11 @@ actor SSHTransport: Transport {
     /// for the connection's lifetime, failure is not (the next request
     /// retries).
     private let homeDirectory = SharedAsyncOperation<String>(cachesSuccess: true)
+    /// The herdr-mobile plugin's config dir, resolved over exec once per
+    /// Host like the home directory. Failure (plugin missing, probe broken)
+    /// is not cached: installing the plugin and retrying must work on the
+    /// same connection.
+    private let notificationConfigDirectory = SharedAsyncOperation<String>(cachesSuccess: true)
     /// Cold-start wake; concurrent refused requests share one wake instead
     /// of racing exec channels, and a later cold start wakes again.
     private let wake = SharedAsyncOperation<Void>(cachesSuccess: false)
@@ -109,6 +133,7 @@ actor SSHTransport: Transport {
         client: SSHClient, socketLocation: HerdrSocketLocation, socatPath: String,
         wakeCommand: String, sessionListCommand: String, attachCommand: String,
         homeCommand: String, stageDirectoryCommand: String,
+        pluginListCommand: String, notificationConfigDirCommand: String,
         requestTimeout: Duration
     ) {
         self.client = client
@@ -119,6 +144,8 @@ actor SSHTransport: Transport {
         self.attachCommand = attachCommand
         self.homeCommand = homeCommand
         self.stageDirectoryCommand = stageDirectoryCommand
+        self.pluginListCommand = pluginListCommand
+        self.notificationConfigDirCommand = notificationConfigDirCommand
         self.requestTimeout = requestTimeout
         execChannelBudget = SSHChannelBudget(capacity: Self.maxConcurrentExecChannels)
     }
@@ -152,6 +179,8 @@ actor SSHTransport: Transport {
             wakeCommand: settings.wakeCommand, sessionListCommand: settings.sessionListCommand,
             attachCommand: settings.attachCommand, homeCommand: settings.homeCommand,
             stageDirectoryCommand: settings.stageDirectoryCommand,
+            pluginListCommand: settings.pluginListCommand,
+            notificationConfigDirCommand: settings.notificationConfigDirCommand,
             requestTimeout: settings.requestTimeout)
     }
 
@@ -409,7 +438,7 @@ actor SSHTransport: Transport {
             imageStageClients[operationID] = nil
             try? await sftp.close()
             if let partPath {
-                await bestEffortRemovePart(at: partPath)
+                await bestEffortRemoveRemoteFile(at: partPath)
             }
             if Task.isCancelled {
                 throw ImageStagingError.cancelled
@@ -483,7 +512,7 @@ actor SSHTransport: Transport {
         try? await sftp.close()
     }
 
-    private func bestEffortRemovePart(at path: String) async {
+    private func bestEffortRemoveRemoteFile(at path: String) async {
         guard
             let sftp = try? await client.openSFTP(logger: Self.restrictedSFTPLogger)
         else { return }
@@ -493,6 +522,226 @@ actor SSHTransport: Transport {
 
     private static func permissionBits(_ permissions: UInt32?) -> UInt32? {
         permissions.map { $0 & 0o777 }
+    }
+
+    // MARK: Notification plugin config files (#72, #76)
+    //
+    // Both the registration file (notifications.json, registration file v1)
+    // and the plugin config (notify.json, the custom Push Relay base URL)
+    // live inside the herdr-mobile plugin's config dir (plugin/README.md).
+    // Writes are atomic: the content lands in a same-directory temp file over
+    // SFTP, then one exec `mv -f` renames it over the live file — SFTP v3
+    // RENAME refuses to overwrite, and mv on the same filesystem is a rename
+    // syscall. Both files share the plugin gate and the atomic-replace dance.
+
+    static let notificationRegistrationFileName = "notifications.json"
+    static let notificationConfigFileName = "notify.json"
+
+    func readNotificationRegistration() async throws -> Data? {
+        try await readPluginConfigFile(named: Self.notificationRegistrationFileName)
+    }
+
+    func replaceNotificationRegistration(_ contents: Data) async throws {
+        try await replacePluginConfigFile(
+            named: Self.notificationRegistrationFileName, contents: contents)
+    }
+
+    func readNotificationConfig() async throws -> Data? {
+        try await readPluginConfigFile(named: Self.notificationConfigFileName)
+    }
+
+    func replaceNotificationConfig(_ contents: Data) async throws {
+        try await replacePluginConfigFile(
+            named: Self.notificationConfigFileName, contents: contents)
+    }
+
+    private func readPluginConfigFile(named name: String) async throws -> Data? {
+        try await Self.withRequestDeadline(requestTimeout) {
+            let path = try await self.pluginConfigFilePath(named: name)
+            return try await self.execChannelBudget.withChannel {
+                try await self.readPluginFile(at: path)
+            }
+        }
+    }
+
+    private func replacePluginConfigFile(named name: String, contents: Data) async throws {
+        try await Self.withRequestDeadline(requestTimeout) {
+            let path = try await self.pluginConfigFilePath(named: name)
+            let temporaryPath = "\(path).tmp-\(UUID().uuidString.lowercased())"
+            guard
+                let quotedTemporary = RemoteShellPath.quotedAbsolute(temporaryPath),
+                let quotedFinal = RemoteShellPath.quotedAbsolute(path)
+            else {
+                throw NotificationRegistrationError.writeFailed(
+                    detail: "The plugin config path cannot be quoted for the remote shell.")
+            }
+            try await self.execChannelBudget.withChannel {
+                try await self.writePluginTemporaryFile(contents, at: temporaryPath)
+            }
+            do {
+                try await self.execChannelBudget.withChannel {
+                    _ = try await self.client.executeCommand(
+                        Self.cLocaleCommand("mv -f \(quotedTemporary) \(quotedFinal)"))
+                }
+            } catch {
+                await self.bestEffortRemoveRemoteFile(at: temporaryPath)
+                if error is CancellationError { throw TransportError.cancelled }
+                throw NotificationRegistrationError.writeFailed(
+                    detail: String(describing: error))
+            }
+        }
+    }
+
+    private func readPluginFile(at path: String) async throws -> Data? {
+        let sftp: SFTPClient
+        do {
+            sftp = try await client.openSFTP(logger: Self.restrictedSFTPLogger)
+        } catch {
+            if error is CancellationError { throw TransportError.cancelled }
+            throw NotificationRegistrationError.readFailed(detail: String(describing: error))
+        }
+        do {
+            let file: SFTPFile
+            do {
+                file = try await sftp.openFile(filePath: path, flags: .read)
+            } catch let error where Self.isNoSuchFile(error) {
+                // The plugin holds no such file yet (no device registered, or
+                // no config written) — the caller reads nil as "start empty".
+                try? await sftp.close()
+                return nil
+            }
+            let buffer = try await file.readAll()
+            try await file.close()
+            try await sftp.close()
+            return Data(buffer.readableBytesView)
+        } catch {
+            try? await sftp.close()
+            if error is CancellationError { throw TransportError.cancelled }
+            throw NotificationRegistrationError.readFailed(detail: String(describing: error))
+        }
+    }
+
+    private func writePluginTemporaryFile(_ contents: Data, at path: String) async throws {
+        let sftp: SFTPClient
+        do {
+            sftp = try await client.openSFTP(logger: Self.restrictedSFTPLogger)
+        } catch {
+            if error is CancellationError { throw TransportError.cancelled }
+            throw NotificationRegistrationError.writeFailed(detail: String(describing: error))
+        }
+        do {
+            var creationAttributes = SFTPFileAttributes()
+            creationAttributes.permissions = 0o600
+            let file = try await sftp.openFile(
+                filePath: path,
+                flags: [.write, .create, .forceCreate],
+                attributes: creationAttributes)
+            do {
+                var buffer = ByteBufferAllocator().buffer(capacity: contents.count)
+                buffer.writeBytes(contents)
+                try await file.write(buffer, at: 0)
+                try await file.close()
+            } catch {
+                try? await file.close()
+                throw error
+            }
+            try await sftp.close()
+        } catch {
+            try? await sftp.close()
+            if error is CancellationError { throw TransportError.cancelled }
+            throw NotificationRegistrationError.writeFailed(detail: String(describing: error))
+        }
+    }
+
+    /// Whether an SFTP failure means "the file does not exist". Citadel
+    /// surfaces the raw `SFTPMessage.Status` from `openFile` (and wraps
+    /// other statuses in `SFTPError.errorStatus`), so both shapes count.
+    private static func isNoSuchFile(_ error: any Error) -> Bool {
+        switch error {
+        case let status as SFTPMessage.Status:
+            status.errorCode == .noSuchFile
+        case SFTPError.errorStatus(let status):
+            status.errorCode == .noSuchFile
+        default:
+            false
+        }
+    }
+
+    private func pluginConfigFilePath(named name: String) async throws -> String {
+        let directory = try await notificationConfigDirectory.value {
+            try await self.resolveNotificationConfigDirectory()
+        }
+        return "\(directory)/\(name)"
+    }
+
+    /// Verifies the plugin is installed, then resolves its config dir over
+    /// exec. Order matters: `herdr plugin config-dir` prints (and creates) a
+    /// directory for any id whatsoever, so it cannot detect absence itself.
+    private func resolveNotificationConfigDirectory() async throws -> String {
+        let listOutput = try await runRegistrationProbe(command: pluginListCommand)
+        try requireNotificationPlugin(in: listOutput)
+        let output = try await runRegistrationProbe(command: notificationConfigDirCommand)
+        guard
+            let directory = Self.markerValue(
+                in: output, prefix: Self.pluginConfigDirOutputPrefix),
+            RemoteShellPath.isQuotableAbsolute(directory)
+        else {
+            throw NotificationRegistrationError.pluginProbeFailed(
+                detail: "config-dir command printed: \(Self.preview(output))")
+        }
+        return directory
+    }
+
+    private func requireNotificationPlugin(in listOutput: Data) throws {
+        let list: PluginListEnvelope
+        do {
+            list = try JSONDecoder().decode(PluginListEnvelope.self, from: listOutput)
+        } catch {
+            throw NotificationRegistrationError.pluginProbeFailed(
+                detail: "plugin list returned invalid JSON: \(Self.preview(listOutput))")
+        }
+        let installed = list.result.plugins.contains { plugin in
+            plugin.pluginID == SSHTransportSettings.notificationPluginID
+                && plugin.enabled != false
+        }
+        guard installed else {
+            throw NotificationRegistrationError.pluginNotInstalled
+        }
+    }
+
+    private func runRegistrationProbe(command: String) async throws -> Data {
+        try await execChannelBudget.withChannel {
+            do {
+                let output = try await self.client.executeCommand(
+                    Self.cLocaleCommand(command))
+                return Data(output.readableBytesView)
+            } catch is CancellationError {
+                throw TransportError.cancelled
+            } catch {
+                throw NotificationRegistrationError.pluginProbeFailed(
+                    detail: String(describing: error))
+            }
+        }
+    }
+
+    /// `herdr plugin list --json` envelope, parsed leniently: entries
+    /// missing the fields we key on are skipped, not fatal.
+    private struct PluginListEnvelope: Decodable {
+        struct ResultBody: Decodable {
+            let plugins: [Entry]
+        }
+
+        struct Entry: Decodable {
+            let pluginID: String?
+            let enabled: Bool?
+
+            private enum CodingKeys: String, CodingKey {
+                case pluginID = "plugin_id"
+                case enabled
+            }
+        }
+
+        let result: ResultBody
     }
 
     // MARK: Events channel (#4)
@@ -1165,34 +1414,36 @@ actor SSHTransport: Transport {
 
     private static let homeOutputPrefix = "__HERDR_MOBILE_HOME__="
     private static let stageDirectoryOutputPrefix = "__HERDR_MOBILE_STAGE_DIR__="
+    private static let pluginConfigDirOutputPrefix = "__HERDR_MOBILE_PLUGIN_CONFIG_DIR__="
 
-    private static func parseRemoteHome(_ output: ByteBuffer) throws -> String {
-        let text = String(buffer: output)
-        let home = text.split(separator: "\n", omittingEmptySubsequences: false)
+    /// The value of the last marker-prefixed line in an exec command's
+    /// output. Markers keep login-shell stdout noise harmless; the last
+    /// occurrence wins so a shell echoing the command line cannot spoof an
+    /// earlier one.
+    private static func markerValue(in output: Data, prefix: String) -> String? {
+        String(decoding: output, as: UTF8.self)
+            .split(separator: "\n", omittingEmptySubsequences: false)
             .reversed()
-            .first { $0.hasPrefix(homeOutputPrefix) }
+            .first { $0.hasPrefix(prefix) }
             .map { line in
-                var value = String(line.dropFirst(homeOutputPrefix.count))
+                var value = String(line.dropFirst(prefix.count))
                 if value.last == "\r" { value.removeLast() }
                 return value
             }
+    }
+
+    private static func parseRemoteHome(_ output: ByteBuffer) throws -> String {
+        let home = markerValue(in: Data(output.readableBytesView), prefix: homeOutputPrefix)
         guard let home, RemoteShellPath.isQuotableAbsolute(home) else {
             throw TransportError.homeDirectoryUnresolvable(
-                detail: "home command printed: \(text.prefix(200))")
+                detail: "home command printed: \(String(buffer: output).prefix(200))")
         }
         return home
     }
 
     private static func parseStageDirectory(_ output: ByteBuffer) throws -> String {
-        let text = String(buffer: output)
-        let directory = text.split(separator: "\n", omittingEmptySubsequences: false)
-            .reversed()
-            .first { $0.hasPrefix(stageDirectoryOutputPrefix) }
-            .map { line in
-                var value = String(line.dropFirst(stageDirectoryOutputPrefix.count))
-                if value.last == "\r" { value.removeLast() }
-                return value
-            }
+        let directory = markerValue(
+            in: Data(output.readableBytesView), prefix: stageDirectoryOutputPrefix)
         guard let directory else {
             throw ImageStagingError.remoteTemporaryDirectoryFailed
         }

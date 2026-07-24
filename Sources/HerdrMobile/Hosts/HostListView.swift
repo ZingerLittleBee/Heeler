@@ -237,6 +237,7 @@ private struct HostRow: View {
 /// Keeps previews out of the real Keychain.
 private final class PreviewSecretStore: SecretStore {
     func read(account: String) throws -> Data? { nil }
+    func readAll() throws -> [String: Data] { [:] }
     func write(_ secret: Data, account: String) throws {}
     func removeSecret(account: String) throws {}
 }

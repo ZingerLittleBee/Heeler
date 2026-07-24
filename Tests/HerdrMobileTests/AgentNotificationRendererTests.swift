@@ -1,0 +1,133 @@
+import Foundation
+import Testing
+
+@testable import HerdrMobile
+
+/// The service extension's whole job as a pure function: pick the right
+/// Notification Key by the envelope's kid, decrypt, and rewrite the alert to
+/// Host, agent kind, and status — or degrade to the generic fallback banner
+/// on any undecryptable push (#71). Envelopes come from the shared vectors,
+/// so this stays in lockstep with the plugin's encrypt direction.
+@Suite("Agent notification renderer")
+struct AgentNotificationRendererTests {
+    private static let vectors = NotificationVectorFile.shared
+
+    private static func record(
+        forVector vector: NotificationVectorFile.Valid, named hostName: String
+    ) throws -> NotificationKeyRecord {
+        let key = try #require(Data(base64URLEncoded: vector.key))
+        return NotificationKeyRecord(hostID: UUID(), hostName: hostName, key: key)
+    }
+
+    private static func vector(named name: String) throws -> NotificationVectorFile.Valid {
+        try #require(vectors.valid.first { $0.name == name })
+    }
+
+    @Test func rewritesABlockedPushToHostKindAndStatus() throws {
+        let vector = try Self.vector(named: "blocked claude agent")
+        let record = try Self.record(forVector: vector, named: "mac-studio")
+
+        let alert = AgentNotificationRenderer.alert(
+            userInfo: ["envelope": vector.envelope], keys: [record])
+
+        #expect(alert.title == "claude on mac-studio")
+        #expect(alert.body == "Blocked: waiting for your input")
+    }
+
+    @Test func rewritesADonePush() throws {
+        let vector = try Self.vector(named: "done codex agent under a second key")
+        let record = try Self.record(forVector: vector, named: "vps-1")
+
+        let alert = AgentNotificationRenderer.alert(
+            userInfo: ["envelope": vector.envelope], keys: [record])
+
+        #expect(alert.title == "codex on vps-1")
+        #expect(alert.body == "Done: the agent finished")
+    }
+
+    /// The status set is open on the wire; an unrecognized value must still
+    /// render factually rather than fall back or crash.
+    @Test func passesAnUnrecognizedStatusThrough() throws {
+        let vector = try Self.vector(named: "unrecognized status string passes through leniently")
+        let record = try Self.record(forVector: vector, named: "mac-studio")
+
+        let alert = AgentNotificationRenderer.alert(
+            userInfo: ["envelope": vector.envelope], keys: [record])
+
+        #expect(alert.body == "Status: exited")
+    }
+
+    /// Several registered Hosts means several Notification Keys; the kid in
+    /// the cleartext header must select the right one — and thus the right
+    /// Host name — without trial decryption.
+    @Test func selectsTheRightKeyAmongSeveralHostsByKid() throws {
+        let blocked = try Self.vector(named: "blocked claude agent")
+        let done = try Self.vector(named: "done codex agent under a second key")
+        let records = [
+            try Self.record(forVector: blocked, named: "mac-studio"),
+            try Self.record(forVector: done, named: "vps-1"),
+        ]
+
+        let blockedAlert = AgentNotificationRenderer.alert(
+            userInfo: ["envelope": blocked.envelope], keys: records)
+        let doneAlert = AgentNotificationRenderer.alert(
+            userInfo: ["envelope": done.envelope], keys: records)
+
+        #expect(blockedAlert.title == "claude on mac-studio")
+        #expect(doneAlert.title == "codex on vps-1")
+    }
+
+    @Test func unknownKidFallsBackToTheGenericBanner() throws {
+        let blocked = try Self.vector(named: "blocked claude agent")
+        let done = try Self.vector(named: "done codex agent under a second key")
+        // Only the *other* Host's key is registered, so the kid matches nothing.
+        let records = [try Self.record(forVector: done, named: "vps-1")]
+
+        let alert = AgentNotificationRenderer.alert(
+            userInfo: ["envelope": blocked.envelope], keys: records)
+
+        #expect(alert == AgentNotificationRenderer.fallback)
+    }
+
+    @Test func noRegisteredKeysFallsBack() throws {
+        let vector = try Self.vector(named: "blocked claude agent")
+
+        let alert = AgentNotificationRenderer.alert(
+            userInfo: ["envelope": vector.envelope], keys: [])
+
+        #expect(alert == AgentNotificationRenderer.fallback)
+    }
+
+    /// Every invalid vector — broken framing, future version, tampered
+    /// material, wrong key, garbage plaintext — must degrade to the generic
+    /// fallback banner even when a plausible key is registered.
+    @Test(arguments: vectors.invalid)
+    func undecryptableVectorFallsBack(vector: NotificationVectorFile.Invalid) throws {
+        let key = try #require(Data(base64URLEncoded: vector.key))
+        let record = NotificationKeyRecord(hostID: UUID(), hostName: "mac-studio", key: key)
+
+        let alert = AgentNotificationRenderer.alert(
+            userInfo: ["envelope": vector.envelope], keys: [record])
+
+        #expect(alert == AgentNotificationRenderer.fallback, "\(vector.name)")
+    }
+
+    @Test func pushWithoutAnEnvelopeFallsBack() throws {
+        let vector = try Self.vector(named: "blocked claude agent")
+        let record = try Self.record(forVector: vector, named: "mac-studio")
+
+        #expect(
+            AgentNotificationRenderer.alert(userInfo: [:], keys: [record])
+                == AgentNotificationRenderer.fallback)
+        #expect(
+            AgentNotificationRenderer.alert(userInfo: ["envelope": 42], keys: [record])
+                == AgentNotificationRenderer.fallback)
+    }
+
+    /// The fallback copy mirrors the relay's generic wrap, so an intercepted
+    /// or forged push never renders attacker-chosen text.
+    @Test func fallbackCopyIsGeneric() {
+        #expect(AgentNotificationRenderer.fallback.title == "herdr")
+        #expect(AgentNotificationRenderer.fallback.body == "Agent update")
+    }
+}

@@ -28,7 +28,7 @@ struct PairingCodeTests {
 
         if let expectedSeed = vector.payload.bootstrapSeed {
             let bootstrap = try #require(code.bootstrap)
-            #expect(base64URL(bootstrap.seed) == expectedSeed)
+            #expect(bootstrap.seed.base64URLEncodedString() == expectedSeed)
             let expectedExpiry = try #require(vector.payload.expiresAt)
             #expect(bootstrap.expiresAt == Date(timeIntervalSince1970: TimeInterval(expectedExpiry)))
         } else {
@@ -44,12 +44,5 @@ struct PairingCodeTests {
         } catch {
             #expect(error.wireCode == vector.error, "\(vector.name)")
         }
-    }
-
-    private func base64URL(_ data: Data) -> String {
-        data.base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
     }
 }

@@ -11,6 +11,8 @@ settings:
     # Swift 6 language mode implies complete strict concurrency checking.
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
+    DEVELOPMENT_TEAM: 9VM4RM39R3
+    CODE_SIGN_STYLE: Automatic
 
 packages:
   # Pinned exactly: Citadel resolves swift-nio-ssh from the Wellz26 fork,
@@ -30,6 +32,20 @@ targets:
     platform: iOS
     sources:
       - Sources/HerdrMobile
+      # Notification code shared with the service extension: envelope
+      # decryption, Notification Key store, alert renderer (ADR 0008).
+      - Sources/HerdrNotificationCore
+    entitlements:
+      path: Sources/HerdrMobile/HerdrMobile.entitlements
+      properties:
+        # Development here covers Debug/local device builds (sandbox APNs);
+        # App Store / TestFlight re-signing flips it to production, so the
+        # APNs environment follows the build configuration (#71).
+        aps-environment: development
+        # Shared with the Notification Service Extension; doubles as the
+        # Keychain access group holding the Notification Keys.
+        com.apple.security.application-groups:
+          - group.dev.herdr.mobile.shared
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
@@ -53,6 +69,40 @@ targets:
       - package: GhosttyTerminal
       - package: GhosttyTerminal
         product: GhosttyTheme
+      - target: HerdrNotificationService
+
+  # Decrypts Agent Notifications before display (ADR 0008, #71). A thin
+  # shell: the logic lives in HerdrNotificationCore, tested from the app
+  # suite. The extension cannot link the app, so the shared sources (and the
+  # few app files they lean on) are compiled in directly.
+  HerdrNotificationService:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Sources/HerdrNotificationService
+      - Sources/HerdrNotificationCore
+      - Sources/HerdrMobile/Support/Base64URL.swift
+      - Sources/HerdrMobile/Transport/SecretStore.swift
+      # For AgentStatus; Foundation-only by construction (JSONValue is the
+      # generated file's one in-repo dependency).
+      - Sources/HerdrMobile/Transport/Generated/HerdrAPITypes.swift
+      - Sources/HerdrMobile/Transport/JSONValue.swift
+    entitlements:
+      path: Sources/HerdrNotificationService/HerdrNotificationService.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.dev.herdr.mobile.shared
+    info:
+      path: Sources/HerdrNotificationService/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.herdr.mobile.HerdrMobile.NotificationService
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
 
   HerdrMobileTests:
     type: bundle.unit-test
@@ -62,6 +112,9 @@ targets:
       # Shared Pairing Code vectors (ADR 0007): the same file the Node plugin
       # tests consume, bundled so the Swift tests cannot drift from it.
       - path: plugin/test-vectors/pairing-code-v1.json
+        buildPhase: resources
+      # Shared notification envelope vectors (ADR 0008), same arrangement.
+      - path: plugin/test-vectors/notification-payload-v1.json
         buildPhase: resources
     settings:
       base:

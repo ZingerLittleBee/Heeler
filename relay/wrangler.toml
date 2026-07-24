@@ -1,0 +1,19 @@
+# Cloudflare Workers deployment for the herdr Push Relay (ADR 0008).
+#
+# Non-secret config goes in [vars]; the APNs signing key is a deploy-time
+# secret and must NEVER be committed:
+#
+#   wrangler secret put APNS_KEY_P8   # paste the .p8 PEM contents
+#
+# See README.md for the full deploy walkthrough.
+
+name = "herdr-push-relay"
+main = "src/worker.js"
+compatibility_date = "2026-07-01"
+
+[vars]
+APNS_TEAM_ID = "9VM4RM39R3"
+APNS_KEY_ID = "74X2TF988P"
+APNS_TOPIC = "dev.herdr.mobile.HerdrMobile"
+# RATE_LIMIT_IP_PER_MIN = "120"                  # optional override
+# RATE_LIMIT_TOKEN_PER_MIN = "60"                # optional override

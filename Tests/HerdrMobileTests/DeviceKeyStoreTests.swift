@@ -77,6 +77,22 @@ struct KeychainSecretStoreTests {
         #expect(try store.read(account: account) == Data("new".utf8))
     }
 
+    @Test func readAllListsEveryAccountInTheService() throws {
+        let first = "test-\(UUID().uuidString)"
+        let second = "test-\(UUID().uuidString)"
+        defer {
+            try? store.removeSecret(account: first)
+            try? store.removeSecret(account: second)
+        }
+
+        try store.write(Data("a".utf8), account: first)
+        try store.write(Data("b".utf8), account: second)
+
+        let all = try store.readAll()
+        #expect(all[first] == Data("a".utf8))
+        #expect(all[second] == Data("b".utf8))
+    }
+
     @Test func deviceKeyStoreOnRealKeychainReturnsAStableKey() throws {
         let account = "device-key-test-\(UUID().uuidString)"
         defer { try? store.removeSecret(account: account) }

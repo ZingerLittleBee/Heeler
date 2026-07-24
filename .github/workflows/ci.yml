@@ -52,6 +52,21 @@ jobs:
       - name: Run plugin tests
         run: npm test
 
+  relay-test:
+    name: Push relay (Node)
+    runs-on: [self-hosted, Linux, X64, vps]
+    defaults:
+      run:
+        working-directory: relay
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # The relay has zero dependencies, so there is no install step.
+      - name: Run relay tests
+        run: npm test
+
   codegen-drift:
     name: Wire-type codegen drift
     runs-on: [self-hosted, Linux, X64, vps]

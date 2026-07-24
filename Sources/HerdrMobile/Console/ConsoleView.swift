@@ -6,12 +6,20 @@ struct ConsoleView: View {
     let hosts: HostStore
     let console: ConsoleStore
     let terminalThemes: TerminalThemeSettings
+    let pushRegistration: PushRegistrationStore
+    let notificationPreferences: NotificationPreferencesStore
+    let relaySettings: NotificationRelaySettings
+    /// Owns the navigation path (#74): user taps and notification deep links
+    /// drive the same stack.
+    @Bindable var notificationRouter: AgentNotificationRouter
+    /// Announces foreground Blocked/Done transitions in-app (#77).
+    let bannerStore: AgentNotificationBannerStore
     @State private var isManagingHosts = false
     @State private var isStartingAgent = false
     @State private var isShowingSettings = false
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $notificationRouter.path) {
             content
                 // On the always-present node, not the List branch: the
                 // destination must survive the list emptying while an
@@ -21,7 +29,10 @@ struct ConsoleView: View {
                         AgentDetailView(
                             agent: agent,
                             console: console,
-                            terminalThemes: terminalThemes)
+                            terminalThemes: terminalThemes,
+                            pushRegistration: pushRegistration,
+                            notificationPreferences: notificationPreferences,
+                            relaySettings: relaySettings)
                     } else {
                         ContentUnavailableView(
                             "Agent Gone", systemImage: "rectangle.on.rectangle.slash",
@@ -60,8 +71,33 @@ struct ConsoleView: View {
                     StartAgentView(hosts: hosts.hosts, console: console)
                 }
                 .sheet(isPresented: $isShowingSettings) {
-                    SettingsView(terminalThemes: terminalThemes)
+                    SettingsView(
+                        terminalThemes: terminalThemes,
+                        pushRegistration: pushRegistration,
+                        notificationPreferences: notificationPreferences,
+                        relaySettings: relaySettings)
                 }
+        }
+        // Above the NavigationStack so a banner also shows over a pushed
+        // Attach screen; a tap deep-links exactly like a push tap would.
+        .overlay(alignment: .top) {
+            if let banner = bannerStore.banner {
+                AgentNotificationBannerView(banner: banner) {
+                    bannerStore.dismiss()
+                    notificationRouter.open(banner.target)
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy, value: bannerStore.banner)
+        // A notification deep link must land on the Attach even when one of
+        // the Console's sheets covers it. User-driven pushes cannot happen
+        // while a sheet is up, so this only acts on notification taps.
+        .onChange(of: notificationRouter.path) { _, path in
+            guard !path.isEmpty else { return }
+            isManagingHosts = false
+            isStartingAgent = false
+            isShowingSettings = false
         }
     }
 

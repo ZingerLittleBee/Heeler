@@ -13,10 +13,16 @@
 		05A6F31F9CAC1CA1C57D7C71 /* DeviceKeyStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8323C68B13826B7388800B1F /* DeviceKeyStoreTests.swift */; };
 		0700F97FBF6A714C5D9EA5CD /* ColdStartE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 646861C32DDA14D63389C518 /* ColdStartE2ETests.swift */; };
 		073427C275CFEDBD5D3176DC /* SSHTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B1C4EC65B71F33394E7DA9F /* SSHTransport.swift */; };
+		07594B18999B4ACCD9C590F9 /* AgentNotificationRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = A26E32987E7CE7EF970DB7B0 /* AgentNotificationRouting.swift */; };
 		0A0657501E1164D7672A8B39 /* InMemorySecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B106E427EE5358088B615CE /* InMemorySecretStore.swift */; };
 		0B82C5F60B548ED11F8C3045 /* ImageStaging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 127EB78F8CCC219F6C435626 /* ImageStaging.swift */; };
 		0CF1AA5AF7F2357186A5E486 /* TerminalAttachTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE8796AB629EF68A90C96B3D /* TerminalAttachTests.swift */; };
 		1302E0DD26A3F6C629A753D8 /* HostKeyPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = CADA0E8C1DC6D30FCC6CEDC2 /* HostKeyPolicy.swift */; };
+		16936F96C7A9C21B5D3D924A /* NotificationPreferencesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78437BCBAD02A5E0EB1A439B /* NotificationPreferencesStore.swift */; };
+		17FE60211C5769502C26BE5D /* HerdrAPITypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD390F4EE653187BCF20037F /* HerdrAPITypes.swift */; };
+		1802268FFD5C1A38EC802F1A /* AgentNotificationCenterDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E8020D8DA32ABB0E2C4276D /* AgentNotificationCenterDelegate.swift */; };
+		194A1727668B644A0A7A7BFF /* NotificationDisclosureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67EDCF352453D95D25B4E771 /* NotificationDisclosureView.swift */; };
+		1B835FA52420698C39B40036 /* NotificationRelaySettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AE274F95CDC475196D7BFE8 /* NotificationRelaySettings.swift */; };
 		1BAA5950B7FDE0E6F09811F9 /* DeviceKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC995A571D7659F3307B6E54 /* DeviceKey.swift */; };
 		1BBEEF5478D91222F48C2048 /* ReconnectPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B66B41C393D38FA09388E3E2 /* ReconnectPolicyTests.swift */; };
 		1BF53C7A5E6402747F26096A /* HostCredentialsProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDC07C7B3772EEED1EB8BA9C /* HostCredentialsProvider.swift */; };
@@ -30,40 +36,64 @@
 		2BA659E85F8A8A7A4CAC614E /* pairing-code-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 7474FD0BACB07ADB3570E5BE /* pairing-code-v1.json */; };
 		2C5A21065C48B7C40AE9A760 /* KnownHostsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87B0377EAC5265E7A6FCD212 /* KnownHostsStoreTests.swift */; };
 		2CE9115816E7CE945ABCF7A8 /* AgentDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADF336771A3F757F2AD441D /* AgentDetailView.swift */; };
+		2D3054E6B0E005A339F2BA71 /* NotificationRegistrationE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 041DAC3CA558CE4F89606077 /* NotificationRegistrationE2ETests.swift */; };
 		2E4C392847F96047AF0510DD /* PreflightReportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB88AD0F4E9EE776B17FAFAA /* PreflightReportTests.swift */; };
+		2F63F9E390ED79B5B87966D7 /* PushRegistrationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B36D007E7AE959F6D62B166D /* PushRegistrationStore.swift */; };
 		30A69209EA01A8DF784ABC52 /* TerminalInputControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B75316F4E6B80E442C365765 /* TerminalInputControllerTests.swift */; };
+		3442A6A7F9DE99CBA83F79E1 /* NotificationKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F246F98BBDAEF3A331C14F9 /* NotificationKeyStore.swift */; };
+		345C7A9CB13934941D67390F /* NotificationPrivacyCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 323782148B559800B45E2930 /* NotificationPrivacyCopy.swift */; };
 		36B674DF605ECAE382E51196 /* HostOnboardingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DCAF31058B6430B514B2188 /* HostOnboardingStore.swift */; };
+		39F4A48A7BAC63BD4B458FB1 /* AgentNotificationBannerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB92C9C0B3E90920CAAA8AB3 /* AgentNotificationBannerStore.swift */; };
 		3B0FFA83C8F1751A86BD3EA5 /* FakePairingConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7448C8647569740BB956262 /* FakePairingConnector.swift */; };
 		3DC1B4DCC0E2CD73A0C13B64 /* SSHAuthE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BE2EC235A2ACCB61A98881E /* SSHAuthE2ETests.swift */; };
 		3ECB4DD848A1C73AF0ED4B5F /* ConsoleAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 498ECBCD631F9734C28861EA /* ConsoleAgent.swift */; };
+		3F3E89D840711FE7EA62A0E5 /* notification-payload-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 0ACA2329DD2A706A72E0754E /* notification-payload-v1.json */; };
 		41BBA40C97BAE65E56D0E3B5 /* TerminalAttach.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8007AF9894BE8BAFFA7A6372 /* TerminalAttach.swift */; };
 		473F834A4C680F18BA303DB9 /* ScriptedTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AFE5C640586747D567E1CF1 /* ScriptedTransport.swift */; };
+		47E51B32528E78D6FC1C16B2 /* AgentNotificationRoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C716FB1853560D9CFF3F1351 /* AgentNotificationRoutingTests.swift */; };
 		488EF0DD844658122800A1A7 /* StartAgentStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A71CE71D20ABB90D7E94264E /* StartAgentStoreTests.swift */; };
 		48C7F12EA8EF701E1F6D8649 /* ImagePreparer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7730887B9AF1CE45D9FB9AAB /* ImagePreparer.swift */; };
+		49C375C3CCDEC2A66AA44499 /* NotificationRegistrationCeremonyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F58ABFF27376731B34583984 /* NotificationRegistrationCeremonyTests.swift */; };
 		49CDAC5FE4566D912F72FFCA /* Transport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 259E51D58B1094AC5B389EDA /* Transport.swift */; };
+		49EDFB7338E2C2CE9200F711 /* PushRegistrationStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F228DA55C08962C10F4AA2B8 /* PushRegistrationStoreTests.swift */; };
 		4C80E23F09C8CFB3A93101B8 /* JSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E3E2308A50D4744A24A874B /* JSONValue.swift */; };
 		4D5BBEA6FE5430530AB0AAE7 /* AgentAttachStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C07948FE6D5E399672A9395 /* AgentAttachStore.swift */; };
 		4DECB9E21914EFB5C89D4AB3 /* PairingCeremonyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB1ED5537111C58EDB54FD37 /* PairingCeremonyTests.swift */; };
+		4FCC32A004EE9F839A8955E0 /* NotificationPrivacyCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEBCD83AC5D4AF0193B2AF9B /* NotificationPrivacyCopyTests.swift */; };
 		527D9FD128FA6F9C7BC8B572 /* AuthorizedKeysTestLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = F98770FDE6BA9A8EEC4FECA3 /* AuthorizedKeysTestLock.swift */; };
 		535C6AF099A43002029F2C2F /* HerdrSocketLocationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200BC80136A26B477439ACFA /* HerdrSocketLocationTests.swift */; };
 		54C4A61E21C2C7D8A618E462 /* PairingCeremony.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D4C26D457FF045C3E7D3EF9 /* PairingCeremony.swift */; };
+		59400DF89B4D869F1391F8BD /* NotificationRegistrationFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 066F4CB4F0E9D99693B44618 /* NotificationRegistrationFile.swift */; };
 		5C41DBF68FFE6D2924709A5A /* SSHHostKeyE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5582E1837DE62FBC4C5DDC5A /* SSHHostKeyE2ETests.swift */; };
 		5D1B735C72D551ADE0D82D44 /* TerminalThemeSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A961D26EDEAA03AFB0F9C408 /* TerminalThemeSettings.swift */; };
 		6092F63FF2DE77AD7D087A7C /* ClosePaneStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2552636663F92A55D1DFF1 /* ClosePaneStoreTests.swift */; };
+		616BF0A051759A6BC9B99D17 /* NotificationEnvelopeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A22277FBE709A45C731747D /* NotificationEnvelopeTests.swift */; };
+		63B65A826002140EDF05216B /* NotificationKeyStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A80488F21CC93BEC7B5B521E /* NotificationKeyStoreTests.swift */; };
+		664FBC89396DBDD1083749E0 /* Base64URL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45FC4FCCE9B94EC52FD930B1 /* Base64URL.swift */; };
 		6680D1827A0A0E5A60BE44F8 /* SkeletonTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6FCFE74BB45C0D8B600FFD3 /* SkeletonTests.swift */; };
 		678CB0B828602B38AC23BD26 /* PairingCodeVectorFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17424B6972D7D7E6271350A5 /* PairingCodeVectorFile.swift */; };
+		67FED2A809BAF1570D6E003F /* SecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 567573855DCC8571BC02096D /* SecretStore.swift */; };
 		68E0CF3B2078B4450366AF36 /* ImageStagingE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA18CA4EC57526EA84A6DEE8 /* ImageStagingE2ETests.swift */; };
 		693B0173C07DAF4BFC89B094 /* SecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 567573855DCC8571BC02096D /* SecretStore.swift */; };
 		6CBE7E0961FFD970A614ED4B /* AgentCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B3FA15CCDC83C72DDA81BEB /* AgentCardView.swift */; };
+		6EE491610D2417571A57B5B3 /* NotificationConfigFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 790657D3E484D44D466D7EBB /* NotificationConfigFile.swift */; };
 		6F3B8F2DEC6CA5991BB267E5 /* HostOnboardingStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29DD3828DAEF46DBA7038B0A /* HostOnboardingStoreTests.swift */; };
 		718719DA8913E787FA68BD45 /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = 168EBAF199220582EB0C49F7 /* GhosttyTerminal */; };
+		71F4A714BC2E527F40E657B6 /* Base64URL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45FC4FCCE9B94EC52FD930B1 /* Base64URL.swift */; };
 		724AEEB52CDF4B28AFF8E3E5 /* HerdrWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6970DEB7C22EFDB1A26F6F9 /* HerdrWireTests.swift */; };
 		782980ECE8E7005A672D25A3 /* TransportFailureModesE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02807C329084D58137461EF8 /* TransportFailureModesE2ETests.swift */; };
+		78DE951AD8EEDB9423984268 /* AgentNotificationRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2DD3637ABCBDDA9385F5FBD /* AgentNotificationRenderer.swift */; };
+		7C3999C38A0126986F9CCC58 /* AgentNotificationRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC309E333009D66F9757CD13 /* AgentNotificationRouter.swift */; };
 		7C453E2308A9E12532A24705 /* SSHChannelBudgetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CA60F860890A7CAA368B268 /* SSHChannelBudgetTests.swift */; };
 		7EEB41E5CD728587D7DCEC96 /* StartAgentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18AE2DC88A745FB457350957 /* StartAgentView.swift */; };
+		8181681FBF45216B52EEBC1A /* NotificationKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F246F98BBDAEF3A331C14F9 /* NotificationKeyStore.swift */; };
 		8196491DBF3B6024B4DB214C /* SSHChannelBudget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13D82A3B3C17DBFB114AAF0A /* SSHChannelBudget.swift */; };
+		822F39E2EA06AE24955F8169 /* AgentNotificationBannerStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DA3E6B129B6CAD15FD3C5DE /* AgentNotificationBannerStoreTests.swift */; };
+		84A27FDC256CFA71D883A85A /* NotificationRelaySettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A20C4012D69BDE51F1FF25 /* NotificationRelaySettingsTests.swift */; };
 		8558806B5DFE751EB1FA3814 /* PairingCodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C1FDF65F7282EF79C3D376C /* PairingCodeTests.swift */; };
+		86B92C748144DAFC8D1E1609 /* AgentNotificationRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8461D2396E779D5A29631FD /* AgentNotificationRendererTests.swift */; };
 		86C5F3E2D17523948343DF09 /* GeneratedWireTypesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E87B816CE7206B37622287C4 /* GeneratedWireTypesTests.swift */; };
+		8AC72F5564FB95D416D1F193 /* AgentNotificationRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2DD3637ABCBDDA9385F5FBD /* AgentNotificationRenderer.swift */; };
 		8C514AFC85DAED69A4988C13 /* SSHCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90875ADAF6E348E186C8125A /* SSHCredentials.swift */; };
 		8DF99F3257BCC6AE08595A45 /* TerminalKeyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73DB204D5F25D5375D5B2974 /* TerminalKeyboard.swift */; };
 		91833D21F64358A8E82A0D34 /* HostOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E538BF75AE58E16C58782F7 /* HostOnboardingView.swift */; };
@@ -75,17 +105,22 @@
 		9F3F748E722FD8059A59ECBD /* HostStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6434D31A79422C0BAE80993F /* HostStoreTests.swift */; };
 		A0C9B80A4139A6FA73261805 /* HerdrWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4FC9B455C6266F12DA82A07 /* HerdrWire.swift */; };
 		A14E6D20D1216F7764E3298B /* PhotosPickerImageSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89863F261DC0C6F317D75786 /* PhotosPickerImageSelection.swift */; };
+		A4A0A43303CF9F8DDAD78A75 /* NotificationRegistrationCeremony.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FD32D8CF0FF5617AF7E3513 /* NotificationRegistrationCeremony.swift */; };
 		A50735C51FEFF58E6B83025B /* PairingScanStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC250A036B0CEE727A99C5B4 /* PairingScanStore.swift */; };
+		A98B00EED8EB80B5A99A43D4 /* NotificationEnvelope.swift in Sources */ = {isa = PBXBuildFile; fileRef = C42040EDC53770F8227FA0C2 /* NotificationEnvelope.swift */; };
 		B0D87D1783C80597B66EDDFC /* HerdrAPITypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD390F4EE653187BCF20037F /* HerdrAPITypes.swift */; };
+		B25855D8EBB3666934ACD077 /* NotificationVectorFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44F4B2F424E3FC8AB7DA69FC /* NotificationVectorFile.swift */; };
 		B31E16D56EE1F19A3802625B /* TransportConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4476B101AA4B13190C7A7B7C /* TransportConnector.swift */; };
 		B32EA361C16DD5F87AEEEDEC /* PairingCeremonyE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16FDA76A0BFC199882EAF72B /* PairingCeremonyE2ETests.swift */; };
 		B34AF64884F29EB050E5B9AF /* Preflight.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCA39340517CEF3DAA35A09B /* Preflight.swift */; };
 		B67206DA3D497FF8E75F79AC /* HostConsoleProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05DA2856C9762E5E0BC147BA /* HostConsoleProjection.swift */; };
 		B6FE3517A821A081D9F6262C /* KnownHostsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C232163905675760F37FD7A0 /* KnownHostsStore.swift */; };
 		B8ACB86B152D44FC0C80DADA /* TerminalTouchScroll.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCB521B35951ABDA186FAFCF /* TerminalTouchScroll.swift */; };
+		B9FE745CE938481090505AC2 /* AgentNotificationBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F609ED2F418C28EB5AB2D4B /* AgentNotificationBannerView.swift */; };
 		BAC9F51A72EA9774DEDBC193 /* TerminalByteFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F7C6974BD9BE77000016FCA /* TerminalByteFeed.swift */; };
 		BC107519427157CF5191E34F /* FakeTransportConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14983BD8988E4AAE79DC46A /* FakeTransportConnector.swift */; };
 		BC46FD1688F34030A1121C58 /* PairingScanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26D91CE49181E7932CBD1AAC /* PairingScanView.swift */; };
+		BF9FBA3462781177C6F78459 /* JSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E3E2308A50D4744A24A874B /* JSONValue.swift */; };
 		C174C223DBE1F1DD4085A2F8 /* UnixSockets.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCB59377D34D0C652DF70F01 /* UnixSockets.swift */; };
 		C60E8E0398665C36520DDA8E /* HerdrEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = CABFC5E35C19F809355619E7 /* HerdrEvents.swift */; };
 		C6C215AB0B03BCFD20CFF1C4 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = 03BEAFDD98C535CDCE9AE335 /* Citadel */; };
@@ -95,11 +130,14 @@
 		CC20BAD2AC1A725889F82A20 /* ClosePaneStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F13921A61B4E4F17CDE47C96 /* ClosePaneStore.swift */; };
 		CD358CC16A58086C056E975D /* SSHPairingConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = B22BD6D0C396E9EC0E979793 /* SSHPairingConnector.swift */; };
 		CDF8E14EC629CBD8F946FE05 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D95D580BCF4FE792AEFE974 /* ContentView.swift */; };
+		CEF401BC0306ACEA750F0C55 /* NotificationPreferencesStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6632B55C19D84583370BF788 /* NotificationPreferencesStoreTests.swift */; };
 		D11D524FCF49C49763C9F9D7 /* Host.swift in Sources */ = {isa = PBXBuildFile; fileRef = 806A90DBCA99FD02E76D68C6 /* Host.swift */; };
+		D452508C8B08FA41C17AA54F /* NotificationEnvelope.swift in Sources */ = {isa = PBXBuildFile; fileRef = C42040EDC53770F8227FA0C2 /* NotificationEnvelope.swift */; };
 		D51F828E0AC4A2F6C23A0CBE /* TerminalThemeSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE72A47A2C1C9F9B4BFFB16F /* TerminalThemeSettingsTests.swift */; };
 		D6E9D6545089932306C4704F /* HostKeyFingerprint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CBE401E4A5FA5871809E540 /* HostKeyFingerprint.swift */; };
 		D818864671292BE9F965CAA6 /* AttachTerminalStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A549DEB5B5CE8FDD29CE2A28 /* AttachTerminalStoreTests.swift */; };
 		DB2F714BFA12259D2D6D9715 /* PairingScanStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FF497632F5FD2BBB8D5BF0F /* PairingScanStoreTests.swift */; };
+		DBB8F9000793EF2B61B43ED8 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7215D5A207076C7F7E8F1E63 /* NotificationService.swift */; };
 		DBB9FF4BC72D3AA244E2ECE0 /* HostFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 278668F4D5B3EB85E6CDA16A /* HostFormView.swift */; };
 		DC564E76486D243AD1741F7E /* SharedAsyncOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CE658EA3C6364BCC0D8CE14 /* SharedAsyncOperation.swift */; };
 		DE84101EE6E1BF5878C76C49 /* ConsoleStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A95E62CA572C71B2C746E972 /* ConsoleStore.swift */; };
@@ -112,7 +150,10 @@
 		E5950D24C4F647368C03853F /* ImageAttachStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B4847B965ACCAC480398065 /* ImageAttachStore.swift */; };
 		E8E50DCA9F56799E022F9252 /* TerminalAttachE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D83F34B22988623AD8E2093C /* TerminalAttachE2ETests.swift */; };
 		E908289DF03C6732F7D91328 /* HerdrEventsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A696EC4D243B31D1B22C13F0 /* HerdrEventsTests.swift */; };
+		EAA349947E6AF58625E35481 /* HerdrNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 0C40CAB15B8223BC58AB39F1 /* HerdrNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		EB02A35634A4D6572637DEF4 /* HerdrMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78545B74736FD98DCA33B3C4 /* HerdrMobileApp.swift */; };
+		EDC4E8E45B766F1EEB960B6F /* AgentNotificationRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA9FFBCEE377FCD4C1105690 /* AgentNotificationRouterTests.swift */; };
+		EDD038140CCF519A56D01C17 /* NotificationConfigFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41707BC35CC96B155E502D0D /* NotificationConfigFileTests.swift */; };
 		EDFEE058F85AF41DBFE351A7 /* TerminalTextSelectionPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786B2BA8A0683BB9DC71D797 /* TerminalTextSelectionPresenter.swift */; };
 		EE22FB818F023585C4A07D9C /* PairingCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6851566A8DBF603AA768404 /* PairingCode.swift */; };
 		EF7F36C0E1C3ED3F6117B1EB /* FakeHerdrServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20B781425ADF5353CEEED6A1 /* FakeHerdrServer.swift */; };
@@ -121,9 +162,17 @@
 		F96C5D15E14B947BE426B2F3 /* TerminalScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 597ACEE9D688E433B20108D7 /* TerminalScreenView.swift */; };
 		FE4ADC78CA6113FFFBCEC693 /* EventsSessionE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9291334E33C85C7588F86281 /* EventsSessionE2ETests.swift */; };
 		FEDD78DD422954EEBA415E8E /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = 3A53219005FF960DB8CAB247 /* GhosttyTerminal */; };
+		FF1214609BE23D5EADAB9B0E /* NotificationRegistrationFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8683454E59970E4B9F8FF12E /* NotificationRegistrationFileTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		97D1353CFDC9D7572BED0083 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E7318A512AF22F69E093E6A6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 215E010A149D8CFF712AC2FA;
+			remoteInfo = HerdrNotificationService;
+		};
 		E598AC0E82E1533AAB51919C /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = E7318A512AF22F69E093E6A6 /* Project object */;
@@ -133,12 +182,31 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		F2840EDFAE6B942FE17EC123 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				EAA349947E6AF58625E35481 /* HerdrNotificationService.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		02807C329084D58137461EF8 /* TransportFailureModesE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportFailureModesE2ETests.swift; sourceTree = "<group>"; };
+		041DAC3CA558CE4F89606077 /* NotificationRegistrationE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRegistrationE2ETests.swift; sourceTree = "<group>"; };
 		05DA2856C9762E5E0BC147BA /* HostConsoleProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostConsoleProjection.swift; sourceTree = "<group>"; };
+		066F4CB4F0E9D99693B44618 /* NotificationRegistrationFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRegistrationFile.swift; sourceTree = "<group>"; };
 		079394F4C6AC8FE4D7B0779C /* ConsoleStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleStoreTests.swift; sourceTree = "<group>"; };
 		08E14A4298DB015E6477F789 /* StartAgentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartAgentStore.swift; sourceTree = "<group>"; };
+		0ACA2329DD2A706A72E0754E /* notification-payload-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "notification-payload-v1.json"; sourceTree = "<group>"; };
+		0AE274F95CDC475196D7BFE8 /* NotificationRelaySettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRelaySettings.swift; sourceTree = "<group>"; };
 		0B3FA15CCDC83C72DDA81BEB /* AgentCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentCardView.swift; sourceTree = "<group>"; };
+		0C40CAB15B8223BC58AB39F1 /* HerdrNotificationService.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HerdrNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		127EB78F8CCC219F6C435626 /* ImageStaging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStaging.swift; sourceTree = "<group>"; };
 		13D82A3B3C17DBFB114AAF0A /* SSHChannelBudget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHChannelBudget.swift; sourceTree = "<group>"; };
 		16FDA76A0BFC199882EAF72B /* PairingCeremonyE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingCeremonyE2ETests.swift; sourceTree = "<group>"; };
@@ -155,30 +223,43 @@
 		26D91CE49181E7932CBD1AAC /* PairingScanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingScanView.swift; sourceTree = "<group>"; };
 		278668F4D5B3EB85E6CDA16A /* HostFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostFormView.swift; sourceTree = "<group>"; };
 		29DD3828DAEF46DBA7038B0A /* HostOnboardingStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostOnboardingStoreTests.swift; sourceTree = "<group>"; };
+		2DA3E6B129B6CAD15FD3C5DE /* AgentNotificationBannerStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationBannerStoreTests.swift; sourceTree = "<group>"; };
+		31A3BC92C11A1D5AF39C5340 /* HerdrNotificationService.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HerdrNotificationService.entitlements; sourceTree = "<group>"; };
+		323782148B559800B45E2930 /* NotificationPrivacyCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPrivacyCopy.swift; sourceTree = "<group>"; };
 		3C07948FE6D5E399672A9395 /* AgentAttachStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentAttachStore.swift; sourceTree = "<group>"; };
 		3CCDC5144D5AA6403150431A /* ImageAttachStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageAttachStoreTests.swift; sourceTree = "<group>"; };
 		3CE658EA3C6364BCC0D8CE14 /* SharedAsyncOperation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedAsyncOperation.swift; sourceTree = "<group>"; };
 		4076B0E816625CD09EB29F2E /* EventsSubscribeE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsSubscribeE2ETests.swift; sourceTree = "<group>"; };
+		41707BC35CC96B155E502D0D /* NotificationConfigFileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationConfigFileTests.swift; sourceTree = "<group>"; };
 		4476B101AA4B13190C7A7B7C /* TransportConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportConnector.swift; sourceTree = "<group>"; };
+		44F4B2F424E3FC8AB7DA69FC /* NotificationVectorFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationVectorFile.swift; sourceTree = "<group>"; };
+		45FC4FCCE9B94EC52FD930B1 /* Base64URL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Base64URL.swift; sourceTree = "<group>"; };
 		498ECBCD631F9734C28861EA /* ConsoleAgent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleAgent.swift; sourceTree = "<group>"; };
+		4FD32D8CF0FF5617AF7E3513 /* NotificationRegistrationCeremony.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRegistrationCeremony.swift; sourceTree = "<group>"; };
 		558159B2AF61C28F6B1391A2 /* DeviceKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKeyTests.swift; sourceTree = "<group>"; };
 		5582E1837DE62FBC4C5DDC5A /* SSHHostKeyE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHHostKeyE2ETests.swift; sourceTree = "<group>"; };
 		567573855DCC8571BC02096D /* SecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretStore.swift; sourceTree = "<group>"; };
 		597ACEE9D688E433B20108D7 /* TerminalScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalScreenView.swift; sourceTree = "<group>"; };
 		5ADF336771A3F757F2AD441D /* AgentDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDetailView.swift; sourceTree = "<group>"; };
 		5D4C26D457FF045C3E7D3EF9 /* PairingCeremony.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingCeremony.swift; sourceTree = "<group>"; };
+		5E8020D8DA32ABB0E2C4276D /* AgentNotificationCenterDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationCenterDelegate.swift; sourceTree = "<group>"; };
 		641088A470B51F40C898830F /* EventsSessionBufferingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsSessionBufferingTests.swift; sourceTree = "<group>"; };
 		6434D31A79422C0BAE80993F /* HostStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostStoreTests.swift; sourceTree = "<group>"; };
 		646861C32DDA14D63389C518 /* ColdStartE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColdStartE2ETests.swift; sourceTree = "<group>"; };
+		6632B55C19D84583370BF788 /* NotificationPreferencesStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPreferencesStoreTests.swift; sourceTree = "<group>"; };
+		67EDCF352453D95D25B4E771 /* NotificationDisclosureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationDisclosureView.swift; sourceTree = "<group>"; };
 		6BE2EC235A2ACCB61A98881E /* SSHAuthE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHAuthE2ETests.swift; sourceTree = "<group>"; };
 		6CA5E9DDE1AB0F68F6EC56EB /* EventsSessionSubscriptionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsSessionSubscriptionsTests.swift; sourceTree = "<group>"; };
 		6F7C6974BD9BE77000016FCA /* TerminalByteFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalByteFeed.swift; sourceTree = "<group>"; };
 		6FF497632F5FD2BBB8D5BF0F /* PairingScanStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingScanStoreTests.swift; sourceTree = "<group>"; };
+		7215D5A207076C7F7E8F1E63 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		73DB204D5F25D5375D5B2974 /* TerminalKeyboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalKeyboard.swift; sourceTree = "<group>"; };
 		7474FD0BACB07ADB3570E5BE /* pairing-code-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "pairing-code-v1.json"; sourceTree = "<group>"; };
 		7730887B9AF1CE45D9FB9AAB /* ImagePreparer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePreparer.swift; sourceTree = "<group>"; };
+		78437BCBAD02A5E0EB1A439B /* NotificationPreferencesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPreferencesStore.swift; sourceTree = "<group>"; };
 		78545B74736FD98DCA33B3C4 /* HerdrMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrMobileApp.swift; sourceTree = "<group>"; };
 		786B2BA8A0683BB9DC71D797 /* TerminalTextSelectionPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTextSelectionPresenter.swift; sourceTree = "<group>"; };
+		790657D3E484D44D466D7EBB /* NotificationConfigFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationConfigFile.swift; sourceTree = "<group>"; };
 		7AFE5C640586747D567E1CF1 /* ScriptedTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptedTransport.swift; sourceTree = "<group>"; };
 		7B1C4EC65B71F33394E7DA9F /* SSHTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHTransport.swift; sourceTree = "<group>"; };
 		7CA60F860890A7CAA368B268 /* SSHChannelBudgetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHChannelBudgetTests.swift; sourceTree = "<group>"; };
@@ -189,26 +270,36 @@
 		806A90DBCA99FD02E76D68C6 /* Host.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Host.swift; sourceTree = "<group>"; };
 		80E727A9081269681AD7581B /* TerminalInputController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalInputController.swift; sourceTree = "<group>"; };
 		8323C68B13826B7388800B1F /* DeviceKeyStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKeyStoreTests.swift; sourceTree = "<group>"; };
+		8683454E59970E4B9F8FF12E /* NotificationRegistrationFileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRegistrationFileTests.swift; sourceTree = "<group>"; };
 		87B0377EAC5265E7A6FCD212 /* KnownHostsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnownHostsStoreTests.swift; sourceTree = "<group>"; };
 		89863F261DC0C6F317D75786 /* PhotosPickerImageSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosPickerImageSelection.swift; sourceTree = "<group>"; };
 		8C9A0A8D0063285A276A28DA /* PairingConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingConnector.swift; sourceTree = "<group>"; };
+		8F609ED2F418C28EB5AB2D4B /* AgentNotificationBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationBannerView.swift; sourceTree = "<group>"; };
 		904FF6BF3E76BDFB2F76784D /* LocalSSHTestEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSSHTestEnvironment.swift; sourceTree = "<group>"; };
 		90875ADAF6E348E186C8125A /* SSHCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHCredentials.swift; sourceTree = "<group>"; };
 		9291334E33C85C7588F86281 /* EventsSessionE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsSessionE2ETests.swift; sourceTree = "<group>"; };
 		95B5EBF6C4EC88361E91CA2C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		97970F4D535CC80592333995 /* AttachTerminalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachTerminalStore.swift; sourceTree = "<group>"; };
+		9A22277FBE709A45C731747D /* NotificationEnvelopeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationEnvelopeTests.swift; sourceTree = "<group>"; };
 		9AECAD39A269D97DAB4ED194 /* HostStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostStore.swift; sourceTree = "<group>"; };
 		9B106E427EE5358088B615CE /* InMemorySecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InMemorySecretStore.swift; sourceTree = "<group>"; };
 		9B4847B965ACCAC480398065 /* ImageAttachStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageAttachStore.swift; sourceTree = "<group>"; };
 		9C1FDF65F7282EF79C3D376C /* PairingCodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingCodeTests.swift; sourceTree = "<group>"; };
+		9CF8DF01C717DACC40B32925 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		9F246F98BBDAEF3A331C14F9 /* NotificationKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationKeyStore.swift; sourceTree = "<group>"; };
+		A26E32987E7CE7EF970DB7B0 /* AgentNotificationRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationRouting.swift; sourceTree = "<group>"; };
 		A32D737E753ABEB2809975EA /* ImageStagingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStagingTests.swift; sourceTree = "<group>"; };
 		A549DEB5B5CE8FDD29CE2A28 /* AttachTerminalStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachTerminalStoreTests.swift; sourceTree = "<group>"; };
 		A696EC4D243B31D1B22C13F0 /* HerdrEventsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrEventsTests.swift; sourceTree = "<group>"; };
 		A71CE71D20ABB90D7E94264E /* StartAgentStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartAgentStoreTests.swift; sourceTree = "<group>"; };
+		A80488F21CC93BEC7B5B521E /* NotificationKeyStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationKeyStoreTests.swift; sourceTree = "<group>"; };
 		A95E62CA572C71B2C746E972 /* ConsoleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleStore.swift; sourceTree = "<group>"; };
 		A961D26EDEAA03AFB0F9C408 /* TerminalThemeSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalThemeSettings.swift; sourceTree = "<group>"; };
 		A9EC4F17AFC933FBA45CCA09 /* TransportConcurrencyE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportConcurrencyE2ETests.swift; sourceTree = "<group>"; };
+		AB92C9C0B3E90920CAAA8AB3 /* AgentNotificationBannerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationBannerStore.swift; sourceTree = "<group>"; };
+		B0A20C4012D69BDE51F1FF25 /* NotificationRelaySettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRelaySettingsTests.swift; sourceTree = "<group>"; };
 		B22BD6D0C396E9EC0E979793 /* SSHPairingConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHPairingConnector.swift; sourceTree = "<group>"; };
+		B36D007E7AE959F6D62B166D /* PushRegistrationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistrationStore.swift; sourceTree = "<group>"; };
 		B383994C2C8492694D5F3690 /* HerdrMobile.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HerdrMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B66B41C393D38FA09388E3E2 /* ReconnectPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReconnectPolicyTests.swift; sourceTree = "<group>"; };
 		B75316F4E6B80E442C365765 /* TerminalInputControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalInputControllerTests.swift; sourceTree = "<group>"; };
@@ -217,28 +308,38 @@
 		BC995A571D7659F3307B6E54 /* DeviceKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKey.swift; sourceTree = "<group>"; };
 		BD390F4EE653187BCF20037F /* HerdrAPITypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrAPITypes.swift; sourceTree = "<group>"; };
 		BE8796AB629EF68A90C96B3D /* TerminalAttachTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAttachTests.swift; sourceTree = "<group>"; };
+		BEBCD83AC5D4AF0193B2AF9B /* NotificationPrivacyCopyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPrivacyCopyTests.swift; sourceTree = "<group>"; };
 		C14983BD8988E4AAE79DC46A /* FakeTransportConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeTransportConnector.swift; sourceTree = "<group>"; };
 		C232163905675760F37FD7A0 /* KnownHostsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnownHostsStore.swift; sourceTree = "<group>"; };
+		C42040EDC53770F8227FA0C2 /* NotificationEnvelope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationEnvelope.swift; sourceTree = "<group>"; };
 		C44D9663DAB1E8942FBFCD1C /* ConsoleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleView.swift; sourceTree = "<group>"; };
 		C6970DEB7C22EFDB1A26F6F9 /* HerdrWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrWireTests.swift; sourceTree = "<group>"; };
+		C716FB1853560D9CFF3F1351 /* AgentNotificationRoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationRoutingTests.swift; sourceTree = "<group>"; };
+		C87759E4BF8637BE43E7648B /* HerdrMobile.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HerdrMobile.entitlements; sourceTree = "<group>"; };
+		CA9FFBCEE377FCD4C1105690 /* AgentNotificationRouterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationRouterTests.swift; sourceTree = "<group>"; };
 		CABFC5E35C19F809355619E7 /* HerdrEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrEvents.swift; sourceTree = "<group>"; };
 		CADA0E8C1DC6D30FCC6CEDC2 /* HostKeyPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostKeyPolicy.swift; sourceTree = "<group>"; };
+		CC309E333009D66F9757CD13 /* AgentNotificationRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationRouter.swift; sourceTree = "<group>"; };
 		D04EAA030D8329A1716714A8 /* DeviceKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKeyStore.swift; sourceTree = "<group>"; };
 		D6FCFE74BB45C0D8B600FFD3 /* SkeletonTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonTests.swift; sourceTree = "<group>"; };
 		D83F34B22988623AD8E2093C /* TerminalAttachE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAttachE2ETests.swift; sourceTree = "<group>"; };
+		D8461D2396E779D5A29631FD /* AgentNotificationRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationRendererTests.swift; sourceTree = "<group>"; };
 		DB88AD0F4E9EE776B17FAFAA /* PreflightReportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreflightReportTests.swift; sourceTree = "<group>"; };
 		DCA39340517CEF3DAA35A09B /* Preflight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preflight.swift; sourceTree = "<group>"; };
 		DDC07C7B3772EEED1EB8BA9C /* HostCredentialsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostCredentialsProvider.swift; sourceTree = "<group>"; };
 		DE12859365BC7A57B9EC256A /* HostDraft.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostDraft.swift; sourceTree = "<group>"; };
+		E2DD3637ABCBDDA9385F5FBD /* AgentNotificationRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationRenderer.swift; sourceTree = "<group>"; };
 		E87B816CE7206B37622287C4 /* GeneratedWireTypesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedWireTypesTests.swift; sourceTree = "<group>"; };
 		EA18CA4EC57526EA84A6DEE8 /* ImageStagingE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStagingE2ETests.swift; sourceTree = "<group>"; };
 		EB1ED5537111C58EDB54FD37 /* PairingCeremonyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingCeremonyTests.swift; sourceTree = "<group>"; };
 		EE72A47A2C1C9F9B4BFFB16F /* TerminalThemeSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalThemeSettingsTests.swift; sourceTree = "<group>"; };
 		EF9B76E2DA818DAB4259286C /* HostListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostListView.swift; sourceTree = "<group>"; };
 		F13921A61B4E4F17CDE47C96 /* ClosePaneStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosePaneStore.swift; sourceTree = "<group>"; };
+		F228DA55C08962C10F4AA2B8 /* PushRegistrationStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistrationStoreTests.swift; sourceTree = "<group>"; };
 		F29ABD9B1F458A3948086A16 /* ImagePreparerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePreparerTests.swift; sourceTree = "<group>"; };
 		F3D159C84E98A59AA47EBE6C /* HerdrMobileTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HerdrMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F4FC9B455C6266F12DA82A07 /* HerdrWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrWire.swift; sourceTree = "<group>"; };
+		F58ABFF27376731B34583984 /* NotificationRegistrationCeremonyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRegistrationCeremonyTests.swift; sourceTree = "<group>"; };
 		F62C94D6B84C468B0A4D991C /* SSHTransportE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHTransportE2ETests.swift; sourceTree = "<group>"; };
 		F6851566A8DBF603AA768404 /* PairingCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingCode.swift; sourceTree = "<group>"; };
 		F7448C8647569740BB956262 /* FakePairingConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakePairingConnector.swift; sourceTree = "<group>"; };
@@ -273,6 +374,8 @@
 		076C8448389275EA5E67DA9F /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				67EDCF352453D95D25B4E771 /* NotificationDisclosureView.swift */,
+				0AE274F95CDC475196D7BFE8 /* NotificationRelaySettings.swift */,
 				95B5EBF6C4EC88361E91CA2C /* SettingsView.swift */,
 				A961D26EDEAA03AFB0F9C408 /* TerminalThemeSettings.swift */,
 			);
@@ -285,6 +388,24 @@
 				BD390F4EE653187BCF20037F /* HerdrAPITypes.swift */,
 			);
 			path = Generated;
+			sourceTree = "<group>";
+		};
+		3EE266B8F5FEF893414C7A25 /* Notifications */ = {
+			isa = PBXGroup;
+			children = (
+				AB92C9C0B3E90920CAAA8AB3 /* AgentNotificationBannerStore.swift */,
+				8F609ED2F418C28EB5AB2D4B /* AgentNotificationBannerView.swift */,
+				5E8020D8DA32ABB0E2C4276D /* AgentNotificationCenterDelegate.swift */,
+				CC309E333009D66F9757CD13 /* AgentNotificationRouter.swift */,
+				A26E32987E7CE7EF970DB7B0 /* AgentNotificationRouting.swift */,
+				790657D3E484D44D466D7EBB /* NotificationConfigFile.swift */,
+				78437BCBAD02A5E0EB1A439B /* NotificationPreferencesStore.swift */,
+				323782148B559800B45E2930 /* NotificationPrivacyCopy.swift */,
+				4FD32D8CF0FF5617AF7E3513 /* NotificationRegistrationCeremony.swift */,
+				066F4CB4F0E9D99693B44618 /* NotificationRegistrationFile.swift */,
+				B36D007E7AE959F6D62B166D /* PushRegistrationStore.swift */,
+			);
+			path = Notifications;
 			sourceTree = "<group>";
 		};
 		41C75ABDF8DC22F0282957C5 /* Transport */ = {
@@ -312,13 +433,34 @@
 			path = Transport;
 			sourceTree = "<group>";
 		};
+		53BD9BB24DE8744A9A7A3880 /* HerdrNotificationCore */ = {
+			isa = PBXGroup;
+			children = (
+				E2DD3637ABCBDDA9385F5FBD /* AgentNotificationRenderer.swift */,
+				C42040EDC53770F8227FA0C2 /* NotificationEnvelope.swift */,
+				9F246F98BBDAEF3A331C14F9 /* NotificationKeyStore.swift */,
+			);
+			path = HerdrNotificationCore;
+			sourceTree = "<group>";
+		};
 		55902E0ABDF1F168FA193448 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				B383994C2C8492694D5F3690 /* HerdrMobile.app */,
 				F3D159C84E98A59AA47EBE6C /* HerdrMobileTests.xctest */,
+				0C40CAB15B8223BC58AB39F1 /* HerdrNotificationService.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		56C19BF020D85F81B5D39F48 /* HerdrNotificationService */ = {
+			isa = PBXGroup;
+			children = (
+				31A3BC92C11A1D5AF39C5340 /* HerdrNotificationService.entitlements */,
+				9CF8DF01C717DACC40B32925 /* Info.plist */,
+				7215D5A207076C7F7E8F1E63 /* NotificationService.swift */,
+			);
+			path = HerdrNotificationService;
 			sourceTree = "<group>";
 		};
 		758C1B00FCD3935541ADA64F /* Terminal */ = {
@@ -337,6 +479,10 @@
 		8474CB954CA9DE980DA822F2 /* HerdrMobileTests */ = {
 			isa = PBXGroup;
 			children = (
+				2DA3E6B129B6CAD15FD3C5DE /* AgentNotificationBannerStoreTests.swift */,
+				D8461D2396E779D5A29631FD /* AgentNotificationRendererTests.swift */,
+				CA9FFBCEE377FCD4C1105690 /* AgentNotificationRouterTests.swift */,
+				C716FB1853560D9CFF3F1351 /* AgentNotificationRoutingTests.swift */,
 				A549DEB5B5CE8FDD29CE2A28 /* AttachTerminalStoreTests.swift */,
 				BC2552636663F92A55D1DFF1 /* ClosePaneStoreTests.swift */,
 				646861C32DDA14D63389C518 /* ColdStartE2ETests.swift */,
@@ -360,11 +506,21 @@
 				A32D737E753ABEB2809975EA /* ImageStagingTests.swift */,
 				17F86744BFAC66D732CE7833 /* JSONValueTests.swift */,
 				87B0377EAC5265E7A6FCD212 /* KnownHostsStoreTests.swift */,
+				41707BC35CC96B155E502D0D /* NotificationConfigFileTests.swift */,
+				9A22277FBE709A45C731747D /* NotificationEnvelopeTests.swift */,
+				A80488F21CC93BEC7B5B521E /* NotificationKeyStoreTests.swift */,
+				6632B55C19D84583370BF788 /* NotificationPreferencesStoreTests.swift */,
+				BEBCD83AC5D4AF0193B2AF9B /* NotificationPrivacyCopyTests.swift */,
+				F58ABFF27376731B34583984 /* NotificationRegistrationCeremonyTests.swift */,
+				041DAC3CA558CE4F89606077 /* NotificationRegistrationE2ETests.swift */,
+				8683454E59970E4B9F8FF12E /* NotificationRegistrationFileTests.swift */,
+				B0A20C4012D69BDE51F1FF25 /* NotificationRelaySettingsTests.swift */,
 				16FDA76A0BFC199882EAF72B /* PairingCeremonyE2ETests.swift */,
 				EB1ED5537111C58EDB54FD37 /* PairingCeremonyTests.swift */,
 				9C1FDF65F7282EF79C3D376C /* PairingCodeTests.swift */,
 				6FF497632F5FD2BBB8D5BF0F /* PairingScanStoreTests.swift */,
 				DB88AD0F4E9EE776B17FAFAA /* PreflightReportTests.swift */,
+				F228DA55C08962C10F4AA2B8 /* PushRegistrationStoreTests.swift */,
 				B66B41C393D38FA09388E3E2 /* ReconnectPolicyTests.swift */,
 				D6FCFE74BB45C0D8B600FFD3 /* SkeletonTests.swift */,
 				6BE2EC235A2ACCB61A98881E /* SSHAuthE2ETests.swift */,
@@ -453,12 +609,15 @@
 			isa = PBXGroup;
 			children = (
 				7D95D580BCF4FE792AEFE974 /* ContentView.swift */,
+				C87759E4BF8637BE43E7648B /* HerdrMobile.entitlements */,
 				78545B74736FD98DCA33B3C4 /* HerdrMobileApp.swift */,
 				AEEB5E7751FD30413560D58D /* Console */,
 				85F7BECB72876852AAA885F2 /* Hosts */,
 				B9BA381B5B296A3BE02F125E /* Images */,
+				3EE266B8F5FEF893414C7A25 /* Notifications */,
 				853F15C2EAF72E4C01430318 /* Pairing */,
 				076C8448389275EA5E67DA9F /* Settings */,
+				ECB08E026E7F9F850AAFC76B /* Support */,
 				758C1B00FCD3935541ADA64F /* Terminal */,
 				41C75ABDF8DC22F0282957C5 /* Transport */,
 			);
@@ -493,6 +652,7 @@
 				C14983BD8988E4AAE79DC46A /* FakeTransportConnector.swift */,
 				9B106E427EE5358088B615CE /* InMemorySecretStore.swift */,
 				904FF6BF3E76BDFB2F76784D /* LocalSSHTestEnvironment.swift */,
+				44F4B2F424E3FC8AB7DA69FC /* NotificationVectorFile.swift */,
 				17424B6972D7D7E6271350A5 /* PairingCodeVectorFile.swift */,
 				7AFE5C640586747D567E1CF1 /* ScriptedTransport.swift */,
 				FCB59377D34D0C652DF70F01 /* UnixSockets.swift */,
@@ -504,13 +664,24 @@
 			isa = PBXGroup;
 			children = (
 				B5CBF3555504362CC1FFDFE5 /* HerdrMobile */,
+				53BD9BB24DE8744A9A7A3880 /* HerdrNotificationCore */,
+				56C19BF020D85F81B5D39F48 /* HerdrNotificationService */,
 			);
 			path = Sources;
+			sourceTree = "<group>";
+		};
+		ECB08E026E7F9F850AAFC76B /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				45FC4FCCE9B94EC52FD930B1 /* Base64URL.swift */,
+			);
+			path = Support;
 			sourceTree = "<group>";
 		};
 		FBD6A7CD89990AD177ADB1D0 /* test-vectors */ = {
 			isa = PBXGroup;
 			children = (
+				0ACA2329DD2A706A72E0754E /* notification-payload-v1.json */,
 				7474FD0BACB07ADB3570E5BE /* pairing-code-v1.json */,
 			);
 			path = "test-vectors";
@@ -525,10 +696,12 @@
 			buildPhases = (
 				8A7F6144162C733E402E680E /* Sources */,
 				0E81AC9535C8CAB6E6C756D9 /* Frameworks */,
+				F2840EDFAE6B942FE17EC123 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				86224F972B43F64865D2785D /* PBXTargetDependency */,
 			);
 			name = HerdrMobile;
 			packageProductDependencies = (
@@ -539,6 +712,23 @@
 			productName = HerdrMobile;
 			productReference = B383994C2C8492694D5F3690 /* HerdrMobile.app */;
 			productType = "com.apple.product-type.application";
+		};
+		215E010A149D8CFF712AC2FA /* HerdrNotificationService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C7E3C9939EE23DF10544CFFB /* Build configuration list for PBXNativeTarget "HerdrNotificationService" */;
+			buildPhases = (
+				6FEE25436666EFD7D2FC4275 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HerdrNotificationService;
+			packageProductDependencies = (
+			);
+			productName = HerdrNotificationService;
+			productReference = 0C40CAB15B8223BC58AB39F1 /* HerdrNotificationService.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 		CC604196196FFA00A41E9CD7 /* HerdrMobileTests */ = {
 			isa = PBXNativeTarget;
@@ -570,6 +760,18 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					0D343AAE6E2F9C2B803C9AE9 = {
+						DevelopmentTeam = 9VM4RM39R3;
+						ProvisioningStyle = Automatic;
+					};
+					215E010A149D8CFF712AC2FA = {
+						DevelopmentTeam = 9VM4RM39R3;
+						ProvisioningStyle = Automatic;
+					};
+					CC604196196FFA00A41E9CD7 = {
+						DevelopmentTeam = 9VM4RM39R3;
+						ProvisioningStyle = Automatic;
+					};
 				};
 			};
 			buildConfigurationList = 8596E4CF7DAE6E1B5A35229D /* Build configuration list for PBXProject "HerdrMobile" */;
@@ -592,6 +794,7 @@
 			targets = (
 				0D343AAE6E2F9C2B803C9AE9 /* HerdrMobile */,
 				CC604196196FFA00A41E9CD7 /* HerdrMobileTests */,
+				215E010A149D8CFF712AC2FA /* HerdrNotificationService */,
 			);
 		};
 /* End PBXProject section */
@@ -601,6 +804,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3F3E89D840711FE7EA62A0E5 /* notification-payload-v1.json in Resources */,
 				2BA659E85F8A8A7A4CAC614E /* pairing-code-v1.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -608,6 +812,21 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		6FEE25436666EFD7D2FC4275 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				78DE951AD8EEDB9423984268 /* AgentNotificationRenderer.swift in Sources */,
+				71F4A714BC2E527F40E657B6 /* Base64URL.swift in Sources */,
+				17FE60211C5769502C26BE5D /* HerdrAPITypes.swift in Sources */,
+				BF9FBA3462781177C6F78459 /* JSONValue.swift in Sources */,
+				A98B00EED8EB80B5A99A43D4 /* NotificationEnvelope.swift in Sources */,
+				8181681FBF45216B52EEBC1A /* NotificationKeyStore.swift in Sources */,
+				DBB8F9000793EF2B61B43ED8 /* NotificationService.swift in Sources */,
+				67FED2A809BAF1570D6E003F /* SecretStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8A7F6144162C733E402E680E /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -615,7 +834,14 @@
 				4D5BBEA6FE5430530AB0AAE7 /* AgentAttachStore.swift in Sources */,
 				6CBE7E0961FFD970A614ED4B /* AgentCardView.swift in Sources */,
 				2CE9115816E7CE945ABCF7A8 /* AgentDetailView.swift in Sources */,
+				39F4A48A7BAC63BD4B458FB1 /* AgentNotificationBannerStore.swift in Sources */,
+				B9FE745CE938481090505AC2 /* AgentNotificationBannerView.swift in Sources */,
+				1802268FFD5C1A38EC802F1A /* AgentNotificationCenterDelegate.swift in Sources */,
+				8AC72F5564FB95D416D1F193 /* AgentNotificationRenderer.swift in Sources */,
+				7C3999C38A0126986F9CCC58 /* AgentNotificationRouter.swift in Sources */,
+				07594B18999B4ACCD9C590F9 /* AgentNotificationRouting.swift in Sources */,
 				225ECBDC69A7785559BC4D20 /* AttachTerminalStore.swift in Sources */,
+				664FBC89396DBDD1083749E0 /* Base64URL.swift in Sources */,
 				CC20BAD2AC1A725889F82A20 /* ClosePaneStore.swift in Sources */,
 				3ECB4DD848A1C73AF0ED4B5F /* ConsoleAgent.swift in Sources */,
 				DE84101EE6E1BF5878C76C49 /* ConsoleStore.swift in Sources */,
@@ -644,6 +870,15 @@
 				0B82C5F60B548ED11F8C3045 /* ImageStaging.swift in Sources */,
 				4C80E23F09C8CFB3A93101B8 /* JSONValue.swift in Sources */,
 				B6FE3517A821A081D9F6262C /* KnownHostsStore.swift in Sources */,
+				6EE491610D2417571A57B5B3 /* NotificationConfigFile.swift in Sources */,
+				194A1727668B644A0A7A7BFF /* NotificationDisclosureView.swift in Sources */,
+				D452508C8B08FA41C17AA54F /* NotificationEnvelope.swift in Sources */,
+				3442A6A7F9DE99CBA83F79E1 /* NotificationKeyStore.swift in Sources */,
+				16936F96C7A9C21B5D3D924A /* NotificationPreferencesStore.swift in Sources */,
+				345C7A9CB13934941D67390F /* NotificationPrivacyCopy.swift in Sources */,
+				A4A0A43303CF9F8DDAD78A75 /* NotificationRegistrationCeremony.swift in Sources */,
+				59400DF89B4D869F1391F8BD /* NotificationRegistrationFile.swift in Sources */,
+				1B835FA52420698C39B40036 /* NotificationRelaySettings.swift in Sources */,
 				54C4A61E21C2C7D8A618E462 /* PairingCeremony.swift in Sources */,
 				EE22FB818F023585C4A07D9C /* PairingCode.swift in Sources */,
 				E26AA78B1E305437525A32D4 /* PairingConnector.swift in Sources */,
@@ -651,6 +886,7 @@
 				BC46FD1688F34030A1121C58 /* PairingScanView.swift in Sources */,
 				A14E6D20D1216F7764E3298B /* PhotosPickerImageSelection.swift in Sources */,
 				B34AF64884F29EB050E5B9AF /* Preflight.swift in Sources */,
+				2F63F9E390ED79B5B87966D7 /* PushRegistrationStore.swift in Sources */,
 				8196491DBF3B6024B4DB214C /* SSHChannelBudget.swift in Sources */,
 				8C514AFC85DAED69A4988C13 /* SSHCredentials.swift in Sources */,
 				CD358CC16A58086C056E975D /* SSHPairingConnector.swift in Sources */,
@@ -678,6 +914,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				822F39E2EA06AE24955F8169 /* AgentNotificationBannerStoreTests.swift in Sources */,
+				86B92C748144DAFC8D1E1609 /* AgentNotificationRendererTests.swift in Sources */,
+				EDC4E8E45B766F1EEB960B6F /* AgentNotificationRouterTests.swift in Sources */,
+				47E51B32528E78D6FC1C16B2 /* AgentNotificationRoutingTests.swift in Sources */,
 				D818864671292BE9F965CAA6 /* AttachTerminalStoreTests.swift in Sources */,
 				527D9FD128FA6F9C7BC8B572 /* AuthorizedKeysTestLock.swift in Sources */,
 				6092F63FF2DE77AD7D087A7C /* ClosePaneStoreTests.swift in Sources */,
@@ -707,12 +947,23 @@
 				969057C35F7E5F162B0CF41D /* JSONValueTests.swift in Sources */,
 				2C5A21065C48B7C40AE9A760 /* KnownHostsStoreTests.swift in Sources */,
 				F2CC5A27CA8B0623C486D9B2 /* LocalSSHTestEnvironment.swift in Sources */,
+				EDD038140CCF519A56D01C17 /* NotificationConfigFileTests.swift in Sources */,
+				616BF0A051759A6BC9B99D17 /* NotificationEnvelopeTests.swift in Sources */,
+				63B65A826002140EDF05216B /* NotificationKeyStoreTests.swift in Sources */,
+				CEF401BC0306ACEA750F0C55 /* NotificationPreferencesStoreTests.swift in Sources */,
+				4FCC32A004EE9F839A8955E0 /* NotificationPrivacyCopyTests.swift in Sources */,
+				49C375C3CCDEC2A66AA44499 /* NotificationRegistrationCeremonyTests.swift in Sources */,
+				2D3054E6B0E005A339F2BA71 /* NotificationRegistrationE2ETests.swift in Sources */,
+				FF1214609BE23D5EADAB9B0E /* NotificationRegistrationFileTests.swift in Sources */,
+				84A27FDC256CFA71D883A85A /* NotificationRelaySettingsTests.swift in Sources */,
+				B25855D8EBB3666934ACD077 /* NotificationVectorFile.swift in Sources */,
 				B32EA361C16DD5F87AEEEDEC /* PairingCeremonyE2ETests.swift in Sources */,
 				4DECB9E21914EFB5C89D4AB3 /* PairingCeremonyTests.swift in Sources */,
 				8558806B5DFE751EB1FA3814 /* PairingCodeTests.swift in Sources */,
 				678CB0B828602B38AC23BD26 /* PairingCodeVectorFile.swift in Sources */,
 				DB2F714BFA12259D2D6D9715 /* PairingScanStoreTests.swift in Sources */,
 				2E4C392847F96047AF0510DD /* PreflightReportTests.swift in Sources */,
+				49EDFB7338E2C2CE9200F711 /* PushRegistrationStoreTests.swift in Sources */,
 				1BBEEF5478D91222F48C2048 /* ReconnectPolicyTests.swift in Sources */,
 				3DC1B4DCC0E2CD73A0C13B64 /* SSHAuthE2ETests.swift in Sources */,
 				7C453E2308A9E12532A24705 /* SSHChannelBudgetTests.swift in Sources */,
@@ -734,6 +985,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		86224F972B43F64865D2785D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 215E010A149D8CFF712AC2FA /* HerdrNotificationService */;
+			targetProxy = 97D1353CFDC9D7572BED0083 /* PBXContainerItemProxy */;
+		};
 		F6B76D58924DEA698DB1ACBF /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 0D343AAE6E2F9C2B803C9AE9 /* HerdrMobile */;
@@ -746,6 +1002,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Sources/HerdrMobile/HerdrMobile.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -787,6 +1044,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Sources/HerdrMobile/HerdrMobile.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -840,8 +1098,10 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 9VM4RM39R3;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -888,6 +1148,24 @@
 			};
 			name = Debug;
 		};
+		B230A77D740D0D2C14E4C44D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Sources/HerdrNotificationService/HerdrNotificationService.entitlements;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = Sources/HerdrNotificationService/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.herdr.mobile.HerdrMobile.NotificationService;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		DE5246CC93E8C961BEC3D4D6 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -921,8 +1199,10 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 9VM4RM39R3;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -945,6 +1225,24 @@
 			};
 			name = Release;
 		};
+		E9158EA1618E150472B30423 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Sources/HerdrNotificationService/HerdrNotificationService.entitlements;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = Sources/HerdrNotificationService/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.herdr.mobile.HerdrMobile.NotificationService;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -962,6 +1260,15 @@
 			buildConfigurations = (
 				870F49BB47917D0F9EC01A11 /* Debug */,
 				DE5246CC93E8C961BEC3D4D6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C7E3C9939EE23DF10544CFFB /* Build configuration list for PBXNativeTarget "HerdrNotificationService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E9158EA1618E150472B30423 /* Debug */,
+				B230A77D740D0D2C14E4C44D /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

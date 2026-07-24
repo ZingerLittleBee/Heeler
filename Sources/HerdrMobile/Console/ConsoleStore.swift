@@ -156,6 +156,22 @@ final class ConsoleStore {
     }
 }
 
+extension ConsoleStore: NotificationTransportProvider {
+    /// Notification Registration work borrows the Host's live Console
+    /// connection (#75) instead of dialing a second one; an unconnected Host
+    /// fails loudly like every other Host-scoped RPC here.
+    func withNotificationTransport<Value: Sendable>(
+        for hostID: Host.ID,
+        _ operation: @escaping @Sendable (any Transport) async throws -> Value
+    ) async throws -> Value {
+        guard let projection = projections[hostID] else {
+            throw TransportError.sshUnreachable(
+                detail: "The Host is not connected.")
+        }
+        return try await projection.session.withTransport(operation)
+    }
+}
+
 extension ConsoleStore {
     /// The production session factory: SSH transports built from the Host
     /// catalog's credentials. TOFU is restricted to already-trusted

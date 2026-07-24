@@ -49,7 +49,8 @@ struct PairingCode: Sendable, Equatable {
             throw .unsupportedVersion(found: foundVersion)
         }
 
-        guard let body = decodeBase64URL(String(rest[rest.index(after: separator)...])) else {
+        guard let body = Data(base64URLEncoded: String(rest[rest.index(after: separator)...]))
+        else {
             throw .badEncoding
         }
         let wire: WirePayload
@@ -91,7 +92,8 @@ struct PairingCode: Sendable, Equatable {
         case (nil, nil):
             bootstrap = nil
         case (let seed?, let exp?):
-            guard let seedData = decodeBase64URL(seed), seedData.count == bootstrapSeedBytes else {
+            guard let seedData = Data(base64URLEncoded: seed), seedData.count == bootstrapSeedBytes
+            else {
                 throw .badPayload(reason: "seed must be \(bootstrapSeedBytes) bytes of base64url")
             }
             guard let expiry = Int(exactly: exp), expiry > 0 else {
@@ -132,33 +134,6 @@ struct PairingCode: Sendable, Equatable {
         guard let digest = Data(base64Encoded: String(text.dropFirst("SHA256:".count)) + "=")
         else { return nil }
         return HostKeyFingerprint(digest: digest)
-    }
-
-    /// Strict unpadded base64url (RFC 4648 `-`/`_` alphabet): rejects other
-    /// characters, padding, and impossible lengths, matching the plugin.
-    private static func decodeBase64URL(_ text: String) -> Data? {
-        guard
-            !text.isEmpty, text.count % 4 != 1,
-            text.utf8.allSatisfy(isBase64URLByte)
-        else { return nil }
-        let base64 =
-            text
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-            + String(repeating: "=", count: (4 - text.count % 4) % 4)
-        return Data(base64Encoded: base64)
-    }
-
-    private static func isBase64URLByte(_ byte: UInt8) -> Bool {
-        switch byte {
-        case UInt8(ascii: "A")...UInt8(ascii: "Z"),
-            UInt8(ascii: "a")...UInt8(ascii: "z"),
-            UInt8(ascii: "0")...UInt8(ascii: "9"),
-            UInt8(ascii: "-"), UInt8(ascii: "_"):
-            return true
-        default:
-            return false
-        }
     }
 
     private static func containsWhitespace(_ text: String) -> Bool {
