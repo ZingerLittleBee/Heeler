@@ -23,9 +23,17 @@ enum AgentNotificationRenderer {
     ) -> AgentNotificationAlert {
         guard let (record, payload) = NotificationEnvelope.open(userInfo: userInfo, keys: keys)
         else { return fallback }
-        return AgentNotificationAlert(
-            title: "\(payload.agentKind) on \(record.hostName)",
-            body: body(for: payload.status))
+        return alert(
+            agentKind: payload.agentKind, hostName: record.hostName, status: payload.status)
+    }
+
+    /// The one phrasing of an Agent Notification, shared by the push path
+    /// above and the in-app foreground banner (#77) so the wording cannot
+    /// drift between them.
+    static func alert(
+        agentKind: String, hostName: String, status: AgentStatus
+    ) -> AgentNotificationAlert {
+        AgentNotificationAlert(title: "\(agentKind) on \(hostName)", body: body(for: status))
     }
 
     private static func body(for status: AgentStatus) -> String {
