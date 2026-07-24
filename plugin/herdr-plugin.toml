@@ -1,0 +1,22 @@
+id = "herdr-mobile.pairing"
+name = "Herdr Mobile Pairing"
+version = "0.2.0"
+min_herdr_version = "0.7.5"
+description = "Pair a herdr-mobile device by scanning a QR Pairing Code"
+platforms = ["linux", "macos"]
+
+[[build]]
+command = ["npm", "ci"]
+
+[[actions]]
+id = "pair"
+title = "Pair a mobile device"
+description = "Show a Pairing Code QR for the herdr-mobile app"
+contexts = ["global"]
+command = ["node", "src/pair-action.js"]
+
+[[panes]]
+id = "pair"
+title = "Pair device"
+placement = "popup"
+command = ["node", "src/pair-popup.js"]

@@ -1,0 +1,16 @@
+{
+  "name": "herdr-mobile-pairing",
+  "version": "0.2.0",
+  "private": true,
+  "description": "herdr plugin that renders a Pairing Code QR for herdr-mobile device onboarding",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  }
+}

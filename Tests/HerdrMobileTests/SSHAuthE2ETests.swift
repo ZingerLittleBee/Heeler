@@ -17,16 +17,19 @@ struct SSHAuthE2ETests {
     @Test func generatedDeviceKeyAuthenticatesOnceItsLineIsAuthorized() async throws {
         let environment = try #require(LocalSSHTestEnvironment.current)
         let deviceKey = try DeviceKeyStore(secrets: InMemorySecretStore()).loadOrCreate()
-        let installed = try AuthorizedKeysEntry(
-            username: environment.username,
-            line: deviceKey.authorizedKeysLine(comment: "herdr-mobile-e2e"))
-        defer { installed.restore() }
+        // Cross-suite exclusion: the pairing e2e rewrites the same file.
+        try await AuthorizedKeysTestLock.shared.withLock {
+            let installed = try AuthorizedKeysEntry(
+                username: environment.username,
+                line: deviceKey.authorizedKeysLine(comment: "herdr-mobile-e2e"))
+            defer { installed.restore() }
 
-        let transport = try await SSHTransport.connect(
-            settings: environment.makeSettings(
-                socket: .absolutePath("/tmp/herdr-irrelevant.sock"),
-                credentials: .ed25519(deviceKey.privateKey)))
-        try await transport.close()
+            let transport = try await SSHTransport.connect(
+                settings: environment.makeSettings(
+                    socket: .absolutePath("/tmp/herdr-irrelevant.sock"),
+                    credentials: .ed25519(deviceKey.privateKey)))
+            try await transport.close()
+        }
     }
 
     @Test func unauthorizedDeviceKeyMapsToAuthenticationFailed() async throws {

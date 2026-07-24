@@ -36,6 +36,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  plugin-test:
+    name: Pairing plugin (Node)
+    runs-on: [self-hosted, Linux, X64, vps]
+    defaults:
+      run:
+        working-directory: plugin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm ci
+      - name: Run plugin tests
+        run: npm test
+
   codegen-drift:
     name: Wire-type codegen drift
     runs-on: [self-hosted, Linux, X64, vps]
