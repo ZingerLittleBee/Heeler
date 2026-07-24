@@ -12,6 +12,8 @@ struct ConsoleView: View {
     /// Owns the navigation path (#74): user taps and notification deep links
     /// drive the same stack.
     @Bindable var notificationRouter: AgentNotificationRouter
+    /// Announces foreground Blocked/Done transitions in-app (#77).
+    let bannerStore: AgentNotificationBannerStore
     @State private var isManagingHosts = false
     @State private var isStartingAgent = false
     @State private var isShowingSettings = false
@@ -76,6 +78,18 @@ struct ConsoleView: View {
                         relaySettings: relaySettings)
                 }
         }
+        // Above the NavigationStack so a banner also shows over a pushed
+        // Attach screen; a tap deep-links exactly like a push tap would.
+        .overlay(alignment: .top) {
+            if let banner = bannerStore.banner {
+                AgentNotificationBannerView(banner: banner) {
+                    bannerStore.dismiss()
+                    notificationRouter.open(banner.target)
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy, value: bannerStore.banner)
         // A notification deep link must land on the Attach even when one of
         // the Console's sheets covers it. User-driven pushes cannot happen
         // while a sheet is up, so this only acts on notification taps.

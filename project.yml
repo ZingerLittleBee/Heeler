@@ -11,6 +11,8 @@ settings:
     # Swift 6 language mode implies complete strict concurrency checking.
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
+    DEVELOPMENT_TEAM: 9VM4RM39R3
+    CODE_SIGN_STYLE: Automatic
 
 packages:
   # Pinned exactly: Citadel resolves swift-nio-ssh from the Wellz26 fork,
