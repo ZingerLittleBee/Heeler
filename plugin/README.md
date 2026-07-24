@@ -33,7 +33,10 @@ herdr plugin action invoke herdr-mobile.pairing.pair
 
 The popup checklist: arrows or `j`/`k` move, space toggles, `a` toggles all,
 enter mints a Bootstrap Key and renders the QR, `q`/escape closes (revoking
-the key). When the code expires, enter generates a fresh one.
+the key). When the code expires, enter generates a fresh one. Once a device
+enrolls, the QR is replaced by a success screen showing the enrolled Device
+Key's fingerprint and label; press `r` there to revoke that key (removing its
+`authorized_keys` line), or any other key to close.
 
 Known limitation: the advertised SSH port is currently fixed at 22.
 
@@ -105,8 +108,11 @@ TTL expires, when the popup exits (including SIGTERM/SIGHUP), and by a sweep
 of expired lines every time the popup starts — so a killed popup leaves at
 worst a line that dies with its TTL and is swept at the next start. Pending
 ceremony state lives under `$HERDR_PLUGIN_STATE_DIR/pending/<id>.json`, never
-in the plugin checkout. An invalid submission does not consume the line;
-the app may retry until the TTL runs out.
+in the plugin checkout. On successful Enrollment the accept entrypoint writes
+`$HERDR_PLUGIN_STATE_DIR/enrolled/<id>.json` (the enrolled fingerprint and
+line); the popup polls for it to show the success screen and drive the revoke,
+and clears it on exit. An invalid submission does not consume the line; the
+app may retry until the TTL runs out.
 
 ### Enrollment accept protocol
 
