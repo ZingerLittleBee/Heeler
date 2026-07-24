@@ -1,6 +1,6 @@
 id = "herdr-mobile.pairing"
 name = "Herdr Mobile Pairing"
-version = "0.1.0"
+version = "0.2.0"
 min_herdr_version = "0.7.5"
 description = "Pair a herdr-mobile device by scanning a QR Pairing Code"
 platforms = ["linux", "macos"]

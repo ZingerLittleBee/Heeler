@@ -1,9 +1,10 @@
 // Pairing popup pane (ADR 0007, herdr `[[panes]]` entrypoint "pair").
 //
-// Flow: enumerate candidate addresses -> user confirms the checklist ->
-// render the Pairing Code QR. This ticket ships the config-only Pairing Code
-// (no Bootstrap Key yet); the Enrollment ceremony arrives with the Bootstrap
-// Key lifecycle.
+// Flow: sweep stale bootstrap lines -> enumerate candidate addresses -> user
+// confirms the checklist -> mint a Bootstrap Key and render the Pairing Code
+// QR. The Bootstrap Key's restricted authorized_keys line lives exactly as
+// long as this popup and its 2-minute TTL, whichever ends first; Enrollment
+// itself happens in pair-accept.js, invoked by sshd as the forced command.
 
 import os from "node:os";
 import { emitKeypressEvents } from "node:readline";
@@ -12,6 +13,8 @@ import QRCode from "qrcode";
 import { candidateAddresses } from "./addresses.js";
 import { readHostKeyFingerprint } from "./host-key.js";
 import { encodePairingCode } from "./envelope.js";
+import { sweepExpiredBootstrapLines } from "./authorized-keys.js";
+import { beginPairing, endPairing, PAIRING_TTL_SECONDS } from "./pairing-session.js";
 import {
   createSelection,
   moveCursor,
@@ -60,6 +63,7 @@ function renderChecklist(state, warning) {
 async function renderPairingCode(payload) {
   const code = encodePairingCode(payload);
   const qr = await QRCode.toString(code, { type: "terminal", small: true });
+  const expires = new Date(payload.expiresAt * 1000).toLocaleTimeString();
   const lines = [
     `${BOLD}Scan with herdr-mobile${RESET}`,
     "",
@@ -68,8 +72,20 @@ async function renderPairingCode(payload) {
     `${BOLD}${payload.username}${RESET} on port ${BOLD}${payload.port}${RESET}`,
     `Host key ${payload.hostKeyFingerprint}`,
     `Addresses: ${payload.addresses.join(", ")}`,
+    `Code valid until ${BOLD}${expires}${RESET}, single use`,
     "",
     `${DIM}Press any key to close.${RESET}`,
+  ];
+  process.stdout.write(CLEAR + lines.join("\n") + "\n");
+}
+
+function renderExpired() {
+  const lines = [
+    `${BOLD}Pairing Code expired${RESET}`,
+    "",
+    "The Bootstrap Key was removed; the old QR is now useless.",
+    "",
+    `${DIM}enter generate a new code, any other key close${RESET}`,
   ];
   process.stdout.write(CLEAR + lines.join("\n") + "\n");
 }
@@ -88,6 +104,13 @@ async function main() {
     return;
   }
 
+  const stateDir = process.env.HERDR_PLUGIN_STATE_DIR;
+  if (!stateDir) {
+    fatal("HERDR_PLUGIN_STATE_DIR is not set. Run this popup through herdr.");
+    return;
+  }
+  const home = os.homedir();
+
   const hostKey = readHostKeyFingerprint();
   if (hostKey === null) {
     fatal("No SSH host key found under /etc/ssh. Is an OpenSSH server set up here?");
@@ -99,18 +122,94 @@ async function main() {
     return;
   }
 
+  // Startup sweep: crashed or killed ceremonies must leave no residue.
+  await sweepExpiredBootstrapLines(home);
+
   let state = createSelection(candidates);
   let phase = "select";
+  let confirmedAddresses = null;
+  let session = null;
+  let expiryTimer = null;
+  let closing = false;
+
+  async function cleanup() {
+    if (expiryTimer !== null) {
+      clearTimeout(expiryTimer);
+      expiryTimer = null;
+    }
+    if (session !== null) {
+      const { pairingId } = session;
+      session = null;
+      await endPairing({ home, stateDir, pairingId });
+    }
+  }
+
+  async function close(code) {
+    if (closing) {
+      return;
+    }
+    closing = true;
+    try {
+      await cleanup();
+    } finally {
+      process.exit(code);
+    }
+  }
+
+  // herdr closes a popup by ending the pane; make sure the bootstrap line
+  // dies with us. SIGKILL is covered by the startup sweep instead.
+  for (const signal of ["SIGTERM", "SIGHUP", "SIGINT"]) {
+    process.on(signal, () => void close(0));
+  }
+
+  async function startCeremony() {
+    session = await beginPairing({ home, stateDir });
+    expiryTimer = setTimeout(() => {
+      expiryTimer = null;
+      phase = "expired";
+      void cleanup().then(renderExpired);
+    }, PAIRING_TTL_SECONDS * 1000);
+    await renderPairingCode({
+      addresses: confirmedAddresses,
+      port: DEFAULT_SSH_PORT,
+      username: os.userInfo().username,
+      hostKeyFingerprint: hostKey.fingerprint,
+      bootstrapSeed: session.seed,
+      expiresAt: session.expiresAt,
+    });
+  }
+
+  function startCeremonyOrDie() {
+    startCeremony().catch((error) => {
+      fatal(`Could not start pairing: ${error.message}`);
+      void close(1);
+    });
+  }
+
   process.stdout.write(HIDE_CURSOR);
   process.on("exit", () => process.stdout.write(SHOW_CURSOR));
   renderChecklist(state);
 
   readKeys((key) => {
+    if (closing) {
+      return;
+    }
     if (key.name === "q" || key.name === "escape" || (key.ctrl && key.name === "c")) {
-      process.exit(0);
+      void close(0);
+      return;
     }
     if (phase === "qr") {
-      process.exit(0);
+      void close(0);
+      return;
+    }
+    if (phase === "expired") {
+      if (key.name === "return") {
+        phase = "qr";
+        startCeremonyOrDie();
+      } else {
+        void close(0);
+      }
+      return;
     }
     switch (key.name) {
       case "up":
@@ -134,15 +233,8 @@ async function main() {
           return;
         }
         phase = "qr";
-        renderPairingCode({
-          addresses,
-          port: DEFAULT_SSH_PORT,
-          username: os.userInfo().username,
-          hostKeyFingerprint: hostKey.fingerprint,
-        }).catch((error) => {
-          fatal(`Could not render the Pairing Code: ${error.message}`);
-          process.exit(1);
-        });
+        confirmedAddresses = addresses;
+        startCeremonyOrDie();
         return;
       }
       default:
