@@ -9,6 +9,7 @@ import {
   beginPairing,
   endPairing,
   enrolledPath,
+  expirePairing,
   pendingPath,
   readEnrollment,
   recordEnrollment,
@@ -102,6 +103,40 @@ suite("enrollment record", () => {
 
   test("readEnrollment is null when there is no record", () => {
     assert.equal(readEnrollment(stateDir, "missing"), null);
+  });
+});
+
+suite("expirePairing", () => {
+  test("removes the bootstrap line and pending state when nothing enrolled", async () => {
+    await editAuthorizedKeys(home, () => [USER_LINE]);
+    const session = await beginPairing({ home, stateDir, now: NOW });
+
+    const record = await expirePairing({ home, stateDir, pairingId: session.pairingId });
+
+    assert.equal(record, null);
+    assert.equal(readKeys(), `${USER_LINE}\n`);
+    assert.equal(existsSync(pendingPath(stateDir, session.pairingId)), false);
+  });
+
+  test("returns the enrollment record and touches nothing when a device enrolled", async () => {
+    await editAuthorizedKeys(home, () => [USER_LINE]);
+    const session = await beginPairing({ home, stateDir, now: NOW });
+    recordEnrollment({
+      stateDir,
+      pairingId: session.pairingId,
+      expiresAt: session.expiresAt,
+      fingerprint: DEVICE_FINGERPRINT,
+      line: DEVICE_LINE,
+    });
+    const keysBefore = readKeys();
+
+    const record = await expirePairing({ home, stateDir, pairingId: session.pairingId });
+
+    assert.equal(record?.fingerprint, DEVICE_FINGERPRINT);
+    assert.equal(record?.line, DEVICE_LINE);
+    assert.equal(readKeys(), keysBefore);
+    assert.equal(existsSync(pendingPath(stateDir, session.pairingId)), true);
+    assert.equal(existsSync(enrolledPath(stateDir, session.pairingId)), true);
   });
 });
 

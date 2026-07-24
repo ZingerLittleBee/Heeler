@@ -15,7 +15,12 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { generateBootstrapKey } from "./bootstrap-key.js";
-import { bootstrapLine, editAuthorizedKeys, removeBootstrapLine } from "./authorized-keys.js";
+import {
+  bootstrapLine,
+  editAuthorizedKeys,
+  parseBootstrapLine,
+  removeBootstrapLine,
+} from "./authorized-keys.js";
 
 export const PAIRING_TTL_SECONDS = 120;
 
@@ -31,8 +36,9 @@ export function enrolledPath(stateDir, pairingId) {
 
 /**
  * Record a completed Enrollment so the popup can show the enrolled fingerprint
- * and offer a one-key revoke. Written by pair-accept.js after a successful
- * enroll; the popup polls for it as its Enrollment signal.
+ * and offer a one-key revoke. Written by pair-accept.js inside the
+ * authorized_keys lock, atomically with the Device Key append; the popup polls
+ * for it as its Enrollment signal and expirePairing checks it under that lock.
  *
  * @param {object} options
  * @param {string} options.stateDir plugin state directory
@@ -119,6 +125,31 @@ export async function beginPairing({
   }
 
   return { pairingId, seed, expiresAt, publicLine };
+}
+
+/**
+ * Expire a ceremony from the popup's TTL timer. Like endPairing, but the
+ * enrolled-record check runs inside the authorized_keys lock — the same lock
+ * under which pair-accept.js commits an Enrollment — so exactly one outcome
+ * is possible: either the record is visible here (return it, touch nothing,
+ * the popup shows the revoke screen), or this cleanup consumes the pending
+ * state first and the accept script rejects. No interleaving can enroll a
+ * device silently (ADR 0007's compensating control depends on that).
+ *
+ * @returns {Promise<object | null>} the Enrollment record, if a device enrolled
+ */
+export async function expirePairing({ home, stateDir, pairingId }) {
+  let record = null;
+  await editAuthorizedKeys(home, (lines) => {
+    record = readEnrollment(stateDir, pairingId);
+    if (record !== null) {
+      return null;
+    }
+    rmSync(pendingPath(stateDir, pairingId), { force: true });
+    const kept = lines.filter((line) => parseBootstrapLine(line)?.pairingId !== pairingId);
+    return kept.length === lines.length ? null : kept;
+  });
+  return record;
 }
 
 /**

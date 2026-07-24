@@ -102,7 +102,10 @@ try {
 
 // One locked edit enrolls the Device Key and self-revokes the bootstrap
 // line. Pending state is deleted inside the critical section so a racing
-// second connection cannot enroll twice with the same Bootstrap Key.
+// second connection cannot enroll twice with the same Bootstrap Key, and
+// the Enrollment record is written inside it too, so the popup's locked
+// expiry check (expirePairing) can never miss an enroll that already
+// happened — it would render "expired" over a silently enrolled device.
 let alreadyUsed = false;
 let expired = false;
 await editAuthorizedKeys(home, (lines) => {
@@ -122,6 +125,14 @@ await editAuthorizedKeys(home, (lines) => {
   if (!kept.some((line) => keyBlobOf(line) === keyBlobOf(deviceKey.line))) {
     kept.push(deviceKey.line);
   }
+  // The record the popup polls for: enrolled fingerprint plus the appended
+  // line, its one-key revoke target.
+  recordEnrollment({
+    stateDir,
+    pairingId,
+    fingerprint: deviceKey.fingerprint,
+    line: deviceKey.line,
+  });
   return kept;
 });
 if (alreadyUsed) {
@@ -130,9 +141,5 @@ if (alreadyUsed) {
 if (expired) {
   err("expired", `pairing ${pairingId} expired; regenerate the Pairing Code`);
 }
-
-// Leave a record for the popup: it polls this to show the enrolled
-// fingerprint and to offer a one-key revoke of the line we just appended.
-recordEnrollment({ stateDir, pairingId, fingerprint: deviceKey.fingerprint, line: deviceKey.line });
 
 ok(deviceKey.fingerprint);

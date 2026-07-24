@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { beginPairing, pendingPath, readEnrollment } from "../src/pairing-session.js";
+import { beginPairing, expirePairing, pendingPath, readEnrollment } from "../src/pairing-session.js";
 import { authorizedKeysPath, editAuthorizedKeys, parseBootstrapLine } from "../src/authorized-keys.js";
 
 const ACCEPT_SCRIPT = fileURLToPath(new URL("../src/pair-accept.js", import.meta.url));
@@ -166,6 +166,54 @@ suite("pair-accept", () => {
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stdout.trim(), `HERDR-ENROLL:OK:${DEVICE_FINGERPRINT}`);
     assert.equal(readKeys(), `${DEVICE_LINE}\n`);
+  });
+
+  test("expiring after an enroll returns the record instead of expiring", async () => {
+    const session = await beginPairing({ home, stateDir });
+    const accept = runAccept(session.pairingId, `${DEVICE_LINE}\n`);
+    assert.equal(accept.status, 0, accept.stderr);
+
+    const record = await expirePairing({ home, stateDir, pairingId: session.pairingId });
+
+    assert.equal(record?.fingerprint, DEVICE_FINGERPRINT);
+    assert.ok(readKeys().includes(DEVICE_LINE));
+    // The record survives so the popup can still offer the revoke.
+    assert.notEqual(readEnrollment(stateDir, session.pairingId), null);
+  });
+
+  test("expiring before the accept runs consumes the pairing", async () => {
+    const session = await beginPairing({ home, stateDir });
+
+    const record = await expirePairing({ home, stateDir, pairingId: session.pairingId });
+    assert.equal(record, null);
+
+    const result = runAccept(session.pairingId, `${DEVICE_LINE}\n`);
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout.trim(), "HERDR-ENROLL:ERR:unknown_pairing");
+    assert.equal(readKeys().includes(DEVICE_LINE), false);
+    assert.equal(readEnrollment(stateDir, session.pairingId), null);
+  });
+
+  test("an expiry racing an accept never enrolls a device silently", async () => {
+    const session = await beginPairing({ home, stateDir });
+
+    const [result, record] = await Promise.all([
+      runAcceptAsync(session.pairingId, `${DEVICE_LINE}\n`),
+      expirePairing({ home, stateDir, pairingId: session.pairingId }),
+    ]);
+
+    if (readKeys().includes(DEVICE_LINE)) {
+      // The accept won: the popup's locked expiry check must have seen the
+      // record, or it would render "expired" over a silently enrolled device.
+      assert.equal(result.stdout.trim(), `HERDR-ENROLL:OK:${DEVICE_FINGERPRINT}`);
+      assert.equal(record?.fingerprint, DEVICE_FINGERPRINT);
+    } else {
+      // The expiry won: nothing enrolled, no record, the accept rejected.
+      assert.equal(record, null);
+      assert.equal(result.status, 1);
+      assert.equal(readEnrollment(stateDir, session.pairingId), null);
+    }
+    assert.equal(bootstrapLinesIn(readKeys()).length, 0);
   });
 
   test("two concurrent accepts enroll the Device Key exactly once", async () => {

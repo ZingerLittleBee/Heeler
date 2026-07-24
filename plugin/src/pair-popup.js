@@ -17,6 +17,7 @@ import { commentOf, removeKeyLine, sweepExpiredBootstrapLines } from "./authoriz
 import {
   beginPairing,
   endPairing,
+  expirePairing,
   readEnrollment,
   PAIRING_TTL_SECONDS,
 } from "./pairing-session.js";
@@ -250,6 +251,32 @@ async function main() {
     enterEnrolled(record);
   }
 
+  // The TTL lapsed. A device can enroll inside the accept script's lock right
+  // up to the deadline, after our last poll, so the check for its record runs
+  // inside that same lock (expirePairing): either the Enrollment is honored,
+  // or the cleanup wins and the accept script rejects. Anything else could
+  // delete an enrolled device's record and never offer the revoke (ADR 0007's
+  // compensating control).
+  async function expireCeremony(pairingId) {
+    phase = "expiring";
+    if (enrollWatch !== null) {
+      clearInterval(enrollWatch);
+      enrollWatch = null;
+    }
+    const record = await expirePairing({ home, stateDir, pairingId });
+    if (closing) {
+      return;
+    }
+    if (record !== null) {
+      enterEnrolled(record);
+      return;
+    }
+    // expirePairing already dropped the bootstrap line and pending state.
+    session = null;
+    phase = "expired";
+    renderExpired();
+  }
+
   async function revokeEnrolledDevice() {
     if (enrolled === null) {
       void close(0);
@@ -277,17 +304,7 @@ async function main() {
       if (closing || phase !== "qr") {
         return;
       }
-      // A device can enroll inside the accept script's lock right up to the
-      // deadline, after our last poll. Honor a record that landed in that gap
-      // instead of expiring, or we would delete an enrolled device and never
-      // offer the revoke (ADR 0007's compensating control).
-      const record = readEnrollment(stateDir, pairingId);
-      if (record !== null) {
-        enterEnrolled(record);
-        return;
-      }
-      phase = "expired";
-      void cleanup().then(renderExpired);
+      void expireCeremony(pairingId);
     }, PAIRING_TTL_SECONDS * 1000);
     await renderPairingCode({
       addresses: confirmedAddresses,
@@ -315,9 +332,9 @@ async function main() {
     if (closing) {
       return;
     }
-    // Ignore every key while a revoke is in flight; the removal is fast and a
-    // stray press must not close the popup before it settles.
-    if (phase === "revoking") {
+    // Ignore every key while a revoke or the expiry check is in flight; both
+    // are fast and a stray press must not close the popup before they settle.
+    if (phase === "revoking" || phase === "expiring") {
       return;
     }
     if (key.name === "q" || key.name === "escape" || (key.ctrl && key.name === "c")) {
