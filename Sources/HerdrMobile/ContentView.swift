@@ -7,21 +7,39 @@ struct ContentView: View {
     let pushRegistration: PushRegistrationStore
     let notificationRouter: AgentNotificationRouter
     @State private var hostStore = HostStore()
-    @State private var console = ConsoleStore()
+    @State private var console: ConsoleStore
+    @State private var notificationPreferences: NotificationPreferencesStore
     @State private var terminalThemes = TerminalThemeSettings()
     @Environment(\.scenePhase) private var scenePhase
+
+    init(pushRegistration: PushRegistrationStore, notificationRouter: AgentNotificationRouter) {
+        self.pushRegistration = pushRegistration
+        self.notificationRouter = notificationRouter
+        let console = ConsoleStore()
+        _console = State(initialValue: console)
+        // Preference reads/writes borrow the Console's live per-Host SSH
+        // connections (#75); the token comes from push bootstrap (#71).
+        _notificationPreferences = State(
+            initialValue: NotificationPreferencesStore(
+                transports: console,
+                deviceToken: { [weak pushRegistration] in pushRegistration?.deviceToken }))
+    }
 
     var body: some View {
         ConsoleView(
             hosts: hostStore, console: console, terminalThemes: terminalThemes,
-            pushRegistration: pushRegistration, notificationRouter: notificationRouter
+            pushRegistration: pushRegistration,
+            notificationPreferences: notificationPreferences,
+            notificationRouter: notificationRouter
         )
         .task {
             console.setHosts(hostStore.hosts)
+            notificationPreferences.setHosts(hostStore.hosts)
             await console.resume()
         }
         .onChange(of: hostStore.hosts) {
             console.setHosts(hostStore.hosts)
+            notificationPreferences.setHosts(hostStore.hosts)
         }
         // Feeds the router the Console's Agent list so a notification tap
         // that arrived before the Hosts synced (killed-state launch) routes

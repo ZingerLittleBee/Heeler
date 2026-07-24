@@ -5,6 +5,7 @@ import UIKit
 struct SettingsView: View {
     let terminalThemes: TerminalThemeSettings
     let pushRegistration: PushRegistrationStore
+    let notificationPreferences: NotificationPreferencesStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
 
@@ -19,6 +20,14 @@ struct SettingsView: View {
                     Text("Agent Notifications")
                 } footer: {
                     Text("Get notified when an Agent is waiting for your input or finishes.")
+                }
+
+                // Per-Host preferences (#75): registration on/off plus the
+                // separate Done flag, once this device holds a push token.
+                if pushRegistration.deviceToken != nil {
+                    ForEach(notificationPreferences.hosts) { host in
+                        hostNotificationSection(host)
+                    }
                 }
 
                 Section {
@@ -55,6 +64,81 @@ struct SettingsView: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .task { await notificationPreferences.refresh() }
+            // The user can finish push bootstrap inside this very sheet;
+            // the per-Host rows appear the moment the token lands.
+            .onChange(of: pushRegistration.deviceToken) { _, token in
+                guard token != nil else { return }
+                Task { await notificationPreferences.refresh() }
+            }
+        }
+    }
+
+    private func hostNotificationSection(_ host: Host) -> some View {
+        Section {
+            switch notificationPreferences.states[host.id] {
+            case nil, .loading:
+                HStack {
+                    Text("Checking this Host")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    ProgressView()
+                }
+            case .unavailable(let message):
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(message)
+                        .foregroundStyle(.secondary)
+                    Button("Check Again") {
+                        Task { await notificationPreferences.refresh() }
+                    }
+                }
+            case .idle(let settings):
+                hostToggles(host: host, settings: settings, isUpdating: false)
+            case .updating(let settings):
+                hostToggles(host: host, settings: settings, isUpdating: true)
+            case .failed(_, let settings):
+                hostToggles(host: host, settings: settings, isUpdating: false)
+            }
+        } header: {
+            Text(host.displayName)
+        } footer: {
+            // Fail loudly (#75): a toggle that could not reach the Host
+            // says so and stays on the Host's confirmed value.
+            if case .failed(let message, _) = notificationPreferences.states[host.id] {
+                Text(message)
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func hostToggles(
+        host: Host,
+        settings: NotificationPreferencesStore.HostSettings,
+        isUpdating: Bool
+    ) -> some View {
+        Toggle(
+            "Notifications",
+            isOn: Binding(
+                get: { settings.isRegistered },
+                set: { enabled in
+                    Task {
+                        await notificationPreferences.setNotificationsEnabled(
+                            enabled, for: host)
+                    }
+                }))
+            .disabled(isUpdating)
+        if settings.isRegistered {
+            Toggle(
+                "Done Notifications",
+                isOn: Binding(
+                    get: { settings.notify.done },
+                    set: { enabled in
+                        Task {
+                            await notificationPreferences.setDoneEnabled(enabled, for: host)
+                        }
+                    }))
+                .disabled(isUpdating)
         }
     }
 
