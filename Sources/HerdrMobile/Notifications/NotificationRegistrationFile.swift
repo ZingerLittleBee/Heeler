@@ -119,6 +119,18 @@ struct NotificationRegistrationFile: Sendable, Equatable {
         devices.contains { $0["token"]?.stringValue == token }
     }
 
+    /// The notify flags of the entry carrying `token`, nil when that device
+    /// is not registered. A missing or mistyped flag reads as off — the same
+    /// fail-closed reading the plugin's notify hook applies (v1 contract).
+    func preferences(token: String) -> NotificationTriggerPreferences? {
+        guard let entry = devices.first(where: { $0["token"]?.stringValue == token }) else {
+            return nil
+        }
+        return NotificationTriggerPreferences(
+            blocked: entry["notify"]?["blocked"] == .bool(true),
+            done: entry["notify"]?["done"] == .bool(true))
+    }
+
     /// The serialized file for an atomic whole-file replace. Sorted keys keep
     /// the output deterministic; the v1 contract imposes no canonical order.
     func encoded() throws -> Data {

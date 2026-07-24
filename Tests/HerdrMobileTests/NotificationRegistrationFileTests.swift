@@ -103,4 +103,25 @@ struct NotificationRegistrationFileTests {
 
         #expect(file.removing(token: "not-there") == file)
     }
+
+    @Test func preferencesReadTheEntrysNotifyFlags() {
+        let file = NotificationRegistrationFile().upserting(entry)
+
+        #expect(
+            file.preferences(token: entry.token.hex)
+                == NotificationTriggerPreferences(blocked: true, done: false))
+        #expect(file.preferences(token: "not-there") == nil)
+    }
+
+    @Test func missingOrMistypedNotifyFlagsReadAsOff() throws {
+        // Fail closed, exactly like the plugin's reader (v1 contract).
+        let file = try NotificationRegistrationFile.decode(
+            Data(
+                (#"{"v":1,"devices":[{"token":"ffff","key":"kk","env":"sandbox","#
+                    + #""notify":{"blocked":"yes"}}]}"#).utf8))
+
+        #expect(
+            file.preferences(token: "ffff")
+                == NotificationTriggerPreferences(blocked: false, done: false))
+    }
 }
