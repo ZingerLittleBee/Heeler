@@ -179,19 +179,3 @@ export function keyBlobOf(line) {
   const start = words[0]?.startsWith("ssh-") || words[0]?.startsWith("ecdsa-") ? 0 : 1;
   return words.slice(start, start + 2).join(" ");
 }
-
-/**
- * Append a validated Device Key public line (Enrollment). Appending a key
- * that is already authorized is a success, not a duplicate.
- *
- * @returns {Promise<boolean>} whether the line was newly appended
- */
-export async function appendDeviceKeyLine(home, line) {
-  return editAuthorizedKeys(home, (lines) => {
-    const blob = keyBlobOf(line);
-    if (lines.some((existing) => keyBlobOf(existing) === blob)) {
-      return null;
-    }
-    return [...lines, line];
-  });
-}

@@ -10,7 +10,6 @@ import {
   editAuthorizedKeys,
   removeBootstrapLine,
   sweepExpiredBootstrapLines,
-  appendDeviceKeyLine,
 } from "../src/authorized-keys.js";
 
 const PUBLIC_LINE =
@@ -138,19 +137,5 @@ suite("sweepExpiredBootstrapLines", () => {
   test("is a no-op when the file does not exist", async () => {
     assert.equal(await sweepExpiredBootstrapLines(home, 1753305600), 0);
     assert.equal(existsSync(authorizedKeysPath(home)), false);
-  });
-});
-
-suite("appendDeviceKeyLine", () => {
-  test("appends the line", async () => {
-    await editAuthorizedKeys(home, () => [USER_LINE]);
-    await appendDeviceKeyLine(home, `${PUBLIC_LINE} phone`);
-    assert.equal(readKeys(), `${USER_LINE}\n${PUBLIC_LINE} phone\n`);
-  });
-
-  test("does not duplicate an already-authorized key", async () => {
-    await editAuthorizedKeys(home, () => [`${PUBLIC_LINE} phone`]);
-    await appendDeviceKeyLine(home, `${PUBLIC_LINE} renamed-phone`);
-    assert.equal(readKeys(), `${PUBLIC_LINE} phone\n`);
   });
 });

@@ -7,7 +7,7 @@
 
 import { test, suite, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -45,6 +45,25 @@ function runAccept(pairingId, input) {
   );
   assert.equal(result.error, undefined);
   return result;
+}
+
+// Async counterpart to runAccept: spawn without blocking so two accepts can
+// race against the same pairing in a single event loop.
+function runAcceptAsync(pairingId, input) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      [ACCEPT_SCRIPT, "--state-dir", stateDir, "--pairing-id", pairingId],
+      { env: { HOME: home, PATH: process.env.PATH } },
+    );
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+    child.on("error", reject);
+    child.on("close", (status) => resolve({ status, stdout, stderr }));
+    child.stdin.end(input);
+  });
 }
 
 function readKeys() {
@@ -135,5 +154,27 @@ suite("pair-accept", () => {
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stdout.trim(), `HERDR-ENROLL:OK:${DEVICE_FINGERPRINT}`);
     assert.equal(readKeys(), `${DEVICE_LINE}\n`);
+  });
+
+  test("two concurrent accepts enroll the Device Key exactly once", async () => {
+    await editAuthorizedKeys(home, () => [USER_LINE]);
+    const session = await beginPairing({ home, stateDir });
+
+    const [a, b] = await Promise.all([
+      runAcceptAsync(session.pairingId, `${DEVICE_LINE}\n`),
+      runAcceptAsync(session.pairingId, `${DEVICE_LINE}\n`),
+    ]);
+
+    // Exactly one winner enrolls; the loser sees the pairing already consumed.
+    const outcomes = [a.stdout.trim(), b.stdout.trim()].sort();
+    assert.deepEqual(outcomes, [
+      "HERDR-ENROLL:ERR:unknown_pairing",
+      `HERDR-ENROLL:OK:${DEVICE_FINGERPRINT}`,
+    ]);
+
+    // One Device Key line, no leftover bootstrap line.
+    assert.equal(readKeys(), `${USER_LINE}\n${DEVICE_LINE}\n`);
+    assert.equal(bootstrapLinesIn(readKeys()).length, 0);
+    assert.equal(existsSync(pendingPath(stateDir, session.pairingId)), false);
   });
 });

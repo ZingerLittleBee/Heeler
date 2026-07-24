@@ -104,20 +104,31 @@ try {
 // line. Pending state is deleted inside the critical section so a racing
 // second connection cannot enroll twice with the same Bootstrap Key.
 let alreadyUsed = false;
+let expired = false;
 await editAuthorizedKeys(home, (lines) => {
   if (!existsSync(pendingPath(stateDir, pairingId))) {
     alreadyUsed = true;
     return null;
   }
   const kept = lines.filter((line) => parseBootstrapLine(line)?.pairingId !== pairingId);
+  rmSync(pendingPath(stateDir, pairingId), { force: true });
+  // Re-validate expiry inside the lock: the stdin read can block for up to
+  // INPUT_TIMEOUT_MS, so the TTL may have lapsed since the pre-read check.
+  // Still revoke the bootstrap line, but do not enroll the Device Key.
+  if (Math.floor(Date.now() / 1000) > pending.expiresAt) {
+    expired = true;
+    return kept;
+  }
   if (!kept.some((line) => keyBlobOf(line) === keyBlobOf(deviceKey.line))) {
     kept.push(deviceKey.line);
   }
-  rmSync(pendingPath(stateDir, pairingId), { force: true });
   return kept;
 });
 if (alreadyUsed) {
   err("unknown_pairing", `pairing ${pairingId} was already used`);
+}
+if (expired) {
+  err("expired", `pairing ${pairingId} expired; regenerate the Pairing Code`);
 }
 
 ok(deviceKey.fingerprint);
