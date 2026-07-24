@@ -10,6 +10,10 @@ it once, submits its Device Key public line, and the plugin's Enrollment
 entrypoint appends that key to `authorized_keys` automatically. See
 [Bootstrap Key lifecycle](#bootstrap-key-lifecycle).
 
+The plugin also delivers **Agent Notifications** (ADR 0008): an event hook on
+`pane.agent_status_changed` pushes encrypted Blocked/Done transitions to
+registered devices through the Push Relay. See [Notify hook](#notify-hook).
+
 ## Requirements
 
 - Node.js >= 20 on `PATH`
@@ -241,6 +245,56 @@ revokes that device.
 
 Readers ignore unknown fields (additive v1 metadata); breaking changes bump
 `v`, honored by plugin and app together.
+
+## Notify hook
+
+The manifest `[[events]]` hook on `pane.agent_status_changed` runs
+`src/notify-hook.js` as one short-lived process per Agent Status transition;
+there is no long-running watcher. Only **Blocked** and **Done** notify, and
+only for devices whose registration entry sets the matching `notify` flag.
+
+Anti-noise, in order:
+
+1. **Debounce**: the script sleeps ~5 s, re-checks the pane's current status
+   through `HERDR_BIN_PATH` (`herdr agent get <pane>`), and aborts if the
+   status moved on (or the agent is gone).
+2. **Dedupe**: the last notified status is recorded per pane under
+   `HERDR_PLUGIN_STATE_DIR/notify/`; a same-status repeat sends nothing. A
+   *different* status that survives its own debounce re-arms the pane.
+
+Each eligible device gets one `POST <relay_url>/push` (see `relay/README.md`)
+carrying the encrypted envelope and an opaque per-pane `collapse` key (derived
+from the device's Notification Key and the pane id, so the relay cannot guess
+the pane while newer statuses still replace older notifications). Transient
+failures (network errors, 429, 5xx) are retried up to 3 attempts; a `410
+Unregistered` verdict prunes that token from `notifications.json` (preserving
+any fields this plugin does not understand); other 4xx verdicts are final.
+
+Plugin-side settings live in `notify.json` next to the registration file in
+the plugin config dir:
+
+| Field            | Type    | Meaning |
+| ---------------- | ------- | ------- |
+| `relay_url`      | string  | Push Relay base URL. **Required** until a default relay is deployed (zinger-labs/herdr-mobile#70); without it the hook logs an error and sends nothing. |
+| `debounce_ms`    | integer | Debounce sleep override. Default 5000. |
+| `retry_delay_ms` | integer | Delay between retry attempts. Default 1000. |
+
+### Hook event JSON (verified against herdr 0.7.5)
+
+`HERDR_PLUGIN_EVENT_JSON` as captured empirically from a live herdr 0.7.5
+event hook invocation — note the `event` value is snake_case on the wire even
+though the manifest subscribes to the dot name:
+
+```json
+{"event":"pane_agent_status_changed",
+ "data":{"type":"pane_agent_status_changed","pane_id":"wV:p1",
+         "workspace_id":"wV","agent_status":"blocked","agent":"claude"}}
+```
+
+`agent` (plus `title`, `display_agent`, `state_labels` per herdr source) is
+optional. herdr's wire shapes carry no stability guarantee, so the hook parses
+leniently: it requires only `data.pane_id` and `data.agent_status` and ignores
+everything it does not recognize.
 
 ## Tests
 
