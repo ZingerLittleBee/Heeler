@@ -46,6 +46,15 @@ final actor ScriptedTransport: Transport {
     private(set) var stageRequests: [PreparedImage] = []
     private var stageOutcomes: [Result<StagedImage, ImageStagingError>] = []
     private var stageGate: ScriptedTransportCallGate?
+    /// The Host's current Notification Registration file bytes; nil scripts
+    /// "no device registered yet".
+    private(set) var notificationRegistration: Data?
+    /// Every whole-file replace received, in order; the ceremony tests
+    /// assert on what would have landed on the Host.
+    private(set) var replacedNotificationRegistrations: [Data] = []
+    private(set) var notificationRegistrationReads = 0
+    private var notificationRegistrationReadFailure: NotificationRegistrationError?
+    private var notificationRegistrationWriteFailure: NotificationRegistrationError?
 
     init(
         snapshot: SessionSnapshot = .fixture(),
@@ -158,6 +167,21 @@ final actor ScriptedTransport: Transport {
         attachContinuation != nil
     }
 
+    /// Scripts the registration file the Host currently holds.
+    func setNotificationRegistration(_ data: Data?) {
+        notificationRegistration = data
+    }
+
+    /// Makes every subsequent registration read throw `failure`.
+    func setNotificationRegistrationReadFailure(_ failure: NotificationRegistrationError?) {
+        notificationRegistrationReadFailure = failure
+    }
+
+    /// Makes every subsequent registration replace throw `failure`.
+    func setNotificationRegistrationWriteFailure(_ failure: NotificationRegistrationError?) {
+        notificationRegistrationWriteFailure = failure
+    }
+
     // MARK: Transport
 
     func ping() async throws -> ServerInfo {
@@ -266,6 +290,18 @@ final actor ScriptedTransport: Transport {
             throw ImageStagingError.transferFailed
         }
         return try stageOutcomes.removeFirst().get()
+    }
+
+    func readNotificationRegistration() async throws -> Data? {
+        notificationRegistrationReads += 1
+        if let failure = notificationRegistrationReadFailure { throw failure }
+        return notificationRegistration
+    }
+
+    func replaceNotificationRegistration(_ contents: Data) async throws {
+        if let failure = notificationRegistrationWriteFailure { throw failure }
+        notificationRegistration = contents
+        replacedNotificationRegistrations.append(contents)
     }
 
     var isConnected: Bool {

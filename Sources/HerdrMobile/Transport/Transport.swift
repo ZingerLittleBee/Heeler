@@ -68,6 +68,19 @@ protocol Transport: Sendable {
         progress: @escaping @Sendable (ImageStageProgress) async -> Void
     ) async throws -> StagedImage
 
+    /// Reads the Notification Registration file (v1, `plugin/README.md`)
+    /// from the herdr-mobile plugin's config dir on this Host; nil when no
+    /// device has registered yet. Throws
+    /// `NotificationRegistrationError.pluginNotInstalled` when the plugin is
+    /// absent, so the ceremony can tell "install the plugin" apart from a
+    /// broken read (#72).
+    func readNotificationRegistration() async throws -> Data?
+
+    /// Atomically replaces the Notification Registration file with
+    /// `contents` (temp file + rename per the v1 contract), creating it when
+    /// absent. Same plugin gate as the read.
+    func replaceNotificationRegistration(_ contents: Data) async throws
+
     /// Whether the underlying connection to the Host is still alive. The
     /// reconnect machinery (#18) decides "re-subscribe on this connection or
     /// re-establish it" from this flag.
@@ -90,6 +103,16 @@ extension Transport {
         progress: @escaping @Sendable (ImageStageProgress) async -> Void
     ) async throws -> StagedImage {
         throw ImageStagingError.sftpUnavailable
+    }
+
+    /// Test doubles and alternative transports without a Host-side plugin
+    /// can report its absence without emulating the plugin CLI.
+    func readNotificationRegistration() async throws -> Data? {
+        throw NotificationRegistrationError.pluginNotInstalled
+    }
+
+    func replaceNotificationRegistration(_ contents: Data) async throws {
+        throw NotificationRegistrationError.pluginNotInstalled
     }
 }
 
