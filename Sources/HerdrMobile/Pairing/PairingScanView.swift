@@ -9,12 +9,18 @@ import VisionKit
 /// preflight a manually added Host does.
 struct PairingScanView: View {
     let onPaired: (Host) -> Void
+    let onAddManually: () -> Void
     @State private var store: PairingScanStore
     @State private var cameraAccess: CameraAccess = .undetermined
     @Environment(\.dismiss) private var dismiss
 
-    init(catalog: HostStore, onPaired: @escaping (Host) -> Void = { _ in }) {
+    init(
+        catalog: HostStore,
+        onPaired: @escaping (Host) -> Void = { _ in },
+        onAddManually: @escaping () -> Void = {}
+    ) {
         self.onPaired = onPaired
+        self.onAddManually = onAddManually
         _store = State(initialValue: PairingScanStore(catalog: catalog))
     }
 
@@ -65,6 +71,7 @@ struct PairingScanView: View {
             } actions: {
                 Button("Open Settings") { openSettings() }
                     .buttonStyle(.borderedProminent)
+                Button("Add Manually") { addManually() }
             }
         case .authorized:
             if DataScannerViewController.isSupported {
@@ -76,9 +83,19 @@ struct PairingScanView: View {
                     Text(
                         "This device cannot scan QR codes. "
                             + "Add the Host manually instead.")
+                } actions: {
+                    Button("Add Manually") { addManually() }
+                        .buttonStyle(.borderedProminent)
                 }
             }
         }
+    }
+
+    /// The manual fallback: hand off to the presenter (which owns the manual
+    /// Host form) and close this sheet, mirroring the `onPaired` hand-off.
+    private func addManually() {
+        onAddManually()
+        dismiss()
     }
 
     private var scannerViewport: some View {

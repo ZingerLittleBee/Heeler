@@ -68,6 +68,7 @@ struct HostListView: View {
     @State private var removal: HostRemovalStore
     @State private var isAddingHost = false
     @State private var isScanningToPair = false
+    @State private var manualFallbackRequested = false
     @State private var path: [Host.ID] = []
 
     init(store: HostStore) {
@@ -139,11 +140,24 @@ struct HostListView: View {
                     path.append(saved.id)
                 }
             }
-            .sheet(isPresented: $isScanningToPair) {
+            .sheet(
+                isPresented: $isScanningToPair,
+                onDismiss: {
+                    // The scan sheet's "Add Manually" fallback (camera denied
+                    // or unsupported): present the form only once this sheet
+                    // is fully gone, so the two sheets never overlap.
+                    if manualFallbackRequested {
+                        manualFallbackRequested = false
+                        isAddingHost = true
+                    }
+                }
+            ) {
                 // A successful Pairing lands in the same onboarding preflight
                 // a manually added Host enters (session discovery included).
                 PairingScanView(catalog: store) { paired in
                     path.append(paired.id)
+                } onAddManually: {
+                    manualFallbackRequested = true
                 }
             }
             .alert(
