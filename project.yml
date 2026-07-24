@@ -40,6 +40,8 @@ targets:
         # speech-recognition usage key is set: the iOS 26 SpeechAnalyzer stack
         # is on-device and needs no legacy SFSpeechRecognizer authorization.
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "herdr uses the microphone to transcribe your spoken reply into the message box. Audio is processed on device and never leaves your phone."
+        # Scan to Pair (#62) reads the Pairing Code QR from the computer screen.
+        INFOPLIST_KEY_NSCameraUsageDescription: "herdr uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything."
         # iPhone + iPad.
         TARGETED_DEVICE_FAMILY: "1,2"
         INFOPLIST_KEY_UILaunchScreen_Generation: YES

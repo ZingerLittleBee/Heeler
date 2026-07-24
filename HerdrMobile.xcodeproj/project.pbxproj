@@ -80,6 +80,7 @@
 		B8ACB86B152D44FC0C80DADA /* TerminalTouchScroll.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCB521B35951ABDA186FAFCF /* TerminalTouchScroll.swift */; };
 		BAC9F51A72EA9774DEDBC193 /* TerminalByteFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F7C6974BD9BE77000016FCA /* TerminalByteFeed.swift */; };
 		BC107519427157CF5191E34F /* FakeTransportConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14983BD8988E4AAE79DC46A /* FakeTransportConnector.swift */; };
+		BC46FD1688F34030A1121C58 /* PairingScanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26D91CE49181E7932CBD1AAC /* PairingScanView.swift */; };
 		C174C223DBE1F1DD4085A2F8 /* UnixSockets.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCB59377D34D0C652DF70F01 /* UnixSockets.swift */; };
 		C60E8E0398665C36520DDA8E /* HerdrEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = CABFC5E35C19F809355619E7 /* HerdrEvents.swift */; };
 		C6C215AB0B03BCFD20CFF1C4 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = 03BEAFDD98C535CDCE9AE335 /* Citadel */; };
@@ -143,6 +144,7 @@
 		20B781425ADF5353CEEED6A1 /* FakeHerdrServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeHerdrServer.swift; sourceTree = "<group>"; };
 		259E51D58B1094AC5B389EDA /* Transport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transport.swift; sourceTree = "<group>"; };
 		25E3451A4ECA518B0AE43F93 /* HostDraftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostDraftTests.swift; sourceTree = "<group>"; };
+		26D91CE49181E7932CBD1AAC /* PairingScanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingScanView.swift; sourceTree = "<group>"; };
 		278668F4D5B3EB85E6CDA16A /* HostFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostFormView.swift; sourceTree = "<group>"; };
 		29DD3828DAEF46DBA7038B0A /* HostOnboardingStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostOnboardingStoreTests.swift; sourceTree = "<group>"; };
 		3C07948FE6D5E399672A9395 /* AgentAttachStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentAttachStore.swift; sourceTree = "<group>"; };
@@ -370,6 +372,7 @@
 			children = (
 				F6851566A8DBF603AA768404 /* PairingCode.swift */,
 				FC250A036B0CEE727A99C5B4 /* PairingScanStore.swift */,
+				26D91CE49181E7932CBD1AAC /* PairingScanView.swift */,
 			);
 			path = Pairing;
 			sourceTree = "<group>";
@@ -622,6 +625,7 @@
 				B6FE3517A821A081D9F6262C /* KnownHostsStore.swift in Sources */,
 				EE22FB818F023585C4A07D9C /* PairingCode.swift in Sources */,
 				A50735C51FEFF58E6B83025B /* PairingScanStore.swift in Sources */,
+				BC46FD1688F34030A1121C58 /* PairingScanView.swift in Sources */,
 				A14E6D20D1216F7764E3298B /* PhotosPickerImageSelection.swift in Sources */,
 				B34AF64884F29EB050E5B9AF /* Preflight.swift in Sources */,
 				8196491DBF3B6024B4DB214C /* SSHChannelBudget.swift in Sources */,
@@ -717,6 +721,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "herdr uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "herdr uses the microphone to transcribe your spoken reply into the message box. Audio is processed on device and never leaves your phone.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -757,6 +762,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "herdr uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "herdr uses the microphone to transcribe your spoken reply into the message box. Audio is processed on device and never leaves your phone.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

@@ -67,6 +67,7 @@ struct HostListView: View {
     let store: HostStore
     @State private var removal: HostRemovalStore
     @State private var isAddingHost = false
+    @State private var isScanningToPair = false
     @State private var path: [Host.ID] = []
 
     init(store: HostStore) {
@@ -91,8 +92,13 @@ struct HostListView: View {
                     } description: {
                         Text("Add a machine that runs herdr to get started.")
                     } actions: {
-                        Button("Add Host") { isAddingHost = true }
-                            .buttonStyle(.borderedProminent)
+                        // Scan to Pair is the primary add-Host action; the
+                        // manual form is the fallback (ADR 0007).
+                        Button("Scan to Pair", systemImage: "qrcode.viewfinder") {
+                            isScanningToPair = true
+                        }
+                        .buttonStyle(.borderedProminent)
+                        Button("Add Manually") { isAddingHost = true }
                     }
                 } else {
                     List {
@@ -107,6 +113,12 @@ struct HostListView: View {
             }
             .navigationTitle("Hosts")
             .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Scan to Pair", systemImage: "qrcode.viewfinder") {
+                        isScanningToPair = true
+                    }
+                    .disabled(store.catalogLoadError != nil)
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button("Add Host", systemImage: "plus") { isAddingHost = true }
                         .disabled(store.catalogLoadError != nil)
@@ -126,6 +138,9 @@ struct HostListView: View {
                 HostFormView(store: store) { saved in
                     path.append(saved.id)
                 }
+            }
+            .sheet(isPresented: $isScanningToPair) {
+                PairingScanView()
             }
             .alert(
                 removal.pendingRequest?.title ?? "Remove Host?",
