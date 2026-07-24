@@ -162,12 +162,19 @@ struct PairingScanStoreTests {
     // MARK: Ceremony success
 
     @Test func successfulCeremonyPersistsTheHostAndPinsTheFingerprint() async throws {
-        let env = try makeEnv()
+        let secrets = InMemorySecretStore()
+        let credentials = HostCredentialsProvider(
+            deviceKeys: DeviceKeyStore(secrets: secrets), secrets: secrets)
+        let env = try makeEnv(credentials: credentials)
         defer { env.cleanup() }
         env.store.submit(scannedCode: Self.bootstrapVector.code)
 
         await env.store.pair()
 
+        // The ceremony must submit this device's own Device Key, not some
+        // other blob; the connector captured what actually went over the wire.
+        let expectedBlob = try credentials.deviceKey().publicKeyBlob
+        #expect(await env.connector.capturedDeviceKeyBlobs == [expectedBlob])
         let paired = try #require(env.store.pairedHost)
         #expect(env.catalog.hosts == [paired])
         #expect(paired.address == "10.0.0.7")
@@ -330,6 +337,35 @@ struct PairingScanStoreTests {
         #expect(codes.last?.bootstrap == nil)
         #expect(codes.last?.addresses == codes.first?.addresses)
         #expect(codes.last?.username == codes.first?.username)
+    }
+
+    @Test func secondVerifyFailureAfterEnrollmentKeepsTheEnrolledCopy() async throws {
+        let env = try makeEnv(outcomes: [
+            .fails(.verificationFailed(detail: "timeout")),
+            .fails(.verificationFailed(detail: "still no route")),
+        ])
+        defer { env.cleanup() }
+        env.store.submit(scannedCode: Self.bootstrapVector.code)
+
+        await env.store.pair()
+        // First verify failure strips the spent Bootstrap Key for the retry.
+        #expect(try #require(env.store.failure).message.contains("enrolled"))
+
+        await env.store.pair()
+
+        // Enrollment already landed, so the retry ran bootstrap-less. The copy
+        // must stay truthful about that (this device WAS enrolled) instead of
+        // regressing to the config-only "authorized_keys" guidance just because
+        // the retry code no longer carries a Bootstrap Key. It also stays
+        // retryable: only the Device Key reconnect remains to finish.
+        let failure = try #require(env.store.failure)
+        #expect(failure.message.contains("enrolled"))
+        #expect(!failure.message.contains("authorized_keys"))
+        #expect(failure.canRetry)
+        let codes = await env.connector.capturedCodes
+        #expect(codes.count == 2)
+        #expect(codes.first?.bootstrap != nil)
+        #expect(codes.last?.bootstrap == nil)
     }
 
     @Test func configOnlyVerifyFailurePointsAtManualAuthorization() async throws {

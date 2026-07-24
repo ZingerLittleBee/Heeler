@@ -51,6 +51,12 @@ final class PairingScanStore {
     /// verify-step failure, where the Bootstrap Key is dropped — Enrollment
     /// already took effect, so only the Device Key reconnect remains.
     @ObservationIgnored private var attemptCode: PairingCode?
+    /// True once a bootstrap ceremony reached Enrollment and we stripped the
+    /// Bootstrap Key from `attemptCode`. A later verify failure then carries a
+    /// bootstrap-less `attemptCode`, but the device really was enrolled, so
+    /// this keeps the enrolled-then-unverified copy instead of regressing to
+    /// the config-only "add your authorized_keys line" guidance.
+    @ObservationIgnored private var enrolledViaBootstrap = false
     /// Invalidates step callbacks still in flight from earlier attempts.
     @ObservationIgnored private var attemptGeneration = 0
 
@@ -74,6 +80,7 @@ final class PairingScanStore {
             let code = try PairingCode.decode(scannedCode)
             pairingCode = code
             attemptCode = code
+            enrolledViaBootstrap = false
             scanFailureMessage = nil
         } catch {
             scanFailureMessage = Self.message(for: error)
@@ -126,8 +133,10 @@ final class PairingScanStore {
         } catch let error as PairingCeremonyError {
             if case .verificationFailed = error, code.bootstrap != nil {
                 attemptCode = code.withoutBootstrap
+                enrolledViaBootstrap = true
             }
-            failure = Self.failure(for: error, isConfigOnly: code.bootstrap == nil)
+            failure = Self.failure(
+                for: error, isConfigOnly: code.bootstrap == nil && !enrolledViaBootstrap)
             return
         } catch is CancellationError {
             // The scan sheet went away mid-ceremony; nobody is left to tell.
@@ -167,6 +176,7 @@ final class PairingScanStore {
         guard !isPairing else { return }
         pairingCode = nil
         attemptCode = nil
+        enrolledViaBootstrap = false
         scanFailureMessage = nil
         failure = nil
         pairedHost = nil
