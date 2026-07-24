@@ -8,6 +8,26 @@ A native iOS agent console for herdr. One context: the app. Terms owned by herdr
 A remote machine reachable over SSH that runs a herdr server. The unit a user adds, names, and authenticates against.
 _Avoid_: server, machine, connection
 
+**Device Key**:
+The device's SSH identity: an Ed25519 keypair generated on this device. The private key never leaves the Keychain; the public half is what a Host authorizes.
+_Avoid_: app key, client key
+
+**Pairing**:
+The full new-device ceremony: scan a Pairing Code, connect with its Bootstrap Key, complete Enrollment, then reconnect with the Device Key. Success produces a working Host, persisted only at that point.
+_Avoid_: scan to connect, binding
+
+**Pairing Code**:
+The versioned pairing payload (candidate addresses, host key fingerprint, Bootstrap Key, expiry) produced by the pairing plugin. The QR image is just its rendering.
+_Avoid_: QR code, invite
+
+**Bootstrap Key**:
+A single-use, TTL-bound Ed25519 keypair carried inside a Pairing Code. Its authorized_keys line is restricted to a forced command that can only perform Enrollment; it is destroyed on success or expiry.
+_Avoid_: temp key, one-time password
+
+**Enrollment**:
+The server-side step of Pairing: the forced command appends the Device Key's public key to authorized_keys. Distinct from Pairing as a whole — failure copy must say which step failed.
+_Avoid_: install key, authorization
+
 **Agent**:
 A coding agent process (claude, codex, ...) running inside a herdr pane, as reported by herdr's detection. The primary object of the app.
 _Avoid_: bot, task, session
