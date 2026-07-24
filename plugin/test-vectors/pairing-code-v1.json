@@ -1,0 +1,135 @@
+{
+  "description": "Shared Pairing Code v1 test vectors. Single source of truth for the envelope, consumed by both the Node plugin tests and the Swift app tests (ADR 0007). Codes were generated independently of both implementations. `decodeOnly: true` marks codes that must decode to `payload` but are not the canonical encoding of it; all other valid vectors must round-trip exactly through encode.",
+  "valid": [
+    {
+      "name": "config-only single LAN IPv4, default port",
+      "code": "HERDR-PAIR:1:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIn0",
+      "payload": {
+        "addresses": ["192.168.1.42"],
+        "port": 22,
+        "username": "ada",
+        "hostKeyFingerprint": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg"
+      }
+    },
+    {
+      "name": "multiple addresses (LAN, Tailscale CGNAT, ULA IPv6), non-default port",
+      "code": "HERDR-PAIR:1:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiLCIxMDAuMTAxLjEwMi4xMDMiLCJmZDdhOjExNWM6YTFlMDo6MSJdLCJwb3J0IjoyMjIyLCJ1c2VyIjoiZ3JhY2UiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIn0",
+      "payload": {
+        "addresses": ["192.168.1.42", "100.101.102.103", "fd7a:115c:a1e0::1"],
+        "port": 2222,
+        "username": "grace",
+        "hostKeyFingerprint": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg"
+      }
+    },
+    {
+      "name": "with bootstrap seed and expiry",
+      "code": "HERDR-PAIR:1:eyJhZGRycyI6WyIxMC4wLjAuNyJdLCJwb3J0IjoyMiwidXNlciI6ImxpbiIsImZwIjoiU0hBMjU2OjYram5jTmRpYnNHMmNxdmZvTEFwR3JPOEN2SXdBRU16c0IrSWlsT3M4dGciLCJzZWVkIjoiQUFFQ0F3UUZCZ2NJQ1FvTERBME9EeEFSRWhNVUZSWVhHQmthR3h3ZEhoOCIsImV4cCI6MTc1MzMwNTYwMH0",
+      "payload": {
+        "addresses": ["10.0.0.7"],
+        "port": 22,
+        "username": "lin",
+        "hostKeyFingerprint": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg",
+        "bootstrapSeed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+        "expiresAt": 1753305600
+      }
+    },
+    {
+      "name": "unknown field is ignored (additive v1 metadata)",
+      "decodeOnly": true,
+      "code": "HERDR-PAIR:1:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwiZnV0dXJlX2ZpZWxkIjoiaWdub3JlZCJ9",
+      "payload": {
+        "addresses": ["192.168.1.42"],
+        "port": 22,
+        "username": "ada",
+        "hostKeyFingerprint": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "missing prefix",
+      "code": "eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXX0",
+      "error": "bad_prefix"
+    },
+    {
+      "name": "wrong prefix word",
+      "code": "HERDRPAIR:1:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXX0",
+      "error": "bad_prefix"
+    },
+    {
+      "name": "unsupported version 2",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXX0",
+      "error": "unsupported_version"
+    },
+    {
+      "name": "non-numeric version",
+      "code": "HERDR-PAIR:one:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXX0",
+      "error": "unsupported_version"
+    },
+    {
+      "name": "body is not base64url",
+      "code": "HERDR-PAIR:1:!!!not-base64url!!!",
+      "error": "bad_encoding"
+    },
+    {
+      "name": "body decodes but is not JSON",
+      "code": "HERDR-PAIR:1:bm90IGpzb24gYXQgYWxs",
+      "error": "bad_encoding"
+    },
+    {
+      "name": "missing addrs",
+      "code": "HERDR-PAIR:1:eyJwb3J0IjoyMiwidXNlciI6ImFkYSIsImZwIjoiU0hBMjU2OjYram5jTmRpYnNHMmNxdmZvTEFwR3JPOEN2SXdBRU16c0IrSWlsT3M4dGcifQ",
+      "error": "bad_payload"
+    },
+    {
+      "name": "empty addrs array",
+      "code": "HERDR-PAIR:1:eyJhZGRycyI6W10sInBvcnQiOjIyLCJ1c2VyIjoiYWRhIiwiZnAiOiJTSEEyNTY6NitqbmNOZGlic0cyY3F2Zm9MQXBHck84Q3ZJd0FFTXpzQitJaWxPczh0ZyJ9",
+      "error": "bad_payload"
+    },
+    {
+      "name": "address contains whitespace",
+      "code": "HERDR-PAIR:1:eyJhZGRycyI6WyIxOTIuMTY4LiAxLjQyIl0sInBvcnQiOjIyLCJ1c2VyIjoiYWRhIiwiZnAiOiJTSEEyNTY6NitqbmNOZGlic0cyY3F2Zm9MQXBHck84Q3ZJd0FFTXpzQitJaWxPczh0ZyJ9",
+      "error": "bad_payload"
+    },
+    {
+      "name": "port zero",
+      "code": "HERDR-PAIR:1:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MCwidXNlciI6ImFkYSIsImZwIjoiU0hBMjU2OjYram5jTmRpYnNHMmNxdmZvTEFwR3JPOEN2SXdBRU16c0IrSWlsT3M4dGcifQ",
+      "error": "bad_payload"
+    },
+    {
+      "name": "port above 65535",
+      "code": "HERDR-PAIR:1:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6NzAwMDAsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIn0",
+      "error": "bad_payload"
+    },
+    {
+      "name": "port not an integer",
+      "code": "HERDR-PAIR:1:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIuNSwidXNlciI6ImFkYSIsImZwIjoiU0hBMjU2OjYram5jTmRpYnNHMmNxdmZvTEFwR3JPOEN2SXdBRU16c0IrSWlsT3M4dGcifQ",
+      "error": "bad_payload"
+    },
+    {
+      "name": "empty username",
+      "code": "HERDR-PAIR:1:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiIiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIn0",
+      "error": "bad_payload"
+    },
+    {
+      "name": "fingerprint not OpenSSH SHA256 format",
+      "code": "HERDR-PAIR:1:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6Ik1ENTphYmMifQ",
+      "error": "bad_payload"
+    },
+    {
+      "name": "seed is not 32 bytes",
+      "code": "HERDR-PAIR:1:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic2VlZCI6IkFBRUNBd1FGQmdjSUNRb0xEQTBPRHhBUkVoTVVGUllYR0JrYUd4d2RIZyIsImV4cCI6MTc1MzMwNTYwMH0",
+      "error": "bad_payload"
+    },
+    {
+      "name": "seed without expiry",
+      "code": "HERDR-PAIR:1:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic2VlZCI6IkFBRUNBd1FGQmdjSUNRb0xEQTBPRHhBUkVoTVVGUllYR0JrYUd4d2RIaDgifQ",
+      "error": "bad_payload"
+    },
+    {
+      "name": "expiry without seed",
+      "code": "HERDR-PAIR:1:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwiZXhwIjoxNzUzMzA1NjAwfQ",
+      "error": "bad_payload"
+    }
+  ]
+}

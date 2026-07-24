@@ -9,6 +9,9 @@ DerivedData/
 .build/
 .swiftpm/
 
+# Node (pairing plugin)
+plugin/node_modules/
+
 # macOS
 .DS_Store
 
