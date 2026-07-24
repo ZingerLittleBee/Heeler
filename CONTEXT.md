@@ -78,7 +78,7 @@ A user-invoked insertion of plain text from the iOS clipboard into Attach. Singl
 _Avoid_: Control V, image paste
 
 **Agent Notification**:
-A push notification telling the user an Agent crossed a notify-worthy status boundary (Blocked, Done). Deep-links to the Agent's Attach surface.
+A notification telling the user an Agent crossed a notify-worthy status boundary (Blocked, Done): an APNs push while backgrounded or killed, an in-app banner off the live event stream while foregrounded. Deep-links to the Agent's Attach surface.
 _Avoid_: alert, push message, task notification
 
 **Push Relay**:
