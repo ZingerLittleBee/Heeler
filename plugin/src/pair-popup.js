@@ -221,18 +221,9 @@ async function main() {
     process.on(signal, () => void close(0));
   }
 
-  // Enrollment happens server-side (pair-accept.js as the sshd forced command)
-  // and leaves a record in the state dir. Poll for it while the QR is up; once
-  // it lands the Bootstrap Key has already self-revoked, so stop the TTL clock
-  // and show the enrolled device with a one-key revoke.
-  function onEnrollmentPoll(pairingId) {
-    if (closing || phase !== "qr") {
-      return;
-    }
-    const record = readEnrollment(stateDir, pairingId);
-    if (record === null) {
-      return;
-    }
+  // A device enrolled: the Bootstrap Key has already self-revoked, so stop the
+  // TTL clock and the poll and show the enrolled device with a one-key revoke.
+  function enterEnrolled(record) {
     enrolled = record;
     if (enrollWatch !== null) {
       clearInterval(enrollWatch);
@@ -246,18 +237,35 @@ async function main() {
     renderEnrolled(record);
   }
 
+  // Enrollment happens server-side (pair-accept.js as the sshd forced command)
+  // and leaves a record in the state dir. Poll for it while the QR is up.
+  function onEnrollmentPoll(pairingId) {
+    if (closing || phase !== "qr") {
+      return;
+    }
+    const record = readEnrollment(stateDir, pairingId);
+    if (record === null) {
+      return;
+    }
+    enterEnrolled(record);
+  }
+
   async function revokeEnrolledDevice() {
     if (enrolled === null) {
       void close(0);
       return;
     }
-    phase = "revoked";
+    // Hold an in-flight phase across the await so a second keypress can't fall
+    // through to a terminal branch and close(0) before removeKeyLine settles.
+    phase = "revoking";
     try {
       await removeKeyLine(home, enrolled.line);
     } catch (error) {
+      phase = "revoked";
       renderRevokeFailed(error.message);
       return;
     }
+    phase = "revoked";
     renderRevoked(enrolled);
   }
 
@@ -266,6 +274,18 @@ async function main() {
     const { pairingId } = session;
     expiryTimer = setTimeout(() => {
       expiryTimer = null;
+      if (closing || phase !== "qr") {
+        return;
+      }
+      // A device can enroll inside the accept script's lock right up to the
+      // deadline, after our last poll. Honor a record that landed in that gap
+      // instead of expiring, or we would delete an enrolled device and never
+      // offer the revoke (ADR 0007's compensating control).
+      const record = readEnrollment(stateDir, pairingId);
+      if (record !== null) {
+        enterEnrolled(record);
+        return;
+      }
       phase = "expired";
       void cleanup().then(renderExpired);
     }, PAIRING_TTL_SECONDS * 1000);
@@ -293,6 +313,11 @@ async function main() {
 
   readKeys((key) => {
     if (closing) {
+      return;
+    }
+    // Ignore every key while a revoke is in flight; the removal is fast and a
+    // stray press must not close the popup before it settles.
+    if (phase === "revoking") {
       return;
     }
     if (key.name === "q" || key.name === "escape" || (key.ctrl && key.name === "c")) {
