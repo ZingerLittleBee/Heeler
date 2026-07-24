@@ -7,12 +7,15 @@ struct ConsoleView: View {
     let console: ConsoleStore
     let terminalThemes: TerminalThemeSettings
     let pushRegistration: PushRegistrationStore
+    /// Owns the navigation path (#74): user taps and notification deep links
+    /// drive the same stack.
+    @Bindable var notificationRouter: AgentNotificationRouter
     @State private var isManagingHosts = false
     @State private var isStartingAgent = false
     @State private var isShowingSettings = false
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $notificationRouter.path) {
             content
                 // On the always-present node, not the List branch: the
                 // destination must survive the list emptying while an
@@ -65,6 +68,15 @@ struct ConsoleView: View {
                     SettingsView(
                         terminalThemes: terminalThemes, pushRegistration: pushRegistration)
                 }
+        }
+        // A notification deep link must land on the Attach even when one of
+        // the Console's sheets covers it. User-driven pushes cannot happen
+        // while a sheet is up, so this only acts on notification taps.
+        .onChange(of: notificationRouter.path) { _, path in
+            guard !path.isEmpty else { return }
+            isManagingHosts = false
+            isStartingAgent = false
+            isShowingSettings = false
         }
     }
 

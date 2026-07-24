@@ -5,6 +5,7 @@ import SwiftUI
 /// tears connections down deliberately, foreground re-syncs.
 struct ContentView: View {
     let pushRegistration: PushRegistrationStore
+    let notificationRouter: AgentNotificationRouter
     @State private var hostStore = HostStore()
     @State private var console = ConsoleStore()
     @State private var terminalThemes = TerminalThemeSettings()
@@ -13,7 +14,7 @@ struct ContentView: View {
     var body: some View {
         ConsoleView(
             hosts: hostStore, console: console, terminalThemes: terminalThemes,
-            pushRegistration: pushRegistration
+            pushRegistration: pushRegistration, notificationRouter: notificationRouter
         )
         .task {
             console.setHosts(hostStore.hosts)
@@ -21,6 +22,12 @@ struct ContentView: View {
         }
         .onChange(of: hostStore.hosts) {
             console.setHosts(hostStore.hosts)
+        }
+        // Feeds the router the Console's Agent list so a notification tap
+        // that arrived before the Hosts synced (killed-state launch) routes
+        // the moment its pane appears.
+        .onChange(of: console.agents, initial: true) {
+            notificationRouter.agentsDidChange(console.agents)
         }
         .onChange(of: scenePhase) {
             switch scenePhase {
@@ -40,5 +47,7 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView(pushRegistration: PushRegistrationStore())
+    ContentView(
+        pushRegistration: PushRegistrationStore(),
+        notificationRouter: AgentNotificationRouter())
 }

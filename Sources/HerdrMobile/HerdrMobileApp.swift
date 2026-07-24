@@ -15,7 +15,9 @@ struct HerdrMobileApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView(pushRegistration: pushDelegate.registration)
+            ContentView(
+                pushRegistration: pushDelegate.registration,
+                notificationRouter: pushDelegate.notificationRouter)
         }
     }
 }

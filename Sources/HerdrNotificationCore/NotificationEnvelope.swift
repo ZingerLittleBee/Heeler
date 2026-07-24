@@ -64,6 +64,24 @@ enum NotificationEnvelope {
         return kid
     }
 
+    /// The shared front half of alert rendering (#71) and tap routing (#74):
+    /// read the envelope string off a push's `userInfo`, select the
+    /// Notification Key record by the envelope's kid, and decrypt. Nil for
+    /// anything undecryptable — missing or non-string envelope, unknown kid,
+    /// any `NotificationEnvelopeError` — and each caller picks its own
+    /// fallback (generic banner, Console).
+    static func open(
+        userInfo: [AnyHashable: Any], keys: [NotificationKeyRecord]
+    ) -> (record: NotificationKeyRecord, payload: NotificationPayload)? {
+        guard let envelopeText = userInfo["envelope"] as? String else { return nil }
+        let envelope = Data(envelopeText.utf8)
+        guard let kid = peekKeyID(in: envelope),
+            let record = keys.first(where: { $0.keyID == kid }),
+            let payload = try? decrypt(envelope, using: record.key)
+        else { return nil }
+        return (record, payload)
+    }
+
     /// Decrypts an envelope's wire bytes with a Notification Key.
     ///
     /// Every way an envelope can be undecryptable — malformed framing, a

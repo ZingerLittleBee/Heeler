@@ -149,6 +149,28 @@ final class PushRegistrationStore {
 @MainActor
 final class PushRegistrationDelegate: NSObject, UIApplicationDelegate {
     let registration = PushRegistrationStore()
+    /// The Console navigation that Agent Notification taps drive (#74);
+    /// ContentView hands it to the Console's NavigationStack.
+    let notificationRouter: AgentNotificationRouter
+    private let notificationCenterDelegate: AgentNotificationCenterDelegate
+
+    override init() {
+        let router = AgentNotificationRouter()
+        notificationRouter = router
+        notificationCenterDelegate = AgentNotificationCenterDelegate(router: router)
+        super.init()
+    }
+
+    func application(
+        _ application: UIApplication,
+        willFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        // Apple requires the notification delegate installed before launch
+        // finishes; otherwise a tap that cold-starts the app never reaches
+        // didReceive and the killed-state deep link is lost.
+        UNUserNotificationCenter.current().delegate = notificationCenterDelegate
+        return true
+    }
 
     func application(
         _ application: UIApplication,

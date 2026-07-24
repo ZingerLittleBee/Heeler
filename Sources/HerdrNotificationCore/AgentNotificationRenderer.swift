@@ -21,11 +21,7 @@ enum AgentNotificationRenderer {
     static func alert(
         userInfo: [AnyHashable: Any], keys: [NotificationKeyRecord]
     ) -> AgentNotificationAlert {
-        guard let envelopeText = userInfo["envelope"] as? String else { return fallback }
-        let envelope = Data(envelopeText.utf8)
-        guard let kid = NotificationEnvelope.peekKeyID(in: envelope),
-            let record = keys.first(where: { $0.keyID == kid }),
-            let payload = try? NotificationEnvelope.decrypt(envelope, using: record.key)
+        guard let (record, payload) = NotificationEnvelope.open(userInfo: userInfo, keys: keys)
         else { return fallback }
         return AgentNotificationAlert(
             title: "\(payload.agentKind) on \(record.hostName)",
