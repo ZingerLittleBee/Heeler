@@ -130,6 +130,7 @@ await editAuthorizedKeys(home, (lines) => {
   recordEnrollment({
     stateDir,
     pairingId,
+    expiresAt: pending.expiresAt,
     fingerprint: deviceKey.fingerprint,
     line: deviceKey.line,
   });

@@ -88,9 +88,11 @@ suite("pair-accept", () => {
     assert.equal(result.stdout.trim(), `HERDR-ENROLL:OK:${DEVICE_FINGERPRINT}`);
     assert.equal(readKeys(), `${USER_LINE}\n${DEVICE_LINE}\n`);
     assert.equal(existsSync(pendingPath(stateDir, session.pairingId)), false);
-    // The popup reads this record to show the enrolled fingerprint and revoke.
+    // The popup reads this record to show the enrolled fingerprint and revoke;
+    // the expiry lets the startup sweep age out records a killed popup left.
     assert.deepEqual(readEnrollment(stateDir, session.pairingId), {
       pairingId: session.pairingId,
+      expiresAt: session.expiresAt,
       fingerprint: DEVICE_FINGERPRINT,
       line: DEVICE_LINE,
     });

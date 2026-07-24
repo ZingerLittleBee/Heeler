@@ -19,6 +19,7 @@ import {
   endPairing,
   expirePairing,
   readEnrollment,
+  sweepExpiredStateFiles,
   PAIRING_TTL_SECONDS,
 } from "./pairing-session.js";
 import {
@@ -176,8 +177,10 @@ async function main() {
     return;
   }
 
-  // Startup sweep: crashed or killed ceremonies must leave no residue.
+  // Startup sweep: crashed or killed ceremonies must leave no residue —
+  // neither authorized_keys lines nor pending/enrolled state files.
   await sweepExpiredBootstrapLines(home);
+  sweepExpiredStateFiles(stateDir);
 
   let state = createSelection(candidates);
   let phase = "select";

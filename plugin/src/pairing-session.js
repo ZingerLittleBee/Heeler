@@ -10,7 +10,7 @@
 // login-shell environment: no herdr plugin env, possibly no node on PATH.
 
 import { randomBytes } from "node:crypto";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -43,14 +43,16 @@ export function enrolledPath(stateDir, pairingId) {
  * @param {object} options
  * @param {string} options.stateDir plugin state directory
  * @param {string} options.pairingId the completed pairing's id
+ * @param {number} options.expiresAt the ceremony's expiry (unix seconds); lets
+ *   the startup sweep age out records a killed popup never cleaned up
  * @param {string} options.fingerprint enrolled Device Key SHA256 fingerprint
  * @param {string} options.line canonical enrolled authorized_keys line (revoke target)
  */
-export function recordEnrollment({ stateDir, pairingId, fingerprint, line }) {
+export function recordEnrollment({ stateDir, pairingId, expiresAt, fingerprint, line }) {
   mkdirSync(join(stateDir, "enrolled"), { recursive: true, mode: 0o700 });
   writeFileSync(
     enrolledPath(stateDir, pairingId),
-    `${JSON.stringify({ pairingId, fingerprint, line })}\n`,
+    `${JSON.stringify({ pairingId, expiresAt, fingerprint, line })}\n`,
     { mode: 0o600 },
   );
 }
@@ -160,4 +162,68 @@ export async function endPairing({ home, stateDir, pairingId }) {
   await removeBootstrapLine(home, pairingId);
   rmSync(pendingPath(stateDir, pairingId), { force: true });
   rmSync(enrolledPath(stateDir, pairingId), { force: true });
+}
+
+// How far past its ceremony's expiry an enrolled record must be before the
+// sweep may call it orphaned. A live popup reads the record within a poll
+// interval of the accept writing it, so anything a full TTL late is garbage.
+const STATE_SWEEP_GRACE_SECONDS = PAIRING_TTL_SECONDS;
+
+/**
+ * Startup sweep for the plugin state dir, the file-side twin of
+ * sweepExpiredBootstrapLines: a SIGKILLed popup never runs endPairing, so its
+ * pending/enrolled records would otherwise live forever. Only provably stale
+ * files go — pending records past their embedded expiry, enrolled records a
+ * grace period past theirs — so a concurrent popup's live ceremony is never
+ * clobbered.
+ *
+ * @returns {number} how many stale files were removed
+ */
+export function sweepExpiredStateFiles(stateDir, now = Math.floor(Date.now() / 1000)) {
+  return (
+    sweepDir(join(stateDir, "pending"), now, (record) => record.expiresAt) +
+    sweepDir(join(stateDir, "enrolled"), now, (record) => record.expiresAt + STATE_SWEEP_GRACE_SECONDS)
+  );
+}
+
+function sweepDir(dir, now, keepUntilOf) {
+  let names;
+  try {
+    names = readdirSync(dir);
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return 0;
+    }
+    throw error;
+  }
+  let removed = 0;
+  for (const name of names) {
+    const path = join(dir, name);
+    if (keepUntil(path, keepUntilOf) <= now) {
+      rmSync(path, { force: true });
+      removed += 1;
+    }
+  }
+  return removed;
+}
+
+/** Unix-seconds instant until which a state file must be kept. */
+function keepUntil(path, keepUntilOf) {
+  try {
+    const value = keepUntilOf(JSON.parse(readFileSync(path, "utf8")));
+    if (Number.isFinite(value)) {
+      return value;
+    }
+  } catch {
+    // Unreadable or malformed: fall through to the mtime rule below.
+  }
+  // Garbage still ages out, but by mtime and with full TTL + grace slack so
+  // a concurrent writer's file mid-write is never misjudged as stale.
+  try {
+    return (
+      Math.floor(statSync(path).mtimeMs / 1000) + PAIRING_TTL_SECONDS + STATE_SWEEP_GRACE_SECONDS
+    );
+  } catch {
+    return Infinity; // vanished mid-sweep: someone else already cleaned it up
+  }
 }
