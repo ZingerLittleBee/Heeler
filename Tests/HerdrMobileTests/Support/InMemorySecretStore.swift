@@ -11,6 +11,10 @@ final class InMemorySecretStore: SecretStore {
         secrets.withLock { $0[account] }
     }
 
+    func readAll() throws -> [String: Data] {
+        secrets.withLock { $0 }
+    }
+
     func write(_ secret: Data, account: String) throws {
         secrets.withLock { $0[account] = secret }
     }

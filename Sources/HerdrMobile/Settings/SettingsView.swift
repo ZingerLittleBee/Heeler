@@ -4,11 +4,23 @@ import UIKit
 
 struct SettingsView: View {
     let terminalThemes: TerminalThemeSettings
+    let pushRegistration: PushRegistrationStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         NavigationStack {
             Form {
+                // Minimal push bootstrap copy (#71); the full pipeline
+                // disclosure screen ships with #76.
+                Section {
+                    notificationRow
+                } header: {
+                    Text("Agent Notifications")
+                } footer: {
+                    Text("Get notified when an Agent is waiting for your input or finishes.")
+                }
+
                 Section {
                     TerminalThemePreview(theme: terminalThemes.theme)
                         .frame(height: 180)
@@ -41,6 +53,59 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var notificationRow: some View {
+        switch pushRegistration.state {
+        case .unknown:
+            HStack {
+                Text("Checking notification status")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                ProgressView()
+            }
+        case .needsPermission:
+            Button("Enable Notifications") {
+                Task { await pushRegistration.enable() }
+            }
+        case .waitingForToken:
+            HStack {
+                Text("Registering with Apple")
+                Spacer()
+                ProgressView()
+            }
+        case .registered(let token):
+            HStack {
+                Text("Notifications enabled")
+                Spacer()
+                if token.environment == .sandbox {
+                    Text("Sandbox")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .accessibilityHidden(true)
+            }
+        case .denied:
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Notifications are turned off for herdr.")
+                Button("Open Settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        openURL(url)
+                    }
+                }
+            }
+        case .failed(let message):
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Push registration failed: \(message)")
+                    .foregroundStyle(.secondary)
+                Button("Try Again") {
+                    Task { await pushRegistration.enable() }
                 }
             }
         }

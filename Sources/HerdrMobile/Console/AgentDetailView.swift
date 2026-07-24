@@ -8,6 +8,7 @@ struct AgentDetailView: View {
     let agent: ConsoleAgent
     private let console: ConsoleStore
     private let terminalThemes: TerminalThemeSettings
+    private let pushRegistration: PushRegistrationStore
     @State private var attach: AgentAttachStore
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isConfirmingClose = false
@@ -19,11 +20,13 @@ struct AgentDetailView: View {
     init(
         agent: ConsoleAgent,
         console: ConsoleStore,
-        terminalThemes: TerminalThemeSettings
+        terminalThemes: TerminalThemeSettings,
+        pushRegistration: PushRegistrationStore
     ) {
         self.agent = agent
         self.console = console
         self.terminalThemes = terminalThemes
+        self.pushRegistration = pushRegistration
         _attach = State(
             initialValue: AgentAttachStore(
                 target: agent.agent.paneID,
@@ -79,7 +82,7 @@ struct AgentDetailView: View {
             }
         }
         .sheet(isPresented: $isShowingSettings) {
-            SettingsView(terminalThemes: terminalThemes)
+            SettingsView(terminalThemes: terminalThemes, pushRegistration: pushRegistration)
         }
         .sheet(
             isPresented: Binding(

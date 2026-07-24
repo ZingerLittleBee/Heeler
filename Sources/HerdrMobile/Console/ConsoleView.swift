@@ -6,6 +6,7 @@ struct ConsoleView: View {
     let hosts: HostStore
     let console: ConsoleStore
     let terminalThemes: TerminalThemeSettings
+    let pushRegistration: PushRegistrationStore
     @State private var isManagingHosts = false
     @State private var isStartingAgent = false
     @State private var isShowingSettings = false
@@ -21,7 +22,8 @@ struct ConsoleView: View {
                         AgentDetailView(
                             agent: agent,
                             console: console,
-                            terminalThemes: terminalThemes)
+                            terminalThemes: terminalThemes,
+                            pushRegistration: pushRegistration)
                     } else {
                         ContentUnavailableView(
                             "Agent Gone", systemImage: "rectangle.on.rectangle.slash",
@@ -60,7 +62,8 @@ struct ConsoleView: View {
                     StartAgentView(hosts: hosts.hosts, console: console)
                 }
                 .sheet(isPresented: $isShowingSettings) {
-                    SettingsView(terminalThemes: terminalThemes)
+                    SettingsView(
+                        terminalThemes: terminalThemes, pushRegistration: pushRegistration)
                 }
         }
     }

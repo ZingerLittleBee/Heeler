@@ -214,6 +214,7 @@ private final class RemovalFailingSecretStore: SecretStore {
     }
 
     func read(account: String) throws -> Data? { nil }
+    func readAll() throws -> [String: Data] { [:] }
     func write(_ secret: Data, account: String) throws {}
 
     func removeSecret(account: String) throws {

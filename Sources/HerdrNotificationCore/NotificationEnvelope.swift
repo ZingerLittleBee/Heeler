@@ -53,6 +53,17 @@ enum NotificationEnvelope {
         Data(SHA256.hash(data: key).prefix(keyIDBytes)).base64URLEncodedString()
     }
 
+    /// Reads the cleartext key id off an envelope without decrypting it, so
+    /// the right Notification Key can be selected when several Hosts are
+    /// registered. Nil when the framing is too broken to carry one; version
+    /// and ciphertext checks stay `decrypt`'s job.
+    static func peekKeyID(in envelope: Data) -> String? {
+        guard let wire = try? JSONDecoder().decode(WireEnvelope.self, from: envelope),
+            let kid = wire.kid, !kid.isEmpty
+        else { return nil }
+        return kid
+    }
+
     /// Decrypts an envelope's wire bytes with a Notification Key.
     ///
     /// Every way an envelope can be undecryptable — malformed framing, a
