@@ -42,7 +42,9 @@
 		49CDAC5FE4566D912F72FFCA /* Transport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 259E51D58B1094AC5B389EDA /* Transport.swift */; };
 		4C80E23F09C8CFB3A93101B8 /* JSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E3E2308A50D4744A24A874B /* JSONValue.swift */; };
 		4D5BBEA6FE5430530AB0AAE7 /* AgentAttachStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C07948FE6D5E399672A9395 /* AgentAttachStore.swift */; };
+		4DECB9E21914EFB5C89D4AB3 /* PairingCeremonyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB1ED5537111C58EDB54FD37 /* PairingCeremonyTests.swift */; };
 		535C6AF099A43002029F2C2F /* HerdrSocketLocationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200BC80136A26B477439ACFA /* HerdrSocketLocationTests.swift */; };
+		54C4A61E21C2C7D8A618E462 /* PairingCeremony.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D4C26D457FF045C3E7D3EF9 /* PairingCeremony.swift */; };
 		5C41DBF68FFE6D2924709A5A /* SSHHostKeyE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5582E1837DE62FBC4C5DDC5A /* SSHHostKeyE2ETests.swift */; };
 		5D1B735C72D551ADE0D82D44 /* TerminalThemeSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A961D26EDEAA03AFB0F9C408 /* TerminalThemeSettings.swift */; };
 		6092F63FF2DE77AD7D087A7C /* ClosePaneStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2552636663F92A55D1DFF1 /* ClosePaneStoreTests.swift */; };
@@ -158,6 +160,7 @@
 		567573855DCC8571BC02096D /* SecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretStore.swift; sourceTree = "<group>"; };
 		597ACEE9D688E433B20108D7 /* TerminalScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalScreenView.swift; sourceTree = "<group>"; };
 		5ADF336771A3F757F2AD441D /* AgentDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDetailView.swift; sourceTree = "<group>"; };
+		5D4C26D457FF045C3E7D3EF9 /* PairingCeremony.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingCeremony.swift; sourceTree = "<group>"; };
 		641088A470B51F40C898830F /* EventsSessionBufferingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsSessionBufferingTests.swift; sourceTree = "<group>"; };
 		6434D31A79422C0BAE80993F /* HostStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostStoreTests.swift; sourceTree = "<group>"; };
 		646861C32DDA14D63389C518 /* ColdStartE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColdStartE2ETests.swift; sourceTree = "<group>"; };
@@ -221,6 +224,7 @@
 		DE12859365BC7A57B9EC256A /* HostDraft.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostDraft.swift; sourceTree = "<group>"; };
 		E87B816CE7206B37622287C4 /* GeneratedWireTypesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedWireTypesTests.swift; sourceTree = "<group>"; };
 		EA18CA4EC57526EA84A6DEE8 /* ImageStagingE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStagingE2ETests.swift; sourceTree = "<group>"; };
+		EB1ED5537111C58EDB54FD37 /* PairingCeremonyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingCeremonyTests.swift; sourceTree = "<group>"; };
 		EE72A47A2C1C9F9B4BFFB16F /* TerminalThemeSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalThemeSettingsTests.swift; sourceTree = "<group>"; };
 		EF9B76E2DA818DAB4259286C /* HostListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostListView.swift; sourceTree = "<group>"; };
 		F13921A61B4E4F17CDE47C96 /* ClosePaneStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosePaneStore.swift; sourceTree = "<group>"; };
@@ -346,6 +350,7 @@
 				A32D737E753ABEB2809975EA /* ImageStagingTests.swift */,
 				17F86744BFAC66D732CE7833 /* JSONValueTests.swift */,
 				87B0377EAC5265E7A6FCD212 /* KnownHostsStoreTests.swift */,
+				EB1ED5537111C58EDB54FD37 /* PairingCeremonyTests.swift */,
 				9C1FDF65F7282EF79C3D376C /* PairingCodeTests.swift */,
 				6FF497632F5FD2BBB8D5BF0F /* PairingScanStoreTests.swift */,
 				DB88AD0F4E9EE776B17FAFAA /* PreflightReportTests.swift */,
@@ -370,6 +375,7 @@
 		853F15C2EAF72E4C01430318 /* Pairing */ = {
 			isa = PBXGroup;
 			children = (
+				5D4C26D457FF045C3E7D3EF9 /* PairingCeremony.swift */,
 				F6851566A8DBF603AA768404 /* PairingCode.swift */,
 				FC250A036B0CEE727A99C5B4 /* PairingScanStore.swift */,
 				26D91CE49181E7932CBD1AAC /* PairingScanView.swift */,
@@ -623,6 +629,7 @@
 				0B82C5F60B548ED11F8C3045 /* ImageStaging.swift in Sources */,
 				4C80E23F09C8CFB3A93101B8 /* JSONValue.swift in Sources */,
 				B6FE3517A821A081D9F6262C /* KnownHostsStore.swift in Sources */,
+				54C4A61E21C2C7D8A618E462 /* PairingCeremony.swift in Sources */,
 				EE22FB818F023585C4A07D9C /* PairingCode.swift in Sources */,
 				A50735C51FEFF58E6B83025B /* PairingScanStore.swift in Sources */,
 				BC46FD1688F34030A1121C58 /* PairingScanView.swift in Sources */,
@@ -681,6 +688,7 @@
 				969057C35F7E5F162B0CF41D /* JSONValueTests.swift in Sources */,
 				2C5A21065C48B7C40AE9A760 /* KnownHostsStoreTests.swift in Sources */,
 				F2CC5A27CA8B0623C486D9B2 /* LocalSSHTestEnvironment.swift in Sources */,
+				4DECB9E21914EFB5C89D4AB3 /* PairingCeremonyTests.swift in Sources */,
 				8558806B5DFE751EB1FA3814 /* PairingCodeTests.swift in Sources */,
 				678CB0B828602B38AC23BD26 /* PairingCodeVectorFile.swift in Sources */,
 				DB2F714BFA12259D2D6D9715 /* PairingScanStoreTests.swift in Sources */,
