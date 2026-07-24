@@ -70,7 +70,7 @@ struct ContentView: View {
         // so re-read each Host's registration file as its connection comes up
         // (and once the push token lands) instead of waiting for a Settings
         // visit that may never happen.
-        .onChange(of: console.hostConnectionGenerations) {
+        .onChange(of: console.hostStatuses) {
             Task { await notificationPreferences.refresh() }
         }
         .onChange(of: pushRegistration.deviceToken) {
