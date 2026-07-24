@@ -33,6 +33,7 @@
 		2E4C392847F96047AF0510DD /* PreflightReportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB88AD0F4E9EE776B17FAFAA /* PreflightReportTests.swift */; };
 		30A69209EA01A8DF784ABC52 /* TerminalInputControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B75316F4E6B80E442C365765 /* TerminalInputControllerTests.swift */; };
 		36B674DF605ECAE382E51196 /* HostOnboardingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DCAF31058B6430B514B2188 /* HostOnboardingStore.swift */; };
+		3B0FFA83C8F1751A86BD3EA5 /* FakePairingConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7448C8647569740BB956262 /* FakePairingConnector.swift */; };
 		3DC1B4DCC0E2CD73A0C13B64 /* SSHAuthE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BE2EC235A2ACCB61A98881E /* SSHAuthE2ETests.swift */; };
 		3ECB4DD848A1C73AF0ED4B5F /* ConsoleAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 498ECBCD631F9734C28861EA /* ConsoleAgent.swift */; };
 		41BBA40C97BAE65E56D0E3B5 /* TerminalAttach.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8007AF9894BE8BAFFA7A6372 /* TerminalAttach.swift */; };
@@ -240,6 +241,7 @@
 		F4FC9B455C6266F12DA82A07 /* HerdrWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrWire.swift; sourceTree = "<group>"; };
 		F62C94D6B84C468B0A4D991C /* SSHTransportE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHTransportE2ETests.swift; sourceTree = "<group>"; };
 		F6851566A8DBF603AA768404 /* PairingCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingCode.swift; sourceTree = "<group>"; };
+		F7448C8647569740BB956262 /* FakePairingConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakePairingConnector.swift; sourceTree = "<group>"; };
 		F98770FDE6BA9A8EEC4FECA3 /* AuthorizedKeysTestLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorizedKeysTestLock.swift; sourceTree = "<group>"; };
 		FC250A036B0CEE727A99C5B4 /* PairingScanStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingScanStore.swift; sourceTree = "<group>"; };
 		FCB521B35951ABDA186FAFCF /* TerminalTouchScroll.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTouchScroll.swift; sourceTree = "<group>"; };
@@ -487,6 +489,7 @@
 			children = (
 				F98770FDE6BA9A8EEC4FECA3 /* AuthorizedKeysTestLock.swift */,
 				20B781425ADF5353CEEED6A1 /* FakeHerdrServer.swift */,
+				F7448C8647569740BB956262 /* FakePairingConnector.swift */,
 				C14983BD8988E4AAE79DC46A /* FakeTransportConnector.swift */,
 				9B106E427EE5358088B615CE /* InMemorySecretStore.swift */,
 				904FF6BF3E76BDFB2F76784D /* LocalSSHTestEnvironment.swift */,
@@ -687,6 +690,7 @@
 				033E8DCA2F64ABE6CA898758 /* EventsSessionSubscriptionsTests.swift in Sources */,
 				E30244FD0231DD02EC9978D0 /* EventsSubscribeE2ETests.swift in Sources */,
 				EF7F36C0E1C3ED3F6117B1EB /* FakeHerdrServer.swift in Sources */,
+				3B0FFA83C8F1751A86BD3EA5 /* FakePairingConnector.swift in Sources */,
 				BC107519427157CF5191E34F /* FakeTransportConnector.swift in Sources */,
 				86C5F3E2D17523948343DF09 /* GeneratedWireTypesTests.swift in Sources */,
 				E908289DF03C6732F7D91328 /* HerdrEventsTests.swift in Sources */,

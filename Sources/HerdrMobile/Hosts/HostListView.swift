@@ -140,7 +140,11 @@ struct HostListView: View {
                 }
             }
             .sheet(isPresented: $isScanningToPair) {
-                PairingScanView()
+                // A successful Pairing lands in the same onboarding preflight
+                // a manually added Host enters (session discovery included).
+                PairingScanView(catalog: store) { paired in
+                    path.append(paired.id)
+                }
             }
             .alert(
                 removal.pendingRequest?.title ?? "Remove Host?",
