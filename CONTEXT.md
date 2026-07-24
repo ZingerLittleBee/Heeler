@@ -77,6 +77,22 @@ _Avoid_: desktop keyboard, reply keyboard
 A user-invoked insertion of plain text from the iOS clipboard into Attach. Single-line text proceeds directly; potentially executable multiline or control content requires review.
 _Avoid_: Control V, image paste
 
+**Agent Notification**:
+A push notification telling the user an Agent crossed a notify-worthy status boundary (Blocked, Done). Deep-links to the Agent's Attach surface.
+_Avoid_: alert, push message, task notification
+
+**Push Relay**:
+The developer-hosted, stateless forwarder that holds the APNs credentials and relays encrypted notification payloads from Hosts to Apple. It sees device tokens and ciphertext, never content.
+_Avoid_: server, backend, push service
+
+**Notification Key**:
+The symmetric key generated on device and stored on a Host during Notification Registration; encrypts Agent Notification content end to end so the Push Relay cannot read it.
+_Avoid_: shared secret, push key
+
+**Notification Registration**:
+The act of writing the device's push token and Notification Key to a Host over SSH. Per host, repeatable, and independent of Pairing; removing it disables Agent Notifications from that Host.
+_Avoid_: subscribe, enable push
+
 **Transport**:
 The app-side abstraction that executes herdr API requests and delivers event streams over SSH. UI code talks to Transport, never to SSH primitives.
 _Avoid_: client, bridge, tunnel
