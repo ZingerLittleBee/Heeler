@@ -13,8 +13,13 @@ import QRCode from "qrcode";
 import { candidateAddresses } from "./addresses.js";
 import { readHostKeyFingerprint } from "./host-key.js";
 import { encodePairingCode } from "./envelope.js";
-import { sweepExpiredBootstrapLines } from "./authorized-keys.js";
-import { beginPairing, endPairing, PAIRING_TTL_SECONDS } from "./pairing-session.js";
+import { commentOf, removeKeyLine, sweepExpiredBootstrapLines } from "./authorized-keys.js";
+import {
+  beginPairing,
+  endPairing,
+  readEnrollment,
+  PAIRING_TTL_SECONDS,
+} from "./pairing-session.js";
 import {
   createSelection,
   moveCursor,
@@ -24,6 +29,11 @@ import {
 } from "./select-list.js";
 
 const DEFAULT_SSH_PORT = 22;
+// How often the QR screen checks whether Enrollment has completed. The pending
+// -> enrolled transition happens on the server side in pair-accept.js; polling
+// the record it leaves is simpler than an fs.watch and just as timely at human
+// scale.
+const ENROLL_POLL_MS = 400;
 
 const CLEAR = "\u001b[2J\u001b[H";
 const HIDE_CURSOR = "\u001b[?25l";
@@ -90,6 +100,49 @@ function renderExpired() {
   process.stdout.write(CLEAR + lines.join("\n") + "\n");
 }
 
+function renderEnrolled(record) {
+  const comment = commentOf(record.line);
+  const label = comment.length > 0 ? `${BOLD}${comment}${RESET}` : `${DIM}(no label)${RESET}`;
+  const lines = [
+    `${BOLD}Device paired${RESET}`,
+    "",
+    "A device just enrolled its Device Key on this machine:",
+    "",
+    `  Fingerprint  ${BOLD}${record.fingerprint}${RESET}`,
+    `  Label        ${label}`,
+    "",
+    "If this was not you, revoke it now to lock that device out.",
+    "",
+    `${DIM}r revoke this device, any other key close${RESET}`,
+  ];
+  process.stdout.write(CLEAR + lines.join("\n") + "\n");
+}
+
+function renderRevoked(record) {
+  const lines = [
+    `${BOLD}Device Key revoked${RESET}`,
+    "",
+    `${DIM}${record.fingerprint}${RESET}`,
+    "was removed from authorized_keys; that device can no longer connect.",
+    "",
+    `${DIM}Press any key to close.${RESET}`,
+  ];
+  process.stdout.write(CLEAR + lines.join("\n") + "\n");
+}
+
+function renderRevokeFailed(message) {
+  const lines = [
+    `${BOLD}Could not revoke the Device Key${RESET}`,
+    "",
+    message,
+    "",
+    "Remove the enrolled line from ~/.ssh/authorized_keys by hand.",
+    "",
+    `${DIM}Press any key to close.${RESET}`,
+  ];
+  process.stdout.write(CLEAR + lines.join("\n") + "\n");
+}
+
 function readKeys(onKey) {
   emitKeypressEvents(process.stdin);
   process.stdin.setRawMode(true);
@@ -130,12 +183,18 @@ async function main() {
   let confirmedAddresses = null;
   let session = null;
   let expiryTimer = null;
+  let enrollWatch = null;
+  let enrolled = null;
   let closing = false;
 
   async function cleanup() {
     if (expiryTimer !== null) {
       clearTimeout(expiryTimer);
       expiryTimer = null;
+    }
+    if (enrollWatch !== null) {
+      clearInterval(enrollWatch);
+      enrollWatch = null;
     }
     if (session !== null) {
       const { pairingId } = session;
@@ -162,8 +221,49 @@ async function main() {
     process.on(signal, () => void close(0));
   }
 
+  // Enrollment happens server-side (pair-accept.js as the sshd forced command)
+  // and leaves a record in the state dir. Poll for it while the QR is up; once
+  // it lands the Bootstrap Key has already self-revoked, so stop the TTL clock
+  // and show the enrolled device with a one-key revoke.
+  function onEnrollmentPoll(pairingId) {
+    if (closing || phase !== "qr") {
+      return;
+    }
+    const record = readEnrollment(stateDir, pairingId);
+    if (record === null) {
+      return;
+    }
+    enrolled = record;
+    if (enrollWatch !== null) {
+      clearInterval(enrollWatch);
+      enrollWatch = null;
+    }
+    if (expiryTimer !== null) {
+      clearTimeout(expiryTimer);
+      expiryTimer = null;
+    }
+    phase = "enrolled";
+    renderEnrolled(record);
+  }
+
+  async function revokeEnrolledDevice() {
+    if (enrolled === null) {
+      void close(0);
+      return;
+    }
+    phase = "revoked";
+    try {
+      await removeKeyLine(home, enrolled.line);
+    } catch (error) {
+      renderRevokeFailed(error.message);
+      return;
+    }
+    renderRevoked(enrolled);
+  }
+
   async function startCeremony() {
     session = await beginPairing({ home, stateDir });
+    const { pairingId } = session;
     expiryTimer = setTimeout(() => {
       expiryTimer = null;
       phase = "expired";
@@ -177,6 +277,7 @@ async function main() {
       bootstrapSeed: session.seed,
       expiresAt: session.expiresAt,
     });
+    enrollWatch = setInterval(() => onEnrollmentPoll(pairingId), ENROLL_POLL_MS);
   }
 
   function startCeremonyOrDie() {
@@ -195,6 +296,18 @@ async function main() {
       return;
     }
     if (key.name === "q" || key.name === "escape" || (key.ctrl && key.name === "c")) {
+      void close(0);
+      return;
+    }
+    if (phase === "enrolled") {
+      if (key.name === "r") {
+        void revokeEnrolledDevice();
+      } else {
+        void close(0);
+      }
+      return;
+    }
+    if (phase === "revoked") {
       void close(0);
       return;
     }
