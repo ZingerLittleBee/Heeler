@@ -57,6 +57,10 @@ targets:
     platform: iOS
     sources:
       - Tests/HerdrMobileTests
+      # Shared Pairing Code vectors (ADR 0007): the same file the Node plugin
+      # tests consume, bundled so the Swift tests cannot drift from it.
+      - path: plugin/test-vectors/pairing-code-v1.json
+        buildPhase: resources
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
