@@ -126,6 +126,46 @@ struct NotificationRegistrationE2ETests {
         try await transport.close()
     }
 
+    /// The #75 preference path end to end: the store's Done toggle rewrites
+    /// this device's entry flag through a real SSHTransport, and the file on
+    /// disk — what the notify hook actually reads — carries the new flag.
+    @MainActor
+    @Test func preferenceStoreRewritesTheDoneFlagOnTheHost() async throws {
+        let environment = try #require(LocalSSHTestEnvironment.current)
+        let configDirectory = try makeConfigDirectory()
+        defer { try? FileManager.default.removeItem(at: configDirectory) }
+        let registrationURL = configDirectory.appendingPathComponent("notifications.json")
+        let host = Host(name: "e2e-host", address: "127.0.0.1", username: "spike")
+        let token = APNSDeviceToken(hex: "0a1b2c3d4e5f", environment: .sandbox)
+        let keys = NotificationKeyStore(secrets: InMemorySecretStore())
+        let transport = try await makeTransport(
+            environment: environment, configDirectory: configDirectory)
+        defer { Task { try? await transport.close() } }
+        let store = NotificationPreferencesStore(
+            transports: ScriptedTransportProvider(transports: [host.id: transport]),
+            deviceToken: { token },
+            ceremony: NotificationRegistrationCeremony(keys: keys))
+        store.setHosts([host])
+        await store.refresh()
+        await store.setNotificationsEnabled(true, for: host)
+
+        await store.setDoneEnabled(false, for: host)
+
+        #expect(
+            store.states[host.id]
+                == .idle(
+                    .init(
+                        isRegistered: true,
+                        notify: NotificationTriggerPreferences(blocked: true, done: false))))
+        let file = try NotificationRegistrationFile.decode(
+            try Data(contentsOf: registrationURL))
+        let entry = try #require(
+            file.devices.first { $0["token"]?.stringValue == token.hex })
+        #expect(entry["notify"]?["done"] == .bool(false))
+        #expect(entry["notify"]?["blocked"] == .bool(true))
+        try await transport.close()
+    }
+
     @Test func missingPluginIsDistinguishableAndTouchesNothing() async throws {
         let environment = try #require(LocalSSHTestEnvironment.current)
         let configDirectory = try makeConfigDirectory()
