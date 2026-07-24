@@ -55,6 +55,12 @@ final actor ScriptedTransport: Transport {
     private(set) var notificationRegistrationReads = 0
     private var notificationRegistrationReadFailure: NotificationRegistrationError?
     private var notificationRegistrationWriteFailure: NotificationRegistrationError?
+    /// The Host's current `notify.json` bytes; nil scripts "no config yet".
+    /// The relay-URL write path (#76) asserts on what the ceremony merged in.
+    private(set) var notificationConfig: Data?
+    /// Every `notify.json` replace received, in order.
+    private(set) var replacedNotificationConfigs: [Data] = []
+    private(set) var notificationConfigReads = 0
 
     init(
         snapshot: SessionSnapshot = .fixture(),
@@ -182,6 +188,11 @@ final actor ScriptedTransport: Transport {
         notificationRegistrationWriteFailure = failure
     }
 
+    /// Scripts the `notify.json` config the Host currently holds.
+    func setNotificationConfig(_ data: Data?) {
+        notificationConfig = data
+    }
+
     // MARK: Transport
 
     func ping() async throws -> ServerInfo {
@@ -302,6 +313,18 @@ final actor ScriptedTransport: Transport {
         if let failure = notificationRegistrationWriteFailure { throw failure }
         notificationRegistration = contents
         replacedNotificationRegistrations.append(contents)
+    }
+
+    func readNotificationConfig() async throws -> Data? {
+        notificationConfigReads += 1
+        if let failure = notificationRegistrationReadFailure { throw failure }
+        return notificationConfig
+    }
+
+    func replaceNotificationConfig(_ contents: Data) async throws {
+        if let failure = notificationRegistrationWriteFailure { throw failure }
+        notificationConfig = contents
+        replacedNotificationConfigs.append(contents)
     }
 
     var isConnected: Bool {

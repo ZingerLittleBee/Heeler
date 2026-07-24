@@ -53,15 +53,21 @@ final class NotificationPreferencesStore {
 
     private let transports: any NotificationTransportProvider
     private let deviceToken: @MainActor () -> APNSDeviceToken?
+    /// The app-side custom Push Relay base URL, read at write time so a change
+    /// in Settings lands on the next Host the user registers. `nil` — the
+    /// empty/default setting — leaves each Host's `notify.json` untouched (#76).
+    private let relayBaseURL: @MainActor () -> URL?
     private let ceremony: NotificationRegistrationCeremony
 
     init(
         transports: any NotificationTransportProvider,
         deviceToken: @escaping @MainActor () -> APNSDeviceToken?,
+        relayBaseURL: @escaping @MainActor () -> URL? = { nil },
         ceremony: NotificationRegistrationCeremony = NotificationRegistrationCeremony()
     ) {
         self.transports = transports
         self.deviceToken = deviceToken
+        self.relayBaseURL = relayBaseURL
         self.ceremony = ceremony
     }
 
@@ -89,12 +95,13 @@ final class NotificationPreferencesStore {
         guard let settings = confirmedSettings(for: host.id),
             settings.isRegistered != enabled
         else { return }
+        let relay = relayBaseURL()
         await write(for: host, from: settings) { ceremony, token, transport in
             if enabled {
                 let notify = NotificationTriggerPreferences()
                 try await ceremony.register(
                     hostID: host.id, hostName: host.displayName,
-                    deviceToken: token, notify: notify, over: transport)
+                    deviceToken: token, notify: notify, relayBaseURL: relay, over: transport)
                 return HostSettings(isRegistered: true, notify: notify)
             } else {
                 try await ceremony.remove(
@@ -114,12 +121,13 @@ final class NotificationPreferencesStore {
         else { return }
         let notify = NotificationTriggerPreferences(
             blocked: settings.notify.blocked, done: enabled)
+        let relay = relayBaseURL()
         await write(for: host, from: settings) { ceremony, token, transport in
             // Re-registration is the flag update: it upserts this device's
             // entry reusing the stored Notification Key (#72 idempotence).
             try await ceremony.register(
                 hostID: host.id, hostName: host.displayName,
-                deviceToken: token, notify: notify, over: transport)
+                deviceToken: token, notify: notify, relayBaseURL: relay, over: transport)
             return HostSettings(isRegistered: true, notify: notify)
         }
     }

@@ -275,7 +275,7 @@ the plugin config dir:
 
 | Field            | Type    | Meaning |
 | ---------------- | ------- | ------- |
-| `relay_url`      | string  | Push Relay base URL. **Required** until a default relay is deployed (zinger-labs/herdr-mobile#70); without it the hook logs an error and sends nothing. |
+| `relay_url`      | string  | Push Relay base URL. **Required** until a default relay is deployed (zinger-labs/herdr-mobile#70); without it the hook logs an error and sends nothing. The app can also write this field from its Custom Push Relay setting during Notification Registration, read-merge-write so the fields below survive. |
 | `debounce_ms`    | integer | Debounce sleep override. Default 5000. |
 | `retry_delay_ms` | integer | Delay between retry attempts. Default 1000. |
 

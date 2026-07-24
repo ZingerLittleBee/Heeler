@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var console: ConsoleStore
     @State private var notificationPreferences: NotificationPreferencesStore
     @State private var terminalThemes = TerminalThemeSettings()
+    @State private var relaySettings: NotificationRelaySettings
     @Environment(\.scenePhase) private var scenePhase
 
     init(pushRegistration: PushRegistrationStore, notificationRouter: AgentNotificationRouter) {
@@ -17,12 +18,16 @@ struct ContentView: View {
         self.notificationRouter = notificationRouter
         let console = ConsoleStore()
         _console = State(initialValue: console)
+        let relaySettings = NotificationRelaySettings()
+        _relaySettings = State(initialValue: relaySettings)
         // Preference reads/writes borrow the Console's live per-Host SSH
-        // connections (#75); the token comes from push bootstrap (#71).
+        // connections (#75); the token comes from push bootstrap (#71), and
+        // the custom relay URL (#76) rides along into each Host's notify.json.
         _notificationPreferences = State(
             initialValue: NotificationPreferencesStore(
                 transports: console,
-                deviceToken: { [weak pushRegistration] in pushRegistration?.deviceToken }))
+                deviceToken: { [weak pushRegistration] in pushRegistration?.deviceToken },
+                relayBaseURL: { [weak relaySettings] in relaySettings?.relayURL }))
     }
 
     var body: some View {
@@ -30,6 +35,7 @@ struct ContentView: View {
             hosts: hostStore, console: console, terminalThemes: terminalThemes,
             pushRegistration: pushRegistration,
             notificationPreferences: notificationPreferences,
+            relaySettings: relaySettings,
             notificationRouter: notificationRouter
         )
         .task {

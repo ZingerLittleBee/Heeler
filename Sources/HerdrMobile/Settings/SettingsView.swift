@@ -6,14 +6,14 @@ struct SettingsView: View {
     let terminalThemes: TerminalThemeSettings
     let pushRegistration: PushRegistrationStore
     let notificationPreferences: NotificationPreferencesStore
+    @Bindable var relaySettings: NotificationRelaySettings
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    @State private var isShowingExplainer = false
 
     var body: some View {
         NavigationStack {
             Form {
-                // Minimal push bootstrap copy (#71); the full pipeline
-                // disclosure screen ships with #76.
                 Section {
                     notificationRow
                 } header: {
@@ -22,6 +22,11 @@ struct SettingsView: View {
                     Text("Get notified when an Agent is waiting for your input or finishes.")
                 }
 
+                // The persistent privacy disclosure (#76): the same story as
+                // the pre-permission explainer, reachable any time, linking to
+                // PRIVACY.md.
+                privacySection
+
                 // Per-Host preferences (#75): registration on/off plus the
                 // separate Done flag, once this device holds a push token.
                 if pushRegistration.deviceToken != nil {
@@ -29,6 +34,10 @@ struct SettingsView: View {
                         hostNotificationSection(host)
                     }
                 }
+
+                // Custom Push Relay base URL (#76): only meaningful to a
+                // self-builder; empty leaves every Host's plugin config alone.
+                customRelaySection
 
                 Section {
                     TerminalThemePreview(theme: terminalThemes.theme)
@@ -71,6 +80,48 @@ struct SettingsView: View {
                 guard token != nil else { return }
                 Task { await notificationPreferences.refresh() }
             }
+            // The disclosure gate (#76): the iOS permission prompt only fires
+            // after the user reads the explainer and taps Continue.
+            .sheet(isPresented: $isShowingExplainer) {
+                NotificationExplainerSheet {
+                    Task { await pushRegistration.enable() }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var privacySection: some View {
+        Section {
+            NavigationLink {
+                NotificationPrivacyDetailView()
+            } label: {
+                Label("How notifications stay private", systemImage: "lock.shield")
+            }
+        } header: {
+            Text("Privacy")
+        } footer: {
+            Text(NotificationPrivacyCopy.summary)
+        }
+    }
+
+    @ViewBuilder
+    private var customRelaySection: some View {
+        Section {
+            TextField("https://relay.example.com", text: $relaySettings.rawValue)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .textContentType(.URL)
+            if relaySettings.hasInvalidEntry {
+                Text("Enter a valid http or https URL.")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        } header: {
+            Text("Custom Push Relay")
+        } footer: {
+            Text(NotificationPrivacyCopy.customRelayCaveat)
         }
     }
 
@@ -154,7 +205,7 @@ struct SettingsView: View {
             }
         case .needsPermission:
             Button("Enable Notifications") {
-                Task { await pushRegistration.enable() }
+                isShowingExplainer = true
             }
         case .waitingForToken:
             HStack {

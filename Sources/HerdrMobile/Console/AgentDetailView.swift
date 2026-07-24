@@ -10,6 +10,7 @@ struct AgentDetailView: View {
     private let terminalThemes: TerminalThemeSettings
     private let pushRegistration: PushRegistrationStore
     private let notificationPreferences: NotificationPreferencesStore
+    private let relaySettings: NotificationRelaySettings
     @State private var attach: AgentAttachStore
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isConfirmingClose = false
@@ -23,13 +24,15 @@ struct AgentDetailView: View {
         console: ConsoleStore,
         terminalThemes: TerminalThemeSettings,
         pushRegistration: PushRegistrationStore,
-        notificationPreferences: NotificationPreferencesStore
+        notificationPreferences: NotificationPreferencesStore,
+        relaySettings: NotificationRelaySettings
     ) {
         self.agent = agent
         self.console = console
         self.terminalThemes = terminalThemes
         self.pushRegistration = pushRegistration
         self.notificationPreferences = notificationPreferences
+        self.relaySettings = relaySettings
         _attach = State(
             initialValue: AgentAttachStore(
                 target: agent.agent.paneID,
@@ -88,7 +91,8 @@ struct AgentDetailView: View {
             SettingsView(
                 terminalThemes: terminalThemes,
                 pushRegistration: pushRegistration,
-                notificationPreferences: notificationPreferences)
+                notificationPreferences: notificationPreferences,
+                relaySettings: relaySettings)
         }
         .sheet(
             isPresented: Binding(

@@ -59,6 +59,19 @@ struct NotificationPreferencesStoreTests {
             deviceToken: deviceToken ?? token)
     }
 
+    private func makeStore(
+        transport: any Transport,
+        relayBaseURL: @escaping @MainActor () -> URL?
+    ) -> NotificationPreferencesStore {
+        let store = NotificationPreferencesStore(
+            transports: ScriptedTransportProvider(transports: [host.id: transport]),
+            deviceToken: { self.token },
+            relayBaseURL: relayBaseURL,
+            ceremony: NotificationRegistrationCeremony(keys: keys))
+        store.setHosts([host])
+        return store
+    }
+
     // MARK: Reflecting the Host's truth
 
     @Test func refreshReflectsAnUnregisteredHost() async throws {
@@ -234,6 +247,30 @@ struct NotificationPreferencesStoreTests {
         await store.setNotificationsEnabled(false, for: host)
 
         #expect(await transport.replacedNotificationRegistrations.isEmpty)
+    }
+
+    @Test func enablingWritesTheCustomRelayURLIntoNotifyConfig() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(
+            transport: transport,
+            relayBaseURL: { URL(string: "https://relay.example.com") })
+        await store.refresh()
+
+        await store.setNotificationsEnabled(true, for: host)
+
+        let written = try #require(await transport.notificationConfig)
+        let config = try NotificationConfigFile.decode(written)
+        #expect(config.relayURL == "https://relay.example.com")
+    }
+
+    @Test func enablingWithNoCustomRelayLeavesNotifyConfigAlone() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, relayBaseURL: { nil })
+        await store.refresh()
+
+        await store.setNotificationsEnabled(true, for: host)
+
+        #expect(await transport.replacedNotificationConfigs.isEmpty)
     }
 
     // MARK: Done flag

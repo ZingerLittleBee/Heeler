@@ -166,6 +166,43 @@ struct NotificationRegistrationE2ETests {
         try await transport.close()
     }
 
+    /// The #76 custom-relay path end to end: registering with a relay URL
+    /// writes `notify.json` next to the registration file through a real
+    /// SSHTransport, and the config on disk — what the notify hook reads —
+    /// carries the URL while keeping the plugin's own knobs.
+    @Test func registerWritesTheCustomRelayURLIntoNotifyConfigOnTheHost() async throws {
+        let environment = try #require(LocalSSHTestEnvironment.current)
+        let configDirectory = try makeConfigDirectory()
+        defer { try? FileManager.default.removeItem(at: configDirectory) }
+        let notifyURL = configDirectory.appendingPathComponent("notify.json")
+        // The plugin already has its own settings; the merge must keep them.
+        try Data(#"{"debounce_ms":2000,"future_knob":"kept"}"#.utf8).write(to: notifyURL)
+
+        let ceremony = NotificationRegistrationCeremony(
+            keys: NotificationKeyStore(secrets: InMemorySecretStore()))
+        let token = APNSDeviceToken(hex: "c0ffee", environment: .sandbox)
+        let transport = try await makeTransport(
+            environment: environment, configDirectory: configDirectory)
+        defer { Task { try? await transport.close() } }
+
+        try await ceremony.register(
+            hostID: UUID(), hostName: "e2e-host", deviceToken: token,
+            relayBaseURL: URL(string: "https://relay.example.com")!, over: transport)
+
+        let config = try NotificationConfigFile.decode(try Data(contentsOf: notifyURL))
+        #expect(config.relayURL == "https://relay.example.com")
+        let object = try #require(
+            try JSONSerialization.jsonObject(with: try Data(contentsOf: notifyURL))
+                as? [String: Any])
+        #expect(object["debounce_ms"] as? Int == 2000)
+        #expect(object["future_knob"] as? String == "kept")
+        // The atomic replace leaves no temp files behind next to the two files.
+        #expect(
+            try Set(FileManager.default.contentsOfDirectory(atPath: configDirectory.path))
+                == ["notifications.json", "notify.json"])
+        try await transport.close()
+    }
+
     @Test func missingPluginIsDistinguishableAndTouchesNothing() async throws {
         let environment = try #require(LocalSSHTestEnvironment.current)
         let configDirectory = try makeConfigDirectory()

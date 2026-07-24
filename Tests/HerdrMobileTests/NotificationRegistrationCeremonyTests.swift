@@ -156,6 +156,52 @@ struct NotificationRegistrationCeremonyTests {
         #expect(await transport.replacedNotificationRegistrations.isEmpty)
     }
 
+    // MARK: Custom relay URL (#76)
+
+    @Test func registerWithoutARelayURLLeavesNotifyConfigUntouched() async throws {
+        let transport = ScriptedTransport()
+
+        try await ceremony.register(
+            hostID: hostID, hostName: "mac-studio", deviceToken: token, over: transport)
+
+        // The empty/default relay setting must never touch the plugin config.
+        #expect(await transport.replacedNotificationConfigs.isEmpty)
+        #expect(await transport.notificationConfig == nil)
+    }
+
+    @Test func registerWithARelayURLWritesItPreservingOtherFields() async throws {
+        let transport = ScriptedTransport()
+        // The Host's plugin already carries its own knobs; the merge keeps them.
+        await transport.setNotificationConfig(
+            Data(#"{"debounce_ms":2000,"future_knob":"kept"}"#.utf8))
+
+        try await ceremony.register(
+            hostID: hostID, hostName: "mac-studio", deviceToken: token,
+            relayBaseURL: URL(string: "https://relay.example.com")!, over: transport)
+
+        let written = try #require(await transport.replacedNotificationConfigs.last)
+        let object = try #require(
+            try JSONSerialization.jsonObject(with: written) as? [String: Any])
+        #expect(object["relay_url"] as? String == "https://relay.example.com")
+        #expect(object["debounce_ms"] as? Int == 2000)
+        #expect(object["future_knob"] as? String == "kept")
+    }
+
+    @Test func reRegisterWithTheSameRelayURLDoesNotRewriteTheConfig() async throws {
+        let transport = ScriptedTransport()
+        let relay = URL(string: "https://relay.example.com")!
+
+        try await ceremony.register(
+            hostID: hostID, hostName: "mac-studio", deviceToken: token,
+            relayBaseURL: relay, over: transport)
+        try await ceremony.register(
+            hostID: hostID, hostName: "mac-studio", deviceToken: token,
+            relayBaseURL: relay, over: transport)
+
+        // First register writes the config once; the second changes nothing.
+        #expect(await transport.replacedNotificationConfigs.count == 1)
+    }
+
     @Test func removeSurfacesAFailedRemoteRemovalAndKeepsTheKey() async throws {
         let transport = ScriptedTransport()
         try await ceremony.register(

@@ -28,6 +28,7 @@ struct NotificationRegistrationCeremony: Sendable {
         hostName: String,
         deviceToken: APNSDeviceToken,
         notify: NotificationTriggerPreferences = NotificationTriggerPreferences(),
+        relayBaseURL: URL? = nil,
         over transport: any Transport
     ) async throws -> NotificationKeyRecord {
         let record = try hostRecord(hostID: hostID, hostName: hostName)
@@ -38,7 +39,26 @@ struct NotificationRegistrationCeremony: Sendable {
             token: deviceToken, key: record.key, notify: notify)
         try await transport.replaceNotificationRegistration(
             try file.upserting(entry).encoded())
+        if let relayBaseURL {
+            try await applyRelayURL(relayBaseURL, over: transport)
+        }
         return record
+    }
+
+    /// Writes the app-side custom Push Relay base URL into the Host's
+    /// `notify.json` so this Host's notify hook POSTs there (#76). Read-merge-
+    /// write: the plugin's own knobs (`debounce_ms`, `retry_delay_ms`, any
+    /// field a newer plugin adds) are carried through untouched. Only rewrites
+    /// when the value actually changes, so a re-registration that did not move
+    /// the relay leaves the config file alone. `nil` at the call site — the
+    /// empty/default relay setting — never reaches here, so the plugin's config
+    /// is untouched for everyone but self-builders.
+    private func applyRelayURL(_ relayBaseURL: URL, over transport: any Transport) async throws {
+        let config = try NotificationConfigFile.decode(
+            try await transport.readNotificationConfig())
+        let updated = config.settingRelayURL(relayBaseURL.absoluteString)
+        guard updated != config else { return }
+        try await transport.replaceNotificationConfig(try updated.encoded())
     }
 
     /// Revokes this device on one Host: its entry leaves the registration

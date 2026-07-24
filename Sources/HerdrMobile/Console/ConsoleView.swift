@@ -8,6 +8,7 @@ struct ConsoleView: View {
     let terminalThemes: TerminalThemeSettings
     let pushRegistration: PushRegistrationStore
     let notificationPreferences: NotificationPreferencesStore
+    let relaySettings: NotificationRelaySettings
     /// Owns the navigation path (#74): user taps and notification deep links
     /// drive the same stack.
     @Bindable var notificationRouter: AgentNotificationRouter
@@ -28,7 +29,8 @@ struct ConsoleView: View {
                             console: console,
                             terminalThemes: terminalThemes,
                             pushRegistration: pushRegistration,
-                            notificationPreferences: notificationPreferences)
+                            notificationPreferences: notificationPreferences,
+                            relaySettings: relaySettings)
                     } else {
                         ContentUnavailableView(
                             "Agent Gone", systemImage: "rectangle.on.rectangle.slash",
@@ -70,7 +72,8 @@ struct ConsoleView: View {
                     SettingsView(
                         terminalThemes: terminalThemes,
                         pushRegistration: pushRegistration,
-                        notificationPreferences: notificationPreferences)
+                        notificationPreferences: notificationPreferences,
+                        relaySettings: relaySettings)
                 }
         }
         // A notification deep link must land on the Attach even when one of

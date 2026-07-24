@@ -81,6 +81,17 @@ protocol Transport: Sendable {
     /// absent. Same plugin gate as the read.
     func replaceNotificationRegistration(_ contents: Data) async throws
 
+    /// Reads the plugin's `notify.json` config from this Host's herdr-mobile
+    /// plugin config dir (the registration file's sibling; `plugin/README.md`);
+    /// nil when the plugin has no config file yet. Same plugin gate as the
+    /// registration read. Carries the custom Push Relay base URL (#76).
+    func readNotificationConfig() async throws -> Data?
+
+    /// Atomically replaces the plugin's `notify.json` config with `contents`
+    /// (temp file + rename), creating it when absent. Same plugin gate as the
+    /// registration write.
+    func replaceNotificationConfig(_ contents: Data) async throws
+
     /// Whether the underlying connection to the Host is still alive. The
     /// reconnect machinery (#18) decides "re-subscribe on this connection or
     /// re-establish it" from this flag.
@@ -112,6 +123,14 @@ extension Transport {
     }
 
     func replaceNotificationRegistration(_ contents: Data) async throws {
+        throw NotificationRegistrationError.pluginNotInstalled
+    }
+
+    func readNotificationConfig() async throws -> Data? {
+        throw NotificationRegistrationError.pluginNotInstalled
+    }
+
+    func replaceNotificationConfig(_ contents: Data) async throws {
         throw NotificationRegistrationError.pluginNotInstalled
     }
 }

@@ -524,39 +524,59 @@ actor SSHTransport: Transport {
         permissions.map { $0 & 0o777 }
     }
 
-    // MARK: Notification Registration (#72)
+    // MARK: Notification plugin config files (#72, #76)
     //
-    // The registration file lives at notifications.json inside the
-    // herdr-mobile plugin's config dir (registration file v1,
-    // plugin/README.md). Writes are atomic: the content lands in a
-    // same-directory temp file over SFTP, then one exec `mv -f` renames it
-    // over the live file — SFTP v3 RENAME refuses to overwrite, and mv on
-    // the same filesystem is a rename syscall.
+    // Both the registration file (notifications.json, registration file v1)
+    // and the plugin config (notify.json, the custom Push Relay base URL)
+    // live inside the herdr-mobile plugin's config dir (plugin/README.md).
+    // Writes are atomic: the content lands in a same-directory temp file over
+    // SFTP, then one exec `mv -f` renames it over the live file — SFTP v3
+    // RENAME refuses to overwrite, and mv on the same filesystem is a rename
+    // syscall. Both files share the plugin gate and the atomic-replace dance.
 
     static let notificationRegistrationFileName = "notifications.json"
+    static let notificationConfigFileName = "notify.json"
 
     func readNotificationRegistration() async throws -> Data? {
+        try await readPluginConfigFile(named: Self.notificationRegistrationFileName)
+    }
+
+    func replaceNotificationRegistration(_ contents: Data) async throws {
+        try await replacePluginConfigFile(
+            named: Self.notificationRegistrationFileName, contents: contents)
+    }
+
+    func readNotificationConfig() async throws -> Data? {
+        try await readPluginConfigFile(named: Self.notificationConfigFileName)
+    }
+
+    func replaceNotificationConfig(_ contents: Data) async throws {
+        try await replacePluginConfigFile(
+            named: Self.notificationConfigFileName, contents: contents)
+    }
+
+    private func readPluginConfigFile(named name: String) async throws -> Data? {
         try await Self.withRequestDeadline(requestTimeout) {
-            let path = try await self.notificationRegistrationPath()
+            let path = try await self.pluginConfigFilePath(named: name)
             return try await self.execChannelBudget.withChannel {
-                try await self.readRegistrationFile(at: path)
+                try await self.readPluginFile(at: path)
             }
         }
     }
 
-    func replaceNotificationRegistration(_ contents: Data) async throws {
+    private func replacePluginConfigFile(named name: String, contents: Data) async throws {
         try await Self.withRequestDeadline(requestTimeout) {
-            let path = try await self.notificationRegistrationPath()
+            let path = try await self.pluginConfigFilePath(named: name)
             let temporaryPath = "\(path).tmp-\(UUID().uuidString.lowercased())"
             guard
                 let quotedTemporary = RemoteShellPath.quotedAbsolute(temporaryPath),
                 let quotedFinal = RemoteShellPath.quotedAbsolute(path)
             else {
                 throw NotificationRegistrationError.writeFailed(
-                    detail: "The registration path cannot be quoted for the remote shell.")
+                    detail: "The plugin config path cannot be quoted for the remote shell.")
             }
             try await self.execChannelBudget.withChannel {
-                try await self.writeRegistrationTemporary(contents, at: temporaryPath)
+                try await self.writePluginTemporaryFile(contents, at: temporaryPath)
             }
             do {
                 try await self.execChannelBudget.withChannel {
@@ -572,7 +592,7 @@ actor SSHTransport: Transport {
         }
     }
 
-    private func readRegistrationFile(at path: String) async throws -> Data? {
+    private func readPluginFile(at path: String) async throws -> Data? {
         let sftp: SFTPClient
         do {
             sftp = try await client.openSFTP(logger: Self.restrictedSFTPLogger)
@@ -585,7 +605,8 @@ actor SSHTransport: Transport {
             do {
                 file = try await sftp.openFile(filePath: path, flags: .read)
             } catch let error where Self.isNoSuchFile(error) {
-                // No device has registered on this Host yet.
+                // The plugin holds no such file yet (no device registered, or
+                // no config written) — the caller reads nil as "start empty".
                 try? await sftp.close()
                 return nil
             }
@@ -600,7 +621,7 @@ actor SSHTransport: Transport {
         }
     }
 
-    private func writeRegistrationTemporary(_ contents: Data, at path: String) async throws {
+    private func writePluginTemporaryFile(_ contents: Data, at path: String) async throws {
         let sftp: SFTPClient
         do {
             sftp = try await client.openSFTP(logger: Self.restrictedSFTPLogger)
@@ -646,11 +667,11 @@ actor SSHTransport: Transport {
         }
     }
 
-    private func notificationRegistrationPath() async throws -> String {
+    private func pluginConfigFilePath(named name: String) async throws -> String {
         let directory = try await notificationConfigDirectory.value {
             try await self.resolveNotificationConfigDirectory()
         }
-        return "\(directory)/\(Self.notificationRegistrationFileName)"
+        return "\(directory)/\(name)"
     }
 
     /// Verifies the plugin is installed, then resolves its config dir over
