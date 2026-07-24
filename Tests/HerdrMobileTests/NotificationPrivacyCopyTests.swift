@@ -48,8 +48,8 @@ struct NotificationPrivacyCopyTests {
         #expect(caveat.localizedCaseInsensitiveContains("bundle id"))
     }
 
-    @Test func linksToThePrivacyPolicy() {
-        #expect(
-            NotificationPrivacyCopy.privacyPolicyURL.absoluteString.hasSuffix("PRIVACY.md"))
+    @Test func linksToThePrivacyPolicy() throws {
+        let url = try #require(NotificationPrivacyCopy.privacyPolicyURL)
+        #expect(url.absoluteString.hasSuffix("PRIVACY.md"))
     }
 }

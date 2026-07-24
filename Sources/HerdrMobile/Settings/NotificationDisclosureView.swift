@@ -62,10 +62,10 @@ struct NotificationExplainerSheet: View {
             }
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 12) {
-                    Link(
-                        "Read the privacy details",
-                        destination: NotificationPrivacyCopy.privacyPolicyURL)
-                        .font(.footnote)
+                    if let privacyURL = NotificationPrivacyCopy.privacyPolicyURL {
+                        Link("Read the privacy details", destination: privacyURL)
+                            .font(.footnote)
+                    }
                     Button {
                         onContinue()
                         dismiss()
@@ -96,10 +96,10 @@ struct NotificationPrivacyDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 NotificationDisclosureContent()
-                Link(
-                    "Read PRIVACY.md",
-                    destination: NotificationPrivacyCopy.privacyPolicyURL)
-                    .font(.subheadline)
+                if let privacyURL = NotificationPrivacyCopy.privacyPolicyURL {
+                    Link("Read PRIVACY.md", destination: privacyURL)
+                        .font(.subheadline)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()

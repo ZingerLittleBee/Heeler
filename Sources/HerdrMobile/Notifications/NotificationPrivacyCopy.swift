@@ -46,7 +46,9 @@ enum NotificationPrivacyCopy {
     /// The dismissive action label on the explainer sheet.
     static let explainerCancel = "Not Now"
 
-    /// The GitHub-hosted `PRIVACY.md` the settings section links to.
+    /// The GitHub-hosted `PRIVACY.md` the settings section links to. Optional,
+    /// like every `URL(string:)` in the app (no force unwraps); a link that
+    /// depends on it simply hides if the constant ever fails to parse.
     static let privacyPolicyURL = URL(
-        string: "https://github.com/zinger-labs/herdr-mobile/blob/main/PRIVACY.md")!
+        string: "https://github.com/zinger-labs/herdr-mobile/blob/main/PRIVACY.md")
 }
