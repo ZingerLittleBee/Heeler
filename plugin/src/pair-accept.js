@@ -16,7 +16,7 @@ import { parseArgs } from "node:util";
 
 import { editAuthorizedKeys, keyBlobOf, parseBootstrapLine } from "./authorized-keys.js";
 import { parseDeviceKeyLine, DeviceKeyError } from "./device-key.js";
-import { endPairing, pendingPath } from "./pairing-session.js";
+import { endPairing, pendingPath, recordEnrollment } from "./pairing-session.js";
 
 const MAX_INPUT_BYTES = 4096;
 const INPUT_TIMEOUT_MS = 30_000;
@@ -130,5 +130,9 @@ if (alreadyUsed) {
 if (expired) {
   err("expired", `pairing ${pairingId} expired; regenerate the Pairing Code`);
 }
+
+// Leave a record for the popup: it polls this to show the enrolled
+// fingerprint and to offer a one-key revoke of the line we just appended.
+recordEnrollment({ stateDir, pairingId, fingerprint: deviceKey.fingerprint, line: deviceKey.line });
 
 ok(deviceKey.fingerprint);

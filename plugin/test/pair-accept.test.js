@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { beginPairing, pendingPath } from "../src/pairing-session.js";
+import { beginPairing, pendingPath, readEnrollment } from "../src/pairing-session.js";
 import { authorizedKeysPath, editAuthorizedKeys, parseBootstrapLine } from "../src/authorized-keys.js";
 
 const ACCEPT_SCRIPT = fileURLToPath(new URL("../src/pair-accept.js", import.meta.url));
@@ -88,6 +88,18 @@ suite("pair-accept", () => {
     assert.equal(result.stdout.trim(), `HERDR-ENROLL:OK:${DEVICE_FINGERPRINT}`);
     assert.equal(readKeys(), `${USER_LINE}\n${DEVICE_LINE}\n`);
     assert.equal(existsSync(pendingPath(stateDir, session.pairingId)), false);
+    // The popup reads this record to show the enrolled fingerprint and revoke.
+    assert.deepEqual(readEnrollment(stateDir, session.pairingId), {
+      pairingId: session.pairingId,
+      fingerprint: DEVICE_FINGERPRINT,
+      line: DEVICE_LINE,
+    });
+  });
+
+  test("a rejected submission leaves no enrollment record", async () => {
+    const session = await beginPairing({ home, stateDir });
+    runAccept(session.pairingId, "ssh-rsa AAAAB3nope\n");
+    assert.equal(readEnrollment(stateDir, session.pairingId), null);
   });
 
   test("an invalid submission does not consume the bootstrap line; retry works", async () => {

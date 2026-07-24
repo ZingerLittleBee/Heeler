@@ -10,7 +10,7 @@
 // login-shell environment: no herdr plugin env, possibly no node on PATH.
 
 import { randomBytes } from "node:crypto";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,6 +23,39 @@ const ACCEPT_SCRIPT = fileURLToPath(new URL("./pair-accept.js", import.meta.url)
 
 export function pendingPath(stateDir, pairingId) {
   return join(stateDir, "pending", `${pairingId}.json`);
+}
+
+export function enrolledPath(stateDir, pairingId) {
+  return join(stateDir, "enrolled", `${pairingId}.json`);
+}
+
+/**
+ * Record a completed Enrollment so the popup can show the enrolled fingerprint
+ * and offer a one-key revoke. Written by pair-accept.js after a successful
+ * enroll; the popup polls for it as its Enrollment signal.
+ *
+ * @param {object} options
+ * @param {string} options.stateDir plugin state directory
+ * @param {string} options.pairingId the completed pairing's id
+ * @param {string} options.fingerprint enrolled Device Key SHA256 fingerprint
+ * @param {string} options.line canonical enrolled authorized_keys line (revoke target)
+ */
+export function recordEnrollment({ stateDir, pairingId, fingerprint, line }) {
+  mkdirSync(join(stateDir, "enrolled"), { recursive: true, mode: 0o700 });
+  writeFileSync(
+    enrolledPath(stateDir, pairingId),
+    `${JSON.stringify({ pairingId, fingerprint, line })}\n`,
+    { mode: 0o600 },
+  );
+}
+
+/** Read a completed Enrollment record, or null if none exists yet. */
+export function readEnrollment(stateDir, pairingId) {
+  try {
+    return JSON.parse(readFileSync(enrolledPath(stateDir, pairingId), "utf8"));
+  } catch {
+    return null;
+  }
 }
 
 function singleQuoted(path, what) {
@@ -88,8 +121,12 @@ export async function beginPairing({
   return { pairingId, seed, expiresAt, publicLine };
 }
 
-/** End a ceremony: drop the bootstrap line and pending state. Idempotent. */
+/**
+ * End a ceremony: drop the bootstrap line, pending state, and any Enrollment
+ * record. Idempotent, so crashed ceremonies can be cleaned up twice.
+ */
 export async function endPairing({ home, stateDir, pairingId }) {
   await removeBootstrapLine(home, pairingId);
   rmSync(pendingPath(stateDir, pairingId), { force: true });
+  rmSync(enrolledPath(stateDir, pairingId), { force: true });
 }

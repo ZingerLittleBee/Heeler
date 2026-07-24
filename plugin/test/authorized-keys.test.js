@@ -7,8 +7,10 @@ import { join } from "node:path";
 import {
   authorizedKeysPath,
   bootstrapLine,
+  commentOf,
   editAuthorizedKeys,
   removeBootstrapLine,
+  removeKeyLine,
   sweepExpiredBootstrapLines,
 } from "../src/authorized-keys.js";
 
@@ -110,6 +112,39 @@ suite("removeBootstrapLine", () => {
   test("is a no-op when the file does not exist", async () => {
     await removeBootstrapLine(home, "mine");
     assert.equal(existsSync(authorizedKeysPath(home)), false);
+  });
+});
+
+suite("commentOf", () => {
+  test("returns the comment of a bare public line", () => {
+    assert.equal(commentOf(USER_LINE), "laptop");
+    assert.equal(commentOf(`${PUBLIC_LINE} herdr mobile phone`), "herdr mobile phone");
+  });
+
+  test("returns an empty string when there is no comment", () => {
+    assert.equal(commentOf(PUBLIC_LINE), "");
+  });
+});
+
+suite("removeKeyLine", () => {
+  test("removes the line matching the key blob, keeping the others", async () => {
+    await editAuthorizedKeys(home, () => [USER_LINE, PUBLIC_LINE]);
+    const removed = await removeKeyLine(home, PUBLIC_LINE);
+    assert.equal(removed, true);
+    assert.equal(readKeys(), `${USER_LINE}\n`);
+  });
+
+  test("matches on the key blob even when the comment differs", async () => {
+    await editAuthorizedKeys(home, () => [USER_LINE, `${PUBLIC_LINE} phone`]);
+    await removeKeyLine(home, `${PUBLIC_LINE} a-different-label`);
+    assert.equal(readKeys(), `${USER_LINE}\n`);
+  });
+
+  test("is a no-op when the key is not present", async () => {
+    await editAuthorizedKeys(home, () => [USER_LINE]);
+    const removed = await removeKeyLine(home, PUBLIC_LINE);
+    assert.equal(removed, false);
+    assert.equal(readKeys(), `${USER_LINE}\n`);
   });
 });
 

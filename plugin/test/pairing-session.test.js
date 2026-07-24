@@ -5,7 +5,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { beginPairing, endPairing, pendingPath, PAIRING_TTL_SECONDS } from "../src/pairing-session.js";
+import {
+  beginPairing,
+  endPairing,
+  enrolledPath,
+  pendingPath,
+  readEnrollment,
+  recordEnrollment,
+  PAIRING_TTL_SECONDS,
+} from "../src/pairing-session.js";
 import { authorizedKeysPath, parseBootstrapLine, editAuthorizedKeys } from "../src/authorized-keys.js";
 import { publicLineFromSeed } from "../src/bootstrap-key.js";
 
@@ -72,13 +80,45 @@ suite("beginPairing", () => {
   });
 });
 
+const DEVICE_LINE =
+  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMYSCTemrZWEXptQyehHLI9kbqjHxNUGtQN2lF1ucCce herdr-mobile";
+const DEVICE_FINGERPRINT = "SHA256:ef+f9Jda6ZPkcW5GiL7pQZXJ57mCFnFAGkir3AcfTIM";
+
+suite("enrollment record", () => {
+  test("round-trips fingerprint and line, written 0600", () => {
+    recordEnrollment({
+      stateDir,
+      pairingId: "abc123",
+      fingerprint: DEVICE_FINGERPRINT,
+      line: DEVICE_LINE,
+    });
+    assert.deepEqual(readEnrollment(stateDir, "abc123"), {
+      pairingId: "abc123",
+      fingerprint: DEVICE_FINGERPRINT,
+      line: DEVICE_LINE,
+    });
+    assert.equal(statSync(enrolledPath(stateDir, "abc123")).mode & 0o777, 0o600);
+  });
+
+  test("readEnrollment is null when there is no record", () => {
+    assert.equal(readEnrollment(stateDir, "missing"), null);
+  });
+});
+
 suite("endPairing", () => {
-  test("removes the bootstrap line and the pending state", async () => {
+  test("removes the bootstrap line, the pending state, and the enrollment record", async () => {
     await editAuthorizedKeys(home, () => [USER_LINE]);
     const session = await beginPairing({ home, stateDir, now: NOW });
+    recordEnrollment({
+      stateDir,
+      pairingId: session.pairingId,
+      fingerprint: DEVICE_FINGERPRINT,
+      line: DEVICE_LINE,
+    });
     await endPairing({ home, stateDir, pairingId: session.pairingId });
     assert.equal(readKeys(), `${USER_LINE}\n`);
     assert.equal(existsSync(pendingPath(stateDir, session.pairingId)), false);
+    assert.equal(existsSync(enrolledPath(stateDir, session.pairingId)), false);
   });
 
   test("is idempotent", async () => {

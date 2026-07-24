@@ -179,3 +179,25 @@ export function keyBlobOf(line) {
   const start = words[0]?.startsWith("ssh-") || words[0]?.startsWith("ecdsa-") ? 0 : 1;
   return words.slice(start, start + 2).join(" ");
 }
+
+/** The comment (everything after "<type> <blob>") of a public key line. */
+export function commentOf(line) {
+  const words = line.trim().split(/\s+/);
+  const start = words[0]?.startsWith("ssh-") || words[0]?.startsWith("ecdsa-") ? 0 : 1;
+  return words.slice(start + 2).join(" ");
+}
+
+/**
+ * Remove any authorized_keys line whose key blob matches the given line. Used
+ * to revoke an enrolled Device Key; matching on the blob (not the whole line)
+ * makes the revoke robust to comment differences.
+ *
+ * @returns {Promise<boolean>} whether a line was removed
+ */
+export async function removeKeyLine(home, line) {
+  const target = keyBlobOf(line);
+  return editAuthorizedKeys(home, (lines) => {
+    const kept = lines.filter((existing) => keyBlobOf(existing) !== target);
+    return kept.length === lines.length ? null : kept;
+  });
+}
