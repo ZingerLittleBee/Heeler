@@ -336,4 +336,57 @@ struct NotificationPreferencesStoreTests {
                 == .idle(
                     .init(isRegistered: false, notify: NotificationTriggerPreferences())))
     }
+
+    // MARK: Confirmed triggers for the in-app banner (#77)
+
+    @Test func confirmedTriggersOfARegisteredHostAreItsFlags() async throws {
+        let transport = ScriptedTransport()
+        await transport.setNotificationRegistration(
+            Data(
+                (#"{"v":1,"devices":[{"token":"\#(token.hex)","key":"kk","env":"sandbox","#
+                    + #""notify":{"blocked":true,"done":false}}]}"#).utf8))
+        let store = makeStore(transport: transport)
+        await store.refresh()
+
+        #expect(
+            store.confirmedTriggers(for: host.id)
+                == NotificationTriggerPreferences(blocked: true, done: false))
+    }
+
+    @Test func confirmedTriggersOfAnUnregisteredHostAreNil() async throws {
+        let store = makeStore(transport: ScriptedTransport())
+        await store.refresh()
+
+        #expect(store.confirmedTriggers(for: host.id) == nil)
+    }
+
+    /// Fail closed: before any refresh, and while the Host is unreachable,
+    /// there is no confirmed truth to banner from.
+    @Test func confirmedTriggersAreNilWhileTheHostsTruthIsUnknown() async throws {
+        let provider = ScriptedTransportProvider(transports: [:])
+        let store = makeStore(provider: provider, deviceToken: token)
+
+        #expect(store.confirmedTriggers(for: host.id) == nil)
+
+        await store.refresh()
+
+        #expect(store.confirmedTriggers(for: host.id) == nil)
+    }
+
+    /// A failed write leaves the last confirmed truth in place, and that
+    /// truth keeps gating banners.
+    @Test func confirmedTriggersSurviveAFailedWrite() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport)
+        await store.refresh()
+        await store.setNotificationsEnabled(true, for: host)
+        await transport.setNotificationRegistrationWriteFailure(
+            .writeFailed(detail: "disk full"))
+
+        await store.setDoneEnabled(false, for: host)
+
+        #expect(
+            store.confirmedTriggers(for: host.id)
+                == NotificationTriggerPreferences(blocked: true, done: true))
+    }
 }

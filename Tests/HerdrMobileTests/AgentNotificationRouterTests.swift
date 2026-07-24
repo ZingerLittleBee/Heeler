@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-import UserNotifications
 
 @testable import HerdrMobile
 
@@ -122,31 +121,5 @@ struct AgentNotificationRouterTests {
 
         #expect(router.path == [ConsoleAgent.ID(hostID: hostID, paneID: "%other")])
         #expect(router.pendingTarget == nil)
-    }
-
-    /// The willPresent contract: `[]` only when the presented Agent matches
-    /// the notification's pane; every mismatch shows the banner.
-    @Test func presentationSuppressesTheBannerOnlyOnAMatch() {
-        let router = AgentNotificationRouter()
-        let hostID = UUID()
-        router.path = [ConsoleAgent.ID(hostID: hostID, paneID: "%5")]
-
-        let shown: UNNotificationPresentationOptions = [.banner, .list, .sound]
-        #expect(
-            router.presentationOptions(
-                for: AgentNotificationTarget(hostID: hostID, paneID: "%5")) == [])
-        #expect(
-            router.presentationOptions(
-                for: AgentNotificationTarget(hostID: hostID, paneID: "%6")) == shown)
-        #expect(
-            router.presentationOptions(
-                for: AgentNotificationTarget(hostID: UUID(), paneID: "%5")) == shown)
-        #expect(router.presentationOptions(for: nil) == shown)
-
-        // Back on the Console list, nothing is presented: always show.
-        router.path = []
-        #expect(
-            router.presentationOptions(
-                for: AgentNotificationTarget(hostID: hostID, paneID: "%5")) == shown)
     }
 }

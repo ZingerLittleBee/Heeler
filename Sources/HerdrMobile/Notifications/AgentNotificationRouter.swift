@@ -1,6 +1,5 @@
 import Foundation
 import Observation
-import UserNotifications
 
 /// Owns the Console's navigation path and lands Agent Notification taps on
 /// the right Attach surface (#74). A tap can arrive before the tapped pane
@@ -60,15 +59,6 @@ final class AgentNotificationRouter {
         if path.isEmpty {
             path = [pending.agentID]
         }
-    }
-
-    /// The willPresent decision, taken at presentation time against the
-    /// Agent currently on screen: `[]` only on a match (spec #68, story 8).
-    func presentationOptions(
-        for target: AgentNotificationTarget?
-    ) -> UNNotificationPresentationOptions {
-        AgentNotificationRouting.shouldSuppressBanner(target: target, presentedAgent: path.last)
-            ? [] : [.banner, .list, .sound]
     }
 
     private func armPendingExpiry() {

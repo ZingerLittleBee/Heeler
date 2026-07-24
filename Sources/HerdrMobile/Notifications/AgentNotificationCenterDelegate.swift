@@ -7,11 +7,11 @@ import UserNotifications
 /// notification presentation is not automatable (spec #68).
 ///
 /// The completion-handler forms are deliberate: UIKit invokes these callbacks
-/// on a background queue, and a background-tap completion drives
-/// main-thread-only UIKit state restoration (SIGABRT otherwise). The async
-/// forms hand the completion to whatever executor the continuation resumes
-/// on, so only the handler forms let us pin it to the main thread. The push
-/// is resolved on the callback queue; only the Sendable target crosses.
+/// on a background queue, and the tap completion drives main-thread-only
+/// UIKit state restoration (SIGABRT otherwise). The async forms hand the
+/// completion to whatever executor the continuation resumes on, so only the
+/// handler forms let us pin it to the main thread. The push is resolved on
+/// the callback queue; only the Sendable target crosses.
 final class AgentNotificationCenterDelegate: NSObject, UNUserNotificationCenterDelegate,
     @unchecked Sendable
 {
@@ -28,20 +28,18 @@ final class AgentNotificationCenterDelegate: NSObject, UNUserNotificationCenterD
         self.loadKeys = loadKeys
     }
 
-    /// Foreground pushes: the banner shows unless the user is already
-    /// viewing that exact Agent, decided at presentation time.
+    /// Foreground pushes never present (#77): while the app is foregrounded
+    /// the live event stream announces transitions through the in-app banner
+    /// (`AgentNotificationBannerStore`), so the system banner is fully
+    /// silenced. Background and killed-state delivery is untouched —
+    /// willPresent only runs for a foregrounded app.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions)
             -> Void
     ) {
-        let target = AgentNotificationRouting.target(
-            userInfo: notification.request.content.userInfo, keys: loadKeys())
-        let complete = UncheckedSendable(completionHandler)
-        Task { @MainActor [router] in
-            complete.value(router.presentationOptions(for: target))
-        }
+        completionHandler([])
     }
 
     /// A tap (the default action) deep-links to the Agent's Attach; explicit

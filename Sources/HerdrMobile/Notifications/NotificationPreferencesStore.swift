@@ -188,6 +188,16 @@ final class NotificationPreferencesStore {
             })
     }
 
+    /// The gate the in-app banner reads (#77): the Host's confirmed notify
+    /// flags, or nil when this device is not registered or the Host's truth
+    /// is unknown (unreachable, still loading, never refreshed) — in which
+    /// case the banner fails closed, matching the plugin's semantics.
+    func confirmedTriggers(for hostID: Host.ID) -> NotificationTriggerPreferences? {
+        guard let settings = confirmedSettings(for: hostID), settings.isRegistered
+        else { return nil }
+        return settings.notify
+    }
+
     private func confirmedSettings(for hostID: Host.ID) -> HostSettings? {
         switch states[hostID] {
         case .idle(let settings), .failed(_, let settings):

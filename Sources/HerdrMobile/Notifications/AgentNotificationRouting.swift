@@ -30,10 +30,11 @@ enum AgentNotificationRouting {
         return AgentNotificationTarget(hostID: record.hostID, paneID: payload.paneID)
     }
 
-    /// The presentation-time rule (spec #68, user story 8): suppress the
+    /// The presentation-time rule (spec #68, user story 8), applied by the
+    /// in-app banner store when a held transition fires (#77): suppress the
     /// banner only when the user is already viewing that exact Agent; any
     /// mismatch — another pane, another Host, the Console list, an
-    /// unresolvable push — shows it.
+    /// unresolvable target — shows it.
     static func shouldSuppressBanner(
         target: AgentNotificationTarget?, presentedAgent: ConsoleAgent.ID?
     ) -> Bool {
