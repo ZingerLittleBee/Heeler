@@ -12,8 +12,8 @@ main = "src/worker.js"
 compatibility_date = "2026-07-01"
 
 [vars]
-# APNS_TEAM_ID = "ABCDE12345"                    # Apple Developer Team ID
-# APNS_KEY_ID = "ABC123DEFG"                     # APNs auth key id (from the .p8 filename)
-# APNS_TOPIC = "dev.herdr.mobile.HerdrMobile"    # app bundle id
+APNS_TEAM_ID = "9VM4RM39R3"
+APNS_KEY_ID = "74X2TF988P"
+APNS_TOPIC = "dev.herdr.mobile.HerdrMobile"
 # RATE_LIMIT_IP_PER_MIN = "120"                  # optional override
 # RATE_LIMIT_TOKEN_PER_MIN = "60"                # optional override
