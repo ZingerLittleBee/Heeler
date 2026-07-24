@@ -145,6 +145,103 @@ re-encode to the exact code; invalid vectors must fail with the given error
 code (`bad_prefix`, `unsupported_version`, `bad_encoding`, `bad_payload` —
 these map to the "parse" step of the pairing failure taxonomy).
 
+## Notification envelope (v1)
+
+The encrypted Agent Notification payload (ADR 0008): the notify hook
+encrypts it on the Host, the Push Relay and APNs carry it opaquely, and the
+app's service extension decrypts it. One compact JSON object:
+
+```json
+{"v": 1, "kid": "<key id>", "n": "<nonce>", "ct": "<ciphertext>"}
+```
+
+### Cleartext fields
+
+| Wire key | Type    | Meaning |
+| -------- | ------- | ------- |
+| `v`      | integer | Envelope version. This document specifies version `1`; any other integer is rejected (`unsupported_version`). |
+| `kid`    | string  | Key id: the first 8 bytes of SHA-256 over the raw 32-byte Notification Key, unpadded base64url. Derived on both ends, never stored. The app uses it to select the right Notification Key (and thus Host) when several Hosts are registered. |
+| `n`      | string  | 12-byte AES-GCM nonce, unpadded base64url. Freshly random per envelope. |
+| `ct`     | string  | AES-256-GCM ciphertext followed by the 16-byte tag, unpadded base64url. |
+
+A missing or mistyped field, invalid base64url, or wrong nonce/tag length is
+rejected (`bad_envelope`).
+
+### Ciphertext
+
+AES-256-GCM under the per-host Notification Key, with the UTF-8 bytes of
+`HERDR-NOTIFY:1` as additional authenticated data so a ciphertext re-framed
+under another version fails authentication. Tampered material or the wrong
+key is rejected (`decrypt_failed`) — GCM cannot tell those apart. The
+plaintext is compact JSON:
+
+| Wire key | Type    | Meaning |
+| -------- | ------- | ------- |
+| `pane`   | string  | herdr pane id the Agent lives in. Non-empty. |
+| `kind`   | string  | Agent kind as herdr reports it (`claude`, `codex`, ...). Non-empty. |
+| `status` | string  | The new Agent Status. An open set: decoders pass unrecognized values through. Non-empty. |
+| `ts`     | integer | Unix-seconds of the status transition. Positive. |
+
+A plaintext that is not JSON or violates these rules is rejected
+(`bad_payload`). Every rejection is a typed error on the app side; the
+service extension answers any of them with a generic fallback banner, never
+a crash.
+
+### Canonical encoding
+
+Encoders emit both JSON objects with the keys in table order and no
+whitespace, so given inputs yield exactly one envelope; the shared vectors
+assert on the exact string. Decoders do not depend on key order and ignore
+unknown fields at either layer (additive v1 metadata). Any breaking change
+bumps `v`, and both implementations must be updated together.
+
+### Shared test vectors
+
+`test-vectors/notification-payload-v1.json` is the single source of truth,
+consumed by the Node tests here (encrypt direction: non-`decodeOnly` valid
+vectors must be reproduced byte-for-byte) and the Swift tests in the app
+(decrypt direction: valid vectors must yield the payload, invalid vectors —
+including tampered-ciphertext and wrong-key cases — must fail with the given
+error code: `bad_envelope`, `unsupported_version`, `decrypt_failed`,
+`bad_payload`).
+
+## Notification Registration file (v1)
+
+Where a Host learns which devices to notify: the app writes this file over
+SSH during Notification Registration; the notify hook reads it and POSTs one
+push per device entry. It lives at `notifications.json` inside this plugin's
+config directory (the app resolves that directory via
+`herdr plugin config-dir`). Writers replace the whole file atomically
+(temp file + rename), keyed one entry per device token; removing an entry
+revokes that device.
+
+```json
+{
+  "v": 1,
+  "devices": [
+    {
+      "token": "a1b2c3...",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "env": "production",
+      "notify": { "blocked": true, "done": true }
+    }
+  ]
+}
+```
+
+| Field            | Type    | Meaning |
+| ---------------- | ------- | ------- |
+| `v`              | integer | File format version. This document specifies version `1`; a reader finding any other value must treat the file as absent (send nothing) rather than guess. |
+| `devices`        | array   | One entry per registered device. Empty means no notifications. |
+| `token`          | string  | The device's APNs device token, lowercase hex. Unique within the file. |
+| `key`            | string  | Raw 32-byte Notification Key, unpadded base64url. Generated on the device, per Host. |
+| `env`            | string  | `production` or `sandbox`: which APNs environment the token belongs to, following the app build that registered it. |
+| `notify.blocked` | boolean | Send a push when an Agent becomes Blocked. |
+| `notify.done`    | boolean | Send a push when an Agent reaches Done. A missing flag means do not send (fail closed). |
+
+Readers ignore unknown fields (additive v1 metadata); breaking changes bump
+`v`, honored by plugin and app together.
+
 ## Tests
 
 ```bash

@@ -1,0 +1,177 @@
+{
+  "description": "Shared notification envelope v1 test vectors (ADR 0008). Single source of truth for the encrypted Agent Notification payload, consumed by both the Node plugin tests (encrypt direction) and the Swift app tests (decrypt direction). Envelopes were generated with raw AES-256-GCM calls, independent of both implementations. `key` is the 32-byte Notification Key and `keyId` its derived id, both unpadded base64url. `envelope` is the exact canonical envelope string; non-`decodeOnly` valid vectors must be reproduced byte-for-byte by the encrypt side. `decodeOnly: true` marks envelopes that must decrypt to `payload` but are not a canonical encoding of it. Invalid vectors must fail decryption with the given typed error.",
+  "valid": [
+    {
+      "name": "blocked claude agent",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "keyId": "Yw3NKWbEM2Y",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"AAECAwQFBgcICQoL\",\"ct\":\"PCCmequA4CGvZKKpncsTBO2ypQ7SGDMdTQOApzFLc8ZgZNuPjfsw-hjLHIbt4woUzC0Tr2DnlO8MpBosLtPFk9mR6v4pV-JCt9a-1GeZdjs\"}",
+      "payload": {
+        "paneId": "%5",
+        "agentKind": "claude",
+        "status": "blocked",
+        "timestamp": 1753305600
+      }
+    },
+    {
+      "name": "done codex agent under a second key",
+      "key": "__79_Pv6-fj39vX08_Lx8O_u7ezr6uno5-bl5OPi4eA",
+      "keyId": "GGXACDHnP34",
+      "envelope": "{\"v\":1,\"kid\":\"GGXACDHnP34\",\"n\":\"sLGys7S1tre4ubq7\",\"ct\":\"X0YPya_g5HL2v5_Z6USoKgFJQENKLp2bEvf7dp3uu97UTTwIZnLKSxE0Mg0838DTutosnS4clL4EFSYwTRvwhP9g-HdgqLlS1kkTiHA\"}",
+      "payload": {
+        "paneId": "%12",
+        "agentKind": "codex",
+        "status": "done",
+        "timestamp": 1766000000
+      }
+    },
+    {
+      "name": "unrecognized status string passes through leniently",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "keyId": "Yw3NKWbEM2Y",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"wMHCw8TFxsfIycrL\",\"ct\":\"e2pXBhkdtGS6_MqAHo6DPyIXwQUegXPbX6cuKBtfDMLd4uLUUOFnZrAkIHyd5kmr-Rb9QOP6lSq3FRvm0tZGVMoFNLGGPW8oOgkLkoYP1Q\"}",
+      "payload": {
+        "paneId": "%7",
+        "agentKind": "claude",
+        "status": "exited",
+        "timestamp": 1753305601
+      }
+    },
+    {
+      "name": "unknown plaintext field is ignored (additive v1 metadata)",
+      "decodeOnly": true,
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "keyId": "Yw3NKWbEM2Y",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"0NHS09TV1tfY2drb\",\"ct\":\"V4WWDwbC05t6eh2d2vTsiKFuf-9i_tQnRu4rtCMRXbO9YxR_gCQdC03LT5AcYqYlLWgBIq7OjmsfnrJ6yO_p9KhiblsEwble1aqNPhi3_CEr5LY60GcbZt_jm2mzQMM25Zxq4MLcUTHu\"}",
+      "payload": {
+        "paneId": "%5",
+        "agentKind": "claude",
+        "status": "blocked",
+        "timestamp": 1753305600
+      }
+    },
+    {
+      "name": "unknown envelope field is ignored (additive v1 metadata)",
+      "decodeOnly": true,
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "keyId": "Yw3NKWbEM2Y",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"AAECAwQFBgcICQoL\",\"ct\":\"PCCmequA4CGvZKKpncsTBO2ypQ7SGDMdTQOApzFLc8ZgZNuPjfsw-hjLHIbt4woUzC0Tr2DnlO8MpBosLtPFk9mR6v4pV-JCt9a-1GeZdjs\",\"future_field\":\"ignored\"}",
+      "payload": {
+        "paneId": "%5",
+        "agentKind": "claude",
+        "status": "blocked",
+        "timestamp": 1753305600
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "envelope is not JSON",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "not json at all",
+      "error": "bad_envelope"
+    },
+    {
+      "name": "envelope is a JSON array",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "[1,2]",
+      "error": "bad_envelope"
+    },
+    {
+      "name": "missing kid",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":1,\"n\":\"AAECAwQFBgcICQoL\",\"ct\":\"PCCmequA4CGvZKKpncsTBO2ypQ7SGDMdTQOApzFLc8ZgZNuPjfsw-hjLHIbt4woUzC0Tr2DnlO8MpBosLtPFk9mR6v4pV-JCt9a-1GeZdjs\"}",
+      "error": "bad_envelope"
+    },
+    {
+      "name": "version is a string",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":\"1\",\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"AAECAwQFBgcICQoL\",\"ct\":\"PCCmequA4CGvZKKpncsTBO2ypQ7SGDMdTQOApzFLc8ZgZNuPjfsw-hjLHIbt4woUzC0Tr2DnlO8MpBosLtPFk9mR6v4pV-JCt9a-1GeZdjs\"}",
+      "error": "bad_envelope"
+    },
+    {
+      "name": "unsupported version 2",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":2,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"AAECAwQFBgcICQoL\",\"ct\":\"PCCmequA4CGvZKKpncsTBO2ypQ7SGDMdTQOApzFLc8ZgZNuPjfsw-hjLHIbt4woUzC0Tr2DnlO8MpBosLtPFk9mR6v4pV-JCt9a-1GeZdjs\"}",
+      "error": "unsupported_version"
+    },
+    {
+      "name": "nonce is not base64url",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"!!!not-base64url!!!\",\"ct\":\"PCCmequA4CGvZKKpncsTBO2ypQ7SGDMdTQOApzFLc8ZgZNuPjfsw-hjLHIbt4woUzC0Tr2DnlO8MpBosLtPFk9mR6v4pV-JCt9a-1GeZdjs\"}",
+      "error": "bad_envelope"
+    },
+    {
+      "name": "nonce is not 12 bytes",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"AAECAwQFBgc\",\"ct\":\"PCCmequA4CGvZKKpncsTBO2ypQ7SGDMdTQOApzFLc8ZgZNuPjfsw-hjLHIbt4woUzC0Tr2DnlO8MpBosLtPFk9mR6v4pV-JCt9a-1GeZdjs\"}",
+      "error": "bad_envelope"
+    },
+    {
+      "name": "ciphertext is not base64url",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"AAECAwQFBgcICQoL\",\"ct\":\"!!!not-base64url!!!\"}",
+      "error": "bad_envelope"
+    },
+    {
+      "name": "ciphertext shorter than the GCM tag",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"AAECAwQFBgcICQoL\",\"ct\":\"AAECAwQFBgc\"}",
+      "error": "bad_envelope"
+    },
+    {
+      "name": "tampered ciphertext byte",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"AAECAwQFBgcICQoL\",\"ct\":\"PSCmequA4CGvZKKpncsTBO2ypQ7SGDMdTQOApzFLc8ZgZNuPjfsw-hjLHIbt4woUzC0Tr2DnlO8MpBosLtPFk9mR6v4pV-JCt9a-1GeZdjs\"}",
+      "error": "decrypt_failed"
+    },
+    {
+      "name": "tampered GCM tag",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"AAECAwQFBgcICQoL\",\"ct\":\"PCCmequA4CGvZKKpncsTBO2ypQ7SGDMdTQOApzFLc8ZgZNuPjfsw-hjLHIbt4woUzC0Tr2DnlO8MpBosLtPFk9mR6v4pV-JCt9a-1GeZdjo\"}",
+      "error": "decrypt_failed"
+    },
+    {
+      "name": "tampered nonce",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"sLGys7S1tre4ubq7\",\"ct\":\"PCCmequA4CGvZKKpncsTBO2ypQ7SGDMdTQOApzFLc8ZgZNuPjfsw-hjLHIbt4woUzC0Tr2DnlO8MpBosLtPFk9mR6v4pV-JCt9a-1GeZdjs\"}",
+      "error": "decrypt_failed"
+    },
+    {
+      "name": "wrong key",
+      "key": "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqo",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"AAECAwQFBgcICQoL\",\"ct\":\"PCCmequA4CGvZKKpncsTBO2ypQ7SGDMdTQOApzFLc8ZgZNuPjfsw-hjLHIbt4woUzC0Tr2DnlO8MpBosLtPFk9mR6v4pV-JCt9a-1GeZdjs\"}",
+      "error": "decrypt_failed"
+    },
+    {
+      "name": "plaintext is not JSON",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"4OHi4-Tl5ufo6err\",\"ct\":\"Wq29o5-z5UXgYgpuP3CUkLsAZfw5MLZIiSLCz45x6g\"}",
+      "error": "bad_payload"
+    },
+    {
+      "name": "plaintext missing pane",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"4OHi4-Tl5ufo6err\",\"ct\":\"T-Ci6pukqBHiYBIvK3idoemHSJOf8LhrvrtIH2BeS-E2hsPeW9GLQgv_koUIaTO0UmLgOqaBLM-fZgavGOFZuqsXYSk\"}",
+      "error": "bad_payload"
+    },
+    {
+      "name": "plaintext empty status",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"4OHi4-Tl5ufo6err\",\"ct\":\"T-C54pulqBHiJktscj6T6qvBGd3c56F56eUPXyATW_4ylpSBW5_aQh3s0cMZYDK2UWHjdyjVK6C-6Y08k8U_VmS1rBc6NSw3Vw\"}",
+      "error": "bad_payload"
+    },
+    {
+      "name": "plaintext fractional timestamp",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"4OHi4-Tl5ufo6err\",\"ct\":\"T-C54pulqBHiJktscj6T6qvBGd3c56F56eUPXyATW_4ylpSBW5_aAl2hxttePiGtRiajZSfSLL72xBi5Cg3V3I7Pp98tdq1wr6M\"}",
+      "error": "bad_payload"
+    },
+    {
+      "name": "plaintext pane is not a string",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"4OHi4-Tl5ufo6err\",\"ct\":\"T-C54pulqBH1L1wlN3Kcof-HWIuf8al9vq1IDnhQXP8gwNvQG8mXA1qrwZIXeHfyRmjhcCjQKKD2j4mXj7Vo5KonO0Z3u_OFw_h0pV4\"}",
+      "error": "bad_payload"
+    }
+  ]
+}
