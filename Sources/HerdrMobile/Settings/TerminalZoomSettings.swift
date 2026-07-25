@@ -8,9 +8,10 @@ import Observation
 @Observable
 final class TerminalZoomSettings {
     static let defaultFontSize: Float = 14
-    /// Whole points only, inside the range libghostty accepts (4...64). The
-    /// narrower window keeps both ends legible on a phone.
-    static let range: ClosedRange<Float> = 8...32
+    /// Whole points only. The low end goes all the way down to libghostty's
+    /// own minimum: 4 pt is unreadable, but it fits a wide TUI on screen, and
+    /// zooming out for the shape of a layout is a real thing people do.
+    static let range: ClosedRange<Float> = 4...32
 
     private static let defaultsKey = "terminal-font-size"
 

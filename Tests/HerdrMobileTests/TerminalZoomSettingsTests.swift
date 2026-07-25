@@ -52,7 +52,7 @@ struct TerminalZoomSettingsTests {
         #expect(settings.fontSize == 17)
     }
 
-    @Test(arguments: [(Float(-3), Float(8)), (Float(2), Float(8)), (Float(400), Float(32))])
+    @Test(arguments: [(Float(-3), Float(4)), (Float(1), Float(4)), (Float(400), Float(32))])
     func outOfRangeSizesClampToTheSupportedWindow(requested: Float, expected: Float) throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
