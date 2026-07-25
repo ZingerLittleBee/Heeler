@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var console: ConsoleStore
     @State private var notificationPreferences: NotificationPreferencesStore
     @State private var terminalThemes = TerminalThemeSettings()
+    @State private var terminalZoom = TerminalZoomSettings()
     @State private var relaySettings: NotificationRelaySettings
     @State private var bannerStore: AgentNotificationBannerStore
     @Environment(\.scenePhase) private var scenePhase
@@ -43,6 +44,7 @@ struct ContentView: View {
     var body: some View {
         ConsoleView(
             hosts: hostStore, console: console, terminalThemes: terminalThemes,
+            terminalZoom: terminalZoom,
             pushRegistration: pushRegistration,
             notificationPreferences: notificationPreferences,
             relaySettings: relaySettings,

@@ -89,6 +89,7 @@
 		8181681FBF45216B52EEBC1A /* NotificationKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F246F98BBDAEF3A331C14F9 /* NotificationKeyStore.swift */; };
 		8196491DBF3B6024B4DB214C /* SSHChannelBudget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13D82A3B3C17DBFB114AAF0A /* SSHChannelBudget.swift */; };
 		822F39E2EA06AE24955F8169 /* AgentNotificationBannerStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DA3E6B129B6CAD15FD3C5DE /* AgentNotificationBannerStoreTests.swift */; };
+		8381585C97479412A40A4FC8 /* TerminalZoomSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1B1FCCEF619BD597ECD3353 /* TerminalZoomSettings.swift */; };
 		84A27FDC256CFA71D883A85A /* NotificationRelaySettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A20C4012D69BDE51F1FF25 /* NotificationRelaySettingsTests.swift */; };
 		8558806B5DFE751EB1FA3814 /* PairingCodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C1FDF65F7282EF79C3D376C /* PairingCodeTests.swift */; };
 		86B92C748144DAFC8D1E1609 /* AgentNotificationRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8461D2396E779D5A29631FD /* AgentNotificationRendererTests.swift */; };
@@ -152,6 +153,7 @@
 		E908289DF03C6732F7D91328 /* HerdrEventsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A696EC4D243B31D1B22C13F0 /* HerdrEventsTests.swift */; };
 		EAA349947E6AF58625E35481 /* HerdrNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 0C40CAB15B8223BC58AB39F1 /* HerdrNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		EB02A35634A4D6572637DEF4 /* HerdrMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78545B74736FD98DCA33B3C4 /* HerdrMobileApp.swift */; };
+		ECC2A0575FFC9EB286B9F8AC /* TerminalZoomSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 099B4DEE5E08C6246009D0EB /* TerminalZoomSettingsTests.swift */; };
 		EDC4E8E45B766F1EEB960B6F /* AgentNotificationRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA9FFBCEE377FCD4C1105690 /* AgentNotificationRouterTests.swift */; };
 		EDD038140CCF519A56D01C17 /* NotificationConfigFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41707BC35CC96B155E502D0D /* NotificationConfigFileTests.swift */; };
 		EDFEE058F85AF41DBFE351A7 /* TerminalTextSelectionPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786B2BA8A0683BB9DC71D797 /* TerminalTextSelectionPresenter.swift */; };
@@ -203,6 +205,7 @@
 		066F4CB4F0E9D99693B44618 /* NotificationRegistrationFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRegistrationFile.swift; sourceTree = "<group>"; };
 		079394F4C6AC8FE4D7B0779C /* ConsoleStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleStoreTests.swift; sourceTree = "<group>"; };
 		08E14A4298DB015E6477F789 /* StartAgentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartAgentStore.swift; sourceTree = "<group>"; };
+		099B4DEE5E08C6246009D0EB /* TerminalZoomSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalZoomSettingsTests.swift; sourceTree = "<group>"; };
 		0ACA2329DD2A706A72E0754E /* notification-payload-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "notification-payload-v1.json"; sourceTree = "<group>"; };
 		0AE274F95CDC475196D7BFE8 /* NotificationRelaySettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRelaySettings.swift; sourceTree = "<group>"; };
 		0B3FA15CCDC83C72DDA81BEB /* AgentCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentCardView.swift; sourceTree = "<group>"; };
@@ -310,6 +313,7 @@
 		BE8796AB629EF68A90C96B3D /* TerminalAttachTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAttachTests.swift; sourceTree = "<group>"; };
 		BEBCD83AC5D4AF0193B2AF9B /* NotificationPrivacyCopyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPrivacyCopyTests.swift; sourceTree = "<group>"; };
 		C14983BD8988E4AAE79DC46A /* FakeTransportConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeTransportConnector.swift; sourceTree = "<group>"; };
+		C1B1FCCEF619BD597ECD3353 /* TerminalZoomSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalZoomSettings.swift; sourceTree = "<group>"; };
 		C232163905675760F37FD7A0 /* KnownHostsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnownHostsStore.swift; sourceTree = "<group>"; };
 		C42040EDC53770F8227FA0C2 /* NotificationEnvelope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationEnvelope.swift; sourceTree = "<group>"; };
 		C44D9663DAB1E8942FBFCD1C /* ConsoleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleView.swift; sourceTree = "<group>"; };
@@ -378,6 +382,7 @@
 				0AE274F95CDC475196D7BFE8 /* NotificationRelaySettings.swift */,
 				95B5EBF6C4EC88361E91CA2C /* SettingsView.swift */,
 				A961D26EDEAA03AFB0F9C408 /* TerminalThemeSettings.swift */,
+				C1B1FCCEF619BD597ECD3353 /* TerminalZoomSettings.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -532,6 +537,7 @@
 				BE8796AB629EF68A90C96B3D /* TerminalAttachTests.swift */,
 				B75316F4E6B80E442C365765 /* TerminalInputControllerTests.swift */,
 				EE72A47A2C1C9F9B4BFFB16F /* TerminalThemeSettingsTests.swift */,
+				099B4DEE5E08C6246009D0EB /* TerminalZoomSettingsTests.swift */,
 				A9EC4F17AFC933FBA45CCA09 /* TransportConcurrencyE2ETests.swift */,
 				02807C329084D58137461EF8 /* TransportFailureModesE2ETests.swift */,
 				CB45F25667AE3C5C2EFD76CB /* Support */,
@@ -905,6 +911,7 @@
 				EDFEE058F85AF41DBFE351A7 /* TerminalTextSelectionPresenter.swift in Sources */,
 				5D1B735C72D551ADE0D82D44 /* TerminalThemeSettings.swift in Sources */,
 				B8ACB86B152D44FC0C80DADA /* TerminalTouchScroll.swift in Sources */,
+				8381585C97479412A40A4FC8 /* TerminalZoomSettings.swift in Sources */,
 				49CDAC5FE4566D912F72FFCA /* Transport.swift in Sources */,
 				B31E16D56EE1F19A3802625B /* TransportConnector.swift in Sources */,
 			);
@@ -976,6 +983,7 @@
 				0CF1AA5AF7F2357186A5E486 /* TerminalAttachTests.swift in Sources */,
 				30A69209EA01A8DF784ABC52 /* TerminalInputControllerTests.swift in Sources */,
 				D51F828E0AC4A2F6C23A0CBE /* TerminalThemeSettingsTests.swift in Sources */,
+				ECC2A0575FFC9EB286B9F8AC /* TerminalZoomSettingsTests.swift in Sources */,
 				E23937EC4DC9148C2A7F8D18 /* TransportConcurrencyE2ETests.swift in Sources */,
 				782980ECE8E7005A672D25A3 /* TransportFailureModesE2ETests.swift in Sources */,
 				C174C223DBE1F1DD4085A2F8 /* UnixSockets.swift in Sources */,

@@ -49,6 +49,13 @@ the native text-selection presentation requested by Ghostty's iOS delegate.
   encode SGR or legacy terminal wheel events through the session's public input
   seam. DEC private-mode tracking is incremental so split SSH packets remain
   correct.
+- Terminal zoom is app state, not surface state. The package's own pinch
+  handler mutates the surface font size through a private counter the host app
+  cannot read, so `HerdrTerminalView` disables that gesture and owns pinch and
+  ⌘+/⌘- itself, routing every change through `TerminalController`'s per-session
+  configuration. That keeps one persisted app-wide size, applies it to open and
+  future Attach terminals alike, and lets Ghostty's cell-size callback resize
+  the remote PTY as usual.
 - Theme selection uses the package's `GhosttyTheme` catalog but exposes only a
   small curated set. The persisted selection resolves to a light/dark
   `TerminalTheme`; `TerminalController.setTheme` updates existing Attach

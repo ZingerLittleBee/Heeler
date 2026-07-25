@@ -8,6 +8,7 @@ struct AgentDetailView: View {
     let agent: ConsoleAgent
     private let console: ConsoleStore
     private let terminalThemes: TerminalThemeSettings
+    private let terminalZoom: TerminalZoomSettings
     private let pushRegistration: PushRegistrationStore
     private let notificationPreferences: NotificationPreferencesStore
     private let relaySettings: NotificationRelaySettings
@@ -23,6 +24,7 @@ struct AgentDetailView: View {
         agent: ConsoleAgent,
         console: ConsoleStore,
         terminalThemes: TerminalThemeSettings,
+        terminalZoom: TerminalZoomSettings,
         pushRegistration: PushRegistrationStore,
         notificationPreferences: NotificationPreferencesStore,
         relaySettings: NotificationRelaySettings
@@ -30,6 +32,7 @@ struct AgentDetailView: View {
         self.agent = agent
         self.console = console
         self.terminalThemes = terminalThemes
+        self.terminalZoom = terminalZoom
         self.pushRegistration = pushRegistration
         self.notificationPreferences = notificationPreferences
         self.relaySettings = relaySettings
@@ -54,7 +57,9 @@ struct AgentDetailView: View {
             onSend: { keystrokes in attach.send(keystrokes) },
             onPaste: { text in attach.requestPaste(text) },
             isLocalInputEnabled: attach.isLocalInputEnabled,
-            theme: terminalThemes.theme
+            theme: terminalThemes.theme,
+            fontSize: terminalZoom.fontSize,
+            onFontSizeChanged: { fontSize in terminalZoom.setFontSize(fontSize) }
         )
         .id(attach.terminalID)
         .overlay { statusOverlay }
@@ -90,6 +95,7 @@ struct AgentDetailView: View {
         .sheet(isPresented: $isShowingSettings) {
             SettingsView(
                 terminalThemes: terminalThemes,
+                terminalZoom: terminalZoom,
                 pushRegistration: pushRegistration,
                 notificationPreferences: notificationPreferences,
                 relaySettings: relaySettings)
