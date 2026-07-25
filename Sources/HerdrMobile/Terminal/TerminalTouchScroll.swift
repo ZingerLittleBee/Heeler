@@ -29,6 +29,10 @@ struct TerminalModeTracker {
         !mouseTrackingModes.isEmpty
     }
 
+    private var mouseEncoding: TerminalMouseEncoding {
+        usesSGRMouseEncoding ? .sgr : .legacy
+    }
+
     mutating func receive(_ data: Data) {
         pending.append(contentsOf: data)
 
@@ -62,17 +66,10 @@ struct TerminalModeTracker {
         rows: Int
     ) -> Data? {
         if tracksMouse {
-            let button = towardOlderContent ? 64 : 65
-            let column = max(1, columns / 2)
-            let row = max(1, rows / 2)
-
-            if usesSGRMouseEncoding {
-                return Data("\u{1B}[<\(button);\(column);\(row)M".utf8)
-            }
-
-            let legacyColumn = UInt8(clamping: min(column, 223) + 32)
-            let legacyRow = UInt8(clamping: min(row, 223) + 32)
-            return Data([0x1B, 0x5B, 0x4D, UInt8(button + 32), legacyColumn, legacyRow])
+            return mouseEncoding.report(
+                button: towardOlderContent ? .wheelUp : .wheelDown,
+                column: max(1, columns / 2),
+                row: max(1, rows / 2))
         }
 
         guard isAlternateScreen else { return nil }
@@ -86,6 +83,16 @@ struct TerminalModeTracker {
             usesApplicationCursorKeys
                 ? [0x1B, 0x4F, 0x42]
                 : [0x1B, 0x5B, 0x42])
+    }
+
+    /// A full left-button click on a 1-based cell, or nil when the remote
+    /// application never asked for mouse tracking — a plain shell has no use
+    /// for the report and would echo it as garbage.
+    func remoteClickSequence(column: Int, row: Int) -> Data? {
+        guard tracksMouse else { return nil }
+        let encoding = mouseEncoding
+        return encoding.report(button: .left, column: column, row: row)
+            + encoding.report(button: .left, column: column, row: row, isRelease: true)
     }
 
     private mutating func update(mode: Int, enabled: Bool) {
