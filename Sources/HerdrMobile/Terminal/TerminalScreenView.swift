@@ -23,6 +23,10 @@ struct TerminalScreenView: UIViewRepresentable {
     var onPaste: ((String) -> Void)?
     var isLocalInputEnabled = true
     var theme: TerminalTheme = .default
+    var fontSize: Float = TerminalZoomSettings.defaultFontSize
+    /// Pinch-to-zoom and the ⌘+/⌘- shortcut change the size in place; the
+    /// screen forwards the new value so it lands in the global setting.
+    var onFontSizeChanged: ((Float) -> Void)?
     @Environment(\.openURL) private var openURL
 
     func makeUIView(context: Context) -> HerdrTerminalView {
@@ -30,7 +34,8 @@ struct TerminalScreenView: UIViewRepresentable {
             onSizeChanged: onSizeChanged,
             onSend: onSend,
             onPaste: onPaste,
-            theme: theme)
+            theme: theme,
+            fontSize: fontSize)
         view.delegate = context.coordinator
         context.coordinator.terminalView = view
         feed.attach { [weak view] data in
@@ -44,14 +49,16 @@ struct TerminalScreenView: UIViewRepresentable {
         onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)? = nil,
         onSend: ((Data) -> Void)? = nil,
         onPaste: ((String) -> Void)? = nil,
-        theme: TerminalTheme = .default
+        theme: TerminalTheme = .default,
+        fontSize: Float = TerminalZoomSettings.defaultFontSize
     ) -> HerdrTerminalView {
         let view = HerdrTerminalView(
             frame: .zero,
             onSizeChanged: onSizeChanged,
             onSend: onSend,
             onPaste: onPaste,
-            theme: theme)
+            theme: theme,
+            fontSize: fontSize)
         view.installKeyboardSwitcher()
         return view
     }
@@ -63,6 +70,8 @@ struct TerminalScreenView: UIViewRepresentable {
             onPaste: onPaste)
         view.setLocalInputEnabled(isLocalInputEnabled)
         view.applyTheme(theme)
+        view.applyFontSize(fontSize)
+        view.onFontSizeChanged = onFontSizeChanged
         context.coordinator.onOpenLink = { url in openURL(url) }
     }
 
@@ -137,6 +146,9 @@ final class HerdrTerminalView: UITerminalView {
     private let terminalController: TerminalController
     let terminalSession: InMemoryTerminalSession
     private(set) var appliedTheme: TerminalTheme
+    private(set) var appliedFontSize: Float
+    var onFontSizeChanged: ((Float) -> Void)?
+    private var zoomBaseFontSize: Float?
     private var terminalInputView: UIView?
     private var modeTracker = TerminalModeTracker()
     private var lastInputWindowSize: CGSize?
@@ -153,6 +165,10 @@ final class HerdrTerminalView: UITerminalView {
     private lazy var touchScrollGesture = UIPanGestureRecognizer(
         target: self,
         action: #selector(handleHerdrTouchScrollGesture(_:)))
+
+    private lazy var zoomGesture = UIPinchGestureRecognizer(
+        target: self,
+        action: #selector(handleHerdrZoomGesture(_:)))
 
     private lazy var keyboardActivationTapGesture = UITapGestureRecognizer(
         target: self,
@@ -183,7 +199,8 @@ final class HerdrTerminalView: UITerminalView {
         onSizeChanged: ((Int, Int) -> Void)?,
         onSend: ((Data) -> Void)?,
         onPaste: ((String) -> Void)?,
-        theme: TerminalTheme
+        theme: TerminalTheme,
+        fontSize: Float
     ) {
         let callbackBridge = TerminalSessionCallbackBridge(
             onSizeChanged: onSizeChanged,
@@ -197,8 +214,15 @@ final class HerdrTerminalView: UITerminalView {
             resize: { [weak callbackBridge] viewport in
                 callbackBridge?.resize(viewport)
             })
-        terminalController = TerminalController(theme: theme)
+        // Font size rides the controller's per-session configuration rather
+        // than the surface's one-shot option, so later changes reach the live
+        // surface through the same path the initial value took.
+        let clampedFontSize = TerminalZoomSettings.clamped(fontSize)
+        terminalController = TerminalController(
+            theme: theme,
+            terminalConfiguration: TerminalConfiguration().fontSize(clampedFontSize))
         appliedTheme = theme
+        appliedFontSize = clampedFontSize
         super.init(frame: frame)
         pasteConfiguration = UIPasteConfiguration(forAccepting: String.self)
         inputAccessoryItems = []
@@ -208,6 +232,7 @@ final class HerdrTerminalView: UITerminalView {
             self?.updateTouchScrollMetrics(viewport)
         }
         installTouchScrolling()
+        installZoom()
     }
 
     @available(*, unavailable)
@@ -232,6 +257,26 @@ final class HerdrTerminalView: UITerminalView {
         }
         appliedTheme = theme
         return true
+    }
+
+    @discardableResult
+    func applyFontSize(_ fontSize: Float) -> Bool {
+        let clamped = TerminalZoomSettings.clamped(fontSize)
+        guard clamped != appliedFontSize,
+            terminalController.setTerminalConfiguration(
+                TerminalConfiguration().fontSize(clamped))
+        else {
+            return false
+        }
+        appliedFontSize = clamped
+        return true
+    }
+
+    /// Applies a zoom the user performed on this terminal and reports it, so
+    /// the global setting follows the gesture instead of fighting it.
+    private func zoom(to fontSize: Float) {
+        guard applyFontSize(fontSize) else { return }
+        onFontSizeChanged?(appliedFontSize)
     }
 
     func receive(_ data: Data) {
@@ -391,6 +436,61 @@ final class HerdrTerminalView: UITerminalView {
         keyboardActivationTapGesture.cancelsTouchesInView = false
         keyboardActivationTapGesture.delegate = self
         addGestureRecognizer(keyboardActivationTapGesture)
+    }
+
+    /// Ghostty ships its own pinch handler that mutates the surface font size
+    /// behind the app's back. Zoom has to be app state to persist, so that
+    /// gesture steps aside for one that routes through `onFontSizeChanged`.
+    private func installZoom() {
+        for case let pinch as UIPinchGestureRecognizer in gestureRecognizers ?? [] {
+            pinch.isEnabled = false
+        }
+        addGestureRecognizer(zoomGesture)
+    }
+
+    @objc private func handleHerdrZoomGesture(_ gesture: UIPinchGestureRecognizer) {
+        switch gesture.state {
+        case .began:
+            zoomBaseFontSize = appliedFontSize
+        case .changed:
+            guard let zoomBaseFontSize else { return }
+            zoom(to: zoomBaseFontSize * Float(gesture.scale))
+        case .ended, .cancelled, .failed:
+            zoomBaseFontSize = nil
+        default:
+            break
+        }
+    }
+
+    /// ⌘+ / ⌘- would otherwise reach Ghostty's own font-size keybinds, which
+    /// leaves the global setting stale. Handle them here and swallow both the
+    /// press and its release so Ghostty never sees the shortcut.
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        var forwarded: Set<UIPress> = []
+        for press in presses {
+            guard let step = Self.zoomShortcutStep(for: press) else {
+                forwarded.insert(press)
+                continue
+            }
+            zoom(to: appliedFontSize + step)
+        }
+        guard !forwarded.isEmpty else { return }
+        super.pressesBegan(forwarded, with: event)
+    }
+
+    override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        let forwarded = presses.filter { Self.zoomShortcutStep(for: $0) == nil }
+        guard !forwarded.isEmpty else { return }
+        super.pressesEnded(Set(forwarded), with: event)
+    }
+
+    private static func zoomShortcutStep(for press: UIPress) -> Float? {
+        guard let key = press.key, key.modifierFlags.contains(.command) else { return nil }
+        switch key.charactersIgnoringModifiers {
+        case "+", "=": return 1
+        case "-", "_": return -1
+        default: return nil
+        }
     }
 
     @objc private func handleKeyboardActivationTap(_ gesture: UITapGestureRecognizer) {

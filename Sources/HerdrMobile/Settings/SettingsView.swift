@@ -4,6 +4,7 @@ import UIKit
 
 struct SettingsView: View {
     let terminalThemes: TerminalThemeSettings
+    let terminalZoom: TerminalZoomSettings
     let pushRegistration: PushRegistrationStore
     let notificationPreferences: NotificationPreferencesStore
     @Bindable var relaySettings: NotificationRelaySettings
@@ -40,7 +41,10 @@ struct SettingsView: View {
                 customRelaySection
 
                 Section {
-                    TerminalThemePreview(theme: terminalThemes.theme)
+                    TerminalThemePreview(
+                        theme: terminalThemes.theme,
+                        fontSize: terminalZoom.fontSize
+                    )
                         .frame(height: 180)
                         .clipShape(.rect(cornerRadius: 16))
                         .overlay {
@@ -59,6 +63,8 @@ struct SettingsView: View {
                         "Changes apply instantly to current and future Attach terminals without reconnecting."
                     )
                 }
+
+                terminalTextSizeSection
 
                 Section("Terminal Theme") {
                     ForEach(TerminalThemeOption.allCases) { option in
@@ -87,6 +93,32 @@ struct SettingsView: View {
                     Task { await pushRegistration.enable() }
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var terminalTextSizeSection: some View {
+        Section {
+            Stepper(
+                value: Binding(
+                    get: { terminalZoom.fontSize },
+                    set: { terminalZoom.setFontSize($0) }),
+                in: TerminalZoomSettings.range,
+                step: 1
+            ) {
+                HStack {
+                    Text("Text Size")
+                    Spacer(minLength: 12)
+                    Text("\(Int(terminalZoom.fontSize)) pt")
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+            }
+            .accessibilityValue("\(Int(terminalZoom.fontSize)) points")
+        } header: {
+            Text("Terminal Text Size")
+        } footer: {
+            Text("Pinching a terminal to zoom changes this too, and it sticks.")
         }
     }
 
@@ -276,13 +308,15 @@ struct SettingsView: View {
 
 private struct TerminalThemePreview: UIViewRepresentable {
     let theme: TerminalTheme
+    let fontSize: Float
 
     func makeUIView(context _: Context) -> TerminalThemePreviewView {
-        TerminalThemePreviewView(theme: theme)
+        TerminalThemePreviewView(theme: theme, fontSize: fontSize)
     }
 
     func updateUIView(_ view: TerminalThemePreviewView, context _: Context) {
         view.applyTheme(theme)
+        view.applyFontSize(fontSize)
     }
 }
 
@@ -302,18 +336,17 @@ private final class TerminalThemePreviewView: UITerminalView {
     private let themeController: TerminalController
     private var hasLoadedPreview = false
 
-    init(theme: TerminalTheme) {
+    init(theme: TerminalTheme, fontSize: Float) {
         let session = InMemoryTerminalSession(write: { _ in }, resize: { _ in })
         previewSession = session
         themeController = TerminalController(theme: theme) { builder in
             builder.withWindowPaddingX(12)
             builder.withWindowPaddingY(10)
+            builder.withFontSize(TerminalZoomSettings.clamped(fontSize))
         }
         super.init(frame: .zero)
         inputAccessoryItems = []
-        configuration = TerminalSurfaceOptions(
-            backend: .inMemory(session),
-            fontSize: 13)
+        configuration = TerminalSurfaceOptions(backend: .inMemory(session))
         controller = themeController
         isUserInteractionEnabled = false
         isAccessibilityElement = true
@@ -334,5 +367,10 @@ private final class TerminalThemePreviewView: UITerminalView {
 
     func applyTheme(_ theme: TerminalTheme) {
         _ = themeController.setTheme(theme)
+    }
+
+    func applyFontSize(_ fontSize: Float) {
+        _ = themeController.setTerminalConfiguration(
+            TerminalConfiguration().fontSize(TerminalZoomSettings.clamped(fontSize)))
     }
 }
