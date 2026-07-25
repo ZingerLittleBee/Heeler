@@ -140,12 +140,22 @@ enum TerminalControlKey: Equatable {
 
 final class TerminalKeyboardAccessory: UIInputView {
     static let preferredHeight: CGFloat = 48
+    /// The accessory's own background, reused as the paste control's fill.
+    private static let surface = UIColor.secondarySystemBackground
 
     private weak var terminalView: HerdrTerminalView?
     private let modeControl = UISegmentedControl(items: ["Text", "Keys"])
     private(set) lazy var pasteControl: UIPasteControl = {
         var configuration = UIPasteControl.Configuration()
         configuration.displayMode = .iconOnly
+        // The system default is a filled accent-tinted tile, which shouts next
+        // to the mode control and the dismiss button. UIPasteControl refuses a
+        // clear fill (it falls back to a tinted one), so paint the fill with
+        // the accessory's own background instead: the glyph is left reading as
+        // a bare icon, matching the dismiss button beside it.
+        configuration.cornerStyle = .capsule
+        configuration.baseBackgroundColor = Self.surface
+        configuration.baseForegroundColor = .label
         let control = UIPasteControl(configuration: configuration)
         control.target = terminalView
         control.accessibilityLabel = "Paste"
@@ -157,7 +167,7 @@ final class TerminalKeyboardAccessory: UIInputView {
         super.init(frame: frame, inputViewStyle: .keyboard)
         allowsSelfSizing = true
         autoresizingMask = [.flexibleWidth]
-        backgroundColor = .secondarySystemBackground
+        backgroundColor = Self.surface
         configureModeControl()
         configurePasteControl()
         configureDismissButton()
