@@ -17,6 +17,57 @@ struct HostDraftTests {
         #expect(rebuilt == host)
     }
 
+    @Test func prefillsAndRoundTripsAJumpHost() throws {
+        let host = Host(
+            id: UUID(), name: "Behind NAT", address: "127.0.0.1", port: 12_222,
+            username: "dev", sessionName: "work", socatPath: "/usr/bin/socat",
+            jumpAddress: "bastion.example", jumpPort: 2022, jumpUsername: "tunnel")
+
+        let draft = HostDraft(host: host)
+        let rebuilt = try #require(draft.makeHost(id: host.id))
+
+        #expect(rebuilt == host)
+    }
+
+    @Test func blankJumpAddressMeansDirectConnection() throws {
+        var draft = HostDraft()
+        draft.address = "box.example"
+        draft.username = "dev"
+
+        let host = try #require(draft.makeHost())
+
+        #expect(!host.usesJumpHost)
+        #expect(host.jumpAddress.isEmpty)
+    }
+
+    // The jump port sits in the form even when unused, so a leftover invalid
+    // value must not block saving a Host that connects directly.
+    @Test func jumpPortOnlyHasToParseWhenAJumpHostIsSet() throws {
+        var draft = HostDraft()
+        draft.address = "box.example"
+        draft.username = "dev"
+        draft.jumpPort = "not-a-port"
+        #expect(draft.isValid)
+
+        draft.jumpAddress = "bastion.example"
+        #expect(!draft.isValid)
+
+        draft.jumpPort = "2022"
+        #expect(draft.isValid)
+    }
+
+    @Test func blankJumpUsernameFallsBackToTheHostAccount() throws {
+        var draft = HostDraft()
+        draft.address = "127.0.0.1"
+        draft.username = "dev"
+        draft.jumpAddress = "bastion.example"
+
+        let host = try #require(draft.makeHost())
+
+        #expect(host.jumpUsername.isEmpty)
+        #expect(host.resolvedJumpUsername == "dev")
+    }
+
     @Test func trimsFieldsOnSave() throws {
         var draft = HostDraft()
         draft.name = " Workbox "

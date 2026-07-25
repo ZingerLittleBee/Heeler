@@ -68,6 +68,14 @@ struct LocalSSHTestEnvironment: Sendable {
         return components[2]
     }
 
+    /// The harness sshd standing in for a bastion. Hopping 127.0.0.1 ->
+    /// 127.0.0.1 drives the same direct-tcpip path a real bastion would,
+    /// without needing a second machine.
+    var loopbackJump: SSHJumpSettings {
+        SSHJumpSettings(
+            host: host, port: port, username: username, credentials: .ed25519(privateKey))
+    }
+
     /// Transport settings for the harness Host with test defaults: seeded-key
     /// credentials and an auto-accepting TOFU policy over a fresh in-memory
     /// store. Host key behavior itself is under test only in
@@ -80,7 +88,8 @@ struct LocalSSHTestEnvironment: Sendable {
         homeCommand: String? = nil,
         stageDirectoryCommand: String? = nil,
         credentials: SSHCredentials? = nil,
-        hostKeyPolicy: HostKeyPolicy? = nil
+        hostKeyPolicy: HostKeyPolicy? = nil,
+        jump: SSHJumpSettings? = nil
     ) -> SSHTransportSettings {
         var settings = SSHTransportSettings(
             host: host,
@@ -90,7 +99,8 @@ struct LocalSSHTestEnvironment: Sendable {
             hostKeyPolicy: hostKeyPolicy
                 ?? HostKeyPolicy(knownHosts: InMemoryKnownHostsStore()) { _ in true },
             socket: socket,
-            socatPath: socatPath ?? self.socatPath)
+            socatPath: socatPath ?? self.socatPath,
+            jump: jump)
         if let wakeCommand { settings.wakeCommand = wakeCommand }
         if let requestTimeout { settings.requestTimeout = requestTimeout }
         if let homeCommand { settings.homeCommand = homeCommand }

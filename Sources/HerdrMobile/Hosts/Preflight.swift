@@ -132,8 +132,50 @@ struct PreflightReport: Equatable, Sendable {
             // taxonomy total anyway.
             check = .connection
             hint = "The connection is busy. Try again."
+        case .jumpHostFailed(let underlying):
+            // The first hop broke, so the Host itself was never contacted and
+            // nothing about it has been disproved. Name the jump host as the
+            // thing to fix, or the user goes and debugs the wrong machine.
+            check = .connection
+            hint = Self.jumpHostHint(underlying, authMethod: authMethod)
         }
         return PreflightReport(failure: Failure(check: check, hint: hint))
+    }
+
+    /// Guidance for a first-hop failure. Deliberately not a recursive call
+    /// into the Host-facing hints: every one of those tells the user to go fix
+    /// something on the Host, which is exactly the wrong machine here.
+    private static func jumpHostHint(
+        _ error: TransportError, authMethod: Host.AuthMethod
+    ) -> String {
+        switch error {
+        case .sshUnreachable(let detail):
+            "Could not reach the jump host. Check its address and port. (\(detail))"
+        case .authenticationFailed:
+            switch authMethod {
+            case .deviceKey:
+                "The jump host rejected the device key. Add this Host's key line to "
+                    + "~/.ssh/authorized_keys on the jump host, then run the checks again."
+            case .password:
+                "The jump host rejected the login. Check the jump host username and password."
+            }
+        case .hostKeyRejected:
+            "The jump host's key was not confirmed. Run the checks again and confirm "
+                + "the fingerprint."
+        case .hostKeyMismatch(let known, let presented):
+            "Jump host key changed: trusted \(known.displayString), it presented "
+                + "\(presented.displayString). This can be a reinstalled server or an "
+                + "attack — verify with its owner before trusting it."
+        case .deviceKeyCorrupt:
+            "The Device Key is corrupted, so the jump host could not be reached. Edit "
+                + "this Host and choose Replace Device Key."
+        case .timedOut:
+            "The jump host did not answer in time. Check the connection and try again."
+        case .cancelled:
+            "The check was cancelled before it finished."
+        default:
+            "Could not connect through the jump host. (\(String(describing: error)))"
+        }
     }
 
     subscript(check: PreflightCheck) -> PreflightCheckStatus {

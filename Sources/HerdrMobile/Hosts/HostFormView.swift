@@ -78,6 +78,34 @@ struct HostFormView: View {
                 }
 
                 Section {
+                    TextField("Jump host address (optional)", text: $draft.jumpAddress)
+                        .textContentType(.URL)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                    if draft.usesJumpHost {
+                        TextField("Jump host port", text: $draft.jumpPort)
+                            .keyboardType(.numberPad)
+                        TextField("Jump host user (blank = same as Host)", text: $draft.jumpUsername)
+                            .textContentType(.username)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                    }
+                } header: {
+                    Text("Jump Host")
+                } footer: {
+                    if draft.usesJumpHost {
+                        Text(
+                            "The Host is reached through this machine, so its Address and Port "
+                                + "above are resolved from the jump host — usually a loopback "
+                                + "port held open by a reverse tunnel. Both machines must "
+                                + "authorize this Host's key, and you confirm both host key "
+                                + "fingerprints on first connect.")
+                    } else {
+                        Text("Leave blank to connect to the Host directly.")
+                    }
+                }
+
+                Section {
                     TextField("socat path", text: $draft.socatPath)
                         .font(.callout.monospaced())
                         .autocorrectionDisabled()

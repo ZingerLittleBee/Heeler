@@ -24,6 +24,15 @@ extension SSHTransportSettings {
             credentials: credentials,
             hostKeyPolicy: hostKeyPolicy,
             socket: host.socketLocation,
-            socatPath: host.socatPath)
+            socatPath: host.socatPath,
+            // The bastion authenticates with the same Device Key; it is the
+            // Host's authorized_keys line that differs, not the key.
+            jump: host.usesJumpHost
+                ? SSHJumpSettings(
+                    host: host.jumpAddress.trimmingCharacters(in: .whitespaces),
+                    port: host.jumpPort,
+                    username: host.resolvedJumpUsername,
+                    credentials: credentials)
+                : nil)
     }
 }

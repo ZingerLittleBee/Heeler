@@ -323,10 +323,16 @@ enum HerdrSocketLocation: Sendable, Equatable {
 
 /// Transport-level failures: a closed taxonomy so every screen maps errors to
 /// user guidance consistently instead of string-matching.
-enum TransportError: Error, Sendable, Equatable {
+indirect enum TransportError: Error, Sendable, Equatable {
     /// The SSH server could not be reached: connection refused, no route,
     /// or the connection died before authentication.
     case sshUnreachable(detail: String)
+    /// The first hop failed: the Host may be perfectly healthy, but the
+    /// bastion in front of it is unreachable, rejected our key, or presented
+    /// an unexpected host key. Carries the underlying failure so screens can
+    /// reuse the existing guidance while naming the bastion as the culprit —
+    /// "the Host is down" and "your bastion is down" need different actions.
+    case jumpHostFailed(TransportError)
     /// The Host rejected our credentials (key not authorized, wrong
     /// password, or the offered auth method is unavailable).
     case authenticationFailed
@@ -383,6 +389,10 @@ enum TransportError: Error, Sendable, Equatable {
             .homeDirectoryUnresolvable, .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse:
             false
+        // A bastion is retryable exactly when the failure behind it is: a
+        // rebooting VPS should reconnect on its own, a rejected key should not.
+        case .jumpHostFailed(let underlying):
+            underlying.isRetryable
         }
     }
 }

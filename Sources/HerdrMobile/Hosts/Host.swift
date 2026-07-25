@@ -29,9 +29,29 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     var sessionName: String
     /// Absolute socat path on the Host.
     var socatPath: String
+    /// Optional bastion this Host is reached through. Blank means a direct
+    /// connection; when set, `address`/`port` are resolved *from the bastion*
+    /// and normally point at a loopback port held open by a reverse tunnel.
+    var jumpAddress: String
+    var jumpPort: Int
+    /// Account on the bastion. Blank reuses `username`, which is the common
+    /// case only when both machines share an account name.
+    var jumpUsername: String
 
     private enum CodingKeys: String, CodingKey {
         case id, name, address, port, username, authMethod, sessionName, socatPath
+        case jumpAddress, jumpPort, jumpUsername
+    }
+
+    /// Whether this Host is reached through a bastion.
+    var usesJumpHost: Bool {
+        !jumpAddress.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// The bastion account, falling back to the Host's own username.
+    var resolvedJumpUsername: String {
+        let trimmed = jumpUsername.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? username : trimmed
     }
 
     init(
@@ -42,7 +62,10 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         username: String,
         authMethod: AuthMethod = .deviceKey,
         sessionName: String = "",
-        socatPath: String = Host.defaultSocatPath
+        socatPath: String = Host.defaultSocatPath,
+        jumpAddress: String = "",
+        jumpPort: Int = 22,
+        jumpUsername: String = ""
     ) {
         self.id = id
         self.name = name
@@ -52,6 +75,9 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         self.authMethod = authMethod
         self.sessionName = sessionName
         self.socatPath = socatPath
+        self.jumpAddress = jumpAddress
+        self.jumpPort = jumpPort
+        self.jumpUsername = jumpUsername
     }
 
     init(from decoder: any Decoder) throws {
@@ -65,6 +91,11 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         sessionName = try container.decodeIfPresent(String.self, forKey: .sessionName) ?? ""
         socatPath =
             try container.decodeIfPresent(String.self, forKey: .socatPath) ?? Self.defaultSocatPath
+        // Absent in Hosts saved before jump-host support; a blank address
+        // decodes as the direct connection those Hosts already had.
+        jumpAddress = try container.decodeIfPresent(String.self, forKey: .jumpAddress) ?? ""
+        jumpPort = try container.decodeIfPresent(Int.self, forKey: .jumpPort) ?? 22
+        jumpUsername = try container.decodeIfPresent(String.self, forKey: .jumpUsername) ?? ""
 
         let trimmedSessionName = sessionName.trimmingCharacters(in: .whitespaces)
         guard trimmedSessionName.isEmpty || HerdrSessionName.isValid(trimmedSessionName) else {
