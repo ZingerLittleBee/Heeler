@@ -12,13 +12,13 @@ struct AgentDetailView: View {
     private let pushRegistration: PushRegistrationStore
     private let notificationPreferences: NotificationPreferencesStore
     private let relaySettings: NotificationRelaySettings
+    private let activity: AppActivityCoordinator
     @State private var attach: AgentAttachStore
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isConfirmingClose = false
     @State private var isShowingSettings = false
     @State private var closeErrorMessage: String?
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.scenePhase) private var scenePhase
 
     init(
         agent: ConsoleAgent,
@@ -27,7 +27,8 @@ struct AgentDetailView: View {
         terminalZoom: TerminalZoomSettings,
         pushRegistration: PushRegistrationStore,
         notificationPreferences: NotificationPreferencesStore,
-        relaySettings: NotificationRelaySettings
+        relaySettings: NotificationRelaySettings,
+        activity: AppActivityCoordinator
     ) {
         self.agent = agent
         self.console = console
@@ -36,6 +37,7 @@ struct AgentDetailView: View {
         self.pushRegistration = pushRegistration
         self.notificationPreferences = notificationPreferences
         self.relaySettings = relaySettings
+        self.activity = activity
         _attach = State(
             initialValue: AgentAttachStore(
                 target: agent.agent.paneID,
@@ -146,16 +148,15 @@ struct AgentDetailView: View {
             selectedPhoto = nil
             attach.selectImage(PhotosPickerImageSelection(item: item))
         }
-        .onChange(of: scenePhase) { _, phase in
+        // Follows the grace period, not the raw scene phase: an image upload
+        // is exactly the work worth finishing while the app is briefly out of
+        // sight, and it is cancelled only once the app really suspends.
+        .onChange(of: activity.phase) { _, phase in
             switch phase {
             case .active:
                 attach.didBecomeActive()
-            case .background:
+            case .suspended:
                 attach.didEnterBackground()
-            case .inactive:
-                break
-            @unknown default:
-                break
             }
         }
         .onChange(of: console.hostConnectionGenerations[agent.hostID]) { _, generation in
