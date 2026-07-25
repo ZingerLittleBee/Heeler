@@ -96,14 +96,14 @@ struct TerminalZoomSettingsTests {
             onSizeChanged: { columns, rows in observed.record(columns: columns, rows: rows) },
             fontSize: 10)
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 700))
-        window.addSubview(terminal)
         terminal.frame = window.bounds
-        window.isHidden = false
-        terminal.layoutIfNeeded()
+        window.addSubview(terminal)
+        window.makeKeyAndVisible()
+        window.layoutIfNeeded()
 
         let small = try #require(await observed.settled())
         terminal.applyFontSize(30)
-        let large = try #require(await observed.settled(after: small))
+        let large = try #require(await observed.settled(changedFrom: small))
 
         #expect(large.columns < small.columns)
         #expect(large.rows < small.rows)
@@ -122,9 +122,14 @@ struct TerminalZoomSettingsTests {
 }
 
 /// Ghostty reports grid changes through a callback that hops back to the main
-/// actor, so tests wait for the value to land instead of reading it inline.
+/// actor, and a surface emits several of them while it boots. Tests therefore
+/// wait for the reports to go quiet rather than trusting the first one.
 @MainActor
 private final class GridObserver {
+    private static let quietPolls = 25
+    private static let pollInterval = Duration.milliseconds(10)
+    private static let timeoutPolls = 500
+
     struct Grid: Equatable {
         let columns: Int
         let rows: Int
@@ -136,10 +141,23 @@ private final class GridObserver {
         latest = Grid(columns: columns, rows: rows)
     }
 
-    func settled(after previous: Grid? = nil) async -> Grid? {
-        for _ in 0..<100 {
-            if let latest, latest != previous { return latest }
-            try? await Task.sleep(for: .milliseconds(10))
+    /// The last reported grid, once it has held still. `changedFrom` first
+    /// waits for the grid to move off a known value, so a caller that just
+    /// changed the font size cannot settle on the pre-change reading.
+    func settled(changedFrom previous: Grid? = nil) async -> Grid? {
+        var stable = 0
+        var candidate: Grid?
+        for _ in 0..<Self.timeoutPolls {
+            if let latest, latest != previous {
+                if latest == candidate {
+                    stable += 1
+                    if stable >= Self.quietPolls { return latest }
+                } else {
+                    candidate = latest
+                    stable = 0
+                }
+            }
+            try? await Task.sleep(for: Self.pollInterval)
         }
         return nil
     }
