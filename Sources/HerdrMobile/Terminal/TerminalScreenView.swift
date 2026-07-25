@@ -155,7 +155,7 @@ final class HerdrTerminalView: UITerminalView {
     private var allowsKeyboardActivation = false
     private(set) var isLocalInputEnabled = true
     private var terminalGridSize = (columns: 80, rows: 24)
-    private var touchScrollPointsPerRow: CGFloat = 16
+    private var terminalCellSize = CGSize(width: 8, height: 16)
     private var touchScrollAccumulator = TerminalTouchScrollAccumulator()
     private var touchScrollMomentumDisplayLink: CADisplayLink?
     private var touchScrollMomentumVelocityY: CGFloat = 0
@@ -170,9 +170,9 @@ final class HerdrTerminalView: UITerminalView {
         target: self,
         action: #selector(handleHerdrZoomGesture(_:)))
 
-    private lazy var keyboardActivationTapGesture = UITapGestureRecognizer(
+    private lazy var tapGesture = UITapGestureRecognizer(
         target: self,
-        action: #selector(handleKeyboardActivationTap(_:)))
+        action: #selector(handleHerdrTap(_:)))
 
     private lazy var terminalKeyboardAccessory = TerminalKeyboardAccessory(
         frame: CGRect(
@@ -359,9 +359,11 @@ final class HerdrTerminalView: UITerminalView {
             let velocity = touchScrollGesture.velocity(in: self)
             return abs(velocity.y) > abs(velocity.x)
         }
-        if gestureRecognizer === keyboardActivationTapGesture {
-            return keyboardActivationRegion.contains(
-                keyboardActivationTapGesture.location(in: self))
+        if gestureRecognizer === tapGesture {
+            // A TUI that tracks the mouse wants every tap; otherwise only the
+            // input row is interactive, and it just raises the keyboard.
+            return modeTracker.tracksMouse
+                || keyboardActivationRegion.contains(tapGesture.location(in: self))
         }
         return super.gestureRecognizerShouldBegin(gestureRecognizer)
     }
@@ -394,11 +396,36 @@ final class HerdrTerminalView: UITerminalView {
         return TerminalKeyboardTapTarget.region(caretRect: caret, in: bounds)
     }
 
+    /// Reports a touch as a left click when the remote application asked for
+    /// mouse tracking. Returns whether anything was sent.
+    @discardableResult
+    func clickTouch(at point: CGPoint) -> Bool {
+        guard isLocalInputEnabled,
+            let cell = gridPointMapper.cell(at: point),
+            let report = modeTracker.remoteClickSequence(
+                column: cell.column,
+                row: cell.row)
+        else { return false }
+
+        terminalSession.sendInput(report)
+        return true
+    }
+
+    /// Where Ghostty's grid currently sits inside the view, rebuilt from the
+    /// metrics of the last resize.
+    var gridPointMapper: TerminalGridPointMapper {
+        TerminalGridPointMapper(
+            viewSize: bounds.size,
+            cellSize: terminalCellSize,
+            columns: terminalGridSize.columns,
+            rows: terminalGridSize.rows)
+    }
+
     @discardableResult
     func scrollTouch(translationY: CGFloat) -> Int {
         let rows = touchScrollAccumulator.rows(
             for: translationY,
-            pointsPerRow: touchScrollPointsPerRow)
+            pointsPerRow: max(8, terminalCellSize.height))
         guard rows != 0 else { return 0 }
 
         let towardOlderContent = rows > 0
@@ -431,11 +458,11 @@ final class HerdrTerminalView: UITerminalView {
         touchScrollGesture.delegate = self
         addGestureRecognizer(touchScrollGesture)
 
-        keyboardActivationTapGesture.allowedTouchTypes = [directTouch]
-        keyboardActivationTapGesture.numberOfTouchesRequired = 1
-        keyboardActivationTapGesture.cancelsTouchesInView = false
-        keyboardActivationTapGesture.delegate = self
-        addGestureRecognizer(keyboardActivationTapGesture)
+        tapGesture.allowedTouchTypes = [directTouch]
+        tapGesture.numberOfTouchesRequired = 1
+        tapGesture.cancelsTouchesInView = false
+        tapGesture.delegate = self
+        addGestureRecognizer(tapGesture)
     }
 
     /// Ghostty ships its own pinch handler that mutates the surface font size
@@ -493,9 +520,15 @@ final class HerdrTerminalView: UITerminalView {
         }
     }
 
-    @objc private func handleKeyboardActivationTap(_ gesture: UITapGestureRecognizer) {
+    @objc private func handleHerdrTap(_ gesture: UITapGestureRecognizer) {
         guard gesture.state == .ended else { return }
-        requestKeyboard()
+        let location = gesture.location(in: self)
+        clickTouch(at: location)
+        // The click reaches the TUI, but the keyboard still only follows a tap
+        // on the input row — a tap meant for a menu item must not raise it.
+        if keyboardActivationRegion.contains(location) {
+            requestKeyboard()
+        }
     }
 
     @objc private func handleHerdrTouchScrollGesture(_ gesture: UIPanGestureRecognizer) {
@@ -516,12 +549,16 @@ final class HerdrTerminalView: UITerminalView {
         }
     }
 
+    /// Ghostty reports cell metrics in surface pixels; touches arrive in
+    /// points, so the grid has to be converted once per resize.
     private func updateTouchScrollMetrics(_ viewport: InMemoryTerminalViewport) {
         terminalGridSize = (Int(viewport.columns), Int(viewport.rows))
-        guard viewport.cellHeightPixels > 0 else { return }
+        guard viewport.cellWidthPixels > 0, viewport.cellHeightPixels > 0 else { return }
         let scale = window?.screen.nativeScale ?? traitCollection.displayScale
         guard scale > 0 else { return }
-        touchScrollPointsPerRow = max(8, CGFloat(viewport.cellHeightPixels) / scale)
+        terminalCellSize = CGSize(
+            width: CGFloat(viewport.cellWidthPixels) / scale,
+            height: CGFloat(viewport.cellHeightPixels) / scale)
     }
 
     private func startTouchScrollMomentum(velocityY: CGFloat) {
