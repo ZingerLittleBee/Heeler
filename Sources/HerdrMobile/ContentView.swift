@@ -1,8 +1,10 @@
 import SwiftUI
 
-/// Root view: the Console (#8), with Host management (#14) behind it. Scene
-/// phase drives the events sessions' suspend/resume (spec #20): background
-/// tears connections down deliberately, foreground re-syncs.
+/// Root view: the Console (#8), with Host management (#14) behind it. App
+/// activity drives the events sessions' suspend/resume (spec #20): the
+/// connections survive a backgrounding for the length of the grace period
+/// (see AppActivityCoordinator), then are torn down deliberately; returning
+/// to the foreground after a real suspension re-syncs.
 struct ContentView: View {
     let pushRegistration: PushRegistrationStore
     let notificationRouter: AgentNotificationRouter
@@ -13,6 +15,7 @@ struct ContentView: View {
     @State private var terminalZoom = TerminalZoomSettings()
     @State private var relaySettings: NotificationRelaySettings
     @State private var bannerStore: AgentNotificationBannerStore
+    @State private var activity = AppActivityCoordinator()
     @Environment(\.scenePhase) private var scenePhase
 
     init(pushRegistration: PushRegistrationStore, notificationRouter: AgentNotificationRouter) {
@@ -49,7 +52,8 @@ struct ContentView: View {
             notificationPreferences: notificationPreferences,
             relaySettings: relaySettings,
             notificationRouter: notificationRouter,
-            bannerStore: bannerStore
+            bannerStore: bannerStore,
+            activity: activity
         )
         .task {
             console.setHosts(hostStore.hosts)
@@ -81,14 +85,31 @@ struct ContentView: View {
         .onChange(of: scenePhase) {
             switch scenePhase {
             case .active:
-                // Also re-probes notification permission: the user may have
-                // flipped it in the Settings app while we were backgrounded.
-                Task { await console.resume() }
+                activity.didBecomeActive()
+                // Re-probes notification permission on every return, grace
+                // period or not: the user may have flipped it in the
+                // Settings app while we were backgrounded.
                 Task { await pushRegistration.refresh() }
             case .background:
-                Task { await console.suspend() }
+                activity.didEnterBackground()
             default:
                 break
+            }
+        }
+        // Only a real suspension moves the connections. A backgrounding the
+        // grace period absorbed never reaches here, so a quick trip out of
+        // the app leaves the events sessions and Attach terminals untouched.
+        .onChange(of: activity.phase) {
+            switch activity.phase {
+            case .active:
+                Task { await console.resume() }
+            case .suspended:
+                // The background assertion is held until this returns, so
+                // the SSH teardown finishes before the process freezes.
+                Task {
+                    await console.suspend()
+                    activity.didFinishSuspending()
+                }
             }
         }
         .task { await pushRegistration.refresh() }

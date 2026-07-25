@@ -19,6 +19,11 @@ final class ConsoleStore {
         @Sendable (Host, [EventSubscription]) -> EventsSession
     @ObservationIgnored private let snapshotRetryDelay: Duration
     @ObservationIgnored private var isActive = false
+    /// The most recently enqueued lifecycle transition. Suspend and resume
+    /// are each several awaits long, so without a chain a resume racing a
+    /// suspend can finish first and leave every Host suspended with nothing
+    /// left to re-activate it.
+    @ObservationIgnored private var lifecycleTask: Task<Void, Never>?
 
     init(
         snapshotRetryDelay: Duration = .seconds(2),
@@ -44,17 +49,36 @@ final class ConsoleStore {
     }
 
     func resume() async {
-        isActive = true
-        for projection in projections.values {
-            await projection.resume()
+        await enqueueLifecycleTransition { [self] in
+            isActive = true
+            for projection in projections.values {
+                await projection.resume()
+            }
         }
     }
 
     func suspend() async {
-        isActive = false
-        for projection in projections.values {
-            await projection.suspend()
+        await enqueueLifecycleTransition { [self] in
+            isActive = false
+            for projection in projections.values {
+                await projection.suspend()
+            }
         }
+    }
+
+    /// Chains `transition` behind the previously enqueued one and waits for
+    /// it. Enqueueing is synchronous on the main actor, so the chain order is
+    /// the call order.
+    private func enqueueLifecycleTransition(
+        _ transition: @escaping @MainActor () async -> Void
+    ) async {
+        let previous = lifecycleTask
+        let task = Task { @MainActor in
+            await previous?.value
+            await transition()
+        }
+        lifecycleTask = task
+        await task.value
     }
 
     func retryFailedHosts() async {

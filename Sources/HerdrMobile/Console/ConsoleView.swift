@@ -15,6 +15,9 @@ struct ConsoleView: View {
     @Bindable var notificationRouter: AgentNotificationRouter
     /// Announces foreground Blocked/Done transitions in-app (#77).
     let bannerStore: AgentNotificationBannerStore
+    /// Scene phase widened by the background grace period; the Attach screen
+    /// pauses its work on real suspensions only.
+    let activity: AppActivityCoordinator
     @State private var isManagingHosts = false
     @State private var isStartingAgent = false
     @State private var isShowingSettings = false
@@ -34,7 +37,8 @@ struct ConsoleView: View {
                             terminalZoom: terminalZoom,
                             pushRegistration: pushRegistration,
                             notificationPreferences: notificationPreferences,
-                            relaySettings: relaySettings)
+                            relaySettings: relaySettings,
+                            activity: activity)
                     } else {
                         ContentUnavailableView(
                             "Agent Gone", systemImage: "rectangle.on.rectangle.slash",

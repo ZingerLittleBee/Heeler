@@ -54,8 +54,8 @@ enum EventsSessionStatus: Sendable, Equatable {
     /// Reconnecting cannot repair this failure. The session remains stopped
     /// until the caller retries after the Host's configuration is corrected.
     case failed(TransportError)
-    /// Deliberately torn down (app backgrounded); no reconnect activity
-    /// until `resume()`.
+    /// Deliberately torn down (the app's background grace period elapsed);
+    /// no reconnect activity until `resume()`.
     case suspended
     /// `end()` was called; the session is finished for good.
     case ended
@@ -82,8 +82,9 @@ enum EventsSessionUpdate: Sendable, Equatable {
 ///
 /// Lifecycle: a fresh session is suspended; `resume()` activates it (call on
 /// launch and on foregrounding), `suspend()` tears the channel and the SSH
-/// connection down deliberately (call on backgrounding — iOS suspends
-/// sockets anyway, an explicit close makes resume cheap and deterministic),
+/// connection down deliberately (call once the app's background grace period
+/// elapses — iOS freezes sockets anyway when the process suspends, and an
+/// explicit close makes resume cheap and deterministic),
 /// `end()` is terminal. All teardown is by explicit close, never by
 /// cancelling a live exec channel (ADR 0002). Lifecycle calls serialize
 /// internally — a `resume()` racing into a `suspend()`'s in-flight teardown
