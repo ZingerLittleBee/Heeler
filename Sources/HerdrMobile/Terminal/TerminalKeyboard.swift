@@ -142,6 +142,10 @@ final class TerminalKeyboardAccessory: UIInputView {
     static let preferredHeight: CGFloat = 48
     /// The accessory's own background, reused as the paste control's fill.
     private static let surface = UIColor.secondarySystemBackground
+    /// `UIPasteControl` draws its glyph at a fixed 12 pt (measured; the size
+    /// is not configurable). The dismiss button matches it, or the row reads
+    /// as two icons borrowed from different sets.
+    private static let glyphPointSize: CGFloat = 12
 
     private weak var terminalView: HerdrTerminalView?
     private let modeControl = UISegmentedControl(items: ["Text", "Keys"])
@@ -222,7 +226,11 @@ final class TerminalKeyboardAccessory: UIInputView {
 
     private func configureDismissButton() {
         var configuration = UIButton.Configuration.plain()
-        configuration.image = UIImage(systemName: "keyboard.chevron.compact.down")
+        let symbol = UIImage.SymbolConfiguration(
+            pointSize: Self.glyphPointSize, weight: .regular, scale: .medium)
+        configuration.image = UIImage(
+            systemName: "keyboard.chevron.compact.down", withConfiguration: symbol)
+        configuration.preferredSymbolConfigurationForImage = symbol
         configuration.baseForegroundColor = .label
         let button = UIButton(configuration: configuration)
         button.translatesAutoresizingMaskIntoConstraints = false
