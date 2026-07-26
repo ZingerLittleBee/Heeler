@@ -11,7 +11,7 @@ The app speaks herdr's JSON API (newline-delimited JSON over a Unix socket) thro
 - **RPC + events**: a no-PTY SSH exec channel running `socat - UNIX-CONNECT:<herdr.sock>` per request, plus one long-lived channel for `events.subscribe`.
 - **Interactive terminal**: the Agent detail screen opens an SSH PTY shell channel bootstrapped with an injection-safe `exec herdr agent attach <pane>` line, then renders it through a host-managed libghostty-spm session with Metal output, persistent appearance-aware themes, input-row keyboard activation, IME input, long-press text selection, and app-routed touch scrolling for both local scrollback and remote TUIs.
 
-No herdr server changes required. The only remote prerequisite is `socat` installed on the host.
+No herdr server changes required. The only remote prerequisite is `socat` installed on the host; the app finds it via the Host's configured path or the Host's own PATH, and onboarding tells you where to point it if neither answers.
 
 ## Stack
 

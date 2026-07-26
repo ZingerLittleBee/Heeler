@@ -7,6 +7,21 @@ import Logging
 import NIOCore
 @preconcurrency import NIOSSH
 
+/// How a Host connection locates the remote socat executable.
+///
+/// Two levels only: the Host's configured path, then whatever the Host's own
+/// PATH resolves `socat` to. There is deliberately no built-in list of
+/// package-manager prefixes — such a list is a bet on specific distro layouts
+/// that rots with every packaging change, and it can only ever name locations
+/// that are already on PATH anyway.
+enum SocatDiscovery: Sendable, Equatable {
+    /// The configured path first, then `command -v socat` on the Host.
+    case automatic
+    /// The configured path and nothing else. Keeps the "socat is absent" case
+    /// reproducible in tests, which run against machines that do have it.
+    case configuredPathOnly
+}
+
 /// How to reach one Host, authenticate against it, and find its herdr socket.
 struct SSHTransportSettings: Sendable {
     static let defaultSessionListCommand = "herdr session list --json"
@@ -24,9 +39,13 @@ struct SSHTransportSettings: Sendable {
     var hostKeyPolicy: HostKeyPolicy
     /// Which herdr socket to reach on the Host.
     var socket: HerdrSocketLocation
-    /// Absolute path of socat on the Host. Remote commands run through the
-    /// user's login shell, whose PATH cannot be trusted.
+    /// Preferred absolute path of socat on the Host, tried before anything
+    /// else. Execution never relies on the login shell resolving `socat`: the
+    /// path discovery settles on is absolute, so PATH is consulted at most
+    /// once per connection and never again (ADR 0002).
     var socatPath: String
+    /// How to locate socat when the preferred path is not executable.
+    var socatDiscovery: SocatDiscovery = .automatic
     /// Command that wakes a stopped herdr server, run over a no-PTY exec
     /// channel when a request hits connection-refused (#6). The default is
     /// the strategy from spec #16: `herdr remote-client-bridge` ensures the
@@ -100,7 +119,8 @@ actor SSHTransport: Transport {
 
     private let client: SSHClient
     private let socketLocation: HerdrSocketLocation
-    private let socatPath: String
+    private let preferredSocatPath: String
+    private let socatDiscovery: SocatDiscovery
     private let wakeCommand: String
     private let sessionListCommand: String
     private let attachCommand: String
@@ -115,6 +135,10 @@ actor SSHTransport: Transport {
     /// for the connection's lifetime, failure is not (the next request
     /// retries).
     private let homeDirectory = SharedAsyncOperation<String>(cachesSuccess: true)
+    /// The remote socat executable, resolved over exec once per connection
+    /// like the home directory. Failure is not cached: installing socat and
+    /// retrying must work on the same connection.
+    private let socatExecutable = SharedAsyncOperation<String>(cachesSuccess: true)
     /// The herdr-mobile plugin's config dir, resolved over exec once per
     /// Host like the home directory. Failure (plugin missing, probe broken)
     /// is not cached: installing the plugin and retrying must work on the
@@ -130,7 +154,8 @@ actor SSHTransport: Transport {
     private var imageStageClients: [UUID: SFTPClient] = [:]
 
     private init(
-        client: SSHClient, socketLocation: HerdrSocketLocation, socatPath: String,
+        client: SSHClient, socketLocation: HerdrSocketLocation,
+        preferredSocatPath: String, socatDiscovery: SocatDiscovery,
         wakeCommand: String, sessionListCommand: String, attachCommand: String,
         homeCommand: String, stageDirectoryCommand: String,
         pluginListCommand: String, notificationConfigDirCommand: String,
@@ -138,7 +163,8 @@ actor SSHTransport: Transport {
     ) {
         self.client = client
         self.socketLocation = socketLocation
-        self.socatPath = socatPath
+        self.preferredSocatPath = preferredSocatPath
+        self.socatDiscovery = socatDiscovery
         self.wakeCommand = wakeCommand
         self.sessionListCommand = sessionListCommand
         self.attachCommand = attachCommand
@@ -175,7 +201,8 @@ actor SSHTransport: Transport {
             throw Self.classifyConnectFailure(error)
         }
         return SSHTransport(
-            client: client, socketLocation: settings.socket, socatPath: settings.socatPath,
+            client: client, socketLocation: settings.socket,
+            preferredSocatPath: settings.socatPath, socatDiscovery: settings.socatDiscovery,
             wakeCommand: settings.wakeCommand, sessionListCommand: settings.sessionListCommand,
             attachCommand: settings.attachCommand, homeCommand: settings.homeCommand,
             stageDirectoryCommand: settings.stageDirectoryCommand,
@@ -800,6 +827,7 @@ actor SSHTransport: Transport {
         -> (HerdrEventStream, readerID: UInt64)
     {
         let socketPath = try await resolvedSocketPath()
+        let socatPath = try await resolvedSocatPath()
         let requestID = UUID().uuidString
         let requestLine = try HerdrWire.subscribeRequestLine(
             id: requestID, subscriptions: subscriptions)
@@ -819,6 +847,7 @@ actor SSHTransport: Transport {
         let readerTask = Task {
             await self.runEventsChannel(
                 readerID: readerID, requestLine: requestLine, socketPath: socketPath,
+                socatPath: socatPath,
                 ack: ackContinuation, events: eventContinuation)
         }
         do {
@@ -854,6 +883,7 @@ actor SSHTransport: Transport {
         readerID: UInt64,
         requestLine: String,
         socketPath: String,
+        socatPath: String,
         ack ackContinuation: AsyncThrowingStream<Data, any Error>.Continuation,
         events eventContinuation: AsyncThrowingStream<HerdrEvent, any Error>.Continuation
     ) async {
@@ -1263,26 +1293,27 @@ actor SSHTransport: Transport {
         let line = try HerdrWire.requestLine(id: requestID, method: method, params: params)
         let responseLine = try await Self.withRequestDeadline(requestTimeout) {
             let socketPath = try await self.resolvedSocketPath()
+            let socatPath = try await self.resolvedSocatPath()
             return try await self.performExchange(
-                line: line, socketPath: socketPath, method: method)
+                line: line, socketPath: socketPath, socatPath: socatPath, method: method)
         }
         return try HerdrWire.decodeResult(type, fromResponseLine: responseLine, requestID: requestID)
     }
 
     /// Takes a channel slot, runs one exec+socat exchange, and returns the
     /// raw response bytes (guaranteed to contain a full line).
-    private func performExchange(line: String, socketPath: String, method: String) async throws
-        -> Data
-    {
+    private func performExchange(
+        line: String, socketPath: String, socatPath: String, method: String
+    ) async throws -> Data {
         try await execChannelBudget.withChannel {
             var stdout = Data()
             var stderr = Data()
             do {
                 let command = try Self.socatCommand(
-                    socatPath: self.socatPath, socketPath: socketPath)
+                    socatPath: socatPath, socketPath: socketPath)
                 try await self.client.withExec(command) {
                     inbound, outbound in
-                    // A fast-failing command (socat missing, socket absent) can
+                    // A fast-failing command (socket absent, server stopped) can
                     // close the channel before this write lands; the read loop
                     // below still drains stderr and surfaces the real failure.
                     try? await outbound.write(ByteBuffer(string: line))
@@ -1382,16 +1413,59 @@ actor SSHTransport: Transport {
         }
     }
 
+    /// The absolute socat path on this Host, discovered once per connection.
+    /// Resolved after the socket path so a Host whose home directory cannot be
+    /// read fails at the remote-environment check rather than at socat.
+    private func resolvedSocatPath() async throws -> String {
+        try await Self.withRequestDeadline(requestTimeout) {
+            try await self.socatExecutable.value {
+                try await self.resolveSocatPathOverExec()
+            }
+        }
+    }
+
+    private func resolveSocatPathOverExec() async throws -> String {
+        try await execChannelBudget.withChannel {
+            let output: ByteBuffer
+            do {
+                output = try await self.client.executeCommand(
+                    Self.socatProbeCommand(
+                        preferredPath: self.preferredSocatPath,
+                        discovery: self.socatDiscovery))
+            } catch is CancellationError {
+                throw TransportError.cancelled
+            } catch {
+                throw TransportError.channelFailed(
+                    detail: "socat discovery: \(String(describing: error))")
+            }
+            guard
+                let path = Self.markerValue(
+                    in: Data(output.readableBytesView), prefix: Self.socatOutputPrefix),
+                RemoteShellPath.isQuotableAbsolute(path)
+            else {
+                throw TransportError.socatMissing(path: self.preferredSocatPath)
+            }
+            return path
+        }
+    }
+
     /// Maps the observable failure shapes (verified against herdr 0.7.4 in
     /// the #3 spike) onto taxonomy cases:
     /// - missing socket:  socat stderr `E connect(... "<sock>" ...): No such file or directory`
     /// - stale socket:    socat stderr `E connect(... "<sock>" ...): Connection refused`
-    /// - socat missing:   login-shell stderr naming the socat path
     ///
     /// socat connect diagnostics are keyed on their `E connect` marker plus
     /// the quoted socket path: shells like fish echo the whole failing
     /// command line (which contains both paths), so path presence alone
     /// cannot distinguish the shapes.
+    ///
+    /// socat's own absence is deliberately not classified here. Discovery
+    /// already proved the executable exists before any exchange ran, and the
+    /// alternative — matching the socat path against arbitrary login-shell
+    /// error text — reports every *other* reason an existing socat fails to
+    /// exec (no execute permission, a missing shared library, a noexec mount)
+    /// as "socat is not installed", sending the user to fix the one thing that
+    /// is already correct.
     private func classifyExecFailure(stderr: Data, socketPath: String) -> TransportError? {
         let text = String(decoding: stderr, as: UTF8.self)
         if text.contains("E connect"), text.contains("\"\(socketPath)\"") {
@@ -1402,9 +1476,6 @@ actor SSHTransport: Transport {
                 return .serverNotRunning(path: socketPath)
             }
         }
-        if text.contains(socatPath) {
-            return .socatMissing(path: socatPath)
-        }
         return nil
     }
 
@@ -1413,6 +1484,7 @@ actor SSHTransport: Transport {
     }
 
     private static let homeOutputPrefix = "__HERDR_MOBILE_HOME__="
+    private static let socatOutputPrefix = "__HERDR_MOBILE_SOCAT__="
     private static let stageDirectoryOutputPrefix = "__HERDR_MOBILE_STAGE_DIR__="
     private static let pluginConfigDirOutputPrefix = "__HERDR_MOBILE_PLUGIN_CONFIG_DIR__="
 
@@ -1449,6 +1521,38 @@ actor SSHTransport: Transport {
         }
         return try StagedImage(path: "\(directory)/placeholder").fileURL
             .deletingLastPathComponent().path
+    }
+
+    /// Prints the marker-delimited absolute socat path: the preferred path if
+    /// it is executable, otherwise whatever the Host's PATH resolves `socat`
+    /// to. Runs under POSIX sh because login shells do not share substitution
+    /// syntax, and passes both inputs as positional arguments so neither is
+    /// interpolated into the script body.
+    ///
+    /// Always exits 0. Absence is reported by the marker's absence, never by a
+    /// status code, so "no socat here" stays a classified `socatMissing`
+    /// instead of an opaque channel failure. A preferred path that cannot be
+    /// quoted safely is passed as the empty string, which `[ -x ]` rejects —
+    /// discovery then falls through to PATH exactly as it does for a path that
+    /// simply is not there.
+    ///
+    /// Not private: CI provisions no sshd, so the e2e coverage of discovery all
+    /// skips there and this command's shape is pinned by direct unit tests.
+    static func socatProbeCommand(
+        preferredPath: String, discovery: SocatDiscovery
+    ) -> String {
+        let quotedPreferredPath = RemoteShellPath.quotedAbsolute(preferredPath) ?? "''"
+        let searchesPath = discovery == .automatic ? "1" : "0"
+        let script =
+            "preferred=\"$1\"; searches_path=\"$2\"; "
+            + "if [ -x \"$preferred\" ]; then "
+            + "printf \"\(socatOutputPrefix)%s\\n\" \"$preferred\"; exit 0; fi; "
+            + "[ \"$searches_path\" = 1 ] || exit 0; "
+            + "found=$(command -v socat 2>/dev/null) || exit 0; "
+            + "case \"$found\" in /*) [ -x \"$found\" ] && "
+            + "printf \"\(socatOutputPrefix)%s\\n\" \"$found\";; esac; exit 0"
+        return cLocaleCommand(
+            "/bin/sh -c '\(script)' herdr-socat-probe \(quotedPreferredPath) \(searchesPath)")
     }
 
     private static func socatCommand(socatPath: String, socketPath: String) throws -> String {

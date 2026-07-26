@@ -12,8 +12,9 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         case password
     }
 
-    /// Where socat usually lives on a stock Linux server; editable per Host
-    /// because login-shell PATH cannot be trusted (ADR 0002).
+    /// Where socat usually lives on a stock Linux server. Tried first, then
+    /// the Host's own PATH; editable per Host for the case where neither
+    /// answers (ADR 0002).
     static let defaultSocatPath = "/usr/bin/socat"
 
     let id: UUID
@@ -27,7 +28,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     /// while this field remains editable for older herdr versions. Blank
     /// means the default herdr session.
     var sessionName: String
-    /// Absolute socat path on the Host.
+    /// Preferred absolute socat path on the Host.
     var socatPath: String
 
     private enum CodingKeys: String, CodingKey {

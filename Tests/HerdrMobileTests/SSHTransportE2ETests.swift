@@ -359,6 +359,97 @@ struct SSHTransportE2ETests {
         try await transport.close()
     }
 
+    @Test func missingPreferredSocatPathFallsBackToPathLookup() async throws {
+        // The Host's configured path is dead, so discovery asks the Host where
+        // socat actually is. This is the macOS/Homebrew case: the default
+        // /usr/bin/socat does not exist, but PATH resolves socat fine.
+        try await withPingingServer(
+            preferredSocatPath: "/tmp/herdr-absent-socat-\(UUID().uuidString.prefix(8))"
+        ) { transport, server in
+            let info = try await transport.ping()
+
+            #expect(info.protocolVersion == SSHTransport.supportedProtocolVersion)
+            #expect(server.receivedRequests.map(\.method) == ["ping"])
+        }
+    }
+
+    @Test func nonExecutablePreferredSocatPathFallsBackToPathLookup() async throws {
+        // The file at the configured path exists but cannot be executed (mode
+        // 000 here; a missing shared library or a noexec mount look the same
+        // to the probe). `[ -x ]` rejects it and discovery moves on to PATH,
+        // instead of reporting a socat that is present as "not installed".
+        let unusable = "/tmp/herdr-unusable-socat-\(UUID().uuidString.prefix(8))"
+        try Data().write(to: URL(fileURLWithPath: unusable))
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o000], ofItemAtPath: unusable)
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o600], ofItemAtPath: unusable)
+            try? FileManager.default.removeItem(atPath: unusable)
+        }
+
+        try await withPingingServer(preferredSocatPath: unusable) { transport, server in
+            let info = try await transport.ping()
+
+            #expect(info.protocolVersion == SSHTransport.supportedProtocolVersion)
+            #expect(server.receivedRequests.map(\.method) == ["ping"])
+        }
+    }
+
+    @Test func discoveredSocatPathIsCachedForTheConnection() async throws {
+        // Discovery runs once per connection. Proof: after the first request
+        // has settled on the PATH socat, plant a *usable-looking* executable at
+        // the preferred path that would win a fresh probe and then fail to
+        // bridge anything. The second request must still succeed, which it can
+        // only do by reusing the cached path.
+        let preferred = "/tmp/herdr-late-socat-\(UUID().uuidString.prefix(8))"
+        defer { try? FileManager.default.removeItem(atPath: preferred) }
+
+        try await withPingingServer(preferredSocatPath: preferred) { transport, server in
+            _ = try await transport.ping()
+
+            try "#!/bin/sh\nexit 1\n".write(
+                toFile: preferred, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o755], ofItemAtPath: preferred)
+
+            let agents = try await transport.listAgents()
+
+            #expect(agents.isEmpty)
+            #expect(server.receivedRequests.map(\.method) == ["ping", "agent.list"])
+        }
+    }
+
+    /// A real transport whose fake server answers ping and agent.list, with the
+    /// Host's preferred socat path overridden and automatic discovery left on.
+    private func withPingingServer(
+        preferredSocatPath: String,
+        body: (SSHTransport, FakeHerdrServer) async throws -> Void
+    ) async throws {
+        let environment = try #require(LocalSSHTestEnvironment.current)
+        let server = try FakeHerdrServer { request in
+            switch request.method {
+            case "ping":
+                [#"{"id":"\#(request.id)","result":{"type":"pong","version":"9.9.9-fake","protocol":17}}"#]
+            default:
+                [#"{"id":"\#(request.id)","result":{"type":"agent_list","agents":[]}}"#]
+            }
+        }
+        defer { server.stop() }
+
+        let transport = try await SSHTransport.connect(
+            settings: environment.makeSettings(
+                socket: .absolutePath(server.socketPath),
+                socatPath: preferredSocatPath))
+        do {
+            try await body(transport, server)
+        } catch {
+            try? await transport.close()
+            throw error
+        }
+        try await transport.close()
+    }
+
     @Test func namedSessionSocketPathResolvesOverRemoteHome() async throws {
         // The transport is given only a session name; it must resolve the
         // remote home directory over exec and find the socket at
