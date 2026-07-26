@@ -45,7 +45,7 @@ struct ConsoleView: View {
                             description: Text("This Agent's pane is no longer reported."))
                     }
                 }
-                .navigationTitle("Console")
+                .navigationTitle("Agents")
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
                         Button("Hosts", systemImage: "server.rack") {
