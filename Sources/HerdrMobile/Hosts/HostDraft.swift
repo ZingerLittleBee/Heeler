@@ -13,6 +13,12 @@ struct HostDraft: Equatable, Sendable {
     var password = ""
     var sessionName = ""
     var socatPath = Host.defaultSocatPath
+    /// Blank means a direct connection. When set, Address/Port above are
+    /// resolved from the Jump Host, not from this device.
+    var jumpAddress = ""
+    var jumpPort = "22"
+    /// Blank reuses the Host's own username.
+    var jumpUsername = ""
 
     init() {}
 
@@ -25,11 +31,23 @@ struct HostDraft: Equatable, Sendable {
         authMethod = host.authMethod
         sessionName = host.sessionName
         socatPath = host.socatPath
+        jumpAddress = host.jumpAddress
+        jumpPort = String(host.jumpPort)
+        jumpUsername = host.jumpUsername
     }
 
     var portNumber: Int? {
         guard let value = Int(port), (1...65535).contains(value) else { return nil }
         return value
+    }
+
+    var jumpPortNumber: Int? {
+        guard let value = Int(jumpPort), (1...65535).contains(value) else { return nil }
+        return value
+    }
+
+    var usesJumpHost: Bool {
+        !jumpAddress.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     var isValid: Bool {
@@ -40,6 +58,9 @@ struct HostDraft: Equatable, Sendable {
             && portNumber != nil
             && (trimmedSessionName.isEmpty || HerdrSessionName.isValid(trimmedSessionName))
             && RemoteShellPath.isQuotableAbsolute(trimmedSocatPath)
+            // A blank jump address disables the hop entirely, so its port only
+            // has to parse when the hop is actually in use.
+            && (!usesJumpHost || jumpPortNumber != nil)
     }
 
     /// Form-level validity including credential intent. A blank password can
@@ -65,7 +86,10 @@ struct HostDraft: Equatable, Sendable {
             username: username.trimmingCharacters(in: .whitespaces),
             authMethod: authMethod,
             sessionName: sessionName.trimmingCharacters(in: .whitespaces),
-            socatPath: socatPath.trimmingCharacters(in: .whitespaces))
+            socatPath: socatPath.trimmingCharacters(in: .whitespaces),
+            jumpAddress: jumpAddress.trimmingCharacters(in: .whitespaces),
+            jumpPort: jumpPortNumber ?? 22,
+            jumpUsername: jumpUsername.trimmingCharacters(in: .whitespaces))
     }
 
     /// What to hand `HostStore.add/update` as the password argument: a new

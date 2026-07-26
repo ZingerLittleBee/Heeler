@@ -24,6 +24,15 @@ extension SSHTransportSettings {
             credentials: credentials,
             hostKeyPolicy: hostKeyPolicy,
             socket: host.socketLocation,
-            socatPath: host.socatPath)
+            socatPath: host.socatPath,
+            // Both hops use the Host's resolved credential. Device Key is the
+            // normal case; password Hosts require the same password at both hops.
+            jump: host.usesJumpHost
+                ? SSHJumpSettings(
+                    host: host.jumpAddress.trimmingCharacters(in: .whitespaces),
+                    port: host.jumpPort,
+                    username: host.resolvedJumpUsername,
+                    credentials: credentials)
+                : nil)
     }
 }

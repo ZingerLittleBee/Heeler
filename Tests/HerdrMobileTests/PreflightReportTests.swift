@@ -50,6 +50,7 @@ struct PreflightReportTests {
         (.cancelled, .connection),
         (.channelFailed(detail: "boom"), .connection),
         (.eventsChannelAlreadyOpen, .connection),
+        (.jumpHostFailed(.sshUnreachable(detail: "refused")), .connection),
         (.socatMissing(path: "/usr/bin/socat"), .socat),
         (.socketNotFound(path: "/home/dev/.config/herdr/herdr.sock"), .herdrInstalled),
         (.homeDirectoryUnresolvable(detail: "no $HOME"), .remoteEnvironment),
@@ -87,6 +88,17 @@ struct PreflightReportTests {
         }
         #expect(keyHint.contains("authorized_keys"))
         #expect(passwordHint.contains("password"))
+    }
+
+    @Test func jumpHostFailureHintNamesTheFirstHop() {
+        let report = PreflightReport.failure(
+            .jumpHostFailed(.authenticationFailed), authMethod: .password)
+        guard case .failed(let hint) = report[.connection] else {
+            Issue.record("connection check should fail")
+            return
+        }
+        #expect(hint.contains("Jump Host"))
+        #expect(hint.contains("same password"))
     }
 
     @Test func protocolMismatchHintNamesBothVersions() {

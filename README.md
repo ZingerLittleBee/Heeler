@@ -13,6 +13,13 @@ The app speaks herdr's JSON API (newline-delimited JSON over a Unix socket) thro
 
 No herdr server changes required. The only remote prerequisite is `socat` installed on the host; the app finds it via the Host's configured path or the Host's own PATH, and onboarding tells you where to point it if neither answers.
 
+Hosts that are not directly reachable can be placed behind an SSH Jump Host.
+The recommended deployment keeps the reverse-forwarded port on the VPS
+loopback interface instead of publishing the Mac's SSH port.
+
+- [Set up remote access step by step](docs/guides/vps-jump-host-setup.md)
+- [Understand the architecture, security boundaries, and VPS migration runbook](docs/guides/vps-jump-host.md)
+
 ## Stack
 
 - SwiftUI, iOS 26+, iPhone + iPad
