@@ -33,16 +33,18 @@ struct StartAgentView: View {
 
                 Section {
                     Picker("Workspace", selection: $store.selectedWorkspaceID) {
-                        Text("Current workspace").tag(String?.none)
+                        if store.workspaces.isEmpty {
+                            Text("None reported").tag(String?.none)
+                        }
                         ForEach(store.workspaces) { workspace in
                             Text(workspace.label).tag(String?.some(workspace.id))
                         }
                     }
-                    .disabled(store.selectedHostID == nil)
+                    .disabled(store.selectedHostID == nil || store.workspaces.isEmpty)
                 } header: {
                     Text("Workspace")
                 } footer: {
-                    Text("Where the agent runs. Leave on the Host's current workspace if unsure.")
+                    Text("Where the agent runs. Defaults to the one you last started an agent in.")
                 }
 
                 Section {
