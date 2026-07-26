@@ -15,10 +15,10 @@ No herdr server changes required. The only remote prerequisite is `socat` instal
 
 Hosts that are not directly reachable can be placed behind an SSH Jump Host.
 The recommended deployment keeps the reverse-forwarded port on the VPS
-loopback interface instead of publishing the Mac's SSH port. See
-[VPS Jump Host and reverse-tunnel deployment](docs/guides/vps-jump-host.md)
-for the architecture, hardening rules, setup procedure, and VPS migration
-runbook.
+loopback interface instead of publishing the Mac's SSH port.
+
+- [Set up remote access step by step](docs/guides/vps-jump-host-setup.md)
+- [Understand the architecture, security boundaries, and VPS migration runbook](docs/guides/vps-jump-host.md)
 
 ## Stack
 

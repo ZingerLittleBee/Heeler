@@ -9,6 +9,10 @@ loopback interface.
 This is not a public port mapping. The Mac's SSH port must not be exposed as a
 public VPS listener.
 
+For a copy-and-check workflow organized by device, start with
+[Set Up Remote Access Through a VPS](vps-jump-host-setup.md). Return here for
+the complete trust model, operational details, and migration procedure.
+
 ## Architecture
 
 There are three systems and three distinct SSH identities:
