@@ -101,8 +101,24 @@ struct TerminalAttachTests {
         terminal.requestKeyboard()
         #expect(terminal.canBecomeFirstResponder)
 
-        _ = terminal.resignFirstResponder()
+        terminal.dismissKeyboard()
         #expect(!terminal.canBecomeFirstResponder)
+    }
+
+    /// UIKit resigns the first responder on its own — backgrounding the app,
+    /// presenting a sheet — and restores it afterwards by asking the view to
+    /// become first responder again. If those resigns also cleared the user's
+    /// intent, the view would refuse, and the accessory bar would come back
+    /// with no keyboard behind it and no way to type (the >20s-in-background
+    /// report). Only an explicit dismiss ends the session.
+    @MainActor
+    @Test func aSystemResignLeavesTheKeyboardRecoverable() {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        terminal.requestKeyboard()
+
+        _ = terminal.resignFirstResponder()
+
+        #expect(terminal.canBecomeFirstResponder)
     }
 
     @Test func keyboardTapTargetCoversOnlyTheCurrentInputRow() {
@@ -173,6 +189,32 @@ struct TerminalAttachTests {
         terminal.setKeyboardMode(.text)
         #expect(terminal.keyboardMode == .text)
         #expect(terminal.inputView == nil)
+    }
+
+    /// The dismiss button is the only way out of the keyboard, so it must
+    /// work even when the accessory has outlived its terminal's first
+    /// responder status.
+    @MainActor
+    @Test func dismissButtonTakesTheKeyboardDownFromTheAccessory() throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        window.addSubview(terminal)
+        window.makeKeyAndVisible()
+        terminal.requestKeyboard()
+        let accessory = try #require(
+            terminal.inputAccessoryView as? TerminalKeyboardAccessory)
+        let dismiss = try #require(
+            accessory.subviews.compactMap { $0 as? UIButton }.first {
+                $0.accessibilityLabel == "Dismiss keyboard"
+            })
+
+        dismiss.sendActions(for: .touchUpInside)
+        #expect(!terminal.isFirstResponder)
+
+        // Stranded accessory: no first responder left to ask, and the button
+        // must still be a no-crash no-op rather than a dead end.
+        dismiss.sendActions(for: .touchUpInside)
+        #expect(!terminal.isFirstResponder)
     }
 
     @MainActor
