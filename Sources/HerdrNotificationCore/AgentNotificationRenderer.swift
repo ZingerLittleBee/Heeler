@@ -4,16 +4,7 @@ import Foundation
 /// Agent Notification content or the generic fallback banner.
 struct AgentNotificationAlert: Sendable, Equatable {
     let title: String
-    /// The agent-and-Host attribution, demoted below the project when there
-    /// is one. Nil when the title already carries it.
-    let subtitle: String?
     let body: String
-
-    init(title: String, subtitle: String? = nil, body: String) {
-        self.title = title
-        self.subtitle = subtitle
-        self.body = body
-    }
 }
 
 /// The service extension's logic as a pure function (#71): take the push's
@@ -36,11 +27,11 @@ enum AgentNotificationRenderer {
     static func alert(
         userInfo: [AnyHashable: Any], keys: [NotificationKeyRecord]
     ) -> AgentNotificationAlert {
-        guard let (record, payload) = NotificationEnvelope.open(userInfo: userInfo, keys: keys)
+        guard let (_, payload) = NotificationEnvelope.open(userInfo: userInfo, keys: keys)
         else { return fallback }
         return alert(
-            project: payload.project, agentKind: payload.agentKind, hostName: record.hostName,
-            task: payload.title, status: payload.status)
+            project: payload.project, agentKind: payload.agentKind, task: payload.title,
+            status: payload.status)
     }
 
     /// The one phrasing of an Agent Notification, shared by the push path
@@ -48,18 +39,18 @@ enum AgentNotificationRenderer {
     /// drift between them.
     ///
     /// The project leads: with several agents running, it is what tells one
-    /// notification from another — the agent kind rarely differs. `project`
-    /// and `task` are best-effort (an older plugin sends neither), and the
-    /// copy degrades one step at a time rather than all at once.
+    /// notification from another — the agent kind rarely differs. The Host is
+    /// deliberately absent: it is the same machine every time and spends the
+    /// whole line on an address nobody reads. `project` and `task` are
+    /// best-effort (an older plugin sends neither), and the copy degrades one
+    /// step at a time rather than all at once.
     static func alert(
-        project: String?, agentKind: String, hostName: String, task: String?, status: AgentStatus
+        project: String?, agentKind: String, task: String?, status: AgentStatus
     ) -> AgentNotificationAlert {
-        let attribution = "\(agentKind) on \(hostName)"
         let project = trimmedNonEmpty(project)
         let task = trimmedNonEmpty(task)
         return AgentNotificationAlert(
-            title: project ?? attribution,
-            subtitle: project == nil ? nil : attribution,
+            title: project.map { "\($0) · \(agentKind)" } ?? agentKind,
             body: body(for: status, task: task))
     }
 

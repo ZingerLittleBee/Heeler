@@ -29,9 +29,9 @@ final class NotificationService: UNNotificationServiceExtension {
             return content
         }
         rewritten.title = alert.title
-        // Always assigned: an empty subtitle is how UNNotificationContent
-        // spells "no subtitle", and the relay's wrap may have set one.
-        rewritten.subtitle = alert.subtitle ?? ""
+        // Cleared, not left alone: the relay's generic wrap may have set a
+        // subtitle, and the decrypted copy has no use for one.
+        rewritten.subtitle = ""
         rewritten.body = alert.body
         return rewritten
     }

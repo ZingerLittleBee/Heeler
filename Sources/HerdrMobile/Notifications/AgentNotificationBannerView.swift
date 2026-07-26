@@ -15,12 +15,6 @@ struct AgentNotificationBannerView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                if let subtitle = banner.alert.subtitle {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
                 Text(banner.alert.body)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -42,7 +36,7 @@ struct AgentNotificationBannerView: View {
         banner: AgentNotificationBanner(
             target: AgentNotificationTarget(hostID: UUID(), paneID: "%5"),
             alert: AgentNotificationAlert(
-                title: "herdr-mobile", subtitle: "claude on mac-studio",
+                title: "herdr-mobile · claude",
                 body: "Blocked · 排查修复 split 按钮 UI 结构问题"))
     ) {}
 }

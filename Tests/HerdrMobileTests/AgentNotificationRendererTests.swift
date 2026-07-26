@@ -24,8 +24,8 @@ struct AgentNotificationRendererTests {
     }
 
     /// A payload from a plugin that predates the display fields: the copy
-    /// degrades to the old attribution-and-status phrasing rather than
-    /// falling back to the generic banner.
+    /// degrades to the agent kind and a status sentence rather than falling
+    /// back to the generic banner.
     @Test func rewritesABlockedPushWithoutDisplayFields() throws {
         let vector = try Self.vector(named: "blocked claude agent")
         let record = try Self.record(forVector: vector, named: "mac-studio")
@@ -33,13 +33,12 @@ struct AgentNotificationRendererTests {
         let alert = AgentNotificationRenderer.alert(
             userInfo: ["envelope": vector.envelope], keys: [record])
 
-        #expect(alert.title == "claude on mac-studio")
-        #expect(alert.subtitle == nil)
+        #expect(alert.title == "claude")
         #expect(alert.body == "Blocked: waiting for your input")
     }
 
-    /// The shape the current plugin sends: the project leads, the attribution
-    /// drops to the subtitle, and the body says what the agent was doing.
+    /// The shape the current plugin sends: the project leads, the agent kind
+    /// trails it, and the body says what the agent was doing.
     @Test func leadsWithTheProjectAndTheAgentsTask() throws {
         let vector = try Self.vector(named: "blocked agent with a project and a task title")
         let record = try Self.record(forVector: vector, named: "mac-studio")
@@ -47,17 +46,28 @@ struct AgentNotificationRendererTests {
         let alert = AgentNotificationRenderer.alert(
             userInfo: ["envelope": vector.envelope], keys: [record])
 
-        #expect(alert.title == "Caterm")
-        #expect(alert.subtitle == "claude on mac-studio")
+        #expect(alert.title == "Caterm · claude")
         #expect(alert.body == "Blocked · 排查修复 split 按钮 UI 结构问题")
+    }
+
+    /// The Host is the same machine on every notification and would spend the
+    /// whole title on an address; it must never reach the alert.
+    @Test func neverNamesTheHost() throws {
+        let vector = try Self.vector(named: "blocked agent with a project and a task title")
+        let record = try Self.record(forVector: vector, named: "zingerbee@192.168.31.64")
+
+        let alert = AgentNotificationRenderer.alert(
+            userInfo: ["envelope": vector.envelope], keys: [record])
+
+        #expect(!alert.title.contains("zingerbee"))
+        #expect(!alert.body.contains("zingerbee"))
     }
 
     @Test func trimsATaskTitleThatWouldOverrunTheBanner() {
         let long = String(repeating: "重构传输层", count: 40)
 
         let alert = AgentNotificationRenderer.alert(
-            project: "herdr-mobile", agentKind: "claude", hostName: "mac-studio", task: long,
-            status: .done)
+            project: "herdr-mobile", agentKind: "claude", task: long, status: .done)
 
         let task = alert.body.dropFirst("Done · ".count)
         #expect(task.count == AgentNotificationRenderer.taskLimit)
@@ -66,14 +76,12 @@ struct AgentNotificationRendererTests {
     }
 
     /// Best-effort fields: whitespace-only is the same as absent, so a Host
-    /// that resolved a blank never renders an empty title or a bare separator.
+    /// that resolved a blank never renders a dangling separator.
     @Test func treatsBlankDisplayFieldsAsAbsent() {
         let alert = AgentNotificationRenderer.alert(
-            project: "  ", agentKind: "claude", hostName: "mac-studio", task: "\n",
-            status: .blocked)
+            project: "  ", agentKind: "claude", task: "\n", status: .blocked)
 
-        #expect(alert.title == "claude on mac-studio")
-        #expect(alert.subtitle == nil)
+        #expect(alert.title == "claude")
         #expect(alert.body == "Blocked: waiting for your input")
     }
 
@@ -81,8 +89,8 @@ struct AgentNotificationRendererTests {
     /// is a task to pair it with.
     @Test func pairsAnUnrecognizedStatusWithTheTask() {
         let alert = AgentNotificationRenderer.alert(
-            project: "herdr-mobile", agentKind: "claude", hostName: "mac-studio",
-            task: "Fix the flaky test", status: AgentStatus(rawValue: "exited"))
+            project: "herdr-mobile", agentKind: "claude", task: "Fix the flaky test",
+            status: AgentStatus(rawValue: "exited"))
 
         #expect(alert.body == "exited · Fix the flaky test")
     }
@@ -94,7 +102,7 @@ struct AgentNotificationRendererTests {
         let alert = AgentNotificationRenderer.alert(
             userInfo: ["envelope": vector.envelope], keys: [record])
 
-        #expect(alert.title == "codex on vps-1")
+        #expect(alert.title == "codex")
         #expect(alert.body == "Done: the agent finished")
     }
 
@@ -111,8 +119,9 @@ struct AgentNotificationRendererTests {
     }
 
     /// Several registered Hosts means several Notification Keys; the kid in
-    /// the cleartext header must select the right one — and thus the right
-    /// Host name — without trial decryption.
+    /// the cleartext header must select the right one without trial
+    /// decryption. Picking the wrong key yields the generic fallback, so
+    /// each envelope rendering its own payload is the proof.
     @Test func selectsTheRightKeyAmongSeveralHostsByKid() throws {
         let blocked = try Self.vector(named: "blocked claude agent")
         let done = try Self.vector(named: "done codex agent under a second key")
@@ -126,8 +135,10 @@ struct AgentNotificationRendererTests {
         let doneAlert = AgentNotificationRenderer.alert(
             userInfo: ["envelope": done.envelope], keys: records)
 
-        #expect(blockedAlert.title == "claude on mac-studio")
-        #expect(doneAlert.title == "codex on vps-1")
+        #expect(blockedAlert.title == "claude")
+        #expect(blockedAlert.body == "Blocked: waiting for your input")
+        #expect(doneAlert.title == "codex")
+        #expect(doneAlert.body == "Done: the agent finished")
     }
 
     @Test func unknownKidFallsBackToTheGenericBanner() throws {

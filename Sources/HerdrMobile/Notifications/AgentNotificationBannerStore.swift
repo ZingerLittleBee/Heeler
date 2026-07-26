@@ -117,7 +117,7 @@ final class AgentNotificationBannerStore {
             target: target,
             alert: AgentNotificationRenderer.alert(
                 project: agent.workspaceLabel ?? agent.repoName, agentKind: agent.agent.kind,
-                hostName: agent.hostName, task: agent.agent.title, status: status))
+                task: agent.agent.title, status: status))
         playSound()
         armDismissal()
     }
