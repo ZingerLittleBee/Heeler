@@ -24,14 +24,25 @@ struct StartAgentStoreTests {
         }
     }
 
+    /// A throwaway defaults domain per test, so the remembered-workspace
+    /// persistence is real but isolated.
+    private func makeRecents() -> RecentWorkspaceStore {
+        let name = "recent-workspace-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        return RecentWorkspaceStore(defaults: defaults)
+    }
+
     private func makeStore(
         hosts: [Host],
         workspaces: @escaping (Host.ID) -> [ConsoleWorkspace] = { _ in [] },
+        recents: RecentWorkspaceStore? = nil,
         recorder: StartRecorder
     ) -> StartAgentStore {
         StartAgentStore(
             hosts: hosts, workspaces: workspaces,
-            start: { params, hostID in try recorder.record(params, hostID) })
+            start: { params, hostID in try recorder.record(params, hostID) },
+            recents: recents ?? makeRecents())
     }
 
     @Test func tokenizeSplitsOnWhitespaceAndDropsEmpties() {
@@ -71,16 +82,110 @@ struct StartAgentStoreTests {
         let hostB = Host.fixture(address: "b.example")
         let store = makeStore(
             hosts: [hostA, hostB],
-            workspaces: { $0 == hostA.id ? [ConsoleWorkspace(id: "w1", label: "Proj")] : [] },
+            workspaces: {
+                $0 == hostA.id
+                    ? [ConsoleWorkspace(id: "w1", label: "Proj"),
+                        ConsoleWorkspace(id: "w2", label: "Other")]
+                    : []
+            },
             recorder: StartRecorder())
 
         store.selectedHostID = hostA.id
-        store.selectedWorkspaceID = "w1"
-        #expect(store.workspaces.map(\.id) == ["w1"])
+        store.selectedWorkspaceID = "w2"
+        #expect(store.workspaces.map(\.id) == ["w1", "w2"])
 
         store.selectedHostID = hostB.id
         #expect(store.selectedWorkspaceID == nil)
         #expect(store.workspaces.isEmpty)
+    }
+
+    @Test func defaultsToTheHostsFirstWorkspaceWithNothingRemembered() {
+        let host = Host.fixture()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in
+                [ConsoleWorkspace(id: "w1", label: "Proj"),
+                    ConsoleWorkspace(id: "w2", label: "Other")]
+            },
+            recorder: StartRecorder())
+
+        #expect(store.selectedWorkspaceID == "w1")
+    }
+
+    /// The snapshot often lands after the sheet opens; the default has to
+    /// follow it rather than latch on the empty list.
+    @Test func defaultFollowsAWorkspaceListThatArrivesLate() {
+        let host = Host.fixture()
+        final class Snapshot { var workspaces: [ConsoleWorkspace] = [] }
+        let snapshot = Snapshot()
+        let store = makeStore(
+            hosts: [host], workspaces: { _ in snapshot.workspaces }, recorder: StartRecorder())
+
+        #expect(store.selectedWorkspaceID == nil)
+        snapshot.workspaces = [ConsoleWorkspace(id: "w1", label: "Proj")]
+        #expect(store.selectedWorkspaceID == "w1")
+    }
+
+    @Test func defaultsToTheWorkspaceLastStartedInOnThatHost() async {
+        let host = Host.fixture()
+        let other = Host.fixture(address: "b.example")
+        let recents = makeRecents()
+        let workspaces: (Host.ID) -> [ConsoleWorkspace] = { _ in
+            [ConsoleWorkspace(id: "w1", label: "Proj"), ConsoleWorkspace(id: "w2", label: "Other")]
+        }
+
+        let first = makeStore(
+            hosts: [host], workspaces: workspaces, recents: recents, recorder: StartRecorder())
+        first.selectedWorkspaceID = "w2"
+        first.name = "reviewer"
+        first.command = "claude"
+        await first.submit()
+        #expect(first.state == .started)
+
+        let next = makeStore(
+            hosts: [host], workspaces: workspaces, recents: recents, recorder: StartRecorder())
+        #expect(next.selectedWorkspaceID == "w2")
+
+        // Remembered per Host: another Host falls back to its own first.
+        let elsewhere = makeStore(
+            hosts: [other], workspaces: workspaces, recents: recents, recorder: StartRecorder())
+        #expect(elsewhere.selectedWorkspaceID == "w1")
+    }
+
+    @Test func ignoresARememberedWorkspaceTheHostNoLongerReports() async {
+        let host = Host.fixture()
+        let recents = makeRecents()
+        let gone = makeStore(
+            hosts: [host], workspaces: { _ in [ConsoleWorkspace(id: "w9", label: "Gone")] },
+            recents: recents, recorder: StartRecorder())
+        gone.name = "reviewer"
+        gone.command = "claude"
+        await gone.submit()
+
+        let next = makeStore(
+            hosts: [host], workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recents: recents, recorder: StartRecorder())
+        #expect(next.selectedWorkspaceID == "w1")
+    }
+
+    @Test func aFailedStartIsNotRemembered() async {
+        let host = Host.fixture()
+        let recents = makeRecents()
+        let recorder = StartRecorder()
+        recorder.error = HerdrAPIError(code: "400", message: "no such workspace")
+        let workspaces: (Host.ID) -> [ConsoleWorkspace] = { _ in
+            [ConsoleWorkspace(id: "w1", label: "Proj"), ConsoleWorkspace(id: "w2", label: "Other")]
+        }
+        let store = makeStore(
+            hosts: [host], workspaces: workspaces, recents: recents, recorder: recorder)
+        store.selectedWorkspaceID = "w2"
+        store.name = "reviewer"
+        store.command = "claude"
+        await store.submit()
+
+        let next = makeStore(
+            hosts: [host], workspaces: workspaces, recents: recents, recorder: StartRecorder())
+        #expect(next.selectedWorkspaceID == "w1")
     }
 
     @Test func submitForwardsTheAssembledParamsAndSucceeds() async {
@@ -101,7 +206,7 @@ struct StartAgentStoreTests {
         #expect(recorder.params.first?.workspaceID == "w1")
     }
 
-    @Test func submitOmitsTheWorkspaceWhenTargetingTheCurrentOne() async {
+    @Test func submitOmitsTheWorkspaceWhenTheHostReportsNone() async {
         let host = Host.fixture()
         let recorder = StartRecorder()
         let store = makeStore(hosts: [host], recorder: recorder)

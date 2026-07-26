@@ -1,5 +1,5 @@
 {
-  "description": "Shared notification envelope v1 test vectors (ADR 0008). Single source of truth for the encrypted Agent Notification payload, consumed by both the Node plugin tests (encrypt direction) and the Swift app tests (decrypt direction). Envelopes were generated with raw AES-256-GCM calls, independent of both implementations. `key` is the 32-byte Notification Key and `keyId` its derived id, both unpadded base64url. `envelope` is the exact canonical envelope string; non-`decodeOnly` valid vectors must be reproduced byte-for-byte by the encrypt side. `decodeOnly: true` marks envelopes that must decrypt to `payload` but are not a canonical encoding of it. Invalid vectors must fail decryption with the given typed error.",
+  "description": "Shared notification envelope v1 test vectors (ADR 0008). Single source of truth for the encrypted Agent Notification payload, consumed by both the Node plugin tests (encrypt direction) and the Swift app tests (decrypt direction). Envelopes were generated with raw AES-256-GCM calls, independent of both implementations. `key` is the 32-byte Notification Key and `keyId` its derived id, both unpadded base64url. `envelope` is the exact canonical envelope string; non-`decodeOnly` valid vectors must be reproduced byte-for-byte by the encrypt side. `decodeOnly: true` marks envelopes that must decrypt to `payload` but are not a canonical encoding of it. `project` and `title` are the optional display fields, omitted from the plaintext when absent. Invalid vectors must fail decryption with the given typed error.",
   "valid": [
     {
       "name": "blocked claude agent",
@@ -35,6 +35,20 @@
         "agentKind": "claude",
         "status": "exited",
         "timestamp": 1753305601
+      }
+    },
+    {
+      "name": "blocked agent with a project and a task title",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "keyId": "Yw3NKWbEM2Y",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"ICEiIyQlJicoKSor\",\"ct\":\"qRjWEQL9ODQ4WXfs7TqfkL4tzqal4w-PGZIJMGWoLX0U-pB3rB8XuHiSDfk9bT3kwF6frKANGlT9UU8oeoI68fpWv2T88obiqVDLZNopXBO4tR8mw5Lycqpt-Aj8kgw6nfHK6WahOn7p79RryoLt9fwYZtA__vpEcBW8nBMZBsGrSpQ8o8x-1NZS4JFecRGPOQyPpnwNXA\"}",
+      "payload": {
+        "paneId": "%5",
+        "agentKind": "claude",
+        "status": "blocked",
+        "timestamp": 1753305600,
+        "project": "Caterm",
+        "title": "排查修复 split 按钮 UI 结构问题"
       }
     },
     {

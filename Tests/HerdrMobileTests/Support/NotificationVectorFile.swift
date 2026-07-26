@@ -27,6 +27,9 @@ struct NotificationVectorFile: Decodable, Sendable {
         let agentKind: String
         let status: String
         let timestamp: Int
+        /// The optional display fields; absent from vectors predating them.
+        let project: String?
+        let title: String?
     }
 
     struct Invalid: Decodable, Sendable, CustomStringConvertible {

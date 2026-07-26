@@ -67,6 +67,9 @@ suite("encryptNotificationEnvelope", () => {
       { ...payload, timestamp: 0 },
       { ...payload, timestamp: 17.5 },
       { ...payload, timestamp: "1753305600" },
+      { ...payload, project: 5 },
+      { ...payload, title: {} },
+      { ...payload, title: "x".repeat(257) },
     ];
     for (const bad of bads) {
       assert.throws(
@@ -74,6 +77,24 @@ suite("encryptNotificationEnvelope", () => {
         (error) => error instanceof NotificationEnvelopeError && error.code === "bad_payload",
       );
     }
+  });
+
+  /// Absent, null, and empty must all encode the same way, so a Host that
+  /// failed to resolve a display field still produces a canonical envelope.
+  test("omits display fields that are absent, null, or empty", () => {
+    const nonce = Buffer.alloc(12);
+    const baseline = encryptNotificationEnvelope(payload, key, { nonce });
+    for (const variant of [
+      { ...payload, project: null, title: null },
+      { ...payload, project: "", title: "" },
+      { ...payload, project: undefined, title: undefined },
+    ]) {
+      assert.equal(encryptNotificationEnvelope(variant, key, { nonce }), baseline);
+    }
+    assert.notEqual(
+      encryptNotificationEnvelope({ ...payload, project: "Caterm" }, key, { nonce }),
+      baseline,
+    );
   });
 
   test("rejects a key that is not 32 bytes", () => {

@@ -29,6 +29,9 @@ final class NotificationService: UNNotificationServiceExtension {
             return content
         }
         rewritten.title = alert.title
+        // Cleared, not left alone: the relay's generic wrap may have set a
+        // subtitle, and the decrypted copy has no use for one.
+        rewritten.subtitle = ""
         rewritten.body = alert.body
         return rewritten
     }

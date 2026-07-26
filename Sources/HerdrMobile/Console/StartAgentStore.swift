@@ -30,11 +30,33 @@ final class StartAgentStore {
         didSet {
             // A workspace belongs to one Host; switching Hosts drops a stale
             // pick so it can never target the wrong session.
-            if selectedHostID != oldValue { selectedWorkspaceID = nil }
+            if selectedHostID != oldValue { pickedWorkspaceID = nil }
         }
     }
-    /// nil targets the Host's current workspace (omits `workspace_id`).
-    var selectedWorkspaceID: String?
+
+    /// The workspace the agent starts in: what the user picked, else the one
+    /// they last started an agent in on this Host, else the Host's first.
+    ///
+    /// Only nil while the Host reports no workspaces at all — then the request
+    /// omits `workspace_id` and herdr uses its current one.
+    var selectedWorkspaceID: String? {
+        get {
+            if let pickedWorkspaceID { return pickedWorkspaceID }
+            let available = workspaces
+            if let selectedHostID, let remembered = recents.workspaceID(for: selectedHostID),
+                available.contains(where: { $0.id == remembered })
+            {
+                return remembered
+            }
+            return available.first?.id
+        }
+        set { pickedWorkspaceID = newValue }
+    }
+
+    /// The user's explicit pick; nil means "follow the default above". Kept
+    /// separate so a snapshot arriving after the sheet opens still gets to
+    /// supply the default.
+    private var pickedWorkspaceID: String?
     /// The unique live-agent name required by herdr protocol 17.
     var name: String = ""
     /// The command line, tokenized into argv on submit.
@@ -44,6 +66,7 @@ final class StartAgentStore {
 
     private let workspacesProvider: (Host.ID) -> [ConsoleWorkspace]
     private let start: (AgentLaunchRequest, Host.ID) async throws -> Agent
+    @ObservationIgnored private let recents: RecentWorkspaceStore
     /// In-flight guard flipped synchronously before the first await, so a
     /// double-tap cannot dispatch the same command twice through the window
     /// before `state == .starting` disables the button.
@@ -52,11 +75,13 @@ final class StartAgentStore {
     init(
         hosts: [Host],
         workspaces: @escaping (Host.ID) -> [ConsoleWorkspace],
-        start: @escaping (AgentLaunchRequest, Host.ID) async throws -> Agent
+        start: @escaping (AgentLaunchRequest, Host.ID) async throws -> Agent,
+        recents: RecentWorkspaceStore = RecentWorkspaceStore()
     ) {
         self.hosts = hosts
         self.workspacesProvider = workspaces
         self.start = start
+        self.recents = recents
         // Pre-select when there is no choice to make.
         self.selectedHostID = hosts.count == 1 ? hosts.first?.id : nil
     }
@@ -90,13 +115,15 @@ final class StartAgentStore {
         isStarting = true
         state = .starting
         defer { isStarting = false }
+        let workspaceID = selectedWorkspaceID
         let request = AgentLaunchRequest(
             kind: kind,
             name: agentName,
             arguments: Array(tokens.dropFirst()),
-            workspaceID: selectedWorkspaceID)
+            workspaceID: workspaceID)
         do {
             _ = try await start(request, hostID)
+            if let workspaceID { recents.remember(workspaceID, for: hostID) }
             state = .started
         } catch {
             state = .failed(Self.message(for: error))
