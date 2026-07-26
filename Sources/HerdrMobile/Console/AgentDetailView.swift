@@ -79,9 +79,6 @@ struct AgentDetailView: View {
                 .accessibilityLabel("Attach Image")
             }
             ToolbarItem(placement: .primaryAction) {
-                AgentStatusBadge(status: agent.agent.status)
-            }
-            ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button("Terminal Theme", systemImage: "paintpalette") {
                         isShowingSettings = true
