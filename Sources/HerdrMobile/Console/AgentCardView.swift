@@ -1,17 +1,20 @@
 import SwiftUI
 
-/// One Console card (#8): agent name and status up front, Host, pane
-/// address, and workspace as context, plus the last-output snippet.
+/// One Console card (#8): the project and status up front, Host, agent kind,
+/// and pane address as context, plus the last-output snippet. The project
+/// leads because a console full of agents is usually a console full of
+/// `claude` — the workspace is what tells the rows apart.
 struct AgentCardView: View {
     let agent: ConsoleAgent
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
-                Text(agent.agent.displayName)
+                Text(headline)
                     .font(.headline)
+                    .lineLimit(1)
                 AgentStatusBadge(status: agent.agent.status)
-                Spacer()
+                Spacer(minLength: 8)
                 Text(agent.hostName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -28,8 +31,8 @@ struct AgentCardView: View {
                     .lineLimit(2)
             }
             HStack(spacing: 6) {
-                if let context = workspaceContext {
-                    Text(context)
+                if let kind = agentKindTag {
+                    Text(kind)
                         .font(.caption2)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
@@ -43,7 +46,19 @@ struct AgentCardView: View {
         .padding(.vertical, 4)
     }
 
-    /// The workspace context tag: label, with the worktree repo when it adds
+    /// The card's lead line: the project the agent works in, falling back to
+    /// the agent's own name when the snapshot carried no workspace.
+    private var headline: String {
+        workspaceContext ?? agent.agent.displayName
+    }
+
+    /// The agent name, tagged at the foot of the card — dropped when the
+    /// headline already fell back to it.
+    private var agentKindTag: String? {
+        workspaceContext == nil ? nil : agent.agent.displayName
+    }
+
+    /// The workspace context: label, with the worktree repo when it adds
     /// information the label does not already carry.
     private var workspaceContext: String? {
         switch (agent.workspaceLabel, agent.repoName) {
@@ -96,5 +111,18 @@ struct AgentStatusBadge: View {
                 workspaceLabel: "proj",
                 repoName: "proj",
                 lastOutputSnippet: "Allow Claude to run rm -rf? 1. Yes 2. No"))
+        // No workspace in the snapshot: the agent name takes the lead line
+        // and the foot tag drops.
+        AgentCardView(
+            agent: ConsoleAgent(
+                hostID: UUID(),
+                hostName: "devbox",
+                agent: Agent(
+                    terminalID: "term_b", kind: "claude", title: "Draft the release notes",
+                    status: .working, workspaceID: "w2", tabID: "w2:t1", paneID: "w2:p1",
+                    cwd: "/tmp", revision: 1),
+                workspaceLabel: nil,
+                repoName: nil,
+                lastOutputSnippet: nil))
     }
 }
