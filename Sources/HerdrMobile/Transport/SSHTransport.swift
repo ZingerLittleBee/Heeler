@@ -46,6 +46,10 @@ struct SSHTransportSettings: Sendable {
     var socatPath: String
     /// How to locate socat when the preferred path is not executable.
     var socatDiscovery: SocatDiscovery = .automatic
+    /// Optional Jump Host. When set, the Transport authenticates against the
+    /// jump host first and opens the Host connection through it, so the Host
+    /// needs no inbound reachability of its own. nil is a direct connection.
+    var jump: SSHJumpSettings? = nil
     /// Command that wakes a stopped herdr server, run over a no-PTY exec
     /// channel when a request hits connection-refused (#6). The default is
     /// the strategy from spec #16: `herdr remote-client-bridge` ensures the
@@ -94,6 +98,28 @@ struct SSHTransportSettings: Sendable {
     var requestTimeout: Duration = .seconds(15)
 }
 
+/// The Jump Host in front of a Host: its own coordinates and credentials. Its
+/// host key is verified under the same TOFU policy as the Host's, keyed by
+/// its own endpoint, so both hops must be confirmed before either is trusted.
+///
+/// The Host's `address`/`port` are resolved from the Jump Host, which is
+/// normally a loopback port held open by a reverse tunnel. Two Hosts behind
+/// one Jump Host therefore need distinct tunnel ports: known-hosts entries are
+/// keyed by endpoint, so a shared `127.0.0.1:12222` would collide.
+struct SSHJumpSettings: Sendable {
+    var host: String
+    var port: Int
+    var username: String
+    var credentials: SSHCredentials
+
+    init(host: String, port: Int = 22, username: String, credentials: SSHCredentials) {
+        self.host = host
+        self.port = port
+        self.username = username
+        self.credentials = credentials
+    }
+}
+
 private struct HerdrSessionListResponse: Decodable {
     let sessions: [HerdrSession]
 }
@@ -118,6 +144,9 @@ actor SSHTransport: Transport {
     static let maxConcurrentExecChannels = SSHChannelBudget.defaultOrdinaryChannelCapacity
 
     private let client: SSHClient
+    /// The outer connection owns the direct-tcpip channel carrying `client`.
+    /// Citadel requires both clients to be closed explicitly.
+    private let jumpClient: SSHClient?
     private let socketLocation: HerdrSocketLocation
     private let preferredSocatPath: String
     private let socatDiscovery: SocatDiscovery
@@ -154,7 +183,7 @@ actor SSHTransport: Transport {
     private var imageStageClients: [UUID: SFTPClient] = [:]
 
     private init(
-        client: SSHClient, socketLocation: HerdrSocketLocation,
+        client: SSHClient, jumpClient: SSHClient?, socketLocation: HerdrSocketLocation,
         preferredSocatPath: String, socatDiscovery: SocatDiscovery,
         wakeCommand: String, sessionListCommand: String, attachCommand: String,
         homeCommand: String, stageDirectoryCommand: String,
@@ -162,6 +191,7 @@ actor SSHTransport: Transport {
         requestTimeout: Duration
     ) {
         self.client = client
+        self.jumpClient = jumpClient
         self.socketLocation = socketLocation
         self.preferredSocatPath = preferredSocatPath
         self.socatDiscovery = socatDiscovery
@@ -180,11 +210,28 @@ actor SSHTransport: Transport {
     /// authenticates — but sends nothing yet: callers must `ping` first to
     /// verify the protocol version.
     static func connect(settings: SSHTransportSettings) async throws -> SSHTransport {
+        let clients: (target: SSHClient, jump: SSHClient?)
+        if let jump = settings.jump {
+            clients = try await connectThroughJumpHost(jump, settings: settings)
+        } else {
+            clients = (try await connectDirectly(settings: settings), nil)
+        }
+        return SSHTransport(
+            client: clients.target, jumpClient: clients.jump, socketLocation: settings.socket,
+            preferredSocatPath: settings.socatPath, socatDiscovery: settings.socatDiscovery,
+            wakeCommand: settings.wakeCommand, sessionListCommand: settings.sessionListCommand,
+            attachCommand: settings.attachCommand, homeCommand: settings.homeCommand,
+            stageDirectoryCommand: settings.stageDirectoryCommand,
+            pluginListCommand: settings.pluginListCommand,
+            notificationConfigDirCommand: settings.notificationConfigDirCommand,
+            requestTimeout: settings.requestTimeout)
+    }
+
+    private static func connectDirectly(settings: SSHTransportSettings) async throws -> SSHClient {
         let validator = TOFUHostKeyValidator(
             host: settings.host, port: settings.port, policy: settings.hostKeyPolicy)
-        let client: SSHClient
         do {
-            client = try await SSHClient.connect(
+            return try await SSHClient.connect(
                 host: settings.host,
                 port: settings.port,
                 authenticationMethod: settings.credentials.citadelMethod(
@@ -200,15 +247,53 @@ actor SSHTransport: Transport {
             }
             throw Self.classifyConnectFailure(error)
         }
-        return SSHTransport(
-            client: client, socketLocation: settings.socket,
-            preferredSocatPath: settings.socatPath, socatDiscovery: settings.socatDiscovery,
-            wakeCommand: settings.wakeCommand, sessionListCommand: settings.sessionListCommand,
-            attachCommand: settings.attachCommand, homeCommand: settings.homeCommand,
-            stageDirectoryCommand: settings.stageDirectoryCommand,
-            pluginListCommand: settings.pluginListCommand,
-            notificationConfigDirCommand: settings.notificationConfigDirCommand,
-            requestTimeout: settings.requestTimeout)
+    }
+
+    /// Authenticates against the Jump Host, then opens the Host connection over
+    /// a direct-tcpip channel through it. Both hops run the same TOFU policy
+    /// against their own endpoints; the Host hop's session keys are negotiated
+    /// end to end, so the Jump Host forwards ciphertext it cannot read.
+    ///
+    /// First-hop failures are wrapped in `.jumpHostFailed` so the UI can name
+    /// the Jump Host rather than blaming the Host.
+    private static func connectThroughJumpHost(
+        _ jump: SSHJumpSettings, settings: SSHTransportSettings
+    ) async throws -> (target: SSHClient, jump: SSHClient) {
+        let jumpValidator = TOFUHostKeyValidator(
+            host: jump.host, port: jump.port, policy: settings.hostKeyPolicy)
+        let hop: SSHClient
+        do {
+            hop = try await SSHClient.connect(
+                host: jump.host,
+                port: jump.port,
+                authenticationMethod: jump.credentials.citadelMethod(username: jump.username),
+                hostKeyValidator: .custom(jumpValidator),
+                reconnect: .never
+            )
+        } catch {
+            throw TransportError.jumpHostFailed(
+                jumpValidator.failure ?? Self.classifyConnectFailure(error))
+        }
+
+        let validator = TOFUHostKeyValidator(
+            host: settings.host, port: settings.port, policy: settings.hostKeyPolicy)
+        do {
+            let target = try await hop.jump(
+                to: SSHClientSettings(
+                    host: settings.host,
+                    port: settings.port,
+                    authenticationMethod: {
+                        settings.credentials.citadelMethod(username: settings.username)
+                    },
+                    hostKeyValidator: .custom(validator)))
+            return (target, hop)
+        } catch {
+            try? await hop.close()
+            if let hostKeyFailure = validator.failure {
+                throw hostKeyFailure
+            }
+            throw Self.classifyConnectFailure(error)
+        }
     }
 
     /// Maps connect-time failures onto the taxonomy: credential rejection is
@@ -1170,6 +1255,13 @@ actor SSHTransport: Transport {
         client.isConnected
     }
 
+    /// The first hop's liveness when this Transport uses a Jump Host.
+    /// Internal so the real-SSH lifecycle test can verify both Citadel clients
+    /// are torn down; direct connections return nil.
+    var jumpHostIsConnected: Bool? {
+        jumpClient?.isConnected
+    }
+
     /// Closes the SSH connection. Explicit close is the only way to end
     /// Citadel channels — a live exec channel ignores task cancellation.
     func close() async throws {
@@ -1178,7 +1270,17 @@ actor SSHTransport: Transport {
         for sftp in stagingClients {
             try? await sftp.close()
         }
-        try await client.close()
+        do {
+            try await client.close()
+        } catch {
+            if let jumpClient {
+                try? await jumpClient.close()
+            }
+            throw error
+        }
+        if let jumpClient {
+            try await jumpClient.close()
+        }
     }
 
     /// Executes one parameterless request with cold-start recovery.

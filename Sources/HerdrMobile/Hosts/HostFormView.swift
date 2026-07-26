@@ -78,6 +78,29 @@ struct HostFormView: View {
                 }
 
                 Section {
+                    TextField("Jump Host address (optional)", text: $draft.jumpAddress)
+                        .textContentType(.URL)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                    if draft.usesJumpHost {
+                        TextField("Jump Host port", text: $draft.jumpPort)
+                            .keyboardType(.numberPad)
+                        TextField("Jump Host user (blank = same as Host)", text: $draft.jumpUsername)
+                            .textContentType(.username)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                    }
+                } header: {
+                    Text("Jump Host")
+                } footer: {
+                    if draft.usesJumpHost {
+                        Text(jumpHostFooter)
+                    } else {
+                        Text("Leave blank to connect to the Host directly.")
+                    }
+                }
+
+                Section {
                     TextField("socat path", text: $draft.socatPath)
                         .font(.callout.monospaced())
                         .autocorrectionDisabled()
@@ -130,6 +153,19 @@ struct HostFormView: View {
                 loadDeviceKey()
             }
         }
+    }
+
+    private var jumpHostFooter: String {
+        let credentialRequirement =
+            switch draft.authMethod {
+            case .deviceKey:
+                "Both machines must authorize the Device Key."
+            case .password:
+                "Both machines must accept the same password; separate passwords are not supported."
+            }
+        return "The Host's Address and Port are resolved from the Jump Host, usually through "
+            + "a loopback-only reverse tunnel. \(credentialRequirement) You confirm each "
+            + "machine's host key fingerprint independently on first connect."
     }
 
     @ViewBuilder

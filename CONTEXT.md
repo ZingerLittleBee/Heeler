@@ -8,6 +8,13 @@ A native iOS agent console for herdr. One context: the app. Terms owned by herdr
 A remote machine reachable over SSH that runs a herdr server. The unit a user adds, names, and authenticates against.
 _Avoid_: server, machine, connection
 
+**Jump Host**:
+An SSH endpoint that forwards a Host connection when the Host is not directly
+reachable from the device. The Host's address and port are resolved from the
+Jump Host, normally through a loopback-only reverse tunnel. The app authenticates
+and verifies host keys independently at both hops.
+_Avoid_: bastion, proxy server
+
 **Device Key**:
 The device's SSH identity: an Ed25519 keypair generated on this device. The private key never leaves the Keychain; the public half is what a Host authorizes.
 _Avoid_: app key, client key
