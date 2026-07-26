@@ -75,6 +75,7 @@ struct LocalSSHTestEnvironment: Sendable {
     func makeSettings(
         socket: HerdrSocketLocation,
         socatPath: String? = nil,
+        socatDiscovery: SocatDiscovery? = nil,
         wakeCommand: String? = nil,
         requestTimeout: Duration? = nil,
         homeCommand: String? = nil,
@@ -91,6 +92,7 @@ struct LocalSSHTestEnvironment: Sendable {
                 ?? HostKeyPolicy(knownHosts: InMemoryKnownHostsStore()) { _ in true },
             socket: socket,
             socatPath: socatPath ?? self.socatPath)
+        if let socatDiscovery { settings.socatDiscovery = socatDiscovery }
         if let wakeCommand { settings.wakeCommand = wakeCommand }
         if let requestTimeout { settings.requestTimeout = requestTimeout }
         if let homeCommand { settings.homeCommand = homeCommand }

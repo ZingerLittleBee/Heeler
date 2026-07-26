@@ -40,15 +40,33 @@ struct TransportFailureModesE2ETests {
     }
 
     @Test func absentSocatBinaryMapsToSocatMissing() async throws {
-        // The login shell cannot launch socat; its stderr names the missing
-        // path (fish: "Unknown command", bash/zsh: "No such file or
-        // directory") and the channel fails.
+        // Discovery finds nothing: the preferred path does not exist, and PATH
+        // is not searched. Restricting the policy is what makes the absence
+        // reproducible — this machine does have a socat on PATH, which
+        // automatic discovery would (correctly) find.
         let bogusSocat = "/tmp/herdr-no-socat-\(UUID().uuidString.prefix(8))"
 
         try await withFailingTransport(
-            socketPath: "/tmp/herdr-irrelevant.sock", socatPath: bogusSocat
+            socketPath: "/tmp/herdr-irrelevant.sock", socatPath: bogusSocat,
+            socatDiscovery: .configuredPathOnly
         ) { transport in
             await #expect(throws: TransportError.socatMissing(path: bogusSocat)) {
+                try await transport.ping()
+            }
+        }
+    }
+
+    @Test func unquotableSocatPathMapsToSocatMissing() async throws {
+        // A path the conservative shell-quoting subset refuses is never
+        // interpolated into the probe; it simply fails `[ -x ]` like any other
+        // dead path, so the outcome stays a classified socatMissing.
+        let hostile = "/tmp/herdr-'quote-\(UUID().uuidString.prefix(8))"
+
+        try await withFailingTransport(
+            socketPath: "/tmp/herdr-irrelevant.sock", socatPath: hostile,
+            socatDiscovery: .configuredPathOnly
+        ) { transport in
+            await #expect(throws: TransportError.socatMissing(path: hostile)) {
                 try await transport.ping()
             }
         }
@@ -59,6 +77,7 @@ struct TransportFailureModesE2ETests {
     private func withFailingTransport(
         socketPath: String,
         socatPath: String? = nil,
+        socatDiscovery: SocatDiscovery? = nil,
         wakeCommand: String? = nil,
         body: (SSHTransport) async throws -> Void
     ) async throws {
@@ -66,6 +85,7 @@ struct TransportFailureModesE2ETests {
         let transport = try await SSHTransport.connect(
             settings: environment.makeSettings(
                 socket: .absolutePath(socketPath), socatPath: socatPath,
+                socatDiscovery: socatDiscovery,
                 wakeCommand: wakeCommand))
         do {
             try await body(transport)

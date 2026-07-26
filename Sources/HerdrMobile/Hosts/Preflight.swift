@@ -9,7 +9,7 @@ enum PreflightCheck: CaseIterable, Sendable {
     case connection
     /// The login shell exposes a usable absolute home directory.
     case remoteEnvironment
-    /// socat answers at its configured absolute path.
+    /// A socat executable was found on the Host.
     case socat
     /// The herdr socket path exists on the Host.
     case herdrInstalled
@@ -92,9 +92,10 @@ struct PreflightReport: Equatable, Sendable {
         case .socatMissing(let path):
             check = .socat
             hint =
-                "socat was not found at \(path). Install it on the Host "
-                + "(apt install socat / brew install socat), or correct the path "
-                + "in this Host's settings."
+                "No socat on the Host: not at \(path), and not on the Host's PATH. "
+                + "Install it (apt install socat / brew install socat), or enter its "
+                + "absolute path in this Host's settings. Homebrew puts it at "
+                + "/opt/homebrew/bin/socat (Apple Silicon) or /usr/local/bin/socat (Intel)."
         case .socketNotFound(let path):
             check = .herdrInstalled
             hint =

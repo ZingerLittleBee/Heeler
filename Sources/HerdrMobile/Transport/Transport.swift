@@ -346,7 +346,8 @@ enum TransportError: Error, Sendable, Equatable {
     /// The socket file exists but nothing accepts connections: the herdr
     /// server is not running (cold-start wake is #6).
     case serverNotRunning(path: String)
-    /// socat is not at its configured absolute path on the Host.
+    /// No socat executable was found: not at the Host's preferred path, and
+    /// not on the Host's PATH. `path` is the preferred path that was tried.
     case socatMissing(path: String)
     /// The server speaks a herdr protocol version this build does not support.
     case protocolVersionMismatch(server: Int, supported: Int)

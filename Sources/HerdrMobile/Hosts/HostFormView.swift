@@ -85,7 +85,9 @@ struct HostFormView: View {
                 } header: {
                     Text("Advanced")
                 } footer: {
-                    Text("Absolute path of socat on the Host.")
+                    Text(
+                        "Absolute path of socat on the Host. Tried first; "
+                            + "otherwise the Host's own PATH is searched.")
                 }
             }
             .navigationTitle(editing == nil ? "Add Host" : "Edit Host")

@@ -27,6 +27,13 @@ struct PreflightReportTests {
             return
         }
         #expect(hint.contains("/usr/bin/socat"))
+        // The hint has to say PATH was tried too, or "not at /usr/bin/socat"
+        // reads as "go fix that path" when the path was never the problem.
+        #expect(hint.contains("PATH"))
+        // macOS Hosts whose PATH the probe cannot see still need the answer
+        // spelled out; both Homebrew prefixes are candidates to type in (#42).
+        #expect(hint.contains("/opt/homebrew/bin/socat"))
+        #expect(hint.contains("/usr/local/bin/socat"))
         #expect(report[.herdrInstalled] == .blocked)
         #expect(report[.serverRunning] == .blocked)
         #expect(report[.protocolCompatible] == .blocked)

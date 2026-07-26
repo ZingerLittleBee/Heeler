@@ -222,7 +222,7 @@ struct ConsoleView: View {
         case .socketNotFound:
             "The herdr socket was not found. Check the session in Hosts."
         case .socatMissing:
-            "socat was not found. Check its path in Hosts."
+            "socat was not found on the Host. Install it or set its path in Hosts."
         case .homeDirectoryUnresolvable:
             "The remote home directory could not be resolved. Check the Host login shell."
         case .malformedResponse:
