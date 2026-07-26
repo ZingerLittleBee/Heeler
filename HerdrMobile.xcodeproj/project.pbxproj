@@ -30,6 +30,7 @@
 		1F4B065DFCAF8E6656600F1E /* TOFUHostKeyValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC1CA00EE3CB38A822FEA4B2 /* TOFUHostKeyValidator.swift */; };
 		213116D3248CE7DCEAA6EBB9 /* ImageStagingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A32D737E753ABEB2809975EA /* ImageStagingTests.swift */; };
 		225ECBDC69A7785559BC4D20 /* AttachTerminalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97970F4D535CC80592333995 /* AttachTerminalStore.swift */; };
+		27B2CC6D7285CA9A4E7CF558 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 46B11849C0824D5679BD9289 /* AppIcon.icon */; };
 		27C44B69FBE155A397F54B77 /* HostStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AECAD39A269D97DAB4ED194 /* HostStore.swift */; };
 		29832666B5E02B0D33453DB1 /* EventsSessionBufferingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 641088A470B51F40C898830F /* EventsSessionBufferingTests.swift */; };
 		298FA49167E3CB1402B7B86B /* DeviceKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D04EAA030D8329A1716714A8 /* DeviceKeyStore.swift */; };
@@ -245,6 +246,7 @@
 		4476B101AA4B13190C7A7B7C /* TransportConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportConnector.swift; sourceTree = "<group>"; };
 		44F4B2F424E3FC8AB7DA69FC /* NotificationVectorFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationVectorFile.swift; sourceTree = "<group>"; };
 		45FC4FCCE9B94EC52FD930B1 /* Base64URL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Base64URL.swift; sourceTree = "<group>"; };
+		46B11849C0824D5679BD9289 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		498ECBCD631F9734C28861EA /* ConsoleAgent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleAgent.swift; sourceTree = "<group>"; };
 		4DBF37BC147BBEEB4549FD21 /* AppActivityCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppActivityCoordinator.swift; sourceTree = "<group>"; };
 		4FD32D8CF0FF5617AF7E3513 /* NotificationRegistrationCeremony.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRegistrationCeremony.swift; sourceTree = "<group>"; };
@@ -631,6 +633,7 @@
 		B5CBF3555504362CC1FFDFE5 /* HerdrMobile */ = {
 			isa = PBXGroup;
 			children = (
+				46B11849C0824D5679BD9289 /* AppIcon.icon */,
 				7D95D580BCF4FE792AEFE974 /* ContentView.swift */,
 				C87759E4BF8637BE43E7648B /* HerdrMobile.entitlements */,
 				78545B74736FD98DCA33B3C4 /* HerdrMobileApp.swift */,
@@ -719,6 +722,7 @@
 			buildConfigurationList = CEBFA8DB94A8EBC2E21D50C2 /* Build configuration list for PBXNativeTarget "HerdrMobile" */;
 			buildPhases = (
 				8A7F6144162C733E402E680E /* Sources */,
+				9640ED2E81DCC8FF77350051 /* Resources */,
 				0E81AC9535C8CAB6E6C756D9 /* Frameworks */,
 				F2840EDFAE6B942FE17EC123 /* Embed Foundation Extensions */,
 			);
@@ -824,6 +828,14 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		9640ED2E81DCC8FF77350051 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				27B2CC6D7285CA9A4E7CF558 /* AppIcon.icon in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		ADD4254368B6DA14497BD8B7 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
