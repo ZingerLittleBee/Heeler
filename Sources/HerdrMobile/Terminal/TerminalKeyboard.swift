@@ -254,7 +254,16 @@ final class TerminalKeyboardAccessory: UIInputView {
     }
 
     @objc private func dismissKeyboard() {
-        _ = terminalView?.resignFirstResponder()
+        if let terminalView, terminalView.isFirstResponder {
+            terminalView.dismissKeyboard()
+            return
+        }
+        // The accessory can outlive its terminal view's first-responder
+        // status (a rebuilt terminal after a reconnect). Resigning through the
+        // responder chain still takes the keyboard down, so the button is
+        // never a dead control.
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }
 

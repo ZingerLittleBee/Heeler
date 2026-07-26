@@ -190,6 +190,13 @@ final class HerdrTerminalView: UITerminalView {
         terminalKeyboardAccessory
     }
 
+    /// Only a tap on the input row raises the keyboard, so the surface refuses
+    /// first responder until asked. The flag tracks the *user's* intent and
+    /// survives a UIKit-initiated resign on purpose: backgrounding the app or
+    /// presenting a sheet resigns the first responder, and UIKit restores it
+    /// afterwards by asking again. Clearing the flag there would have UIKit
+    /// refused — leaving the accessory bar on screen with no keyboard behind
+    /// it and no way to type. `dismissKeyboard()` is what clears it.
     override var canBecomeFirstResponder: Bool {
         allowsKeyboardActivation
     }
@@ -284,9 +291,20 @@ final class HerdrTerminalView: UITerminalView {
         terminalSession.receive(data)
     }
 
+    /// Raises the keyboard, and records that the user wants it up.
     func requestKeyboard() {
         allowsKeyboardActivation = true
         _ = becomeFirstResponder()
+    }
+
+    /// Takes the keyboard down on the user's behalf. This is the *only* way
+    /// the keyboard goes away for good: a plain `resignFirstResponder()` is
+    /// something UIKit does on its own (backgrounding, a sheet taking focus)
+    /// and must stay recoverable.
+    @discardableResult
+    func dismissKeyboard() -> Bool {
+        allowsKeyboardActivation = false
+        return resignFirstResponder()
     }
 
     func setLocalInputEnabled(_ isEnabled: Bool) {
@@ -331,13 +349,6 @@ final class HerdrTerminalView: UITerminalView {
             return isLocalInputEnabled && UIPasteboard.general.hasStrings
         }
         return super.canPerformAction(action, withSender: sender)
-    }
-
-    @discardableResult
-    override func resignFirstResponder() -> Bool {
-        let resigned = super.resignFirstResponder()
-        allowsKeyboardActivation = false
-        return resigned
     }
 
     override func layoutSubviews() {
