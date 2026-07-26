@@ -44,6 +44,24 @@ const SEND_ATTEMPTS = 3;
 const REQUEST_TIMEOUT_MS = 10_000;
 const KEY_BYTES = 32;
 const APNS_ENVIRONMENTS = new Set(["production", "sandbox"]);
+// Agent terminal titles are whole task descriptions and run long. The app
+// trims to the same length for display; trimming here keeps the encrypted
+// payload small on the wire too.
+const DISPLAY_LIMIT = 80;
+
+/** A non-empty string or null; the display fields are all best-effort. */
+function optionalText(value) {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+/** Trim a display string to DISPLAY_LIMIT graphemes, ellipsis included. */
+function forDisplay(value) {
+  const text = optionalText(value);
+  if (text === null) return null;
+  const graphemes = [...text];
+  if (graphemes.length <= DISPLAY_LIMIT) return text;
+  return `${graphemes.slice(0, DISPLAY_LIMIT - 1).join("").trimEnd()}…`;
+}
 
 /** Parse HERDR_PLUGIN_EVENT_JSON leniently: require pane id and status only. */
 function parseStatusEvent(raw) {
@@ -62,8 +80,13 @@ function parseStatusEvent(raw) {
   if (typeof status !== "string" || status.length === 0) {
     throw new Error("event data.agent_status missing");
   }
-  const agentKind = typeof data.agent === "string" && data.agent.length > 0 ? data.agent : null;
-  return { paneId, status: status.toLowerCase(), agentKind };
+  return {
+    paneId,
+    status: status.toLowerCase(),
+    agentKind: optionalText(data.agent),
+    workspaceId: optionalText(data.workspace_id),
+    title: optionalText(data.title),
+  };
 }
 
 /**
@@ -165,6 +188,19 @@ function clearLastNotified(stateDir, paneId) {
   rmSync(statePath(stateDir, paneId), { force: true });
 }
 
+/** Run a herdr CLI subcommand and collect its exit code and streams. */
+function runHerdr(binPath, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(binPath, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+    child.on("error", reject);
+    child.on("close", (code) => resolve({ code, stdout, stderr }));
+  });
+}
+
 /**
  * Re-check the pane's current Agent Status through the herdr CLI
  * (`herdr agent get <pane>` answers `{"result":{"agent":{"agent_status":...}}}`
@@ -173,17 +209,7 @@ function clearLastNotified(stateDir, paneId) {
  * throws, so an un-runnable re-check fails closed instead of notifying blind.
  */
 async function currentAgentStatus(binPath, paneId) {
-  const result = await new Promise((resolve, reject) => {
-    const child = spawn(binPath, ["agent", "get", paneId], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => (stdout += chunk));
-    child.stderr.on("data", (chunk) => (stderr += chunk));
-    child.on("error", reject);
-    child.on("close", (code) => resolve({ code, stdout, stderr }));
-  });
+  const result = await runHerdr(binPath, ["agent", "get", paneId]);
   let parsed;
   try {
     parsed = JSON.parse(result.stdout);
@@ -202,8 +228,30 @@ async function currentAgentStatus(binPath, paneId) {
   }
   return {
     status: agent.agent_status.toLowerCase(),
-    agentKind: typeof agent.agent === "string" && agent.agent.length > 0 ? agent.agent : null,
+    agentKind: optionalText(agent.agent),
+    workspaceId: optionalText(agent.workspace_id),
+    // Prefer the stripped title: the raw one carries herdr's spinner glyphs.
+    title: optionalText(agent.terminal_title_stripped) ?? optionalText(agent.terminal_title),
   };
+}
+
+/**
+ * Resolve a workspace's display label — the project name the app's alert
+ * leads with (`herdr workspace get <id>` answers
+ * `{"result":{"workspace":{"label":...}}}`; verified against herdr 0.7.5).
+ *
+ * Purely decorative, so every failure yields null: a Host that cannot answer
+ * still notifies, one step less specific.
+ */
+async function workspaceLabel(binPath, workspaceId) {
+  if (workspaceId === null) return null;
+  try {
+    const result = await runHerdr(binPath, ["workspace", "get", workspaceId]);
+    if (result.code !== 0) return null;
+    return optionalText(JSON.parse(result.stdout)?.result?.workspace?.label);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -302,11 +350,17 @@ async function main() {
   const devices = readEligibleDevices(configDir, event.status);
   if (devices.length === 0) return;
 
+  // The re-check is the fresher read for anything that can change while the
+  // debounce sleeps (the title moves with the agent's task); the event is the
+  // fallback for whatever it did not carry.
+  const workspaceId = current.workspaceId ?? event.workspaceId;
   const payload = {
     paneId: event.paneId,
     agentKind: event.agentKind ?? current.agentKind ?? "unknown",
     status: event.status,
     timestamp,
+    project: forDisplay(await workspaceLabel(binPath, workspaceId)),
+    title: forDisplay(current.title ?? event.title),
   };
   const pruned = new Set();
   const failures = [];

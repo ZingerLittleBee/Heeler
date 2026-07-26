@@ -185,6 +185,8 @@ plaintext is compact JSON:
 | `kind`   | string  | Agent kind as herdr reports it (`claude`, `codex`, ...). Non-empty. |
 | `status` | string  | The new Agent Status. An open set: decoders pass unrecognized values through. Non-empty. |
 | `ts`     | integer | Unix-seconds of the status transition. Positive. |
+| `project`| string  | Optional, display only: the workspace label the Agent runs in — the project name the app's alert leads with. Omitted when the Host cannot resolve it. At most 256 characters (the hook trims to 80 before encrypting). |
+| `title`  | string  | Optional, display only: the Agent's terminal title with status glyphs stripped — what it is working on. Same absence and length rules as `project`. |
 
 A plaintext that is not JSON or violates these rules is rejected
 (`bad_payload`). Every rejection is a typed error on the app side; the
@@ -195,9 +197,11 @@ a crash.
 
 Encoders emit both JSON objects with the keys in table order and no
 whitespace, so given inputs yield exactly one envelope; the shared vectors
-assert on the exact string. Decoders do not depend on key order and ignore
-unknown fields at either layer (additive v1 metadata). Any breaking change
-bumps `v`, and both implementations must be updated together.
+assert on the exact string. An optional field with no value is omitted
+entirely rather than sent empty, so absent, null, and `""` all encode
+identically. Decoders do not depend on key order and ignore unknown fields at
+either layer (additive v1 metadata). Any breaking change bumps `v`, and both
+implementations must be updated together.
 
 ### Shared test vectors
 

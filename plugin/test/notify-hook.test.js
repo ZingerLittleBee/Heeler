@@ -88,31 +88,54 @@ async function startFakeRelay(respond = () => ({ status: 200, body: { apnsId: "x
 }
 
 /**
- * Write the HERDR_BIN_PATH stub: logs every invocation, answers `agent get`
- * with a canned agent status (or an agent_not_found error when status is
- * null), like the real herdr CLI does.
+ * Write the HERDR_BIN_PATH stub: logs every invocation and answers the two
+ * subcommands the hook runs, like the real herdr CLI does — `agent get` with
+ * a canned status (or an agent_not_found error when status is null) and
+ * `workspace get` with a canned label (or a failure when it is null).
  */
-function writeHerdrStub({ status, agent = "claude" }) {
+function writeHerdrStub({
+  status,
+  agent = "claude",
+  title = undefined,
+  workspaceLabel = "Proj",
+}) {
   const binPath = join(stubDir, "herdr");
-  const response =
-    status === null
-      ? {
-          out: {
-            error: { code: "agent_not_found", message: "agent target not found" },
-            id: "cli:agent:get",
-          },
-          code: 1,
-        }
-      : {
-          out: {
-            id: "cli:agent:get",
-            result: {
-              agent: { agent, agent_status: status, pane_id: PANE_ID, workspace_id: "w1" },
-              type: "agent_info",
+  const agentInfo = { agent, agent_status: status, pane_id: PANE_ID, workspace_id: "w1" };
+  if (title !== undefined) {
+    agentInfo.terminal_title = `⠂ ${title}`;
+    agentInfo.terminal_title_stripped = title;
+  }
+  const response = {
+    agent:
+      status === null
+        ? {
+            out: {
+              error: { code: "agent_not_found", message: "agent target not found" },
+              id: "cli:agent:get",
             },
+            code: 1,
+          }
+        : {
+            out: { id: "cli:agent:get", result: { agent: agentInfo, type: "agent_info" } },
+            code: 0,
           },
-          code: 0,
-        };
+    workspace:
+      workspaceLabel === null
+        ? {
+            out: { error: { code: "workspace_not_found", message: "no such workspace" }, id: "x" },
+            code: 1,
+          }
+        : {
+            out: {
+              id: "cli:workspace:get",
+              result: {
+                workspace: { workspace_id: "w1", label: workspaceLabel },
+                type: "workspace_info",
+              },
+            },
+            code: 0,
+          },
+  };
   writeFileSync(join(stubDir, "response.json"), JSON.stringify(response));
   // The stub is CommonJS on purpose: it lives outside the plugin package, so
   // no "type": "module" applies to it.
@@ -123,17 +146,28 @@ function writeHerdrStub({ status, agent = "claude" }) {
       'const fs = require("node:fs");',
       'const path = require("node:path");',
       "const dir = __dirname;",
+      "const args = process.argv.slice(2);",
       "fs.appendFileSync(",
       '  path.join(dir, "invocations.log"),',
-      '  JSON.stringify({ args: process.argv.slice(2), at: Date.now() }) + "\\n",',
+      '  JSON.stringify({ args, at: Date.now() }) + "\\n",',
       ");",
       'const response = JSON.parse(fs.readFileSync(path.join(dir, "response.json"), "utf8"));',
-      "process.stdout.write(JSON.stringify(response.out));",
-      "process.exit(response.code);",
+      "const answer = response[args[0]];",
+      "if (answer === undefined) {",
+      '  process.stderr.write(`stub: unexpected subcommand ${args.join(" ")}`);',
+      "  process.exit(64);",
+      "}",
+      "process.stdout.write(JSON.stringify(answer.out));",
+      "process.exit(answer.code);",
     ].join("\n"),
     { mode: 0o755 },
   );
   return binPath;
+}
+
+/** The invocations of one herdr subcommand, in order. */
+function stubInvocationsOf(subcommand) {
+  return stubInvocations().filter((entry) => entry.args[0] === subcommand);
 }
 
 function stubInvocations() {
@@ -298,6 +332,69 @@ suite("notify-hook: sending", () => {
     assert.equal(payload.status, "done");
   });
 
+  test("the payload carries the project name and the agent's task title", async () => {
+    await startFakeRelay();
+    writeConfig();
+    writeRegistration([device()]);
+    writeHerdrStub({
+      status: "blocked",
+      title: "排查修复 split 按钮 UI 结构问题",
+      workspaceLabel: "Caterm",
+    });
+
+    const result = await runHook(statusEvent("blocked"));
+
+    assert.equal(result.status, 0, result.stderr);
+    const { payload } = decryptEnvelope(relay.requests[0].body.envelope, KEY_A);
+    assert.equal(payload.project, "Caterm");
+    assert.equal(payload.title, "排查修复 split 按钮 UI 结构问题");
+    // The label is resolved for the workspace the re-check reports.
+    assert.deepEqual(stubInvocationsOf("workspace")[0].args, ["workspace", "get", "w1"]);
+  });
+
+  test("a title longer than the display limit is trimmed with an ellipsis", async () => {
+    await startFakeRelay();
+    writeConfig();
+    writeRegistration([device()]);
+    const long = "重构传输层".repeat(40);
+    writeHerdrStub({ status: "blocked", title: long });
+
+    await runHook(statusEvent("blocked"));
+
+    const { payload } = decryptEnvelope(relay.requests[0].body.envelope, KEY_A);
+    assert.equal([...payload.title].length, 80);
+    assert.ok(payload.title.endsWith("…"));
+    assert.ok(long.startsWith([...payload.title].slice(0, 79).join("")));
+  });
+
+  test("an unresolvable workspace label just omits the project", async () => {
+    await startFakeRelay();
+    writeConfig();
+    writeRegistration([device()]);
+    writeHerdrStub({ status: "blocked", title: "Fix the flaky test", workspaceLabel: null });
+
+    const result = await runHook(statusEvent("blocked"));
+
+    assert.equal(result.status, 0, result.stderr);
+    const { payload } = decryptEnvelope(relay.requests[0].body.envelope, KEY_A);
+    assert.equal("project" in payload, false);
+    assert.equal(payload.title, "Fix the flaky test");
+  });
+
+  test("an agent with no title at all still notifies", async () => {
+    await startFakeRelay();
+    writeConfig();
+    writeRegistration([device()]);
+    writeHerdrStub({ status: "done" });
+
+    const result = await runHook(statusEvent("done"));
+
+    assert.equal(result.status, 0, result.stderr);
+    const { payload } = decryptEnvelope(relay.requests[0].body.envelope, KEY_A);
+    assert.equal("title" in payload, false);
+    assert.equal(payload.status, "done");
+  });
+
   test("unknown event fields are ignored (lenient parse)", async () => {
     await startFakeRelay();
     writeConfig();
@@ -323,7 +420,7 @@ suite("notify-hook: debounce", () => {
 
     await runHook(statusEvent("blocked"));
 
-    const invocations = stubInvocations();
+    const invocations = stubInvocationsOf("agent");
     assert.equal(invocations.length, 1);
     assert.deepEqual(invocations[0].args, ["agent", "get", PANE_ID]);
     assert.ok(

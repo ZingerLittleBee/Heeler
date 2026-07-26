@@ -38,12 +38,12 @@ struct AgentNotificationBannerStoreTests {
 
     private func agent(
         _ paneID: String, _ status: AgentStatus,
-        hostID: UUID? = nil, kind: String = "claude"
+        hostID: UUID? = nil, kind: String = "claude", workspaceLabel: String? = nil
     ) -> ConsoleAgent {
         ConsoleAgent(
             hostID: hostID ?? self.hostID, hostName: "mac-studio",
             agent: Agent(.fixture(paneID: paneID, status: status, kind: kind)),
-            workspaceLabel: nil, repoName: nil, lastOutputSnippet: nil)
+            workspaceLabel: workspaceLabel, repoName: nil, lastOutputSnippet: nil)
     }
 
     /// Polls until `condition` holds, yielding so the store's tasks progress.
@@ -83,8 +83,24 @@ struct AgentNotificationBannerStoreTests {
                     target: AgentNotificationTarget(hostID: hostID, paneID: "%5"),
                     alert: AgentNotificationAlert(
                         title: "claude on mac-studio",
-                        body: "Blocked: waiting for your input")))
+                        body: "Blocked · Task")))
         #expect(world.soundCount == 1)
+    }
+
+    /// The banner shares the push renderer, so a known workspace leads the
+    /// same way it does on a push.
+    @Test func aKnownWorkspaceLeadsTheBanner() async throws {
+        world.triggers[hostID] = NotificationTriggerPreferences()
+        let store = makeStore()
+        store.agentsDidChange([agent("%5", .working, workspaceLabel: "Caterm")])
+
+        store.agentsDidChange([agent("%5", .blocked, workspaceLabel: "Caterm")])
+
+        try await waitUntil("the banner should show") { store.banner != nil }
+        #expect(
+            store.banner?.alert
+                == AgentNotificationAlert(
+                    title: "Caterm", subtitle: "claude on mac-studio", body: "Blocked · Task"))
     }
 
     @Test func doneTransitionBannersWithTheDoneCopy() async throws {
@@ -97,8 +113,7 @@ struct AgentNotificationBannerStoreTests {
         try await waitUntil("the Done banner should show") { store.banner != nil }
         #expect(
             store.banner?.alert
-                == AgentNotificationAlert(
-                    title: "codex on mac-studio", body: "Done: the agent finished"))
+                == AgentNotificationAlert(title: "codex on mac-studio", body: "Done · Task"))
     }
 
     /// The first sight of a pane is baseline, not a transition: a killed-state

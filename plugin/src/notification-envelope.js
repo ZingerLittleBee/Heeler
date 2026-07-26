@@ -4,7 +4,8 @@
 // through the Push Relay and APNs to the app's service extension. Wire
 // format: a compact JSON object `{"v":1,"kid":...,"n":...,"ct":...}` whose
 // `ct` is the AES-256-GCM ciphertext (plus tag) of a compact JSON plaintext
-// `{"pane":...,"kind":...,"status":...,"ts":...}`. See README.md for the
+// `{"pane":...,"kind":...,"status":...,"ts":...}` plus the optional display
+// fields `project` and `title`. See README.md for the
 // schema and test-vectors/notification-payload-v1.json for the
 // cross-implementation vectors: this side proves the encrypt direction, the
 // Swift side proves the decrypt direction. Breaking changes bump the
@@ -53,14 +54,24 @@ export function notificationKeyId(key) {
   return createHash("sha256").update(key).digest().subarray(0, KEY_ID_BYTES).toString("base64url");
 }
 
+// Hard ceiling for the display-only strings. The notify hook trims to
+// something shorter still (see DISPLAY_LIMIT there); this is the contract's
+// backstop keeping an APNs payload well inside its 4 KB budget once the
+// ciphertext is base64url'd.
+const DISPLAY_FIELD_MAX = 256;
+
 /**
- * Validate the notification payload shape.
+ * Validate the notification payload shape. `project` and `title` are the
+ * optional display fields: omit them (or pass null) and the app renders one
+ * step less specific.
  *
  * @param {object} payload
  * @param {string} payload.paneId herdr pane id the Agent lives in
  * @param {string} payload.agentKind agent kind as herdr reports it
  * @param {string} payload.status the new Agent Status (lenient open set)
  * @param {number} payload.timestamp unix-seconds of the status transition
+ * @param {string|null} [payload.project] workspace label the Agent runs in
+ * @param {string|null} [payload.title] Agent terminal title, glyphs stripped
  */
 function validatePayload(payload) {
   const { paneId, agentKind, status, timestamp } = payload;
@@ -75,6 +86,14 @@ function validatePayload(payload) {
   }
   if (!Number.isInteger(timestamp) || timestamp <= 0) {
     fail("bad_payload", `timestamp must be a positive unix-seconds integer, got ${timestamp}`);
+  }
+  for (const field of ["project", "title"]) {
+    const value = payload[field];
+    if (value === undefined || value === null) continue;
+    if (typeof value !== "string") fail("bad_payload", `${field} must be a string when present`);
+    if (value.length > DISPLAY_FIELD_MAX) {
+      fail("bad_payload", `${field} must be at most ${DISPLAY_FIELD_MAX} characters`);
+    }
   }
 }
 
@@ -100,11 +119,15 @@ export function encryptNotificationEnvelope(payload, key, { nonce } = {}) {
   }
   validatePayload(payload);
 
+  // Empty display fields are omitted rather than sent blank, so the encoding
+  // stays canonical whichever way the Host failed to resolve them.
   const plaintext = JSON.stringify({
     pane: payload.paneId,
     kind: payload.agentKind,
     status: payload.status,
     ts: payload.timestamp,
+    ...(payload.project ? { project: payload.project } : {}),
+    ...(payload.title ? { title: payload.title } : {}),
   });
   const cipher = createCipheriv("aes-256-gcm", key, nonce);
   cipher.setAAD(AAD);

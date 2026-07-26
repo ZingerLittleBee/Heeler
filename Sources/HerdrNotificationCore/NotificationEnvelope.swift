@@ -13,6 +13,25 @@ struct NotificationPayload: Sendable, Equatable {
     let status: AgentStatus
     /// When the transition happened.
     let timestamp: Date
+    /// The workspace label the Agent runs in — the project name the alert
+    /// leads with. Nil when the Host could not resolve it, or when the plugin
+    /// predates the field.
+    let project: String?
+    /// The Agent's terminal title, stripped of status glyphs: what the agent
+    /// is working on. Nil under the same conditions as `project`.
+    let title: String?
+
+    init(
+        paneID: String, agentKind: String, status: AgentStatus, timestamp: Date,
+        project: String? = nil, title: String? = nil
+    ) {
+        self.paneID = paneID
+        self.agentKind = agentKind
+        self.status = status
+        self.timestamp = timestamp
+        self.project = project
+        self.title = title
+    }
 }
 
 /// The notification envelope v1: the encrypted payload carried from the
@@ -163,9 +182,18 @@ enum NotificationEnvelope {
         else {
             throw .badPayload(reason: "ts must be a positive unix-seconds integer")
         }
+        // Display-only and additive: a payload without them still renders,
+        // one step less specific. Empty strings mean "the Host had nothing",
+        // which is the same thing as absent.
         return NotificationPayload(
             paneID: pane, agentKind: kind, status: AgentStatus(rawValue: status),
-            timestamp: Date(timeIntervalSince1970: TimeInterval(timestamp)))
+            timestamp: Date(timeIntervalSince1970: TimeInterval(timestamp)),
+            project: nonEmpty(wire.project), title: nonEmpty(wire.title))
+    }
+
+    private static func nonEmpty(_ text: String?) -> String? {
+        guard let text, !text.isEmpty else { return nil }
+        return text
     }
 
     /// Cleartext JSON wire shape. Every field is optional and numbers are
@@ -178,12 +206,16 @@ enum NotificationEnvelope {
         var ct: String?
     }
 
-    /// Decrypted JSON wire shape, lenient for the same reason.
+    /// Decrypted JSON wire shape, lenient for the same reason. `project` and
+    /// `title` are the additive v1 display fields: absent from older plugins,
+    /// and never load-bearing for anything but copy.
     private struct WirePlaintext: Decodable {
         var pane: String?
         var kind: String?
         var status: String?
         var ts: Double?
+        var project: String?
+        var title: String?
     }
 }
 
