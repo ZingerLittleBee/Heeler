@@ -95,6 +95,12 @@ targets:
     info:
       path: Sources/HerdrNotificationService/Info.plist
       properties:
+        # An app extension's versions must match its containing app's, or
+        # App Store validation rejects the bundle. XcodeGen would otherwise
+        # hardcode its own 1.0/1 defaults here; point at the build settings
+        # so both bundles stay in lockstep.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.usernotifications.service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
