@@ -154,6 +154,41 @@ struct TerminalAttachTests {
         #expect(terminal.bounds.contains(terminal.keyboardActivationRegion))
     }
 
+    /// The shell above is not what Attach actually shows: every agent is a
+    /// full-screen TUI that takes the alternate screen and grabs the mouse, and
+    /// the keyboard has exactly one entry point. If the cursor stopped yielding
+    /// a caret under those modes the target would silently vanish, and the only
+    /// symptom would be a user tapping a terminal that never answers.
+    @MainActor
+    @Test func aMouseGrabbingTUIStillOffersTheKeyboardTapTarget() async throws {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
+        let controller = UIViewController()
+        controller.view = terminal
+        let windowScene = try #require(
+            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: windowScene)
+        window.frame = terminal.bounds
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+
+        // Alternate screen + SGR mouse tracking, then a prompt parked on a low
+        // row: an agent's input box, in as few bytes as it takes.
+        terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))
+        terminal.receive(Data("\u{1B}[20;3H> ".utf8))
+        terminal.layoutIfNeeded()
+        await Task.yield()
+
+        let region = terminal.keyboardActivationRegion
+        #expect(!region.isNull)
+        #expect(terminal.bounds.contains(region))
+        // Thumb-sized, or the single entry point is unhittable in practice.
+        #expect(region.height >= TerminalKeyboardTapTarget.minimumHeight)
+        // Full width: the row is the target, not the glyph the cursor sits on.
+        #expect(region.width == terminal.bounds.width)
+    }
+
     @MainActor
     @Test func terminalTouchPanEmitsRemoteTUIMouseWheelInput() async {
         var sent = Data()
