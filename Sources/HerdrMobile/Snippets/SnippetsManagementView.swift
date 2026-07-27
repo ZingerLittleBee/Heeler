@@ -8,7 +8,6 @@ struct SnippetsManagementView: View {
     let store: SnippetStore
     @State private var query = ""
     @State private var editing: SnippetEditorTarget?
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
@@ -17,9 +16,6 @@ struct SnippetsManagementView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .searchable(text: $query, prompt: "Search Snippets")
                 .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Done") { dismiss() }
-                    }
                     ToolbarItem(placement: .primaryAction) {
                         Button("New Snippet", systemImage: "plus") {
                             editing = .new

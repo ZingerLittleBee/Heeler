@@ -14,25 +14,31 @@ struct SnippetsKeyboardPane: View {
     let onManage: () -> Void
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                if store.snippets.isEmpty {
-                    emptyState
-                } else {
-                    ForEach(store.snippets) { snippet in
-                        SnippetRowButton(snippet: snippet) { onSend(snippet) }
-                            .contextMenu {
-                                Button("Manage Snippets", systemImage: "slider.horizontal.3") {
-                                    onManage()
+        VStack(spacing: 0) {
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    if store.snippets.isEmpty {
+                        emptyState
+                    } else {
+                        ForEach(store.snippets) { snippet in
+                            SnippetRowButton(snippet: snippet) { onSend(snippet) }
+                                .contextMenu {
+                                    Button("Manage Snippets", systemImage: "slider.horizontal.3") {
+                                        onManage()
+                                    }
                                 }
-                            }
-                        Divider().padding(.leading, 16)
+                            Divider().padding(.leading, 16)
+                        }
                     }
-                    manageRow
                 }
             }
+            .scrollBounceBehavior(.basedOnSize)
+
+            if !store.snippets.isEmpty {
+                Divider()
+                manageRow
+            }
         }
-        .scrollBounceBehavior(.basedOnSize)
     }
 
     private var emptyState: some View {
@@ -52,9 +58,10 @@ struct SnippetsKeyboardPane: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// The end-of-list entry to the full surface. It sits where scrolling
-    /// naturally ends rather than behind an over-scroll gesture, which would
-    /// fire every time a fast flick overshoots the last Snippet.
+    /// Pinned below the list rather than scrolling with it: with two Snippets
+    /// it would otherwise sit halfway up an empty pane, and it would move every
+    /// time the list grew. Not reachable behind an over-scroll gesture either,
+    /// which would fire every time a fast flick overshoots the last Snippet.
     private var manageRow: some View {
         Button(action: onManage) {
             Label("Manage Snippets", systemImage: "slider.horizontal.3")
