@@ -42,6 +42,126 @@ containing unresolved placeholders.
 
 If several Macs share one VPS, give each Mac a different `TUNNEL_PORT`.
 
+## Automate Additional Desktop Clients
+
+After the VPS and reverse tunnel are working, do not repeat the complete
+15-step deployment for every additional Mac. Two repository scripts automate
+the client-specific work while preserving a separate, independently revocable
+key for every computer.
+
+The automation deliberately remains a two-party approval flow:
+
+1. the new client creates its private key locally;
+2. an administrator enrolls only its public key from the Mac being exposed.
+
+This avoids copying a VPS administrator private key or a shared client private
+key onto every computer.
+
+### One-time administrator prerequisite
+
+**Run on: the Mac being exposed**
+
+Make sure this Mac can reach a VPS administrator SSH destination whose host key
+has already been verified. It may be a configured alias such as `vps-admin` or
+an explicit destination such as `admin@VPS_PUBLIC_IP`.
+
+The remote administrator must be root or have non-interactive `sudo` access.
+The enrollment script refuses an unknown or changed VPS host key.
+
+### Configure a new Mac client
+
+**Run on: the new client Mac, from a checkout of this repository**
+
+```bash
+scripts/configure-vps-ssh-client.sh \
+  --profile VPS_NAME \
+  --vps-host VPS_PUBLIC_IP \
+  --vps-port VPS_SSH_PORT \
+  --target-user MAC_USER \
+  --jump-user herdr-jump \
+  --tunnel-port TUNNEL_PORT
+```
+
+The script:
+
+- creates `~/.ssh/VPS_NAME-client` if it does not exist;
+- prompts for a key passphrase;
+- installs managed `VPS_NAME-jump` and `VPS_NAME-mac` SSH aliases;
+- validates the generated OpenSSH configuration;
+- prints the public-key fingerprint;
+- copies only the public key to the macOS clipboard.
+
+Use `--no-passphrase` only when the client cannot use an interactive
+passphrase. The private key never needs to leave the new client.
+
+Transfer the printed public key to the administrator through a trusted channel.
+The public key is not a secret, but its fingerprint should still be compared
+before approval.
+
+### Approve the client once
+
+**Run on: the Mac being exposed, from a checkout of this repository**
+
+If Universal Clipboard transferred the public key:
+
+```bash
+pbpaste | scripts/manage-vps-ssh-client.sh add \
+  --vps-admin VPS_ADMIN_SSH_DESTINATION \
+  --jump-user herdr-jump \
+  --tunnel-port TUNNEL_PORT
+```
+
+Otherwise save the public key as a `.pub` file and run:
+
+```bash
+scripts/manage-vps-ssh-client.sh add \
+  --vps-admin VPS_ADMIN_SSH_DESTINATION \
+  --jump-user herdr-jump \
+  --tunnel-port TUNNEL_PORT \
+  --public-key-file NEW_CLIENT_PUBLIC_KEY_FILE
+```
+
+This one command:
+
+1. replaces any duplicate or unrestricted occurrence of the key on the VPS
+   Jump account with a forwarding-only entry;
+2. replaces any duplicate or unrestricted occurrence on the target Mac with
+   an exec-capable but non-forwarding entry;
+3. preserves unrelated authorized keys on both systems;
+4. enforces the expected file ownership and permissions.
+
+The VPS update completes before the target Mac file is replaced. If the VPS
+step fails, the target Mac authorization remains unchanged.
+
+### Connect and verify
+
+**Run on: the new client Mac**
+
+```bash
+ssh VPS_NAME-mac
+```
+
+OpenSSH asks about two host keys on the first connection. Compare the VPS
+fingerprint through its provider console and the target Mac fingerprint
+through System Settings or a local command before accepting either one.
+
+### Revoke one client
+
+**Run on: the Mac being exposed**
+
+Keep the old public key or export it before deleting the client private key:
+
+```bash
+scripts/manage-vps-ssh-client.sh revoke \
+  --vps-admin VPS_ADMIN_SSH_DESTINATION \
+  --jump-user herdr-jump \
+  --tunnel-port TUNNEL_PORT \
+  --public-key-file OLD_CLIENT_PUBLIC_KEY_FILE
+```
+
+Revocation removes the matching key from both authorization points. Other
+clients continue to work.
+
 ## Step 1: Enable Remote Login on the Mac
 
 **Run on: macOS**

@@ -18,6 +18,7 @@ The recommended deployment keeps the reverse-forwarded port on the VPS
 loopback interface instead of publishing the Mac's SSH port.
 
 - [Set up remote access step by step](docs/guides/vps-jump-host-setup.md)
+- [Automate additional desktop-client enrollment](docs/guides/vps-jump-host-setup.md#automate-additional-desktop-clients)
 - [Understand the architecture, security boundaries, and VPS migration runbook](docs/guides/vps-jump-host.md)
 
 ## Stack

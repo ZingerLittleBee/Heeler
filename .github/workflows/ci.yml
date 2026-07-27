@@ -83,6 +83,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Test VPS SSH access scripts
+        run: scripts/test-vps-ssh-access-scripts.sh
+
       - name: Show Xcode and simulator versions
         run: |
           xcodebuild -version
