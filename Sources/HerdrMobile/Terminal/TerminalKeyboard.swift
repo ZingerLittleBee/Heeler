@@ -43,13 +43,13 @@ enum TerminalControlKey: Equatable, CaseIterable {
     case right
     case enter
 
-    /// Backspace rides the top row's right edge, where the iOS keyboard puts it
-    /// and where a thumb finds it without looking. That leaves the bottom row
-    /// to the arrows and Enter alone, which get wider keys out of the deal.
+    /// Backspace takes the top row's right edge, where the iOS keyboard puts it
+    /// and where a thumb finds it without looking. It trades places with ⌃Z
+    /// rather than crowding in, so the rows stay evenly sized.
     static let rows: [[Self]] = [
-        [.escape, .tab, .controlC, .controlD, .controlZ, .backspace],
+        [.escape, .tab, .controlC, .controlD, .backspace],
         [.home, .pageUp, .up, .pageDown, .end],
-        [.left, .down, .right, .enter],
+        [.controlZ, .left, .down, .right, .enter],
     ]
 
     var title: String? {

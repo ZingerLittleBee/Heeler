@@ -316,10 +316,13 @@ struct TerminalAttachTests {
     @Test func terminalControlKeyboardContainsOnlyUsefulMobileKeys() {
         #expect(
             TerminalControlKey.rows == [
-                [.escape, .tab, .controlC, .controlD, .controlZ, .backspace],
+                [.escape, .tab, .controlC, .controlD, .backspace],
                 [.home, .pageUp, .up, .pageDown, .end],
-                [.left, .down, .right, .enter],
+                [.controlZ, .left, .down, .right, .enter],
             ])
+        // Every row is the same width, so no key ends up wider than its
+        // neighbours just because a row was left short.
+        #expect(Set(TerminalControlKey.rows.map(\.count)).count == 1)
         // Rearranging the rows must not quietly drop a key on the floor.
         let placed = TerminalControlKey.rows.flatMap { $0 }
         #expect(placed.count == TerminalControlKey.allCases.count)
