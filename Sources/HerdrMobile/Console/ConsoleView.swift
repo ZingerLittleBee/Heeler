@@ -5,8 +5,7 @@ import SwiftUI
 struct ConsoleView: View {
     let hosts: HostStore
     let console: ConsoleStore
-    let terminalThemes: TerminalThemeSettings
-    let terminalZoom: TerminalZoomSettings
+    let terminal: TerminalSettings
     let pushRegistration: PushRegistrationStore
     let notificationPreferences: NotificationPreferencesStore
     let relaySettings: NotificationRelaySettings
@@ -33,8 +32,7 @@ struct ConsoleView: View {
                         AgentDetailView(
                             agent: agent,
                             console: console,
-                            terminalThemes: terminalThemes,
-                            terminalZoom: terminalZoom,
+                            terminal: terminal,
                             pushRegistration: pushRegistration,
                             notificationPreferences: notificationPreferences,
                             relaySettings: relaySettings,
@@ -78,8 +76,7 @@ struct ConsoleView: View {
                 }
                 .sheet(isPresented: $isShowingSettings) {
                     SettingsView(
-                        terminalThemes: terminalThemes,
-                        terminalZoom: terminalZoom,
+                        terminal: terminal,
                         pushRegistration: pushRegistration,
                         notificationPreferences: notificationPreferences,
                         relaySettings: relaySettings)

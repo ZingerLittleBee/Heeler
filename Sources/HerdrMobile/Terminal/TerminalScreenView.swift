@@ -22,9 +22,13 @@ struct TerminalScreenView: UIViewRepresentable {
     var onSend: ((Data) -> Void)?
     var onPaste: ((_ text: String, _ bracketed: Bool) -> Void)?
     var onSnippet: ((_ text: String, _ bracketed: Bool) -> Void)?
+    /// Fills the Keys keyboard's Snippets and Appearance tabs. Without one the
+    /// keyboard shows the control keys alone.
+    var keysContext: TerminalKeysContext?
     var isLocalInputEnabled = true
     var theme: TerminalTheme = .default
     var fontSize: Float = TerminalZoomSettings.defaultFontSize
+    var fontFamily: String?
     /// Pinch-to-zoom and the ⌘+/⌘- shortcut change the size in place; the
     /// screen forwards the new value so it lands in the global setting.
     var onFontSizeChanged: ((Float) -> Void)?
@@ -36,8 +40,10 @@ struct TerminalScreenView: UIViewRepresentable {
             onSend: onSend,
             onPaste: onPaste,
             onSnippet: onSnippet,
+            keysContext: keysContext,
             theme: theme,
-            fontSize: fontSize)
+            fontSize: fontSize,
+            fontFamily: fontFamily)
         view.delegate = context.coordinator
         context.coordinator.terminalView = view
         feed.attach { [weak view] data in
@@ -52,8 +58,10 @@ struct TerminalScreenView: UIViewRepresentable {
         onSend: ((Data) -> Void)? = nil,
         onPaste: ((_ text: String, _ bracketed: Bool) -> Void)? = nil,
         onSnippet: ((_ text: String, _ bracketed: Bool) -> Void)? = nil,
+        keysContext: TerminalKeysContext? = nil,
         theme: TerminalTheme = .default,
-        fontSize: Float = TerminalZoomSettings.defaultFontSize
+        fontSize: Float = TerminalZoomSettings.defaultFontSize,
+        fontFamily: String? = nil
     ) -> HerdrTerminalView {
         let view = HerdrTerminalView(
             frame: .zero,
@@ -61,8 +69,10 @@ struct TerminalScreenView: UIViewRepresentable {
             onSend: onSend,
             onPaste: onPaste,
             onSnippet: onSnippet,
+            keysContext: keysContext,
             theme: theme,
-            fontSize: fontSize)
+            fontSize: fontSize,
+            fontFamily: fontFamily)
         view.installKeyboardSwitcher()
         return view
     }
@@ -73,9 +83,11 @@ struct TerminalScreenView: UIViewRepresentable {
             onSend: onSend,
             onPaste: onPaste,
             onSnippet: onSnippet)
+        view.keysContext = keysContext
         view.setLocalInputEnabled(isLocalInputEnabled)
         view.applyTheme(theme)
         view.applyFontSize(fontSize)
+        view.applyFontFamily(fontFamily)
         view.onFontSizeChanged = onFontSizeChanged
         context.coordinator.onOpenLink = { url in openURL(url) }
     }
@@ -159,7 +171,11 @@ final class HerdrTerminalView: UITerminalView {
     let terminalSession: InMemoryTerminalSession
     private(set) var appliedTheme: TerminalTheme
     private(set) var appliedFontSize: Float
+    private(set) var appliedFontFamily: String?
     var onFontSizeChanged: ((Float) -> Void)?
+    /// Rebuilt into the Keys keyboard the next time it is raised; a live
+    /// keyboard keeps the context it was built with.
+    var keysContext: TerminalKeysContext?
     private var zoomBaseFontSize: Float?
     private var terminalInputView: UIView?
     private var modeTracker = TerminalModeTracker()
@@ -172,7 +188,7 @@ final class HerdrTerminalView: UITerminalView {
     private var touchScrollMomentumDisplayLink: CADisplayLink?
     private var touchScrollMomentumVelocityY: CGFloat = 0
     private var touchScrollMomentumTimestamp: CFTimeInterval = 0
-    var controlKeyboardHeight = TerminalControlKeyboardView.defaultHeight
+    var controlKeyboardHeight = TerminalKeysKeyboardView.defaultHeight
 
     private lazy var touchScrollGesture = UIPanGestureRecognizer(
         target: self,
@@ -219,9 +235,12 @@ final class HerdrTerminalView: UITerminalView {
         onSend: ((Data) -> Void)?,
         onPaste: ((String, Bool) -> Void)?,
         onSnippet: ((String, Bool) -> Void)?,
+        keysContext: TerminalKeysContext?,
         theme: TerminalTheme,
-        fontSize: Float
+        fontSize: Float,
+        fontFamily: String?
     ) {
+        self.keysContext = keysContext
         let callbackBridge = TerminalSessionCallbackBridge(
             onSizeChanged: onSizeChanged,
             onSend: onSend,
@@ -241,9 +260,11 @@ final class HerdrTerminalView: UITerminalView {
         let clampedFontSize = TerminalZoomSettings.clamped(fontSize)
         terminalController = TerminalController(
             theme: theme,
-            terminalConfiguration: TerminalConfiguration().fontSize(clampedFontSize))
+            terminalConfiguration: Self.fontConfiguration(
+                size: clampedFontSize, family: fontFamily))
         appliedTheme = theme
         appliedFontSize = clampedFontSize
+        appliedFontFamily = fontFamily
         super.init(frame: frame)
         pasteConfiguration = UIPasteConfiguration(forAccepting: String.self)
         inputAccessoryItems = []
@@ -295,6 +316,33 @@ final class HerdrTerminalView: UITerminalView {
         return true
     }
 
+    @discardableResult
+    func applyFontFamily(_ family: String?) -> Bool {
+        guard family != appliedFontFamily,
+            terminalController.setTerminalConfiguration(
+                Self.fontConfiguration(size: nil, family: family))
+        else {
+            return false
+        }
+        appliedFontFamily = family
+        return true
+    }
+
+    /// ghostty treats `font-family` as a set that repeated values append to,
+    /// so switching fonts has to clear it with an empty value first or the
+    /// old family stays in the fallback chain ahead of the new one.
+    private static func fontConfiguration(size: Float?, family: String?) -> TerminalConfiguration {
+        var configuration = TerminalConfiguration()
+        if let size {
+            configuration = configuration.fontSize(size)
+        }
+        configuration = configuration.fontFamily("")
+        if let family {
+            configuration = configuration.fontFamily(family)
+        }
+        return configuration
+    }
+
     /// Applies a zoom the user performed on this terminal and reports it, so
     /// the global setting follows the gesture instead of fighting it.
     private func zoom(to fontSize: Float) {
@@ -327,8 +375,12 @@ final class HerdrTerminalView: UITerminalView {
         guard isLocalInputEnabled != isEnabled else { return }
         isLocalInputEnabled = isEnabled
         terminalKeyboardAccessory.setPasteEnabled(isEnabled)
-        terminalInputView?.isUserInteractionEnabled = isEnabled
-        terminalInputView?.alpha = isEnabled ? 1 : 0.5
+        if let keysKeyboard {
+            keysKeyboard.localInputEnabledDidChange()
+        } else {
+            terminalInputView?.isUserInteractionEnabled = isEnabled
+            terminalInputView?.alpha = isEnabled ? 1 : 0.5
+        }
     }
 
     func requestPaste(_ text: String?) {

@@ -184,7 +184,7 @@ struct TerminalAttachTests {
 
         terminal.setKeyboardMode(.controls)
         #expect(terminal.keyboardMode == .controls)
-        #expect(terminal.inputView is TerminalControlKeyboardView)
+        #expect(terminal.inputView is TerminalKeysKeyboardView)
 
         terminal.setKeyboardMode(.text)
         #expect(terminal.keyboardMode == .text)
@@ -224,7 +224,7 @@ struct TerminalAttachTests {
         terminal.recordTextKeyboardHeight(totalHeight: 48, accessoryHeight: 48)
 
         terminal.setKeyboardMode(.controls)
-        let keyboard = try #require(terminal.inputView as? TerminalControlKeyboardView)
+        let keyboard = try #require(terminal.inputView as? TerminalKeysKeyboardView)
         #expect(keyboard.intrinsicContentSize.height == 288)
         #expect(keyboard.frame.height == 288)
     }
