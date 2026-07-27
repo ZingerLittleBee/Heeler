@@ -330,6 +330,55 @@ struct SSHTransportE2ETests {
         try await transport.close()
     }
 
+    @Test func agentDiscoveryFindsCanonicalExecutablesOnTheHostsPath() async throws {
+        let environment = try #require(LocalSSHTestEnvironment.current)
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("herdr-agent-discovery-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        for executable in ["claude", "cursor-agent", "kiro-cli"] {
+            let url = directory.appendingPathComponent(executable)
+            try Data("#!/bin/sh\nexit 0\n".utf8).write(to: url, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
+        }
+
+        var settings = environment.makeSettings(
+            socket: .absolutePath("/tmp/herdr-irrelevant.sock"))
+        let quotedDirectory = try #require(RemoteShellPath.quotedAbsolute(directory.path))
+        settings.agentDiscoveryCommand =
+            "PATH=\(quotedDirectory):/usr/bin:/bin \(settings.agentDiscoveryCommand)"
+        let transport = try await SSHTransport.connect(settings: settings)
+        do {
+            let kinds = try await transport.availableAgentKinds()
+            #expect(kinds == [.claude, .cursor, .kiro])
+        } catch {
+            try? await transport.close()
+            throw error
+        }
+        try await transport.close()
+    }
+
+    @Test func agentDiscoveryIgnoresLoginNoiseUnknownKindsAndDuplicates() async throws {
+        let environment = try #require(LocalSSHTestEnvironment.current)
+        var settings = environment.makeSettings(
+            socket: .absolutePath("/tmp/herdr-irrelevant.sock"))
+        settings.agentDiscoveryCommand =
+            "printf '%s\\n' 'login noise' "
+            + "'__HERDR_MOBILE_AGENT_KIND__=maki' "
+            + "'__HERDR_MOBILE_AGENT_KIND__=future-agent' "
+            + "'__HERDR_MOBILE_AGENT_KIND__=codex' "
+            + "'__HERDR_MOBILE_AGENT_KIND__=maki'"
+        let transport = try await SSHTransport.connect(settings: settings)
+        do {
+            let kinds = try await transport.availableAgentKinds()
+            #expect(kinds == [.codex, .maki])
+        } catch {
+            try? await transport.close()
+            throw error
+        }
+        try await transport.close()
+    }
+
     @Test func socketAndSocatPathsWithSpacesRoundTripSafely() async throws {
         let environment = try #require(LocalSSHTestEnvironment.current)
         let directory = URL(

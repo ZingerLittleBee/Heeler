@@ -116,6 +116,12 @@ final class HostConsoleProjection {
         return agent
     }
 
+    func availableAgentKinds() async throws -> [SupportedAgentKind] {
+        try await session.withTransport { transport in
+            try await transport.availableAgentKinds()
+        }
+    }
+
     func closePane(_ paneID: String) async throws {
         try await session.withTransport { transport in
             try await transport.closePane(PaneTarget(paneID: paneID))

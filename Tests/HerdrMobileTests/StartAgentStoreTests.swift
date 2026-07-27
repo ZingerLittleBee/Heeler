@@ -3,8 +3,8 @@ import Testing
 
 @testable import HerdrMobile
 
-/// New-agent form logic (#12) against a scripted start closure: command
-/// tokenizing, host/workspace selection, param assembly, and outcome
+/// New-agent form logic (#12) against scripted discovery and start closures:
+/// argument parsing, Host/workspace/Agent selection, param assembly, and outcome
 /// mapping — no SSH, no ConsoleStore.
 @MainActor
 @Suite("Start agent store")
@@ -39,11 +39,15 @@ struct StartAgentStoreTests {
     private func makeStore(
         hosts: [Host],
         workspaces: @escaping (Host.ID) -> [ConsoleWorkspace] = { _ in [] },
+        agentKinds: @escaping (Host.ID) async throws -> [SupportedAgentKind] = { _ in
+            [.claude]
+        },
         recents: RecentWorkspaceStore? = nil,
         recorder: StartRecorder
     ) -> StartAgentStore {
         StartAgentStore(
             hosts: hosts, workspaces: workspaces,
+            discoverAgentKinds: agentKinds,
             start: { params, hostID in try await recorder.record(params, hostID) },
             recents: recents ?? makeRecents())
     }
@@ -60,10 +64,36 @@ struct StartAgentStoreTests {
         #expect(await condition(), comment)
     }
 
-    @Test func tokenizeSplitsOnWhitespaceAndDropsEmpties() {
-        #expect(StartAgentStore.tokenize("  claude   --continue \n") == ["claude", "--continue"])
-        #expect(StartAgentStore.tokenize("   ").isEmpty)
-        #expect(StartAgentStore.tokenize("").isEmpty)
+    @Test func argumentParserSupportsQuotesEscapesAndEmptyArguments() throws {
+        #expect(
+            StartAgentStore.parseArguments(
+                #" --model "gpt 5" 'literal value' escaped\ value "" prefix" suffix" "#)
+                == .success([
+                    "--model", "gpt 5", "literal value", "escaped value", "", "prefix suffix",
+                ]))
+        #expect(try StartAgentStore.parseArguments("   \n ").get() == [])
+    }
+
+    @Test func argumentParserReportsIncompleteAndUnsafeInput() {
+        #expect(StartAgentStore.parseArguments(#""unfinished"#) == .failure(.unclosedDoubleQuote))
+        #expect(StartAgentStore.parseArguments("'unfinished") == .failure(.unclosedSingleQuote))
+        #expect(StartAgentStore.parseArguments(#"--flag\"#) == .failure(.danglingEscape))
+        #expect(StartAgentStore.parseArguments("\"line\nbreak\"") == .failure(.controlCharacter))
+    }
+
+    @Test func supportedAgentCatalogMatchesProtocol17() {
+        #expect(SupportedAgentKind.allCases.map(\.rawValue) == [
+            "pi", "claude", "codex", "gemini", "cursor", "devin", "agy",
+            "cline", "omp", "mastracode", "opencode", "copilot", "kimi",
+            "kiro", "droid", "amp", "grok", "hermes", "kilo", "qodercli",
+            "maki",
+        ])
+        #expect(SupportedAgentKind.cursor.executable == "cursor-agent")
+        #expect(SupportedAgentKind.kiro.executable == "kiro-cli")
+        #expect(
+            SupportedAgentKind.allCases
+                .filter { $0 != .cursor && $0 != .kiro }
+                .allSatisfy { $0.executable == $0.rawValue })
     }
 
     @Test func preSelectsTheOnlyHost() {
@@ -76,7 +106,76 @@ struct StartAgentStoreTests {
         #expect(many.selectedHostID == nil)
     }
 
-    @Test func canSubmitRequiresAHostWorkspaceNameAndCommand() {
+    @Test func discoveryPublishesHostKindsAndSelectsTheFirst() async {
+        let host = Host.fixture()
+        let store = makeStore(
+            hosts: [host],
+            agentKinds: { requestedHost in
+                #expect(requestedHost == host.id)
+                return [.codex, .claude]
+            },
+            recorder: StartRecorder())
+
+        await store.discoverAgents()
+
+        #expect(store.agentDiscoveryState == .loaded)
+        #expect(store.availableAgentKinds == [.codex, .claude])
+        #expect(store.selectedAgentKind == .codex)
+    }
+
+    @Test func discoverySurfacesFailureAndSupportsAnEmptyResult() async {
+        let host = Host.fixture()
+        let failing = makeStore(
+            hosts: [host],
+            agentKinds: { _ in throw TransportError.timedOut },
+            recorder: StartRecorder())
+
+        await failing.discoverAgents()
+        #expect(failing.agentDiscoveryState == .failed("Agent detection timed out."))
+        #expect(failing.availableAgentKinds.isEmpty)
+
+        let empty = makeStore(
+            hosts: [host], agentKinds: { _ in [] }, recorder: StartRecorder())
+        await empty.discoverAgents()
+        #expect(empty.agentDiscoveryState == .loaded)
+        #expect(empty.availableAgentKinds.isEmpty)
+        #expect(empty.selectedAgentKind == nil)
+    }
+
+    @Test func staleDiscoveryCannotOverwriteANewHostSelection() async throws {
+        let hostA = Host.fixture(address: "a.example")
+        let hostB = Host.fixture(address: "b.example")
+        let gate = ScriptedTransportCallGate()
+        let store = makeStore(
+            hosts: [hostA, hostB],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            agentKinds: { hostID in
+                if hostID == hostA.id {
+                    await gate.waitUntilOpen()
+                    return [.claude]
+                }
+                return [.codex]
+            },
+            recorder: StartRecorder())
+
+        store.selectedHostID = hostA.id
+        let stale = Task { await store.discoverAgents() }
+        try await waitUntil("the first Host discovery should reach the gate") {
+            await gate.entryCount == 1
+        }
+
+        store.selectedHostID = hostB.id
+        await store.discoverAgents()
+        #expect(store.availableAgentKinds == [.codex])
+        #expect(store.selectedAgentKind == .codex)
+
+        await gate.open()
+        await stale.value
+        #expect(store.availableAgentKinds == [.codex])
+        #expect(store.selectedAgentKind == .codex)
+    }
+
+    @Test func canSubmitRequiresAHostWorkspaceNameAndDetectedAgent() async {
         let hostA = Host.fixture(address: "a.example")
         let hostB = Host.fixture(address: "b.example")
         let store = makeStore(
@@ -87,14 +186,14 @@ struct StartAgentStoreTests {
             recorder: StartRecorder())
 
         #expect(store.canSubmit == false)
-        store.command = "claude"
-        #expect(store.canSubmit == false)  // still no host
         store.selectedHostID = hostA.id
+        #expect(store.canSubmit == false)  // Agent discovery has not completed
+        await store.discoverAgents()
         #expect(store.canSubmit == false)  // still no unique agent name
         store.name = "reviewer"
         #expect(store.canSubmit == true)
-        store.command = "   "
-        #expect(store.canSubmit == false)  // whitespace is no command
+        store.arguments = #""unfinished"#
+        #expect(store.canSubmit == false)
     }
 
     @Test func cannotSubmitUntilTheHostReportsAWorkspace() async {
@@ -102,7 +201,7 @@ struct StartAgentStoreTests {
         let recorder = StartRecorder()
         let store = makeStore(hosts: [host], recorder: recorder)
         store.name = "reviewer"
-        store.command = "claude"
+        await store.discoverAgents()
 
         #expect(store.canSubmit == false)
         await store.submit()
@@ -110,7 +209,7 @@ struct StartAgentStoreTests {
         #expect(recorder.params.isEmpty)
     }
 
-    @Test func switchingHostClearsAStaleWorkspacePick() {
+    @Test func switchingHostClearsStaleWorkspaceAndAgentPicks() async {
         let hostA = Host.fixture(address: "a.example")
         let hostB = Host.fixture(address: "b.example")
         let store = makeStore(
@@ -124,11 +223,15 @@ struct StartAgentStoreTests {
             recorder: StartRecorder())
 
         store.selectedHostID = hostA.id
+        await store.discoverAgents()
         store.selectedWorkspaceID = "w2"
+        #expect(store.selectedAgentKind == .claude)
         #expect(store.workspaces.map(\.id) == ["w1", "w2"])
 
         store.selectedHostID = hostB.id
         #expect(store.selectedWorkspaceID == nil)
+        #expect(store.selectedAgentKind == nil)
+        #expect(store.agentDiscoveryState == .idle)
         #expect(store.workspaces.isEmpty)
     }
 
@@ -161,7 +264,7 @@ struct StartAgentStoreTests {
 
         snapshot.workspaces = [ConsoleWorkspace(id: "w1", label: "Proj")]
         store.name = "reviewer"
-        store.command = "claude"
+        await store.discoverAgents()
         await store.submit()
 
         #expect(store.state == .started)
@@ -195,7 +298,7 @@ struct StartAgentStoreTests {
             hosts: [host], workspaces: workspaces, recents: recents, recorder: StartRecorder())
         first.selectedWorkspaceID = "w2"
         first.name = "reviewer"
-        first.command = "claude"
+        await first.discoverAgents()
         await first.submit()
         #expect(first.state == .started)
 
@@ -216,7 +319,7 @@ struct StartAgentStoreTests {
             hosts: [host], workspaces: { _ in [ConsoleWorkspace(id: "w9", label: "Gone")] },
             recents: recents, recorder: StartRecorder())
         gone.name = "reviewer"
-        gone.command = "claude"
+        await gone.discoverAgents()
         await gone.submit()
 
         let next = makeStore(
@@ -237,7 +340,7 @@ struct StartAgentStoreTests {
             hosts: [host], workspaces: workspaces, recents: recents, recorder: recorder)
         store.selectedWorkspaceID = "w2"
         store.name = "reviewer"
-        store.command = "claude"
+        await store.discoverAgents()
         await store.submit()
 
         let next = makeStore(
@@ -254,7 +357,8 @@ struct StartAgentStoreTests {
             recorder: recorder)
         store.selectedWorkspaceID = "w1"
         store.name = "reviewer"
-        store.command = "claude --continue"
+        store.arguments = #"--continue --label "code review""#
+        await store.discoverAgents()
 
         await store.submit()
 
@@ -262,7 +366,7 @@ struct StartAgentStoreTests {
         #expect(recorder.hostIDs == [host.id])
         #expect(recorder.params.first?.kind == "claude")
         #expect(recorder.params.first?.name == "reviewer")
-        #expect(recorder.params.first?.arguments == ["--continue"])
+        #expect(recorder.params.first?.arguments == ["--continue", "--label", "code review"])
         #expect(recorder.params.first?.workspaceID == "w1")
     }
 
@@ -276,7 +380,7 @@ struct StartAgentStoreTests {
             workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
             recorder: recorder)
         store.name = "reviewer"
-        store.command = "claude"
+        await store.discoverAgents()
 
         let first = Task { await store.submit() }
         try await waitUntil("the first start should reach the gate") {
@@ -306,20 +410,18 @@ struct StartAgentStoreTests {
             workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
             recorder: recorder)
         store.name = "reviewer"
-        store.command = "claude"
+        await store.discoverAgents()
 
         await store.submit()
 
         #expect(store.state == .failed("herdr rejected the command: no such workspace"))
     }
 
-    @Test func submitIsANoOpWithoutAHostOrCommand() async {
+    @Test func submitIsANoOpWithoutAHostOrDetectedAgent() async {
         let recorder = StartRecorder()
         let store = makeStore(
             hosts: [.fixture(address: "a.example"), .fixture(address: "b.example")],
             recorder: recorder)
-        store.command = "claude"  // host still unselected
-
         await store.submit()
 
         #expect(store.state == .editing)

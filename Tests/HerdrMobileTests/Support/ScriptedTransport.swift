@@ -14,6 +14,9 @@ final actor ScriptedTransport: Transport {
     /// Every `agent.start` received, in order; the new-agent flow (#12)
     /// asserts on the params it forwarded.
     private(set) var agentStarts: [AgentLaunchRequest] = []
+    private(set) var agentDiscoveryCount = 0
+    private var availableKinds = SupportedAgentKind.allCases
+    private var agentDiscoveryFailure: TransportError?
     /// Every `pane.close` received, in order; the close-pane flow (#13)
     /// asserts on the pane it targeted (and that the cancel path never
     /// appends here).
@@ -114,6 +117,14 @@ final actor ScriptedTransport: Transport {
         startFailure = failure
     }
 
+    func setAvailableAgentKinds(
+        _ kinds: [SupportedAgentKind],
+        failure: TransportError? = nil
+    ) {
+        availableKinds = kinds
+        agentDiscoveryFailure = failure
+    }
+
     /// Makes every subsequent `closePane` throw `failure`.
     func setCloseFailure(_ failure: TransportError?) {
         closeFailure = failure
@@ -201,6 +212,12 @@ final actor ScriptedTransport: Transport {
 
     func listAgents() async throws -> [Agent] {
         snapshot.agents.map(Agent.init)
+    }
+
+    func availableAgentKinds() async throws -> [SupportedAgentKind] {
+        agentDiscoveryCount += 1
+        if let agentDiscoveryFailure { throw agentDiscoveryFailure }
+        return availableKinds
     }
 
     func sessionSnapshot() async throws -> SessionSnapshot {

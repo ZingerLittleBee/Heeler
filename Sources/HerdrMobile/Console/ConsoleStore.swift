@@ -129,6 +129,14 @@ final class ConsoleStore {
         workspacesByHost[hostID] ?? []
     }
 
+    func availableAgentKinds(on hostID: Host.ID) async throws -> [SupportedAgentKind] {
+        guard let projection = projections[hostID] else {
+            throw TransportError.sshUnreachable(
+                detail: "The Host is not connected.")
+        }
+        return try await projection.availableAgentKinds()
+    }
+
     @discardableResult
     func startAgent(
         _ request: AgentLaunchRequest,

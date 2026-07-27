@@ -666,6 +666,33 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    @Test func availableAgentKindsUseTheSelectedHostsLiveTransport() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport()
+        await transport.setAvailableAgentKinds([.codex, .opencode])
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Host should connect") {
+            store.hostStatuses[host.id] == .connected
+        }
+
+        let kinds = try await store.availableAgentKinds(on: host.id)
+        #expect(kinds == [.codex, .opencode])
+        #expect(await transport.agentDiscoveryCount == 1)
+
+        store.setHosts([])
+    }
+
+    @Test func availableAgentKindsRejectAnUnknownHost() async {
+        let store = makeStore(transports: [:])
+
+        await #expect(throws: TransportError.self) {
+            _ = try await store.availableAgentKinds(on: UUID())
+        }
+    }
+
     @Test func startAgentForwardsItsParamsAndResnapshots() async throws {
         // Agent launch (#12): the request reaches the Host's transport, and the
         // started pane surfaces via one explicit resync rather than waiting

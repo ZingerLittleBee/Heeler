@@ -16,6 +16,12 @@ protocol Transport: Sendable {
     /// Lists the Agents herdr has detected across all workspaces.
     func listAgents() async throws -> [Agent]
 
+    /// Lists the supported Agent kinds whose canonical executables are
+    /// currently available on this Host. SSH transports probe the Host's
+    /// effective PATH; alternative transports without a Host process
+    /// environment report no detected kinds by default.
+    func availableAgentKinds() async throws -> [SupportedAgentKind]
+
     /// The full session tree in one call: agents plus the workspace context
     /// (labels, worktrees) that `listAgents()` lacks. The Console's snapshot
     /// source (#8) — re-fetched on every events-session `.connected`.
@@ -107,6 +113,10 @@ extension Transport {
     /// session discovery can opt out without inventing sessions.
     func listSessions() async throws -> [HerdrSession] { [] }
 
+    func availableAgentKinds() async throws -> [SupportedAgentKind] {
+        []
+    }
+
     /// Non-SSH test doubles and alternative transports can state that SFTP is
     /// unavailable without importing or emulating Citadel.
     func stageImage(
@@ -132,6 +142,72 @@ extension Transport {
 
     func replaceNotificationConfig(_ contents: Data) async throws {
         throw NotificationRegistrationError.pluginNotInstalled
+    }
+}
+
+/// The interactive Agent kinds supported by herdr protocol 17.
+///
+/// The raw value is the canonical `agent.start.kind`; `executable` mirrors
+/// the command herdr launches for that kind. Keeping both explicit matters
+/// for kinds such as Cursor and Kiro whose executable is not their canonical
+/// protocol label.
+enum SupportedAgentKind: String, CaseIterable, Identifiable, Sendable, Equatable {
+    case pi
+    case claude
+    case codex
+    case gemini
+    case cursor
+    case devin
+    case antigravity = "agy"
+    case cline
+    case omp
+    case mastracode
+    case opencode
+    case copilot
+    case kimi
+    case kiro
+    case droid
+    case amp
+    case grok
+    case hermes
+    case kilo
+    case qodercli
+    case maki
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .pi: "Pi"
+        case .claude: "Claude Code"
+        case .codex: "Codex"
+        case .gemini: "Gemini CLI"
+        case .cursor: "Cursor Agent"
+        case .devin: "Devin CLI"
+        case .antigravity: "Antigravity"
+        case .cline: "Cline"
+        case .omp: "OMP"
+        case .mastracode: "Mastra Code"
+        case .opencode: "OpenCode"
+        case .copilot: "GitHub Copilot CLI"
+        case .kimi: "Kimi CLI"
+        case .kiro: "Kiro CLI"
+        case .droid: "Droid"
+        case .amp: "Amp"
+        case .grok: "Grok Build"
+        case .hermes: "Hermes Agent"
+        case .kilo: "Kilo Code"
+        case .qodercli: "Qoder CLI"
+        case .maki: "Maki"
+        }
+    }
+
+    var executable: String {
+        switch self {
+        case .cursor: "cursor-agent"
+        case .kiro: "kiro-cli"
+        default: rawValue
+        }
     }
 }
 

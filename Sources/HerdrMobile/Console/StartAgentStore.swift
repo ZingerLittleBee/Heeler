@@ -2,10 +2,11 @@ import Foundation
 import Observation
 
 /// The new-agent flow's form logic (#12, User Story 8): pick a Host, pick a
-/// workspace (or the Host's current one), type a command, and dispatch it via
-/// the Transport launch flow. The started pane surfaces in the Console through the store's
-/// normal snapshot/delta machinery — this screen only fires the RPC and
-/// reports its outcome.
+/// workspace (or the Host's current one), detect and select an installed
+/// Agent, parse its native arguments, and dispatch it via the Transport launch
+/// flow. The started pane surfaces in the Console through the store's normal
+/// snapshot/delta machinery — this screen only fires the RPC and reports its
+/// outcome.
 ///
 /// Kept off the SSH types (standing repo rule): it talks to injected closures
 /// over the `ConsoleStore`, so it is testable against a scripted transport.
@@ -23,6 +24,33 @@ final class StartAgentStore {
         case started
     }
 
+    enum AgentDiscoveryState: Equatable {
+        case idle
+        case loading
+        case loaded
+        case failed(String)
+    }
+
+    enum ArgumentError: Error, Equatable {
+        case danglingEscape
+        case unclosedSingleQuote
+        case unclosedDoubleQuote
+        case controlCharacter
+
+        var message: String {
+            switch self {
+            case .danglingEscape:
+                "Arguments end with an unfinished escape."
+            case .unclosedSingleQuote:
+                "Arguments contain an unclosed single quote."
+            case .unclosedDoubleQuote:
+                "Arguments contain an unclosed double quote."
+            case .controlCharacter:
+                "Arguments contain an unsupported control character."
+            }
+        }
+    }
+
     /// The Hosts the user can dispatch to — the Host picker's options.
     let hosts: [Host]
 
@@ -30,7 +58,12 @@ final class StartAgentStore {
         didSet {
             // A workspace belongs to one Host; switching Hosts drops a stale
             // pick so it can never target the wrong session.
-            if selectedHostID != oldValue { pickedWorkspaceID = nil }
+            if selectedHostID != oldValue {
+                pickedWorkspaceID = nil
+                availableAgentKinds = []
+                selectedAgentKind = nil
+                agentDiscoveryState = .idle
+            }
         }
     }
 
@@ -64,12 +97,17 @@ final class StartAgentStore {
     private var pickedWorkspaceID: String?
     /// The unique live-agent name required by herdr protocol 17.
     var name: String = ""
-    /// The command line, tokenized into argv on submit.
-    var command: String = ""
+    /// The canonical kind selected from the Host availability probe.
+    var selectedAgentKind: SupportedAgentKind?
+    /// Optional native arguments, parsed into argv without invoking a shell.
+    var arguments: String = ""
 
     private(set) var state: State = .editing
+    private(set) var agentDiscoveryState: AgentDiscoveryState = .idle
+    private(set) var availableAgentKinds: [SupportedAgentKind] = []
 
     private let workspacesProvider: (Host.ID) -> [ConsoleWorkspace]
+    private let discoverAgentKinds: (Host.ID) async throws -> [SupportedAgentKind]
     private let start: (AgentLaunchRequest, Host.ID) async throws -> Agent
     @ObservationIgnored private let recents: RecentWorkspaceStore
     /// In-flight guard flipped synchronously before the first await, so a
@@ -80,11 +118,13 @@ final class StartAgentStore {
     init(
         hosts: [Host],
         workspaces: @escaping (Host.ID) -> [ConsoleWorkspace],
+        discoverAgentKinds: @escaping (Host.ID) async throws -> [SupportedAgentKind],
         start: @escaping (AgentLaunchRequest, Host.ID) async throws -> Agent,
         recents: RecentWorkspaceStore = RecentWorkspaceStore()
     ) {
         self.hosts = hosts
         self.workspacesProvider = workspaces
+        self.discoverAgentKinds = discoverAgentKinds
         self.start = start
         self.recents = recents
         // Pre-select when there is no choice to make.
@@ -97,16 +137,23 @@ final class StartAgentStore {
         return workspacesProvider(selectedHostID)
     }
 
-    /// The command split into an agent kind followed by native arguments.
-    var argv: [String] {
-        Self.tokenize(command)
+    var parsedArguments: Result<[String], ArgumentError> {
+        Self.parseArguments(arguments)
+    }
+
+    var argumentErrorMessage: String? {
+        guard case .failure(let error) = parsedArguments else { return nil }
+        return error.message
     }
 
     /// Whether the form is complete enough to dispatch.
     var canSubmit: Bool {
         selectedHostID != nil && selectedWorkspaceID != nil
             && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !argv.isEmpty && state != .starting
+            && selectedAgentKind != nil
+            && parsedArguments.isSuccess
+            && agentDiscoveryState == .loaded
+            && state != .starting
     }
 
     /// Whether the sheet may be dismissed without abandoning an in-flight
@@ -115,25 +162,50 @@ final class StartAgentStore {
         state != .starting
     }
 
+    func discoverAgents() async {
+        guard let hostID = selectedHostID else {
+            availableAgentKinds = []
+            selectedAgentKind = nil
+            agentDiscoveryState = .idle
+            return
+        }
+        availableAgentKinds = []
+        selectedAgentKind = nil
+        agentDiscoveryState = .loading
+        do {
+            let kinds = try await discoverAgentKinds(hostID)
+            guard selectedHostID == hostID else { return }
+            availableAgentKinds = kinds
+            selectedAgentKind = kinds.first
+            agentDiscoveryState = .loaded
+        } catch is CancellationError {
+            guard selectedHostID == hostID else { return }
+            agentDiscoveryState = .idle
+        } catch {
+            guard selectedHostID == hostID else { return }
+            agentDiscoveryState = .failed(Self.discoveryMessage(for: error))
+        }
+    }
+
     /// Dispatches the command via `agent.start`. Incomplete forms are ignored;
     /// on success the state flips to `.started` for the screen to dismiss.
     func submit() async {
         guard
             !isStarting,
             let hostID = selectedHostID,
-            let workspaceID = selectedWorkspaceID
+            let workspaceID = selectedWorkspaceID,
+            let kind = selectedAgentKind,
+            case .success(let arguments) = parsedArguments
         else { return }
-        let tokens = argv
-        guard let kind = tokens.first else { return }
         let agentName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !agentName.isEmpty else { return }
         isStarting = true
         state = .starting
         defer { isStarting = false }
         let request = AgentLaunchRequest(
-            kind: kind,
+            kind: kind.rawValue,
             name: agentName,
-            arguments: Array(tokens.dropFirst()),
+            arguments: arguments,
             workspaceID: workspaceID)
         do {
             _ = try await start(request, hostID)
@@ -144,11 +216,109 @@ final class StartAgentStore {
         }
     }
 
-    /// Splits a command line into argv on whitespace. Deliberately simple —
-    /// no quote or escape handling; a command needing shell quoting is an
-    /// edge the Attach terminal covers.
-    static func tokenize(_ command: String) -> [String] {
-        command.split(whereSeparator: \.isWhitespace).map(String.init)
+    /// Parses a familiar shell-like argument string into argv without ever
+    /// passing it through a shell. Quotes group whitespace, adjacent quoted
+    /// and unquoted segments join one argument, and backslash escapes the next
+    /// character. Empty quoted arguments are preserved.
+    static func parseArguments(_ input: String) -> Result<[String], ArgumentError> {
+        enum Quote {
+            case single
+            case double
+        }
+
+        var result: [String] = []
+        var current = ""
+        var hasCurrent = false
+        var quote: Quote?
+        var escaping = false
+
+        for character in input {
+            if escaping {
+                guard !isControl(character) else {
+                    return .failure(.controlCharacter)
+                }
+                current.append(character)
+                hasCurrent = true
+                escaping = false
+                continue
+            }
+
+            switch quote {
+            case .single:
+                if character == "'" {
+                    quote = nil
+                } else {
+                    guard !isControl(character) else {
+                        return .failure(.controlCharacter)
+                    }
+                    current.append(character)
+                }
+                hasCurrent = true
+            case .double:
+                if character == "\"" {
+                    quote = nil
+                } else if character == "\\" {
+                    escaping = true
+                } else {
+                    guard !isControl(character) else {
+                        return .failure(.controlCharacter)
+                    }
+                    current.append(character)
+                }
+                hasCurrent = true
+            case nil:
+                if character == "'" {
+                    quote = .single
+                    hasCurrent = true
+                } else if character == "\"" {
+                    quote = .double
+                    hasCurrent = true
+                } else if character == "\\" {
+                    escaping = true
+                    hasCurrent = true
+                } else if character.isWhitespace {
+                    if hasCurrent {
+                        result.append(current)
+                        current = ""
+                        hasCurrent = false
+                    }
+                } else {
+                    guard !isControl(character) else {
+                        return .failure(.controlCharacter)
+                    }
+                    current.append(character)
+                    hasCurrent = true
+                }
+            }
+        }
+
+        guard !escaping else { return .failure(.danglingEscape) }
+        switch quote {
+        case .single: return .failure(.unclosedSingleQuote)
+        case .double: return .failure(.unclosedDoubleQuote)
+        case nil: break
+        }
+        if hasCurrent {
+            result.append(current)
+        }
+        return .success(result)
+    }
+
+    private static func isControl(_ character: Character) -> Bool {
+        character.unicodeScalars.contains {
+            CharacterSet.controlCharacters.contains($0)
+        }
+    }
+
+    private static func discoveryMessage(for error: any Error) -> String {
+        switch error {
+        case TransportError.sshUnreachable:
+            "The Host is not connected."
+        case TransportError.timedOut:
+            "Agent detection timed out."
+        default:
+            "Detecting Agents failed: \(error)"
+        }
     }
 
     private static func message(for error: any Error) -> String {
@@ -162,5 +332,12 @@ final class StartAgentStore {
         default:
             "Starting the agent failed: \(error)"
         }
+    }
+}
+
+extension Result {
+    fileprivate var isSuccess: Bool {
+        if case .success = self { return true }
+        return false
     }
 }

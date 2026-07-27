@@ -25,6 +25,7 @@ enum SocatDiscovery: Sendable, Equatable {
 /// How to reach one Host, authenticate against it, and find its herdr socket.
 struct SSHTransportSettings: Sendable {
     static let defaultSessionListCommand = "herdr session list --json"
+    static let agentAvailabilityMarker = "__HERDR_MOBILE_AGENT_KIND__="
 
     /// The herdr-mobile plugin (ADR 0007/0008) whose config dir holds the
     /// Notification Registration file.
@@ -61,6 +62,11 @@ struct SSHTransportSettings: Sendable {
     /// Official Host-local CLI command for discovering default and named
     /// sessions. It does not depend on a running API socket.
     var sessionListCommand: String = Self.defaultSessionListCommand
+    /// Host-local availability probe for the protocol's canonical interactive
+    /// Agent executables. It emits marker-delimited canonical kinds so login
+    /// shell noise cannot become a false positive. Injectable only at the
+    /// environment boundary for real-SSH tests.
+    var agentDiscoveryCommand: String = Self.defaultAgentDiscoveryCommand
     /// Command that attaches interactively to a Pane, run on the Host's
     /// dedicated terminal channel with a PTY (#11); the attach target and
     /// takeover flag are appended (see `attachBootstrapLine`). Injectable so
@@ -96,6 +102,14 @@ struct SSHTransportSettings: Sendable {
     /// closed. Short in tests, generous by default: a hung host should
     /// degrade gracefully, a slow one should still answer.
     var requestTimeout: Duration = .seconds(15)
+
+    private static var defaultAgentDiscoveryCommand: String {
+        let checks = SupportedAgentKind.allCases.map { kind in
+            "command -v \(kind.executable) >/dev/null 2>&1"
+                + " && printf \"\(agentAvailabilityMarker)%s\\n\" \"\(kind.rawValue)\""
+        }
+        return "/bin/sh -c '\(checks.joined(separator: "; ")); exit 0'"
+    }
 }
 
 /// The Jump Host in front of a Host: its own coordinates and credentials. Its
@@ -152,6 +166,7 @@ actor SSHTransport: Transport {
     private let socatDiscovery: SocatDiscovery
     private let wakeCommand: String
     private let sessionListCommand: String
+    private let agentDiscoveryCommand: String
     private let attachCommand: String
     private let homeCommand: String
     private let stageDirectoryCommand: String
@@ -185,7 +200,8 @@ actor SSHTransport: Transport {
     private init(
         client: SSHClient, jumpClient: SSHClient?, socketLocation: HerdrSocketLocation,
         preferredSocatPath: String, socatDiscovery: SocatDiscovery,
-        wakeCommand: String, sessionListCommand: String, attachCommand: String,
+        wakeCommand: String, sessionListCommand: String, agentDiscoveryCommand: String,
+        attachCommand: String,
         homeCommand: String, stageDirectoryCommand: String,
         pluginListCommand: String, notificationConfigDirCommand: String,
         requestTimeout: Duration
@@ -197,6 +213,7 @@ actor SSHTransport: Transport {
         self.socatDiscovery = socatDiscovery
         self.wakeCommand = wakeCommand
         self.sessionListCommand = sessionListCommand
+        self.agentDiscoveryCommand = agentDiscoveryCommand
         self.attachCommand = attachCommand
         self.homeCommand = homeCommand
         self.stageDirectoryCommand = stageDirectoryCommand
@@ -220,6 +237,7 @@ actor SSHTransport: Transport {
             client: clients.target, jumpClient: clients.jump, socketLocation: settings.socket,
             preferredSocatPath: settings.socatPath, socatDiscovery: settings.socatDiscovery,
             wakeCommand: settings.wakeCommand, sessionListCommand: settings.sessionListCommand,
+            agentDiscoveryCommand: settings.agentDiscoveryCommand,
             attachCommand: settings.attachCommand, homeCommand: settings.homeCommand,
             stageDirectoryCommand: settings.stageDirectoryCommand,
             pluginListCommand: settings.pluginListCommand,
@@ -322,7 +340,7 @@ actor SSHTransport: Transport {
 
     func listSessions() async throws -> [HerdrSession] {
         let output = try await Self.withRequestDeadline(requestTimeout) {
-            try await self.runSessionListCommand()
+            try await self.runHostCommand(self.sessionListCommand)
         }
         do {
             let sessions = try JSONDecoder().decode(HerdrSessionListResponse.self, from: output).sessions
@@ -337,11 +355,30 @@ actor SSHTransport: Transport {
         }
     }
 
-    private func runSessionListCommand() async throws -> Data {
+    func availableAgentKinds() async throws -> [SupportedAgentKind] {
+        let output = try await Self.withRequestDeadline(requestTimeout) {
+            try await self.runHostCommand(self.agentDiscoveryCommand)
+        }
+        let discovered = Set(
+            String(decoding: output, as: UTF8.self)
+                .split(whereSeparator: \.isNewline)
+                .compactMap { line -> SupportedAgentKind? in
+                    guard line.hasPrefix(SSHTransportSettings.agentAvailabilityMarker) else {
+                        return nil
+                    }
+                    return SupportedAgentKind(
+                        rawValue: String(
+                            line.dropFirst(
+                                SSHTransportSettings.agentAvailabilityMarker.count)))
+                })
+        return SupportedAgentKind.allCases.filter(discovered.contains)
+    }
+
+    private func runHostCommand(_ command: String) async throws -> Data {
         try await execChannelBudget.withChannel {
             do {
                 let output = try await self.client.executeCommand(
-                    Self.cLocaleCommand(self.sessionListCommand))
+                    Self.cLocaleCommand(command))
                 return Data(output.readableBytesView)
             } catch is CancellationError {
                 throw TransportError.cancelled
