@@ -1,4 +1,5 @@
 import Foundation
+import GhosttyTerminal
 import SwiftUI
 import Testing
 
@@ -16,8 +17,43 @@ struct TerminalThemeSettingsTests {
     @Test func defaultsToFollowingTheSystem() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
+        let settings = TerminalThemeSettings(defaults: defaults)
 
-        #expect(TerminalThemeSettings(defaults: defaults).selection == .followSystem)
+        #expect(settings.lightSelection == .followSystem)
+        #expect(settings.darkSelection == .followSystem)
+        // Both slots on the default must render exactly what pre-slot
+        // installs rendered: libghostty's built-in pair.
+        #expect(settings.theme == .default)
+    }
+
+    /// Pre-slot releases persisted one selection; it must seed both slots so
+    /// the rendered pair survives the upgrade unchanged.
+    @Test func legacySingleSelectionSeedsBothSlots() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        defaults.set("tokyo-night", forKey: "terminal-theme")
+        let settings = TerminalThemeSettings(defaults: defaults)
+
+        #expect(settings.lightSelection == .tokyoNight)
+        #expect(settings.darkSelection == .tokyoNight)
+        #expect(settings.theme == TerminalThemeOption.tokyoNight.terminalTheme)
+    }
+
+    /// The point of the two slots: the composed theme takes its light half
+    /// from the light slot and its dark half from the dark slot.
+    @Test func slotsComposeTheThemeHalfByHalf() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let settings = TerminalThemeSettings(defaults: defaults)
+
+        settings.select(.solarized, for: .light)
+        settings.select(.tokyoNight, for: .dark)
+
+        #expect(
+            settings.theme
+                == TerminalTheme(
+                    light: TerminalThemeOption.solarized.configuration(isDark: false),
+                    dark: TerminalThemeOption.tokyoNight.configuration(isDark: true)))
     }
 
     /// The chrome around the terminal (safe areas, transparent bar region) is
@@ -67,17 +103,23 @@ struct TerminalThemeSettingsTests {
         defer { cleanup() }
         let settings = TerminalThemeSettings(defaults: defaults)
 
-        settings.select(.dracula)
+        settings.select(.dracula, for: .dark)
 
-        #expect(TerminalThemeSettings(defaults: defaults).selection == .dracula)
+        let reloaded = TerminalThemeSettings(defaults: defaults)
+        #expect(reloaded.darkSelection == .dracula)
+        #expect(reloaded.lightSelection == .followSystem)
     }
 
     @Test func unknownPersistedSelectionFallsBackToTheSystem() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
         defaults.set("removed-theme", forKey: "terminal-theme")
+        defaults.set("removed-theme", forKey: "terminal-theme-light")
+        defaults.set("removed-theme", forKey: "terminal-theme-dark")
+        let settings = TerminalThemeSettings(defaults: defaults)
 
-        #expect(TerminalThemeSettings(defaults: defaults).selection == .followSystem)
+        #expect(settings.lightSelection == .followSystem)
+        #expect(settings.darkSelection == .followSystem)
     }
 
     @Test func curatedCatalogEntriesExistInThePinnedPackage() {

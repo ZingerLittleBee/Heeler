@@ -83,9 +83,12 @@ struct AgentDetailView: View {
         // colour reaches under the transparent navigation bar and into the
         // home-indicator area without moving the terminal grid or touching
         // keyboard resize. Must stay outside the safeAreaInset above.
-        .background(terminal.themes.selection.surfaceBackground(for: colorScheme))
+        .background(
+            terminal.themes.selection(for: colorScheme)
+                .surfaceBackground(for: colorScheme))
         .toolbarColorScheme(
-            terminal.themes.selection.chromeColorScheme(for: colorScheme),
+            terminal.themes.selection(for: colorScheme)
+                .chromeColorScheme(for: colorScheme),
             for: .navigationBar)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
