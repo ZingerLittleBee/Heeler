@@ -1,4 +1,6 @@
 import Foundation
+import Observation
+import Synchronization
 import Testing
 
 @testable import HerdrMobile
@@ -377,6 +379,12 @@ struct ConsoleStoreTests {
         try await waitUntil("workspace creation should be subscribed") {
             await transport.capturedSubscriptions.last?.contains(.global(.workspaceCreated)) == true
         }
+        let pickerRefreshObserved = Mutex(false)
+        withObservationTracking {
+            _ = store.workspaces(for: host.id)
+        } onChange: {
+            pickerRefreshObserved.withLock { $0 = true }
+        }
 
         await transport.setSnapshot(
             .fixture(workspaces: [
@@ -389,6 +397,7 @@ struct ConsoleStoreTests {
         try await waitUntil("the new workspace should appear without reconnecting") {
             store.workspaces(for: host.id).map(\.id) == ["w2", "w1"]
         }
+        #expect(pickerRefreshObserved.withLock { $0 })
 
         store.setHosts([])
     }

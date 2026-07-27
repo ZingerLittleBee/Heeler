@@ -10,15 +10,18 @@ import Testing
 @Suite("Start agent store")
 struct StartAgentStoreTests {
     /// Records the starts the store dispatches and scripts their outcome.
+    @MainActor
     private final class StartRecorder {
         var params: [AgentLaunchRequest] = []
         var hostIDs: [Host.ID] = []
         var error: (any Error)?
         var agent = Agent(.fixture(paneID: "w1:pnew", status: .working))
+        var gate: ScriptedTransportCallGate?
 
-        func record(_ params: AgentLaunchRequest, _ hostID: Host.ID) throws -> Agent {
+        func record(_ params: AgentLaunchRequest, _ hostID: Host.ID) async throws -> Agent {
             self.params.append(params)
             hostIDs.append(hostID)
+            await gate?.waitUntilOpen()
             if let error { throw error }
             return agent
         }
@@ -41,8 +44,20 @@ struct StartAgentStoreTests {
     ) -> StartAgentStore {
         StartAgentStore(
             hosts: hosts, workspaces: workspaces,
-            start: { params, hostID in try recorder.record(params, hostID) },
+            start: { params, hostID in try await recorder.record(params, hostID) },
             recents: recents ?? makeRecents())
+    }
+
+    private func waitUntil(
+        _ comment: Comment, timeout: Duration = .seconds(5),
+        condition: () async -> Bool
+    ) async throws {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if await condition() { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(await condition(), comment)
     }
 
     @Test func tokenizeSplitsOnWhitespaceAndDropsEmpties() {
@@ -61,10 +76,15 @@ struct StartAgentStoreTests {
         #expect(many.selectedHostID == nil)
     }
 
-    @Test func canSubmitRequiresAHostAndACommand() {
+    @Test func canSubmitRequiresAHostWorkspaceNameAndCommand() {
         let hostA = Host.fixture(address: "a.example")
         let hostB = Host.fixture(address: "b.example")
-        let store = makeStore(hosts: [hostA, hostB], recorder: StartRecorder())
+        let store = makeStore(
+            hosts: [hostA, hostB],
+            workspaces: {
+                $0 == hostA.id ? [ConsoleWorkspace(id: "w1", label: "Proj")] : []
+            },
+            recorder: StartRecorder())
 
         #expect(store.canSubmit == false)
         store.command = "claude"
@@ -75,6 +95,19 @@ struct StartAgentStoreTests {
         #expect(store.canSubmit == true)
         store.command = "   "
         #expect(store.canSubmit == false)  // whitespace is no command
+    }
+
+    @Test func cannotSubmitUntilTheHostReportsAWorkspace() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(hosts: [host], recorder: recorder)
+        store.name = "reviewer"
+        store.command = "claude"
+
+        #expect(store.canSubmit == false)
+        await store.submit()
+        #expect(store.state == .editing)
+        #expect(recorder.params.isEmpty)
     }
 
     @Test func switchingHostClearsAStaleWorkspacePick() {
@@ -110,6 +143,30 @@ struct StartAgentStoreTests {
             recorder: StartRecorder())
 
         #expect(store.selectedWorkspaceID == "w1")
+    }
+
+    @Test func fallsBackWhenTheExplicitWorkspaceDisappearsBeforeSubmit() async {
+        let host = Host.fixture()
+        final class Snapshot {
+            var workspaces = [
+                ConsoleWorkspace(id: "w1", label: "Proj"),
+                ConsoleWorkspace(id: "w2", label: "Other"),
+            ]
+        }
+        let snapshot = Snapshot()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host], workspaces: { _ in snapshot.workspaces }, recorder: recorder)
+        store.selectedWorkspaceID = "w2"
+
+        snapshot.workspaces = [ConsoleWorkspace(id: "w1", label: "Proj")]
+        store.name = "reviewer"
+        store.command = "claude"
+        await store.submit()
+
+        #expect(store.state == .started)
+        #expect(store.selectedWorkspaceID == "w1")
+        #expect(recorder.params.map(\.workspaceID) == ["w1"])
     }
 
     /// The snapshot often lands after the sheet opens; the default has to
@@ -191,7 +248,10 @@ struct StartAgentStoreTests {
     @Test func submitForwardsTheAssembledParamsAndSucceeds() async {
         let host = Host.fixture()
         let recorder = StartRecorder()
-        let store = makeStore(hosts: [host], recorder: recorder)
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recorder: recorder)
         store.selectedWorkspaceID = "w1"
         store.name = "reviewer"
         store.command = "claude --continue"
@@ -206,23 +266,45 @@ struct StartAgentStoreTests {
         #expect(recorder.params.first?.workspaceID == "w1")
     }
 
-    @Test func submitOmitsTheWorkspaceWhenTheHostReportsNone() async {
+    @Test func startInFlightPreventsDismissalAndDuplicateSubmit() async throws {
         let host = Host.fixture()
         let recorder = StartRecorder()
-        let store = makeStore(hosts: [host], recorder: recorder)
-        store.name = "writer"
-        store.command = "codex"
+        let gate = ScriptedTransportCallGate()
+        recorder.gate = gate
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recorder: recorder)
+        store.name = "reviewer"
+        store.command = "claude"
 
-        await store.submit()
+        let first = Task { await store.submit() }
+        try await waitUntil("the first start should reach the gate") {
+            await gate.entryCount == 1
+        }
+        #expect(store.state == .starting)
+        #expect(store.canDismiss == false)
 
-        #expect(recorder.params.first?.workspaceID == nil)
+        let second = Task { await store.submit() }
+        await second.value
+        #expect(await gate.entryCount == 1)
+        #expect(recorder.params.count == 1)
+
+        await gate.open()
+        await first.value
+
+        #expect(store.state == .started)
+        #expect(store.canDismiss == true)
     }
 
     @Test func submitSurfacesAServerRejection() async {
         let host = Host.fixture()
         let recorder = StartRecorder()
         recorder.error = HerdrAPIError(code: "400", message: "no such workspace")
-        let store = makeStore(hosts: [host], recorder: recorder)
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recorder: recorder)
         store.name = "reviewer"
         store.command = "claude"
 

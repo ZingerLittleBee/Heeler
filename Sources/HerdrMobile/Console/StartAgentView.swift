@@ -80,6 +80,7 @@ struct StartAgentView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .disabled(!store.canDismiss)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if store.state == .starting {
@@ -95,6 +96,7 @@ struct StartAgentView: View {
             .onChange(of: store.state) {
                 if store.state == .started { dismiss() }
             }
+            .interactiveDismissDisabled(!store.canDismiss)
         }
     }
 }

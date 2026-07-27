@@ -37,12 +37,17 @@ final class StartAgentStore {
     /// The workspace the agent starts in: what the user picked, else the one
     /// they last started an agent in on this Host, else the Host's first.
     ///
-    /// Only nil while the Host reports no workspaces at all — then the request
-    /// omits `workspace_id` and herdr uses its current one.
+    /// Nil while the Host reports no workspaces at all. The form cannot submit
+    /// until a concrete workspace is available, so the launch target is always
+    /// visible to the user.
     var selectedWorkspaceID: String? {
         get {
-            if let pickedWorkspaceID { return pickedWorkspaceID }
             let available = workspaces
+            if let pickedWorkspaceID,
+                available.contains(where: { $0.id == pickedWorkspaceID })
+            {
+                return pickedWorkspaceID
+            }
             if let selectedHostID, let remembered = recents.workspaceID(for: selectedHostID),
                 available.contains(where: { $0.id == remembered })
             {
@@ -99,15 +104,25 @@ final class StartAgentStore {
 
     /// Whether the form is complete enough to dispatch.
     var canSubmit: Bool {
-        selectedHostID != nil && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        selectedHostID != nil && selectedWorkspaceID != nil
+            && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !argv.isEmpty && state != .starting
     }
 
-    /// Dispatches the command via `agent.start`. Whitespace-only or
-    /// Host-less forms are ignored; on success the state flips to `.started`
-    /// for the screen to dismiss.
+    /// Whether the sheet may be dismissed without abandoning an in-flight
+    /// launch whose server-side outcome may already be committed.
+    var canDismiss: Bool {
+        state != .starting
+    }
+
+    /// Dispatches the command via `agent.start`. Incomplete forms are ignored;
+    /// on success the state flips to `.started` for the screen to dismiss.
     func submit() async {
-        guard !isStarting, let hostID = selectedHostID else { return }
+        guard
+            !isStarting,
+            let hostID = selectedHostID,
+            let workspaceID = selectedWorkspaceID
+        else { return }
         let tokens = argv
         guard let kind = tokens.first else { return }
         let agentName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -115,7 +130,6 @@ final class StartAgentStore {
         isStarting = true
         state = .starting
         defer { isStarting = false }
-        let workspaceID = selectedWorkspaceID
         let request = AgentLaunchRequest(
             kind: kind,
             name: agentName,
@@ -123,7 +137,7 @@ final class StartAgentStore {
             workspaceID: workspaceID)
         do {
             _ = try await start(request, hostID)
-            if let workspaceID { recents.remember(workspaceID, for: hostID) }
+            recents.remember(workspaceID, for: hostID)
             state = .started
         } catch {
             state = .failed(Self.message(for: error))

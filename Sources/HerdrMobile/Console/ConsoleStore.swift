@@ -11,6 +11,10 @@ final class ConsoleStore {
     private(set) var hostStatuses: [Host.ID: EventsSessionStatus] = [:]
     private(set) var hostSyncErrors: [Host.ID: String] = [:]
     private(set) var hostConnectionGenerations: [Host.ID: UInt64] = [:]
+    /// Latest snapshot workspaces by Host. This is observable state rather
+    /// than a projection lookup so an open New Agent picker refreshes when a
+    /// snapshot arrives or a workspace membership event resyncs the Host.
+    private(set) var workspacesByHost: [Host.ID: [ConsoleWorkspace]] = [:]
 
     @ObservationIgnored private var projections: [
         Host.ID: HostConsoleProjection
@@ -122,7 +126,7 @@ final class ConsoleStore {
     }
 
     func workspaces(for hostID: Host.ID) -> [ConsoleWorkspace] {
-        projections[hostID]?.workspaces ?? []
+        workspacesByHost[hostID] ?? []
     }
 
     @discardableResult
@@ -177,6 +181,13 @@ final class ConsoleStore {
             uniqueKeysWithValues: current.map {
                 ($0.host.id, $0.transportGeneration)
             })
+        let nextWorkspacesByHost = Dictionary(
+            uniqueKeysWithValues: current.map {
+                ($0.host.id, $0.workspaces)
+            })
+        if workspacesByHost != nextWorkspacesByHost {
+            workspacesByHost = nextWorkspacesByHost
+        }
     }
 }
 
