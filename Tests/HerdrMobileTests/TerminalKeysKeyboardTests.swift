@@ -83,6 +83,69 @@ struct TerminalKeysKeyboardTests {
         #expect(sent == ["继续"])
     }
 
+    /// A `UIHostingController` whose view is added to a `UIInputView` without
+    /// view-controller containment is the one genuinely uncertain part of this
+    /// keyboard: if SwiftUI declined to draw there, both new tabs would come
+    /// up blank and nothing else would fail. So render one and look at it.
+    @Test func swiftUIPanesActuallyDrawInsideTheInputView() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let store = SnippetStore(defaults: defaults)
+        try store.add(Snippet.make(title: "Continue", body: "继续"))
+
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            keysContext: TerminalKeysContext(
+                settings: TerminalSettings(
+                    themes: TerminalThemeSettings(defaults: defaults),
+                    zoom: TerminalZoomSettings(defaults: defaults),
+                    fonts: TerminalFontSettings(defaults: defaults),
+                    snippets: store),
+                manageSnippets: {}))
+        terminal.setKeyboardMode(.controls)
+        let keyboard = try #require(terminal.keysKeyboard)
+        keyboard.frame = CGRect(x: 0, y: 0, width: 402, height: 224)
+
+        for tab in [TerminalKeysTab.snippets, .appearance] {
+            keyboard.select(tab)
+            keyboard.setNeedsLayout()
+            keyboard.layoutIfNeeded()
+
+            let renderer = UIGraphicsImageRenderer(bounds: keyboard.bounds)
+            let image = renderer.image { _ in
+                keyboard.drawHierarchy(in: keyboard.bounds, afterScreenUpdates: true)
+            }
+            // Measured: 232 for Snippets, 309 for Appearance. A pane that
+            // failed to render is one or two colours, so 50 separates them
+            // without pinning the exact pixels of a layout that will change.
+            let colors = Self.distinctColorCount(in: image)
+            #expect(colors > 50, "the \(tab) pane rendered flat (\(colors) colours)")
+        }
+    }
+
+    /// Samples a coarse grid; a pane that failed to render is one flat colour.
+    private static func distinctColorCount(in image: UIImage) -> Int {
+        guard let cgImage = image.cgImage else { return 0 }
+        let width = cgImage.width, height = cgImage.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        guard
+            let context = CGContext(
+                data: &pixels, width: width, height: height, bitsPerComponent: 8,
+                bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return 0 }
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        var seen = Set<UInt32>()
+        for y in stride(from: 0, to: height, by: 4) {
+            for x in stride(from: 0, to: width, by: 4) {
+                let i = (y * width + x) * 4
+                seen.insert(
+                    UInt32(pixels[i]) << 16 | UInt32(pixels[i + 1]) << 8 | UInt32(pixels[i + 2]))
+            }
+        }
+        return seen.count
+    }
+
     @Test func everyTabHasItsOwnIconAndLabel() {
         let icons = Set(TerminalKeysTab.allCases.map(\.systemImageName))
         let labels = Set(TerminalKeysTab.allCases.map(\.accessibilityLabel))
