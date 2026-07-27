@@ -694,14 +694,23 @@ final class HerdrTerminalView: UITerminalView {
     /// touch meant for native scrollback is never answered with a keyboard-driven
     /// viewport resize.
     ///
-    /// The alternate screen keeps the caret anchor but reaches further: an agent
-    /// TUI parks its caret below the row the user reads as the prompt (Claude
-    /// Code's visible `>` measured 16–40 pt above it, #90), so the band grows to
-    /// cover the whole bordered input box. Whole-screen activation was tried
-    /// first (#92) and answered every output-area tap with the keyboard.
+    /// The alternate screen reaches further, two ways. The caret band grows to
+    /// three rows' worth, because an agent TUI parks its caret below the row
+    /// the user reads as the prompt (Claude Code's visible `>` measured
+    /// 16–40 pt above it, #90). And the bottom quarter always answers, because
+    /// chat-style TUIs (Claude Code, Codex, Amp, Droid, …) pin their input box
+    /// there while parking the caret in tool-specific spots the band cannot
+    /// chase. Whole-screen activation was tried first (#92) and answered every
+    /// output-area tap with the keyboard.
     func tapAction(at location: CGPoint) -> TerminalTapAction {
         if isTouchScrollMomentumRunning { return .haltMomentum }
-        return .report(raisesKeyboard: keyboardActivationRegion.contains(location))
+        if keyboardActivationRegion.contains(location) {
+            return .report(raisesKeyboard: true)
+        }
+        let inBottomBand = modeTracker.isAlternateScreen
+            && TerminalKeyboardTapTarget.alternateScreenBottomRegion(in: bounds)
+                .contains(location)
+        return .report(raisesKeyboard: inBottomBand)
     }
 
     var isTouchScrollMomentumRunning: Bool {

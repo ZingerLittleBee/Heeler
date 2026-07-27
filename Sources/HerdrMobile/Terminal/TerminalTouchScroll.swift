@@ -19,6 +19,22 @@ enum TerminalKeyboardTapTarget {
     /// inert — whole-screen activation (#92) overshot, answering every
     /// output-area tap with a keyboard nobody asked for.
     static let alternateScreenMinimumHeight: CGFloat = 132
+    /// Chat-style agent TUIs (Claude Code, Codex, Amp, Droid, …) all pin
+    /// their input box to the bottom rows but park the caret in tool-specific
+    /// spots the caret band cannot chase. The bottom quarter of the surface
+    /// is the tool-agnostic floor: on the alternate screen a tap there raises
+    /// the keyboard no matter where the caret sits.
+    static let alternateScreenBottomFraction: CGFloat = 0.25
+
+    static func alternateScreenBottomRegion(in bounds: CGRect) -> CGRect {
+        guard !bounds.isEmpty else { return .null }
+        let height = bounds.height * alternateScreenBottomFraction
+        return CGRect(
+            x: bounds.minX,
+            y: bounds.maxY - height,
+            width: bounds.width,
+            height: height)
+    }
 
     static func region(
         caretRect: CGRect,

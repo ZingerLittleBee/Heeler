@@ -222,6 +222,17 @@ struct TerminalAttachTests {
         #expect(region == CGRect(x: 0, y: 344, width: 390, height: 132))
     }
 
+    /// Every chat-style agent TUI pins its input box to the bottom rows, but
+    /// each parks the caret somewhere of its own, so the bottom quarter is
+    /// the tool-agnostic floor the caret band cannot be.
+    @Test func alternateScreenBottomQuarterIsAlwaysATapTarget() {
+        let bounds = CGRect(x: 0, y: 0, width: 390, height: 720)
+        let region = TerminalKeyboardTapTarget.alternateScreenBottomRegion(in: bounds)
+
+        #expect(region == CGRect(x: 0, y: 540, width: 390, height: 180))
+        #expect(TerminalKeyboardTapTarget.alternateScreenBottomRegion(in: .zero).isNull)
+    }
+
     @MainActor
     @Test func ghosttyCursorProvidesAVisibleKeyboardTapTarget() async throws {
         let terminal = TerminalScreenView.makeConfiguredTerminal()
@@ -307,9 +318,13 @@ struct TerminalAttachTests {
         let region = terminal.keyboardActivationRegion
         let insideTheBand = CGPoint(x: 195, y: region.midY)
         let outputArea = CGPoint(x: 195, y: 20)
+        // Chat TUIs pin the input box to the bottom rows; a tap there must
+        // answer even when the caret band sits elsewhere.
+        let bottomQuarter = CGPoint(x: 195, y: 700)
         #expect(!region.contains(outputArea))
         #expect(terminal.tapAction(at: insideTheBand) == .report(raisesKeyboard: true))
         #expect(terminal.tapAction(at: outputArea) == .report(raisesKeyboard: false))
+        #expect(terminal.tapAction(at: bottomQuarter) == .report(raisesKeyboard: true))
     }
 
     /// The normal buffer keeps the old contract: scrollback is scrolled by
