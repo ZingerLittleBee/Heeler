@@ -13,6 +13,8 @@ struct ContentView: View {
     @State private var notificationPreferences: NotificationPreferencesStore
     @State private var terminalThemes = TerminalThemeSettings()
     @State private var terminalZoom = TerminalZoomSettings()
+    @State private var terminalFonts = TerminalFontSettings()
+    @State private var snippets = SnippetStore()
     @State private var relaySettings: NotificationRelaySettings
     @State private var bannerStore: AgentNotificationBannerStore
     @State private var activity = AppActivityCoordinator()
@@ -44,10 +46,15 @@ struct ContentView: View {
                 }))
     }
 
+    private var terminal: TerminalSettings {
+        TerminalSettings(
+            themes: terminalThemes, zoom: terminalZoom, fonts: terminalFonts,
+            snippets: snippets)
+    }
+
     var body: some View {
         ConsoleView(
-            hosts: hostStore, console: console, terminalThemes: terminalThemes,
-            terminalZoom: terminalZoom,
+            hosts: hostStore, console: console, terminal: terminal,
             pushRegistration: pushRegistration,
             notificationPreferences: notificationPreferences,
             relaySettings: relaySettings,

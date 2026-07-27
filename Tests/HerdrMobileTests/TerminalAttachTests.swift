@@ -38,7 +38,7 @@ struct TerminalAttachTests {
     @Test func pasteControlAndHardwarePasteUseTheReviewedPasteCallback() {
         var pastes: [String] = []
         let terminal = TerminalScreenView.makeConfiguredTerminal(
-            onPaste: { pastes.append($0) })
+            onPaste: { text, _ in pastes.append(text) })
 
         terminal.requestPaste("one\n two")
         #expect(pastes == ["one\n two"])
@@ -55,7 +55,7 @@ struct TerminalAttachTests {
     @Test func systemPasteControlLoadsTextFromItsItemProvider() async throws {
         var pastes: [String] = []
         let terminal = TerminalScreenView.makeConfiguredTerminal(
-            onPaste: { pastes.append($0) })
+            onPaste: { text, _ in pastes.append(text) })
 
         terminal.paste(
             itemProviders: [NSItemProvider(object: "provider paste" as NSString)])
@@ -154,6 +154,90 @@ struct TerminalAttachTests {
         #expect(terminal.bounds.contains(terminal.keyboardActivationRegion))
     }
 
+    /// The shell above is not what Attach actually shows: every agent is a
+    /// full-screen TUI that takes the alternate screen and grabs the mouse, and
+    /// the keyboard has exactly one entry point. If the cursor stopped yielding
+    /// a caret under those modes the target would silently vanish, and the only
+    /// symptom would be a user tapping a terminal that never answers.
+    @MainActor
+    @Test func aMouseGrabbingTUIStillOffersTheKeyboardTapTarget() async throws {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
+        let controller = UIViewController()
+        controller.view = terminal
+        let windowScene = try #require(
+            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: windowScene)
+        window.frame = terminal.bounds
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+
+        // Alternate screen + SGR mouse tracking, then a prompt parked on a low
+        // row: an agent's input box, in as few bytes as it takes.
+        terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))
+        terminal.receive(Data("\u{1B}[20;3H> ".utf8))
+        terminal.layoutIfNeeded()
+        await Task.yield()
+
+        let region = terminal.keyboardActivationRegion
+        #expect(!region.isNull)
+        #expect(terminal.bounds.contains(region))
+        // Thumb-sized, or the single entry point is unhittable in practice.
+        #expect(region.height >= TerminalKeyboardTapTarget.minimumHeight)
+        // Full width: the row is the target, not the glyph the cursor sits on.
+        #expect(region.width == terminal.bounds.width)
+    }
+
+    /// #90: the 44 pt band sits on the caret, and an agent TUI parks its caret
+    /// below the prompt the user actually reads. Aiming at Claude Code's `>`
+    /// missed four times running in a real session, so the whole surface has to
+    /// answer once the alternate screen is up — there is no native scrollback
+    /// left to protect there.
+    @MainActor
+    @Test func anyTapRaisesTheKeyboardOnceATUIOwnsTheScreen() {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
+        let farFromTheCaret = CGPoint(x: 195, y: 120)
+
+        #expect(terminal.tapAction(at: farFromTheCaret) == .report(raisesKeyboard: false))
+
+        terminal.receive(Data("\u{1B}[?1049h".utf8))
+
+        #expect(terminal.tapAction(at: farFromTheCaret) == .report(raisesKeyboard: true))
+    }
+
+    /// The normal buffer keeps the old contract: scrollback is scrolled by
+    /// touch, and a stray tap must not answer with a viewport resize.
+    @MainActor
+    @Test func theNormalBufferStillOnlyAnswersTheInputRow() {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
+
+        terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1049l".utf8))
+
+        #expect(terminal.tapAction(at: CGPoint(x: 195, y: 120)) == .report(raisesKeyboard: false))
+    }
+
+    /// Tapping to stop a flick is the oldest gesture on the platform. Now that
+    /// a tap can raise the keyboard, that tap must be spent on the halt alone —
+    /// otherwise stopping a scroll costs you the bottom half of the screen.
+    @MainActor
+    @Test func theTapThatHaltsAFlickDoesNothingElse() {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
+        terminal.receive(Data("\u{1B}[?1049h".utf8))
+
+        terminal.startTouchScrollMomentum(velocityY: 2_000)
+        #expect(terminal.isTouchScrollMomentumRunning)
+
+        // The same tap that raises the keyboard in the test above.
+        terminal.handleTap(at: CGPoint(x: 195, y: 120))
+
+        #expect(!terminal.isTouchScrollMomentumRunning)
+        #expect(!terminal.canBecomeFirstResponder)
+    }
+
     @MainActor
     @Test func terminalTouchPanEmitsRemoteTUIMouseWheelInput() async {
         var sent = Data()
@@ -184,7 +268,7 @@ struct TerminalAttachTests {
 
         terminal.setKeyboardMode(.controls)
         #expect(terminal.keyboardMode == .controls)
-        #expect(terminal.inputView is TerminalControlKeyboardView)
+        #expect(terminal.inputView is TerminalKeysKeyboardView)
 
         terminal.setKeyboardMode(.text)
         #expect(terminal.keyboardMode == .text)
@@ -224,7 +308,7 @@ struct TerminalAttachTests {
         terminal.recordTextKeyboardHeight(totalHeight: 48, accessoryHeight: 48)
 
         terminal.setKeyboardMode(.controls)
-        let keyboard = try #require(terminal.inputView as? TerminalControlKeyboardView)
+        let keyboard = try #require(terminal.inputView as? TerminalKeysKeyboardView)
         #expect(keyboard.intrinsicContentSize.height == 288)
         #expect(keyboard.frame.height == 288)
     }
@@ -232,10 +316,19 @@ struct TerminalAttachTests {
     @Test func terminalControlKeyboardContainsOnlyUsefulMobileKeys() {
         #expect(
             TerminalControlKey.rows == [
-                [.escape, .tab, .controlC, .controlD, .controlZ],
+                [.escape, .tab, .controlC, .controlD, .backspace],
                 [.home, .pageUp, .up, .pageDown, .end],
-                [.backspace, .left, .down, .right, .enter],
+                [.controlZ, .left, .down, .right, .enter],
             ])
+        // Every row is the same width, so no key ends up wider than its
+        // neighbours just because a row was left short.
+        #expect(Set(TerminalControlKey.rows.map(\.count)).count == 1)
+        // Rearranging the rows must not quietly drop a key on the floor.
+        let placed = TerminalControlKey.rows.flatMap { $0 }
+        #expect(placed.count == TerminalControlKey.allCases.count)
+        for key in TerminalControlKey.allCases {
+            #expect(placed.contains(key), "\(key) fell off the keyboard")
+        }
     }
 
     @Test func terminalControlKeysEncodeExpectedBytes() {

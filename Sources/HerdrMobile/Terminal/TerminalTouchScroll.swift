@@ -1,6 +1,15 @@
 import CoreGraphics
 import Foundation
 
+/// What a tap on the terminal surface means.
+enum TerminalTapAction: Equatable {
+    /// A flick is still running: halt it, and let the tap mean nothing else.
+    case haltMomentum
+    /// Report the tap to the remote application, raising the keyboard if the
+    /// tap also landed somewhere that asks for it.
+    case report(raisesKeyboard: Bool)
+}
+
 enum TerminalKeyboardTapTarget {
     static let minimumHeight: CGFloat = 44
 
@@ -24,6 +33,9 @@ struct TerminalModeTracker {
     private(set) var usesApplicationCursorKeys = false
     private(set) var isAlternateScreen = false
     private(set) var usesSGRMouseEncoding = false
+    /// DECSET 2004. When the remote application has asked for it, pasted text
+    /// can be framed as a paste instead of arriving as a run of keystrokes.
+    private(set) var usesBracketedPaste = false
 
     var tracksMouse: Bool {
         !mouseTrackingModes.isEmpty
@@ -109,6 +121,8 @@ struct TerminalModeTracker {
             }
         case 1006:
             usesSGRMouseEncoding = enabled
+        case 2004:
+            usesBracketedPaste = enabled
         default:
             break
         }

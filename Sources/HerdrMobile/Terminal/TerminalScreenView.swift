@@ -20,10 +20,15 @@ struct TerminalScreenView: UIViewRepresentable {
     let feed: TerminalByteFeed
     var onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)?
     var onSend: ((Data) -> Void)?
-    var onPaste: ((String) -> Void)?
+    var onPaste: ((_ text: String, _ bracketed: Bool) -> Void)?
+    var onSnippet: ((_ text: String, _ bracketed: Bool) -> Void)?
+    /// Fills the Keys keyboard's Snippets and Appearance tabs. Without one the
+    /// keyboard shows the control keys alone.
+    var keysContext: TerminalKeysContext?
     var isLocalInputEnabled = true
     var theme: TerminalTheme = .default
     var fontSize: Float = TerminalZoomSettings.defaultFontSize
+    var fontFamily: String?
     /// Pinch-to-zoom and the ⌘+/⌘- shortcut change the size in place; the
     /// screen forwards the new value so it lands in the global setting.
     var onFontSizeChanged: ((Float) -> Void)?
@@ -34,8 +39,11 @@ struct TerminalScreenView: UIViewRepresentable {
             onSizeChanged: onSizeChanged,
             onSend: onSend,
             onPaste: onPaste,
+            onSnippet: onSnippet,
+            keysContext: keysContext,
             theme: theme,
-            fontSize: fontSize)
+            fontSize: fontSize,
+            fontFamily: fontFamily)
         view.delegate = context.coordinator
         context.coordinator.terminalView = view
         feed.attach { [weak view] data in
@@ -48,17 +56,23 @@ struct TerminalScreenView: UIViewRepresentable {
     static func makeConfiguredTerminal(
         onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)? = nil,
         onSend: ((Data) -> Void)? = nil,
-        onPaste: ((String) -> Void)? = nil,
+        onPaste: ((_ text: String, _ bracketed: Bool) -> Void)? = nil,
+        onSnippet: ((_ text: String, _ bracketed: Bool) -> Void)? = nil,
+        keysContext: TerminalKeysContext? = nil,
         theme: TerminalTheme = .default,
-        fontSize: Float = TerminalZoomSettings.defaultFontSize
+        fontSize: Float = TerminalZoomSettings.defaultFontSize,
+        fontFamily: String? = nil
     ) -> HerdrTerminalView {
         let view = HerdrTerminalView(
             frame: .zero,
             onSizeChanged: onSizeChanged,
             onSend: onSend,
             onPaste: onPaste,
+            onSnippet: onSnippet,
+            keysContext: keysContext,
             theme: theme,
-            fontSize: fontSize)
+            fontSize: fontSize,
+            fontFamily: fontFamily)
         view.installKeyboardSwitcher()
         return view
     }
@@ -67,10 +81,13 @@ struct TerminalScreenView: UIViewRepresentable {
         view.updateCallbacks(
             onSizeChanged: onSizeChanged,
             onSend: onSend,
-            onPaste: onPaste)
+            onPaste: onPaste,
+            onSnippet: onSnippet)
+        view.keysContext = keysContext
         view.setLocalInputEnabled(isLocalInputEnabled)
         view.applyTheme(theme)
         view.applyFontSize(fontSize)
+        view.applyFontFamily(fontFamily)
         view.onFontSizeChanged = onFontSizeChanged
         context.coordinator.onOpenLink = { url in openURL(url) }
     }
@@ -108,17 +125,20 @@ struct TerminalScreenView: UIViewRepresentable {
 private final class TerminalSessionCallbackBridge {
     var onSizeChanged: ((Int, Int) -> Void)?
     var onSend: ((Data) -> Void)?
-    var onPaste: ((String) -> Void)?
+    var onPaste: ((String, Bool) -> Void)?
+    var onSnippet: ((String, Bool) -> Void)?
     var onViewport: ((InMemoryTerminalViewport) -> Void)?
 
     init(
         onSizeChanged: ((Int, Int) -> Void)?,
         onSend: ((Data) -> Void)?,
-        onPaste: ((String) -> Void)?
+        onPaste: ((String, Bool) -> Void)?,
+        onSnippet: ((String, Bool) -> Void)?
     ) {
         self.onSizeChanged = onSizeChanged
         self.onSend = onSend
         self.onPaste = onPaste
+        self.onSnippet = onSnippet
     }
 
     nonisolated func send(_ data: Data) {
@@ -134,8 +154,12 @@ private final class TerminalSessionCallbackBridge {
         }
     }
 
-    func paste(_ text: String) {
-        onPaste?(text)
+    func paste(_ text: String, bracketed: Bool) {
+        onPaste?(text, bracketed)
+    }
+
+    func snippet(_ text: String, bracketed: Bool) {
+        onSnippet?(text, bracketed)
     }
 }
 
@@ -147,7 +171,11 @@ final class HerdrTerminalView: UITerminalView {
     let terminalSession: InMemoryTerminalSession
     private(set) var appliedTheme: TerminalTheme
     private(set) var appliedFontSize: Float
+    private(set) var appliedFontFamily: String?
     var onFontSizeChanged: ((Float) -> Void)?
+    /// Rebuilt into the Keys keyboard the next time it is raised; a live
+    /// keyboard keeps the context it was built with.
+    var keysContext: TerminalKeysContext?
     private var zoomBaseFontSize: Float?
     private var terminalInputView: UIView?
     private var modeTracker = TerminalModeTracker()
@@ -160,7 +188,7 @@ final class HerdrTerminalView: UITerminalView {
     private var touchScrollMomentumDisplayLink: CADisplayLink?
     private var touchScrollMomentumVelocityY: CGFloat = 0
     private var touchScrollMomentumTimestamp: CFTimeInterval = 0
-    var controlKeyboardHeight = TerminalControlKeyboardView.defaultHeight
+    var controlKeyboardHeight = TerminalKeysKeyboardView.defaultHeight
 
     private lazy var touchScrollGesture = UIPanGestureRecognizer(
         target: self,
@@ -205,14 +233,19 @@ final class HerdrTerminalView: UITerminalView {
         frame: CGRect,
         onSizeChanged: ((Int, Int) -> Void)?,
         onSend: ((Data) -> Void)?,
-        onPaste: ((String) -> Void)?,
+        onPaste: ((String, Bool) -> Void)?,
+        onSnippet: ((String, Bool) -> Void)?,
+        keysContext: TerminalKeysContext?,
         theme: TerminalTheme,
-        fontSize: Float
+        fontSize: Float,
+        fontFamily: String?
     ) {
+        self.keysContext = keysContext
         let callbackBridge = TerminalSessionCallbackBridge(
             onSizeChanged: onSizeChanged,
             onSend: onSend,
-            onPaste: onPaste)
+            onPaste: onPaste,
+            onSnippet: onSnippet)
         self.callbackBridge = callbackBridge
         terminalSession = InMemoryTerminalSession(
             write: { [weak callbackBridge] data in
@@ -227,9 +260,11 @@ final class HerdrTerminalView: UITerminalView {
         let clampedFontSize = TerminalZoomSettings.clamped(fontSize)
         terminalController = TerminalController(
             theme: theme,
-            terminalConfiguration: TerminalConfiguration().fontSize(clampedFontSize))
+            terminalConfiguration: Self.fontConfiguration(
+                size: clampedFontSize, family: fontFamily))
         appliedTheme = theme
         appliedFontSize = clampedFontSize
+        appliedFontFamily = fontFamily
         super.init(frame: frame)
         pasteConfiguration = UIPasteConfiguration(forAccepting: String.self)
         inputAccessoryItems = []
@@ -250,11 +285,13 @@ final class HerdrTerminalView: UITerminalView {
     func updateCallbacks(
         onSizeChanged: ((Int, Int) -> Void)?,
         onSend: ((Data) -> Void)?,
-        onPaste: ((String) -> Void)?
+        onPaste: ((String, Bool) -> Void)?,
+        onSnippet: ((String, Bool) -> Void)?
     ) {
         callbackBridge.onSizeChanged = onSizeChanged
         callbackBridge.onSend = onSend
         callbackBridge.onPaste = onPaste
+        callbackBridge.onSnippet = onSnippet
     }
 
     @discardableResult
@@ -277,6 +314,33 @@ final class HerdrTerminalView: UITerminalView {
         }
         appliedFontSize = clamped
         return true
+    }
+
+    @discardableResult
+    func applyFontFamily(_ family: String?) -> Bool {
+        guard family != appliedFontFamily,
+            terminalController.setTerminalConfiguration(
+                Self.fontConfiguration(size: nil, family: family))
+        else {
+            return false
+        }
+        appliedFontFamily = family
+        return true
+    }
+
+    /// ghostty treats `font-family` as a set that repeated values append to,
+    /// so switching fonts has to clear it with an empty value first or the
+    /// old family stays in the fallback chain ahead of the new one.
+    private static func fontConfiguration(size: Float?, family: String?) -> TerminalConfiguration {
+        var configuration = TerminalConfiguration()
+        if let size {
+            configuration = configuration.fontSize(size)
+        }
+        configuration = configuration.fontFamily("")
+        if let family {
+            configuration = configuration.fontFamily(family)
+        }
+        return configuration
     }
 
     /// Applies a zoom the user performed on this terminal and reports it, so
@@ -311,13 +375,23 @@ final class HerdrTerminalView: UITerminalView {
         guard isLocalInputEnabled != isEnabled else { return }
         isLocalInputEnabled = isEnabled
         terminalKeyboardAccessory.setPasteEnabled(isEnabled)
-        terminalInputView?.isUserInteractionEnabled = isEnabled
-        terminalInputView?.alpha = isEnabled ? 1 : 0.5
+        if let keysKeyboard {
+            keysKeyboard.localInputEnabledDidChange()
+        } else {
+            terminalInputView?.isUserInteractionEnabled = isEnabled
+            terminalInputView?.alpha = isEnabled ? 1 : 0.5
+        }
     }
 
     func requestPaste(_ text: String?) {
         guard isLocalInputEnabled, let text else { return }
-        callbackBridge.paste(text)
+        callbackBridge.paste(text, bracketed: usesBracketedPaste)
+    }
+
+    /// Sends a Snippet the user tapped in the Keys keyboard.
+    func sendSnippet(_ snippet: Snippet) {
+        guard isLocalInputEnabled else { return }
+        callbackBridge.snippet(snippet.body, bracketed: usesBracketedPaste)
     }
 
     override func paste(_ sender: Any?) {
@@ -371,9 +445,12 @@ final class HerdrTerminalView: UITerminalView {
             return abs(velocity.y) > abs(velocity.x)
         }
         if gestureRecognizer === tapGesture {
-            // A TUI that tracks the mouse wants every tap; otherwise only the
-            // input row is interactive, and it just raises the keyboard.
+            // A TUI wants every tap — to click, to raise the keyboard, or both.
+            // In the normal buffer only the input row is interactive. A running
+            // flick claims any tap regardless, to halt itself.
             return modeTracker.tracksMouse
+                || modeTracker.isAlternateScreen
+                || isTouchScrollMomentumRunning
                 || keyboardActivationRegion.contains(tapGesture.location(in: self))
         }
         return super.gestureRecognizerShouldBegin(gestureRecognizer)
@@ -396,6 +473,10 @@ final class HerdrTerminalView: UITerminalView {
 
     var usesApplicationCursorKeys: Bool {
         modeTracker.usesApplicationCursorKeys
+    }
+
+    var usesBracketedPaste: Bool {
+        modeTracker.usesBracketedPaste
     }
 
     func setTerminalInputView(_ inputView: UIView?) {
@@ -533,13 +614,43 @@ final class HerdrTerminalView: UITerminalView {
 
     @objc private func handleHerdrTap(_ gesture: UITapGestureRecognizer) {
         guard gesture.state == .ended else { return }
-        let location = gesture.location(in: self)
-        clickTouch(at: location)
-        // The click reaches the TUI, but the keyboard still only follows a tap
-        // on the input row — a tap meant for a menu item must not raise it.
-        if keyboardActivationRegion.contains(location) {
-            requestKeyboard()
+        handleTap(at: gesture.location(in: self))
+    }
+
+    func handleTap(at location: CGPoint) {
+        switch tapAction(at: location) {
+        case .haltMomentum:
+            stopTouchScrollMomentum()
+            touchScrollAccumulator.reset()
+        case .report(let raisesKeyboard):
+            clickTouch(at: location)
+            if raisesKeyboard {
+                requestKeyboard()
+            }
         }
+    }
+
+    /// What a tap means, given what the terminal is currently doing.
+    ///
+    /// In the normal buffer the keyboard follows the input row alone, so that a
+    /// touch meant for native scrollback is never answered with a keyboard-driven
+    /// viewport resize.
+    ///
+    /// The alternate screen has no native scrollback to protect — drags there are
+    /// already mapped to wheel rows — and its caret sits wherever the application
+    /// parked it, which is rarely the row the user reads as the prompt. Claude
+    /// Code draws a bordered input box with the caret below the visible `>`, so
+    /// aiming at the prompt misses the 44 pt target entirely (#90). In a
+    /// full-screen TUI, any tap will do.
+    func tapAction(at location: CGPoint) -> TerminalTapAction {
+        if isTouchScrollMomentumRunning { return .haltMomentum }
+        return .report(
+            raisesKeyboard: modeTracker.isAlternateScreen
+                || keyboardActivationRegion.contains(location))
+    }
+
+    var isTouchScrollMomentumRunning: Bool {
+        touchScrollMomentumDisplayLink != nil
     }
 
     @objc private func handleHerdrTouchScrollGesture(_ gesture: UIPanGestureRecognizer) {
@@ -572,7 +683,7 @@ final class HerdrTerminalView: UITerminalView {
             height: CGFloat(viewport.cellHeightPixels) / scale)
     }
 
-    private func startTouchScrollMomentum(velocityY: CGFloat) {
+    func startTouchScrollMomentum(velocityY: CGFloat) {
         guard abs(velocityY) >= 80 else {
             touchScrollAccumulator.reset()
             return

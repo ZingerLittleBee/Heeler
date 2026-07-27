@@ -26,7 +26,7 @@ enum TerminalKeyboardMode: Int {
     case controls
 }
 
-enum TerminalControlKey: Equatable {
+enum TerminalControlKey: Equatable, CaseIterable {
     case escape
     case tab
     case controlC
@@ -43,10 +43,13 @@ enum TerminalControlKey: Equatable {
     case right
     case enter
 
+    /// Backspace takes the top row's right edge, where the iOS keyboard puts it
+    /// and where a thumb finds it without looking. It trades places with ⌃Z
+    /// rather than crowding in, so the rows stay evenly sized.
     static let rows: [[Self]] = [
-        [.escape, .tab, .controlC, .controlD, .controlZ],
+        [.escape, .tab, .controlC, .controlD, .backspace],
         [.home, .pageUp, .up, .pageDown, .end],
-        [.backspace, .left, .down, .right, .enter],
+        [.controlZ, .left, .down, .right, .enter],
     ]
 
     var title: String? {
@@ -267,31 +270,21 @@ final class TerminalKeyboardAccessory: UIInputView {
     }
 }
 
-final class TerminalControlKeyboardView: UIInputView, UIInputViewAudioFeedback {
-    static let defaultHeight: CGFloat = 224
-
+/// The control-key pane of the Keys keyboard. It fills whatever space the
+/// keyboard's tab container gives it, which is now one tab bar shorter than
+/// the whole keyboard.
+final class TerminalControlPadView: UIView {
     private weak var terminalView: HerdrTerminalView?
-    private let keyboardHeight: CGFloat
 
-    var enableInputClicksWhenVisible: Bool { true }
-
-    init(frame: CGRect, keyboardHeight: CGFloat, terminalView: HerdrTerminalView) {
+    init(terminalView: HerdrTerminalView) {
         self.terminalView = terminalView
-        self.keyboardHeight = keyboardHeight
-        super.init(frame: frame, inputViewStyle: .keyboard)
-        allowsSelfSizing = true
-        autoresizingMask = [.flexibleWidth]
-        backgroundColor = .systemBackground
+        super.init(frame: .zero)
         configureKeys()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is unavailable")
-    }
-
-    override var intrinsicContentSize: CGSize {
-        CGSize(width: UIView.noIntrinsicMetric, height: keyboardHeight)
     }
 
     private func configureKeys() {
@@ -317,7 +310,7 @@ final class TerminalControlKeyboardView: UIInputView, UIInputViewAudioFeedback {
             rows.topAnchor.constraint(equalTo: topAnchor, constant: 10),
             rows.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
             rows.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
-            rows.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor, constant: -8),
+            rows.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
         ])
     }
 
@@ -415,7 +408,11 @@ private final class TerminalKeyButton: UIButton {
 
 extension HerdrTerminalView {
     var keyboardMode: TerminalKeyboardMode {
-        inputView is TerminalControlKeyboardView ? .controls : .text
+        inputView is TerminalKeysKeyboardView ? .controls : .text
+    }
+
+    var keysKeyboard: TerminalKeysKeyboardView? {
+        inputView as? TerminalKeysKeyboardView
     }
 
     func installKeyboardSwitcher() {
@@ -435,13 +432,14 @@ extension HerdrTerminalView {
             setTerminalInputView(nil)
         case .controls:
             setTerminalInputView(
-                TerminalControlKeyboardView(
+                TerminalKeysKeyboardView(
                     frame: CGRect(
                         x: 0, y: 0, width: bounds.width, height: controlKeyboardHeight),
-                    keyboardHeight: controlKeyboardHeight, terminalView: self))
+                    keyboardHeight: controlKeyboardHeight,
+                    terminalView: self,
+                    context: keysContext))
         }
-        inputView?.isUserInteractionEnabled = isLocalInputEnabled
-        inputView?.alpha = isLocalInputEnabled ? 1 : 0.5
+        keysKeyboard?.localInputEnabledDidChange()
         (inputAccessoryView as? TerminalKeyboardAccessory)?.update(mode: mode)
         UIView.performWithoutAnimation {
             reloadInputViews()

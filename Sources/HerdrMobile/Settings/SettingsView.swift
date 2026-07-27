@@ -3,8 +3,7 @@ import SwiftUI
 import UIKit
 
 struct SettingsView: View {
-    let terminalThemes: TerminalThemeSettings
-    let terminalZoom: TerminalZoomSettings
+    let terminal: TerminalSettings
     let pushRegistration: PushRegistrationStore
     let notificationPreferences: NotificationPreferencesStore
     @Bindable var relaySettings: NotificationRelaySettings
@@ -42,8 +41,8 @@ struct SettingsView: View {
 
                 Section {
                     TerminalThemePreview(
-                        theme: terminalThemes.theme,
-                        fontSize: terminalZoom.fontSize
+                        theme: terminal.themes.theme,
+                        fontSize: terminal.zoom.fontSize
                     )
                         .frame(height: 180)
                         .clipShape(.rect(cornerRadius: 16))
@@ -65,6 +64,16 @@ struct SettingsView: View {
                 }
 
                 terminalTextSizeSection
+
+                Section {
+                    ForEach(terminal.fonts.availableOptions) { option in
+                        fontButton(option)
+                    }
+                } header: {
+                    Text("Terminal Font")
+                } footer: {
+                    Text("Bundled faces are registered with the app; no download needed.")
+                }
 
                 Section("Terminal Theme") {
                     ForEach(TerminalThemeOption.allCases) { option in
@@ -101,20 +110,20 @@ struct SettingsView: View {
         Section {
             Stepper(
                 value: Binding(
-                    get: { terminalZoom.fontSize },
-                    set: { terminalZoom.setFontSize($0) }),
+                    get: { terminal.zoom.fontSize },
+                    set: { terminal.zoom.setFontSize($0) }),
                 in: TerminalZoomSettings.range,
                 step: 1
             ) {
                 HStack {
                     Text("Text Size")
                     Spacer(minLength: 12)
-                    Text("\(Int(terminalZoom.fontSize)) pt")
+                    Text("\(Int(terminal.zoom.fontSize)) pt")
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
             }
-            .accessibilityValue("\(Int(terminalZoom.fontSize)) points")
+            .accessibilityValue("\(Int(terminal.zoom.fontSize)) points")
         } header: {
             Text("Terminal Text Size")
         } footer: {
@@ -278,16 +287,36 @@ struct SettingsView: View {
         }
     }
 
+    private func fontButton(_ option: TerminalFontOption) -> some View {
+        selectableRow(
+            title: option.title, detail: option.detail,
+            isSelected: terminal.fonts.selection == option
+        ) {
+            terminal.fonts.select(option)
+        }
+    }
+
     private func themeButton(_ option: TerminalThemeOption) -> some View {
-        let isSelected = terminalThemes.selection == option
-        return Button {
-            terminalThemes.select(option)
-        } label: {
+        selectableRow(
+            title: option.title, detail: option.detail,
+            isSelected: terminal.themes.selection == option
+        ) {
+            terminal.themes.select(option)
+        }
+    }
+
+    private func selectableRow(
+        title: String,
+        detail: String,
+        isSelected: Bool,
+        select: @escaping () -> Void
+    ) -> some View {
+        Button(action: select) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(option.title)
+                    Text(title)
                         .foregroundStyle(.primary)
-                    Text(option.detail)
+                    Text(detail)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

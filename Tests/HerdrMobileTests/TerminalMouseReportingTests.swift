@@ -48,6 +48,26 @@ struct TerminalMouseReportingTests {
         #expect(tracker.remoteClickSequence(column: 4, row: 2) == nil)
     }
 
+    @Test func bracketedPasteFollowsDECSET2004() {
+        var tracker = TerminalModeTracker()
+        #expect(!tracker.usesBracketedPaste)
+
+        tracker.receive(Data("\u{1B}[?2004h".utf8))
+        #expect(tracker.usesBracketedPaste)
+
+        tracker.receive(Data("\u{1B}[?2004l".utf8))
+        #expect(!tracker.usesBracketedPaste)
+    }
+
+    @Test func bracketedPasteIsPickedOutOfACombinedModeList() {
+        var tracker = TerminalModeTracker()
+        tracker.receive(Data("\u{1B}[?1049;1006;2004h".utf8))
+
+        #expect(tracker.usesBracketedPaste)
+        #expect(tracker.isAlternateScreen)
+        #expect(tracker.usesSGRMouseEncoding)
+    }
+
     @Test func gridMapperClampsTouchesToTheCentredGrid() {
         // 8×4 cells of 10×20 leaves 4 points across and 10 down: the grid
         // starts 2 points in from the left and 5 down from the top.

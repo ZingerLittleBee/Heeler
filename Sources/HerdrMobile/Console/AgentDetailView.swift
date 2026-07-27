@@ -7,8 +7,7 @@ import SwiftUI
 struct AgentDetailView: View {
     let agent: ConsoleAgent
     private let console: ConsoleStore
-    private let terminalThemes: TerminalThemeSettings
-    private let terminalZoom: TerminalZoomSettings
+    private let terminal: TerminalSettings
     private let pushRegistration: PushRegistrationStore
     private let notificationPreferences: NotificationPreferencesStore
     private let relaySettings: NotificationRelaySettings
@@ -17,14 +16,14 @@ struct AgentDetailView: View {
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isConfirmingClose = false
     @State private var isShowingSettings = false
+    @State private var isManagingSnippets = false
     @State private var closeErrorMessage: String?
     @Environment(\.dismiss) private var dismiss
 
     init(
         agent: ConsoleAgent,
         console: ConsoleStore,
-        terminalThemes: TerminalThemeSettings,
-        terminalZoom: TerminalZoomSettings,
+        terminal: TerminalSettings,
         pushRegistration: PushRegistrationStore,
         notificationPreferences: NotificationPreferencesStore,
         relaySettings: NotificationRelaySettings,
@@ -32,8 +31,7 @@ struct AgentDetailView: View {
     ) {
         self.agent = agent
         self.console = console
-        self.terminalThemes = terminalThemes
-        self.terminalZoom = terminalZoom
+        self.terminal = terminal
         self.pushRegistration = pushRegistration
         self.notificationPreferences = notificationPreferences
         self.relaySettings = relaySettings
@@ -50,20 +48,32 @@ struct AgentDetailView: View {
             })
     }
 
+    private var terminalScreen: TerminalScreenView {
+        var screen = TerminalScreenView(feed: attach.terminalFeed)
+        screen.onSizeChanged = { cols, rows in
+            attach.viewDidResize(cols: cols, rows: rows)
+        }
+        screen.onSend = { keystrokes in attach.send(keystrokes) }
+        screen.onPaste = { text, bracketed in
+            attach.requestPaste(text, bracketedPaste: bracketed)
+        }
+        screen.onSnippet = { text, bracketed in
+            attach.insertSnippet(text, bracketedPaste: bracketed)
+        }
+        screen.keysContext = TerminalKeysContext(settings: terminal) {
+            isManagingSnippets = true
+        }
+        screen.isLocalInputEnabled = attach.isLocalInputEnabled
+        screen.theme = terminal.themes.theme
+        screen.fontSize = terminal.zoom.fontSize
+        screen.fontFamily = terminal.fonts.familyName
+        screen.onFontSizeChanged = { fontSize in terminal.zoom.setFontSize(fontSize) }
+        return screen
+    }
+
     var body: some View {
-        TerminalScreenView(
-            feed: attach.terminalFeed,
-            onSizeChanged: { cols, rows in
-                attach.viewDidResize(cols: cols, rows: rows)
-            },
-            onSend: { keystrokes in attach.send(keystrokes) },
-            onPaste: { text in attach.requestPaste(text) },
-            isLocalInputEnabled: attach.isLocalInputEnabled,
-            theme: terminalThemes.theme,
-            fontSize: terminalZoom.fontSize,
-            onFontSizeChanged: { fontSize in terminalZoom.setFontSize(fontSize) }
-        )
-        .id(attach.terminalID)
+        terminalScreen
+            .id(attach.terminalID)
         .overlay { statusOverlay }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             imageAttachStatus
@@ -80,8 +90,11 @@ struct AgentDetailView: View {
             }
             ToolbarItem(placement: .primaryAction) {
                 Menu {
-                    Button("Terminal Theme", systemImage: "paintpalette") {
+                    Button("Settings", systemImage: "gearshape") {
                         isShowingSettings = true
+                    }
+                    Button("Snippets", systemImage: "quote.bubble") {
+                        isManagingSnippets = true
                     }
                     Button("Close Agent", systemImage: "trash", role: .destructive) {
                         isConfirmingClose = true
@@ -93,11 +106,15 @@ struct AgentDetailView: View {
         }
         .sheet(isPresented: $isShowingSettings) {
             SettingsView(
-                terminalThemes: terminalThemes,
-                terminalZoom: terminalZoom,
+                terminal: terminal,
                 pushRegistration: pushRegistration,
                 notificationPreferences: notificationPreferences,
                 relaySettings: relaySettings)
+        }
+        // Presenting this takes the keyboard down and dismissing brings it
+        // back; see `allowsKeyboardActivation` in HerdrTerminalView.
+        .sheet(isPresented: $isManagingSnippets) {
+            SnippetsManagementView(store: terminal.snippets)
         }
         .sheet(
             isPresented: Binding(
@@ -176,13 +193,17 @@ struct AgentDetailView: View {
     private var statusOverlay: some View {
         switch attach.terminalStatus {
         case .waitingForSize, .connecting:
-            ProgressView()
+            // No dim: a reattach would otherwise flash the whole screen dark.
+            TerminalStatusDialog(
+                glyph: .progress,
+                title: "Connecting…",
+                dimsBackground: false)
         case .ended(let message):
-            ContentUnavailableView {
-                Label("Session Ended", systemImage: "cable.connector.slash")
-            } description: {
-                Text(message)
-            } actions: {
+            TerminalStatusDialog(
+                glyph: .symbol("cable.connector.slash"),
+                title: "Session Ended",
+                message: message
+            ) {
                 Button("Reattach") { attach.retryTerminal() }
                     .buttonStyle(.borderedProminent)
             }

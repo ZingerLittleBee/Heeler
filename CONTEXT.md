@@ -67,18 +67,27 @@ _Avoid_: dashboard, home
 The Agent detail surface: full interactive terminal control of the pane through
 the embedded terminal. The normal terminal buffer uses native local scrollback.
 Alternate-screen TUIs map vertical touch drags and momentum to terminal wheel rows.
-Touching the terminal never opens the software keyboard; the keyboard toolbar
-button is the only entry point, so a scroll gesture cannot be interrupted by a
-keyboard-driven viewport resize.
+In the normal buffer only a tap on the input row opens the software keyboard, so
+a scroll gesture is never interrupted by a keyboard-driven viewport resize. Once
+a TUI takes the alternate screen there is no native scrollback left to protect,
+and any tap opens it — except the tap that halts a flick, which is spent on the
+halt alone.
 _Avoid_: takeover (that's herdr's flag, not our surface), connect
 
 **Terminal Keyboard**:
 The two input modes used within Attach. Text keeps the standard iOS input method
 for composition, autocorrection, dictation, and language switching. The Keys mode
-replaces it with a compact terminal control pad for navigation and common control
-signals.
-Both modes send directly to the Agent's pane.
+replaces it with a tabbed pad of terminal-side surfaces: control keys for
+navigation and common control signals, Snippets, and terminal appearance.
+Input from either mode goes directly to the Agent's pane.
 _Avoid_: desktop keyboard, reply keyboard
+
+**Snippet**:
+A phrase the user writes once and reuses, kept in one global set independent of
+any Host or Agent. Tapping one inserts its text into the Agent's pane and
+nothing more; the user still submits it. A Snippet may carry a Title: a short
+name the user gives it, shown above its text wherever Snippets are listed.
+_Avoid_: macro, template, shortcut, quick reply, tip
 
 **Terminal Paste**:
 A user-invoked insertion of plain text from the iOS clipboard into Attach. Single-line text proceeds directly; potentially executable multiline or control content requires review.

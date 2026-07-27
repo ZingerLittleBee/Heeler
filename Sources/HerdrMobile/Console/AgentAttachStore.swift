@@ -84,8 +84,12 @@ final class AgentAttachStore {
         terminal.send(keystrokes)
     }
 
-    func requestPaste(_ text: String) {
-        _ = input.requestPaste(text)
+    func requestPaste(_ text: String, bracketedPaste: Bool) {
+        _ = input.requestPaste(text, bracketedPaste: bracketedPaste)
+    }
+
+    func insertSnippet(_ text: String, bracketedPaste: Bool) {
+        _ = input.insertSnippet(text, bracketedPaste: bracketedPaste)
     }
 
     func cancelPaste() {
