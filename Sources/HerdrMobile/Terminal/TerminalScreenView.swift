@@ -20,7 +20,8 @@ struct TerminalScreenView: UIViewRepresentable {
     let feed: TerminalByteFeed
     var onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)?
     var onSend: ((Data) -> Void)?
-    var onPaste: ((String) -> Void)?
+    var onPaste: ((_ text: String, _ bracketed: Bool) -> Void)?
+    var onSnippet: ((_ text: String, _ bracketed: Bool) -> Void)?
     var isLocalInputEnabled = true
     var theme: TerminalTheme = .default
     var fontSize: Float = TerminalZoomSettings.defaultFontSize
@@ -34,6 +35,7 @@ struct TerminalScreenView: UIViewRepresentable {
             onSizeChanged: onSizeChanged,
             onSend: onSend,
             onPaste: onPaste,
+            onSnippet: onSnippet,
             theme: theme,
             fontSize: fontSize)
         view.delegate = context.coordinator
@@ -48,7 +50,8 @@ struct TerminalScreenView: UIViewRepresentable {
     static func makeConfiguredTerminal(
         onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)? = nil,
         onSend: ((Data) -> Void)? = nil,
-        onPaste: ((String) -> Void)? = nil,
+        onPaste: ((_ text: String, _ bracketed: Bool) -> Void)? = nil,
+        onSnippet: ((_ text: String, _ bracketed: Bool) -> Void)? = nil,
         theme: TerminalTheme = .default,
         fontSize: Float = TerminalZoomSettings.defaultFontSize
     ) -> HerdrTerminalView {
@@ -57,6 +60,7 @@ struct TerminalScreenView: UIViewRepresentable {
             onSizeChanged: onSizeChanged,
             onSend: onSend,
             onPaste: onPaste,
+            onSnippet: onSnippet,
             theme: theme,
             fontSize: fontSize)
         view.installKeyboardSwitcher()
@@ -67,7 +71,8 @@ struct TerminalScreenView: UIViewRepresentable {
         view.updateCallbacks(
             onSizeChanged: onSizeChanged,
             onSend: onSend,
-            onPaste: onPaste)
+            onPaste: onPaste,
+            onSnippet: onSnippet)
         view.setLocalInputEnabled(isLocalInputEnabled)
         view.applyTheme(theme)
         view.applyFontSize(fontSize)
@@ -108,17 +113,20 @@ struct TerminalScreenView: UIViewRepresentable {
 private final class TerminalSessionCallbackBridge {
     var onSizeChanged: ((Int, Int) -> Void)?
     var onSend: ((Data) -> Void)?
-    var onPaste: ((String) -> Void)?
+    var onPaste: ((String, Bool) -> Void)?
+    var onSnippet: ((String, Bool) -> Void)?
     var onViewport: ((InMemoryTerminalViewport) -> Void)?
 
     init(
         onSizeChanged: ((Int, Int) -> Void)?,
         onSend: ((Data) -> Void)?,
-        onPaste: ((String) -> Void)?
+        onPaste: ((String, Bool) -> Void)?,
+        onSnippet: ((String, Bool) -> Void)?
     ) {
         self.onSizeChanged = onSizeChanged
         self.onSend = onSend
         self.onPaste = onPaste
+        self.onSnippet = onSnippet
     }
 
     nonisolated func send(_ data: Data) {
@@ -134,8 +142,12 @@ private final class TerminalSessionCallbackBridge {
         }
     }
 
-    func paste(_ text: String) {
-        onPaste?(text)
+    func paste(_ text: String, bracketed: Bool) {
+        onPaste?(text, bracketed)
+    }
+
+    func snippet(_ text: String, bracketed: Bool) {
+        onSnippet?(text, bracketed)
     }
 }
 
@@ -205,14 +217,16 @@ final class HerdrTerminalView: UITerminalView {
         frame: CGRect,
         onSizeChanged: ((Int, Int) -> Void)?,
         onSend: ((Data) -> Void)?,
-        onPaste: ((String) -> Void)?,
+        onPaste: ((String, Bool) -> Void)?,
+        onSnippet: ((String, Bool) -> Void)?,
         theme: TerminalTheme,
         fontSize: Float
     ) {
         let callbackBridge = TerminalSessionCallbackBridge(
             onSizeChanged: onSizeChanged,
             onSend: onSend,
-            onPaste: onPaste)
+            onPaste: onPaste,
+            onSnippet: onSnippet)
         self.callbackBridge = callbackBridge
         terminalSession = InMemoryTerminalSession(
             write: { [weak callbackBridge] data in
@@ -250,11 +264,13 @@ final class HerdrTerminalView: UITerminalView {
     func updateCallbacks(
         onSizeChanged: ((Int, Int) -> Void)?,
         onSend: ((Data) -> Void)?,
-        onPaste: ((String) -> Void)?
+        onPaste: ((String, Bool) -> Void)?,
+        onSnippet: ((String, Bool) -> Void)?
     ) {
         callbackBridge.onSizeChanged = onSizeChanged
         callbackBridge.onSend = onSend
         callbackBridge.onPaste = onPaste
+        callbackBridge.onSnippet = onSnippet
     }
 
     @discardableResult
@@ -317,7 +333,13 @@ final class HerdrTerminalView: UITerminalView {
 
     func requestPaste(_ text: String?) {
         guard isLocalInputEnabled, let text else { return }
-        callbackBridge.paste(text)
+        callbackBridge.paste(text, bracketed: usesBracketedPaste)
+    }
+
+    /// Sends a Snippet the user tapped in the Keys keyboard.
+    func sendSnippet(_ snippet: Snippet) {
+        guard isLocalInputEnabled else { return }
+        callbackBridge.snippet(snippet.body, bracketed: usesBracketedPaste)
     }
 
     override func paste(_ sender: Any?) {
@@ -396,6 +418,10 @@ final class HerdrTerminalView: UITerminalView {
 
     var usesApplicationCursorKeys: Bool {
         modeTracker.usesApplicationCursorKeys
+    }
+
+    var usesBracketedPaste: Bool {
+        modeTracker.usesBracketedPaste
     }
 
     func setTerminalInputView(_ inputView: UIView?) {

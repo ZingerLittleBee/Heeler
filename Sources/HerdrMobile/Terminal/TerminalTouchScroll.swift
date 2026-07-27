@@ -24,6 +24,9 @@ struct TerminalModeTracker {
     private(set) var usesApplicationCursorKeys = false
     private(set) var isAlternateScreen = false
     private(set) var usesSGRMouseEncoding = false
+    /// DECSET 2004. When the remote application has asked for it, pasted text
+    /// can be framed as a paste instead of arriving as a run of keystrokes.
+    private(set) var usesBracketedPaste = false
 
     var tracksMouse: Bool {
         !mouseTrackingModes.isEmpty
@@ -109,6 +112,8 @@ struct TerminalModeTracker {
             }
         case 1006:
             usesSGRMouseEncoding = enabled
+        case 2004:
+            usesBracketedPaste = enabled
         default:
             break
         }

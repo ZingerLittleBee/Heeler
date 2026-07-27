@@ -133,4 +133,75 @@ struct TerminalInputControllerTests {
         #expect(controller.confirmPaste())
         #expect(writes == [Data(text.utf8)])
     }
+
+    @Test func snippetsGoOutWholeAndNeverSubmit() {
+        var writes: [Data] = []
+        let controller = TerminalInputController()
+        _ = controller.beginSession { writes.append($0) }
+
+        #expect(controller.insertSnippet("run the tests", bracketedPaste: true))
+
+        #expect(writes == [Data("run the tests".utf8)])
+        #expect(!writes.contains { $0.contains(0x0D) })
+    }
+
+    @Test func multilineSnippetsAreFramedAsAPasteWhenTheRemoteAskedForIt() {
+        var writes: [Data] = []
+        let controller = TerminalInputController()
+        _ = controller.beginSession { writes.append($0) }
+
+        #expect(controller.insertSnippet("first\nsecond", bracketedPaste: true))
+
+        #expect(
+            writes == [
+                TerminalBracketedPaste.start + Data("first\nsecond".utf8)
+                    + TerminalBracketedPaste.end
+            ])
+    }
+
+    @Test func withoutBracketedPasteTheMarkersAreNotSent() {
+        // The markers would be echoed as literal garbage by an application
+        // that never enabled DECSET 2004.
+        var writes: [Data] = []
+        let controller = TerminalInputController()
+        _ = controller.beginSession { writes.append($0) }
+
+        #expect(controller.insertSnippet("first\nsecond", bracketedPaste: false))
+
+        #expect(writes == [Data("first\nsecond".utf8)])
+    }
+
+    @Test func reviewedMultilinePasteIsFramedWithTheModeCapturedAtRequestTime() {
+        var writes: [Data] = []
+        let controller = TerminalInputController()
+        _ = controller.beginSession { writes.append($0) }
+        let text = "one\ntwo\nthree"
+
+        #expect(controller.requestPaste(text, bracketedPaste: true).requiresReview)
+        #expect(controller.confirmPaste())
+
+        #expect(
+            writes == [
+                TerminalBracketedPaste.start + Data(text.utf8) + TerminalBracketedPaste.end
+            ])
+    }
+
+    @Test func snippetWithUnsafeControlCharactersIsRefused() {
+        var writes: [Data] = []
+        let controller = TerminalInputController()
+        _ = controller.beginSession { writes.append($0) }
+
+        #expect(!controller.insertSnippet("escape\u{1B}[31m", bracketedPaste: true))
+        #expect(writes.isEmpty)
+    }
+
+    @Test func pausedAttachRefusesSnippets() {
+        var writes: [Data] = []
+        let controller = TerminalInputController()
+        _ = controller.beginSession { writes.append($0) }
+        controller.pause()
+
+        #expect(!controller.insertSnippet("continue", bracketedPaste: true))
+        #expect(writes.isEmpty)
+    }
 }

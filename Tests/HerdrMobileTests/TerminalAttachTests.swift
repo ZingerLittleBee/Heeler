@@ -38,7 +38,7 @@ struct TerminalAttachTests {
     @Test func pasteControlAndHardwarePasteUseTheReviewedPasteCallback() {
         var pastes: [String] = []
         let terminal = TerminalScreenView.makeConfiguredTerminal(
-            onPaste: { pastes.append($0) })
+            onPaste: { text, _ in pastes.append(text) })
 
         terminal.requestPaste("one\n two")
         #expect(pastes == ["one\n two"])
@@ -55,7 +55,7 @@ struct TerminalAttachTests {
     @Test func systemPasteControlLoadsTextFromItsItemProvider() async throws {
         var pastes: [String] = []
         let terminal = TerminalScreenView.makeConfiguredTerminal(
-            onPaste: { pastes.append($0) })
+            onPaste: { text, _ in pastes.append(text) })
 
         terminal.paste(
             itemProviders: [NSItemProvider(object: "provider paste" as NSString)])

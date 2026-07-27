@@ -75,10 +75,17 @@ _Avoid_: takeover (that's herdr's flag, not our surface), connect
 **Terminal Keyboard**:
 The two input modes used within Attach. Text keeps the standard iOS input method
 for composition, autocorrection, dictation, and language switching. The Keys mode
-replaces it with a compact terminal control pad for navigation and common control
-signals.
-Both modes send directly to the Agent's pane.
+replaces it with a tabbed pad of terminal-side surfaces: control keys for
+navigation and common control signals, Snippets, and terminal appearance.
+Input from either mode goes directly to the Agent's pane.
 _Avoid_: desktop keyboard, reply keyboard
+
+**Snippet**:
+A phrase the user writes once and reuses, kept in one global set independent of
+any Host or Agent. Tapping one inserts its text into the Agent's pane and
+nothing more; the user still submits it. A Snippet may carry a Title: a short
+name the user gives it, shown above its text wherever Snippets are listed.
+_Avoid_: macro, template, shortcut, quick reply, tip
 
 **Terminal Paste**:
 A user-invoked insertion of plain text from the iOS clipboard into Attach. Single-line text proceeds directly; potentially executable multiline or control content requires review.

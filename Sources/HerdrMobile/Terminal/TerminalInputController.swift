@@ -36,6 +36,10 @@ final class TerminalInputController {
     private var nextGeneration: UInt64 = 0
     private var writer: ((Data) -> Void)?
     private var pendingPasteText: String?
+    /// Captured when the paste is requested rather than read again at confirm
+    /// time: the review sheet is what the user is looking at, so the framing
+    /// they agreed to is the framing that was true when they were shown it.
+    private var pendingPasteIsBracketed = false
 
     @discardableResult
     func beginSession(writer: @escaping (Data) -> Void) -> SessionGeneration {
@@ -89,16 +93,34 @@ final class TerminalInputController {
         return true
     }
 
+    /// Sends a Snippet's text. It never carries a submit byte of its own — a
+    /// Snippet is stored with carriage returns already collapsed to line feeds
+    /// (see `Snippet.make`) — and multiline text is framed as a paste so the
+    /// remote application reads it as one block rather than a run of keys.
+    ///
+    /// Unlike Paste, there is no review step: the user wrote this text, named
+    /// it, and can see it on the button they just tapped.
     @discardableResult
-    func requestPaste(_ text: String) -> PasteRequestResult {
+    func insertSnippet(_ text: String, bracketedPaste: Bool) -> Bool {
+        guard !isPaused, writer != nil, !text.isEmpty,
+            TerminalTextSafety.containsOnlySafeScalars(text)
+        else { return false }
+        writer?(
+            TerminalBracketedPaste.encode(
+                text, bracketed: bracketedPaste && TerminalTextSafety.isMultiline(text)))
+        return true
+    }
+
+    @discardableResult
+    func requestPaste(_ text: String, bracketedPaste: Bool = false) -> PasteRequestResult {
         pasteErrorMessage = nil
         guard !isPaused, writer != nil else { return .blocked }
-        guard Self.containsOnlySafePasteScalars(text) else {
+        guard TerminalTextSafety.containsOnlySafeScalars(text) else {
             cancelPaste()
             pasteErrorMessage = "The clipboard contains unsafe terminal control characters."
             return .rejected
         }
-        guard Self.isMultiline(text) else {
+        guard TerminalTextSafety.isMultiline(text) else {
             if !text.isEmpty {
                 writer?(Data(text.utf8))
             }
@@ -110,6 +132,7 @@ final class TerminalInputController {
             characterCount: text.count,
             preview: Self.preview(text))
         pendingPasteText = text
+        pendingPasteIsBracketed = bracketedPaste
         pendingPaste = review
         return .requiresReview(review)
     }
@@ -120,13 +143,17 @@ final class TerminalInputController {
             cancelPaste()
             return false
         }
-        writer?(Data(text.utf8))
+        // Reviewed text is still multiline text: without framing its newlines
+        // reach the pane as separate key events, which is the very thing the
+        // review sheet leaves the user unable to prevent.
+        writer?(TerminalBracketedPaste.encode(text, bracketed: pendingPasteIsBracketed))
         cancelPaste()
         return true
     }
 
     func cancelPaste() {
         pendingPasteText = nil
+        pendingPasteIsBracketed = false
         pendingPaste = nil
     }
 
@@ -139,21 +166,6 @@ final class TerminalInputController {
             scalar.value >= 0x20 && scalar.value != 0x7F
                 && scalar.properties.generalCategory != .control
         }
-    }
-
-    private static func containsOnlySafePasteScalars(_ text: String) -> Bool {
-        text.unicodeScalars.allSatisfy { scalar in
-            switch scalar.value {
-            case 0x09, 0x0A, 0x0D:
-                true
-            default:
-                scalar.properties.generalCategory != .control
-            }
-        }
-    }
-
-    private static func isMultiline(_ text: String) -> Bool {
-        text.contains("\n") || text.contains("\r")
     }
 
     private static func lineCount(_ text: String) -> Int {

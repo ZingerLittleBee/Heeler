@@ -57,7 +57,12 @@ struct AgentDetailView: View {
                 attach.viewDidResize(cols: cols, rows: rows)
             },
             onSend: { keystrokes in attach.send(keystrokes) },
-            onPaste: { text in attach.requestPaste(text) },
+            onPaste: { text, bracketed in
+                attach.requestPaste(text, bracketedPaste: bracketed)
+            },
+            onSnippet: { text, bracketed in
+                attach.insertSnippet(text, bracketedPaste: bracketed)
+            },
             isLocalInputEnabled: attach.isLocalInputEnabled,
             theme: terminalThemes.theme,
             fontSize: terminalZoom.fontSize,
