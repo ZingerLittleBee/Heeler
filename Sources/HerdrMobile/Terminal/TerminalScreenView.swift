@@ -538,7 +538,12 @@ final class HerdrTerminalView: UITerminalView {
 
     var keyboardActivationRegion: CGRect {
         let caret = caretRect(for: endOfDocument)
-        return TerminalKeyboardTapTarget.region(caretRect: caret, in: bounds)
+        return TerminalKeyboardTapTarget.region(
+            caretRect: caret,
+            in: bounds,
+            minimumHeight: modeTracker.isAlternateScreen
+                ? TerminalKeyboardTapTarget.alternateScreenMinimumHeight
+                : TerminalKeyboardTapTarget.minimumHeight)
     }
 
     /// Reports a touch as a left click when the remote application asked for
@@ -689,17 +694,14 @@ final class HerdrTerminalView: UITerminalView {
     /// touch meant for native scrollback is never answered with a keyboard-driven
     /// viewport resize.
     ///
-    /// The alternate screen has no native scrollback to protect — drags there are
-    /// already mapped to wheel rows — and its caret sits wherever the application
-    /// parked it, which is rarely the row the user reads as the prompt. Claude
-    /// Code draws a bordered input box with the caret below the visible `>`, so
-    /// aiming at the prompt misses the 44 pt target entirely (#90). In a
-    /// full-screen TUI, any tap will do.
+    /// The alternate screen keeps the caret anchor but reaches further: an agent
+    /// TUI parks its caret below the row the user reads as the prompt (Claude
+    /// Code's visible `>` measured 16–40 pt above it, #90), so the band grows to
+    /// cover the whole bordered input box. Whole-screen activation was tried
+    /// first (#92) and answered every output-area tap with the keyboard.
     func tapAction(at location: CGPoint) -> TerminalTapAction {
         if isTouchScrollMomentumRunning { return .haltMomentum }
-        return .report(
-            raisesKeyboard: modeTracker.isAlternateScreen
-                || keyboardActivationRegion.contains(location))
+        return .report(raisesKeyboard: keyboardActivationRegion.contains(location))
     }
 
     var isTouchScrollMomentumRunning: Bool {

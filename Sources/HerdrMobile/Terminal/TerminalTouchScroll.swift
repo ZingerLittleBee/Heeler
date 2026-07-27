@@ -12,8 +12,19 @@ enum TerminalTapAction: Equatable {
 
 enum TerminalKeyboardTapTarget {
     static let minimumHeight: CGFloat = 44
+    /// An agent TUI parks its caret below the row the user reads as the
+    /// prompt: Claude Code's visible `>` measured 16–40 pt above the caret
+    /// inside its bordered input box (#90). Three times the normal band
+    /// covers that whole box with thumb margin while leaving the output area
+    /// inert — whole-screen activation (#92) overshot, answering every
+    /// output-area tap with a keyboard nobody asked for.
+    static let alternateScreenMinimumHeight: CGFloat = 132
 
-    static func region(caretRect: CGRect, in bounds: CGRect) -> CGRect {
+    static func region(
+        caretRect: CGRect,
+        in bounds: CGRect,
+        minimumHeight: CGFloat = TerminalKeyboardTapTarget.minimumHeight
+    ) -> CGRect {
         guard caretRect.height > 0, !bounds.isEmpty else { return .null }
         let height = max(caretRect.height, minimumHeight)
         let region = CGRect(
