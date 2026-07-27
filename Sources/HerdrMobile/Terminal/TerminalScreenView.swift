@@ -234,6 +234,19 @@ final class HerdrTerminalView: UITerminalView {
         responderGate.mayBecomeFirstResponder
     }
 
+    /// UIKit skips the `canBecomeFirstResponder` check when the view already
+    /// *is* first responder — and a short backgrounding leaves exactly that
+    /// state behind: the keyboard hides but the first responder survives.
+    /// Ghostty's `touchesBegan` re-assert would then re-present the keyboard
+    /// from any body tap, so the gate has to be applied here as well.
+    @discardableResult
+    override func becomeFirstResponder() -> Bool {
+        if isFirstResponder, !responderGate.mayBecomeFirstResponder {
+            return true
+        }
+        return super.becomeFirstResponder()
+    }
+
     /// Ghostty's `touchesEnded` dismisses the keyboard after any body tap or
     /// scroll. The accessory's dismiss button is this app's only intended
     /// dismissal, so a resign arriving mid-touch is Ghostty's and is refused;

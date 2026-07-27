@@ -143,6 +143,13 @@ struct TerminalAttachTests {
         terminal.touchesBegan([touch], with: nil)
         #expect(!terminal.resignFirstResponder())
         #expect(terminal.isFirstResponder)
+        // A short backgrounding hides the keyboard but keeps the first
+        // responder, and UIKit answers a re-assert on the current first
+        // responder without consulting canBecomeFirstResponder. The override
+        // swallows it mid-touch; the swallowed re-present itself is only
+        // observable on a device, so this pins down status and return value.
+        #expect(terminal.becomeFirstResponder())
+        #expect(terminal.isFirstResponder)
         terminal.touchesEnded([touch], with: nil)
 
         // A UIKit-style resign outside any touch still goes through, keeping
