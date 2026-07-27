@@ -58,6 +58,10 @@ targets:
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "herdr uses the microphone to transcribe your spoken reply into the message box. Audio is processed on device and never leaves your phone."
         # Scan to Pair (#62) reads the Pairing Code QR from the computer screen.
         INFOPLIST_KEY_NSCameraUsageDescription: "herdr uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything."
+        # Only exempt encryption is used (standard SSH algorithms via Citadel,
+        # OS-provided CryptoKit); declaring it here keeps every TestFlight
+        # upload from stalling on the Missing Compliance prompt.
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         # iPhone + iPad.
         TARGETED_DEVICE_FAMILY: "1,2"
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
