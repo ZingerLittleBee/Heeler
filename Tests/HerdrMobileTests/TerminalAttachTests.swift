@@ -267,10 +267,16 @@ struct TerminalAttachTests {
     @Test func terminalControlKeyboardContainsOnlyUsefulMobileKeys() {
         #expect(
             TerminalControlKey.rows == [
-                [.escape, .tab, .controlC, .controlD, .controlZ],
+                [.escape, .tab, .controlC, .controlD, .controlZ, .backspace],
                 [.home, .pageUp, .up, .pageDown, .end],
-                [.backspace, .left, .down, .right, .enter],
+                [.left, .down, .right, .enter],
             ])
+        // Rearranging the rows must not quietly drop a key on the floor.
+        let placed = TerminalControlKey.rows.flatMap { $0 }
+        #expect(placed.count == TerminalControlKey.allCases.count)
+        for key in TerminalControlKey.allCases {
+            #expect(placed.contains(key), "\(key) fell off the keyboard")
+        }
     }
 
     @Test func terminalControlKeysEncodeExpectedBytes() {
