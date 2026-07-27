@@ -11,6 +11,7 @@ struct TerminalAppearancePane: View {
     let themes: TerminalThemeSettings
     let zoom: TerminalZoomSettings
     let fonts: TerminalFontSettings
+    @Environment(\.colorScheme) private var colorScheme
 
     private let columns = [GridItem(.adaptive(minimum: 104), spacing: 10)]
 
@@ -80,19 +81,23 @@ struct TerminalAppearancePane: View {
         .accessibilityValue("\(Int(zoom.fontSize)) points")
     }
 
+    /// The grid edits the slot for the appearance in force: the pane's whole
+    /// premise is that every control applies instantly to the terminal above,
+    /// and that terminal is rendering the current appearance's slot.
     private var themeGrid: some View {
         LazyVGrid(columns: columns, spacing: 10) {
             ForEach(TerminalThemeOption.allCases) { option in
                 Button {
-                    themes.select(option)
+                    themes.select(option, for: colorScheme)
                 } label: {
                     TerminalThemeSwatch(
                         option: option,
-                        isSelected: themes.selection == option)
+                        isSelected: themes.selection(for: colorScheme) == option)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(option.title)
-                .accessibilityValue(themes.selection == option ? "Selected" : "")
+                .accessibilityValue(
+                    themes.selection(for: colorScheme) == option ? "Selected" : "")
             }
         }
     }
@@ -182,25 +187,34 @@ extension TerminalThemeOption {
     }
 
     private func swatchDefinition(for colorScheme: ColorScheme) -> GhosttyThemeDefinition? {
-        let isDark = colorScheme == .dark
-        let name: String? =
-            switch self {
-            case .followSystem: nil
-            case .vesper: "Vesper"
-            case .appleSystemColors:
-                isDark ? "Apple System Colors" : "Apple System Colors Light"
-            case .dracula: "Dracula"
-            case .solarized: isDark ? "iTerm2 Solarized Dark" : "iTerm2 Solarized Light"
-            case .catppuccin: isDark ? "Catppuccin Mocha" : "Catppuccin Latte"
-            case .tokyoNight: isDark ? "TokyoNight Night" : "TokyoNight Day"
-            case .gruvbox: isDark ? "Gruvbox Dark" : "Gruvbox Light"
-            case .nord: isDark ? "Nord" : "Nord Light"
-            case .monokaiPro: isDark ? "Monokai Pro" : "Monokai Pro Light"
-            }
-        // Follow System is libghostty's own default pair, which has no catalog
-        // entry to read colours from; it falls back to the system palette.
-        guard let name else { return nil }
-        return GhosttyThemeCatalog.allThemes.first { $0.name == name }
+        Self.definitions[catalogName(isDark: colorScheme == .dark)]
+    }
+
+    /// The active theme's terminal background, for painting the chrome around
+    /// the terminal surface (the safe areas and the transparent bar region) so
+    /// the theme owns the whole screen instead of stopping at the grid.
+    func surfaceBackground(for colorScheme: ColorScheme) -> Color {
+        swatchPalette(for: colorScheme).background
+    }
+
+    /// Chrome legibility follows the theme's luminance rather than the system
+    /// appearance: a dark theme under a light system still needs light bar
+    /// titles and status-bar text (Ghostty's `window-theme = auto` semantics).
+    func chromeColorScheme(for colorScheme: ColorScheme) -> ColorScheme {
+        guard let definition = swatchDefinition(for: colorScheme) else {
+            return colorScheme
+        }
+        return Self.isDarkBackground(hex: definition.background) ? .dark : .light
+    }
+
+    private static func isDarkBackground(hex: String) -> Bool {
+        var text = hex.trimmingCharacters(in: .whitespaces)
+        if text.hasPrefix("#") { text.removeFirst() }
+        guard text.count == 6, let value = UInt32(text, radix: 16) else { return true }
+        let red = Double((value >> 16) & 0xFF)
+        let green = Double((value >> 8) & 0xFF)
+        let blue = Double(value & 0xFF)
+        return 0.299 * red + 0.587 * green + 0.114 * blue < 128
     }
 }
 

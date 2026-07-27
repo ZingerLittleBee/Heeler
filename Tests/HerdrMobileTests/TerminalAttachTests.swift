@@ -121,6 +121,84 @@ struct TerminalAttachTests {
         #expect(terminal.canBecomeFirstResponder)
     }
 
+    /// Ghostty's `UITerminalView` raises the keyboard from `touchesBegan` and
+    /// takes it down from `touchesEnded` — on any body touch. Once the user
+    /// had raised the keyboard once, that turned every body tap into a
+    /// keyboard toggle, bypassing the input-row policy entirely. Responder
+    /// changes arriving mid-touch are Ghostty's and are refused; the same
+    /// requests pass again once the touch ends (UIKit's restore path).
+    @MainActor
+    @Test func bodyTouchesCannotToggleTheKeyboard() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        window.addSubview(terminal)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        terminal.requestKeyboard()
+        #expect(terminal.isFirstResponder)
+
+        // Ghostty's touchesEnded dismisses the keyboard after any body tap;
+        // that resign lands mid-touch and must be refused.
+        let touch = UITouch()
+        terminal.touchesBegan([touch], with: nil)
+        #expect(!terminal.resignFirstResponder())
+        #expect(terminal.isFirstResponder)
+        // A short backgrounding hides the keyboard but keeps the first
+        // responder, and UIKit answers a re-assert on the current first
+        // responder without consulting canBecomeFirstResponder. The override
+        // swallows it mid-touch; the swallowed re-present itself is only
+        // observable on a device, so this pins down status and return value.
+        #expect(terminal.becomeFirstResponder())
+        #expect(terminal.isFirstResponder)
+        terminal.touchesEnded([touch], with: nil)
+
+        // A UIKit-style resign outside any touch still goes through, keeping
+        // sheets and backgrounding working.
+        _ = terminal.resignFirstResponder()
+        #expect(!terminal.isFirstResponder)
+
+        // Ghostty's touchesBegan re-raises the keyboard on the next body tap;
+        // with no user request driving it the surface refuses.
+        terminal.touchesBegan([touch], with: nil)
+        #expect(!terminal.becomeFirstResponder())
+        terminal.touchesEnded([touch], with: nil)
+
+        // Outside the touch, UIKit's restore-after-resign path still passes.
+        #expect(terminal.canBecomeFirstResponder)
+    }
+
+    @Test func responderGateRefusesGhosttysTouchDrivenChanges() {
+        var gate = TerminalKeyboardResponderGate()
+        gate.beginUserDrivenChange(wantsKeyboard: true)
+        gate.endUserDrivenChange()
+
+        gate.directTouchesBegan(1)
+        #expect(!gate.mayBecomeFirstResponder)
+        #expect(!gate.mayResignFirstResponder)
+
+        gate.directTouchesEnded(1)
+        #expect(gate.mayBecomeFirstResponder)
+        #expect(gate.mayResignFirstResponder)
+    }
+
+    /// The input-row tap and the accessory's dismiss button both fire while
+    /// their own touch may still be active, so user-driven changes pass the
+    /// gate mid-touch.
+    @Test func responderGatePassesUserDrivenChangesMidTouch() {
+        var gate = TerminalKeyboardResponderGate()
+        gate.directTouchesBegan(1)
+
+        gate.beginUserDrivenChange(wantsKeyboard: true)
+        #expect(gate.mayBecomeFirstResponder)
+        gate.endUserDrivenChange()
+
+        gate.beginUserDrivenChange(wantsKeyboard: false)
+        #expect(gate.mayResignFirstResponder)
+        gate.endUserDrivenChange()
+
+        #expect(!gate.mayBecomeFirstResponder)
+    }
+
     @Test func keyboardTapTargetCoversOnlyTheCurrentInputRow() {
         let bounds = CGRect(x: 0, y: 0, width: 390, height: 720)
         let region = TerminalKeyboardTapTarget.region(
@@ -130,6 +208,29 @@ struct TerminalAttachTests {
         #expect(region == CGRect(x: 0, y: 638, width: 390, height: 44))
         #expect(region.contains(CGPoint(x: 20, y: 660)))
         #expect(!region.contains(CGPoint(x: 20, y: 500)))
+    }
+
+    /// The alternate-screen band stays caret-centred, just three times as
+    /// tall — wide enough for the whole bordered input box #90 measured.
+    @Test func alternateScreenTapTargetTriplesTheCaretBand() {
+        let bounds = CGRect(x: 0, y: 0, width: 390, height: 720)
+        let region = TerminalKeyboardTapTarget.region(
+            caretRect: CGRect(x: 72, y: 400, width: 9, height: 20),
+            in: bounds,
+            minimumHeight: TerminalKeyboardTapTarget.alternateScreenMinimumHeight)
+
+        #expect(region == CGRect(x: 0, y: 344, width: 390, height: 132))
+    }
+
+    /// Every chat-style agent TUI pins its input box to the bottom rows, but
+    /// each parks the caret somewhere of its own, so the bottom quarter is
+    /// the tool-agnostic floor the caret band cannot be.
+    @Test func alternateScreenBottomQuarterIsAlwaysATapTarget() {
+        let bounds = CGRect(x: 0, y: 0, width: 390, height: 720)
+        let region = TerminalKeyboardTapTarget.alternateScreenBottomRegion(in: bounds)
+
+        #expect(region == CGRect(x: 0, y: 540, width: 390, height: 180))
+        #expect(TerminalKeyboardTapTarget.alternateScreenBottomRegion(in: .zero).isNull)
     }
 
     @MainActor
@@ -183,28 +284,47 @@ struct TerminalAttachTests {
         let region = terminal.keyboardActivationRegion
         #expect(!region.isNull)
         #expect(terminal.bounds.contains(region))
-        // Thumb-sized, or the single entry point is unhittable in practice.
-        #expect(region.height >= TerminalKeyboardTapTarget.minimumHeight)
+        // Reaches the visible prompt above the parked caret (#90), or the
+        // single entry point is unhittable in practice.
+        #expect(region.height >= TerminalKeyboardTapTarget.alternateScreenMinimumHeight)
         // Full width: the row is the target, not the glyph the cursor sits on.
         #expect(region.width == terminal.bounds.width)
     }
 
-    /// #90: the 44 pt band sits on the caret, and an agent TUI parks its caret
-    /// below the prompt the user actually reads. Aiming at Claude Code's `>`
-    /// missed four times running in a real session, so the whole surface has to
-    /// answer once the alternate screen is up — there is no native scrollback
-    /// left to protect there.
+    /// #90 measured Claude Code's visible `>` prompt 16–40 pt above the parked
+    /// caret, so the alternate screen keeps the caret anchor but triples the
+    /// band to cover the whole bordered input box. The output area stays
+    /// inert: #92's whole-screen activation answered every output-area tap
+    /// with a keyboard nobody asked for.
     @MainActor
-    @Test func anyTapRaisesTheKeyboardOnceATUIOwnsTheScreen() {
+    @Test func aTUITapRaisesTheKeyboardOnlyAroundItsInputBox() async throws {
         let terminal = TerminalScreenView.makeConfiguredTerminal()
         terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
-        let farFromTheCaret = CGPoint(x: 195, y: 120)
+        let controller = UIViewController()
+        controller.view = terminal
+        let windowScene = try #require(
+            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: windowScene)
+        window.frame = terminal.bounds
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
 
-        #expect(terminal.tapAction(at: farFromTheCaret) == .report(raisesKeyboard: false))
+        // A TUI on the alternate screen with its prompt parked on row 20.
+        terminal.receive(Data("\u{1B}[?1049h\u{1B}[20;3H> ".utf8))
+        terminal.layoutIfNeeded()
+        await Task.yield()
 
-        terminal.receive(Data("\u{1B}[?1049h".utf8))
-
-        #expect(terminal.tapAction(at: farFromTheCaret) == .report(raisesKeyboard: true))
+        let region = terminal.keyboardActivationRegion
+        let insideTheBand = CGPoint(x: 195, y: region.midY)
+        let outputArea = CGPoint(x: 195, y: 20)
+        // Chat TUIs pin the input box to the bottom rows; a tap there must
+        // answer even when the caret band sits elsewhere.
+        let bottomQuarter = CGPoint(x: 195, y: 700)
+        #expect(!region.contains(outputArea))
+        #expect(terminal.tapAction(at: insideTheBand) == .report(raisesKeyboard: true))
+        #expect(terminal.tapAction(at: outputArea) == .report(raisesKeyboard: false))
+        #expect(terminal.tapAction(at: bottomQuarter) == .report(raisesKeyboard: true))
     }
 
     /// The normal buffer keeps the old contract: scrollback is scrolled by

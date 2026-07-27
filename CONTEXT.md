@@ -67,11 +67,12 @@ _Avoid_: dashboard, home
 The Agent detail surface: full interactive terminal control of the pane through
 the embedded terminal. The normal terminal buffer uses native local scrollback.
 Alternate-screen TUIs map vertical touch drags and momentum to terminal wheel rows.
-In the normal buffer only a tap on the input row opens the software keyboard, so
-a scroll gesture is never interrupted by a keyboard-driven viewport resize. Once
-a TUI takes the alternate screen there is no native scrollback left to protect,
-and any tap opens it — except the tap that halts a flick, which is spent on the
-halt alone.
+Only a tap near the input area opens the software keyboard, so a touch anywhere
+else is never answered with a keyboard-driven viewport resize. In the normal
+buffer that area is the caret's row; on the alternate screen the caret band
+grows (agent TUIs park the caret below the visible prompt) and the bottom
+quarter always answers, because chat-style TUIs pin their input box there. The
+tap that halts a flick is spent on the halt alone.
 _Avoid_: takeover (that's herdr's flag, not our surface), connect
 
 **Terminal Keyboard**:

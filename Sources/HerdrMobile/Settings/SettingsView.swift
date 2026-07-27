@@ -75,10 +75,16 @@ struct SettingsView: View {
                     Text("Bundled faces are registered with the app; no download needed.")
                 }
 
-                Section("Terminal Theme") {
-                    ForEach(TerminalThemeOption.allCases) { option in
-                        themeButton(option)
-                    }
+                Section {
+                    themePickerLink(for: .light)
+                    themePickerLink(for: .dark)
+                } header: {
+                    Text("Terminal Theme")
+                } footer: {
+                    Text(
+                        "Each appearance has its own theme. Picking a dark "
+                            + "theme for Light Mode keeps the terminal dark "
+                            + "under a light system.")
                 }
             }
             .navigationTitle("Settings")
@@ -296,12 +302,28 @@ struct SettingsView: View {
         }
     }
 
-    private func themeButton(_ option: TerminalThemeOption) -> some View {
+    private func themePickerLink(for scheme: ColorScheme) -> some View {
+        NavigationLink {
+            List {
+                ForEach(TerminalThemeOption.allCases) { option in
+                    themeButton(option, for: scheme)
+                }
+            }
+            .navigationTitle(scheme == .dark ? "Dark Mode Theme" : "Light Mode Theme")
+            .navigationBarTitleDisplayMode(.inline)
+        } label: {
+            LabeledContent(
+                scheme == .dark ? "Dark Mode" : "Light Mode",
+                value: terminal.themes.selection(for: scheme).title)
+        }
+    }
+
+    private func themeButton(_ option: TerminalThemeOption, for scheme: ColorScheme) -> some View {
         selectableRow(
             title: option.title, detail: option.detail,
-            isSelected: terminal.themes.selection == option
+            isSelected: terminal.themes.selection(for: scheme) == option
         ) {
-            terminal.themes.select(option)
+            terminal.themes.select(option, for: scheme)
         }
     }
 

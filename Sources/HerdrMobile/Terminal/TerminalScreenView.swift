@@ -180,7 +180,7 @@ final class HerdrTerminalView: UITerminalView {
     private var terminalInputView: UIView?
     private var modeTracker = TerminalModeTracker()
     private var lastInputWindowSize: CGSize?
-    private var allowsKeyboardActivation = false
+    private var responderGate = TerminalKeyboardResponderGate()
     private(set) var isLocalInputEnabled = true
     private var terminalGridSize = (columns: 80, rows: 24)
     private var terminalCellSize = CGSize(width: 8, height: 16)
@@ -219,14 +219,43 @@ final class HerdrTerminalView: UITerminalView {
     }
 
     /// Only a tap on the input row raises the keyboard, so the surface refuses
-    /// first responder until asked. The flag tracks the *user's* intent and
-    /// survives a UIKit-initiated resign on purpose: backgrounding the app or
-    /// presenting a sheet resigns the first responder, and UIKit restores it
-    /// afterwards by asking again. Clearing the flag there would have UIKit
-    /// refused — leaving the accessory bar on screen with no keyboard behind
-    /// it and no way to type. `dismissKeyboard()` is what clears it.
+    /// first responder until asked. The gate tracks the *user's* intent, and
+    /// that intent survives a UIKit-initiated resign on purpose: backgrounding
+    /// the app or presenting a sheet resigns the first responder, and UIKit
+    /// restores it afterwards by asking again. Refusing there would leave the
+    /// accessory bar on screen with no keyboard behind it and no way to type.
+    /// `dismissKeyboard()` is what clears the intent.
+    ///
+    /// The gate also refuses mid-touch requests: Ghostty's `touchesBegan`
+    /// calls `becomeFirstResponder()` on every body touch, which with the
+    /// intent armed would raise the keyboard from taps the input-row policy
+    /// never approved.
     override var canBecomeFirstResponder: Bool {
-        allowsKeyboardActivation
+        responderGate.mayBecomeFirstResponder
+    }
+
+    /// UIKit skips the `canBecomeFirstResponder` check when the view already
+    /// *is* first responder — and a short backgrounding leaves exactly that
+    /// state behind: the keyboard hides but the first responder survives.
+    /// Ghostty's `touchesBegan` re-assert would then re-present the keyboard
+    /// from any body tap, so the gate has to be applied here as well.
+    @discardableResult
+    override func becomeFirstResponder() -> Bool {
+        if isFirstResponder, !responderGate.mayBecomeFirstResponder {
+            return true
+        }
+        return super.becomeFirstResponder()
+    }
+
+    /// Ghostty's `touchesEnded` dismisses the keyboard after any body tap or
+    /// scroll. The accessory's dismiss button is this app's only intended
+    /// dismissal, so a resign arriving mid-touch is Ghostty's and is refused;
+    /// UIKit's resigns (sheets, backgrounding) arrive outside touch sequences
+    /// and pass.
+    @discardableResult
+    override func resignFirstResponder() -> Bool {
+        guard responderGate.mayResignFirstResponder else { return false }
+        return super.resignFirstResponder()
     }
 
     init(
@@ -357,7 +386,8 @@ final class HerdrTerminalView: UITerminalView {
 
     /// Raises the keyboard, and records that the user wants it up.
     func requestKeyboard() {
-        allowsKeyboardActivation = true
+        responderGate.beginUserDrivenChange(wantsKeyboard: true)
+        defer { responderGate.endUserDrivenChange() }
         _ = becomeFirstResponder()
     }
 
@@ -367,7 +397,8 @@ final class HerdrTerminalView: UITerminalView {
     /// and must stay recoverable.
     @discardableResult
     func dismissKeyboard() -> Bool {
-        allowsKeyboardActivation = false
+        responderGate.beginUserDrivenChange(wantsKeyboard: false)
+        defer { responderGate.endUserDrivenChange() }
         return resignFirstResponder()
     }
 
@@ -434,7 +465,29 @@ final class HerdrTerminalView: UITerminalView {
         super.didMoveToWindow()
         if window == nil {
             stopTouchScrollMomentum()
+            responderGate.invalidateTouches()
         }
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        responderGate.directTouchesBegan(Self.directTouchCount(in: touches))
+        super.touchesBegan(touches, with: event)
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        // Ghostty's touchesEnded is where its tap-to-dismiss resign fires, so
+        // the touches stay counted until super returns.
+        super.touchesEnded(touches, with: event)
+        responderGate.directTouchesEnded(Self.directTouchCount(in: touches))
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesCancelled(touches, with: event)
+        responderGate.directTouchesEnded(Self.directTouchCount(in: touches))
+    }
+
+    private static func directTouchCount(in touches: Set<UITouch>) -> Int {
+        touches.count { $0.type == .direct }
     }
 
     override func gestureRecognizerShouldBegin(
@@ -485,7 +538,12 @@ final class HerdrTerminalView: UITerminalView {
 
     var keyboardActivationRegion: CGRect {
         let caret = caretRect(for: endOfDocument)
-        return TerminalKeyboardTapTarget.region(caretRect: caret, in: bounds)
+        return TerminalKeyboardTapTarget.region(
+            caretRect: caret,
+            in: bounds,
+            minimumHeight: modeTracker.isAlternateScreen
+                ? TerminalKeyboardTapTarget.alternateScreenMinimumHeight
+                : TerminalKeyboardTapTarget.minimumHeight)
     }
 
     /// Reports a touch as a left click when the remote application asked for
@@ -636,17 +694,23 @@ final class HerdrTerminalView: UITerminalView {
     /// touch meant for native scrollback is never answered with a keyboard-driven
     /// viewport resize.
     ///
-    /// The alternate screen has no native scrollback to protect — drags there are
-    /// already mapped to wheel rows — and its caret sits wherever the application
-    /// parked it, which is rarely the row the user reads as the prompt. Claude
-    /// Code draws a bordered input box with the caret below the visible `>`, so
-    /// aiming at the prompt misses the 44 pt target entirely (#90). In a
-    /// full-screen TUI, any tap will do.
+    /// The alternate screen reaches further, two ways. The caret band grows to
+    /// three rows' worth, because an agent TUI parks its caret below the row
+    /// the user reads as the prompt (Claude Code's visible `>` measured
+    /// 16–40 pt above it, #90). And the bottom quarter always answers, because
+    /// chat-style TUIs (Claude Code, Codex, Amp, Droid, …) pin their input box
+    /// there while parking the caret in tool-specific spots the band cannot
+    /// chase. Whole-screen activation was tried first (#92) and answered every
+    /// output-area tap with the keyboard.
     func tapAction(at location: CGPoint) -> TerminalTapAction {
         if isTouchScrollMomentumRunning { return .haltMomentum }
-        return .report(
-            raisesKeyboard: modeTracker.isAlternateScreen
-                || keyboardActivationRegion.contains(location))
+        if keyboardActivationRegion.contains(location) {
+            return .report(raisesKeyboard: true)
+        }
+        let inBottomBand = modeTracker.isAlternateScreen
+            && TerminalKeyboardTapTarget.alternateScreenBottomRegion(in: bounds)
+                .contains(location)
+        return .report(raisesKeyboard: inBottomBand)
     }
 
     var isTouchScrollMomentumRunning: Bool {

@@ -29,6 +29,7 @@ Rediscovering these is expensive; they were verified against herdr 0.7.4 source 
 - Pin Citadel exactly in `Package.resolved` and review updates: Citadel 0.12.1 depends on a third-party fork of swift-nio-ssh (Wellz26), not Apple's repo.
 - Pin libghostty-spm exactly and review both its Swift sources and prebuilt XCFramework checksum before updating.
 - Tracker is GitHub issues in this repo (`gh issue ...`). Reference issues from commits with `refs #<n>`.
+- User-visible changes get a `CHANGELOG.md` entry under Unreleased, referencing the PR; internal refactors and test work stay out of it.
 - Update `CONTEXT.md` when domain terms change; add an ADR only for hard-to-reverse, surprising trade-offs.
 
 ## Agent skills

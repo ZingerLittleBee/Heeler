@@ -12,8 +12,35 @@ enum TerminalTapAction: Equatable {
 
 enum TerminalKeyboardTapTarget {
     static let minimumHeight: CGFloat = 44
+    /// An agent TUI parks its caret below the row the user reads as the
+    /// prompt: Claude Code's visible `>` measured 16–40 pt above the caret
+    /// inside its bordered input box (#90). Three times the normal band
+    /// covers that whole box with thumb margin while leaving the output area
+    /// inert — whole-screen activation (#92) overshot, answering every
+    /// output-area tap with a keyboard nobody asked for.
+    static let alternateScreenMinimumHeight: CGFloat = 132
+    /// Chat-style agent TUIs (Claude Code, Codex, Amp, Droid, …) all pin
+    /// their input box to the bottom rows but park the caret in tool-specific
+    /// spots the caret band cannot chase. The bottom quarter of the surface
+    /// is the tool-agnostic floor: on the alternate screen a tap there raises
+    /// the keyboard no matter where the caret sits.
+    static let alternateScreenBottomFraction: CGFloat = 0.25
 
-    static func region(caretRect: CGRect, in bounds: CGRect) -> CGRect {
+    static func alternateScreenBottomRegion(in bounds: CGRect) -> CGRect {
+        guard !bounds.isEmpty else { return .null }
+        let height = bounds.height * alternateScreenBottomFraction
+        return CGRect(
+            x: bounds.minX,
+            y: bounds.maxY - height,
+            width: bounds.width,
+            height: height)
+    }
+
+    static func region(
+        caretRect: CGRect,
+        in bounds: CGRect,
+        minimumHeight: CGFloat = TerminalKeyboardTapTarget.minimumHeight
+    ) -> CGRect {
         guard caretRect.height > 0, !bounds.isEmpty else { return .null }
         let height = max(caretRect.height, minimumHeight)
         let region = CGRect(
@@ -22,6 +49,56 @@ enum TerminalKeyboardTapTarget {
             width: bounds.width,
             height: height)
         return region.intersection(bounds)
+    }
+}
+
+/// Gates first-responder changes on the terminal surface against Ghostty's own
+/// touch handling. Ghostty's `UITerminalView` raises the keyboard from
+/// `touchesBegan` and takes it down from `touchesEnded` — on any touch,
+/// anywhere in the body — bypassing this app's input-row tap policy. Both
+/// arrive in the middle of a direct-touch sequence, so a responder change
+/// during one is Ghostty's and is refused unless the app itself is driving it.
+/// UIKit's own resigns and restores (a sheet taking focus, backgrounding)
+/// arrive outside touch sequences and pass.
+struct TerminalKeyboardResponderGate {
+    /// The user's standing wish for the keyboard: set by the input-row tap,
+    /// cleared only by an explicit dismiss. It survives UIKit-initiated
+    /// resigns so UIKit can restore the keyboard afterwards by asking again.
+    private(set) var userWantsKeyboard = false
+    private var activeDirectTouchCount = 0
+    private var isUserDriven = false
+
+    var mayBecomeFirstResponder: Bool {
+        userWantsKeyboard && (isUserDriven || activeDirectTouchCount == 0)
+    }
+
+    var mayResignFirstResponder: Bool {
+        isUserDriven || activeDirectTouchCount == 0
+    }
+
+    /// Brackets a responder change the app makes on the user's behalf, so it
+    /// passes even mid-touch: the input-row tap fires while its own touch is
+    /// still active.
+    mutating func beginUserDrivenChange(wantsKeyboard: Bool) {
+        userWantsKeyboard = wantsKeyboard
+        isUserDriven = true
+    }
+
+    mutating func endUserDrivenChange() {
+        isUserDriven = false
+    }
+
+    mutating func directTouchesBegan(_ count: Int) {
+        activeDirectTouchCount += count
+    }
+
+    mutating func directTouchesEnded(_ count: Int) {
+        activeDirectTouchCount = max(0, activeDirectTouchCount - count)
+    }
+
+    /// A view leaving its window may never see `touchesCancelled`.
+    mutating func invalidateTouches() {
+        activeDirectTouchCount = 0
     }
 }
 
