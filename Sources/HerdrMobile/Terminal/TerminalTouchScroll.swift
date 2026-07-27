@@ -1,6 +1,15 @@
 import CoreGraphics
 import Foundation
 
+/// What a tap on the terminal surface means.
+enum TerminalTapAction: Equatable {
+    /// A flick is still running: halt it, and let the tap mean nothing else.
+    case haltMomentum
+    /// Report the tap to the remote application, raising the keyboard if the
+    /// tap also landed somewhere that asks for it.
+    case report(raisesKeyboard: Bool)
+}
+
 enum TerminalKeyboardTapTarget {
     static let minimumHeight: CGFloat = 44
 

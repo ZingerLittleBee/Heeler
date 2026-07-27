@@ -445,9 +445,12 @@ final class HerdrTerminalView: UITerminalView {
             return abs(velocity.y) > abs(velocity.x)
         }
         if gestureRecognizer === tapGesture {
-            // A TUI that tracks the mouse wants every tap; otherwise only the
-            // input row is interactive, and it just raises the keyboard.
+            // A TUI wants every tap — to click, to raise the keyboard, or both.
+            // In the normal buffer only the input row is interactive. A running
+            // flick claims any tap regardless, to halt itself.
             return modeTracker.tracksMouse
+                || modeTracker.isAlternateScreen
+                || isTouchScrollMomentumRunning
                 || keyboardActivationRegion.contains(tapGesture.location(in: self))
         }
         return super.gestureRecognizerShouldBegin(gestureRecognizer)
@@ -611,13 +614,43 @@ final class HerdrTerminalView: UITerminalView {
 
     @objc private func handleHerdrTap(_ gesture: UITapGestureRecognizer) {
         guard gesture.state == .ended else { return }
-        let location = gesture.location(in: self)
-        clickTouch(at: location)
-        // The click reaches the TUI, but the keyboard still only follows a tap
-        // on the input row — a tap meant for a menu item must not raise it.
-        if keyboardActivationRegion.contains(location) {
-            requestKeyboard()
+        handleTap(at: gesture.location(in: self))
+    }
+
+    func handleTap(at location: CGPoint) {
+        switch tapAction(at: location) {
+        case .haltMomentum:
+            stopTouchScrollMomentum()
+            touchScrollAccumulator.reset()
+        case .report(let raisesKeyboard):
+            clickTouch(at: location)
+            if raisesKeyboard {
+                requestKeyboard()
+            }
         }
+    }
+
+    /// What a tap means, given what the terminal is currently doing.
+    ///
+    /// In the normal buffer the keyboard follows the input row alone, so that a
+    /// touch meant for native scrollback is never answered with a keyboard-driven
+    /// viewport resize.
+    ///
+    /// The alternate screen has no native scrollback to protect — drags there are
+    /// already mapped to wheel rows — and its caret sits wherever the application
+    /// parked it, which is rarely the row the user reads as the prompt. Claude
+    /// Code draws a bordered input box with the caret below the visible `>`, so
+    /// aiming at the prompt misses the 44 pt target entirely (#90). In a
+    /// full-screen TUI, any tap will do.
+    func tapAction(at location: CGPoint) -> TerminalTapAction {
+        if isTouchScrollMomentumRunning { return .haltMomentum }
+        return .report(
+            raisesKeyboard: modeTracker.isAlternateScreen
+                || keyboardActivationRegion.contains(location))
+    }
+
+    var isTouchScrollMomentumRunning: Bool {
+        touchScrollMomentumDisplayLink != nil
     }
 
     @objc private func handleHerdrTouchScrollGesture(_ gesture: UIPanGestureRecognizer) {
@@ -650,7 +683,7 @@ final class HerdrTerminalView: UITerminalView {
             height: CGFloat(viewport.cellHeightPixels) / scale)
     }
 
-    private func startTouchScrollMomentum(velocityY: CGFloat) {
+    func startTouchScrollMomentum(velocityY: CGFloat) {
         guard abs(velocityY) >= 80 else {
             touchScrollAccumulator.reset()
             return

@@ -193,13 +193,17 @@ struct AgentDetailView: View {
     private var statusOverlay: some View {
         switch attach.terminalStatus {
         case .waitingForSize, .connecting:
-            ProgressView()
+            // No dim: a reattach would otherwise flash the whole screen dark.
+            TerminalStatusDialog(
+                glyph: .progress,
+                title: "Connecting…",
+                dimsBackground: false)
         case .ended(let message):
-            ContentUnavailableView {
-                Label("Session Ended", systemImage: "cable.connector.slash")
-            } description: {
-                Text(message)
-            } actions: {
+            TerminalStatusDialog(
+                glyph: .symbol("cable.connector.slash"),
+                title: "Session Ended",
+                message: message
+            ) {
                 Button("Reattach") { attach.retryTerminal() }
                     .buttonStyle(.borderedProminent)
             }
