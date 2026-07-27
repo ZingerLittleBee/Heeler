@@ -121,6 +121,77 @@ struct TerminalAttachTests {
         #expect(terminal.canBecomeFirstResponder)
     }
 
+    /// Ghostty's `UITerminalView` raises the keyboard from `touchesBegan` and
+    /// takes it down from `touchesEnded` — on any body touch. Once the user
+    /// had raised the keyboard once, that turned every body tap into a
+    /// keyboard toggle, bypassing the input-row policy entirely. Responder
+    /// changes arriving mid-touch are Ghostty's and are refused; the same
+    /// requests pass again once the touch ends (UIKit's restore path).
+    @MainActor
+    @Test func bodyTouchesCannotToggleTheKeyboard() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        window.addSubview(terminal)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        terminal.requestKeyboard()
+        #expect(terminal.isFirstResponder)
+
+        // Ghostty's touchesEnded dismisses the keyboard after any body tap;
+        // that resign lands mid-touch and must be refused.
+        let touch = UITouch()
+        terminal.touchesBegan([touch], with: nil)
+        #expect(!terminal.resignFirstResponder())
+        #expect(terminal.isFirstResponder)
+        terminal.touchesEnded([touch], with: nil)
+
+        // A UIKit-style resign outside any touch still goes through, keeping
+        // sheets and backgrounding working.
+        _ = terminal.resignFirstResponder()
+        #expect(!terminal.isFirstResponder)
+
+        // Ghostty's touchesBegan re-raises the keyboard on the next body tap;
+        // with no user request driving it the surface refuses.
+        terminal.touchesBegan([touch], with: nil)
+        #expect(!terminal.becomeFirstResponder())
+        terminal.touchesEnded([touch], with: nil)
+
+        // Outside the touch, UIKit's restore-after-resign path still passes.
+        #expect(terminal.canBecomeFirstResponder)
+    }
+
+    @Test func responderGateRefusesGhosttysTouchDrivenChanges() {
+        var gate = TerminalKeyboardResponderGate()
+        gate.beginUserDrivenChange(wantsKeyboard: true)
+        gate.endUserDrivenChange()
+
+        gate.directTouchesBegan(1)
+        #expect(!gate.mayBecomeFirstResponder)
+        #expect(!gate.mayResignFirstResponder)
+
+        gate.directTouchesEnded(1)
+        #expect(gate.mayBecomeFirstResponder)
+        #expect(gate.mayResignFirstResponder)
+    }
+
+    /// The input-row tap and the accessory's dismiss button both fire while
+    /// their own touch may still be active, so user-driven changes pass the
+    /// gate mid-touch.
+    @Test func responderGatePassesUserDrivenChangesMidTouch() {
+        var gate = TerminalKeyboardResponderGate()
+        gate.directTouchesBegan(1)
+
+        gate.beginUserDrivenChange(wantsKeyboard: true)
+        #expect(gate.mayBecomeFirstResponder)
+        gate.endUserDrivenChange()
+
+        gate.beginUserDrivenChange(wantsKeyboard: false)
+        #expect(gate.mayResignFirstResponder)
+        gate.endUserDrivenChange()
+
+        #expect(!gate.mayBecomeFirstResponder)
+    }
+
     @Test func keyboardTapTargetCoversOnlyTheCurrentInputRow() {
         let bounds = CGRect(x: 0, y: 0, width: 390, height: 720)
         let region = TerminalKeyboardTapTarget.region(

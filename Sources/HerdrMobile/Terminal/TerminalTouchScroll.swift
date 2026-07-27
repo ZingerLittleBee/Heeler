@@ -25,6 +25,56 @@ enum TerminalKeyboardTapTarget {
     }
 }
 
+/// Gates first-responder changes on the terminal surface against Ghostty's own
+/// touch handling. Ghostty's `UITerminalView` raises the keyboard from
+/// `touchesBegan` and takes it down from `touchesEnded` — on any touch,
+/// anywhere in the body — bypassing this app's input-row tap policy. Both
+/// arrive in the middle of a direct-touch sequence, so a responder change
+/// during one is Ghostty's and is refused unless the app itself is driving it.
+/// UIKit's own resigns and restores (a sheet taking focus, backgrounding)
+/// arrive outside touch sequences and pass.
+struct TerminalKeyboardResponderGate {
+    /// The user's standing wish for the keyboard: set by the input-row tap,
+    /// cleared only by an explicit dismiss. It survives UIKit-initiated
+    /// resigns so UIKit can restore the keyboard afterwards by asking again.
+    private(set) var userWantsKeyboard = false
+    private var activeDirectTouchCount = 0
+    private var isUserDriven = false
+
+    var mayBecomeFirstResponder: Bool {
+        userWantsKeyboard && (isUserDriven || activeDirectTouchCount == 0)
+    }
+
+    var mayResignFirstResponder: Bool {
+        isUserDriven || activeDirectTouchCount == 0
+    }
+
+    /// Brackets a responder change the app makes on the user's behalf, so it
+    /// passes even mid-touch: the input-row tap fires while its own touch is
+    /// still active.
+    mutating func beginUserDrivenChange(wantsKeyboard: Bool) {
+        userWantsKeyboard = wantsKeyboard
+        isUserDriven = true
+    }
+
+    mutating func endUserDrivenChange() {
+        isUserDriven = false
+    }
+
+    mutating func directTouchesBegan(_ count: Int) {
+        activeDirectTouchCount += count
+    }
+
+    mutating func directTouchesEnded(_ count: Int) {
+        activeDirectTouchCount = max(0, activeDirectTouchCount - count)
+    }
+
+    /// A view leaving its window may never see `touchesCancelled`.
+    mutating func invalidateTouches() {
+        activeDirectTouchCount = 0
+    }
+}
+
 struct TerminalModeTracker {
     private static let privateModePrefix: [UInt8] = [0x1B, 0x5B, 0x3F]
 

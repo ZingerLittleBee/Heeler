@@ -180,7 +180,7 @@ final class HerdrTerminalView: UITerminalView {
     private var terminalInputView: UIView?
     private var modeTracker = TerminalModeTracker()
     private var lastInputWindowSize: CGSize?
-    private var allowsKeyboardActivation = false
+    private var responderGate = TerminalKeyboardResponderGate()
     private(set) var isLocalInputEnabled = true
     private var terminalGridSize = (columns: 80, rows: 24)
     private var terminalCellSize = CGSize(width: 8, height: 16)
@@ -219,14 +219,30 @@ final class HerdrTerminalView: UITerminalView {
     }
 
     /// Only a tap on the input row raises the keyboard, so the surface refuses
-    /// first responder until asked. The flag tracks the *user's* intent and
-    /// survives a UIKit-initiated resign on purpose: backgrounding the app or
-    /// presenting a sheet resigns the first responder, and UIKit restores it
-    /// afterwards by asking again. Clearing the flag there would have UIKit
-    /// refused — leaving the accessory bar on screen with no keyboard behind
-    /// it and no way to type. `dismissKeyboard()` is what clears it.
+    /// first responder until asked. The gate tracks the *user's* intent, and
+    /// that intent survives a UIKit-initiated resign on purpose: backgrounding
+    /// the app or presenting a sheet resigns the first responder, and UIKit
+    /// restores it afterwards by asking again. Refusing there would leave the
+    /// accessory bar on screen with no keyboard behind it and no way to type.
+    /// `dismissKeyboard()` is what clears the intent.
+    ///
+    /// The gate also refuses mid-touch requests: Ghostty's `touchesBegan`
+    /// calls `becomeFirstResponder()` on every body touch, which with the
+    /// intent armed would raise the keyboard from taps the input-row policy
+    /// never approved.
     override var canBecomeFirstResponder: Bool {
-        allowsKeyboardActivation
+        responderGate.mayBecomeFirstResponder
+    }
+
+    /// Ghostty's `touchesEnded` dismisses the keyboard after any body tap or
+    /// scroll. The accessory's dismiss button is this app's only intended
+    /// dismissal, so a resign arriving mid-touch is Ghostty's and is refused;
+    /// UIKit's resigns (sheets, backgrounding) arrive outside touch sequences
+    /// and pass.
+    @discardableResult
+    override func resignFirstResponder() -> Bool {
+        guard responderGate.mayResignFirstResponder else { return false }
+        return super.resignFirstResponder()
     }
 
     init(
@@ -357,7 +373,8 @@ final class HerdrTerminalView: UITerminalView {
 
     /// Raises the keyboard, and records that the user wants it up.
     func requestKeyboard() {
-        allowsKeyboardActivation = true
+        responderGate.beginUserDrivenChange(wantsKeyboard: true)
+        defer { responderGate.endUserDrivenChange() }
         _ = becomeFirstResponder()
     }
 
@@ -367,7 +384,8 @@ final class HerdrTerminalView: UITerminalView {
     /// and must stay recoverable.
     @discardableResult
     func dismissKeyboard() -> Bool {
-        allowsKeyboardActivation = false
+        responderGate.beginUserDrivenChange(wantsKeyboard: false)
+        defer { responderGate.endUserDrivenChange() }
         return resignFirstResponder()
     }
 
@@ -434,7 +452,29 @@ final class HerdrTerminalView: UITerminalView {
         super.didMoveToWindow()
         if window == nil {
             stopTouchScrollMomentum()
+            responderGate.invalidateTouches()
         }
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        responderGate.directTouchesBegan(Self.directTouchCount(in: touches))
+        super.touchesBegan(touches, with: event)
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        // Ghostty's touchesEnded is where its tap-to-dismiss resign fires, so
+        // the touches stay counted until super returns.
+        super.touchesEnded(touches, with: event)
+        responderGate.directTouchesEnded(Self.directTouchCount(in: touches))
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesCancelled(touches, with: event)
+        responderGate.directTouchesEnded(Self.directTouchCount(in: touches))
+    }
+
+    private static func directTouchCount(in touches: Set<UITouch>) -> Int {
+        touches.count { $0.type == .direct }
     }
 
     override func gestureRecognizerShouldBegin(
