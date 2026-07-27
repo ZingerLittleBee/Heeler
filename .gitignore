@@ -27,3 +27,6 @@ relay/node_modules/
 
 # testloop scratch artifacts
 .testloop/
+
+# Agent workspace (research reports, scratch)
+.claude/

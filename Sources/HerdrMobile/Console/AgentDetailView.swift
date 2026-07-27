@@ -19,6 +19,7 @@ struct AgentDetailView: View {
     @State private var isManagingSnippets = false
     @State private var closeErrorMessage: String?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
 
     init(
         agent: ConsoleAgent,
@@ -78,6 +79,14 @@ struct AgentDetailView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             imageAttachStatus
         }
+        // background(_:ignoresSafeAreaEdges:) defaults to .all: the theme
+        // colour reaches under the transparent navigation bar and into the
+        // home-indicator area without moving the terminal grid or touching
+        // keyboard resize. Must stay outside the safeAreaInset above.
+        .background(terminal.themes.selection.surfaceBackground(for: colorScheme))
+        .toolbarColorScheme(
+            terminal.themes.selection.chromeColorScheme(for: colorScheme),
+            for: .navigationBar)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
