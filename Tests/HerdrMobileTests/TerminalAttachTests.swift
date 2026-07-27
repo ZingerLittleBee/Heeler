@@ -189,6 +189,55 @@ struct TerminalAttachTests {
         #expect(region.width == terminal.bounds.width)
     }
 
+    /// #90: the 44 pt band sits on the caret, and an agent TUI parks its caret
+    /// below the prompt the user actually reads. Aiming at Claude Code's `>`
+    /// missed four times running in a real session, so the whole surface has to
+    /// answer once the alternate screen is up — there is no native scrollback
+    /// left to protect there.
+    @MainActor
+    @Test func anyTapRaisesTheKeyboardOnceATUIOwnsTheScreen() {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
+        let farFromTheCaret = CGPoint(x: 195, y: 120)
+
+        #expect(terminal.tapAction(at: farFromTheCaret) == .report(raisesKeyboard: false))
+
+        terminal.receive(Data("\u{1B}[?1049h".utf8))
+
+        #expect(terminal.tapAction(at: farFromTheCaret) == .report(raisesKeyboard: true))
+    }
+
+    /// The normal buffer keeps the old contract: scrollback is scrolled by
+    /// touch, and a stray tap must not answer with a viewport resize.
+    @MainActor
+    @Test func theNormalBufferStillOnlyAnswersTheInputRow() {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
+
+        terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1049l".utf8))
+
+        #expect(terminal.tapAction(at: CGPoint(x: 195, y: 120)) == .report(raisesKeyboard: false))
+    }
+
+    /// Tapping to stop a flick is the oldest gesture on the platform. Now that
+    /// a tap can raise the keyboard, that tap must be spent on the halt alone —
+    /// otherwise stopping a scroll costs you the bottom half of the screen.
+    @MainActor
+    @Test func theTapThatHaltsAFlickDoesNothingElse() {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
+        terminal.receive(Data("\u{1B}[?1049h".utf8))
+
+        terminal.startTouchScrollMomentum(velocityY: 2_000)
+        #expect(terminal.isTouchScrollMomentumRunning)
+
+        // The same tap that raises the keyboard in the test above.
+        terminal.handleTap(at: CGPoint(x: 195, y: 120))
+
+        #expect(!terminal.isTouchScrollMomentumRunning)
+        #expect(!terminal.canBecomeFirstResponder)
+    }
+
     @MainActor
     @Test func terminalTouchPanEmitsRemoteTUIMouseWheelInput() async {
         var sent = Data()
