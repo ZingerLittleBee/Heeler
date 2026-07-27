@@ -67,9 +67,9 @@ _Avoid_: dashboard, home
 The Agent detail surface: full interactive terminal control of the pane through
 the embedded terminal. The normal terminal buffer uses native local scrollback.
 Alternate-screen TUIs map vertical touch drags and momentum to terminal wheel rows.
-Touching the terminal never opens the software keyboard; the keyboard toolbar
-button is the only entry point, so a scroll gesture cannot be interrupted by a
-keyboard-driven viewport resize.
+Only a tap on the input row opens the software keyboard; a touch anywhere else
+does not, so a scroll gesture cannot be interrupted by a keyboard-driven
+viewport resize.
 _Avoid_: takeover (that's herdr's flag, not our surface), connect
 
 **Terminal Keyboard**:
