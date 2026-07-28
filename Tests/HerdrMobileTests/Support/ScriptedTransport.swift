@@ -14,6 +14,9 @@ final actor ScriptedTransport: Transport {
     /// Every `agent.start` received, in order; the new-agent flow (#12)
     /// asserts on the params it forwarded.
     private(set) var agentStarts: [AgentLaunchRequest] = []
+    /// Every worktree launch received, in order; the new-worktree flow (#97)
+    /// asserts on the request/spec pairs it forwarded.
+    private(set) var worktreeStarts: [(request: AgentLaunchRequest, worktree: WorktreeSpec)] = []
     private(set) var agentDiscoveryCount = 0
     private var availableKinds = SupportedAgentKind.allCases
     private var agentDiscoveryFailure: TransportError?
@@ -266,6 +269,20 @@ final actor ScriptedTransport: Transport {
                 paneID: "\(request.workspaceID ?? "w1"):pnew", status: .working,
                 workspaceID: request.workspaceID ?? "w1", kind: request.kind,
                 title: request.name))
+    }
+
+    func startAgentInNewWorktree(
+        _ request: AgentLaunchRequest, worktree: WorktreeSpec
+    ) async throws -> Agent {
+        worktreeStarts.append((request, worktree))
+        if let startFailure { throw startFailure }
+        if let startedAgent { return Agent(startedAgent) }
+        // The real server answers with an agent in the *new* worktree
+        // workspace, not the source one.
+        return Agent(
+            .fixture(
+                paneID: "wt1:pnew", status: .working, workspaceID: "wt1",
+                kind: request.kind, title: request.name))
     }
 
     func closePane(_ params: PaneTarget) async throws {

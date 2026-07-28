@@ -63,6 +63,9 @@ final class StartAgentStore {
                 availableAgentKinds = []
                 selectedAgentKind = nil
                 agentDiscoveryState = .idle
+                startsInNewWorktree = false
+                worktreeBranch = ""
+                worktreeBase = ""
             }
         }
     }
@@ -101,6 +104,17 @@ final class StartAgentStore {
     var selectedAgentKind: SupportedAgentKind?
     /// Optional native arguments, parsed into argv without invoking a shell.
     var arguments: String = ""
+    /// Whether the launch targets a fresh git worktree of the selected
+    /// workspace's repository instead of the workspace itself (#97).
+    var startsInNewWorktree = false
+    /// Optional branch for the new worktree; empty uses herdr's generated
+    /// `worktree/<name>` branch. Validated client-side because herdr folds
+    /// every git failure into one raw-stderr error code.
+    var worktreeBranch: String = ""
+    /// Optional base commit-ish for the new branch; empty branches off HEAD.
+    /// Not validated: any rev syntax is legal here, so the server's message
+    /// passthrough is the honest feedback.
+    var worktreeBase: String = ""
 
     private(set) var state: State = .editing
     private(set) var agentDiscoveryState: AgentDiscoveryState = .idle
@@ -108,7 +122,9 @@ final class StartAgentStore {
 
     private let workspacesProvider: (Host.ID) -> [ConsoleWorkspace]
     private let discoverAgentKinds: (Host.ID) async throws -> [SupportedAgentKind]
-    private let start: (AgentLaunchRequest, Host.ID) async throws -> Agent
+    /// A non-nil `WorktreeSpec` routes the launch through the fresh-worktree
+    /// choreography; nil starts in the workspace itself.
+    private let start: (AgentLaunchRequest, WorktreeSpec?, Host.ID) async throws -> Agent
     @ObservationIgnored private let recents: RecentWorkspaceStore
     /// In-flight guard flipped synchronously before the first await, so a
     /// double-tap cannot dispatch the same command twice through the window
@@ -119,7 +135,7 @@ final class StartAgentStore {
         hosts: [Host],
         workspaces: @escaping (Host.ID) -> [ConsoleWorkspace],
         discoverAgentKinds: @escaping (Host.ID) async throws -> [SupportedAgentKind],
-        start: @escaping (AgentLaunchRequest, Host.ID) async throws -> Agent,
+        start: @escaping (AgentLaunchRequest, WorktreeSpec?, Host.ID) async throws -> Agent,
         recents: RecentWorkspaceStore = RecentWorkspaceStore()
     ) {
         self.hosts = hosts
@@ -146,12 +162,22 @@ final class StartAgentStore {
         return error.message
     }
 
+    /// User-facing branch feedback; nil while the toggle is off or the field
+    /// is empty (empty means "use herdr's generated branch").
+    var worktreeBranchErrorMessage: String? {
+        guard startsInNewWorktree else { return nil }
+        let branch = worktreeBranch.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !branch.isEmpty else { return nil }
+        return GitBranchName.validationError(branch)
+    }
+
     /// Whether the form is complete enough to dispatch.
     var canSubmit: Bool {
         selectedHostID != nil && selectedWorkspaceID != nil
             && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && selectedAgentKind != nil
             && parsedArguments.isSuccess
+            && worktreeBranchErrorMessage == nil
             && agentDiscoveryState == .loaded
             && state != .starting
     }
@@ -195,7 +221,8 @@ final class StartAgentStore {
             let hostID = selectedHostID,
             let workspaceID = selectedWorkspaceID,
             let kind = selectedAgentKind,
-            case .success(let arguments) = parsedArguments
+            case .success(let arguments) = parsedArguments,
+            worktreeBranchErrorMessage == nil
         else { return }
         let agentName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !agentName.isEmpty else { return }
@@ -207,8 +234,14 @@ final class StartAgentStore {
             name: agentName,
             arguments: arguments,
             workspaceID: workspaceID)
+        let worktree: WorktreeSpec? =
+            startsInNewWorktree
+            ? WorktreeSpec(
+                branch: Self.nonEmptyTrimmed(worktreeBranch),
+                base: Self.nonEmptyTrimmed(worktreeBase))
+            : nil
         do {
-            _ = try await start(request, hostID)
+            _ = try await start(request, worktree, hostID)
             recents.remember(workspaceID, for: hostID)
             state = .started
         } catch {
@@ -304,6 +337,11 @@ final class StartAgentStore {
         return .success(result)
     }
 
+    private static func nonEmptyTrimmed(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     private static func isControl(_ character: Character) -> Bool {
         character.unicodeScalars.contains {
             CharacterSet.controlCharacters.contains($0)
@@ -327,6 +365,13 @@ final class StartAgentStore {
             "The Host is not connected."
         case TransportError.timedOut:
             "The Host did not answer in time."
+        case let apiError as HerdrAPIError where apiError.code == "not_git_worktree":
+            // The one dedicated worktree.create error code (#97); everything
+            // else collapses into worktree_create_failed with raw git stderr,
+            // which the passthrough below surfaces as-is.
+            "This workspace is not inside a Git repository, so no worktree can be created from it."
+        case let apiError as HerdrAPIError where apiError.code == "worktree_create_failed":
+            "Creating the worktree failed: \(apiError.message)"
         case let apiError as HerdrAPIError:
             "herdr rejected the command: \(apiError.message)"
         default:

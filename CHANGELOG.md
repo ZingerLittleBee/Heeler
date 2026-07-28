@@ -25,6 +25,10 @@ Entries reference the pull request that landed them.
   names follow the server's rule (lowercase letters, digits, `-`/`_`, up to
   32 characters) with inline validation, and leaving the name empty falls
   back to the detected kind. (#98)
+- Start an Agent in a fresh git worktree: a "Start in a new worktree" toggle
+  on the New Agent form gives the task a clean checkout of the selected
+  workspace's repository, with optional branch (validated inline) and base;
+  empty fields use herdr's generated `worktree/` branch off HEAD. (#97)
 
 ### Changed
 

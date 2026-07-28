@@ -908,3 +908,142 @@ struct WorkspaceWorktreeInfo: Codable, Equatable, Sendable {
         case repoRoot = "repo_root"
     }
 }
+
+/// herdr schema `$defs/WorktreeCreateParams`.
+struct WorktreeCreateParams: Codable, Equatable, Sendable {
+    let base: String?
+    let branch: String?
+    let cwd: String?
+    let focus: Bool?
+    let label: String?
+    let path: String?
+    let workspaceID: String?
+
+    init(
+        base: String? = nil,
+        branch: String? = nil,
+        cwd: String? = nil,
+        focus: Bool? = nil,
+        label: String? = nil,
+        path: String? = nil,
+        workspaceID: String? = nil
+    ) {
+        self.base = base
+        self.branch = branch
+        self.cwd = cwd
+        self.focus = focus
+        self.label = label
+        self.path = path
+        self.workspaceID = workspaceID
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case base
+        case branch
+        case cwd
+        case focus
+        case label
+        case path
+        case workspaceID = "workspace_id"
+    }
+}
+
+/// The `"type":"worktree_created"` result payload of herdr's success_response schema.
+struct WorktreeCreatedResponse: Codable, Equatable, Sendable {
+    let rootPane: PaneInfo
+    let tab: TabInfo
+    let workspace: WorkspaceInfo
+    let worktree: WorktreeInfo
+
+    init(rootPane: PaneInfo, tab: TabInfo, workspace: WorkspaceInfo, worktree: WorktreeInfo) {
+        self.rootPane = rootPane
+        self.tab = tab
+        self.workspace = workspace
+        self.worktree = worktree
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case rootPane = "root_pane"
+        case tab
+        case workspace
+        case worktree
+    }
+}
+
+/// herdr schema `$defs/WorktreeInfo`.
+struct WorktreeInfo: Codable, Equatable, Sendable {
+    let branch: String?
+    let isBare: Bool
+    let isDetached: Bool
+    let isLinkedWorktree: Bool
+    let isPrunable: Bool
+    let label: String
+    let openWorkspaceID: String?
+    let path: String
+
+    init(
+        isBare: Bool,
+        isDetached: Bool,
+        isLinkedWorktree: Bool,
+        isPrunable: Bool,
+        label: String,
+        path: String,
+        branch: String? = nil,
+        openWorkspaceID: String? = nil
+    ) {
+        self.isBare = isBare
+        self.isDetached = isDetached
+        self.isLinkedWorktree = isLinkedWorktree
+        self.isPrunable = isPrunable
+        self.label = label
+        self.path = path
+        self.branch = branch
+        self.openWorkspaceID = openWorkspaceID
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case branch
+        case isBare = "is_bare"
+        case isDetached = "is_detached"
+        case isLinkedWorktree = "is_linked_worktree"
+        case isPrunable = "is_prunable"
+        case label
+        case openWorkspaceID = "open_workspace_id"
+        case path
+    }
+}
+
+/// herdr schema `$defs/WorktreeRemoveParams`.
+struct WorktreeRemoveParams: Codable, Equatable, Sendable {
+    let force: Bool?
+    let workspaceID: String
+
+    init(workspaceID: String, force: Bool? = nil) {
+        self.workspaceID = workspaceID
+        self.force = force
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case force
+        case workspaceID = "workspace_id"
+    }
+}
+
+/// The `"type":"worktree_removed"` result payload of herdr's success_response schema.
+struct WorktreeRemovedResponse: Codable, Equatable, Sendable {
+    let forced: Bool
+    let path: String
+    let workspaceID: String
+
+    init(forced: Bool, path: String, workspaceID: String) {
+        self.forced = forced
+        self.path = path
+        self.workspaceID = workspaceID
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case forced
+        case path
+        case workspaceID = "workspace_id"
+    }
+}

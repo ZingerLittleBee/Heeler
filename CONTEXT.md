@@ -59,6 +59,14 @@ _Avoid_: agent state, activity
 herdr's unit of terminal real estate that an Agent lives in. Used as an address (`pane_id`), never as a layout concept in this app.
 _Avoid_: window, tile
 
+**Worktree**:
+A fresh git checkout of a workspace's repository, created by herdr as its own
+workspace so a new Agent starts on a clean copy of the code. The branch
+defaults to herdr's generated `worktree/<name>` off HEAD; removing the
+Worktree deletes the checkout and closes its workspace, but the branch
+survives.
+_Avoid_: sandbox, branch copy, checkout folder
+
 **Console**:
 The native dashboard surface: the flat, status-sorted list of Agents across Hosts, plus the Agent detail screen.
 _Avoid_: dashboard, home

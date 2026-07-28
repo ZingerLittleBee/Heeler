@@ -47,6 +47,12 @@ final actor FakeTransport: Transport {
         throw TransportError.channelFailed(detail: "FakeTransport does not script agent starts")
     }
 
+    func startAgentInNewWorktree(
+        _ request: AgentLaunchRequest, worktree: WorktreeSpec
+    ) async throws -> Agent {
+        throw TransportError.channelFailed(detail: "FakeTransport does not script agent starts")
+    }
+
     func closePane(_ params: PaneTarget) async throws {
         throw TransportError.channelFailed(detail: "FakeTransport does not script closes")
     }

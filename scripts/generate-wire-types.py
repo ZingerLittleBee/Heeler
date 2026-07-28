@@ -60,6 +60,8 @@ METHODS = [
     "pane.close",
     "session.snapshot",
     "workspace.rename",
+    "worktree.create",
+    "worktree.remove",
 ]
 
 # Params defs excluded from generation even when a wanted method uses them.
@@ -88,6 +90,8 @@ RESULT_TAGS = [
     "tab_created",  # tab.create
     "ok",  # pane.close
     "workspace_info",  # workspace.rename
+    "worktree_created",  # worktree.create
+    "worktree_removed",  # worktree.remove
 ]
 
 # Wire-name overrides for members whose mechanical camelCase would be a Swift

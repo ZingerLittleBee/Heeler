@@ -151,6 +151,15 @@ final class ConsoleStore {
         try await projection(for: hostID).startAgent(request)
     }
 
+    @discardableResult
+    func startAgentInNewWorktree(
+        _ request: AgentLaunchRequest,
+        worktree: WorktreeSpec,
+        on hostID: Host.ID
+    ) async throws -> Agent {
+        try await projection(for: hostID).startAgentInNewWorktree(request, worktree: worktree)
+    }
+
     func closePane(_ paneID: String, on hostID: Host.ID) async throws {
         try await projection(for: hostID).closePane(paneID)
     }

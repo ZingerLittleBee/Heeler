@@ -281,6 +281,98 @@ struct SSHTransportE2ETests {
         }
     }
 
+    @Test func worktreeStartSkipsTabCreateAndTargetsTheReturnedRootPane() async throws {
+        // The fresh-worktree launch (#97): worktree.create already returns a
+        // workspace with a root pane, so the choreography goes straight to
+        // agent.start — and the agent_pane_busy readiness retry still
+        // applies while that pane's shell boots.
+        let busyReplies = Mutex(1)
+        try await withTransport { request in
+            switch request.method {
+            case "worktree.create":
+                return [
+                    #"{"id":"\#(request.id)","result":{"type":"worktree_created","workspace":{"workspace_id":"w9","number":9,"label":"calm-field-cc11","focused":false,"pane_count":1,"tab_count":1,"active_tab_id":"w9:t1","agent_status":"unknown","worktree":{"repo_key":"/work/a/.git","repo_name":"proj","repo_root":"/work/a","checkout_path":"/wt/proj/calm-field-cc11","is_linked_worktree":true}},"tab":{"tab_id":"w9:t1","workspace_id":"w9","number":1,"label":"1","focused":false,"pane_count":1,"agent_status":"unknown"},"root_pane":{"pane_id":"w9:p1","terminal_id":"term_wt","workspace_id":"w9","tab_id":"w9:t1","focused":false,"agent_status":"unknown","revision":0},"worktree":{"path":"/wt/proj/calm-field-cc11","branch":"task/fix-97","is_bare":false,"is_detached":false,"is_prunable":false,"is_linked_worktree":true,"label":"calm-field-cc11","open_workspace_id":"w9"}}}"#
+                ]
+            case "agent.start":
+                let stillBooting = busyReplies.withLock { remaining in
+                    guard remaining > 0 else { return false }
+                    remaining -= 1
+                    return true
+                }
+                if stillBooting {
+                    return [
+                        #"{"id":"\#(request.id)","error":{"code":"agent_pane_busy","message":"agent target pane w9:p1 is not an available shell"}}"#
+                    ]
+                }
+                return [
+                    #"{"id":"\#(request.id)","result":{"type":"agent_started","argv":["claude"],"agent":{"terminal_id":"term_wt","agent":"claude","terminal_title":"⠐ claude","terminal_title_stripped":"claude","agent_status":"working","workspace_id":"w9","tab_id":"w9:t1","pane_id":"w9:p1","focused":false,"cwd":"/wt/proj/calm-field-cc11","foreground_cwd":"/wt/proj/calm-field-cc11","revision":1}}}"#
+                ]
+            default:
+                Issue.record("Unexpected request: \(request.method)")
+                return []
+            }
+        } body: { transport, server in
+            let agent = try await transport.startAgentInNewWorktree(
+                AgentLaunchRequest(kind: "claude", name: "reviewer", workspaceID: "w1"),
+                worktree: WorktreeSpec(branch: "task/fix-97", base: "origin/main"))
+
+            #expect(agent.paneID == "w9:p1")
+            #expect(agent.workspaceID == "w9")
+            #expect(agent.status == .working)
+            #expect(
+                server.receivedRequests.map(\.method)
+                    == ["worktree.create", "agent.start", "agent.start"])
+            let create = try #require(server.receivedRequests.first)
+            // JSONEncoder escapes "/" on the wire; herdr accepts both forms.
+            #expect(
+                create.params
+                    == #"{"base":"origin\/main","branch":"task\/fix-97","focus":false,"workspace_id":"w1"}"#
+            )
+            let start = try #require(server.receivedRequests.last)
+            #expect(
+                start.params == #"{"kind":"claude","name":"reviewer","pane_id":"w9:p1"}"#)
+        }
+    }
+
+    @Test func worktreeStartFailureRemovesTheFreshWorktree() async throws {
+        // Same teardown contract as the tab.create path: a definitive
+        // agent.start rejection must not strand the fresh checkout.
+        // worktree.remove deletes it and closes the workspace in one call.
+        try await withTransport { request in
+            switch request.method {
+            case "worktree.create":
+                return [
+                    #"{"id":"\#(request.id)","result":{"type":"worktree_created","workspace":{"workspace_id":"w9","number":9,"label":"calm-field-cc11","focused":false,"pane_count":1,"tab_count":1,"active_tab_id":"w9:t1","agent_status":"unknown"},"tab":{"tab_id":"w9:t1","workspace_id":"w9","number":1,"label":"1","focused":false,"pane_count":1,"agent_status":"unknown"},"root_pane":{"pane_id":"w9:p1","terminal_id":"term_wt","workspace_id":"w9","tab_id":"w9:t1","focused":false,"agent_status":"unknown","revision":0},"worktree":{"path":"/wt/proj/calm-field-cc11","branch":"task/fix-97","is_bare":false,"is_detached":false,"is_prunable":false,"is_linked_worktree":true,"label":"calm-field-cc11","open_workspace_id":"w9"}}}"#
+                ]
+            case "agent.start":
+                return [
+                    #"{"id":"\#(request.id)","error":{"code":"unsupported_agent","message":"unsupported agent kind"}}"#
+                ]
+            case "worktree.remove":
+                return [
+                    #"{"id":"\#(request.id)","result":{"type":"worktree_removed","workspace_id":"w9","path":"/wt/proj/calm-field-cc11","forced":false}}"#
+                ]
+            default:
+                Issue.record("Unexpected request: \(request.method)")
+                return []
+            }
+        } body: { transport, server in
+            await #expect(
+                throws: HerdrAPIError(
+                    code: "unsupported_agent", message: "unsupported agent kind")
+            ) {
+                try await transport.startAgentInNewWorktree(
+                    AgentLaunchRequest(kind: "unsupported", name: "unsupported", workspaceID: "w1"),
+                    worktree: WorktreeSpec())
+            }
+
+            #expect(
+                server.receivedRequests.map(\.method)
+                    == ["worktree.create", "agent.start", "worktree.remove"])
+            #expect(server.receivedRequests.last?.params == #"{"workspace_id":"w9"}"#)
+        }
+    }
+
     @Test func serverErrorSurfacesAsHerdrAPIError() async throws {
         try await withTransport { request in
             [#"{"id":"\#(request.id)","error":{"code":500,"message":"scripted failure"}}"#]

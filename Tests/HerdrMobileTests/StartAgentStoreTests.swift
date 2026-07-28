@@ -13,13 +13,19 @@ struct StartAgentStoreTests {
     @MainActor
     private final class StartRecorder {
         var params: [AgentLaunchRequest] = []
+        /// One entry per start, aligned with `params`; nil is a plain
+        /// workspace launch, non-nil the fresh-worktree variant (#97).
+        var worktrees: [WorktreeSpec?] = []
         var hostIDs: [Host.ID] = []
         var error: (any Error)?
         var agent = Agent(.fixture(paneID: "w1:pnew", status: .working))
         var gate: ScriptedTransportCallGate?
 
-        func record(_ params: AgentLaunchRequest, _ hostID: Host.ID) async throws -> Agent {
+        func record(
+            _ params: AgentLaunchRequest, _ worktree: WorktreeSpec?, _ hostID: Host.ID
+        ) async throws -> Agent {
             self.params.append(params)
+            worktrees.append(worktree)
             hostIDs.append(hostID)
             await gate?.waitUntilOpen()
             if let error { throw error }
@@ -48,7 +54,9 @@ struct StartAgentStoreTests {
         StartAgentStore(
             hosts: hosts, workspaces: workspaces,
             discoverAgentKinds: agentKinds,
-            start: { params, hostID in try await recorder.record(params, hostID) },
+            start: { params, worktree, hostID in
+                try await recorder.record(params, worktree, hostID)
+            },
             recents: recents ?? makeRecents())
     }
 
@@ -368,6 +376,124 @@ struct StartAgentStoreTests {
         #expect(recorder.params.first?.name == "reviewer")
         #expect(recorder.params.first?.arguments == ["--continue", "--label", "code review"])
         #expect(recorder.params.first?.workspaceID == "w1")
+        #expect(recorder.worktrees == [nil])
+    }
+
+    @Test func worktreeSubmitForwardsTheTrimmedSpec() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recorder: recorder)
+        store.name = "reviewer"
+        store.startsInNewWorktree = true
+        store.worktreeBranch = "  task/fix-97  "
+        store.worktreeBase = " origin/main "
+        await store.discoverAgents()
+
+        await store.submit()
+
+        #expect(store.state == .started)
+        #expect(recorder.params.first?.workspaceID == "w1")
+        #expect(recorder.worktrees == [WorktreeSpec(branch: "task/fix-97", base: "origin/main")])
+    }
+
+    @Test func worktreeSubmitWithEmptyFieldsUsesHerdrsDefaults() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recorder: recorder)
+        store.name = "reviewer"
+        store.startsInNewWorktree = true
+        await store.discoverAgents()
+
+        await store.submit()
+
+        #expect(store.state == .started)
+        #expect(recorder.worktrees == [WorktreeSpec(branch: nil, base: nil)])
+    }
+
+    @Test func anInvalidWorktreeBranchBlocksSubmission() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recorder: recorder)
+        store.name = "reviewer"
+        await store.discoverAgents()
+        #expect(store.canSubmit == true)
+
+        store.startsInNewWorktree = true
+        store.worktreeBranch = "has space"
+        #expect(store.worktreeBranchErrorMessage != nil)
+        #expect(store.canSubmit == false)
+        await store.submit()
+        #expect(store.state == .editing)
+        #expect(recorder.params.isEmpty)
+
+        // The same text is fine while the toggle is off: it never reaches git.
+        store.startsInNewWorktree = false
+        #expect(store.worktreeBranchErrorMessage == nil)
+        #expect(store.canSubmit == true)
+    }
+
+    @Test func switchingHostResetsTheWorktreeFields() {
+        let hostA = Host.fixture(address: "a.example")
+        let hostB = Host.fixture(address: "b.example")
+        let store = makeStore(hosts: [hostA, hostB], recorder: StartRecorder())
+        store.selectedHostID = hostA.id
+        store.startsInNewWorktree = true
+        store.worktreeBranch = "task/fix-97"
+        store.worktreeBase = "origin/main"
+
+        store.selectedHostID = hostB.id
+
+        #expect(store.startsInNewWorktree == false)
+        #expect(store.worktreeBranch.isEmpty)
+        #expect(store.worktreeBase.isEmpty)
+    }
+
+    @Test func worktreeFailuresGetFirstClassCopy() async {
+        let host = Host.fixture()
+        let workspaces: (Host.ID) -> [ConsoleWorkspace] = { _ in
+            [ConsoleWorkspace(id: "w1", label: "Proj")]
+        }
+
+        // The dedicated code for a non-git workspace cwd.
+        let notGit = StartRecorder()
+        notGit.error = HerdrAPIError(
+            code: "not_git_worktree",
+            message: "Herdr worktree actions require a workspace inside a Git work tree")
+        let first = makeStore(hosts: [host], workspaces: workspaces, recorder: notGit)
+        first.name = "reviewer"
+        first.startsInNewWorktree = true
+        await first.discoverAgents()
+        await first.submit()
+        #expect(
+            first.state
+                == .failed(
+                    "This workspace is not inside a Git repository, so no worktree can be created from it."
+                ))
+
+        // Everything else collapses into raw git stderr; pass it through.
+        let gitFailure = StartRecorder()
+        gitFailure.error = HerdrAPIError(
+            code: "worktree_create_failed",
+            message: "fatal: 'task/fix-97' is already used by worktree at '/w'")
+        let second = makeStore(hosts: [host], workspaces: workspaces, recorder: gitFailure)
+        second.name = "reviewer"
+        second.startsInNewWorktree = true
+        await second.discoverAgents()
+        await second.submit()
+        #expect(
+            second.state
+                == .failed(
+                    "Creating the worktree failed: fatal: 'task/fix-97' is already used by worktree at '/w'"
+                ))
     }
 
     @Test func startInFlightPreventsDismissalAndDuplicateSubmit() async throws {

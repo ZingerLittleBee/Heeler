@@ -134,6 +134,30 @@ import Testing
         #expect(response.workspace.label == "Proj")
     }
 
+    @Test func worktreeCreatedResponseRoundTripsLiveCapture() throws {
+        // `worktree.create` live capture (herdr 0.7.5, sanitized, #97): the
+        // new workspace arrives with its tab and root pane, plus the
+        // worktree's git identity.
+        let json = #"{"type":"worktree_created","workspace":{"workspace_id":"w9","number":9,"label":"calm-field-cc11","focused":false,"pane_count":1,"tab_count":1,"active_tab_id":"w9:t1","agent_status":"unknown","worktree":{"repo_key":"/Users/u/Proj/.git","repo_name":"Proj","repo_root":"/Users/u/Proj","checkout_path":"/Users/u/Documents/worktree/Proj/calm-field-cc11","is_linked_worktree":true}},"tab":{"tab_id":"w9:t1","workspace_id":"w9","number":1,"label":"1","focused":false,"pane_count":1,"agent_status":"unknown"},"root_pane":{"pane_id":"w9:p1","terminal_id":"term_wt","workspace_id":"w9","tab_id":"w9:t1","focused":false,"agent_status":"unknown","revision":0},"worktree":{"path":"/Users/u/Documents/worktree/Proj/calm-field-cc11","branch":"worktree/calm-field-cc11","is_bare":false,"is_detached":false,"is_prunable":false,"is_linked_worktree":true,"label":"calm-field-cc11","open_workspace_id":"w9"}}"#
+
+        let response = try roundTrip(WorktreeCreatedResponse.self, json)
+
+        #expect(response.workspace.workspaceID == "w9")
+        #expect(response.rootPane.paneID == "w9:p1")
+        #expect(response.worktree.branch == "worktree/calm-field-cc11")
+        #expect(response.worktree.openWorkspaceID == "w9")
+        #expect(response.workspace.worktree?.isLinkedWorktree == true)
+    }
+
+    @Test func worktreeRemovedResponseRoundTrips() throws {
+        let json = #"{"type":"worktree_removed","workspace_id":"w9","path":"/Users/u/Documents/worktree/Proj/calm-field-cc11","forced":false}"#
+
+        let response = try roundTrip(WorktreeRemovedResponse.self, json)
+
+        #expect(response.workspaceID == "w9")
+        #expect(response.forced == false)
+    }
+
     @Test func okResponseDecodes() throws {
         // The bare-acknowledgement result shape (`pane.close`).
         _ = try roundTrip(OkResponse.self, #"{"type":"ok"}"#)
@@ -200,6 +224,17 @@ import Testing
         #expect(fields.keys.sorted() == ["focus", "workspace_id"])
         #expect(fields["focus"] as? Bool == false)
         #expect(fields["workspace_id"] as? String == "w1")
+    }
+
+    @Test func worktreeCreateParamsEncodeOnlyProvidedFields() throws {
+        // Nil branch/base/label/path must drop their keys so herdr applies
+        // its own defaults (generated branch off HEAD, #97).
+        let fields = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(
+                WorktreeCreateParams(focus: false, workspaceID: "w1"))
+        ) as? [String: Any]
+        #expect(fields?.keys.sorted() == ["focus", "workspace_id"])
+        #expect(fields?["focus"] as? Bool == false)
     }
 
     @Test func agentRenameParamsOmitNilNameToClearIt() throws {

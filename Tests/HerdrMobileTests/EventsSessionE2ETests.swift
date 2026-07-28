@@ -473,6 +473,12 @@ struct EventsSessionE2ETests {
             try await inner.startAgent(request)
         }
 
+        func startAgentInNewWorktree(
+            _ request: AgentLaunchRequest, worktree: WorktreeSpec
+        ) async throws -> Agent {
+            try await inner.startAgentInNewWorktree(request, worktree: worktree)
+        }
+
         func closePane(_ params: PaneTarget) async throws {
             try await inner.closePane(params)
         }

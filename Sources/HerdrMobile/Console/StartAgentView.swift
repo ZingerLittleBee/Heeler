@@ -15,7 +15,14 @@ struct StartAgentView: View {
                 hosts: hosts,
                 workspaces: { console.workspaces(for: $0) },
                 discoverAgentKinds: { try await console.availableAgentKinds(on: $0) },
-                start: { params, hostID in try await console.startAgent(params, on: hostID) }))
+                start: { params, worktree, hostID in
+                    if let worktree {
+                        try await console.startAgentInNewWorktree(
+                            params, worktree: worktree, on: hostID)
+                    } else {
+                        try await console.startAgent(params, on: hostID)
+                    }
+                }))
     }
 
     var body: some View {
@@ -46,6 +53,34 @@ struct StartAgentView: View {
                     Text("Workspace")
                 } footer: {
                     Text("Where the agent runs. Defaults to the one you last started an agent in.")
+                }
+
+                Section {
+                    Toggle("Start in a new worktree", isOn: $store.startsInNewWorktree)
+                        .disabled(store.selectedWorkspaceID == nil)
+                    if store.startsInNewWorktree {
+                        TextField("Branch (optional)", text: $store.worktreeBranch)
+                            .font(.callout.monospaced())
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                        TextField("Base (optional)", text: $store.worktreeBase)
+                            .font(.callout.monospaced())
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                    }
+                } header: {
+                    Text("Worktree")
+                } footer: {
+                    if let message = store.worktreeBranchErrorMessage {
+                        Text(message)
+                            .foregroundStyle(.red)
+                    } else if store.startsInNewWorktree {
+                        Text(
+                            "A fresh checkout of the workspace's repository. Empty fields use a generated worktree/ branch off HEAD."
+                        )
+                    } else {
+                        Text("Run the agent in a clean checkout instead of the workspace itself.")
+                    }
                 }
 
                 Section {

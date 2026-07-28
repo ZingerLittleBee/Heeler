@@ -427,6 +427,44 @@ actor SSHTransport: Transport {
         }
     }
 
+    func startAgentInNewWorktree(
+        _ launch: AgentLaunchRequest, worktree: WorktreeSpec
+    ) async throws -> Agent {
+        let created = try await request(
+            method: "worktree.create",
+            params: WorktreeCreateParams(
+                base: worktree.base,
+                branch: worktree.branch,
+                focus: false,
+                workspaceID: launch.workspaceID),
+            decoding: WorktreeCreatedResponse.self)
+        do {
+            let response = try await startAgentAwaitingShell(
+                launch, paneID: created.rootPane.paneID)
+            return Agent(response.agent)
+        } catch let error as HerdrAPIError {
+            // Same teardown contract as startAgent: a definitive rejection
+            // must not leave the fresh checkout and workspace behind.
+            // worktree.remove deletes the checkout and closes the workspace
+            // in one call; the local branch survives.
+            try? await removeWorktree(workspaceID: created.workspace.workspaceID)
+            throw error
+        } catch is CancellationError {
+            try? await removeWorktree(workspaceID: created.workspace.workspaceID)
+            throw CancellationError()
+        }
+    }
+
+    /// Cleanup path for a worktree launch whose agent.start was definitively
+    /// rejected. The checkout is minutes old and untouched, so the
+    /// non-forced remove is safe.
+    private func removeWorktree(workspaceID: String) async throws {
+        _ = try await request(
+            method: "worktree.remove",
+            params: WorktreeRemoveParams(workspaceID: workspaceID),
+            decoding: WorktreeRemovedResponse.self)
+    }
+
     /// herdr (0.7.5+) rejects `agent.start` with `agent_pane_busy` until the
     /// fresh pane's shell reaches its interactive prompt; shell boot takes a
     /// few seconds on some hosts. The pane is ours and empty, so that code

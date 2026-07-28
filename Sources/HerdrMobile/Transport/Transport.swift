@@ -39,6 +39,18 @@ protocol Transport: Sendable {
     /// value into the list themselves.
     func startAgent(_ request: AgentLaunchRequest) async throws -> Agent
 
+    /// Starts a new Agent in a fresh git worktree (#97): `worktree.create`
+    /// resolves the repository from the source workspace's cwd (a non-git cwd
+    /// fails with `not_git_worktree`) and returns a new workspace whose root
+    /// pane already runs a shell, so this variant skips `tab.create` and
+    /// starts the agent in that pane directly (the `agent_pane_busy`
+    /// readiness retry still applies). `request.workspaceID` is the *source*
+    /// workspace; the started agent lives in the returned worktree workspace
+    /// and surfaces through the normal snapshot/delta machinery.
+    func startAgentInNewWorktree(
+        _ request: AgentLaunchRequest, worktree: WorktreeSpec
+    ) async throws -> Agent
+
     /// Closes a Pane (`pane.close`): the Agent detail screen's destructive
     /// close action (#13, User Story 9 — a Done agent must not be destroyed
     /// by a stray swipe, so the UI gates this behind an explicit
@@ -250,6 +262,21 @@ struct AgentLaunchRequest: Sendable, Equatable {
         self.name = name
         self.arguments = arguments
         self.workspaceID = workspaceID
+    }
+}
+
+/// App-domain refinements for the fresh-worktree launch variant (#97). Nil
+/// fields use herdr's defaults, verified live against 0.7.5: branch
+/// `worktree/<generated-name>` off HEAD, checkout under herdr's worktree
+/// root. An existing branch is checked out, not rejected; it only fails when
+/// another worktree already has it checked out.
+struct WorktreeSpec: Sendable, Equatable {
+    let branch: String?
+    let base: String?
+
+    init(branch: String? = nil, base: String? = nil) {
+        self.branch = branch
+        self.base = base
     }
 }
 
