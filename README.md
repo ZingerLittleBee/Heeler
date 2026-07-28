@@ -21,6 +21,25 @@ loopback interface instead of publishing the Mac's SSH port.
 - [Automate additional desktop-client enrollment](docs/guides/vps-jump-host-setup.md#automate-additional-desktop-clients)
 - [Understand the architecture, security boundaries, and VPS migration runbook](docs/guides/vps-jump-host.md)
 
+## Adding a machine: install the plugin, scan the code
+
+The repo ships a [herdr plugin](plugin/README.md) that pairs the app with a
+machine by QR code and delivers Agent Notifications over APNs. On the machine
+running herdr (Node >= 20, herdr >= 0.7.5, OpenSSH server enabled — on macOS
+that is **System Settings > General > Sharing > Remote Login**):
+
+```bash
+herdr plugin install ZingerLittleBee/herdr-mobile/plugin --ref main --yes
+herdr plugin action invoke herdr-mobile.pairing.pair
+```
+
+The `pair` action opens a popup with a Pairing Code QR; scan it with the app
+and the machine is added as a Host — addresses, host key fingerprint, and SSH
+key enrollment are all handled by the code, nothing to type. The same plugin
+pushes encrypted Blocked/Done notifications to the app once you enable Agent
+Notifications for the Host in the app's settings; the relay only ever sees
+ciphertext (see [PRIVACY.md](PRIVACY.md)).
+
 ## Stack
 
 - SwiftUI, iOS 26+, iPhone + iPad
