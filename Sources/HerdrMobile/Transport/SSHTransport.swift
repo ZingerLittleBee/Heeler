@@ -450,6 +450,10 @@ actor SSHTransport: Transport {
             try? await removeWorktree(workspaceID: created.workspace.workspaceID)
             throw error
         } catch is CancellationError {
+            // Only thrown between readiness retries, after a definitive
+            // rejection — no agent runs in the fresh pane for sure. The task
+            // is already cancelled here, so the remove is best-effort: it may
+            // itself be cut short and strand the checkout.
             try? await removeWorktree(workspaceID: created.workspace.workspaceID)
             throw CancellationError()
         }

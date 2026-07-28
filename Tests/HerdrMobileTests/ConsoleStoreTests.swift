@@ -729,6 +729,42 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    @Test func startAgentInNewWorktreeForwardsTheSpecAndResnapshots() async throws {
+        // The fresh-worktree launch (#97) rides the same machinery: the
+        // request/spec pair reaches the Host's transport, and the started
+        // pane surfaces via one explicit resync.
+        let host = Host.fixture()
+        let transport = ScriptedTransport(snapshot: .fixture(agents: []))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Host should connect") {
+            store.hostStatuses[host.id] == .connected
+        }
+        let snapshotsBefore = await transport.snapshotFetchCount
+
+        await transport.setSnapshot(
+            .fixture(agents: [.fixture(paneID: "wt1:pnew", status: .working, workspaceID: "wt1")]))
+        let started = try await store.startAgentInNewWorktree(
+            AgentLaunchRequest(kind: "claude", name: "reviewer", workspaceID: "w1"),
+            worktree: WorktreeSpec(branch: "task/fix-97", base: "origin/main"),
+            on: host.id)
+
+        #expect(started.workspaceID == "wt1")
+        let starts = await transport.worktreeStarts
+        #expect(starts.map { $0.request.workspaceID } == ["w1"])
+        #expect(
+            starts.map { $0.worktree }
+                == [WorktreeSpec(branch: "task/fix-97", base: "origin/main")])
+        try await waitUntil("the resync should surface the new pane") {
+            store.agents.map(\.agent.paneID) == ["wt1:pnew"]
+        }
+        #expect(await transport.snapshotFetchCount > snapshotsBefore)
+
+        store.setHosts([])
+    }
+
     @Test func startAgentThrowsWhenTheHostIsUnknown() async throws {
         let host = Host.fixture()
         let store = makeStore(transports: [:])
