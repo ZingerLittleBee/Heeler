@@ -51,6 +51,10 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Taps forwarded to a mouse-tracking TUI now land on the cell Ghostty actually
+  draws under the finger. The tap-to-cell mapper assumed a centred grid, but
+  Ghostty anchors it at a fixed padding; the mismatch shifted reports by up to
+  half a cell (worst on 3x screens) near cell boundaries.
 - Tapping the terminal body no longer toggles the software keyboard. Ghostty's
   touch handling raised and dismissed the keyboard on any touch once it had
   been raised once, including after returning from a short backgrounding; both

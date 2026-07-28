@@ -45,23 +45,34 @@ enum TerminalMouseEncoding {
 ///
 /// ```
 ///  view origin
-///  ┌───────────────────────────┐   Ghostty centres the grid: whatever does
-///  │        ↕ inset            │   not divide into whole cells is split
-///  │   ┌────┬────┬────┐        │   evenly between the opposite edges, so the
-///  │ ↔ │ 1,1│ 2,1│ 3,1│ …      │   first cell starts half a leftover in.
-///  │   ├────┼────┼────┤        │   Verified against the live surface in
-///  │   │ 1,2│ 2,2│ 3,2│        │   TerminalMouseReportingTests.
+///  ┌───────────────────────────┐   Ghostty anchors the grid at a fixed
+///  │ ↘ padding                 │   padding: with window-padding-balance off
+///  │   ┌────┬────┬────┐        │   (the default), whatever does not divide
+///  │   │ 1,1│ 2,1│ 3,1│ …      │   into whole cells is left over on the
+///  │   ├────┼────┼────┤        │   right and bottom edges only.
+///  │   │ 1,2│ 2,2│ 3,2│        │
 /// ```
+///
+/// Verified against the live surface in TerminalMouseReportingTests.
 struct TerminalGridPointMapper {
     var viewSize: CGSize
     var cellSize: CGSize
     var columns: Int
     var rows: Int
+    /// The screen scale, used to reproduce Ghostty's pixel-space padding.
+    var scale: CGFloat
 
+    /// Where Ghostty draws cell (1,1): the pinned libghostty renders with its
+    /// default `window-padding-x/y = 2` at a 96 dpi convention and floors to
+    /// whole pixels — `floor(2pt · 96/72 · scale)` pixels from the top-left
+    /// (5px at 2x, 8px at 3x; see ghostty's Surface.zig `scaledPadding`).
+    /// Derived empirically from the IME caret in TerminalMouseReportingTests;
+    /// a libghostty update that changes the padding fails that suite.
     var gridOrigin: CGPoint {
-        CGPoint(
-            x: max(0, (viewSize.width - CGFloat(columns) * cellSize.width) / 2),
-            y: max(0, (viewSize.height - CGFloat(rows) * cellSize.height) / 2))
+        guard scale > 0 else { return .zero }
+        let paddingPixels = (2 * 96 / 72 * scale).rounded(.down)
+        let padding = paddingPixels / scale
+        return CGPoint(x: padding, y: padding)
     }
 
     /// Returns the cell under `point`, clamped to the grid so a touch in the

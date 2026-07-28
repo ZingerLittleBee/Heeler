@@ -68,22 +68,32 @@ struct TerminalMouseReportingTests {
         #expect(tracker.usesSGRMouseEncoding)
     }
 
-    @Test func gridMapperClampsTouchesToTheCentredGrid() {
-        // 8×4 cells of 10×20 leaves 4 points across and 10 down: the grid
-        // starts 2 points in from the left and 5 down from the top.
-        let mapper = TerminalGridPointMapper(
+    @Test func gridMapperAnchorsTheGridAtGhosttysFixedPadding() {
+        // Ghostty's default padding is floor(2pt · 96/72 · scale) pixels:
+        // 5px = 2.5pt at 2x, 8px = 8/3pt at 3x. Leftover space past the last
+        // whole cell stays on the right and bottom, so the origin is fixed.
+        let at2x = TerminalGridPointMapper(
             viewSize: CGSize(width: 84, height: 90),
             cellSize: CGSize(width: 10, height: 20),
             columns: 8,
-            rows: 4)
+            rows: 4,
+            scale: 2)
 
-        #expect(mapper.gridOrigin == CGPoint(x: 2, y: 5))
-        #expect(mapper.cell(at: CGPoint(x: 2, y: 5)).map(Pair.init) == Pair(1, 1))
-        #expect(mapper.cell(at: CGPoint(x: 11, y: 24)).map(Pair.init) == Pair(1, 1))
-        #expect(mapper.cell(at: CGPoint(x: 12, y: 25)).map(Pair.init) == Pair(2, 2))
-        // Touches in the inset and past the last cell fall on the edge.
-        #expect(mapper.cell(at: CGPoint(x: 0, y: 0)).map(Pair.init) == Pair(1, 1))
-        #expect(mapper.cell(at: CGPoint(x: 999, y: 999)).map(Pair.init) == Pair(8, 4))
+        #expect(at2x.gridOrigin == CGPoint(x: 2.5, y: 2.5))
+        #expect(at2x.cell(at: CGPoint(x: 2.5, y: 2.5)).map(Pair.init) == Pair(1, 1))
+        #expect(at2x.cell(at: CGPoint(x: 12.4, y: 22.4)).map(Pair.init) == Pair(1, 1))
+        #expect(at2x.cell(at: CGPoint(x: 12.5, y: 22.5)).map(Pair.init) == Pair(2, 2))
+        // Touches in the padding and past the last cell fall on the edge.
+        #expect(at2x.cell(at: CGPoint(x: 0, y: 0)).map(Pair.init) == Pair(1, 1))
+        #expect(at2x.cell(at: CGPoint(x: 999, y: 999)).map(Pair.init) == Pair(8, 4))
+
+        let at3x = TerminalGridPointMapper(
+            viewSize: CGSize(width: 84, height: 90),
+            cellSize: CGSize(width: 10, height: 20),
+            columns: 8,
+            rows: 4,
+            scale: 3)
+        #expect(at3x.gridOrigin == CGPoint(x: 8.0 / 3, y: 8.0 / 3))
     }
 
     @Test func gridMapperRejectsAnUnmeasuredGrid() {
@@ -91,7 +101,8 @@ struct TerminalMouseReportingTests {
             viewSize: CGSize(width: 390, height: 720),
             cellSize: .zero,
             columns: 80,
-            rows: 24)
+            rows: 24,
+            scale: 3)
         #expect(mapper.cell(at: CGPoint(x: 10, y: 10)) == nil)
     }
 
@@ -123,21 +134,38 @@ struct TerminalMouseReportingTests {
         terminal.receive(Data("\u{1B}[\(row);\(column)H".utf8))
         try await settle()
 
-        // Ghostty's IME rect is not the cursor cell: its x is the cell's left
-        // edge but its y is the cell's vertical centre (the rect then extends
-        // one cell down, where an IME candidate window would sit). minY is
-        // therefore the one y inside the cursor's own row.
+        // Ghostty's IME rect is not the cursor cell: per Surface.zig's
+        // imePoint, its x is the cell's horizontal CENTRE and its y is the
+        // cell's BOTTOM edge (the rect extends one cell down, where an IME
+        // candidate window would sit). The cursor cell therefore spans
+        // (minX - w/2, minY - h) to (minX + w/2, minY).
         let caret = terminal.caretRect(for: terminal.endOfDocument)
         #expect(!caret.isNull)
-        let cursorPoint = CGPoint(x: caret.midX, y: caret.minY)
-        let probe: Comment =
-            "caret=\(caret) mapper=\(terminal.gridPointMapper) bounds=\(terminal.bounds)"
-        #expect(terminal.clickTouch(at: cursorPoint))
-        await Task.yield()
-
-        #expect(
-            sent == Data("\u{1B}[<0;\(column);\(row)M\u{1B}[<0;\(column);\(row)m".utf8),
-            probe)
+        let cell = terminal.gridPointMapper.cellSize
+        let cellRect = CGRect(
+            x: caret.minX - cell.width / 2,
+            y: caret.minY - cell.height,
+            width: cell.width,
+            height: cell.height)
+        let expected = Data("\u{1B}[<0;\(column);\(row)M\u{1B}[<0;\(column);\(row)m".utf8)
+        // The centre and points 1pt inside each corner must all report the
+        // cursor's own cell: that holds only when the mapper's grid origin
+        // matches where Ghostty actually draws, on every screen scale.
+        let probes = [
+            CGPoint(x: cellRect.midX, y: cellRect.midY),
+            CGPoint(x: cellRect.minX + 1, y: cellRect.minY + 1),
+            CGPoint(x: cellRect.maxX - 1, y: cellRect.minY + 1),
+            CGPoint(x: cellRect.minX + 1, y: cellRect.maxY - 1),
+            CGPoint(x: cellRect.maxX - 1, y: cellRect.maxY - 1),
+        ]
+        for point in probes {
+            sent.removeAll()
+            let probe: Comment =
+                "probe=\(point) caret=\(caret) mapper=\(terminal.gridPointMapper) bounds=\(terminal.bounds)"
+            #expect(terminal.clickTouch(at: point), probe)
+            await Task.yield()
+            #expect(sent == expected, probe)
+        }
     }
 
     /// Without tracking a tap is only a keyboard affordance for the input row;

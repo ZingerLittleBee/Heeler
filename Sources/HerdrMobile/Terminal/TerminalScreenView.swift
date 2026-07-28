@@ -576,7 +576,8 @@ final class HerdrTerminalView: UITerminalView {
             viewSize: bounds.size,
             cellSize: terminalCellSize,
             columns: terminalGridSize.columns,
-            rows: terminalGridSize.rows)
+            rows: terminalGridSize.rows,
+            scale: window?.screen.nativeScale ?? traitCollection.displayScale)
     }
 
     @discardableResult
