@@ -140,20 +140,6 @@ final class HostConsoleProjection {
         scheduleResync()
     }
 
-    /// Renames an Agent (#98); a nil name clears back to the detected kind.
-    /// The new name lands via the post-RPC resync, not an event delta:
-    /// `pane.updated` does not carry the agent name and fires on every
-    /// terminal-title change (measured live: 34 events in 6s on a working
-    /// host), so subscribing to it as a resync trigger would re-snapshot
-    /// continuously. Renames made by other clients therefore surface only on
-    /// the next resync.
-    func renameAgent(_ paneID: String, name: String?) async throws {
-        try await session.withTransport { transport in
-            try await transport.renameAgent(AgentRenameParams(target: paneID, name: name))
-        }
-        scheduleResync()
-    }
-
     /// Renames a workspace (#98). `workspace.renamed` is already a
     /// membership event, so renames from other clients converge too; the
     /// post-RPC resync just makes our own rename land without waiting on the

@@ -1,17 +1,13 @@
 import SwiftUI
 
-/// The rename sheet (#98), shared by the Agent and workspace rename actions:
-/// one text field with the validation and clear-semantics copy the
-/// RenameStore derives from the server's live-verified rules. The new name
-/// reaches the Console through the store's normal snapshot/delta machinery,
-/// so this sheet dismisses on success rather than mutating anything itself.
-struct RenameSheetView: View {
-    let title: String
-    @State private var store: RenameStore
+/// The workspace rename sheet (#98). The new label reaches the Console
+/// through the store's normal snapshot/delta machinery, so this sheet
+/// dismisses on success rather than mutating anything itself.
+struct WorkspaceRenameSheetView: View {
+    @State private var store: WorkspaceRenameStore
     @Environment(\.dismiss) private var dismiss
 
-    init(title: String, store: RenameStore) {
-        self.title = title
+    init(store: WorkspaceRenameStore) {
         _store = State(initialValue: store)
     }
 
@@ -19,16 +15,9 @@ struct RenameSheetView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField(fieldPrompt, text: $store.input)
+                    TextField("Workspace label", text: $store.input)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
-                } footer: {
-                    if let message = store.validationMessage {
-                        Text(message)
-                            .foregroundStyle(.red)
-                    } else if let hint = store.clearHint {
-                        Text(hint)
-                    }
                 }
 
                 if case .failed(let message) = store.state {
@@ -38,7 +27,7 @@ struct RenameSheetView: View {
                     }
                 }
             }
-            .navigationTitle(title)
+            .navigationTitle("Rename Workspace")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -62,12 +51,5 @@ struct RenameSheetView: View {
             .interactiveDismissDisabled(!store.canDismiss)
         }
         .presentationDetents([.medium])
-    }
-
-    private var fieldPrompt: String {
-        switch store.subject {
-        case .agent: "e.g. reviewer"
-        case .workspace: "Workspace label"
-        }
     }
 }

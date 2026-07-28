@@ -483,10 +483,6 @@ struct EventsSessionE2ETests {
             try await inner.closePane(params)
         }
 
-        func renameAgent(_ params: AgentRenameParams) async throws {
-            try await inner.renameAgent(params)
-        }
-
         func renameWorkspace(_ params: WorkspaceRenameParams) async throws {
             try await inner.renameWorkspace(params)
         }

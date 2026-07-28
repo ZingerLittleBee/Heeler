@@ -17,7 +17,6 @@ struct AgentDetailView: View {
     @State private var isConfirmingClose = false
     @State private var isShowingSettings = false
     @State private var isManagingSnippets = false
-    @State private var isRenamingAgent = false
     @State private var isRenamingWorkspace = false
     @State private var closeErrorMessage: String?
     @Environment(\.dismiss) private var dismiss
@@ -110,9 +109,6 @@ struct AgentDetailView: View {
                     Button("Snippets", systemImage: "quote.bubble") {
                         isManagingSnippets = true
                     }
-                    Button("Rename Agent", systemImage: "pencil") {
-                        isRenamingAgent = true
-                    }
                     Button("Rename Workspace", systemImage: "pencil.line") {
                         isRenamingWorkspace = true
                     }
@@ -136,21 +132,9 @@ struct AgentDetailView: View {
         .sheet(isPresented: $isManagingSnippets) {
             SnippetsManagementView(store: terminal.snippets)
         }
-        .sheet(isPresented: $isRenamingAgent) {
-            RenameSheetView(
-                title: "Rename Agent",
-                store: RenameStore(
-                    subject: .agent(detectedKind: agent.agent.kind),
-                    currentValue: agent.agent.name ?? ""
-                ) { [console, agent] name in
-                    try await console.renameAgent(
-                        agent.agent.paneID, name: name, on: agent.hostID)
-                })
-        }
         .sheet(isPresented: $isRenamingWorkspace) {
-            RenameSheetView(
-                title: "Rename Workspace",
-                store: RenameStore.workspace(
+            WorkspaceRenameSheetView(
+                store: WorkspaceRenameStore(
                     currentLabel: agent.workspaceLabel ?? ""
                 ) { [console, agent] label in
                     try await console.renameWorkspace(

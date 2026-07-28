@@ -21,10 +21,7 @@ Entries reference the issue that motivated them.
   text follows the theme's luminance instead of the system appearance. (#95)
 - An About section on the Settings root with the app version and build number
   plus links to herdr.dev and the privacy policy.
-- Rename Agents and workspaces from the Agent detail screen's menu. Agent
-  names follow the server's rule (lowercase letters, digits, `-`/`_`, up to
-  32 characters) with inline validation, and leaving the name empty falls
-  back to the detected kind. (#98)
+- Rename workspaces from the Agent detail screen's menu. (#98)
 - Start an Agent in a fresh git worktree: a "Start in a new worktree" toggle
   on the New Agent form gives the task a clean checkout of the selected
   workspace's repository, with optional branch (validated inline) and base;
