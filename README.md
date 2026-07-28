@@ -4,6 +4,32 @@ A native iOS companion app for [herdr](https://herdr.dev) — an agent-first ter
 
 herdr-mobile is an **agent console**: a native dashboard of every coding agent running on your machines, sorted by who needs you. Open an Agent to enter its real terminal with the standard iOS input method, a compact terminal control keyboard, native scrollback, and continuous touch scrolling for full-screen TUIs, all over plain SSH.
 
+## Features
+
+- **Console** — every Agent across your machines in one status-sorted list
+  (who's Blocked comes first), filterable by Host, updating live off herdr's
+  event stream.
+- **Attach** — a real terminal (libghostty, Metal-rendered) with native
+  scrollback, momentum touch scrolling that also drives full-screen TUIs,
+  long-press selection, and IME input.
+- **Terminal keyboard** — a Keys pad with control keys, reusable Snippets, and
+  appearance controls next to the standard iOS keyboard; multiline or control
+  pastes go through review before they hit the shell; on-device dictation.
+- **Image staging** — pick a photo, stage it onto the Host over SFTP, and hand
+  its path to the Agent's prompt.
+- **QR pairing** — add a machine by scanning a Pairing Code from the bundled
+  herdr plugin; Ed25519 keys are generated on device and never leave the
+  Keychain, and the code pins the host key fingerprint.
+- **Agent Notifications** — end-to-end encrypted APNs pushes when an Agent
+  goes Blocked or Done, deep-linking into its terminal; the relay sees only
+  ciphertext.
+- **Worktrees** — start an Agent on a clean checkout of a workspace's repo
+  with a toggle on the New Agent form.
+- **Appearance** — 30 curated terminal themes with independent Light and Dark
+  Mode slots, bundled monospace fonts, and pinch-to-zoom text size.
+- **Jump Host** — reach machines that are not directly routable through an
+  SSH jump, with keys verified independently at both hops.
+
 ## How it connects
 
 The app speaks herdr's JSON API (newline-delimited JSON over a Unix socket) through SSH:
