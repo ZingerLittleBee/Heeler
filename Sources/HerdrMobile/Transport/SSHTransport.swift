@@ -503,6 +503,11 @@ actor SSHTransport: Transport {
         _ = try await request(method: "pane.close", params: params, decoding: OkResponse.self)
     }
 
+    func renameAgent(_ params: AgentRenameParams) async throws {
+        _ = try await request(
+            method: "agent.rename", params: params, decoding: AgentInfoResponse.self)
+    }
+
     func renameWorkspace(_ params: WorkspaceRenameParams) async throws {
         _ = try await request(
             method: "workspace.rename", params: params, decoding: WorkspaceInfoResponse.self)

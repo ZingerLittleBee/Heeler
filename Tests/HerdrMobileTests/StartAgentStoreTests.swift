@@ -208,20 +208,6 @@ struct StartAgentStoreTests {
         #expect(store.canSubmit == false)
     }
 
-    @Test func agentNameValidationMirrorsHerdrsRule() {
-        #expect(StartAgentStore.agentNameValidationError("a1") == nil)
-        #expect(StartAgentStore.agentNameValidationError("code-reviewer_2") == nil)
-        #expect(StartAgentStore.agentNameValidationError(String(repeating: "a", count: 32)) == nil)
-
-        #expect(StartAgentStore.agentNameValidationError("Reviewer") != nil)
-        #expect(StartAgentStore.agentNameValidationError("1agent") != nil)
-        #expect(StartAgentStore.agentNameValidationError("-agent") != nil)
-        #expect(StartAgentStore.agentNameValidationError("my agent") != nil)
-        #expect(StartAgentStore.agentNameValidationError("agenté") != nil)
-        #expect(
-            StartAgentStore.agentNameValidationError(String(repeating: "a", count: 33)) != nil)
-    }
-
     @Test func anEmptyNameFallsBackToTheKindSkippingTakenNames() async {
         let host = Host.fixture()
         let recorder = StartRecorder()

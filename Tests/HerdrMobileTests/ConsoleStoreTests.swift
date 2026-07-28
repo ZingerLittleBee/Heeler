@@ -840,6 +840,65 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    @Test func renameAgentForwardsItsParamsAndResnapshots() async throws {
+        // agent.rename (#98): the params reach the Host's transport, and the
+        // new name lands via one explicit resync — pane.updated is not a
+        // resync trigger (it fires on every terminal-title change), so the
+        // post-RPC resync is what surfaces the rename.
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .idle)]))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the agent should arrive") { store.agents.count == 1 }
+        let snapshotsBefore = await transport.snapshotFetchCount
+
+        await transport.setSnapshot(
+            .fixture(agents: [.fixture(paneID: "w1:p1", status: .idle, name: "reviewer")]))
+        try await store.renameAgent("w1:p1", name: "reviewer", on: host.id)
+
+        let renames = await transport.agentRenames
+        #expect(renames == [AgentRenameParams(target: "w1:p1", name: "reviewer")])
+        try await waitUntil("the resync should surface the new name") {
+            store.agents.map(\.agent.displayName) == ["reviewer"]
+        }
+        #expect(await transport.snapshotFetchCount > snapshotsBefore)
+
+        store.setHosts([])
+    }
+
+    @Test func renameAgentForwardsANilNameAsTheClear() async throws {
+        // A nil name clears the custom name back to the detected kind
+        // (verified live against herdr 0.7.5); the transport must see the
+        // nil, not an empty string.
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [
+                .fixture(paneID: "w1:p1", status: .idle, name: "reviewer")
+            ]))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the agent should arrive") {
+            store.agents.map(\.agent.displayName) == ["reviewer"]
+        }
+
+        await transport.setSnapshot(
+            .fixture(agents: [.fixture(paneID: "w1:p1", status: .idle)]))
+        try await store.renameAgent("w1:p1", name: nil, on: host.id)
+
+        let renames = await transport.agentRenames
+        #expect(renames == [AgentRenameParams(target: "w1:p1", name: nil)])
+        try await waitUntil("the resync should fall back to the detected kind") {
+            store.agents.map(\.agent.displayName) == ["claude"]
+        }
+
+        store.setHosts([])
+    }
+
     @Test func renameWorkspaceForwardsItsParamsAndResnapshots() async throws {
         // workspace.rename (#98): the params reach the Host's transport and
         // the relabeled workspace lands via one explicit resync rather than
@@ -868,33 +927,34 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
-    @Test func renameWorkspaceThrowsWhenTheHostIsUnknown() async throws {
+    @Test func renamesThrowWhenTheHostIsUnknown() async throws {
         let host = Host.fixture()
         let store = makeStore(transports: [:])
 
+        await #expect(throws: TransportError.self) {
+            try await store.renameAgent("w1:p1", name: "x", on: host.id)
+        }
         await #expect(throws: TransportError.self) {
             try await store.renameWorkspace("w1", label: "x", on: host.id)
         }
     }
 
-    @Test func renameWorkspaceFailureLeavesTheWorkspaceUntouched() async throws {
+    @Test func renameFailurePropagatesAndLeavesTheAgentsUntouched() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(
-            snapshot: .fixture(workspaces: [.fixture(workspaceID: "w1", label: "Old")]))
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .idle)]))
         let store = makeStore(transports: [host.id: transport])
 
         store.setHosts([host])
         await store.resume()
-        try await waitUntil("the workspace should arrive") {
-            store.workspaces(for: host.id).map(\.label) == ["Old"]
-        }
+        try await waitUntil("the agent should arrive") { store.agents.count == 1 }
 
         await transport.setRenameFailure(.timedOut)
         await #expect(throws: TransportError.timedOut) {
-            try await store.renameWorkspace("w1", label: "New", on: host.id)
+            try await store.renameAgent("w1:p1", name: "x", on: host.id)
         }
-        #expect(store.workspaces(for: host.id).map(\.label) == ["Old"])
-        #expect(await transport.workspaceRenames.isEmpty)
+        #expect(store.agents.map(\.agent.displayName) == ["claude"])
+        #expect(await transport.agentRenames.isEmpty)
 
         store.setHosts([])
     }

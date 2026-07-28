@@ -61,6 +61,17 @@ protocol Transport: Sendable {
     /// id; returns once the server acknowledges.
     func closePane(_ params: PaneTarget) async throws
 
+    /// Renames an Agent (`agent.rename`): the Console management action
+    /// (#98). A nil name clears the custom name back to the detected kind
+    /// (verified live against herdr 0.7.5: omitting the key clears). The
+    /// server enforces `^[a-z][a-z0-9_-]{0,31}$` on non-nil names and
+    /// rejects violations with `invalid_agent_name`; non-agent targets fail
+    /// with `agent_not_found`. The new name does NOT travel on events — the
+    /// `pane.updated` this fires omits the agent name (verified live) — so
+    /// consumers re-snapshot after the call instead of mutating local state
+    /// or waiting on a delta.
+    func renameAgent(_ params: AgentRenameParams) async throws
+
     /// Renames a workspace (`workspace.rename`): the Console management
     /// action (#98). The server accepts any label — empty, whitespace, and
     /// very long labels all pass (verified live against herdr 0.7.5); the

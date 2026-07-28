@@ -164,6 +164,12 @@ final class ConsoleStore {
         try await projection(for: hostID).closePane(paneID)
     }
 
+    func renameAgent(
+        _ paneID: String, name: String?, on hostID: Host.ID
+    ) async throws {
+        try await projection(for: hostID).renameAgent(paneID, name: name)
+    }
+
     func renameWorkspace(
         _ workspaceID: String, label: String, on hostID: Host.ID
     ) async throws {

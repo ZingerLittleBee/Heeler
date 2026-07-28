@@ -176,7 +176,7 @@ final class StartAgentStore {
     var nameErrorMessage: String? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        return Self.agentNameValidationError(trimmed)
+        return AgentName.validationError(trimmed)
     }
 
     /// The name `submit()` falls back to while the field is empty; nil until
@@ -364,30 +364,6 @@ final class StartAgentStore {
             result.append(current)
         }
         return .success(result)
-    }
-
-    /// Client-side mirror of herdr's `invalid_agent_name` rule (verified
-    /// against a live 0.7.5 server): 1-32 characters, a lowercase ASCII
-    /// letter first, then lowercase letters, digits, '-' or '_'.
-    static func agentNameValidationError(_ name: String) -> String? {
-        let message =
-            "Names start with a lowercase letter and use only lowercase "
-            + "letters, digits, '-' or '_' (up to 32 characters)."
-        guard name.count <= 32 else { return message }
-        for (offset, character) in name.enumerated() {
-            guard character.unicodeScalars.count == 1,
-                let scalar = character.unicodeScalars.first
-            else { return message }
-            switch scalar.value {
-            case 0x61...0x7A:  // a-z
-                continue
-            case 0x30...0x39, 0x2D, 0x5F:  // 0-9, '-', '_'
-                if offset == 0 { return message }
-            default:
-                return message
-            }
-        }
-        return nil
     }
 
     /// The fallback for an empty name field: the kind itself, then `kind-2`,

@@ -52,6 +52,7 @@ METHODS = [
     "agent.get",
     "agent.list",
     "agent.read",
+    "agent.rename",
     "agent.start",
     "events.subscribe",
     "tab.create",
@@ -80,7 +81,7 @@ EXCLUDED_PARAMS_DEFS = {
 RESULT_TAGS = [
     "pong",  # ping
     "agent_explain",  # agent.explain
-    "agent_info",  # agent.get, agent.focus
+    "agent_info",  # agent.get, agent.focus, agent.rename
     "agent_started",  # agent.start
     "agent_list",  # agent.list
     "pane_read",  # pane.read, agent.read

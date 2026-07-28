@@ -25,8 +25,9 @@ final actor ScriptedTransport: Transport {
     /// appends here).
     private(set) var closedPanes: [PaneTarget] = []
     private var closeFailure: TransportError?
-    /// Every `workspace.rename` received, in order; the rename flow (#98)
-    /// asserts on the params it forwarded.
+    /// Every `agent.rename` / `workspace.rename` received, in order; the
+    /// rename flows (#98) assert on the params they forwarded.
+    private(set) var agentRenames: [AgentRenameParams] = []
     private(set) var workspaceRenames: [WorkspaceRenameParams] = []
     private var renameFailure: TransportError?
     private var startFailure: TransportError?
@@ -137,7 +138,7 @@ final actor ScriptedTransport: Transport {
         closeFailure = failure
     }
 
-    /// Makes every subsequent workspace rename throw `failure`.
+    /// Makes every subsequent rename (agent or workspace) throw `failure`.
     func setRenameFailure(_ failure: TransportError?) {
         renameFailure = failure
     }
@@ -287,6 +288,11 @@ final actor ScriptedTransport: Transport {
     func closePane(_ params: PaneTarget) async throws {
         if let closeFailure { throw closeFailure }
         closedPanes.append(params)
+    }
+
+    func renameAgent(_ params: AgentRenameParams) async throws {
+        if let renameFailure { throw renameFailure }
+        agentRenames.append(params)
     }
 
     func renameWorkspace(_ params: WorkspaceRenameParams) async throws {
