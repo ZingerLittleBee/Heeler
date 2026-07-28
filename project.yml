@@ -53,7 +53,7 @@ targets:
         # Home-screen name; the App Store listing is "Herdr Console".
         INFOPLIST_KEY_CFBundleDisplayName: Herdr
         MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: "1"
+        CURRENT_PROJECT_VERSION: "2"
         # Dictation captures the microphone to transcribe on device (#36). No
         # speech-recognition usage key is set: the iOS 26 SpeechAnalyzer stack
         # is on-device and needs no legacy SFSpeechRecognizer authorization.
@@ -117,7 +117,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.herdr.mobile.HerdrMobile.NotificationService
         MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: "1"
+        CURRENT_PROJECT_VERSION: "2"
 
   HerdrMobileTests:
     type: bundle.unit-test
