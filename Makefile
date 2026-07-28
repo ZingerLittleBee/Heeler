@@ -53,6 +53,10 @@ bump: ## Increment CURRENT_PROJECT_VERSION in project.yml (app + extension stay 
 	NEW=$$((CUR + 1)); \
 	sed -i '' "s/CURRENT_PROJECT_VERSION: \"$$CUR\"/CURRENT_PROJECT_VERSION: \"$$NEW\"/g" project.yml; \
 	echo "CURRENT_PROJECT_VERSION: $$CUR -> $$NEW"
+	@# Regenerate immediately so the tracked pbxproj changes with project.yml
+	@# and one commit carries both (otherwise the next make target regenerates
+	@# it after the bump commit and leaves it dirty).
+	@$(MAKE) generate
 
 clean: ## Remove local build products
 	rm -rf build
