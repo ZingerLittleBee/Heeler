@@ -9,6 +9,10 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Filter the Agent list by Host: with more than one Host configured, a filter
+  menu in the Console toolbar narrows the list (and its connection notices) to
+  one machine.
+
 - Per-appearance terminal themes: Light Mode and Dark Mode each have their own
   theme slot, so a dark terminal under a light system is one picker away. The
   previously selected theme carries over to both slots on upgrade.

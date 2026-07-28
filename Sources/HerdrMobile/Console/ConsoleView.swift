@@ -20,6 +20,9 @@ struct ConsoleView: View {
     @State private var isManagingHosts = false
     @State private var isStartingAgent = false
     @State private var isShowingSettings = false
+    /// Narrows the flat list to one Host; nil shows every Host. The list
+    /// stays flat either way — this is a filter, not a grouping level.
+    @State private var hostFilter: Host.ID?
 
     var body: some View {
         NavigationStack(path: $notificationRouter.path) {
@@ -45,6 +48,24 @@ struct ConsoleView: View {
                 }
                 .navigationTitle("Agents")
                 .toolbar {
+                    // A filter is meaningless with a single Host.
+                    if hosts.hosts.count > 1 {
+                        ToolbarItem(placement: .primaryAction) {
+                            Menu(
+                                "Filter by Host",
+                                systemImage: hostFilter == nil
+                                    ? "line.3.horizontal.decrease.circle"
+                                    : "line.3.horizontal.decrease.circle.fill"
+                            ) {
+                                Picker("Host", selection: $hostFilter) {
+                                    Text("All Hosts").tag(Host.ID?.none)
+                                    ForEach(hosts.hosts) { host in
+                                        Text(host.displayName).tag(Host.ID?.some(host.id))
+                                    }
+                                }
+                            }
+                        }
+                    }
                     ToolbarItem(placement: .primaryAction) {
                         Button("Hosts", systemImage: "server.rack") {
                             isManagingHosts = true
@@ -103,6 +124,13 @@ struct ConsoleView: View {
             isStartingAgent = false
             isShowingSettings = false
         }
+        // A filter pointing at a removed Host would silently hide every
+        // Agent; fall back to All Hosts instead.
+        .onChange(of: hosts.hosts) { _, hosts in
+            if let hostFilter, !hosts.contains(where: { $0.id == hostFilter }) {
+                self.hostFilter = nil
+            }
+        }
     }
 
     @ViewBuilder
@@ -127,9 +155,22 @@ struct ConsoleView: View {
                         .buttonStyle(.borderedProminent)
                 }
             }
+        } else if filteredAgents.isEmpty {
+            // Agents exist, just none on the filtered Host. Its connection
+            // issue, if any, is likely the reason — surface it here.
+            ContentUnavailableView {
+                Label("No Agents on \(filteredHostName)", systemImage: "line.3.horizontal.decrease.circle")
+            } description: {
+                if !visibleHostIssues.isEmpty {
+                    Text(visibleHostIssues.map(\.message).joined(separator: "\n"))
+                }
+            } actions: {
+                Button("Show All Hosts") { hostFilter = nil }
+                    .buttonStyle(.borderedProminent)
+            }
         } else {
             List {
-                ForEach(hostIssues, id: \.id) { issue in
+                ForEach(visibleHostIssues, id: \.id) { issue in
                     Button { isManagingHosts = true } label: {
                         Label(issue.message, systemImage: issue.systemImage)
                             .font(.footnote)
@@ -137,7 +178,7 @@ struct ConsoleView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                ForEach(console.agents) { agent in
+                ForEach(filteredAgents) { agent in
                     NavigationLink(value: agent.id) {
                         AgentCardView(agent: agent)
                     }
@@ -145,6 +186,22 @@ struct ConsoleView: View {
             }
             .listStyle(.plain)
         }
+    }
+
+    private var filteredAgents: [ConsoleAgent] {
+        guard let hostFilter else { return console.agents }
+        return console.agents.filter { $0.hostID == hostFilter }
+    }
+
+    /// Host issues shown in the list: all of them, or the filtered Host's
+    /// only — a filtered Console should not nag about other machines.
+    private var visibleHostIssues: [HostIssue] {
+        guard let hostFilter else { return hostIssues }
+        return hostIssues.filter { $0.id == hostFilter }
+    }
+
+    private var filteredHostName: String {
+        hosts.hosts.first(where: { $0.id == hostFilter })?.displayName ?? "this Host"
     }
 
     private var emptyDescription: String {
