@@ -105,7 +105,17 @@ final class StartAgentStore {
     /// The canonical kind selected from the Host availability probe.
     var selectedAgentKind: SupportedAgentKind?
     /// Optional native arguments, parsed into argv without invoking a shell.
-    var arguments: String = ""
+    /// Smart punctuation is normalized back to ASCII on every edit: the iOS
+    /// keyboard turns `--` into an em dash and straight quotes into curly
+    /// ones (`.autocorrectionDisabled` does not cover them, and SwiftUI has
+    /// no smart-punctuation trait), which silently corrupts flags like
+    /// `--yolo` before they reach the Host.
+    var arguments: String = "" {
+        didSet {
+            let normalized = Self.normalizeSmartPunctuation(arguments)
+            if normalized != arguments { arguments = normalized }
+        }
+    }
     /// Whether the launch targets a fresh git worktree of the selected
     /// workspace's repository instead of the workspace itself (#97).
     var startsInNewWorktree = false
@@ -374,6 +384,42 @@ final class StartAgentStore {
         var suffix = 2
         while taken.contains("\(kind.rawValue)-\(suffix)") { suffix += 1 }
         return "\(kind.rawValue)-\(suffix)"
+    }
+
+    /// Reverses the iOS keyboard's smart punctuation, which rewrites
+    /// hand-typed shell arguments: `--` becomes an em dash and quotes become
+    /// their curly variants, so `--yolo` reaches the agent as a single
+    /// garbage argument. The em dash maps back to the `--` that produced it;
+    /// curly quotes map to the straight quotes the argument parser
+    /// understands.
+    static func normalizeSmartPunctuation(_ text: String) -> String {
+        guard text.contains(where: Self.isSmartPunctuation) else { return text }
+        var result = ""
+        result.reserveCapacity(text.count + 2)
+        for character in text {
+            switch character {
+            case "\u{201C}", "\u{201D}":  // curly double quotes
+                result.append("\"")
+            case "\u{2018}", "\u{2019}":  // curly single quotes
+                result.append("'")
+            case "\u{2014}":  // em dash, iOS's replacement for "--"
+                result.append("--")
+            case "\u{2013}":  // en dash
+                result.append("-")
+            default:
+                result.append(character)
+            }
+        }
+        return result
+    }
+
+    private static func isSmartPunctuation(_ character: Character) -> Bool {
+        switch character {
+        case "\u{201C}", "\u{201D}", "\u{2018}", "\u{2019}", "\u{2014}", "\u{2013}":
+            true
+        default:
+            false
+        }
     }
 
     private static func nonEmptyTrimmed(_ value: String) -> String? {

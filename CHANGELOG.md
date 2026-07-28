@@ -59,6 +59,11 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Arguments typed on the New Agent form survive the iOS keyboard's smart
+  punctuation: `--yolo` no longer reaches the Host as an em-dash garbage
+  argument, and curly quotes normalize back to the straight quotes the
+  argument parser understands.
+
 - Taps forwarded to a mouse-tracking TUI now land on the cell Ghostty actually
   draws under the finger. The tap-to-cell mapper assumed a centred grid, but
   Ghostty anchors it at a fixed padding; the mismatch shifted reports by up to

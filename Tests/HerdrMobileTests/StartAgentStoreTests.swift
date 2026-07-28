@@ -84,6 +84,26 @@ struct StartAgentStoreTests {
         #expect(try StartAgentStore.parseArguments("   \n ").get() == [])
     }
 
+    @Test func smartPunctuationNormalizesBackToASCII() {
+        // The iOS keyboard rewrites "--" to an em dash and quotes to curly
+        // variants even with autocorrection disabled; the field reverses it.
+        #expect(StartAgentStore.normalizeSmartPunctuation("\u{2014}yolo") == "--yolo")
+        #expect(StartAgentStore.normalizeSmartPunctuation("\u{2013}v") == "-v")
+        #expect(
+            StartAgentStore.normalizeSmartPunctuation(
+                "--label \u{201C}code review\u{201D} \u{2018}x\u{2019}")
+                == #"--label "code review" 'x'"#)
+        #expect(StartAgentStore.normalizeSmartPunctuation("--plain 'ascii'") == "--plain 'ascii'")
+    }
+
+    @Test func editingArgumentsNormalizesSmartPunctuationInPlace() {
+        let store = makeStore(hosts: [.fixture()], recorder: StartRecorder())
+        store.arguments = "\u{2014}yolo --label \u{201C}code review\u{201D}"
+
+        #expect(store.arguments == #"--yolo --label "code review""#)
+        #expect(store.parsedArguments == .success(["--yolo", "--label", "code review"]))
+    }
+
     @Test func argumentParserReportsIncompleteAndUnsafeInput() {
         #expect(StartAgentStore.parseArguments(#""unfinished"#) == .failure(.unclosedDoubleQuote))
         #expect(StartAgentStore.parseArguments("'unfinished") == .failure(.unclosedSingleQuote))
