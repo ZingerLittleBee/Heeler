@@ -38,7 +38,7 @@ concurrency:
 jobs:
   plugin-test:
     name: Pairing plugin (Node)
-    runs-on: [self-hosted, Linux, X64, vps]
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: plugin
@@ -54,7 +54,7 @@ jobs:
 
   relay-test:
     name: Push relay (Node)
-    runs-on: [self-hosted, Linux, X64, vps]
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: relay
@@ -69,7 +69,7 @@ jobs:
 
   codegen-drift:
     name: Wire-type codegen drift
-    runs-on: [self-hosted, Linux, X64, vps]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Check generated wire types are up to date
@@ -79,7 +79,7 @@ jobs:
     name: Build & test (iOS Simulator)
     # macos-26 ships Xcode 26.x and the iOS 26 simulator runtimes. Pinned
     # rather than macos-latest for reproducibility.
-    runs-on: blacksmith-6vcpu-macos-26
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
