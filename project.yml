@@ -50,6 +50,8 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: dev.herdr.mobile.HerdrMobile
+        # Home-screen name; the App Store listing is "Herdr Console".
+        INFOPLIST_KEY_CFBundleDisplayName: Herdr
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         # Dictation captures the microphone to transcribe on device (#36). No
@@ -105,6 +107,9 @@ targets:
         # so both bundles stay in lockstep.
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # App Store validation (code 90360) requires a display name on
+        # every embedded appex; never user-visible for this extension.
+        CFBundleDisplayName: Herdr Notification Service
         NSExtension:
           NSExtensionPointIdentifier: com.apple.usernotifications.service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
