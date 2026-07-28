@@ -949,8 +949,7 @@ actor SSHTransport: Transport {
     private func openEventsChannel(_ subscriptions: [EventSubscription]) async throws
         -> (HerdrEventStream, readerID: UInt64)
     {
-        let socketPath = try await resolvedSocketPath()
-        let socatPath = try await resolvedSocatPath()
+        let (socketPath, socatPath) = try await resolvedExchangePaths()
         let requestID = UUID().uuidString
         let requestLine = try HerdrWire.subscribeRequestLine(
             id: requestID, subscriptions: subscriptions)
@@ -1432,8 +1431,7 @@ actor SSHTransport: Transport {
         let requestID = UUID().uuidString
         let line = try HerdrWire.requestLine(id: requestID, method: method, params: params)
         let responseLine = try await Self.withRequestDeadline(requestTimeout) {
-            let socketPath = try await self.resolvedSocketPath()
-            let socatPath = try await self.resolvedSocatPath()
+            let (socketPath, socatPath) = try await self.resolvedExchangePaths()
             return try await self.performExchange(
                 line: line, socketPath: socketPath, socatPath: socatPath, method: method)
         }
@@ -1523,6 +1521,18 @@ actor SSHTransport: Transport {
         }
     }
 
+    /// The socket and socat paths an exchange needs, resolved concurrently:
+    /// on a cold connection each is its own remote probe, and neither
+    /// depends on the other, so paying them sequentially would double the
+    /// first request's setup latency. The await order keeps failure
+    /// priority: a Host whose home directory cannot be read fails at the
+    /// remote-environment check rather than at socat.
+    private func resolvedExchangePaths() async throws -> (socketPath: String, socatPath: String) {
+        async let socketPath = resolvedSocketPath()
+        async let socatPath = resolvedSocatPath()
+        return (try await socketPath, try await socatPath)
+    }
+
     /// The absolute socket path on this Host, resolving the remote home
     /// directory for home-relative locations.
     private func resolvedSocketPath() async throws -> String {
@@ -1554,8 +1564,6 @@ actor SSHTransport: Transport {
     }
 
     /// The absolute socat path on this Host, discovered once per connection.
-    /// Resolved after the socket path so a Host whose home directory cannot be
-    /// read fails at the remote-environment check rather than at socat.
     private func resolvedSocatPath() async throws -> String {
         try await Self.withRequestDeadline(requestTimeout) {
             try await self.socatExecutable.value {
