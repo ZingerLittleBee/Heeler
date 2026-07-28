@@ -10,6 +10,8 @@ struct SettingsView: View {
     let relaySettings: NotificationRelaySettings
     @Environment(\.dismiss) private var dismiss
 
+    private static let websiteURL = URL(string: "https://herdr.dev")
+
     var body: some View {
         NavigationStack {
             Form {
@@ -28,6 +30,22 @@ struct SettingsView: View {
                         Label("Terminal Appearance", systemImage: "paintpalette")
                     }
                 }
+
+                Section {
+                    LabeledContent("Version", value: Self.versionString)
+                    if let website = Self.websiteURL {
+                        Link(destination: website) {
+                            Label("herdr.dev", systemImage: "globe")
+                        }
+                    }
+                    if let privacyURL = NotificationPrivacyCopy.privacyPolicyURL {
+                        Link(destination: privacyURL) {
+                            Label("Privacy Policy", systemImage: "hand.raised")
+                        }
+                    }
+                } header: {
+                    Text("About")
+                }
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -37,5 +55,14 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    /// "0.1.0 (1)": marketing version plus build number, the pair App Store
+    /// Connect and TestFlight feedback identify a build by.
+    private static var versionString: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "unknown"
+        let build = info?["CFBundleVersion"] as? String
+        return build.map { "\(version) (\($0))" } ?? version
     }
 }

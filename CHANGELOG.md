@@ -19,6 +19,8 @@ Entries reference the pull request that landed them.
 - The terminal theme now owns the whole Attach screen: its background extends
   under the navigation bar and into the home-indicator area, and bar/status-bar
   text follows the theme's luminance instead of the system appearance. (#95)
+- An About section on the Settings root with the app version and build number
+  plus links to herdr.dev and the privacy policy.
 
 ### Changed
 
