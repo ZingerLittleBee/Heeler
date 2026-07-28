@@ -24,6 +24,8 @@ Rediscovering these is expensive; they were verified against herdr 0.7.4 source 
 
 ## Conventions
 
+- Build, test, device installs, and TestFlight uploads all go through `make` (see `make help`). A new TestFlight build is `make bump && make testflight` — App Store Connect rejects reused build numbers.
+
 - Swift 6 strict concurrency. No force unwraps or `try!` outside tests.
 - Secrets never leave the Keychain; private keys are generated on device (CryptoKit Ed25519) where possible. Host key policy is TOFU with fingerprint confirmation.
 - Pin Citadel exactly in `Package.resolved` and review updates: Citadel 0.12.1 depends on a third-party fork of swift-nio-ssh (Wellz26), not Apple's repo.
