@@ -426,7 +426,15 @@ final class HerdrTerminalView: UITerminalView {
     }
 
     override func paste(_ sender: Any?) {
-        requestPaste(UIPasteboard.general.string)
+        guard isLocalInputEnabled, let text = UIPasteboard.general.string else { return }
+
+        // The keyboard's clipboard suggestion invokes this standard action
+        // directly, bypassing Ghostty's text-input handler. Tell UIKit about
+        // the external document change or the IME keeps its pre-paste context
+        // and subsequent phonetic input can remain Latin marked text.
+        inputDelegate?.textWillChange(self)
+        requestPaste(text)
+        inputDelegate?.textDidChange(self)
     }
 
     override func paste(itemProviders: [NSItemProvider]) {

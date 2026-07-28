@@ -68,6 +68,26 @@ struct TerminalAttachTests {
     }
 
     @MainActor
+    @Test func systemKeyboardPasteSynchronizesTheTextInputContext() {
+        var events: [String] = []
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onPaste: { text, _ in events.append("paste:\(text)") })
+        let inputDelegate = TextInputDelegateRecorder(events: { events.append($0) })
+        terminal.inputDelegate = inputDelegate
+        UIPasteboard.general.string = "keyboard suggestion"
+        defer { UIPasteboard.general.items = [] }
+
+        terminal.paste(nil)
+
+        #expect(
+            events == [
+                "textWillChange",
+                "paste:keyboard suggestion",
+                "textDidChange",
+            ])
+    }
+
+    @MainActor
     @Test func pausedTerminalControlsDoNotEmitInput() async {
         var sent = Data()
         let terminal = TerminalScreenView.makeConfiguredTerminal(
@@ -624,4 +644,31 @@ struct TerminalAttachTests {
         let inputs = await transport.attachInputs
         #expect(inputs == [.keystrokes(Data("x".utf8))])
     }
+}
+
+@MainActor
+private final class TextInputDelegateRecorder: NSObject, UITextInputDelegate {
+    private let record: (String) -> Void
+
+    init(events record: @escaping (String) -> Void) {
+        self.record = record
+    }
+
+    func selectionWillChange(_: (any UITextInput)?) {
+        record("selectionWillChange")
+    }
+
+    func selectionDidChange(_: (any UITextInput)?) {
+        record("selectionDidChange")
+    }
+
+    func textWillChange(_: (any UITextInput)?) {
+        record("textWillChange")
+    }
+
+    func textDidChange(_: (any UITextInput)?) {
+        record("textDidChange")
+    }
+
+    func conversationContext(_: UIConversationContext?, didChange _: (any UITextInput)?) {}
 }
