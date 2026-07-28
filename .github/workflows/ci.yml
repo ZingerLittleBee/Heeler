@@ -43,10 +43,10 @@ jobs:
       run:
         working-directory: plugin
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
       - name: Install dependencies
         run: npm ci
       - name: Run plugin tests
@@ -59,10 +59,10 @@ jobs:
       run:
         working-directory: relay
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
       # The relay has zero dependencies, so there is no install step.
       - name: Run relay tests
         run: npm test
@@ -71,7 +71,7 @@ jobs:
     name: Wire-type codegen drift
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Check generated wire types are up to date
         run: scripts/generate-wire-types.py --check --schema scripts/herdr-schema.json
 
@@ -81,7 +81,7 @@ jobs:
     # rather than macos-latest for reproducibility.
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Test VPS SSH access scripts
         run: scripts/test-vps-ssh-access-scripts.sh
