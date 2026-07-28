@@ -45,6 +45,7 @@ struct StartAgentStoreTests {
     private func makeStore(
         hosts: [Host],
         workspaces: @escaping (Host.ID) -> [ConsoleWorkspace] = { _ in [] },
+        existingAgentNames: @escaping (Host.ID) -> Set<String> = { _ in [] },
         agentKinds: @escaping (Host.ID) async throws -> [SupportedAgentKind] = { _ in
             [.claude]
         },
@@ -53,6 +54,7 @@ struct StartAgentStoreTests {
     ) -> StartAgentStore {
         StartAgentStore(
             hosts: hosts, workspaces: workspaces,
+            existingAgentNames: existingAgentNames,
             discoverAgentKinds: agentKinds,
             start: { params, worktree, hostID in
                 try await recorder.record(params, worktree, hostID)
@@ -183,7 +185,7 @@ struct StartAgentStoreTests {
         #expect(store.selectedAgentKind == .codex)
     }
 
-    @Test func canSubmitRequiresAHostWorkspaceNameAndDetectedAgent() async {
+    @Test func canSubmitRequiresAHostWorkspaceAndDetectedAgent() async {
         let hostA = Host.fixture(address: "a.example")
         let hostB = Host.fixture(address: "b.example")
         let store = makeStore(
@@ -197,11 +199,78 @@ struct StartAgentStoreTests {
         store.selectedHostID = hostA.id
         #expect(store.canSubmit == false)  // Agent discovery has not completed
         await store.discoverAgents()
-        #expect(store.canSubmit == false)  // still no unique agent name
+        #expect(store.canSubmit == true)  // the name is optional
+        store.name = "Reviewer"
+        #expect(store.canSubmit == false)  // uppercase violates herdr's rule
         store.name = "reviewer"
         #expect(store.canSubmit == true)
         store.arguments = #""unfinished"#
         #expect(store.canSubmit == false)
+    }
+
+    @Test func agentNameValidationMirrorsHerdrsRule() {
+        #expect(StartAgentStore.agentNameValidationError("a1") == nil)
+        #expect(StartAgentStore.agentNameValidationError("code-reviewer_2") == nil)
+        #expect(StartAgentStore.agentNameValidationError(String(repeating: "a", count: 32)) == nil)
+
+        #expect(StartAgentStore.agentNameValidationError("Reviewer") != nil)
+        #expect(StartAgentStore.agentNameValidationError("1agent") != nil)
+        #expect(StartAgentStore.agentNameValidationError("-agent") != nil)
+        #expect(StartAgentStore.agentNameValidationError("my agent") != nil)
+        #expect(StartAgentStore.agentNameValidationError("agenté") != nil)
+        #expect(
+            StartAgentStore.agentNameValidationError(String(repeating: "a", count: 33)) != nil)
+    }
+
+    @Test func anEmptyNameFallsBackToTheKindSkippingTakenNames() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            existingAgentNames: { _ in ["claude", "claude-2"] },
+            recorder: recorder)
+        await store.discoverAgents()
+        #expect(store.defaultAgentName == "claude-3")
+
+        await store.submit()
+
+        #expect(store.state == .started)
+        #expect(recorder.params.map(\.name) == ["claude-3"])
+    }
+
+    @Test func aFreshKindNeedsNoSuffix() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            existingAgentNames: { _ in ["reviewer"] },
+            recorder: recorder)
+        await store.discoverAgents()
+        store.name = "   "
+
+        await store.submit()
+
+        #expect(store.state == .started)
+        #expect(recorder.params.map(\.name) == ["claude"])
+    }
+
+    @Test func anInvalidNameBlocksSubmission() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recorder: recorder)
+        await store.discoverAgents()
+        store.name = "My Agent"
+
+        #expect(store.nameErrorMessage != nil)
+        #expect(store.canSubmit == false)
+        await store.submit()
+        #expect(store.state == .editing)
+        #expect(recorder.params.isEmpty)
     }
 
     @Test func cannotSubmitUntilTheHostReportsAWorkspace() async {

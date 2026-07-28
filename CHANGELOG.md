@@ -38,6 +38,11 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- The Agent Name field on the New Agent form is now optional: empty names the
+  agent after its kind (`claude`, `claude-2`, …), matching how the herdr TUI
+  labels unnamed agents, and the suggested name shows as the placeholder.
+  Typed names are validated inline against herdr's naming rule instead of
+  bouncing off the server.
 - The theme pickers under Terminal Appearance now show a colour swatch for
   every theme (like the keyboard's Appearance pane) and a live preview of the
   current pick at the top of each page. The preview moved there from the

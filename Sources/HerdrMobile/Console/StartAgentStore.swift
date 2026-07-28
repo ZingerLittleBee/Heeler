@@ -98,7 +98,9 @@ final class StartAgentStore {
     /// separate so a snapshot arriving after the sheet opens still gets to
     /// supply the default.
     private var pickedWorkspaceID: String?
-    /// The unique live-agent name required by herdr protocol 17.
+    /// The unique live-agent name required by herdr protocol 17. Optional in
+    /// the form: empty falls back to a kind-derived name (`claude`,
+    /// `claude-2`, …), mirroring how the herdr TUI labels unnamed agents.
     var name: String = ""
     /// The canonical kind selected from the Host availability probe.
     var selectedAgentKind: SupportedAgentKind?
@@ -121,6 +123,11 @@ final class StartAgentStore {
     private(set) var availableAgentKinds: [SupportedAgentKind] = []
 
     private let workspacesProvider: (Host.ID) -> [ConsoleWorkspace]
+    /// The agent names already live on a Host, so a generated default never
+    /// collides with them. Names only: herdr's duplicate check ignores
+    /// detected kind labels, but the Console reports those as names too, and
+    /// skipping them merely bumps the suffix.
+    private let existingAgentNames: (Host.ID) -> Set<String>
     private let discoverAgentKinds: (Host.ID) async throws -> [SupportedAgentKind]
     /// A non-nil `WorktreeSpec` routes the launch through the fresh-worktree
     /// choreography; nil starts in the workspace itself.
@@ -134,12 +141,14 @@ final class StartAgentStore {
     init(
         hosts: [Host],
         workspaces: @escaping (Host.ID) -> [ConsoleWorkspace],
+        existingAgentNames: @escaping (Host.ID) -> Set<String>,
         discoverAgentKinds: @escaping (Host.ID) async throws -> [SupportedAgentKind],
         start: @escaping (AgentLaunchRequest, WorktreeSpec?, Host.ID) async throws -> Agent,
         recents: RecentWorkspaceStore = RecentWorkspaceStore()
     ) {
         self.hosts = hosts
         self.workspacesProvider = workspaces
+        self.existingAgentNames = existingAgentNames
         self.discoverAgentKinds = discoverAgentKinds
         self.start = start
         self.recents = recents
@@ -162,6 +171,22 @@ final class StartAgentStore {
         return error.message
     }
 
+    /// User-facing name feedback; nil while the field is empty (empty means
+    /// "use the generated default").
+    var nameErrorMessage: String? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return Self.agentNameValidationError(trimmed)
+    }
+
+    /// The name `submit()` falls back to while the field is empty; nil until
+    /// a Host and Agent are selected. Shown as the field's placeholder so the
+    /// fallback is never a surprise.
+    var defaultAgentName: String? {
+        guard let selectedHostID, let kind = selectedAgentKind else { return nil }
+        return Self.defaultAgentName(for: kind, taken: existingAgentNames(selectedHostID))
+    }
+
     /// User-facing branch feedback; nil while the toggle is off or the field
     /// is empty (empty means "use herdr's generated branch").
     var worktreeBranchErrorMessage: String? {
@@ -174,7 +199,7 @@ final class StartAgentStore {
     /// Whether the form is complete enough to dispatch.
     var canSubmit: Bool {
         selectedHostID != nil && selectedWorkspaceID != nil
-            && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && nameErrorMessage == nil
             && selectedAgentKind != nil
             && parsedArguments.isSuccess
             && worktreeBranchErrorMessage == nil
@@ -222,10 +247,14 @@ final class StartAgentStore {
             let workspaceID = selectedWorkspaceID,
             let kind = selectedAgentKind,
             case .success(let arguments) = parsedArguments,
-            worktreeBranchErrorMessage == nil
+            worktreeBranchErrorMessage == nil,
+            nameErrorMessage == nil
         else { return }
-        let agentName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !agentName.isEmpty else { return }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let agentName =
+            trimmedName.isEmpty
+            ? Self.defaultAgentName(for: kind, taken: existingAgentNames(hostID))
+            : trimmedName
         isStarting = true
         state = .starting
         defer { isStarting = false }
@@ -335,6 +364,40 @@ final class StartAgentStore {
             result.append(current)
         }
         return .success(result)
+    }
+
+    /// Client-side mirror of herdr's `invalid_agent_name` rule (verified
+    /// against a live 0.7.5 server): 1-32 characters, a lowercase ASCII
+    /// letter first, then lowercase letters, digits, '-' or '_'.
+    static func agentNameValidationError(_ name: String) -> String? {
+        let message =
+            "Names start with a lowercase letter and use only lowercase "
+            + "letters, digits, '-' or '_' (up to 32 characters)."
+        guard name.count <= 32 else { return message }
+        for (offset, character) in name.enumerated() {
+            guard character.unicodeScalars.count == 1,
+                let scalar = character.unicodeScalars.first
+            else { return message }
+            switch scalar.value {
+            case 0x61...0x7A:  // a-z
+                continue
+            case 0x30...0x39, 0x2D, 0x5F:  // 0-9, '-', '_'
+                if offset == 0 { return message }
+            default:
+                return message
+            }
+        }
+        return nil
+    }
+
+    /// The fallback for an empty name field: the kind itself, then `kind-2`,
+    /// `kind-3`, … skipping names already live on the Host. Kind identifiers
+    /// are lowercase ASCII, so the result always passes herdr's name rule.
+    static func defaultAgentName(for kind: SupportedAgentKind, taken: Set<String>) -> String {
+        guard taken.contains(kind.rawValue) else { return kind.rawValue }
+        var suffix = 2
+        while taken.contains("\(kind.rawValue)-\(suffix)") { suffix += 1 }
+        return "\(kind.rawValue)-\(suffix)"
     }
 
     private static func nonEmptyTrimmed(_ value: String) -> String? {

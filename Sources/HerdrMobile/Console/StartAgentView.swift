@@ -14,6 +14,12 @@ struct StartAgentView: View {
             initialValue: StartAgentStore(
                 hosts: hosts,
                 workspaces: { console.workspaces(for: $0) },
+                existingAgentNames: { hostID in
+                    Set(
+                        console.agents
+                            .filter { $0.hostID == hostID }
+                            .compactMap { $0.agent.name })
+                },
                 discoverAgentKinds: { try await console.availableAgentKinds(on: $0) },
                 start: { params, worktree, hostID in
                     if let worktree {
@@ -84,16 +90,6 @@ struct StartAgentView: View {
                 }
 
                 Section {
-                    TextField("e.g. reviewer", text: $store.name)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                } header: {
-                    Text("Agent Name")
-                } footer: {
-                    Text("A unique name for this running agent on the Host.")
-                }
-
-                Section {
                     switch store.agentDiscoveryState {
                     case .idle:
                         Text("Select a Host to detect installed Agents.")
@@ -133,6 +129,23 @@ struct StartAgentView: View {
                     Text("Agent")
                 } footer: {
                     Text("Agents installed and launchable from this Host's PATH.")
+                }
+
+                Section {
+                    TextField(store.defaultAgentName ?? "e.g. reviewer", text: $store.name)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                } header: {
+                    Text("Agent Name")
+                } footer: {
+                    if let message = store.nameErrorMessage {
+                        Text(message)
+                            .foregroundStyle(.red)
+                    } else if let defaultName = store.defaultAgentName {
+                        Text("Optional. Empty names the agent \(Text(defaultName).monospaced()).")
+                    } else {
+                        Text("Optional. Empty names the agent after its kind.")
+                    }
                 }
 
                 Section {
