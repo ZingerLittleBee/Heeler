@@ -1162,6 +1162,8 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Herdr;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "herdr uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "herdr uses the microphone to transcribe your spoken reply into the message box. Audio is processed on device and never leaves your phone.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -1204,6 +1206,8 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Herdr;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "herdr uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "herdr uses the microphone to transcribe your spoken reply into the message box. Audio is processed on device and never leaves your phone.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
