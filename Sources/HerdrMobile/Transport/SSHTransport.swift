@@ -342,17 +342,18 @@ actor SSHTransport: Transport {
         let output = try await Self.withRequestDeadline(requestTimeout) {
             try await self.runHostCommand(self.sessionListCommand)
         }
+        let sessions: [HerdrSession]
         do {
-            let sessions = try JSONDecoder().decode(HerdrSessionListResponse.self, from: output).sessions
-            guard sessions.allSatisfy({ HerdrSessionName.isValid($0.name) }) else {
-                throw TransportError.malformedResponse(
-                    "herdr session list returned an invalid session name")
-            }
-            return sessions
+            sessions = try JSONDecoder().decode(HerdrSessionListResponse.self, from: output).sessions
         } catch {
             throw TransportError.malformedResponse(
                 "herdr session list returned invalid JSON: \(Self.preview(output))")
         }
+        guard sessions.allSatisfy({ HerdrSessionName.isValid($0.name) }) else {
+            throw TransportError.malformedResponse(
+                "herdr session list returned an invalid session name")
+        }
+        return sessions
     }
 
     func availableAgentKinds() async throws -> [SupportedAgentKind] {
