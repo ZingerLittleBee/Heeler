@@ -22,12 +22,51 @@ registered devices through the Push Relay. See [Notify hook](#notify-hook).
 
 ## Install
 
+On a new machine, first install the requirements above and make sure the
+OpenSSH server is running. On macOS, enable **System Settings > General >
+Sharing > Remote Login**. Confirm the command-line requirements:
+
 ```bash
-herdr plugin install zinger-labs/herdr-mobile/plugin   # once this repo is public
+herdr --version   # 0.7.5 or newer
+node --version    # 20 or newer
 ```
 
-For local development, link the working tree instead (build it yourself,
-`plugin link` does not run build commands):
+Install the plugin from GitHub:
+
+```bash
+herdr plugin install zinger-labs/herdr-mobile/plugin --ref main --yes
+```
+
+Herdr stores the plugin in its managed checkout and runs the manifest's
+`npm ci` build command automatically. Verify that the plugin is installed and
+enabled:
+
+```bash
+herdr plugin list --plugin herdr-mobile.pairing
+herdr plugin config-dir herdr-mobile.pairing
+```
+
+Open the Pairing Code popup:
+
+```bash
+herdr plugin action invoke herdr-mobile.pairing.pair
+```
+
+Scan the code in HerdrMobile to add this machine as a Host. Then open the
+HerdrMobile settings, enable Agent Notifications, grant the iOS notification
+permission, and enable Notifications for this Host. Leave **Custom Push
+Relay** empty to use the production endpoint at
+`https://herdr-apns.bybee.dev`.
+
+To update an installed GitHub-managed plugin, run the same `plugin install`
+command again. To inspect notification or pairing failures:
+
+```bash
+herdr plugin log list --plugin herdr-mobile.pairing --limit 20
+```
+
+For local development, link the working tree instead. Build it first because
+`plugin link` does not run build commands:
 
 ```bash
 cd plugin && npm ci
