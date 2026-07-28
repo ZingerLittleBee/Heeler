@@ -49,14 +49,35 @@ protocol Transport: Sendable {
     /// id; returns once the server acknowledges.
     func closePane(_ params: PaneTarget) async throws
 
+    /// Renames an Agent (`agent.rename`): the Console management action
+    /// (#98). A nil name clears the custom name back to the detected kind
+    /// (verified live against herdr 0.7.5: omitting the key clears). The
+    /// server enforces `^[a-z][a-z0-9_-]{0,31}$` on non-nil names and
+    /// rejects violations with `invalid_agent_name`; non-agent targets fail
+    /// with `agent_not_found`. The new name surfaces in the Console through
+    /// the normal snapshot/delta machinery (`pane.updated` fires for the
+    /// target pane), so callers do not mutate local state themselves.
+    func renameAgent(_ params: AgentRenameParams) async throws
+
+    /// Renames a workspace (`workspace.rename`): the Console management
+    /// action (#98). The server accepts any label — empty, whitespace, and
+    /// very long labels all pass (verified live against herdr 0.7.5); the
+    /// only rejection is `workspace_not_found`. The new label surfaces
+    /// through `workspace.renamed`, so callers do not mutate local state
+    /// themselves.
+    func renameWorkspace(_ params: WorkspaceRenameParams) async throws
+
     /// Opens this Host's dedicated long-lived events channel and subscribes.
     /// Returns once the server acknowledges the subscription; the stream then
     /// carries events in canonical naming until `end()` closes the channel
     /// explicitly. One events channel per Host: a second call while one is
     /// live throws `.eventsChannelAlreadyOpen`.
     ///
-    /// Subscribing does not replay existing state (verified against herdr
-    /// 0.7.4): sync initial state with `listAgents()` alongside subscribing.
+    /// Subscribing does not replay existing *state*, but herdr 0.7.5
+    /// replays recently buffered *events* on subscribe (verified live;
+    /// 0.7.4 replayed nothing). Neither replaces initial sync: fetch a
+    /// snapshot alongside subscribing, and treat replayed events as
+    /// ordinary change signals.
     func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream
 
     /// Opens this Host's dedicated terminal channel as a full interactive

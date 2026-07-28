@@ -157,6 +157,26 @@ final class ConsoleStore {
         try await projection.closePane(paneID)
     }
 
+    func renameAgent(
+        _ paneID: String, name: String?, on hostID: Host.ID
+    ) async throws {
+        guard let projection = projections[hostID] else {
+            throw TransportError.sshUnreachable(
+                detail: "The Host is not connected.")
+        }
+        try await projection.renameAgent(paneID, name: name)
+    }
+
+    func renameWorkspace(
+        _ workspaceID: String, label: String, on hostID: Host.ID
+    ) async throws {
+        guard let projection = projections[hostID] else {
+            throw TransportError.sshUnreachable(
+                detail: "The Host is not connected.")
+        }
+        try await projection.renameWorkspace(workspaceID, label: label)
+    }
+
     private func startProjection(for host: Host) {
         let session = makeSession(
             host,

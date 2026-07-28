@@ -17,6 +17,8 @@ struct AgentDetailView: View {
     @State private var isConfirmingClose = false
     @State private var isShowingSettings = false
     @State private var isManagingSnippets = false
+    @State private var isRenamingAgent = false
+    @State private var isRenamingWorkspace = false
     @State private var closeErrorMessage: String?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
@@ -108,6 +110,12 @@ struct AgentDetailView: View {
                     Button("Snippets", systemImage: "quote.bubble") {
                         isManagingSnippets = true
                     }
+                    Button("Rename Agent", systemImage: "pencil") {
+                        isRenamingAgent = true
+                    }
+                    Button("Rename Workspace", systemImage: "pencil.line") {
+                        isRenamingWorkspace = true
+                    }
                     Button("Close Agent", systemImage: "trash", role: .destructive) {
                         isConfirmingClose = true
                     }
@@ -127,6 +135,29 @@ struct AgentDetailView: View {
         // back; see `allowsKeyboardActivation` in HerdrTerminalView.
         .sheet(isPresented: $isManagingSnippets) {
             SnippetsManagementView(store: terminal.snippets)
+        }
+        .sheet(isPresented: $isRenamingAgent) {
+            RenameSheetView(
+                title: "Rename Agent",
+                store: RenameStore(
+                    subject: .agent(detectedKind: agent.agent.kind),
+                    currentValue: agent.agent.name ?? ""
+                ) { [console, agent] name in
+                    try await console.renameAgent(
+                        agent.agent.paneID, name: name, on: agent.hostID)
+                })
+        }
+        .sheet(isPresented: $isRenamingWorkspace) {
+            RenameSheetView(
+                title: "Rename Workspace",
+                store: RenameStore(
+                    subject: .workspace,
+                    currentValue: agent.workspaceLabel ?? ""
+                ) { [console, agent] label in
+                    guard let label else { return }
+                    try await console.renameWorkspace(
+                        agent.agent.workspaceID, label: label, on: agent.hostID)
+                })
         }
         .sheet(
             isPresented: Binding(

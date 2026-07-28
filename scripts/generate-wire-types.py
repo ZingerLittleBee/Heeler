@@ -59,6 +59,7 @@ METHODS = [
     "pane.read",
     "pane.close",
     "session.snapshot",
+    "workspace.rename",
 ]
 
 # Params defs excluded from generation even when a wanted method uses them.
@@ -86,6 +87,7 @@ RESULT_TAGS = [
     "subscription_started",  # events.subscribe ack
     "tab_created",  # tab.create
     "ok",  # pane.close
+    "workspace_info",  # workspace.rename
 ]
 
 # Wire-name overrides for members whose mechanical camelCase would be a Swift

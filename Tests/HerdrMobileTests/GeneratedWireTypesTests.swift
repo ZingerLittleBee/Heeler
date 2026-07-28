@@ -124,6 +124,16 @@ import Testing
             SubscriptionStartedResponse.self, fromResponseLine: Data(line.utf8), requestID: "fix-1")
     }
 
+    @Test func workspaceInfoResponseRoundTripsLiveCapture() throws {
+        // `workspace.rename` live capture (herdr 0.7.5, sanitized).
+        let json = #"{"type":"workspace_info","workspace":{"workspace_id":"w9","number":12,"label":"Proj","focused":false,"pane_count":1,"tab_count":1,"active_tab_id":"w9:t1","agent_status":"unknown"}}"#
+
+        let response = try roundTrip(WorkspaceInfoResponse.self, json)
+
+        #expect(response.workspace.workspaceID == "w9")
+        #expect(response.workspace.label == "Proj")
+    }
+
     @Test func okResponseDecodes() throws {
         // The bare-acknowledgement result shape (`pane.close`).
         _ = try roundTrip(OkResponse.self, #"{"type":"ok"}"#)
@@ -190,6 +200,30 @@ import Testing
         #expect(fields.keys.sorted() == ["focus", "workspace_id"])
         #expect(fields["focus"] as? Bool == false)
         #expect(fields["workspace_id"] as? String == "w1")
+    }
+
+    @Test func agentRenameParamsOmitNilNameToClearIt() throws {
+        // Verified live (herdr 0.7.5): omitting `name` clears the custom
+        // name back to the detected kind, so nil must drop the key, not
+        // send `"name":null`.
+        let cleared = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(AgentRenameParams(target: "w1:p1"))
+        ) as? [String: Any]
+        #expect(cleared?.keys.sorted() == ["target"])
+
+        let named = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(AgentRenameParams(target: "w1:p1", name: "reviewer"))
+        ) as? [String: Any]
+        #expect(named?.keys.sorted() == ["name", "target"])
+        #expect(named?["name"] as? String == "reviewer")
+    }
+
+    @Test func workspaceRenameParamsEncodeSnakeCase() throws {
+        let fields = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(WorkspaceRenameParams(label: "Proj", workspaceID: "w9"))
+        ) as? [String: Any]
+        #expect(fields?.keys.sorted() == ["label", "workspace_id"])
+        #expect(fields?["workspace_id"] as? String == "w9")
     }
 
     @Test func paneTargetTravelsThroughTheRequestEnvelope() throws {

@@ -51,6 +51,14 @@ final actor FakeTransport: Transport {
         throw TransportError.channelFailed(detail: "FakeTransport does not script closes")
     }
 
+    func renameAgent(_ params: AgentRenameParams) async throws {
+        throw TransportError.channelFailed(detail: "FakeTransport does not script renames")
+    }
+
+    func renameWorkspace(_ params: WorkspaceRenameParams) async throws {
+        throw TransportError.channelFailed(detail: "FakeTransport does not script renames")
+    }
+
     var isConnected: Bool {
         !isClosed
     }

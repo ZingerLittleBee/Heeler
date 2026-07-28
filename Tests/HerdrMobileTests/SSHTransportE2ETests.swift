@@ -117,6 +117,56 @@ struct SSHTransportE2ETests {
         }
     }
 
+    @Test func agentRenameRoundTripsItsParams() async throws {
+        // The Console rename action (#98). Response is the agent_info
+        // envelope, live-captured against herdr 0.7.5.
+        try await withTransport { request in
+            [
+                #"{"id":"\#(request.id)","result":{"type":"agent_info","agent":{"terminal_id":"term_1","name":"reviewer","agent":"claude","agent_status":"working","workspace_id":"w1","tab_id":"w1:t1","pane_id":"w1:p1","focused":false,"cwd":"/w","foreground_cwd":"/w","revision":1}}}"#
+            ]
+        } body: { transport, server in
+            try await transport.renameAgent(AgentRenameParams(target: "w1:p1", name: "reviewer"))
+
+            let request = try #require(server.receivedRequests.first)
+            #expect(request.method == "agent.rename")
+            #expect(request.params == #"{"name":"reviewer","target":"w1:p1"}"#)
+        }
+    }
+
+    @Test func agentRenameWithNilNameOmitsTheKey() async throws {
+        // Omitting `name` clears the custom name back to the detected kind
+        // (verified live against herdr 0.7.5); the cleared agent_info has no
+        // `name` field.
+        try await withTransport { request in
+            [
+                #"{"id":"\#(request.id)","result":{"type":"agent_info","agent":{"terminal_id":"term_1","agent":"claude","agent_status":"working","workspace_id":"w1","tab_id":"w1:t1","pane_id":"w1:p1","focused":false,"cwd":"/w","foreground_cwd":"/w","revision":1}}}"#
+            ]
+        } body: { transport, server in
+            try await transport.renameAgent(AgentRenameParams(target: "w1:p1"))
+
+            let request = try #require(server.receivedRequests.first)
+            #expect(request.method == "agent.rename")
+            #expect(request.params == #"{"target":"w1:p1"}"#)
+        }
+    }
+
+    @Test func workspaceRenameRoundTripsItsParams() async throws {
+        // Response is the workspace_info envelope, live-captured against
+        // herdr 0.7.5.
+        try await withTransport { request in
+            [
+                #"{"id":"\#(request.id)","result":{"type":"workspace_info","workspace":{"workspace_id":"w1","number":1,"label":"Proj","focused":false,"pane_count":1,"tab_count":1,"active_tab_id":"w1:t1","agent_status":"unknown"}}}"#
+            ]
+        } body: { transport, server in
+            try await transport.renameWorkspace(
+                WorkspaceRenameParams(label: "Proj", workspaceID: "w1"))
+
+            let request = try #require(server.receivedRequests.first)
+            #expect(request.method == "workspace.rename")
+            #expect(request.params == #"{"label":"Proj","workspace_id":"w1"}"#)
+        }
+    }
+
     @Test func agentStartSendsItsParamsAndMapsTheStartedAgent() async throws {
         // Protocol 17 splits the new-agent flow into topology creation and a
         // pane-targeted start. Both requests stay behind the Transport seam.

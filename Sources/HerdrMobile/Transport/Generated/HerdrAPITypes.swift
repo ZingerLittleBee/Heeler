@@ -853,6 +853,31 @@ struct WorkspaceInfo: Codable, Equatable, Sendable {
     }
 }
 
+/// The `"type":"workspace_info"` result payload of herdr's success_response schema.
+struct WorkspaceInfoResponse: Codable, Equatable, Sendable {
+    let workspace: WorkspaceInfo
+
+    init(workspace: WorkspaceInfo) {
+        self.workspace = workspace
+    }
+}
+
+/// herdr schema `$defs/WorkspaceRenameParams`.
+struct WorkspaceRenameParams: Codable, Equatable, Sendable {
+    let label: String
+    let workspaceID: String
+
+    init(label: String, workspaceID: String) {
+        self.label = label
+        self.workspaceID = workspaceID
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case label
+        case workspaceID = "workspace_id"
+    }
+}
+
 /// herdr schema `$defs/WorkspaceWorktreeInfo`.
 struct WorkspaceWorktreeInfo: Codable, Equatable, Sendable {
     let checkoutPath: String

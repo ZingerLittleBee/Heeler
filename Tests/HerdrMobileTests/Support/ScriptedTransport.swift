@@ -22,6 +22,11 @@ final actor ScriptedTransport: Transport {
     /// appends here).
     private(set) var closedPanes: [PaneTarget] = []
     private var closeFailure: TransportError?
+    /// Every `agent.rename` / `workspace.rename` received, in order; the
+    /// rename flows (#98) assert on the params they forwarded.
+    private(set) var agentRenames: [AgentRenameParams] = []
+    private(set) var workspaceRenames: [WorkspaceRenameParams] = []
+    private var renameFailure: TransportError?
     private var startFailure: TransportError?
     private var startedAgent: AgentInfo?
     private(set) var snapshotFetchCount = 0
@@ -128,6 +133,11 @@ final actor ScriptedTransport: Transport {
     /// Makes every subsequent `closePane` throw `failure`.
     func setCloseFailure(_ failure: TransportError?) {
         closeFailure = failure
+    }
+
+    /// Makes every subsequent rename (agent or workspace) throw `failure`.
+    func setRenameFailure(_ failure: TransportError?) {
+        renameFailure = failure
     }
 
     func configureImageStaging(
@@ -261,6 +271,16 @@ final actor ScriptedTransport: Transport {
     func closePane(_ params: PaneTarget) async throws {
         if let closeFailure { throw closeFailure }
         closedPanes.append(params)
+    }
+
+    func renameAgent(_ params: AgentRenameParams) async throws {
+        if let renameFailure { throw renameFailure }
+        agentRenames.append(params)
+    }
+
+    func renameWorkspace(_ params: WorkspaceRenameParams) async throws {
+        if let renameFailure { throw renameFailure }
+        workspaceRenames.append(params)
     }
 
     func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream {
@@ -425,13 +445,14 @@ extension AgentInfo {
         workspaceID: String = "w1",
         kind: String = "claude",
         title: String = "Task",
-        revision: Int = 1
+        revision: Int = 1,
+        name: String? = nil
     ) -> AgentInfo {
         AgentInfo(
             agentStatus: status, focused: false, paneID: paneID, revision: revision,
             tabID: "\(workspaceID):t1", terminalID: "term_\(paneID)",
             workspaceID: workspaceID, agent: kind, cwd: "/work/\(workspaceID)",
-            terminalTitleStripped: title)
+            name: name, terminalTitleStripped: title)
     }
 }
 
