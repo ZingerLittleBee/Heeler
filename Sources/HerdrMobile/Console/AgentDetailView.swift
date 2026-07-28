@@ -150,11 +150,9 @@ struct AgentDetailView: View {
         .sheet(isPresented: $isRenamingWorkspace) {
             RenameSheetView(
                 title: "Rename Workspace",
-                store: RenameStore(
-                    subject: .workspace,
-                    currentValue: agent.workspaceLabel ?? ""
+                store: RenameStore.workspace(
+                    currentLabel: agent.workspaceLabel ?? ""
                 ) { [console, agent] label in
-                    guard let label else { return }
                     try await console.renameWorkspace(
                         agent.agent.workspaceID, label: label, on: agent.hostID)
                 })

@@ -54,9 +54,10 @@ protocol Transport: Sendable {
     /// (verified live against herdr 0.7.5: omitting the key clears). The
     /// server enforces `^[a-z][a-z0-9_-]{0,31}$` on non-nil names and
     /// rejects violations with `invalid_agent_name`; non-agent targets fail
-    /// with `agent_not_found`. The new name surfaces in the Console through
-    /// the normal snapshot/delta machinery (`pane.updated` fires for the
-    /// target pane), so callers do not mutate local state themselves.
+    /// with `agent_not_found`. The new name does NOT travel on events — the
+    /// `pane.updated` this fires omits the agent name (verified live) — so
+    /// consumers re-snapshot after the call instead of mutating local state
+    /// or waiting on a delta.
     func renameAgent(_ params: AgentRenameParams) async throws
 
     /// Renames a workspace (`workspace.rename`): the Console management

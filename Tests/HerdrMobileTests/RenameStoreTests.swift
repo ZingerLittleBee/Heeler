@@ -21,9 +21,9 @@ struct RenameStoreTests {
 
     private func workspaceStore(
         current: String = "Proj",
-        rename: @escaping (String?) async throws -> Void = { _ in }
+        rename: @escaping (String) async throws -> Void = { _ in }
     ) -> RenameStore {
-        RenameStore(subject: .workspace, currentValue: current, rename: rename)
+        RenameStore.workspace(currentLabel: current, rename: rename)
     }
 
     // MARK: Agent name validation (server rule, verified live: 0.7.5

@@ -119,6 +119,23 @@ final class RenameStore {
         }
     }
 
+    /// A workspace rename store whose closure takes the label directly:
+    /// `canSubmit` withholds empty workspace submits, so a nil
+    /// `submittedValue` can only be a programmer error — surfaced as a
+    /// failure here rather than encoded as a silent success by every caller.
+    static func workspace(
+        currentLabel: String,
+        rename: @escaping (String) async throws -> Void
+    ) -> RenameStore {
+        RenameStore(subject: .workspace, currentValue: currentLabel) { value in
+            guard let value else {
+                assertionFailure("workspace rename submitted without a label")
+                throw TransportError.cancelled
+            }
+            try await rename(value)
+        }
+    }
+
     /// The server's agent-name rule (`invalid_agent_name` otherwise),
     /// mirrored so the form can explain the rule before a round trip:
     /// `^[a-z][a-z0-9_-]{0,31}$`.

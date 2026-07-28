@@ -129,12 +129,18 @@ final class ConsoleStore {
         workspacesByHost[hostID] ?? []
     }
 
-    func availableAgentKinds(on hostID: Host.ID) async throws -> [SupportedAgentKind] {
+    /// The projection behind every Host-scoped RPC; an unconnected Host
+    /// fails loudly instead of silently dropping the action.
+    private func projection(for hostID: Host.ID) throws -> HostConsoleProjection {
         guard let projection = projections[hostID] else {
             throw TransportError.sshUnreachable(
                 detail: "The Host is not connected.")
         }
-        return try await projection.availableAgentKinds()
+        return projection
+    }
+
+    func availableAgentKinds(on hostID: Host.ID) async throws -> [SupportedAgentKind] {
+        try await projection(for: hostID).availableAgentKinds()
     }
 
     @discardableResult
@@ -142,39 +148,23 @@ final class ConsoleStore {
         _ request: AgentLaunchRequest,
         on hostID: Host.ID
     ) async throws -> Agent {
-        guard let projection = projections[hostID] else {
-            throw TransportError.sshUnreachable(
-                detail: "The Host is not connected.")
-        }
-        return try await projection.startAgent(request)
+        try await projection(for: hostID).startAgent(request)
     }
 
     func closePane(_ paneID: String, on hostID: Host.ID) async throws {
-        guard let projection = projections[hostID] else {
-            throw TransportError.sshUnreachable(
-                detail: "The Host is not connected.")
-        }
-        try await projection.closePane(paneID)
+        try await projection(for: hostID).closePane(paneID)
     }
 
     func renameAgent(
         _ paneID: String, name: String?, on hostID: Host.ID
     ) async throws {
-        guard let projection = projections[hostID] else {
-            throw TransportError.sshUnreachable(
-                detail: "The Host is not connected.")
-        }
-        try await projection.renameAgent(paneID, name: name)
+        try await projection(for: hostID).renameAgent(paneID, name: name)
     }
 
     func renameWorkspace(
         _ workspaceID: String, label: String, on hostID: Host.ID
     ) async throws {
-        guard let projection = projections[hostID] else {
-            throw TransportError.sshUnreachable(
-                detail: "The Host is not connected.")
-        }
-        try await projection.renameWorkspace(workspaceID, label: label)
+        try await projection(for: hostID).renameWorkspace(workspaceID, label: label)
     }
 
     private func startProjection(for host: Host) {
@@ -227,11 +217,7 @@ extension ConsoleStore: NotificationTransportProvider {
         for hostID: Host.ID,
         _ operation: @escaping @Sendable (any Transport) async throws -> Value
     ) async throws -> Value {
-        guard let projection = projections[hostID] else {
-            throw TransportError.sshUnreachable(
-                detail: "The Host is not connected.")
-        }
-        return try await projection.session.withTransport(operation)
+        try await projection(for: hostID).session.withTransport(operation)
     }
 }
 
