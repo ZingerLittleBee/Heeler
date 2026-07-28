@@ -158,15 +158,15 @@ struct NotificationRegistrationCeremonyTests {
 
     // MARK: Custom relay URL (#76)
 
-    @Test func registerWithoutARelayURLLeavesNotifyConfigUntouched() async throws {
+    @Test func registerWithoutAnOverrideWritesTheProductionRelay() async throws {
         let transport = ScriptedTransport()
 
         try await ceremony.register(
             hostID: hostID, hostName: "mac-studio", deviceToken: token, over: transport)
 
-        // The empty/default relay setting must never touch the plugin config.
-        #expect(await transport.replacedNotificationConfigs.isEmpty)
-        #expect(await transport.notificationConfig == nil)
+        let written = try #require(await transport.notificationConfig)
+        let config = try NotificationConfigFile.decode(written)
+        #expect(config.relayURL == "https://herdr-apns.bybee.dev")
     }
 
     @Test func registerWithARelayURLWritesItPreservingOtherFields() async throws {
@@ -200,6 +200,23 @@ struct NotificationRegistrationCeremonyTests {
 
         // First register writes the config once; the second changes nothing.
         #expect(await transport.replacedNotificationConfigs.count == 1)
+    }
+
+    @Test func registerMigratesThePreviousProductionRelay() async throws {
+        let transport = ScriptedTransport()
+        await transport.setNotificationConfig(
+            Data(
+                #"{"relay_url":"https://herdr-push-relay.69709991236.workers.dev"}"#.utf8))
+
+        try await ceremony.register(
+            hostID: hostID, hostName: "mac-studio", deviceToken: token,
+            relayBaseURL: URL(
+                string: "https://herdr-push-relay.69709991236.workers.dev"),
+            over: transport)
+
+        let written = try #require(await transport.notificationConfig)
+        let config = try NotificationConfigFile.decode(written)
+        #expect(config.relayURL == "https://herdr-apns.bybee.dev")
     }
 
     @Test func removeSurfacesAFailedRemoteRemovalAndKeepsTheKey() async throws {

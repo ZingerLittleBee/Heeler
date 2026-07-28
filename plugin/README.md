@@ -266,20 +266,21 @@ Anti-noise, in order:
    `HERDR_PLUGIN_STATE_DIR/notify/`; a same-status repeat sends nothing. A
    *different* status that survives its own debounce re-arms the pane.
 
-Each eligible device gets one `POST <relay_url>/push` (see `relay/README.md`)
-carrying the encrypted envelope and an opaque per-pane `collapse` key (derived
-from the device's Notification Key and the pane id, so the relay cannot guess
-the pane while newer statuses still replace older notifications). Transient
-failures (network errors, 429, 5xx) are retried up to 3 attempts; a `410
-Unregistered` verdict prunes that token from `notifications.json` (preserving
-any fields this plugin does not understand); other 4xx verdicts are final.
+Each eligible device gets one `POST https://herdr-apns.bybee.dev/push` by
+default (see `relay/README.md`), carrying the encrypted envelope and an opaque
+per-pane `collapse` key (derived from the device's Notification Key and the
+pane id, so the relay cannot guess the pane while newer statuses still replace
+older notifications). Transient failures (network errors, 429, 5xx) are
+retried up to 3 attempts; a `410 Unregistered` verdict prunes that token from
+`notifications.json` (preserving any fields this plugin does not understand);
+other 4xx verdicts are final.
 
 Plugin-side settings live in `notify.json` next to the registration file in
 the plugin config dir:
 
 | Field            | Type    | Meaning |
 | ---------------- | ------- | ------- |
-| `relay_url`      | string  | Push Relay base URL. **Required** until a default relay is deployed (zinger-labs/herdr-mobile#70); without it the hook logs an error and sends nothing. The app can also write this field from its Custom Push Relay setting during Notification Registration, read-merge-write so the fields below survive. |
+| `relay_url`      | string  | Optional Push Relay base URL override for a self-built app. Defaults to `https://herdr-apns.bybee.dev`; the app writes the resolved value during Notification Registration. |
 | `debounce_ms`    | integer | Debounce sleep override. Default 5000. |
 | `retry_delay_ms` | integer | Delay between retry attempts. Default 1000. |
 

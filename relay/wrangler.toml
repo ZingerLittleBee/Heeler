@@ -10,6 +10,11 @@
 name = "herdr-push-relay"
 main = "src/worker.js"
 compatibility_date = "2026-07-01"
+workers_dev = false
+
+[[routes]]
+pattern = "herdr-apns.bybee.dev"
+custom_domain = true
 
 [vars]
 APNS_TEAM_ID = "9VM4RM39R3"

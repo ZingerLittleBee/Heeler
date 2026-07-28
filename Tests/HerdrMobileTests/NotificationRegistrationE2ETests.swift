@@ -78,10 +78,13 @@ struct NotificationRegistrationE2ETests {
         #expect(ours["env"]?.stringValue == "sandbox")
         #expect(ours["notify"]?["blocked"] == .bool(true))
         #expect(ours["notify"]?["done"] == .bool(false))
-        // Atomic replace leaves no temp files behind.
+        let notifyConfig = try NotificationConfigFile.decode(
+            try Data(contentsOf: configDirectory.appendingPathComponent("notify.json")))
+        #expect(notifyConfig.relayURL == "https://herdr-apns.bybee.dev")
+        // Atomic replaces leave no temp files behind.
         #expect(
-            try FileManager.default.contentsOfDirectory(atPath: configDirectory.path)
-                == ["notifications.json"])
+            try Set(FileManager.default.contentsOfDirectory(atPath: configDirectory.path))
+                == ["notifications.json", "notify.json"])
 
         // Re-register: idempotent, same key, still one entry per token.
         let again = try await ceremony.register(

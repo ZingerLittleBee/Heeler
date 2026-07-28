@@ -2,7 +2,7 @@
 # Tracer demo for Agent Notifications (#71): encrypt one vector-conformant
 # envelope and curl it through a deployed Push Relay so a decrypted
 # notification pops on the registered device. Run it once the relay is
-# deployed (#70's TODO); until then it only needs a URL to point at.
+# deployed; the first argument selects its base URL.
 #
 # Usage:
 #   scripts/notification-tracer.sh <relay-base-url> <device-token-hex> \

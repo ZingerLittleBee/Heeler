@@ -143,6 +143,7 @@
 		BC107519427157CF5191E34F /* FakeTransportConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14983BD8988E4AAE79DC46A /* FakeTransportConnector.swift */; };
 		BC46FD1688F34030A1121C58 /* PairingScanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26D91CE49181E7932CBD1AAC /* PairingScanView.swift */; };
 		BCE53C8C32954608C85DCAB2 /* JetBrainsMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 1FA6D070018AA40A6EF817C5 /* JetBrainsMono-Regular.ttf */; };
+		BD3F800210CBBCE67EC95838 /* NotificationRelayEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A4C8E6FFA5B5AB784B4DEE8 /* NotificationRelayEndpoint.swift */; };
 		BF9FBA3462781177C6F78459 /* JSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E3E2308A50D4744A24A874B /* JSONValue.swift */; };
 		C174C223DBE1F1DD4085A2F8 /* UnixSockets.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCB59377D34D0C652DF70F01 /* UnixSockets.swift */; };
 		C60E8E0398665C36520DDA8E /* HerdrEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = CABFC5E35C19F809355619E7 /* HerdrEvents.swift */; };
@@ -322,6 +323,7 @@
 		87B0377EAC5265E7A6FCD212 /* KnownHostsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnownHostsStoreTests.swift; sourceTree = "<group>"; };
 		88D1D6AB56C4DA1CE0AF9A51 /* TerminalMouseReporting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalMouseReporting.swift; sourceTree = "<group>"; };
 		89863F261DC0C6F317D75786 /* PhotosPickerImageSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosPickerImageSelection.swift; sourceTree = "<group>"; };
+		8A4C8E6FFA5B5AB784B4DEE8 /* NotificationRelayEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRelayEndpoint.swift; sourceTree = "<group>"; };
 		8C12DE28C85D2A9268260146 /* AppActivityCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppActivityCoordinatorTests.swift; sourceTree = "<group>"; };
 		8C9A0A8D0063285A276A28DA /* PairingConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingConnector.swift; sourceTree = "<group>"; };
 		8F609ED2F418C28EB5AB2D4B /* AgentNotificationBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationBannerView.swift; sourceTree = "<group>"; };
@@ -469,6 +471,7 @@
 				323782148B559800B45E2930 /* NotificationPrivacyCopy.swift */,
 				4FD32D8CF0FF5617AF7E3513 /* NotificationRegistrationCeremony.swift */,
 				066F4CB4F0E9D99693B44618 /* NotificationRegistrationFile.swift */,
+				8A4C8E6FFA5B5AB784B4DEE8 /* NotificationRelayEndpoint.swift */,
 				B36D007E7AE959F6D62B166D /* PushRegistrationStore.swift */,
 			);
 			path = Notifications;
@@ -1011,6 +1014,7 @@
 				345C7A9CB13934941D67390F /* NotificationPrivacyCopy.swift in Sources */,
 				A4A0A43303CF9F8DDAD78A75 /* NotificationRegistrationCeremony.swift in Sources */,
 				59400DF89B4D869F1391F8BD /* NotificationRegistrationFile.swift in Sources */,
+				BD3F800210CBBCE67EC95838 /* NotificationRelayEndpoint.swift in Sources */,
 				1B835FA52420698C39B40036 /* NotificationRelaySettings.swift in Sources */,
 				54C4A61E21C2C7D8A618E462 /* PairingCeremony.swift in Sources */,
 				EE22FB818F023585C4A07D9C /* PairingCode.swift in Sources */,

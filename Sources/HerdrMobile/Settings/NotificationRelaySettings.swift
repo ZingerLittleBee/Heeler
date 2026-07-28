@@ -6,11 +6,11 @@ import Observation
 /// their own relay instead of the developer-hosted default; the value is
 /// written into each Host's `notify.json` at Notification Registration.
 ///
-/// Empty is the default and means "leave the plugin's config alone": the app
-/// never writes `relay_url`, so the plugin keeps whatever it was configured
-/// with (the default relay, once deployed). Only an http(s) base URL is
-/// accepted — a malformed entry yields no `URL`, so a typo never lands on a
-/// Host, and the settings screen can flag it instead.
+/// Empty means "use the production relay"; Notification Registration writes
+/// that endpoint to the Host so old plugin configurations converge on the
+/// current deployment. Only an http(s) base URL is accepted — a malformed
+/// entry yields no `URL`, so a typo never lands on a Host, and the settings
+/// screen can flag it instead.
 @MainActor
 @Observable
 final class NotificationRelaySettings {
@@ -33,11 +33,17 @@ final class NotificationRelaySettings {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        rawValue = defaults.string(forKey: Self.defaultsKey) ?? ""
+        let stored = defaults.string(forKey: Self.defaultsKey) ?? ""
+        if NotificationRelayEndpoint.isLegacyProductionBaseURL(stored) {
+            rawValue = ""
+            defaults.removeObject(forKey: Self.defaultsKey)
+        } else {
+            rawValue = stored
+        }
     }
 
-    /// The validated base URL, or nil when the field is empty or malformed —
-    /// the signal the registration ceremony reads as "do not touch notify.json".
+    /// A validated custom base URL, or nil when the field is empty or
+    /// malformed. Registration resolves nil to the production endpoint.
     var relayURL: URL? {
         Self.validate(rawValue)
     }

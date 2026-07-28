@@ -263,14 +263,16 @@ struct NotificationPreferencesStoreTests {
         #expect(config.relayURL == "https://relay.example.com")
     }
 
-    @Test func enablingWithNoCustomRelayLeavesNotifyConfigAlone() async throws {
+    @Test func enablingWithNoCustomRelayWritesTheProductionRelay() async throws {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, relayBaseURL: { nil })
         await store.refresh()
 
         await store.setNotificationsEnabled(true, for: host)
 
-        #expect(await transport.replacedNotificationConfigs.isEmpty)
+        let written = try #require(await transport.notificationConfig)
+        let config = try NotificationConfigFile.decode(written)
+        #expect(config.relayURL == "https://herdr-apns.bybee.dev")
     }
 
     // MARK: Done flag

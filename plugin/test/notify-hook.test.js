@@ -717,17 +717,6 @@ suite("notify-hook: configuration and registration file", () => {
     );
   });
 
-  test("a missing relay URL fails with a clear message and no send", async () => {
-    writeConfig({ relay_url: undefined });
-    writeRegistration([device()]);
-    writeHerdrStub({ status: "blocked" });
-
-    const result = await runHook(statusEvent("blocked"));
-
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /relay_url/);
-  });
-
   test("an unparseable event JSON fails without contacting anything", async () => {
     await startFakeRelay();
     writeConfig();

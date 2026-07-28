@@ -14,11 +14,14 @@ struct NotificationRelaySettingsTests {
         return defaults
     }
 
-    @Test func emptyByDefaultMeansNoURL() {
+    @Test func emptyByDefaultMeansNoCustomURL() {
         let settings = NotificationRelaySettings(defaults: makeDefaults())
         #expect(settings.rawValue.isEmpty)
         #expect(settings.relayURL == nil)
         #expect(!settings.hasInvalidEntry)
+        #expect(
+            NotificationRelayEndpoint.productionBaseURL?.absoluteString
+                == "https://herdr-apns.bybee.dev")
     }
 
     @Test func acceptsAnHTTPSBaseURL() {
@@ -67,5 +70,21 @@ struct NotificationRelaySettingsTests {
         let second = NotificationRelaySettings(defaults: defaults)
         #expect(second.rawValue.isEmpty)
         #expect(second.relayURL == nil)
+    }
+
+    @Test func migratesThePreviousProductionRelayToTheCurrentDefault() {
+        let defaults = makeDefaults()
+        defaults.set(
+            "https://herdr-push-relay.69709991236.workers.dev/",
+            forKey: "notification-relay-url")
+
+        let settings = NotificationRelaySettings(defaults: defaults)
+
+        #expect(settings.rawValue.isEmpty)
+        #expect(settings.relayURL == nil)
+        #expect(defaults.string(forKey: "notification-relay-url") == nil)
+        #expect(
+            NotificationRelayEndpoint.resolve(customBaseURL: settings.relayURL)?
+                .absoluteString == "https://herdr-apns.bybee.dev")
     }
 }

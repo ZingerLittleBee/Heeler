@@ -155,7 +155,9 @@ struct SettingsView: View {
     @ViewBuilder
     private var customRelaySection: some View {
         Section {
-            TextField("https://relay.example.com", text: $relaySettings.rawValue)
+            TextField(
+                NotificationRelayEndpoint.productionBaseURLString,
+                text: $relaySettings.rawValue)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
@@ -168,7 +170,9 @@ struct SettingsView: View {
         } header: {
             Text("Custom Push Relay")
         } footer: {
-            Text(NotificationPrivacyCopy.customRelayCaveat)
+            Text(
+                "Leave blank to use \(NotificationRelayEndpoint.productionBaseURLString). "
+                    + NotificationPrivacyCopy.customRelayCaveat)
         }
     }
 

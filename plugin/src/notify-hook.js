@@ -33,13 +33,12 @@ import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { encryptNotificationEnvelope } from "./notification-envelope.js";
+import { readNotificationConfig } from "./notification-config.js";
 
 // Statuses that notify (ADR 0008: Working/Idle transitions never do), keyed
 // by the registration file's per-device `notify` preference flag they gate on.
 const NOTIFY_FLAG_BY_STATUS = { blocked: "blocked", done: "done" };
 
-const DEFAULT_DEBOUNCE_MS = 5000;
-const DEFAULT_RETRY_DELAY_MS = 1000;
 const SEND_ATTEMPTS = 3;
 const REQUEST_TIMEOUT_MS = 10_000;
 const KEY_BYTES = 32;
@@ -86,28 +85,6 @@ function parseStatusEvent(raw) {
     agentKind: optionalText(data.agent),
     workspaceId: optionalText(data.workspace_id),
     title: optionalText(data.title),
-  };
-}
-
-/**
- * Plugin-side config, `notify.json` in the plugin config dir. `relay_url` is
- * the Push Relay base URL (required until a default relay is deployed —
- * refs #70/#76); `debounce_ms` and `retry_delay_ms` are anti-noise knobs
- * that double as the test seam keeping the suite fast.
- */
-function readConfig(configDir) {
-  let parsed;
-  try {
-    parsed = JSON.parse(readFileSync(join(configDir, "notify.json"), "utf8"));
-  } catch {
-    parsed = {};
-  }
-  const positiveInt = (value, fallback) =>
-    Number.isInteger(value) && value >= 0 ? value : fallback;
-  return {
-    relayUrl: typeof parsed.relay_url === "string" ? parsed.relay_url.replace(/\/$/, "") : null,
-    debounceMs: positiveInt(parsed.debounce_ms, DEFAULT_DEBOUNCE_MS),
-    retryDelayMs: positiveInt(parsed.retry_delay_ms, DEFAULT_RETRY_DELAY_MS),
   };
 }
 
@@ -318,7 +295,7 @@ async function main() {
 
   const event = parseStatusEvent(eventJson);
   const timestamp = Math.floor(Date.now() / 1000);
-  const config = readConfig(configDir);
+  const config = readNotificationConfig(configDir);
   const notifyWorthy = event.status in NOTIFY_FLAG_BY_STATUS;
 
   // Cheap exits before burning a 5 s debounce process on a no-op.
@@ -326,10 +303,6 @@ async function main() {
   if (notifyWorthy && lastNotified === event.status) return; // dedupe
   if (!notifyWorthy && lastNotified === null) return; // nothing to send or re-arm
   if (notifyWorthy && readEligibleDevices(configDir, event.status).length === 0) return;
-  if (notifyWorthy && config.relayUrl === null) {
-    throw new Error("relay_url is not configured in notify.json; see plugin README");
-  }
-
   // Debounce: only a status that still holds after the sleep notifies
   // (or re-arms), so detection flapping never reaches the user.
   await sleep(config.debounceMs);
