@@ -21,6 +21,7 @@ Rediscovering these is expensive; they were verified against herdr 0.7.4 source 
 - herdr 0.7.5 tightened `agent.start` (verified against a live 0.7.5 server): the kind must be on its supported-agent list (arbitrary commands like `bash -i` are rejected with `unsupported interactive agent kind`), and a freshly created pane is rejected with `agent_pane_busy` ("not an available shell") until its shell reaches the interactive prompt — a few seconds. The transport retries on that code; see `SSHTransport.startAgentAwaitingShell`.
 - Default remote socket: `~/.config/herdr/herdr.sock`; named sessions live under `~/.config/herdr/sessions/<name>/herdr.sock`. Resolve `$HOME` over exec once per host.
 - If the herdr server is not running, connecting to the socket fails outright; there is no auto-start on the socket path. Fallback: run a herdr CLI command over exec (verify auto-spawn behavior — open question).
+- `herdr remote-client-bridge` bridges stdin/stdout to the **client socket** (the TUI client/server protocol for `herdr --remote`), not the API socket — verified against herdr 0.7.5 source (`src/remote/unix.rs`, `run_remote_client_bridge`). It cannot replace socat for API traffic; no API-socket stdio bridge exists in 0.7.5. Its "ensure server running" side effect is why it works as the wake command.
 
 ## Conventions
 
