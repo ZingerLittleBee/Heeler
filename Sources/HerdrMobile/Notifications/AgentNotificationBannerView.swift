@@ -26,6 +26,8 @@ struct AgentNotificationBannerView: View {
             .background(.regularMaterial, in: .rect(cornerRadius: 14))
         }
         .buttonStyle(.plain)
+        // System-banner width: on an iPad a full-width bar would be shouting.
+        .frame(maxWidth: 520)
         .padding(.horizontal)
         .accessibilityElement(children: .combine)
     }

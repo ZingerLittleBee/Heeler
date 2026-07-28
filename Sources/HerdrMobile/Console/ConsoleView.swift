@@ -25,28 +25,15 @@ struct ConsoleView: View {
     @State private var hostFilter: Host.ID?
 
     var body: some View {
-        NavigationStack(path: $notificationRouter.path) {
+        // A split view instead of a plain stack for the iPad's sake: regular
+        // width shows the Agent list beside the Attach terminal; compact
+        // width collapses into the familiar push navigation. The router's
+        // path stays the single source of truth — the sidebar selection is a
+        // projection of it, so notification deep links keep working.
+        NavigationSplitView {
             content
-                // On the always-present node, not the List branch: the
-                // destination must survive the list emptying while an
-                // Agent detail screen is pushed.
-                .navigationDestination(for: ConsoleAgent.ID.self) { id in
-                    if let agent = console.agents.first(where: { $0.id == id }) {
-                        AgentDetailView(
-                            agent: agent,
-                            console: console,
-                            terminal: terminal,
-                            pushRegistration: pushRegistration,
-                            notificationPreferences: notificationPreferences,
-                            relaySettings: relaySettings,
-                            activity: activity)
-                    } else {
-                        ContentUnavailableView(
-                            "Agent Gone", systemImage: "rectangle.on.rectangle.slash",
-                            description: Text("This Agent's pane is no longer reported."))
-                    }
-                }
                 .navigationTitle("Agents")
+                .navigationSplitViewColumnWidth(min: 320, ideal: 380)
                 .toolbar {
                     // A filter is meaningless with a single Host.
                     if hosts.hosts.count > 1 {
@@ -102,6 +89,8 @@ struct ConsoleView: View {
                         notificationPreferences: notificationPreferences,
                         relaySettings: relaySettings)
                 }
+        } detail: {
+            detail
         }
         // Above the NavigationStack so a banner also shows over a pushed
         // Attach screen; a tap deep-links exactly like a push tap would.
@@ -130,6 +119,49 @@ struct ConsoleView: View {
             if let hostFilter, !hosts.contains(where: { $0.id == hostFilter }) {
                 self.hostFilter = nil
             }
+        }
+    }
+
+    /// The sidebar selection as a projection of the router's path. Setting
+    /// it (a row tap, or the collapsed stack popping) writes the path back,
+    /// so user navigation and deep links keep one source of truth.
+    private var selectedAgent: Binding<ConsoleAgent.ID?> {
+        Binding(
+            get: { notificationRouter.path.last },
+            set: { notificationRouter.path = $0.map { [$0] } ?? [] })
+    }
+
+    /// The detail column. Not keyed off the live Agent list alone: the
+    /// selection must survive the list emptying while an Agent is shown
+    /// (a reconnect empties it briefly), so a vanished Agent shows a
+    /// placeholder instead of clearing the selection.
+    @ViewBuilder
+    private var detail: some View {
+        if let id = notificationRouter.path.last {
+            if let agent = console.agents.first(where: { $0.id == id }) {
+                AgentDetailView(
+                    agent: agent,
+                    console: console,
+                    terminal: terminal,
+                    pushRegistration: pushRegistration,
+                    notificationPreferences: notificationPreferences,
+                    relaySettings: relaySettings,
+                    activity: activity,
+                    onClosed: { notificationRouter.path = [] }
+                )
+                // Selecting another Agent must tear down the previous Attach
+                // and build a fresh one; without the explicit identity the
+                // detail column would reuse the old view's state.
+                .id(id)
+            } else {
+                ContentUnavailableView(
+                    "Agent Gone", systemImage: "rectangle.on.rectangle.slash",
+                    description: Text("This Agent's pane is no longer reported."))
+            }
+        } else {
+            ContentUnavailableView(
+                "No Agent Selected", systemImage: "rectangle.on.rectangle",
+                description: Text("Choose an Agent to open its terminal."))
         }
     }
 
@@ -169,7 +201,7 @@ struct ConsoleView: View {
                     .buttonStyle(.borderedProminent)
             }
         } else {
-            List {
+            List(selection: selectedAgent) {
                 ForEach(visibleHostIssues, id: \.id) { issue in
                     Button { isManagingHosts = true } label: {
                         Label(issue.message, systemImage: issue.systemImage)

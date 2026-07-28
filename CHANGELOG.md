@@ -9,6 +9,11 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- An iPad-fit Console: on regular widths the Agent list becomes a sidebar
+  beside the open terminal (a split view) instead of stretching edge to edge,
+  and the in-app notification banner caps at a system-banner width. iPhone
+  navigation is unchanged.
+
 - Filter the Agent list by Host: with more than one Host configured, a filter
   menu in the Console toolbar narrows the list (and its connection notices) to
   one machine.

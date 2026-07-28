@@ -12,6 +12,11 @@ struct AgentDetailView: View {
     private let notificationPreferences: NotificationPreferencesStore
     private let relaySettings: NotificationRelaySettings
     private let activity: AppActivityCoordinator
+    /// Leaves the screen after a confirmed close. A callback rather than
+    /// `dismiss`: as a split view's detail root this view has nothing to
+    /// dismiss — the owner clears the sidebar selection instead, which also
+    /// pops the collapsed stack on iPhone.
+    private let onClosed: () -> Void
     @State private var attach: AgentAttachStore
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isConfirmingClose = false
@@ -19,7 +24,6 @@ struct AgentDetailView: View {
     @State private var isManagingSnippets = false
     @State private var isRenamingWorkspace = false
     @State private var closeErrorMessage: String?
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
 
     init(
@@ -29,7 +33,8 @@ struct AgentDetailView: View {
         pushRegistration: PushRegistrationStore,
         notificationPreferences: NotificationPreferencesStore,
         relaySettings: NotificationRelaySettings,
-        activity: AppActivityCoordinator
+        activity: AppActivityCoordinator,
+        onClosed: @escaping () -> Void
     ) {
         self.agent = agent
         self.console = console
@@ -38,6 +43,7 @@ struct AgentDetailView: View {
         self.notificationPreferences = notificationPreferences
         self.relaySettings = relaySettings
         self.activity = activity
+        self.onClosed = onClosed
         _attach = State(
             initialValue: AgentAttachStore(
                 target: agent.agent.paneID,
@@ -208,7 +214,7 @@ struct AgentDetailView: View {
 
     private func performClose() async {
         if await attach.confirmClose() {
-            dismiss()
+            onClosed()
         } else {
             closeErrorMessage = attach.closeFailureMessage
         }
