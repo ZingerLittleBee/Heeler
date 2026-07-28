@@ -271,6 +271,51 @@ struct EventsSessionE2ETests {
         }
     }
 
+    @Test func keepaliveSkipsPingsWhileEventsProveTheConnectionAlive() async throws {
+        // Real traffic already does the keepalive ping's two jobs (liveness
+        // proof, NAT-mapping refresh), so a stream actively delivering
+        // events must not also pay a ping per interval; once the stream
+        // goes quiet, the pings resume.
+        try await withSession(
+            keepalive: KeepalivePolicy(interval: .milliseconds(300))
+        ) { request in
+            switch request.method {
+            case "ping":
+                return [Self.pingResult(request.id)]
+            case "events.subscribe":
+                var steps: [FakeHerdrServer.Response.Step] = [.write(Self.ack(request.id))]
+                for n in 1...10 {
+                    steps.append(.pause(.milliseconds(50)))
+                    steps.append(
+                        .write(#"{"event":"pane_created","data":{"pane_id":"w1:p\#(n)"}}"#))
+                }
+                return .streamThenHold(steps)
+            default:
+                return nil
+            }
+        } body: { session, server, _ in
+            await session.resume()
+            var iterator = session.updates.makeAsyncIterator()
+            #expect(await iterator.next() == .status(.connected))
+            for _ in 1...10 {
+                guard case .event = await iterator.next() else {
+                    Issue.record("expected an event")
+                    return
+                }
+            }
+            // ~500ms of continuous events straddled at least one keepalive
+            // wakeup; fresh activity suppressed its ping, so the only ping
+            // on record is the connect path's.
+            #expect(server.receivedRequests.filter { $0.method == "ping" }.count == 1)
+            // The stream is quiet now: the next wakeup finds the connection
+            // idle and pings again.
+            #expect(
+                await server.wait { server in
+                    server.receivedRequests.filter { $0.method == "ping" }.count >= 2
+                })
+        }
+    }
+
     @Test func resumeRacingIntoSuspendTeardownWaitsForTeardownToFinish() async throws {
         // Quick background→foreground bounce: resume() lands while
         // suspend()'s teardown is still mid-flight. The session must

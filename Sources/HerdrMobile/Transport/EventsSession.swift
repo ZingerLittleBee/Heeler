@@ -35,7 +35,11 @@ struct ReconnectPolicy: Sendable, Equatable {
 /// per-request deadline, and exercises the whole path (SSH + socat + herdr),
 /// so a dead connection is detected within interval + request timeout.
 struct KeepalivePolicy: Sendable, Equatable {
-    /// Idle time between pings while the events channel is live.
+    /// Idle time between pings while the events channel is live. Pings are
+    /// skipped while real traffic within the interval — a successful RPC or
+    /// an arriving event — already proves the connection alive; both of the
+    /// ping's jobs (liveness detection, NAT-mapping refresh) are done by
+    /// that traffic.
     var interval: Duration
 
     static let `default` = KeepalivePolicy(interval: .seconds(30))
@@ -135,6 +139,11 @@ actor EventsSession {
     /// The keepalive failure that forced the current teardown, surfaced in
     /// the following `.reconnecting` status.
     private var pendingKeepaliveFailure: TransportError?
+    /// The most recent proof the connection is alive: the connect-path ping,
+    /// a successful RPC through `withTransport`, an arriving event, or an
+    /// answered keepalive. The keepalive loop skips its ping while this is
+    /// fresher than its interval (see `KeepalivePolicy.interval`).
+    private var lastConnectionActivity: ContinuousClock.Instant?
     /// Set while `updateSubscriptions` tears the live channel down on
     /// purpose: the run loop then re-subscribes immediately — same
     /// connection, no backoff, no `.reconnecting` — instead of treating the
@@ -228,7 +237,9 @@ actor EventsSession {
         guard let transport = currentTransport else {
             throw TransportError.sshUnreachable(detail: "The Host is not connected.")
         }
-        return try await operation(transport)
+        let value = try await operation(transport)
+        noteConnectionActivity()
+        return value
     }
 
     /// Runs one terminal lifetime with exclusive access to the Host's
@@ -351,6 +362,7 @@ actor EventsSession {
             var streamFailure: TransportError?
             do {
                 for try await event in stream.events {
+                    noteConnectionActivity()
                     yieldUpdate(.event(event))
                 }
                 // Graceful finish: the channel was ended explicitly, by
@@ -401,6 +413,7 @@ actor EventsSession {
             throw error
         }
         transportSuspect = false
+        noteConnectionActivity()
         currentTransport = transport
         if hasEstablishedTransport {
             transportGeneration &+= 1
@@ -440,6 +453,7 @@ actor EventsSession {
         transportSuspect = false
         pendingKeepaliveFailure = nil
         resubscribeRequested = false
+        lastConnectionActivity = nil
     }
 
     // MARK: Keepalive
@@ -450,8 +464,10 @@ actor EventsSession {
             while !Task.isCancelled {
                 try? await Task.sleep(for: keepalive.interval)
                 if Task.isCancelled { break }
+                guard await self.connectionIsIdle(within: keepalive.interval) else { continue }
                 do {
                     _ = try await transport.ping()
+                    await self.noteConnectionActivity()
                 } catch is CancellationError {
                     break
                 } catch TransportError.cancelled {
@@ -467,6 +483,17 @@ actor EventsSession {
     private func stopKeepalive() {
         keepaliveTask?.cancel()
         keepaliveTask = nil
+    }
+
+    private func noteConnectionActivity() {
+        lastConnectionActivity = .now
+    }
+
+    /// Whether no liveness proof arrived within `interval`, meaning the next
+    /// keepalive ping is actually needed.
+    private func connectionIsIdle(within interval: Duration) -> Bool {
+        guard let last = lastConnectionActivity else { return true }
+        return ContinuousClock.now - last >= interval
     }
 
     /// A keepalive ping failed: the connection cannot be trusted. Tears the
