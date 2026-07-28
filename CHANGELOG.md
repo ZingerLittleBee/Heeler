@@ -3,7 +3,7 @@
 All notable changes to herdr-mobile are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Entries reference the pull request that landed them.
+Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
