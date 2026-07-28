@@ -20,6 +20,14 @@ Entries reference the pull request that landed them.
   under the navigation bar and into the home-indicator area, and bar/status-bar
   text follows the theme's luminance instead of the system appearance. (#95)
 
+### Changed
+
+- The Settings sheet is now a shallow menu with two pages, Notifications and
+  Terminal Appearance, instead of one long mixed form. Per-Host notification
+  rows no longer push the appearance controls out of reach, and the
+  self-builder Custom Push Relay field moved to the bottom of the
+  Notifications page.
+
 ### Fixed
 
 - Tapping the terminal body no longer toggles the software keyboard. Ghostty's
