@@ -10,7 +10,7 @@ struct SettingsView: View {
     let relaySettings: NotificationRelaySettings
     @Environment(\.dismiss) private var dismiss
 
-    private static let websiteURL = URL(string: "https://herdr.dev")
+    static let repositoryURL = URL(string: "https://github.com/ZingerLittleBee/herdr-mobile")
 
     var body: some View {
         NavigationStack {
@@ -33,9 +33,9 @@ struct SettingsView: View {
 
                 Section {
                     LabeledContent("Version", value: Self.versionString)
-                    if let website = Self.websiteURL {
-                        Link(destination: website) {
-                            Label("herdr.dev", systemImage: "globe")
+                    if let repositoryURL = Self.repositoryURL {
+                        Link(destination: repositoryURL) {
+                            Label("GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
                         }
                     }
                     if let privacyURL = NotificationPrivacyCopy.privacyPolicyURL {

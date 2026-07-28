@@ -24,7 +24,7 @@ Entries reference the issue that motivated them.
   under the navigation bar and into the home-indicator area, and bar/status-bar
   text follows the theme's luminance instead of the system appearance. (#95)
 - An About section on the Settings root with the app version and build number
-  plus links to herdr.dev and the privacy policy.
+  plus links to the GitHub repository and the privacy policy.
 - Rename workspaces from the Agent detail screen's menu. (#98)
 - Start an Agent in a fresh git worktree: a "Start in a new worktree" toggle
   on the New Agent form gives the task a clean checkout of the selected
