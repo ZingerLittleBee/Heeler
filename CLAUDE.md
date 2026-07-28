@@ -7,6 +7,7 @@ Native iOS companion app for herdr (https://herdr.dev): an agent console over SS
 - **Stack**: SwiftUI, iOS 26+, iPhone + iPad. SSH via Citadel, terminal rendering via the pinned libghostty-spm `GhosttyTerminal` product. See ADR 0001 (native stack), ADR 0003 (iOS 26 target raise), and ADR 0004 (terminal engine).
 - **Transport**: herdr's JSON API (NDJSON over a remote Unix socket) reached through SSH exec channels running `socat - UNIX-CONNECT:<sock>`. The remote socat path is discovered once per connection (Host's configured path, then `command -v`) and always executed absolute. Interactive terminals use a PTY exec channel running `herdr agent attach`. See ADR 0002.
 - The UI layer must depend on a transport abstraction (protocol), never on Citadel types directly.
+- Sibling deliverables live in this repo: `plugin/` is the herdr plugin that renders Pairing Codes and posts Agent Notifications (Node, zero framework, `npm test`); `relay/` is the stateless Push Relay it posts to (dependency-free Node, `npm test`). Wire types in `Sources/HerdrMobile/Transport/Generated/` are produced by `scripts/generate-wire-types.py` from the committed schema snapshot `scripts/herdr-schema.json` — regenerate rather than hand-edit; CI fails on drift. The vectors in `plugin/test-vectors/` are consumed by both the Node and Swift suites so the two implementations cannot drift; change them in lockstep.
 
 ## Load-bearing herdr facts
 
@@ -32,6 +33,8 @@ Rediscovering these is expensive; they were verified against herdr 0.7.4 source 
 ## Conventions
 
 - Build, test, device installs, and TestFlight uploads all go through `make` (see `make help`). A new TestFlight build is `make bump && make testflight` — App Store Connect rejects reused build numbers.
+- A single suite runs with `xcodebuild test -project HerdrMobile.xcodeproj -scheme HerdrMobile -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:HerdrMobileTests/<SuiteTypeName>`; `make test` runs everything.
+- CI (`.github/workflows/ci.yml`) builds the committed `HerdrMobile.xcodeproj` and never runs xcodegen, so commit the regenerated project alongside any `project.yml` change (every `make` build target regenerates it). The sshd-dependent e2e suites gate on `LocalSSHTestEnvironment.isAvailable` and skip cleanly on machines without a local sshd, socat, and seeded key.
 
 - Swift 6 strict concurrency. No force unwraps or `try!` outside tests.
 - Secrets never leave the Keychain; private keys are generated on device (CryptoKit Ed25519) where possible. Host key policy is TOFU with fingerprint confirmation.
