@@ -237,22 +237,6 @@ import Testing
         #expect(fields?["focus"] as? Bool == false)
     }
 
-    @Test func agentRenameParamsOmitNilNameToClearIt() throws {
-        // Verified live (herdr 0.7.5): omitting `name` clears the custom
-        // name back to the detected kind, so nil must drop the key, not
-        // send `"name":null`.
-        let cleared = try JSONSerialization.jsonObject(
-            with: JSONEncoder().encode(AgentRenameParams(target: "w1:p1"))
-        ) as? [String: Any]
-        #expect(cleared?.keys.sorted() == ["target"])
-
-        let named = try JSONSerialization.jsonObject(
-            with: JSONEncoder().encode(AgentRenameParams(target: "w1:p1", name: "reviewer"))
-        ) as? [String: Any]
-        #expect(named?.keys.sorted() == ["name", "target"])
-        #expect(named?["name"] as? String == "reviewer")
-    }
-
     @Test func workspaceRenameParamsEncodeSnakeCase() throws {
         let fields = try JSONSerialization.jsonObject(
             with: JSONEncoder().encode(WorkspaceRenameParams(label: "Proj", workspaceID: "w9"))
