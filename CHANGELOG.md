@@ -32,6 +32,11 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- The theme pickers under Terminal Appearance now show a colour swatch for
+  every theme (like the keyboard's Appearance pane) and a live preview of the
+  current pick at the top of each page. The preview moved there from the
+  Terminal Appearance root, and each picker renders its own appearance's half
+  of paired themes regardless of the current system appearance.
 - The Settings sheet is now a shallow menu with two pages, Notifications and
   Terminal Appearance, instead of one long mixed form. Per-Host notification
   rows no longer push the appearance controls out of reach, and the

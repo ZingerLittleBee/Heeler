@@ -103,9 +103,9 @@ struct TerminalAppearancePane: View {
     }
 }
 
-/// A miniature of a themed terminal drawn from the theme's own colours: a few
-/// bars standing in for lines of output. Cheap enough to put a dozen of them
-/// on screen, unlike a real surface.
+/// A themed swatch card with the option's title underneath, for the keyboard
+/// pane's grid. Draws the half of the theme matching the current appearance:
+/// the pane edits the slot that is in force.
 struct TerminalThemeSwatch: View {
     let option: TerminalThemeOption
     let isSelected: Bool
@@ -113,37 +113,52 @@ struct TerminalThemeSwatch: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            card
+            TerminalThemeSwatchCard(
+                option: option, scheme: colorScheme, isSelected: isSelected
+            )
+            .frame(height: 62)
             Text(option.title)
                 .font(.caption2)
                 .lineLimit(1)
                 .foregroundStyle(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
         }
     }
+}
+
+/// A miniature of a themed terminal drawn from the theme's own colours: a few
+/// bars standing in for lines of output. Cheap enough to put a dozen of them
+/// on screen, unlike a real surface. The caller picks which appearance's half
+/// of the theme to draw and the frame; `compact` shrinks the bars for list
+/// rows.
+struct TerminalThemeSwatchCard: View {
+    let option: TerminalThemeOption
+    let scheme: ColorScheme
+    var isSelected = false
+    var compact = false
 
     private var palette: TerminalThemeSwatchPalette {
-        // A paired theme is drawn as the half that is actually in force. The
-        // swatch answers "what will my terminal look like if I pick this",
-        // and right now the appearance is half of that answer.
-        option.swatchPalette(for: colorScheme)
+        option.swatchPalette(for: scheme)
     }
 
-    private var card: some View {
-        VStack(alignment: .leading, spacing: 5) {
+    private var cornerRadius: CGFloat { compact ? 6 : 8 }
+    private var barHeight: CGFloat { compact ? 3.5 : 5 }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: compact ? 3.5 : 5) {
             bar(width: 0.86, color: palette.accent)
             bar(width: 0.62, color: palette.foreground)
-            HStack(spacing: 4) {
+            HStack(spacing: compact ? 3 : 4) {
                 bar(width: 0.2, color: palette.success)
                 bar(width: 0.28, color: palette.foreground.opacity(0.7))
                 bar(width: 0.16, color: palette.accent)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .frame(height: 62)
-        .background(palette.background, in: .rect(cornerRadius: 8))
+        .padding(compact ? 7 : 10)
+        .frame(maxHeight: .infinity)
+        .background(palette.background, in: .rect(cornerRadius: cornerRadius))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: cornerRadius)
                 .strokeBorder(
                     isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.separator),
                     lineWidth: isSelected ? 2 : 0.5)
@@ -154,9 +169,9 @@ struct TerminalThemeSwatch: View {
         GeometryReader { proxy in
             Capsule()
                 .fill(color)
-                .frame(width: proxy.size.width * width, height: 5)
+                .frame(width: proxy.size.width * width, height: barHeight)
         }
-        .frame(height: 5)
+        .frame(height: barHeight)
     }
 }
 

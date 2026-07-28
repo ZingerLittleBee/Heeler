@@ -1,38 +1,13 @@
 import SwiftUI
-import UIKit
 
-/// Terminal appearance settings: live preview, text size, font, and the
-/// per-appearance theme slots. Pushed from the settings root, which owns the
-/// NavigationStack.
+/// Terminal appearance settings: text size, font, and the per-appearance
+/// theme slots, each opening a picker with its own live preview. Pushed from
+/// the settings root, which owns the NavigationStack.
 struct TerminalAppearanceSettingsView: View {
     let terminal: TerminalSettings
 
     var body: some View {
         Form {
-            Section {
-                TerminalThemePreview(
-                    theme: terminal.themes.theme,
-                    fontSize: terminal.zoom.fontSize
-                )
-                    .frame(height: 180)
-                    .clipShape(.rect(cornerRadius: 16))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(
-                                Color(uiColor: .separator).opacity(0.45),
-                                lineWidth: 0.5)
-                    }
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                    .accessibilityLabel("Terminal theme preview")
-            } header: {
-                Text("Preview")
-            } footer: {
-                Text(
-                    "Changes apply instantly to current and future Attach terminals without reconnecting."
-                )
-            }
-
             textSizeSection
 
             Section {
@@ -98,27 +73,22 @@ struct TerminalAppearanceSettingsView: View {
 
     private func themePickerLink(for scheme: ColorScheme) -> some View {
         NavigationLink {
-            List {
-                ForEach(TerminalThemeOption.allCases) { option in
-                    themeButton(option, for: scheme)
-                }
-            }
-            .navigationTitle(scheme == .dark ? "Dark Mode Theme" : "Light Mode Theme")
-            .navigationBarTitleDisplayMode(.inline)
+            TerminalThemePickerView(terminal: terminal, scheme: scheme)
         } label: {
-            LabeledContent(
-                scheme == .dark ? "Dark Mode" : "Light Mode",
-                value: terminal.themes.selection(for: scheme).title)
+            HStack(spacing: 12) {
+                TerminalThemeSwatchCard(
+                    option: terminal.themes.selection(for: scheme),
+                    scheme: scheme, compact: true
+                )
+                .frame(width: 54, height: 38)
+                .accessibilityHidden(true)
+                Text(scheme == .dark ? "Dark Mode" : "Light Mode")
+                Spacer(minLength: 12)
+                Text(terminal.themes.selection(for: scheme).title)
+                    .foregroundStyle(.secondary)
+            }
         }
-    }
-
-    private func themeButton(_ option: TerminalThemeOption, for scheme: ColorScheme) -> some View {
-        selectableRow(
-            title: option.title, detail: option.detail,
-            isSelected: terminal.themes.selection(for: scheme) == option
-        ) {
-            terminal.themes.select(option, for: scheme)
-        }
+        .accessibilityValue(terminal.themes.selection(for: scheme).title)
     }
 
     private func selectableRow(
