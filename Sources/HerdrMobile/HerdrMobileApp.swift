@@ -15,9 +15,21 @@ struct HerdrMobileApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView(
-                pushRegistration: pushDelegate.registration,
-                notificationRouter: pushDelegate.notificationRouter)
+            #if DEBUG && targetEnvironment(simulator)
+                if DemoScreenshotMode.isEnabled {
+                    DemoScreenshotRootView()
+                } else {
+                    productionContent
+                }
+            #else
+                productionContent
+            #endif
         }
+    }
+
+    private var productionContent: some View {
+        ContentView(
+            pushRegistration: pushDelegate.registration,
+            notificationRouter: pushDelegate.notificationRouter)
     }
 }

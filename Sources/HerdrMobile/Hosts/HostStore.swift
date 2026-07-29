@@ -26,7 +26,7 @@ final class HostStore {
     private(set) var hosts: [Host]
     private(set) var catalogLoadError: HostStoreError?
     // UserDefaults is documented thread-safe; Sendable modulo that promise.
-    @ObservationIgnored private nonisolated(unsafe) let defaults: UserDefaults
+    @ObservationIgnored private nonisolated(unsafe) let defaults: UserDefaults?
     @ObservationIgnored private let secrets: any SecretStore
 
     init(
@@ -58,6 +58,15 @@ final class HostStore {
             hosts = []
             catalogLoadError = .catalogUnreadable
         }
+    }
+
+    /// A process-local catalog for previews and development compositions.
+    /// Mutations remain in memory, and secrets use process-local storage.
+    init(volatileHosts: [Host]) {
+        defaults = nil
+        secrets = VolatileSecretStore()
+        hosts = volatileHosts
+        catalogLoadError = nil
     }
 
     /// Adds a Host, storing `password` in the secret store when given.
@@ -125,7 +134,7 @@ final class HostStore {
     }
 
     private func persist() throws {
-        defaults.set(try Self.encodedCatalog(hosts), forKey: Self.defaultsKey)
+        defaults?.set(try Self.encodedCatalog(hosts), forKey: Self.defaultsKey)
     }
 
     private static func encodedCatalog(_ hosts: [Host]) throws -> Data {

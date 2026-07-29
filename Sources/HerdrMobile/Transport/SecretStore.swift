@@ -13,6 +13,29 @@ protocol SecretStore: Sendable {
     func removeSecret(account: String) throws
 }
 
+/// Process-local secret storage for previews and deterministic development
+/// compositions. Nothing is written to the Keychain or survives the process.
+final class VolatileSecretStore: SecretStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var secrets: [String: Data] = [:]
+
+    func read(account: String) throws -> Data? {
+        lock.withLock { secrets[account] }
+    }
+
+    func readAll() throws -> [String: Data] {
+        lock.withLock { secrets }
+    }
+
+    func write(_ secret: Data, account: String) throws {
+        lock.withLock { secrets[account] = secret }
+    }
+
+    func removeSecret(account: String) throws {
+        lock.withLock { secrets[account] = nil }
+    }
+}
+
 enum KeychainError: Error, Equatable {
     case unexpectedStatus(OSStatus)
 }
