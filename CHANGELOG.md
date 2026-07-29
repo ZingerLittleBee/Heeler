@@ -9,6 +9,10 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Attach Links collect plain HTTP and HTTPS targets printed during an Attach
+  into a memory-only, most-recent-first list with native opening and copying.
+  The list survives terminal recovery and is discarded when Attach ends. (#101)
+
 - An iPad-fit Console: on regular widths the Agent list becomes a sidebar
   beside the open terminal (a split view) instead of stretching edge to edge,
   and the in-app notification banner caps at a system-banner width. iPhone

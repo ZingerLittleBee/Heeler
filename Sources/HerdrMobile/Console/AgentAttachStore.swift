@@ -9,6 +9,7 @@ import Observation
 final class AgentAttachStore {
     private let target: String
     private let runTerminal: TerminalSessionRunner
+    private let linkIndex: AttachLinkIndex
 
     private(set) var terminal: AttachTerminalStore
     let input: TerminalInputController
@@ -33,8 +34,10 @@ final class AgentAttachStore {
         self.runTerminal = runTerminal
         self.transportGeneration = transportGeneration
         self.input = input
-        terminal = AttachTerminalStore(
-            target: target, input: input, runTerminal: runTerminal)
+        let linkIndex = AttachLinkIndex()
+        self.linkIndex = linkIndex
+        terminal = Self.makeTerminal(
+            target: target, input: input, runTerminal: runTerminal, linkIndex: linkIndex)
         image = ImageAttachStore(stageImage: stageImage, input: input)
         close = ClosePaneStore(paneTitle: paneTitle, close: closePane)
     }
@@ -49,6 +52,10 @@ final class AgentAttachStore {
 
     var terminalFeed: TerminalByteFeed {
         terminal.feed
+    }
+
+    var attachLinks: [AttachLink] {
+        linkIndex.links
     }
 
     var imageState: ImageAttachState {
@@ -149,10 +156,11 @@ final class AgentAttachStore {
             let previous = self.terminal
             await previous.stop()
             guard !self.hasLeft, self.transportGeneration == generation else { return }
-            self.terminal = AttachTerminalStore(
+            self.terminal = Self.makeTerminal(
                 target: self.target,
                 input: self.input,
-                runTerminal: self.runTerminal)
+                runTerminal: self.runTerminal,
+                linkIndex: self.linkIndex)
         }
     }
 
@@ -173,10 +181,12 @@ final class AgentAttachStore {
             return
         }
         hasLeft = true
+        linkIndex.clear()
         let transition = enqueueLifecycleTransition { [weak self] in
             guard let self else { return }
             await self.image.leaveAttach()
             await self.terminal.stop()
+            self.linkIndex.clear()
         }
         await transition.value
     }
@@ -199,5 +209,19 @@ final class AgentAttachStore {
             self?.lifecycleTask = nil
         }
         return task
+    }
+
+    private static func makeTerminal(
+        target: String,
+        input: TerminalInputController,
+        runTerminal: @escaping TerminalSessionRunner,
+        linkIndex: AttachLinkIndex
+    ) -> AttachTerminalStore {
+        AttachTerminalStore(
+            target: target,
+            input: input,
+            observeOutput: { data in linkIndex.receive(data) },
+            finishOutput: { linkIndex.finishOutput() },
+            runTerminal: runTerminal)
     }
 }

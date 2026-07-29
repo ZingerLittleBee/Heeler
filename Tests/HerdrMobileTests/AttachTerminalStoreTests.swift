@@ -338,6 +338,226 @@ struct AttachTerminalStoreTests {
 @MainActor
 @Suite("Agent Attach store")
 struct AgentAttachStoreTests {
+    @Test func plainWebURLsBecomeAttachLinksInMostRecentOrder() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+
+        await transport.emitAttachOutput(
+            Data(
+                """
+                Preview: https://example.com/build/42?mode=full#result
+                Local: http://localhost:3000/health
+
+                """.utf8))
+        try await waitUntil("both links should become observable") {
+            store.attachLinks.map(\.target) == [
+                "http://localhost:3000/health",
+                "https://example.com/build/42?mode=full#result",
+            ]
+        }
+
+        await store.leave()
+    }
+
+    @Test func exactRepeatsMoveToFrontAndTheLeastRecentLinkIsEvicted() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+
+        for index in 0..<21 {
+            await transport.emitAttachOutput(
+                Data("https://example.com/item?index=\(index)#detail\n".utf8))
+        }
+        await transport.emitAttachOutput(
+            Data("https://example.com/item?index=1#detail\n".utf8))
+
+        try await waitUntil("the bounded collection should settle") {
+            store.attachLinks.count == 20
+                && store.attachLinks.first?.target
+                    == "https://example.com/item?index=1#detail"
+        }
+        #expect(
+            !store.attachLinks.contains {
+                $0.target == "https://example.com/item?index=0#detail"
+            })
+        #expect(
+            store.attachLinks.contains {
+                $0.target == "https://example.com/item?index=20#detail"
+            })
+
+        await store.leave()
+    }
+
+    @Test func targetAtTheByteLimitIsAcceptedAndAnOversizedTargetIsIgnoredWhole()
+        async throws
+    {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+        let prefix = "https://example.com/"
+        let maximumTarget =
+            prefix
+            + String(
+                repeating: "a",
+                count: 32 * 1024 - prefix.utf8.count)
+        let oversizedTarget = maximumTarget + "b"
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+
+        await transport.emitAttachOutput(Data((maximumTarget + "\n").utf8))
+        await transport.emitAttachOutput(Data((oversizedTarget + "\n").utf8))
+        await transport.emitAttachOutput(Data("https://example.com/sentinel\n".utf8))
+
+        try await waitUntil("the output after the oversized target should be observed") {
+            store.attachLinks.first?.target == "https://example.com/sentinel"
+        }
+        #expect(
+            store.attachLinks.map(\.target) == [
+                "https://example.com/sentinel",
+                maximumTarget,
+            ])
+
+        await store.leave()
+    }
+
+    @Test func balancedURLPunctuationIsRetainedWhileSurroundingPunctuationIsExcluded()
+        async throws
+    {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+
+        await transport.emitAttachOutput(
+            Data(
+                """
+                Docs: (https://example.com/wiki/Function_(mathematics)).
+
+                """.utf8))
+        try await waitUntil("the literal target should be observed") {
+            !store.attachLinks.isEmpty
+        }
+        #expect(
+            store.attachLinks.map(\.target) == [
+                "https://example.com/wiki/Function_(mathematics)"
+            ])
+
+        await store.leave()
+    }
+
+    @Test func arbitraryOutputChunksJoinButRealLineBreaksDoNot() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+
+        await transport.emitAttachOutput(Data("Preview https://exa".utf8))
+        await transport.emitAttachOutput(Data("mple.com/a/visually-".utf8))
+        await transport.emitAttachOutput(Data("wrapped?q=1#result ".utf8))
+        await transport.emitAttachOutput(Data("https://\nexample.com\n".utf8))
+
+        try await waitUntil("the complete chunked target should be observed") {
+            store.attachLinks.map(\.target) == [
+                "https://example.com/a/visually-wrapped?q=1#result"
+            ]
+        }
+
+        await store.leave()
+    }
+
+    @Test func webPolicyRejectsUnsafeTargetsAndKeepsPrivateTargetsLiteral() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+
+        await transport.emitAttachOutput(
+            Data(
+                """
+                file:///tmp/result https:///missing-host
+                echo http://127.0.0.1:8443/path?q=x#fragment
+                http://192.168.1.9:3000/private
+
+                """.utf8))
+        try await waitUntil("both literal private targets should be observed") {
+            store.attachLinks.count == 2
+        }
+        #expect(
+            store.attachLinks.map(\.target) == [
+                "http://192.168.1.9:3000/private",
+                "http://127.0.0.1:8443/path?q=x#fragment",
+            ])
+
+        await store.leave()
+    }
+
+    @Test func linksSurviveTerminalRecoveryButLeavingAttachClearsThem() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+        await transport.emitAttachOutput(Data("https://before.example/retry\n".utf8))
+        try await waitUntil("the first link should be observed") {
+            store.attachLinks.count == 1
+        }
+
+        await transport.endAttachFromRemote()
+        try await waitUntil("the terminal end should surface") {
+            if case .ended = store.terminalStatus { return true }
+            return false
+        }
+        store.retryTerminal()
+        try await waitUntil("the terminal should retry") {
+            store.terminalStatus == .live
+        }
+        #expect(store.attachLinks.map(\.target) == ["https://before.example/retry"])
+
+        await transport.emitAttachOutput(Data("https://after.example/retry\n".utf8))
+        try await waitUntil("the retry output should be observed") {
+            store.attachLinks.count == 2
+        }
+        let terminalID = store.terminalID
+        store.transportGenerationDidChange(1)
+        try await waitUntil("the Transport replacement should land") {
+            store.terminalID != terminalID
+        }
+        #expect(
+            store.attachLinks.map(\.target) == [
+                "https://after.example/retry",
+                "https://before.example/retry",
+            ])
+
+        await store.leave()
+        #expect(store.attachLinks.isEmpty)
+
+        let laterAttach = makeStore(transport: transport, generation: 1)
+        #expect(laterAttach.attachLinks.isEmpty)
+        await laterAttach.leave()
+    }
+
     @Test func transportReplacementStopsTheOldTerminalBeforeReattaching() async throws {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)

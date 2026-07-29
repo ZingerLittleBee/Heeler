@@ -53,6 +53,8 @@ final class AttachTerminalStore {
     private let target: String
     private let takeover: Bool
     private let input: TerminalInputController
+    private let observeOutput: @MainActor @Sendable (Data) -> Void
+    private let finishOutput: @MainActor @Sendable () -> Void
     /// Opens and owns exclusive Host terminal access for one complete run,
     /// including explicit channel teardown.
     private let runTerminal: TerminalSessionRunner
@@ -67,11 +69,15 @@ final class AttachTerminalStore {
     init(
         target: String, takeover: Bool = false,
         input: TerminalInputController = TerminalInputController(),
+        observeOutput: @escaping @MainActor @Sendable (Data) -> Void = { _ in },
+        finishOutput: @escaping @MainActor @Sendable () -> Void = {},
         runTerminal: @escaping TerminalSessionRunner
     ) {
         self.target = target
         self.takeover = takeover
         self.input = input
+        self.observeOutput = observeOutput
+        self.finishOutput = finishOutput
         self.runTerminal = runTerminal
     }
 
@@ -154,6 +160,7 @@ final class AttachTerminalStore {
         initialCols: Int,
         initialRows: Int
     ) async throws {
+        defer { finishOutput() }
         if stopRequested {
             await session.end()
             return
@@ -174,6 +181,7 @@ final class AttachTerminalStore {
 
         do {
             for try await bytes in session.output {
+                observeOutput(bytes)
                 feed.write(bytes)
             }
         } catch {

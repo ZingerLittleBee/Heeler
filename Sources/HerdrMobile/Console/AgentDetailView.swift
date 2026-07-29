@@ -1,5 +1,6 @@
 import PhotosUI
 import SwiftUI
+import UIKit
 
 /// The Agent detail screen: one interactive Attach terminal. Ghostty owns
 /// rendering, scrollback, and IME; the adapter routes input-row taps and touch
@@ -24,8 +25,10 @@ struct AgentDetailView: View {
     @State private var isManagingSnippets = false
     @State private var isRenamingAgent = false
     @State private var isRenamingWorkspace = false
+    @State private var isShowingAttachLinks = false
     @State private var closeErrorMessage: String?
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.openURL) private var openURL
 
     init(
         agent: ConsoleAgent,
@@ -101,6 +104,28 @@ struct AgentDetailView: View {
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if !attach.attachLinks.isEmpty {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        isShowingAttachLinks = true
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "link")
+                            Text("\(attach.attachLinks.count)")
+                                .monospacedDigit()
+                        }
+                    }
+                    .accessibilityLabel("Attach Links")
+                    .accessibilityValue("\(attach.attachLinks.count)")
+                    .popover(isPresented: $isShowingAttachLinks) {
+                        AttachLinksView(
+                            links: attach.attachLinks,
+                            open: { link in openURL(link.url) },
+                            copy: { link in UIPasteboard.general.string = link.target })
+                        .presentationCompactAdaptation(.sheet)
+                    }
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
                 PhotosPicker(selection: $selectedPhoto, matching: .images) {
                     Label("Attach Image", systemImage: "photo.badge.plus")
@@ -349,6 +374,44 @@ struct AgentDetailView: View {
 
     private static func displayTitle(for agent: ConsoleAgent) -> String {
         agent.agent.title.isEmpty ? agent.agent.displayName : agent.agent.title
+    }
+}
+
+private struct AttachLinksView: View {
+    let links: [AttachLink]
+    let open: (AttachLink) -> Void
+    let copy: (AttachLink) -> Void
+
+    var body: some View {
+        NavigationStack {
+            List(links) { link in
+                Button {
+                    open(link)
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(link.host)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Text(link.target)
+                            .font(.footnote.monospaced())
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    Button("Copy Link", systemImage: "doc.on.doc") {
+                        copy(link)
+                    }
+                }
+            }
+            .navigationTitle("Attach Links")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .frame(idealWidth: 460, idealHeight: 520)
     }
 }
 

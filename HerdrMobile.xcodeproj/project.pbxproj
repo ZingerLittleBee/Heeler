@@ -121,6 +121,7 @@
 		989FE5FA6D3BD73A6183B079 /* GitBranchNameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66DB4D6D48C0D21C9A7B02B8 /* GitBranchNameTests.swift */; };
 		98E83E883BCC8534910D7493 /* TerminalInputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80E727A9081269681AD7581B /* TerminalInputController.swift */; };
 		9C1C00F36A178BF1BEE6C0A5 /* StartAgentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08E14A4298DB015E6477F789 /* StartAgentStore.swift */; };
+		9E33EFFDF58051602436068F /* AttachLinkIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A077320E247C9C81F71966F /* AttachLinkIndex.swift */; };
 		9F3F748E722FD8059A59ECBD /* HostStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6434D31A79422C0BAE80993F /* HostStoreTests.swift */; };
 		9FD3129232CA2D5BBEC3A7B9 /* TerminalFontSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = F683C9B399511ED2FD476FA9 /* TerminalFontSettings.swift */; };
 		A0C9B80A4139A6FA73261805 /* HerdrWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4FC9B455C6266F12DA82A07 /* HerdrWire.swift */; };
@@ -280,6 +281,7 @@
 		31A3BC92C11A1D5AF39C5340 /* HerdrNotificationService.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HerdrNotificationService.entitlements; sourceTree = "<group>"; };
 		323782148B559800B45E2930 /* NotificationPrivacyCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPrivacyCopy.swift; sourceTree = "<group>"; };
 		389EE12865BBCAD1E1A7494A /* TerminalThemePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalThemePreview.swift; sourceTree = "<group>"; };
+		3A077320E247C9C81F71966F /* AttachLinkIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachLinkIndex.swift; sourceTree = "<group>"; };
 		3C07948FE6D5E399672A9395 /* AgentAttachStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentAttachStore.swift; sourceTree = "<group>"; };
 		3CCDC5144D5AA6403150431A /* ImageAttachStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageAttachStoreTests.swift; sourceTree = "<group>"; };
 		3CE658EA3C6364BCC0D8CE14 /* SharedAsyncOperation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedAsyncOperation.swift; sourceTree = "<group>"; };
@@ -732,6 +734,7 @@
 				0B3FA15CCDC83C72DDA81BEB /* AgentCardView.swift */,
 				5ADF336771A3F757F2AD441D /* AgentDetailView.swift */,
 				066E173006FDDF8FE2E93308 /* AgentName.swift */,
+				3A077320E247C9C81F71966F /* AttachLinkIndex.swift */,
 				97970F4D535CC80592333995 /* AttachTerminalStore.swift */,
 				F13921A61B4E4F17CDE47C96 /* ClosePaneStore.swift */,
 				498ECBCD631F9734C28861EA /* ConsoleAgent.swift */,
@@ -1013,6 +1016,7 @@
 				7C3999C38A0126986F9CCC58 /* AgentNotificationRouter.swift in Sources */,
 				07594B18999B4ACCD9C590F9 /* AgentNotificationRouting.swift in Sources */,
 				862121A4D41D3E1EA1E56D84 /* AppActivityCoordinator.swift in Sources */,
+				9E33EFFDF58051602436068F /* AttachLinkIndex.swift in Sources */,
 				225ECBDC69A7785559BC4D20 /* AttachTerminalStore.swift in Sources */,
 				664FBC89396DBDD1083749E0 /* Base64URL.swift in Sources */,
 				CC20BAD2AC1A725889F82A20 /* ClosePaneStore.swift in Sources */,
