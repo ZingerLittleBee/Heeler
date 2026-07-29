@@ -6,19 +6,24 @@ import SwiftUI
 struct HostOnboardingView: View {
     /// The Host catalog, for the Edit sheet.
     let catalog: HostStore
+    let connectionStatus: EventsSessionStatus?
+    let isReconnecting: Bool
     let retryConnection: (@MainActor @Sendable () async -> Void)?
     @State private var store: HostOnboardingStore
     @State private var isEditing = false
-    @State private var isRetryingConnection = false
     @State private var isConfirmingHostKeyReplacement = false
     @State private var sessionSelectionError: String?
 
     init(
         host: Host,
         catalog: HostStore,
+        connectionStatus: EventsSessionStatus? = nil,
+        isReconnecting: Bool = false,
         retryConnection: (@MainActor @Sendable () async -> Void)? = nil
     ) {
         self.catalog = catalog
+        self.connectionStatus = connectionStatus
+        self.isReconnecting = isReconnecting
         self.retryConnection = retryConnection
         _store = State(initialValue: HostOnboardingStore(host: host))
     }
@@ -38,20 +43,27 @@ struct HostOnboardingView: View {
                     Button {
                         retry()
                     } label: {
-                        if isRetryingConnection {
-                            Label {
-                                Text("Connecting…")
-                            } icon: {
-                                ProgressView()
-                            }
-                        } else {
+                        ZStack(alignment: .leading) {
                             Label("Reconnect", systemImage: "arrow.clockwise")
+                                .opacity(isReconnecting ? 0 : 1)
+                            HStack {
+                                ProgressView()
+                                Text("Connecting…")
+                            }
+                            .opacity(isReconnecting ? 1 : 0)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .animation(.smooth(duration: 0.25), value: isReconnecting)
                     }
-                    .disabled(isRetryingConnection)
+                    .disabled(isReconnecting)
                 } footer: {
-                    Text("Restarts the Console connection using this Host's current settings.")
+                    if !isReconnecting, let connectionErrorMessage {
+                        Text(connectionErrorMessage)
+                            .foregroundStyle(.red)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
                 }
+                .animation(.smooth(duration: 0.25), value: connectionErrorMessage)
             }
 
             Section {
@@ -172,11 +184,18 @@ struct HostOnboardingView: View {
     }
 
     private func retry() {
-        guard !isRetryingConnection, let retryConnection else { return }
-        isRetryingConnection = true
+        guard !isReconnecting, let retryConnection else { return }
         Task { @MainActor in
             await retryConnection()
-            isRetryingConnection = false
+        }
+    }
+
+    private var connectionErrorMessage: String? {
+        switch connectionStatus {
+        case .reconnecting(_, _, let failure), .failed(let failure):
+            failure.connectionGuidance
+        case .connected, .suspended, .ended, nil:
+            nil
         }
     }
 

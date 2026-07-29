@@ -20,6 +20,7 @@ struct ConsoleView: View {
     @State private var hostSheet: HostSheet?
     @State private var isStartingAgent = false
     @State private var isShowingSettings = false
+    @State private var reconnectingHostIDs: Set<Host.ID> = []
     /// Narrows the flat list to one Host; nil shows every Host. The list
     /// stays flat either way — this is a filter, not a grouping level.
     @State private var hostFilter: Host.ID?
@@ -76,7 +77,9 @@ struct ConsoleView: View {
                     HostListView(
                         store: hosts,
                         initialHostID: destination.hostID,
-                        retryConnection: { await console.retryHost($0) })
+                        connectionStatuses: console.hostStatuses,
+                        reconnectingHostIDs: reconnectingHostIDs,
+                        retryConnection: { await reconnectHost($0) })
                 }
                 .sheet(isPresented: $isStartingAgent) {
                     // StartAgentView brings its own NavigationStack.
@@ -287,7 +290,7 @@ struct ConsoleView: View {
                 return HostIssue(
                     id: host.id,
                     hostName: host.displayName,
-                    message: "\(host.displayName): \(guidance(for: failure))",
+                    message: "\(host.displayName): \(failure.connectionGuidance)",
                     systemImage: failure.isHostKeySecurityFailure
                         ? "exclamationmark.shield.fill" : "exclamationmark.triangle.fill",
                     isCritical: failure.isHostKeySecurityFailure)
@@ -317,35 +320,15 @@ struct ConsoleView: View {
         }
     }
 
-    private func guidance(for failure: TransportError) -> String {
-        switch failure {
-        case .authenticationFailed:
-            "Authentication failed. Update the credentials in Hosts."
-        case .deviceKeyCorrupt:
-            "The Device Key is corrupted. Edit this Host, replace the Device Key, then install its new public key on every Device Key Host."
-        case .hostKeyRejected:
-            "The host key is not trusted. Verify it in Hosts."
-        case .hostKeyMismatch:
-            "Host key changed. Verify the machine before updating trust in Hosts."
-        case .protocolVersionMismatch(let server, let supported):
-            "herdr protocol \(server) is incompatible with app protocol \(supported). Update herdr or the app."
-        case .socketNotFound:
-            "The herdr socket was not found. Check the session in Hosts."
-        case .socatMissing:
-            "socat was not found on the Host. Install it or set its path in Hosts."
-        case .homeDirectoryUnresolvable:
-            "The remote home directory could not be resolved. Check the Host login shell."
-        case .malformedResponse:
-            "herdr returned an invalid response. Check its version, then retry."
-        case .eventsChannelAlreadyOpen, .terminalChannelAlreadyOpen:
-            "The connection is busy. Close the other terminal, then retry."
-        default:
-            "Connection failed. Check this Host, then retry."
-        }
-    }
-
     private func presentHosts(_ id: Host.ID? = nil) {
         hostSheet = HostSheet(hostID: id)
+    }
+
+    private func reconnectHost(_ id: Host.ID) async {
+        guard reconnectingHostIDs.insert(id).inserted else { return }
+        await console.retryHost(id)
+        try? await Task.sleep(for: .milliseconds(1_200))
+        reconnectingHostIDs.remove(id)
     }
 }
 
