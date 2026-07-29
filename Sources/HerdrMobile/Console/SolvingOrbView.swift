@@ -34,9 +34,13 @@ struct SolvingOrbRenderer: Sendable {
     static let large = Preset(
         speed: 1.82, latRings: 9, lonDensity: 24,
         dotBase: 0.63, dotDepth: 1.785, dotActive: 0.315)
+    /// Deviates from the library's 20px tuning (4 rings, ~30 fat dots):
+    /// at badge size that read as loose scatter, not a sphere. Small orbs
+    /// keep the dense lattice and only take the faster clock; the painter's
+    /// minimum dot radius keeps the finer dots legible on Retina.
     static let small = Preset(
-        speed: 1.95, latRings: 4, lonDensity: 12,
-        dotBase: 1.14, dotDepth: 3.23, dotActive: 0.57)
+        speed: 1.95, latRings: 9, lonDensity: 24,
+        dotBase: 0.63, dotDepth: 1.785, dotActive: 0.315)
 
     /// A quarter-turn of one band of the sphere: every lattice point whose
     /// `axis` coordinate falls in [lo, lo + 0.5) rotates by `angle`.

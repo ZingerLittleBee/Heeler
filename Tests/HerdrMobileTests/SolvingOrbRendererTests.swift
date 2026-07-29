@@ -9,8 +9,8 @@ import Testing
 @Suite("Solving orb renderer")
 struct SolvingOrbRendererTests {
     @Test func presetFollowsTheRenderedSize() {
-        #expect(SolvingOrbRenderer(size: 16).preset.latRings == SolvingOrbRenderer.small.latRings)
-        #expect(SolvingOrbRenderer(size: 64).preset.latRings == SolvingOrbRenderer.large.latRings)
+        #expect(SolvingOrbRenderer(size: 16).preset.speed == SolvingOrbRenderer.small.speed)
+        #expect(SolvingOrbRenderer(size: 64).preset.speed == SolvingOrbRenderer.large.speed)
     }
 
     @Test func scrambleIsDeterministic() {
