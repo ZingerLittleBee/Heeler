@@ -321,13 +321,21 @@ struct AgentDetailView: View {
 
     private func openAttachLink(_ link: AttachLink) {
         let openURL = openURL
-        Task {
-            await attach.openAttachLink(link) { url in
-                await withCheckedContinuation { continuation in
-                    openURL(url) { accepted in
-                        continuation.resume(returning: accepted)
-                    }
+        attach.openAttachLink(link) { url in
+            guard !Task.isCancelled else { return false }
+            let (results, continuation) = AsyncStream<Bool>.makeStream(
+                bufferingPolicy: .bufferingNewest(1))
+            openURL(url) { accepted in
+                continuation.yield(accepted)
+                continuation.finish()
+            }
+            return await withTaskCancellationHandler {
+                for await accepted in results {
+                    return accepted
                 }
+                return false
+            } onCancel: {
+                continuation.finish()
             }
         }
     }

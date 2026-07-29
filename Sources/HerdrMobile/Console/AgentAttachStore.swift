@@ -32,6 +32,8 @@ final class AgentAttachStore {
     private var transportGeneration: UInt64?
     private var lifecycleTask: Task<Void, Never>?
     private var lifecycleID: UInt64 = 0
+    private var attachLinkOpenTask: Task<Void, Never>?
+    private var attachLinkOpenID: UInt64 = 0
     private var hasLeft = false
 
     init(
@@ -119,13 +121,26 @@ final class AgentAttachStore {
         linkPrompt.setActive(isActive)
     }
 
-    func openAttachLink(_ link: AttachLink, using open: AttachLinkOpener) async {
+    func openAttachLink(_ link: AttachLink, using open: @escaping AttachLinkOpener) {
         guard !hasLeft else { return }
         linkPrompt.dismiss()
         attachLinkOpenFailure = nil
-        let accepted = await open(link.url)
-        guard !hasLeft, !accepted else { return }
-        attachLinkOpenFailure = AttachLinkOpenFailure(link: link)
+        invalidateAttachLinkOpen()
+        let openID = attachLinkOpenID
+        attachLinkOpenTask = Task { @MainActor [weak self] in
+            let accepted = await open(link.url)
+            guard
+                let self,
+                !Task.isCancelled,
+                !self.hasLeft,
+                self.attachLinkOpenID == openID
+            else {
+                return
+            }
+            self.attachLinkOpenTask = nil
+            guard !accepted else { return }
+            self.attachLinkOpenFailure = AttachLinkOpenFailure(link: link)
+        }
     }
 
     func copyFailedAttachLink(using copy: (String) -> Void) {
@@ -232,6 +247,7 @@ final class AgentAttachStore {
             return
         }
         hasLeft = true
+        invalidateAttachLinkOpen()
         linkPrompt.leave()
         attachLinkOpenFailure = nil
         linkIndex.clear()
@@ -262,6 +278,12 @@ final class AgentAttachStore {
             self?.lifecycleTask = nil
         }
         return task
+    }
+
+    private func invalidateAttachLinkOpen() {
+        attachLinkOpenID &+= 1
+        attachLinkOpenTask?.cancel()
+        attachLinkOpenTask = nil
     }
 
     private static func makeTerminal(
@@ -304,6 +326,7 @@ private final class AttachLinkPromptController {
 
     @ObservationIgnored private let clock: AttachLinkPromptClock
     @ObservationIgnored private var expiryTask: Task<Void, Never>?
+    @ObservationIgnored private var expiryID: UInt64 = 0
     @ObservationIgnored private var isActive = true
 
     init(clock: AttachLinkPromptClock) {
@@ -312,8 +335,9 @@ private final class AttachLinkPromptController {
 
     func present(_ link: AttachLink) {
         guard isActive else { return }
-        expiryTask?.cancel()
+        invalidateExpiry()
         prompt = link
+        let id = expiryID
         expiryTask = Task { [weak self, clock] in
             do {
                 try await clock.sleep(for: Self.duration)
@@ -321,7 +345,9 @@ private final class AttachLinkPromptController {
                 return
             }
             guard !Task.isCancelled else { return }
-            self?.prompt = nil
+            guard let self, self.expiryID == id else { return }
+            self.expiryTask = nil
+            self.prompt = nil
         }
     }
 
@@ -341,8 +367,13 @@ private final class AttachLinkPromptController {
     }
 
     private func cancelPrompt() {
+        invalidateExpiry()
+        prompt = nil
+    }
+
+    private func invalidateExpiry() {
+        expiryID &+= 1
         expiryTask?.cancel()
         expiryTask = nil
-        prompt = nil
     }
 }

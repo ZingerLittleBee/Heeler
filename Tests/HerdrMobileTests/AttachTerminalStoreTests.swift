@@ -548,19 +548,134 @@ struct AgentAttachStoreTests {
         }
         let link = try #require(store.attachLinks.first)
 
-        await store.openAttachLink(link) { url in
+        store.openAttachLink(link) { url in
             #expect(url.absoluteString == exactTarget)
             return false
         }
 
         #expect(store.attachLinks.map(\.target) == [exactTarget])
-        #expect(store.attachLinkOpenFailure?.link == link)
+        try await waitUntil("the failed open should offer copy recovery") {
+            store.attachLinkOpenFailure?.link == link
+        }
 
         var copiedTarget: String?
         store.copyFailedAttachLink { copiedTarget = $0 }
         #expect(copiedTarget == exactTarget)
         #expect(store.attachLinks.map(\.target) == [exactTarget])
         #expect(store.attachLinkOpenFailure == nil)
+
+        await store.leave()
+    }
+
+    @Test func anOlderFailedOpenCannotReplaceTheLatestSuccessfulOpen() async throws {
+        let transport = ScriptedTransport()
+        let opener = DeferredAttachLinkOpener()
+        let store = makeStore(transport: transport, generation: 0)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+        await transport.emitAttachOutput(
+            Data(
+                """
+                https://example.com/first
+                https://example.com/latest
+
+                """.utf8))
+        try await waitUntil("both links should be collected") {
+            store.attachLinks.count == 2
+        }
+        let first = try #require(
+            store.attachLinks.first { $0.target == "https://example.com/first" })
+        let latest = try #require(
+            store.attachLinks.first { $0.target == "https://example.com/latest" })
+
+        store.openAttachLink(first, using: opener.open)
+        try await waitUntil("the first system open should be pending") {
+            opener.pendingTargets == [first.target]
+        }
+        store.openAttachLink(latest, using: opener.open)
+        try await waitUntil("both system opens should be pending") {
+            Set(opener.pendingTargets) == Set([first.target, latest.target])
+        }
+
+        opener.complete(latest.target, accepted: true)
+        for _ in 0..<10 {
+            await Task.yield()
+        }
+        #expect(store.attachLinkOpenFailure == nil)
+
+        opener.complete(first.target, accepted: false)
+        for _ in 0..<10 {
+            await Task.yield()
+        }
+        #expect(store.attachLinkOpenFailure == nil)
+        #expect(store.attachLinks.count == 2)
+
+        await store.leave()
+    }
+
+    @Test func leavingAttachCancelsAPendingSystemOpenWithoutLaterMutation() async throws {
+        let transport = ScriptedTransport()
+        let opener = CancellationAwareAttachLinkOpener()
+        let store = makeStore(transport: transport, generation: 0)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+        await transport.emitAttachOutput(Data("https://example.com/leaving-open\n".utf8))
+        try await waitUntil("the link should be collected") {
+            store.attachLinks.count == 1
+        }
+        let link = try #require(store.attachLinks.first)
+
+        store.openAttachLink(link, using: opener.open)
+        try await waitUntil("the system open should be pending") {
+            opener.pendingTarget == link.target
+        }
+
+        await store.leave()
+        try await waitUntil("leaving Attach should cancel the system open") {
+            opener.cancelledTargets == [link.target]
+        }
+
+        #expect(store.attachLinks.isEmpty)
+        #expect(store.attachLinkOpenFailure == nil)
+    }
+
+    @Test func anOlderPromptExpiryCannotClearItsReplacement() async throws {
+        let transport = ScriptedTransport()
+        let clock = DeferredPromptClock()
+        let store = makeStore(
+            transport: transport,
+            generation: 0,
+            promptClock: AttachLinkPromptClock(sleep: clock.sleep))
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+        await transport.emitAttachOutput(Data("https://example.com/first-prompt\n".utf8))
+        try await waitUntil("the first prompt expiry should be pending") {
+            store.attachLinkPrompt?.target == "https://example.com/first-prompt"
+                && clock.pendingSleepCount == 1
+        }
+
+        await transport.emitAttachOutput(Data("https://example.com/latest-prompt\n".utf8))
+        try await waitUntil("the replacement prompt expiry should be pending") {
+            store.attachLinkPrompt?.target == "https://example.com/latest-prompt"
+                && clock.pendingSleepCount == 2
+        }
+
+        clock.resumeSleep(at: 0)
+        await Task.yield()
+        #expect(store.attachLinkPrompt?.target == "https://example.com/latest-prompt")
+
+        clock.resumeSleep(at: 0)
+        await yieldUntil { store.attachLinkPrompt == nil }
+        #expect(store.attachLinkPrompt == nil)
 
         await store.leave()
     }
@@ -1238,5 +1353,76 @@ private actor ControllablePromptClock {
     private func cancel(_ id: UUID) {
         guard let waiter = waiters.removeValue(forKey: id) else { return }
         waiter.continuation.resume(throwing: CancellationError())
+    }
+}
+
+@MainActor
+private final class DeferredAttachLinkOpener {
+    private var continuations: [String: CheckedContinuation<Bool, Never>] = [:]
+
+    var pendingTargets: [String] {
+        continuations.keys.sorted()
+    }
+
+    func open(_ url: URL) async -> Bool {
+        await withCheckedContinuation { continuation in
+            continuations[url.absoluteString] = continuation
+        }
+    }
+
+    func complete(_ target: String, accepted: Bool) {
+        continuations.removeValue(forKey: target)?.resume(returning: accepted)
+    }
+}
+
+@MainActor
+private final class CancellationAwareAttachLinkOpener {
+    private var continuation: CheckedContinuation<Bool, Never>?
+    private(set) var pendingTarget: String?
+    private(set) var cancelledTargets: [String] = []
+
+    func open(_ url: URL) async -> Bool {
+        let target = url.absoluteString
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard !Task.isCancelled else {
+                    continuation.resume(returning: false)
+                    return
+                }
+                pendingTarget = target
+                self.continuation = continuation
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.cancel(target)
+            }
+        }
+    }
+
+    private func cancel(_ target: String) {
+        guard pendingTarget == target else { return }
+        pendingTarget = nil
+        cancelledTargets.append(target)
+        continuation?.resume(returning: false)
+        continuation = nil
+    }
+}
+
+@MainActor
+private final class DeferredPromptClock {
+    private var continuations: [CheckedContinuation<Void, any Error>] = []
+
+    var pendingSleepCount: Int {
+        continuations.count
+    }
+
+    func sleep(for _: Duration) async throws {
+        try await withCheckedThrowingContinuation {
+            continuations.append($0)
+        }
+    }
+
+    func resumeSleep(at index: Int) {
+        continuations.remove(at: index).resume()
     }
 }
