@@ -38,8 +38,8 @@ terminal parser to map touch coordinates back to wrapped text.
   backgrounding while the Attach remains alive. Leaving Attach or terminating
   the app clears it. Nothing is written to persistent storage.
 - A toolbar item appears only when the index is non-empty and opens the list.
-  New distinct links produce one replaceable, short-lived open prompt. Rows
-  expose the real Host and full URL, open through the system default browser,
-  and support explicit copying. Failed opens retain the link and offer copying.
+  Discovery is silent; rows expose the real Host and full URL, open through the
+  system default browser, and support explicit copying. Failed opens retain the
+  link and offer copying.
 - There is no terminal-text tap handling, manual deletion, clear action,
   feature setting, timestamp display, or background notification.

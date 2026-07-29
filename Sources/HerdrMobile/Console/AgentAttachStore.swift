@@ -21,7 +21,6 @@ final class AgentAttachStore {
     private let target: String
     private let runTerminal: TerminalSessionRunner
     private let linkIndex: AttachLinkIndex
-    private let linkPrompt: AttachLinkPromptController
 
     private(set) var terminal: AttachTerminalStore
     let input: TerminalInputController
@@ -42,19 +41,14 @@ final class AgentAttachStore {
         transportGeneration: UInt64?,
         runTerminal: @escaping TerminalSessionRunner,
         stageImage: @escaping ImageStager,
-        linkPromptClock: AttachLinkPromptClock = .continuous,
         closePane: @escaping () async throws -> Void
     ) {
         let input = TerminalInputController()
-        let linkPrompt = AttachLinkPromptController(clock: linkPromptClock)
         self.target = target
         self.runTerminal = runTerminal
         self.transportGeneration = transportGeneration
         self.input = input
-        self.linkPrompt = linkPrompt
-        let linkIndex = AttachLinkIndex { link in
-            linkPrompt.present(link)
-        }
+        let linkIndex = AttachLinkIndex()
         self.linkIndex = linkIndex
         terminal = Self.makeTerminal(
             target: target, input: input, runTerminal: runTerminal, linkIndex: linkIndex)
@@ -76,10 +70,6 @@ final class AgentAttachStore {
 
     var attachLinks: [AttachLink] {
         linkIndex.links
-    }
-
-    var attachLinkPrompt: AttachLink? {
-        linkPrompt.prompt
     }
 
     var imageState: ImageAttachState {
@@ -116,14 +106,8 @@ final class AgentAttachStore {
         linkIndex.receiveViewportText(text)
     }
 
-    func viewActivityDidChange(isActive: Bool) {
-        guard !hasLeft else { return }
-        linkPrompt.setActive(isActive)
-    }
-
     func openAttachLink(_ link: AttachLink, using open: @escaping AttachLinkOpener) {
         guard !hasLeft else { return }
-        linkPrompt.dismiss()
         attachLinkOpenFailure = nil
         invalidateAttachLinkOpen()
         let openID = attachLinkOpenID
@@ -248,7 +232,6 @@ final class AgentAttachStore {
         }
         hasLeft = true
         invalidateAttachLinkOpen()
-        linkPrompt.leave()
         attachLinkOpenFailure = nil
         linkIndex.clear()
         let transition = enqueueLifecycleTransition { [weak self] in
@@ -298,82 +281,5 @@ final class AgentAttachStore {
             observeOutput: { data in linkIndex.receive(data) },
             finishOutput: { linkIndex.finishOutput() },
             runTerminal: runTerminal)
-    }
-}
-
-struct AttachLinkPromptClock: Sendable {
-    private let sleepOperation: @Sendable (Duration) async throws -> Void
-
-    static let continuous = AttachLinkPromptClock { duration in
-        try await Task.sleep(for: duration)
-    }
-
-    init(sleep: @escaping @Sendable (Duration) async throws -> Void) {
-        sleepOperation = sleep
-    }
-
-    func sleep(for duration: Duration) async throws {
-        try await sleepOperation(duration)
-    }
-}
-
-@MainActor
-@Observable
-private final class AttachLinkPromptController {
-    static let duration: Duration = .seconds(4)
-
-    private(set) var prompt: AttachLink?
-
-    @ObservationIgnored private let clock: AttachLinkPromptClock
-    @ObservationIgnored private var expiryTask: Task<Void, Never>?
-    @ObservationIgnored private var expiryID: UInt64 = 0
-    @ObservationIgnored private var isActive = true
-
-    init(clock: AttachLinkPromptClock) {
-        self.clock = clock
-    }
-
-    func present(_ link: AttachLink) {
-        guard isActive else { return }
-        invalidateExpiry()
-        prompt = link
-        let id = expiryID
-        expiryTask = Task { [weak self, clock] in
-            do {
-                try await clock.sleep(for: Self.duration)
-            } catch {
-                return
-            }
-            guard !Task.isCancelled else { return }
-            guard let self, self.expiryID == id else { return }
-            self.expiryTask = nil
-            self.prompt = nil
-        }
-    }
-
-    func setActive(_ isActive: Bool) {
-        self.isActive = isActive
-        guard !isActive else { return }
-        cancelPrompt()
-    }
-
-    func dismiss() {
-        cancelPrompt()
-    }
-
-    func leave() {
-        isActive = false
-        cancelPrompt()
-    }
-
-    private func cancelPrompt() {
-        invalidateExpiry()
-        prompt = nil
-    }
-
-    private func invalidateExpiry() {
-        expiryID &+= 1
-        expiryTask?.cancel()
-        expiryTask = nil
     }
 }

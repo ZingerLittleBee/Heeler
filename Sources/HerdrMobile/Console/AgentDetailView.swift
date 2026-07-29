@@ -29,7 +29,6 @@ struct AgentDetailView: View {
     @State private var closeErrorMessage: String?
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.openURL) private var openURL
-    @Environment(\.scenePhase) private var scenePhase
 
     init(
         agent: ConsoleAgent,
@@ -202,15 +201,6 @@ struct AgentDetailView: View {
             selectedPhoto = nil
             attach.selectImage(PhotosPickerImageSelection(item: item))
         }
-        .onAppear {
-            attach.viewActivityDidChange(isActive: scenePhase == .active)
-        }
-        // Prompt visibility follows the raw scene phase, not the background
-        // connection grace period. Output can keep collecting while the app
-        // is out of sight, but it must not schedule UI for later.
-        .onChange(of: scenePhase) { _, phase in
-            attach.viewActivityDidChange(isActive: phase == .active)
-        }
         // Follows the grace period, not the raw scene phase: an image upload
         // is exactly the work worth finishing while the app is briefly out of
         // sight, and it is cancelled only once the app really suspends.
@@ -226,7 +216,6 @@ struct AgentDetailView: View {
             attach.transportGenerationDidChange(generation)
         }
         .onDisappear {
-            attach.viewActivityDidChange(isActive: false)
             Task { await attach.leave() }
         }
     }
@@ -235,18 +224,6 @@ struct AgentDetailView: View {
         terminalScreen
             .id(attach.terminalID)
         .overlay { statusOverlay }
-        // The prompt is an overlay, not an inset: it must never change the
-        // terminal's measured rows or the remote PTY geometry.
-        .overlay(alignment: .bottom) {
-            if let link = attach.attachLinkPrompt {
-                AttachLinkPromptView(link: link) {
-                    openAttachLink(link)
-                }
-                .padding(12)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-        }
-        .animation(.snappy, value: attach.attachLinkPrompt)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             imageAttachStatus
         }
@@ -510,69 +487,6 @@ private struct AttachLinksView: View {
             .navigationBarTitleDisplayMode(.inline)
         }
         .frame(idealWidth: 460, idealHeight: 520)
-    }
-}
-
-private struct AttachLinkPromptView: View {
-    let link: AttachLink
-    let open: () -> Void
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    var body: some View {
-        Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(alignment: .top, spacing: 12) {
-                        linkIcon
-                        destination
-                    }
-                    openButton
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                }
-            } else {
-                HStack(spacing: 12) {
-                    linkIcon
-                    destination
-                    openButton
-                }
-            }
-        }
-        .padding(12)
-        .background(.regularMaterial, in: .rect(cornerRadius: 14))
-        .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
-        .accessibilityElement(children: .contain)
-    }
-
-    private var linkIcon: some View {
-        Image(systemName: "link")
-            .foregroundStyle(.secondary)
-            .accessibilityHidden(true)
-    }
-
-    private var destination: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(link.host)
-                .font(.headline)
-                .lineLimit(1)
-            Text(link.target)
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
-                .truncationMode(.middle)
-                .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Attach Link from \(link.host)")
-        .accessibilityValue(link.target)
-    }
-
-    private var openButton: some View {
-        Button("Open", systemImage: "arrow.up.right.square", action: open)
-            .labelStyle(.titleAndIcon)
-            .buttonStyle(.borderedProminent)
-            .accessibilityLabel("Open Attach Link")
-            .accessibilityValue(link.target)
     }
 }
 

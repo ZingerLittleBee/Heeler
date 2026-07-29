@@ -20,14 +20,9 @@ final class AttachLinkIndex {
 
     private(set) var links: [AttachLink] = []
 
-    @ObservationIgnored private let onDistinctLink: (AttachLink) -> Void
     private var scanner = AttachLinkScanner()
     private var streamObservedTargets: Set<String> = []
     private var viewportOnlyTargets: Set<String> = []
-
-    init(onDistinctLink: @escaping (AttachLink) -> Void) {
-        self.onDistinctLink = onDistinctLink
-    }
 
     func receive(_ data: Data) {
         var scanner = scanner
@@ -119,9 +114,6 @@ final class AttachLinkIndex {
         let retainedTargets = Set(links.map(\.target))
         streamObservedTargets.formIntersection(retainedTargets)
         viewportOnlyTargets.formIntersection(retainedTargets)
-        if isDistinct {
-            onDistinctLink(link)
-        }
         return true
     }
 }
