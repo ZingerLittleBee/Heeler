@@ -279,7 +279,7 @@ struct AgentDetailView: View {
                     }
                 }
                 .accessibilityLabel("Attach Links")
-                .accessibilityValue("\(attach.attachLinks.count)")
+                .accessibilityValue(attachLinkCountDescription)
                 .popover(isPresented: $isShowingAttachLinks) {
                     AttachLinksView(
                         links: attach.attachLinks,
@@ -459,6 +459,11 @@ struct AgentDetailView: View {
         Self.displayTitle(for: agent)
     }
 
+    private var attachLinkCountDescription: String {
+        let count = attach.attachLinks.count
+        return count == 1 ? "1 distinct link" : "\(count) distinct links"
+    }
+
     private static func displayTitle(for agent: ConsoleAgent) -> String {
         agent.agent.title.isEmpty ? agent.agent.displayName : agent.agent.title
     }
@@ -489,6 +494,12 @@ private struct AttachLinksView: View {
                     .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(link.host)
+                .accessibilityValue(link.target)
+                .accessibilityHint("Opens in your default browser")
+                .accessibilityAction(named: "Copy Link") {
+                    copy(link)
+                }
                 .contextMenu {
                     Button("Copy Link", systemImage: "doc.on.doc") {
                         copy(link)
@@ -505,33 +516,63 @@ private struct AttachLinksView: View {
 private struct AttachLinkPromptView: View {
     let link: AttachLink
     let open: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "link")
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(link.host)
-                    .font(.headline)
-                    .lineLimit(1)
-                Text(link.target)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
+                        linkIcon
+                        destination
+                    }
+                    openButton
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+            } else {
+                HStack(spacing: 12) {
+                    linkIcon
+                    destination
+                    openButton
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Open", systemImage: "arrow.up.right.square", action: open)
-                .labelStyle(.titleAndIcon)
-                .buttonStyle(.borderedProminent)
-                .accessibilityLabel("Open Attach Link")
-                .accessibilityValue(link.target)
         }
         .padding(12)
         .background(.regularMaterial, in: .rect(cornerRadius: 14))
         .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
         .accessibilityElement(children: .contain)
+    }
+
+    private var linkIcon: some View {
+        Image(systemName: "link")
+            .foregroundStyle(.secondary)
+            .accessibilityHidden(true)
+    }
+
+    private var destination: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(link.host)
+                .font(.headline)
+                .lineLimit(1)
+            Text(link.target)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+                .truncationMode(.middle)
+                .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Attach Link from \(link.host)")
+        .accessibilityValue(link.target)
+    }
+
+    private var openButton: some View {
+        Button("Open", systemImage: "arrow.up.right.square", action: open)
+            .labelStyle(.titleAndIcon)
+            .buttonStyle(.borderedProminent)
+            .accessibilityLabel("Open Attach Link")
+            .accessibilityValue(link.target)
     }
 }
 

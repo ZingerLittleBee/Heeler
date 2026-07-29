@@ -380,6 +380,7 @@ struct AgentAttachStoreTests {
             store.attachLinkPrompt?.target
                 == "https://example.com/new?signature=exact#result"
         }
+        #expect(await transport.attachInputs.isEmpty)
 
         await store.leave()
     }
@@ -557,6 +558,7 @@ struct AgentAttachStoreTests {
         try await waitUntil("the failed open should offer copy recovery") {
             store.attachLinkOpenFailure?.link == link
         }
+        #expect(store.attachLinkOpenFailure?.message.contains(link.host) == true)
 
         var copiedTarget: String?
         store.copyFailedAttachLink { copiedTarget = $0 }

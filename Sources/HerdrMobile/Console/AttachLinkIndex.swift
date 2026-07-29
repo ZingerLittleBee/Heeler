@@ -331,8 +331,8 @@ private struct PlainAttachLinkScanner {
     ]
     private static let trailingSentencePunctuation = CharacterSet(charactersIn: ".,;:!")
 
-    private var recent = Data()
-    private var candidate = Data()
+    private var recent: [UInt8] = []
+    private var candidate: [UInt8] = []
     private var isOversized = false
 
     mutating func receive(_ data: Data, record: (String) -> Void) {
@@ -361,7 +361,7 @@ private struct PlainAttachLinkScanner {
         }
         guard let scheme = Self.webSchemes.first(where: { recentEnds(with: $0) })
         else { return }
-        candidate = Data(recent.suffix(scheme.count))
+        candidate = Array(recent.suffix(scheme.count))
         recent.removeAll(keepingCapacity: true)
     }
 
@@ -385,7 +385,7 @@ private struct PlainAttachLinkScanner {
             candidate.removeAll(keepingCapacity: true)
             isOversized = false
         }
-        guard !isOversized, let text = String(data: candidate, encoding: .utf8) else {
+        guard !isOversized, let text = String(bytes: candidate, encoding: .utf8) else {
             return nil
         }
         let target = Self.removingSurroundingPunctuation(from: text)
