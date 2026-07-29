@@ -13,11 +13,8 @@ struct AgentCardView: View {
                 Text(headline)
                     .font(.headline)
                     .lineLimit(1)
-                AgentStatusBadge(status: agent.agent.status)
                 Spacer(minLength: 8)
-                Text(agent.hostName)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                AgentStatusBadge(status: agent.agent.status)
             }
             if !agent.agent.title.isEmpty {
                 Text(agent.agent.title)
@@ -41,6 +38,10 @@ struct AgentCardView: View {
                 Text(agent.agent.paneID)
                     .font(.caption2.monospaced())
                     .foregroundStyle(.tertiary)
+                Spacer(minLength: 8)
+                Text(agent.hostName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 4)
