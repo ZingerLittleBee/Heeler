@@ -259,12 +259,9 @@ struct TerminalAttachTests {
         terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
         let controller = UIViewController()
         controller.view = terminal
-        let windowScene = try #require(
-            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-        let window = UIWindow(windowScene: windowScene)
-        window.frame = terminal.bounds
-        window.rootViewController = controller
-        window.makeKeyAndVisible()
+        let window = try await makeTestWindow(
+            frame: terminal.bounds,
+            rootViewController: controller)
         defer { window.isHidden = true }
 
         terminal.receive(Data("$ ".utf8))
@@ -283,12 +280,9 @@ struct TerminalAttachTests {
         terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
         let controller = UIViewController()
         controller.view = terminal
-        let windowScene = try #require(
-            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-        let window = UIWindow(windowScene: windowScene)
-        window.frame = terminal.bounds
-        window.rootViewController = controller
-        window.makeKeyAndVisible()
+        let window = try await makeTestWindow(
+            frame: terminal.bounds,
+            rootViewController: controller)
         defer { window.isHidden = true }
 
         terminal.receive(
@@ -319,12 +313,9 @@ struct TerminalAttachTests {
         terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
         let controller = UIViewController()
         controller.view = terminal
-        let windowScene = try #require(
-            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-        let window = UIWindow(windowScene: windowScene)
-        window.frame = terminal.bounds
-        window.rootViewController = controller
-        window.makeKeyAndVisible()
+        let window = try await makeTestWindow(
+            frame: terminal.bounds,
+            rootViewController: controller)
         defer { window.isHidden = true }
 
         // Alternate screen + SGR mouse tracking, then a prompt parked on a low
@@ -355,12 +346,9 @@ struct TerminalAttachTests {
         terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
         let controller = UIViewController()
         controller.view = terminal
-        let windowScene = try #require(
-            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-        let window = UIWindow(windowScene: windowScene)
-        window.frame = terminal.bounds
-        window.rootViewController = controller
-        window.makeKeyAndVisible()
+        let window = try await makeTestWindow(
+            frame: terminal.bounds,
+            rootViewController: controller)
         defer { window.isHidden = true }
 
         // A TUI on the alternate screen with its prompt parked on row 20.

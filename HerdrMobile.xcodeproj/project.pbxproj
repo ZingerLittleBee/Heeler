@@ -92,6 +92,7 @@
 		718719DA8913E787FA68BD45 /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = 168EBAF199220582EB0C49F7 /* GhosttyTerminal */; };
 		71F4A714BC2E527F40E657B6 /* Base64URL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45FC4FCCE9B94EC52FD930B1 /* Base64URL.swift */; };
 		724AEEB52CDF4B28AFF8E3E5 /* HerdrWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6970DEB7C22EFDB1A26F6F9 /* HerdrWireTests.swift */; };
+		731D433F2309641163FA3B88 /* TestWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B410938C05A8D90C4A67D49E /* TestWindow.swift */; };
 		782980ECE8E7005A672D25A3 /* TransportFailureModesE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02807C329084D58137461EF8 /* TransportFailureModesE2ETests.swift */; };
 		78DE951AD8EEDB9423984268 /* AgentNotificationRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2DD3637ABCBDDA9385F5FBD /* AgentNotificationRenderer.swift */; };
 		7C3999C38A0126986F9CCC58 /* AgentNotificationRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC309E333009D66F9757CD13 /* AgentNotificationRouter.swift */; };
@@ -378,6 +379,7 @@
 		B36D007E7AE959F6D62B166D /* PushRegistrationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistrationStore.swift; sourceTree = "<group>"; };
 		B383994C2C8492694D5F3690 /* HerdrMobile.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HerdrMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B3E5E9501F8CC386668291C1 /* TerminalTextSafety.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTextSafety.swift; sourceTree = "<group>"; };
+		B410938C05A8D90C4A67D49E /* TestWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestWindow.swift; sourceTree = "<group>"; };
 		B66B41C393D38FA09388E3E2 /* ReconnectPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReconnectPolicyTests.swift; sourceTree = "<group>"; };
 		B75316F4E6B80E442C365765 /* TerminalInputControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalInputControllerTests.swift; sourceTree = "<group>"; };
 		BC1CA00EE3CB38A822FEA4B2 /* TOFUHostKeyValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOFUHostKeyValidator.swift; sourceTree = "<group>"; };
@@ -805,6 +807,7 @@
 				44F4B2F424E3FC8AB7DA69FC /* NotificationVectorFile.swift */,
 				17424B6972D7D7E6271350A5 /* PairingCodeVectorFile.swift */,
 				7AFE5C640586747D567E1CF1 /* ScriptedTransport.swift */,
+				B410938C05A8D90C4A67D49E /* TestWindow.swift */,
 				FCB59377D34D0C652DF70F01 /* UnixSockets.swift */,
 			);
 			path = Support;
@@ -1188,6 +1191,7 @@
 				AA2B03CF466688D5A4862273 /* TerminalStatusDialogTests.swift in Sources */,
 				D51F828E0AC4A2F6C23A0CBE /* TerminalThemeSettingsTests.swift in Sources */,
 				ECC2A0575FFC9EB286B9F8AC /* TerminalZoomSettingsTests.swift in Sources */,
+				731D433F2309641163FA3B88 /* TestWindow.swift in Sources */,
 				E23937EC4DC9148C2A7F8D18 /* TransportConcurrencyE2ETests.swift in Sources */,
 				782980ECE8E7005A672D25A3 /* TransportFailureModesE2ETests.swift in Sources */,
 				C174C223DBE1F1DD4085A2F8 /* UnixSockets.swift in Sources */,
