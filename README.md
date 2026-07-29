@@ -12,6 +12,7 @@ herdr-mobile is an **agent console**: a native dashboard of every coding agent r
 - **Attach** — a real terminal (libghostty, Metal-rendered) with native
   scrollback, momentum touch scrolling that also drives full-screen TUIs,
   long-press selection, and IME input.
+- **Attach Links** — silently collect web links to open or copy later.
 - **Terminal keyboard** — a Keys pad with control keys, reusable Snippets, and
   appearance controls next to the standard iOS keyboard; multiline or control
   pastes go through review before they hit the shell; on-device dictation.
