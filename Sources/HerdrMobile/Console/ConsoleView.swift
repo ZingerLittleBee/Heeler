@@ -17,9 +17,10 @@ struct ConsoleView: View {
     /// Scene phase widened by the background grace period; the Attach screen
     /// pauses its work on real suspensions only.
     let activity: AppActivityCoordinator
-    @State private var isManagingHosts = false
+    @State private var hostSheet: HostSheet?
     @State private var isStartingAgent = false
     @State private var isShowingSettings = false
+    @State private var reconnectingHostIDs: Set<Host.ID> = []
     /// Narrows the flat list to one Host; nil shows every Host. The list
     /// stays flat either way — this is a filter, not a grouping level.
     @State private var hostFilter: Host.ID?
@@ -55,7 +56,7 @@ struct ConsoleView: View {
                     }
                     ToolbarItem(placement: .primaryAction) {
                         Button("Hosts", systemImage: "server.rack") {
-                            isManagingHosts = true
+                            presentHosts()
                         }
                     }
                     ToolbarItem(placement: .primaryAction) {
@@ -71,12 +72,14 @@ struct ConsoleView: View {
                         }
                     }
                 }
-                .sheet(
-                    isPresented: $isManagingHosts,
-                    onDismiss: { Task { await console.retryFailedHosts() } }
-                ) {
+                .sheet(item: $hostSheet) { destination in
                     // HostListView brings its own NavigationStack.
-                    HostListView(store: hosts)
+                    HostListView(
+                        store: hosts,
+                        initialHostID: destination.hostID,
+                        connectionStatuses: console.hostStatuses,
+                        reconnectingHostIDs: reconnectingHostIDs,
+                        retryConnection: { await reconnectHost($0) })
                 }
                 .sheet(isPresented: $isStartingAgent) {
                     // StartAgentView brings its own NavigationStack.
@@ -109,7 +112,7 @@ struct ConsoleView: View {
         // while a sheet is up, so this only acts on notification taps.
         .onChange(of: notificationRouter.path) { _, path in
             guard !path.isEmpty else { return }
-            isManagingHosts = false
+            hostSheet = nil
             isStartingAgent = false
             isShowingSettings = false
         }
@@ -173,7 +176,7 @@ struct ConsoleView: View {
             } description: {
                 Text("Add a machine that runs herdr to see its Agents here.")
             } actions: {
-                Button("Add Host") { isManagingHosts = true }
+                Button("Add Host") { presentHosts() }
                     .buttonStyle(.borderedProminent)
             }
         } else if console.agents.isEmpty {
@@ -182,8 +185,11 @@ struct ConsoleView: View {
             } description: {
                 Text(emptyDescription)
             } actions: {
-                if !hostIssues.isEmpty {
-                    Button("Manage Hosts") { isManagingHosts = true }
+                if let issue = hostIssues.first, hostIssues.count == 1 {
+                    Button("Open \(issue.hostName)") { presentHosts(issue.id) }
+                        .buttonStyle(.borderedProminent)
+                } else if !hostIssues.isEmpty {
+                    Button("Manage Hosts") { presentHosts() }
                         .buttonStyle(.borderedProminent)
                 }
             }
@@ -197,18 +203,30 @@ struct ConsoleView: View {
                     Text(visibleHostIssues.map(\.message).joined(separator: "\n"))
                 }
             } actions: {
+                if let issue = visibleHostIssues.first {
+                    Button("Host Settings") { presentHosts(issue.id) }
+                }
                 Button("Show All Hosts") { hostFilter = nil }
-                    .buttonStyle(.borderedProminent)
             }
         } else {
             List(selection: selectedAgent) {
                 ForEach(visibleHostIssues, id: \.id) { issue in
-                    Button { isManagingHosts = true } label: {
-                        Label(issue.message, systemImage: issue.systemImage)
-                            .font(.footnote)
-                            .foregroundStyle(issue.isCritical ? Color.red : Color.secondary)
+                    Button { presentHosts(issue.id) } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: issue.systemImage)
+                                .foregroundStyle(issue.isCritical ? Color.red : Color.orange)
+                            Text(issue.message)
+                                .font(.footnote)
+                                .foregroundStyle(issue.isCritical ? Color.red : Color.secondary)
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityHint("Opens this Host's settings.")
                 }
                 ForEach(filteredAgents) { agent in
                     NavigationLink(value: agent.id) {
@@ -245,9 +263,15 @@ struct ConsoleView: View {
 
     private struct HostIssue {
         let id: Host.ID
+        let hostName: String
         let message: String
         let systemImage: String
         let isCritical: Bool
+    }
+
+    private struct HostSheet: Identifiable {
+        let id = UUID()
+        let hostID: Host.ID?
     }
 
     /// One actionable status per Host. A disconnected session takes priority;
@@ -258,13 +282,15 @@ struct ConsoleView: View {
             case .reconnecting(_, _, let failure):
                 return HostIssue(
                     id: host.id,
+                    hostName: host.displayName,
                     message: "Reconnecting to \(host.displayName): \(summary(for: failure))",
                     systemImage: "wifi.exclamationmark",
                     isCritical: false)
             case .failed(let failure):
                 return HostIssue(
                     id: host.id,
-                    message: "\(host.displayName): \(guidance(for: failure))",
+                    hostName: host.displayName,
+                    message: "\(host.displayName): \(failure.connectionGuidance)",
                     systemImage: failure.isHostKeySecurityFailure
                         ? "exclamationmark.shield.fill" : "exclamationmark.triangle.fill",
                     isCritical: failure.isHostKeySecurityFailure)
@@ -274,6 +300,7 @@ struct ConsoleView: View {
             if let message = console.hostSyncErrors[host.id] {
                 return HostIssue(
                     id: host.id,
+                    hostName: host.displayName,
                     message: "\(host.displayName): \(message)",
                     systemImage: "arrow.trianglehead.2.clockwise",
                     isCritical: false)
@@ -293,31 +320,15 @@ struct ConsoleView: View {
         }
     }
 
-    private func guidance(for failure: TransportError) -> String {
-        switch failure {
-        case .authenticationFailed:
-            "Authentication failed. Update the credentials in Hosts."
-        case .deviceKeyCorrupt:
-            "The Device Key is corrupted. Edit this Host, replace the Device Key, then install its new public key on every Device Key Host."
-        case .hostKeyRejected:
-            "The host key is not trusted. Verify it in Hosts."
-        case .hostKeyMismatch:
-            "Host key changed. Verify the machine before updating trust in Hosts."
-        case .protocolVersionMismatch(let server, let supported):
-            "herdr protocol \(server) is incompatible with app protocol \(supported). Update herdr or the app."
-        case .socketNotFound:
-            "The herdr socket was not found. Check the session in Hosts."
-        case .socatMissing:
-            "socat was not found on the Host. Install it or set its path in Hosts."
-        case .homeDirectoryUnresolvable:
-            "The remote home directory could not be resolved. Check the Host login shell."
-        case .malformedResponse:
-            "herdr returned an invalid response. Check its version, then retry."
-        case .eventsChannelAlreadyOpen, .terminalChannelAlreadyOpen:
-            "The connection is busy. Close the other terminal, then retry."
-        default:
-            "Connection failed. Check this Host, then retry."
-        }
+    private func presentHosts(_ id: Host.ID? = nil) {
+        hostSheet = HostSheet(hostID: id)
+    }
+
+    private func reconnectHost(_ id: Host.ID) async {
+        guard reconnectingHostIDs.insert(id).inserted else { return }
+        await console.retryHost(id)
+        try? await Task.sleep(for: .milliseconds(1_200))
+        reconnectingHostIDs.remove(id)
     }
 }
 

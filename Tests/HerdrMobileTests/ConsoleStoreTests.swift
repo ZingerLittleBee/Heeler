@@ -978,6 +978,98 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    @Test func retryHostReconnectsOnlyTheRequestedFailedHost() async throws {
+        let hostA = Host.fixture(name: "alpha", address: "a.example")
+        let hostB = Host.fixture(name: "beta", address: "b.example")
+        let transportA = ScriptedTransport(snapshot: .fixture())
+        let transportB = ScriptedTransport(snapshot: .fixture())
+        let queues = [
+            hostA.id: ConnectionAttemptQueue([
+                .failure(.authenticationFailed),
+                .success(transportA),
+            ]),
+            hostB.id: ConnectionAttemptQueue([
+                .failure(.authenticationFailed),
+                .success(transportB),
+            ]),
+        ]
+        let store = ConsoleStore(snapshotRetryDelay: .milliseconds(10)) {
+            host, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: {
+                    guard let queue = queues[host.id] else {
+                        throw TransportError.sshUnreachable(detail: "unscripted host")
+                    }
+                    return try await queue.next()
+                },
+                reconnectPolicy: Self.fastPolicy,
+                keepalive: nil)
+        }
+
+        store.setHosts([hostA, hostB])
+        await store.resume()
+        try await waitUntil("both Hosts should stop on authentication failure") {
+            store.hostStatuses[hostA.id] == .failed(.authenticationFailed)
+                && store.hostStatuses[hostB.id] == .failed(.authenticationFailed)
+        }
+
+        await store.retryHost(hostA.id)
+        try await waitUntil("only the requested Host should reconnect") {
+            store.hostStatuses[hostA.id] == .connected
+        }
+
+        #expect(store.hostStatuses[hostB.id] == .failed(.authenticationFailed))
+        #expect(await queues[hostA.id]?.attemptCount == 2)
+        #expect(await queues[hostB.id]?.attemptCount == 1)
+        #expect(await transportB.capturedSubscriptions.isEmpty)
+
+        store.setHosts([])
+    }
+
+    @Test func retryHostRestartsOnlyTheRequestedConnectedHost() async throws {
+        let hostA = Host.fixture(name: "alpha", address: "a.example")
+        let hostB = Host.fixture(name: "beta", address: "b.example")
+        let queues = [
+            hostA.id: ConnectionAttemptQueue([
+                .success(ScriptedTransport(snapshot: .fixture())),
+                .success(ScriptedTransport(snapshot: .fixture())),
+            ]),
+            hostB.id: ConnectionAttemptQueue([
+                .success(ScriptedTransport(snapshot: .fixture())),
+            ]),
+        ]
+        let store = ConsoleStore(snapshotRetryDelay: .milliseconds(10)) {
+            host, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: {
+                    guard let queue = queues[host.id] else {
+                        throw TransportError.sshUnreachable(detail: "unscripted host")
+                    }
+                    return try await queue.next()
+                },
+                reconnectPolicy: Self.fastPolicy,
+                keepalive: nil)
+        }
+
+        store.setHosts([hostA, hostB])
+        await store.resume()
+        try await waitUntil("both Hosts should connect") {
+            store.hostStatuses[hostA.id] == .connected
+                && store.hostStatuses[hostB.id] == .connected
+        }
+
+        await store.retryHost(hostA.id)
+        try await waitUntil("the requested Host should start a new connection") {
+            await queues[hostA.id]?.attemptCount == 2
+        }
+
+        #expect(await queues[hostB.id]?.attemptCount == 1)
+
+        store.setHosts([])
+    }
+
     @Test func eventChannelReconnectReusesHostConnectionGeneration() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(
@@ -1152,6 +1244,25 @@ private actor TransportQueue {
             throw TransportError.sshUnreachable(detail: "transport queue exhausted")
         }
         return remaining.removeFirst()
+    }
+}
+
+/// Scripts both failed and successful connection attempts for manual retry
+/// tests while recording exactly which Host was retried.
+private actor ConnectionAttemptQueue {
+    private var remaining: [Result<ScriptedTransport, TransportError>]
+    private(set) var attemptCount = 0
+
+    init(_ attempts: [Result<ScriptedTransport, TransportError>]) {
+        remaining = attempts
+    }
+
+    func next() throws -> ScriptedTransport {
+        attemptCount += 1
+        guard !remaining.isEmpty else {
+            throw TransportError.sshUnreachable(detail: "connection queue exhausted")
+        }
+        return try remaining.removeFirst().get()
     }
 }
 

@@ -63,7 +63,6 @@ final class HostConsoleProjection {
     }
 
     func retry() async {
-        guard case .failed = status else { return }
         await session.retry()
     }
 
