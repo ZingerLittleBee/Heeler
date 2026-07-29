@@ -72,7 +72,7 @@ Entries reference the issue that motivated them.
 
 - Failed Host notices stay compact in the Agent list and open the affected
   Host directly, where an explicit reconnect action stays visible, animates
-  while restarting, and leaves the latest connection error below it.
+  while restarting, and leaves the latest connection error below it. (PR #107)
 
 - Arguments typed on the New Agent form survive the iOS keyboard's smart
   punctuation: `--yolo` no longer reaches the Host as an em-dash garbage
