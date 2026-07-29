@@ -91,8 +91,8 @@ final class ConsoleStore {
         }
     }
 
-    /// Restarts one failed Host without disturbing other Hosts that may be
-    /// connected, reconnecting, or waiting for their own repair.
+    /// Restarts one Host without disturbing other Hosts that may be connected,
+    /// reconnecting, or waiting for their own repair.
     func retryHost(_ id: Host.ID) async {
         await projections[id]?.retry()
     }

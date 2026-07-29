@@ -6,7 +6,6 @@ import SwiftUI
 struct HostOnboardingView: View {
     /// The Host catalog, for the Edit sheet.
     let catalog: HostStore
-    let connectionStatus: EventsSessionStatus?
     let retryConnection: (@MainActor @Sendable () async -> Void)?
     @State private var store: HostOnboardingStore
     @State private var isEditing = false
@@ -17,11 +16,9 @@ struct HostOnboardingView: View {
     init(
         host: Host,
         catalog: HostStore,
-        connectionStatus: EventsSessionStatus? = nil,
         retryConnection: (@MainActor @Sendable () async -> Void)? = nil
     ) {
         self.catalog = catalog
-        self.connectionStatus = connectionStatus
         self.retryConnection = retryConnection
         _store = State(initialValue: HostOnboardingStore(host: host))
     }
@@ -36,7 +33,7 @@ struct HostOnboardingView: View {
                     value: store.host.authMethod == .deviceKey ? "Device Key" : "Password")
             }
 
-            if canRetryConnection, retryConnection != nil {
+            if retryConnection != nil {
                 Section {
                     Button {
                         retry()
@@ -48,12 +45,12 @@ struct HostOnboardingView: View {
                                 ProgressView()
                             }
                         } else {
-                            Label("Retry Connection", systemImage: "arrow.clockwise")
+                            Label("Reconnect", systemImage: "arrow.clockwise")
                         }
                     }
                     .disabled(isRetryingConnection)
                 } footer: {
-                    Text("Starts a new connection attempt using this Host's current settings.")
+                    Text("Restarts the Console connection using this Host's current settings.")
                 }
             }
 
@@ -172,11 +169,6 @@ struct HostOnboardingView: View {
             return name
         }
         return "default"
-    }
-
-    private var canRetryConnection: Bool {
-        guard case .failed = connectionStatus else { return false }
-        return true
     }
 
     private func retry() {

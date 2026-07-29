@@ -66,7 +66,6 @@ final class HostRemovalStore {
 struct HostListView: View {
     let store: HostStore
     private let initialHostID: Host.ID?
-    private let connectionStatuses: [Host.ID: EventsSessionStatus]
     private let retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)?
     @State private var removal: HostRemovalStore
     @State private var isAddingHost = false
@@ -77,12 +76,10 @@ struct HostListView: View {
     init(
         store: HostStore,
         initialHostID: Host.ID? = nil,
-        connectionStatuses: [Host.ID: EventsSessionStatus] = [:],
         retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)? = nil
     ) {
         self.store = store
         self.initialHostID = initialHostID
-        self.connectionStatuses = connectionStatuses
         self.retryConnection = retryConnection
         _removal = State(initialValue: HostRemovalStore(store: store))
     }
@@ -143,7 +140,6 @@ struct HostListView: View {
                     HostOnboardingView(
                         host: host,
                         catalog: store,
-                        connectionStatus: connectionStatuses[id],
                         retryConnection: retryAction(for: id))
                         .id(host)
                 } else {

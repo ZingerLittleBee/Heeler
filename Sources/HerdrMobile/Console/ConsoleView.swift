@@ -76,7 +76,6 @@ struct ConsoleView: View {
                     HostListView(
                         store: hosts,
                         initialHostID: destination.hostID,
-                        connectionStatuses: console.hostStatuses,
                         retryConnection: { await console.retryHost($0) })
                 }
                 .sheet(isPresented: $isStartingAgent) {

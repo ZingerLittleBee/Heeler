@@ -1027,6 +1027,49 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    @Test func retryHostRestartsOnlyTheRequestedConnectedHost() async throws {
+        let hostA = Host.fixture(name: "alpha", address: "a.example")
+        let hostB = Host.fixture(name: "beta", address: "b.example")
+        let queues = [
+            hostA.id: ConnectionAttemptQueue([
+                .success(ScriptedTransport(snapshot: .fixture())),
+                .success(ScriptedTransport(snapshot: .fixture())),
+            ]),
+            hostB.id: ConnectionAttemptQueue([
+                .success(ScriptedTransport(snapshot: .fixture())),
+            ]),
+        ]
+        let store = ConsoleStore(snapshotRetryDelay: .milliseconds(10)) {
+            host, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: {
+                    guard let queue = queues[host.id] else {
+                        throw TransportError.sshUnreachable(detail: "unscripted host")
+                    }
+                    return try await queue.next()
+                },
+                reconnectPolicy: Self.fastPolicy,
+                keepalive: nil)
+        }
+
+        store.setHosts([hostA, hostB])
+        await store.resume()
+        try await waitUntil("both Hosts should connect") {
+            store.hostStatuses[hostA.id] == .connected
+                && store.hostStatuses[hostB.id] == .connected
+        }
+
+        await store.retryHost(hostA.id)
+        try await waitUntil("the requested Host should start a new connection") {
+            await queues[hostA.id]?.attemptCount == 2
+        }
+
+        #expect(await queues[hostB.id]?.attemptCount == 1)
+
+        store.setHosts([])
+    }
+
     @Test func eventChannelReconnectReusesHostConnectionGeneration() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(
