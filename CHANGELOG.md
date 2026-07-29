@@ -7,6 +7,13 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Changed
+
+- Working agents in the Console list now show a live "solving" orb — a
+  dotted sphere whose bands twist and click back into place (ported from
+  Jakub Antalik's MIT-licensed thinking-orbs) — instead of the static blue
+  Working capsule. Reduced-motion users get a still frame.
+
 ### Added
 
 - Attach Links silently collect web and OSC 8 targets into a memory-only list

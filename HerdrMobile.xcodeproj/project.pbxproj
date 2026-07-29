@@ -49,6 +49,7 @@
 		345C7A9CB13934941D67390F /* NotificationPrivacyCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 323782148B559800B45E2930 /* NotificationPrivacyCopy.swift */; };
 		350A0384BD81FAA414168A18 /* TerminalKeysKeyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE0BE586B3BBEDFA132705C6 /* TerminalKeysKeyboard.swift */; };
 		36B674DF605ECAE382E51196 /* HostOnboardingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DCAF31058B6430B514B2188 /* HostOnboardingStore.swift */; };
+		39042960B48C542434ACA532 /* SolvingOrbView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00DCBDBB970535D6E758CE4 /* SolvingOrbView.swift */; };
 		39F4A48A7BAC63BD4B458FB1 /* AgentNotificationBannerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB92C9C0B3E90920CAAA8AB3 /* AgentNotificationBannerStore.swift */; };
 		3B0FFA83C8F1751A86BD3EA5 /* FakePairingConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7448C8647569740BB956262 /* FakePairingConnector.swift */; };
 		3D70FC70FD0C9EAE47C96B06 /* TerminalStatusDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82301D476437A71BE8B9682E /* TerminalStatusDialog.swift */; };
@@ -57,6 +58,7 @@
 		3ECB4DD848A1C73AF0ED4B5F /* ConsoleAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 498ECBCD631F9734C28861EA /* ConsoleAgent.swift */; };
 		3F3E89D840711FE7EA62A0E5 /* notification-payload-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 0ACA2329DD2A706A72E0754E /* notification-payload-v1.json */; };
 		41BBA40C97BAE65E56D0E3B5 /* TerminalAttach.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8007AF9894BE8BAFFA7A6372 /* TerminalAttach.swift */; };
+		46F44C4392FF4F743410DECD /* SolvingOrbRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48DD6513020B3A70EFCBA3EF /* SolvingOrbRendererTests.swift */; };
 		473F834A4C680F18BA303DB9 /* ScriptedTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AFE5C640586747D567E1CF1 /* ScriptedTransport.swift */; };
 		47E51B32528E78D6FC1C16B2 /* AgentNotificationRoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C716FB1853560D9CFF3F1351 /* AgentNotificationRoutingTests.swift */; };
 		488EF0DD844658122800A1A7 /* StartAgentStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A71CE71D20ABB90D7E94264E /* StartAgentStoreTests.swift */; };
@@ -295,6 +297,7 @@
 		45811603D8C7CF196D6EC6BF /* TerminalKeysKeyboardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalKeysKeyboardTests.swift; sourceTree = "<group>"; };
 		45FC4FCCE9B94EC52FD930B1 /* Base64URL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Base64URL.swift; sourceTree = "<group>"; };
 		46B11849C0824D5679BD9289 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
+		48DD6513020B3A70EFCBA3EF /* SolvingOrbRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolvingOrbRendererTests.swift; sourceTree = "<group>"; };
 		498ECBCD631F9734C28861EA /* ConsoleAgent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleAgent.swift; sourceTree = "<group>"; };
 		4BEEFE71E302772A774FA4EE /* SSHJumpHostE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHJumpHostE2ETests.swift; sourceTree = "<group>"; };
 		4DBF37BC147BBEEB4549FD21 /* AppActivityCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppActivityCoordinator.swift; sourceTree = "<group>"; };
@@ -388,6 +391,7 @@
 		BD390F4EE653187BCF20037F /* HerdrAPITypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrAPITypes.swift; sourceTree = "<group>"; };
 		BE8796AB629EF68A90C96B3D /* TerminalAttachTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAttachTests.swift; sourceTree = "<group>"; };
 		BEBCD83AC5D4AF0193B2AF9B /* NotificationPrivacyCopyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPrivacyCopyTests.swift; sourceTree = "<group>"; };
+		C00DCBDBB970535D6E758CE4 /* SolvingOrbView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolvingOrbView.swift; sourceTree = "<group>"; };
 		C14983BD8988E4AAE79DC46A /* FakeTransportConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeTransportConnector.swift; sourceTree = "<group>"; };
 		C1B1FCCEF619BD597ECD3353 /* TerminalZoomSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalZoomSettings.swift; sourceTree = "<group>"; };
 		C232163905675760F37FD7A0 /* KnownHostsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnownHostsStore.swift; sourceTree = "<group>"; };
@@ -646,6 +650,7 @@
 				7F2E906A8515E1152AE2B346 /* SnippetStoreTests.swift */,
 				E8222CAA17C89C53EF9D0706 /* SnippetTests.swift */,
 				4347ECA58D4717BD40A788A4 /* SocatDiscoveryTests.swift */,
+				48DD6513020B3A70EFCBA3EF /* SolvingOrbRendererTests.swift */,
 				6BE2EC235A2ACCB61A98881E /* SSHAuthE2ETests.swift */,
 				7CA60F860890A7CAA368B268 /* SSHChannelBudgetTests.swift */,
 				5582E1837DE62FBC4C5DDC5A /* SSHHostKeyE2ETests.swift */,
@@ -747,6 +752,7 @@
 				1B72A9326AE8FA1006B2EE18 /* RecentWorkspaceStore.swift */,
 				6B69B78F6EBB1B005C76FDA7 /* RenameSheetView.swift */,
 				EF12CB7CC9AE3E986821A896 /* RenameStore.swift */,
+				C00DCBDBB970535D6E758CE4 /* SolvingOrbView.swift */,
 				08E14A4298DB015E6477F789 /* StartAgentStore.swift */,
 				18AE2DC88A745FB457350957 /* StartAgentView.swift */,
 				82301D476437A71BE8B9682E /* TerminalStatusDialog.swift */,
@@ -1084,6 +1090,7 @@
 				AD6B71FC22B287C4158B4DA4 /* SnippetStore.swift in Sources */,
 				C74210294D0992F2315F6943 /* SnippetsKeyboardPane.swift in Sources */,
 				CEE4A4F9733B79886D294DE6 /* SnippetsManagementView.swift in Sources */,
+				39042960B48C542434ACA532 /* SolvingOrbView.swift in Sources */,
 				9C1C00F36A178BF1BEE6C0A5 /* StartAgentStore.swift in Sources */,
 				7EEB41E5CD728587D7DCEC96 /* StartAgentView.swift in Sources */,
 				1F4B065DFCAF8E6656600F1E /* TOFUHostKeyValidator.swift in Sources */,
@@ -1181,6 +1188,7 @@
 				BA09A8237E5F6F14E47B083E /* SnippetStoreTests.swift in Sources */,
 				AD28BE038C3F0BC6E72DFF1E /* SnippetTests.swift in Sources */,
 				B56DB49BC073C1F0F95365C3 /* SocatDiscoveryTests.swift in Sources */,
+				46F44C4392FF4F743410DECD /* SolvingOrbRendererTests.swift in Sources */,
 				488EF0DD844658122800A1A7 /* StartAgentStoreTests.swift in Sources */,
 				E8E50DCA9F56799E022F9252 /* TerminalAttachE2ETests.swift in Sources */,
 				0CF1AA5AF7F2357186A5E486 /* TerminalAttachTests.swift in Sources */,

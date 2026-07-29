@@ -75,17 +75,28 @@ struct AgentCardView: View {
 }
 
 /// Status rendered as a tinted capsule; Blocked gets the loudest color
-/// because it is the one asking for the user.
+/// because it is the one asking for the user. Working trades the capsule
+/// for a live solving orb — motion is the signal, so it needs no tint.
 struct AgentStatusBadge: View {
     let status: AgentStatus
 
     var body: some View {
-        Text(status.rawValue.capitalized)
-            .font(.caption2.weight(.semibold))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.15), in: Capsule())
-            .foregroundStyle(color)
+        if status == .working {
+            HStack(spacing: 4) {
+                SolvingOrbView(size: 16)
+                    .accessibilityHidden(true)
+                Text("Working")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            Text(status.rawValue.capitalized)
+                .font(.caption2.weight(.semibold))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(color.opacity(0.15), in: Capsule())
+                .foregroundStyle(color)
+        }
     }
 
     private var color: Color {
