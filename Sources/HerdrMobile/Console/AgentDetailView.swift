@@ -1,5 +1,6 @@
 import PhotosUI
 import SwiftUI
+import UIKit
 
 /// The Agent detail screen: one interactive Attach terminal. Ghostty owns
 /// rendering, scrollback, and IME; the adapter routes input-row taps and touch
@@ -24,8 +25,10 @@ struct AgentDetailView: View {
     @State private var isManagingSnippets = false
     @State private var isRenamingAgent = false
     @State private var isRenamingWorkspace = false
+    @State private var isShowingAttachLinks = false
     @State private var closeErrorMessage: String?
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.openURL) private var openURL
 
     init(
         agent: ConsoleAgent,
@@ -62,6 +65,9 @@ struct AgentDetailView: View {
         screen.onSizeChanged = { cols, rows in
             attach.viewDidResize(cols: cols, rows: rows)
         }
+        screen.onViewportTextChanged = { text in
+            attach.viewportTextDidChange(text)
+        }
         screen.onSend = { keystrokes in attach.send(keystrokes) }
         screen.onPaste = { text, bracketed in
             attach.requestPaste(text, bracketedPaste: bracketed)
@@ -81,54 +87,13 @@ struct AgentDetailView: View {
     }
 
     var body: some View {
-        terminalScreen
-            .id(attach.terminalID)
-        .overlay { statusOverlay }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            imageAttachStatus
-        }
-        // background(_:ignoresSafeAreaEdges:) defaults to .all: the theme
-        // colour reaches under the transparent navigation bar and into the
-        // home-indicator area without moving the terminal grid or touching
-        // keyboard resize. Must stay outside the safeAreaInset above.
-        .background(
-            terminal.themes.selection(for: colorScheme)
-                .surfaceBackground(for: colorScheme))
-        .toolbarColorScheme(
-            terminal.themes.selection(for: colorScheme)
-                .chromeColorScheme(for: colorScheme),
-            for: .navigationBar)
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
+        lifecycleSurface
+    }
+
+    private var presentedSurface: some View {
+        terminalSurface
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                    Label("Attach Image", systemImage: "photo.badge.plus")
-                }
-                .disabled(!attach.canSelectImage)
-                .accessibilityLabel("Attach Image")
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button("Settings", systemImage: "gearshape") {
-                        isShowingSettings = true
-                    }
-                    Button("Snippets", systemImage: "quote.bubble") {
-                        isManagingSnippets = true
-                    }
-                    Button("Rename Agent", systemImage: "pencil") {
-                        isRenamingAgent = true
-                    }
-                    Button("Rename Workspace", systemImage: "pencil.line") {
-                        isRenamingWorkspace = true
-                    }
-                    Button("Close Agent", systemImage: "trash", role: .destructive) {
-                        isConfirmingClose = true
-                    }
-                } label: {
-                    Label("More", systemImage: "ellipsis.circle")
-                }
-            }
+            toolbarContent
         }
         .sheet(isPresented: $isShowingSettings) {
             SettingsView(
@@ -182,6 +147,10 @@ struct AgentDetailView: View {
                 "This closes the pane on the Host and removes the agent everywhere. "
                     + "This can't be undone.")
         }
+    }
+
+    private var alertSurface: some View {
+        presentedSurface
         .alert(
             "Couldn't Close Agent",
             isPresented: Binding(
@@ -204,6 +173,29 @@ struct AgentDetailView: View {
         } message: {
             Text(attach.pasteErrorMessage ?? "")
         }
+        .alert(
+            "Couldn't Open Link",
+            isPresented: Binding(
+                get: { attach.attachLinkOpenFailure != nil },
+                set: { if !$0 { attach.dismissAttachLinkOpenFailure() } })
+        ) {
+            Button("Copy Link") {
+                attach.copyFailedAttachLink {
+                    UIPasteboard.general.string = $0
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                attach.dismissAttachLinkOpenFailure()
+            }
+        } message: {
+            Text(
+                attach.attachLinkOpenFailure?.message
+                    ?? "This link couldn't be opened.")
+        }
+    }
+
+    private var lifecycleSurface: some View {
+        alertSurface
         .onChange(of: selectedPhoto) { _, item in
             guard let item else { return }
             selectedPhoto = nil
@@ -225,6 +217,103 @@ struct AgentDetailView: View {
         }
         .onDisappear {
             Task { await attach.leave() }
+        }
+    }
+
+    private var terminalSurface: some View {
+        terminalScreen
+            .id(attach.terminalID)
+        .overlay { statusOverlay }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            imageAttachStatus
+        }
+        // background(_:ignoresSafeAreaEdges:) defaults to .all: the theme
+        // colour reaches under the transparent navigation bar and into the
+        // home-indicator area without moving the terminal grid or touching
+        // keyboard resize. Must stay outside the safeAreaInset above.
+        .background(
+            terminal.themes.selection(for: colorScheme)
+                .surfaceBackground(for: colorScheme))
+        .toolbarColorScheme(
+            terminal.themes.selection(for: colorScheme)
+                .chromeColorScheme(for: colorScheme),
+            for: .navigationBar)
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        if !attach.attachLinks.isEmpty {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    isShowingAttachLinks = true
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "link")
+                        Text("\(attach.attachLinks.count)")
+                            .monospacedDigit()
+                    }
+                }
+                .accessibilityLabel("Attach Links")
+                .accessibilityValue(attachLinkCountDescription)
+                .popover(isPresented: $isShowingAttachLinks) {
+                    AttachLinksView(
+                        links: attach.attachLinks,
+                        open: { link in openAttachLink(link) },
+                        copy: { link in UIPasteboard.general.string = link.target })
+                    .presentationCompactAdaptation(.sheet)
+                }
+            }
+        }
+        ToolbarItem(placement: .primaryAction) {
+            PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                Label("Attach Image", systemImage: "photo.badge.plus")
+            }
+            .disabled(!attach.canSelectImage)
+            .accessibilityLabel("Attach Image")
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Menu {
+                Button("Settings", systemImage: "gearshape") {
+                    isShowingSettings = true
+                }
+                Button("Snippets", systemImage: "quote.bubble") {
+                    isManagingSnippets = true
+                }
+                Button("Rename Agent", systemImage: "pencil") {
+                    isRenamingAgent = true
+                }
+                Button("Rename Workspace", systemImage: "pencil.line") {
+                    isRenamingWorkspace = true
+                }
+                Button("Close Agent", systemImage: "trash", role: .destructive) {
+                    isConfirmingClose = true
+                }
+            } label: {
+                Label("More", systemImage: "ellipsis.circle")
+            }
+        }
+    }
+
+    private func openAttachLink(_ link: AttachLink) {
+        let openURL = openURL
+        attach.openAttachLink(link) { url in
+            guard !Task.isCancelled else { return false }
+            let (results, continuation) = AsyncStream<Bool>.makeStream(
+                bufferingPolicy: .bufferingNewest(1))
+            openURL(url) { accepted in
+                continuation.yield(accepted)
+                continuation.finish()
+            }
+            return await withTaskCancellationHandler {
+                for await accepted in results {
+                    return accepted
+                }
+                return false
+            } onCancel: {
+                continuation.finish()
+            }
         }
     }
 
@@ -347,8 +436,57 @@ struct AgentDetailView: View {
         Self.displayTitle(for: agent)
     }
 
+    private var attachLinkCountDescription: String {
+        let count = attach.attachLinks.count
+        return count == 1 ? "1 distinct link" : "\(count) distinct links"
+    }
+
     private static func displayTitle(for agent: ConsoleAgent) -> String {
         agent.agent.title.isEmpty ? agent.agent.displayName : agent.agent.title
+    }
+}
+
+private struct AttachLinksView: View {
+    let links: [AttachLink]
+    let open: (AttachLink) -> Void
+    let copy: (AttachLink) -> Void
+
+    var body: some View {
+        NavigationStack {
+            List(links) { link in
+                Button {
+                    open(link)
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(link.host)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Text(link.target)
+                            .font(.footnote.monospaced())
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(link.host)
+                .accessibilityValue(link.target)
+                .accessibilityHint("Opens in your default browser")
+                .accessibilityAction(named: "Copy Link") {
+                    copy(link)
+                }
+                .contextMenu {
+                    Button("Copy Link", systemImage: "doc.on.doc") {
+                        copy(link)
+                    }
+                }
+            }
+            .navigationTitle("Attach Links")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .frame(idealWidth: 460, idealHeight: 520)
     }
 }
 

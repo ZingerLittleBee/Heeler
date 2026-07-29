@@ -12,8 +12,8 @@ import UIKit
 @MainActor
 @Suite("Terminal status dialog")
 struct TerminalStatusDialogTests {
-    @Test func theDialogCoversWhateverTheTerminalWasShowing() throws {
-        let image = try Self.render(
+    @Test func theDialogCoversWhateverTheTerminalWasShowing() async throws {
+        let image = try await Self.render(
             TerminalStatusDialog(
                 glyph: .symbol("cable.connector.slash"),
                 title: "Session Ended",
@@ -27,14 +27,14 @@ struct TerminalStatusDialogTests {
         #expect(behind != Self.backdrop, "the dialog let the terminal through")
     }
 
-    @Test func theDimOnlyAppliesWhereItIsAskedFor() throws {
+    @Test func theDimOnlyAppliesWhereItIsAskedFor() async throws {
         // A corner is outside the card but inside the scrim.
         let corner = CGPoint(x: 0.03, y: 0.06)
 
-        let dimmed = try Self.render(
+        let dimmed = try await Self.render(
             TerminalStatusDialog(
                 glyph: .symbol("cable.connector.slash"), title: "Session Ended"))
-        let undimmed = try Self.render(
+        let undimmed = try await Self.render(
             TerminalStatusDialog(glyph: .progress, title: "Connecting…", dimsBackground: false))
 
         #expect(try #require(Self.color(in: dimmed, atUnit: corner)) != Self.backdrop)
@@ -46,7 +46,7 @@ struct TerminalStatusDialogTests {
     /// Pure red, so anything drawn over it is unmistakable.
     private static let backdrop: UInt32 = 0xFF00_0000 >> 8
 
-    private static func render(_ dialog: some View) throws -> UIImage {
+    private static func render(_ dialog: some View) async throws -> UIImage {
         let bounds = CGRect(x: 0, y: 0, width: 390, height: 720)
         let controller = UIHostingController(
             rootView: ZStack {
@@ -55,12 +55,9 @@ struct TerminalStatusDialogTests {
             })
         controller.view.frame = bounds
 
-        let windowScene = try #require(
-            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-        let window = UIWindow(windowScene: windowScene)
-        window.frame = bounds
-        window.rootViewController = controller
-        window.makeKeyAndVisible()
+        let window = try await makeTestWindow(
+            frame: bounds,
+            rootViewController: controller)
         defer { window.isHidden = true }
         controller.view.layoutIfNeeded()
 

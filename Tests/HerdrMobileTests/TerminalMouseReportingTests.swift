@@ -117,12 +117,9 @@ struct TerminalMouseReportingTests {
         terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
         let controller = UIViewController()
         controller.view = terminal
-        let windowScene = try #require(
-            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-        let window = UIWindow(windowScene: windowScene)
-        window.frame = terminal.bounds
-        window.rootViewController = controller
-        window.makeKeyAndVisible()
+        let window = try await makeTestWindow(
+            frame: terminal.bounds,
+            rootViewController: controller)
         defer { window.isHidden = true }
 
         terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))

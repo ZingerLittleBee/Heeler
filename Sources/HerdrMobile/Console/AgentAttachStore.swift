@@ -1,6 +1,17 @@
 import Foundation
 import Observation
 
+typealias AttachLinkOpener = @MainActor @Sendable (URL) async -> Bool
+
+struct AttachLinkOpenFailure: Identifiable, Equatable {
+    let link: AttachLink
+
+    var id: String { link.id }
+    var message: String {
+        "The link to \(link.host) couldn't be opened. You can copy it instead."
+    }
+}
+
 /// Owns the complete Agent Attach interaction: terminal lifetime, input
 /// generation and pause state, image staging, reconnect replacement, close,
 /// and deterministic leave ordering. The view only forwards UI events.
@@ -9,15 +20,19 @@ import Observation
 final class AgentAttachStore {
     private let target: String
     private let runTerminal: TerminalSessionRunner
+    private let linkIndex: AttachLinkIndex
 
     private(set) var terminal: AttachTerminalStore
     let input: TerminalInputController
     let image: ImageAttachStore
     let close: ClosePaneStore
+    private(set) var attachLinkOpenFailure: AttachLinkOpenFailure?
 
     private var transportGeneration: UInt64?
     private var lifecycleTask: Task<Void, Never>?
     private var lifecycleID: UInt64 = 0
+    private var attachLinkOpenTask: Task<Void, Never>?
+    private var attachLinkOpenID: UInt64 = 0
     private var hasLeft = false
 
     init(
@@ -33,8 +48,10 @@ final class AgentAttachStore {
         self.runTerminal = runTerminal
         self.transportGeneration = transportGeneration
         self.input = input
-        terminal = AttachTerminalStore(
-            target: target, input: input, runTerminal: runTerminal)
+        let linkIndex = AttachLinkIndex()
+        self.linkIndex = linkIndex
+        terminal = Self.makeTerminal(
+            target: target, input: input, runTerminal: runTerminal, linkIndex: linkIndex)
         image = ImageAttachStore(stageImage: stageImage, input: input)
         close = ClosePaneStore(paneTitle: paneTitle, close: closePane)
     }
@@ -49,6 +66,10 @@ final class AgentAttachStore {
 
     var terminalFeed: TerminalByteFeed {
         terminal.feed
+    }
+
+    var attachLinks: [AttachLink] {
+        linkIndex.links
     }
 
     var imageState: ImageAttachState {
@@ -78,6 +99,42 @@ final class AgentAttachStore {
 
     func viewDidResize(cols: Int, rows: Int) {
         terminal.viewDidResize(cols: cols, rows: rows)
+    }
+
+    func viewportTextDidChange(_ text: String) {
+        guard !hasLeft else { return }
+        linkIndex.receiveViewportText(text)
+    }
+
+    func openAttachLink(_ link: AttachLink, using open: @escaping AttachLinkOpener) {
+        guard !hasLeft else { return }
+        attachLinkOpenFailure = nil
+        invalidateAttachLinkOpen()
+        let openID = attachLinkOpenID
+        attachLinkOpenTask = Task { @MainActor [weak self] in
+            let accepted = await open(link.url)
+            guard
+                let self,
+                !Task.isCancelled,
+                !self.hasLeft,
+                self.attachLinkOpenID == openID
+            else {
+                return
+            }
+            self.attachLinkOpenTask = nil
+            guard !accepted else { return }
+            self.attachLinkOpenFailure = AttachLinkOpenFailure(link: link)
+        }
+    }
+
+    func copyFailedAttachLink(using copy: (String) -> Void) {
+        guard let failure = attachLinkOpenFailure else { return }
+        copy(failure.link.target)
+        attachLinkOpenFailure = nil
+    }
+
+    func dismissAttachLinkOpenFailure() {
+        attachLinkOpenFailure = nil
     }
 
     func send(_ keystrokes: Data) {
@@ -149,10 +206,11 @@ final class AgentAttachStore {
             let previous = self.terminal
             await previous.stop()
             guard !self.hasLeft, self.transportGeneration == generation else { return }
-            self.terminal = AttachTerminalStore(
+            self.terminal = Self.makeTerminal(
                 target: self.target,
                 input: self.input,
-                runTerminal: self.runTerminal)
+                runTerminal: self.runTerminal,
+                linkIndex: self.linkIndex)
         }
     }
 
@@ -173,10 +231,14 @@ final class AgentAttachStore {
             return
         }
         hasLeft = true
+        invalidateAttachLinkOpen()
+        attachLinkOpenFailure = nil
+        linkIndex.clear()
         let transition = enqueueLifecycleTransition { [weak self] in
             guard let self else { return }
             await self.image.leaveAttach()
             await self.terminal.stop()
+            self.linkIndex.clear()
         }
         await transition.value
     }
@@ -199,5 +261,25 @@ final class AgentAttachStore {
             self?.lifecycleTask = nil
         }
         return task
+    }
+
+    private func invalidateAttachLinkOpen() {
+        attachLinkOpenID &+= 1
+        attachLinkOpenTask?.cancel()
+        attachLinkOpenTask = nil
+    }
+
+    private static func makeTerminal(
+        target: String,
+        input: TerminalInputController,
+        runTerminal: @escaping TerminalSessionRunner,
+        linkIndex: AttachLinkIndex
+    ) -> AttachTerminalStore {
+        AttachTerminalStore(
+            target: target,
+            input: input,
+            observeOutput: { data in linkIndex.receive(data) },
+            finishOutput: { linkIndex.finishOutput() },
+            runTerminal: runTerminal)
     }
 }

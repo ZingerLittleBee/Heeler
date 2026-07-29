@@ -9,6 +9,10 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Attach Links silently collect web and OSC 8 targets into a memory-only list
+  for opening or copying. Links survive terminal recovery and are discarded
+  when Attach ends. (#101, #102, #103, #104; PR #105)
+
 - An iPad-fit Console: on regular widths the Agent list becomes a sidebar
   beside the open terminal (a split view) instead of stretching edge to edge,
   and the in-app notification banner caps at a system-banner width. iPhone

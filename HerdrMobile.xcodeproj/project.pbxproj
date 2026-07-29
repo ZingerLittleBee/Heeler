@@ -92,6 +92,7 @@
 		718719DA8913E787FA68BD45 /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = 168EBAF199220582EB0C49F7 /* GhosttyTerminal */; };
 		71F4A714BC2E527F40E657B6 /* Base64URL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45FC4FCCE9B94EC52FD930B1 /* Base64URL.swift */; };
 		724AEEB52CDF4B28AFF8E3E5 /* HerdrWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6970DEB7C22EFDB1A26F6F9 /* HerdrWireTests.swift */; };
+		731D433F2309641163FA3B88 /* TestWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B410938C05A8D90C4A67D49E /* TestWindow.swift */; };
 		782980ECE8E7005A672D25A3 /* TransportFailureModesE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02807C329084D58137461EF8 /* TransportFailureModesE2ETests.swift */; };
 		78DE951AD8EEDB9423984268 /* AgentNotificationRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2DD3637ABCBDDA9385F5FBD /* AgentNotificationRenderer.swift */; };
 		7C3999C38A0126986F9CCC58 /* AgentNotificationRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC309E333009D66F9757CD13 /* AgentNotificationRouter.swift */; };
@@ -121,6 +122,7 @@
 		989FE5FA6D3BD73A6183B079 /* GitBranchNameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66DB4D6D48C0D21C9A7B02B8 /* GitBranchNameTests.swift */; };
 		98E83E883BCC8534910D7493 /* TerminalInputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80E727A9081269681AD7581B /* TerminalInputController.swift */; };
 		9C1C00F36A178BF1BEE6C0A5 /* StartAgentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08E14A4298DB015E6477F789 /* StartAgentStore.swift */; };
+		9E33EFFDF58051602436068F /* AttachLinkIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A077320E247C9C81F71966F /* AttachLinkIndex.swift */; };
 		9F3F748E722FD8059A59ECBD /* HostStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6434D31A79422C0BAE80993F /* HostStoreTests.swift */; };
 		9FD3129232CA2D5BBEC3A7B9 /* TerminalFontSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = F683C9B399511ED2FD476FA9 /* TerminalFontSettings.swift */; };
 		A0C9B80A4139A6FA73261805 /* HerdrWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4FC9B455C6266F12DA82A07 /* HerdrWire.swift */; };
@@ -280,6 +282,7 @@
 		31A3BC92C11A1D5AF39C5340 /* HerdrNotificationService.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HerdrNotificationService.entitlements; sourceTree = "<group>"; };
 		323782148B559800B45E2930 /* NotificationPrivacyCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPrivacyCopy.swift; sourceTree = "<group>"; };
 		389EE12865BBCAD1E1A7494A /* TerminalThemePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalThemePreview.swift; sourceTree = "<group>"; };
+		3A077320E247C9C81F71966F /* AttachLinkIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachLinkIndex.swift; sourceTree = "<group>"; };
 		3C07948FE6D5E399672A9395 /* AgentAttachStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentAttachStore.swift; sourceTree = "<group>"; };
 		3CCDC5144D5AA6403150431A /* ImageAttachStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageAttachStoreTests.swift; sourceTree = "<group>"; };
 		3CE658EA3C6364BCC0D8CE14 /* SharedAsyncOperation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedAsyncOperation.swift; sourceTree = "<group>"; };
@@ -376,6 +379,7 @@
 		B36D007E7AE959F6D62B166D /* PushRegistrationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistrationStore.swift; sourceTree = "<group>"; };
 		B383994C2C8492694D5F3690 /* HerdrMobile.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HerdrMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B3E5E9501F8CC386668291C1 /* TerminalTextSafety.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTextSafety.swift; sourceTree = "<group>"; };
+		B410938C05A8D90C4A67D49E /* TestWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestWindow.swift; sourceTree = "<group>"; };
 		B66B41C393D38FA09388E3E2 /* ReconnectPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReconnectPolicyTests.swift; sourceTree = "<group>"; };
 		B75316F4E6B80E442C365765 /* TerminalInputControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalInputControllerTests.swift; sourceTree = "<group>"; };
 		BC1CA00EE3CB38A822FEA4B2 /* TOFUHostKeyValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOFUHostKeyValidator.swift; sourceTree = "<group>"; };
@@ -732,6 +736,7 @@
 				0B3FA15CCDC83C72DDA81BEB /* AgentCardView.swift */,
 				5ADF336771A3F757F2AD441D /* AgentDetailView.swift */,
 				066E173006FDDF8FE2E93308 /* AgentName.swift */,
+				3A077320E247C9C81F71966F /* AttachLinkIndex.swift */,
 				97970F4D535CC80592333995 /* AttachTerminalStore.swift */,
 				F13921A61B4E4F17CDE47C96 /* ClosePaneStore.swift */,
 				498ECBCD631F9734C28861EA /* ConsoleAgent.swift */,
@@ -802,6 +807,7 @@
 				44F4B2F424E3FC8AB7DA69FC /* NotificationVectorFile.swift */,
 				17424B6972D7D7E6271350A5 /* PairingCodeVectorFile.swift */,
 				7AFE5C640586747D567E1CF1 /* ScriptedTransport.swift */,
+				B410938C05A8D90C4A67D49E /* TestWindow.swift */,
 				FCB59377D34D0C652DF70F01 /* UnixSockets.swift */,
 			);
 			path = Support;
@@ -1013,6 +1019,7 @@
 				7C3999C38A0126986F9CCC58 /* AgentNotificationRouter.swift in Sources */,
 				07594B18999B4ACCD9C590F9 /* AgentNotificationRouting.swift in Sources */,
 				862121A4D41D3E1EA1E56D84 /* AppActivityCoordinator.swift in Sources */,
+				9E33EFFDF58051602436068F /* AttachLinkIndex.swift in Sources */,
 				225ECBDC69A7785559BC4D20 /* AttachTerminalStore.swift in Sources */,
 				664FBC89396DBDD1083749E0 /* Base64URL.swift in Sources */,
 				CC20BAD2AC1A725889F82A20 /* ClosePaneStore.swift in Sources */,
@@ -1184,6 +1191,7 @@
 				AA2B03CF466688D5A4862273 /* TerminalStatusDialogTests.swift in Sources */,
 				D51F828E0AC4A2F6C23A0CBE /* TerminalThemeSettingsTests.swift in Sources */,
 				ECC2A0575FFC9EB286B9F8AC /* TerminalZoomSettingsTests.swift in Sources */,
+				731D433F2309641163FA3B88 /* TestWindow.swift in Sources */,
 				E23937EC4DC9148C2A7F8D18 /* TransportConcurrencyE2ETests.swift in Sources */,
 				782980ECE8E7005A672D25A3 /* TransportFailureModesE2ETests.swift in Sources */,
 				C174C223DBE1F1DD4085A2F8 /* UnixSockets.swift in Sources */,
@@ -1212,7 +1220,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/HerdrMobile/HerdrMobile.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Herdr;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1256,7 +1264,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/HerdrMobile/HerdrMobile.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Herdr;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1364,7 +1372,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Sources/HerdrNotificationService/HerdrNotificationService.entitlements;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				INFOPLIST_FILE = Sources/HerdrNotificationService/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1441,7 +1449,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Sources/HerdrNotificationService/HerdrNotificationService.entitlements;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				INFOPLIST_FILE = Sources/HerdrNotificationService/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

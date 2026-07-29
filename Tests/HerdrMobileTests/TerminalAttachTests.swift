@@ -259,12 +259,9 @@ struct TerminalAttachTests {
         terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
         let controller = UIViewController()
         controller.view = terminal
-        let windowScene = try #require(
-            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-        let window = UIWindow(windowScene: windowScene)
-        window.frame = terminal.bounds
-        window.rootViewController = controller
-        window.makeKeyAndVisible()
+        let window = try await makeTestWindow(
+            frame: terminal.bounds,
+            rootViewController: controller)
         defer { window.isHidden = true }
 
         terminal.receive(Data("$ ".utf8))
@@ -273,6 +270,36 @@ struct TerminalAttachTests {
 
         #expect(!terminal.keyboardActivationRegion.isNull)
         #expect(terminal.bounds.contains(terminal.keyboardActivationRegion))
+    }
+
+    @MainActor
+    @Test func renderedOutputReportsViewportTextToTheHost() async throws {
+        var snapshots: [String] = []
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onViewportTextChanged: { snapshots.append($0) })
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
+        let controller = UIViewController()
+        controller.view = terminal
+        let window = try await makeTestWindow(
+            frame: terminal.bounds,
+            rootViewController: controller)
+        defer { window.isHidden = true }
+
+        terminal.receive(
+            Data("\u{001B}[2J\u{001B}[Hhttps://viewport.example/result\n".utf8))
+        terminal.layoutIfNeeded()
+
+        let deadline = ContinuousClock.now + .seconds(2)
+        while !snapshots.contains(where: { $0.contains("https://viewport.example/result") }),
+            ContinuousClock.now < deadline
+        {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        #expect(
+            snapshots.contains {
+                $0.contains("https://viewport.example/result")
+            })
     }
 
     /// The shell above is not what Attach actually shows: every agent is a
@@ -286,12 +313,9 @@ struct TerminalAttachTests {
         terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
         let controller = UIViewController()
         controller.view = terminal
-        let windowScene = try #require(
-            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-        let window = UIWindow(windowScene: windowScene)
-        window.frame = terminal.bounds
-        window.rootViewController = controller
-        window.makeKeyAndVisible()
+        let window = try await makeTestWindow(
+            frame: terminal.bounds,
+            rootViewController: controller)
         defer { window.isHidden = true }
 
         // Alternate screen + SGR mouse tracking, then a prompt parked on a low
@@ -322,12 +346,9 @@ struct TerminalAttachTests {
         terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
         let controller = UIViewController()
         controller.view = terminal
-        let windowScene = try #require(
-            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-        let window = UIWindow(windowScene: windowScene)
-        window.frame = terminal.bounds
-        window.rootViewController = controller
-        window.makeKeyAndVisible()
+        let window = try await makeTestWindow(
+            frame: terminal.bounds,
+            rootViewController: controller)
         defer { window.isHidden = true }
 
         // A TUI on the alternate screen with its prompt parked on row 20.
