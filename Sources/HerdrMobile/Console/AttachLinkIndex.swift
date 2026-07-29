@@ -22,6 +22,8 @@ final class AttachLinkIndex {
 
     @ObservationIgnored private let onDistinctLink: (AttachLink) -> Void
     private var scanner = AttachLinkScanner()
+    private var streamObservedTargets: Set<String> = []
+    private var viewportOnlyTargets: Set<String> = []
 
     init(onDistinctLink: @escaping (AttachLink) -> Void) {
         self.onDistinctLink = onDistinctLink
@@ -30,42 +32,83 @@ final class AttachLinkIndex {
     func receive(_ data: Data) {
         var scanner = scanner
         scanner.receive(data) { target in
-            record(target)
+            recordStreamTarget(target)
         }
         self.scanner = scanner
     }
 
     /// Supplements stream discovery from Ghostty's current visible text.
     /// Every snapshot is independent: its newlines remain hard boundaries
-    /// because the embedding API does not identify visual soft wraps.
+    /// because the embedding API does not identify visual soft wraps. Viewport
+    /// candidates are provisional: only the longest member of an ambiguous
+    /// prefix family is kept unless the stream observed the shorter target.
     func receiveViewportText(_ text: String) {
         var viewportScanner = AttachLinkScanner()
         viewportScanner.receive(Data(text.utf8)) { target in
-            record(target, moveExistingToFront: false)
+            recordViewportTarget(target)
         }
         viewportScanner.finishOutput { target in
-            record(target, moveExistingToFront: false)
+            recordViewportTarget(target)
         }
     }
 
     func finishOutput() {
         var scanner = scanner
         scanner.finishOutput { target in
-            record(target)
+            recordStreamTarget(target)
         }
         self.scanner = scanner
     }
 
     func clear() {
         scanner = AttachLinkScanner()
+        streamObservedTargets.removeAll(keepingCapacity: false)
+        viewportOnlyTargets.removeAll(keepingCapacity: false)
         links.removeAll(keepingCapacity: false)
     }
 
-    private func record(_ target: String, moveExistingToFront: Bool = true) {
-        guard let url = TerminalLinkPolicy.url(for: target) else { return }
+    private func recordStreamTarget(_ target: String) {
+        guard TerminalLinkPolicy.url(for: target) != nil else { return }
+        removeViewportOnlyPrefixes(of: target)
+        guard record(target) else { return }
+        streamObservedTargets.insert(target)
+        viewportOnlyTargets.remove(target)
+    }
+
+    private func recordViewportTarget(_ target: String) {
+        guard TerminalLinkPolicy.url(for: target) != nil else { return }
+        guard
+            !links.contains(where: {
+                $0.target != target && $0.target.hasPrefix(target)
+            })
+        else {
+            return
+        }
+        removeViewportOnlyPrefixes(of: target)
+        guard record(target, moveExistingToFront: false) else { return }
+        if !streamObservedTargets.contains(target) {
+            viewportOnlyTargets.insert(target)
+        }
+    }
+
+    private func removeViewportOnlyPrefixes(of target: String) {
+        let prefixes = viewportOnlyTargets.filter {
+            $0 != target && target.hasPrefix($0)
+        }
+        guard !prefixes.isEmpty else { return }
+        links.removeAll { prefixes.contains($0.target) }
+        viewportOnlyTargets.subtract(prefixes)
+    }
+
+    @discardableResult
+    private func record(
+        _ target: String,
+        moveExistingToFront: Bool = true
+    ) -> Bool {
+        guard let url = TerminalLinkPolicy.url(for: target) else { return false }
         let isDistinct = !links.contains(where: { $0.target == target })
         if !moveExistingToFront, !isDistinct {
-            return
+            return true
         }
         let link = AttachLink(target: target, url: url)
         links.removeAll { $0.target == link.target }
@@ -73,9 +116,13 @@ final class AttachLinkIndex {
         if links.count > Self.maximumLinkCount {
             links.removeLast(links.count - Self.maximumLinkCount)
         }
+        let retainedTargets = Set(links.map(\.target))
+        streamObservedTargets.formIntersection(retainedTargets)
+        viewportOnlyTargets.formIntersection(retainedTargets)
         if isDistinct {
             onDistinctLink(link)
         }
+        return true
     }
 }
 

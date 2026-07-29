@@ -752,6 +752,54 @@ struct AgentAttachStoreTests {
         await store.leave()
     }
 
+    @Test func softWrappedViewportDoesNotAddPrefixesOfStreamTargets() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+        let target = "https://127.0.0.1:8443/private?token=literal#frag"
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+
+        await transport.emitAttachOutput(Data("\(target)\n".utf8))
+        try await waitUntil("the complete stream target should be observed") {
+            store.attachLinks.map(\.target) == [target]
+        }
+
+        store.viewportTextDidChange(
+            "https://127.0.0                  \n"
+                + ".1:8443/private?to             \n"
+                + "ken=literal#frag               ")
+
+        #expect(store.attachLinks.map(\.target) == [target])
+
+        await store.leave()
+    }
+
+    @Test func repeatedViewportLayoutsKeepTheLongestAmbiguousTarget() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+        let target =
+            "https://softwrap.example/this/is/a/very/long/path?token=literal#finish"
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+
+        store.viewportTextDidChange(target)
+        #expect(store.attachLinks.map(\.target) == [target])
+
+        store.viewportTextDidChange(
+            "https://softwrap.example/this/is/a/very")
+        store.viewportTextDidChange("https://softwrap")
+
+        #expect(store.attachLinks.map(\.target) == [target])
+
+        await store.leave()
+    }
+
     @Test func repeatedViewportSnapshotsDoNotRewriteStreamRecency() async throws {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
