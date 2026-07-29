@@ -9,13 +9,9 @@ Entries reference the issue that motivated them.
 
 ### Added
 
-- Attach Links collect plain HTTP and HTTPS targets printed during an Attach
-  into a memory-only, most-recent-first list with native opening and copying.
-  ANSI styling stays transparent, and OSC 8 hyperlinks expose their real
-  targets instead of their labels. A failed open keeps the target available
-  with a Copy Link recovery. The list survives terminal recovery, adapts
-  between iPhone and iPad, and remains usable with Dynamic Type and VoiceOver.
-  It is discarded when Attach ends. (#101, #102, #103, #104; PR #105)
+- Attach Links silently collect web and OSC 8 targets into a memory-only list
+  for opening or copying. Links survive terminal recovery and are discarded
+  when Attach ends. (#101, #102, #103, #104; PR #105)
 
 - An iPad-fit Console: on regular widths the Agent list becomes a sidebar
   beside the open terminal (a split view) instead of stretching edge to edge,
