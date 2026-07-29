@@ -15,7 +15,7 @@ Entries reference the issue that motivated them.
   targets instead of their labels. A failed open keeps the target available
   with a Copy Link recovery. The list survives terminal recovery, adapts
   between iPhone and iPad, and remains usable with Dynamic Type and VoiceOver.
-  It is discarded when Attach ends. (#101, #102, #103, #104)
+  It is discarded when Attach ends. (#101, #102, #103, #104; PR #105)
 
 - An iPad-fit Console: on regular widths the Agent list becomes a sidebar
   beside the open terminal (a split view) instead of stretching edge to edge,
