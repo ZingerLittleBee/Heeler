@@ -65,14 +65,25 @@ final class HostRemovalStore {
 /// row leading into that Host's onboarding checklist.
 struct HostListView: View {
     let store: HostStore
+    private let initialHostID: Host.ID?
+    private let connectionStatuses: [Host.ID: EventsSessionStatus]
+    private let retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)?
     @State private var removal: HostRemovalStore
     @State private var isAddingHost = false
     @State private var isScanningToPair = false
     @State private var manualFallbackRequested = false
     @State private var path: [Host.ID] = []
 
-    init(store: HostStore) {
+    init(
+        store: HostStore,
+        initialHostID: Host.ID? = nil,
+        connectionStatuses: [Host.ID: EventsSessionStatus] = [:],
+        retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)? = nil
+    ) {
         self.store = store
+        self.initialHostID = initialHostID
+        self.connectionStatuses = connectionStatuses
+        self.retryConnection = retryConnection
         _removal = State(initialValue: HostRemovalStore(store: store))
     }
 
@@ -129,7 +140,11 @@ struct HostListView: View {
                 if let host = store.hosts.first(where: { $0.id == id }) {
                     // Keyed by the Host value: editing recreates the
                     // onboarding store so checks run against fresh settings.
-                    HostOnboardingView(host: host, catalog: store)
+                    HostOnboardingView(
+                        host: host,
+                        catalog: store,
+                        connectionStatus: connectionStatuses[id],
+                        retryConnection: retryAction(for: id))
                         .id(host)
                 } else {
                     ContentUnavailableView("Host removed", systemImage: "server.rack")
@@ -191,6 +206,14 @@ struct HostListView: View {
             } message: {
                 Text(removal.errorMessage ?? "")
             }
+            .task(id: initialHostID) {
+                guard
+                    path.isEmpty,
+                    let initialHostID,
+                    store.hosts.contains(where: { $0.id == initialHostID })
+                else { return }
+                path.append(initialHostID)
+            }
         }
     }
 
@@ -202,6 +225,13 @@ struct HostListView: View {
 
     private func removeHosts(at offsets: IndexSet) {
         removal.requestRemoval(offsets.map { store.hosts[$0].id })
+    }
+
+    private func retryAction(
+        for id: Host.ID
+    ) -> (@MainActor @Sendable () async -> Void)? {
+        guard let retryConnection else { return nil }
+        return { await retryConnection(id) }
     }
 }
 

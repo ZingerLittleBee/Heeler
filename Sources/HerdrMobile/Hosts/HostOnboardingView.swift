@@ -6,13 +6,23 @@ import SwiftUI
 struct HostOnboardingView: View {
     /// The Host catalog, for the Edit sheet.
     let catalog: HostStore
+    let connectionStatus: EventsSessionStatus?
+    let retryConnection: (@MainActor @Sendable () async -> Void)?
     @State private var store: HostOnboardingStore
     @State private var isEditing = false
+    @State private var isRetryingConnection = false
     @State private var isConfirmingHostKeyReplacement = false
     @State private var sessionSelectionError: String?
 
-    init(host: Host, catalog: HostStore) {
+    init(
+        host: Host,
+        catalog: HostStore,
+        connectionStatus: EventsSessionStatus? = nil,
+        retryConnection: (@MainActor @Sendable () async -> Void)? = nil
+    ) {
         self.catalog = catalog
+        self.connectionStatus = connectionStatus
+        self.retryConnection = retryConnection
         _store = State(initialValue: HostOnboardingStore(host: host))
     }
 
@@ -24,6 +34,27 @@ struct HostOnboardingView: View {
                 LabeledContent(
                     "Auth",
                     value: store.host.authMethod == .deviceKey ? "Device Key" : "Password")
+            }
+
+            if canRetryConnection, retryConnection != nil {
+                Section {
+                    Button {
+                        retry()
+                    } label: {
+                        if isRetryingConnection {
+                            Label {
+                                Text("Connecting…")
+                            } icon: {
+                                ProgressView()
+                            }
+                        } else {
+                            Label("Retry Connection", systemImage: "arrow.clockwise")
+                        }
+                    }
+                    .disabled(isRetryingConnection)
+                } footer: {
+                    Text("Starts a new connection attempt using this Host's current settings.")
+                }
             }
 
             Section {
@@ -141,6 +172,20 @@ struct HostOnboardingView: View {
             return name
         }
         return "default"
+    }
+
+    private var canRetryConnection: Bool {
+        guard case .failed = connectionStatus else { return false }
+        return true
+    }
+
+    private func retry() {
+        guard !isRetryingConnection, let retryConnection else { return }
+        isRetryingConnection = true
+        Task { @MainActor in
+            await retryConnection()
+            isRetryingConnection = false
+        }
     }
 
     private func status(for check: PreflightCheck) -> PreflightCheckStatus? {

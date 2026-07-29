@@ -91,6 +91,12 @@ final class ConsoleStore {
         }
     }
 
+    /// Restarts one failed Host without disturbing other Hosts that may be
+    /// connected, reconnecting, or waiting for their own repair.
+    func retryHost(_ id: Host.ID) async {
+        await projections[id]?.retry()
+    }
+
     /// The returned runner resolves the Host's live projection on every
     /// call: editing a Host replaces its projection (and session), and a
     /// runner captured by a long-lived Attach screen must follow it there

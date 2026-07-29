@@ -70,6 +70,9 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Failed Host notices stay compact in the Agent list and open the affected
+  Host directly, where an explicit reconnect action is now available.
+
 - Arguments typed on the New Agent form survive the iOS keyboard's smart
   punctuation: `--yolo` no longer reaches the Host as an em-dash garbage
   argument, and curly quotes normalize back to the straight quotes the
