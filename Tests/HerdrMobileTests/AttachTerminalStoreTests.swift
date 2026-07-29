@@ -503,6 +503,34 @@ struct AgentAttachStoreTests {
         await store.leave()
     }
 
+    @Test func c1ControlsSeparateAdjacentVisibleURLs() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+        var output = Data("https://before-nel.example/result".utf8)
+        output.append(0x85)
+        output.append(Data("https://after-nel.example/result\n".utf8))
+        output.append(Data("https://before-st.example/result".utf8))
+        output.append(0x9C)
+        output.append(Data("https://after-st.example/result\n".utf8))
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+        await transport.emitAttachOutput(output)
+
+        try await waitUntil("C1 controls should separate visible targets") {
+            store.attachLinks.map(\.target) == [
+                "https://after-st.example/result",
+                "https://before-st.example/result",
+                "https://after-nel.example/result",
+                "https://before-nel.example/result",
+            ]
+        }
+
+        await store.leave()
+    }
+
     @Test func osc8TargetsReuseWebValidationAndCollectionBounds() async throws {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)

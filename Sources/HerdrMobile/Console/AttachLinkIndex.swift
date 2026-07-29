@@ -175,6 +175,8 @@ private struct AttachLinkScanner {
         case 0x90, 0x98, 0x9E, 0x9F:
             finishPlainCandidate(record: record)
             state = .stringControl
+        case 0x80...0x9F:
+            finishPlainCandidate(record: record)
         default:
             guard !isOSC8LabelActive else { return }
             plain.receive(byte, record: record)
