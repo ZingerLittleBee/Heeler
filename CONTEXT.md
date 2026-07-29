@@ -83,6 +83,12 @@ quarter always answers, because chat-style TUIs pin their input box there. The
 tap that halts a flick is spent on the halt alone.
 _Avoid_: takeover (that's herdr's flag, not our surface), connect
 
+**Attach Link**:
+An ordinary web URL observed in the terminal during one Attach. It remains
+available after scrolling or reconnecting, but is forgotten when the user
+leaves Attach; a later Attach discovers whatever its terminal shows anew.
+_Avoid_: recent link, visible link, link history
+
 **Terminal Keyboard**:
 The two input modes used within Attach. Text keeps the standard iOS input method
 for composition, autocorrection, dictation, and language switching. The Keys mode
