@@ -364,6 +364,191 @@ struct AgentAttachStoreTests {
         await store.leave()
     }
 
+    @Test func styledTextAndOSC8HyperlinksExposeTheirRealTargets() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+
+        await transport.emitAttachOutput(
+            Data(
+                "\u{001B}Phttps://hidden-control.example\u{001B}\\"
+                    .utf8))
+        await transport.emitAttachOutput(
+            Data(
+                "\u{001B}]0;https://hidden-title.example\u{0007}"
+                    .utf8))
+        await transport.emitAttachOutput(
+            Data("See (\u{001B}[31mhttps://styled.exa".utf8))
+        await transport.emitAttachOutput(
+            Data("mple/path\u{001B}[0m),\n".utf8))
+        await transport.emitAttachOutput(
+            Data(
+                "\u{001B}]8;;https://actual.example/build/42?mode=full#result\u{0007}"
+                    .utf8))
+        await transport.emitAttachOutput(
+            Data("https://misleading.example\u{001B}]8;;\u{0007}\n".utf8))
+        await transport.emitAttachOutput(
+            Data("\u{001B}]8;id=docs;https://docs.example/guide\u{001B}".utf8))
+        await transport.emitAttachOutput(
+            Data("\\Documentation\u{001B}]8;;\u{001B}\\\n".utf8))
+
+        try await waitUntil("styled and explicit hyperlink targets should settle") {
+            store.attachLinks.map(\.target) == [
+                "https://docs.example/guide",
+                "https://actual.example/build/42?mode=full#result",
+                "https://styled.example/path",
+            ]
+        }
+
+        await store.leave()
+    }
+
+    @Test func redrawnViewportTextSupplementsOutputWithoutJoiningRows() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+
+        await transport.emitAttachOutput(
+            Data("https://\nredrawn.example/result\n".utf8))
+        store.viewportTextDidChange(
+            """
+            Result: (https://redrawn.example/result).
+            https://
+            split.example/path
+            """)
+
+        try await waitUntil("the complete redrawn target should be observed") {
+            store.attachLinks.map(\.target) == [
+                "https://redrawn.example/result"
+            ]
+        }
+
+        await store.leave()
+    }
+
+    @Test func repeatedViewportSnapshotsDoNotRewriteStreamRecency() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+        await transport.emitAttachOutput(
+            Data(
+                """
+                https://older.example/result
+                https://newer.example/result
+
+                """.utf8))
+        try await waitUntil("stream order should settle") {
+            store.attachLinks.map(\.target) == [
+                "https://newer.example/result",
+                "https://older.example/result",
+            ]
+        }
+
+        store.viewportTextDidChange("https://older.example/result")
+
+        #expect(
+            store.attachLinks.map(\.target) == [
+                "https://newer.example/result",
+                "https://older.example/result",
+            ])
+
+        await store.leave()
+    }
+
+    @Test func osc8AcceptsC1IntroducerAndStringTerminatorForms() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+        var output = Data([0x1B, 0x5D])
+        output.append(Data("8;;https://c1-st.example/result".utf8))
+        output.append(0x9C)
+        output.append(Data("Result".utf8))
+        output.append(contentsOf: [0x1B, 0x5D])
+        output.append(Data("8;;".utf8))
+        output.append(0x9C)
+        output.append(0x0A)
+        output.append(0x9D)
+        output.append(Data("8;;https://c1-osc.example/docs".utf8))
+        output.append(0x07)
+        output.append(Data("Docs".utf8))
+        output.append(0x9D)
+        output.append(Data("8;;".utf8))
+        output.append(0x07)
+        output.append(0x0A)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+        await transport.emitAttachOutput(output)
+
+        try await waitUntil("both C1 forms should expose their targets") {
+            store.attachLinks.map(\.target) == [
+                "https://c1-osc.example/docs",
+                "https://c1-st.example/result",
+            ]
+        }
+
+        await store.leave()
+    }
+
+    @Test func osc8TargetsReuseWebValidationAndCollectionBounds() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+        let prefix = "https://bounded.example/"
+        let maximumTarget =
+            prefix
+            + String(
+                repeating: "a",
+                count: 32 * 1024 - prefix.utf8.count)
+        let oversizedTarget = maximumTarget + "b"
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+
+        await emitOSC8(
+            maximumTarget, label: "maximum", transport: transport)
+        await emitOSC8(
+            oversizedTarget, label: "oversized", transport: transport)
+        await emitOSC8(
+            "file:///tmp/result", label: "unsafe", transport: transport)
+        await emitOSC8(
+            "https:///missing-host", label: "missing", transport: transport)
+
+        try await waitUntil("only the maximum valid target should be observed") {
+            store.attachLinks.map(\.target) == [maximumTarget]
+        }
+
+        for index in 0..<21 {
+            await emitOSC8(
+                "https://example.com/item/\(index)",
+                label: "item \(index)",
+                transport: transport)
+        }
+
+        try await waitUntil("OSC targets should use the same bounded collection") {
+            store.attachLinks.count == 20
+                && store.attachLinks.first?.target == "https://example.com/item/20"
+        }
+        #expect(store.attachLinks.last?.target == "https://example.com/item/1")
+        #expect(!store.attachLinks.contains { $0.target == maximumTarget })
+
+        await store.leave()
+    }
+
     @Test func exactRepeatsMoveToFrontAndTheLeastRecentLinkIsEvicted() async throws {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
@@ -733,6 +918,17 @@ struct AgentAttachStoreTests {
                 throw ImageStagingError.transferFailed
             },
             closePane: close)
+    }
+
+    private func emitOSC8(
+        _ target: String,
+        label: String,
+        transport: ScriptedTransport
+    ) async {
+        await transport.emitAttachOutput(
+            Data(
+                "\u{001B}]8;;\(target)\u{0007}\(label)\u{001B}]8;;\u{0007}\n"
+                    .utf8))
     }
 
     private func waitUntil(

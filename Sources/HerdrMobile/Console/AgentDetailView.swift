@@ -65,6 +65,9 @@ struct AgentDetailView: View {
         screen.onSizeChanged = { cols, rows in
             attach.viewDidResize(cols: cols, rows: rows)
         }
+        screen.onViewportTextChanged = { text in
+            attach.viewportTextDidChange(text)
+        }
         screen.onSend = { keystrokes in attach.send(keystrokes) }
         screen.onPaste = { text, bracketed in
             attach.requestPaste(text, bracketedPaste: bracketed)

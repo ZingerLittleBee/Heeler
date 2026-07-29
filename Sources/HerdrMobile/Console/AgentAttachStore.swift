@@ -87,6 +87,11 @@ final class AgentAttachStore {
         terminal.viewDidResize(cols: cols, rows: rows)
     }
 
+    func viewportTextDidChange(_ text: String) {
+        guard !hasLeft else { return }
+        linkIndex.receiveViewportText(text)
+    }
+
     func send(_ keystrokes: Data) {
         terminal.send(keystrokes)
     }

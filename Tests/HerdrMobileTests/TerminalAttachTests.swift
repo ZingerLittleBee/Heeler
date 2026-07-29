@@ -275,6 +275,39 @@ struct TerminalAttachTests {
         #expect(terminal.bounds.contains(terminal.keyboardActivationRegion))
     }
 
+    @MainActor
+    @Test func renderedOutputReportsViewportTextToTheHost() async throws {
+        var snapshots: [String] = []
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onViewportTextChanged: { snapshots.append($0) })
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
+        let controller = UIViewController()
+        controller.view = terminal
+        let windowScene = try #require(
+            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: windowScene)
+        window.frame = terminal.bounds
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+
+        terminal.receive(
+            Data("\u{001B}[2J\u{001B}[Hhttps://viewport.example/result\n".utf8))
+        terminal.layoutIfNeeded()
+
+        let deadline = ContinuousClock.now + .seconds(2)
+        while !snapshots.contains(where: { $0.contains("https://viewport.example/result") }),
+            ContinuousClock.now < deadline
+        {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        #expect(
+            snapshots.contains {
+                $0.contains("https://viewport.example/result")
+            })
+    }
+
     /// The shell above is not what Attach actually shows: every agent is a
     /// full-screen TUI that takes the alternate screen and grabs the mouse, and
     /// the keyboard has exactly one entry point. If the cursor stopped yielding

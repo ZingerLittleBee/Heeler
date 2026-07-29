@@ -19,6 +19,7 @@ enum TerminalLinkPolicy {
 struct TerminalScreenView: UIViewRepresentable {
     let feed: TerminalByteFeed
     var onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)?
+    var onViewportTextChanged: ((String) -> Void)?
     var onSend: ((Data) -> Void)?
     var onPaste: ((_ text: String, _ bracketed: Bool) -> Void)?
     var onSnippet: ((_ text: String, _ bracketed: Bool) -> Void)?
@@ -37,6 +38,7 @@ struct TerminalScreenView: UIViewRepresentable {
     func makeUIView(context: Context) -> HerdrTerminalView {
         let view = Self.makeConfiguredTerminal(
             onSizeChanged: onSizeChanged,
+            onViewportTextChanged: onViewportTextChanged,
             onSend: onSend,
             onPaste: onPaste,
             onSnippet: onSnippet,
@@ -55,6 +57,7 @@ struct TerminalScreenView: UIViewRepresentable {
     @MainActor
     static func makeConfiguredTerminal(
         onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)? = nil,
+        onViewportTextChanged: ((String) -> Void)? = nil,
         onSend: ((Data) -> Void)? = nil,
         onPaste: ((_ text: String, _ bracketed: Bool) -> Void)? = nil,
         onSnippet: ((_ text: String, _ bracketed: Bool) -> Void)? = nil,
@@ -66,6 +69,7 @@ struct TerminalScreenView: UIViewRepresentable {
         let view = HerdrTerminalView(
             frame: .zero,
             onSizeChanged: onSizeChanged,
+            onViewportTextChanged: onViewportTextChanged,
             onSend: onSend,
             onPaste: onPaste,
             onSnippet: onSnippet,
@@ -80,6 +84,7 @@ struct TerminalScreenView: UIViewRepresentable {
     func updateUIView(_ view: HerdrTerminalView, context: Context) {
         view.updateCallbacks(
             onSizeChanged: onSizeChanged,
+            onViewportTextChanged: onViewportTextChanged,
             onSend: onSend,
             onPaste: onPaste,
             onSnippet: onSnippet)
@@ -89,6 +94,7 @@ struct TerminalScreenView: UIViewRepresentable {
         view.applyFontSize(fontSize)
         view.applyFontFamily(fontFamily)
         view.onFontSizeChanged = onFontSizeChanged
+        view.reportViewportText()
         context.coordinator.onOpenLink = { url in openURL(url) }
     }
 
@@ -124,6 +130,7 @@ struct TerminalScreenView: UIViewRepresentable {
 @MainActor
 private final class TerminalSessionCallbackBridge {
     var onSizeChanged: ((Int, Int) -> Void)?
+    var onViewportTextChanged: ((String) -> Void)?
     var onSend: ((Data) -> Void)?
     var onPaste: ((String, Bool) -> Void)?
     var onSnippet: ((String, Bool) -> Void)?
@@ -131,11 +138,13 @@ private final class TerminalSessionCallbackBridge {
 
     init(
         onSizeChanged: ((Int, Int) -> Void)?,
+        onViewportTextChanged: ((String) -> Void)?,
         onSend: ((Data) -> Void)?,
         onPaste: ((String, Bool) -> Void)?,
         onSnippet: ((String, Bool) -> Void)?
     ) {
         self.onSizeChanged = onSizeChanged
+        self.onViewportTextChanged = onViewportTextChanged
         self.onSend = onSend
         self.onPaste = onPaste
         self.onSnippet = onSnippet
@@ -161,6 +170,10 @@ private final class TerminalSessionCallbackBridge {
     func snippet(_ text: String, bracketed: Bool) {
         onSnippet?(text, bracketed)
     }
+
+    func viewportTextDidChange(_ text: String) {
+        onViewportTextChanged?(text)
+    }
 }
 
 /// The app-owned seam around libghostty-spm. It keeps keyboard policy and the
@@ -181,6 +194,7 @@ final class HerdrTerminalView: UITerminalView {
     private var modeTracker = TerminalModeTracker()
     private var lastInputWindowSize: CGSize?
     private var responderGate = TerminalKeyboardResponderGate()
+    private var viewportSnapshotTask: Task<Void, Never>?
     private(set) var isLocalInputEnabled = true
     private var terminalGridSize = (columns: 80, rows: 24)
     private var terminalCellSize = CGSize(width: 8, height: 16)
@@ -261,6 +275,7 @@ final class HerdrTerminalView: UITerminalView {
     init(
         frame: CGRect,
         onSizeChanged: ((Int, Int) -> Void)?,
+        onViewportTextChanged: ((String) -> Void)?,
         onSend: ((Data) -> Void)?,
         onPaste: ((String, Bool) -> Void)?,
         onSnippet: ((String, Bool) -> Void)?,
@@ -272,6 +287,7 @@ final class HerdrTerminalView: UITerminalView {
         self.keysContext = keysContext
         let callbackBridge = TerminalSessionCallbackBridge(
             onSizeChanged: onSizeChanged,
+            onViewportTextChanged: onViewportTextChanged,
             onSend: onSend,
             onPaste: onPaste,
             onSnippet: onSnippet)
@@ -313,11 +329,13 @@ final class HerdrTerminalView: UITerminalView {
 
     func updateCallbacks(
         onSizeChanged: ((Int, Int) -> Void)?,
+        onViewportTextChanged: ((String) -> Void)?,
         onSend: ((Data) -> Void)?,
         onPaste: ((String, Bool) -> Void)?,
         onSnippet: ((String, Bool) -> Void)?
     ) {
         callbackBridge.onSizeChanged = onSizeChanged
+        callbackBridge.onViewportTextChanged = onViewportTextChanged
         callbackBridge.onSend = onSend
         callbackBridge.onPaste = onPaste
         callbackBridge.onSnippet = onSnippet
@@ -382,6 +400,24 @@ final class HerdrTerminalView: UITerminalView {
     func receive(_ data: Data) {
         modeTracker.receive(data)
         terminalSession.receive(data)
+        scheduleViewportSnapshot()
+    }
+
+    /// Viewport reads are supplemental to raw-stream discovery. Ghostty
+    /// parses host output off-main, so coalescing briefly lets redraw bursts
+    /// settle without making terminal rendering wait on link collection.
+    func reportViewportText() {
+        guard let text = terminalSession.readViewportText() else { return }
+        callbackBridge.viewportTextDidChange(text)
+    }
+
+    private func scheduleViewportSnapshot() {
+        viewportSnapshotTask?.cancel()
+        viewportSnapshotTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled else { return }
+            self?.reportViewportText()
+        }
     }
 
     /// Raises the keyboard, and records that the user wants it up.
