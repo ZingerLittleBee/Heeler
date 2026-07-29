@@ -23,9 +23,11 @@ final class AttachLinkIndex {
     private var scanner = PlainAttachLinkScanner()
 
     func receive(_ data: Data) {
-        for target in scanner.receive(data) {
+        var scanner = scanner
+        scanner.receive(data) { target in
             record(target)
         }
+        self.scanner = scanner
     }
 
     func finishOutput() {
@@ -66,12 +68,11 @@ private struct PlainAttachLinkScanner {
     private var candidate = Data()
     private var isOversized = false
 
-    mutating func receive(_ data: Data) -> [String] {
-        var targets: [String] = []
+    mutating func receive(_ data: Data, record: (String) -> Void) {
         for byte in data {
             if Self.isBoundary(byte) {
                 if let target = finishCandidate() {
-                    targets.append(target)
+                    record(target)
                 }
                 recent.removeAll(keepingCapacity: true)
                 continue
@@ -91,7 +92,6 @@ private struct PlainAttachLinkScanner {
             candidate = Data(recent.suffix(scheme.count))
             recent.removeAll(keepingCapacity: true)
         }
-        return targets
     }
 
     mutating func finishOutput() -> String? {

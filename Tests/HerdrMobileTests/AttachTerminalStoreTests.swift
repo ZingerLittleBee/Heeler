@@ -397,6 +397,33 @@ struct AgentAttachStoreTests {
         await store.leave()
     }
 
+    @Test func oneOutputChunkKeepsTheLatestLinksBeyondCollectionCapacity() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+        let output = (0..<25)
+            .map { "https://example.com/item/\($0)" }
+            .joined(separator: "\n") + "\n"
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+
+        await transport.emitAttachOutput(Data(output.utf8))
+
+        try await waitUntil("the complete output chunk should be observed") {
+            store.attachLinks.count == 20
+                && store.attachLinks.first?.target == "https://example.com/item/24"
+        }
+        #expect(store.attachLinks.last?.target == "https://example.com/item/5")
+        #expect(
+            !store.attachLinks.contains {
+                $0.target == "https://example.com/item/4"
+            })
+
+        await store.leave()
+    }
+
     @Test func targetAtTheByteLimitIsAcceptedAndAnOversizedTargetIsIgnoredWhole()
         async throws
     {
