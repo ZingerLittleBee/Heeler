@@ -364,6 +364,207 @@ struct AgentAttachStoreTests {
         await store.leave()
     }
 
+    @Test func aNewDistinctLinkPresentsAnOpenPrompt() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+
+        await transport.emitAttachOutput(
+            Data("https://example.com/new?signature=exact#result\n".utf8))
+
+        try await waitUntil("the new distinct link should present a prompt") {
+            store.attachLinkPrompt?.target
+                == "https://example.com/new?signature=exact#result"
+        }
+
+        await store.leave()
+    }
+
+    @Test func anOpenPromptExpiresAfterFourSecondsOnTheInjectedClock() async throws {
+        let transport = ScriptedTransport()
+        let clock = ControllablePromptClock()
+        let store = makeStore(
+            transport: transport,
+            generation: 0,
+            promptClock: AttachLinkPromptClock(sleep: clock.sleep))
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+        await transport.emitAttachOutput(Data("https://example.com/expiring\n".utf8))
+        try await waitUntil("the new link should present a prompt") {
+            store.attachLinkPrompt != nil
+        }
+        await clock.waitUntilSleeping()
+
+        await clock.advance(by: .seconds(3))
+        #expect(store.attachLinkPrompt?.target == "https://example.com/expiring")
+
+        await clock.advance(by: .seconds(1))
+        await yieldUntil { store.attachLinkPrompt == nil }
+        #expect(store.attachLinkPrompt == nil)
+
+        await store.leave()
+    }
+
+    @Test func anExactRepeatReordersWithoutReplacingOrExtendingThePrompt() async throws {
+        let transport = ScriptedTransport()
+        let clock = ControllablePromptClock()
+        let store = makeStore(
+            transport: transport,
+            generation: 0,
+            promptClock: AttachLinkPromptClock(sleep: clock.sleep))
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+        await transport.emitAttachOutput(Data("https://example.com/first\n".utf8))
+        await transport.emitAttachOutput(Data("https://example.com/second\n".utf8))
+        try await waitUntil("the latest distinct link should own the prompt") {
+            store.attachLinkPrompt?.target == "https://example.com/second"
+        }
+        await clock.waitUntilSleeping()
+
+        await clock.advance(by: .seconds(3))
+        await transport.emitAttachOutput(Data("https://example.com/first\n".utf8))
+        try await waitUntil("the repeat should only reorder the collection") {
+            store.attachLinks.first?.target == "https://example.com/first"
+        }
+        #expect(store.attachLinkPrompt?.target == "https://example.com/second")
+
+        await clock.advance(by: .seconds(1))
+        await yieldUntil { store.attachLinkPrompt == nil }
+        #expect(store.attachLinkPrompt == nil)
+
+        await store.leave()
+    }
+
+    @Test func aBurstReplacesThePromptWithoutQueueingOlderLinks() async throws {
+        let transport = ScriptedTransport()
+        let clock = ControllablePromptClock()
+        let store = makeStore(
+            transport: transport,
+            generation: 0,
+            promptClock: AttachLinkPromptClock(sleep: clock.sleep))
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+        await transport.emitAttachOutput(
+            Data(
+                """
+                https://example.com/first
+                https://example.com/latest
+
+                """.utf8))
+        try await waitUntil("the latest burst link should replace the prompt") {
+            store.attachLinkPrompt?.target == "https://example.com/latest"
+        }
+        await clock.waitUntilSleeping()
+
+        await clock.advance(by: .seconds(4))
+        await yieldUntil { store.attachLinkPrompt == nil }
+        #expect(store.attachLinkPrompt == nil)
+
+        await store.leave()
+    }
+
+    @Test func leavingAttachCancelsPromptExpiryAndClearsThePrompt() async throws {
+        let transport = ScriptedTransport()
+        let clock = ControllablePromptClock()
+        let store = makeStore(
+            transport: transport,
+            generation: 0,
+            promptClock: AttachLinkPromptClock(sleep: clock.sleep))
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+        await transport.emitAttachOutput(Data("https://example.com/leaving\n".utf8))
+        try await waitUntil("the link should present a prompt") {
+            store.attachLinkPrompt != nil
+        }
+        await clock.waitUntilSleeping()
+
+        await store.leave()
+        #expect(store.attachLinkPrompt == nil)
+
+        await clock.advance(by: .seconds(4))
+        await Task.yield()
+        #expect(store.attachLinkPrompt == nil)
+    }
+
+    @Test func inactiveOutputCollectsSilentlyAndDoesNotPromptOnReturn() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+        await transport.emitAttachOutput(Data("https://example.com/visible\n".utf8))
+        try await waitUntil("the active link should present a prompt") {
+            store.attachLinkPrompt != nil
+        }
+
+        store.viewActivityDidChange(isActive: false)
+        #expect(store.attachLinkPrompt == nil)
+        await transport.emitAttachOutput(Data("https://example.com/background\n".utf8))
+        try await waitUntil("background output should still update the collection") {
+            store.attachLinks.first?.target == "https://example.com/background"
+        }
+        #expect(store.attachLinkPrompt == nil)
+
+        store.viewActivityDidChange(isActive: true)
+        #expect(store.attachLinkPrompt == nil)
+        await transport.emitAttachOutput(Data("https://example.com/foreground\n".utf8))
+        try await waitUntil("later foreground output should prompt normally") {
+            store.attachLinkPrompt?.target == "https://example.com/foreground"
+        }
+
+        await store.leave()
+    }
+
+    @Test func failedOpenKeepsTheLinkAndOffersExactCopyRecovery() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+        let exactTarget = "https://example.com/signed?q=a%2Fb#Exact"
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+        await transport.emitAttachOutput(Data((exactTarget + "\n").utf8))
+        try await waitUntil("the exact link should be collected") {
+            store.attachLinks.first?.target == exactTarget
+        }
+        let link = try #require(store.attachLinks.first)
+
+        await store.openAttachLink(link) { url in
+            #expect(url.absoluteString == exactTarget)
+            return false
+        }
+
+        #expect(store.attachLinks.map(\.target) == [exactTarget])
+        #expect(store.attachLinkOpenFailure?.link == link)
+
+        var copiedTarget: String?
+        store.copyFailedAttachLink { copiedTarget = $0 }
+        #expect(copiedTarget == exactTarget)
+        #expect(store.attachLinks.map(\.target) == [exactTarget])
+        #expect(store.attachLinkOpenFailure == nil)
+
+        await store.leave()
+    }
+
     @Test func styledTextAndOSC8HyperlinksExposeTheirRealTargets() async throws {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
@@ -926,6 +1127,7 @@ struct AgentAttachStoreTests {
     private func makeStore(
         transport: ScriptedTransport,
         generation: UInt64?,
+        promptClock: AttachLinkPromptClock = .continuous,
         close: @escaping () async throws -> Void = {}
     ) -> AgentAttachStore {
         AgentAttachStore(
@@ -945,6 +1147,7 @@ struct AgentAttachStoreTests {
             stageImage: { _, _ in
                 throw ImageStagingError.transferFailed
             },
+            linkPromptClock: promptClock,
             closePane: close)
     }
 
@@ -971,6 +1174,12 @@ struct AgentAttachStoreTests {
         }
         #expect(await condition(), comment)
     }
+
+    private func yieldUntil(condition: () -> Bool) async {
+        for _ in 0..<100 where !condition() {
+            await Task.yield()
+        }
+    }
 }
 
 private actor CloseCallRecorder {
@@ -978,5 +1187,56 @@ private actor CloseCallRecorder {
 
     func record() {
         count += 1
+    }
+}
+
+private actor ControllablePromptClock {
+    private struct Waiter {
+        let deadline: Duration
+        let continuation: CheckedContinuation<Void, any Error>
+    }
+
+    private var now: Duration = .zero
+    private var waiters: [UUID: Waiter] = [:]
+    private var sleepObservers: [CheckedContinuation<Void, Never>] = []
+
+    func sleep(for duration: Duration) async throws {
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, any Error>) in
+                guard !Task.isCancelled else {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+                waiters[id] = Waiter(
+                    deadline: now + duration,
+                    continuation: continuation)
+                let observers = sleepObservers
+                sleepObservers.removeAll()
+                observers.forEach { $0.resume() }
+            }
+        } onCancel: {
+            Task { await self.cancel(id) }
+        }
+    }
+
+    func waitUntilSleeping() async {
+        guard waiters.isEmpty else { return }
+        await withCheckedContinuation { sleepObservers.append($0) }
+    }
+
+    func advance(by duration: Duration) {
+        now += duration
+        let ready = waiters.filter { $0.value.deadline <= now }
+        for (id, waiter) in ready {
+            waiters[id] = nil
+            waiter.continuation.resume()
+        }
+    }
+
+    private func cancel(_ id: UUID) {
+        guard let waiter = waiters.removeValue(forKey: id) else { return }
+        waiter.continuation.resume(throwing: CancellationError())
     }
 }

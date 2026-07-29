@@ -20,7 +20,12 @@ final class AttachLinkIndex {
 
     private(set) var links: [AttachLink] = []
 
+    @ObservationIgnored private let onDistinctLink: (AttachLink) -> Void
     private var scanner = AttachLinkScanner()
+
+    init(onDistinctLink: @escaping (AttachLink) -> Void) {
+        self.onDistinctLink = onDistinctLink
+    }
 
     func receive(_ data: Data) {
         var scanner = scanner
@@ -58,7 +63,8 @@ final class AttachLinkIndex {
 
     private func record(_ target: String, moveExistingToFront: Bool = true) {
         guard let url = TerminalLinkPolicy.url(for: target) else { return }
-        if !moveExistingToFront, links.contains(where: { $0.target == target }) {
+        let isDistinct = !links.contains(where: { $0.target == target })
+        if !moveExistingToFront, !isDistinct {
             return
         }
         let link = AttachLink(target: target, url: url)
@@ -66,6 +72,9 @@ final class AttachLinkIndex {
         links.insert(link, at: 0)
         if links.count > Self.maximumLinkCount {
             links.removeLast(links.count - Self.maximumLinkCount)
+        }
+        if isDistinct {
+            onDistinctLink(link)
         }
     }
 }

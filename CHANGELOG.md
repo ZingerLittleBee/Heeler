@@ -12,8 +12,10 @@ Entries reference the issue that motivated them.
 - Attach Links collect plain HTTP and HTTPS targets printed during an Attach
   into a memory-only, most-recent-first list with native opening and copying.
   ANSI styling stays transparent, and OSC 8 hyperlinks expose their real
-  targets instead of their labels. The list survives terminal recovery and is
-  discarded when Attach ends. (#101, #102)
+  targets instead of their labels. New targets show a short-lived Open prompt,
+  and a failed open keeps the target available with a Copy Link recovery. The
+  list survives terminal recovery and is discarded when Attach ends.
+  (#101, #102, #103)
 
 - An iPad-fit Console: on regular widths the Agent list becomes a sidebar
   beside the open terminal (a split view) instead of stretching edge to edge,

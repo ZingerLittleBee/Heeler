@@ -1,6 +1,17 @@
 import Foundation
 import Observation
 
+typealias AttachLinkOpener = @MainActor @Sendable (URL) async -> Bool
+
+struct AttachLinkOpenFailure: Identifiable, Equatable {
+    let link: AttachLink
+
+    var id: String { link.id }
+    var message: String {
+        "This link couldn't be opened. You can copy it instead."
+    }
+}
+
 /// Owns the complete Agent Attach interaction: terminal lifetime, input
 /// generation and pause state, image staging, reconnect replacement, close,
 /// and deterministic leave ordering. The view only forwards UI events.
@@ -10,11 +21,13 @@ final class AgentAttachStore {
     private let target: String
     private let runTerminal: TerminalSessionRunner
     private let linkIndex: AttachLinkIndex
+    private let linkPrompt: AttachLinkPromptController
 
     private(set) var terminal: AttachTerminalStore
     let input: TerminalInputController
     let image: ImageAttachStore
     let close: ClosePaneStore
+    private(set) var attachLinkOpenFailure: AttachLinkOpenFailure?
 
     private var transportGeneration: UInt64?
     private var lifecycleTask: Task<Void, Never>?
@@ -27,14 +40,19 @@ final class AgentAttachStore {
         transportGeneration: UInt64?,
         runTerminal: @escaping TerminalSessionRunner,
         stageImage: @escaping ImageStager,
+        linkPromptClock: AttachLinkPromptClock = .continuous,
         closePane: @escaping () async throws -> Void
     ) {
         let input = TerminalInputController()
+        let linkPrompt = AttachLinkPromptController(clock: linkPromptClock)
         self.target = target
         self.runTerminal = runTerminal
         self.transportGeneration = transportGeneration
         self.input = input
-        let linkIndex = AttachLinkIndex()
+        self.linkPrompt = linkPrompt
+        let linkIndex = AttachLinkIndex { link in
+            linkPrompt.present(link)
+        }
         self.linkIndex = linkIndex
         terminal = Self.makeTerminal(
             target: target, input: input, runTerminal: runTerminal, linkIndex: linkIndex)
@@ -56,6 +74,10 @@ final class AgentAttachStore {
 
     var attachLinks: [AttachLink] {
         linkIndex.links
+    }
+
+    var attachLinkPrompt: AttachLink? {
+        linkPrompt.prompt
     }
 
     var imageState: ImageAttachState {
@@ -90,6 +112,30 @@ final class AgentAttachStore {
     func viewportTextDidChange(_ text: String) {
         guard !hasLeft else { return }
         linkIndex.receiveViewportText(text)
+    }
+
+    func viewActivityDidChange(isActive: Bool) {
+        guard !hasLeft else { return }
+        linkPrompt.setActive(isActive)
+    }
+
+    func openAttachLink(_ link: AttachLink, using open: AttachLinkOpener) async {
+        guard !hasLeft else { return }
+        linkPrompt.dismiss()
+        attachLinkOpenFailure = nil
+        let accepted = await open(link.url)
+        guard !hasLeft, !accepted else { return }
+        attachLinkOpenFailure = AttachLinkOpenFailure(link: link)
+    }
+
+    func copyFailedAttachLink(using copy: (String) -> Void) {
+        guard let failure = attachLinkOpenFailure else { return }
+        copy(failure.link.target)
+        attachLinkOpenFailure = nil
+    }
+
+    func dismissAttachLinkOpenFailure() {
+        attachLinkOpenFailure = nil
     }
 
     func send(_ keystrokes: Data) {
@@ -186,6 +232,8 @@ final class AgentAttachStore {
             return
         }
         hasLeft = true
+        linkPrompt.leave()
+        attachLinkOpenFailure = nil
         linkIndex.clear()
         let transition = enqueueLifecycleTransition { [weak self] in
             guard let self else { return }
@@ -228,5 +276,73 @@ final class AgentAttachStore {
             observeOutput: { data in linkIndex.receive(data) },
             finishOutput: { linkIndex.finishOutput() },
             runTerminal: runTerminal)
+    }
+}
+
+struct AttachLinkPromptClock: Sendable {
+    private let sleepOperation: @Sendable (Duration) async throws -> Void
+
+    static let continuous = AttachLinkPromptClock { duration in
+        try await Task.sleep(for: duration)
+    }
+
+    init(sleep: @escaping @Sendable (Duration) async throws -> Void) {
+        sleepOperation = sleep
+    }
+
+    func sleep(for duration: Duration) async throws {
+        try await sleepOperation(duration)
+    }
+}
+
+@MainActor
+@Observable
+private final class AttachLinkPromptController {
+    static let duration: Duration = .seconds(4)
+
+    private(set) var prompt: AttachLink?
+
+    @ObservationIgnored private let clock: AttachLinkPromptClock
+    @ObservationIgnored private var expiryTask: Task<Void, Never>?
+    @ObservationIgnored private var isActive = true
+
+    init(clock: AttachLinkPromptClock) {
+        self.clock = clock
+    }
+
+    func present(_ link: AttachLink) {
+        guard isActive else { return }
+        expiryTask?.cancel()
+        prompt = link
+        expiryTask = Task { [weak self, clock] in
+            do {
+                try await clock.sleep(for: Self.duration)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self?.prompt = nil
+        }
+    }
+
+    func setActive(_ isActive: Bool) {
+        self.isActive = isActive
+        guard !isActive else { return }
+        cancelPrompt()
+    }
+
+    func dismiss() {
+        cancelPrompt()
+    }
+
+    func leave() {
+        isActive = false
+        cancelPrompt()
+    }
+
+    private func cancelPrompt() {
+        expiryTask?.cancel()
+        expiryTask = nil
+        prompt = nil
     }
 }

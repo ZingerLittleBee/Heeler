@@ -29,6 +29,7 @@ struct AgentDetailView: View {
     @State private var closeErrorMessage: String?
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
 
     init(
         agent: ConsoleAgent,
@@ -87,76 +88,13 @@ struct AgentDetailView: View {
     }
 
     var body: some View {
-        terminalScreen
-            .id(attach.terminalID)
-        .overlay { statusOverlay }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            imageAttachStatus
-        }
-        // background(_:ignoresSafeAreaEdges:) defaults to .all: the theme
-        // colour reaches under the transparent navigation bar and into the
-        // home-indicator area without moving the terminal grid or touching
-        // keyboard resize. Must stay outside the safeAreaInset above.
-        .background(
-            terminal.themes.selection(for: colorScheme)
-                .surfaceBackground(for: colorScheme))
-        .toolbarColorScheme(
-            terminal.themes.selection(for: colorScheme)
-                .chromeColorScheme(for: colorScheme),
-            for: .navigationBar)
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
+        lifecycleSurface
+    }
+
+    private var presentedSurface: some View {
+        terminalSurface
         .toolbar {
-            if !attach.attachLinks.isEmpty {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        isShowingAttachLinks = true
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "link")
-                            Text("\(attach.attachLinks.count)")
-                                .monospacedDigit()
-                        }
-                    }
-                    .accessibilityLabel("Attach Links")
-                    .accessibilityValue("\(attach.attachLinks.count)")
-                    .popover(isPresented: $isShowingAttachLinks) {
-                        AttachLinksView(
-                            links: attach.attachLinks,
-                            open: { link in openURL(link.url) },
-                            copy: { link in UIPasteboard.general.string = link.target })
-                        .presentationCompactAdaptation(.sheet)
-                    }
-                }
-            }
-            ToolbarItem(placement: .primaryAction) {
-                PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                    Label("Attach Image", systemImage: "photo.badge.plus")
-                }
-                .disabled(!attach.canSelectImage)
-                .accessibilityLabel("Attach Image")
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button("Settings", systemImage: "gearshape") {
-                        isShowingSettings = true
-                    }
-                    Button("Snippets", systemImage: "quote.bubble") {
-                        isManagingSnippets = true
-                    }
-                    Button("Rename Agent", systemImage: "pencil") {
-                        isRenamingAgent = true
-                    }
-                    Button("Rename Workspace", systemImage: "pencil.line") {
-                        isRenamingWorkspace = true
-                    }
-                    Button("Close Agent", systemImage: "trash", role: .destructive) {
-                        isConfirmingClose = true
-                    }
-                } label: {
-                    Label("More", systemImage: "ellipsis.circle")
-                }
-            }
+            toolbarContent
         }
         .sheet(isPresented: $isShowingSettings) {
             SettingsView(
@@ -210,6 +148,10 @@ struct AgentDetailView: View {
                 "This closes the pane on the Host and removes the agent everywhere. "
                     + "This can't be undone.")
         }
+    }
+
+    private var alertSurface: some View {
+        presentedSurface
         .alert(
             "Couldn't Close Agent",
             isPresented: Binding(
@@ -232,10 +174,42 @@ struct AgentDetailView: View {
         } message: {
             Text(attach.pasteErrorMessage ?? "")
         }
+        .alert(
+            "Couldn't Open Link",
+            isPresented: Binding(
+                get: { attach.attachLinkOpenFailure != nil },
+                set: { if !$0 { attach.dismissAttachLinkOpenFailure() } })
+        ) {
+            Button("Copy Link") {
+                attach.copyFailedAttachLink {
+                    UIPasteboard.general.string = $0
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                attach.dismissAttachLinkOpenFailure()
+            }
+        } message: {
+            Text(
+                attach.attachLinkOpenFailure?.message
+                    ?? "This link couldn't be opened.")
+        }
+    }
+
+    private var lifecycleSurface: some View {
+        alertSurface
         .onChange(of: selectedPhoto) { _, item in
             guard let item else { return }
             selectedPhoto = nil
             attach.selectImage(PhotosPickerImageSelection(item: item))
+        }
+        .onAppear {
+            attach.viewActivityDidChange(isActive: scenePhase == .active)
+        }
+        // Prompt visibility follows the raw scene phase, not the background
+        // connection grace period. Output can keep collecting while the app
+        // is out of sight, but it must not schedule UI for later.
+        .onChange(of: scenePhase) { _, phase in
+            attach.viewActivityDidChange(isActive: phase == .active)
         }
         // Follows the grace period, not the raw scene phase: an image upload
         // is exactly the work worth finishing while the app is briefly out of
@@ -252,7 +226,109 @@ struct AgentDetailView: View {
             attach.transportGenerationDidChange(generation)
         }
         .onDisappear {
+            attach.viewActivityDidChange(isActive: false)
             Task { await attach.leave() }
+        }
+    }
+
+    private var terminalSurface: some View {
+        terminalScreen
+            .id(attach.terminalID)
+        .overlay { statusOverlay }
+        // The prompt is an overlay, not an inset: it must never change the
+        // terminal's measured rows or the remote PTY geometry.
+        .overlay(alignment: .bottom) {
+            if let link = attach.attachLinkPrompt {
+                AttachLinkPromptView(link: link) {
+                    openAttachLink(link)
+                }
+                .padding(12)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy, value: attach.attachLinkPrompt)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            imageAttachStatus
+        }
+        // background(_:ignoresSafeAreaEdges:) defaults to .all: the theme
+        // colour reaches under the transparent navigation bar and into the
+        // home-indicator area without moving the terminal grid or touching
+        // keyboard resize. Must stay outside the safeAreaInset above.
+        .background(
+            terminal.themes.selection(for: colorScheme)
+                .surfaceBackground(for: colorScheme))
+        .toolbarColorScheme(
+            terminal.themes.selection(for: colorScheme)
+                .chromeColorScheme(for: colorScheme),
+            for: .navigationBar)
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        if !attach.attachLinks.isEmpty {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    isShowingAttachLinks = true
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "link")
+                        Text("\(attach.attachLinks.count)")
+                            .monospacedDigit()
+                    }
+                }
+                .accessibilityLabel("Attach Links")
+                .accessibilityValue("\(attach.attachLinks.count)")
+                .popover(isPresented: $isShowingAttachLinks) {
+                    AttachLinksView(
+                        links: attach.attachLinks,
+                        open: { link in openAttachLink(link) },
+                        copy: { link in UIPasteboard.general.string = link.target })
+                    .presentationCompactAdaptation(.sheet)
+                }
+            }
+        }
+        ToolbarItem(placement: .primaryAction) {
+            PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                Label("Attach Image", systemImage: "photo.badge.plus")
+            }
+            .disabled(!attach.canSelectImage)
+            .accessibilityLabel("Attach Image")
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Menu {
+                Button("Settings", systemImage: "gearshape") {
+                    isShowingSettings = true
+                }
+                Button("Snippets", systemImage: "quote.bubble") {
+                    isManagingSnippets = true
+                }
+                Button("Rename Agent", systemImage: "pencil") {
+                    isRenamingAgent = true
+                }
+                Button("Rename Workspace", systemImage: "pencil.line") {
+                    isRenamingWorkspace = true
+                }
+                Button("Close Agent", systemImage: "trash", role: .destructive) {
+                    isConfirmingClose = true
+                }
+            } label: {
+                Label("More", systemImage: "ellipsis.circle")
+            }
+        }
+    }
+
+    private func openAttachLink(_ link: AttachLink) {
+        let openURL = openURL
+        Task {
+            await attach.openAttachLink(link) { url in
+                await withCheckedContinuation { continuation in
+                    openURL(url) { accepted in
+                        continuation.resume(returning: accepted)
+                    }
+                }
+            }
         }
     }
 
@@ -415,6 +491,39 @@ private struct AttachLinksView: View {
             .navigationBarTitleDisplayMode(.inline)
         }
         .frame(idealWidth: 460, idealHeight: 520)
+    }
+}
+
+private struct AttachLinkPromptView: View {
+    let link: AttachLink
+    let open: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "link")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(link.host)
+                    .font(.headline)
+                    .lineLimit(1)
+                Text(link.target)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button("Open", systemImage: "arrow.up.right.square", action: open)
+                .labelStyle(.titleAndIcon)
+                .buttonStyle(.borderedProminent)
+                .accessibilityLabel("Open Attach Link")
+                .accessibilityValue(link.target)
+        }
+        .padding(12)
+        .background(.regularMaterial, in: .rect(cornerRadius: 14))
+        .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
+        .accessibilityElement(children: .contain)
     }
 }
 
