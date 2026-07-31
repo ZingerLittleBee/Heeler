@@ -407,7 +407,8 @@ actor SSHTransport: Transport {
     func startAgent(_ launch: AgentLaunchRequest) async throws -> Agent {
         let created = try await request(
             method: "tab.create",
-            params: TabCreateParams(focus: false, workspaceID: launch.workspaceID),
+            params: TabCreateParams(
+                cwd: launch.cwd, focus: false, workspaceID: launch.workspaceID),
             decoding: TabCreatedResponse.self)
         do {
             let response = try await startAgentAwaitingShell(

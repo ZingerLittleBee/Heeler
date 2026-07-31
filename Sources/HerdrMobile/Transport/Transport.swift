@@ -256,12 +256,20 @@ struct AgentLaunchRequest: Sendable, Equatable {
     let name: String
     let arguments: [String]
     let workspaceID: String?
+    /// Working directory for the fresh tab, carried when the launch starts
+    /// from another agent's screen and should land in the same place. Nil
+    /// lets herdr fall back to the workspace's own directory.
+    let cwd: String?
 
-    init(kind: String, name: String, arguments: [String] = [], workspaceID: String? = nil) {
+    init(
+        kind: String, name: String, arguments: [String] = [], workspaceID: String? = nil,
+        cwd: String? = nil
+    ) {
         self.kind = kind
         self.name = name
         self.arguments = arguments
         self.workspaceID = workspaceID
+        self.cwd = cwd
     }
 }
 

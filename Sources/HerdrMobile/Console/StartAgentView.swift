@@ -9,7 +9,7 @@ struct StartAgentView: View {
     @State private var store: StartAgentStore
     @Environment(\.dismiss) private var dismiss
 
-    init(hosts: [Host], console: ConsoleStore) {
+    init(hosts: [Host], console: ConsoleStore, origin: StartAgentStore.LaunchOrigin? = nil) {
         _store = State(
             initialValue: StartAgentStore(
                 hosts: hosts,
@@ -28,64 +28,84 @@ struct StartAgentView: View {
                     } else {
                         try await console.startAgent(params, on: hostID)
                     }
-                }))
+                },
+                origin: origin))
     }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Host") {
-                    Picker("Host", selection: $store.selectedHostID) {
-                        if store.selectedHostID == nil {
-                            Text("Select a Host").tag(Host.ID?.none)
-                        }
-                        ForEach(store.hosts) { host in
-                            Text(host.displayName).tag(Host.ID?.some(host.id))
-                        }
-                    }
-                }
-
-                Section {
-                    Picker("Workspace", selection: $store.selectedWorkspaceID) {
-                        if store.workspaces.isEmpty {
-                            Text("None reported").tag(String?.none)
-                        }
-                        ForEach(store.workspaces) { workspace in
-                            Text(workspace.label).tag(String?.some(workspace.id))
-                        }
-                    }
-                    .disabled(store.selectedHostID == nil || store.workspaces.isEmpty)
-                } header: {
-                    Text("Workspace")
-                } footer: {
-                    Text("Where the agent runs. Defaults to the one you last started an agent in.")
-                }
-
-                Section {
-                    Toggle("Start in a new worktree", isOn: $store.startsInNewWorktree)
-                        .disabled(store.selectedWorkspaceID == nil)
-                    if store.startsInNewWorktree {
-                        TextField("Branch (optional)", text: $store.worktreeBranch)
+                if let origin = store.origin {
+                    Section {
+                        Text(origin.cwd)
                             .font(.callout.monospaced())
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                        TextField("Base (optional)", text: $store.worktreeBase)
-                            .font(.callout.monospaced())
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
+                    } header: {
+                        Text("Directory")
+                    } footer: {
+                        Text("The Agent starts in a new tab here, next to the one you opened this from.")
                     }
-                } header: {
-                    Text("Worktree")
-                } footer: {
-                    if let message = store.worktreeBranchErrorMessage {
-                        Text(message)
-                            .foregroundStyle(.red)
-                    } else if store.startsInNewWorktree {
+                } else {
+                    Section("Host") {
+                        Picker("Host", selection: $store.selectedHostID) {
+                            if store.selectedHostID == nil {
+                                Text("Select a Host").tag(Host.ID?.none)
+                            }
+                            ForEach(store.hosts) { host in
+                                Text(host.displayName).tag(Host.ID?.some(host.id))
+                            }
+                        }
+                    }
+
+                    Section {
+                        Picker("Workspace", selection: $store.selectedWorkspaceID) {
+                            if store.workspaces.isEmpty {
+                                Text("None reported").tag(String?.none)
+                            }
+                            ForEach(store.workspaces) { workspace in
+                                Text(workspace.label).tag(String?.some(workspace.id))
+                            }
+                        }
+                        .disabled(store.selectedHostID == nil || store.workspaces.isEmpty)
+                    } header: {
+                        Text("Workspace")
+                    } footer: {
                         Text(
-                            "A fresh checkout of the workspace's repository. Empty fields use a generated worktree/ branch off HEAD."
+                            "Where the agent runs. Defaults to the one you last started an agent in."
                         )
-                    } else {
-                        Text("Run the agent in a clean checkout instead of the workspace itself.")
+                    }
+                }
+
+                if store.offersWorktree {
+                    Section {
+                        Toggle("Start in a new worktree", isOn: $store.startsInNewWorktree)
+                            .disabled(store.selectedWorkspaceID == nil)
+                        if store.startsInNewWorktree {
+                            TextField("Branch (optional)", text: $store.worktreeBranch)
+                                .font(.callout.monospaced())
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                            TextField("Base (optional)", text: $store.worktreeBase)
+                                .font(.callout.monospaced())
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                        }
+                    } header: {
+                        Text("Worktree")
+                    } footer: {
+                        if let message = store.worktreeBranchErrorMessage {
+                            Text(message)
+                                .foregroundStyle(.red)
+                        } else if store.startsInNewWorktree {
+                            Text(
+                                "A fresh checkout of the workspace's repository. Empty fields use a generated worktree/ branch off HEAD."
+                            )
+                        } else {
+                            Text(
+                                "Run the agent in a clean checkout instead of the workspace itself."
+                            )
+                        }
                     }
                 }
 

@@ -146,9 +146,7 @@ struct ConsoleView: View {
                     agent: agent,
                     console: console,
                     terminal: terminal,
-                    pushRegistration: pushRegistration,
-                    notificationPreferences: notificationPreferences,
-                    relaySettings: relaySettings,
+                    hosts: hosts.hosts,
                     activity: activity,
                     onClosed: { notificationRouter.path = [] }
                 )

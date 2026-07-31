@@ -49,6 +49,7 @@ struct StartAgentStoreTests {
         agentKinds: @escaping (Host.ID) async throws -> [SupportedAgentKind] = { _ in
             [.claude]
         },
+        origin: StartAgentStore.LaunchOrigin? = nil,
         recents: RecentWorkspaceStore? = nil,
         recorder: StartRecorder
     ) -> StartAgentStore {
@@ -59,6 +60,7 @@ struct StartAgentStoreTests {
             start: { params, worktree, hostID in
                 try await recorder.record(params, worktree, hostID)
             },
+            origin: origin,
             recents: recents ?? makeRecents())
     }
 
@@ -452,6 +454,97 @@ struct StartAgentStoreTests {
         #expect(recorder.params.first?.arguments == ["--continue", "--label", "code review"])
         #expect(recorder.params.first?.workspaceID == "w1")
         #expect(recorder.worktrees == [nil])
+    }
+
+    /// Launching from an agent's own screen: Host, workspace, and directory
+    /// come from that agent, so the new tab lands beside it rather than at
+    /// the workspace root.
+    @Test func originLaunchInheritsTheAgentsHostWorkspaceAndDirectory() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host, .fixture(id: UUID(), name: "other")],
+            workspaces: { _ in [ConsoleWorkspace(id: "w9", label: "Other")] },
+            origin: StartAgentStore.LaunchOrigin(
+                hostID: host.id, workspaceID: "w1", cwd: "/Users/dev/proj/api"),
+            recorder: recorder)
+        // Two Hosts would otherwise leave the picker unset.
+        #expect(store.selectedHostID == host.id)
+        #expect(store.selectedWorkspaceID == "w1")
+        store.name = "reviewer"
+        await store.discoverAgents()
+
+        await store.submit()
+
+        #expect(store.state == .started)
+        #expect(recorder.hostIDs == [host.id])
+        #expect(recorder.params.first?.workspaceID == "w1")
+        #expect(recorder.params.first?.cwd == "/Users/dev/proj/api")
+        #expect(recorder.worktrees == [nil])
+    }
+
+    /// A worktree launch lands in a brand-new checkout, which contradicts the
+    /// inherited directory. The form drops the option, and a stale toggle
+    /// cannot smuggle it back in.
+    @Test func originLaunchNeverTakesTheWorktreeVariant() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            origin: StartAgentStore.LaunchOrigin(
+                hostID: host.id, workspaceID: "w1", cwd: "/Users/dev/proj"),
+            recorder: recorder)
+        #expect(!store.offersWorktree)
+        store.startsInNewWorktree = true
+        store.worktreeBranch = "task/fix"
+        await store.discoverAgents()
+
+        await store.submit()
+
+        #expect(store.state == .started)
+        #expect(recorder.worktrees == [nil])
+        #expect(recorder.params.first?.cwd == "/Users/dev/proj")
+    }
+
+    /// The origin agent proves its workspace exists, so it outranks both the
+    /// remembered pick and the snapshot the Host happens to report.
+    @Test func originWorkspaceOutranksTheRememberedAndReportedOnes() async {
+        let host = Host.fixture()
+        let recents = makeRecents()
+        recents.remember("w7", for: host.id)
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in
+                [ConsoleWorkspace(id: "w7", label: "Remembered")]
+            },
+            origin: StartAgentStore.LaunchOrigin(
+                hostID: host.id, workspaceID: "w1", cwd: "/Users/dev/proj"),
+            recents: recents,
+            recorder: recorder)
+
+        #expect(store.selectedWorkspaceID == "w1")
+        store.selectedWorkspaceID = "w7"
+        #expect(store.selectedWorkspaceID == "w1", "the origin workspace is not user-overridable")
+    }
+
+    /// Without an origin the launch carries no directory, leaving herdr to
+    /// place the tab at the workspace's own.
+    @Test func consoleLaunchCarriesNoDirectory() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recorder: recorder)
+        store.name = "reviewer"
+        await store.discoverAgents()
+
+        await store.submit()
+
+        #expect(store.offersWorktree)
+        #expect(recorder.params.first?.cwd == nil)
     }
 
     @Test func worktreeSubmitForwardsTheTrimmedSpec() async {

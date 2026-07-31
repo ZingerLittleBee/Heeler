@@ -9,12 +9,21 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- The Agent detail screen's More menu no longer duplicates Settings; that
+  entry stays in the Console toolbar.
+
 - Working agents in the Console list now show a live "solving" orb — a
   dotted sphere whose bands twist and click back into place (ported from
   Jakub Antalik's MIT-licensed thinking-orbs) — instead of the static blue
   Working capsule. Reduced-motion users get a still frame. (PR #106)
 
 ### Added
+
+- Start another Agent from the one you have open: "New Agent" in the Agent
+  detail screen's More menu inherits that Agent's Host, workspace, and working
+  directory, so the new Agent starts in a fresh tab in the same place instead
+  of at the workspace root. Only the Agent, its name, and its arguments are
+  left to fill in.
 
 - Attach Links silently collect web and OSC 8 targets into a memory-only list
   for opening or copying. Links survive terminal recovery and are discarded

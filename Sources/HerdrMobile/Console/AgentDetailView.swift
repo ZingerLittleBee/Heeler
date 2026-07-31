@@ -9,9 +9,9 @@ struct AgentDetailView: View {
     let agent: ConsoleAgent
     private let console: ConsoleStore
     private let terminal: TerminalSettings
-    private let pushRegistration: PushRegistrationStore
-    private let notificationPreferences: NotificationPreferencesStore
-    private let relaySettings: NotificationRelaySettings
+    /// Passed through to the new-agent sheet, which keeps its Host picker for
+    /// the Console's own entry point even though this screen pre-selects one.
+    private let hosts: [Host]
     private let activity: AppActivityCoordinator
     /// Leaves the screen after a confirmed close. A callback rather than
     /// `dismiss`: as a split view's detail root this view has nothing to
@@ -21,7 +21,7 @@ struct AgentDetailView: View {
     @State private var attach: AgentAttachStore
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isConfirmingClose = false
-    @State private var isShowingSettings = false
+    @State private var isStartingAgent = false
     @State private var isManagingSnippets = false
     @State private var isRenamingAgent = false
     @State private var isRenamingWorkspace = false
@@ -34,18 +34,14 @@ struct AgentDetailView: View {
         agent: ConsoleAgent,
         console: ConsoleStore,
         terminal: TerminalSettings,
-        pushRegistration: PushRegistrationStore,
-        notificationPreferences: NotificationPreferencesStore,
-        relaySettings: NotificationRelaySettings,
+        hosts: [Host],
         activity: AppActivityCoordinator,
         onClosed: @escaping () -> Void
     ) {
         self.agent = agent
         self.console = console
         self.terminal = terminal
-        self.pushRegistration = pushRegistration
-        self.notificationPreferences = notificationPreferences
-        self.relaySettings = relaySettings
+        self.hosts = hosts
         self.activity = activity
         self.onClosed = onClosed
         _attach = State(
@@ -95,12 +91,15 @@ struct AgentDetailView: View {
         .toolbar {
             toolbarContent
         }
-        .sheet(isPresented: $isShowingSettings) {
-            SettingsView(
-                terminal: terminal,
-                pushRegistration: pushRegistration,
-                notificationPreferences: notificationPreferences,
-                relaySettings: relaySettings)
+        .sheet(isPresented: $isStartingAgent) {
+            // StartAgentView brings its own NavigationStack.
+            StartAgentView(
+                hosts: hosts,
+                console: console,
+                origin: StartAgentStore.LaunchOrigin(
+                    hostID: agent.hostID,
+                    workspaceID: agent.agent.workspaceID,
+                    cwd: agent.agent.cwd))
         }
         // Presenting this takes the keyboard down and dismissing brings it
         // back; see `allowsKeyboardActivation` in HerdrTerminalView.
@@ -275,8 +274,8 @@ struct AgentDetailView: View {
         }
         ToolbarItem(placement: .primaryAction) {
             Menu {
-                Button("Settings", systemImage: "gearshape") {
-                    isShowingSettings = true
+                Button("New Agent", systemImage: "plus") {
+                    isStartingAgent = true
                 }
                 Button("Snippets", systemImage: "quote.bubble") {
                     isManagingSnippets = true
