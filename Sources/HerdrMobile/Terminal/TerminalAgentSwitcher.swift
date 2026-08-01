@@ -50,7 +50,7 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate {
     /// Gutter between the strip's ends and the first and last chip.
     private static let rowInset: CGFloat = 8
 
-    private let scrollView = UIScrollView()
+    private let scrollView = StripScrollView()
     private let row = UIStackView()
     private var items: [TerminalAgentSwitcherItem] = []
     private var selectedID: ConsoleAgent.ID?
@@ -114,8 +114,12 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate {
         row.setNeedsLayout()
         row.layoutIfNeeded()
         let visibleWidth = scrollView.bounds.width
+        let contentWidth = scrollView.contentSize.width
         let chipFrame = chip.convert(chip.bounds, to: scrollView)
-        guard visibleWidth > 0, chipFrame.width > 0 else { return }
+        // A content width the scroll view has not published yet means the row
+        // is still short of its chips: mid-pass the open Agent looks like it
+        // fits when it does not. Stay armed and wait for the real measure.
+        guard visibleWidth > 0, contentWidth > 0, chipFrame.width > 0 else { return }
 
         // Scrolled by hand rather than with `scrollRectToVisible`: that one is
         // a no-op mid-layout, which is exactly when the strip needs it. Move
@@ -130,10 +134,6 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate {
         if leading < offsetX {
             offsetX = leading
         }
-        // Measured off the row, not `contentSize`: the scroll view publishes
-        // that a pass late, and clamping against a zero content width would
-        // pin the strip back to the start — the very bug this fixes.
-        let contentWidth = max(scrollView.contentSize.width, row.frame.maxX + Self.rowInset)
         offsetX = min(max(offsetX, 0), max(contentWidth - visibleWidth, 0))
         guard offsetX != scrollView.contentOffset.x else { return }
         scrollView.contentOffset.x = offsetX
@@ -182,6 +182,10 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate {
         scrollView.alwaysBounceHorizontal = true
         scrollView.contentInsetAdjustmentBehavior = .never
         scrollView.delegate = self
+        // The strip is measured over several passes and its content width is
+        // published last, so that is when the open Agent's position is finally
+        // worth reading.
+        scrollView.onContentWidthChange = { [weak self] in self?.setNeedsLayout() }
         addSubview(scrollView)
 
         row.translatesAutoresizingMaskIntoConstraints = false
@@ -202,6 +206,20 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate {
             row.centerYAnchor.constraint(equalTo: scrollView.frameLayoutGuide.centerYAnchor),
             row.heightAnchor.constraint(lessThanOrEqualTo: scrollView.frameLayoutGuide.heightAnchor),
         ])
+    }
+}
+
+/// A scroll view that says when its content width lands. Nothing else
+/// announces the pass that finally sizes the strip, and the bounds do not
+/// change for it, so no layout would otherwise be asked for.
+private final class StripScrollView: UIScrollView {
+    var onContentWidthChange: (() -> Void)?
+
+    override var contentSize: CGSize {
+        didSet {
+            guard contentSize.width != oldValue.width else { return }
+            onContentWidthChange?()
+        }
     }
 }
 

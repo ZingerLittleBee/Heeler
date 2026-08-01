@@ -201,6 +201,32 @@ struct TerminalAgentSwitcherTests {
         #expect(strip.bounds.contains(opened.convert(opened.bounds, to: strip)))
     }
 
+    /// The pass that reads the strip is not the pass that sizes it: until the
+    /// scroll view publishes a content width the row is still short of its
+    /// chips, and the open Agent looks like it fits when it does not. Trusting
+    /// that half-built measure is what left the strip pinned to the start.
+    @MainActor
+    @Test func aStripWithNoPublishedWidthIsNotJudgedYet() throws {
+        let host = UUID()
+        let agents = (0..<5).map {
+            Self.makeAgent(pane: "p\($0)", workspace: "project-\($0)", host: host)
+        }
+        let bar = TerminalAgentSwitcherBar()
+        bar.frame = CGRect(x: 0, y: 0, width: 240, height: 40)
+        bar.update(items: agents.map { Self.makeItem($0) }, selectedID: agents[4].id)
+        bar.layoutIfNeeded()
+        let strip = try #require(bar.subviews.compactMap { $0 as? UIScrollView }.first)
+        #expect(strip.contentOffset.x > 0)
+
+        strip.contentSize = .zero
+        strip.contentOffset.x = 0
+        // However many passes it takes to measure, the answer is never "it
+        // fits, leave the strip at the start".
+        bar.layoutIfNeeded()
+        bar.layoutIfNeeded()
+        #expect(strip.contentOffset.x > 0)
+    }
+
     /// The accessory is measured over several passes, so the strip holds the
     /// open Agent in view across all of them — until the user scrolls it
     /// themselves, which outranks the whole business.
