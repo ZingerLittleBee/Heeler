@@ -175,49 +175,88 @@ struct TerminalAgentSwitcherTests {
         #expect(!handoff.consume(second))
     }
 
-    /// A claimed handoff hands the keyboard to the terminal that replaced the
-    /// one the user was typing into — but only once Ghostty has measured a
-    /// real grid. Raising it against the zero-cell first report leaves the
-    /// surface drawing a band shorter than the view (#white-band).
+    /// The keyboard may not dip between the two terminals: it carries the
+    /// switcher, so a dip flashes the row away mid-switch. The replacement
+    /// takes first responder in the same pass it reaches the window.
     @MainActor
-    @Test func aClaimedHandoffWaitsForTheMeasuredGridThenRaisesTheKeyboard() async throws {
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
-        window.makeKeyAndVisible()
+    @Test func aClaimedHandoffTakesTheKeyboardOverWithoutLettingItDrop() async throws {
+        let host = UIViewController()
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 700),
+            rootViewController: host)
+        defer { window.isHidden = true }
+
+        let plain = TerminalScreenView.makeConfiguredTerminal()
+        plain.frame = CGRect(x: 0, y: 0, width: 390, height: 400)
+        host.view.addSubview(plain)
+        #expect(!plain.isFirstResponder)
 
         let claimed = TerminalScreenView.makeConfiguredTerminal()
         claimed.raisesKeyboardWhenReady = true
-        claimed.frame = window.bounds
-        window.addSubview(claimed)
-        #expect(!claimed.isFirstResponder)
-
-        claimed.layoutIfNeeded()
-        let deadline = ContinuousClock.now + .seconds(5)
-        while !claimed.isFirstResponder, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        #expect(claimed.isFirstResponder, "the measured grid should hand over the keyboard")
+        claimed.frame = CGRect(x: 0, y: 0, width: 390, height: 400)
+        host.view.addSubview(claimed)
+        #expect(claimed.isFirstResponder)
 
         // One shot: coming back on screen later starts with the keyboard down.
         claimed.dismissKeyboard()
         claimed.removeFromSuperview()
-        window.addSubview(claimed)
-        claimed.layoutIfNeeded()
-        try await Task.sleep(for: .milliseconds(200))
+        host.view.addSubview(claimed)
         #expect(!claimed.isFirstResponder)
     }
 
-    /// A terminal nobody handed the keyboard to keeps it down, however many
-    /// grids Ghostty measures.
+    /// Ghostty's first viewport report on a fresh surface carries a zero cell
+    /// size. Measuring the surface against that half-built grid — which is
+    /// what happens when the view shrinks for the keyboard right after the
+    /// handoff — leaves it drawing a band shorter than the view, showing as an
+    /// unpainted strip above the toolbar. So the grid stays frozen until the
+    /// keyboard has settled, then fits once.
     @MainActor
-    @Test func anUnclaimedTerminalNeverRaisesTheKeyboardOnItsOwn() async throws {
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
-        window.makeKeyAndVisible()
+    @Test func aClaimedHandoffFreezesTheGridUntilTheKeyboardSettles() async throws {
+        var reportedGrids: [(columns: Int, rows: Int)] = []
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSizeChanged: { columns, rows in
+                reportedGrids.append((columns, rows))
+            })
+        let host = UIViewController()
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 700),
+            rootViewController: host)
+        defer {
+            terminal.removeFromSuperview()
+            window.isHidden = true
+        }
 
-        let plain = TerminalScreenView.makeConfiguredTerminal()
-        plain.frame = window.bounds
-        window.addSubview(plain)
-        plain.layoutIfNeeded()
-        try await Task.sleep(for: .milliseconds(300))
-        #expect(!plain.isFirstResponder)
+        terminal.raisesKeyboardWhenReady = true
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 600)
+        host.view.addSubview(terminal)
+        window.layoutIfNeeded()
+
+        // The keyboard is arriving: every bounds UIKit animates through here
+        // is a half-built grid Ghostty must not be measured against.
+        for height: CGFloat in [520, 440, 360] {
+            terminal.frame.size.height = height
+            terminal.setNeedsLayout()
+            terminal.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(30))
+        }
+        #expect(reportedGrids.isEmpty)
+
+        // The keyboard settled. A keyboard that never left reports no
+        // did-show, so its end frame is what thaws the grid.
+        NotificationCenter.default.post(
+            name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
+        var stablePolls = 0
+        var previousCount = reportedGrids.count
+        while stablePolls < 20 {
+            try await Task.sleep(for: .milliseconds(10))
+            if reportedGrids.count == previousCount {
+                stablePolls += 1
+            } else {
+                previousCount = reportedGrids.count
+                stablePolls = 0
+            }
+        }
+
+        #expect(reportedGrids.count == 1, "only the settled grid may escape")
     }
 }

@@ -563,8 +563,13 @@ extension HerdrTerminalView {
             self, selector: #selector(keyboardDismissalWillBegin(_:)),
             name: UIResponder.keyboardWillHideNotification, object: nil)
         NotificationCenter.default.addObserver(
-            self, selector: #selector(keyboardDismissalDidFinish(_:)),
+            self, selector: #selector(keyboardTransitionDidFinish(_:)),
             name: UIResponder.keyboardDidHideNotification, object: nil)
+        // The other end of a transition: a terminal that inherited the
+        // keyboard keeps its grid frozen until the keyboard has settled.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardTransitionDidFinish(_:)),
+            name: UIResponder.keyboardDidShowNotification, object: nil)
     }
 
     func setKeyboardMode(_ mode: TerminalKeyboardMode) {
@@ -626,6 +631,7 @@ extension HerdrTerminalView {
     }
 
     @objc private func textKeyboardFrameDidChange(_ notification: Notification) {
+        keyboardFrameDidSettle()
         guard keyboardMode == .text, isFirstResponder, let window,
               let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]
                 as? CGRect
