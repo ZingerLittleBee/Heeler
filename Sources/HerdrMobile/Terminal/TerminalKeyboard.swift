@@ -462,6 +462,9 @@ extension HerdrTerminalView {
         NotificationCenter.default.addObserver(
             self, selector: #selector(textKeyboardFrameDidChange(_:)),
             name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardDismissalDidFinish(_:)),
+            name: UIResponder.keyboardDidHideNotification, object: nil)
     }
 
     func setKeyboardMode(_ mode: TerminalKeyboardMode) {

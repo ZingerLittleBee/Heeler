@@ -143,6 +143,8 @@ private final class TerminalSessionCallbackBridge {
     var onViewport: ((InMemoryTerminalViewport) -> Void)?
     var onReliableInput: (() -> Void)?
     var onTerminalInput: ((Data) -> Void)?
+    private var defersSizeReports = false
+    private var deferredSize: (columns: Int, rows: Int)?
 
     init(
         onSizeChanged: ((Int, Int) -> Void)?,
@@ -174,9 +176,33 @@ private final class TerminalSessionCallbackBridge {
 
     nonisolated func resize(_ viewport: InMemoryTerminalViewport) {
         Task { @MainActor [weak self] in
-            self?.onViewport?(viewport)
-            self?.onSizeChanged?(Int(viewport.columns), Int(viewport.rows))
+            guard let self else { return }
+            onViewport?(viewport)
+            let size = (columns: Int(viewport.columns), rows: Int(viewport.rows))
+            if defersSizeReports {
+                deferredSize = size
+            } else {
+                onSizeChanged?(size.columns, size.rows)
+            }
         }
+    }
+
+    func beginSizeReportDeferral() {
+        defersSizeReports = true
+        deferredSize = nil
+    }
+
+    func finishSizeReportDeferral() {
+        guard defersSizeReports else { return }
+        defersSizeReports = false
+        guard let deferredSize else { return }
+        self.deferredSize = nil
+        onSizeChanged?(deferredSize.columns, deferredSize.rows)
+    }
+
+    func cancelSizeReportDeferral() {
+        defersSizeReports = false
+        deferredSize = nil
     }
 
     func paste(_ text: String, bracketed: Bool) {
@@ -235,6 +261,10 @@ final class HerdrTerminalView: UITerminalView {
     private var terminalInputView: UIView?
     private var modeTracker = TerminalModeTracker()
     private var lastInputWindowSize: CGSize?
+    private var defersLayoutForKeyboardDismissal = false
+    private var keyboardDismissalFallbackTask: Task<Void, Never>?
+    private var keyboardDismissalCommitTask: Task<Void, Never>?
+    private var keyboardDismissalSnapshot: UIView?
     private var responderGate = TerminalKeyboardResponderGate()
     private var viewportSnapshotTask: Task<Void, Never>?
     private(set) var isLocalInputEnabled = true
@@ -596,6 +626,7 @@ final class HerdrTerminalView: UITerminalView {
 
     /// Raises the keyboard, and records that the user wants it up.
     func requestKeyboard() {
+        finishKeyboardDismissalLayout()
         responderGate.beginUserDrivenChange(wantsKeyboard: true)
         defer { responderGate.endUserDrivenChange() }
         _ = becomeFirstResponder()
@@ -607,9 +638,14 @@ final class HerdrTerminalView: UITerminalView {
     /// and must stay recoverable.
     @discardableResult
     func dismissKeyboard() -> Bool {
+        beginKeyboardDismissalLayoutDeferral()
         responderGate.beginUserDrivenChange(wantsKeyboard: false)
         defer { responderGate.endUserDrivenChange() }
-        return resignFirstResponder()
+        let resigned = resignFirstResponder()
+        if !resigned {
+            finishKeyboardDismissalLayout()
+        }
+        return resigned
     }
 
     func setLocalInputEnabled(_ isEnabled: Bool) {
@@ -743,6 +779,7 @@ final class HerdrTerminalView: UITerminalView {
     }
 
     override func layoutSubviews() {
+        guard !defersLayoutForKeyboardDismissal else { return }
         super.layoutSubviews()
         reloadInputViewsAfterWindowResize()
     }
@@ -752,6 +789,7 @@ final class HerdrTerminalView: UITerminalView {
         if window == nil {
             stopTouchScrollMomentum()
             responderGate.invalidateTouches()
+            cancelKeyboardDismissalLayoutDeferral()
         }
     }
 
@@ -808,6 +846,69 @@ final class HerdrTerminalView: UITerminalView {
                 self.reloadInputViews()
             }
         }
+    }
+
+    /// Ghostty synchronizes its grid and reports a PTY resize from every
+    /// `layoutSubviews` pass. UIKit animates the keyboard and its accessory as
+    /// one tall stack, so a dismissal otherwise produces several transient
+    /// grids and makes a full-screen TUI redraw for each one. Keep the current
+    /// surface fixed while that stack leaves, then fit Ghostty once at the
+    /// settled bounds reported by `keyboardDidHideNotification`.
+    func beginKeyboardDismissalLayoutDeferral() {
+        keyboardDismissalCommitTask?.cancel()
+        keyboardDismissalCommitTask = nil
+        keyboardDismissalSnapshot?.removeFromSuperview()
+        keyboardDismissalSnapshot = nil
+        if let window, let snapshot = snapshotView(afterScreenUpdates: false) {
+            snapshot.frame = convert(bounds, to: window)
+            snapshot.isUserInteractionEnabled = false
+            snapshot.accessibilityElementsHidden = true
+            window.addSubview(snapshot)
+            keyboardDismissalSnapshot = snapshot
+            alpha = 0
+        }
+        defersLayoutForKeyboardDismissal = true
+        callbackBridge.beginSizeReportDeferral()
+        keyboardDismissalFallbackTask?.cancel()
+        keyboardDismissalFallbackTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            self?.finishKeyboardDismissalLayout()
+        }
+    }
+
+    @objc func keyboardDismissalDidFinish(_: Notification) {
+        finishKeyboardDismissalLayout()
+    }
+
+    func finishKeyboardDismissalLayout() {
+        guard defersLayoutForKeyboardDismissal else { return }
+        defersLayoutForKeyboardDismissal = false
+        keyboardDismissalFallbackTask?.cancel()
+        keyboardDismissalFallbackTask = nil
+        setNeedsLayout()
+        layoutIfNeeded()
+        keyboardDismissalCommitTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled else { return }
+            self?.callbackBridge.finishSizeReportDeferral()
+            self?.alpha = 1
+            self?.keyboardDismissalSnapshot?.removeFromSuperview()
+            self?.keyboardDismissalSnapshot = nil
+            self?.keyboardDismissalCommitTask = nil
+        }
+    }
+
+    private func cancelKeyboardDismissalLayoutDeferral() {
+        defersLayoutForKeyboardDismissal = false
+        keyboardDismissalFallbackTask?.cancel()
+        keyboardDismissalFallbackTask = nil
+        keyboardDismissalCommitTask?.cancel()
+        keyboardDismissalCommitTask = nil
+        alpha = 1
+        keyboardDismissalSnapshot?.removeFromSuperview()
+        keyboardDismissalSnapshot = nil
+        callbackBridge.cancelSizeReportDeferral()
     }
 
     var usesApplicationCursorKeys: Bool {

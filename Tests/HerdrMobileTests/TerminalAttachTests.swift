@@ -647,6 +647,50 @@ struct TerminalAttachTests {
         #expect(!terminal.isFirstResponder)
     }
 
+    /// UIKit removes the software keyboard and its accessory over several
+    /// layout passes. Forwarding every intermediate grid to Ghostty and the
+    /// remote PTY makes a full-screen TUI redraw repeatedly while the keyboard
+    /// is leaving, so only the settled geometry may escape this transition.
+    @MainActor
+    @Test func keyboardDismissalCoalescesAnimatedGridChangesIntoOneFinalResize() async throws {
+        var reportedGrids: [(columns: Int, rows: Int)] = []
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSizeChanged: { columns, rows in
+                reportedGrids.append((columns, rows))
+            })
+        let host = UIViewController()
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 700),
+            rootViewController: host)
+        defer {
+            terminal.removeFromSuperview()
+            window.isHidden = true
+        }
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 360)
+        host.view.addSubview(terminal)
+        window.layoutIfNeeded()
+
+        try await waitForGridReportsToSettle(&reportedGrids)
+        let initialRows = try #require(reportedGrids.last?.rows)
+        reportedGrids.removeAll()
+
+        terminal.beginKeyboardDismissalLayoutDeferral()
+
+        for height: CGFloat in [440, 520, 600] {
+            terminal.frame.size.height = height
+            terminal.setNeedsLayout()
+            terminal.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(30))
+        }
+
+        #expect(reportedGrids.isEmpty)
+        terminal.finishKeyboardDismissalLayout()
+        try await waitForGridReportsToSettle(&reportedGrids)
+
+        #expect(reportedGrids.count == 1)
+        #expect(reportedGrids.last?.rows ?? 0 > initialRows)
+    }
+
     @MainActor
     @Test func terminalKeysReuseTheMeasuredSystemKeyboardHeight() throws {
         let terminal = TerminalScreenView.makeConfiguredTerminal()
@@ -657,6 +701,23 @@ struct TerminalAttachTests {
         let keyboard = try #require(terminal.inputView as? TerminalKeysKeyboardView)
         #expect(keyboard.intrinsicContentSize.height == 288)
         #expect(keyboard.frame.height == 288)
+    }
+
+    @MainActor
+    private func waitForGridReportsToSettle(
+        _ reports: inout [(columns: Int, rows: Int)]
+    ) async throws {
+        var stablePolls = 0
+        var previousCount = reports.count
+        while stablePolls < 20 {
+            try await Task.sleep(for: .milliseconds(10))
+            if reports.count == previousCount {
+                stablePolls += 1
+            } else {
+                previousCount = reports.count
+                stablePolls = 0
+            }
+        }
     }
 
     @Test func terminalControlKeyboardContainsOnlyUsefulMobileKeys() {

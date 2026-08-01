@@ -7,6 +7,12 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Fixed
+
+- Dismissing the iOS keyboard no longer makes an attached terminal flicker
+  through several transient grid sizes while the keyboard and its toolbar
+  animate away.
+
 ### Changed
 
 - The Agent detail screen's More menu no longer duplicates Settings; that
