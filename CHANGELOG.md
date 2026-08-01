@@ -83,6 +83,11 @@ Entries reference the issue that motivated them.
   momentum is coalesced and bounded, and fresh keyboard input no longer waits
   behind stale wheel events.
 
+- Slow or stalled networks no longer leave SSH requests or Host lifecycle
+  transitions stuck indefinitely. Request deadlines now return promptly,
+  invalidate the unusable connection, and discard late connection attempts
+  after the app suspends or reconnects.
+
 - Failed Host notices stay compact in the Agent list and open the affected
   Host directly, where an explicit reconnect action stays visible, animates
   while restarting, and leaves the latest connection error below it. (PR #107)

@@ -123,4 +123,106 @@ struct EventsSessionSubscriptionsTests {
 
         await session.end()
     }
+
+    @Test func suspendDoesNotWaitForAStalledConnectionAttempt() async throws {
+        let firstTransport = ScriptedTransport()
+        let resumedTransport = ScriptedTransport()
+        let gate = ScriptedTransportCallGate()
+        let connector = StalledFirstConnection(
+            gate: gate, first: firstTransport, resumed: resumedTransport)
+        let session = EventsSession(
+            subscriptions: initial,
+            connect: { try await connector.connect() },
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .milliseconds(10), multiplier: 2, maxDelay: .milliseconds(50)),
+            keepalive: nil)
+        var updates = session.updates.makeAsyncIterator()
+
+        await session.resume()
+        try await waitUntil("the first connection should be in flight") {
+            await gate.entryCount == 1
+        }
+
+        let completion = LifecycleCompletionProbe()
+        let suspending = Task {
+            await session.suspend()
+            await completion.finish()
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        let suspendedPromptly = await completion.isFinished
+        #expect(
+            suspendedPromptly,
+            "suspend must not inherit an unbounded wait from the SSH connection task")
+        guard suspendedPromptly else {
+            await gate.open()
+            await suspending.value
+            await session.end()
+            return
+        }
+        await suspending.value
+        #expect(await updates.next() == .status(.suspended))
+
+        // A new activation can connect while the abandoned first attempt is
+        // still parked. Releasing that stale attempt later only closes its
+        // Transport; it cannot replace the current one or emit connected.
+        await session.resume()
+        #expect(await updates.next() == .status(.connected))
+        #expect(await connector.attemptCount == 2)
+        #expect(await !resumedTransport.isClosed)
+
+        await gate.open()
+        try await waitUntil("the stale connection should be discarded") {
+            await firstTransport.isClosed
+        }
+        #expect(await !resumedTransport.isClosed)
+
+        await session.end()
+    }
+
+    private func waitUntil(
+        _ message: String,
+        timeout: Duration = .seconds(2),
+        condition: @escaping @Sendable () async -> Bool
+    ) async throws {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if await condition() { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        Issue.record(Comment(rawValue: message))
+    }
+}
+
+private actor LifecycleCompletionProbe {
+    private(set) var isFinished = false
+
+    func finish() {
+        isFinished = true
+    }
+}
+
+private actor StalledFirstConnection {
+    private let gate: ScriptedTransportCallGate
+    private let first: ScriptedTransport
+    private let resumed: ScriptedTransport
+    private(set) var attemptCount = 0
+
+    init(
+        gate: ScriptedTransportCallGate,
+        first: ScriptedTransport,
+        resumed: ScriptedTransport
+    ) {
+        self.gate = gate
+        self.first = first
+        self.resumed = resumed
+    }
+
+    func connect() async throws -> any Transport {
+        attemptCount += 1
+        if attemptCount == 1 {
+            await gate.waitUntilOpen()
+            return first
+        }
+        return resumed
+    }
 }
