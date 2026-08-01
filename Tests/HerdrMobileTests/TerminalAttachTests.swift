@@ -741,6 +741,53 @@ struct TerminalAttachTests {
         terminal.finishKeyboardTransitionLayout()
     }
 
+    /// The geometry a dismissal settles at is already in the view tree when
+    /// UIKit publishes the keyboard's end frame; only the presentation is
+    /// still animating. Handing it to Ghostty and the remote PTY at
+    /// `keyboardDidHide` instead spent the entire dismissal animation not
+    /// redrawing, so the terminal arrived a visible beat after the keyboard
+    /// had gone.
+    @MainActor
+    @Test func aDismissalRefitsTheGridWhileTheKeyboardIsStillAnimatingAway() async throws {
+        var reportedGrids: [(columns: Int, rows: Int)] = []
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSizeChanged: { columns, rows in
+                reportedGrids.append((columns, rows))
+            })
+        let host = UIViewController()
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 700),
+            rootViewController: host)
+        defer {
+            terminal.removeFromSuperview()
+            window.isHidden = true
+        }
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 360)
+        host.view.addSubview(terminal)
+        window.layoutIfNeeded()
+        try await waitForGridReportsToSettle(&reportedGrids)
+        let initialRows = try #require(reportedGrids.last?.rows)
+        reportedGrids.removeAll()
+
+        terminal.beginKeyboardDismissalLayoutDeferral()
+        terminal.frame.size.height = 600
+        NotificationCenter.default.post(
+            name: UIResponder.keyboardWillHideNotification,
+            object: nil,
+            userInfo: [
+                UIResponder.keyboardAnimationDurationUserInfoKey: NSNumber(value: 0.25)
+            ])
+
+        // No keyboardDidHide is posted: the keyboard is still on its way down.
+        try await waitForGridReportsToSettle(&reportedGrids)
+        #expect(reportedGrids.count == 1)
+        #expect(reportedGrids.last?.rows ?? 0 > initialRows)
+
+        // The surface stays behind its snapshot for the animation itself.
+        try await Task.sleep(for: .milliseconds(400))
+        #expect(terminal.alpha == 1)
+    }
+
     @MainActor
     @Test func terminalKeysReuseTheMeasuredSystemKeyboardHeight() throws {
         let terminal = TerminalScreenView.makeConfiguredTerminal()

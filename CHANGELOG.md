@@ -16,7 +16,10 @@ Entries reference the issue that motivated them.
 - Dismissing the iOS keyboard no longer makes an attached terminal flicker
   through several transient grid sizes while the keyboard and its toolbar
   animate away, and the app toolbar now leaves in sync with the keyboard
-  instead of lingering at the bottom of the screen.
+  instead of lingering at the bottom of the screen. The terminal also comes
+  back noticeably sooner: it now refits itself and asks the Host to redraw
+  while the keyboard is still sliding down, rather than waiting for it to be
+  fully gone before starting.
 
 ### Changed
 

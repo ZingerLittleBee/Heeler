@@ -291,7 +291,15 @@ final class HerdrTerminalView: UITerminalView {
     private var keyboardTransitionEndsOnFrameChange = false
     private var keyboardTransitionFallbackTask: Task<Void, Never>?
     private var keyboardDismissalCommitTask: Task<Void, Never>?
+    private var keyboardGridReportTask: Task<Void, Never>?
     private var keyboardDismissalSnapshot: UIView?
+    /// How long Ghostty gets to answer a settled layout before its grid is
+    /// forwarded to the Host — long enough to coalesce one layout pass's
+    /// several viewport reports into the final one.
+    private static let gridSettleDelay: TimeInterval = 0.05
+    /// Whether the current freeze belongs to a dismissal, which reveals on its
+    /// own schedule rather than on the transition's end signal.
+    private var isDismissingKeyboard = false
     private var responderGate = TerminalKeyboardResponderGate()
     private var viewportSnapshotTask: Task<Void, Never>?
     private(set) var isLocalInputEnabled = true
@@ -675,6 +683,11 @@ final class HerdrTerminalView: UITerminalView {
     /// Raises the keyboard, and records that the user wants it up.
     func requestKeyboard() {
         finishKeyboardTransitionLayout()
+        // A dismissal that is still animating away has the live surface behind
+        // a snapshot. The user is typing again, so put it back now instead of
+        // when an animation they interrupted would have ended.
+        keyboardDismissalCommitTask?.cancel()
+        revealAfterKeyboardTransition()
         raiseKeyboard()
     }
 
@@ -916,7 +929,8 @@ final class HerdrTerminalView: UITerminalView {
     /// one tall stack, so a keyboard transition otherwise produces several
     /// transient grids and makes a full-screen TUI redraw for each one. Keep
     /// the grid fixed while that stack moves, then fit Ghostty once at the
-    /// settled bounds the keyboard's did-show/did-hide notification reports.
+    /// settled bounds — reported by the keyboard's did-show for a keyboard
+    /// arriving, and by its own will-hide for one leaving.
     private func beginKeyboardTransitionLayoutDeferral(endsOnFrameChange: Bool = false) {
         defersLayoutForKeyboardTransition = true
         keyboardTransitionEndsOnFrameChange = endsOnFrameChange
@@ -938,6 +952,7 @@ final class HerdrTerminalView: UITerminalView {
         keyboardDismissalCommitTask = nil
         keyboardDismissalSnapshot?.removeFromSuperview()
         keyboardDismissalSnapshot = nil
+        isDismissingKeyboard = true
         if let window, let snapshot = snapshotView(afterScreenUpdates: false) {
             snapshot.frame = convert(bounds, to: window)
             snapshot.isUserInteractionEnabled = false
@@ -949,13 +964,91 @@ final class HerdrTerminalView: UITerminalView {
         beginKeyboardTransitionLayoutDeferral()
     }
 
+    /// UIKit published the keyboard's end frame, so the geometry this terminal
+    /// settles at is already in the view tree — only the presentation is still
+    /// animating. Refit here rather than after the animation: a grid change
+    /// costs a resize round trip to the Host and a full-screen TUI redraw, and
+    /// starting that once the keyboard had already left is what made the
+    /// terminal take a visible beat to come back. The snapshot stays up for
+    /// the animation, so the refit happens out of sight either way.
+    func keyboardDismissalAnimationDidBegin(duration: TimeInterval) {
+        guard defersLayoutForKeyboardTransition, isDismissingKeyboard else { return }
+        // SwiftUI applies its own keyboard inset while handling this same
+        // notification. Thaw a turn later, once that frame change has landed.
+        DispatchQueue.main.async { [weak self] in
+            self?.thawDismissalLayout(revealAfter: duration)
+        }
+    }
+
+    private func thawDismissalLayout(revealAfter delay: TimeInterval) {
+        guard defersLayoutForKeyboardTransition, isDismissingKeyboard else { return }
+        defersLayoutForKeyboardTransition = false
+        keyboardTransitionFallbackTask?.cancel()
+        keyboardTransitionFallbackTask = nil
+        setNeedsLayout()
+        layoutIfNeeded()
+        // Ghostty reflows off-main and answers a single layout pass with more
+        // than one viewport report, so the size deferral outlives the layout
+        // freeze by a beat: the Host is told the new grid once, early, rather
+        // than twice or late.
+        scheduleGridReport(after: Self.gridSettleDelay)
+        scheduleDismissalReveal(after: delay)
+    }
+
+    private func scheduleGridReport(after delay: TimeInterval) {
+        keyboardGridReportTask?.cancel()
+        keyboardGridReportTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            self?.keyboardGridReportTask = nil
+            self?.callbackBridge.finishSizeReportDeferral()
+        }
+    }
+
+    private func scheduleDismissalReveal(after delay: TimeInterval) {
+        keyboardDismissalCommitTask?.cancel()
+        guard delay > 0 else {
+            keyboardDismissalCommitTask = nil
+            revealAfterKeyboardTransition()
+            return
+        }
+        keyboardDismissalCommitTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            self?.revealAfterKeyboardTransition()
+        }
+    }
+
+    /// Puts the live surface back. The snapshot cross-fades because the Host's
+    /// redraw for the new size may still be in flight, and a hard cut to a
+    /// half-painted grid reads worse than a short blend.
+    private func revealAfterKeyboardTransition() {
+        keyboardDismissalCommitTask = nil
+        isDismissingKeyboard = false
+        keyboardGridReportTask?.cancel()
+        keyboardGridReportTask = nil
+        callbackBridge.finishSizeReportDeferral()
+        alpha = 1
+        guard let snapshot = keyboardDismissalSnapshot else { return }
+        keyboardDismissalSnapshot = nil
+        UIView.animate(
+            withDuration: 0.12,
+            delay: 0,
+            options: [.beginFromCurrentState]
+        ) {
+            snapshot.alpha = 0
+        } completion: { _ in
+            snapshot.removeFromSuperview()
+        }
+    }
+
     @objc func keyboardTransitionDidFinish(_: Notification) {
         finishKeyboardTransitionLayout()
     }
 
     /// The keyboard reached its end frame. Only an inherited keyboard ends its
     /// freeze here: a dismissal's frame changes arrive while the stack is
-    /// still leaving, and it has `keyboardDidHide` to wait for.
+    /// still leaving, and it thaws off its own will-hide instead.
     func keyboardFrameDidSettle() {
         guard keyboardTransitionEndsOnFrameChange else { return }
         finishKeyboardTransitionLayout()
@@ -979,24 +1072,21 @@ final class HerdrTerminalView: UITerminalView {
         }
         setNeedsLayout()
         layoutIfNeeded()
-        keyboardDismissalCommitTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(50))
-            guard !Task.isCancelled else { return }
-            self?.callbackBridge.finishSizeReportDeferral()
-            self?.alpha = 1
-            self?.keyboardDismissalSnapshot?.removeFromSuperview()
-            self?.keyboardDismissalSnapshot = nil
-            self?.keyboardDismissalCommitTask = nil
-        }
+        // Ghostty reflows off-main, so the surface needs a beat to have drawn
+        // the settled grid before anything looks at it again.
+        scheduleDismissalReveal(after: Self.gridSettleDelay)
     }
 
     private func cancelKeyboardTransitionLayoutDeferral() {
         defersLayoutForKeyboardTransition = false
         keyboardTransitionEndsOnFrameChange = false
+        isDismissingKeyboard = false
         keyboardTransitionFallbackTask?.cancel()
         keyboardTransitionFallbackTask = nil
         keyboardDismissalCommitTask?.cancel()
         keyboardDismissalCommitTask = nil
+        keyboardGridReportTask?.cancel()
+        keyboardGridReportTask = nil
         alpha = 1
         keyboardDismissalSnapshot?.removeFromSuperview()
         keyboardDismissalSnapshot = nil
