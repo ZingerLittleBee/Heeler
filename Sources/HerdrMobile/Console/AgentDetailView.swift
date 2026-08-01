@@ -13,6 +13,12 @@ struct AgentDetailView: View {
     /// the Console's own entry point even though this screen pre-selects one.
     private let hosts: [Host]
     private let activity: AppActivityCoordinator
+    /// Keeps the keyboard up across the terminal rebuild an Agent switch
+    /// forces; owned by the Console so it survives that rebuild.
+    private let keyboardHandoff: TerminalKeyboardHandoff
+    /// Opens another Agent from the keyboard's switcher row. The owner moves
+    /// the selection, exactly as a tap in the Agent list would.
+    private let onSwitch: (ConsoleAgent.ID) -> Void
     /// Leaves the screen after a confirmed close. A callback rather than
     /// `dismiss`: as a split view's detail root this view has nothing to
     /// dismiss — the owner clears the sidebar selection instead, which also
@@ -36,6 +42,8 @@ struct AgentDetailView: View {
         terminal: TerminalSettings,
         hosts: [Host],
         activity: AppActivityCoordinator,
+        keyboardHandoff: TerminalKeyboardHandoff,
+        onSwitch: @escaping (ConsoleAgent.ID) -> Void,
         onClosed: @escaping () -> Void
     ) {
         self.agent = agent
@@ -43,6 +51,8 @@ struct AgentDetailView: View {
         self.terminal = terminal
         self.hosts = hosts
         self.activity = activity
+        self.keyboardHandoff = keyboardHandoff
+        self.onSwitch = onSwitch
         self.onClosed = onClosed
         _attach = State(
             initialValue: AgentAttachStore(
@@ -77,6 +87,14 @@ struct AgentDetailView: View {
         screen.keysContext = TerminalKeysContext(settings: terminal) {
             isManagingSnippets = true
         }
+        screen.agentSwitcher = TerminalAgentSwitcher(
+            items: console.agents.map {
+                TerminalAgentSwitcherItem(
+                    id: $0.id, title: $0.switcherLabel, status: $0.agent.status)
+            },
+            selectedID: agent.id,
+            onSelect: switchToAgent)
+        screen.claimsKeyboard = { keyboardHandoff.consume(agent.id) }
         screen.isLocalInputEnabled = attach.isLocalInputEnabled
         screen.theme = terminal.themes.theme
         screen.fontSize = terminal.zoom.fontSize
@@ -317,6 +335,15 @@ struct AgentDetailView: View {
                 continuation.finish()
             }
         }
+    }
+
+    /// Opens another Agent from the switcher. The keyboard is armed first:
+    /// the selection change rebuilds this screen from scratch, and the new
+    /// terminal claims the handoff as it comes up.
+    private func switchToAgent(_ id: ConsoleAgent.ID) {
+        guard id != agent.id else { return }
+        keyboardHandoff.arm(for: id)
+        onSwitch(id)
     }
 
     private func performClose() async {

@@ -697,11 +697,48 @@ struct TerminalAttachTests {
         }
 
         #expect(reportedGrids.isEmpty)
-        terminal.finishKeyboardDismissalLayout()
+        terminal.finishKeyboardTransitionLayout()
         try await waitForGridReportsToSettle(&reportedGrids)
 
         #expect(reportedGrids.count == 1)
         #expect(reportedGrids.last?.rows ?? 0 > initialRows)
+    }
+
+    /// A dismissal waits for `keyboardDidHide` alone. UIKit reports frame
+    /// changes while the keyboard stack is still leaving, and thawing the grid
+    /// on one of those puts back exactly the intermediate resizes the
+    /// dismissal coalesces away.
+    @MainActor
+    @Test func aDismissalKeepsItsGridFrozenThroughItsOwnFrameChanges() async throws {
+        var reportedGrids: [(columns: Int, rows: Int)] = []
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSizeChanged: { columns, rows in
+                reportedGrids.append((columns, rows))
+            })
+        let host = UIViewController()
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 700),
+            rootViewController: host)
+        defer {
+            terminal.removeFromSuperview()
+            window.isHidden = true
+        }
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 360)
+        host.view.addSubview(terminal)
+        window.layoutIfNeeded()
+        try await waitForGridReportsToSettle(&reportedGrids)
+        reportedGrids.removeAll()
+
+        terminal.beginKeyboardDismissalLayoutDeferral()
+        NotificationCenter.default.post(
+            name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
+        terminal.frame.size.height = 600
+        terminal.setNeedsLayout()
+        terminal.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(reportedGrids.isEmpty)
+        terminal.finishKeyboardTransitionLayout()
     }
 
     @MainActor

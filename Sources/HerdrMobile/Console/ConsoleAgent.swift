@@ -25,6 +25,14 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     var lastOutputSnippet: String?
 
     var id: ID { ID(hostID: hostID, paneID: agent.paneID) }
+
+    /// The keyboard switcher's chip label. The project leads, as it does on
+    /// the card, but without the card's `label · repo` pairing: a chip has
+    /// room for one word, and a console full of `claude` is told apart by
+    /// where each one is working.
+    var switcherLabel: String {
+        workspaceLabel ?? repoName ?? agent.displayName
+    }
 }
 
 /// A workspace known for a Host from its latest session snapshot, offered as

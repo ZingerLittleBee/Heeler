@@ -27,6 +27,14 @@ struct TerminalScreenView: UIViewRepresentable {
     /// Fills the Keys keyboard's Snippets and Appearance tabs. Without one the
     /// keyboard shows the control keys alone.
     var keysContext: TerminalKeysContext?
+    /// Fills the accessory's switcher row. Without one that row carries the
+    /// dismiss button alone.
+    var agentSwitcher: TerminalAgentSwitcher?
+    /// Asked exactly once, as the surface is created: does this terminal
+    /// inherit the keyboard from the one it replaced? Asking through a
+    /// closure rather than a stored flag keeps the answer tied to the
+    /// surface's creation instead of to how often SwiftUI evaluates the body.
+    var claimsKeyboard: (@MainActor () -> Bool)?
     var isLocalInputEnabled = true
     var theme: TerminalTheme = .default
     var fontSize: Float = TerminalZoomSettings.defaultFontSize
@@ -49,6 +57,10 @@ struct TerminalScreenView: UIViewRepresentable {
             fontSize: fontSize,
             fontFamily: fontFamily)
         view.delegate = context.coordinator
+        // Only here, never in updateUIView: the intent belongs to this
+        // terminal's first appearance, not to every state change after it.
+        view.raisesKeyboardWhenReady = claimsKeyboard?() ?? false
+        view.updateAgentSwitcher(agentSwitcher)
         context.coordinator.terminalView = view
         feed.attach { [weak view] data in
             view?.receive(data)
@@ -94,6 +106,7 @@ struct TerminalScreenView: UIViewRepresentable {
             onPaste: onPaste,
             onSnippet: onSnippet)
         view.keysContext = keysContext
+        view.updateAgentSwitcher(agentSwitcher)
         view.setLocalInputEnabled(isLocalInputEnabled)
         view.applyTheme(theme)
         view.applyFontSize(fontSize)
@@ -257,12 +270,26 @@ final class HerdrTerminalView: UITerminalView {
     /// Rebuilt into the Keys keyboard the next time it is raised; a live
     /// keyboard keeps the context it was built with.
     var keysContext: TerminalKeysContext?
+    /// Raises the keyboard once this surface reaches a window. An Agent switch
+    /// rebuilds the whole terminal, and the user who tapped a switcher chip
+    /// was mid-conversation — dropping the keyboard would hide the switcher
+    /// along with it.
+    var raisesKeyboardWhenReady = false
+    /// How many times the input views have been rebuilt. Nothing else observes
+    /// the rebuild that republishes the keyboard's settled frame after a
+    /// handoff, and a lost rebuild costs the terminal a toolbar's worth of
+    /// height without a crash to show for it.
+    private(set) var inputViewRebuildCount = 0
     private var zoomBaseFontSize: Float?
     private var terminalInputView: UIView?
     private var modeTracker = TerminalModeTracker()
     private var lastInputWindowSize: CGSize?
-    private var defersLayoutForKeyboardDismissal = false
-    private var keyboardDismissalFallbackTask: Task<Void, Never>?
+    private var defersLayoutForKeyboardTransition = false
+    /// What ends the current freeze. A dismissal waits for `keyboardDidHide`;
+    /// an inherited keyboard never leaves, so its settled signal is the frame
+    /// change instead.
+    private var keyboardTransitionEndsOnFrameChange = false
+    private var keyboardTransitionFallbackTask: Task<Void, Never>?
     private var keyboardDismissalCommitTask: Task<Void, Never>?
     private var keyboardDismissalSnapshot: UIView?
     private var responderGate = TerminalKeyboardResponderGate()
@@ -627,9 +654,31 @@ final class HerdrTerminalView: UITerminalView {
         }
     }
 
+    /// Takes over the keyboard from the terminal this one replaced.
+    ///
+    /// The keyboard must not drop between the two: it carries the switcher, so
+    /// a dip would make every switch flash the row the user is switching from.
+    /// So the surface claims first responder in the same pass it reaches the
+    /// window — and freezes its grid until UIKit has settled the keyboard,
+    /// because Ghostty's first viewport report on a fresh surface carries a
+    /// zero cell size. Measured against that half-built grid, the surface
+    /// draws a band shorter than the view and leaves an unpainted strip above
+    /// the toolbar.
+    private func inheritKeyboard() {
+        guard raisesKeyboardWhenReady, window != nil else { return }
+        raisesKeyboardWhenReady = false
+        // A keyboard that never left reports no did-show, only a frame change.
+        beginKeyboardTransitionLayoutDeferral(endsOnFrameChange: true)
+        raiseKeyboard()
+    }
+
     /// Raises the keyboard, and records that the user wants it up.
     func requestKeyboard() {
-        finishKeyboardDismissalLayout()
+        finishKeyboardTransitionLayout()
+        raiseKeyboard()
+    }
+
+    private func raiseKeyboard() {
         responderGate.beginUserDrivenChange(wantsKeyboard: true)
         defer { responderGate.endUserDrivenChange() }
         _ = becomeFirstResponder()
@@ -646,9 +695,13 @@ final class HerdrTerminalView: UITerminalView {
         defer { responderGate.endUserDrivenChange() }
         let resigned = resignFirstResponder()
         if !resigned {
-            finishKeyboardDismissalLayout()
+            finishKeyboardTransitionLayout()
         }
         return resigned
+    }
+
+    func updateAgentSwitcher(_ switcher: TerminalAgentSwitcher?) {
+        terminalKeyboardAccessory.update(agentSwitcher: switcher)
     }
 
     func setLocalInputEnabled(_ isEnabled: Bool) {
@@ -781,8 +834,13 @@ final class HerdrTerminalView: UITerminalView {
         return super.canPerformAction(action, withSender: sender)
     }
 
+    override func reloadInputViews() {
+        inputViewRebuildCount += 1
+        super.reloadInputViews()
+    }
+
     override func layoutSubviews() {
-        guard !defersLayoutForKeyboardDismissal else { return }
+        guard !defersLayoutForKeyboardTransition else { return }
         super.layoutSubviews()
         reloadInputViewsAfterWindowResize()
     }
@@ -792,7 +850,9 @@ final class HerdrTerminalView: UITerminalView {
         if window == nil {
             stopTouchScrollMomentum()
             responderGate.invalidateTouches()
-            cancelKeyboardDismissalLayoutDeferral()
+            cancelKeyboardTransitionLayoutDeferral()
+        } else {
+            inheritKeyboard()
         }
     }
 
@@ -853,10 +913,26 @@ final class HerdrTerminalView: UITerminalView {
 
     /// Ghostty synchronizes its grid and reports a PTY resize from every
     /// `layoutSubviews` pass. UIKit animates the keyboard and its accessory as
-    /// one tall stack, so a dismissal otherwise produces several transient
-    /// grids and makes a full-screen TUI redraw for each one. Keep the current
-    /// surface fixed while that stack leaves, then fit Ghostty once at the
-    /// settled bounds reported by `keyboardDidHideNotification`.
+    /// one tall stack, so a keyboard transition otherwise produces several
+    /// transient grids and makes a full-screen TUI redraw for each one. Keep
+    /// the grid fixed while that stack moves, then fit Ghostty once at the
+    /// settled bounds the keyboard's did-show/did-hide notification reports.
+    private func beginKeyboardTransitionLayoutDeferral(endsOnFrameChange: Bool = false) {
+        defersLayoutForKeyboardTransition = true
+        keyboardTransitionEndsOnFrameChange = endsOnFrameChange
+        callbackBridge.beginSizeReportDeferral()
+        keyboardTransitionFallbackTask?.cancel()
+        keyboardTransitionFallbackTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            self?.finishKeyboardTransitionLayout()
+        }
+    }
+
+    /// A dismissal freezes the grid like any transition, and additionally
+    /// hides the live surface behind a snapshot: this one has content on it,
+    /// and the frozen grid would otherwise be seen not filling the view as it
+    /// grows back.
     func beginKeyboardDismissalLayoutDeferral() {
         keyboardDismissalCommitTask?.cancel()
         keyboardDismissalCommitTask = nil
@@ -870,25 +946,37 @@ final class HerdrTerminalView: UITerminalView {
             keyboardDismissalSnapshot = snapshot
             alpha = 0
         }
-        defersLayoutForKeyboardDismissal = true
-        callbackBridge.beginSizeReportDeferral()
-        keyboardDismissalFallbackTask?.cancel()
-        keyboardDismissalFallbackTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(500))
-            guard !Task.isCancelled else { return }
-            self?.finishKeyboardDismissalLayout()
+        beginKeyboardTransitionLayoutDeferral()
+    }
+
+    @objc func keyboardTransitionDidFinish(_: Notification) {
+        finishKeyboardTransitionLayout()
+    }
+
+    /// The keyboard reached its end frame. Only an inherited keyboard ends its
+    /// freeze here: a dismissal's frame changes arrive while the stack is
+    /// still leaving, and it has `keyboardDidHide` to wait for.
+    func keyboardFrameDidSettle() {
+        guard keyboardTransitionEndsOnFrameChange else { return }
+        finishKeyboardTransitionLayout()
+    }
+
+    func finishKeyboardTransitionLayout() {
+        guard defersLayoutForKeyboardTransition else { return }
+        let inheritedTheKeyboard = keyboardTransitionEndsOnFrameChange
+        defersLayoutForKeyboardTransition = false
+        keyboardTransitionEndsOnFrameChange = false
+        keyboardTransitionFallbackTask?.cancel()
+        keyboardTransitionFallbackTask = nil
+        if inheritedTheKeyboard {
+            // Both terminals' accessories were on the keyboard while it
+            // changed hands, and that is the frame the keyboard published:
+            // one accessory too tall. UIKit does not publish another when the
+            // outgoing one leaves, so the layout keeps reserving room for an
+            // accessory that is gone. Rebuilding the input views makes it
+            // publish the settled frame.
+            UIView.performWithoutAnimation { reloadInputViews() }
         }
-    }
-
-    @objc func keyboardDismissalDidFinish(_: Notification) {
-        finishKeyboardDismissalLayout()
-    }
-
-    func finishKeyboardDismissalLayout() {
-        guard defersLayoutForKeyboardDismissal else { return }
-        defersLayoutForKeyboardDismissal = false
-        keyboardDismissalFallbackTask?.cancel()
-        keyboardDismissalFallbackTask = nil
         setNeedsLayout()
         layoutIfNeeded()
         keyboardDismissalCommitTask = Task { @MainActor [weak self] in
@@ -902,10 +990,11 @@ final class HerdrTerminalView: UITerminalView {
         }
     }
 
-    private func cancelKeyboardDismissalLayoutDeferral() {
-        defersLayoutForKeyboardDismissal = false
-        keyboardDismissalFallbackTask?.cancel()
-        keyboardDismissalFallbackTask = nil
+    private func cancelKeyboardTransitionLayoutDeferral() {
+        defersLayoutForKeyboardTransition = false
+        keyboardTransitionEndsOnFrameChange = false
+        keyboardTransitionFallbackTask?.cancel()
+        keyboardTransitionFallbackTask = nil
         keyboardDismissalCommitTask?.cancel()
         keyboardDismissalCommitTask = nil
         alpha = 1
