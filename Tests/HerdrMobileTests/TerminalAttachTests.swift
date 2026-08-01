@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 import UIKit
 
@@ -621,11 +622,53 @@ struct TerminalAttachTests {
         #expect(terminal.inputView == nil)
     }
 
-    /// The dismiss button is the only way out of the keyboard, so it must
-    /// work even when the accessory has outlived its terminal's first
-    /// responder status.
+    /// The keyboard toggle rides the Agent strip, which outlives the keyboard,
+    /// so it has to work both ways — and a dismissal has to leave the keyboard
+    /// recoverable, or the toggle is a one-way trip out of typing.
     @MainActor
-    @Test func dismissButtonTakesTheKeyboardDownFromTheAccessory() throws {
+    @Test func theKeyboardToggleRaisesAndLowersTheTerminalsKeyboard() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        window.addSubview(terminal)
+        window.makeKeyAndVisible()
+        let control = TerminalKeyboardControl()
+        control.terminal = terminal
+
+        #expect(!control.isKeyboardUp)
+        control.toggleKeyboard()
+        #expect(terminal.isFirstResponder)
+        #expect(control.isKeyboardUp)
+
+        control.toggleKeyboard()
+        #expect(!terminal.isFirstResponder)
+        #expect(!control.isKeyboardUp)
+
+        control.toggleKeyboard()
+        #expect(terminal.isFirstResponder)
+    }
+
+    /// An Agent switch rebuilds the terminal under the strip that survives it.
+    /// A toggle still pointing at the replaced surface would raise a keyboard
+    /// on a terminal that is no longer on screen.
+    @MainActor
+    @Test func theKeyboardToggleForgetsAReplacedTerminal() {
+        let control = TerminalKeyboardControl()
+        do {
+            let replaced = TerminalScreenView.makeConfiguredTerminal()
+            control.terminal = replaced
+            #expect(control.terminal != nil)
+        }
+        #expect(control.terminal == nil)
+        #expect(!control.isKeyboardUp)
+        // Nothing to drive, and nothing to crash on.
+        control.toggleKeyboard()
+    }
+
+    /// UIKit animates the keyboard away without taking the accessory's content
+    /// with it, so the toolbar hung at the bottom of the screen after the
+    /// keyboard had gone.
+    @MainActor
+    @Test func theKeyboardRowLeavesInSyncWithTheKeyboard() throws {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
         let terminal = TerminalScreenView.makeConfiguredTerminal()
         window.addSubview(terminal)
@@ -633,31 +676,22 @@ struct TerminalAttachTests {
         terminal.requestKeyboard()
         let accessory = try #require(
             terminal.inputAccessoryView as? TerminalKeyboardAccessory)
-        let contentView = accessory.toolbarContentView
-        let dismiss = try #require(
-            contentView.subviews.compactMap { $0 as? UIButton }.first {
-                $0.accessibilityLabel == "Dismiss keyboard"
-            })
 
-        dismiss.sendActions(for: .touchUpInside)
-        #expect(!terminal.isFirstResponder)
+        NotificationCenter.default.post(
+            name: UIResponder.keyboardWillHideNotification, object: nil,
+            userInfo: [UIResponder.keyboardAnimationDurationUserInfoKey: NSNumber(value: 0.0)])
+
         #expect(accessory.alpha == 1)
         #expect(accessory.transform == .identity)
-        #expect(contentView.alpha == 0)
-        #expect(contentView.transform.ty == TerminalKeyboardAccessory.preferredHeight)
+        #expect(accessory.toolbarContentView.alpha == 0)
+        #expect(
+            accessory.toolbarContentView.transform.ty
+                == TerminalKeyboardAccessory.preferredHeight)
 
+        // Typing again puts it back, or the row would stay gone for good.
         terminal.requestKeyboard()
-        #expect(terminal.isFirstResponder)
-        #expect(accessory.alpha == 1)
-        #expect(accessory.transform == .identity)
-        #expect(contentView.alpha == 1)
-        #expect(contentView.transform == .identity)
-        terminal.dismissKeyboard()
-
-        // Stranded accessory: no first responder left to ask, and the button
-        // must still be a no-crash no-op rather than a dead end.
-        dismiss.sendActions(for: .touchUpInside)
-        #expect(!terminal.isFirstResponder)
+        #expect(accessory.toolbarContentView.alpha == 1)
+        #expect(accessory.toolbarContentView.transform == .identity)
     }
 
     /// A keyboard changing hands passes through several transient heights —

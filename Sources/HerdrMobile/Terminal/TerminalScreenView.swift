@@ -14,6 +14,26 @@ enum TerminalLinkPolicy {
     }
 }
 
+/// A handle on the live terminal's keyboard, for chrome that sits outside the
+/// terminal — the Agent strip's toggle. The reference is weak and set by the
+/// surface itself, so an Agent switch rebuilding the terminal cannot leave the
+/// toggle driving a dead one.
+@MainActor
+final class TerminalKeyboardControl {
+    weak var terminal: HerdrTerminalView?
+
+    var isKeyboardUp: Bool { terminal?.isFirstResponder ?? false }
+
+    func toggleKeyboard() {
+        guard let terminal else { return }
+        if terminal.isFirstResponder {
+            terminal.dismissKeyboard()
+        } else {
+            terminal.requestKeyboard()
+        }
+    }
+}
+
 /// The interactive Ghostty surface. PTY bytes flow into an in-memory Ghostty
 /// session, while its write and resize callbacks flow back to Attach.
 struct TerminalScreenView: UIViewRepresentable {
@@ -27,14 +47,14 @@ struct TerminalScreenView: UIViewRepresentable {
     /// Fills the Keys keyboard's Snippets and Appearance tabs. Without one the
     /// keyboard shows the control keys alone.
     var keysContext: TerminalKeysContext?
-    /// Fills the accessory's switcher row. Without one that row carries the
-    /// dismiss button alone.
-    var agentSwitcher: TerminalAgentSwitcher?
     /// Asked exactly once, as the surface is created: does this terminal
     /// inherit the keyboard from the one it replaced? Asking through a
     /// closure rather than a stored flag keeps the answer tied to the
     /// surface's creation instead of to how often SwiftUI evaluates the body.
     var claimsKeyboard: (@MainActor () -> Bool)?
+    /// Handed the surface once it exists, so the Agent strip's toggle can
+    /// raise and lower this terminal's keyboard.
+    var keyboardControl: TerminalKeyboardControl?
     var isLocalInputEnabled = true
     var theme: TerminalTheme = .default
     var fontSize: Float = TerminalZoomSettings.defaultFontSize
@@ -60,7 +80,7 @@ struct TerminalScreenView: UIViewRepresentable {
         // Only here, never in updateUIView: the intent belongs to this
         // terminal's first appearance, not to every state change after it.
         view.raisesKeyboardWhenReady = claimsKeyboard?() ?? false
-        view.updateAgentSwitcher(agentSwitcher)
+        keyboardControl?.terminal = view
         context.coordinator.terminalView = view
         feed.attach { [weak view] data in
             view?.receive(data)
@@ -106,7 +126,7 @@ struct TerminalScreenView: UIViewRepresentable {
             onPaste: onPaste,
             onSnippet: onSnippet)
         view.keysContext = keysContext
-        view.updateAgentSwitcher(agentSwitcher)
+        keyboardControl?.terminal = view
         view.setLocalInputEnabled(isLocalInputEnabled)
         view.applyTheme(theme)
         view.applyFontSize(fontSize)
@@ -696,10 +716,6 @@ final class HerdrTerminalView: UITerminalView {
         responderGate.beginUserDrivenChange(wantsKeyboard: false)
         defer { responderGate.endUserDrivenChange() }
         return resignFirstResponder()
-    }
-
-    func updateAgentSwitcher(_ switcher: TerminalAgentSwitcher?) {
-        terminalKeyboardAccessory.update(agentSwitcher: switcher)
     }
 
     func setLocalInputEnabled(_ isEnabled: Bool) {

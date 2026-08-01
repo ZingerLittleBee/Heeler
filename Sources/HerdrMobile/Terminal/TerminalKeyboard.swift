@@ -142,13 +142,14 @@ enum TerminalControlKey: Equatable, CaseIterable {
     }
 }
 
+/// The keyboard's own row: paste, new line, and the Text/Keys mode control.
+/// The Agent switcher and the keyboard toggle are deliberately not here — both
+/// outlive the keyboard, so they ride the terminal instead. See
+/// ``TerminalAgentSwitcherRow``.
 final class TerminalKeyboardAccessory: UIInputView {
-    /// The Agent switcher row. Short on purpose: it rides above the input row,
-    /// and every point it takes is one the terminal loses.
-    static let switcherHeight: CGFloat = 40
-    /// The input row: paste, new line, and the Text/Keys mode control.
+    /// Paste, new line, and the mode control.
     static let inputRowHeight: CGFloat = 48
-    static let preferredHeight: CGFloat = switcherHeight + inputRowHeight
+    static let preferredHeight: CGFloat = inputRowHeight
     /// The accessory's own background, reused as the paste control's fill.
     private static let surface = UIColor.secondarySystemBackground
     /// `UIPasteControl` draws its glyph at a fixed 12 pt (measured; the size
@@ -162,8 +163,6 @@ final class TerminalKeyboardAccessory: UIInputView {
     /// Holds the input row's controls so their layout stays independent of
     /// the switcher above them.
     private let inputRow = UIView()
-    private(set) lazy var agentSwitcher = TerminalAgentSwitcherBar()
-    private(set) lazy var dismissButton: UIButton = makeDismissButton()
     private(set) lazy var pasteControl: UIPasteControl = {
         var configuration = UIPasteControl.Configuration()
         configuration.displayMode = .iconOnly
@@ -201,7 +200,6 @@ final class TerminalKeyboardAccessory: UIInputView {
         autoresizingMask = [.flexibleWidth]
         backgroundColor = .clear
         configureContentView()
-        configureSwitcherRow()
         configureInputRow()
         configureModeControl()
         configurePasteControl()
@@ -220,12 +218,6 @@ final class TerminalKeyboardAccessory: UIInputView {
 
     func update(mode: TerminalKeyboardMode) {
         modeControl.selectedSegmentIndex = mode.rawValue
-    }
-
-    func update(agentSwitcher switcher: TerminalAgentSwitcher?) {
-        agentSwitcher.onSelect = switcher?.onSelect
-        agentSwitcher.update(
-            items: switcher?.items ?? [], selectedID: switcher?.selectedID)
     }
 
     func setInputEnabled(_ isEnabled: Bool) {
@@ -267,61 +259,28 @@ final class TerminalKeyboardAccessory: UIInputView {
         ])
     }
 
-    /// The top row: scrolling Agent chips, with the dismiss button parked at
-    /// the trailing edge. The button sits outside the scroll view on purpose —
-    /// the one control that takes the keyboard down must not scroll away.
-    private func configureSwitcherRow() {
-        agentSwitcher.translatesAutoresizingMaskIntoConstraints = false
-        toolbarContentView.addSubview(agentSwitcher)
+    private func configureInputRow() {
+        inputRow.translatesAutoresizingMaskIntoConstraints = false
+        toolbarContentView.addSubview(inputRow)
 
-        toolbarContentView.addSubview(dismissButton)
-
-        let hairline = 1 / max(traitCollection.displayScale, 1)
+        // Fences the keyboard's row off from the Agent strip resting above it;
+        // both carry the same fill and would otherwise read as one slab.
         let separator = UIView()
         separator.translatesAutoresizingMaskIntoConstraints = false
         separator.backgroundColor = .separator
         toolbarContentView.addSubview(separator)
 
-        // Fences the pinned button off from the strip, so the chips read as a
-        // list that ends rather than as one the button belongs to.
-        let fence = UIView()
-        fence.translatesAutoresizingMaskIntoConstraints = false
-        fence.backgroundColor = .separator
-        toolbarContentView.addSubview(fence)
-
-        NSLayoutConstraint.activate([
-            agentSwitcher.leadingAnchor.constraint(equalTo: toolbarContentView.leadingAnchor),
-            agentSwitcher.topAnchor.constraint(equalTo: toolbarContentView.topAnchor),
-            agentSwitcher.heightAnchor.constraint(equalToConstant: Self.switcherHeight),
-            agentSwitcher.trailingAnchor.constraint(equalTo: fence.leadingAnchor),
-
-            fence.trailingAnchor.constraint(equalTo: dismissButton.leadingAnchor),
-            fence.centerYAnchor.constraint(equalTo: dismissButton.centerYAnchor),
-            fence.widthAnchor.constraint(equalToConstant: hairline),
-            fence.heightAnchor.constraint(equalToConstant: 20),
-
-            dismissButton.trailingAnchor.constraint(
-                equalTo: toolbarContentView.trailingAnchor, constant: -8),
-            dismissButton.topAnchor.constraint(equalTo: toolbarContentView.topAnchor),
-            dismissButton.widthAnchor.constraint(equalToConstant: 44),
-            dismissButton.heightAnchor.constraint(equalToConstant: Self.switcherHeight),
-
-            separator.leadingAnchor.constraint(equalTo: toolbarContentView.leadingAnchor),
-            separator.trailingAnchor.constraint(equalTo: toolbarContentView.trailingAnchor),
-            separator.topAnchor.constraint(equalTo: agentSwitcher.bottomAnchor),
-            separator.heightAnchor.constraint(equalToConstant: hairline),
-        ])
-    }
-
-    private func configureInputRow() {
-        inputRow.translatesAutoresizingMaskIntoConstraints = false
-        toolbarContentView.addSubview(inputRow)
-
         NSLayoutConstraint.activate([
             inputRow.leadingAnchor.constraint(equalTo: toolbarContentView.leadingAnchor),
             inputRow.trailingAnchor.constraint(equalTo: toolbarContentView.trailingAnchor),
-            inputRow.topAnchor.constraint(equalTo: agentSwitcher.bottomAnchor),
+            inputRow.topAnchor.constraint(equalTo: toolbarContentView.topAnchor),
             inputRow.heightAnchor.constraint(equalToConstant: Self.inputRowHeight),
+
+            separator.leadingAnchor.constraint(equalTo: toolbarContentView.leadingAnchor),
+            separator.trailingAnchor.constraint(equalTo: toolbarContentView.trailingAnchor),
+            separator.topAnchor.constraint(equalTo: toolbarContentView.topAnchor),
+            separator.heightAnchor.constraint(
+                equalToConstant: 1 / max(traitCollection.displayScale, 1)),
         ])
     }
 
@@ -364,28 +323,16 @@ final class TerminalKeyboardAccessory: UIInputView {
         inputRow.addSubview(newLineButton)
 
         NSLayoutConstraint.activate([
-            newLineButton.leadingAnchor.constraint(equalTo: pasteControl.trailingAnchor, constant: 4),
             newLineButton.trailingAnchor.constraint(
-                lessThanOrEqualTo: modeControl.leadingAnchor, constant: -4),
+                equalTo: inputRow.trailingAnchor, constant: -8),
             newLineButton.centerYAnchor.constraint(equalTo: inputRow.centerYAnchor),
             newLineButton.widthAnchor.constraint(equalToConstant: 44),
             newLineButton.heightAnchor.constraint(equalToConstant: 44),
+            modeControl.trailingAnchor.constraint(
+                lessThanOrEqualTo: newLineButton.leadingAnchor, constant: -4),
+            pasteControl.trailingAnchor.constraint(
+                lessThanOrEqualTo: modeControl.leadingAnchor, constant: -4),
         ])
-    }
-
-    private func makeDismissButton() -> UIButton {
-        var configuration = UIButton.Configuration.plain()
-        let symbol = UIImage.SymbolConfiguration(
-            pointSize: Self.glyphPointSize, weight: .regular, scale: .medium)
-        configuration.image = UIImage(
-            systemName: "keyboard.chevron.compact.down", withConfiguration: symbol)
-        configuration.preferredSymbolConfigurationForImage = symbol
-        configuration.baseForegroundColor = .label
-        let button = UIButton(configuration: configuration)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.addTarget(self, action: #selector(dismissKeyboard), for: .touchUpInside)
-        button.accessibilityLabel = "Dismiss keyboard"
-        return button
     }
 
     @objc private func modeChanged() {
@@ -400,27 +347,6 @@ final class TerminalKeyboardAccessory: UIInputView {
         terminalView?.sendNewLine()
     }
 
-    @objc private func dismissKeyboard() {
-        if let terminalView, terminalView.isFirstResponder {
-            let resigned = terminalView.dismissKeyboard()
-            if resigned, toolbarContentView.alpha == 1 {
-                animateDismissal()
-            } else if !resigned {
-                resetDismissalAppearance()
-            }
-            return
-        }
-        // The accessory can outlive its terminal view's first-responder
-        // status (a rebuilt terminal after a reconnect). Resigning through the
-        // responder chain still takes the keyboard down, so the button is
-        // never a dead control.
-        animateDismissal()
-        let resigned = UIApplication.shared.sendAction(
-            #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        if !resigned {
-            resetDismissalAppearance()
-        }
-    }
 }
 
 /// The control-key pane of the Keys keyboard. It fills whatever space the

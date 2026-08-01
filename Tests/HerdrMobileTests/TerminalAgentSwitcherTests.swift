@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import SwiftUI
 import UIKit
 
 @testable import HerdrMobile
@@ -45,11 +46,11 @@ struct TerminalAgentSwitcherTests {
         #expect(Self.makeAgent(pane: "p4").switcherLabel == "claude")
     }
 
-    /// The switcher sits above the input row, and the dismiss button is
-    /// pinned beside it — outside the scroll view, so the one control that
-    /// takes the keyboard down can never scroll out of reach.
+    /// The keyboard row carries typing controls only. The keyboard toggle
+    /// moved to the Agent strip, which outlives the keyboard — a control that
+    /// summons the keyboard back cannot live on the keyboard itself.
     @MainActor
-    @Test func theSwitcherRowCarriesAPinnedDismissButton() throws {
+    @Test func theKeyboardRowCarriesTypingControlsAlone() throws {
         let terminal = TerminalScreenView.makeConfiguredTerminal()
         let accessory = try #require(
             terminal.inputAccessoryView as? TerminalKeyboardAccessory)
@@ -59,18 +60,87 @@ struct TerminalAgentSwitcherTests {
 
         #expect(
             TerminalKeyboardAccessory.preferredHeight
-                == TerminalKeyboardAccessory.switcherHeight
-                    + TerminalKeyboardAccessory.inputRowHeight)
-        #expect(accessory.dismissButton.accessibilityLabel == "Dismiss keyboard")
-        #expect(accessory.dismissButton.frame.maxY <= TerminalKeyboardAccessory.switcherHeight)
-        #expect(accessory.dismissButton.frame.maxX == accessory.bounds.width - 8)
-        #expect(!accessory.dismissButton.isDescendant(of: accessory.agentSwitcher))
-        #expect(accessory.agentSwitcher.frame.maxX <= accessory.dismissButton.frame.minX)
-        // The input row keeps its own controls, now entirely below the strip.
+                == TerminalKeyboardAccessory.inputRowHeight)
         for control in [accessory.pasteControl, accessory.newLineButton] as [UIView] {
             let frame = accessory.convert(control.bounds, from: control)
-            #expect(frame.minY >= TerminalKeyboardAccessory.switcherHeight)
+            #expect(frame.maxY <= TerminalKeyboardAccessory.preferredHeight)
         }
+        // Paste anchors the leading edge, new line the trailing one, with the
+        // mode control centred between them.
+        #expect(accessory.pasteControl.frame.minX == 8)
+        #expect(accessory.newLineButton.frame.maxX == accessory.bounds.width - 8)
+        #expect(accessory.pasteControl.frame.maxX < accessory.newLineButton.frame.minX)
+        #expect(Self.keyboardToggles(in: accessory).isEmpty)
+    }
+
+    private static func firstStrip(in view: UIView) -> TerminalAgentSwitcherBar? {
+        if let strip = view as? TerminalAgentSwitcherBar { return strip }
+        for subview in view.subviews {
+            if let strip = firstStrip(in: subview) { return strip }
+        }
+        return nil
+    }
+
+    private static func keyboardToggles(in view: UIView) -> [UIView] {
+        let labels: Set<String> = ["Dismiss keyboard", "Show keyboard"]
+        let matches = view.subviews.flatMap { keyboardToggles(in: $0) }
+        guard let label = view.accessibilityLabel, labels.contains(label) else {
+            return matches
+        }
+        return matches + [view]
+    }
+
+    /// The strip is a scroll view whose content is as wide as its chips, so
+    /// asked how big it wants to be it answers with the whole list. Mounted in
+    /// SwiftUI without an answer of its own, that measurement is what SwiftUI
+    /// lays out against — pushing the pinned toggle off the screen's edge.
+    @MainActor
+    @Test(.timeLimit(.minutes(1)))
+    func theStripTakesTheWidthItIsGivenRatherThanItsChips() throws {
+        let host = UUID()
+        let agents = (0..<10).map {
+            Self.makeAgent(
+                pane: "p\($0)", workspace: "a-project-with-a-long-name-\($0)", host: host)
+        }
+        let row = TerminalAgentSwitcherRow(
+            switcher: TerminalAgentSwitcher(
+                items: agents.map { Self.makeItem($0) },
+                // The Agent the user switched to is at the far end of the
+                // strip, so opening it has to scroll — the case that hangs.
+                selectedID: agents[9].id,
+                onSelect: { _ in }),
+            isKeyboardUp: true,
+            toggleKeyboard: {})
+        let controller = UIHostingController(rootView: row)
+        let width: CGFloat = 402
+        let window = try makeWindow(width: width, rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.frame = CGRect(
+            x: 0, y: 0, width: width, height: TerminalAgentSwitcherBar.preferredHeight)
+        controller.view.layoutIfNeeded()
+
+        let measured = controller.sizeThatFits(in: CGSize(width: width, height: 40))
+        #expect(measured.width <= width, "the strip demanded \(measured.width) of \(width)")
+
+        // The strip has to stop short of the row's trailing edge, or the
+        // toggle pinned beside it has nowhere left to sit.
+        let strip = try #require(Self.firstStrip(in: controller.view))
+        let stripFrame = strip.convert(strip.bounds, to: controller.view)
+        #expect(stripFrame.width > 0)
+        #expect(
+            stripFrame.maxX <= width - 44,
+            "the strip claimed \(stripFrame.maxX) of \(width), leaving no room for the toggle")
+    }
+
+    @MainActor
+    private func makeWindow(
+        width: CGFloat, rootViewController: UIViewController
+    ) throws -> UIWindow {
+        let window = UIWindow(
+            frame: CGRect(x: 0, y: 0, width: width, height: 700))
+        window.rootViewController = rootViewController
+        window.isHidden = false
+        return window
     }
 
     @MainActor
@@ -169,13 +239,11 @@ struct TerminalAgentSwitcherTests {
         #expect(bar.bounds.contains(first.convert(first.bounds, to: bar)))
     }
 
-    /// The path a switch actually takes: a fresh accessory is handed the strip
-    /// before it is measured, and lands on the keyboard already scrolled to
-    /// the Agent the user picked.
+    /// The path a switch actually takes: a fresh strip is handed its chips
+    /// before it is measured, and lands on screen already scrolled to the
+    /// Agent the user picked.
     @MainActor
-    @Test func theAccessoryOpensScrolledToTheAgentOnScreen() async throws {
-        let terminal = TerminalScreenView.makeConfiguredTerminal()
-        let accessory = try #require(terminal.inputAccessoryView as? TerminalKeyboardAccessory)
+    @Test func theStripOpensScrolledToTheAgentOnScreen() async throws {
         let controller = UIViewController()
         let window = try await makeTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 700),
@@ -186,17 +254,13 @@ struct TerminalAgentSwitcherTests {
         let agents = (0..<5).map {
             Self.makeAgent(pane: "p\($0)", workspace: "project-\($0)", host: host)
         }
-        accessory.update(
-            agentSwitcher: TerminalAgentSwitcher(
-                items: agents.map { Self.makeItem($0) },
-                selectedID: agents[4].id,
-                onSelect: { _ in }))
-        accessory.frame = CGRect(
-            x: 0, y: 0, width: 402, height: TerminalKeyboardAccessory.preferredHeight)
-        controller.view.addSubview(accessory)
-        accessory.layoutIfNeeded()
+        let strip = TerminalAgentSwitcherBar()
+        strip.update(items: agents.map { Self.makeItem($0) }, selectedID: agents[4].id)
+        strip.frame = CGRect(
+            x: 0, y: 0, width: 402, height: TerminalAgentSwitcherBar.preferredHeight)
+        controller.view.addSubview(strip)
+        strip.layoutIfNeeded()
 
-        let strip = accessory.agentSwitcher
         let opened = try #require(strip.chips.last)
         #expect(strip.bounds.contains(opened.convert(opened.bounds, to: strip)))
     }

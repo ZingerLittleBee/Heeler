@@ -1,3 +1,4 @@
+import SwiftUI
 import UIKit
 
 /// One chip in the keyboard's Agent switcher: the label it shows and the
@@ -37,11 +38,19 @@ final class TerminalKeyboardHandoff {
     }
 }
 
-/// The switcher row: a horizontally scrolling strip of Agent chips. It sits
-/// above the input row inside the keyboard accessory, so switching Agents
-/// never costs a trip back to the Console.
+/// The switcher row: a horizontally scrolling strip of Agent chips, resting
+/// on the terminal's bottom edge so switching Agents never costs a trip back
+/// to the Console.
+///
+/// It rides the terminal rather than the keyboard accessory on purpose: an
+/// Agent is worth switching to whether or not the user is typing, and living
+/// on the keyboard meant UIKit tore the strip down and rebuilt it — losing its
+/// scroll position — every time the keyboard moved.
 @MainActor
 final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate {
+    /// Short on purpose: every point it takes is one the terminal loses.
+    static let preferredHeight: CGFloat = 40
+
     var onSelect: (@MainActor (ConsoleAgent.ID) -> Void)?
 
     /// The strip as it currently reads, in order.
@@ -99,10 +108,10 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate {
 
     /// An Agent switch builds a whole new terminal, so the strip that comes
     /// back starts at offset zero — with the chip the user just picked off
-    /// screen if the list is long. The accessory is measured over several
-    /// passes (no width at all on the first update, chip widths later still),
-    /// so rather than firing once, the strip keeps the open Agent in view on
-    /// every layout until the user scrolls the strip themselves.
+    /// screen if the list is long. The strip is measured over several passes
+    /// (no width at all on the first update, chip widths later still), so
+    /// rather than firing once, it keeps the open Agent in view on every
+    /// layout until the user scrolls it themselves.
     override func layoutSubviews() {
         super.layoutSubviews()
         guard scrollsToSelectionOnLayout,
@@ -139,8 +148,8 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate {
         scrollView.contentOffset.x = offsetX
     }
 
-    /// The accessory is torn off the keyboard and rebuilt whenever the
-    /// keyboard changes hands, and it comes back at the start of the strip.
+    /// An Agent switch rebuilds the screen around the strip, which comes back
+    /// at its start.
     override func didMoveToWindow() {
         super.didMoveToWindow()
         if window != nil {
@@ -154,10 +163,10 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate {
         scrollsToSelectionOnLayout = false
     }
 
-    /// A scroll position the user did not ask for — UIKit resetting the strip
-    /// as it reloads the accessory, or clamping it against a content size it
-    /// has only just published. Bounds do not change for either, so this is
-    /// the only signal that the open Agent may have slid off screen.
+    /// A scroll position the user did not ask for — UIKit clamping the strip
+    /// against a content size it has only just published. Bounds do not change
+    /// for that, so this is the only signal that the open Agent may have slid
+    /// off screen.
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         guard scrollsToSelectionOnLayout,
               !scrollView.isDragging, !scrollView.isDecelerating
@@ -259,8 +268,7 @@ final class TerminalAgentChip: UIControl {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        // Leaving the window strips layer animations, and the accessory leaves
-        // it every time the keyboard goes down.
+        // Leaving the window strips layer animations.
         if window != nil {
             updatePulse()
         }
@@ -331,5 +339,79 @@ final class TerminalAgentChip: UIControl {
         pulse.autoreverses = true
         pulse.repeatCount = .infinity
         dot.layer.add(pulse, forKey: Self.pulseKey)
+    }
+}
+
+/// The resident Agent strip, as the terminal screen mounts it: the chips over
+/// the keyboard's own fill, with the keyboard toggle pinned at the trailing
+/// edge — outside the scroll view, so the one control that summons the
+/// keyboard back can never scroll out of reach.
+struct TerminalAgentSwitcherRow: View {
+    let switcher: TerminalAgentSwitcher
+    let isKeyboardUp: Bool
+    let toggleKeyboard: () -> Void
+    /// Matches `UIPasteControl`'s fixed glyph size in the row below, or the
+    /// two read as icons borrowed from different sets.
+    private static let glyphPointSize: CGFloat = 12
+    @Environment(\.displayScale) private var displayScale
+
+    private var hairline: CGFloat { 1 / max(displayScale, 1) }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            StripRepresentable(switcher: switcher)
+            // Fences the pinned button off from the strip, so the chips read
+            // as a list that ends rather than as one the button belongs to.
+            Rectangle()
+                .fill(Color(uiColor: .separator))
+                .frame(width: hairline, height: 20)
+            Button(action: toggleKeyboard) {
+                Image(
+                    systemName: isKeyboardUp
+                        ? "keyboard.chevron.compact.down" : "keyboard"
+                )
+                .font(.system(size: Self.glyphPointSize))
+                .foregroundStyle(Color(uiColor: .label))
+                .frame(width: 44, height: TerminalAgentSwitcherBar.preferredHeight)
+                .contentTransition(.symbolEffect(.replace))
+            }
+            .accessibilityLabel(isKeyboardUp ? "Dismiss keyboard" : "Show keyboard")
+            .padding(.trailing, 8)
+        }
+        .frame(height: TerminalAgentSwitcherBar.preferredHeight)
+        .background(alignment: .top) {
+            Rectangle()
+                .fill(Color(uiColor: .separator))
+                .frame(height: hairline)
+        }
+        .background(Color(uiColor: .secondarySystemBackground))
+    }
+
+    private struct StripRepresentable: UIViewRepresentable {
+        let switcher: TerminalAgentSwitcher
+
+        func makeUIView(context _: Context) -> TerminalAgentSwitcherBar {
+            TerminalAgentSwitcherBar()
+        }
+
+        /// The strip is a scroll view whose content is as wide as its chips,
+        /// so measured by its own constraints it asks for the entire list.
+        /// SwiftUI would lay the row out against that and push the pinned
+        /// toggle off the screen. The strip takes the width it is offered; the
+        /// chips scroll inside it, which is the whole point of a strip.
+        func sizeThatFits(
+            _ proposal: ProposedViewSize,
+            uiView _: TerminalAgentSwitcherBar,
+            context _: Context
+        ) -> CGSize? {
+            CGSize(
+                width: proposal.width ?? 0,
+                height: TerminalAgentSwitcherBar.preferredHeight)
+        }
+
+        func updateUIView(_ bar: TerminalAgentSwitcherBar, context _: Context) {
+            bar.onSelect = switcher.onSelect
+            bar.update(items: switcher.items, selectedID: switcher.selectedID)
+        }
     }
 }
