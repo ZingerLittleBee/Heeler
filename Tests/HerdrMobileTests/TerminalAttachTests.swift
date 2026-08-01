@@ -660,12 +660,12 @@ struct TerminalAttachTests {
         #expect(!terminal.isFirstResponder)
     }
 
-    /// UIKit removes the software keyboard and its accessory over several
-    /// layout passes. Forwarding every intermediate grid to Ghostty and the
-    /// remote PTY makes a full-screen TUI redraw repeatedly while the keyboard
-    /// is leaving, so only the settled geometry may escape this transition.
+    /// A keyboard changing hands passes through several transient heights —
+    /// both terminals' accessories ride it at once while it does. Forwarding
+    /// each one to Ghostty and the remote PTY makes a full-screen TUI redraw
+    /// per step, so only the settled geometry may escape the handoff.
     @MainActor
-    @Test func keyboardDismissalCoalescesAnimatedGridChangesIntoOneFinalResize() async throws {
+    @Test func aKeyboardHandoffCoalescesItsTransientGridsIntoOneResize() async throws {
         var reportedGrids: [(columns: Int, rows: Int)] = []
         let terminal = TerminalScreenView.makeConfiguredTerminal(
             onSizeChanged: { columns, rows in
@@ -687,7 +687,11 @@ struct TerminalAttachTests {
         let initialRows = try #require(reportedGrids.last?.rows)
         reportedGrids.removeAll()
 
-        terminal.beginKeyboardDismissalLayoutDeferral()
+        // The handoff itself: the replacement surface claims the keyboard as
+        // it reaches the window, and freezes its grid until that settles.
+        terminal.removeFromSuperview()
+        terminal.raisesKeyboardWhenReady = true
+        host.view.addSubview(terminal)
 
         for height: CGFloat in [440, 520, 600] {
             terminal.frame.size.height = height
@@ -704,88 +708,70 @@ struct TerminalAttachTests {
         #expect(reportedGrids.last?.rows ?? 0 > initialRows)
     }
 
-    /// A dismissal waits for `keyboardDidHide` alone. UIKit reports frame
-    /// changes while the keyboard stack is still leaving, and thawing the grid
-    /// on one of those puts back exactly the intermediate resizes the
-    /// dismissal coalesces away.
+    /// A dismissal is the case that has to be exact, so it does not wait on
+    /// anything: SwiftUI's own avoidance retracted in two stages, the second
+    /// landing a third of a second after the keyboard had gone, which cost the
+    /// terminal a second reflow, a second PTY resize, and a visibly late TUI
+    /// redraw.
     @MainActor
-    @Test func aDismissalKeepsItsGridFrozenThroughItsOwnFrameChanges() async throws {
-        var reportedGrids: [(columns: Int, rows: Int)] = []
-        let terminal = TerminalScreenView.makeConfiguredTerminal(
-            onSizeChanged: { columns, rows in
-                reportedGrids.append((columns, rows))
-            })
-        let host = UIViewController()
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 390, height: 700),
-            rootViewController: host)
-        defer {
-            terminal.removeFromSuperview()
-            window.isHidden = true
-        }
-        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 360)
-        host.view.addSubview(terminal)
-        window.layoutIfNeeded()
-        try await waitForGridReportsToSettle(&reportedGrids)
-        reportedGrids.removeAll()
+    @Test func aDismissalDropsTheKeyboardInsetInOneStep() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
 
-        terminal.beginKeyboardDismissalLayoutDeferral()
-        NotificationCenter.default.post(
-            name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
-        terminal.frame.size.height = 600
-        terminal.setNeedsLayout()
-        terminal.layoutIfNeeded()
-        try await Task.sleep(for: .milliseconds(100))
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 554, width: 440, height: 436)])
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(inset.height == 402)
 
-        #expect(reportedGrids.isEmpty)
-        terminal.finishKeyboardTransitionLayout()
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        #expect(inset.height == 0)
     }
 
-    /// The geometry a dismissal settles at is already in the view tree when
-    /// UIKit publishes the keyboard's end frame; only the presentation is
-    /// still animating. Handing it to Ghostty and the remote PTY at
-    /// `keyboardDidHide` instead spent the entire dismissal animation not
-    /// redrawing, so the terminal arrived a visible beat after the keyboard
-    /// had gone.
+    /// UIKit measures the input accessory after the keyboard itself, so a
+    /// presentation can arrive as two frames. The terminal must not resize
+    /// twice on the way up either.
     @MainActor
-    @Test func aDismissalRefitsTheGridWhileTheKeyboardIsStillAnimatingAway() async throws {
-        var reportedGrids: [(columns: Int, rows: Int)] = []
-        let terminal = TerminalScreenView.makeConfiguredTerminal(
-            onSizeChanged: { columns, rows in
-                reportedGrids.append((columns, rows))
-            })
-        let host = UIViewController()
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 390, height: 700),
-            rootViewController: host)
-        defer {
-            terminal.removeFromSuperview()
-            window.isHidden = true
+    @Test func aPresentationsFollowUpFrameFoldsIntoTheFirst() async throws {
+        let center = NotificationCenter()
+        var measured: [CGFloat] = [314, 402]
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in
+            measured.isEmpty ? nil : measured.removeFirst()
         }
-        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 360)
-        host.view.addSubview(terminal)
-        window.layoutIfNeeded()
-        try await waitForGridReportsToSettle(&reportedGrids)
-        let initialRows = try #require(reportedGrids.last?.rows)
-        reportedGrids.removeAll()
+        var observedHeights: [CGFloat] = []
+        let observation = Task { @MainActor in
+            var last = inset.height
+            while !Task.isCancelled {
+                if inset.height != last {
+                    last = inset.height
+                    observedHeights.append(last)
+                }
+                try? await Task.sleep(for: .milliseconds(5))
+            }
+        }
+        defer { observation.cancel() }
 
-        terminal.beginKeyboardDismissalLayoutDeferral()
-        terminal.frame.size.height = 600
-        NotificationCenter.default.post(
-            name: UIResponder.keyboardWillHideNotification,
-            object: nil,
-            userInfo: [
-                UIResponder.keyboardAnimationDurationUserInfoKey: NSNumber(value: 0.25)
-            ])
+        let frame = CGRect(x: 0, y: 554, width: 440, height: 436)
+        center.post(
+            name: UIResponder.keyboardWillChangeFrameNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: frame])
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: frame])
 
-        // No keyboardDidHide is posted: the keyboard is still on its way down.
-        try await waitForGridReportsToSettle(&reportedGrids)
-        #expect(reportedGrids.count == 1)
-        #expect(reportedGrids.last?.rows ?? 0 > initialRows)
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(inset.height == 402)
+        #expect(observedHeights == [402], "the terminal resized more than once: \(observedHeights)")
+    }
 
-        // The surface stays behind its snapshot for the animation itself.
-        try await Task.sleep(for: .milliseconds(400))
-        #expect(terminal.alpha == 1)
+    /// The keyboard's frame is measured from the bottom of the screen; the
+    /// terminal stops at the home indicator. Not subtracting that safe area
+    /// left a strip of background between the last row and the toolbar.
+    @Test func theKeyboardInsetExcludesTheHomeIndicatorSafeArea() {
+        #expect(TerminalKeyboardInset.insetHeight(covered: 436, bottomSafeArea: 34) == 402)
+        #expect(TerminalKeyboardInset.insetHeight(covered: 436, bottomSafeArea: 0) == 436)
+        #expect(TerminalKeyboardInset.insetHeight(covered: 20, bottomSafeArea: 34) == 0)
     }
 
     @MainActor

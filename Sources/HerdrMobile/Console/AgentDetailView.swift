@@ -25,6 +25,7 @@ struct AgentDetailView: View {
     /// pops the collapsed stack on iPhone.
     private let onClosed: () -> Void
     @State private var attach: AgentAttachStore
+    @State private var keyboardInset = TerminalKeyboardInset()
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isConfirmingClose = false
     @State private var isStartingAgent = false
@@ -247,6 +248,9 @@ struct AgentDetailView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             imageAttachStatus
         }
+        // Not SwiftUI's keyboard avoidance: it retracts in two stages and the
+        // terminal would resize twice per dismissal. See TerminalKeyboardInset.
+        .terminalKeyboardInset(keyboardInset)
         // background(_:ignoresSafeAreaEdges:) defaults to .all: the theme
         // colour reaches under the transparent navigation bar and into the
         // home-indicator area without moving the terminal grid or touching

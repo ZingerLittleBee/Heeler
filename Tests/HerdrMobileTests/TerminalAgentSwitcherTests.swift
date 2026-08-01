@@ -398,11 +398,12 @@ struct TerminalAgentSwitcherTests {
         inherited.finishKeyboardTransitionLayout()
         #expect(inherited.inputViewRebuildCount > rebuildsBeforeHandoffEnds)
 
+        // A terminal that raised its own keyboard has no outgoing accessory to
+        // account for, so the same call must leave its input views alone.
         let dismissing = TerminalScreenView.makeConfiguredTerminal()
         dismissing.frame = CGRect(x: 0, y: 0, width: 390, height: 400)
         host.view.addSubview(dismissing)
         dismissing.requestKeyboard()
-        dismissing.beginKeyboardDismissalLayoutDeferral()
         let rebuildsBeforeDismissalEnds = dismissing.inputViewRebuildCount
         dismissing.finishKeyboardTransitionLayout()
         #expect(dismissing.inputViewRebuildCount == rebuildsBeforeDismissalEnds)

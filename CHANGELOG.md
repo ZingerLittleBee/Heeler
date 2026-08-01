@@ -13,13 +13,13 @@ Entries reference the issue that motivated them.
   stale snapshots that finish after a disconnect, and rechecks membership when
   an Agent process exits back to an ordinary shell.
 
-- Dismissing the iOS keyboard no longer makes an attached terminal flicker
-  through several transient grid sizes while the keyboard and its toolbar
-  animate away, and the app toolbar now leaves in sync with the keyboard
-  instead of lingering at the bottom of the screen. The terminal also comes
-  back noticeably sooner: it now refits itself and asks the Host to redraw
-  while the keyboard is still sliding down, rather than waiting for it to be
-  fully gone before starting.
+- The terminal no longer arrives a beat late after the keyboard is dismissed.
+  It now sizes itself to the keyboard directly instead of through SwiftUI's
+  avoidance, which retracted in two stages and left the terminal resizing a
+  second time — reflowing, resizing the remote PTY, and redrawing the whole
+  TUI again — a third of a second after the keyboard had already gone. Raising
+  the keyboard settles in one step too, and the app toolbar leaves in sync
+  with the keyboard instead of lingering at the bottom of the screen.
 
 ### Changed
 

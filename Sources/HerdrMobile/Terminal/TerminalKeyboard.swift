@@ -644,7 +644,6 @@ extension HerdrTerminalView {
         (inputAccessoryView as? TerminalKeyboardAccessory)?.animateDismissal(
             duration: duration,
             options: options)
-        keyboardDismissalAnimationDidBegin(duration: duration)
     }
 
     @objc private func textKeyboardFrameDidChange(_ notification: Notification) {

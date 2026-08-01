@@ -93,6 +93,7 @@
 		67FED2A809BAF1570D6E003F /* SecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 567573855DCC8571BC02096D /* SecretStore.swift */; };
 		68E0CF3B2078B4450366AF36 /* ImageStagingE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA18CA4EC57526EA84A6DEE8 /* ImageStagingE2ETests.swift */; };
 		693B0173C07DAF4BFC89B094 /* SecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 567573855DCC8571BC02096D /* SecretStore.swift */; };
+		6BF97FBC4258ACD3B1F8D147 /* TerminalKeyboardInset.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D86393FA7D41F2EA7A9AE5 /* TerminalKeyboardInset.swift */; };
 		6CBE7E0961FFD970A614ED4B /* AgentCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B3FA15CCDC83C72DDA81BEB /* AgentCardView.swift */; };
 		6EE491610D2417571A57B5B3 /* NotificationConfigFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 790657D3E484D44D466D7EBB /* NotificationConfigFile.swift */; };
 		6F3B8F2DEC6CA5991BB267E5 /* HostOnboardingStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29DD3828DAEF46DBA7038B0A /* HostOnboardingStoreTests.swift */; };
@@ -409,6 +410,7 @@
 		BE8796AB629EF68A90C96B3D /* TerminalAttachTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAttachTests.swift; sourceTree = "<group>"; };
 		BEBCD83AC5D4AF0193B2AF9B /* NotificationPrivacyCopyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPrivacyCopyTests.swift; sourceTree = "<group>"; };
 		C00DCBDBB970535D6E758CE4 /* SolvingOrbView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolvingOrbView.swift; sourceTree = "<group>"; };
+		C0D86393FA7D41F2EA7A9AE5 /* TerminalKeyboardInset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalKeyboardInset.swift; sourceTree = "<group>"; };
 		C14983BD8988E4AAE79DC46A /* FakeTransportConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeTransportConnector.swift; sourceTree = "<group>"; };
 		C1B1FCCEF619BD597ECD3353 /* TerminalZoomSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalZoomSettings.swift; sourceTree = "<group>"; };
 		C232163905675760F37FD7A0 /* KnownHostsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnownHostsStore.swift; sourceTree = "<group>"; };
@@ -608,6 +610,7 @@
 				6F7C6974BD9BE77000016FCA /* TerminalByteFeed.swift */,
 				80E727A9081269681AD7581B /* TerminalInputController.swift */,
 				73DB204D5F25D5375D5B2974 /* TerminalKeyboard.swift */,
+				C0D86393FA7D41F2EA7A9AE5 /* TerminalKeyboardInset.swift */,
 				EE0BE586B3BBEDFA132705C6 /* TerminalKeysKeyboard.swift */,
 				88D1D6AB56C4DA1CE0AF9A51 /* TerminalMouseReporting.swift */,
 				597ACEE9D688E433B20108D7 /* TerminalScreenView.swift */,
@@ -1143,6 +1146,7 @@
 				9FD3129232CA2D5BBEC3A7B9 /* TerminalFontSettings.swift in Sources */,
 				98E83E883BCC8534910D7493 /* TerminalInputController.swift in Sources */,
 				8DF99F3257BCC6AE08595A45 /* TerminalKeyboard.swift in Sources */,
+				6BF97FBC4258ACD3B1F8D147 /* TerminalKeyboardInset.swift in Sources */,
 				350A0384BD81FAA414168A18 /* TerminalKeysKeyboard.swift in Sources */,
 				D4DB3D327A8767025130B169 /* TerminalMouseReporting.swift in Sources */,
 				F96C5D15E14B947BE426B2F3 /* TerminalScreenView.swift in Sources */,
