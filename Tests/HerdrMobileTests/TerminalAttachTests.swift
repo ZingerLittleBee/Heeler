@@ -640,6 +640,14 @@ struct TerminalAttachTests {
 
         dismiss.sendActions(for: .touchUpInside)
         #expect(!terminal.isFirstResponder)
+        #expect(accessory.alpha == 0)
+        #expect(accessory.transform.ty == TerminalKeyboardAccessory.preferredHeight)
+
+        terminal.requestKeyboard()
+        #expect(terminal.isFirstResponder)
+        #expect(accessory.alpha == 1)
+        #expect(accessory.transform == .identity)
+        terminal.dismissKeyboard()
 
         // Stranded accessory: no first responder left to ask, and the button
         // must still be a no-crash no-op rather than a dead end.

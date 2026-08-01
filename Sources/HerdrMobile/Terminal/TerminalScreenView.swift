@@ -452,7 +452,11 @@ final class HerdrTerminalView: UITerminalView {
         if isFirstResponder, !responderGate.mayBecomeFirstResponder {
             return true
         }
-        return super.becomeFirstResponder()
+        let becameFirstResponder = super.becomeFirstResponder()
+        if becameFirstResponder {
+            terminalKeyboardAccessory.resetDismissalAppearance()
+        }
+        return becameFirstResponder
     }
 
     /// Ghostty's `touchesEnded` dismisses the keyboard after any body tap or

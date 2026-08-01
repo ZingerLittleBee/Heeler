@@ -214,6 +214,27 @@ final class TerminalKeyboardAccessory: UIInputView {
         newLineButton.isEnabled = isEnabled
     }
 
+    func animateDismissal(
+        duration: TimeInterval = 0.25,
+        options: UIView.AnimationOptions = .curveEaseInOut
+    ) {
+        UIView.animate(
+            withDuration: duration,
+            delay: 0,
+            options: [options, .allowUserInteraction, .beginFromCurrentState]
+        ) {
+            self.alpha = 0
+            self.transform = CGAffineTransform(
+                translationX: 0, y: Self.preferredHeight)
+        }
+    }
+
+    func resetDismissalAppearance() {
+        layer.removeAllAnimations()
+        alpha = 1
+        transform = .identity
+    }
+
     private func configureModeControl() {
         modeControl.translatesAutoresizingMaskIntoConstraints = false
         modeControl.selectedSegmentTintColor = .tertiarySystemBackground
@@ -298,15 +319,24 @@ final class TerminalKeyboardAccessory: UIInputView {
 
     @objc private func dismissKeyboard() {
         if let terminalView, terminalView.isFirstResponder {
-            terminalView.dismissKeyboard()
+            let resigned = terminalView.dismissKeyboard()
+            if resigned, alpha == 1 {
+                animateDismissal()
+            } else if !resigned {
+                resetDismissalAppearance()
+            }
             return
         }
         // The accessory can outlive its terminal view's first-responder
         // status (a rebuilt terminal after a reconnect). Resigning through the
         // responder chain still takes the keyboard down, so the button is
         // never a dead control.
-        UIApplication.shared.sendAction(
+        animateDismissal()
+        let resigned = UIApplication.shared.sendAction(
             #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        if !resigned {
+            resetDismissalAppearance()
+        }
     }
 }
 
@@ -463,6 +493,9 @@ extension HerdrTerminalView {
             self, selector: #selector(textKeyboardFrameDidChange(_:)),
             name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
         NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardDismissalWillBegin(_:)),
+            name: UIResponder.keyboardWillHideNotification, object: nil)
+        NotificationCenter.default.addObserver(
             self, selector: #selector(keyboardDismissalDidFinish(_:)),
             name: UIResponder.keyboardDidHideNotification, object: nil)
     }
@@ -504,6 +537,25 @@ extension HerdrTerminalView {
         let inputViewHeight = totalHeight - accessoryHeight
         guard inputViewHeight >= 100 else { return }
         controlKeyboardHeight = inputViewHeight.rounded(.up)
+    }
+
+    @objc private func keyboardDismissalWillBegin(_ notification: Notification) {
+        if let isLocal = notification.userInfo?[UIResponder.keyboardIsLocalUserInfoKey]
+            as? NSNumber,
+            !isLocal.boolValue
+        {
+            return
+        }
+        let duration =
+            (notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey]
+                as? NSNumber)?.doubleValue ?? 0.25
+        let curve =
+            (notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey]
+                as? NSNumber)?.uintValue ?? UInt(UIView.AnimationCurve.easeInOut.rawValue)
+        let options = UIView.AnimationOptions(rawValue: curve << 16)
+        (inputAccessoryView as? TerminalKeyboardAccessory)?.animateDismissal(
+            duration: duration,
+            options: options)
     }
 
     @objc private func textKeyboardFrameDidChange(_ notification: Notification) {
