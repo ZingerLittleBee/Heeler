@@ -275,6 +275,9 @@ final class HerdrTerminalView: UITerminalView {
     /// was mid-conversation — dropping the keyboard would hide the switcher
     /// along with it.
     var raisesKeyboardWhenReady = false
+    /// Set once Ghostty reports a grid with a real cell size; see
+    /// `raiseKeyboardIfClaimed`.
+    private var hasMeasuredSurface = false
     private var zoomBaseFontSize: Float?
     private var terminalInputView: UIView?
     private var modeTracker = TerminalModeTracker()
@@ -646,6 +649,20 @@ final class HerdrTerminalView: UITerminalView {
         }
     }
 
+    /// Hands the keyboard to a terminal that inherited it from the one it
+    /// replaced, but not before Ghostty has measured a real grid.
+    ///
+    /// Ghostty's first viewport report on a fresh surface carries a zero cell
+    /// size — the grid is not built yet. Shrinking the view for the keyboard
+    /// while it is in that state leaves the surface measured against the
+    /// half-built grid: what it draws ends up smaller than the view, showing
+    /// as a shrunken font and an unpainted band under the terminal.
+    private func raiseKeyboardIfClaimed() {
+        guard raisesKeyboardWhenReady, hasMeasuredSurface, window != nil else { return }
+        raisesKeyboardWhenReady = false
+        requestKeyboard()
+    }
+
     /// Raises the keyboard, and records that the user wants it up.
     func requestKeyboard() {
         finishKeyboardDismissalLayout()
@@ -816,9 +833,8 @@ final class HerdrTerminalView: UITerminalView {
             stopTouchScrollMomentum()
             responderGate.invalidateTouches()
             cancelKeyboardDismissalLayoutDeferral()
-        } else if raisesKeyboardWhenReady {
-            raisesKeyboardWhenReady = false
-            requestKeyboard()
+        } else {
+            raiseKeyboardIfClaimed()
         }
     }
 
@@ -1160,6 +1176,8 @@ final class HerdrTerminalView: UITerminalView {
         terminalCellSize = CGSize(
             width: CGFloat(viewport.cellWidthPixels) / scale,
             height: CGFloat(viewport.cellHeightPixels) / scale)
+        hasMeasuredSurface = true
+        raiseKeyboardIfClaimed()
     }
 
     func startTouchScrollMomentum(velocityY: CGFloat) {

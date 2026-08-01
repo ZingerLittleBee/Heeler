@@ -176,24 +176,48 @@ struct TerminalAgentSwitcherTests {
     }
 
     /// A claimed handoff hands the keyboard to the terminal that replaced the
-    /// one the user was typing into — once, and only on its first appearance.
+    /// one the user was typing into — but only once Ghostty has measured a
+    /// real grid. Raising it against the zero-cell first report leaves the
+    /// surface drawing a band shorter than the view (#white-band).
     @MainActor
-    @Test func aClaimedHandoffRaisesTheKeyboardOnTheNewTerminal() {
+    @Test func aClaimedHandoffWaitsForTheMeasuredGridThenRaisesTheKeyboard() async throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        window.makeKeyAndVisible()
+
+        let claimed = TerminalScreenView.makeConfiguredTerminal()
+        claimed.raisesKeyboardWhenReady = true
+        claimed.frame = window.bounds
+        window.addSubview(claimed)
+        #expect(!claimed.isFirstResponder)
+
+        claimed.layoutIfNeeded()
+        let deadline = ContinuousClock.now + .seconds(5)
+        while !claimed.isFirstResponder, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(claimed.isFirstResponder, "the measured grid should hand over the keyboard")
+
+        // One shot: coming back on screen later starts with the keyboard down.
+        claimed.dismissKeyboard()
+        claimed.removeFromSuperview()
+        window.addSubview(claimed)
+        claimed.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(!claimed.isFirstResponder)
+    }
+
+    /// A terminal nobody handed the keyboard to keeps it down, however many
+    /// grids Ghostty measures.
+    @MainActor
+    @Test func anUnclaimedTerminalNeverRaisesTheKeyboardOnItsOwn() async throws {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
         window.makeKeyAndVisible()
 
         let plain = TerminalScreenView.makeConfiguredTerminal()
+        plain.frame = window.bounds
         window.addSubview(plain)
+        plain.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(300))
         #expect(!plain.isFirstResponder)
-
-        let claimed = TerminalScreenView.makeConfiguredTerminal()
-        claimed.raisesKeyboardWhenReady = true
-        window.addSubview(claimed)
-        #expect(claimed.isFirstResponder)
-
-        claimed.dismissKeyboard()
-        claimed.removeFromSuperview()
-        window.addSubview(claimed)
-        #expect(!claimed.isFirstResponder)
     }
 }
