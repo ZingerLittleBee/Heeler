@@ -79,6 +79,10 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Terminal scrolling and typing stay responsive on lossy connections: touch
+  momentum is coalesced and bounded, and fresh keyboard input no longer waits
+  behind stale wheel events.
+
 - Failed Host notices stay compact in the Agent list and open the affected
   Host directly, where an explicit reconnect action stays visible, animates
   while restarting, and leaves the latest connection error below it. (PR #107)

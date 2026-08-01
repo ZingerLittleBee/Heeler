@@ -105,6 +105,28 @@ struct AttachTerminalStoreTests {
             ])
     }
 
+    @Test func touchScrollingUsesTheBoundedScrollPath() async throws {
+        let transport = ScriptedTransport()
+        let input = TerminalInputController()
+        let (store, _) = makeStore(transport: transport, input: input)
+        let sequence = Data("wheel".utf8)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("store should go live") { store.status == .live }
+
+        input.scroll(sequence, rows: 5)
+        try await waitUntil("scroll rows should reach the session in bounded batches") {
+            await transport.attachInputs.count == 2
+        }
+        await store.stop()
+
+        #expect(
+            await transport.attachInputs == [
+                .scroll(sequence + sequence + sequence),
+                .scroll(sequence + sequence),
+            ])
+    }
+
     @Test func inputControllerOwnsTheLiveWriterAndPauseGate() async throws {
         let transport = ScriptedTransport()
         let input = TerminalInputController()

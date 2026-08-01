@@ -40,19 +40,26 @@ struct TerminalInputControllerTests {
 
     @Test func pausingDropsKeyboardPasteAndControlInputUntilResumed() {
         var writes: [Data] = []
+        var scrollRows = 0
         let controller = TerminalInputController()
-        _ = controller.beginSession { writes.append($0) }
+        _ = controller.beginSession(
+            writer: { writes.append($0) },
+            scroller: { _, rows in scrollRows += rows })
 
         controller.pause()
         controller.send(Data("keyboard".utf8))
+        controller.scroll(Data("scroll".utf8), rows: 4)
         #expect(controller.requestPaste("clipboard") == .blocked)
         #expect(controller.isPaused)
         #expect(writes.isEmpty)
+        #expect(scrollRows == 0)
 
         controller.resume()
         controller.send(Data([0x03]))
+        controller.scroll(Data("scroll".utf8), rows: 2)
         #expect(controller.requestPaste("clipboard") == .inserted)
         #expect(writes == [Data([0x03]), Data("clipboard".utf8)])
+        #expect(scrollRows == 2)
     }
 
     @Test func singleLinePasteInsertsImmediately() {
