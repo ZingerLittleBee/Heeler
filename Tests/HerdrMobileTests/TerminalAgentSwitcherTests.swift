@@ -141,6 +141,34 @@ struct TerminalAgentSwitcherTests {
         #expect(working.superview == nil)
     }
 
+    /// A switch builds a new terminal, so the strip that comes back is a new
+    /// bar sitting at offset zero — and the Agent the user just picked is off
+    /// screen whenever the list outruns the row. The chip on screen must be
+    /// the one the terminal is attached to, in a strip the user never scrolled.
+    @MainActor
+    @Test func theOpenAgentsChipIsScrolledIntoViewOnceThereIsRoomToMeasure() throws {
+        let host = UUID()
+        let agents = (0..<8).map {
+            Self.makeAgent(pane: "p\($0)", workspace: "project-\($0)", host: host)
+        }
+        let bar = TerminalAgentSwitcherBar()
+
+        // The accessory's first update lands before it has any width, so the
+        // scroll has to survive until a layout that can measure.
+        bar.update(items: agents.map { Self.makeItem($0) }, selectedID: agents[7].id)
+        bar.layoutIfNeeded()
+        bar.frame = CGRect(x: 0, y: 0, width: 240, height: 40)
+        bar.layoutIfNeeded()
+        let opened = try #require(bar.chips.last)
+        #expect(bar.bounds.contains(opened.convert(opened.bounds, to: bar)))
+
+        // And it keeps following the selection once the row is on screen.
+        bar.update(items: agents.map { Self.makeItem($0) }, selectedID: agents[0].id)
+        bar.layoutIfNeeded()
+        let first = try #require(bar.chips.first)
+        #expect(bar.bounds.contains(first.convert(first.bounds, to: bar)))
+    }
+
     /// Motion is the Working signal here, exactly as the orb is on the card.
     @MainActor
     @Test func onlyWorkingChipsPulse() {

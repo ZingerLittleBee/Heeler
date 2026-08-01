@@ -51,6 +51,7 @@ final class TerminalAgentSwitcherBar: UIView {
     private let row = UIStackView()
     private var items: [TerminalAgentSwitcherItem] = []
     private var selectedID: ConsoleAgent.ID?
+    private var scrollsToSelectionOnLayout = false
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -88,8 +89,44 @@ final class TerminalAgentSwitcherBar: UIView {
         chips = ordered
 
         if selectionChanged {
-            scrollToSelection(animated: window != nil)
+            scrollsToSelectionOnLayout = true
+            setNeedsLayout()
         }
+    }
+
+    /// An Agent switch builds a whole new terminal, so the strip that comes
+    /// back starts at offset zero — with the chip the user just picked off
+    /// screen if the list is long. The first update lands before the accessory
+    /// has any width, so the scroll has to wait for a layout that can measure.
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard scrollsToSelectionOnLayout, scrollView.bounds.width > 0 else { return }
+        guard let selectedID,
+              let chip = chips.first(where: { $0.id == selectedID })
+        else { return }
+        scrollsToSelectionOnLayout = false
+        // The strip lays out inside the scroll view's own pass, and the chip
+        // has no frame to scroll to until that has run.
+        scrollView.layoutIfNeeded()
+        // Scrolled by hand rather than with `scrollRectToVisible`: that one is
+        // a no-op mid-layout, which is exactly when the strip needs it. Move
+        // the least that brings the chip and its gutter fully into view, so a
+        // chip already on screen stays where the user last left it.
+        let chipFrame = chip.convert(chip.bounds, to: scrollView)
+        let leading = chipFrame.minX - TerminalAgentChip.spacing
+        let trailing = chipFrame.maxX + TerminalAgentChip.spacing
+        var offsetX = scrollView.contentOffset.x
+        if trailing > offsetX + scrollView.bounds.width {
+            offsetX = trailing - scrollView.bounds.width
+        }
+        if leading < offsetX {
+            offsetX = leading
+        }
+        offsetX = min(
+            max(offsetX, 0), max(scrollView.contentSize.width - scrollView.bounds.width, 0))
+        guard offsetX != scrollView.contentOffset.x else { return }
+        scrollView.setContentOffset(
+            CGPoint(x: offsetX, y: scrollView.contentOffset.y), animated: window != nil)
     }
 
     private func makeChip(id: ConsoleAgent.ID) -> TerminalAgentChip {
@@ -101,15 +138,6 @@ final class TerminalAgentSwitcherBar: UIView {
     @objc private func chipTapped(_ chip: TerminalAgentChip) {
         guard chip.id != selectedID else { return }
         onSelect?(chip.id)
-    }
-
-    private func scrollToSelection(animated: Bool) {
-        guard let selectedID,
-              let chip = chips.first(where: { $0.id == selectedID })
-        else { return }
-        layoutIfNeeded()
-        scrollView.scrollRectToVisible(
-            chip.frame.insetBy(dx: -TerminalAgentChip.spacing, dy: 0), animated: animated)
     }
 
     private func configureScrollView() {
