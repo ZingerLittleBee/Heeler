@@ -275,6 +275,11 @@ final class HerdrTerminalView: UITerminalView {
     /// was mid-conversation — dropping the keyboard would hide the switcher
     /// along with it.
     var raisesKeyboardWhenReady = false
+    /// How many times the input views have been rebuilt. Nothing else observes
+    /// the rebuild that republishes the keyboard's settled frame after a
+    /// handoff, and a lost rebuild costs the terminal a toolbar's worth of
+    /// height without a crash to show for it.
+    private(set) var inputViewRebuildCount = 0
     private var zoomBaseFontSize: Float?
     private var terminalInputView: UIView?
     private var modeTracker = TerminalModeTracker()
@@ -830,6 +835,11 @@ final class HerdrTerminalView: UITerminalView {
         return super.canPerformAction(action, withSender: sender)
     }
 
+    override func reloadInputViews() {
+        inputViewRebuildCount += 1
+        super.reloadInputViews()
+    }
+
     override func layoutSubviews() {
         guard !defersLayoutForKeyboardTransition else { return }
         super.layoutSubviews()
@@ -954,10 +964,20 @@ final class HerdrTerminalView: UITerminalView {
 
     func finishKeyboardTransitionLayout() {
         guard defersLayoutForKeyboardTransition else { return }
+        let inheritedTheKeyboard = keyboardTransitionEndsOnFrameChange
         defersLayoutForKeyboardTransition = false
         keyboardTransitionEndsOnFrameChange = false
         keyboardTransitionFallbackTask?.cancel()
         keyboardTransitionFallbackTask = nil
+        if inheritedTheKeyboard {
+            // Both terminals' accessories were on the keyboard while it
+            // changed hands, and that is the frame the keyboard published:
+            // one accessory too tall. UIKit does not publish another when the
+            // outgoing one leaves, so the layout keeps reserving room for an
+            // accessory that is gone. Rebuilding the input views makes it
+            // publish the settled frame.
+            UIView.performWithoutAnimation { reloadInputViews() }
+        }
         setNeedsLayout()
         layoutIfNeeded()
         keyboardDismissalCommitTask = Task { @MainActor [weak self] in

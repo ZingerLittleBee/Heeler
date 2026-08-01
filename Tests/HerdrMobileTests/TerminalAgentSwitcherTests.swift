@@ -259,4 +259,37 @@ struct TerminalAgentSwitcherTests {
 
         #expect(reportedGrids.count == 1, "only the settled grid may escape")
     }
+
+    /// Both terminals' accessories ride the keyboard while it changes hands,
+    /// and that is the frame the keyboard publishes: one accessory too tall.
+    /// UIKit publishes no other when the outgoing one leaves, so the layout
+    /// keeps reserving room for a toolbar that is gone — measured on device,
+    /// the terminal came back 88pt short and the agent lost five rows. The
+    /// rebuild at the end of the handoff is what republishes the settled
+    /// frame; a dismissal has no stale accessory and must not pay for one.
+    @MainActor
+    @Test func aClaimedHandoffRebuildsInputViewsToRepublishTheKeyboardFrame() async throws {
+        let host = UIViewController()
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 700),
+            rootViewController: host)
+        defer { window.isHidden = true }
+
+        let inherited = TerminalScreenView.makeConfiguredTerminal()
+        inherited.raisesKeyboardWhenReady = true
+        inherited.frame = CGRect(x: 0, y: 0, width: 390, height: 400)
+        host.view.addSubview(inherited)
+        let rebuildsBeforeHandoffEnds = inherited.inputViewRebuildCount
+        inherited.finishKeyboardTransitionLayout()
+        #expect(inherited.inputViewRebuildCount > rebuildsBeforeHandoffEnds)
+
+        let dismissing = TerminalScreenView.makeConfiguredTerminal()
+        dismissing.frame = CGRect(x: 0, y: 0, width: 390, height: 400)
+        host.view.addSubview(dismissing)
+        dismissing.requestKeyboard()
+        dismissing.beginKeyboardDismissalLayoutDeferral()
+        let rebuildsBeforeDismissalEnds = dismissing.inputViewRebuildCount
+        dismissing.finishKeyboardTransitionLayout()
+        #expect(dismissing.inputViewRebuildCount == rebuildsBeforeDismissalEnds)
+    }
 }
