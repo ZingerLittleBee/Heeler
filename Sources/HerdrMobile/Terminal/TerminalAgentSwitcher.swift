@@ -139,10 +139,30 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate {
         scrollView.contentOffset.x = offsetX
     }
 
+    /// The accessory is torn off the keyboard and rebuilt whenever the
+    /// keyboard changes hands, and it comes back at the start of the strip.
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil {
+            setNeedsLayout()
+        }
+    }
+
     /// The user looking around the strip outranks keeping the open Agent in
     /// view; the next switch arms it again.
     func scrollViewWillBeginDragging(_: UIScrollView) {
         scrollsToSelectionOnLayout = false
+    }
+
+    /// A scroll position the user did not ask for — UIKit resetting the strip
+    /// as it reloads the accessory, or clamping it against a content size it
+    /// has only just published. Bounds do not change for either, so this is
+    /// the only signal that the open Agent may have slid off screen.
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        guard scrollsToSelectionOnLayout,
+              !scrollView.isDragging, !scrollView.isDecelerating
+        else { return }
+        setNeedsLayout()
     }
 
     private func makeChip(id: ConsoleAgent.ID) -> TerminalAgentChip {

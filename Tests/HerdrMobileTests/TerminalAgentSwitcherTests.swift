@@ -169,6 +169,38 @@ struct TerminalAgentSwitcherTests {
         #expect(bar.bounds.contains(first.convert(first.bounds, to: bar)))
     }
 
+    /// The path a switch actually takes: a fresh accessory is handed the strip
+    /// before it is measured, and lands on the keyboard already scrolled to
+    /// the Agent the user picked.
+    @MainActor
+    @Test func theAccessoryOpensScrolledToTheAgentOnScreen() async throws {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        let accessory = try #require(terminal.inputAccessoryView as? TerminalKeyboardAccessory)
+        let controller = UIViewController()
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 700),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+
+        let host = UUID()
+        let agents = (0..<5).map {
+            Self.makeAgent(pane: "p\($0)", workspace: "project-\($0)", host: host)
+        }
+        accessory.update(
+            agentSwitcher: TerminalAgentSwitcher(
+                items: agents.map { Self.makeItem($0) },
+                selectedID: agents[4].id,
+                onSelect: { _ in }))
+        accessory.frame = CGRect(
+            x: 0, y: 0, width: 402, height: TerminalKeyboardAccessory.preferredHeight)
+        controller.view.addSubview(accessory)
+        accessory.layoutIfNeeded()
+
+        let strip = accessory.agentSwitcher
+        let opened = try #require(strip.chips.last)
+        #expect(strip.bounds.contains(opened.convert(opened.bounds, to: strip)))
+    }
+
     /// The accessory is measured over several passes, so the strip holds the
     /// open Agent in view across all of them — until the user scrolls it
     /// themselves, which outranks the whole business.
@@ -185,9 +217,9 @@ struct TerminalAgentSwitcherTests {
         let strip = try #require(bar.subviews.compactMap { $0 as? UIScrollView }.first)
         #expect(strip.contentOffset.x > 0)
 
-        // A later measuring pass still finds the open Agent.
+        // A reset the user did not ask for — UIKit reloading the accessory —
+        // does not even change the bounds, so the strip has to notice it.
         strip.contentOffset.x = 0
-        bar.setNeedsLayout()
         bar.layoutIfNeeded()
         #expect(strip.contentOffset.x > 0)
 
