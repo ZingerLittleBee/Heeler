@@ -82,6 +82,9 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Holding the iOS keyboard's Backspace key now continues deleting instead of
+  stopping after one character.
+
 - Failed Host notices stay compact in the Agent list and open the affected
   Host directly, where an explicit reconnect action stays visible, animates
   while restarting, and leaves the latest connection error below it. (PR #107)

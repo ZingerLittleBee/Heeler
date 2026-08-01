@@ -116,6 +116,43 @@ struct TerminalAttachTests {
     }
 
     @MainActor
+    @Test func systemKeyboardBackspaceSynchronizesTheTextInputContext() async {
+        var sent = Data()
+        var events: [String] = []
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSend: { sent.append($0) })
+        let inputDelegate = TextInputDelegateRecorder(events: { events.append($0) })
+        terminal.inputDelegate = inputDelegate
+
+        terminal.terminalSession.sendInput(Data("abc".utf8))
+        let insertDeadline = ContinuousClock.now + .seconds(1)
+        while sent != Data("abc".utf8), ContinuousClock.now < insertDeadline {
+            await Task.yield()
+        }
+        #expect(sent == Data("abc".utf8))
+        sent.removeAll()
+        events.removeAll()
+
+        terminal.deleteBackward()
+        let deleteDeadline = ContinuousClock.now + .seconds(1)
+        while sent.isEmpty, ContinuousClock.now < deleteDeadline {
+            await Task.yield()
+        }
+
+        #expect(sent == Data([0x7F]))
+        #expect(
+            events == [
+                "textWillChange",
+                "selectionWillChange",
+                "selectionDidChange",
+                "textDidChange",
+            ])
+        #expect(terminal.offset(
+            from: terminal.beginningOfDocument,
+            to: terminal.endOfDocument) == 2)
+    }
+
+    @MainActor
     @Test func pausedTerminalControlsDoNotEmitInput() async {
         var sent = Data()
         let terminal = TerminalScreenView.makeConfiguredTerminal(
