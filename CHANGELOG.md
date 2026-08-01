@@ -85,6 +85,10 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Attach no longer leaves a stale-width, non-interactive terminal on screen
+  when an SSH input or resize write fails; the broken session now ends and
+  preserves the underlying transport error.
+
 - Terminal scrolling and typing stay responsive on lossy connections: touch
   momentum is coalesced and bounded, and fresh keyboard input no longer waits
   behind stale wheel events.

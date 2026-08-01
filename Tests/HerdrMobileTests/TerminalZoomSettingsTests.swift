@@ -107,6 +107,11 @@ struct TerminalZoomSettingsTests {
 
         #expect(large.columns < small.columns)
         #expect(large.rows < small.rows)
+
+        terminal.applyFontSize(10)
+        let restored = try #require(await observed.settled(changedFrom: large))
+
+        #expect(restored == small)
     }
 
     @Test func reapplyingTheSameFontSizeIsANoOp() {

@@ -7,6 +7,11 @@ import Logging
 import NIOCore
 @preconcurrency import NIOSSH
 
+private enum TerminalAttachPumpError: Error, Sendable {
+    case input(String)
+    case output(String)
+}
+
 /// How a Host connection locates the remote socat executable.
 ///
 /// Two levels only: the Host's configured path, then whatever the Host's own
@@ -1201,6 +1206,7 @@ actor SSHTransport: Transport {
         // ended — a state it is only now being recorded into.
         terminalChannelState = .streaming(readerID: readerID)
         return TerminalAttachSession(output: output, input: input) {
+            input.finish()
             readerTask.cancel()
             await readerTask.value
         }
@@ -1272,55 +1278,78 @@ actor SSHTransport: Transport {
         /// the way out, and that close's "already closed" error must not
         /// repaint a clean detach as a failure (found by the #11 e2e).
         var sawCleanEnd = false
+        /// Citadel closes the channel after this closure returns. If that
+        /// cleanup also fails, preserve the pump failure that ended the live
+        /// session instead of replacing it with a secondary close error.
+        var pumpFailure: TerminalAttachPumpError?
         do {
             try await client.withPTY(pty) { inbound, outbound in
                 try await outbound.write(ByteBuffer(string: bootstrapLine))
-                // The writer rides alongside the read loop. It asks the
-                // mixed-reliability queue for work only after the previous
-                // write completes, so a reliable key can discard stale
-                // scroll momentum before the next write begins. Write
-                // failures are swallowed: the channel death they signal
-                // surfaces through the read loop.
-                let writer = Task {
-                    while let item = await input.next() {
-                        guard !Task.isCancelled else { return }
-                        do {
-                            switch item {
-                            case .keystrokes(let data):
-                                try await outbound.write(ByteBuffer(bytes: data))
-                            case .scroll(let data):
-                                try await outbound.write(ByteBuffer(bytes: data))
-                                try await Task.sleep(
-                                    for: TerminalAttachInputQueue.scrollPacingInterval)
-                            case .resize(let cols, let rows):
-                                try await outbound.changeSize(
-                                    cols: cols, rows: rows, pixelWidth: 0, pixelHeight: 0)
+                do {
+                    sawCleanEnd = try await withThrowingTaskGroup(of: Bool.self) { group in
+                        group.addTask {
+                            do {
+                                try await Self.writeTerminalAttachInput(
+                                    input,
+                                    write: { data in
+                                        try await outbound.write(ByteBuffer(bytes: data))
+                                    },
+                                    resize: { cols, rows in
+                                        try await outbound.changeSize(
+                                            cols: cols, rows: rows, pixelWidth: 0, pixelHeight: 0)
+                                    })
+                                return false
+                            } catch is CancellationError {
+                                throw CancellationError()
+                            } catch {
+                                throw TerminalAttachPumpError.input(String(describing: error))
                             }
-                        } catch {
-                            return
                         }
+                        group.addTask {
+                            do {
+                                for try await chunk in inbound {
+                                    switch chunk {
+                                    case .stdout(let buffer), .stderr(let buffer):
+                                        // A PTY merges everything into one byte stream;
+                                        // stderr chunks should not occur, but any that do
+                                        // belong on the terminal too.
+                                        continuation.yield(Data(buffer.readableBytesView))
+                                    }
+                                }
+                                return true
+                            } catch is CancellationError {
+                                throw CancellationError()
+                            } catch {
+                                throw TerminalAttachPumpError.output(String(describing: error))
+                            }
+                        }
+                        defer {
+                            input.finish()
+                            group.cancelAll()
+                        }
+                        return try await group.next() ?? true
                     }
+                } catch let error as TerminalAttachPumpError {
+                    pumpFailure = error
+                    throw error
                 }
-                defer { writer.cancel() }
-                for try await chunk in inbound {
-                    switch chunk {
-                    case .stdout(let buffer), .stderr(let buffer):
-                        // A PTY merges everything into one byte stream;
-                        // stderr chunks should not occur, but any that do
-                        // belong on the terminal too.
-                        continuation.yield(Data(buffer.readableBytesView))
-                    }
-                }
-                sawCleanEnd = true
             }
             failure = nil
         } catch is CancellationError {
             failure = nil
         } catch {
-            failure =
-                Task.isCancelled || sawCleanEnd
-                ? nil  // Explicit end() or a clean remote exit.
-                : TransportError.channelFailed(detail: "attach channel: \(error)")
+            if Task.isCancelled || sawCleanEnd {
+                failure = nil  // Explicit end() or a clean remote exit.
+            } else {
+                switch pumpFailure {
+                case .input(let detail):
+                    failure = TransportError.channelFailed(detail: "attach input: \(detail)")
+                case .output(let detail):
+                    failure = TransportError.channelFailed(detail: "attach channel: \(detail)")
+                case nil:
+                    failure = TransportError.channelFailed(detail: "attach channel: \(error)")
+                }
+            }
         }
         // Remote exit must also wake a writer suspended on the input queue.
         input.finish()
@@ -1333,6 +1362,25 @@ actor SSHTransport: Transport {
             continuation.finish(throwing: failure)
         } else {
             continuation.finish()
+        }
+    }
+
+    static func writeTerminalAttachInput(
+        _ input: TerminalAttachInputQueue,
+        write: (Data) async throws -> Void,
+        resize: (Int, Int) async throws -> Void
+    ) async throws {
+        while let item = await input.next() {
+            guard !Task.isCancelled else { return }
+            switch item {
+            case .keystrokes(let data):
+                try await write(data)
+            case .scroll(let data):
+                try await write(data)
+                try await Task.sleep(for: TerminalAttachInputQueue.scrollPacingInterval)
+            case .resize(let cols, let rows):
+                try await resize(cols, rows)
+            }
         }
     }
 
