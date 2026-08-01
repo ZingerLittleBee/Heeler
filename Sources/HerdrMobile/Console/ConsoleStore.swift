@@ -9,6 +9,7 @@ import Observation
 final class ConsoleStore {
     private(set) var agents: [ConsoleAgent] = []
     private(set) var hostStatuses: [Host.ID: EventsSessionStatus] = [:]
+    private(set) var hostLatencies: [Host.ID: Duration] = [:]
     private(set) var hostSyncErrors: [Host.ID: String] = [:]
     private(set) var hostConnectionGenerations: [Host.ID: UInt64] = [:]
     /// Latest snapshot workspaces by Host. This is observable state rather
@@ -205,6 +206,10 @@ final class ConsoleStore {
         hostStatuses = Dictionary(
             uniqueKeysWithValues: current.compactMap { projection in
                 projection.status.map { (projection.host.id, $0) }
+            })
+        hostLatencies = Dictionary(
+            uniqueKeysWithValues: current.compactMap { projection in
+                projection.latency.map { (projection.host.id, $0) }
             })
         hostSyncErrors = Dictionary(
             uniqueKeysWithValues: current.compactMap { projection in

@@ -969,6 +969,9 @@ struct ConsoleStoreTests {
         try await waitUntil("the Host should report connected") {
             store.hostStatuses[host.id] == .connected
         }
+        try await waitUntil("the Host should publish its ping latency") {
+            store.hostLatencies[host.id] != nil
+        }
 
         await store.suspend()
         try await waitUntil("the Host should report suspended") {
@@ -976,6 +979,7 @@ struct ConsoleStoreTests {
         }
 
         store.setHosts([])
+        #expect(store.hostLatencies.isEmpty)
     }
 
     @Test func retryHostReconnectsOnlyTheRequestedFailedHost() async throws {

@@ -113,6 +113,11 @@ actor EventsSession {
     /// Status transitions and events, in order. Finishes after `end()`.
     nonisolated let updates: AsyncStream<EventsSessionUpdate>
     private let updatesContinuation: AsyncStream<EventsSessionUpdate>.Continuation
+    /// Successful herdr ping round trips on the Host's live SSH connection.
+    /// This is separate from `updates`: latency is latest-value telemetry, not
+    /// part of the ordered status/event convergence stream.
+    nonisolated let latencyUpdates: AsyncStream<Duration>
+    private let latencyContinuation: AsyncStream<Duration>.Continuation
     /// How many updates the bounded buffer has shed so far. Every shed
     /// update is covered by a marker (see `yieldUpdate`), so this is
     /// observability for diagnostics and tests, not a consumer signal.
@@ -185,6 +190,9 @@ actor EventsSession {
         (updates, updatesContinuation) = AsyncStream.makeStream(
             of: EventsSessionUpdate.self,
             bufferingPolicy: .bufferingNewest(updatesBufferLimit))
+        (latencyUpdates, latencyContinuation) = AsyncStream.makeStream(
+            of: Duration.self,
+            bufferingPolicy: .bufferingNewest(1))
     }
 
     /// Activates the session (initially, or after `suspend()`): establishes
@@ -295,6 +303,7 @@ actor EventsSession {
         await windDown()
         yieldUpdate(.status(.ended))
         updatesContinuation.finish()
+        latencyContinuation.finish()
     }
 
     /// The single gate every update leaves through: yields it and, when the
@@ -423,10 +432,11 @@ actor EventsSession {
             guard activationIsCurrent(generation) else {
                 throw TransportError.cancelled
             }
-            _ = try await transport.ping()
+            let latency = try await measureLatency(on: transport)
             guard activationIsCurrent(generation) else {
                 throw TransportError.cancelled
             }
+            latencyContinuation.yield(latency)
         } catch {
             try? await transport.close()
             throw error
@@ -502,7 +512,8 @@ actor EventsSession {
                 if Task.isCancelled { break }
                 guard self.connectionIsIdle(within: keepalive.interval) else { continue }
                 do {
-                    _ = try await transport.ping()
+                    let latency = try await self.measureLatency(on: transport)
+                    self.latencyContinuation.yield(latency)
                     self.noteConnectionActivity()
                 } catch is CancellationError {
                     break
@@ -523,6 +534,15 @@ actor EventsSession {
 
     private func noteConnectionActivity() {
         lastConnectionActivity = .now
+    }
+
+    /// Measures only the herdr `ping` request on an established Transport.
+    /// SSH connection setup is deliberately excluded, so Hosts remain
+    /// comparable across reconnects and authentication methods.
+    private func measureLatency(on transport: any Transport) async throws -> Duration {
+        let started = ContinuousClock.now
+        _ = try await transport.ping()
+        return started.duration(to: .now)
     }
 
     /// Whether no liveness proof arrived within `interval`, meaning the next
