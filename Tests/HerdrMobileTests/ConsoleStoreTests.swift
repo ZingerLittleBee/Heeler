@@ -197,16 +197,13 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
-    @Test func statusChangeForNewPaneDuringInitialSnapshotSurvives() async throws {
+    @Test func disconnectDuringInitialSnapshotConvergesFromAFreshSnapshot() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(
             snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .idle)]))
         let snapshotGate = ScriptedTransportCallGate()
         await transport.gateNextSnapshot(using: snapshotGate)
-        let store = makeStore(
-            transports: [host.id: transport],
-            reconnectPolicy: ReconnectPolicy(
-                initialDelay: .seconds(30), multiplier: 1, maxDelay: .seconds(30)))
+        let store = makeStore(transports: [host.id: transport])
 
         store.setHosts([host])
         await store.resume()
@@ -218,17 +215,20 @@ struct ConsoleStoreTests {
         #expect(
             await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .blocked))
                 == true)
+        await transport.setSnapshot(
+            .fixture(agents: [.fixture(paneID: "w1:p1", status: .blocked)]))
         await transport.failEventStream(.channelFailed(detail: "test ordering barrier"))
-        try await waitUntil("the status event should be consumed before the disconnect") {
+        try await waitUntil("the Host should disconnect before the stale snapshot returns") {
             guard case .reconnecting = store.hostStatuses[host.id] else { return false }
             return true
         }
+        #expect(store.agents.isEmpty)
 
         await snapshotGate.open()
-        try await waitUntil("the initial snapshot should create the Agent row") {
-            store.agents.count == 1
+        try await waitUntil("the reconnect should apply a fresh snapshot") {
+            store.hostStatuses[host.id] == .connected
+                && store.agents.first?.agent.status == .blocked
         }
-        #expect(store.agents.first?.agent.status == .blocked)
 
         store.setHosts([])
     }
@@ -280,6 +280,97 @@ struct ConsoleStoreTests {
             store.agents.map(\.agent.paneID) == ["w1:p1", "w1:p9"]
         }
         #expect(store.agents.first?.agent.status == .blocked)
+
+        store.setHosts([])
+    }
+
+    @Test func disconnectedHostRemovesItsStaleAgentsImmediately() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .working)]))
+        let store = makeStore(
+            transports: [host.id: transport],
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .seconds(30), multiplier: 1, maxDelay: .seconds(30)))
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the initial agent should arrive") { store.agents.count == 1 }
+
+        await transport.failEventStream(.channelFailed(detail: "Host went offline"))
+        try await waitUntil("the Host should report its disconnected state") {
+            guard case .reconnecting = store.hostStatuses[host.id] else { return false }
+            return true
+        }
+
+        #expect(store.agents.isEmpty)
+
+        store.setHosts([])
+    }
+
+    @Test func staleSnapshotCannotRestoreAgentsAfterTheHostDisconnects() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .working)]))
+        let store = makeStore(
+            transports: [host.id: transport],
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .seconds(30), multiplier: 1, maxDelay: .seconds(30)))
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the initial snapshot cycle should settle") {
+            await transport.snapshotFetchCount >= 2
+        }
+
+        let snapshotGate = ScriptedTransportCallGate()
+        await transport.gateNextSnapshot(using: snapshotGate)
+        #expect(
+            await transport.emit(
+                HerdrEvent(
+                    kind: GlobalEventKind.workspaceMetadataUpdated.kind,
+                    data: .object([:]))) == true)
+        try await waitUntil("the stale snapshot should be in flight") {
+            await snapshotGate.entryCount == 1
+        }
+
+        await transport.failEventStream(.channelFailed(detail: "Host went offline"))
+        try await waitUntil("the Host should report its disconnected state") {
+            guard case .reconnecting = store.hostStatuses[host.id] else { return false }
+            return true
+        }
+        await snapshotGate.open()
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(store.agents.isEmpty)
+
+        store.setHosts([])
+    }
+
+    @Test func unknownAgentStatusResnapshotsAndRemovesAReleasedAgent() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .working)]))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the pane subscription should settle") {
+            await transport.capturedSubscriptions.last?.contains(
+                .pane(.agentStatusChanged, paneID: "w1:p1")) == true
+        }
+
+        await transport.setSnapshot(.fixture())
+        #expect(
+            await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .unknown))
+                == true)
+
+        try await waitUntil(
+            "the exited Agent should disappear through a fresh snapshot",
+            timeout: .seconds(1)
+        ) {
+            store.agents.isEmpty
+        }
 
         store.setHosts([])
     }

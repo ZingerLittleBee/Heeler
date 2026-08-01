@@ -9,6 +9,10 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- The Agent list now removes rows from disconnected Hosts immediately, rejects
+  stale snapshots that finish after a disconnect, and rechecks membership when
+  an Agent process exits back to an ordinary shell.
+
 - Dismissing the iOS keyboard no longer makes an attached terminal flicker
   through several transient grid sizes while the keyboard and its toolbar
   animate away, and the app toolbar now leaves in sync with the keyboard
