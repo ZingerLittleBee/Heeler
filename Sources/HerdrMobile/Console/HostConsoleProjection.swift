@@ -12,12 +12,14 @@ final class HostConsoleProjection {
     private(set) var agentsByPane: [String: ConsoleAgent] = [:]
     private(set) var workspaces: [ConsoleWorkspace] = []
     private(set) var status: EventsSessionStatus?
+    private(set) var latency: Duration?
     private(set) var syncError: String?
     private(set) var transportGeneration: UInt64 = 0
 
     private let snapshotRetryDelay: Duration
     private let onChange: @MainActor @Sendable () -> Void
     private var consumeTask: Task<Void, Never>?
+    private var latencyTask: Task<Void, Never>?
     private var resyncTask: Task<Void, Never>?
     private var resyncRetryTask: Task<Void, Never>?
     private var resyncPending = false
@@ -49,6 +51,14 @@ final class HostConsoleProjection {
                 self.handle(update)
             }
         }
+        latencyTask = Task { [weak self] in
+            guard let self else { return }
+            for await latency in session.latencyUpdates {
+                guard !Task.isCancelled else { return }
+                self.latency = latency
+                self.publish()
+            }
+        }
         if isActive {
             Task { await session.resume() }
         }
@@ -73,9 +83,11 @@ final class HostConsoleProjection {
         resyncTask?.cancel()
         resyncRetryTask?.cancel()
         consumeTask?.cancel()
+        latencyTask?.cancel()
         resyncTask = nil
         resyncRetryTask = nil
         consumeTask = nil
+        latencyTask = nil
         Task { await session.end() }
     }
 

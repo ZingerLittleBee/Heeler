@@ -19,6 +19,9 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Hosts now show their live connection state and latest measured ping latency
+  in the Hosts list.
+
 - Start another Agent from the one you have open: "New Agent" in the Agent
   detail screen's More menu inherits that Agent's Host, workspace, and working
   directory, so the new Agent starts in a fresh tab in the same place instead

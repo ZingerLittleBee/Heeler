@@ -78,6 +78,7 @@ struct ConsoleView: View {
                         store: hosts,
                         initialHostID: destination.hostID,
                         connectionStatuses: console.hostStatuses,
+                        latencies: console.hostLatencies,
                         reconnectingHostIDs: reconnectingHostIDs,
                         retryConnection: { await reconnectHost($0) })
                 }

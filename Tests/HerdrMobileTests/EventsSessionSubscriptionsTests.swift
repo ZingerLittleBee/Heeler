@@ -53,6 +53,24 @@ struct EventsSessionSubscriptionsTests {
         await session.end()
     }
 
+    @Test func successfulConnectPingPublishesRoundTripLatency() async throws {
+        let transport = ScriptedTransport()
+        let session = makeSession(transport: transport)
+        var updates = session.updates.makeAsyncIterator()
+        var latencyUpdates = session.latencyUpdates.makeAsyncIterator()
+
+        await session.resume()
+
+        #expect(await updates.next() == .status(.connected))
+        let latency = await latencyUpdates.next()
+        #expect(latency != nil)
+        if let latency {
+            #expect(latency >= .zero)
+        }
+
+        await session.end()
+    }
+
     @Test func unchangedSetIsANoOp() async throws {
         let transport = ScriptedTransport()
         let session = makeSession(transport: transport)
