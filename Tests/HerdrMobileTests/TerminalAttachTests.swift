@@ -12,6 +12,22 @@ import UIKit
 /// targets that cannot be quoted safely for both.
 @Suite("Terminal attach")
 struct TerminalAttachTests {
+    private enum WriterProbeError: Error {
+        case rejectedResize
+    }
+
+    @Test func writerPropagatesResizeFailure() async {
+        let input = TerminalAttachInputQueue()
+        input.resize(cols: 120, rows: 40)
+
+        await #expect(throws: WriterProbeError.self) {
+            try await SSHTransport.writeTerminalAttachInput(
+                input,
+                write: { _ in },
+                resize: { _, _ in throw WriterProbeError.rejectedResize })
+        }
+    }
+
     /// A slow SSH writer must not let lossy momentum-scroll input hold
     /// reliable keyboard input hostage. Sixty rows model one ordinary flick;
     /// the 20 ms drain delay makes the old unbounded FIFO take about 1.2 s.

@@ -71,9 +71,17 @@ struct TerminalAttachE2ETests {
 
             // Keystrokes and resizes share one ordered stream, so the probe
             // newline cannot overtake the window change.
-            session.resize(cols: 100, rows: 40)
-            session.send(Data("\n".utf8))
-            try await expectOutput(&iterator, accumulated: &seen, contains: "40 100")
+            // Exercise repeated geometry changes in one live channel. A
+            // silently dead writer would leave the stream alive while one of
+            // these probes kept reporting the previous PTY size.
+            for step in 0..<20 {
+                let cols = 100 + step
+                let rows = 40 + step
+                session.resize(cols: cols, rows: rows)
+                session.send(Data("\n".utf8))
+                try await expectOutput(
+                    &iterator, accumulated: &seen, contains: "\(rows) \(cols)")
+            }
 
             await session.end()
         }
