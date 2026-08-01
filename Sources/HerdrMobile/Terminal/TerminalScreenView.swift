@@ -27,6 +27,14 @@ struct TerminalScreenView: UIViewRepresentable {
     /// Fills the Keys keyboard's Snippets and Appearance tabs. Without one the
     /// keyboard shows the control keys alone.
     var keysContext: TerminalKeysContext?
+    /// Fills the accessory's switcher row. Without one that row carries the
+    /// dismiss button alone.
+    var agentSwitcher: TerminalAgentSwitcher?
+    /// Asked exactly once, as the surface is created: does this terminal
+    /// inherit the keyboard from the one it replaced? Asking through a
+    /// closure rather than a stored flag keeps the answer tied to the
+    /// surface's creation instead of to how often SwiftUI evaluates the body.
+    var claimsKeyboard: (@MainActor () -> Bool)?
     var isLocalInputEnabled = true
     var theme: TerminalTheme = .default
     var fontSize: Float = TerminalZoomSettings.defaultFontSize
@@ -49,6 +57,10 @@ struct TerminalScreenView: UIViewRepresentable {
             fontSize: fontSize,
             fontFamily: fontFamily)
         view.delegate = context.coordinator
+        // Only here, never in updateUIView: the intent belongs to this
+        // terminal's first appearance, not to every state change after it.
+        view.raisesKeyboardWhenReady = claimsKeyboard?() ?? false
+        view.updateAgentSwitcher(agentSwitcher)
         context.coordinator.terminalView = view
         feed.attach { [weak view] data in
             view?.receive(data)
@@ -94,6 +106,7 @@ struct TerminalScreenView: UIViewRepresentable {
             onPaste: onPaste,
             onSnippet: onSnippet)
         view.keysContext = keysContext
+        view.updateAgentSwitcher(agentSwitcher)
         view.setLocalInputEnabled(isLocalInputEnabled)
         view.applyTheme(theme)
         view.applyFontSize(fontSize)
@@ -257,6 +270,11 @@ final class HerdrTerminalView: UITerminalView {
     /// Rebuilt into the Keys keyboard the next time it is raised; a live
     /// keyboard keeps the context it was built with.
     var keysContext: TerminalKeysContext?
+    /// Raises the keyboard once this surface reaches a window. An Agent switch
+    /// rebuilds the whole terminal, and the user who tapped a switcher chip
+    /// was mid-conversation — dropping the keyboard would hide the switcher
+    /// along with it.
+    var raisesKeyboardWhenReady = false
     private var zoomBaseFontSize: Float?
     private var terminalInputView: UIView?
     private var modeTracker = TerminalModeTracker()
@@ -652,6 +670,10 @@ final class HerdrTerminalView: UITerminalView {
         return resigned
     }
 
+    func updateAgentSwitcher(_ switcher: TerminalAgentSwitcher?) {
+        terminalKeyboardAccessory.update(agentSwitcher: switcher)
+    }
+
     func setLocalInputEnabled(_ isEnabled: Bool) {
         guard isLocalInputEnabled != isEnabled else { return }
         isLocalInputEnabled = isEnabled
@@ -794,6 +816,9 @@ final class HerdrTerminalView: UITerminalView {
             stopTouchScrollMomentum()
             responderGate.invalidateTouches()
             cancelKeyboardDismissalLayoutDeferral()
+        } else if raisesKeyboardWhenReady {
+            raisesKeyboardWhenReady = false
+            requestKeyboard()
         }
     }
 

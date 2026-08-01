@@ -70,6 +70,7 @@
 		49CDAC5FE4566D912F72FFCA /* Transport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 259E51D58B1094AC5B389EDA /* Transport.swift */; };
 		49EDFB7338E2C2CE9200F711 /* PushRegistrationStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F228DA55C08962C10F4AA2B8 /* PushRegistrationStoreTests.swift */; };
 		4C80E23F09C8CFB3A93101B8 /* JSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E3E2308A50D4744A24A874B /* JSONValue.swift */; };
+		4CA562B0521C666EC6A39746 /* TerminalAgentSwitcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 487951771B7A04111DC2408A /* TerminalAgentSwitcherTests.swift */; };
 		4D5BBEA6FE5430530AB0AAE7 /* AgentAttachStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C07948FE6D5E399672A9395 /* AgentAttachStore.swift */; };
 		4DECB9E21914EFB5C89D4AB3 /* PairingCeremonyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB1ED5537111C58EDB54FD37 /* PairingCeremonyTests.swift */; };
 		4FC09A70F69110BD61E5AE9C /* TerminalKeysKeyboardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45811603D8C7CF196D6EC6BF /* TerminalKeysKeyboardTests.swift */; };
@@ -115,6 +116,7 @@
 		862121A4D41D3E1EA1E56D84 /* AppActivityCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DBF37BC147BBEEB4549FD21 /* AppActivityCoordinator.swift */; };
 		86B92C748144DAFC8D1E1609 /* AgentNotificationRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8461D2396E779D5A29631FD /* AgentNotificationRendererTests.swift */; };
 		86C5F3E2D17523948343DF09 /* GeneratedWireTypesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E87B816CE7206B37622287C4 /* GeneratedWireTypesTests.swift */; };
+		89B026DC32CEA9028E77C745 /* TerminalAgentSwitcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = E449B8AE444344472B2B9EEB /* TerminalAgentSwitcher.swift */; };
 		8AC72F5564FB95D416D1F193 /* AgentNotificationRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2DD3637ABCBDDA9385F5FBD /* AgentNotificationRenderer.swift */; };
 		8C514AFC85DAED69A4988C13 /* SSHCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90875ADAF6E348E186C8125A /* SSHCredentials.swift */; };
 		8D82AF9A80AE34D95EBF71FE /* TerminalAppearanceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE7EE1E1556207ED03292E14 /* TerminalAppearanceSettingsView.swift */; };
@@ -306,6 +308,7 @@
 		45811603D8C7CF196D6EC6BF /* TerminalKeysKeyboardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalKeysKeyboardTests.swift; sourceTree = "<group>"; };
 		45FC4FCCE9B94EC52FD930B1 /* Base64URL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Base64URL.swift; sourceTree = "<group>"; };
 		46B11849C0824D5679BD9289 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
+		487951771B7A04111DC2408A /* TerminalAgentSwitcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAgentSwitcherTests.swift; sourceTree = "<group>"; };
 		48DD6513020B3A70EFCBA3EF /* SolvingOrbRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolvingOrbRendererTests.swift; sourceTree = "<group>"; };
 		498ECBCD631F9734C28861EA /* ConsoleAgent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleAgent.swift; sourceTree = "<group>"; };
 		4BEEFE71E302772A774FA4EE /* SSHJumpHostE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHJumpHostE2ETests.swift; sourceTree = "<group>"; };
@@ -432,6 +435,7 @@
 		DDFE750ED67088B42B20020A /* TerminalStatusDialogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalStatusDialogTests.swift; sourceTree = "<group>"; };
 		DE12859365BC7A57B9EC256A /* HostDraft.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostDraft.swift; sourceTree = "<group>"; };
 		E2DD3637ABCBDDA9385F5FBD /* AgentNotificationRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationRenderer.swift; sourceTree = "<group>"; };
+		E449B8AE444344472B2B9EEB /* TerminalAgentSwitcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAgentSwitcher.swift; sourceTree = "<group>"; };
 		E63AA097AC0843D1BB51461F /* JetBrainsMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "JetBrainsMono-Bold.ttf"; sourceTree = "<group>"; };
 		E8222CAA17C89C53EF9D0706 /* SnippetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetTests.swift; sourceTree = "<group>"; };
 		E87B816CE7206B37622287C4 /* GeneratedWireTypesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedWireTypesTests.swift; sourceTree = "<group>"; };
@@ -600,6 +604,7 @@
 		758C1B00FCD3935541ADA64F /* Terminal */ = {
 			isa = PBXGroup;
 			children = (
+				E449B8AE444344472B2B9EEB /* TerminalAgentSwitcher.swift */,
 				6F7C6974BD9BE77000016FCA /* TerminalByteFeed.swift */,
 				80E727A9081269681AD7581B /* TerminalInputController.swift */,
 				73DB204D5F25D5375D5B2974 /* TerminalKeyboard.swift */,
@@ -678,6 +683,7 @@
 				4BEEFE71E302772A774FA4EE /* SSHJumpHostE2ETests.swift */,
 				F62C94D6B84C468B0A4D991C /* SSHTransportE2ETests.swift */,
 				A71CE71D20ABB90D7E94264E /* StartAgentStoreTests.swift */,
+				487951771B7A04111DC2408A /* TerminalAgentSwitcherTests.swift */,
 				D83F34B22988623AD8E2093C /* TerminalAttachE2ETests.swift */,
 				BE8796AB629EF68A90C96B3D /* TerminalAttachTests.swift */,
 				867B5B6329BF5364E6F97D9D /* TerminalFontSettingsTests.swift */,
@@ -1129,6 +1135,7 @@
 				9C1C00F36A178BF1BEE6C0A5 /* StartAgentStore.swift in Sources */,
 				7EEB41E5CD728587D7DCEC96 /* StartAgentView.swift in Sources */,
 				1F4B065DFCAF8E6656600F1E /* TOFUHostKeyValidator.swift in Sources */,
+				89B026DC32CEA9028E77C745 /* TerminalAgentSwitcher.swift in Sources */,
 				02FF64A99C692B932EC9C877 /* TerminalAppearancePane.swift in Sources */,
 				8D82AF9A80AE34D95EBF71FE /* TerminalAppearanceSettingsView.swift in Sources */,
 				41BBA40C97BAE65E56D0E3B5 /* TerminalAttach.swift in Sources */,
@@ -1229,6 +1236,7 @@
 				B56DB49BC073C1F0F95365C3 /* SocatDiscoveryTests.swift in Sources */,
 				46F44C4392FF4F743410DECD /* SolvingOrbRendererTests.swift in Sources */,
 				488EF0DD844658122800A1A7 /* StartAgentStoreTests.swift in Sources */,
+				4CA562B0521C666EC6A39746 /* TerminalAgentSwitcherTests.swift in Sources */,
 				E8E50DCA9F56799E022F9252 /* TerminalAttachE2ETests.swift in Sources */,
 				0CF1AA5AF7F2357186A5E486 /* TerminalAttachTests.swift in Sources */,
 				902A6A38324CF19BC438530D /* TerminalFontSettingsTests.swift in Sources */,

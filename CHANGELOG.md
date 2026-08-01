@@ -26,6 +26,12 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Switch Agents without leaving the terminal: a short row above the keyboard
+  toolbar lists every Agent with its live status — Working agents pulse — and
+  scrolls horizontally. Tapping one attaches to it with the keyboard still up.
+  The dismiss-keyboard button moved onto that row, pinned at its trailing edge
+  so it never scrolls out of reach.
+
 - A dedicated newline button above the iOS keyboard inserts a line break into
   an Agent prompt without pressing Enter or submitting it.
 
