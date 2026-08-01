@@ -35,6 +35,32 @@ struct TerminalAttachTests {
     }
 
     @MainActor
+    @Test func keyboardAccessoryInsertsANewLineWithoutSubmitting() async throws {
+        var sent = Data()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSend: { sent.append($0) })
+        let accessory = try #require(
+            terminal.inputAccessoryView as? TerminalKeyboardAccessory)
+
+        #expect(accessory.newLineButton.accessibilityLabel == "Insert New Line")
+        accessory.newLineButton.sendActions(for: .touchUpInside)
+        await Task.yield()
+        #expect(sent == Data([0x0A]))
+
+        sent.removeAll()
+        terminal.setKeyboardMode(.controls)
+        accessory.newLineButton.sendActions(for: .touchUpInside)
+        await Task.yield()
+        #expect(sent == Data([0x0A]))
+
+        terminal.setLocalInputEnabled(false)
+        #expect(!accessory.newLineButton.isEnabled)
+        accessory.newLineButton.sendActions(for: .touchUpInside)
+        await Task.yield()
+        #expect(sent == Data([0x0A]))
+    }
+
+    @MainActor
     @Test func pasteControlAndHardwarePasteUseTheReviewedPasteCallback() {
         var pastes: [String] = []
         let terminal = TerminalScreenView.makeConfiguredTerminal(

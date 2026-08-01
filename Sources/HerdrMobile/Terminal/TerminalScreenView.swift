@@ -441,7 +441,7 @@ final class HerdrTerminalView: UITerminalView {
     func setLocalInputEnabled(_ isEnabled: Bool) {
         guard isLocalInputEnabled != isEnabled else { return }
         isLocalInputEnabled = isEnabled
-        terminalKeyboardAccessory.setPasteEnabled(isEnabled)
+        terminalKeyboardAccessory.setInputEnabled(isEnabled)
         if let keysKeyboard {
             keysKeyboard.localInputEnabledDidChange()
         } else {
