@@ -41,11 +41,14 @@ final class TerminalKeyboardHandoff {
 /// above the input row inside the keyboard accessory, so switching Agents
 /// never costs a trip back to the Console.
 @MainActor
-final class TerminalAgentSwitcherBar: UIView {
+final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate {
     var onSelect: (@MainActor (ConsoleAgent.ID) -> Void)?
 
     /// The strip as it currently reads, in order.
     private(set) var chips: [TerminalAgentChip] = []
+
+    /// Gutter between the strip's ends and the first and last chip.
+    private static let rowInset: CGFloat = 8
 
     private let scrollView = UIScrollView()
     private let row = UIStackView()
@@ -96,37 +99,50 @@ final class TerminalAgentSwitcherBar: UIView {
 
     /// An Agent switch builds a whole new terminal, so the strip that comes
     /// back starts at offset zero — with the chip the user just picked off
-    /// screen if the list is long. The first update lands before the accessory
-    /// has any width, so the scroll has to wait for a layout that can measure.
+    /// screen if the list is long. The accessory is measured over several
+    /// passes (no width at all on the first update, chip widths later still),
+    /// so rather than firing once, the strip keeps the open Agent in view on
+    /// every layout until the user scrolls the strip themselves.
     override func layoutSubviews() {
         super.layoutSubviews()
-        guard scrollsToSelectionOnLayout, scrollView.bounds.width > 0 else { return }
-        guard let selectedID,
+        guard scrollsToSelectionOnLayout,
+              let selectedID,
               let chip = chips.first(where: { $0.id == selectedID })
         else { return }
-        scrollsToSelectionOnLayout = false
-        // The strip lays out inside the scroll view's own pass, and the chip
-        // has no frame to scroll to until that has run.
-        scrollView.layoutIfNeeded()
+        // The chips lay out inside the row's own pass, and they have no frame
+        // to scroll to until that has run.
+        row.setNeedsLayout()
+        row.layoutIfNeeded()
+        let visibleWidth = scrollView.bounds.width
+        let chipFrame = chip.convert(chip.bounds, to: scrollView)
+        guard visibleWidth > 0, chipFrame.width > 0 else { return }
+
         // Scrolled by hand rather than with `scrollRectToVisible`: that one is
         // a no-op mid-layout, which is exactly when the strip needs it. Move
         // the least that brings the chip and its gutter fully into view, so a
-        // chip already on screen stays where the user last left it.
-        let chipFrame = chip.convert(chip.bounds, to: scrollView)
+        // chip already on screen does not shift under the user.
         let leading = chipFrame.minX - TerminalAgentChip.spacing
         let trailing = chipFrame.maxX + TerminalAgentChip.spacing
         var offsetX = scrollView.contentOffset.x
-        if trailing > offsetX + scrollView.bounds.width {
-            offsetX = trailing - scrollView.bounds.width
+        if trailing > offsetX + visibleWidth {
+            offsetX = trailing - visibleWidth
         }
         if leading < offsetX {
             offsetX = leading
         }
-        offsetX = min(
-            max(offsetX, 0), max(scrollView.contentSize.width - scrollView.bounds.width, 0))
+        // Measured off the row, not `contentSize`: the scroll view publishes
+        // that a pass late, and clamping against a zero content width would
+        // pin the strip back to the start — the very bug this fixes.
+        let contentWidth = max(scrollView.contentSize.width, row.frame.maxX + Self.rowInset)
+        offsetX = min(max(offsetX, 0), max(contentWidth - visibleWidth, 0))
         guard offsetX != scrollView.contentOffset.x else { return }
-        scrollView.setContentOffset(
-            CGPoint(x: offsetX, y: scrollView.contentOffset.y), animated: window != nil)
+        scrollView.contentOffset.x = offsetX
+    }
+
+    /// The user looking around the strip outranks keeping the open Agent in
+    /// view; the next switch arms it again.
+    func scrollViewWillBeginDragging(_: UIScrollView) {
+        scrollsToSelectionOnLayout = false
     }
 
     private func makeChip(id: ConsoleAgent.ID) -> TerminalAgentChip {
@@ -145,6 +161,7 @@ final class TerminalAgentSwitcherBar: UIView {
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.alwaysBounceHorizontal = true
         scrollView.contentInsetAdjustmentBehavior = .never
+        scrollView.delegate = self
         addSubview(scrollView)
 
         row.translatesAutoresizingMaskIntoConstraints = false
@@ -159,9 +176,9 @@ final class TerminalAgentSwitcherBar: UIView {
             scrollView.topAnchor.constraint(equalTo: topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
             row.leadingAnchor.constraint(
-                equalTo: scrollView.contentLayoutGuide.leadingAnchor, constant: 8),
+                equalTo: scrollView.contentLayoutGuide.leadingAnchor, constant: Self.rowInset),
             row.trailingAnchor.constraint(
-                equalTo: scrollView.contentLayoutGuide.trailingAnchor, constant: -8),
+                equalTo: scrollView.contentLayoutGuide.trailingAnchor, constant: -Self.rowInset),
             row.centerYAnchor.constraint(equalTo: scrollView.frameLayoutGuide.centerYAnchor),
             row.heightAnchor.constraint(lessThanOrEqualTo: scrollView.frameLayoutGuide.heightAnchor),
         ])

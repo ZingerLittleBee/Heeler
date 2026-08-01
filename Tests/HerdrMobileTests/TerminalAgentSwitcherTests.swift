@@ -169,6 +169,35 @@ struct TerminalAgentSwitcherTests {
         #expect(bar.bounds.contains(first.convert(first.bounds, to: bar)))
     }
 
+    /// The accessory is measured over several passes, so the strip holds the
+    /// open Agent in view across all of them — until the user scrolls it
+    /// themselves, which outranks the whole business.
+    @MainActor
+    @Test func aHandScrolledStripIsLeftAlone() throws {
+        let host = UUID()
+        let agents = (0..<8).map {
+            Self.makeAgent(pane: "p\($0)", workspace: "project-\($0)", host: host)
+        }
+        let bar = TerminalAgentSwitcherBar()
+        bar.frame = CGRect(x: 0, y: 0, width: 240, height: 40)
+        bar.update(items: agents.map { Self.makeItem($0) }, selectedID: agents[7].id)
+        bar.layoutIfNeeded()
+        let strip = try #require(bar.subviews.compactMap { $0 as? UIScrollView }.first)
+        #expect(strip.contentOffset.x > 0)
+
+        // A later measuring pass still finds the open Agent.
+        strip.contentOffset.x = 0
+        bar.setNeedsLayout()
+        bar.layoutIfNeeded()
+        #expect(strip.contentOffset.x > 0)
+
+        bar.scrollViewWillBeginDragging(strip)
+        strip.contentOffset.x = 0
+        bar.setNeedsLayout()
+        bar.layoutIfNeeded()
+        #expect(strip.contentOffset.x == 0)
+    }
+
     /// Motion is the Working signal here, exactly as the orb is on the card.
     @MainActor
     @Test func onlyWorkingChipsPulse() {
