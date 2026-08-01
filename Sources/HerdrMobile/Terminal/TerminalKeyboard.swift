@@ -173,7 +173,7 @@ final class TerminalKeyboardAccessory: UIInputView {
         var configuration = UIButton.Configuration.plain()
         let symbol = UIImage.SymbolConfiguration(
             pointSize: Self.glyphPointSize, weight: .regular, scale: .medium)
-        configuration.image = UIImage(systemName: "return", withConfiguration: symbol)
+        configuration.image = UIImage(systemName: "text.append", withConfiguration: symbol)
         configuration.preferredSymbolConfigurationForImage = symbol
         configuration.baseForegroundColor = .label
         let button = UIButton(configuration: configuration)
