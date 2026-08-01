@@ -141,6 +141,10 @@ final class AgentAttachStore {
         terminal.send(keystrokes)
     }
 
+    func scroll(_ sequence: Data, rows: Int) {
+        input.scroll(sequence, rows: rows)
+    }
+
     func requestPaste(_ text: String, bracketedPaste: Bool) {
         _ = input.requestPaste(text, bracketedPaste: bracketedPaste)
     }

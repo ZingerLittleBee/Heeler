@@ -204,6 +204,37 @@ struct SSHTransportE2ETests {
         }
     }
 
+    @Test func agentStartPlacesTheFreshTabInTheRequestedDirectory() async throws {
+        // Launching from another agent's screen inherits its working
+        // directory: the tab must be created there rather than at the
+        // workspace's own, or the new agent starts in the wrong repo.
+        try await withTransport { request in
+            switch request.method {
+            case "tab.create":
+                return [
+                    #"{"id":"\#(request.id)","result":{"type":"tab_created","tab":{"tab_id":"w1:t9","workspace_id":"w1","number":9,"label":"9","focused":false,"pane_count":1,"agent_status":"unknown"},"root_pane":{"pane_id":"w1:p9","terminal_id":"term_new","workspace_id":"w1","tab_id":"w1:t9","focused":false,"agent_status":"unknown","revision":0}}}"#
+                ]
+            case "agent.start":
+                return [
+                    #"{"id":"\#(request.id)","result":{"type":"agent_started","argv":["claude"],"agent":{"terminal_id":"term_new","agent":"claude","terminal_title":"⠐ claude","terminal_title_stripped":"claude","agent_status":"working","workspace_id":"w1","tab_id":"w1:t9","pane_id":"w1:p9","focused":false,"cwd":"/work/a/api","foreground_cwd":"/work/a/api","revision":1}}}"#
+                ]
+            default:
+                Issue.record("Unexpected request: \(request.method)")
+                return []
+            }
+        } body: { transport, server in
+            let agent = try await transport.startAgent(
+                AgentLaunchRequest(
+                    kind: "claude", name: "reviewer", workspaceID: "w1", cwd: "/work/a/api"))
+
+            #expect(agent.cwd == "/work/a/api")
+            let create = try #require(server.receivedRequests.first)
+            // JSONEncoder escapes "/" on the wire; herdr accepts both forms.
+            #expect(
+                create.params == #"{"cwd":"\/work\/a\/api","focus":false,"workspace_id":"w1"}"#)
+        }
+    }
+
     @Test func agentStartFailureClosesTheFreshPaneAndPreservesTheError() async throws {
         try await withTransport { request in
             switch request.method {

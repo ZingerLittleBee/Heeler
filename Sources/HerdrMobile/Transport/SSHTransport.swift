@@ -7,6 +7,11 @@ import Logging
 import NIOCore
 @preconcurrency import NIOSSH
 
+private enum TerminalAttachPumpError: Error, Sendable {
+    case input(String)
+    case output(String)
+}
+
 /// How a Host connection locates the remote socat executable.
 ///
 /// Two levels only: the Host's configured path, then whatever the Host's own
@@ -339,7 +344,7 @@ actor SSHTransport: Transport {
     }
 
     func listSessions() async throws -> [HerdrSession] {
-        let output = try await Self.withRequestDeadline(requestTimeout) {
+        let output = try await withRequestDeadline(requestTimeout) {
             try await self.runHostCommand(self.sessionListCommand)
         }
         let sessions: [HerdrSession]
@@ -357,7 +362,7 @@ actor SSHTransport: Transport {
     }
 
     func availableAgentKinds() async throws -> [SupportedAgentKind] {
-        let output = try await Self.withRequestDeadline(requestTimeout) {
+        let output = try await withRequestDeadline(requestTimeout) {
             try await self.runHostCommand(self.agentDiscoveryCommand)
         }
         let discovered = Set(
@@ -407,7 +412,8 @@ actor SSHTransport: Transport {
     func startAgent(_ launch: AgentLaunchRequest) async throws -> Agent {
         let created = try await request(
             method: "tab.create",
-            params: TabCreateParams(focus: false, workspaceID: launch.workspaceID),
+            params: TabCreateParams(
+                cwd: launch.cwd, focus: false, workspaceID: launch.workspaceID),
             decoding: TabCreatedResponse.self)
         do {
             let response = try await startAgentAwaitingShell(
@@ -758,7 +764,7 @@ actor SSHTransport: Transport {
     }
 
     private func readPluginConfigFile(named name: String) async throws -> Data? {
-        try await Self.withRequestDeadline(requestTimeout) {
+        try await withRequestDeadline(requestTimeout) {
             let path = try await self.pluginConfigFilePath(named: name)
             return try await self.execChannelBudget.withChannel {
                 try await self.readPluginFile(at: path)
@@ -767,7 +773,7 @@ actor SSHTransport: Transport {
     }
 
     private func replacePluginConfigFile(named name: String, contents: Data) async throws {
-        try await Self.withRequestDeadline(requestTimeout) {
+        try await withRequestDeadline(requestTimeout) {
             let path = try await self.pluginConfigFilePath(named: name)
             let temporaryPath = "\(path).tmp-\(UUID().uuidString.lowercased())"
             guard
@@ -1025,7 +1031,7 @@ actor SSHTransport: Transport {
                 ack: ackContinuation, events: eventContinuation)
         }
         do {
-            let ackLine = try await Self.withRequestDeadline(requestTimeout) {
+            let ackLine = try await withRequestDeadline(requestTimeout) {
                 var iterator = ackLines.makeAsyncIterator()
                 guard let line = try await iterator.next() else {
                     throw TransportError.channelFailed(detail: "events channel ended before ack")
@@ -1184,10 +1190,10 @@ actor SSHTransport: Transport {
         // interactive TUI output bounded by SSH channel flow control, and
         // the consumer is a synchronous terminal feed.
         let (output, outputContinuation) = AsyncThrowingStream<Data, any Error>.makeStream()
-        // Deliberately unbounded (#22): keystrokes and resizes arrive at
-        // human rate, and silently shedding input would type the wrong
-        // thing; the writer task drains it for the channel's whole life.
-        let (input, inputContinuation) = AsyncStream<TerminalAttachInput>.makeStream()
+        // Reliable keystrokes and resizes remain ordered. Touch-scroll rows
+        // are lossy viewport intent, so the queue coalesces and bounds them
+        // instead of letting momentum block later typing on a slow link.
+        let input = TerminalAttachInputQueue()
         nextTerminalReaderID += 1
         let readerID = nextTerminalReaderID
         let readerTask = Task {
@@ -1199,7 +1205,8 @@ actor SSHTransport: Transport {
         // is synchronous), so the reader cannot have observed — let alone
         // ended — a state it is only now being recorded into.
         terminalChannelState = .streaming(readerID: readerID)
-        return TerminalAttachSession(output: output, input: inputContinuation) {
+        return TerminalAttachSession(output: output, input: input) {
+            input.finish()
             readerTask.cancel()
             await readerTask.value
         }
@@ -1252,7 +1259,7 @@ actor SSHTransport: Transport {
         readerID: UInt64,
         request: TerminalAttachRequest,
         bootstrapLine: String,
-        input: AsyncStream<TerminalAttachInput>,
+        input: TerminalAttachInputQueue,
         output continuation: AsyncThrowingStream<Data, any Error>.Continuation
     ) async {
         let pty = SSHChannelRequestEvent.PseudoTerminalRequest(
@@ -1271,49 +1278,81 @@ actor SSHTransport: Transport {
         /// the way out, and that close's "already closed" error must not
         /// repaint a clean detach as a failure (found by the #11 e2e).
         var sawCleanEnd = false
+        /// Citadel closes the channel after this closure returns. If that
+        /// cleanup also fails, preserve the pump failure that ended the live
+        /// session instead of replacing it with a secondary close error.
+        var pumpFailure: TerminalAttachPumpError?
         do {
             try await client.withPTY(pty) { inbound, outbound in
                 try await outbound.write(ByteBuffer(string: bootstrapLine))
-                // The writer rides alongside the read loop; the one input
-                // stream keeps keystrokes and resizes ordered. Write
-                // failures are swallowed: the channel death they signal
-                // surfaces through the read loop.
-                let writer = Task {
-                    for await item in input {
-                        do {
-                            switch item {
-                            case .keystrokes(let data):
-                                try await outbound.write(ByteBuffer(bytes: data))
-                            case .resize(let cols, let rows):
-                                try await outbound.changeSize(
-                                    cols: cols, rows: rows, pixelWidth: 0, pixelHeight: 0)
+                do {
+                    sawCleanEnd = try await withThrowingTaskGroup(of: Bool.self) { group in
+                        group.addTask {
+                            do {
+                                try await Self.writeTerminalAttachInput(
+                                    input,
+                                    write: { data in
+                                        try await outbound.write(ByteBuffer(bytes: data))
+                                    },
+                                    resize: { cols, rows in
+                                        try await outbound.changeSize(
+                                            cols: cols, rows: rows, pixelWidth: 0, pixelHeight: 0)
+                                    })
+                                return false
+                            } catch is CancellationError {
+                                throw CancellationError()
+                            } catch {
+                                throw TerminalAttachPumpError.input(String(describing: error))
                             }
-                        } catch {
-                            return
                         }
+                        group.addTask {
+                            do {
+                                for try await chunk in inbound {
+                                    switch chunk {
+                                    case .stdout(let buffer), .stderr(let buffer):
+                                        // A PTY merges everything into one byte stream;
+                                        // stderr chunks should not occur, but any that do
+                                        // belong on the terminal too.
+                                        continuation.yield(Data(buffer.readableBytesView))
+                                    }
+                                }
+                                return true
+                            } catch is CancellationError {
+                                throw CancellationError()
+                            } catch {
+                                throw TerminalAttachPumpError.output(String(describing: error))
+                            }
+                        }
+                        defer {
+                            input.finish()
+                            group.cancelAll()
+                        }
+                        return try await group.next() ?? true
                     }
+                } catch let error as TerminalAttachPumpError {
+                    pumpFailure = error
+                    throw error
                 }
-                defer { writer.cancel() }
-                for try await chunk in inbound {
-                    switch chunk {
-                    case .stdout(let buffer), .stderr(let buffer):
-                        // A PTY merges everything into one byte stream;
-                        // stderr chunks should not occur, but any that do
-                        // belong on the terminal too.
-                        continuation.yield(Data(buffer.readableBytesView))
-                    }
-                }
-                sawCleanEnd = true
             }
             failure = nil
         } catch is CancellationError {
             failure = nil
         } catch {
-            failure =
-                Task.isCancelled || sawCleanEnd
-                ? nil  // Explicit end() or a clean remote exit.
-                : TransportError.channelFailed(detail: "attach channel: \(error)")
+            if Task.isCancelled || sawCleanEnd {
+                failure = nil  // Explicit end() or a clean remote exit.
+            } else {
+                switch pumpFailure {
+                case .input(let detail):
+                    failure = TransportError.channelFailed(detail: "attach input: \(detail)")
+                case .output(let detail):
+                    failure = TransportError.channelFailed(detail: "attach channel: \(detail)")
+                case nil:
+                    failure = TransportError.channelFailed(detail: "attach channel: \(error)")
+                }
+            }
         }
+        // Remote exit must also wake a writer suspended on the input queue.
+        input.finish()
         // State first, continuation second: a consumer resuming on the
         // stream's end must already see the channel as free.
         if terminalChannelState == .streaming(readerID: readerID) {
@@ -1323,6 +1362,25 @@ actor SSHTransport: Transport {
             continuation.finish(throwing: failure)
         } else {
             continuation.finish()
+        }
+    }
+
+    static func writeTerminalAttachInput(
+        _ input: TerminalAttachInputQueue,
+        write: (Data) async throws -> Void,
+        resize: (Int, Int) async throws -> Void
+    ) async throws {
+        while let item = await input.next() {
+            guard !Task.isCancelled else { return }
+            switch item {
+            case .keystrokes(let data):
+                try await write(data)
+            case .scroll(let data):
+                try await write(data)
+                try await Task.sleep(for: TerminalAttachInputQueue.scrollPacingInterval)
+            case .resize(let cols, let rows):
+                try await resize(cols, rows)
+            }
         }
     }
 
@@ -1412,12 +1470,12 @@ actor SSHTransport: Transport {
     }
 
     /// Wakes the herdr server via the Host's wake command; concurrent
-    /// refused requests share one in-flight wake. The wait — not the wake —
-    /// is deadline-bounded: a hung wake command cannot be ended client-side
-    /// (sshd holds the channel until the command exits), so waiters abandon
-    /// it with `.timedOut` while it keeps its slot until it really ends.
+    /// refused requests share one in-flight wake. A hung wake may keep
+    /// running remotely after its local SSH channel is abandoned, so waiters
+    /// return `.timedOut` and invalidate the Transport instead of waiting for
+    /// that remote process to exit.
     private func wakeServer(socketPath: String) async throws {
-        try await Self.withRequestDeadline(requestTimeout) {
+        try await withRequestDeadline(requestTimeout) {
             try await self.wake.value {
                 try await self.runWakeCommand(socketPath: socketPath)
             }
@@ -1482,7 +1540,7 @@ actor SSHTransport: Transport {
     ) async throws -> R {
         let requestID = UUID().uuidString
         let line = try HerdrWire.requestLine(id: requestID, method: method, params: params)
-        let responseLine = try await Self.withRequestDeadline(requestTimeout) {
+        let responseLine = try await withRequestDeadline(requestTimeout) {
             let (socketPath, socatPath) = try await self.resolvedExchangePaths()
             return try await self.performExchange(
                 line: line, socketPath: socketPath, socatPath: socatPath, method: method)
@@ -1539,38 +1597,30 @@ actor SSHTransport: Transport {
         }
     }
 
-    /// Races `operation` against the per-request deadline, mapping expiry to
-    /// `.timedOut` and caller cancellation to `.cancelled`.
-    ///
-    /// A live exec channel ignores Swift task cancellation, so the losing
-    /// operation is never cancel-and-awaited at the channel: cancelling it
-    /// only ends the *local* inbound stream (an `AsyncThrowingStream`, whose
-    /// iterator resumes on task cancellation), the exec body then returns,
-    /// and Citadel closes the channel explicitly on the way out. A queued
-    /// operation that has no channel yet leaves the slot queue the same way.
-    private static func withRequestDeadline<T: Sendable>(
+    /// Bounds a request without structurally waiting for the losing task.
+    /// SwiftNIO futures do not honor Swift task cancellation, so a task-group
+    /// race can remain stuck after its timer wins. Expiry or caller
+    /// cancellation invalidates the whole Transport independently, which
+    /// closes the channel and lets any abandoned bridge unwind later.
+    private func withRequestDeadline<T: Sendable>(
         _ timeout: Duration,
         operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
-        try await withThrowingTaskGroup(of: T?.self) { group in
-            group.addTask { try await operation() }
-            group.addTask {
-                try await Task.sleep(for: timeout)
-                return nil
-            }
-            defer { group.cancelAll() }
-            do {
-                guard let finished = try await group.next(), let value = finished else {
-                    throw TransportError.timedOut
-                }
-                // The operation may have completed with junk after the
-                // caller's task was cancelled mid-read; cancellation wins.
-                try Task.checkCancellation()
-                return value
-            } catch is CancellationError {
-                throw TransportError.cancelled
-            }
+        do {
+            return try await AsyncDeadline.run(
+                for: timeout,
+                onTimeout: { await self.invalidateAfterAbandonedRequest() },
+                onCancel: { await self.invalidateAfterAbandonedRequest() },
+                operation: operation)
+        } catch AsyncDeadlineError.timedOut {
+            throw TransportError.timedOut
+        } catch is CancellationError {
+            throw TransportError.cancelled
         }
+    }
+
+    private func invalidateAfterAbandonedRequest() async {
+        try? await close()
     }
 
     /// The socket and socat paths an exchange needs, resolved concurrently:
@@ -1595,7 +1645,7 @@ actor SSHTransport: Transport {
     /// The shared home resolution, with the wait — not the resolution —
     /// deadline-bounded, exactly like `wakeServer()`.
     private func remoteHomeDirectory() async throws -> String {
-        try await Self.withRequestDeadline(requestTimeout) {
+        try await withRequestDeadline(requestTimeout) {
             try await self.homeDirectory.value {
                 try await self.resolveHomeDirectoryOverExec()
             }
@@ -1617,7 +1667,7 @@ actor SSHTransport: Transport {
 
     /// The absolute socat path on this Host, discovered once per connection.
     private func resolvedSocatPath() async throws -> String {
-        try await Self.withRequestDeadline(requestTimeout) {
+        try await withRequestDeadline(requestTimeout) {
             try await self.socatExecutable.value {
                 try await self.resolveSocatPathOverExec()
             }

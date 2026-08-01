@@ -4,6 +4,20 @@ A native iOS companion app for [herdr](https://herdr.dev) — an agent-first ter
 
 herdr-mobile is an **agent console**: a native dashboard of every coding agent running on your machines, sorted by who needs you. Open an Agent to enter its real terminal with the standard iOS input method, a compact terminal control keyboard, native scrollback, and continuous touch scrolling for full-screen TUIs, all over plain SSH.
 
+## Screenshots
+
+Agent Console on iPhone, with every Host and status in one priority-sorted view:
+
+![Agent Console on iPhone](docs/images/console-iphone.png)
+
+Attach on iPhone, rendering an Agent terminal through libghostty:
+
+![Agent Attach on iPhone](docs/images/agent-iphone.png)
+
+Agent Console and Attach together on iPad:
+
+![Agent Console and Attach on iPad](docs/images/console-ipad.png)
+
 ## Features
 
 - **Console** — every Agent across your machines in one status-sorted list

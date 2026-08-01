@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 import UIKit
 
@@ -12,6 +13,123 @@ import UIKit
 /// targets that cannot be quoted safely for both.
 @Suite("Terminal attach")
 struct TerminalAttachTests {
+    private enum WriterProbeError: Error {
+        case rejectedResize
+    }
+
+    @Test func writerPropagatesResizeFailure() async {
+        let input = TerminalAttachInputQueue()
+        input.resize(cols: 120, rows: 40)
+
+        await #expect(throws: WriterProbeError.self) {
+            try await SSHTransport.writeTerminalAttachInput(
+                input,
+                write: { _ in },
+                resize: { _, _ in throw WriterProbeError.rejectedResize })
+        }
+    }
+
+    /// A slow SSH writer must not let lossy momentum-scroll input hold
+    /// reliable keyboard input hostage. Sixty rows model one ordinary flick;
+    /// the 20 ms drain delay makes the old unbounded FIFO take about 1.2 s.
+    @MainActor
+    @Test func weakNetworkScrollBacklogDoesNotDelayKeyboardInput() async throws {
+        let (output, outputContinuation) = AsyncThrowingStream<Data, any Error>.makeStream()
+        let input = TerminalAttachInputQueue()
+        let session = TerminalAttachSession(
+            output: output,
+            input: input,
+            ender: { outputContinuation.finish() })
+        let inputController = TerminalInputController()
+        let generation = inputController.beginSession(
+            writer: { session.send($0) },
+            scroller: { sequence, rows in session.scroll(sequence, rows: rows) })
+        defer { inputController.endSession(generation) }
+
+        let marker = Data("x".utf8)
+        var markerArrival: ContinuousClock.Instant?
+        let writer = Task { @MainActor in
+            while let item = await input.next() {
+                switch item {
+                case .keystrokes(let data):
+                    if data == marker {
+                        markerArrival = .now
+                        return
+                    }
+                case .scroll:
+                    try? await Task.sleep(for: .milliseconds(20))
+                case .resize:
+                    break
+                }
+            }
+        }
+        defer { writer.cancel() }
+
+        var emitted = 0
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSend: { inputController.send($0) },
+            onScroll: { sequence, rows in
+                emitted += rows
+                inputController.scroll(sequence, rows: rows)
+            })
+        terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))
+        #expect(terminal.scrollTouch(translationY: 960) == 60)
+        #expect(emitted == 60)
+
+        let typedAt = ContinuousClock.now
+        terminal.terminalSession.sendInput(marker)
+        let arrivalDeadline = typedAt + .seconds(3)
+        while markerArrival == nil, ContinuousClock.now < arrivalDeadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        let arrivedAt = try #require(markerArrival)
+        let latency = typedAt.duration(to: arrivedAt)
+        #expect(
+            latency < .milliseconds(250),
+            "keyboard input waited behind scroll backlog: \(latency)")
+        await session.end()
+    }
+
+    @Test func reliableInputDiscardsPendingScrollMomentum() async {
+        let input = TerminalAttachInputQueue()
+        let scroll = Data("scroll".utf8)
+        let key = Data("x".utf8)
+
+        input.scroll(scroll, rows: 60)
+        input.send(key)
+
+        #expect(await input.next() == .keystrokes(key))
+        input.finish()
+        #expect(await input.next() == nil)
+    }
+
+    @Test func scrollDirectionChangeReplacesPendingMomentum() async {
+        let input = TerminalAttachInputQueue()
+        let older = Data("older".utf8)
+        let newer = Data("newer".utf8)
+
+        input.scroll(older, rows: 8)
+        input.scroll(newer, rows: 2)
+
+        #expect(await input.next() == .scroll(newer + newer))
+        input.finish()
+    }
+
+    @Test func scrollBacklogIsBoundedAndWrittenInSmallBatches() async {
+        let input = TerminalAttachInputQueue()
+        let sequence = Data("wheel".utf8)
+        let batch = sequence + sequence + sequence
+
+        input.scroll(sequence, rows: 60)
+
+        for _ in 0..<4 {
+            #expect(await input.next() == .scroll(batch))
+        }
+        input.finish()
+        #expect(await input.next() == nil)
+    }
+
     @MainActor
     @Test func attachStartsWithTheIOSInputMethodAndKeyboardSwitcher() {
         let terminal = TerminalScreenView.makeConfiguredTerminal()
@@ -32,6 +150,34 @@ struct TerminalAttachTests {
 
         terminal.setKeyboardMode(.controls)
         #expect(accessory.pasteControl.isDescendant(of: accessory))
+    }
+
+    @MainActor
+    @Test func keyboardAccessoryInsertsANewLineWithoutSubmitting() async throws {
+        var sent = Data()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSend: { sent.append($0) })
+        let accessory = try #require(
+            terminal.inputAccessoryView as? TerminalKeyboardAccessory)
+
+        #expect(accessory.newLineButton.configuration?.image != nil)
+        #expect(accessory.newLineButton.configuration?.title == nil)
+        #expect(accessory.newLineButton.accessibilityLabel == "Insert New Line")
+        accessory.newLineButton.sendActions(for: .touchUpInside)
+        await Task.yield()
+        #expect(sent == Data([0x0A]))
+
+        sent.removeAll()
+        terminal.setKeyboardMode(.controls)
+        accessory.newLineButton.sendActions(for: .touchUpInside)
+        await Task.yield()
+        #expect(sent == Data([0x0A]))
+
+        terminal.setLocalInputEnabled(false)
+        #expect(!accessory.newLineButton.isEnabled)
+        accessory.newLineButton.sendActions(for: .touchUpInside)
+        await Task.yield()
+        #expect(sent == Data([0x0A]))
     }
 
     @MainActor
@@ -85,6 +231,43 @@ struct TerminalAttachTests {
                 "paste:keyboard suggestion",
                 "textDidChange",
             ])
+    }
+
+    @MainActor
+    @Test func systemKeyboardBackspaceSynchronizesTheTextInputContext() async {
+        var sent = Data()
+        var events: [String] = []
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSend: { sent.append($0) })
+        let inputDelegate = TextInputDelegateRecorder(events: { events.append($0) })
+        terminal.inputDelegate = inputDelegate
+
+        terminal.terminalSession.sendInput(Data("abc".utf8))
+        let insertDeadline = ContinuousClock.now + .seconds(1)
+        while sent != Data("abc".utf8), ContinuousClock.now < insertDeadline {
+            await Task.yield()
+        }
+        #expect(sent == Data("abc".utf8))
+        sent.removeAll()
+        events.removeAll()
+
+        terminal.deleteBackward()
+        let deleteDeadline = ContinuousClock.now + .seconds(1)
+        while sent.isEmpty, ContinuousClock.now < deleteDeadline {
+            await Task.yield()
+        }
+
+        #expect(sent == Data([0x7F]))
+        #expect(
+            events == [
+                "textWillChange",
+                "selectionWillChange",
+                "selectionDidChange",
+                "textDidChange",
+            ])
+        #expect(terminal.offset(
+            from: terminal.beginningOfDocument,
+            to: terminal.endOfDocument) == 2)
     }
 
     @MainActor
@@ -400,10 +583,14 @@ struct TerminalAttachTests {
     }
 
     @MainActor
-    @Test func terminalTouchPanEmitsRemoteTUIMouseWheelInput() async {
-        var sent = Data()
+    @Test func terminalTouchPanEmitsSemanticRemoteTUIMouseWheelInput() {
+        var scrolledSequence = Data()
+        var scrolledRows = 0
         let terminal = TerminalScreenView.makeConfiguredTerminal(
-            onSend: { sent.append($0) })
+            onScroll: { sequence, rows in
+                scrolledSequence = sequence
+                scrolledRows += rows
+            })
         let directTouch = NSNumber(value: UITouch.TouchType.direct.rawValue)
         let enabledTouchPans: [UIPanGestureRecognizer] =
             terminal.gestureRecognizers?.compactMap { gesture in
@@ -417,10 +604,9 @@ struct TerminalAttachTests {
 
         terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))
         #expect(terminal.scrollTouch(translationY: 32) == 2)
-        await Task.yield()
 
-        #expect(
-            sent == Data("\u{1B}[<64;40;12M\u{1B}[<64;40;12M".utf8))
+        #expect(scrolledSequence == Data("\u{1B}[<64;40;12M".utf8))
+        #expect(scrolledRows == 2)
     }
 
     @MainActor
@@ -436,11 +622,53 @@ struct TerminalAttachTests {
         #expect(terminal.inputView == nil)
     }
 
-    /// The dismiss button is the only way out of the keyboard, so it must
-    /// work even when the accessory has outlived its terminal's first
-    /// responder status.
+    /// The keyboard toggle rides the Agent strip, which outlives the keyboard,
+    /// so it has to work both ways — and a dismissal has to leave the keyboard
+    /// recoverable, or the toggle is a one-way trip out of typing.
     @MainActor
-    @Test func dismissButtonTakesTheKeyboardDownFromTheAccessory() throws {
+    @Test func theKeyboardToggleRaisesAndLowersTheTerminalsKeyboard() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        window.addSubview(terminal)
+        window.makeKeyAndVisible()
+        let control = TerminalKeyboardControl()
+        control.terminal = terminal
+
+        #expect(!control.isKeyboardUp)
+        control.toggleKeyboard()
+        #expect(terminal.isFirstResponder)
+        #expect(control.isKeyboardUp)
+
+        control.toggleKeyboard()
+        #expect(!terminal.isFirstResponder)
+        #expect(!control.isKeyboardUp)
+
+        control.toggleKeyboard()
+        #expect(terminal.isFirstResponder)
+    }
+
+    /// An Agent switch rebuilds the terminal under the strip that survives it.
+    /// A toggle still pointing at the replaced surface would raise a keyboard
+    /// on a terminal that is no longer on screen.
+    @MainActor
+    @Test func theKeyboardToggleForgetsAReplacedTerminal() {
+        let control = TerminalKeyboardControl()
+        do {
+            let replaced = TerminalScreenView.makeConfiguredTerminal()
+            control.terminal = replaced
+            #expect(control.terminal != nil)
+        }
+        #expect(control.terminal == nil)
+        #expect(!control.isKeyboardUp)
+        // Nothing to drive, and nothing to crash on.
+        control.toggleKeyboard()
+    }
+
+    /// UIKit animates the keyboard away without taking the accessory's content
+    /// with it, so the toolbar hung at the bottom of the screen after the
+    /// keyboard had gone.
+    @MainActor
+    @Test func theKeyboardRowLeavesInSyncWithTheKeyboard() throws {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
         let terminal = TerminalScreenView.makeConfiguredTerminal()
         window.addSubview(terminal)
@@ -448,18 +676,202 @@ struct TerminalAttachTests {
         terminal.requestKeyboard()
         let accessory = try #require(
             terminal.inputAccessoryView as? TerminalKeyboardAccessory)
-        let dismiss = try #require(
-            accessory.subviews.compactMap { $0 as? UIButton }.first {
-                $0.accessibilityLabel == "Dismiss keyboard"
+
+        NotificationCenter.default.post(
+            name: UIResponder.keyboardWillHideNotification, object: nil,
+            userInfo: [UIResponder.keyboardAnimationDurationUserInfoKey: NSNumber(value: 0.0)])
+
+        #expect(accessory.alpha == 1)
+        #expect(accessory.transform == .identity)
+        #expect(accessory.toolbarContentView.alpha == 0)
+        #expect(
+            accessory.toolbarContentView.transform.ty
+                == TerminalKeyboardAccessory.preferredHeight)
+
+        // Typing again puts it back, or the row would stay gone for good.
+        terminal.requestKeyboard()
+        #expect(accessory.toolbarContentView.alpha == 1)
+        #expect(accessory.toolbarContentView.transform == .identity)
+    }
+
+    /// A SwiftUI update must not write back into the state that drove it.
+    /// Reporting the viewport text from `updateUIView` fed the Attach Link
+    /// index, whose observers include this very view, so every update queued
+    /// the next one — measured on device at 18,871 updates in a few seconds,
+    /// with the app wedged for as long as the terminal stayed on screen.
+    /// Terminal output schedules its own snapshot (see
+    /// `renderedOutputReportsViewportTextToTheHost`); nothing else may.
+    @MainActor
+    @Test(.timeLimit(.minutes(1)))
+    func aSwiftUIUpdateDoesNotReportTheViewportBack() async throws {
+        final class Counters {
+            var updates = 0
+            var reports = 0
+        }
+        struct Harness: View {
+            let counters: Counters
+            let keyboardControl: TerminalKeyboardControl
+            let feed: TerminalByteFeed
+            /// Some state the terminal is sized by, exactly as the keyboard
+            /// inset is when the keyboard comes and goes.
+            let fontSize: Float
+
+            var body: some View {
+                counters.updates += 1
+                var screen = TerminalScreenView(feed: feed)
+                screen.onViewportTextChanged = { _ in counters.reports += 1 }
+                screen.keyboardControl = keyboardControl
+                screen.fontSize = fontSize
+                return screen
+            }
+        }
+
+        let counters = Counters()
+        let keyboardControl = TerminalKeyboardControl()
+        let feed = TerminalByteFeed()
+        func harness(fontSize: Float) -> Harness {
+            Harness(
+                counters: counters, keyboardControl: keyboardControl,
+                feed: feed, fontSize: fontSize)
+        }
+        let controller = UIHostingController(rootView: harness(fontSize: 13))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+
+        let rounds = 10
+        for round in 1...rounds {
+            controller.rootView = harness(fontSize: round.isMultiple(of: 2) ? 13 : 15)
+            controller.view.setNeedsLayout()
+            controller.view.layoutIfNeeded()
+            await Task.yield()
+        }
+        // Long enough for a snapshot one of those updates had scheduled to fire.
+        try await Task.sleep(for: .milliseconds(200))
+
+        // Every one of those rounds reached the terminal, and not one of them
+        // asked it for its viewport.
+        #expect(counters.updates > rounds)
+        #expect(keyboardControl.terminal != nil, "the terminal never took an update")
+        #expect(
+            counters.reports == 0,
+            "a SwiftUI update reported the viewport \(counters.reports) times")
+    }
+
+    /// A keyboard changing hands passes through several transient heights —
+    /// both terminals' accessories ride it at once while it does. Forwarding
+    /// each one to Ghostty and the remote PTY makes a full-screen TUI redraw
+    /// per step, so only the settled geometry may escape the handoff.
+    @MainActor
+    @Test func aKeyboardHandoffCoalescesItsTransientGridsIntoOneResize() async throws {
+        var reportedGrids: [(columns: Int, rows: Int)] = []
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSizeChanged: { columns, rows in
+                reportedGrids.append((columns, rows))
             })
+        let host = UIViewController()
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 700),
+            rootViewController: host)
+        defer {
+            terminal.removeFromSuperview()
+            window.isHidden = true
+        }
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 360)
+        host.view.addSubview(terminal)
+        window.layoutIfNeeded()
 
-        dismiss.sendActions(for: .touchUpInside)
-        #expect(!terminal.isFirstResponder)
+        try await waitForGridReportsToSettle(&reportedGrids)
+        let initialRows = try #require(reportedGrids.last?.rows)
+        reportedGrids.removeAll()
 
-        // Stranded accessory: no first responder left to ask, and the button
-        // must still be a no-crash no-op rather than a dead end.
-        dismiss.sendActions(for: .touchUpInside)
-        #expect(!terminal.isFirstResponder)
+        // The handoff itself: the replacement surface claims the keyboard as
+        // it reaches the window, and freezes its grid until that settles.
+        terminal.removeFromSuperview()
+        terminal.raisesKeyboardWhenReady = true
+        host.view.addSubview(terminal)
+
+        for height: CGFloat in [440, 520, 600] {
+            terminal.frame.size.height = height
+            terminal.setNeedsLayout()
+            terminal.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(30))
+        }
+
+        #expect(reportedGrids.isEmpty)
+        terminal.finishKeyboardTransitionLayout()
+        try await waitForGridReportsToSettle(&reportedGrids)
+
+        #expect(reportedGrids.count == 1)
+        #expect(reportedGrids.last?.rows ?? 0 > initialRows)
+    }
+
+    /// A dismissal is the case that has to be exact, so it does not wait on
+    /// anything: SwiftUI's own avoidance retracted in two stages, the second
+    /// landing a third of a second after the keyboard had gone, which cost the
+    /// terminal a second reflow, a second PTY resize, and a visibly late TUI
+    /// redraw.
+    @MainActor
+    @Test func aDismissalDropsTheKeyboardInsetInOneStep() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
+
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 554, width: 440, height: 436)])
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(inset.height == 402)
+
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        #expect(inset.height == 0)
+    }
+
+    /// UIKit measures the input accessory after the keyboard itself, so a
+    /// presentation can arrive as two frames. The terminal must not resize
+    /// twice on the way up either.
+    @MainActor
+    @Test func aPresentationsFollowUpFrameFoldsIntoTheFirst() async throws {
+        let center = NotificationCenter()
+        var measured: [CGFloat] = [314, 402]
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in
+            measured.isEmpty ? nil : measured.removeFirst()
+        }
+        var observedHeights: [CGFloat] = []
+        let observation = Task { @MainActor in
+            var last = inset.height
+            while !Task.isCancelled {
+                if inset.height != last {
+                    last = inset.height
+                    observedHeights.append(last)
+                }
+                try? await Task.sleep(for: .milliseconds(5))
+            }
+        }
+        defer { observation.cancel() }
+
+        let frame = CGRect(x: 0, y: 554, width: 440, height: 436)
+        center.post(
+            name: UIResponder.keyboardWillChangeFrameNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: frame])
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: frame])
+
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(inset.height == 402)
+        #expect(observedHeights == [402], "the terminal resized more than once: \(observedHeights)")
+    }
+
+    /// The keyboard's frame is measured from the bottom of the screen; the
+    /// terminal stops at the home indicator. Not subtracting that safe area
+    /// left a strip of background between the last row and the toolbar.
+    @Test func theKeyboardInsetExcludesTheHomeIndicatorSafeArea() {
+        #expect(TerminalKeyboardInset.insetHeight(covered: 436, bottomSafeArea: 34) == 402)
+        #expect(TerminalKeyboardInset.insetHeight(covered: 436, bottomSafeArea: 0) == 436)
+        #expect(TerminalKeyboardInset.insetHeight(covered: 20, bottomSafeArea: 34) == 0)
     }
 
     @MainActor
@@ -472,6 +884,23 @@ struct TerminalAttachTests {
         let keyboard = try #require(terminal.inputView as? TerminalKeysKeyboardView)
         #expect(keyboard.intrinsicContentSize.height == 288)
         #expect(keyboard.frame.height == 288)
+    }
+
+    @MainActor
+    private func waitForGridReportsToSettle(
+        _ reports: inout [(columns: Int, rows: Int)]
+    ) async throws {
+        var stablePolls = 0
+        var previousCount = reports.count
+        while stablePolls < 20 {
+            try await Task.sleep(for: .milliseconds(10))
+            if reports.count == previousCount {
+                stablePolls += 1
+            } else {
+                previousCount = reports.count
+                stablePolls = 0
+            }
+        }
     }
 
     @Test func terminalControlKeyboardContainsOnlyUsefulMobileKeys() {

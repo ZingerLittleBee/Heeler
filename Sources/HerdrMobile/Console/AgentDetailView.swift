@@ -9,19 +9,27 @@ struct AgentDetailView: View {
     let agent: ConsoleAgent
     private let console: ConsoleStore
     private let terminal: TerminalSettings
-    private let pushRegistration: PushRegistrationStore
-    private let notificationPreferences: NotificationPreferencesStore
-    private let relaySettings: NotificationRelaySettings
+    /// Passed through to the new-agent sheet, which keeps its Host picker for
+    /// the Console's own entry point even though this screen pre-selects one.
+    private let hosts: [Host]
     private let activity: AppActivityCoordinator
+    /// Keeps the keyboard up across the terminal rebuild an Agent switch
+    /// forces; owned by the Console so it survives that rebuild.
+    private let keyboardHandoff: TerminalKeyboardHandoff
+    /// Opens another Agent from the terminal's switcher strip. The owner moves
+    /// the selection, exactly as a tap in the Agent list would.
+    private let onSwitch: (ConsoleAgent.ID) -> Void
     /// Leaves the screen after a confirmed close. A callback rather than
     /// `dismiss`: as a split view's detail root this view has nothing to
     /// dismiss — the owner clears the sidebar selection instead, which also
     /// pops the collapsed stack on iPhone.
     private let onClosed: () -> Void
     @State private var attach: AgentAttachStore
+    @State private var keyboardInset = TerminalKeyboardInset()
+    @State private var keyboardControl = TerminalKeyboardControl()
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isConfirmingClose = false
-    @State private var isShowingSettings = false
+    @State private var isStartingAgent = false
     @State private var isManagingSnippets = false
     @State private var isRenamingAgent = false
     @State private var isRenamingWorkspace = false
@@ -34,19 +42,19 @@ struct AgentDetailView: View {
         agent: ConsoleAgent,
         console: ConsoleStore,
         terminal: TerminalSettings,
-        pushRegistration: PushRegistrationStore,
-        notificationPreferences: NotificationPreferencesStore,
-        relaySettings: NotificationRelaySettings,
+        hosts: [Host],
         activity: AppActivityCoordinator,
+        keyboardHandoff: TerminalKeyboardHandoff,
+        onSwitch: @escaping (ConsoleAgent.ID) -> Void,
         onClosed: @escaping () -> Void
     ) {
         self.agent = agent
         self.console = console
         self.terminal = terminal
-        self.pushRegistration = pushRegistration
-        self.notificationPreferences = notificationPreferences
-        self.relaySettings = relaySettings
+        self.hosts = hosts
         self.activity = activity
+        self.keyboardHandoff = keyboardHandoff
+        self.onSwitch = onSwitch
         self.onClosed = onClosed
         _attach = State(
             initialValue: AgentAttachStore(
@@ -69,6 +77,9 @@ struct AgentDetailView: View {
             attach.viewportTextDidChange(text)
         }
         screen.onSend = { keystrokes in attach.send(keystrokes) }
+        screen.onScroll = { sequence, rows in
+            attach.scroll(sequence, rows: rows)
+        }
         screen.onPaste = { text, bracketed in
             attach.requestPaste(text, bracketedPaste: bracketed)
         }
@@ -78,6 +89,8 @@ struct AgentDetailView: View {
         screen.keysContext = TerminalKeysContext(settings: terminal) {
             isManagingSnippets = true
         }
+        screen.claimsKeyboard = { keyboardHandoff.consume(agent.id) }
+        screen.keyboardControl = keyboardControl
         screen.isLocalInputEnabled = attach.isLocalInputEnabled
         screen.theme = terminal.themes.theme
         screen.fontSize = terminal.zoom.fontSize
@@ -95,12 +108,15 @@ struct AgentDetailView: View {
         .toolbar {
             toolbarContent
         }
-        .sheet(isPresented: $isShowingSettings) {
-            SettingsView(
-                terminal: terminal,
-                pushRegistration: pushRegistration,
-                notificationPreferences: notificationPreferences,
-                relaySettings: relaySettings)
+        .sheet(isPresented: $isStartingAgent) {
+            // StartAgentView brings its own NavigationStack.
+            StartAgentView(
+                hosts: hosts,
+                console: console,
+                origin: StartAgentStore.LaunchOrigin(
+                    hostID: agent.hostID,
+                    workspaceID: agent.agent.workspaceID,
+                    cwd: agent.agent.cwd))
         }
         // Presenting this takes the keyboard down and dismissing brings it
         // back; see `allowsKeyboardActivation` in HerdrTerminalView.
@@ -220,6 +236,16 @@ struct AgentDetailView: View {
         }
     }
 
+    private var agentSwitcher: TerminalAgentSwitcher {
+        TerminalAgentSwitcher(
+            items: console.agents.map {
+                TerminalAgentSwitcherItem(
+                    id: $0.id, title: $0.switcherLabel, status: $0.agent.status)
+            },
+            selectedID: agent.id,
+            onSelect: switchToAgent)
+    }
+
     private var terminalSurface: some View {
         terminalScreen
             .id(attach.terminalID)
@@ -227,6 +253,22 @@ struct AgentDetailView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             imageAttachStatus
         }
+        // Below the keyboard's own inset, so the strip rides above the
+        // keyboard while it is up and rests on the screen's edge once it is
+        // down. It outlives the keyboard on purpose: an Agent is worth
+        // switching to whether or not the user is typing.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            TerminalAgentSwitcherRow(
+                switcher: agentSwitcher,
+                // The strip's own toggle: the inset is what the terminal has
+                // already been resized for, so it is what the icon must agree
+                // with.
+                isKeyboardUp: keyboardInset.height > 0,
+                toggleKeyboard: keyboardControl.toggleKeyboard)
+        }
+        // Not SwiftUI's keyboard avoidance: it retracts in two stages and the
+        // terminal would resize twice per dismissal. See TerminalKeyboardInset.
+        .terminalKeyboardInset(keyboardInset)
         // background(_:ignoresSafeAreaEdges:) defaults to .all: the theme
         // colour reaches under the transparent navigation bar and into the
         // home-indicator area without moving the terminal grid or touching
@@ -275,8 +317,8 @@ struct AgentDetailView: View {
         }
         ToolbarItem(placement: .primaryAction) {
             Menu {
-                Button("Settings", systemImage: "gearshape") {
-                    isShowingSettings = true
+                Button("New Agent", systemImage: "plus") {
+                    isStartingAgent = true
                 }
                 Button("Snippets", systemImage: "quote.bubble") {
                     isManagingSnippets = true
@@ -315,6 +357,19 @@ struct AgentDetailView: View {
                 continuation.finish()
             }
         }
+    }
+
+    /// Opens another Agent from the switcher. The keyboard is armed first:
+    /// the selection change rebuilds this screen from scratch, and the new
+    /// terminal claims the handoff as it comes up.
+    private func switchToAgent(_ id: ConsoleAgent.ID) {
+        guard id != agent.id else { return }
+        // The strip outlives the keyboard, so a switch made with the keyboard
+        // down must not raise one on the other side.
+        if keyboardInset.height > 0 {
+            keyboardHandoff.arm(for: id)
+        }
+        onSwitch(id)
     }
 
     private func performClose() async {

@@ -12,15 +12,21 @@ final class HostConsoleProjection {
     private(set) var agentsByPane: [String: ConsoleAgent] = [:]
     private(set) var workspaces: [ConsoleWorkspace] = []
     private(set) var status: EventsSessionStatus?
+    private(set) var latency: Duration?
     private(set) var syncError: String?
     private(set) var transportGeneration: UInt64 = 0
 
     private let snapshotRetryDelay: Duration
     private let onChange: @MainActor @Sendable () -> Void
     private var consumeTask: Task<Void, Never>?
+    private var latencyTask: Task<Void, Never>?
     private var resyncTask: Task<Void, Never>?
     private var resyncRetryTask: Task<Void, Never>?
     private var resyncPending = false
+    /// Invalidates snapshot work that crossed a disconnected state. A request
+    /// already in flight may still return after its Host drops, but its stale
+    /// rows must never repopulate the Console.
+    private var snapshotEpoch: UInt64 = 0
     private var statusChangeRevision: UInt64 = 0
     private var latestStatusChanges: [
         String: (revision: UInt64, status: AgentStatus)
@@ -49,6 +55,14 @@ final class HostConsoleProjection {
                 self.handle(update)
             }
         }
+        latencyTask = Task { [weak self] in
+            guard let self else { return }
+            for await latency in session.latencyUpdates {
+                guard !Task.isCancelled else { return }
+                self.latency = latency
+                self.publish()
+            }
+        }
         if isActive {
             Task { await session.resume() }
         }
@@ -73,9 +87,11 @@ final class HostConsoleProjection {
         resyncTask?.cancel()
         resyncRetryTask?.cancel()
         consumeTask?.cancel()
+        latencyTask?.cancel()
         resyncTask = nil
         resyncRetryTask = nil
         consumeTask = nil
+        latencyTask = nil
         Task { await session.end() }
     }
 
@@ -170,8 +186,8 @@ final class HostConsoleProjection {
         switch update {
         case .status(let status):
             self.status = status
-            publish()
             if status == .connected {
+                publish()
                 Task { [weak self] in
                     guard let self else { return }
                     let generation = await session.transportGeneration
@@ -185,10 +201,18 @@ final class HostConsoleProjection {
                     publish()
                 }
                 scheduleResync()
+            } else {
+                invalidateSnapshot()
+                publish()
             }
         case .event(let event):
             if event.kind == PaneEventKind.agentStatusChanged.kind {
-                applyStatusChange(event.data)
+                if applyStatusChange(event.data) == .unknown {
+                    // A released Agent can leave its Pane alive as a normal
+                    // shell. Unknown is therefore not only a status delta: it
+                    // may mean the Agent no longer belongs in the snapshot.
+                    scheduleResync()
+                }
             } else if Self.resyncEventKinds.contains(event.kind) {
                 scheduleResync()
             }
@@ -198,7 +222,7 @@ final class HostConsoleProjection {
     /// Runs one re-snapshot at a time; signals arriving mid-run coalesce into
     /// one follow-up run.
     private func scheduleResync() {
-        guard !hasEnded else { return }
+        guard !hasEnded, status == .connected else { return }
         if resyncTask != nil {
             resyncPending = true
             return
@@ -216,12 +240,17 @@ final class HostConsoleProjection {
     }
 
     private func runResync() async {
+        let epochBeforeSnapshot = snapshotEpoch
         let statusRevisionBeforeSnapshot = statusChangeRevision
         do {
             let snapshot = try await session.withTransport { transport in
                 try await transport.sessionSnapshot()
             }
-            guard !hasEnded else { return }
+            guard
+                !hasEnded,
+                status == .connected,
+                snapshotEpoch == epochBeforeSnapshot
+            else { return }
             resyncRetryTask?.cancel()
             resyncRetryTask = nil
             syncError = nil
@@ -232,7 +261,11 @@ final class HostConsoleProjection {
                 Self.subscriptions(paneIDs: agentsByPane.keys))
             refreshSnippets()
         } catch {
-            guard !hasEnded else { return }
+            guard
+                !hasEnded,
+                status == .connected,
+                snapshotEpoch == epochBeforeSnapshot
+            else { return }
             syncError = Self.snapshotErrorMessage(error)
             publish()
             scheduleSnapshotRetry()
@@ -240,7 +273,7 @@ final class HostConsoleProjection {
     }
 
     private func scheduleSnapshotRetry() {
-        guard resyncRetryTask == nil, !hasEnded else { return }
+        guard resyncRetryTask == nil, !hasEnded, status == .connected else { return }
         resyncRetryTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -248,10 +281,22 @@ final class HostConsoleProjection {
             } catch {
                 return
             }
-            guard !hasEnded else { return }
+            guard !hasEnded, status == .connected else { return }
             resyncRetryTask = nil
             scheduleResync()
         }
+    }
+
+    private func invalidateSnapshot() {
+        snapshotEpoch &+= 1
+        resyncPending = false
+        resyncRetryTask?.cancel()
+        resyncRetryTask = nil
+        syncError = nil
+        latestStatusChanges.removeAll(keepingCapacity: true)
+        pendingSnippetRefreshes.removeAll(keepingCapacity: true)
+        agentsByPane.removeAll(keepingCapacity: true)
+        workspaces.removeAll(keepingCapacity: true)
     }
 
     private func apply(
@@ -286,21 +331,22 @@ final class HostConsoleProjection {
         publish()
     }
 
-    private func applyStatusChange(_ data: JSONValue) {
+    private func applyStatusChange(_ data: JSONValue) -> AgentStatus? {
         guard
             let paneID = data["pane_id"]?.stringValue,
             let rawStatus = data["agent_status"]?.stringValue
-        else { return }
+        else { return nil }
         let status = AgentStatus(rawValue: rawStatus)
         statusChangeRevision &+= 1
         latestStatusChanges[paneID] = (statusChangeRevision, status)
-        guard var row = agentsByPane[paneID] else { return }
+        guard var row = agentsByPane[paneID] else { return status }
         row.agent.status = status
         agentsByPane[paneID] = row
         publish()
         Task { [weak self] in
             self?.refreshSnippet(paneID: paneID)
         }
+        return status
     }
 
     private func refreshSnippets() {

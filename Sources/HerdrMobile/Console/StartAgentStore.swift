@@ -31,6 +31,16 @@ final class StartAgentStore {
         case failed(String)
     }
 
+    /// Context inherited when the flow opens from an agent's own screen: the
+    /// launch reuses that agent's Host, workspace, and working directory
+    /// instead of asking for all three again. The new agent lands in a fresh
+    /// tab beside the one it was started from, in the same directory.
+    struct LaunchOrigin: Equatable, Sendable {
+        let hostID: Host.ID
+        let workspaceID: String
+        let cwd: String
+    }
+
     enum ArgumentError: Error, Equatable {
         case danglingEscape
         case unclosedSingleQuote
@@ -53,6 +63,11 @@ final class StartAgentStore {
 
     /// The Hosts the user can dispatch to — the Host picker's options.
     let hosts: [Host]
+
+    /// Non-nil when the flow was opened from an agent rather than the
+    /// Console: Host, workspace, and working directory are already decided,
+    /// so the form collapses to the agent fields.
+    let origin: LaunchOrigin?
 
     var selectedHostID: Host.ID? {
         didSet {
@@ -78,6 +93,10 @@ final class StartAgentStore {
     /// visible to the user.
     var selectedWorkspaceID: String? {
         get {
+            // The origin agent is living proof its workspace exists, so it
+            // wins outright rather than being filtered against a snapshot
+            // that may not have landed yet.
+            if let origin { return origin.workspaceID }
             let available = workspaces
             if let pickedWorkspaceID,
                 available.contains(where: { $0.id == pickedWorkspaceID })
@@ -105,17 +124,10 @@ final class StartAgentStore {
     /// The canonical kind selected from the Host availability probe.
     var selectedAgentKind: SupportedAgentKind?
     /// Optional native arguments, parsed into argv without invoking a shell.
-    /// Smart punctuation is normalized back to ASCII on every edit: the iOS
-    /// keyboard turns `--` into an em dash and straight quotes into curly
-    /// ones (`.autocorrectionDisabled` does not cover them, and SwiftUI has
-    /// no smart-punctuation trait), which silently corrupts flags like
-    /// `--yolo` before they reach the Host.
-    var arguments: String = "" {
-        didSet {
-            let normalized = Self.normalizeSmartPunctuation(arguments)
-            if normalized != arguments { arguments = normalized }
-        }
-    }
+    /// The editor disables smart punctuation at the UIKit input-trait layer;
+    /// parsing still normalizes any smart characters supplied by paste or a
+    /// third-party keyboard without mutating the live editing buffer.
+    var arguments: String = ""
     /// Whether the launch targets a fresh git worktree of the selected
     /// workspace's repository instead of the workspace itself (#97).
     var startsInNewWorktree = false
@@ -154,17 +166,26 @@ final class StartAgentStore {
         existingAgentNames: @escaping (Host.ID) -> Set<String>,
         discoverAgentKinds: @escaping (Host.ID) async throws -> [SupportedAgentKind],
         start: @escaping (AgentLaunchRequest, WorktreeSpec?, Host.ID) async throws -> Agent,
+        origin: LaunchOrigin? = nil,
         recents: RecentWorkspaceStore = RecentWorkspaceStore()
     ) {
         self.hosts = hosts
+        self.origin = origin
         self.workspacesProvider = workspaces
         self.existingAgentNames = existingAgentNames
         self.discoverAgentKinds = discoverAgentKinds
         self.start = start
         self.recents = recents
         // Pre-select when there is no choice to make.
-        self.selectedHostID = hosts.count == 1 ? hosts.first?.id : nil
+        self.selectedHostID = origin?.hostID ?? (hosts.count == 1 ? hosts.first?.id : nil)
     }
+
+    /// Whether the fresh-worktree variant is offered. An origin launch is
+    /// defined by landing in the origin agent's directory, and a worktree
+    /// launch lands in a brand-new checkout instead — the two cannot both
+    /// hold, so the origin flow drops the option rather than silently
+    /// ignoring the requested directory.
+    var offersWorktree: Bool { origin == nil }
 
     /// The workspaces the selected Host knows; empty when no Host is picked.
     var workspaces: [ConsoleWorkspace] {
@@ -173,7 +194,7 @@ final class StartAgentStore {
     }
 
     var parsedArguments: Result<[String], ArgumentError> {
-        Self.parseArguments(arguments)
+        Self.parseArguments(Self.normalizeSmartPunctuation(arguments))
     }
 
     var argumentErrorMessage: String? {
@@ -272,9 +293,10 @@ final class StartAgentStore {
             kind: kind.rawValue,
             name: agentName,
             arguments: arguments,
-            workspaceID: workspaceID)
+            workspaceID: workspaceID,
+            cwd: origin?.cwd)
         let worktree: WorktreeSpec? =
-            startsInNewWorktree
+            offersWorktree && startsInNewWorktree
             ? WorktreeSpec(
                 branch: Self.nonEmptyTrimmed(worktreeBranch),
                 base: Self.nonEmptyTrimmed(worktreeBase))
@@ -386,12 +408,9 @@ final class StartAgentStore {
         return "\(kind.rawValue)-\(suffix)"
     }
 
-    /// Reverses the iOS keyboard's smart punctuation, which rewrites
-    /// hand-typed shell arguments: `--` becomes an em dash and quotes become
-    /// their curly variants, so `--yolo` reaches the agent as a single
-    /// garbage argument. The em dash maps back to the `--` that produced it;
-    /// curly quotes map to the straight quotes the argument parser
-    /// understands.
+    /// Normalizes smart punctuation that arrives through paste or a
+    /// third-party keyboard. The editor itself disables these substitutions;
+    /// this is a defensive parse-boundary fallback, never an edit-time write.
     static func normalizeSmartPunctuation(_ text: String) -> String {
         guard text.contains(where: Self.isSmartPunctuation) else { return text }
         var result = ""

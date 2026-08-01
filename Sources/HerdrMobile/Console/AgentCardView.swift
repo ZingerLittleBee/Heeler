@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// One Console card (#8): the project and status up front, Host, agent kind,
 /// and pane address as context, plus the last-output snippet. The project
@@ -101,11 +102,19 @@ struct AgentStatusBadge: View {
     }
 
     private var color: Color {
-        switch status {
-        case .blocked: .orange
-        case .working: .blue
-        case .done: .green
-        default: .secondary
+        Color(status.tintUIColor)
+    }
+}
+
+extension AgentStatus {
+    /// The one status palette in the app: the Console badge and the keyboard
+    /// switcher's dot read from it, so a colour never means two things.
+    var tintUIColor: UIColor {
+        switch self {
+        case .blocked: .systemOrange
+        case .working: .systemBlue
+        case .done: .systemGreen
+        default: .secondaryLabel
         }
     }
 }

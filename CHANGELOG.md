@@ -7,7 +7,24 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Fixed
+
+- The Agent list now removes rows from disconnected Hosts immediately, rejects
+  stale snapshots that finish after a disconnect, and rechecks membership when
+  an Agent process exits back to an ordinary shell.
+
+- The terminal no longer arrives a beat late after the keyboard is dismissed.
+  It now sizes itself to the keyboard directly instead of through SwiftUI's
+  avoidance, which retracted in two stages and left the terminal resizing a
+  second time — reflowing, resizing the remote PTY, and redrawing the whole
+  TUI again — a third of a second after the keyboard had already gone. Raising
+  the keyboard settles in one step too, and the app toolbar leaves in sync
+  with the keyboard instead of lingering at the bottom of the screen.
+
 ### Changed
+
+- The Agent detail screen's More menu no longer duplicates Settings; that
+  entry stays in the Console toolbar.
 
 - Working agents in the Console list now show a live "solving" orb — a
   dotted sphere whose bands twist and click back into place (ported from
@@ -15,6 +32,25 @@ Entries reference the issue that motivated them.
   Working capsule. Reduced-motion users get a still frame. (PR #106)
 
 ### Added
+
+- Switch Agents without leaving the terminal: a row along the bottom of the
+  terminal lists every Agent with its live status — Working agents pulse — and
+  scrolls horizontally. It stays put whether the keyboard is up or down, so
+  switching Agents no longer means raising the keyboard first, and tapping one
+  attaches with the keyboard exactly as it was. A keyboard button pinned at
+  the row's trailing edge raises and dismisses the keyboard.
+
+- A dedicated newline button above the iOS keyboard inserts a line break into
+  an Agent prompt without pressing Enter or submitting it.
+
+- Hosts now show their live connection state and latest measured ping latency
+  in the Hosts list.
+
+- Start another Agent from the one you have open: "New Agent" in the Agent
+  detail screen's More menu inherits that Agent's Host, workspace, and working
+  directory, so the new Agent starts in a fresh tab in the same place instead
+  of at the workspace root. Only the Agent, its name, and its arguments are
+  left to fill in.
 
 - Attach Links silently collect web and OSC 8 targets into a memory-only list
   for opening or copying. Links survive terminal recovery and are discarded
@@ -69,6 +105,22 @@ Entries reference the issue that motivated them.
   Notifications page.
 
 ### Fixed
+
+- Attach no longer leaves a stale-width, non-interactive terminal on screen
+  when an SSH input or resize write fails; the broken session now ends and
+  preserves the underlying transport error.
+
+- Terminal scrolling and typing stay responsive on lossy connections: touch
+  momentum is coalesced and bounded, and fresh keyboard input no longer waits
+  behind stale wheel events.
+
+- Slow or stalled networks no longer leave SSH requests or Host lifecycle
+  transitions stuck indefinitely. Request deadlines now return promptly,
+  invalidate the unusable connection, and discard late connection attempts
+  after the app suspends or reconnects.
+
+- Holding the iOS keyboard's Backspace key now continues deleting instead of
+  stopping after one character.
 
 - Failed Host notices stay compact in the Agent list and open the affected
   Host directly, where an explicit reconnect action stays visible, animates

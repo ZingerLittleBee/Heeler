@@ -35,6 +35,7 @@ final class TerminalInputController {
 
     private var nextGeneration: UInt64 = 0
     private var writer: ((Data) -> Void)?
+    private var scroller: ((Data, Int) -> Void)?
     private var pendingPasteText: String?
     /// Captured when the paste is requested rather than read again at confirm
     /// time: the review sheet is what the user is looking at, so the framing
@@ -42,11 +43,15 @@ final class TerminalInputController {
     private var pendingPasteIsBracketed = false
 
     @discardableResult
-    func beginSession(writer: @escaping (Data) -> Void) -> SessionGeneration {
+    func beginSession(
+        writer: @escaping (Data) -> Void,
+        scroller: ((Data, Int) -> Void)? = nil
+    ) -> SessionGeneration {
         nextGeneration &+= 1
         let generation = SessionGeneration(value: nextGeneration)
         liveGeneration = generation
         self.writer = writer
+        self.scroller = scroller
         return generation
     }
 
@@ -54,6 +59,7 @@ final class TerminalInputController {
         guard generation == liveGeneration else { return }
         liveGeneration = nil
         writer = nil
+        scroller = nil
         cancelPaste()
     }
 
@@ -70,6 +76,14 @@ final class TerminalInputController {
     func send(_ data: Data) {
         guard !data.isEmpty, !isPaused else { return }
         writer?(data)
+    }
+
+    /// Touch scrolling is deliberately separate from reliable terminal input.
+    /// The live session can coalesce and shed stale momentum without changing
+    /// keyboard, Paste, Snippet, or staged-path delivery semantics.
+    func scroll(_ sequence: Data, rows: Int) {
+        guard !sequence.isEmpty, rows > 0, !isPaused else { return }
+        scroller?(sequence, rows)
     }
 
     /// Inserts a staged path only into the session captured by an image

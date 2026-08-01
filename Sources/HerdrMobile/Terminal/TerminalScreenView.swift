@@ -14,6 +14,26 @@ enum TerminalLinkPolicy {
     }
 }
 
+/// A handle on the live terminal's keyboard, for chrome that sits outside the
+/// terminal — the Agent strip's toggle. The reference is weak and set by the
+/// surface itself, so an Agent switch rebuilding the terminal cannot leave the
+/// toggle driving a dead one.
+@MainActor
+final class TerminalKeyboardControl {
+    weak var terminal: HerdrTerminalView?
+
+    var isKeyboardUp: Bool { terminal?.isFirstResponder ?? false }
+
+    func toggleKeyboard() {
+        guard let terminal else { return }
+        if terminal.isFirstResponder {
+            terminal.dismissKeyboard()
+        } else {
+            terminal.requestKeyboard()
+        }
+    }
+}
+
 /// The interactive Ghostty surface. PTY bytes flow into an in-memory Ghostty
 /// session, while its write and resize callbacks flow back to Attach.
 struct TerminalScreenView: UIViewRepresentable {
@@ -21,11 +41,20 @@ struct TerminalScreenView: UIViewRepresentable {
     var onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)?
     var onViewportTextChanged: ((String) -> Void)?
     var onSend: ((Data) -> Void)?
+    var onScroll: ((_ sequence: Data, _ rows: Int) -> Void)?
     var onPaste: ((_ text: String, _ bracketed: Bool) -> Void)?
     var onSnippet: ((_ text: String, _ bracketed: Bool) -> Void)?
     /// Fills the Keys keyboard's Snippets and Appearance tabs. Without one the
     /// keyboard shows the control keys alone.
     var keysContext: TerminalKeysContext?
+    /// Asked exactly once, as the surface is created: does this terminal
+    /// inherit the keyboard from the one it replaced? Asking through a
+    /// closure rather than a stored flag keeps the answer tied to the
+    /// surface's creation instead of to how often SwiftUI evaluates the body.
+    var claimsKeyboard: (@MainActor () -> Bool)?
+    /// Handed the surface once it exists, so the Agent strip's toggle can
+    /// raise and lower this terminal's keyboard.
+    var keyboardControl: TerminalKeyboardControl?
     var isLocalInputEnabled = true
     var theme: TerminalTheme = .default
     var fontSize: Float = TerminalZoomSettings.defaultFontSize
@@ -40,6 +69,7 @@ struct TerminalScreenView: UIViewRepresentable {
             onSizeChanged: onSizeChanged,
             onViewportTextChanged: onViewportTextChanged,
             onSend: onSend,
+            onScroll: onScroll,
             onPaste: onPaste,
             onSnippet: onSnippet,
             keysContext: keysContext,
@@ -47,6 +77,10 @@ struct TerminalScreenView: UIViewRepresentable {
             fontSize: fontSize,
             fontFamily: fontFamily)
         view.delegate = context.coordinator
+        // Only here, never in updateUIView: the intent belongs to this
+        // terminal's first appearance, not to every state change after it.
+        view.raisesKeyboardWhenReady = claimsKeyboard?() ?? false
+        keyboardControl?.terminal = view
         context.coordinator.terminalView = view
         feed.attach { [weak view] data in
             view?.receive(data)
@@ -59,6 +93,7 @@ struct TerminalScreenView: UIViewRepresentable {
         onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)? = nil,
         onViewportTextChanged: ((String) -> Void)? = nil,
         onSend: ((Data) -> Void)? = nil,
+        onScroll: ((_ sequence: Data, _ rows: Int) -> Void)? = nil,
         onPaste: ((_ text: String, _ bracketed: Bool) -> Void)? = nil,
         onSnippet: ((_ text: String, _ bracketed: Bool) -> Void)? = nil,
         keysContext: TerminalKeysContext? = nil,
@@ -71,6 +106,7 @@ struct TerminalScreenView: UIViewRepresentable {
             onSizeChanged: onSizeChanged,
             onViewportTextChanged: onViewportTextChanged,
             onSend: onSend,
+            onScroll: onScroll,
             onPaste: onPaste,
             onSnippet: onSnippet,
             keysContext: keysContext,
@@ -86,15 +122,21 @@ struct TerminalScreenView: UIViewRepresentable {
             onSizeChanged: onSizeChanged,
             onViewportTextChanged: onViewportTextChanged,
             onSend: onSend,
+            onScroll: onScroll,
             onPaste: onPaste,
             onSnippet: onSnippet)
         view.keysContext = keysContext
+        keyboardControl?.terminal = view
         view.setLocalInputEnabled(isLocalInputEnabled)
         view.applyTheme(theme)
         view.applyFontSize(fontSize)
         view.applyFontFamily(fontFamily)
         view.onFontSizeChanged = onFontSizeChanged
-        view.reportViewportText()
+        // Deliberately no viewport read here. A SwiftUI update must not write
+        // back into the state it was driven by: reporting the viewport text
+        // feeds the Attach Link index, whose observers include this very view,
+        // and the update loops on itself until the app is wedged. Terminal
+        // output already schedules a snapshot in `receive`.
         context.coordinator.onOpenLink = { url in openURL(url) }
     }
 
@@ -132,35 +174,72 @@ private final class TerminalSessionCallbackBridge {
     var onSizeChanged: ((Int, Int) -> Void)?
     var onViewportTextChanged: ((String) -> Void)?
     var onSend: ((Data) -> Void)?
+    var onScroll: ((Data, Int) -> Void)?
     var onPaste: ((String, Bool) -> Void)?
     var onSnippet: ((String, Bool) -> Void)?
     var onViewport: ((InMemoryTerminalViewport) -> Void)?
+    var onReliableInput: (() -> Void)?
+    var onTerminalInput: ((Data) -> Void)?
+    private var defersSizeReports = false
+    private var deferredSize: (columns: Int, rows: Int)?
 
     init(
         onSizeChanged: ((Int, Int) -> Void)?,
         onViewportTextChanged: ((String) -> Void)?,
         onSend: ((Data) -> Void)?,
+        onScroll: ((Data, Int) -> Void)?,
         onPaste: ((String, Bool) -> Void)?,
         onSnippet: ((String, Bool) -> Void)?
     ) {
         self.onSizeChanged = onSizeChanged
         self.onViewportTextChanged = onViewportTextChanged
         self.onSend = onSend
+        self.onScroll = onScroll
         self.onPaste = onPaste
         self.onSnippet = onSnippet
     }
 
     nonisolated func send(_ data: Data) {
         Task { @MainActor [weak self] in
+            self?.onReliableInput?()
+            self?.onTerminalInput?(data)
             self?.onSend?(data)
         }
     }
 
+    func scroll(_ sequence: Data, rows: Int) {
+        onScroll?(sequence, rows)
+    }
+
     nonisolated func resize(_ viewport: InMemoryTerminalViewport) {
         Task { @MainActor [weak self] in
-            self?.onViewport?(viewport)
-            self?.onSizeChanged?(Int(viewport.columns), Int(viewport.rows))
+            guard let self else { return }
+            onViewport?(viewport)
+            let size = (columns: Int(viewport.columns), rows: Int(viewport.rows))
+            if defersSizeReports {
+                deferredSize = size
+            } else {
+                onSizeChanged?(size.columns, size.rows)
+            }
         }
+    }
+
+    func beginSizeReportDeferral() {
+        defersSizeReports = true
+        deferredSize = nil
+    }
+
+    func finishSizeReportDeferral() {
+        guard defersSizeReports else { return }
+        defersSizeReports = false
+        guard let deferredSize else { return }
+        self.deferredSize = nil
+        onSizeChanged?(deferredSize.columns, deferredSize.rows)
+    }
+
+    func cancelSizeReportDeferral() {
+        defersSizeReports = false
+        deferredSize = nil
     }
 
     func paste(_ text: String, bracketed: Bool) {
@@ -173,6 +252,32 @@ private final class TerminalSessionCallbackBridge {
 
     func viewportTextDidChange(_ text: String) {
         onViewportTextChanged?(text)
+    }
+}
+
+private final class TerminalInputTextPosition: UITextPosition {
+    let index: Int
+
+    init(index: Int) {
+        self.index = index
+        super.init()
+    }
+}
+
+private final class TerminalInputTextRange: UITextRange {
+    private let startPosition: TerminalInputTextPosition
+    private let endPosition: TerminalInputTextPosition
+
+    override var start: UITextPosition { startPosition }
+    override var end: UITextPosition { endPosition }
+    override var isEmpty: Bool { startPosition.index == endPosition.index }
+    var location: Int { startPosition.index }
+    var length: Int { endPosition.index - startPosition.index }
+
+    init(location: Int, length: Int) {
+        startPosition = TerminalInputTextPosition(index: location)
+        endPosition = TerminalInputTextPosition(index: location + length)
+        super.init()
     }
 }
 
@@ -189,13 +294,39 @@ final class HerdrTerminalView: UITerminalView {
     /// Rebuilt into the Keys keyboard the next time it is raised; a live
     /// keyboard keeps the context it was built with.
     var keysContext: TerminalKeysContext?
+    /// Raises the keyboard once this surface reaches a window. An Agent switch
+    /// rebuilds the whole terminal, and the user who tapped a switcher chip
+    /// was mid-conversation — dropping the keyboard would hide the switcher
+    /// along with it.
+    var raisesKeyboardWhenReady = false
+    /// How many times the input views have been rebuilt. Nothing else observes
+    /// the rebuild that republishes the keyboard's settled frame after a
+    /// handoff, and a lost rebuild costs the terminal a toolbar's worth of
+    /// height without a crash to show for it.
+    private(set) var inputViewRebuildCount = 0
     private var zoomBaseFontSize: Float?
     private var terminalInputView: UIView?
     private var modeTracker = TerminalModeTracker()
     private var lastInputWindowSize: CGSize?
+    private var defersLayoutForKeyboardTransition = false
+    /// What ends the current freeze. A dismissal waits for `keyboardDidHide`;
+    /// an inherited keyboard never leaves, so its settled signal is the frame
+    /// change instead.
+    private var keyboardTransitionEndsOnFrameChange = false
+    private var keyboardTransitionFallbackTask: Task<Void, Never>?
+    private var keyboardGridReportTask: Task<Void, Never>?
+    /// How long Ghostty gets to answer a settled layout before its grid is
+    /// forwarded to the Host — long enough to coalesce one layout pass's
+    /// several viewport reports into the final one.
+    private static let gridSettleDelay: TimeInterval = 0.05
     private var responderGate = TerminalKeyboardResponderGate()
     private var viewportSnapshotTask: Task<Void, Never>?
     private(set) var isLocalInputEnabled = true
+    // Ghostty keeps only marked text in its UITextInput document. UIKit needs
+    // committed text to remain in that document so Backspace can observe a
+    // shrinking selection and continue its native key repeat.
+    private var textInputStorage = ""
+    private var textInputSelection = NSRange(location: 0, length: 0)
     private var terminalGridSize = (columns: 80, rows: 24)
     private var terminalCellSize = CGSize(width: 8, height: 16)
     private var touchScrollAccumulator = TerminalTouchScrollAccumulator()
@@ -228,6 +359,123 @@ final class HerdrTerminalView: UITerminalView {
         terminalInputView
     }
 
+    override var beginningOfDocument: UITextPosition {
+        guard super.markedTextRange == nil else {
+            return super.beginningOfDocument
+        }
+        return TerminalInputTextPosition(index: 0)
+    }
+
+    override var endOfDocument: UITextPosition {
+        guard super.markedTextRange == nil else {
+            return super.endOfDocument
+        }
+        return TerminalInputTextPosition(index: textInputStorage.utf16.count)
+    }
+
+    override var selectedTextRange: UITextRange? {
+        get {
+            guard super.markedTextRange == nil else {
+                return super.selectedTextRange
+            }
+            return TerminalInputTextRange(
+                location: textInputSelection.location,
+                length: textInputSelection.length)
+        }
+        set {
+            guard super.markedTextRange == nil,
+                  let range = newValue as? TerminalInputTextRange
+            else {
+                super.selectedTextRange = newValue
+                return
+            }
+            let length = textInputStorage.utf16.count
+            let location = min(max(range.location, 0), length)
+            let end = min(max(range.location + range.length, location), length)
+            textInputSelection = NSRange(location: location, length: end - location)
+        }
+    }
+
+    override func textRange(
+        from fromPosition: UITextPosition,
+        to toPosition: UITextPosition
+    ) -> UITextRange? {
+        guard super.markedTextRange == nil,
+              let from = fromPosition as? TerminalInputTextPosition,
+              let to = toPosition as? TerminalInputTextPosition
+        else {
+            return super.textRange(from: fromPosition, to: toPosition)
+        }
+        return TerminalInputTextRange(
+            location: min(from.index, to.index),
+            length: abs(to.index - from.index))
+    }
+
+    override func position(
+        from position: UITextPosition,
+        offset: Int
+    ) -> UITextPosition? {
+        guard super.markedTextRange == nil,
+              let position = position as? TerminalInputTextPosition
+        else {
+            return super.position(from: position, offset: offset)
+        }
+        let index = position.index + offset
+        guard index >= 0, index <= textInputStorage.utf16.count else { return nil }
+        return TerminalInputTextPosition(index: index)
+    }
+
+    override func position(
+        from position: UITextPosition,
+        in direction: UITextLayoutDirection,
+        offset: Int
+    ) -> UITextPosition? {
+        guard position is TerminalInputTextPosition else {
+            return super.position(from: position, in: direction, offset: offset)
+        }
+        return self.position(from: position, offset: offset)
+    }
+
+    override func compare(
+        _ position: UITextPosition,
+        to other: UITextPosition
+    ) -> ComparisonResult {
+        guard let lhs = position as? TerminalInputTextPosition,
+              let rhs = other as? TerminalInputTextPosition
+        else {
+            return super.compare(position, to: other)
+        }
+        if lhs.index < rhs.index { return .orderedAscending }
+        if lhs.index > rhs.index { return .orderedDescending }
+        return .orderedSame
+    }
+
+    override func offset(
+        from: UITextPosition,
+        to toPosition: UITextPosition
+    ) -> Int {
+        guard let from = from as? TerminalInputTextPosition,
+              let to = toPosition as? TerminalInputTextPosition
+        else {
+            return super.offset(from: from, to: toPosition)
+        }
+        return to.index - from.index
+    }
+
+    override func text(in range: UITextRange) -> String? {
+        guard super.markedTextRange == nil,
+              let range = range as? TerminalInputTextRange
+        else {
+            return super.text(in: range)
+        }
+        let text = textInputStorage as NSString
+        guard range.location >= 0, range.length >= 0,
+              range.location + range.length <= text.length
+        else { return nil }
+        return text.substring(
+            with: NSRange(location: range.location, length: range.length))
+    }
+
     override var inputAccessoryView: UIView? {
         terminalKeyboardAccessory
     }
@@ -258,6 +506,9 @@ final class HerdrTerminalView: UITerminalView {
         if isFirstResponder, !responderGate.mayBecomeFirstResponder {
             return true
         }
+        // UIKit reads the accessory hierarchy while installing the software
+        // keyboard. Restore its content before that transaction starts.
+        terminalKeyboardAccessory.resetDismissalAppearance()
         return super.becomeFirstResponder()
     }
 
@@ -277,6 +528,7 @@ final class HerdrTerminalView: UITerminalView {
         onSizeChanged: ((Int, Int) -> Void)?,
         onViewportTextChanged: ((String) -> Void)?,
         onSend: ((Data) -> Void)?,
+        onScroll: ((Data, Int) -> Void)?,
         onPaste: ((String, Bool) -> Void)?,
         onSnippet: ((String, Bool) -> Void)?,
         keysContext: TerminalKeysContext?,
@@ -289,6 +541,7 @@ final class HerdrTerminalView: UITerminalView {
             onSizeChanged: onSizeChanged,
             onViewportTextChanged: onViewportTextChanged,
             onSend: onSend,
+            onScroll: onScroll,
             onPaste: onPaste,
             onSnippet: onSnippet)
         self.callbackBridge = callbackBridge
@@ -311,12 +564,18 @@ final class HerdrTerminalView: UITerminalView {
         appliedFontSize = clampedFontSize
         appliedFontFamily = fontFamily
         super.init(frame: frame)
+        callbackBridge.onTerminalInput = { [weak self] data in
+            self?.recordTerminalInput(data)
+        }
         pasteConfiguration = UIPasteConfiguration(forAccepting: String.self)
         inputAccessoryItems = []
         configuration = TerminalSurfaceOptions(backend: .inMemory(terminalSession))
         controller = terminalController
         callbackBridge.onViewport = { [weak self] viewport in
             self?.updateTouchScrollMetrics(viewport)
+        }
+        callbackBridge.onReliableInput = { [weak self] in
+            self?.reliableInputDidBegin()
         }
         installTouchScrolling()
         installZoom()
@@ -331,12 +590,14 @@ final class HerdrTerminalView: UITerminalView {
         onSizeChanged: ((Int, Int) -> Void)?,
         onViewportTextChanged: ((String) -> Void)?,
         onSend: ((Data) -> Void)?,
+        onScroll: ((Data, Int) -> Void)?,
         onPaste: ((String, Bool) -> Void)?,
         onSnippet: ((String, Bool) -> Void)?
     ) {
         callbackBridge.onSizeChanged = onSizeChanged
         callbackBridge.onViewportTextChanged = onViewportTextChanged
         callbackBridge.onSend = onSend
+        callbackBridge.onScroll = onScroll
         callbackBridge.onPaste = onPaste
         callbackBridge.onSnippet = onSnippet
     }
@@ -420,8 +681,31 @@ final class HerdrTerminalView: UITerminalView {
         }
     }
 
+    /// Takes over the keyboard from the terminal this one replaced.
+    ///
+    /// The keyboard must not drop between the two: it carries the switcher, so
+    /// a dip would make every switch flash the row the user is switching from.
+    /// So the surface claims first responder in the same pass it reaches the
+    /// window — and freezes its grid until UIKit has settled the keyboard,
+    /// because Ghostty's first viewport report on a fresh surface carries a
+    /// zero cell size. Measured against that half-built grid, the surface
+    /// draws a band shorter than the view and leaves an unpainted strip above
+    /// the toolbar.
+    private func inheritKeyboard() {
+        guard raisesKeyboardWhenReady, window != nil else { return }
+        raisesKeyboardWhenReady = false
+        // A keyboard that never left reports no did-show, only a frame change.
+        beginKeyboardTransitionLayoutDeferral(endsOnFrameChange: true)
+        raiseKeyboard()
+    }
+
     /// Raises the keyboard, and records that the user wants it up.
     func requestKeyboard() {
+        finishKeyboardTransitionLayout()
+        raiseKeyboard()
+    }
+
+    private func raiseKeyboard() {
         responderGate.beginUserDrivenChange(wantsKeyboard: true)
         defer { responderGate.endUserDrivenChange() }
         _ = becomeFirstResponder()
@@ -441,7 +725,7 @@ final class HerdrTerminalView: UITerminalView {
     func setLocalInputEnabled(_ isEnabled: Bool) {
         guard isLocalInputEnabled != isEnabled else { return }
         isLocalInputEnabled = isEnabled
-        terminalKeyboardAccessory.setPasteEnabled(isEnabled)
+        terminalKeyboardAccessory.setInputEnabled(isEnabled)
         if let keysKeyboard {
             keysKeyboard.localInputEnabledDidChange()
         } else {
@@ -452,13 +736,81 @@ final class HerdrTerminalView: UITerminalView {
 
     func requestPaste(_ text: String?) {
         guard isLocalInputEnabled, let text else { return }
+        reliableInputDidBegin()
+        recordCommittedText(text)
         callbackBridge.paste(text, bracketed: usesBracketedPaste)
     }
 
     /// Sends a Snippet the user tapped in the Keys keyboard.
     func sendSnippet(_ snippet: Snippet) {
         guard isLocalInputEnabled else { return }
+        reliableInputDidBegin()
+        recordCommittedText(snippet.body)
         callbackBridge.snippet(snippet.body, bracketed: usesBracketedPaste)
+    }
+
+    override func deleteBackward() {
+        guard isLocalInputEnabled else { return }
+
+        // Ghostty already synchronizes marked-text deletion with UIKit. Raw
+        // terminal deletion also changes the remote document, so it must send
+        // the same notifications or the software keyboard stops key repeat.
+        guard markedTextRange == nil else {
+            super.deleteBackward()
+            return
+        }
+
+        guard let deletionRange = textInputDeletionRange() else {
+            super.deleteBackward()
+            return
+        }
+
+        inputDelegate?.textWillChange(self)
+        inputDelegate?.selectionWillChange(self)
+        deleteFromTextInputStorage(in: deletionRange)
+        super.deleteBackward()
+        inputDelegate?.selectionDidChange(self)
+        inputDelegate?.textDidChange(self)
+    }
+
+    private func recordTerminalInput(_ data: Data) {
+        guard !data.contains(0x1B), !data.contains(0x7F),
+              !data.contains(where: { $0 < 0x20 && $0 != 0x0A && $0 != 0x0D }),
+              let text = String(data: data, encoding: .utf8)
+        else { return }
+        recordCommittedText(text)
+    }
+
+    private func recordCommittedText(_ text: String) {
+        let storage = NSMutableString(string: textInputStorage)
+        storage.replaceCharacters(in: textInputSelection, with: text)
+        textInputStorage = storage as String
+
+        if let lineBreak = textInputStorage.rangeOfCharacter(
+            from: .newlines, options: .backwards)
+        {
+            textInputStorage = String(textInputStorage[lineBreak.upperBound...])
+        }
+        textInputSelection = NSRange(
+            location: textInputStorage.utf16.count,
+            length: 0)
+    }
+
+    private func textInputDeletionRange() -> NSRange? {
+        let storage = NSMutableString(string: textInputStorage)
+        if textInputSelection.length > 0 {
+            return textInputSelection
+        }
+        guard textInputSelection.location > 0 else { return nil }
+        return storage.rangeOfComposedCharacterSequence(
+            at: textInputSelection.location - 1)
+    }
+
+    private func deleteFromTextInputStorage(in deletionRange: NSRange) {
+        let storage = NSMutableString(string: textInputStorage)
+        storage.deleteCharacters(in: deletionRange)
+        textInputStorage = storage as String
+        textInputSelection = NSRange(location: deletionRange.location, length: 0)
     }
 
     override func paste(_ sender: Any?) {
@@ -500,7 +852,13 @@ final class HerdrTerminalView: UITerminalView {
         return super.canPerformAction(action, withSender: sender)
     }
 
+    override func reloadInputViews() {
+        inputViewRebuildCount += 1
+        super.reloadInputViews()
+    }
+
     override func layoutSubviews() {
+        guard !defersLayoutForKeyboardTransition else { return }
         super.layoutSubviews()
         reloadInputViewsAfterWindowResize()
     }
@@ -510,6 +868,9 @@ final class HerdrTerminalView: UITerminalView {
         if window == nil {
             stopTouchScrollMomentum()
             responderGate.invalidateTouches()
+            cancelKeyboardTransitionLayoutDeferral()
+        } else {
+            inheritKeyboard()
         }
     }
 
@@ -566,6 +927,81 @@ final class HerdrTerminalView: UITerminalView {
                 self.reloadInputViews()
             }
         }
+    }
+
+    /// Ghostty synchronizes its grid and reports a PTY resize from every
+    /// `layoutSubviews` pass, and a keyboard changing hands passes through
+    /// several transient heights — both accessories ride the keyboard at once
+    /// while it does. Each one would cost a full-screen TUI redraw, so the
+    /// grid stays fixed until the keyboard has settled.
+    ///
+    /// Only a handoff needs this. An ordinary presentation or dismissal moves
+    /// in one step, because the terminal sizes itself to the keyboard's own
+    /// frame rather than through SwiftUI's two-stage avoidance — see
+    /// ``TerminalKeyboardInset``.
+    private func beginKeyboardTransitionLayoutDeferral(endsOnFrameChange: Bool = false) {
+        defersLayoutForKeyboardTransition = true
+        keyboardTransitionEndsOnFrameChange = endsOnFrameChange
+        callbackBridge.beginSizeReportDeferral()
+        keyboardTransitionFallbackTask?.cancel()
+        keyboardTransitionFallbackTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            self?.finishKeyboardTransitionLayout()
+        }
+    }
+
+    private func scheduleGridReport(after delay: TimeInterval) {
+        keyboardGridReportTask?.cancel()
+        keyboardGridReportTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            self?.keyboardGridReportTask = nil
+            self?.callbackBridge.finishSizeReportDeferral()
+        }
+    }
+
+    @objc func keyboardTransitionDidFinish(_: Notification) {
+        finishKeyboardTransitionLayout()
+    }
+
+    /// The keyboard reached its end frame. An inherited keyboard never leaves,
+    /// so this is the only settled signal it gets — there is no did-show to
+    /// wait for.
+    func keyboardFrameDidSettle() {
+        guard keyboardTransitionEndsOnFrameChange else { return }
+        finishKeyboardTransitionLayout()
+    }
+
+    func finishKeyboardTransitionLayout() {
+        guard defersLayoutForKeyboardTransition else { return }
+        let inheritedTheKeyboard = keyboardTransitionEndsOnFrameChange
+        defersLayoutForKeyboardTransition = false
+        keyboardTransitionEndsOnFrameChange = false
+        keyboardTransitionFallbackTask?.cancel()
+        keyboardTransitionFallbackTask = nil
+        if inheritedTheKeyboard {
+            // Both terminals' accessories were on the keyboard while it
+            // changed hands, and that is the frame the keyboard published:
+            // one accessory too tall. UIKit does not publish another when the
+            // outgoing one leaves, so the layout keeps reserving room for an
+            // accessory that is gone. Rebuilding the input views makes it
+            // publish the settled frame.
+            UIView.performWithoutAnimation { reloadInputViews() }
+        }
+        setNeedsLayout()
+        layoutIfNeeded()
+        scheduleGridReport(after: Self.gridSettleDelay)
+    }
+
+    private func cancelKeyboardTransitionLayoutDeferral() {
+        defersLayoutForKeyboardTransition = false
+        keyboardTransitionEndsOnFrameChange = false
+        keyboardTransitionFallbackTask?.cancel()
+        keyboardTransitionFallbackTask = nil
+        keyboardGridReportTask?.cancel()
+        keyboardGridReportTask = nil
+        callbackBridge.cancelSizeReportDeferral()
     }
 
     var usesApplicationCursorKeys: Bool {
@@ -630,9 +1066,7 @@ final class HerdrTerminalView: UITerminalView {
             columns: terminalGridSize.columns,
             rows: terminalGridSize.rows)
         {
-            for _ in 0..<rowCount {
-                terminalSession.sendInput(sequence)
-            }
+            callbackBridge.scroll(sequence, rows: rowCount)
         } else {
             let localRows = towardOlderContent ? -rowCount : rowCount
             _ = performBindingAction("scroll_page_lines:\(localRows)")
@@ -829,5 +1263,10 @@ final class HerdrTerminalView: UITerminalView {
         touchScrollMomentumDisplayLink = nil
         touchScrollMomentumVelocityY = 0
         touchScrollMomentumTimestamp = 0
+    }
+
+    private func reliableInputDidBegin() {
+        stopTouchScrollMomentum()
+        touchScrollAccumulator.reset()
     }
 }

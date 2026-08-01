@@ -24,6 +24,9 @@ struct ConsoleView: View {
     /// Narrows the flat list to one Host; nil shows every Host. The list
     /// stays flat either way — this is a filter, not a grouping level.
     @State private var hostFilter: Host.ID?
+    /// Outlives the detail column's rebuilds, which is the whole point: it
+    /// carries the raised keyboard from one Attach screen to the next.
+    @State private var keyboardHandoff = TerminalKeyboardHandoff()
 
     var body: some View {
         // A split view instead of a plain stack for the iPad's sake: regular
@@ -78,6 +81,7 @@ struct ConsoleView: View {
                         store: hosts,
                         initialHostID: destination.hostID,
                         connectionStatuses: console.hostStatuses,
+                        latencies: console.hostLatencies,
                         reconnectingHostIDs: reconnectingHostIDs,
                         retryConnection: { await reconnectHost($0) })
                 }
@@ -146,10 +150,10 @@ struct ConsoleView: View {
                     agent: agent,
                     console: console,
                     terminal: terminal,
-                    pushRegistration: pushRegistration,
-                    notificationPreferences: notificationPreferences,
-                    relaySettings: relaySettings,
+                    hosts: hosts.hosts,
                     activity: activity,
+                    keyboardHandoff: keyboardHandoff,
+                    onSwitch: { notificationRouter.path = [$0] },
                     onClosed: { notificationRouter.path = [] }
                 )
                 // Selecting another Agent must tear down the previous Attach

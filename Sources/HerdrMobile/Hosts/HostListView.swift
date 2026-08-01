@@ -67,6 +67,7 @@ struct HostListView: View {
     let store: HostStore
     private let initialHostID: Host.ID?
     private let connectionStatuses: [Host.ID: EventsSessionStatus]
+    private let latencies: [Host.ID: Duration]
     private let reconnectingHostIDs: Set<Host.ID>
     private let retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)?
     @State private var removal: HostRemovalStore
@@ -79,12 +80,14 @@ struct HostListView: View {
         store: HostStore,
         initialHostID: Host.ID? = nil,
         connectionStatuses: [Host.ID: EventsSessionStatus] = [:],
+        latencies: [Host.ID: Duration] = [:],
         reconnectingHostIDs: Set<Host.ID> = [],
         retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)? = nil
     ) {
         self.store = store
         self.initialHostID = initialHostID
         self.connectionStatuses = connectionStatuses
+        self.latencies = latencies
         self.reconnectingHostIDs = reconnectingHostIDs
         self.retryConnection = retryConnection
         _removal = State(initialValue: HostRemovalStore(store: store))
@@ -119,7 +122,10 @@ struct HostListView: View {
                     List {
                         ForEach(store.hosts) { host in
                             NavigationLink(value: host.id) {
-                                HostRow(host: host)
+                                HostRow(
+                                    host: host,
+                                    connectionStatus: connectionStatuses[host.id],
+                                    latency: latencies[host.id])
                             }
                         }
                         .onDelete(perform: removeHosts)
@@ -241,15 +247,24 @@ struct HostListView: View {
 
 private struct HostRow: View {
     let host: Host
+    let connectionStatus: EventsSessionStatus?
+    let latency: Duration?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(host.displayName)
-                .font(.headline)
-            Text(subtitle)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(host.displayName)
+                    .font(.headline)
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            HostConnectionIndicator(
+                presentation: HostConnectionPresentation(
+                    status: connectionStatus,
+                    latency: latency))
         }
         .padding(.vertical, 2)
     }
@@ -261,6 +276,89 @@ private struct HostRow: View {
             text += " · session \(session)"
         }
         return text
+    }
+}
+
+struct HostConnectionPresentation: Equatable {
+    enum Tone: Equatable {
+        case connected
+        case pending
+        case warning
+        case unavailable
+    }
+
+    let title: String
+    let accessibilityLabel: String
+    let tone: Tone
+
+    init(status: EventsSessionStatus?, latency: Duration?) {
+        switch status {
+        case .connected:
+            if let latency {
+                let formattedLatency = Self.formatted(latency)
+                title = formattedLatency
+                accessibilityLabel = "Connected, latency \(formattedLatency)"
+            } else {
+                title = "Measuring…"
+                accessibilityLabel = "Connected, measuring latency"
+            }
+            tone = .connected
+        case .reconnecting:
+            title = "Reconnecting…"
+            accessibilityLabel = "Reconnecting"
+            tone = .warning
+        case .failed, .ended:
+            title = "Unavailable"
+            accessibilityLabel = "Unavailable"
+            tone = .unavailable
+        case .suspended:
+            title = "Paused"
+            accessibilityLabel = "Connection paused"
+            tone = .pending
+        case nil:
+            title = "Connecting…"
+            accessibilityLabel = "Connecting"
+            tone = .pending
+        }
+    }
+
+    private static func formatted(_ latency: Duration) -> String {
+        let components = latency.components
+        let milliseconds = max(
+            0,
+            Double(components.seconds) * 1_000
+                + Double(components.attoseconds) / 1_000_000_000_000_000)
+        guard milliseconds >= 1 else { return "<1 ms" }
+        return "\(Int(milliseconds.rounded())) ms"
+    }
+}
+
+private struct HostConnectionIndicator: View {
+    let presentation: HostConnectionPresentation
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "circle.fill")
+                .font(.system(size: 7))
+                .foregroundStyle(tint)
+                .accessibilityHidden(true)
+            Text(presentation.title)
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(presentation.accessibilityLabel)
+    }
+
+    private var tint: Color {
+        switch presentation.tone {
+        case .connected: .green
+        case .pending: .secondary
+        case .warning: .orange
+        case .unavailable: .red
+        }
     }
 }
 

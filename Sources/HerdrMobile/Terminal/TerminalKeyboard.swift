@@ -1,6 +1,7 @@
 import UIKit
 
 private enum TerminalEscapeSequences {
+    static let newLine: [UInt8] = [0x0A]
     static let escape: [UInt8] = [0x1B]
     static let tab: [UInt8] = [0x09]
     static let homeNormal: [UInt8] = [0x1B, 0x5B, 0x48]
@@ -141,8 +142,14 @@ enum TerminalControlKey: Equatable, CaseIterable {
     }
 }
 
+/// The keyboard's own row: paste, new line, and the Text/Keys mode control.
+/// The Agent switcher and the keyboard toggle are deliberately not here — both
+/// outlive the keyboard, so they ride the terminal instead. See
+/// ``TerminalAgentSwitcherRow``.
 final class TerminalKeyboardAccessory: UIInputView {
-    static let preferredHeight: CGFloat = 48
+    /// Paste, new line, and the mode control.
+    static let inputRowHeight: CGFloat = 48
+    static let preferredHeight: CGFloat = inputRowHeight
     /// The accessory's own background, reused as the paste control's fill.
     private static let surface = UIColor.secondarySystemBackground
     /// `UIPasteControl` draws its glyph at a fixed 12 pt (measured; the size
@@ -151,7 +158,11 @@ final class TerminalKeyboardAccessory: UIInputView {
     private static let glyphPointSize: CGFloat = 12
 
     private weak var terminalView: HerdrTerminalView?
+    private(set) var toolbarContentView = UIView()
     private let modeControl = UISegmentedControl(items: ["Text", "Keys"])
+    /// Holds the input row's controls so their layout stays independent of
+    /// the switcher above them.
+    private let inputRow = UIView()
     private(set) lazy var pasteControl: UIPasteControl = {
         var configuration = UIPasteControl.Configuration()
         configuration.displayMode = .iconOnly
@@ -168,16 +179,31 @@ final class TerminalKeyboardAccessory: UIInputView {
         control.accessibilityLabel = "Paste"
         return control
     }()
+    private(set) lazy var newLineButton: UIButton = {
+        var configuration = UIButton.Configuration.plain()
+        let symbol = UIImage.SymbolConfiguration(
+            pointSize: Self.glyphPointSize, weight: .regular, scale: .medium)
+        configuration.image = UIImage(systemName: "text.append", withConfiguration: symbol)
+        configuration.preferredSymbolConfigurationForImage = symbol
+        configuration.baseForegroundColor = .label
+        let button = UIButton(configuration: configuration)
+        button.accessibilityLabel = "Insert New Line"
+        button.accessibilityHint = "Adds a line break without submitting"
+        button.addTarget(self, action: #selector(insertNewLine), for: .touchUpInside)
+        return button
+    }()
 
     init(frame: CGRect, terminalView: HerdrTerminalView) {
         self.terminalView = terminalView
         super.init(frame: frame, inputViewStyle: .keyboard)
         allowsSelfSizing = true
         autoresizingMask = [.flexibleWidth]
-        backgroundColor = Self.surface
+        backgroundColor = .clear
+        configureContentView()
+        configureInputRow()
         configureModeControl()
         configurePasteControl()
-        configureDismissButton()
+        configureNewLineButton()
         update(mode: terminalView.keyboardMode)
     }
 
@@ -194,8 +220,68 @@ final class TerminalKeyboardAccessory: UIInputView {
         modeControl.selectedSegmentIndex = mode.rawValue
     }
 
-    func setPasteEnabled(_ isEnabled: Bool) {
+    func setInputEnabled(_ isEnabled: Bool) {
         pasteControl.isEnabled = isEnabled
+        newLineButton.isEnabled = isEnabled
+    }
+
+    func animateDismissal(
+        duration: TimeInterval = 0.25,
+        options: UIView.AnimationOptions = .curveEaseInOut
+    ) {
+        UIView.animate(
+            withDuration: duration,
+            delay: 0,
+            options: [options, .allowUserInteraction, .beginFromCurrentState]
+        ) {
+            self.toolbarContentView.alpha = 0
+            self.toolbarContentView.transform = CGAffineTransform(
+                translationX: 0, y: Self.preferredHeight)
+        }
+    }
+
+    func resetDismissalAppearance() {
+        toolbarContentView.layer.removeAllAnimations()
+        toolbarContentView.alpha = 1
+        toolbarContentView.transform = .identity
+    }
+
+    private func configureContentView() {
+        toolbarContentView.translatesAutoresizingMaskIntoConstraints = false
+        toolbarContentView.backgroundColor = Self.surface
+        addSubview(toolbarContentView)
+
+        NSLayoutConstraint.activate([
+            toolbarContentView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            toolbarContentView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            toolbarContentView.topAnchor.constraint(equalTo: topAnchor),
+            toolbarContentView.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+    }
+
+    private func configureInputRow() {
+        inputRow.translatesAutoresizingMaskIntoConstraints = false
+        toolbarContentView.addSubview(inputRow)
+
+        // Fences the keyboard's row off from the Agent strip resting above it;
+        // both carry the same fill and would otherwise read as one slab.
+        let separator = UIView()
+        separator.translatesAutoresizingMaskIntoConstraints = false
+        separator.backgroundColor = .separator
+        toolbarContentView.addSubview(separator)
+
+        NSLayoutConstraint.activate([
+            inputRow.leadingAnchor.constraint(equalTo: toolbarContentView.leadingAnchor),
+            inputRow.trailingAnchor.constraint(equalTo: toolbarContentView.trailingAnchor),
+            inputRow.topAnchor.constraint(equalTo: toolbarContentView.topAnchor),
+            inputRow.heightAnchor.constraint(equalToConstant: Self.inputRowHeight),
+
+            separator.leadingAnchor.constraint(equalTo: toolbarContentView.leadingAnchor),
+            separator.trailingAnchor.constraint(equalTo: toolbarContentView.trailingAnchor),
+            separator.topAnchor.constraint(equalTo: toolbarContentView.topAnchor),
+            separator.heightAnchor.constraint(
+                equalToConstant: 1 / max(traitCollection.displayScale, 1)),
+        ])
     }
 
     private func configureModeControl() {
@@ -205,47 +291,47 @@ final class TerminalKeyboardAccessory: UIInputView {
             [.font: UIFont.preferredFont(forTextStyle: .subheadline)], for: .normal)
         modeControl.addTarget(self, action: #selector(modeChanged), for: .valueChanged)
         modeControl.accessibilityLabel = "Terminal keyboard mode"
-        addSubview(modeControl)
+        inputRow.addSubview(modeControl)
 
+        let preferredWidth = modeControl.widthAnchor.constraint(equalToConstant: 184)
+        preferredWidth.priority = .defaultHigh
         NSLayoutConstraint.activate([
-            modeControl.centerXAnchor.constraint(equalTo: centerXAnchor),
-            modeControl.centerYAnchor.constraint(equalTo: centerYAnchor),
-            modeControl.widthAnchor.constraint(equalToConstant: 184),
+            modeControl.centerXAnchor.constraint(equalTo: inputRow.centerXAnchor),
+            modeControl.centerYAnchor.constraint(equalTo: inputRow.centerYAnchor),
+            modeControl.trailingAnchor.constraint(
+                lessThanOrEqualTo: inputRow.trailingAnchor, constant: -8),
+            preferredWidth,
+            modeControl.widthAnchor.constraint(greaterThanOrEqualToConstant: 104),
             modeControl.heightAnchor.constraint(equalToConstant: 32),
         ])
     }
 
     private func configurePasteControl() {
         pasteControl.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(pasteControl)
+        inputRow.addSubview(pasteControl)
 
         NSLayoutConstraint.activate([
-            pasteControl.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            pasteControl.centerYAnchor.constraint(equalTo: centerYAnchor),
+            pasteControl.leadingAnchor.constraint(equalTo: inputRow.leadingAnchor, constant: 8),
+            pasteControl.centerYAnchor.constraint(equalTo: inputRow.centerYAnchor),
             pasteControl.widthAnchor.constraint(equalToConstant: 44),
             pasteControl.heightAnchor.constraint(equalToConstant: 44),
         ])
     }
 
-    private func configureDismissButton() {
-        var configuration = UIButton.Configuration.plain()
-        let symbol = UIImage.SymbolConfiguration(
-            pointSize: Self.glyphPointSize, weight: .regular, scale: .medium)
-        configuration.image = UIImage(
-            systemName: "keyboard.chevron.compact.down", withConfiguration: symbol)
-        configuration.preferredSymbolConfigurationForImage = symbol
-        configuration.baseForegroundColor = .label
-        let button = UIButton(configuration: configuration)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.addTarget(self, action: #selector(dismissKeyboard), for: .touchUpInside)
-        button.accessibilityLabel = "Dismiss keyboard"
-        addSubview(button)
+    private func configureNewLineButton() {
+        newLineButton.translatesAutoresizingMaskIntoConstraints = false
+        inputRow.addSubview(newLineButton)
 
         NSLayoutConstraint.activate([
-            button.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-            button.centerYAnchor.constraint(equalTo: centerYAnchor),
-            button.widthAnchor.constraint(equalToConstant: 44),
-            button.heightAnchor.constraint(equalToConstant: 44),
+            newLineButton.trailingAnchor.constraint(
+                equalTo: inputRow.trailingAnchor, constant: -8),
+            newLineButton.centerYAnchor.constraint(equalTo: inputRow.centerYAnchor),
+            newLineButton.widthAnchor.constraint(equalToConstant: 44),
+            newLineButton.heightAnchor.constraint(equalToConstant: 44),
+            modeControl.trailingAnchor.constraint(
+                lessThanOrEqualTo: newLineButton.leadingAnchor, constant: -4),
+            pasteControl.trailingAnchor.constraint(
+                lessThanOrEqualTo: modeControl.leadingAnchor, constant: -4),
         ])
     }
 
@@ -256,18 +342,11 @@ final class TerminalKeyboardAccessory: UIInputView {
         terminalView?.setKeyboardMode(mode)
     }
 
-    @objc private func dismissKeyboard() {
-        if let terminalView, terminalView.isFirstResponder {
-            terminalView.dismissKeyboard()
-            return
-        }
-        // The accessory can outlive its terminal view's first-responder
-        // status (a rebuilt terminal after a reconnect). Resigning through the
-        // responder chain still takes the keyboard down, so the button is
-        // never a dead control.
-        UIApplication.shared.sendAction(
-            #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    @objc private func insertNewLine() {
+        UIDevice.current.playInputClick()
+        terminalView?.sendNewLine()
     }
+
 }
 
 /// The control-key pane of the Keys keyboard. It fills whatever space the
@@ -422,6 +501,17 @@ extension HerdrTerminalView {
         NotificationCenter.default.addObserver(
             self, selector: #selector(textKeyboardFrameDidChange(_:)),
             name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardDismissalWillBegin(_:)),
+            name: UIResponder.keyboardWillHideNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardTransitionDidFinish(_:)),
+            name: UIResponder.keyboardDidHideNotification, object: nil)
+        // The other end of a transition: a terminal that inherited the
+        // keyboard keeps its grid frozen until the keyboard has settled.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardTransitionDidFinish(_:)),
+            name: UIResponder.keyboardDidShowNotification, object: nil)
     }
 
     func setKeyboardMode(_ mode: TerminalKeyboardMode) {
@@ -452,13 +542,38 @@ extension HerdrTerminalView {
             Data(key.bytes(applicationCursor: usesApplicationCursorKeys)))
     }
 
+    func sendNewLine() {
+        guard isLocalInputEnabled else { return }
+        terminalSession.sendInput(Data(TerminalEscapeSequences.newLine))
+    }
+
     func recordTextKeyboardHeight(totalHeight: CGFloat, accessoryHeight: CGFloat) {
         let inputViewHeight = totalHeight - accessoryHeight
         guard inputViewHeight >= 100 else { return }
         controlKeyboardHeight = inputViewHeight.rounded(.up)
     }
 
+    @objc private func keyboardDismissalWillBegin(_ notification: Notification) {
+        if let isLocal = notification.userInfo?[UIResponder.keyboardIsLocalUserInfoKey]
+            as? NSNumber,
+            !isLocal.boolValue
+        {
+            return
+        }
+        let duration =
+            (notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey]
+                as? NSNumber)?.doubleValue ?? 0.25
+        let curve =
+            (notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey]
+                as? NSNumber)?.uintValue ?? UInt(UIView.AnimationCurve.easeInOut.rawValue)
+        let options = UIView.AnimationOptions(rawValue: curve << 16)
+        (inputAccessoryView as? TerminalKeyboardAccessory)?.animateDismissal(
+            duration: duration,
+            options: options)
+    }
+
     @objc private func textKeyboardFrameDidChange(_ notification: Notification) {
+        keyboardFrameDidSettle()
         guard keyboardMode == .text, isFirstResponder, let window,
               let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]
                 as? CGRect
