@@ -142,6 +142,7 @@ private final class TerminalSessionCallbackBridge {
     var onSnippet: ((String, Bool) -> Void)?
     var onViewport: ((InMemoryTerminalViewport) -> Void)?
     var onReliableInput: (() -> Void)?
+    var onTerminalInput: ((Data) -> Void)?
 
     init(
         onSizeChanged: ((Int, Int) -> Void)?,
@@ -162,6 +163,7 @@ private final class TerminalSessionCallbackBridge {
     nonisolated func send(_ data: Data) {
         Task { @MainActor [weak self] in
             self?.onReliableInput?()
+            self?.onTerminalInput?(data)
             self?.onSend?(data)
         }
     }
@@ -190,6 +192,32 @@ private final class TerminalSessionCallbackBridge {
     }
 }
 
+private final class TerminalInputTextPosition: UITextPosition {
+    let index: Int
+
+    init(index: Int) {
+        self.index = index
+        super.init()
+    }
+}
+
+private final class TerminalInputTextRange: UITextRange {
+    private let startPosition: TerminalInputTextPosition
+    private let endPosition: TerminalInputTextPosition
+
+    override var start: UITextPosition { startPosition }
+    override var end: UITextPosition { endPosition }
+    override var isEmpty: Bool { startPosition.index == endPosition.index }
+    var location: Int { startPosition.index }
+    var length: Int { endPosition.index - startPosition.index }
+
+    init(location: Int, length: Int) {
+        startPosition = TerminalInputTextPosition(index: location)
+        endPosition = TerminalInputTextPosition(index: location + length)
+        super.init()
+    }
+}
+
 /// The app-owned seam around libghostty-spm. It keeps keyboard policy and the
 /// host-managed session lifecycle out of the SwiftUI screen.
 final class HerdrTerminalView: UITerminalView {
@@ -210,6 +238,11 @@ final class HerdrTerminalView: UITerminalView {
     private var responderGate = TerminalKeyboardResponderGate()
     private var viewportSnapshotTask: Task<Void, Never>?
     private(set) var isLocalInputEnabled = true
+    // Ghostty keeps only marked text in its UITextInput document. UIKit needs
+    // committed text to remain in that document so Backspace can observe a
+    // shrinking selection and continue its native key repeat.
+    private var textInputStorage = ""
+    private var textInputSelection = NSRange(location: 0, length: 0)
     private var terminalGridSize = (columns: 80, rows: 24)
     private var terminalCellSize = CGSize(width: 8, height: 16)
     private var touchScrollAccumulator = TerminalTouchScrollAccumulator()
@@ -240,6 +273,123 @@ final class HerdrTerminalView: UITerminalView {
 
     override var inputView: UIView? {
         terminalInputView
+    }
+
+    override var beginningOfDocument: UITextPosition {
+        guard super.markedTextRange == nil else {
+            return super.beginningOfDocument
+        }
+        return TerminalInputTextPosition(index: 0)
+    }
+
+    override var endOfDocument: UITextPosition {
+        guard super.markedTextRange == nil else {
+            return super.endOfDocument
+        }
+        return TerminalInputTextPosition(index: textInputStorage.utf16.count)
+    }
+
+    override var selectedTextRange: UITextRange? {
+        get {
+            guard super.markedTextRange == nil else {
+                return super.selectedTextRange
+            }
+            return TerminalInputTextRange(
+                location: textInputSelection.location,
+                length: textInputSelection.length)
+        }
+        set {
+            guard super.markedTextRange == nil,
+                  let range = newValue as? TerminalInputTextRange
+            else {
+                super.selectedTextRange = newValue
+                return
+            }
+            let length = textInputStorage.utf16.count
+            let location = min(max(range.location, 0), length)
+            let end = min(max(range.location + range.length, location), length)
+            textInputSelection = NSRange(location: location, length: end - location)
+        }
+    }
+
+    override func textRange(
+        from fromPosition: UITextPosition,
+        to toPosition: UITextPosition
+    ) -> UITextRange? {
+        guard super.markedTextRange == nil,
+              let from = fromPosition as? TerminalInputTextPosition,
+              let to = toPosition as? TerminalInputTextPosition
+        else {
+            return super.textRange(from: fromPosition, to: toPosition)
+        }
+        return TerminalInputTextRange(
+            location: min(from.index, to.index),
+            length: abs(to.index - from.index))
+    }
+
+    override func position(
+        from position: UITextPosition,
+        offset: Int
+    ) -> UITextPosition? {
+        guard super.markedTextRange == nil,
+              let position = position as? TerminalInputTextPosition
+        else {
+            return super.position(from: position, offset: offset)
+        }
+        let index = position.index + offset
+        guard index >= 0, index <= textInputStorage.utf16.count else { return nil }
+        return TerminalInputTextPosition(index: index)
+    }
+
+    override func position(
+        from position: UITextPosition,
+        in direction: UITextLayoutDirection,
+        offset: Int
+    ) -> UITextPosition? {
+        guard position is TerminalInputTextPosition else {
+            return super.position(from: position, in: direction, offset: offset)
+        }
+        return self.position(from: position, offset: offset)
+    }
+
+    override func compare(
+        _ position: UITextPosition,
+        to other: UITextPosition
+    ) -> ComparisonResult {
+        guard let lhs = position as? TerminalInputTextPosition,
+              let rhs = other as? TerminalInputTextPosition
+        else {
+            return super.compare(position, to: other)
+        }
+        if lhs.index < rhs.index { return .orderedAscending }
+        if lhs.index > rhs.index { return .orderedDescending }
+        return .orderedSame
+    }
+
+    override func offset(
+        from: UITextPosition,
+        to toPosition: UITextPosition
+    ) -> Int {
+        guard let from = from as? TerminalInputTextPosition,
+              let to = toPosition as? TerminalInputTextPosition
+        else {
+            return super.offset(from: from, to: toPosition)
+        }
+        return to.index - from.index
+    }
+
+    override func text(in range: UITextRange) -> String? {
+        guard super.markedTextRange == nil,
+              let range = range as? TerminalInputTextRange
+        else {
+            return super.text(in: range)
+        }
+        let text = textInputStorage as NSString
+        guard range.location >= 0, range.length >= 0,
+              range.location + range.length <= text.length
+        else { return nil }
+        return text.substring(
+            with: NSRange(location: range.location, length: range.length))
     }
 
     override var inputAccessoryView: UIView? {
@@ -327,6 +477,9 @@ final class HerdrTerminalView: UITerminalView {
         appliedFontSize = clampedFontSize
         appliedFontFamily = fontFamily
         super.init(frame: frame)
+        callbackBridge.onTerminalInput = { [weak self] data in
+            self?.recordTerminalInput(data)
+        }
         pasteConfiguration = UIPasteConfiguration(forAccepting: String.self)
         inputAccessoryItems = []
         configuration = TerminalSurfaceOptions(backend: .inMemory(terminalSession))
@@ -462,7 +615,7 @@ final class HerdrTerminalView: UITerminalView {
     func setLocalInputEnabled(_ isEnabled: Bool) {
         guard isLocalInputEnabled != isEnabled else { return }
         isLocalInputEnabled = isEnabled
-        terminalKeyboardAccessory.setPasteEnabled(isEnabled)
+        terminalKeyboardAccessory.setInputEnabled(isEnabled)
         if let keysKeyboard {
             keysKeyboard.localInputEnabledDidChange()
         } else {
@@ -474,6 +627,7 @@ final class HerdrTerminalView: UITerminalView {
     func requestPaste(_ text: String?) {
         guard isLocalInputEnabled, let text else { return }
         reliableInputDidBegin()
+        recordCommittedText(text)
         callbackBridge.paste(text, bracketed: usesBracketedPaste)
     }
 
@@ -481,7 +635,72 @@ final class HerdrTerminalView: UITerminalView {
     func sendSnippet(_ snippet: Snippet) {
         guard isLocalInputEnabled else { return }
         reliableInputDidBegin()
+        recordCommittedText(snippet.body)
         callbackBridge.snippet(snippet.body, bracketed: usesBracketedPaste)
+    }
+
+    override func deleteBackward() {
+        guard isLocalInputEnabled else { return }
+
+        // Ghostty already synchronizes marked-text deletion with UIKit. Raw
+        // terminal deletion also changes the remote document, so it must send
+        // the same notifications or the software keyboard stops key repeat.
+        guard markedTextRange == nil else {
+            super.deleteBackward()
+            return
+        }
+
+        guard let deletionRange = textInputDeletionRange() else {
+            super.deleteBackward()
+            return
+        }
+
+        inputDelegate?.textWillChange(self)
+        inputDelegate?.selectionWillChange(self)
+        deleteFromTextInputStorage(in: deletionRange)
+        super.deleteBackward()
+        inputDelegate?.selectionDidChange(self)
+        inputDelegate?.textDidChange(self)
+    }
+
+    private func recordTerminalInput(_ data: Data) {
+        guard !data.contains(0x1B), !data.contains(0x7F),
+              !data.contains(where: { $0 < 0x20 && $0 != 0x0A && $0 != 0x0D }),
+              let text = String(data: data, encoding: .utf8)
+        else { return }
+        recordCommittedText(text)
+    }
+
+    private func recordCommittedText(_ text: String) {
+        let storage = NSMutableString(string: textInputStorage)
+        storage.replaceCharacters(in: textInputSelection, with: text)
+        textInputStorage = storage as String
+
+        if let lineBreak = textInputStorage.rangeOfCharacter(
+            from: .newlines, options: .backwards)
+        {
+            textInputStorage = String(textInputStorage[lineBreak.upperBound...])
+        }
+        textInputSelection = NSRange(
+            location: textInputStorage.utf16.count,
+            length: 0)
+    }
+
+    private func textInputDeletionRange() -> NSRange? {
+        let storage = NSMutableString(string: textInputStorage)
+        if textInputSelection.length > 0 {
+            return textInputSelection
+        }
+        guard textInputSelection.location > 0 else { return nil }
+        return storage.rangeOfComposedCharacterSequence(
+            at: textInputSelection.location - 1)
+    }
+
+    private func deleteFromTextInputStorage(in deletionRange: NSRange) {
+        let storage = NSMutableString(string: textInputStorage)
+        storage.deleteCharacters(in: deletionRange)
+        textInputStorage = storage as String
+        textInputSelection = NSRange(location: deletionRange.location, length: 0)
     }
 
     override func paste(_ sender: Any?) {

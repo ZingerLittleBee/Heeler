@@ -19,6 +19,9 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- A dedicated newline button above the iOS keyboard inserts a line break into
+  an Agent prompt without pressing Enter or submitting it.
+
 - Start another Agent from the one you have open: "New Agent" in the Agent
   detail screen's More menu inherits that Agent's Host, workspace, and working
   directory, so the new Agent starts in a fresh tab in the same place instead
@@ -87,6 +90,9 @@ Entries reference the issue that motivated them.
   transitions stuck indefinitely. Request deadlines now return promptly,
   invalidate the unusable connection, and discard late connection attempts
   after the app suspends or reconnects.
+
+- Holding the iOS keyboard's Backspace key now continues deleting instead of
+  stopping after one character.
 
 - Failed Host notices stay compact in the Agent list and open the affected
   Host directly, where an explicit reconnect action stays visible, animates

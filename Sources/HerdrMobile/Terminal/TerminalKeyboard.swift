@@ -1,6 +1,7 @@
 import UIKit
 
 private enum TerminalEscapeSequences {
+    static let newLine: [UInt8] = [0x0A]
     static let escape: [UInt8] = [0x1B]
     static let tab: [UInt8] = [0x09]
     static let homeNormal: [UInt8] = [0x1B, 0x5B, 0x48]
@@ -168,6 +169,19 @@ final class TerminalKeyboardAccessory: UIInputView {
         control.accessibilityLabel = "Paste"
         return control
     }()
+    private(set) lazy var newLineButton: UIButton = {
+        var configuration = UIButton.Configuration.plain()
+        let symbol = UIImage.SymbolConfiguration(
+            pointSize: Self.glyphPointSize, weight: .regular, scale: .medium)
+        configuration.image = UIImage(systemName: "text.append", withConfiguration: symbol)
+        configuration.preferredSymbolConfigurationForImage = symbol
+        configuration.baseForegroundColor = .label
+        let button = UIButton(configuration: configuration)
+        button.accessibilityLabel = "Insert New Line"
+        button.accessibilityHint = "Adds a line break without submitting"
+        button.addTarget(self, action: #selector(insertNewLine), for: .touchUpInside)
+        return button
+    }()
 
     init(frame: CGRect, terminalView: HerdrTerminalView) {
         self.terminalView = terminalView
@@ -177,6 +191,7 @@ final class TerminalKeyboardAccessory: UIInputView {
         backgroundColor = Self.surface
         configureModeControl()
         configurePasteControl()
+        configureNewLineButton()
         configureDismissButton()
         update(mode: terminalView.keyboardMode)
     }
@@ -194,8 +209,9 @@ final class TerminalKeyboardAccessory: UIInputView {
         modeControl.selectedSegmentIndex = mode.rawValue
     }
 
-    func setPasteEnabled(_ isEnabled: Bool) {
+    func setInputEnabled(_ isEnabled: Bool) {
         pasteControl.isEnabled = isEnabled
+        newLineButton.isEnabled = isEnabled
     }
 
     private func configureModeControl() {
@@ -207,10 +223,13 @@ final class TerminalKeyboardAccessory: UIInputView {
         modeControl.accessibilityLabel = "Terminal keyboard mode"
         addSubview(modeControl)
 
+        let preferredWidth = modeControl.widthAnchor.constraint(equalToConstant: 184)
+        preferredWidth.priority = .defaultHigh
         NSLayoutConstraint.activate([
             modeControl.centerXAnchor.constraint(equalTo: centerXAnchor),
             modeControl.centerYAnchor.constraint(equalTo: centerYAnchor),
-            modeControl.widthAnchor.constraint(equalToConstant: 184),
+            preferredWidth,
+            modeControl.widthAnchor.constraint(greaterThanOrEqualToConstant: 104),
             modeControl.heightAnchor.constraint(equalToConstant: 32),
         ])
     }
@@ -224,6 +243,20 @@ final class TerminalKeyboardAccessory: UIInputView {
             pasteControl.centerYAnchor.constraint(equalTo: centerYAnchor),
             pasteControl.widthAnchor.constraint(equalToConstant: 44),
             pasteControl.heightAnchor.constraint(equalToConstant: 44),
+        ])
+    }
+
+    private func configureNewLineButton() {
+        newLineButton.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(newLineButton)
+
+        NSLayoutConstraint.activate([
+            newLineButton.leadingAnchor.constraint(equalTo: pasteControl.trailingAnchor, constant: 4),
+            newLineButton.trailingAnchor.constraint(
+                lessThanOrEqualTo: modeControl.leadingAnchor, constant: -4),
+            newLineButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            newLineButton.widthAnchor.constraint(equalToConstant: 44),
+            newLineButton.heightAnchor.constraint(equalToConstant: 44),
         ])
     }
 
@@ -243,6 +276,8 @@ final class TerminalKeyboardAccessory: UIInputView {
 
         NSLayoutConstraint.activate([
             button.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            modeControl.trailingAnchor.constraint(
+                lessThanOrEqualTo: button.leadingAnchor, constant: -4),
             button.centerYAnchor.constraint(equalTo: centerYAnchor),
             button.widthAnchor.constraint(equalToConstant: 44),
             button.heightAnchor.constraint(equalToConstant: 44),
@@ -254,6 +289,11 @@ final class TerminalKeyboardAccessory: UIInputView {
             return
         }
         terminalView?.setKeyboardMode(mode)
+    }
+
+    @objc private func insertNewLine() {
+        UIDevice.current.playInputClick()
+        terminalView?.sendNewLine()
     }
 
     @objc private func dismissKeyboard() {
@@ -450,6 +490,11 @@ extension HerdrTerminalView {
         guard isLocalInputEnabled else { return }
         terminalSession.sendInput(
             Data(key.bytes(applicationCursor: usesApplicationCursorKeys)))
+    }
+
+    func sendNewLine() {
+        guard isLocalInputEnabled else { return }
+        terminalSession.sendInput(Data(TerminalEscapeSequences.newLine))
     }
 
     func recordTextKeyboardHeight(totalHeight: CGFloat, accessoryHeight: CGFloat) {
