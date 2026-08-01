@@ -169,13 +169,9 @@ struct StartAgentView: View {
                 }
 
                 Section {
-                    TextField(
-                        #"e.g. --model "gpt 5" --continue"#,
+                    AgentArgumentsField(
                         text: $store.arguments,
-                        axis: .vertical)
-                        .font(.callout.monospaced())
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
+                        placeholder: #"e.g. --model "gpt 5" --continue"#)
                 } header: {
                     Text("Arguments")
                 } footer: {

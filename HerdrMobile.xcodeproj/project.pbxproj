@@ -176,6 +176,7 @@
 		CEE4A4F9733B79886D294DE6 /* SnippetsManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1695A5169C6E90E3562117E5 /* SnippetsManagementView.swift */; };
 		CEF401BC0306ACEA750F0C55 /* NotificationPreferencesStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6632B55C19D84583370BF788 /* NotificationPreferencesStoreTests.swift */; };
 		D11D524FCF49C49763C9F9D7 /* Host.swift in Sources */ = {isa = PBXBuildFile; fileRef = 806A90DBCA99FD02E76D68C6 /* Host.swift */; };
+		D43FD8C332DEA3CC09EA4D38 /* AgentArgumentsField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78CFC3443B8CE24EB0130643 /* AgentArgumentsField.swift */; };
 		D452508C8B08FA41C17AA54F /* NotificationEnvelope.swift in Sources */ = {isa = PBXBuildFile; fileRef = C42040EDC53770F8227FA0C2 /* NotificationEnvelope.swift */; };
 		D4DB3D327A8767025130B169 /* TerminalMouseReporting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88D1D6AB56C4DA1CE0AF9A51 /* TerminalMouseReporting.swift */; };
 		D51F828E0AC4A2F6C23A0CBE /* TerminalThemeSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE72A47A2C1C9F9B4BFFB16F /* TerminalThemeSettingsTests.swift */; };
@@ -337,6 +338,7 @@
 		78437BCBAD02A5E0EB1A439B /* NotificationPreferencesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPreferencesStore.swift; sourceTree = "<group>"; };
 		78545B74736FD98DCA33B3C4 /* HerdrMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrMobileApp.swift; sourceTree = "<group>"; };
 		786B2BA8A0683BB9DC71D797 /* TerminalTextSelectionPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTextSelectionPresenter.swift; sourceTree = "<group>"; };
+		78CFC3443B8CE24EB0130643 /* AgentArgumentsField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentArgumentsField.swift; sourceTree = "<group>"; };
 		790657D3E484D44D466D7EBB /* NotificationConfigFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationConfigFile.swift; sourceTree = "<group>"; };
 		7AFE5C640586747D567E1CF1 /* ScriptedTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptedTransport.swift; sourceTree = "<group>"; };
 		7B1C4EC65B71F33394E7DA9F /* SSHTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHTransport.swift; sourceTree = "<group>"; };
@@ -748,6 +750,7 @@
 		AEEB5E7751FD30413560D58D /* Console */ = {
 			isa = PBXGroup;
 			children = (
+				78CFC3443B8CE24EB0130643 /* AgentArgumentsField.swift */,
 				3C07948FE6D5E399672A9395 /* AgentAttachStore.swift */,
 				0B3FA15CCDC83C72DDA81BEB /* AgentCardView.swift */,
 				5ADF336771A3F757F2AD441D /* AgentDetailView.swift */,
@@ -1034,6 +1037,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D43FD8C332DEA3CC09EA4D38 /* AgentArgumentsField.swift in Sources */,
 				4D5BBEA6FE5430530AB0AAE7 /* AgentAttachStore.swift in Sources */,
 				6CBE7E0961FFD970A614ED4B /* AgentCardView.swift in Sources */,
 				2CE9115816E7CE945ABCF7A8 /* AgentDetailView.swift in Sources */,

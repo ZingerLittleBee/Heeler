@@ -1,5 +1,7 @@
 import Foundation
+import SwiftUI
 import Testing
+import UIKit
 
 @testable import HerdrMobile
 
@@ -88,7 +90,8 @@ struct StartAgentStoreTests {
 
     @Test func smartPunctuationNormalizesBackToASCII() {
         // The iOS keyboard rewrites "--" to an em dash and quotes to curly
-        // variants even with autocorrection disabled; the field reverses it.
+        // variants even with autocorrection disabled. The editor prevents the
+        // rewrite, and parsing remains defensive for pasted text.
         #expect(StartAgentStore.normalizeSmartPunctuation("\u{2014}yolo") == "--yolo")
         #expect(StartAgentStore.normalizeSmartPunctuation("\u{2013}v") == "-v")
         #expect(
@@ -98,12 +101,41 @@ struct StartAgentStoreTests {
         #expect(StartAgentStore.normalizeSmartPunctuation("--plain 'ascii'") == "--plain 'ascii'")
     }
 
-    @Test func editingArgumentsNormalizesSmartPunctuationInPlace() {
+    @Test func editingArgumentsDefersSmartPunctuationNormalizationUntilParsing() {
         let store = makeStore(hosts: [.fixture()], recorder: StartRecorder())
         store.arguments = "\u{2014}yolo --label \u{201C}code review\u{201D}"
 
-        #expect(store.arguments == #"--yolo --label "code review""#)
+        #expect(store.arguments == "\u{2014}yolo --label \u{201C}code review\u{201D}")
         #expect(store.parsedArguments == .success(["--yolo", "--label", "code review"]))
+    }
+
+    @Test func argumentEditorDisablesEverySmartPunctuationTrait() {
+        let textView = UITextView()
+
+        AgentArgumentsTextView.configure(textView)
+
+        #expect(textView.autocapitalizationType == .none)
+        #expect(textView.autocorrectionType == .no)
+        #expect(textView.spellCheckingType == .no)
+        #expect(textView.smartDashesType == .no)
+        #expect(textView.smartQuotesType == .no)
+        #expect(textView.smartInsertDeleteType == .no)
+    }
+
+    @Test func argumentEditorAtomicallyRejectsASmartDashReplacement() {
+        let recorder = TextBindingRecorder()
+        let coordinator = AgentArgumentsTextView.Coordinator(text: recorder.binding)
+        let textView = UITextView()
+        textView.text = "--"
+
+        let accepted = coordinator.textView(
+            textView, shouldChangeTextIn: NSRange(location: 0, length: 2),
+            replacementText: "\u{2014}")
+
+        #expect(!accepted)
+        #expect(textView.text == "--")
+        #expect(recorder.value == "--")
+        #expect(textView.selectedRange == NSRange(location: 2, length: 0))
     }
 
     @Test func argumentParserReportsIncompleteAndUnsafeInput() {
@@ -111,6 +143,17 @@ struct StartAgentStoreTests {
         #expect(StartAgentStore.parseArguments("'unfinished") == .failure(.unclosedSingleQuote))
         #expect(StartAgentStore.parseArguments(#"--flag\"#) == .failure(.danglingEscape))
         #expect(StartAgentStore.parseArguments("\"line\nbreak\"") == .failure(.controlCharacter))
+    }
+
+    @MainActor
+    private final class TextBindingRecorder {
+        var value = ""
+
+        var binding: Binding<String> {
+            Binding(
+                get: { self.value },
+                set: { self.value = $0 })
+        }
     }
 
     @Test func supportedAgentCatalogMatchesProtocol17() {
@@ -442,7 +485,7 @@ struct StartAgentStoreTests {
             recorder: recorder)
         store.selectedWorkspaceID = "w1"
         store.name = "reviewer"
-        store.arguments = #"--continue --label "code review""#
+        store.arguments = #"—yolo --continue --label "code review""#
         await store.discoverAgents()
 
         await store.submit()
@@ -451,7 +494,9 @@ struct StartAgentStoreTests {
         #expect(recorder.hostIDs == [host.id])
         #expect(recorder.params.first?.kind == "claude")
         #expect(recorder.params.first?.name == "reviewer")
-        #expect(recorder.params.first?.arguments == ["--continue", "--label", "code review"])
+        #expect(
+            recorder.params.first?.arguments
+                == ["--yolo", "--continue", "--label", "code review"])
         #expect(recorder.params.first?.workspaceID == "w1")
         #expect(recorder.worktrees == [nil])
     }

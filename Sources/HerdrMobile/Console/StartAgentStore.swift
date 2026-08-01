@@ -124,17 +124,10 @@ final class StartAgentStore {
     /// The canonical kind selected from the Host availability probe.
     var selectedAgentKind: SupportedAgentKind?
     /// Optional native arguments, parsed into argv without invoking a shell.
-    /// Smart punctuation is normalized back to ASCII on every edit: the iOS
-    /// keyboard turns `--` into an em dash and straight quotes into curly
-    /// ones (`.autocorrectionDisabled` does not cover them, and SwiftUI has
-    /// no smart-punctuation trait), which silently corrupts flags like
-    /// `--yolo` before they reach the Host.
-    var arguments: String = "" {
-        didSet {
-            let normalized = Self.normalizeSmartPunctuation(arguments)
-            if normalized != arguments { arguments = normalized }
-        }
-    }
+    /// The editor disables smart punctuation at the UIKit input-trait layer;
+    /// parsing still normalizes any smart characters supplied by paste or a
+    /// third-party keyboard without mutating the live editing buffer.
+    var arguments: String = ""
     /// Whether the launch targets a fresh git worktree of the selected
     /// workspace's repository instead of the workspace itself (#97).
     var startsInNewWorktree = false
@@ -201,7 +194,7 @@ final class StartAgentStore {
     }
 
     var parsedArguments: Result<[String], ArgumentError> {
-        Self.parseArguments(arguments)
+        Self.parseArguments(Self.normalizeSmartPunctuation(arguments))
     }
 
     var argumentErrorMessage: String? {
@@ -415,12 +408,9 @@ final class StartAgentStore {
         return "\(kind.rawValue)-\(suffix)"
     }
 
-    /// Reverses the iOS keyboard's smart punctuation, which rewrites
-    /// hand-typed shell arguments: `--` becomes an em dash and quotes become
-    /// their curly variants, so `--yolo` reaches the agent as a single
-    /// garbage argument. The em dash maps back to the `--` that produced it;
-    /// curly quotes map to the straight quotes the argument parser
-    /// understands.
+    /// Normalizes smart punctuation that arrives through paste or a
+    /// third-party keyboard. The editor itself disables these substitutions;
+    /// this is a defensive parse-boundary fallback, never an edit-time write.
     static func normalizeSmartPunctuation(_ text: String) -> String {
         guard text.contains(where: Self.isSmartPunctuation) else { return text }
         var result = ""
