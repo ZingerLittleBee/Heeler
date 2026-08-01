@@ -19,8 +19,8 @@ Entries reference the issue that motivated them.
 
 ### Added
 
-- A dedicated LF button above the iOS keyboard inserts a line break into an
-  Agent prompt without pressing Enter or submitting it.
+- A dedicated newline button above the iOS keyboard inserts a line break into
+  an Agent prompt without pressing Enter or submitting it.
 
 - Start another Agent from the one you have open: "New Agent" in the Agent
   detail screen's More menu inherits that Agent's Host, workspace, and working

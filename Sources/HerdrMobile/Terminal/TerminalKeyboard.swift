@@ -171,14 +171,11 @@ final class TerminalKeyboardAccessory: UIInputView {
     }()
     private(set) lazy var newLineButton: UIButton = {
         var configuration = UIButton.Configuration.plain()
-        configuration.title = "LF"
+        let symbol = UIImage.SymbolConfiguration(
+            pointSize: Self.glyphPointSize, weight: .regular, scale: .medium)
+        configuration.image = UIImage(systemName: "return", withConfiguration: symbol)
+        configuration.preferredSymbolConfigurationForImage = symbol
         configuration.baseForegroundColor = .label
-        configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
-            incoming in
-            var outgoing = incoming
-            outgoing.font = .monospacedSystemFont(ofSize: 13, weight: .semibold)
-            return outgoing
-        }
         let button = UIButton(configuration: configuration)
         button.accessibilityLabel = "Insert New Line"
         button.accessibilityHint = "Adds a line break without submitting"

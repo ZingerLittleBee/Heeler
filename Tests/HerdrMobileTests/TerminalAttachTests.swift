@@ -42,6 +42,8 @@ struct TerminalAttachTests {
         let accessory = try #require(
             terminal.inputAccessoryView as? TerminalKeyboardAccessory)
 
+        #expect(accessory.newLineButton.configuration?.image != nil)
+        #expect(accessory.newLineButton.configuration?.title == nil)
         #expect(accessory.newLineButton.accessibilityLabel == "Insert New Line")
         accessory.newLineButton.sendActions(for: .touchUpInside)
         await Task.yield()
