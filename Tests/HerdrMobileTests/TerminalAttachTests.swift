@@ -694,6 +694,72 @@ struct TerminalAttachTests {
         #expect(accessory.toolbarContentView.transform == .identity)
     }
 
+    /// A SwiftUI update must not write back into the state that drove it.
+    /// Reporting the viewport text from `updateUIView` fed the Attach Link
+    /// index, whose observers include this very view, so every update queued
+    /// the next one — measured on device at 18,871 updates in a few seconds,
+    /// with the app wedged for as long as the terminal stayed on screen.
+    /// Terminal output schedules its own snapshot (see
+    /// `renderedOutputReportsViewportTextToTheHost`); nothing else may.
+    @MainActor
+    @Test(.timeLimit(.minutes(1)))
+    func aSwiftUIUpdateDoesNotReportTheViewportBack() async throws {
+        final class Counters {
+            var updates = 0
+            var reports = 0
+        }
+        struct Harness: View {
+            let counters: Counters
+            let keyboardControl: TerminalKeyboardControl
+            let feed: TerminalByteFeed
+            /// Some state the terminal is sized by, exactly as the keyboard
+            /// inset is when the keyboard comes and goes.
+            let fontSize: Float
+
+            var body: some View {
+                counters.updates += 1
+                var screen = TerminalScreenView(feed: feed)
+                screen.onViewportTextChanged = { _ in counters.reports += 1 }
+                screen.keyboardControl = keyboardControl
+                screen.fontSize = fontSize
+                return screen
+            }
+        }
+
+        let counters = Counters()
+        let keyboardControl = TerminalKeyboardControl()
+        let feed = TerminalByteFeed()
+        func harness(fontSize: Float) -> Harness {
+            Harness(
+                counters: counters, keyboardControl: keyboardControl,
+                feed: feed, fontSize: fontSize)
+        }
+        let controller = UIHostingController(rootView: harness(fontSize: 13))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+
+        let rounds = 10
+        for round in 1...rounds {
+            controller.rootView = harness(fontSize: round.isMultiple(of: 2) ? 13 : 15)
+            controller.view.setNeedsLayout()
+            controller.view.layoutIfNeeded()
+            await Task.yield()
+        }
+        // Long enough for a snapshot one of those updates had scheduled to fire.
+        try await Task.sleep(for: .milliseconds(200))
+
+        // Every one of those rounds reached the terminal, and not one of them
+        // asked it for its viewport.
+        #expect(counters.updates > rounds)
+        #expect(keyboardControl.terminal != nil, "the terminal never took an update")
+        #expect(
+            counters.reports == 0,
+            "a SwiftUI update reported the viewport \(counters.reports) times")
+    }
+
     /// A keyboard changing hands passes through several transient heights —
     /// both terminals' accessories ride it at once while it does. Forwarding
     /// each one to Ghostty and the remote PTY makes a full-screen TUI redraw

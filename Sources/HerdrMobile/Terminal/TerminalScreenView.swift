@@ -132,7 +132,11 @@ struct TerminalScreenView: UIViewRepresentable {
         view.applyFontSize(fontSize)
         view.applyFontFamily(fontFamily)
         view.onFontSizeChanged = onFontSizeChanged
-        view.reportViewportText()
+        // Deliberately no viewport read here. A SwiftUI update must not write
+        // back into the state it was driven by: reporting the viewport text
+        // feeds the Attach Link index, whose observers include this very view,
+        // and the update loops on itself until the app is wedged. Terminal
+        // output already schedules a snapshot in `receive`.
         context.coordinator.onOpenLink = { url in openURL(url) }
     }
 

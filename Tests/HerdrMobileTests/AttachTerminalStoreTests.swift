@@ -615,6 +615,41 @@ struct AgentAttachStoreTests {
         await store.leave()
     }
 
+    /// The screen is rescanned on every viewport snapshot, so a screen holding
+    /// more links than the index keeps must settle. It did not: the overflow
+    /// was evicted, the next scan read the evicted targets as new, and
+    /// reinserting them evicted others — the list churned forever. Each churn
+    /// invalidated every view observing it, which drove SwiftUI back into the
+    /// terminal's update, which took another snapshot. That loop hung the app
+    /// on any agent whose screen carried enough links.
+    @MainActor
+    @Test func rescanningACrowdedScreenLeavesTheLinkListAlone() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+        // Equal-length and mutually non-prefixing, so the index's ambiguous
+        // prefix rule cannot quietly drop them instead.
+        let crowded = (0..<30)
+            .map { "https://example.com/p\(String(format: "%03d", $0))" }
+            .joined(separator: " \n")
+
+        store.viewportTextDidChange(crowded)
+        let settled = store.attachLinks.map(\.target)
+        #expect(!settled.isEmpty)
+
+        for _ in 0..<5 {
+            store.viewportTextDidChange(crowded)
+            #expect(
+                store.attachLinks.map(\.target) == settled,
+                "the same screen produced a different link list on rescan")
+        }
+
+        await store.leave()
+    }
+
     @Test func repeatedViewportLayoutsKeepTheLongestAmbiguousTarget() async throws {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
