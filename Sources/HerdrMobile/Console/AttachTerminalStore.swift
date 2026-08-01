@@ -166,9 +166,11 @@ final class AttachTerminalStore {
             return
         }
         self.session = session
-        let inputGeneration = input.beginSession { data in
-            session.send(data)
-        }
+        let inputGeneration = input.beginSession(
+            writer: { data in session.send(data) },
+            scroller: { sequence, rows in
+                session.scroll(sequence, rows: rows)
+            })
         self.inputGeneration = inputGeneration
         status = .live
         if let latestCols = cols, let latestRows = rows,

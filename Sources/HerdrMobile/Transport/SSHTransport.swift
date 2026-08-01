@@ -1185,10 +1185,10 @@ actor SSHTransport: Transport {
         // interactive TUI output bounded by SSH channel flow control, and
         // the consumer is a synchronous terminal feed.
         let (output, outputContinuation) = AsyncThrowingStream<Data, any Error>.makeStream()
-        // Deliberately unbounded (#22): keystrokes and resizes arrive at
-        // human rate, and silently shedding input would type the wrong
-        // thing; the writer task drains it for the channel's whole life.
-        let (input, inputContinuation) = AsyncStream<TerminalAttachInput>.makeStream()
+        // Reliable keystrokes and resizes remain ordered. Touch-scroll rows
+        // are lossy viewport intent, so the queue coalesces and bounds them
+        // instead of letting momentum block later typing on a slow link.
+        let input = TerminalAttachInputQueue()
         nextTerminalReaderID += 1
         let readerID = nextTerminalReaderID
         let readerTask = Task {
@@ -1200,7 +1200,7 @@ actor SSHTransport: Transport {
         // is synchronous), so the reader cannot have observed — let alone
         // ended — a state it is only now being recorded into.
         terminalChannelState = .streaming(readerID: readerID)
-        return TerminalAttachSession(output: output, input: inputContinuation) {
+        return TerminalAttachSession(output: output, input: input) {
             readerTask.cancel()
             await readerTask.value
         }
@@ -1253,7 +1253,7 @@ actor SSHTransport: Transport {
         readerID: UInt64,
         request: TerminalAttachRequest,
         bootstrapLine: String,
-        input: AsyncStream<TerminalAttachInput>,
+        input: TerminalAttachInputQueue,
         output continuation: AsyncThrowingStream<Data, any Error>.Continuation
     ) async {
         let pty = SSHChannelRequestEvent.PseudoTerminalRequest(
@@ -1275,16 +1275,23 @@ actor SSHTransport: Transport {
         do {
             try await client.withPTY(pty) { inbound, outbound in
                 try await outbound.write(ByteBuffer(string: bootstrapLine))
-                // The writer rides alongside the read loop; the one input
-                // stream keeps keystrokes and resizes ordered. Write
+                // The writer rides alongside the read loop. It asks the
+                // mixed-reliability queue for work only after the previous
+                // write completes, so a reliable key can discard stale
+                // scroll momentum before the next write begins. Write
                 // failures are swallowed: the channel death they signal
                 // surfaces through the read loop.
                 let writer = Task {
-                    for await item in input {
+                    while let item = await input.next() {
+                        guard !Task.isCancelled else { return }
                         do {
                             switch item {
                             case .keystrokes(let data):
                                 try await outbound.write(ByteBuffer(bytes: data))
+                            case .scroll(let data):
+                                try await outbound.write(ByteBuffer(bytes: data))
+                                try await Task.sleep(
+                                    for: TerminalAttachInputQueue.scrollPacingInterval)
                             case .resize(let cols, let rows):
                                 try await outbound.changeSize(
                                     cols: cols, rows: rows, pixelWidth: 0, pixelHeight: 0)
@@ -1315,6 +1322,8 @@ actor SSHTransport: Transport {
                 ? nil  // Explicit end() or a clean remote exit.
                 : TransportError.channelFailed(detail: "attach channel: \(error)")
         }
+        // Remote exit must also wake a writer suspended on the input queue.
+        input.finish()
         // State first, continuation second: a consumer resuming on the
         // stream's end must already see the channel as free.
         if terminalChannelState == .streaming(readerID: readerID) {

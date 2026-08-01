@@ -391,14 +391,14 @@
                 throw TransportError.terminalChannelAlreadyOpen
             }
             let (output, continuation) = AsyncThrowingStream<Data, any Error>.makeStream()
-            let (_, inputContinuation) = AsyncStream<TerminalAttachInput>.makeStream()
+            let input = TerminalAttachInputQueue()
             terminalContinuation = continuation
             continuation.yield(
                 Data(
                     (profile.terminalOutputs[request.target] ?? DemoScreenshotFixture.terminalOutput)
                         .utf8)
             )
-            return TerminalAttachSession(output: output, input: inputContinuation) {
+            return TerminalAttachSession(output: output, input: input) {
                 await self.endTerminal()
             }
         }

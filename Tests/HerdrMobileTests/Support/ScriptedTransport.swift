@@ -323,15 +323,15 @@ final actor ScriptedTransport: Transport {
         nextAttachID += 1
         let attachID = nextAttachID
         let (output, outputContinuation) = AsyncThrowingStream<Data, any Error>.makeStream()
-        let (input, inputContinuation) = AsyncStream<TerminalAttachInput>.makeStream()
+        let input = TerminalAttachInputQueue()
         liveAttachID = attachID
         attachContinuation = outputContinuation
         attachInputTask = Task {
-            for await item in input {
+            while let item = await input.next() {
                 self.recordAttachInput(item)
             }
         }
-        return TerminalAttachSession(output: output, input: inputContinuation) {
+        return TerminalAttachSession(output: output, input: input) {
             await self.endAttach(id: attachID)
         }
     }
@@ -410,7 +410,7 @@ final actor ScriptedTransport: Transport {
 
     /// Explicit `end()` on the session: finishes it gracefully, exactly like
     /// the real channel closed by its consumer. Drains the input recording
-    /// first — `end()` finishes the input stream before calling this — so
+    /// first — `end()` finishes the input queue before calling this — so
     /// tests can assert on `attachInputs` without polling.
     private func endAttach(id: UInt64) async {
         await attachInputTask?.value

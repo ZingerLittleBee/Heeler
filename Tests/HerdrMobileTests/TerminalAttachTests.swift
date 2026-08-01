@@ -12,6 +12,107 @@ import UIKit
 /// targets that cannot be quoted safely for both.
 @Suite("Terminal attach")
 struct TerminalAttachTests {
+    /// A slow SSH writer must not let lossy momentum-scroll input hold
+    /// reliable keyboard input hostage. Sixty rows model one ordinary flick;
+    /// the 20 ms drain delay makes the old unbounded FIFO take about 1.2 s.
+    @MainActor
+    @Test func weakNetworkScrollBacklogDoesNotDelayKeyboardInput() async throws {
+        let (output, outputContinuation) = AsyncThrowingStream<Data, any Error>.makeStream()
+        let input = TerminalAttachInputQueue()
+        let session = TerminalAttachSession(
+            output: output,
+            input: input,
+            ender: { outputContinuation.finish() })
+        let inputController = TerminalInputController()
+        let generation = inputController.beginSession(
+            writer: { session.send($0) },
+            scroller: { sequence, rows in session.scroll(sequence, rows: rows) })
+        defer { inputController.endSession(generation) }
+
+        let marker = Data("x".utf8)
+        var markerArrival: ContinuousClock.Instant?
+        let writer = Task { @MainActor in
+            while let item = await input.next() {
+                switch item {
+                case .keystrokes(let data):
+                    if data == marker {
+                        markerArrival = .now
+                        return
+                    }
+                case .scroll:
+                    try? await Task.sleep(for: .milliseconds(20))
+                case .resize:
+                    break
+                }
+            }
+        }
+        defer { writer.cancel() }
+
+        var emitted = 0
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSend: { inputController.send($0) },
+            onScroll: { sequence, rows in
+                emitted += rows
+                inputController.scroll(sequence, rows: rows)
+            })
+        terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))
+        #expect(terminal.scrollTouch(translationY: 960) == 60)
+        #expect(emitted == 60)
+
+        let typedAt = ContinuousClock.now
+        terminal.terminalSession.sendInput(marker)
+        let arrivalDeadline = typedAt + .seconds(3)
+        while markerArrival == nil, ContinuousClock.now < arrivalDeadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        let arrivedAt = try #require(markerArrival)
+        let latency = typedAt.duration(to: arrivedAt)
+        #expect(
+            latency < .milliseconds(250),
+            "keyboard input waited behind scroll backlog: \(latency)")
+        await session.end()
+    }
+
+    @Test func reliableInputDiscardsPendingScrollMomentum() async {
+        let input = TerminalAttachInputQueue()
+        let scroll = Data("scroll".utf8)
+        let key = Data("x".utf8)
+
+        input.scroll(scroll, rows: 60)
+        input.send(key)
+
+        #expect(await input.next() == .keystrokes(key))
+        input.finish()
+        #expect(await input.next() == nil)
+    }
+
+    @Test func scrollDirectionChangeReplacesPendingMomentum() async {
+        let input = TerminalAttachInputQueue()
+        let older = Data("older".utf8)
+        let newer = Data("newer".utf8)
+
+        input.scroll(older, rows: 8)
+        input.scroll(newer, rows: 2)
+
+        #expect(await input.next() == .scroll(newer + newer))
+        input.finish()
+    }
+
+    @Test func scrollBacklogIsBoundedAndWrittenInSmallBatches() async {
+        let input = TerminalAttachInputQueue()
+        let sequence = Data("wheel".utf8)
+        let batch = sequence + sequence + sequence
+
+        input.scroll(sequence, rows: 60)
+
+        for _ in 0..<4 {
+            #expect(await input.next() == .scroll(batch))
+        }
+        input.finish()
+        #expect(await input.next() == nil)
+    }
+
     @MainActor
     @Test func attachStartsWithTheIOSInputMethodAndKeyboardSwitcher() {
         let terminal = TerminalScreenView.makeConfiguredTerminal()
@@ -400,10 +501,14 @@ struct TerminalAttachTests {
     }
 
     @MainActor
-    @Test func terminalTouchPanEmitsRemoteTUIMouseWheelInput() async {
-        var sent = Data()
+    @Test func terminalTouchPanEmitsSemanticRemoteTUIMouseWheelInput() {
+        var scrolledSequence = Data()
+        var scrolledRows = 0
         let terminal = TerminalScreenView.makeConfiguredTerminal(
-            onSend: { sent.append($0) })
+            onScroll: { sequence, rows in
+                scrolledSequence = sequence
+                scrolledRows += rows
+            })
         let directTouch = NSNumber(value: UITouch.TouchType.direct.rawValue)
         let enabledTouchPans: [UIPanGestureRecognizer] =
             terminal.gestureRecognizers?.compactMap { gesture in
@@ -417,10 +522,9 @@ struct TerminalAttachTests {
 
         terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))
         #expect(terminal.scrollTouch(translationY: 32) == 2)
-        await Task.yield()
 
-        #expect(
-            sent == Data("\u{1B}[<64;40;12M\u{1B}[<64;40;12M".utf8))
+        #expect(scrolledSequence == Data("\u{1B}[<64;40;12M".utf8))
+        #expect(scrolledRows == 2)
     }
 
     @MainActor

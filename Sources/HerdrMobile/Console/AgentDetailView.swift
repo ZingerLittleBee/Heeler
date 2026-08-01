@@ -65,6 +65,9 @@ struct AgentDetailView: View {
             attach.viewportTextDidChange(text)
         }
         screen.onSend = { keystrokes in attach.send(keystrokes) }
+        screen.onScroll = { sequence, rows in
+            attach.scroll(sequence, rows: rows)
+        }
         screen.onPaste = { text, bracketed in
             attach.requestPaste(text, bracketedPaste: bracketed)
         }

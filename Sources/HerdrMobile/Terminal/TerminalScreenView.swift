@@ -21,6 +21,7 @@ struct TerminalScreenView: UIViewRepresentable {
     var onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)?
     var onViewportTextChanged: ((String) -> Void)?
     var onSend: ((Data) -> Void)?
+    var onScroll: ((_ sequence: Data, _ rows: Int) -> Void)?
     var onPaste: ((_ text: String, _ bracketed: Bool) -> Void)?
     var onSnippet: ((_ text: String, _ bracketed: Bool) -> Void)?
     /// Fills the Keys keyboard's Snippets and Appearance tabs. Without one the
@@ -40,6 +41,7 @@ struct TerminalScreenView: UIViewRepresentable {
             onSizeChanged: onSizeChanged,
             onViewportTextChanged: onViewportTextChanged,
             onSend: onSend,
+            onScroll: onScroll,
             onPaste: onPaste,
             onSnippet: onSnippet,
             keysContext: keysContext,
@@ -59,6 +61,7 @@ struct TerminalScreenView: UIViewRepresentable {
         onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)? = nil,
         onViewportTextChanged: ((String) -> Void)? = nil,
         onSend: ((Data) -> Void)? = nil,
+        onScroll: ((_ sequence: Data, _ rows: Int) -> Void)? = nil,
         onPaste: ((_ text: String, _ bracketed: Bool) -> Void)? = nil,
         onSnippet: ((_ text: String, _ bracketed: Bool) -> Void)? = nil,
         keysContext: TerminalKeysContext? = nil,
@@ -71,6 +74,7 @@ struct TerminalScreenView: UIViewRepresentable {
             onSizeChanged: onSizeChanged,
             onViewportTextChanged: onViewportTextChanged,
             onSend: onSend,
+            onScroll: onScroll,
             onPaste: onPaste,
             onSnippet: onSnippet,
             keysContext: keysContext,
@@ -86,6 +90,7 @@ struct TerminalScreenView: UIViewRepresentable {
             onSizeChanged: onSizeChanged,
             onViewportTextChanged: onViewportTextChanged,
             onSend: onSend,
+            onScroll: onScroll,
             onPaste: onPaste,
             onSnippet: onSnippet)
         view.keysContext = keysContext
@@ -132,28 +137,37 @@ private final class TerminalSessionCallbackBridge {
     var onSizeChanged: ((Int, Int) -> Void)?
     var onViewportTextChanged: ((String) -> Void)?
     var onSend: ((Data) -> Void)?
+    var onScroll: ((Data, Int) -> Void)?
     var onPaste: ((String, Bool) -> Void)?
     var onSnippet: ((String, Bool) -> Void)?
     var onViewport: ((InMemoryTerminalViewport) -> Void)?
+    var onReliableInput: (() -> Void)?
 
     init(
         onSizeChanged: ((Int, Int) -> Void)?,
         onViewportTextChanged: ((String) -> Void)?,
         onSend: ((Data) -> Void)?,
+        onScroll: ((Data, Int) -> Void)?,
         onPaste: ((String, Bool) -> Void)?,
         onSnippet: ((String, Bool) -> Void)?
     ) {
         self.onSizeChanged = onSizeChanged
         self.onViewportTextChanged = onViewportTextChanged
         self.onSend = onSend
+        self.onScroll = onScroll
         self.onPaste = onPaste
         self.onSnippet = onSnippet
     }
 
     nonisolated func send(_ data: Data) {
         Task { @MainActor [weak self] in
+            self?.onReliableInput?()
             self?.onSend?(data)
         }
+    }
+
+    func scroll(_ sequence: Data, rows: Int) {
+        onScroll?(sequence, rows)
     }
 
     nonisolated func resize(_ viewport: InMemoryTerminalViewport) {
@@ -277,6 +291,7 @@ final class HerdrTerminalView: UITerminalView {
         onSizeChanged: ((Int, Int) -> Void)?,
         onViewportTextChanged: ((String) -> Void)?,
         onSend: ((Data) -> Void)?,
+        onScroll: ((Data, Int) -> Void)?,
         onPaste: ((String, Bool) -> Void)?,
         onSnippet: ((String, Bool) -> Void)?,
         keysContext: TerminalKeysContext?,
@@ -289,6 +304,7 @@ final class HerdrTerminalView: UITerminalView {
             onSizeChanged: onSizeChanged,
             onViewportTextChanged: onViewportTextChanged,
             onSend: onSend,
+            onScroll: onScroll,
             onPaste: onPaste,
             onSnippet: onSnippet)
         self.callbackBridge = callbackBridge
@@ -318,6 +334,9 @@ final class HerdrTerminalView: UITerminalView {
         callbackBridge.onViewport = { [weak self] viewport in
             self?.updateTouchScrollMetrics(viewport)
         }
+        callbackBridge.onReliableInput = { [weak self] in
+            self?.reliableInputDidBegin()
+        }
         installTouchScrolling()
         installZoom()
     }
@@ -331,12 +350,14 @@ final class HerdrTerminalView: UITerminalView {
         onSizeChanged: ((Int, Int) -> Void)?,
         onViewportTextChanged: ((String) -> Void)?,
         onSend: ((Data) -> Void)?,
+        onScroll: ((Data, Int) -> Void)?,
         onPaste: ((String, Bool) -> Void)?,
         onSnippet: ((String, Bool) -> Void)?
     ) {
         callbackBridge.onSizeChanged = onSizeChanged
         callbackBridge.onViewportTextChanged = onViewportTextChanged
         callbackBridge.onSend = onSend
+        callbackBridge.onScroll = onScroll
         callbackBridge.onPaste = onPaste
         callbackBridge.onSnippet = onSnippet
     }
@@ -452,12 +473,14 @@ final class HerdrTerminalView: UITerminalView {
 
     func requestPaste(_ text: String?) {
         guard isLocalInputEnabled, let text else { return }
+        reliableInputDidBegin()
         callbackBridge.paste(text, bracketed: usesBracketedPaste)
     }
 
     /// Sends a Snippet the user tapped in the Keys keyboard.
     func sendSnippet(_ snippet: Snippet) {
         guard isLocalInputEnabled else { return }
+        reliableInputDidBegin()
         callbackBridge.snippet(snippet.body, bracketed: usesBracketedPaste)
     }
 
@@ -630,9 +653,7 @@ final class HerdrTerminalView: UITerminalView {
             columns: terminalGridSize.columns,
             rows: terminalGridSize.rows)
         {
-            for _ in 0..<rowCount {
-                terminalSession.sendInput(sequence)
-            }
+            callbackBridge.scroll(sequence, rows: rowCount)
         } else {
             let localRows = towardOlderContent ? -rowCount : rowCount
             _ = performBindingAction("scroll_page_lines:\(localRows)")
@@ -829,5 +850,10 @@ final class HerdrTerminalView: UITerminalView {
         touchScrollMomentumDisplayLink = nil
         touchScrollMomentumVelocityY = 0
         touchScrollMomentumTimestamp = 0
+    }
+
+    private func reliableInputDidBegin() {
+        stopTouchScrollMomentum()
+        touchScrollAccumulator.reset()
     }
 }
