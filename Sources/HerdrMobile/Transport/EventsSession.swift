@@ -150,9 +150,13 @@ actor EventsSession {
     /// graceful stream end as a failure.
     private var resubscribeRequested = false
     private var liveStream: HerdrEventStream?
+    /// Identifies the current activation so a cancelled connection attempt
+    /// cannot install itself after a later resume has already started.
+    private var activationGeneration: UInt64 = 0
     private var runTask: Task<Void, Never>?
     private var keepaliveTask: Task<Void, Never>?
     private var backoffSleep: Task<Void, any Error>?
+    private var backoffGeneration: UInt64?
     /// The most recently enqueued lifecycle transition; each new one chains
     /// behind it, so transitions never interleave across the suspension
     /// points inside a teardown (see the actor doc).
@@ -263,7 +267,9 @@ actor EventsSession {
     private func activate() {
         guard phase == .suspended else { return }
         phase = .active
-        runTask = Task { await self.run() }
+        activationGeneration &+= 1
+        let generation = activationGeneration
+        runTask = Task { await self.run(generation: generation) }
     }
 
     private func restart() async {
@@ -322,19 +328,19 @@ actor EventsSession {
     // MARK: Reconnect loop
 
     /// One activation's lifetime: connect/subscribe, stream, and reconnect
-    /// with bounded backoff, until the phase leaves `.active`. Exactly one
-    /// run loop exists at a time — `suspend()`/`end()` await its exit before
-    /// returning, and only `resume()` starts one.
-    private func run() async {
+    /// with bounded backoff, until the phase or generation changes. A stale
+    /// run may outlive suspend while an SSH bridge ignores cancellation, but
+    /// it can never install a Transport into a newer activation.
+    private func run(generation: UInt64) async {
         var attempt = 0
-        while phase == .active {
+        while activationIsCurrent(generation) {
             let stream: HerdrEventStream
             do {
-                let transport = try await ensureTransport()
-                guard phase == .active else { break }
+                let transport = try await ensureTransport(for: generation)
+                guard activationIsCurrent(generation) else { break }
                 stream = try await transport.subscribeToEvents(subscriptions)
             } catch {
-                guard phase == .active else { break }
+                guard activationIsCurrent(generation) else { break }
                 let failure = Self.transportFailure(error)
                 if failure == .timedOut {
                     // The connection swallowed a request whole; do not trust
@@ -346,10 +352,11 @@ actor EventsSession {
                     return
                 }
                 attempt += 1
-                await emitReconnectingAndBackOff(attempt: attempt, failure: failure)
+                await emitReconnectingAndBackOff(
+                    attempt: attempt, failure: failure, generation: generation)
                 continue
             }
-            if phase != .active {
+            if !activationIsCurrent(generation) {
                 await stream.end()
                 break
             }
@@ -370,9 +377,11 @@ actor EventsSession {
             } catch {
                 streamFailure = Self.transportFailure(error)
             }
-            stopKeepalive()
-            liveStream = nil
-            guard phase == .active else { break }
+            if liveStream === stream {
+                stopKeepalive()
+                liveStream = nil
+            }
+            guard activationIsCurrent(generation) else { break }
             if resubscribeRequested {
                 // Deliberate teardown by updateSubscriptions: re-subscribe
                 // right away (the connection is still trusted), even if the
@@ -390,14 +399,18 @@ actor EventsSession {
                 return
             }
             attempt += 1
-            await emitReconnectingAndBackOff(attempt: attempt, failure: failure)
+            await emitReconnectingAndBackOff(
+                attempt: attempt, failure: failure, generation: generation)
         }
     }
 
     /// The Host's live transport: reuses the current one while its SSH
     /// connection is alive and trusted, otherwise closes it and establishes
     /// a fresh one — pinged first, as on every new connection path.
-    private func ensureTransport() async throws -> any Transport {
+    private func ensureTransport(for generation: UInt64) async throws -> any Transport {
+        guard activationIsCurrent(generation) else {
+            throw TransportError.cancelled
+        }
         if let transport = currentTransport {
             if !transportSuspect, await transport.isConnected {
                 return transport
@@ -407,7 +420,13 @@ actor EventsSession {
         }
         let transport = try await connect()
         do {
+            guard activationIsCurrent(generation) else {
+                throw TransportError.cancelled
+            }
             _ = try await transport.ping()
+            guard activationIsCurrent(generation) else {
+                throw TransportError.cancelled
+            }
         } catch {
             try? await transport.close()
             throw error
@@ -423,31 +442,48 @@ actor EventsSession {
         return transport
     }
 
-    private func emitReconnectingAndBackOff(attempt: Int, failure: TransportError) async {
+    private func activationIsCurrent(_ generation: UInt64) -> Bool {
+        phase == .active && activationGeneration == generation && !Task.isCancelled
+    }
+
+    private func emitReconnectingAndBackOff(
+        attempt: Int,
+        failure: TransportError,
+        generation: UInt64
+    ) async {
         let delay = reconnectPolicy.delay(beforeAttempt: attempt)
         yieldUpdate(.status(.reconnecting(attempt: attempt, delay: delay, failure: failure)))
         let sleep = Task { try await Task.sleep(for: delay) }
         backoffSleep = sleep
+        backoffGeneration = generation
         try? await sleep.value
-        backoffSleep = nil
+        if backoffGeneration == generation {
+            backoffSleep = nil
+            backoffGeneration = nil
+        }
     }
 
-    /// Ends the current activation and closes everything: interrupts a
-    /// backoff wait, ends the channel by explicit close, awaits the run
-    /// loop's exit, then closes the SSH connection.
+    /// Ends the current activation and closes everything. The run task is
+    /// cancelled but deliberately not awaited: an SSH/NIO bridge may ignore
+    /// task cancellation while a connection is stalled. Generation checks
+    /// make any late result harmless, while an installed Transport is still
+    /// closed explicitly before lifecycle teardown returns.
     private func windDown() async {
         backoffSleep?.cancel()
+        backoffSleep = nil
+        backoffGeneration = nil
         stopKeepalive()
-        if let stream = liveStream {
-            await stream.end()
-        }
-        if let task = runTask {
-            await task.value
-            runTask = nil
-        }
+        let task = runTask
+        runTask = nil
+        task?.cancel()
+        let stream = liveStream
+        liveStream = nil
         if let transport = currentTransport {
             currentTransport = nil
             try? await transport.close()
+        }
+        if let stream {
+            await stream.end()
         }
         await waitForTerminalIdle()
         transportSuspect = false
@@ -464,10 +500,10 @@ actor EventsSession {
             while !Task.isCancelled {
                 try? await Task.sleep(for: keepalive.interval)
                 if Task.isCancelled { break }
-                guard await self.connectionIsIdle(within: keepalive.interval) else { continue }
+                guard self.connectionIsIdle(within: keepalive.interval) else { continue }
                 do {
                     _ = try await transport.ping()
-                    await self.noteConnectionActivity()
+                    self.noteConnectionActivity()
                 } catch is CancellationError {
                     break
                 } catch TransportError.cancelled {
