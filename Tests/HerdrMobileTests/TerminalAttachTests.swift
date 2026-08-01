@@ -633,20 +633,25 @@ struct TerminalAttachTests {
         terminal.requestKeyboard()
         let accessory = try #require(
             terminal.inputAccessoryView as? TerminalKeyboardAccessory)
+        let contentView = accessory.toolbarContentView
         let dismiss = try #require(
-            accessory.subviews.compactMap { $0 as? UIButton }.first {
+            contentView.subviews.compactMap { $0 as? UIButton }.first {
                 $0.accessibilityLabel == "Dismiss keyboard"
             })
 
         dismiss.sendActions(for: .touchUpInside)
         #expect(!terminal.isFirstResponder)
-        #expect(accessory.alpha == 0)
-        #expect(accessory.transform.ty == TerminalKeyboardAccessory.preferredHeight)
+        #expect(accessory.alpha == 1)
+        #expect(accessory.transform == .identity)
+        #expect(contentView.alpha == 0)
+        #expect(contentView.transform.ty == TerminalKeyboardAccessory.preferredHeight)
 
         terminal.requestKeyboard()
         #expect(terminal.isFirstResponder)
         #expect(accessory.alpha == 1)
         #expect(accessory.transform == .identity)
+        #expect(contentView.alpha == 1)
+        #expect(contentView.transform == .identity)
         terminal.dismissKeyboard()
 
         // Stranded accessory: no first responder left to ask, and the button

@@ -152,6 +152,7 @@ final class TerminalKeyboardAccessory: UIInputView {
     private static let glyphPointSize: CGFloat = 12
 
     private weak var terminalView: HerdrTerminalView?
+    private(set) var toolbarContentView = UIView()
     private let modeControl = UISegmentedControl(items: ["Text", "Keys"])
     private(set) lazy var pasteControl: UIPasteControl = {
         var configuration = UIPasteControl.Configuration()
@@ -188,7 +189,8 @@ final class TerminalKeyboardAccessory: UIInputView {
         super.init(frame: frame, inputViewStyle: .keyboard)
         allowsSelfSizing = true
         autoresizingMask = [.flexibleWidth]
-        backgroundColor = Self.surface
+        backgroundColor = .clear
+        configureContentView()
         configureModeControl()
         configurePasteControl()
         configureNewLineButton()
@@ -223,16 +225,29 @@ final class TerminalKeyboardAccessory: UIInputView {
             delay: 0,
             options: [options, .allowUserInteraction, .beginFromCurrentState]
         ) {
-            self.alpha = 0
-            self.transform = CGAffineTransform(
+            self.toolbarContentView.alpha = 0
+            self.toolbarContentView.transform = CGAffineTransform(
                 translationX: 0, y: Self.preferredHeight)
         }
     }
 
     func resetDismissalAppearance() {
-        layer.removeAllAnimations()
-        alpha = 1
-        transform = .identity
+        toolbarContentView.layer.removeAllAnimations()
+        toolbarContentView.alpha = 1
+        toolbarContentView.transform = .identity
+    }
+
+    private func configureContentView() {
+        toolbarContentView.translatesAutoresizingMaskIntoConstraints = false
+        toolbarContentView.backgroundColor = Self.surface
+        addSubview(toolbarContentView)
+
+        NSLayoutConstraint.activate([
+            toolbarContentView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            toolbarContentView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            toolbarContentView.topAnchor.constraint(equalTo: topAnchor),
+            toolbarContentView.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
     }
 
     private func configureModeControl() {
@@ -242,13 +257,13 @@ final class TerminalKeyboardAccessory: UIInputView {
             [.font: UIFont.preferredFont(forTextStyle: .subheadline)], for: .normal)
         modeControl.addTarget(self, action: #selector(modeChanged), for: .valueChanged)
         modeControl.accessibilityLabel = "Terminal keyboard mode"
-        addSubview(modeControl)
+        toolbarContentView.addSubview(modeControl)
 
         let preferredWidth = modeControl.widthAnchor.constraint(equalToConstant: 184)
         preferredWidth.priority = .defaultHigh
         NSLayoutConstraint.activate([
-            modeControl.centerXAnchor.constraint(equalTo: centerXAnchor),
-            modeControl.centerYAnchor.constraint(equalTo: centerYAnchor),
+            modeControl.centerXAnchor.constraint(equalTo: toolbarContentView.centerXAnchor),
+            modeControl.centerYAnchor.constraint(equalTo: toolbarContentView.centerYAnchor),
             preferredWidth,
             modeControl.widthAnchor.constraint(greaterThanOrEqualToConstant: 104),
             modeControl.heightAnchor.constraint(equalToConstant: 32),
@@ -257,11 +272,12 @@ final class TerminalKeyboardAccessory: UIInputView {
 
     private func configurePasteControl() {
         pasteControl.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(pasteControl)
+        toolbarContentView.addSubview(pasteControl)
 
         NSLayoutConstraint.activate([
-            pasteControl.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            pasteControl.centerYAnchor.constraint(equalTo: centerYAnchor),
+            pasteControl.leadingAnchor.constraint(
+                equalTo: toolbarContentView.leadingAnchor, constant: 8),
+            pasteControl.centerYAnchor.constraint(equalTo: toolbarContentView.centerYAnchor),
             pasteControl.widthAnchor.constraint(equalToConstant: 44),
             pasteControl.heightAnchor.constraint(equalToConstant: 44),
         ])
@@ -269,13 +285,13 @@ final class TerminalKeyboardAccessory: UIInputView {
 
     private func configureNewLineButton() {
         newLineButton.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(newLineButton)
+        toolbarContentView.addSubview(newLineButton)
 
         NSLayoutConstraint.activate([
             newLineButton.leadingAnchor.constraint(equalTo: pasteControl.trailingAnchor, constant: 4),
             newLineButton.trailingAnchor.constraint(
                 lessThanOrEqualTo: modeControl.leadingAnchor, constant: -4),
-            newLineButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            newLineButton.centerYAnchor.constraint(equalTo: toolbarContentView.centerYAnchor),
             newLineButton.widthAnchor.constraint(equalToConstant: 44),
             newLineButton.heightAnchor.constraint(equalToConstant: 44),
         ])
@@ -293,13 +309,14 @@ final class TerminalKeyboardAccessory: UIInputView {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.addTarget(self, action: #selector(dismissKeyboard), for: .touchUpInside)
         button.accessibilityLabel = "Dismiss keyboard"
-        addSubview(button)
+        toolbarContentView.addSubview(button)
 
         NSLayoutConstraint.activate([
-            button.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            button.trailingAnchor.constraint(
+                equalTo: toolbarContentView.trailingAnchor, constant: -8),
             modeControl.trailingAnchor.constraint(
                 lessThanOrEqualTo: button.leadingAnchor, constant: -4),
-            button.centerYAnchor.constraint(equalTo: centerYAnchor),
+            button.centerYAnchor.constraint(equalTo: toolbarContentView.centerYAnchor),
             button.widthAnchor.constraint(equalToConstant: 44),
             button.heightAnchor.constraint(equalToConstant: 44),
         ])
@@ -320,7 +337,7 @@ final class TerminalKeyboardAccessory: UIInputView {
     @objc private func dismissKeyboard() {
         if let terminalView, terminalView.isFirstResponder {
             let resigned = terminalView.dismissKeyboard()
-            if resigned, alpha == 1 {
+            if resigned, toolbarContentView.alpha == 1 {
                 animateDismissal()
             } else if !resigned {
                 resetDismissalAppearance()
