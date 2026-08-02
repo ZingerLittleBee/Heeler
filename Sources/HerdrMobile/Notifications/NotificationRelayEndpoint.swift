@@ -4,13 +4,15 @@ import Foundation
 /// the settings surface. The plugin carries the same value as its runtime
 /// default; changing the production endpoint requires updating both sides.
 enum NotificationRelayEndpoint {
-    static let productionBaseURLString = "https://herdr-apns.bybee.dev"
+    static let productionBaseURLString = "https://heeler-apns.bybee.dev"
 
-    /// The previous production endpoint. Treat it as the default rather than a
-    /// custom override so existing installations migrate on their next
-    /// Notification Registration.
-    static let legacyProductionBaseURLString =
-        "https://herdr-push-relay.69709991236.workers.dev"
+    /// Endpoints that shipped as the production default before. Treat them as
+    /// the default rather than a custom override so existing installations
+    /// migrate on their next Notification Registration.
+    static let legacyProductionBaseURLStrings = [
+        "https://herdr-push-relay.69709991236.workers.dev",
+        "https://herdr-apns.bybee.dev",
+    ]
 
     static var productionBaseURL: URL? {
         URL(string: productionBaseURLString)
@@ -18,14 +20,14 @@ enum NotificationRelayEndpoint {
 
     static func resolve(customBaseURL: URL?) -> URL? {
         guard let customBaseURL else { return productionBaseURL }
-        if normalized(customBaseURL.absoluteString) == legacyProductionBaseURLString {
+        if isLegacyProductionBaseURL(customBaseURL.absoluteString) {
             return productionBaseURL
         }
         return customBaseURL
     }
 
     static func isLegacyProductionBaseURL(_ value: String) -> Bool {
-        normalized(value) == legacyProductionBaseURLString
+        legacyProductionBaseURLStrings.contains(normalized(value))
     }
 
     private static func normalized(_ value: String) -> String {

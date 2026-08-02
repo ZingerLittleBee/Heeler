@@ -21,7 +21,7 @@ struct NotificationRelaySettingsTests {
         #expect(!settings.hasInvalidEntry)
         #expect(
             NotificationRelayEndpoint.productionBaseURL?.absoluteString
-                == "https://herdr-apns.bybee.dev")
+                == "https://heeler-apns.bybee.dev")
     }
 
     @Test func acceptsAnHTTPSBaseURL() {
@@ -85,6 +85,6 @@ struct NotificationRelaySettingsTests {
         #expect(defaults.string(forKey: "notification-relay-url") == nil)
         #expect(
             NotificationRelayEndpoint.resolve(customBaseURL: settings.relayURL)?
-                .absoluteString == "https://herdr-apns.bybee.dev")
+                .absoluteString == "https://heeler-apns.bybee.dev")
     }
 }

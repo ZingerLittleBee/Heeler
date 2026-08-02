@@ -25,7 +25,7 @@ iOS app requires Apple's push service (APNs), and reaching APNs requires an
 Apple push key bound to this app's bundle id. To avoid asking every user to
 provision Apple credentials, notifications flow through a **push relay**: a
 small, stateless, open-source forwarder the developer hosts at
-`https://herdr-apns.bybee.dev`.
+`https://heeler-apns.bybee.dev`.
 
 It is a push relay, not a server: it keeps no accounts, no database, and no
 message history. It holds the Apple push key, signs each request to Apple, and

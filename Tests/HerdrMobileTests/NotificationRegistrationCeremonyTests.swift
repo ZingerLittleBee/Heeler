@@ -166,7 +166,7 @@ struct NotificationRegistrationCeremonyTests {
 
         let written = try #require(await transport.notificationConfig)
         let config = try NotificationConfigFile.decode(written)
-        #expect(config.relayURL == "https://herdr-apns.bybee.dev")
+        #expect(config.relayURL == "https://heeler-apns.bybee.dev")
     }
 
     @Test func registerWithARelayURLWritesItPreservingOtherFields() async throws {
@@ -202,21 +202,22 @@ struct NotificationRegistrationCeremonyTests {
         #expect(await transport.replacedNotificationConfigs.count == 1)
     }
 
-    @Test func registerMigratesThePreviousProductionRelay() async throws {
+    // Driven by the endpoint list itself, so retiring another production
+    // endpoint cannot ship without its migration being covered.
+    @Test(arguments: NotificationRelayEndpoint.legacyProductionBaseURLStrings)
+    func registerMigratesAPreviousProductionRelay(_ legacy: String) async throws {
         let transport = ScriptedTransport()
         await transport.setNotificationConfig(
-            Data(
-                #"{"relay_url":"https://herdr-push-relay.69709991236.workers.dev"}"#.utf8))
+            Data(#"{"relay_url":"\#(legacy)"}"#.utf8))
 
         try await ceremony.register(
             hostID: hostID, hostName: "mac-studio", deviceToken: token,
-            relayBaseURL: URL(
-                string: "https://herdr-push-relay.69709991236.workers.dev"),
+            relayBaseURL: URL(string: legacy),
             over: transport)
 
         let written = try #require(await transport.notificationConfig)
         let config = try NotificationConfigFile.decode(written)
-        #expect(config.relayURL == "https://herdr-apns.bybee.dev")
+        #expect(config.relayURL == NotificationRelayEndpoint.productionBaseURLString)
     }
 
     @Test func removeSurfacesAFailedRemoteRemovalAndKeepsTheKey() async throws {

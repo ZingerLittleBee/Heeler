@@ -80,7 +80,7 @@ struct NotificationRegistrationE2ETests {
         #expect(ours["notify"]?["done"] == .bool(false))
         let notifyConfig = try NotificationConfigFile.decode(
             try Data(contentsOf: configDirectory.appendingPathComponent("notify.json")))
-        #expect(notifyConfig.relayURL == "https://herdr-apns.bybee.dev")
+        #expect(notifyConfig.relayURL == "https://heeler-apns.bybee.dev")
         // Atomic replaces leave no temp files behind.
         #expect(
             try Set(FileManager.default.contentsOfDirectory(atPath: configDirectory.path))
