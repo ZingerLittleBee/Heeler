@@ -12,6 +12,7 @@ struct TerminalKeysKeyboardTests {
 
     private func makeContext(
         defaults: UserDefaults,
+        skills: TerminalSkillsContext? = nil,
         onManage: @escaping () -> Void = {}
     ) -> TerminalKeysContext {
         TerminalKeysContext(
@@ -20,6 +21,7 @@ struct TerminalKeysKeyboardTests {
                 zoom: TerminalZoomSettings(defaults: defaults),
                 fonts: TerminalFontSettings(defaults: defaults),
                 snippets: SnippetStore(defaults: defaults)),
+            skills: skills,
             manageSnippets: onManage)
     }
 
@@ -214,6 +216,41 @@ struct TerminalKeysKeyboardTests {
 
         #expect(keyboard.pager.contentSize.width == Self.pageWidth)
         #expect(keyboard.tab(nearestTo: Self.pageWidth, pageWidth: Self.pageWidth) == nil)
+    }
+
+    /// The pager builds every pane the moment the keyboard comes up, so the
+    /// probe must wait for the one signal that means "the user wants the
+    /// list": the Skills tab actually being reached.
+    @Test func skillsLoadLazilyOnFirstSelection() async throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        var fetches = 0
+        let store = SkillsPaneStore { _ in
+            fetches += 1
+            return []
+        }
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            keysContext: makeContext(
+                defaults: defaults, skills: TerminalSkillsContext(store: store)))
+        terminal.setKeyboardMode(.controls)
+        let keyboard = try #require(terminal.keysKeyboard)
+        keyboard.frame = CGRect(x: 0, y: 0, width: Self.pageWidth, height: 224)
+        keyboard.layoutIfNeeded()
+
+        // Raising the keyboard built all four panes; none of that may probe.
+        for _ in 0..<10 { await Task.yield() }
+        #expect(fetches == 0)
+
+        keyboard.select(.skills)
+        for _ in 0..<100 where store.phase != .loaded { await Task.yield() }
+        #expect(store.phase == .loaded)
+        #expect(fetches == 1)
+
+        // Leaving and coming back reuses what is loaded.
+        keyboard.returnToControls()
+        keyboard.select(.skills)
+        for _ in 0..<10 { await Task.yield() }
+        #expect(fetches == 1)
     }
 
     @Test func everyTabHasItsOwnIconAndLabel() {
