@@ -121,7 +121,7 @@ struct SkillRowButton: View {
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("/\(skill.name)")
+                Text(skill.command)
                     .font(.subheadline.weight(.medium))
                     .fontDesign(.monospaced)
                     .foregroundStyle(.primary)
@@ -140,6 +140,6 @@ struct SkillRowButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(skill.name)
-        .accessibilityHint("Inserts /\(skill.name) without sending it")
+        .accessibilityHint("Inserts \(skill.command) without sending it")
     }
 }

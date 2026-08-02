@@ -5,19 +5,36 @@ import Foundation
 /// `AgentSkill`s. Markers keep login-shell noise harmless, exactly like the
 /// socat and agent-availability probes.
 enum SkillProbe {
-    static let projectFileMarker = "__HERDR_MOBILE_SKILL_P__="
-    static let globalFileMarker = "__HERDR_MOBILE_SKILL_G__="
+    /// File markers carry the source's index so the parser can map each file
+    /// back to its scope and command prefix: `__HERDR_MOBILE_SKILL_3__=path`.
+    static let fileMarkerPrefix = "__HERDR_MOBILE_SKILL_"
     static let endMarker = "__HERDR_MOBILE_SKILL_END__"
     /// Frontmatter lives at the top of the file; capping the read keeps a
     /// directory full of large skills from flooding the channel.
     static let maximumBytesPerFile = 4096
 
-    /// A source resolved against this Host: scope plus the already-quoted
-    /// absolute directory (`RemoteShellPath.quotedAbsolute` output).
+    static func fileMarker(sourceIndex: Int) -> String {
+        "\(fileMarkerPrefix)\(sourceIndex)__="
+    }
+
+    /// A source resolved against this Host: scope and prefix plus the
+    /// already-quoted absolute directory (`RemoteShellPath.quotedAbsolute`
+    /// output).
     struct ResolvedSource: Sendable, Equatable {
         let scope: AgentSkill.Scope
         let quotedDirectory: String
         let layout: SkillSource.Layout
+        let commandPrefix: String
+
+        init(
+            scope: AgentSkill.Scope, quotedDirectory: String,
+            layout: SkillSource.Layout, commandPrefix: String = "/"
+        ) {
+            self.scope = scope
+            self.quotedDirectory = quotedDirectory
+            self.layout = layout
+            self.commandPrefix = commandPrefix
+        }
     }
 
     /// One `/bin/sh` command covering every source. Directories are passed as
@@ -26,12 +43,9 @@ enum SkillProbe {
     /// exits 0 — a missing directory is an empty pane, not an error.
     static func command(for sources: [ResolvedSource]) -> String {
         let loops = sources.enumerated().map { index, source in
-            let argument = "$\(index + 1)"
-            let marker =
-                source.scope == .project ? projectFileMarker : globalFileMarker
-            return "for f in \"\(argument)\"\(glob(for: source.layout)); do "
+            "for f in \"$\(index + 1)\"\(glob(for: source.layout)); do "
                 + "[ -f \"$f\" ] || continue; "
-                + "printf \"\(marker)%s\\n\" \"$f\"; "
+                + "printf \"\(fileMarker(sourceIndex: index))%s\\n\" \"$f\"; "
                 + "head -c \(maximumBytesPerFile) \"$f\"; "
                 + "printf \"\\n\(endMarker)\\n\"; done"
         }
@@ -47,10 +61,10 @@ enum SkillProbe {
         }
     }
 
-    /// One file the probe printed: where it was found and what its head
-    /// contained.
+    /// One file the probe printed: which source found it, where it was, and
+    /// what its head contained.
     struct ProbedFile: Equatable, Sendable {
-        let scope: AgentSkill.Scope
+        let sourceIndex: Int
         let path: String
         let content: String
     }
@@ -61,7 +75,7 @@ enum SkillProbe {
     /// corrupting the current one.
     static func probedFiles(in output: Data) -> [ProbedFile] {
         var files: [ProbedFile] = []
-        var current: (scope: AgentSkill.Scope, path: String, lines: [Substring])?
+        var current: (sourceIndex: Int, path: String, lines: [Substring])?
 
         // CRLF first: "\r\n" is a single grapheme cluster in Swift, so a
         // split on "\n" would leave a CRLF-authored file's lines glued to
@@ -71,12 +85,12 @@ enum SkillProbe {
             .split(separator: "\n", omittingEmptySubsequences: false)
         {
             if let entry = beginEntry(line) {
-                current = (entry.scope, entry.path, [])
+                current = (entry.sourceIndex, entry.path, [])
             } else if line == endMarker {
                 if let current {
                     files.append(
                         ProbedFile(
-                            scope: current.scope,
+                            sourceIndex: current.sourceIndex,
                             path: current.path,
                             content: current.lines.joined(separator: "\n")))
                 }
@@ -90,34 +104,39 @@ enum SkillProbe {
 
     private static func beginEntry(
         _ line: Substring
-    ) -> (scope: AgentSkill.Scope, path: String)? {
-        if line.hasPrefix(projectFileMarker) {
-            return (.project, String(line.dropFirst(projectFileMarker.count)))
+    ) -> (sourceIndex: Int, path: String)? {
+        guard line.hasPrefix(fileMarkerPrefix) else { return nil }
+        let rest = line.dropFirst(fileMarkerPrefix.count)
+        guard let separator = rest.range(of: "__=") else { return nil }
+        guard let index = Int(rest[..<separator.lowerBound]), index >= 0 else {
+            return nil
         }
-        if line.hasPrefix(globalFileMarker) {
-            return (.global, String(line.dropFirst(globalFileMarker.count)))
-        }
-        return nil
+        return (index, String(rest[separator.upperBound...]))
     }
 
     /// The full pipeline: parse the output, name each file by its layout,
-    /// drop unusable names, shadow duplicates in probe order (project sources
-    /// run first, so a project skill wins over a same-named global one), and
-    /// sort each scope alphabetically.
-    static func skills(fromProbeOutput output: Data) -> [AgentSkill] {
-        var seenNames: Set<String> = []
+    /// drop unusable names, shadow duplicate commands in probe order
+    /// (project sources run first, so a project skill wins over a
+    /// same-commanded global one), and sort each scope alphabetically.
+    static func skills(
+        fromProbeOutput output: Data, sources: [ResolvedSource]
+    ) -> [AgentSkill] {
+        var seenCommands: Set<String> = []
         var skills: [AgentSkill] = []
         for file in probedFiles(in: output) {
+            guard sources.indices.contains(file.sourceIndex) else { continue }
+            let source = sources[file.sourceIndex]
             let frontmatter = SkillFrontmatter.parse(file.content)
             guard let name = skillName(for: file, frontmatter: frontmatter) else {
                 continue
             }
-            guard seenNames.insert(name).inserted else { continue }
-            skills.append(
-                AgentSkill(
-                    scope: file.scope,
-                    name: name,
-                    description: safeDescription(frontmatter.description)))
+            let skill = AgentSkill(
+                scope: source.scope,
+                name: name,
+                description: safeDescription(frontmatter.description),
+                commandPrefix: source.commandPrefix)
+            guard seenCommands.insert(skill.command).inserted else { continue }
+            skills.append(skill)
         }
         return skills.sorted {
             ($0.scope == .global ? 1 : 0, $0.name.lowercased())
@@ -142,7 +161,7 @@ enum SkillProbe {
         return String(fallback)
     }
 
-    /// A name becomes terminal input, so it must survive as one `/word`:
+    /// A name becomes terminal input, so it must survive as one word:
     /// non-empty, reasonably short, no whitespace, no control characters.
     private static func isUsableName(_ name: String) -> Bool {
         !name.isEmpty && name.count <= 100

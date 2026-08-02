@@ -400,14 +400,15 @@ actor SSHTransport: Transport {
                     "\(trimmed)/\(source.relativePath)")
             else { return nil }
             return SkillProbe.ResolvedSource(
-                scope: source.scope, quotedDirectory: quoted, layout: source.layout)
+                scope: source.scope, quotedDirectory: quoted,
+                layout: source.layout, commandPrefix: source.commandPrefix)
         }
         guard !resolved.isEmpty else { return [] }
         let command = SkillProbe.command(for: resolved)
         let output = try await withRequestDeadline(requestTimeout) {
             try await self.runHostCommand(command)
         }
-        return SkillProbe.skills(fromProbeOutput: output)
+        return SkillProbe.skills(fromProbeOutput: output, sources: resolved)
     }
 
     private func runHostCommand(_ command: String) async throws -> Data {

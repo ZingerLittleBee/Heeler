@@ -9,13 +9,15 @@ Entries reference the issue that motivated them.
 
 ### Added
 
-- The Keys keyboard has a Skills pane for Claude Code agents: the skills
-  installed on the Host — the project's own under its `.claude/skills` and
-  the global ones under `~/.claude/skills` — listed by name and description,
-  one tap inserting the `/skill-name` slash command into the terminal
-  without sending it. The list is probed once per connection and refreshable
-  from the pane; agents of a kind without a known skills mechanism don't
-  show the tab.
+- The Keys keyboard has a Skills pane: the skills and custom slash commands
+  installed on the Host for the agent you're attached to — the project's own
+  and the global ones — listed by name and description, one tap inserting
+  the invocation into the terminal without sending it. Covered kinds and
+  their mechanisms: Claude Code Agent Skills (`/name`), Codex Agent Skills
+  (`$name`), OpenCode commands (`/name`), and Pi skills (`/skill:name`) plus
+  prompt templates (`/name`). The list is probed once per connection and
+  refreshable from the pane; agents of a kind without a known mechanism
+  don't show the tab.
 
 ### Fixed
 
