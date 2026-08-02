@@ -31,7 +31,8 @@ Rediscovering these is expensive; they were verified against herdr 0.7.4 source 
 
 ## Conventions
 
-- Build, test, device installs, and TestFlight uploads all go through `make` (see `make help`). A new TestFlight build is `make bump && make testflight` — App Store Connect rejects reused build numbers.
+- Build, test, device installs, and TestFlight uploads all go through `make` (see `make help`). An interim TestFlight build is `make bump && make testflight` — App Store Connect rejects reused build numbers.
+- Cutting a release is `make publish` (`scripts/publish.sh`, documented in `docs/guides/releasing.md`): it cuts `CHANGELOG.md`'s `[Unreleased]`, bumps `MARKETING_VERSION` in `project.yml`, builds and uploads to TestFlight, then tags and creates the GitHub release. `CHANGELOG.md` is the source of both the version and the notes; never hand-edit `MARKETING_VERSION` or create a `vX.Y.Z` tag by hand. Preview with `make publish DRY_RUN=1`.
 - A single suite runs with `xcodebuild test -project HerdrMobile.xcodeproj -scheme HerdrMobile -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:HerdrMobileTests/<SuiteTypeName>`; `make test` runs everything.
 - CI (`.github/workflows/ci.yml`) builds the committed `HerdrMobile.xcodeproj` and never runs xcodegen, so commit the regenerated project alongside any `project.yml` change (every `make` build target regenerates it). The sshd-dependent e2e suites gate on `LocalSSHTestEnvironment.isAvailable` and skip cleanly on machines without a local sshd, socat, and seeded key.
 
