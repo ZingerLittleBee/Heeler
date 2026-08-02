@@ -115,7 +115,9 @@ struct SkillsKeyboardPane: View {
 }
 
 /// One skill as a row: its slash name on top, its description below when it
-/// has one.
+/// has one. A long press previews the full detail — the row truncates the
+/// description to one line, and a sheet is not an option inside the keyboard
+/// window.
 struct SkillRowButton: View {
     let skill: AgentSkill
     let action: () -> Void
@@ -143,5 +145,36 @@ struct SkillRowButton: View {
         .buttonStyle(.plain)
         .accessibilityLabel(skill.name)
         .accessibilityHint("Inserts \(skill.command) without sending it")
+        .contextMenu {
+            Button("Insert", systemImage: "text.insert", action: action)
+        } preview: {
+            SkillDetailPreview(skill: skill)
+        }
+    }
+}
+
+/// The long-press preview: everything the two-line row had to cut.
+struct SkillDetailPreview: View {
+    let skill: AgentSkill
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(skill.command)
+                .font(.headline)
+                .fontDesign(.monospaced)
+            Text(skill.scope == .project ? "Project" : "Global")
+                .font(.caption.weight(.semibold))
+                .textCase(.uppercase)
+                .foregroundStyle(.secondary)
+            if let description = skill.description {
+                Divider()
+                Text(description)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: 340, alignment: .leading)
     }
 }

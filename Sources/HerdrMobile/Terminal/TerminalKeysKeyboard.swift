@@ -6,8 +6,9 @@ import UIKit
 /// should not cost the old behaviour an extra tap.
 enum TerminalKeysTab: Int, CaseIterable, Identifiable {
     case controls
-    case snippets
+    // Skills before Snippets: the case order is the tab and page order.
     case skills
+    case snippets
     case appearance
 
     var id: Self { self }
