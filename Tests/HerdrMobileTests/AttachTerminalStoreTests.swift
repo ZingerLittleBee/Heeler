@@ -1144,6 +1144,88 @@ struct AgentAttachStoreTests {
         #expect(await transport.attachRequests.count == 1)
     }
 
+    @Test func rejoinAfterLeaveReattachesTheScreenThatCameBack() async throws {
+        // onDisappear/onAppear are not always a real departure and return: a
+        // Host resync emptying the Agent list swaps the Console's placeholder
+        // in and out under the same view state. The store that comes back must
+        // attach again instead of staying stopped behind a black surface.
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the initial terminal should go live") {
+            store.terminalStatus == .live
+        }
+        let leftID = store.terminalID
+
+        await store.leave()
+        #expect(store.terminalStatus == .stopped)
+
+        store.rejoin()
+        // The screen is on stage again, so it must never read as a finished
+        // session while the replacement is on its way.
+        #expect(store.terminalStatus == .connecting)
+        try await waitUntil("the terminal pipeline should be rebuilt") {
+            store.terminalID != leftID
+        }
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the rejoined terminal should go live") {
+            store.terminalStatus == .live
+        }
+        #expect(await transport.attachRequests.count == 2)
+
+        // The rejoined pipeline is wired end to end, not just opened.
+        await transport.emitAttachOutput(Data("https://example.com/back\n".utf8))
+        try await waitUntil("output should reach the rejoined screen") {
+            store.attachLinks.map(\.target) == ["https://example.com/back"]
+        }
+
+        await store.leave()
+    }
+
+    @Test func rejoinWithoutLeaveLeavesTheLiveTerminalAlone() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+        let liveID = store.terminalID
+
+        store.rejoin()
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(store.terminalID == liveID)
+        #expect(store.terminalStatus == .live)
+        #expect(await transport.attachRequests.count == 1)
+
+        await store.leave()
+    }
+
+    @Test func leaveRacingARejoinKeepsTheAttachDown() async throws {
+        // The reverse race of `leaveDuringQueuedReplacementDoesNotResurrect…`:
+        // a rejoin already queued must not rebuild behind a later leave.
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+
+        await store.leave()
+        let leftID = store.terminalID
+        store.rejoin()
+        await store.leave()
+
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(store.terminalID == leftID)
+        #expect(store.terminalStatus == .stopped)
+        #expect(await transport.attachRequests.count == 1)
+    }
+
     @Test func successfulCloseLeavesTheWholeAttachInteraction() async throws {
         let transport = ScriptedTransport()
         let closeCalls = CloseCallRecorder()

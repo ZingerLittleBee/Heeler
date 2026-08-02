@@ -9,6 +9,14 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Opening an Agent from a notification no longer sometimes lands on a black
+  terminal that never connects. The Attach screen tore its session down on
+  every `onDisappear`, including the ones SwiftUI hands out for removals the
+  user never made, and the screen that came back afterwards was the same,
+  permanently stopped one: no output, no error, no way to reattach short of
+  switching Agents. It now reattaches when it comes back, and a screen waiting
+  for its terminal says so instead of showing nothing at all.
+
 - The Agent list now removes rows from disconnected Hosts immediately, rejects
   stale snapshots that finish after a disconnect, and rechecks membership when
   an Agent process exits back to an ordinary shell.

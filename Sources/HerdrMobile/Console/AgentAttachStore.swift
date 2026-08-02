@@ -60,8 +60,18 @@ final class AgentAttachStore {
         ObjectIdentifier(terminal)
     }
 
+    /// What the screen should say about the terminal.
+    ///
+    /// A stopped terminal on a screen that has *not* left is one `rejoin()` is
+    /// already replacing, so it reads as connecting: the alternative is a black
+    /// surface with no overlay and nothing to say for itself. A screen that has
+    /// left keeps the real status — it is on its way off stage and must not
+    /// flash a spinner on the way out.
     var terminalStatus: AttachTerminalStore.Status {
-        terminal.status
+        if terminal.status == .stopped, !hasLeft {
+            return .connecting
+        }
+        return terminal.status
     }
 
     var terminalFeed: TerminalByteFeed {
@@ -227,6 +237,27 @@ final class AgentAttachStore {
         guard close.state == .closed else { return false }
         await leave()
         return true
+    }
+
+    /// The Attach screen came back after `leave()`.
+    ///
+    /// `leave()` rides `onDisappear`, which SwiftUI also fires for removals the
+    /// user never made — and the state that comes back is the one that left. A
+    /// torn-down store cannot serve it: its terminal is stopped for good, which
+    /// draws as a black surface with no overlay, no error and no way back. A
+    /// fresh terminal pipeline is exactly what an Agent switch would have
+    /// built, so build one.
+    func rejoin() {
+        guard hasLeft else { return }
+        hasLeft = false
+        enqueueLifecycleTransition { [weak self] in
+            guard let self, !self.hasLeft, self.terminal.status == .stopped else { return }
+            self.terminal = Self.makeTerminal(
+                target: self.target,
+                input: self.input,
+                runTerminal: self.runTerminal,
+                linkIndex: self.linkIndex)
+        }
     }
 
     func leave() async {
