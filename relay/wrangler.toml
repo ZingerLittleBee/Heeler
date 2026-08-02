@@ -13,12 +13,21 @@ compatibility_date = "2026-07-01"
 workers_dev = false
 
 [[routes]]
+pattern = "heeler-apns.bybee.dev"
+custom_domain = true
+
+# Transitional. A herdr server whose plugin predates the rename still posts to
+# the old hostname, and the app wrote that hostname into its notify.json, so
+# dropping it here would silence notifications until every deployment is
+# updated. The updated plugin rewrites the URL on its next read; remove this
+# route once no deployment is left on the old name.
+[[routes]]
 pattern = "herdr-apns.bybee.dev"
 custom_domain = true
 
 [vars]
 APNS_TEAM_ID = "9VM4RM39R3"
 APNS_KEY_ID = "74X2TF988P"
-APNS_TOPIC = "dev.herdr.mobile.HerdrMobile"
+APNS_TOPIC = "dev.bybee.heeler"
 # RATE_LIMIT_IP_PER_MIN = "120"                  # optional override
 # RATE_LIMIT_TOKEN_PER_MIN = "60"                # optional override

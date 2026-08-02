@@ -1,4 +1,4 @@
-# Herdr Mobile Pairing plugin
+# Heeler Pairing plugin
 
 A [herdr plugin](https://herdr.dev/docs/plugins/) that renders a **Pairing Code**
 QR so the herdr-mobile app can add this machine as a Host by scanning it
@@ -52,11 +52,11 @@ Open the Pairing Code popup:
 herdr plugin action invoke herdr-mobile.pairing.pair
 ```
 
-Scan the code in HerdrMobile to add this machine as a Host. Then open the
-HerdrMobile settings, enable Agent Notifications, grant the iOS notification
+Scan the code in Heeler to add this machine as a Host. Then open the
+Heeler settings, enable Agent Notifications, grant the iOS notification
 permission, and enable Notifications for this Host. Leave **Custom Push
 Relay** empty to use the production endpoint at
-`https://herdr-apns.bybee.dev`.
+`https://heeler-apns.bybee.dev`.
 
 To update an installed GitHub-managed plugin, run the same `plugin install`
 command again. To inspect notification or pairing failures:
@@ -305,7 +305,7 @@ Anti-noise, in order:
    `HERDR_PLUGIN_STATE_DIR/notify/`; a same-status repeat sends nothing. A
    *different* status that survives its own debounce re-arms the pane.
 
-Each eligible device gets one `POST https://herdr-apns.bybee.dev/push` by
+Each eligible device gets one `POST https://heeler-apns.bybee.dev/push` by
 default (see `relay/README.md`), carrying the encrypted envelope and an opaque
 per-pane `collapse` key (derived from the device's Notification Key and the
 pane id, so the relay cannot guess the pane while newer statuses still replace
@@ -319,7 +319,7 @@ the plugin config dir:
 
 | Field            | Type    | Meaning |
 | ---------------- | ------- | ------- |
-| `relay_url`      | string  | Optional Push Relay base URL override for a self-built app. Defaults to `https://herdr-apns.bybee.dev`; the app writes the resolved value during Notification Registration. |
+| `relay_url`      | string  | Optional Push Relay base URL override for a self-built app. Defaults to `https://heeler-apns.bybee.dev`; the app writes the resolved value during Notification Registration. |
 | `debounce_ms`    | integer | Debounce sleep override. Default 5000. |
 | `retry_delay_ms` | integer | Delay between retry attempts. Default 1000. |
 

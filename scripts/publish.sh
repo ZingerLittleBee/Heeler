@@ -22,7 +22,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 CHANGELOG="CHANGELOG.md"
 PROJECT_YML="project.yml"
-XCODEPROJ="HerdrMobile.xcodeproj"
+XCODEPROJ="Heeler.xcodeproj"
 DEFAULT_BRANCH="main"
 REMOTE="origin"
 

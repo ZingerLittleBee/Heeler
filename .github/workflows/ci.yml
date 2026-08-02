@@ -8,11 +8,11 @@
 # tests that run against the real simulator keychain (errSecMissingEntitlement).
 #
 # Notes:
-# - The committed HerdrMobile.xcodeproj (project + shared HerdrMobile scheme)
+# - The committed Heeler.xcodeproj (project + shared Heeler scheme)
 #   is the source of truth for CI. project.yml/xcodegen is a local convenience
 #   only; CI never regenerates the project.
 # - The sshd-dependent e2e suites gate on LocalSSHTestEnvironment.isAvailable
-#   (Tests/HerdrMobileTests/Support/LocalSSHTestEnvironment.swift): they probe
+#   (Tests/HeelerTests/Support/LocalSSHTestEnvironment.swift): they probe
 #   for a local sshd, a socat binary, and a seeded Ed25519 key, and each test
 #   is annotated `.enabled(if: LocalSSHTestEnvironment.isAvailable)`. On a bare
 #   runner none of that exists, so those tests skip cleanly. We deliberately do
@@ -97,6 +97,6 @@ jobs:
       - name: Build and test
         run: |
           xcodebuild test \
-            -project HerdrMobile.xcodeproj \
-            -scheme HerdrMobile \
+            -project Heeler.xcodeproj \
+            -scheme Heeler \
             -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
