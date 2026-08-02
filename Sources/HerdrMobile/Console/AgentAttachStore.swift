@@ -21,6 +21,11 @@ final class AgentAttachStore {
     private let target: String
     private let runTerminal: TerminalSessionRunner
     private let linkIndex: AttachLinkIndex
+    /// Whether this screen is still the Console's current detail. The
+    /// router's path is the ground truth SwiftUI's appear/disappear
+    /// callbacks lack: they hand out spurious pairs amid navigation churn,
+    /// on departing screens as well as staying ones.
+    private let isOnStage: () -> Bool
 
     private(set) var terminal: AttachTerminalStore
     let input: TerminalInputController
@@ -39,12 +44,14 @@ final class AgentAttachStore {
         target: String,
         paneTitle: String,
         transportGeneration: UInt64?,
+        isOnStage: @escaping () -> Bool,
         runTerminal: @escaping TerminalSessionRunner,
         stageImage: @escaping ImageStager,
         closePane: @escaping () async throws -> Void
     ) {
         let input = TerminalInputController()
         self.target = target
+        self.isOnStage = isOnStage
         self.runTerminal = runTerminal
         self.transportGeneration = transportGeneration
         self.input = input
@@ -107,7 +114,10 @@ final class AgentAttachStore {
         return message
     }
 
+    /// A size report from a screen that has left must not start anything:
+    /// a departed view still lays out during its exit transition.
     func viewDidResize(cols: Int, rows: Int) {
+        guard !hasLeft else { return }
         terminal.viewDidResize(cols: cols, rows: rows)
     }
 
@@ -247,8 +257,15 @@ final class AgentAttachStore {
     /// draws as a black surface with no overlay, no error and no way back. A
     /// fresh terminal pipeline is exactly what an Agent switch would have
     /// built, so build one.
+    ///
+    /// Only the screen the Console still has on stage may rejoin. SwiftUI
+    /// hands spurious appears to *departing* screens too (an Agent switch, a
+    /// notification deep link), and a departed screen's view keeps laying out
+    /// through the transition — a resurrected pipeline would attach unseen
+    /// and hold the Host's only terminal channel, leaving the screen the user
+    /// is actually looking at queued behind it on "Connecting…" forever.
     func rejoin() {
-        guard hasLeft else { return }
+        guard hasLeft, isOnStage() else { return }
         hasLeft = false
         enqueueLifecycleTransition { [weak self] in
             guard let self, !self.hasLeft, self.terminal.status == .stopped else { return }

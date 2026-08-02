@@ -168,6 +168,12 @@ struct ConsoleView: View {
                     activity: activity,
                     keyboardHandoff: keyboardHandoff,
                     keyboardInset: keyboardInset,
+                    // The router's truth, not SwiftUI's appear/disappear:
+                    // only the screen still selected may rebuild its
+                    // terminal on a spurious reappearance.
+                    isOnStage: { [notificationRouter] in
+                        notificationRouter.path.last == id
+                    },
                     onSwitch: { notificationRouter.path = [$0] },
                     onClosed: { notificationRouter.path = [] }
                 )

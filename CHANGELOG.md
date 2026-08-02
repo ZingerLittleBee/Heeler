@@ -22,6 +22,17 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Opening an Agent from a notification or right after starting a new one no
+  longer strands the terminal on "Connecting…" forever. The previous reattach
+  fix let the *departing* screen resurrect its terminal too: SwiftUI hands
+  the same spurious disappear/appear pair to the screen being navigated away
+  from, its view keeps laying out through the exit transition, and the
+  resurrected session attached unseen — holding the Host's single terminal
+  channel while the screen the user was actually looking at queued behind it
+  indefinitely. A screen the Console no longer has on stage now refuses to
+  rebuild its terminal, and terminal teardown aborts a session still queued
+  for the channel instead of waiting its turn.
+
 - The Agent switcher strip and the keyboard toolbar no longer vanish when a
   raised keyboard comes back on its own — returning from the background or
   the lock screen with the keyboard up. Two causes, same round trip: the

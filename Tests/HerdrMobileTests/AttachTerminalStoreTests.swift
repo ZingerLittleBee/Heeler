@@ -339,6 +339,24 @@ struct AttachTerminalStoreTests {
         #expect(await transport.hasLiveAttachSession == false)
     }
 
+    @Test func stopAbortsARunStillWaitingForTheTerminalChannel() async throws {
+        // Before a session exists the run can be queued for the Host's
+        // terminal channel. Teardown must abort that wait — a stop that sits
+        // behind whoever holds the channel wedges the whole lifecycle queue.
+        let store = AttachTerminalStore(target: "w1:p1") { _, _ in
+            // Parked as a queued acquire would be: indefinitely, but
+            // cancellation-aware.
+            try await Task.sleep(for: .seconds(60))
+        }
+        store.viewDidResize(cols: 80, rows: 24)
+        #expect(store.status == .connecting)
+
+        let began = ContinuousClock.now
+        await store.stop()
+        #expect(store.status == .stopped)
+        #expect(ContinuousClock.now - began < .seconds(5))
+    }
+
     @Test func concurrentStopsFromDetachAndBackstopBothComplete() async throws {
         // The two paths can overlap (the backstop fires while the Detach
         // stop is still awaiting teardown); both must complete and the
@@ -1153,6 +1171,74 @@ struct AgentAttachStoreTests {
         await store.leave().value
     }
 
+    @Test func aSpuriousReappearanceOffStageDoesNotResurrectTheTerminal() async throws {
+        // The same disappear/appear pair also lands on *departing* screens
+        // (an Agent switch, a notification deep link), whose views keep
+        // laying out through the exit transition. A rebuilt pipeline there
+        // would attach unseen and hold the Host's only terminal channel.
+        let transport = ScriptedTransport()
+        let stage = SelectedPane(current: "w1:p1")
+        let store = makeStore(
+            transport: transport, generation: 0,
+            isOnStage: { stage.current == "w1:p1" })
+
+        try await goLive(store, transport)
+        let leftID = store.terminalID
+
+        // The Console moves to another Agent; churn hands this screen a
+        // spurious pair while its view keeps reporting sizes on the way out.
+        stage.current = "w1:p2"
+        store.leave()
+        store.rejoin()
+        for _ in 0..<20 {
+            store.viewDidResize(cols: 100, rows: 30)
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        #expect(store.terminalID == leftID)
+        #expect(store.terminalStatus == .stopped)
+        #expect(await transport.attachRequests.count == 1)
+        #expect(await transport.hasLiveAttachSession == false)
+    }
+
+    @Test func aDepartingScreensChurnCannotStarveTheNextScreensAttach() async throws {
+        // The stuck-Connecting regression: the Host has one terminal channel
+        // and attaches queue FIFO behind it (EventsSession's permit). A
+        // departing screen resurrected by the spurious pair would take that
+        // channel unseen, and the screen the user is actually looking at
+        // would wait on "Connecting…" forever.
+        let transport = ScriptedTransport()
+        let permit = TerminalChannelPermit()
+        let stage = SelectedPane(current: "w1:p1")
+        let runner = permitGatedRunner(transport, permit)
+
+        let departing = makeStore(
+            transport: transport, generation: 0, target: "w1:p1",
+            isOnStage: { stage.current == "w1:p1" }, runTerminal: runner)
+        try await goLive(departing, transport)
+
+        stage.current = "w1:p2"
+        departing.leave()
+        departing.rejoin()
+        for _ in 0..<20 {
+            departing.viewDidResize(cols: 100, rows: 30)
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        try await waitUntil("the departing screen's attach should end") {
+            await transport.hasLiveAttachSession == false
+        }
+
+        let incoming = makeStore(
+            transport: transport, generation: 0, target: "w1:p2",
+            isOnStage: { stage.current == "w1:p2" }, runTerminal: runner)
+        try await goLive(incoming, transport)
+
+        // The channel went to the screen on stage, never to a zombie.
+        #expect(await transport.attachRequests.map(\.target) == ["w1:p1", "w1:p2"])
+
+        await incoming.leave().value
+    }
+
     @Test func rejoinWithoutLeaveLeavesTheLiveTerminalAlone() async throws {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
@@ -1192,9 +1278,9 @@ struct AgentAttachStoreTests {
     @Test func successfulCloseLeavesTheWholeAttachInteraction() async throws {
         let transport = ScriptedTransport()
         let closeCalls = CloseCallRecorder()
-        let store = makeStore(transport: transport, generation: 0) {
-            await closeCalls.record()
-        }
+        let store = makeStore(
+            transport: transport, generation: 0,
+            close: { await closeCalls.record() })
 
         try await goLive(store, transport)
 
@@ -1207,13 +1293,17 @@ struct AgentAttachStoreTests {
     private func makeStore(
         transport: ScriptedTransport,
         generation: UInt64?,
+        target: String = "w1:p1",
+        isOnStage: @escaping () -> Bool = { true },
+        runTerminal: TerminalSessionRunner? = nil,
         close: @escaping () async throws -> Void = {}
     ) -> AgentAttachStore {
         AgentAttachStore(
-            target: "w1:p1",
+            target: target,
             paneTitle: "Agent",
             transportGeneration: generation,
-            runTerminal: { request, handler in
+            isOnStage: isOnStage,
+            runTerminal: runTerminal ?? { request, handler in
                 let session = try await transport.attachTerminal(request)
                 do {
                     try await handler.run(session)
@@ -1274,6 +1364,80 @@ struct AgentAttachStoreTests {
         #expect(await condition(), comment)
     }
 
+    /// A runner with `EventsSession.withTerminalTransport`'s semantics: one
+    /// Attach owns the Host's terminal channel for its entire lifetime,
+    /// including teardown, and later attaches queue FIFO behind it.
+    private func permitGatedRunner(
+        _ transport: ScriptedTransport, _ permit: TerminalChannelPermit
+    ) -> TerminalSessionRunner {
+        { request, handler in
+            try await permit.acquire()
+            do {
+                let session = try await transport.attachTerminal(request)
+                do {
+                    try await handler.run(session)
+                    await session.end()
+                } catch {
+                    await session.end()
+                    throw error
+                }
+            } catch {
+                await permit.release()
+                throw error
+            }
+            await permit.release()
+        }
+    }
+}
+
+/// Which pane the Console's router currently has on stage.
+@MainActor
+private final class SelectedPane {
+    var current: String
+
+    init(current: String) {
+        self.current = current
+    }
+}
+
+/// The Host's single terminal channel, as `EventsSession` arbitrates it:
+/// waiters are FIFO and, like the real `acquireTerminal`, cancellation-aware.
+private actor TerminalChannelPermit {
+    private var inUse = false
+    private var waiters: [(id: UUID, continuation: CheckedContinuation<Void, any Error>)] = []
+
+    func acquire() async throws {
+        let id = UUID()
+        try Task.checkCancellation()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, any Error>) in
+                if Task.isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                } else if inUse {
+                    waiters.append((id, continuation))
+                } else {
+                    inUse = true
+                    continuation.resume()
+                }
+            }
+        } onCancel: {
+            Task { await self.cancelWaiter(id) }
+        }
+    }
+
+    func release() {
+        if waiters.isEmpty {
+            inUse = false
+        } else {
+            waiters.removeFirst().continuation.resume()
+        }
+    }
+
+    private func cancelWaiter(_ id: UUID) {
+        guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+        waiters.remove(at: index).continuation.resume(throwing: CancellationError())
+    }
 }
 
 private actor CloseCallRecorder {
