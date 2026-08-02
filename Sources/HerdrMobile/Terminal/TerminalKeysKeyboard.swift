@@ -39,6 +39,18 @@ enum TerminalKeysTab: Int, CaseIterable, Identifiable {
 @MainActor
 struct TerminalSkillsContext {
     let store: SkillsPaneStore
+    /// Opens the skill's full document. That is a sheet, which the keyboard
+    /// window cannot host, so the screen owns the presentation and the
+    /// keyboard only asks — the Snippets-management arrangement.
+    let viewContent: (AgentSkill) -> Void
+
+    init(
+        store: SkillsPaneStore,
+        viewContent: @escaping (AgentSkill) -> Void = { _ in }
+    ) {
+        self.store = store
+        self.viewContent = viewContent
+    }
 }
 
 /// What the Keys keyboard needs from the app to fill its Snippets, Skills,
@@ -271,7 +283,8 @@ final class TerminalKeysKeyboardView: UIInputView, UIInputViewAudioFeedback {
                         UIDevice.current.playInputClick()
                         terminalView.sendInsertedText(skill.insertionText)
                         returnToControls()
-                    })
+                    },
+                    onViewContent: skills.viewContent)
             }
         case .appearance:
             TerminalAppearancePane(

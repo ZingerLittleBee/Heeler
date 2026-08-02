@@ -187,6 +187,15 @@ final class ConsoleStore {
         return skills
     }
 
+    /// The skill content sheet's data source: reads one skill document over
+    /// the Host's live Console connection. Uncached — it is user-triggered,
+    /// one file at a time.
+    func readSkillFile(path: String, on hostID: Host.ID) async throws -> String {
+        try await projection(for: hostID).session.withTransport { transport in
+            try await transport.readSkillFile(atPath: path)
+        }
+    }
+
     @discardableResult
     func startAgent(
         _ request: AgentLaunchRequest,

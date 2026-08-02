@@ -411,6 +411,20 @@ actor SSHTransport: Transport {
         return SkillProbe.skills(fromProbeOutput: output, sources: resolved)
     }
 
+    func readSkillFile(atPath path: String) async throws -> String {
+        guard let quoted = RemoteShellPath.quotedAbsolute(path) else {
+            throw TransportError.channelFailed(detail: "skill path is not quotable")
+        }
+        let output = try await withRequestDeadline(requestTimeout) {
+            try await self.runHostCommand(SkillProbe.readFileCommand(quotedPath: quoted))
+        }
+        guard let content = SkillProbe.documentContent(in: output) else {
+            throw TransportError.malformedResponse(
+                "The skill file is gone or unreadable on the Host.")
+        }
+        return content
+    }
+
     private func runHostCommand(_ command: String) async throws -> Data {
         try await execChannelBudget.withChannel {
             do {

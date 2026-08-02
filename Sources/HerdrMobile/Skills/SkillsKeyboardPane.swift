@@ -10,6 +10,7 @@ import SwiftUI
 struct SkillsKeyboardPane: View {
     let store: SkillsPaneStore
     let onInsert: (AgentSkill) -> Void
+    let onViewContent: (AgentSkill) -> Void
 
     var body: some View {
         // No `.task` here: the pager builds every pane the moment the
@@ -83,7 +84,10 @@ struct SkillsKeyboardPane: View {
                 .padding(.top, 10)
                 .padding(.bottom, 4)
             ForEach(skills) { skill in
-                SkillRowButton(skill: skill) { onInsert(skill) }
+                SkillRowButton(
+                    skill: skill,
+                    action: { onInsert(skill) },
+                    onViewContent: { onViewContent(skill) })
                 Divider().padding(.leading, 16)
             }
         }
@@ -121,6 +125,7 @@ struct SkillsKeyboardPane: View {
 struct SkillRowButton: View {
     let skill: AgentSkill
     let action: () -> Void
+    let onViewContent: () -> Void
 
     var body: some View {
         Button(action: action) {
@@ -146,6 +151,7 @@ struct SkillRowButton: View {
         .accessibilityLabel(skill.name)
         .accessibilityHint("Inserts \(skill.command) without sending it")
         .contextMenu {
+            Button("View Content", systemImage: "doc.text", action: onViewContent)
             Button("Insert", systemImage: "text.insert", action: action)
         } preview: {
             SkillDetailPreview(skill: skill)
