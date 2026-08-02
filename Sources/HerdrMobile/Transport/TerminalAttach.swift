@@ -17,6 +17,70 @@ struct TerminalAttachRequest: Sendable, Equatable {
     }
 }
 
+/// The handshake that separates an attach channel's two halves.
+///
+/// The channel is a login shell with a PTY (Citadel offers no exec-with-PTY
+/// path), so before the bootstrap line can run, the shell has already printed
+/// its banner and its prompt and echoed the line back. None of that belongs on
+/// the terminal: it would paint for as long as the remote attach takes to come
+/// up and then be wiped by the TUI's first frame — a flash of somebody else's
+/// output on every attach.
+///
+/// So the bootstrap prints a marker of its own just before it execs attach,
+/// and everything up to it is dropped. Printing it as real control bytes is
+/// what makes it unambiguous: the shell's echo of the very line that prints it
+/// carries the literal text `\033`, never an ESC byte, so the marker cannot
+/// match its own echo. APC is the one string terminals are required to ignore,
+/// which keeps a stray copy harmless.
+enum AttachBootstrapHandshake {
+    static let marker = Data("\u{1B}_herdr-mobile-attach\u{1B}\\".utf8)
+    /// `marker` as a `printf` format. Octal throughout: the format has to
+    /// survive the Host's login shell (fish included) and `/bin/sh` before
+    /// printf ever sees it, and octal escapes are the portable spelling.
+    static let markerPrintfFormat = "\\033_herdr-mobile-attach\\033\\134"
+}
+
+/// Holds an attach channel's output back until the bootstrap handshake lands.
+///
+/// The withheld bytes are buffered rather than dropped: a channel that dies
+/// before the handshake (herdr missing from the Host's PATH, a login shell
+/// that cannot run the bootstrap) has said everything it is ever going to say
+/// in exactly that noise, so `flush()` hands it back as the diagnosis.
+struct AttachBootstrapGate {
+    /// A ceiling for a channel that never handshakes. The tail is what
+    /// carries the failure, and it stays far longer than the marker, so a
+    /// marker split across chunks still matches after a trim.
+    static let maximumWithheldBytes = 8 * 1024
+
+    private(set) var isOpen = false
+    private var withheld = Data()
+
+    /// The bytes the terminal should paint: nothing until the marker arrives,
+    /// everything after it once it has.
+    mutating func admit(_ bytes: Data) -> Data {
+        if isOpen { return bytes }
+        withheld.append(bytes)
+        guard let marker = withheld.range(of: AttachBootstrapHandshake.marker) else {
+            if withheld.count > Self.maximumWithheldBytes {
+                withheld = Data(withheld.suffix(Self.maximumWithheldBytes))
+            }
+            return Data()
+        }
+        isOpen = true
+        let session = Data(withheld[marker.upperBound...])
+        withheld = Data()
+        return session
+    }
+
+    /// The withheld noise, for a channel that ended before it handshook.
+    /// Empty once the gate is open — by then the noise is long past.
+    mutating func flush() -> Data {
+        guard !isOpen else { return Data() }
+        defer { withheld = Data() }
+        return withheld
+    }
+}
+
 /// Input riding down a live Attach session. Keystrokes and resizes are
 /// reliable, while touch scrolling is bounded and may be coalesced.
 enum TerminalAttachInput: Sendable, Equatable {

@@ -55,23 +55,59 @@ struct AttachTerminalStoreTests {
         #expect(await condition(), comment)
     }
 
+    /// What a real attach puts on the wire first: the TUI clearing the
+    /// screen. The transport withholds the login shell's noise, so the first
+    /// paint is also the moment the session stops being "Connecting…".
+    private static let firstPaint = Data("\u{1B}[2J".utf8)
+
+    /// The remote's first paint, once the channel is actually up.
+    private func paint(
+        _ transport: ScriptedTransport, _ bytes: Data = firstPaint
+    ) async throws {
+        try await waitUntil("attach should open") { await transport.hasLiveAttachSession }
+        #expect(await transport.emitAttachOutput(bytes))
+    }
+
+    /// Brings a store up the way an attach does: the first size report opens
+    /// the channel, the remote's first paint makes it live.
+    private func goLive(
+        _ store: AttachTerminalStore, _ transport: ScriptedTransport,
+        cols: Int = 80, rows: Int = 24, firstPaint: Data = firstPaint
+    ) async throws {
+        store.viewDidResize(cols: cols, rows: rows)
+        try await paint(transport, firstPaint)
+        try await waitUntil("store should go live") { store.status == .live }
+    }
+
+    @Test func openChannelStaysConnectingUntilTheRemotePaints() async throws {
+        // The flicker fix, from the store's side: an open channel with
+        // nothing on it yet is still a blank screen, so the Connecting dialog
+        // has to outlive the channel open.
+        let transport = ScriptedTransport()
+        let (store, _) = makeStore(transport: transport)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("attach should open") { await transport.hasLiveAttachSession }
+        #expect(store.status == .connecting)
+
+        #expect(await transport.emitAttachOutput(Self.firstPaint))
+        try await waitUntil("the first paint should go live") { store.status == .live }
+
+        await store.stop()
+    }
+
     @Test func firstSizeReportOpensAttachWithGeometry() async throws {
         let transport = ScriptedTransport()
         let (store, captured) = makeStore(transport: transport)
         #expect(store.status == .waitingForSize)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("store should go live") { store.status == .live }
+        // Raw PTY bytes feed straight through — no frame decoding anywhere.
+        try await goLive(store, transport, firstPaint: Data("\u{1B}[2JTUI".utf8))
 
         let request = try #require(await transport.attachRequests.first)
         #expect(
             request == TerminalAttachRequest(target: "w1:p1", takeover: false, cols: 80, rows: 24))
-
-        // Raw PTY bytes feed straight through — no frame decoding anywhere.
-        await transport.emitAttachOutput(Data("\u{1B}[2JTUI".utf8))
-        try await waitUntil("output should reach the feed") {
-            captured.text == "\u{1B}[2JTUI"
-        }
+        #expect(captured.text == "\u{1B}[2JTUI")
 
         await store.stop()
     }
@@ -80,8 +116,7 @@ struct AttachTerminalStoreTests {
         let transport = ScriptedTransport()
         let (store, _) = makeStore(transport: transport, takeover: true)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("store should go live") { store.status == .live }
+        try await goLive(store, transport)
 
         #expect(await transport.attachRequests.first?.takeover == true)
         await store.stop()
@@ -91,8 +126,7 @@ struct AttachTerminalStoreTests {
         let transport = ScriptedTransport()
         let (store, _) = makeStore(transport: transport)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("store should go live") { store.status == .live }
+        try await goLive(store, transport)
 
         store.send(Data("y".utf8))
         store.send(Data([0x1B, 0x5B, 0x41]))  // Up arrow from the terminal emulator.
@@ -111,8 +145,7 @@ struct AttachTerminalStoreTests {
         let (store, _) = makeStore(transport: transport, input: input)
         let sequence = Data("wheel".utf8)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("store should go live") { store.status == .live }
+        try await goLive(store, transport)
 
         input.scroll(sequence, rows: 5)
         try await waitUntil("scroll rows should reach the session in bounded batches") {
@@ -132,8 +165,7 @@ struct AttachTerminalStoreTests {
         let input = TerminalInputController()
         let (store, _) = makeStore(transport: transport, input: input)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("store should go live") { store.status == .live }
+        try await goLive(store, transport)
         #expect(input.liveGeneration != nil)
 
         store.send(Data("before".utf8))
@@ -156,19 +188,18 @@ struct AttachTerminalStoreTests {
         let input = TerminalInputController()
         let (store, captured) = makeStore(transport: transport, input: input)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("store should go live") { store.status == .live }
+        try await goLive(store, transport)
 
         input.pause()
         store.send(Data("blocked".utf8))
         await transport.emitAttachOutput(Data("still rendering".utf8))
         try await waitUntil("remote output should keep reaching the terminal feed") {
-            captured.text == "still rendering"
+            captured.text == "\u{1B}[2Jstill rendering"
         }
 
         #expect(input.isPaused)
         #expect(await transport.attachInputs.isEmpty)
-        #expect(captured.text == "still rendering")
+        #expect(captured.text == "\u{1B}[2Jstill rendering")
 
         input.resume()
         await store.stop()
@@ -179,8 +210,7 @@ struct AttachTerminalStoreTests {
         let input = TerminalInputController()
         let (store, _) = makeStore(transport: transport, input: input)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("store should go live") { store.status == .live }
+        try await goLive(store, transport)
         let first = try #require(input.liveGeneration)
 
         await transport.endAttachFromRemote()
@@ -191,6 +221,7 @@ struct AttachTerminalStoreTests {
         #expect(input.liveGeneration == nil)
 
         store.retry()
+        try await paint(transport)
         try await waitUntil("store should reattach") { store.status == .live }
         let second = try #require(input.liveGeneration)
         #expect(first != second)
@@ -205,8 +236,7 @@ struct AttachTerminalStoreTests {
         let transport = ScriptedTransport()
         let (store, _) = makeStore(transport: transport)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("store should go live") { store.status == .live }
+        try await goLive(store, transport)
 
         store.viewDidResize(cols: 100, rows: 30)
         await store.stop()
@@ -219,8 +249,7 @@ struct AttachTerminalStoreTests {
         let transport = ScriptedTransport()
         let (store, _) = makeStore(transport: transport)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("store should go live") { store.status == .live }
+        try await goLive(store, transport)
         store.viewDidResize(cols: 80, rows: 24)
         await store.stop()
 
@@ -234,8 +263,7 @@ struct AttachTerminalStoreTests {
         let transport = ScriptedTransport()
         let (store, _) = makeStore(transport: transport)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("store should go live") { store.status == .live }
+        try await goLive(store, transport)
 
         await transport.endAttachFromRemote()
         try await waitUntil("the remote end should surface") {
@@ -244,6 +272,7 @@ struct AttachTerminalStoreTests {
         }
 
         store.retry()
+        try await paint(transport)
         try await waitUntil("retry should reattach") {
             await transport.attachRequests.count == 2 && store.status == .live
         }
@@ -255,8 +284,7 @@ struct AttachTerminalStoreTests {
         let transport = ScriptedTransport()
         let (store, _) = makeStore(transport: transport)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("store should go live") { store.status == .live }
+        try await goLive(store, transport)
 
         await transport.failAttachStream(.channelFailed(detail: "host went away"))
         try await waitUntil("the failure should surface") {
@@ -279,8 +307,7 @@ struct AttachTerminalStoreTests {
         let transport = ScriptedTransport()
         let (store, _) = makeStore(transport: transport)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("store should go live") { store.status == .live }
+        try await goLive(store, transport)
 
         await store.stop()
         #expect(store.status == .stopped)
@@ -300,8 +327,7 @@ struct AttachTerminalStoreTests {
         let transport = ScriptedTransport()
         let (store, _) = makeStore(transport: transport)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("store should go live") { store.status == .live }
+        try await goLive(store, transport)
 
         await store.stop()
         #expect(store.status == .stopped)
@@ -320,8 +346,7 @@ struct AttachTerminalStoreTests {
         let transport = ScriptedTransport()
         let (store, _) = makeStore(transport: transport)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("store should go live") { store.status == .live }
+        try await goLive(store, transport)
 
         async let detachStop: Void = store.stop()
         async let backstopStop: Void = store.stop()
@@ -340,6 +365,7 @@ struct AttachTerminalStoreTests {
 
         store.viewDidResize(cols: 80, rows: 24)
         store.viewDidResize(cols: 100, rows: 30)
+        try await paint(transport)
         try await waitUntil("store should go live") { store.status == .live }
         // Depending on when the open task read the dims, the session either
         // opened at the latest geometry or got a catch-up resize.
@@ -364,10 +390,7 @@ struct AgentAttachStoreTests {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
 
         await transport.emitAttachOutput(
             Data(
@@ -390,10 +413,7 @@ struct AgentAttachStoreTests {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
 
         await transport.emitAttachOutput(
             Data("https://example.com/new?signature=exact#result\n".utf8))
@@ -412,10 +432,7 @@ struct AgentAttachStoreTests {
         let store = makeStore(transport: transport, generation: 0)
         let exactTarget = "https://example.com/signed?q=a%2Fb#Exact"
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
         await transport.emitAttachOutput(Data((exactTarget + "\n").utf8))
         try await waitUntil("the exact link should be collected") {
             store.attachLinks.first?.target == exactTarget
@@ -447,10 +464,7 @@ struct AgentAttachStoreTests {
         let opener = DeferredAttachLinkOpener()
         let store = makeStore(transport: transport, generation: 0)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
         await transport.emitAttachOutput(
             Data(
                 """
@@ -496,10 +510,7 @@ struct AgentAttachStoreTests {
         let opener = CancellationAwareAttachLinkOpener()
         let store = makeStore(transport: transport, generation: 0)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
         await transport.emitAttachOutput(Data("https://example.com/leaving-open\n".utf8))
         try await waitUntil("the link should be collected") {
             store.attachLinks.count == 1
@@ -524,10 +535,7 @@ struct AgentAttachStoreTests {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
 
         await transport.emitAttachOutput(
             Data(
@@ -567,10 +575,7 @@ struct AgentAttachStoreTests {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
 
         await transport.emitAttachOutput(
             Data("https://\nredrawn.example/result\n".utf8))
@@ -595,10 +600,7 @@ struct AgentAttachStoreTests {
         let store = makeStore(transport: transport, generation: 0)
         let target = "https://127.0.0.1:8443/private?token=literal#frag"
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
 
         await transport.emitAttachOutput(Data("\(target)\n".utf8))
         try await waitUntil("the complete stream target should be observed") {
@@ -626,10 +628,7 @@ struct AgentAttachStoreTests {
     @Test func rescanningACrowdedScreenLeavesTheLinkListAlone() async throws {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
         // Equal-length and mutually non-prefixing, so the index's ambiguous
         // prefix rule cannot quietly drop them instead.
         let crowded = (0..<30)
@@ -656,10 +655,7 @@ struct AgentAttachStoreTests {
         let target =
             "https://softwrap.example/this/is/a/very/long/path?token=literal#finish"
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
 
         store.viewportTextDidChange(target)
         #expect(store.attachLinks.map(\.target) == [target])
@@ -677,10 +673,7 @@ struct AgentAttachStoreTests {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
         await transport.emitAttachOutput(
             Data(
                 """
@@ -726,10 +719,7 @@ struct AgentAttachStoreTests {
         output.append(0x07)
         output.append(0x0A)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
         await transport.emitAttachOutput(output)
 
         try await waitUntil("both C1 forms should expose their targets") {
@@ -752,10 +742,7 @@ struct AgentAttachStoreTests {
         output.append(0x9C)
         output.append(Data("https://after-st.example/result\n".utf8))
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
         await transport.emitAttachOutput(output)
 
         try await waitUntil("C1 controls should separate visible targets") {
@@ -781,10 +768,7 @@ struct AgentAttachStoreTests {
                 count: 32 * 1024 - prefix.utf8.count)
         let oversizedTarget = maximumTarget + "b"
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
 
         await emitOSC8(
             maximumTarget, label: "maximum", transport: transport)
@@ -820,10 +804,7 @@ struct AgentAttachStoreTests {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
 
         for index in 0..<21 {
             await transport.emitAttachOutput(
@@ -856,10 +837,7 @@ struct AgentAttachStoreTests {
             .map { "https://example.com/item/\($0)" }
             .joined(separator: "\n") + "\n"
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
 
         await transport.emitAttachOutput(Data(output.utf8))
 
@@ -889,10 +867,7 @@ struct AgentAttachStoreTests {
                 count: 32 * 1024 - prefix.utf8.count)
         let oversizedTarget = maximumTarget + "b"
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
 
         await transport.emitAttachOutput(Data((maximumTarget + "\n").utf8))
         await transport.emitAttachOutput(Data((oversizedTarget + "\n").utf8))
@@ -916,10 +891,7 @@ struct AgentAttachStoreTests {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
 
         await transport.emitAttachOutput(
             Data(
@@ -942,10 +914,7 @@ struct AgentAttachStoreTests {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
 
         await transport.emitAttachOutput(Data("Preview https://exa".utf8))
         await transport.emitAttachOutput(Data("mple.com/a/visually-".utf8))
@@ -965,10 +934,7 @@ struct AgentAttachStoreTests {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
 
         await transport.emitAttachOutput(
             Data(
@@ -994,10 +960,7 @@ struct AgentAttachStoreTests {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
         await transport.emitAttachOutput(Data("https://before.example/retry\n".utf8))
         try await waitUntil("the first link should be observed") {
             store.attachLinks.count == 1
@@ -1009,6 +972,7 @@ struct AgentAttachStoreTests {
             return false
         }
         store.retryTerminal()
+        try await paint(transport)
         try await waitUntil("the terminal should retry") {
             store.terminalStatus == .live
         }
@@ -1042,10 +1006,7 @@ struct AgentAttachStoreTests {
         let store = makeStore(transport: transport, generation: 0)
         let initialID = store.terminalID
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the initial terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
 
         store.transportGenerationDidChange(1)
         try await waitUntil("the terminal pipeline should be replaced") {
@@ -1053,10 +1014,7 @@ struct AgentAttachStoreTests {
         }
         #expect(await transport.hasLiveAttachSession == false)
 
-        store.viewDidResize(cols: 100, rows: 30)
-        try await waitUntil("the replacement terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport, cols: 100, rows: 30)
         #expect(await transport.attachRequests.count == 2)
 
         await store.leave()
@@ -1067,20 +1025,14 @@ struct AgentAttachStoreTests {
         let store = makeStore(transport: transport, generation: 0)
         let initialID = store.terminalID
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the initial terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
 
         store.transportGenerationDidChange(1)
         store.transportGenerationDidChange(2)
         try await waitUntil("the latest replacement should land") {
             store.terminalID != initialID
         }
-        store.viewDidResize(cols: 100, rows: 30)
-        try await waitUntil("the replacement terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport, cols: 100, rows: 30)
         #expect(await transport.attachRequests.count == 2)
 
         await store.leave()
@@ -1093,10 +1045,7 @@ struct AgentAttachStoreTests {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
 
         // One byte of garbage: preparation fails and the failure surfaces.
         store.selectImage(DataImageSelection(data: Data([0x01])))
@@ -1123,10 +1072,7 @@ struct AgentAttachStoreTests {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the initial terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
         let initialID = store.terminalID
 
         store.transportGenerationDidChange(1)
@@ -1151,10 +1097,7 @@ struct AgentAttachStoreTests {
             await closeCalls.record()
         }
 
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the terminal should go live") {
-            store.terminalStatus == .live
-        }
+        try await goLive(store, transport)
 
         #expect(await store.confirmClose())
         #expect(await closeCalls.count == 1)
@@ -1185,6 +1128,27 @@ struct AgentAttachStoreTests {
                 throw ImageStagingError.transferFailed
             },
             closePane: close)
+    }
+
+    /// Brings the terminal up the way an attach does: the size report opens
+    /// the channel, and the remote's first paint is what makes it live. The
+    /// paint is a bare screen clear, so it adds nothing for the link index to
+    /// find.
+    private func goLive(
+        _ store: AgentAttachStore, _ transport: ScriptedTransport,
+        cols: Int = 80, rows: Int = 24
+    ) async throws {
+        store.viewDidResize(cols: cols, rows: rows)
+        try await paint(transport)
+        try await waitUntil("the terminal should go live") {
+            store.terminalStatus == .live
+        }
+    }
+
+    /// The remote's first paint, once the channel is actually up.
+    private func paint(_ transport: ScriptedTransport) async throws {
+        try await waitUntil("attach should open") { await transport.hasLiveAttachSession }
+        #expect(await transport.emitAttachOutput(Data("\u{1B}[2J".utf8)))
     }
 
     private func emitOSC8(

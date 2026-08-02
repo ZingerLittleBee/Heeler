@@ -1244,7 +1244,11 @@ actor SSHTransport: Transport {
                 detail: "The remote socket path cannot be quoted safely.")
         }
         let takeover = request.takeover ? " --takeover" : ""
+        // The marker goes out last thing before the exec, so everything the
+        // login shell said on its own way here can be dropped. See
+        // AttachBootstrapHandshake.
         return "exec /bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
+            + "printf \"\(AttachBootstrapHandshake.markerPrintfFormat)\"; "
             + "exec \(attachCommand) \"$1\"\(takeover)' attach "
             + "'\(request.target)' \(quotedSocketPath)\n"
     }
@@ -1306,6 +1310,14 @@ actor SSHTransport: Transport {
                             }
                         }
                         group.addTask {
+                            // The login shell's banner, prompt, and echo of the
+                            // bootstrap line stay off the terminal; the gate
+                            // opens on the bootstrap's own marker.
+                            var gate = AttachBootstrapGate()
+                            func yield(_ bytes: Data) {
+                                guard !bytes.isEmpty else { return }
+                                continuation.yield(bytes)
+                            }
                             do {
                                 for try await chunk in inbound {
                                     switch chunk {
@@ -1313,13 +1325,19 @@ actor SSHTransport: Transport {
                                         // A PTY merges everything into one byte stream;
                                         // stderr chunks should not occur, but any that do
                                         // belong on the terminal too.
-                                        continuation.yield(Data(buffer.readableBytesView))
+                                        yield(gate.admit(Data(buffer.readableBytesView)))
                                     }
                                 }
+                                // Ended before the handshake: the withheld noise
+                                // is the only account of why.
+                                yield(gate.flush())
                                 return true
                             } catch is CancellationError {
+                                // The user left. Nothing withheld is worth
+                                // painting on the way out.
                                 throw CancellationError()
                             } catch {
+                                yield(gate.flush())
                                 throw TerminalAttachPumpError.output(String(describing: error))
                             }
                         }

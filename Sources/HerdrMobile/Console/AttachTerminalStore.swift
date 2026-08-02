@@ -35,9 +35,10 @@ final class AttachTerminalStore {
     enum Status: Equatable {
         /// Waiting for the terminal view's first layout to report cols/rows.
         case waitingForSize
-        /// Opening the attach channel.
+        /// Opening the attach channel, and waiting for the remote attach to
+        /// say something. Nothing is on the terminal yet.
         case connecting
-        /// Bytes are flowing both ways.
+        /// The session has painted; bytes are flowing both ways.
         case live
         /// The session ended remotely (clean detach or channel death); the
         /// message is user-facing and `retry()` reattaches.
@@ -172,7 +173,6 @@ final class AttachTerminalStore {
                 session.scroll(sequence, rows: rows)
             })
         self.inputGeneration = inputGeneration
-        status = .live
         if let latestCols = cols, let latestRows = rows,
             latestCols != initialCols || latestRows != initialRows
         {
@@ -183,6 +183,14 @@ final class AttachTerminalStore {
 
         do {
             for try await bytes in session.output {
+                // Live when the session has something to show, not when the
+                // channel opens: the transport withholds the login shell's
+                // noise, so an open channel with nothing on it yet is still a
+                // blank screen. "Connecting…" stays up until the remote attach
+                // paints.
+                if status == .connecting {
+                    status = .live
+                }
                 observeOutput(bytes)
                 feed.write(bytes)
             }

@@ -9,6 +9,14 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Opening an Agent no longer flashes the Host's login shell across the screen
+  first. The attach channel is a login shell, so its banner, its prompt, and
+  its echo of the attach command all arrived before the Agent did, painted for
+  as long as the attach took to come up, and were then wiped by the Agent's
+  first frame. None of it reaches the terminal now, and "Connecting…" stays up
+  until the Agent actually paints. If an attach dies before it starts, whatever
+  the Host said is still shown — that message is the only diagnosis there is.
+
 - The Agent list now removes rows from disconnected Hosts immediately, rejects
   stale snapshots that finish after a disconnect, and rechecks membership when
   an Agent process exits back to an ordinary shell.

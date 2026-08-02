@@ -50,6 +50,38 @@ struct TerminalAttachE2ETests {
         }
     }
 
+    @Test func loginShellNoiseNeverReachesTheTerminal() async throws {
+        // The flicker this exists to prevent: the channel is a login shell,
+        // so its banner, its prompt, and its echo of the bootstrap line all
+        // arrive before attach does — and would paint until the TUI's first
+        // frame wiped them. Nothing before the bootstrap handshake may reach
+        // the stream.
+        try await withAttachTransport(
+            script: """
+            stty -echo
+            printf 'READY\\n'
+            exec sleep 5
+            """
+        ) { transport in
+            let session = try await transport.attachTerminal(
+                TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24))
+            var iterator = session.output.makeAsyncIterator()
+            var seen = ""
+            try await expectOutput(&iterator, accumulated: &seen, contains: "READY")
+
+            // Only the echo of the bootstrap line carries these; the script
+            // itself never prints them.
+            #expect(!seen.contains("HERDR_SOCKET_PATH"))
+            #expect(!seen.contains("herdr-mobile-attach"))
+            // And the handshake itself is consumed, not handed to the
+            // terminal.
+            #expect(!seen.contains("\u{1B}_"))
+            #expect(seen.hasPrefix("READY"))
+
+            await session.end()
+        }
+    }
+
     @Test func windowChangeReachesTheRemotePTY() async throws {
         // The rotation path: resize() must change the remote PTY's winsize.
         // `stty size` reads it back on demand — no SIGWINCH handling needed.
