@@ -16,6 +16,10 @@ struct AgentDetailView: View {
     /// Keeps the keyboard up across the terminal rebuild an Agent switch
     /// forces; owned by the Console so it survives that rebuild.
     private let keyboardHandoff: TerminalKeyboardHandoff
+    /// How much of the bottom edge the keyboard covers. Console-owned for the
+    /// same reason as the handoff: a switch that inherits a raised keyboard
+    /// must lay the terminal out at the right height on its first frame.
+    private let keyboardInset: TerminalKeyboardInset
     /// Opens another Agent from the terminal's switcher strip. The owner moves
     /// the selection, exactly as a tap in the Agent list would.
     private let onSwitch: (ConsoleAgent.ID) -> Void
@@ -25,7 +29,6 @@ struct AgentDetailView: View {
     /// pops the collapsed stack on iPhone.
     private let onClosed: () -> Void
     @State private var attach: AgentAttachStore
-    @State private var keyboardInset = TerminalKeyboardInset()
     @State private var keyboardControl = TerminalKeyboardControl()
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isConfirmingClose = false
@@ -45,6 +48,7 @@ struct AgentDetailView: View {
         hosts: [Host],
         activity: AppActivityCoordinator,
         keyboardHandoff: TerminalKeyboardHandoff,
+        keyboardInset: TerminalKeyboardInset,
         onSwitch: @escaping (ConsoleAgent.ID) -> Void,
         onClosed: @escaping () -> Void
     ) {
@@ -54,6 +58,7 @@ struct AgentDetailView: View {
         self.hosts = hosts
         self.activity = activity
         self.keyboardHandoff = keyboardHandoff
+        self.keyboardInset = keyboardInset
         self.onSwitch = onSwitch
         self.onClosed = onClosed
         _attach = State(
@@ -380,6 +385,11 @@ struct AgentDetailView: View {
         }
     }
 
+    /// The dialog wears the terminal's theme, not the system's.
+    private var themePalette: TerminalThemePalette {
+        terminal.themes.selection(for: colorScheme).palette(for: colorScheme)
+    }
+
     @ViewBuilder
     private var statusOverlay: some View {
         switch attach.terminalStatus {
@@ -388,12 +398,14 @@ struct AgentDetailView: View {
             TerminalStatusDialog(
                 glyph: .progress,
                 title: "Connecting…",
+                palette: themePalette,
                 dimsBackground: false)
         case .ended(let message):
             TerminalStatusDialog(
                 glyph: .symbol("cable.connector.slash"),
                 title: "Session Ended",
-                message: message
+                message: message,
+                palette: themePalette
             ) {
                 Button("Reattach") { attach.retryTerminal() }
                     .buttonStyle(.borderedProminent)

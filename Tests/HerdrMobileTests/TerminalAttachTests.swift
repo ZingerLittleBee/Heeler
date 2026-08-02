@@ -1031,6 +1031,7 @@ struct TerminalAttachTests {
             socketPath: "/home/u/.config/herdr/sessions/dev/herdr.sock")
         #expect(
             line == "exec /bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
+                + "printf \"\\033_herdr-mobile-attach\\033\\134\"; "
                 + "exec herdr agent attach \"$1\"' attach "
                 + "'w1:p1' '/home/u/.config/herdr/sessions/dev/herdr.sock'\n")
     }
@@ -1042,6 +1043,7 @@ struct TerminalAttachTests {
             socketPath: "/home/u/.config/herdr/herdr.sock")
         #expect(
             line == "exec /bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
+                + "printf \"\\033_herdr-mobile-attach\\033\\134\"; "
                 + "exec herdr agent attach \"$1\" --takeover' attach "
                 + "'w1:p1' '/home/u/.config/herdr/herdr.sock'\n")
     }
@@ -1055,6 +1057,7 @@ struct TerminalAttachTests {
             socketPath: "/tmp/fake.sock")
         #expect(
             line == "exec /bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
+                + "printf \"\\033_herdr-mobile-attach\\033\\134\"; "
                 + "exec /bin/sh /tmp/fake-attach.sh \"$1\"' attach "
                 + "'w1:p1' '/tmp/fake.sock'\n")
     }
@@ -1080,6 +1083,67 @@ struct TerminalAttachTests {
                 request: TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24),
                 socketPath: "/tmp/it's-a.sock")
         }
+    }
+
+    @Test func gateWithholdsTheLoginShellNoiseUntilTheHandshake() {
+        var gate = AttachBootstrapGate()
+        // What the real channel says before the bootstrap runs: a banner, a
+        // prompt, and the shell's echo of the line that prints the marker.
+        // The echo carries the literal text of the escape, which is exactly
+        // why it cannot be mistaken for the marker itself.
+        let noise = Data(
+            ("Last login: Sun Aug  2 13:28:08 2026\r\n"
+                + "\u{1B}[32muser@host\u{1B}[0m ~ % "
+                + #"exec /bin/sh -c 'printf "\033_herdr-mobile-attach\033\134"; exec herdr'"#
+                + "\r\n").utf8)
+        #expect(gate.admit(noise).isEmpty)
+        #expect(!gate.isOpen)
+
+        let opened = gate.admit(AttachBootstrapHandshake.marker + Data("\u{1B}[2JTUI".utf8))
+        #expect(gate.isOpen)
+        #expect(opened == Data("\u{1B}[2JTUI".utf8))
+        // Open for good: no rescanning, no second handshake.
+        #expect(gate.admit(Data("more".utf8)) == Data("more".utf8))
+        #expect(gate.flush().isEmpty)
+    }
+
+    @Test func gateMatchesAHandshakeSplitAcrossChunks() {
+        var gate = AttachBootstrapGate()
+        let marker = AttachBootstrapHandshake.marker
+        for index in 1..<marker.count {
+            var split = AttachBootstrapGate()
+            #expect(split.admit(Data(marker.prefix(index))).isEmpty)
+            #expect(split.admit(Data(marker.suffix(from: index)) + Data("go".utf8))
+                == Data("go".utf8))
+        }
+        // And byte by byte, the worst case a slow link can produce.
+        for byte in marker {
+            #expect(gate.admit(Data([byte])).isEmpty)
+        }
+        #expect(gate.isOpen)
+    }
+
+    @Test func gateHandsBackTheNoiseWhenTheHandshakeNeverCame() {
+        // herdr missing from the Host's PATH: the shell's complaint is the
+        // only diagnosis the user will ever get, so it must survive.
+        var gate = AttachBootstrapGate()
+        let failure = Data("sh: herdr: command not found\r\n".utf8)
+        #expect(gate.admit(failure).isEmpty)
+        #expect(gate.flush() == failure)
+        #expect(gate.flush().isEmpty)
+    }
+
+    @Test func gateBoundsTheWithheldNoiseWithoutLosingTheHandshake() {
+        var gate = AttachBootstrapGate()
+        let flood = Data(repeating: UInt8(ascii: "x"), count: 64 * 1024)
+        #expect(gate.admit(flood).isEmpty)
+        // A copy, so the bound can be read without spending the gate.
+        var counted = gate
+        #expect(counted.flush().count <= AttachBootstrapGate.maximumWithheldBytes)
+        // Trimming must not eat a marker that straddles the boundary.
+        let marker = AttachBootstrapHandshake.marker
+        #expect(gate.admit(Data(marker.prefix(3))).isEmpty)
+        #expect(gate.admit(Data(marker.suffix(from: 3)) + Data("tui".utf8)) == Data("tui".utf8))
     }
 
     @Test func sessionDropsEmptyKeystrokeWrites() async {

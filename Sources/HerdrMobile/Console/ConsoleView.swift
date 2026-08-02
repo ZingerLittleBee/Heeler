@@ -28,6 +28,13 @@ struct ConsoleView: View {
     /// Outlives the detail column's rebuilds, which is the whole point: it
     /// carries the raised keyboard from one Attach screen to the next.
     @State private var keyboardHandoff = TerminalKeyboardHandoff()
+    /// Outlives those rebuilds for the same reason. A per-screen inset starts
+    /// every switch at zero and only learns the keyboard's height once UIKit
+    /// posts the next frame notification, so the terminal that inherits a
+    /// raised keyboard would lay out full height first and shrink a moment
+    /// later — an extra reflow, and a Connecting dialog that visibly jumps
+    /// from the middle of the screen to the middle of the terminal.
+    @State private var keyboardInset = TerminalKeyboardInset()
 
     var body: some View {
         // A split view instead of a plain stack for the iPad's sake: regular
@@ -155,6 +162,7 @@ struct ConsoleView: View {
                     hosts: hosts.hosts,
                     activity: activity,
                     keyboardHandoff: keyboardHandoff,
+                    keyboardInset: keyboardInset,
                     onSwitch: { notificationRouter.path = [$0] },
                     onClosed: { notificationRouter.path = [] }
                 )

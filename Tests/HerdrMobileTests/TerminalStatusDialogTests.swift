@@ -43,8 +43,41 @@ struct TerminalStatusDialogTests {
         #expect(try #require(Self.color(in: undimmed, atUnit: corner)) == Self.backdrop)
     }
 
+    @Test func theCardWearsTheTerminalThemeRatherThanTheSystem() async throws {
+        // The theme owns the whole screen; a system material card over a
+        // Solarized grid reads as a piece of some other app.
+        let palette = TerminalThemeOption.solarized.palette(for: .dark)
+        let image = try await Self.render(
+            TerminalStatusDialog(
+                glyph: .progress, title: "Connecting…", palette: palette,
+                dimsBackground: false))
+
+        // Inside the card, clear of the centred spinner and copy.
+        let inside = try #require(Self.color(in: image, atUnit: CGPoint(x: 0.15, y: 0.5)))
+        let expected = Self.packed(palette.background.mix(with: palette.foreground, by: 0.08))
+        #expect(
+            Self.channelDistance(inside, expected) <= 8,
+            "card drew \(String(inside, radix: 16)), expected ~\(String(expected, radix: 16))")
+    }
+
     /// Pure red, so anything drawn over it is unmistakable.
     private static let backdrop: UInt32 = 0xFF00_0000 >> 8
+
+    private static func packed(_ color: Color) -> UInt32 {
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        UIColor(color).getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        return [red, green, blue].reduce(0) { packed, channel in
+            packed << 8 | UInt32((channel * 255).rounded())
+        }
+    }
+
+    private static func channelDistance(_ lhs: UInt32, _ rhs: UInt32) -> Int {
+        (0..<3).reduce(0) { worst, shift in
+            let left = Int((lhs >> (shift * 8)) & 0xFF)
+            let right = Int((rhs >> (shift * 8)) & 0xFF)
+            return max(worst, abs(left - right))
+        }
+    }
 
     private static func render(_ dialog: some View) async throws -> UIImage {
         let bounds = CGRect(x: 0, y: 0, width: 390, height: 720)

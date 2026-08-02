@@ -74,8 +74,8 @@ struct TerminalThemeSwatchTests {
     @Test func pairedThemesDrawTheHalfThatIsInForce() {
         // The swatch answers "what will my terminal look like if I pick this",
         // and the current appearance is half of that answer.
-        let dark = TerminalThemeOption.solarized.swatchPalette(for: .dark)
-        let light = TerminalThemeOption.solarized.swatchPalette(for: .light)
+        let dark = TerminalThemeOption.solarized.palette(for: .dark)
+        let light = TerminalThemeOption.solarized.palette(for: .light)
 
         #expect(dark.background != light.background)
     }
@@ -83,7 +83,7 @@ struct TerminalThemeSwatchTests {
     @Test func everyThemeYieldsADrawablePalette() {
         for option in TerminalThemeOption.allCases {
             for scheme in [ColorScheme.light, .dark] {
-                let palette = option.swatchPalette(for: scheme)
+                let palette = option.palette(for: scheme)
                 // No crash and no default-constructed nonsense: the accent and
                 // success bars must come out as real colours.
                 #expect(palette.accent != palette.background)
