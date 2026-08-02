@@ -61,6 +61,23 @@ enum SkillProbe {
         }
     }
 
+    /// A single skill document read in full, for the on-demand "view
+    /// content" path. Same marker framing as the probe, so login-shell noise
+    /// cannot leak into the document; a missing file prints no marker at
+    /// all, which parses as nil rather than as an empty document.
+    static let maximumBytesPerDocument = 65_536
+
+    static func readFileCommand(quotedPath: String) -> String {
+        "/bin/sh -c '[ -f \"$1\" ] || exit 0; "
+            + "printf \"\(fileMarker(sourceIndex: 0))%s\\n\" \"$1\"; "
+            + "head -c \(maximumBytesPerDocument) \"$1\"; "
+            + "printf \"\\n\(endMarker)\\n\"' herdr-skill-read \(quotedPath)"
+    }
+
+    static func documentContent(in output: Data) -> String? {
+        probedFiles(in: output).first?.content
+    }
+
     /// One file the probe printed: which source found it, where it was, and
     /// what its head contained.
     struct ProbedFile: Equatable, Sendable {
@@ -134,7 +151,8 @@ enum SkillProbe {
                 scope: source.scope,
                 name: name,
                 description: safeDescription(frontmatter.description),
-                commandPrefix: source.commandPrefix)
+                commandPrefix: source.commandPrefix,
+                path: file.path)
             guard seenCommands.insert(skill.command).inserted else { continue }
             skills.append(skill)
         }

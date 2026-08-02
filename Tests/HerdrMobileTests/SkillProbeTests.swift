@@ -149,6 +149,37 @@ struct SkillProbeTests {
             sources: sources)
         #expect(skills.map(\.name) == ["no-frontmatter", "fix-ci"])
         #expect(skills[0].insertionText == "/no-frontmatter ")
+        // The path travels with the skill so View Content can fetch it later.
+        #expect(skills[0].path == "/repo/.claude/skills/no-frontmatter/SKILL.md")
+    }
+
+    // MARK: single-document read
+
+    @Test func readFileCommandIsMarkerFramedAndCapped() {
+        let command = SkillProbe.readFileCommand(
+            quotedPath: "'/repo/.claude/skills/deploy/SKILL.md'")
+        #expect(command.hasPrefix("/bin/sh -c '"))
+        #expect(command.hasSuffix(" herdr-skill-read '/repo/.claude/skills/deploy/SKILL.md'"))
+        #expect(command.contains("head -c \(SkillProbe.maximumBytesPerDocument)"))
+        // A missing file prints no marker at all — absence, not emptiness.
+        #expect(command.contains("[ -f \"$1\" ] || exit 0"))
+    }
+
+    @Test func documentContentComesBackFramed() {
+        let framed = output(
+            """
+            login shell noise
+            \(marker(0))/repo/.claude/skills/deploy/SKILL.md
+            ---
+            name: deploy
+            ---
+            The whole body.
+            \(SkillProbe.endMarker)
+            """)
+        #expect(
+            SkillProbe.documentContent(in: framed)
+                == "---\nname: deploy\n---\nThe whole body.")
+        #expect(SkillProbe.documentContent(in: output("nothing but noise\n")) == nil)
     }
 
     @Test func commandPrefixRidesTheSource() {

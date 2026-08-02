@@ -38,6 +38,9 @@ struct AgentDetailView: View {
     @State private var isStartingAgent = false
     @State private var isManagingSnippets = false
     @State private var isRenamingAgent = false
+    /// The skill whose full document is on screen; set from the Skills
+    /// pane's long-press menu.
+    @State private var viewingSkill: AgentSkill?
     @State private var isRenamingWorkspace = false
     @State private var isShowingAttachLinks = false
     @State private var closeErrorMessage: String?
@@ -117,7 +120,11 @@ struct AgentDetailView: View {
         }
         screen.keysContext = TerminalKeysContext(
             settings: terminal,
-            skills: skills.map { TerminalSkillsContext(store: $0) }
+            skills: skills.map { store in
+                TerminalSkillsContext(store: store) { skill in
+                    viewingSkill = skill
+                }
+            }
         ) {
             isManagingSnippets = true
         }
@@ -155,6 +162,12 @@ struct AgentDetailView: View {
         // back; see `allowsKeyboardActivation` in HerdrTerminalView.
         .sheet(isPresented: $isManagingSnippets) {
             SnippetsManagementView(store: terminal.snippets)
+        }
+        // Same keyboard choreography as the Snippets sheet above.
+        .sheet(item: $viewingSkill) { skill in
+            SkillContentSheet(skill: skill) { [console, agent] in
+                try await console.readSkillFile(path: skill.path, on: agent.hostID)
+            }
         }
         .sheet(isPresented: $isRenamingAgent) {
             RenameSheetView(

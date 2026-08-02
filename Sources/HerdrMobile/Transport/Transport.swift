@@ -140,6 +140,11 @@ protocol Transport: Sendable {
     /// nothing by default.
     func listSkills(_ query: SkillListQuery) async throws -> [AgentSkill]
 
+    /// Reads one skill document in full (capped) for the on-demand content
+    /// view; `path` is what the skills probe reported. Same transport caveat
+    /// as `listSkills`.
+    func readSkillFile(atPath path: String) async throws -> String
+
     /// Whether the underlying connection to the Host is still alive. The
     /// reconnect machinery (#18) decides "re-subscribe on this connection or
     /// re-establish it" from this flag.
@@ -161,6 +166,11 @@ extension Transport {
 
     func listSkills(_ query: SkillListQuery) async throws -> [AgentSkill] {
         []
+    }
+
+    func readSkillFile(atPath path: String) async throws -> String {
+        throw TransportError.channelFailed(
+            detail: "This transport cannot read skill files.")
     }
 
     /// Non-SSH test doubles and alternative transports can state that SFTP is

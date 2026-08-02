@@ -46,6 +46,7 @@
 		2D3054E6B0E005A339F2BA71 /* NotificationRegistrationE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 041DAC3CA558CE4F89606077 /* NotificationRegistrationE2ETests.swift */; };
 		2E4C392847F96047AF0510DD /* PreflightReportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB88AD0F4E9EE776B17FAFAA /* PreflightReportTests.swift */; };
 		2F63F9E390ED79B5B87966D7 /* PushRegistrationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B36D007E7AE959F6D62B166D /* PushRegistrationStore.swift */; };
+		309AB8877AF4964FD021F1FE /* SkillContentSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7507EB13181C8372D4802DF5 /* SkillContentSheet.swift */; };
 		30A69209EA01A8DF784ABC52 /* TerminalInputControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B75316F4E6B80E442C365765 /* TerminalInputControllerTests.swift */; };
 		3442A6A7F9DE99CBA83F79E1 /* NotificationKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F246F98BBDAEF3A331C14F9 /* NotificationKeyStore.swift */; };
 		345C7A9CB13934941D67390F /* NotificationPrivacyCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 323782148B559800B45E2930 /* NotificationPrivacyCopy.swift */; };
@@ -356,6 +357,7 @@
 		7215D5A207076C7F7E8F1E63 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		73DB204D5F25D5375D5B2974 /* TerminalKeyboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalKeyboard.swift; sourceTree = "<group>"; };
 		7474FD0BACB07ADB3570E5BE /* pairing-code-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "pairing-code-v1.json"; sourceTree = "<group>"; };
+		7507EB13181C8372D4802DF5 /* SkillContentSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillContentSheet.swift; sourceTree = "<group>"; };
 		758FA750D152E92B878A0234 /* TerminalMouseReportingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalMouseReportingTests.swift; sourceTree = "<group>"; };
 		7730887B9AF1CE45D9FB9AAB /* ImagePreparer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePreparer.swift; sourceTree = "<group>"; };
 		78437BCBAD02A5E0EB1A439B /* NotificationPreferencesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPreferencesStore.swift; sourceTree = "<group>"; };
@@ -632,6 +634,7 @@
 			isa = PBXGroup;
 			children = (
 				13117F51D58B7866859F14AD /* AgentSkill.swift */,
+				7507EB13181C8372D4802DF5 /* SkillContentSheet.swift */,
 				B31EC0311DCBA1190EF272D0 /* SkillFrontmatter.swift */,
 				03612D6ABBD3E74B2A58093D /* SkillProbe.swift */,
 				9685B6BBE8FC2FD59CDBC18D /* SkillsKeyboardPane.swift */,
@@ -1177,6 +1180,7 @@
 				693B0173C07DAF4BFC89B094 /* SecretStore.swift in Sources */,
 				1E26593A1B05B0ACEE9AC557 /* SettingsView.swift in Sources */,
 				DC564E76486D243AD1741F7E /* SharedAsyncOperation.swift in Sources */,
+				309AB8877AF4964FD021F1FE /* SkillContentSheet.swift in Sources */,
 				8C1F8B38CFE8F8B22287EDF3 /* SkillFrontmatter.swift in Sources */,
 				4A49861CC33BB3368BCAEB13 /* SkillProbe.swift in Sources */,
 				702C53ED6745920908ED34AB /* SkillsKeyboardPane.swift in Sources */,

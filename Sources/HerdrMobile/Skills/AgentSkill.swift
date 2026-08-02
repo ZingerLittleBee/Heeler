@@ -24,15 +24,19 @@ struct AgentSkill: Identifiable, Sendable, Equatable, Hashable {
     /// Codex skill mentions, `/skill:` for Pi skills. Rides the skill (not
     /// the kind) because one kind can expose several mechanisms.
     let commandPrefix: String
+    /// Where the probe found the file on the Host, so the full document can
+    /// be fetched on demand.
+    let path: String
 
     init(
         scope: Scope, name: String, description: String?,
-        commandPrefix: String = "/"
+        commandPrefix: String = "/", path: String = ""
     ) {
         self.scope = scope
         self.name = name
         self.description = description
         self.commandPrefix = commandPrefix
+        self.path = path
     }
 
     /// The invocation as the agent's composer expects it: `/code-review`,
