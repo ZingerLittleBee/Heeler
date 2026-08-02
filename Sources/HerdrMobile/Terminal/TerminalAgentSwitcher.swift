@@ -278,7 +278,7 @@ final class TerminalAgentChip: UIControl {
         isSelected = selected
         label.text = item.title
         label.textColor = selected ? .label : .secondaryLabel
-        dot.backgroundColor = item.status.tintUIColor
+        dot.backgroundColor = item.status.inkUIColor
         backgroundColor = selected ? .tertiarySystemBackground : .clear
         isWorking = item.status == .working
         updatePulse()

@@ -9,6 +9,14 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Agent status colours are readable in light mode. The Working badge painted
+  its text in Catppuccin Latte's yellow over a wash of the same yellow, which
+  measured 2.3:1 — far under the 4.5:1 that small text needs — and Done's
+  green fared little better; the keyboard switcher's status dot missed the
+  3:1 an indicator needs on white. Badge text and the dot now use a darker
+  ink of the same hue in light mode (dark mode already passed and keeps its
+  pastels), so the phone still speaks herdr's colours, just legibly.
+
 - A Host no longer gets stuck offline because one Agent's pane exited. The
   events subscription names each Agent's pane, and herdr rejects the whole
   subscription when a single one of those panes is gone, so a pane that ended

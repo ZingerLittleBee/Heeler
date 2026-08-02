@@ -94,12 +94,8 @@ struct AgentStatusBadge: View {
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
-        .background(color.opacity(0.15), in: Capsule())
-        .foregroundStyle(color)
-    }
-
-    private var color: Color {
-        Color(status.tintUIColor)
+        .background(Color(status.tintUIColor).opacity(0.15), in: Capsule())
+        .foregroundStyle(Color(status.inkUIColor))
     }
 }
 
