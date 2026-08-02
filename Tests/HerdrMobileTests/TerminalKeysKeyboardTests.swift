@@ -218,6 +218,28 @@ struct TerminalKeysKeyboardTests {
         #expect(keyboard.tab(nearestTo: Self.pageWidth, pageWidth: Self.pageWidth) == nil)
     }
 
+    /// Skills sits right beside the control keys; Snippets and Appearance
+    /// shift over. Without a skills context the old order is untouched.
+    @Test func skillsIsTheSecondTabWhenAvailable() async throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let store = SkillsPaneStore { _ in [] }
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            keysContext: makeContext(
+                defaults: defaults, skills: TerminalSkillsContext(store: store)))
+        terminal.setKeyboardMode(.controls)
+        let keyboard = try #require(terminal.keysKeyboard)
+        keyboard.frame = CGRect(x: 0, y: 0, width: Self.pageWidth, height: 224)
+        keyboard.layoutIfNeeded()
+
+        #expect(keyboard.pager.contentSize.width == Self.pageWidth * 4)
+        #expect(
+            keyboard.tab(nearestTo: Self.pageWidth, pageWidth: Self.pageWidth) == .skills)
+        #expect(
+            keyboard.tab(nearestTo: Self.pageWidth * 2, pageWidth: Self.pageWidth)
+                == .snippets)
+    }
+
     /// The pager builds every pane the moment the keyboard comes up, so the
     /// probe must wait for the one signal that means "the user wants the
     /// list": the Skills tab actually being reached.

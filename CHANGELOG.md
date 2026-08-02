@@ -12,7 +12,8 @@ Entries reference the issue that motivated them.
 - The Keys keyboard has a Skills pane: the skills and custom slash commands
   installed on the Host for the agent you're attached to — the project's own
   and the global ones — listed by name and description, one tap inserting
-  the invocation into the terminal without sending it. Covered kinds and
+  the invocation into the terminal without sending it, a long press
+  previewing the full description. Covered kinds and
   their mechanisms: Claude Code Agent Skills (`/name`), Codex Agent Skills
   (`$name`), OpenCode commands (`/name`), and Pi skills (`/skill:name`) plus
   prompt templates (`/name`). The list is probed once per connection and
