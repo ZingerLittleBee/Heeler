@@ -7,11 +7,12 @@ SCHEME  := HerdrMobile
 ARCHIVE := build/HerdrMobile.xcarchive
 DERIVED := build/DerivedData
 APP_ID  := dev.herdr.mobile.HerdrMobile
+SIM     ?= iPhone 17
 
 # First physical device paired with devicectl; override with `make install DEVICE=<uuid>`.
 DEVICE ?= $(shell xcrun devicectl list devices 2>/dev/null | awk '/physical[a-z]* *$$/ { for (i = 1; i <= NF; i++) if ($$i ~ /^[0-9A-Fa-f-]{36}$$/) { print $$i; exit } }')
 
-.PHONY: help generate build test install archive upload testflight bump clean check-device
+.PHONY: help generate build test install sim archive upload testflight bump clean check-device
 
 help: ## Show available targets
 	@awk -F':.*## ' '/^[a-z]+:.*## / { printf "  make %-12s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -35,6 +36,14 @@ install: check-device build ## Build Debug, install on the iPhone, and relaunch 
 	xcrun devicectl device install app --device $(DEVICE) \
 		$(DERIVED)/Build/Products/Debug-iphoneos/HerdrMobile.app
 	xcrun devicectl device process launch --terminate-existing --device $(DEVICE) $(APP_ID)
+
+sim: generate ## Build Debug and run it on the simulator (override with SIM=<name>)
+	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \
+		-destination 'platform=iOS Simulator,name=$(SIM)' -derivedDataPath $(DERIVED) build
+	xcrun simctl boot '$(SIM)' 2>/dev/null || true
+	open -a Simulator
+	xcrun simctl install booted $(DERIVED)/Build/Products/Debug-iphonesimulator/HerdrMobile.app
+	xcrun simctl launch --terminate-running-process booted $(APP_ID)
 
 archive: generate ## Archive a Release build for distribution
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release \
