@@ -55,6 +55,7 @@ struct AgentDetailView: View {
         activity: AppActivityCoordinator,
         keyboardHandoff: TerminalKeyboardHandoff,
         keyboardInset: TerminalKeyboardInset,
+        isOnStage: @escaping () -> Bool,
         onSwitch: @escaping (ConsoleAgent.ID) -> Void,
         onClosed: @escaping () -> Void
     ) {
@@ -72,6 +73,7 @@ struct AgentDetailView: View {
                 target: agent.agent.paneID,
                 paneTitle: Self.displayTitle(for: agent),
                 transportGeneration: console.hostConnectionGenerations[agent.hostID],
+                isOnStage: isOnStage,
                 runTerminal: console.terminalRunner(for: agent.hostID),
                 stageImage: console.imageStager(for: agent.hostID)
             ) {

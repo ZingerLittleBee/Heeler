@@ -113,13 +113,19 @@ final class AttachTerminalStore {
 
     /// Ends the session by explicit close (a live exec channel ignores task
     /// cancellation, ADR 0002) and waits for the teardown. Terminal: the
-    /// The detail screen creates a fresh store after a Host reconnect.
+    /// detail screen creates a fresh store after a Host reconnect.
+    ///
+    /// The run task is also cancelled: before a session exists it can be
+    /// queued for the Host's terminal channel, and teardown must abort that
+    /// wait rather than sit behind whoever holds the channel — a stop must
+    /// never depend on the channel becoming available.
     func stop() async {
         stopRequested = true
         if let session {
             await session.end()
         }
         if let task = runTask {
+            task.cancel()
             await task.value
         }
         status = .stopped

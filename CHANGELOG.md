@@ -31,6 +31,18 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Switching Agents — from the switcher strip, a notification, or right after
+  starting a new one — no longer strands the terminal on "Connecting…"
+  forever. The synchronous-departure fix let SwiftUI discard the departing
+  screen's state before its teardown task ran, and the weakly-captured
+  teardown then silently skipped itself: the old session was never closed,
+  held the Host's single terminal channel, and every later attach queued
+  behind it indefinitely. The teardown now keeps its store alive until the
+  session is closed. Two hardenings ride along: a screen the Console no
+  longer has on stage refuses to resurrect its terminal on a spurious
+  reappearance, and teardown aborts a session still queued for the channel
+  instead of waiting its turn.
+
 - The Agent switcher strip and the keyboard toolbar no longer vanish when a
   raised keyboard comes back on its own — returning from the background or
   the lock screen with the keyboard up. Two causes, same round trip: the
