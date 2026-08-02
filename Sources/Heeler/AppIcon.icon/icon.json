@@ -1,13 +1,13 @@
 {
   "fill" : {
-    "solid" : "extended-srgb:0.85098,0.85490,0.84706,1.00000"
+    "automatic-gradient" : "extended-srgb:0.00000,0.53333,1.00000,1.00000"
   },
   "groups" : [
     {
       "layers" : [
         {
-          "image-name" : "heeler-mark.png",
-          "name" : "heeler-mark"
+          "image-name" : "heeler-side-profile.png",
+          "name" : "heeler-side-profile"
         }
       ],
       "shadow" : {
@@ -21,8 +21,9 @@
     }
   ],
   "supported-platforms" : {
-    "squares" : [
-      "iOS"
-    ]
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
   }
 }
