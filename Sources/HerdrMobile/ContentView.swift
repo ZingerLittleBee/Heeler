@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var terminalZoom = TerminalZoomSettings()
     @State private var terminalFonts = TerminalFontSettings()
     @State private var snippets = SnippetStore()
+    @State private var appearance = AppAppearanceSettings()
     @State private var relaySettings: NotificationRelaySettings
     @State private var bannerStore: AgentNotificationBannerStore
     @State private var activity = AppActivityCoordinator()
@@ -55,6 +56,7 @@ struct ContentView: View {
     var body: some View {
         ConsoleView(
             hosts: hostStore, console: console, terminal: terminal,
+            appearance: appearance,
             pushRegistration: pushRegistration,
             notificationPreferences: notificationPreferences,
             relaySettings: relaySettings,
@@ -62,6 +64,10 @@ struct ContentView: View {
             bannerStore: bannerStore,
             activity: activity
         )
+        // The one place the app's light/dark override is applied: it lands on
+        // the window, so sheets, pushed screens, and the UIKit terminal
+        // surfaces all resolve against the chosen appearance.
+        .preferredColorScheme(appearance.preferredColorScheme)
         .task {
             console.setHosts(hostStore.hosts)
             notificationPreferences.setHosts(hostStore.hosts)

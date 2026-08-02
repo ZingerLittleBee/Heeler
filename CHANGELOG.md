@@ -50,6 +50,11 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Settings now carries an Appearance picker for the app itself: System, Light,
+  or Dark. System follows iOS as before and remains the default; the other two
+  pin the whole app — Console, sheets, and terminals — to one appearance, and
+  the choice sticks across launches.
+
 - Switch Agents without leaving the terminal: a row along the bottom of the
   terminal lists every Agent with its live status — Working agents pulse — and
   scrolls horizontally. It stays put whether the keyboard is up or down, so

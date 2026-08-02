@@ -6,6 +6,7 @@ struct ConsoleView: View {
     let hosts: HostStore
     let console: ConsoleStore
     let terminal: TerminalSettings
+    let appearance: AppAppearanceSettings
     let pushRegistration: PushRegistrationStore
     let notificationPreferences: NotificationPreferencesStore
     let relaySettings: NotificationRelaySettings
@@ -92,6 +93,7 @@ struct ConsoleView: View {
                 .sheet(isPresented: $isShowingSettings) {
                     SettingsView(
                         terminal: terminal,
+                        appearance: appearance,
                         pushRegistration: pushRegistration,
                         notificationPreferences: notificationPreferences,
                         relaySettings: relaySettings)

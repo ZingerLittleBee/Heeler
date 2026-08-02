@@ -5,6 +5,7 @@ import SwiftUI
 /// pushing the appearance controls out of reach, and vice versa.
 struct SettingsView: View {
     let terminal: TerminalSettings
+    let appearance: AppAppearanceSettings
     let pushRegistration: PushRegistrationStore
     let notificationPreferences: NotificationPreferencesStore
     let relaySettings: NotificationRelaySettings
@@ -24,6 +25,7 @@ struct SettingsView: View {
                     } label: {
                         Label("Notifications", systemImage: "bell.badge")
                     }
+                    appearancePicker
                     NavigationLink {
                         TerminalAppearanceSettingsView(terminal: terminal)
                     } label: {
@@ -54,6 +56,22 @@ struct SettingsView: View {
                     Button("Done") { dismiss() }
                 }
             }
+        }
+    }
+
+    /// The app's own light/dark override. A menu picker, not a pushed screen:
+    /// three options do not earn a navigation level.
+    private var appearancePicker: some View {
+        Picker(
+            selection: Binding(
+                get: { appearance.selection },
+                set: { appearance.select($0) })
+        ) {
+            ForEach(AppAppearanceOption.allCases) { option in
+                Text(option.title).tag(option)
+            }
+        } label: {
+            Label("Appearance", systemImage: "circle.lefthalf.filled")
         }
     }
 
