@@ -829,6 +829,30 @@ struct TerminalAttachTests {
         #expect(inset.height == 0)
     }
 
+    /// Backgrounding hides the keyboard — animating the accessory out — but
+    /// leaves the first responder in place, so the re-presentation on return
+    /// never passes through `becomeFirstResponder`. The keyboard came back
+    /// wearing a fully transparent toolbar until will-show restored it.
+    @MainActor
+    @Test func aRepresentedKeyboardRestoresItsDismissedAccessory() throws {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        let accessory = try #require(
+            terminal.inputAccessoryView as? TerminalKeyboardAccessory)
+
+        // UIView.animate applies the model values immediately; this is the
+        // state a backgrounding leaves behind.
+        accessory.animateDismissal(duration: 0)
+        #expect(accessory.toolbarContentView.alpha == 0)
+
+        NotificationCenter.default.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 554, width: 440, height: 436)])
+
+        #expect(accessory.toolbarContentView.alpha == 1)
+        #expect(accessory.toolbarContentView.transform == .identity)
+    }
+
     /// UIKit measures the input accessory after the keyboard itself, so a
     /// presentation can arrive as two frames. The terminal must not resize
     /// twice on the way up either.
