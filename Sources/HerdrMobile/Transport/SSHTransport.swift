@@ -154,7 +154,7 @@ actor SSHTransport: Transport {
     /// paths are private diagnostics data, so every SFTP channel uses a
     /// per-instance sink rather than Citadel's stderr-backed default logger.
     private static let restrictedSFTPLogger = Logger(
-        label: "dev.herdr.mobile.sftp",
+        label: "dev.bybee.heeler.sftp",
         factory: { _ in SwiftLogNoOpLogHandler() })
 
     /// Exec channels are SSH session channels, capped by sshd's MaxSessions

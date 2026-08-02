@@ -16,7 +16,7 @@ struct DeviceKeyStore: Sendable {
     private let account: String
 
     init(
-        secrets: any SecretStore = KeychainSecretStore(service: "dev.herdr.mobile.ssh"),
+        secrets: any SecretStore = KeychainSecretStore(service: "dev.bybee.heeler.ssh"),
         account: String = "device-ed25519-private-key"
     ) {
         self.secrets = secrets

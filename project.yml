@@ -1,6 +1,6 @@
 name: HerdrMobile
 options:
-  bundleIdPrefix: dev.herdr.mobile
+  bundleIdPrefix: dev.bybee
   deploymentTarget:
     iOS: "26.0"
   createIntermediateGroups: true
@@ -45,11 +45,11 @@ targets:
         # Shared with the Notification Service Extension; doubles as the
         # Keychain access group holding the Notification Keys.
         com.apple.security.application-groups:
-          - group.dev.herdr.mobile.shared
+          - group.dev.bybee.heeler.shared
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
-        PRODUCT_BUNDLE_IDENTIFIER: dev.herdr.mobile.HerdrMobile
+        PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler
         # Home-screen name; the App Store listing is "Heeler for herdr".
         INFOPLIST_KEY_CFBundleDisplayName: Heeler
         MARKETING_VERSION: "0.1.0"
@@ -97,7 +97,7 @@ targets:
       path: Sources/HerdrNotificationService/HerdrNotificationService.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.dev.herdr.mobile.shared
+          - group.dev.bybee.heeler.shared
     info:
       path: Sources/HerdrNotificationService/Info.plist
       properties:
@@ -115,7 +115,7 @@ targets:
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.herdr.mobile.HerdrMobile.NotificationService
+        PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.NotificationService
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "4"
 
@@ -134,7 +134,7 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
-        PRODUCT_BUNDLE_IDENTIFIER: dev.herdr.mobile.HerdrMobileTests
+        PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.tests
     dependencies:
       - target: HerdrMobile
       - package: GhosttyTerminal

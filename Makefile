@@ -6,7 +6,7 @@ PROJECT := HerdrMobile.xcodeproj
 SCHEME  := HerdrMobile
 ARCHIVE := build/HerdrMobile.xcarchive
 DERIVED := build/DerivedData
-APP_ID  := dev.herdr.mobile.HerdrMobile
+APP_ID  := dev.bybee.heeler
 SIM     ?= iPhone 17
 
 # First physical device paired with devicectl; override with `make install DEVICE=<uuid>`.

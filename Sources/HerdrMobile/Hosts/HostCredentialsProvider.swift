@@ -14,7 +14,7 @@ struct HostCredentialsProvider: Sendable {
 
     init(
         deviceKeys: DeviceKeyStore = DeviceKeyStore(),
-        secrets: any SecretStore = KeychainSecretStore(service: "dev.herdr.mobile.ssh")
+        secrets: any SecretStore = KeychainSecretStore(service: "dev.bybee.heeler.ssh")
     ) {
         self.deviceKeys = deviceKeys
         self.secrets = secrets

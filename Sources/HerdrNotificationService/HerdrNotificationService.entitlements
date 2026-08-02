@@ -4,7 +4,7 @@
 <dict>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.dev.herdr.mobile.shared</string>
+		<string>group.dev.bybee.heeler.shared</string>
 	</array>
 </dict>
 </plist>

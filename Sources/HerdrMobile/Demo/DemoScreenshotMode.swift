@@ -236,7 +236,7 @@
             """
 
         static func makeDefaults() -> UserDefaults {
-            let suiteName = "dev.herdr.mobile.demo-screenshots.\(UUID().uuidString)"
+            let suiteName = "dev.bybee.heeler.demo-screenshots.\(UUID().uuidString)"
             return UserDefaults(suiteName: suiteName) ?? UserDefaults()
         }
 
