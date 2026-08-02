@@ -72,4 +72,4 @@ point your Hosts at a relay that Apple will not let deliver to this bundle.
 ## Contact
 
 Questions about this document belong in the project's issue tracker at
-<https://github.com/ZingerLittleBee/herdr-mobile>.
+<https://github.com/ZingerLittleBee/Heeler>.

@@ -70,7 +70,7 @@ running herdr (Node >= 20, herdr >= 0.7.5, OpenSSH server enabled — on macOS
 that is **System Settings > General > Sharing > Remote Login**):
 
 ```bash
-herdr plugin install ZingerLittleBee/herdr-mobile/plugin --ref main --yes
+herdr plugin install ZingerLittleBee/Heeler/plugin --ref main --yes
 herdr plugin action invoke herdr-mobile.pairing.pair
 ```
 
