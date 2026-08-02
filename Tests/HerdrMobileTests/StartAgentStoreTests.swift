@@ -51,6 +51,7 @@ struct StartAgentStoreTests {
         agentKinds: @escaping (Host.ID) async throws -> [SupportedAgentKind] = { _ in
             [.claude]
         },
+        awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void = { _ in },
         origin: StartAgentStore.LaunchOrigin? = nil,
         recents: RecentWorkspaceStore? = nil,
         recorder: StartRecorder
@@ -62,8 +63,15 @@ struct StartAgentStoreTests {
             start: { params, worktree, hostID in
                 try await recorder.record(params, worktree, hostID)
             },
+            awaitAgentVisible: awaitAgentVisible,
             origin: origin,
             recents: recents ?? makeRecents())
+    }
+
+    /// The `.started` state a default-recorder submit lands in: the recorder's
+    /// fixture pane on the submitting Host.
+    private func started(on host: Host, paneID: String = "w1:pnew") -> StartAgentStore.State {
+        .started(ConsoleAgent.ID(hostID: host.id, paneID: paneID))
     }
 
     private func waitUntil(
@@ -286,7 +294,7 @@ struct StartAgentStoreTests {
 
         await store.submit()
 
-        #expect(store.state == .started)
+        #expect(store.state == started(on: host))
         #expect(recorder.params.map(\.name) == ["claude-3"])
     }
 
@@ -303,7 +311,7 @@ struct StartAgentStoreTests {
 
         await store.submit()
 
-        #expect(store.state == .started)
+        #expect(store.state == started(on: host))
         #expect(recorder.params.map(\.name) == ["claude"])
     }
 
@@ -395,7 +403,7 @@ struct StartAgentStoreTests {
         await store.discoverAgents()
         await store.submit()
 
-        #expect(store.state == .started)
+        #expect(store.state == started(on: host))
         #expect(store.selectedWorkspaceID == "w1")
         #expect(recorder.params.map(\.workspaceID) == ["w1"])
     }
@@ -428,7 +436,7 @@ struct StartAgentStoreTests {
         first.name = "reviewer"
         await first.discoverAgents()
         await first.submit()
-        #expect(first.state == .started)
+        #expect(first.state == started(on: host))
 
         let next = makeStore(
             hosts: [host], workspaces: workspaces, recents: recents, recorder: StartRecorder())
@@ -490,7 +498,7 @@ struct StartAgentStoreTests {
 
         await store.submit()
 
-        #expect(store.state == .started)
+        #expect(store.state == started(on: host))
         #expect(recorder.hostIDs == [host.id])
         #expect(recorder.params.first?.kind == "claude")
         #expect(recorder.params.first?.name == "reviewer")
@@ -521,7 +529,7 @@ struct StartAgentStoreTests {
 
         await store.submit()
 
-        #expect(store.state == .started)
+        #expect(store.state == started(on: host))
         #expect(recorder.hostIDs == [host.id])
         #expect(recorder.params.first?.workspaceID == "w1")
         #expect(recorder.params.first?.cwd == "/Users/dev/proj/api")
@@ -547,7 +555,7 @@ struct StartAgentStoreTests {
 
         await store.submit()
 
-        #expect(store.state == .started)
+        #expect(store.state == started(on: host))
         #expect(recorder.worktrees == [nil])
         #expect(recorder.params.first?.cwd == "/Users/dev/proj")
     }
@@ -607,7 +615,7 @@ struct StartAgentStoreTests {
 
         await store.submit()
 
-        #expect(store.state == .started)
+        #expect(store.state == started(on: host))
         #expect(recorder.params.first?.workspaceID == "w1")
         #expect(recorder.worktrees == [WorktreeSpec(branch: "task/fix-97", base: "origin/main")])
     }
@@ -625,7 +633,7 @@ struct StartAgentStoreTests {
 
         await store.submit()
 
-        #expect(store.state == .started)
+        #expect(store.state == started(on: host))
         #expect(recorder.worktrees == [WorktreeSpec(branch: nil, base: nil)])
     }
 
@@ -736,8 +744,41 @@ struct StartAgentStoreTests {
         await gate.open()
         await first.value
 
-        #expect(store.state == .started)
+        #expect(store.state == started(on: host))
         #expect(store.canDismiss == true)
+    }
+
+    /// The owner navigates to the started Agent, so the store stays in
+    /// `.starting` until the Console reports the row — and the `.started`
+    /// payload names exactly the pane the visibility wait was given.
+    @Test func submitAwaitsTheStartedAgentsVisibilityBeforeFinishing() async throws {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let visibilityGate = ScriptedTransportCallGate()
+        final class SeenBox { var ids: [ConsoleAgent.ID] = [] }
+        let seen = SeenBox()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            awaitAgentVisible: { id in
+                seen.ids.append(id)
+                await visibilityGate.waitUntilOpen()
+            },
+            recorder: recorder)
+        store.name = "reviewer"
+        await store.discoverAgents()
+
+        let submit = Task { await store.submit() }
+        try await waitUntil("the visibility wait should begin") {
+            await visibilityGate.entryCount == 1
+        }
+        #expect(store.state == .starting)
+
+        await visibilityGate.open()
+        await submit.value
+
+        #expect(store.state == started(on: host))
+        #expect(seen.ids == [ConsoleAgent.ID(hostID: host.id, paneID: "w1:pnew")])
     }
 
     @Test func submitSurfacesAServerRejection() async {

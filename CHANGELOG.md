@@ -67,6 +67,11 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- Starting a new Agent now opens its terminal as soon as the launch lands,
+  instead of dropping back to the Agent list to hunt for the new row.
+  Launches made from another Agent's screen switch straight over too.
+  (refs #12)
+
 - The Agent detail screen's More menu no longer duplicates Settings; that
   entry stays in the Console toolbar.
 

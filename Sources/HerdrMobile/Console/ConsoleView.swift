@@ -95,7 +95,11 @@ struct ConsoleView: View {
                 }
                 .sheet(isPresented: $isStartingAgent) {
                     // StartAgentView brings its own NavigationStack.
-                    StartAgentView(hosts: hosts.hosts, console: console)
+                    StartAgentView(hosts: hosts.hosts, console: console) { id in
+                        // A fresh launch lands in its own terminal, exactly
+                        // as tapping the new row would.
+                        notificationRouter.path = [id]
+                    }
                 }
                 .sheet(isPresented: $isShowingSettings) {
                     SettingsView(
@@ -121,8 +125,9 @@ struct ConsoleView: View {
         }
         .animation(.snappy, value: bannerStore.banner)
         // A notification deep link must land on the Attach even when one of
-        // the Console's sheets covers it. User-driven pushes cannot happen
-        // while a sheet is up, so this only acts on notification taps.
+        // the Console's sheets covers it. The only other push a sheet can
+        // cause is the new-agent flow's, which dismisses itself first, so
+        // clearing here is a no-op for it.
         .onChange(of: notificationRouter.path) { _, path in
             guard !path.isEmpty else { return }
             hostSheet = nil

@@ -2,14 +2,20 @@ import SwiftUI
 
 /// The new-agent sheet (#12, User Story 8): pick a Host and workspace, type a
 /// installed Agent and its native arguments, and dispatch it through the
-/// Transport launch flow. The started agent appears in the Console through the
-/// store's normal snapshot/delta machinery, so this screen dismisses on
-/// success rather than navigating anywhere itself.
+/// Transport launch flow. On success the sheet dismisses and hands the
+/// started Agent's identity to `onStarted`; the owner opens it, so a fresh
+/// launch lands in its terminal instead of back on the list.
 struct StartAgentView: View {
     @State private var store: StartAgentStore
+    private let onStarted: (ConsoleAgent.ID) -> Void
     @Environment(\.dismiss) private var dismiss
 
-    init(hosts: [Host], console: ConsoleStore, origin: StartAgentStore.LaunchOrigin? = nil) {
+    init(
+        hosts: [Host], console: ConsoleStore,
+        origin: StartAgentStore.LaunchOrigin? = nil,
+        onStarted: @escaping (ConsoleAgent.ID) -> Void
+    ) {
+        self.onStarted = onStarted
         _store = State(
             initialValue: StartAgentStore(
                 hosts: hosts,
@@ -29,6 +35,7 @@ struct StartAgentView: View {
                         try await console.startAgent(params, on: hostID)
                     }
                 },
+                awaitAgentVisible: { await console.waitForAgent($0) },
                 origin: origin))
     }
 
@@ -209,7 +216,10 @@ struct StartAgentView: View {
                 }
             }
             .onChange(of: store.state) {
-                if store.state == .started { dismiss() }
+                if case .started(let id) = store.state {
+                    dismiss()
+                    onStarted(id)
+                }
             }
             .task(id: store.selectedHostID) {
                 await store.discoverAgents()
