@@ -167,6 +167,21 @@ final class ConsoleStore {
         try await projection(for: hostID).startAgentInNewWorktree(request, worktree: worktree)
     }
 
+    /// Suspends until `id` is reported by its Host's sync machinery, or the
+    /// timeout elapses. The new-agent flow (#12) opens the started Agent's
+    /// terminal, and the row it navigates to exists only once the post-start
+    /// resync lands — waiting keeps the detail column from flashing its
+    /// missing-Agent placeholder over a launch that just succeeded.
+    func waitForAgent(_ id: ConsoleAgent.ID, timeout: Duration = .seconds(5)) async {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while !agents.contains(where: { $0.id == id }) {
+            guard clock.now < deadline,
+                (try? await Task.sleep(for: .milliseconds(50))) != nil
+            else { return }
+        }
+    }
+
     func closePane(_ paneID: String, on hostID: Host.ID) async throws {
         try await projection(for: hostID).closePane(paneID)
     }

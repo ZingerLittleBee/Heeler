@@ -857,6 +857,41 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    @Test func waitForAgentReturnsOnceTheResyncSurfacesThePane() async throws {
+        // The new-agent flow opens the started pane's terminal; the wait
+        // bridges the gap between the start RPC and the resync that makes
+        // the Console row exist.
+        let host = Host.fixture()
+        let transport = ScriptedTransport(snapshot: .fixture(agents: []))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Host should connect") {
+            store.hostStatuses[host.id] == .connected
+        }
+
+        await transport.setSnapshot(
+            .fixture(agents: [.fixture(paneID: "w1:pnew", status: .working)]))
+        _ = try await store.startAgent(
+            AgentLaunchRequest(kind: "claude", name: "claude", workspaceID: "w1"), on: host.id)
+        await store.waitForAgent(ConsoleAgent.ID(hostID: host.id, paneID: "w1:pnew"))
+
+        #expect(store.agents.map(\.agent.paneID) == ["w1:pnew"])
+
+        store.setHosts([])
+    }
+
+    @Test func waitForAgentGivesUpAfterItsTimeout() async {
+        let store = makeStore(transports: [:])
+        let ghost = ConsoleAgent.ID(hostID: Host.fixture().id, paneID: "w1:ghost")
+
+        // Never reported; the wait must return on its own rather than hang.
+        await store.waitForAgent(ghost, timeout: .milliseconds(120))
+
+        #expect(store.agents.isEmpty)
+    }
+
     @Test func startAgentThrowsWhenTheHostIsUnknown() async throws {
         let host = Host.fixture()
         let store = makeStore(transports: [:])

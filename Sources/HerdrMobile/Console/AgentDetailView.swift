@@ -121,7 +121,8 @@ struct AgentDetailView: View {
                 origin: StartAgentStore.LaunchOrigin(
                     hostID: agent.hostID,
                     workspaceID: agent.agent.workspaceID,
-                    cwd: agent.agent.cwd))
+                    cwd: agent.agent.cwd),
+                onStarted: { switchToAgent($0) })
         }
         // Presenting this takes the keyboard down and dismissing brings it
         // back; see `allowsKeyboardActivation` in HerdrTerminalView.
@@ -370,7 +371,8 @@ struct AgentDetailView: View {
         }
     }
 
-    /// Opens another Agent from the switcher. The keyboard is armed first:
+    /// Opens another Agent from the switcher strip or the new-agent sheet.
+    /// The keyboard is armed first:
     /// the selection change rebuilds this screen from scratch, and the new
     /// terminal claims the handoff as it comes up.
     private func switchToAgent(_ id: ConsoleAgent.ID) {

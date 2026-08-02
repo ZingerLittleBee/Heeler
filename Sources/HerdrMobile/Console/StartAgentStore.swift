@@ -5,8 +5,8 @@ import Observation
 /// workspace (or the Host's current one), detect and select an installed
 /// Agent, parse its native arguments, and dispatch it via the Transport launch
 /// flow. The started pane surfaces in the Console through the store's normal
-/// snapshot/delta machinery — this screen only fires the RPC and reports its
-/// outcome.
+/// snapshot/delta machinery; on success the store reports the started Agent's
+/// Console identity so the owning screen can open it right away.
 ///
 /// Kept off the SSH types (standing repo rule): it talks to injected closures
 /// over the `ConsoleStore`, so it is testable against a scripted transport.
@@ -20,8 +20,9 @@ final class StartAgentStore {
         case starting
         /// The last start failed; the message is user-facing.
         case failed(String)
-        /// The start succeeded; the screen dismisses.
-        case started
+        /// The start succeeded; the payload is the started Agent's Console
+        /// identity, which the owner opens after the screen dismisses.
+        case started(ConsoleAgent.ID)
     }
 
     enum AgentDiscoveryState: Equatable {
@@ -154,6 +155,11 @@ final class StartAgentStore {
     /// A non-nil `WorktreeSpec` routes the launch through the fresh-worktree
     /// choreography; nil starts in the workspace itself.
     private let start: (AgentLaunchRequest, WorktreeSpec?, Host.ID) async throws -> Agent
+    /// Suspends (bounded) until the started Agent is visible in the Console.
+    /// The row the owner navigates to exists only after the post-start resync
+    /// lands; waiting here keeps the opened detail from flashing its
+    /// missing-Agent placeholder over a launch that just succeeded.
+    private let awaitAgentVisible: (ConsoleAgent.ID) async -> Void
     @ObservationIgnored private let recents: RecentWorkspaceStore
     /// In-flight guard flipped synchronously before the first await, so a
     /// double-tap cannot dispatch the same command twice through the window
@@ -166,6 +172,7 @@ final class StartAgentStore {
         existingAgentNames: @escaping (Host.ID) -> Set<String>,
         discoverAgentKinds: @escaping (Host.ID) async throws -> [SupportedAgentKind],
         start: @escaping (AgentLaunchRequest, WorktreeSpec?, Host.ID) async throws -> Agent,
+        awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void,
         origin: LaunchOrigin? = nil,
         recents: RecentWorkspaceStore = RecentWorkspaceStore()
     ) {
@@ -175,6 +182,7 @@ final class StartAgentStore {
         self.existingAgentNames = existingAgentNames
         self.discoverAgentKinds = discoverAgentKinds
         self.start = start
+        self.awaitAgentVisible = awaitAgentVisible
         self.recents = recents
         // Pre-select when there is no choice to make.
         self.selectedHostID = origin?.hostID ?? (hosts.count == 1 ? hosts.first?.id : nil)
@@ -270,7 +278,8 @@ final class StartAgentStore {
     }
 
     /// Dispatches the command via `agent.start`. Incomplete forms are ignored;
-    /// on success the state flips to `.started` for the screen to dismiss.
+    /// on success the state flips to `.started` carrying the new Agent's
+    /// Console identity for the screen to dismiss and open.
     func submit() async {
         guard
             !isStarting,
@@ -302,9 +311,13 @@ final class StartAgentStore {
                 base: Self.nonEmptyTrimmed(worktreeBase))
             : nil
         do {
-            _ = try await start(request, worktree, hostID)
+            let agent = try await start(request, worktree, hostID)
             recents.remember(workspaceID, for: hostID)
-            state = .started
+            let startedID = ConsoleAgent.ID(hostID: hostID, paneID: agent.paneID)
+            // The wait is bounded; on timeout the owner still navigates and
+            // the row catches up with the next resync.
+            await awaitAgentVisible(startedID)
+            state = .started(startedID)
         } catch {
             state = .failed(Self.message(for: error))
         }
