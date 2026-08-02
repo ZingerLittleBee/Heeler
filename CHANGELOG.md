@@ -76,6 +76,13 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- The Keys keyboard's three panes — control keys, Snippets, Appearance — now
+  swipe. Dragging sideways anywhere on the pane moves it under the finger, the
+  tab bar lights the pane being pulled in, and letting go snaps to it; the tabs
+  still work as taps. Control keys now send when the finger lifts rather than
+  when it lands, so a swipe that starts on Esc switches pane instead of sending
+  Esc. Holding a key still repeats.
+
 - Settings now carries an Appearance picker for the app itself: System, Light,
   or Dark. System follows iOS as before and remains the default; the other two
   pin the whole app — Console, sheets, and terminals — to one appearance, and

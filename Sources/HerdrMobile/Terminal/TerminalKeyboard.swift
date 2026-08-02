@@ -421,11 +421,18 @@ final class TerminalControlPadView: UIView {
     }
 }
 
+/// A key fires when the finger lifts, not when it lands: the pad sits inside
+/// the pane pager, and a swipe that starts on a key must switch panes without
+/// also sending an Esc down the wire. Holding still repeats, so the arrows go
+/// on behaving like arrows.
 private final class TerminalKeyButton: UIButton {
     private let keyAction: () -> Void
     private let repeats: Bool
     private var repeatDelayTimer: Timer?
     private var repeatTimer: Timer?
+    /// A hold that has begun repeating already sent the key; letting go of it
+    /// must not send one more.
+    private var didRepeat = false
 
     init(configuration: UIButton.Configuration, repeats: Bool, action: @escaping () -> Void) {
         self.keyAction = action
@@ -434,9 +441,10 @@ private final class TerminalKeyButton: UIButton {
         self.configuration = configuration
         isExclusiveTouch = true
         addTarget(self, action: #selector(pressed), for: .touchDown)
+        addTarget(self, action: #selector(released), for: .touchUpInside)
         addTarget(
-            self, action: #selector(released),
-            for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
+            self, action: #selector(abandoned),
+            for: [.touchUpOutside, .touchCancel, .touchDragExit])
     }
 
     @available(*, unavailable)
@@ -452,7 +460,7 @@ private final class TerminalKeyButton: UIButton {
     }
 
     @objc private func pressed() {
-        keyAction()
+        didRepeat = false
         guard repeats else { return }
 
         let timer = Timer(timeInterval: 0.45, target: self, selector: #selector(beginRepeating),
@@ -463,6 +471,8 @@ private final class TerminalKeyButton: UIButton {
 
     @objc private func beginRepeating() {
         repeatDelayTimer = nil
+        didRepeat = true
+        keyAction()
         let timer = Timer(timeInterval: 0.075, target: self, selector: #selector(repeatKey),
                           userInfo: nil, repeats: true)
         repeatTimer = timer
@@ -474,6 +484,15 @@ private final class TerminalKeyButton: UIButton {
     }
 
     @objc private func released() {
+        if !didRepeat {
+            keyAction()
+        }
+        cancelTimers()
+    }
+
+    /// The finger left the key — dragged off it, or taken by the pager. Either
+    /// way the key was not pressed.
+    @objc private func abandoned() {
         cancelTimers()
     }
 
