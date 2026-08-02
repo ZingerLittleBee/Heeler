@@ -320,6 +320,7 @@ struct ConsoleView: View {
         case .timedOut: "request timed out"
         case .cancelled: "request was cancelled"
         case .channelFailed: "connection dropped"
+        case .apiRejected: "herdr rejected the request"
         default: "connection failed"
         }
     }

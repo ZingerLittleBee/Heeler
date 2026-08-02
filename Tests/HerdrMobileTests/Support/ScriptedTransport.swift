@@ -47,6 +47,7 @@ final actor ScriptedTransport: Transport {
     private var paneTexts: [String: String] = [:]
     private var paneReadFailure: TransportError?
     private var nextPaneReadGate: ScriptedTransportCallGate?
+    private var missingPaneIDs: Set<String> = []
     private var nextStreamID: UInt64 = 0
     private var liveStreamID: UInt64?
     private var eventContinuation: AsyncThrowingStream<HerdrEvent, any Error>.Continuation?
@@ -217,6 +218,14 @@ final actor ScriptedTransport: Transport {
         notificationConfig = data
     }
 
+    /// Scripts panes that no longer exist on the Host. herdr fails an entire
+    /// `events.subscribe` when one pane-scoped entry names a pane that has
+    /// exited (verified against a live 0.7.5 server), so the fake rejects the
+    /// same way instead of quietly skipping the entry.
+    func setMissingPanes(_ paneIDs: Set<String>) {
+        missingPaneIDs = paneIDs
+    }
+
     // MARK: Transport
 
     func ping() async throws -> ServerInfo {
@@ -305,6 +314,9 @@ final actor ScriptedTransport: Transport {
             throw TransportError.eventsChannelAlreadyOpen
         }
         capturedSubscriptions.append(subscriptions)
+        if let missing = subscriptions.firstMissingPane(in: missingPaneIDs) {
+            throw HerdrAPIError(code: "pane_not_found", message: "pane \(missing) not found")
+        }
         nextStreamID += 1
         let streamID = nextStreamID
         let (events, continuation) = AsyncThrowingStream<HerdrEvent, any Error>.makeStream()
@@ -419,6 +431,19 @@ final actor ScriptedTransport: Transport {
         attachContinuation?.finish()
         attachContinuation = nil
         liveAttachID = nil
+    }
+}
+
+private extension Sequence<EventSubscription> {
+    /// The first pane-scoped entry naming a pane in `missing`, if any.
+    func firstMissingPane(in missing: Set<String>) -> String? {
+        for subscription in self {
+            guard case .pane(_, let paneID) = subscription, missing.contains(paneID) else {
+                continue
+            }
+            return paneID
+        }
+        return nil
     }
 }
 

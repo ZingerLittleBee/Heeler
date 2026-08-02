@@ -98,6 +98,79 @@ struct EventsSessionSubscriptionsTests {
         await session.end()
     }
 
+    /// A pane can exit between the snapshot that produced a subscription set
+    /// and the subscribe that carries it. herdr rejects the whole request for
+    /// that one entry, which used to fail the connection outright.
+    @Test func aPaneThatExitedDuringSubscribeRetriesWithoutSurfacingAFailure() async throws {
+        let transport = ScriptedTransport()
+        await transport.setMissingPanes(["w1:p1"])
+        let session = EventsSession(
+            subscriptions: updated,
+            connect: { transport },
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .milliseconds(10), multiplier: 2, maxDelay: .milliseconds(50)),
+            keepalive: nil)
+        var updates = session.updates.makeAsyncIterator()
+
+        await session.resume()
+
+        // Straight to `.connected`: the retry is immediate and the user never
+        // sees a reconnect for what is an ordinary race.
+        #expect(await updates.next() == .status(.connected))
+        #expect(await transport.capturedSubscriptions == [updated, initial])
+        #expect(await !transport.isClosed, "the SSH connection must survive the rejection")
+
+        await session.end()
+    }
+
+    /// The pane set is snapshot-derived, so it cannot outlive the connection
+    /// it was taken on: a pane that dies while the Host is offline would
+    /// otherwise wedge every reconnect forever.
+    @Test func aDroppedConnectionDiscardsThePaneSubscriptions() async throws {
+        let transport = ScriptedTransport()
+        let session = makeSession(transport: transport)
+        var updates = session.updates.makeAsyncIterator()
+
+        await session.resume()
+        #expect(await updates.next() == .status(.connected))
+        await session.updateSubscriptions(updated)
+        #expect(await updates.next() == .status(.connected))
+
+        // The pane exits while the events channel is down.
+        await transport.setMissingPanes(["w1:p1"])
+        await transport.failEventStream(.channelFailed(detail: "remote closed"))
+
+        guard case .status(.reconnecting) = await updates.next() else {
+            Issue.record("a dropped stream should reconnect")
+            return
+        }
+        #expect(await updates.next() == .status(.connected))
+        #expect(await transport.capturedSubscriptions == [initial, updated, initial])
+
+        await session.end()
+    }
+
+    /// The same guarantee for the explicit Reconnect button, which winds the
+    /// session down rather than reconnecting in place.
+    @Test func retryAfterADeadPaneDiscardsThePaneSubscriptions() async throws {
+        let transport = ScriptedTransport()
+        let session = makeSession(transport: transport)
+        var updates = session.updates.makeAsyncIterator()
+
+        await session.resume()
+        #expect(await updates.next() == .status(.connected))
+        await session.updateSubscriptions(updated)
+        #expect(await updates.next() == .status(.connected))
+
+        await transport.setMissingPanes(["w1:p1"])
+        await session.retry()
+
+        #expect(await updates.next() == .status(.connected))
+        #expect(await transport.capturedSubscriptions == [initial, updated, initial])
+
+        await session.end()
+    }
+
     @Test func permanentFailureStopsTheReconnectLoop() async throws {
         let connectionAttempts = Mutex(0)
         let session = EventsSession(

@@ -31,6 +31,8 @@ extension TransportError {
             "The connection was cancelled."
         case .malformedResponse:
             "herdr returned an invalid response. Check its version."
+        case .apiRejected(_, let message):
+            "herdr rejected the request: \(message)"
         case .channelFailed(let detail):
             "The connection failed: \(detail)"
         }

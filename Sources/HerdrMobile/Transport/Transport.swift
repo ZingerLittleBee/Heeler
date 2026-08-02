@@ -506,6 +506,9 @@ indirect enum TransportError: Error, Sendable, Equatable {
     case cancelled
     /// The channel produced bytes that do not decode as a herdr response.
     case malformedResponse(String)
+    /// herdr answered with an error envelope: the request arrived intact and
+    /// the server rejected it on its own terms.
+    case apiRejected(code: String, message: String)
     /// The exec channel failed outside the known failure shapes; carries the
     /// underlying description for diagnostics.
     case channelFailed(detail: String)
@@ -515,7 +518,10 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// stop so the UI can explain the required action.
     var isRetryable: Bool {
         switch self {
-        case .sshUnreachable, .serverNotRunning, .timedOut, .cancelled, .channelFailed:
+        // A rejection is retryable because herdr's error codes are open-ended
+        // and most of them describe a target that moved, not a broken setup.
+        case .sshUnreachable, .serverNotRunning, .timedOut, .cancelled, .channelFailed,
+            .apiRejected:
             true
         case .authenticationFailed, .deviceKeyCorrupt, .hostKeyRejected, .hostKeyMismatch,
             .socketNotFound, .socatMissing, .protocolVersionMismatch,

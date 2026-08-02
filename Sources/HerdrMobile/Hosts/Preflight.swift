@@ -125,6 +125,9 @@ struct PreflightReport: Equatable, Sendable {
         case .cancelled:
             check = .connection
             hint = "The check was cancelled before it finished."
+        case .apiRejected(let code, let message):
+            check = .serverRunning
+            hint = "herdr answered but rejected the check: \(message) (\(code))"
         case .channelFailed(let detail):
             check = .connection
             hint = "The connection failed unexpectedly. (\(detail))"

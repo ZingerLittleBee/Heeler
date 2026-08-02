@@ -232,6 +232,11 @@ actor EventsSession {
     /// so anything missed in the gap rides the normal snapshot-then-delta
     /// path. While suspended or between reconnects the new set simply takes
     /// effect on the next subscribe. No-op when the set is unchanged.
+    ///
+    /// Pane-scoped entries survive only as long as the subscription that
+    /// carries them: any disconnect drops them (see `dropPaneSubscriptions`),
+    /// so callers must reinstall the set after every `.connected` rather than
+    /// assume the last one is still in force.
     func updateSubscriptions(_ subscriptions: [EventSubscription]) async {
         guard self.subscriptions != subscriptions else { return }
         self.subscriptions = subscriptions
@@ -356,10 +361,18 @@ actor EventsSession {
                     // it for the retry even if it still looks alive.
                     transportSuspect = true
                 }
+                // A pane that exited between the snapshot behind this
+                // subscription set and this subscribe is an ordinary race,
+                // not a connection problem: retry it straight away with the
+                // global set rather than showing the user a failure.
+                if Self.namesAMissingPane(failure), dropPaneSubscriptions() {
+                    continue
+                }
                 guard failure.isRetryable else {
                     yieldUpdate(.status(.failed(failure)))
                     return
                 }
+                dropPaneSubscriptions()
                 attempt += 1
                 await emitReconnectingAndBackOff(
                     attempt: attempt, failure: failure, generation: generation)
@@ -407,10 +420,37 @@ actor EventsSession {
                 yieldUpdate(.status(.failed(failure)))
                 return
             }
+            dropPaneSubscriptions()
             attempt += 1
             await emitReconnectingAndBackOff(
                 attempt: attempt, failure: failure, generation: generation)
         }
+    }
+
+    /// Discards the pane-scoped subscriptions, keeping the global ones.
+    /// Returns whether the set actually changed.
+    ///
+    /// Pane-scoped entries are derived from a snapshot, and herdr rejects an
+    /// entire `events.subscribe` when a single one names a pane that has
+    /// exited (verified against 0.7.5). Keeping them across a disconnect
+    /// would let one dead pane wedge the Host offline permanently, because
+    /// the reconnect loop would resend the same doomed set forever and the
+    /// `.connected` that refreshes it would never arrive. Every `.connected`
+    /// already obliges the consumer to re-snapshot, and that resync
+    /// reinstalls the pane set through `updateSubscriptions`.
+    @discardableResult
+    private func dropPaneSubscriptions() -> Bool {
+        let globalsOnly = subscriptions.filter { subscription in
+            if case .global = subscription { true } else { false }
+        }
+        guard globalsOnly.count != subscriptions.count else { return false }
+        subscriptions = globalsOnly
+        return true
+    }
+
+    private static func namesAMissingPane(_ failure: TransportError) -> Bool {
+        guard case .apiRejected(let code, _) = failure else { return false }
+        return code == "pane_not_found"
     }
 
     /// The Host's live transport: reuses the current one while its SSH
@@ -500,6 +540,7 @@ actor EventsSession {
         pendingKeepaliveFailure = nil
         resubscribeRequested = false
         lastConnectionActivity = nil
+        dropPaneSubscriptions()
     }
 
     // MARK: Keepalive
@@ -565,6 +606,9 @@ actor EventsSession {
     private static func transportFailure(_ error: any Error) -> TransportError {
         if let failure = error as? TransportError {
             return failure
+        }
+        if let rejection = error as? HerdrAPIError {
+            return .apiRejected(code: rejection.code, message: rejection.message)
         }
         if case DeviceKeyStoreError.storedKeyCorrupt = error {
             return .deviceKeyCorrupt

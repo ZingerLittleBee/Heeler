@@ -9,6 +9,16 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- A Host no longer gets stuck offline because one Agent's pane exited. The
+  events subscription names each Agent's pane, and herdr rejects the whole
+  subscription when a single one of those panes is gone, so a pane that ended
+  while the Host was disconnected left every reconnect failing with
+  "pane … not found" until the Host was edited or the app restarted. Pane
+  subscriptions are now discarded on disconnect and reinstalled from the next
+  sync, and a pane that exits mid-subscribe retries straight away instead of
+  surfacing as a connection failure. Server rejections also read as herdr's
+  own message now, not as a printed Swift value.
+
 - The Agent list now removes rows from disconnected Hosts immediately, rejects
   stale snapshots that finish after a disconnect, and rechecks membership when
   an Agent process exits back to an ordinary shell.
