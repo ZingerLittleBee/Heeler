@@ -52,7 +52,7 @@ function fatal(message) {
 
 function renderChecklist(state, warning) {
   const lines = [
-    `${BOLD}Pair a herdr-mobile device${RESET}`,
+    `${BOLD}Pair a Heeler device${RESET}`,
     "",
     "Select the addresses the phone can reach this machine on:",
     "",
@@ -77,7 +77,7 @@ async function renderPairingCode(payload) {
   const qr = await QRCode.toString(code, { type: "terminal", small: true });
   const expires = new Date(payload.expiresAt * 1000).toLocaleTimeString();
   const lines = [
-    `${BOLD}Scan with herdr-mobile${RESET}`,
+    `${BOLD}Scan with Heeler${RESET}`,
     "",
     qr.trimEnd(),
     "",

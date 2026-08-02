@@ -67,7 +67,7 @@ struct AgentNotificationRendererTests {
         let long = String(repeating: "重构传输层", count: 40)
 
         let alert = AgentNotificationRenderer.alert(
-            project: "herdr-mobile", agentKind: "claude", task: long, status: .done)
+            project: "heeler", agentKind: "claude", task: long, status: .done)
 
         let task = alert.body.dropFirst("Done · ".count)
         #expect(task.count == AgentNotificationRenderer.taskLimit)
@@ -89,7 +89,7 @@ struct AgentNotificationRendererTests {
     /// is a task to pair it with.
     @Test func pairsAnUnrecognizedStatusWithTheTask() {
         let alert = AgentNotificationRenderer.alert(
-            project: "herdr-mobile", agentKind: "claude", task: "Fix the flaky test",
+            project: "heeler", agentKind: "claude", task: "Fix the flaky test",
             status: AgentStatus(rawValue: "exited"))
 
         #expect(alert.body == "exited · Fix the flaky test")

@@ -19,7 +19,7 @@ import Testing
 struct NotificationRegistrationE2ETests {
     private static let installedPluginListCommand =
         "printf '%s' '" + #"{"id":"cli:plugin","result":{"plugins":"#
-        + #"[{"plugin_id":"herdr-mobile.pairing","enabled":true}]}}"# + "'"
+        + #"[{"plugin_id":"heeler.pairing","enabled":true}]}}"# + "'"
 
     private func makeConfigDirectory() throws -> URL {
         let directory = URL(
@@ -38,7 +38,7 @@ struct NotificationRegistrationE2ETests {
             socket: .absolutePath("/tmp/herdr-notify-unused.sock"))
         settings.pluginListCommand = pluginListCommand
         settings.notificationConfigDirCommand =
-            "printf '__HERDR_MOBILE_PLUGIN_CONFIG_DIR__=%s\\n' '\(configDirectory.path)'"
+            "printf '__HEELER_PLUGIN_CONFIG_DIR__=%s\\n' '\(configDirectory.path)'"
         return try await SSHTransport.connect(settings: settings)
     }
 
@@ -237,7 +237,7 @@ struct NotificationRegistrationE2ETests {
         let transport = try await makeTransport(
             environment: environment, configDirectory: configDirectory,
             pluginListCommand: "printf '%s' '" + #"{"id":"cli:plugin","result":{"plugins":"#
-                + #"[{"plugin_id":"herdr-mobile.pairing","enabled":false}]}}"# + "'")
+                + #"[{"plugin_id":"heeler.pairing","enabled":false}]}}"# + "'")
         defer { Task { try? await transport.close() } }
 
         await #expect(throws: NotificationRegistrationError.pluginNotInstalled) {

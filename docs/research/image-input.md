@@ -14,7 +14,7 @@ The single-image MVP will:
 5. Insert the path into the same live Attach input stream used by the terminal,
    followed by a separately inserted space and no Enter.
 
-The image bytes never enter the PTY. herdr-mobile guarantees that a Staged Image
+The image bytes never enter the PTY. Heeler guarantees that a Staged Image
 exists and that its path is copied and/or inserted. It does not guarantee that a
 remote Agent or model interprets the path as an Image Attachment.
 

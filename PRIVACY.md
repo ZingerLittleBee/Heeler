@@ -1,6 +1,6 @@
 # Privacy
 
-herdr-mobile is a native iOS console for [herdr](https://herdr.dev). It talks
+Heeler is a native iOS console for [herdr](https://herdr.dev). It talks
 to your own machines ("Hosts") over SSH. It has no backend, no analytics, and
 no account system. Your Hosts, credentials, and agent activity never pass
 through any server we operate — with exactly one narrow exception, the Push

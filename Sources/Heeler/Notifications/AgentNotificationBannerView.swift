@@ -38,7 +38,7 @@ struct AgentNotificationBannerView: View {
         banner: AgentNotificationBanner(
             target: AgentNotificationTarget(hostID: UUID(), paneID: "%5"),
             alert: AgentNotificationAlert(
-                title: "herdr-mobile · claude",
+                title: "heeler · claude",
                 body: "Blocked · 排查修复 split 按钮 UI 结构问题"))
     ) {}
 }

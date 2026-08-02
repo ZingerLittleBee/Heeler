@@ -33,11 +33,11 @@ struct TerminalAttachRequest: Sendable, Equatable {
 /// match its own echo. APC is the one string terminals are required to ignore,
 /// which keeps a stray copy harmless.
 enum AttachBootstrapHandshake {
-    static let marker = Data("\u{1B}_herdr-mobile-attach\u{1B}\\".utf8)
+    static let marker = Data("\u{1B}_heeler-attach\u{1B}\\".utf8)
     /// `marker` as a `printf` format. Octal throughout: the format has to
     /// survive the Host's login shell (fish included) and `/bin/sh` before
     /// printf ever sees it, and octal escapes are the portable spelling.
-    static let markerPrintfFormat = "\\033_herdr-mobile-attach\\033\\134"
+    static let markerPrintfFormat = "\\033_heeler-attach\\033\\134"
 }
 
 /// Holds an attach channel's output back until the bootstrap handshake lands.

@@ -210,7 +210,7 @@ final class NotificationPreferencesStore {
     private static func message(for error: any Error) -> String {
         switch error {
         case NotificationRegistrationError.pluginNotInstalled:
-            "The herdr-mobile plugin is not installed on this Host."
+            "The Heeler plugin is not installed on this Host."
         case NotificationRegistrationError.pluginProbeFailed:
             "The Host's herdr plugin could not be checked."
         case NotificationRegistrationError.readFailed:

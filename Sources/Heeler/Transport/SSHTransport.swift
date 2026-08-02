@@ -30,11 +30,11 @@ enum SocatDiscovery: Sendable, Equatable {
 /// How to reach one Host, authenticate against it, and find its herdr socket.
 struct SSHTransportSettings: Sendable {
     static let defaultSessionListCommand = "herdr session list --json"
-    static let agentAvailabilityMarker = "__HERDR_MOBILE_AGENT_KIND__="
+    static let agentAvailabilityMarker = "__HEELER_AGENT_KIND__="
 
-    /// The herdr-mobile plugin (ADR 0007/0008) whose config dir holds the
+    /// The Heeler plugin (ADR 0007/0008) whose config dir holds the
     /// Notification Registration file.
-    static let notificationPluginID = "herdr-mobile.pairing"
+    static let notificationPluginID = "heeler.pairing"
 
     var host: String
     var port: Int
@@ -81,26 +81,26 @@ struct SSHTransportSettings: Sendable {
     var attachCommand: String = "herdr agent attach"
     /// Command used to print a marker-delimited remote home directory. It is
     /// injectable only at the environment boundary for real-SSH tests.
-    var homeCommand: String = "printf '__HERDR_MOBILE_HOME__=%s\\n' \"$HOME\""
+    var homeCommand: String = "printf '__HEELER_HOME__=%s\\n' \"$HOME\""
     /// Creates one private directory beneath the Host operating system's
     /// selected temporary root. The marker makes login-shell noise harmless;
     /// callers never interpolate image names or paths into this command.
     var stageDirectoryCommand: String =
         "/bin/sh -c 'umask 077; "
-        + "directory=$(mktemp -d \"${TMPDIR:-/tmp}/herdr-mobile.XXXXXXXX\") || exit 1; "
-        + "printf \"__HERDR_MOBILE_STAGE_DIR__=%s\\n\" \"$directory\"'"
+        + "directory=$(mktemp -d \"${TMPDIR:-/tmp}/heeler.XXXXXXXX\") || exit 1; "
+        + "printf \"__HEELER_STAGE_DIR__=%s\\n\" \"$directory\"'"
     /// Official Host-local CLI for listing installed plugins (offline, like
     /// session discovery). Notification Registration gates on the
-    /// herdr-mobile plugin being installed and enabled before touching its
+    /// Heeler plugin being installed and enabled before touching its
     /// config dir — `herdr plugin config-dir` happily prints (and creates) a
     /// directory for any id, so it cannot carry the "is it installed" check.
     var pluginListCommand: String = "herdr plugin list --json"
-    /// Prints the marker-delimited config dir of the herdr-mobile plugin;
+    /// Prints the marker-delimited config dir of the Heeler plugin;
     /// herdr creates the directory if missing. Runs under POSIX sh because
     /// login shells do not share substitution syntax; the marker makes
     /// login-shell noise harmless.
     var notificationConfigDirCommand: String =
-        "/bin/sh -c 'printf \"__HERDR_MOBILE_PLUGIN_CONFIG_DIR__=%s\\n\" "
+        "/bin/sh -c 'printf \"__HEELER_PLUGIN_CONFIG_DIR__=%s\\n\" "
         + "\"$(herdr plugin config-dir \(SSHTransportSettings.notificationPluginID))\"'"
     /// Per-request deadline covering the queue wait and the exec exchange;
     /// on expiry the request fails with `.timedOut` and its channel is
@@ -188,7 +188,7 @@ actor SSHTransport: Transport {
     /// like the home directory. Failure is not cached: installing socat and
     /// retrying must work on the same connection.
     private let socatExecutable = SharedAsyncOperation<String>(cachesSuccess: true)
-    /// The herdr-mobile plugin's config dir, resolved over exec once per
+    /// The Heeler plugin's config dir, resolved over exec once per
     /// Host like the home directory. Failure (plugin missing, probe broken)
     /// is not cached: installing the plugin and retrying must work on the
     /// same connection.
@@ -781,7 +781,7 @@ actor SSHTransport: Transport {
     //
     // Both the registration file (notifications.json, registration file v1)
     // and the plugin config (notify.json, the custom Push Relay base URL)
-    // live inside the herdr-mobile plugin's config dir (plugin/README.md).
+    // live inside the Heeler plugin's config dir (plugin/README.md).
     // Writes are atomic: the content lands in a same-directory temp file over
     // SFTP, then one exec `mv -f` renames it over the live file — SFTP v3
     // RENAME refuses to overwrite, and mv on the same filesystem is a rename
@@ -1796,10 +1796,10 @@ actor SSHTransport: Transport {
         String(decoding: stderr.prefix(200), as: UTF8.self)
     }
 
-    private static let homeOutputPrefix = "__HERDR_MOBILE_HOME__="
-    private static let socatOutputPrefix = "__HERDR_MOBILE_SOCAT__="
-    private static let stageDirectoryOutputPrefix = "__HERDR_MOBILE_STAGE_DIR__="
-    private static let pluginConfigDirOutputPrefix = "__HERDR_MOBILE_PLUGIN_CONFIG_DIR__="
+    private static let homeOutputPrefix = "__HEELER_HOME__="
+    private static let socatOutputPrefix = "__HEELER_SOCAT__="
+    private static let stageDirectoryOutputPrefix = "__HEELER_STAGE_DIR__="
+    private static let pluginConfigDirOutputPrefix = "__HEELER_PLUGIN_CONFIG_DIR__="
 
     /// The value of the last marker-prefixed line in an exec command's
     /// output. Markers keep login-shell stdout noise harmless; the last

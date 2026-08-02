@@ -44,7 +44,7 @@ struct SocatDiscoveryTests {
     }
 
     @Test func emitsTheMarkerTheParserLooksFor() {
-        #expect(probe("/usr/bin/socat").contains("__HERDR_MOBILE_SOCAT__=%s"))
+        #expect(probe("/usr/bin/socat").contains("__HEELER_SOCAT__=%s"))
     }
 
     @Test(arguments: [

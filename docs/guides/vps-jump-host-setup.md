@@ -239,7 +239,7 @@ In Heeler, begin adding a Host and copy the Device Key public-key line.
 It looks like:
 
 ```text
-ssh-ed25519 AAAA... herdr-mobile
+ssh-ed25519 AAAA... heeler
 ```
 
 The private key remains in the iOS Keychain. Only the public line is copied.

@@ -22,7 +22,7 @@ struct SSHPairingConnector: PairingConnector {
     /// Comment on the submitted Device Key line; the plugin popup shows it
     /// as the enrolled device's label. Must be printable ASCII — the accept
     /// entrypoint rejects anything else as `invalid_key`.
-    var deviceKeyComment: String = "herdr-mobile"
+    var deviceKeyComment: String = "heeler"
 
     func pair(
         code: PairingCode,
@@ -151,7 +151,7 @@ struct SSHPairingConnector: PairingConnector {
             var stdout = Data()
             var stderr = Data()
             do {
-                try await client.withExec("herdr-mobile-enroll") { inbound, outbound in
+                try await client.withExec("heeler-enroll") { inbound, outbound in
                     // A fast-failing forced command can close the channel
                     // before this write lands; the read loop still drains
                     // the response or surfaces the failure.

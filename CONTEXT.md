@@ -1,4 +1,4 @@
-# herdr-mobile
+# Heeler
 
 A native iOS agent console for herdr. One context: the app. Terms owned by herdr keep herdr's meaning; this glossary pins how we use them client-side.
 

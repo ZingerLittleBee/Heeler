@@ -44,7 +44,7 @@ struct ColdStartE2ETests {
         ])
         defer { wake.remove() }
         let homeCommand =
-            "printf '__HERDR_MOBILE_HOME__=%s\\n' '\(fakeHome)'"
+            "printf '__HEELER_HOME__=%s\\n' '\(fakeHome)'"
         let transport = try await SSHTransport.connect(
             settings: environment.makeSettings(
                 socket: .namedSession(sessionName), wakeCommand: wake.command,

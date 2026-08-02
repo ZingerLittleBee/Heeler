@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to herdr-mobile are documented in this file.
+All notable changes to Heeler are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Entries reference the issue that motivated them.
@@ -28,6 +28,12 @@ Entries reference the issue that motivated them.
   connects to; the App Store listing will be "Heeler for herdr". The GitHub
   repository moved to ZingerLittleBee/Heeler and the in-app repository and
   privacy-policy links follow (the old URLs redirect).
+- The pairing plugin's id is now `heeler.pairing` (was `herdr-mobile.pairing`).
+  Its id determines its config directory, so a Host running the old plugin
+  needs it reinstalled — `herdr plugin install ZingerLittleBee/Heeler/plugin
+  --ref main --yes` — and Notification Registration redone from the app.
+  Pairing and SSH access are unaffected: the Device Key already in the Host's
+  `authorized_keys` keeps working.
 
 ### Fixed
 
