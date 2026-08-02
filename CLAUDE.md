@@ -1,4 +1,4 @@
-# herdr-mobile
+# Heeler
 
 Native iOS companion app for herdr (https://herdr.dev): an agent console over SSH, not a terminal app. Read `CONTEXT.md` for vocabulary and `docs/adr/` before challenging architecture decisions — the transport design in particular was reached after eliminating several dead ends.
 
@@ -7,7 +7,7 @@ Native iOS companion app for herdr (https://herdr.dev): an agent console over SS
 - **Stack**: SwiftUI, iOS 26+, iPhone + iPad. SSH via Citadel, terminal rendering via the pinned libghostty-spm `GhosttyTerminal` product. See ADR 0001 (native stack), ADR 0003 (iOS 26 target raise), and ADR 0004 (terminal engine).
 - **Transport**: herdr's JSON API (NDJSON over a remote Unix socket) reached through SSH exec channels running `socat - UNIX-CONNECT:<sock>`. The remote socat path is discovered once per connection (Host's configured path, then `command -v`) and always executed absolute. Interactive terminals use a PTY exec channel running `herdr agent attach`. See ADR 0002.
 - The UI layer must depend on a transport abstraction (protocol), never on Citadel types directly.
-- Sibling deliverables live in this repo: `plugin/` is the herdr plugin that renders Pairing Codes and posts Agent Notifications (Node, zero framework, `npm test`); `relay/` is the stateless Push Relay it posts to (dependency-free Node, `npm test`). Wire types in `Sources/HerdrMobile/Transport/Generated/` are produced by `scripts/generate-wire-types.py` from the committed schema snapshot `scripts/herdr-schema.json` — regenerate rather than hand-edit; CI fails on drift. The vectors in `plugin/test-vectors/` are consumed by both the Node and Swift suites so the two implementations cannot drift; change them in lockstep.
+- Sibling deliverables live in this repo: `plugin/` is the herdr plugin that renders Pairing Codes and posts Agent Notifications (Node, zero framework, `npm test`); `relay/` is the stateless Push Relay it posts to (dependency-free Node, `npm test`). Wire types in `Sources/Heeler/Transport/Generated/` are produced by `scripts/generate-wire-types.py` from the committed schema snapshot `scripts/herdr-schema.json` — regenerate rather than hand-edit; CI fails on drift. The vectors in `plugin/test-vectors/` are consumed by both the Node and Swift suites so the two implementations cannot drift; change them in lockstep.
 
 ## Load-bearing herdr facts
 
@@ -26,13 +26,15 @@ Rediscovering these is expensive; they were verified against herdr 0.7.4 source 
 - `pane.send_text` types into any pane's PTY; a trailing `\n` presses Enter and the shell executes the line (verified live). `tab.create`/`workspace.create` accept `cwd`, `env`, and `label`, and `workspace.create` already returns a root pane running the user's shell — a plain terminal pane needs no `agent.start`.
 - Rename methods, verified against a live 0.7.5 server: `agent.rename` enforces `^[a-z][a-z0-9_-]{0,31}$` (`invalid_agent_name` otherwise) and clears the custom name when `name` is null or omitted; `workspace.rename` accepts **any** label (empty, whitespace, 500 chars). The `pane_updated` event a rename fires does **not** carry the agent name, and `pane.updated` fires on every terminal-title change (34 events in 6s measured live) — do not use it as a resync trigger; renames surface via post-RPC resync instead.
 - herdr 0.7.5 **replays recently buffered events on `events.subscribe`** (verified live; 0.7.4 replayed nothing). Still no state replay — initial sync stays snapshot-based; treat replayed events as ordinary change signals.
+- `events.subscribe` is **all-or-nothing**: one pane-scoped entry naming a dead pane fails the entire request with `pane_not_found` (verified live on 0.7.5; the error id is `<requestID>:sub:<index>:probe`, so it does not correlate with the request id). Pane-scoped subscriptions are snapshot-derived and must never outlive the connection they were taken on, or a single exited pane wedges the Host offline forever — see `EventsSession.dropPaneSubscriptions`.
 - `herdr remote-client-bridge` bridges stdin/stdout to the **client socket** (the TUI client/server protocol for `herdr --remote`), not the API socket — verified against herdr 0.7.5 source (`src/remote/unix.rs`, `run_remote_client_bridge`). It cannot replace socat for API traffic; no API-socket stdio bridge exists in 0.7.5. Its "ensure server running" side effect is why it works as the wake command.
 
 ## Conventions
 
-- Build, test, device installs, and TestFlight uploads all go through `make` (see `make help`). A new TestFlight build is `make bump && make testflight` — App Store Connect rejects reused build numbers.
-- A single suite runs with `xcodebuild test -project HerdrMobile.xcodeproj -scheme HerdrMobile -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:HerdrMobileTests/<SuiteTypeName>`; `make test` runs everything.
-- CI (`.github/workflows/ci.yml`) builds the committed `HerdrMobile.xcodeproj` and never runs xcodegen, so commit the regenerated project alongside any `project.yml` change (every `make` build target regenerates it). The sshd-dependent e2e suites gate on `LocalSSHTestEnvironment.isAvailable` and skip cleanly on machines without a local sshd, socat, and seeded key.
+- Build, test, device installs, and TestFlight uploads all go through `make` (see `make help`). An interim TestFlight build is `make bump && make testflight` — App Store Connect rejects reused build numbers.
+- Cutting a release is `make publish` (`scripts/publish.sh`, documented in `docs/guides/releasing.md`): it cuts `CHANGELOG.md`'s `[Unreleased]`, bumps `MARKETING_VERSION` in `project.yml`, builds and uploads to TestFlight, then tags and creates the GitHub release. `CHANGELOG.md` is the source of both the version and the notes; never hand-edit `MARKETING_VERSION` or create a `vX.Y.Z` tag by hand. Preview with `make publish DRY_RUN=1`.
+- A single suite runs with `xcodebuild test -project Heeler.xcodeproj -scheme Heeler -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:HeelerTests/<SuiteTypeName>`; `make test` runs everything.
+- CI (`.github/workflows/ci.yml`) builds the committed `Heeler.xcodeproj` and never runs xcodegen, so commit the regenerated project alongside any `project.yml` change (every `make` build target regenerates it). The sshd-dependent e2e suites gate on `LocalSSHTestEnvironment.isAvailable` and skip cleanly on machines without a local sshd, socat, and seeded key.
 
 - Swift 6 strict concurrency. No force unwraps or `try!` outside tests.
 - Secrets never leave the Keychain; private keys are generated on device (CryptoKit Ed25519) where possible. Host key policy is TOFU with fingerprint confirmation.

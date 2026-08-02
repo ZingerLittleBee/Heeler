@@ -1,8 +1,8 @@
-id = "herdr-mobile.pairing"
-name = "Herdr Mobile Pairing"
+id = "heeler.pairing"
+name = "Heeler Pairing"
 version = "0.3.0"
 min_herdr_version = "0.7.5"
-description = "Pair a herdr-mobile device by scanning a QR Pairing Code"
+description = "Pair a Heeler device by scanning a QR Pairing Code"
 platforms = ["linux", "macos"]
 
 [[build]]
@@ -11,7 +11,7 @@ command = ["npm", "ci"]
 [[actions]]
 id = "pair"
 title = "Pair a mobile device"
-description = "Show a Pairing Code QR for the herdr-mobile app"
+description = "Show a Pairing Code QR for the Heeler app"
 contexts = ["global"]
 command = ["node", "src/pair-action.js"]
 

@@ -1,7 +1,7 @@
 # VPS Jump Host and Reverse-Tunnel Deployment
 
 This guide describes the recommended way to reach a Mac running herdr from
-Herdr Mobile when the Mac is behind NAT and has no stable public address. A
+Heeler when the Mac is behind NAT and has no stable public address. A
 public VPS acts as a restricted SSH Jump Host. The Mac creates an outbound
 reverse SSH tunnel to the VPS, and the VPS keeps the forwarded port on its
 loopback interface.
@@ -24,7 +24,7 @@ There are three systems and three distinct SSH identities:
                               v                                   |
 +------------------+    +-----------------------------+    +------------------+
 | iOS              |    | VPS                         |    | macOS            |
-| Herdr Mobile     |    | public TCP 22               |    | Remote Login    |
+| Heeler     |    | public TCP 22               |    | Remote Login    |
 |                  |    |                             |    | TCP 22           |
 | Device Key       +--->| restricted Jump account    |    |                  |
 | in Keychain      |    | direct-tcpip only           |    | launchd         |
@@ -45,9 +45,9 @@ VPS 127.0.0.1:2222 -> reverse SSH channel -> Mac 127.0.0.1:22
 
 An iOS connection then uses two independent SSH handshakes:
 
-1. Herdr Mobile authenticates to the VPS Jump Host with its Device Key.
+1. Heeler authenticates to the VPS Jump Host with its Device Key.
 2. The Jump Host opens only `127.0.0.1:2222`.
-3. Herdr Mobile performs a second SSH handshake with the Mac through that
+3. Heeler performs a second SSH handshake with the Mac through that
    forwarded byte stream.
 4. After authenticating to the Mac, the app reaches the herdr Unix socket
    through SSH exec channels and opens Attach through an SSH PTY.
@@ -91,7 +91,7 @@ Do not:
   issue;
 - disable host-key verification to avoid a first-connection prompt.
 
-Herdr Mobile verifies the Jump Host and Host independently. Confirm a new VPS
+Heeler verifies the Jump Host and Host independently. Confirm a new VPS
 host-key fingerprint through the VPS console or another trusted administrative
 path before accepting it in the app.
 
@@ -166,9 +166,9 @@ cat ~/.ssh/work-vps-tunnel.pub
 ssh-keygen -lf ~/.ssh/work-vps-tunnel.pub
 ```
 
-## 2. Obtain the Herdr Mobile Device Key
+## 2. Obtain the Heeler Device Key
 
-Copy the public-key line shown by Herdr Mobile. The private half remains in the
+Copy the public-key line shown by Heeler. The private half remains in the
 iOS Keychain.
 
 The same Device Key public line must be authorized:
@@ -179,7 +179,7 @@ The same Device Key public line must be authorized:
 Authorizing the key on only one hop results in a password prompt or an
 authentication failure on the other hop.
 
-On the Mac, keep PTY, exec, and SFTP available for Herdr Mobile while disabling
+On the Mac, keep PTY, exec, and SFTP available for Heeler while disabling
 capabilities the app does not need:
 
 ```text
@@ -358,7 +358,7 @@ Host work-mac
   StrictHostKeyChecking yes
 ```
 
-The desktop client identity is only for command-line validation. Herdr Mobile
+The desktop client identity is only for command-line validation. Heeler
 uses its own Device Key.
 
 Verify the VPS host-key fingerprint through a trusted VPS console before adding
@@ -436,7 +436,7 @@ prove the reverse listener or either authentication hop works.
 macOS user LaunchAgents start after that user logs in. If the Mac reboots but
 no user logs in, this user-level tunnel is not yet running.
 
-## 9. Configure Herdr Mobile
+## 9. Configure Heeler
 
 Create or edit the Host:
 
@@ -481,7 +481,7 @@ session. Do not disable passwords until Device Key access and an independent
 recovery path are proven.
 
 The Device Key intentionally grants the app the Mac capabilities needed by
-Herdr Mobile, including exec channels, SFTP, and PTY access. Losing an
+Heeler, including exec channels, SFTP, and PTY access. Losing an
 authorized iOS device therefore requires revoking its public key from both the
 VPS Jump account and the Mac.
 
@@ -517,7 +517,7 @@ in place.
 4. Create fresh restricted tunnel and Jump accounts.
 5. Generate a new tunnel key for the new VPS. Do not reuse the old VPS tunnel
    key.
-6. Authorize the existing Herdr Mobile Device Key on the new Jump account. The
+6. Authorize the existing Heeler Device Key on the new Jump account. The
    Device Key may remain the same because its private half never leaves iOS.
 7. Apply the `sshd_config` restrictions and validate them with `sshd -t` and
    `sshd -T`.
@@ -559,7 +559,7 @@ sudo ss -ltnp | grep ':2222'
 Confirm the listener is exactly `127.0.0.1:2222`, then terminate the new tunnel
 process once and prove the new LaunchAgent reconnects.
 
-### Phase 3: Move Herdr Mobile
+### Phase 3: Move Heeler
 
 Edit only the Jump Host fields:
 
@@ -640,10 +640,10 @@ private key or another Mac credential.
 - [ ] VPS `ss` shows `127.0.0.1:2222`, never `0.0.0.0:2222`.
 - [ ] Mac-to-VPS tunnel is managed by `launchd`.
 - [ ] Killing the tunnel process produces a new PID and a working connection.
-- [ ] Herdr Mobile verifies both VPS and Mac host keys.
+- [ ] Heeler verifies both VPS and Mac host keys.
 - [ ] Device Key is authorized on both hops.
 - [ ] `ssh` or an equivalent real end-to-end test reaches the Mac.
-- [ ] Herdr Mobile preflight and Attach work through the Jump Host.
+- [ ] Heeler preflight and Attach work through the Jump Host.
 
 ## References
 

@@ -1,6 +1,6 @@
 # Privacy
 
-herdr-mobile is a native iOS console for [herdr](https://herdr.dev). It talks
+Heeler is a native iOS console for [herdr](https://herdr.dev). It talks
 to your own machines ("Hosts") over SSH. It has no backend, no analytics, and
 no account system. Your Hosts, credentials, and agent activity never pass
 through any server we operate — with exactly one narrow exception, the Push
@@ -25,7 +25,7 @@ iOS app requires Apple's push service (APNs), and reaching APNs requires an
 Apple push key bound to this app's bundle id. To avoid asking every user to
 provision Apple credentials, notifications flow through a **push relay**: a
 small, stateless, open-source forwarder the developer hosts at
-`https://herdr-apns.bybee.dev`.
+`https://heeler-apns.bybee.dev`.
 
 It is a push relay, not a server: it keeps no accounts, no database, and no
 message history. It holds the Apple push key, signs each request to Apple, and
@@ -72,4 +72,4 @@ point your Hosts at a relay that Apple will not let deliver to this bundle.
 ## Contact
 
 Questions about this document belong in the project's issue tracker at
-<https://github.com/ZingerLittleBee/herdr-mobile>.
+<https://github.com/ZingerLittleBee/Heeler>.

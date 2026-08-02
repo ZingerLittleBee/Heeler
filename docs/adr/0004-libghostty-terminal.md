@@ -7,7 +7,7 @@ feed the existing Attach transport. The transport layer remains independent of
 the terminal engine.
 
 libghostty-spm owns terminal parsing, Metal rendering, CoreText font handling,
-IME integration, and scrollback storage. herdr-mobile continues to own its
+IME integration, and scrollback storage. Heeler continues to own its
 two-mode keyboard UI, touch-scroll routing, URL policy, Attach lifecycle, and
 the native text-selection presentation requested by Ghostty's iOS delegate.
 
@@ -30,7 +30,7 @@ the native text-selection presentation requested by Ghostty's iOS delegate.
   prebuilt XCFramework. Pin its exact version, retain SwiftPM's checksum
   verification, and review supply-chain changes before every update.
 - libghostty's embedding API is still evolving. Keep all package-specific code
-  behind `HerdrTerminalView` and the terminal selection presenter.
+  behind `HeelerTerminalView` and the terminal selection presenter.
 - The custom control keyboard sends raw terminal sequences. A small incremental
   DEC cursor-mode tracker preserves application-cursor sequences because the
   wrapper does not expose its internal synthetic-key path publicly.
@@ -38,7 +38,7 @@ the native text-selection presentation requested by Ghostty's iOS delegate.
   sheet. The wrapper supplies a viewport snapshot and anchor range; it does not
   present selection handles on behalf of the host app.
 - libghostty-spm normally makes every direct terminal touch request first
-  responder status. herdr-mobile instead gates first-responder eligibility on
+  responder status. Heeler instead gates first-responder eligibility on
   taps within the current IME cursor row. The full-width target is at least 44
   points tall, while pans and long presses remain dedicated to scrolling and
   selection.
@@ -51,7 +51,7 @@ the native text-selection presentation requested by Ghostty's iOS delegate.
   correct.
 - Terminal zoom is app state, not surface state. The package's own pinch
   handler mutates the surface font size through a private counter the host app
-  cannot read, so `HerdrTerminalView` disables that gesture and owns pinch and
+  cannot read, so `HeelerTerminalView` disables that gesture and owns pinch and
   ⌘+/⌘- itself, routing every change through `TerminalController`'s per-session
   configuration. That keeps one persisted app-wide size, applies it to open and
   future Attach terminals alike, and lets Ghostty's cell-size callback resize

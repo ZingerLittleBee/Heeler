@@ -7,7 +7,7 @@
 import { spawnSync } from "node:child_process";
 
 const herdr = process.env.HERDR_BIN_PATH ?? "herdr";
-const plugin = process.env.HERDR_PLUGIN_ID ?? "herdr-mobile.pairing";
+const plugin = process.env.HERDR_PLUGIN_ID ?? "heeler.pairing";
 
 const result = spawnSync(
   herdr,

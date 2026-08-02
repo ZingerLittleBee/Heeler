@@ -1,6 +1,6 @@
 # Set Up Remote Access Through a VPS
 
-Follow this guide when the Mac running herdr is behind NAT and Herdr Mobile
+Follow this guide when the Mac running herdr is behind NAT and Heeler
 cannot reach it directly. The result is:
 
 ```text
@@ -17,7 +17,7 @@ runbook, see [VPS Jump Host and Reverse-Tunnel Deployment](vps-jump-host.md).
 
 You need:
 
-- an iPhone with Herdr Mobile installed;
+- an iPhone with Heeler installed;
 - a Mac with herdr and `socat` installed;
 - administrator access to a maintained Debian or Ubuntu VPS;
 - the VPS public IP address;
@@ -172,7 +172,7 @@ Open:
 System Settings -> General -> Sharing -> Remote Login
 ```
 
-Turn on Remote Login and allow only the Mac account Herdr Mobile should use.
+Turn on Remote Login and allow only the Mac account Heeler should use.
 Full Disk Access is not required by this network setup.
 
 Confirm the SSH listener:
@@ -231,15 +231,15 @@ Checkpoint:
 - [ ] The public key starts with `ssh-ed25519`.
 - [ ] The public key has a recorded SHA-256 fingerprint.
 
-## Step 3: Copy the Herdr Mobile Device Key
+## Step 3: Copy the Heeler Device Key
 
 **Run on: iOS**
 
-In Herdr Mobile, begin adding a Host and copy the Device Key public-key line.
+In Heeler, begin adding a Host and copy the Device Key public-key line.
 It looks like:
 
 ```text
-ssh-ed25519 AAAA... herdr-mobile
+ssh-ed25519 AAAA... heeler
 ```
 
 The private key remains in the iOS Keychain. Only the public line is copied.
@@ -265,7 +265,7 @@ grep -qxF "$DEVICE_ENTRY" ~/.ssh/authorized_keys 2>/dev/null \
 chmod 600 ~/.ssh/authorized_keys
 ```
 
-These options keep the PTY, exec, and SFTP features Herdr Mobile needs while
+These options keep the PTY, exec, and SFTP features Heeler needs while
 disabling agent, TCP, and X11 forwarding.
 
 Checkpoint:
@@ -326,7 +326,7 @@ printf '%s\n' "$TUNNEL_ENTRY" \
 
 Replace `2222` before running the block if this Mac uses another loopback port.
 
-Now append the Herdr Mobile Device Key. Replace `DEVICE_PUBLIC_KEY` and
+Now append the Heeler Device Key. Replace `DEVICE_PUBLIC_KEY` and
 change `2222` if needed:
 
 ```bash
@@ -642,7 +642,7 @@ An empty error log is expected.
 This user LaunchAgent starts after the Mac user logs in. It does not run at the
 pre-login FileVault screen.
 
-## Step 13: Add the Host in Herdr Mobile
+## Step 13: Add the Host in Heeler
 
 **Run on: iOS**
 
@@ -662,7 +662,7 @@ Jump Host user: herdr-jump
 
 Run preflight.
 
-Herdr Mobile presents two independent host-key confirmations:
+Heeler presents two independent host-key confirmations:
 
 1. the VPS Jump Host key;
 2. the Mac host key reached through the reverse tunnel.
@@ -704,7 +704,7 @@ launchctl print "gui/$(id -u)/dev.herdr.VPS_NAME-reverse-ssh"
 
 It must show a new PID and `state = running`.
 
-Repeat Herdr Mobile preflight or open an Agent. A restarted process without a
+Repeat Heeler preflight or open an Agent. A restarted process without a
 working app connection is not sufficient proof.
 
 ## Step 15: Harden Mac Authentication
@@ -751,7 +751,7 @@ restarting Remote Login.
 - [ ] VPS and Mac host-key fingerprints were independently verified.
 - [ ] The LaunchAgent reports `state = running`.
 - [ ] Killing the tunnel process produces a new PID.
-- [ ] Herdr Mobile preflight succeeds.
+- [ ] Heeler preflight succeeds.
 - [ ] An Agent opens successfully through Attach.
 
 ## Troubleshooting
@@ -776,7 +776,7 @@ Do not edit the working path in place:
 3. Add the existing Device Key public line to the new Jump account.
 4. Create new Mac aliases and a second LaunchAgent.
 5. Validate the new loopback listener and automatic recovery.
-6. Change only the Jump Host fields in Herdr Mobile.
+6. Change only the Jump Host fields in Heeler.
 7. Test preflight and Attach.
 8. Stop and remove the old path only after the new path works.
 

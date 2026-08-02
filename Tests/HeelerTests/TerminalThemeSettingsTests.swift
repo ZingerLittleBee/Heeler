@@ -1,0 +1,138 @@
+import Foundation
+import GhosttyTerminal
+import SwiftUI
+import Testing
+
+@testable import Heeler
+
+@MainActor
+@Suite("Terminal theme settings")
+struct TerminalThemeSettingsTests {
+    private func makeDefaults() throws -> (UserDefaults, cleanup: () -> Void) {
+        let suiteName = "hm-terminal-theme-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        return (defaults, { defaults.removePersistentDomain(forName: suiteName) })
+    }
+
+    @Test func defaultsToFollowingTheSystem() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let settings = TerminalThemeSettings(defaults: defaults)
+
+        #expect(settings.lightSelection == .followSystem)
+        #expect(settings.darkSelection == .followSystem)
+        // Both slots on the default must render exactly what pre-slot
+        // installs rendered: libghostty's built-in pair.
+        #expect(settings.theme == .default)
+    }
+
+    /// Pre-slot releases persisted one selection; it must seed both slots so
+    /// the rendered pair survives the upgrade unchanged.
+    @Test func legacySingleSelectionSeedsBothSlots() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        defaults.set("tokyo-night", forKey: "terminal-theme")
+        let settings = TerminalThemeSettings(defaults: defaults)
+
+        #expect(settings.lightSelection == .tokyoNight)
+        #expect(settings.darkSelection == .tokyoNight)
+        #expect(settings.theme == TerminalThemeOption.tokyoNight.terminalTheme)
+    }
+
+    /// The point of the two slots: the composed theme takes its light half
+    /// from the light slot and its dark half from the dark slot.
+    @Test func slotsComposeTheThemeHalfByHalf() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let settings = TerminalThemeSettings(defaults: defaults)
+
+        settings.select(.solarized, for: .light)
+        settings.select(.tokyoNight, for: .dark)
+
+        #expect(
+            settings.theme
+                == TerminalTheme(
+                    light: TerminalThemeOption.solarized.configuration(isDark: false),
+                    dark: TerminalThemeOption.tokyoNight.configuration(isDark: true)))
+    }
+
+    /// The chrome around the terminal (safe areas, transparent bar region) is
+    /// painted with the theme's own background, so the surface colour must
+    /// resolve from the catalog — not fall back to systemBackground.
+    @Test func surfaceBackgroundResolvesFromTheThemeCatalog() {
+        #expect(
+            TerminalThemeOption.tokyoNight.surfaceBackground(for: .dark)
+                == Color(hex: "1a1b26"))
+        #expect(
+            TerminalThemeOption.tokyoNight.surfaceBackground(for: .light)
+                == Color(hex: "e1e2e7"))
+        // Follow System maps to libghostty's default pair, which the catalog
+        // carries under its own names (TerminalTheme+Defaults).
+        #expect(
+            TerminalThemeOption.followSystem.surfaceBackground(for: .light)
+                == Color(hex: "f7f7f7"))
+        #expect(
+            TerminalThemeOption.followSystem.surfaceBackground(for: .dark)
+                == Color(hex: "212121"))
+    }
+
+    /// Chrome legibility follows the theme's luminance, not the system
+    /// appearance: Dracula stays dark in Light Mode, so its bar titles and
+    /// status-bar text must stay light there too.
+    @Test func chromeSchemeFollowsThemeLuminanceNotSystemAppearance() {
+        #expect(TerminalThemeOption.dracula.chromeColorScheme(for: .light) == .dark)
+        #expect(TerminalThemeOption.dracula.chromeColorScheme(for: .dark) == .dark)
+        #expect(TerminalThemeOption.solarized.chromeColorScheme(for: .light) == .light)
+        #expect(TerminalThemeOption.solarized.chromeColorScheme(for: .dark) == .dark)
+        #expect(TerminalThemeOption.followSystem.chromeColorScheme(for: .light) == .light)
+        #expect(TerminalThemeOption.followSystem.chromeColorScheme(for: .dark) == .dark)
+    }
+
+    /// Every option must yield a catalog-backed surface for both appearances;
+    /// a silent fallback to systemBackground would reintroduce the black
+    /// bands around the terminal for that theme.
+    @Test(arguments: TerminalThemeOption.allCases)
+    func everyThemeResolvesACatalogSurface(option: TerminalThemeOption) {
+        for scheme in [ColorScheme.light, .dark] {
+            #expect(option.surfaceBackground(for: scheme) != Color(uiColor: .systemBackground))
+        }
+    }
+
+    @Test func selectionPersistsAcrossStoreInstances() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let settings = TerminalThemeSettings(defaults: defaults)
+
+        settings.select(.dracula, for: .dark)
+
+        let reloaded = TerminalThemeSettings(defaults: defaults)
+        #expect(reloaded.darkSelection == .dracula)
+        #expect(reloaded.lightSelection == .followSystem)
+    }
+
+    @Test func unknownPersistedSelectionFallsBackToTheSystem() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        defaults.set("removed-theme", forKey: "terminal-theme")
+        defaults.set("removed-theme", forKey: "terminal-theme-light")
+        defaults.set("removed-theme", forKey: "terminal-theme-dark")
+        let settings = TerminalThemeSettings(defaults: defaults)
+
+        #expect(settings.lightSelection == .followSystem)
+        #expect(settings.darkSelection == .followSystem)
+    }
+
+    @Test func curatedCatalogEntriesExistInThePinnedPackage() {
+        #expect(TerminalThemeOption.missingCatalogThemeNames.isEmpty)
+    }
+
+    @Test func changingThemeKeepsTheExistingTerminalSession() {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        let session = terminal.terminalSession
+        let theme = TerminalThemeOption.vesper.terminalTheme
+
+        #expect(terminal.applyTheme(theme))
+        #expect(terminal.appliedTheme == theme)
+        #expect(terminal.terminalSession === session)
+    }
+}

@@ -1,13 +1,115 @@
 # Changelog
 
-All notable changes to herdr-mobile are documented in this file.
+All notable changes to Heeler are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- The Keys keyboard has a Skills pane: the skills and custom slash commands
+  installed on the Host for the agent you're attached to — the project's own
+  and the global ones — listed by name and description, one tap inserting
+  the invocation into the terminal without sending it, a long press
+  previewing the full description. Covered kinds and
+  their mechanisms: Claude Code Agent Skills (`/name`), Codex Agent Skills
+  (`$name`), OpenCode commands (`/name`), and Pi skills (`/skill:name`) plus
+  prompt templates (`/name`). The list is probed once per connection and
+  refreshable from the pane; agents of a kind without a known mechanism
+  don't show the tab.
+
+### Changed
+
+- The app is now named **Heeler**: the home-screen name, the microphone and
+  camera permission prompts, and the notification extension's display name
+  all say Heeler instead of Herdr. herdr remains the name of the server it
+  connects to; the App Store listing will be "Heeler for herdr". The GitHub
+  repository moved to ZingerLittleBee/Heeler and the in-app repository and
+  privacy-policy links follow (the old URLs redirect).
+- The pairing plugin's id is now `heeler.pairing` (was `herdr-mobile.pairing`).
+  Its id determines its config directory, so a Host running the old plugin
+  needs it reinstalled — `herdr plugin install ZingerLittleBee/Heeler/plugin
+  --ref main --yes` — and Notification Registration redone from the app.
+  Pairing and SSH access are unaffected: the Device Key already in the Host's
+  `authorized_keys` keeps working.
+
 ### Fixed
+
+- Switching Agents — from the switcher strip, a notification, or right after
+  starting a new one — no longer strands the terminal on "Connecting…"
+  forever. The synchronous-departure fix let SwiftUI discard the departing
+  screen's state before its teardown task ran, and the weakly-captured
+  teardown then silently skipped itself: the old session was never closed,
+  held the Host's single terminal channel, and every later attach queued
+  behind it indefinitely. The teardown now keeps its store alive until the
+  session is closed. Two hardenings ride along: a screen the Console no
+  longer has on stage refuses to resurrect its terminal on a spurious
+  reappearance, and teardown aborts a session still queued for the channel
+  instead of waiting its turn.
+
+- The Agent switcher strip and the keyboard toolbar no longer vanish when a
+  raised keyboard comes back on its own — returning from the background or
+  the lock screen with the keyboard up. Two causes, same round trip: the
+  keyboard-height measure required a foreground-active scene while UIKit
+  restores the keyboard just before activation, leaving the strip buried
+  behind the keyboard; and the toolbar's hide animation was only ever undone
+  on an explicit keyboard request, so a restored keyboard wore a transparent
+  toolbar.
+
+- The black-terminal-that-never-connects has lost its last hiding place. The
+  earlier reattach fix assumed the spurious disappear/appear pair SwiftUI
+  hands out arrives with a gap in between; when a notification deep link or
+  the new-agent flow's push landed both in one transaction, the deferred
+  teardown ran *after* the reattach had already decided there was nothing to
+  undo, and the visible screen kept a permanently stopped terminal. The
+  departure is now recorded synchronously in `onDisappear`, so the reattach
+  on `onAppear` always sees it.
+
+- Agent status colours are readable in light mode. The Working badge painted
+  its text in Catppuccin Latte's yellow over a wash of the same yellow, which
+  measured 2.3:1 — far under the 4.5:1 that small text needs — and Done's
+  green fared little better; the keyboard switcher's status dot missed the
+  3:1 an indicator needs on white. Badge text and the dot now use a darker
+  ink of the same hue in light mode (dark mode already passed and keeps its
+  pastels), so the phone still speaks herdr's colours, just legibly.
+
+- A Host no longer gets stuck offline because one Agent's pane exited. The
+  events subscription names each Agent's pane, and herdr rejects the whole
+  subscription when a single one of those panes is gone, so a pane that ended
+  while the Host was disconnected left every reconnect failing with
+  "pane … not found" until the Host was edited or the app restarted. Pane
+  subscriptions are now discarded on disconnect and reinstalled from the next
+  sync, and a pane that exits mid-subscribe retries straight away instead of
+  surfacing as a connection failure. Server rejections also read as herdr's
+  own message now, not as a printed Swift value.
+
+- Opening an Agent no longer flashes the Host's login shell across the screen
+  first. The attach channel is a login shell, so its banner, its prompt, and
+  its echo of the attach command all arrived before the Agent did, painted for
+  as long as the attach took to come up, and were then wiped by the Agent's
+  first frame. None of it reaches the terminal now, and "Connecting…" stays up
+  until the Agent actually paints. If an attach dies before it starts, whatever
+  the Host said is still shown — that message is the only diagnosis there is.
+
+- Switching Agents with the keyboard up no longer starts the new terminal at
+  full height and shrinks it a moment later, which also sent the "Connecting…"
+  dialog jumping from the middle of the screen to the middle of the terminal.
+  The keyboard's height now outlives the switch, like the raised keyboard
+  itself already did.
+
+- The terminal's status dialog wears the terminal theme instead of a system
+  material card, so "Connecting…" and "Session Ended" stop looking like a
+  piece of some other app over a Solarized or Nord grid.
+
+- Opening an Agent from a notification no longer sometimes lands on a black
+  terminal that never connects. The Attach screen tore its session down on
+  every `onDisappear`, including the ones SwiftUI hands out for removals the
+  user never made, and the screen that came back afterwards was the same,
+  permanently stopped one: no output, no error, no way to reattach short of
+  switching Agents. It now reattaches when it comes back, and a screen waiting
+  for its terminal says so instead of showing nothing at all.
 
 - The Agent list now removes rows from disconnected Hosts immediately, rejects
   stale snapshots that finish after a disconnect, and rechecks membership when
@@ -23,6 +125,11 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- Starting a new Agent now opens its terminal as soon as the launch lands,
+  instead of dropping back to the Agent list to hunt for the new row.
+  Launches made from another Agent's screen switch straight over too.
+  (refs #12)
+
 - The Agent detail screen's More menu no longer duplicates Settings; that
   entry stays in the Console toolbar.
 
@@ -31,7 +138,26 @@ Entries reference the issue that motivated them.
   Jakub Antalik's MIT-licensed thinking-orbs) — instead of the static blue
   Working capsule. Reduced-motion users get a still frame. (PR #106)
 
+- The Agent list now sorts Done above Working and Working above Idle, in the
+  Console and in the terminal's Agent row alike, so finished work surfaces
+  next to the Blocked agents that still lead the list. Status colours moved
+  onto herdr's own palette — green for Done, yellow for Working, red for
+  Blocked, grey for Idle — so the phone and the TUI agree on what a colour
+  means.
+
 ### Added
+
+- The Keys keyboard's three panes — control keys, Snippets, Appearance — now
+  swipe. Dragging sideways anywhere on the pane moves it under the finger, the
+  tab bar lights the pane being pulled in, and letting go snaps to it; the tabs
+  still work as taps. Control keys now send when the finger lifts rather than
+  when it lands, so a swipe that starts on Esc switches pane instead of sending
+  Esc. Holding a key still repeats.
+
+- Settings now carries an Appearance picker for the app itself: System, Light,
+  or Dark. System follows iOS as before and remains the default; the other two
+  pin the whole app — Console, sheets, and terminals — to one appearance, and
+  the choice sticks across launches.
 
 - Switch Agents without leaving the terminal: a row along the bottom of the
   terminal lists every Agent with its live status — Working agents pulse — and

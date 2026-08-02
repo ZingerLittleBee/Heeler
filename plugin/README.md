@@ -1,7 +1,7 @@
-# Herdr Mobile Pairing plugin
+# Heeler Pairing plugin
 
 A [herdr plugin](https://herdr.dev/docs/plugins/) that renders a **Pairing Code**
-QR so the herdr-mobile app can add this machine as a Host by scanning it
+QR so the Heeler app can add this machine as a Host by scanning it
 (ADR 0007). The `pair` action opens a popup pane: confirm which of the
 machine's addresses go into the code, then scan the QR with the app.
 
@@ -34,7 +34,7 @@ node --version    # 20 or newer
 Install the plugin from GitHub:
 
 ```bash
-herdr plugin install ZingerLittleBee/herdr-mobile/plugin --ref main --yes
+herdr plugin install ZingerLittleBee/Heeler/plugin --ref main --yes
 ```
 
 Herdr stores the plugin in its managed checkout and runs the manifest's
@@ -42,27 +42,27 @@ Herdr stores the plugin in its managed checkout and runs the manifest's
 enabled:
 
 ```bash
-herdr plugin list --plugin herdr-mobile.pairing
-herdr plugin config-dir herdr-mobile.pairing
+herdr plugin list --plugin heeler.pairing
+herdr plugin config-dir heeler.pairing
 ```
 
 Open the Pairing Code popup:
 
 ```bash
-herdr plugin action invoke herdr-mobile.pairing.pair
+herdr plugin action invoke heeler.pairing.pair
 ```
 
-Scan the code in HerdrMobile to add this machine as a Host. Then open the
-HerdrMobile settings, enable Agent Notifications, grant the iOS notification
+Scan the code in Heeler to add this machine as a Host. Then open the
+Heeler settings, enable Agent Notifications, grant the iOS notification
 permission, and enable Notifications for this Host. Leave **Custom Push
 Relay** empty to use the production endpoint at
-`https://herdr-apns.bybee.dev`.
+`https://heeler-apns.bybee.dev`.
 
 To update an installed GitHub-managed plugin, run the same `plugin install`
 command again. To inspect notification or pairing failures:
 
 ```bash
-herdr plugin log list --plugin herdr-mobile.pairing --limit 20
+herdr plugin log list --plugin heeler.pairing --limit 20
 ```
 
 For local development, link the working tree instead. Build it first because
@@ -71,7 +71,7 @@ For local development, link the working tree instead. Build it first because
 ```bash
 cd plugin && npm ci
 herdr plugin link "$(pwd)"
-herdr plugin action invoke herdr-mobile.pairing.pair
+herdr plugin action invoke heeler.pairing.pair
 ```
 
 The popup checklist: arrows or `j`/`k` move, space toggles, `a` toggles all,
@@ -305,7 +305,7 @@ Anti-noise, in order:
    `HERDR_PLUGIN_STATE_DIR/notify/`; a same-status repeat sends nothing. A
    *different* status that survives its own debounce re-arms the pane.
 
-Each eligible device gets one `POST https://herdr-apns.bybee.dev/push` by
+Each eligible device gets one `POST https://heeler-apns.bybee.dev/push` by
 default (see `relay/README.md`), carrying the encrypted envelope and an opaque
 per-pane `collapse` key (derived from the device's Notification Key and the
 pane id, so the relay cannot guess the pane while newer statuses still replace
@@ -319,7 +319,7 @@ the plugin config dir:
 
 | Field            | Type    | Meaning |
 | ---------------- | ------- | ------- |
-| `relay_url`      | string  | Optional Push Relay base URL override for a self-built app. Defaults to `https://herdr-apns.bybee.dev`; the app writes the resolved value during Notification Registration. |
+| `relay_url`      | string  | Optional Push Relay base URL override for a self-built app. Defaults to `https://heeler-apns.bybee.dev`; the app writes the resolved value during Notification Registration. |
 | `debounce_ms`    | integer | Debounce sleep override. Default 5000. |
 | `retry_delay_ms` | integer | Delay between retry attempts. Default 1000. |
 

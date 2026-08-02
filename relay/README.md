@@ -10,7 +10,7 @@ Apple, and relays Apple's verdict back. It is a dumb pipe on purpose:
   retries). Compromising the relay yields device tokens and ciphertext,
   never content.
 - **Production origin**: the official app and plugin default to
-  `https://herdr-apns.bybee.dev`. Both still accept a custom relay base URL
+  `https://heeler-apns.bybee.dev`. Both still accept a custom relay base URL
   for self-built apps because APNs keys are bound to the bundle id.
 - **What crosses it**: device token, ciphertext, source IP. Nothing else;
   the relay never parses the envelope.
@@ -83,9 +83,11 @@ rate-limit windows.
 
 ## Deploy
 
-The production Worker is deployed at `https://herdr-apns.bybee.dev`. Its
+The production Worker is deployed at `https://heeler-apns.bybee.dev`. Its
 custom domain is declared in `wrangler.toml`, keeping deploys on the canonical
-origin and disabling the fallback `workers.dev` route.
+origin and disabling the fallback `workers.dev` route. The retired
+`herdr-apns.bybee.dev` still routes to the same Worker while deployed plugins
+migrate off it; see the comment on that route in `wrangler.toml`.
 
 1. In the Apple Developer portal, create an APNs auth key (`.p8`) for the
    team that signs the app; note the key id and team id.
@@ -95,7 +97,7 @@ origin and disabling the fallback `workers.dev` route.
    uncomment them in `wrangler.toml` or set them in the dashboard).
 4. `npx wrangler secret put APNS_KEY_P8` and paste the `.p8` PEM contents.
 5. Smoke-test with a sandbox token:
-   `curl -s -X POST https://herdr-apns.bybee.dev/push -d '{"token":"<hex>","env":"sandbox","envelope":"{}","collapse":"smoke"}'`
+   `curl -s -X POST https://heeler-apns.bybee.dev/push -d '{"token":"<hex>","env":"sandbox","envelope":"{}","collapse":"smoke"}'`
    — expect an APNs verdict (`200` or a relayed `400 BadDeviceToken`), not
    `relay_misconfigured`.
 

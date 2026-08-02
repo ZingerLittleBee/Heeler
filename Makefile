@@ -1,17 +1,19 @@
-# Task runner for HerdrMobile. Typical flows:
+# Task runner for Heeler. Typical flows:
 #   make install                 # build Debug and run it on the connected iPhone
-#   make bump && make testflight # next TestFlight build (build number must be unique per upload)
+#   make bump && make testflight # interim TestFlight build, no version cut
+#   make publish                 # cut a release: see docs/guides/releasing.md
 
-PROJECT := HerdrMobile.xcodeproj
-SCHEME  := HerdrMobile
-ARCHIVE := build/HerdrMobile.xcarchive
+PROJECT := Heeler.xcodeproj
+SCHEME  := Heeler
+ARCHIVE := build/Heeler.xcarchive
 DERIVED := build/DerivedData
-APP_ID  := dev.herdr.mobile.HerdrMobile
+APP_ID  := dev.bybee.heeler
+SIM     ?= iPhone 17
 
 # First physical device paired with devicectl; override with `make install DEVICE=<uuid>`.
 DEVICE ?= $(shell xcrun devicectl list devices 2>/dev/null | awk '/physical[a-z]* *$$/ { for (i = 1; i <= NF; i++) if ($$i ~ /^[0-9A-Fa-f-]{36}$$/) { print $$i; exit } }')
 
-.PHONY: help generate build test install archive upload testflight bump clean check-device
+.PHONY: help generate build test install sim archive upload testflight bump publish clean check-device
 
 help: ## Show available targets
 	@awk -F':.*## ' '/^[a-z]+:.*## / { printf "  make %-12s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -33,8 +35,16 @@ check-device:
 
 install: check-device build ## Build Debug, install on the iPhone, and relaunch it
 	xcrun devicectl device install app --device $(DEVICE) \
-		$(DERIVED)/Build/Products/Debug-iphoneos/HerdrMobile.app
+		$(DERIVED)/Build/Products/Debug-iphoneos/Heeler.app
 	xcrun devicectl device process launch --terminate-existing --device $(DEVICE) $(APP_ID)
+
+sim: generate ## Build Debug and run it on the simulator (override with SIM=<name>)
+	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \
+		-destination 'platform=iOS Simulator,name=$(SIM)' -derivedDataPath $(DERIVED) build
+	xcrun simctl boot '$(SIM)' 2>/dev/null || true
+	open -a Simulator
+	xcrun simctl install booted $(DERIVED)/Build/Products/Debug-iphonesimulator/Heeler.app
+	xcrun simctl launch --terminate-running-process booted $(APP_ID)
 
 archive: generate ## Archive a Release build for distribution
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release \
@@ -57,6 +67,11 @@ bump: ## Increment CURRENT_PROJECT_VERSION in project.yml (app + extension stay 
 	@# and one commit carries both (otherwise the next make target regenerates
 	@# it after the bump commit and leaves it dirty).
 	@$(MAKE) generate
+
+# Options are make variables, not flags: make eats `--dry-run` as its own -n and
+# rejects unknown long options, so a flag would never reach the recipe.
+publish: ## Cut a release from CHANGELOG [Unreleased] (VERSION=x.y.z DRY_RUN=1 YES=1)
+	@VERSION='$(VERSION)' DRY_RUN='$(DRY_RUN)' YES='$(YES)' scripts/publish.sh
 
 clean: ## Remove local build products
 	rm -rf build

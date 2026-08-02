@@ -6,6 +6,7 @@ import { join } from "node:path";
 
 import {
   DEFAULT_RELAY_URL,
+  LEGACY_DEFAULT_RELAY_URLS,
   readNotificationConfig,
 } from "../src/notification-config.js";
 
@@ -35,13 +36,15 @@ suite("notification config", () => {
     assert.equal(readNotificationConfig(configDir).relayUrl, "https://relay.example.com");
   });
 
-  test("migrates the previous workers.dev endpoint to production", () => {
-    writeConfig({
-      relay_url: "https://herdr-push-relay.69709991236.workers.dev/",
-    });
+  // Driven by the endpoint list itself, so retiring another production
+  // endpoint cannot ship without its migration being covered.
+  for (const legacy of LEGACY_DEFAULT_RELAY_URLS) {
+    test(`migrates the retired ${legacy} endpoint to production`, () => {
+      writeConfig({ relay_url: `${legacy}/` });
 
-    assert.equal(readNotificationConfig(configDir).relayUrl, DEFAULT_RELAY_URL);
-  });
+      assert.equal(readNotificationConfig(configDir).relayUrl, DEFAULT_RELAY_URL);
+    });
+  }
 
   test("uses the documented debounce and retry defaults", () => {
     configDir = mkdtempSync(join(tmpdir(), "notification-config-"));

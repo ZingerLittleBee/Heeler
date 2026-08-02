@@ -1,8 +1,8 @@
-# herdr-mobile
+# Heeler
 
 A native iOS companion app for [herdr](https://herdr.dev) — an agent-first terminal runtime.
 
-herdr-mobile is an **agent console**: a native dashboard of every coding agent running on your machines, sorted by who needs you. Open an Agent to enter its real terminal with the standard iOS input method, a compact terminal control keyboard, native scrollback, and continuous touch scrolling for full-screen TUIs, all over plain SSH.
+Heeler is an **agent console**: a native dashboard of every coding agent running on your machines, sorted by who needs you. Open an Agent to enter its real terminal with the standard iOS input method, a compact terminal control keyboard, native scrollback, and continuous touch scrolling for full-screen TUIs, all over plain SSH.
 
 ## Screenshots
 
@@ -70,8 +70,8 @@ running herdr (Node >= 20, herdr >= 0.7.5, OpenSSH server enabled — on macOS
 that is **System Settings > General > Sharing > Remote Login**):
 
 ```bash
-herdr plugin install ZingerLittleBee/herdr-mobile/plugin --ref main --yes
-herdr plugin action invoke herdr-mobile.pairing.pair
+herdr plugin install ZingerLittleBee/Heeler/plugin --ref main --yes
+herdr plugin action invoke heeler.pairing.pair
 ```
 
 The `pair` action opens a popup with a Pairing Code QR; scan it with the app

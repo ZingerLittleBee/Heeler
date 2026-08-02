@@ -1,8 +1,8 @@
 {
-  "name": "herdr-mobile-pairing",
+  "name": "heeler-pairing",
   "version": "0.3.0",
   "private": true,
-  "description": "herdr plugin that renders a Pairing Code QR for herdr-mobile device onboarding",
+  "description": "herdr plugin that renders a Pairing Code QR for Heeler device onboarding",
   "type": "module",
   "engines": {
     "node": ">=20"
