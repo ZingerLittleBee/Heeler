@@ -22,6 +22,15 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- The Agent switcher strip and the keyboard toolbar no longer vanish when a
+  raised keyboard comes back on its own — returning from the background or
+  the lock screen with the keyboard up. Two causes, same round trip: the
+  keyboard-height measure required a foreground-active scene while UIKit
+  restores the keyboard just before activation, leaving the strip buried
+  behind the keyboard; and the toolbar's hide animation was only ever undone
+  on an explicit keyboard request, so a restored keyboard wore a transparent
+  toolbar.
+
 - Agent status colours are readable in light mode. The Working badge painted
   its text in Catppuccin Latte's yellow over a wash of the same yellow, which
   measured 2.3:1 — far under the 4.5:1 that small text needs — and Done's

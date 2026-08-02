@@ -88,12 +88,20 @@ final class TerminalKeyboardInset {
     /// are measured from the very bottom of the screen — while the terminal
     /// stops at the home indicator. Subtracting that safe area is what keeps
     /// the last row against the toolbar instead of a strip of background.
+    ///
+    /// Foreground-inactive scenes count too: UIKit restores the keyboard
+    /// during foregrounding, before the scene reaches `.foregroundActive`.
+    /// Requiring an active scene dropped exactly that measure, and the inset
+    /// stayed at zero under a visible keyboard — with the Agent strip buried
+    /// behind it.
     static func coveredHeight(of endFrame: CGRect) -> CGFloat? {
+        let scenes = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
         guard
-            let window = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .first(where: { $0.activationState == .foregroundActive })?
-                .keyWindow
+            let window = scenes
+                .first(where: { $0.activationState == .foregroundActive })?.keyWindow
+                ?? scenes
+                .first(where: { $0.activationState == .foregroundInactive })?.keyWindow
         else { return nil }
         let frameInWindow = window.convert(endFrame, from: window.screen.coordinateSpace)
         return insetHeight(

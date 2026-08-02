@@ -524,6 +524,9 @@ extension HerdrTerminalView {
             self, selector: #selector(keyboardDismissalWillBegin(_:)),
             name: UIResponder.keyboardWillHideNotification, object: nil)
         NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardPresentationWillBegin(_:)),
+            name: UIResponder.keyboardWillShowNotification, object: nil)
+        NotificationCenter.default.addObserver(
             self, selector: #selector(keyboardTransitionDidFinish(_:)),
             name: UIResponder.keyboardDidHideNotification, object: nil)
         // The other end of a transition: a terminal that inherited the
@@ -589,6 +592,16 @@ extension HerdrTerminalView {
         (inputAccessoryView as? TerminalKeyboardAccessory)?.animateDismissal(
             duration: duration,
             options: options)
+    }
+
+    /// The counterpart to `keyboardDismissalWillBegin`, for keyboards that
+    /// come back without asking. Backgrounding hides the keyboard — animating
+    /// the accessory out — but leaves the first responder in place, so the
+    /// re-presentation on return never passes through `becomeFirstResponder`,
+    /// where the accessory's content is normally restored. Without this the
+    /// keyboard came back wearing a fully transparent toolbar.
+    @objc private func keyboardPresentationWillBegin(_: Notification) {
+        (inputAccessoryView as? TerminalKeyboardAccessory)?.resetDismissalAppearance()
     }
 
     @objc private func textKeyboardFrameDidChange(_ notification: Notification) {
