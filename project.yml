@@ -50,16 +50,16 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: dev.herdr.mobile.HerdrMobile
-        # Home-screen name; the App Store listing is "Herdr Console".
-        INFOPLIST_KEY_CFBundleDisplayName: Herdr
+        # Home-screen name; the App Store listing is "Heeler for herdr".
+        INFOPLIST_KEY_CFBundleDisplayName: Heeler
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "4"
         # Dictation captures the microphone to transcribe on device (#36). No
         # speech-recognition usage key is set: the iOS 26 SpeechAnalyzer stack
         # is on-device and needs no legacy SFSpeechRecognizer authorization.
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: "herdr uses the microphone to transcribe your spoken reply into the message box. Audio is processed on device and never leaves your phone."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Heeler uses the microphone to transcribe your spoken reply into the message box. Audio is processed on device and never leaves your phone."
         # Scan to Pair (#62) reads the Pairing Code QR from the computer screen.
-        INFOPLIST_KEY_NSCameraUsageDescription: "herdr uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything."
+        INFOPLIST_KEY_NSCameraUsageDescription: "Heeler uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything."
         # Only exempt encryption is used (standard SSH algorithms via Citadel,
         # OS-provided CryptoKit); declaring it here keeps every TestFlight
         # upload from stalling on the Missing Compliance prompt.
@@ -109,7 +109,7 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         # App Store validation (code 90360) requires a display name on
         # every embedded appex; never user-visible for this extension.
-        CFBundleDisplayName: Herdr Notification Service
+        CFBundleDisplayName: Heeler Notification Service
         NSExtension:
           NSExtensionPointIdentifier: com.apple.usernotifications.service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
