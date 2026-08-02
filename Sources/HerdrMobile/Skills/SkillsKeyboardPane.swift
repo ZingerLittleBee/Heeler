@@ -153,14 +153,16 @@ struct SkillRowButton: View {
     }
 }
 
-/// The long-press preview: everything the two-line row had to cut.
+/// The long-press preview: everything the two-line row had to cut. Sized
+/// generously — a fixed near-screen width and a floor on the height — so a
+/// short description still reads as a card, not a tooltip.
 struct SkillDetailPreview: View {
     let skill: AgentSkill
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(skill.command)
-                .font(.headline)
+                .font(.title3.weight(.semibold))
                 .fontDesign(.monospaced)
             Text(skill.scope == .project ? "Project" : "Global")
                 .font(.caption.weight(.semibold))
@@ -169,12 +171,14 @@ struct SkillDetailPreview: View {
             if let description = skill.description {
                 Divider()
                 Text(description)
-                    .font(.subheadline)
+                    .font(.body)
                     .foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            Spacer(minLength: 0)
         }
-        .padding(16)
-        .frame(maxWidth: 340, alignment: .leading)
+        .padding(20)
+        .frame(width: 370, alignment: .topLeading)
+        .frame(minHeight: 160, alignment: .topLeading)
     }
 }
