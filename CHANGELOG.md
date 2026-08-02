@@ -31,6 +31,13 @@ Entries reference the issue that motivated them.
   Jakub Antalik's MIT-licensed thinking-orbs) — instead of the static blue
   Working capsule. Reduced-motion users get a still frame. (PR #106)
 
+- The Agent list now sorts Done above Working and Working above Idle, in the
+  Console and in the terminal's Agent row alike, so finished work surfaces
+  next to the Blocked agents that still lead the list. Status colours moved
+  onto herdr's own palette — green for Done, yellow for Working, red for
+  Blocked, grey for Idle — so the phone and the TUI agree on what a colour
+  means.
+
 ### Added
 
 - Switch Agents without leaving the terminal: a row along the bottom of the

@@ -48,10 +48,11 @@ struct ConsoleStoreTests {
         #expect(await condition(), comment)
     }
 
-    @Test func sortBucketsRankBlockedAboveWorkingAboveTheRest() {
-        #expect(AgentStatus.blocked.consoleSortBucket < AgentStatus.working.consoleSortBucket)
+    @Test func sortBucketsRankBlockedThenDoneThenWorkingThenIdle() {
+        #expect(AgentStatus.blocked.consoleSortBucket < AgentStatus.done.consoleSortBucket)
+        #expect(AgentStatus.done.consoleSortBucket < AgentStatus.working.consoleSortBucket)
         #expect(AgentStatus.working.consoleSortBucket < AgentStatus.idle.consoleSortBucket)
-        #expect(AgentStatus.idle.consoleSortBucket == AgentStatus.done.consoleSortBucket)
+        #expect(AgentStatus.idle.consoleSortBucket < AgentStatus.unknown.consoleSortBucket)
         // herdr's API has no stability guarantee: a status this build does
         // not recognize must land in the bottom bucket, not on top.
         #expect(
@@ -84,13 +85,13 @@ struct ConsoleStoreTests {
         await store.resume()
         try await waitUntil("all four agents should arrive") { store.agents.count == 4 }
 
-        // Blocked > Working > Idle/Done, flat across both Hosts.
-        #expect(store.agents.map(\.agent.paneID) == ["w2:p1", "w1:p2", "w1:p1", "w2:p2"])
+        // Blocked > Done > Working > Idle, flat across both Hosts.
+        #expect(store.agents.map(\.agent.paneID) == ["w2:p1", "w2:p2", "w1:p2", "w1:p1"])
         #expect(store.agents.first?.hostName == "beta")
         // Workspace rides along as a context tag.
         #expect(store.agents.first?.workspaceLabel == "Api")
-        #expect(store.agents.last?.workspaceLabel == "Api")
-        #expect(store.agents[2].repoName == "proj")
+        #expect(store.agents[1].workspaceLabel == "Api")
+        #expect(store.agents.last?.repoName == "proj")
 
         store.setHosts([])
     }

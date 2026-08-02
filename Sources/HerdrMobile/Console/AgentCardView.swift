@@ -77,45 +77,29 @@ struct AgentCardView: View {
 }
 
 /// Status rendered as a tinted capsule; Blocked gets the loudest color
-/// because it is the one asking for the user. Working trades the capsule
-/// for a live solving orb — motion is the signal, so it needs no tint.
+/// because it is the one asking for the user. Working keeps a live solving
+/// orb inside the capsule — a still badge cannot tell a busy Agent from a
+/// finished one at a glance.
 struct AgentStatusBadge: View {
     let status: AgentStatus
 
     var body: some View {
-        if status == .working {
-            HStack(spacing: 4) {
-                SolvingOrbView(size: 16)
+        HStack(spacing: 4) {
+            if status == .working {
+                SolvingOrbView(size: 12)
                     .accessibilityHidden(true)
-                Text("Working")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
             }
-        } else {
             Text(status.rawValue.capitalized)
                 .font(.caption2.weight(.semibold))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(color.opacity(0.15), in: Capsule())
-                .foregroundStyle(color)
         }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(color.opacity(0.15), in: Capsule())
+        .foregroundStyle(color)
     }
 
     private var color: Color {
         Color(status.tintUIColor)
-    }
-}
-
-extension AgentStatus {
-    /// The one status palette in the app: the Console badge and the keyboard
-    /// switcher's dot read from it, so a colour never means two things.
-    var tintUIColor: UIColor {
-        switch self {
-        case .blocked: .systemOrange
-        case .working: .systemBlue
-        case .done: .systemGreen
-        default: .secondaryLabel
-        }
     }
 }
 

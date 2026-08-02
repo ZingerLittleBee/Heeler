@@ -44,15 +44,20 @@ struct ConsoleWorkspace: Identifiable, Hashable, Sendable {
 }
 
 extension AgentStatus {
-    /// Console sort bucket: Blocked > Working > everything else. Idle, Done,
-    /// Unknown, and any status this build does not recognize (herdr's API
-    /// has no stability guarantee) share the bottom bucket — a status we
-    /// cannot interpret is not actionable, so it must not outrank one we can.
+    /// Console sort bucket: Blocked > Done > Working > Idle. The order tracks
+    /// how much of the user's attention each status is asking for — Blocked
+    /// has stopped and is waiting on an answer, Done has a result to read,
+    /// Working needs nothing, Idle least of all. Unknown and any status this
+    /// build does not recognize (herdr's API has no stability guarantee)
+    /// share the bottom bucket — a status we cannot interpret is not
+    /// actionable, so it must not outrank one we can.
     var consoleSortBucket: Int {
         switch self {
         case .blocked: 0
-        case .working: 1
-        default: 2
+        case .done: 1
+        case .working: 2
+        case .idle: 3
+        default: 4
         }
     }
 }
