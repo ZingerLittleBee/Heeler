@@ -236,6 +236,12 @@ struct AgentDetailView: View {
         .onChange(of: console.hostConnectionGenerations[agent.hostID]) { _, generation in
             attach.transportGenerationDidChange(generation)
         }
+        // Paired with the leave below: SwiftUI hands out onDisappear for
+        // removals the user never made, and the state that comes back is the
+        // one that left. Rejoining is what makes that survivable.
+        .onAppear {
+            attach.rejoin()
+        }
         .onDisappear {
             Task { await attach.leave() }
         }
@@ -410,6 +416,8 @@ struct AgentDetailView: View {
                 Button("Reattach") { attach.retryTerminal() }
                     .buttonStyle(.borderedProminent)
             }
+        // .live needs nothing, and .stopped only reaches the view while the
+        // screen is on its way off stage (see `AgentAttachStore.terminalStatus`).
         case .live, .stopped:
             EmptyView()
         }
