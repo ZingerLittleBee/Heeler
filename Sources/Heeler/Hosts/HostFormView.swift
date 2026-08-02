@@ -202,7 +202,7 @@ struct HostFormView: View {
     private func loadDeviceKey() {
         do {
             let key = try credentials.deviceKey()
-            authorizedKeysLine = key.authorizedKeysLine(comment: "herdr-mobile")
+            authorizedKeysLine = key.authorizedKeysLine(comment: "heeler")
             deviceKeyIsCorrupt = false
         } catch DeviceKeyStoreError.storedKeyCorrupt {
             authorizedKeysLine = nil
@@ -216,7 +216,7 @@ struct HostFormView: View {
     private func replaceDeviceKey() {
         do {
             let key = try credentials.replaceDeviceKey()
-            authorizedKeysLine = key.authorizedKeysLine(comment: "herdr-mobile")
+            authorizedKeysLine = key.authorizedKeysLine(comment: "heeler")
             deviceKeyIsCorrupt = false
             didCopyKeyLine = false
         } catch {

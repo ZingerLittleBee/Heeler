@@ -188,7 +188,7 @@ struct PairingCeremonyE2ETests {
     }
 
     private static let connector = SSHPairingConnector(
-        perAddressTimeout: .seconds(2), deviceKeyComment: "herdr-mobile-e2e")
+        perAddressTimeout: .seconds(2), deviceKeyComment: "heeler-e2e")
 
     /// The fingerprint the localhost sshd actually presents, discovered the
     /// same way the plugin discovers it at code-generation time. Pinning it

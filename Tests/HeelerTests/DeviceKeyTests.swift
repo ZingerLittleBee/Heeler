@@ -33,8 +33,8 @@ struct DeviceKeyTests {
 
     @Test func authorizedKeysLineAppendsComment() throws {
         #expect(
-            try key.authorizedKeysLine(comment: "herdr-mobile iPhone")
-                == Self.expectedLine + " herdr-mobile iPhone")
+            try key.authorizedKeysLine(comment: "heeler iPhone")
+                == Self.expectedLine + " heeler iPhone")
     }
 
     @Test func fingerprintOfPublicKeyBlobMatchesSSHKeygen() throws {

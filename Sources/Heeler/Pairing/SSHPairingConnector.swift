@@ -22,7 +22,7 @@ struct SSHPairingConnector: PairingConnector {
     /// Comment on the submitted Device Key line; the plugin popup shows it
     /// as the enrolled device's label. Must be printable ASCII — the accept
     /// entrypoint rejects anything else as `invalid_key`.
-    var deviceKeyComment: String = "herdr-mobile"
+    var deviceKeyComment: String = "heeler"
 
     func pair(
         code: PairingCode,

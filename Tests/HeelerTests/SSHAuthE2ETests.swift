@@ -21,7 +21,7 @@ struct SSHAuthE2ETests {
         try await AuthorizedKeysTestLock.shared.withLock {
             let installed = try AuthorizedKeysEntry(
                 username: environment.username,
-                line: deviceKey.authorizedKeysLine(comment: "herdr-mobile-e2e"))
+                line: deviceKey.authorizedKeysLine(comment: "heeler-e2e"))
             defer { installed.restore() }
 
             let transport = try await SSHTransport.connect(

@@ -23,8 +23,8 @@ suite("parseDeviceKeyLine", () => {
   });
 
   test("accepts a comment and keeps it in the canonical line", () => {
-    const parsed = parseDeviceKeyLine(`ssh-ed25519 ${BLOB} herdr-mobile iPhone`);
-    assert.equal(parsed.line, `ssh-ed25519 ${BLOB} herdr-mobile iPhone`);
+    const parsed = parseDeviceKeyLine(`ssh-ed25519 ${BLOB} heeler iPhone`);
+    assert.equal(parsed.line, `ssh-ed25519 ${BLOB} heeler iPhone`);
     assert.equal(parsed.fingerprint, FINGERPRINT);
   });
 
