@@ -20,6 +20,13 @@ Entries reference the issue that motivated them.
   refreshable from the pane; agents of a kind without a known mechanism
   don't show the tab.
 
+### Changed
+
+- The app is now named **Heeler**: the home-screen name, the microphone and
+  camera permission prompts, and the notification extension's display name
+  all say Heeler instead of Herdr. herdr remains the name of the server it
+  connects to; the App Store listing will be "Heeler for herdr".
+
 ### Fixed
 
 - The Agent switcher strip and the keyboard toolbar no longer vanish when a
