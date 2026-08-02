@@ -9,6 +9,6 @@ struct SettingsViewTests {
 
         #expect(
             repositoryURL.absoluteString
-                == "https://github.com/ZingerLittleBee/herdr-mobile")
+                == "https://github.com/ZingerLittleBee/Heeler")
     }
 }

@@ -34,7 +34,7 @@ node --version    # 20 or newer
 Install the plugin from GitHub:
 
 ```bash
-herdr plugin install ZingerLittleBee/herdr-mobile/plugin --ref main --yes
+herdr plugin install ZingerLittleBee/Heeler/plugin --ref main --yes
 ```
 
 Herdr stores the plugin in its managed checkout and runs the manifest's

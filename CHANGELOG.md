@@ -25,7 +25,9 @@ Entries reference the issue that motivated them.
 - The app is now named **Heeler**: the home-screen name, the microphone and
   camera permission prompts, and the notification extension's display name
   all say Heeler instead of Herdr. herdr remains the name of the server it
-  connects to; the App Store listing will be "Heeler for herdr".
+  connects to; the App Store listing will be "Heeler for herdr". The GitHub
+  repository moved to ZingerLittleBee/Heeler and the in-app repository and
+  privacy-policy links follow (the old URLs redirect).
 
 ### Fixed
 

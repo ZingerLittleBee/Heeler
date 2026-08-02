@@ -50,5 +50,5 @@ enum NotificationPrivacyCopy {
     /// like every `URL(string:)` in the app (no force unwraps); a link that
     /// depends on it simply hides if the constant ever fails to parse.
     static let privacyPolicyURL = URL(
-        string: "https://github.com/ZingerLittleBee/herdr-mobile/blob/main/PRIVACY.md")
+        string: "https://github.com/ZingerLittleBee/Heeler/blob/main/PRIVACY.md")
 }

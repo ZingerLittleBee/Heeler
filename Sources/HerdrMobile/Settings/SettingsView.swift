@@ -11,7 +11,7 @@ struct SettingsView: View {
     let relaySettings: NotificationRelaySettings
     @Environment(\.dismiss) private var dismiss
 
-    static let repositoryURL = URL(string: "https://github.com/ZingerLittleBee/herdr-mobile")
+    static let repositoryURL = URL(string: "https://github.com/ZingerLittleBee/Heeler")
 
     var body: some View {
         NavigationStack {
