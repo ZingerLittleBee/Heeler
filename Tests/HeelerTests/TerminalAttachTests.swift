@@ -1055,7 +1055,7 @@ struct TerminalAttachTests {
             socketPath: "/home/u/.config/herdr/sessions/dev/herdr.sock")
         #expect(
             line == "exec /bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
-                + "printf \"\\033_herdr-mobile-attach\\033\\134\"; "
+                + "printf \"\\033_heeler-attach\\033\\134\"; "
                 + "exec herdr agent attach \"$1\"' attach "
                 + "'w1:p1' '/home/u/.config/herdr/sessions/dev/herdr.sock'\n")
     }
@@ -1067,7 +1067,7 @@ struct TerminalAttachTests {
             socketPath: "/home/u/.config/herdr/herdr.sock")
         #expect(
             line == "exec /bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
-                + "printf \"\\033_herdr-mobile-attach\\033\\134\"; "
+                + "printf \"\\033_heeler-attach\\033\\134\"; "
                 + "exec herdr agent attach \"$1\" --takeover' attach "
                 + "'w1:p1' '/home/u/.config/herdr/herdr.sock'\n")
     }
@@ -1081,7 +1081,7 @@ struct TerminalAttachTests {
             socketPath: "/tmp/fake.sock")
         #expect(
             line == "exec /bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
-                + "printf \"\\033_herdr-mobile-attach\\033\\134\"; "
+                + "printf \"\\033_heeler-attach\\033\\134\"; "
                 + "exec /bin/sh /tmp/fake-attach.sh \"$1\"' attach "
                 + "'w1:p1' '/tmp/fake.sock'\n")
     }
@@ -1118,7 +1118,7 @@ struct TerminalAttachTests {
         let noise = Data(
             ("Last login: Sun Aug  2 13:28:08 2026\r\n"
                 + "\u{1B}[32muser@host\u{1B}[0m ~ % "
-                + #"exec /bin/sh -c 'printf "\033_herdr-mobile-attach\033\134"; exec herdr'"#
+                + #"exec /bin/sh -c 'printf "\033_heeler-attach\033\134"; exec herdr'"#
                 + "\r\n").utf8)
         #expect(gate.admit(noise).isEmpty)
         #expect(!gate.isOpen)

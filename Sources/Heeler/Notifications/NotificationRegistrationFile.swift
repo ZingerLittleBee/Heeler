@@ -5,7 +5,7 @@ import Foundation
 /// (#72 acceptance criteria) instead of string-matching. Transport-level
 /// failures (unreachable Host, timeout, cancellation) stay `TransportError`.
 enum NotificationRegistrationError: Error, Sendable, Equatable {
-    /// The herdr-mobile plugin is not installed — or is disabled — on the
+    /// The Heeler plugin is not installed — or is disabled — on the
     /// Host, so nothing there would ever read a registration file.
     case pluginNotInstalled
     /// The plugin probe broke: `herdr plugin list` or `herdr plugin

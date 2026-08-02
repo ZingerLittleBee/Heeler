@@ -537,10 +537,10 @@ struct SSHTransportE2ETests {
             socket: .absolutePath("/tmp/herdr-irrelevant.sock"))
         settings.agentDiscoveryCommand =
             "printf '%s\\n' 'login noise' "
-            + "'__HERDR_MOBILE_AGENT_KIND__=maki' "
-            + "'__HERDR_MOBILE_AGENT_KIND__=future-agent' "
-            + "'__HERDR_MOBILE_AGENT_KIND__=codex' "
-            + "'__HERDR_MOBILE_AGENT_KIND__=maki'"
+            + "'__HEELER_AGENT_KIND__=maki' "
+            + "'__HEELER_AGENT_KIND__=future-agent' "
+            + "'__HEELER_AGENT_KIND__=codex' "
+            + "'__HEELER_AGENT_KIND__=maki'"
         let transport = try await SSHTransport.connect(settings: settings)
         do {
             let kinds = try await transport.availableAgentKinds()
@@ -725,7 +725,7 @@ struct SSHTransportE2ETests {
         }
         defer { server.stop() }
         let homeCommand =
-            "printf 'login banner\\n__HERDR_MOBILE_HOME__=%s\\nlast login\\n' '\(home)'"
+            "printf 'login banner\\n__HEELER_HOME__=%s\\nlast login\\n' '\(home)'"
         let transport = try await SSHTransport.connect(
             settings: environment.makeSettings(
                 socket: .namedSession(sessionName), homeCommand: homeCommand))
@@ -747,7 +747,7 @@ struct SSHTransportE2ETests {
         let server = try FakeHerdrServer(socketPath: "\(sessionDirectory)/herdr.sock") { _ in nil }
         defer { server.stop() }
         let homeCommand =
-            "sleep 0.6; printf '__HERDR_MOBILE_HOME__=%s\\n' '\(home)'"
+            "sleep 0.6; printf '__HEELER_HOME__=%s\\n' '\(home)'"
         let transport = try await SSHTransport.connect(
             settings: environment.makeSettings(
                 socket: .namedSession(sessionName), requestTimeout: .seconds(1),

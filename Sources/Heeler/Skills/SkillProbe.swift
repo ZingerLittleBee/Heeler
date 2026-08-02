@@ -6,9 +6,9 @@ import Foundation
 /// socat and agent-availability probes.
 enum SkillProbe {
     /// File markers carry the source's index so the parser can map each file
-    /// back to its scope and command prefix: `__HERDR_MOBILE_SKILL_3__=path`.
-    static let fileMarkerPrefix = "__HERDR_MOBILE_SKILL_"
-    static let endMarker = "__HERDR_MOBILE_SKILL_END__"
+    /// back to its scope and command prefix: `__HEELER_SKILL_3__=path`.
+    static let fileMarkerPrefix = "__HEELER_SKILL_"
+    static let endMarker = "__HEELER_SKILL_END__"
     /// Frontmatter lives at the top of the file; capping the read keeps a
     /// directory full of large skills from flooding the channel.
     static let maximumBytesPerFile = 4096

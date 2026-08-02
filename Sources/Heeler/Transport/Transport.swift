@@ -109,7 +109,7 @@ protocol Transport: Sendable {
     ) async throws -> StagedImage
 
     /// Reads the Notification Registration file (v1, `plugin/README.md`)
-    /// from the herdr-mobile plugin's config dir on this Host; nil when no
+    /// from the Heeler plugin's config dir on this Host; nil when no
     /// device has registered yet. Throws
     /// `NotificationRegistrationError.pluginNotInstalled` when the plugin is
     /// absent, so the ceremony can tell "install the plugin" apart from a
@@ -121,7 +121,7 @@ protocol Transport: Sendable {
     /// absent. Same plugin gate as the read.
     func replaceNotificationRegistration(_ contents: Data) async throws
 
-    /// Reads the plugin's `notify.json` config from this Host's herdr-mobile
+    /// Reads the plugin's `notify.json` config from this Host's Heeler
     /// plugin config dir (the registration file's sibling; `plugin/README.md`);
     /// nil when the plugin has no config file yet. Same plugin gate as the
     /// registration read. Carries the custom Push Relay base URL (#76).

@@ -72,7 +72,7 @@ struct TerminalAttachE2ETests {
             // Only the echo of the bootstrap line carries these; the script
             // itself never prints them.
             #expect(!seen.contains("HERDR_SOCKET_PATH"))
-            #expect(!seen.contains("herdr-mobile-attach"))
+            #expect(!seen.contains("heeler-attach"))
             // And the handshake itself is consumed, not handed to the
             // terminal.
             #expect(!seen.contains("\u{1B}_"))

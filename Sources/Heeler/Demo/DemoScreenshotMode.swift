@@ -160,7 +160,7 @@
                             paneID: "mobile:p1", status: .working,
                             workspaceID: "mobile", kind: "codex",
                             name: "ios-polish", title: "Polish the Attach experience",
-                            cwd: "/workspace/herdr-mobile"),
+                            cwd: "/workspace/heeler"),
                         agent(
                             paneID: "docs:p2", status: .idle,
                             workspaceID: "docs", kind: "claude",
@@ -170,10 +170,10 @@
                             paneID: "mobile:p4", status: .done,
                             workspaceID: "mobile", kind: "gemini",
                             name: "accessibility", title: "Audit VoiceOver labels",
-                            cwd: "/workspace/herdr-mobile"),
+                            cwd: "/workspace/heeler"),
                     ],
                     workspaces: [
-                        workspace(id: "mobile", label: "iOS App", repo: "herdr-mobile"),
+                        workspace(id: "mobile", label: "iOS App", repo: "heeler"),
                         workspace(id: "docs", label: "Product Docs", repo: "docs-site"),
                     ]),
                 paneSnippets: [

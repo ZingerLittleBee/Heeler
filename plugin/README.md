@@ -1,7 +1,7 @@
 # Heeler Pairing plugin
 
 A [herdr plugin](https://herdr.dev/docs/plugins/) that renders a **Pairing Code**
-QR so the herdr-mobile app can add this machine as a Host by scanning it
+QR so the Heeler app can add this machine as a Host by scanning it
 (ADR 0007). The `pair` action opens a popup pane: confirm which of the
 machine's addresses go into the code, then scan the QR with the app.
 
@@ -42,14 +42,14 @@ Herdr stores the plugin in its managed checkout and runs the manifest's
 enabled:
 
 ```bash
-herdr plugin list --plugin herdr-mobile.pairing
-herdr plugin config-dir herdr-mobile.pairing
+herdr plugin list --plugin heeler.pairing
+herdr plugin config-dir heeler.pairing
 ```
 
 Open the Pairing Code popup:
 
 ```bash
-herdr plugin action invoke herdr-mobile.pairing.pair
+herdr plugin action invoke heeler.pairing.pair
 ```
 
 Scan the code in Heeler to add this machine as a Host. Then open the
@@ -62,7 +62,7 @@ To update an installed GitHub-managed plugin, run the same `plugin install`
 command again. To inspect notification or pairing failures:
 
 ```bash
-herdr plugin log list --plugin herdr-mobile.pairing --limit 20
+herdr plugin log list --plugin heeler.pairing --limit 20
 ```
 
 For local development, link the working tree instead. Build it first because
@@ -71,7 +71,7 @@ For local development, link the working tree instead. Build it first because
 ```bash
 cd plugin && npm ci
 herdr plugin link "$(pwd)"
-herdr plugin action invoke herdr-mobile.pairing.pair
+herdr plugin action invoke heeler.pairing.pair
 ```
 
 The popup checklist: arrows or `j`/`k` move, space toggles, `a` toggles all,

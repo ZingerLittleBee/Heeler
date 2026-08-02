@@ -1,4 +1,4 @@
-# herdr-mobile
+# Heeler
 
 Native iOS companion app for herdr (https://herdr.dev): an agent console over SSH, not a terminal app. Read `CONTEXT.md` for vocabulary and `docs/adr/` before challenging architecture decisions — the transport design in particular was reached after eliminating several dead ends.
 

@@ -32,11 +32,11 @@ struct ImageStagingE2ETests {
             pixelHeight: 32,
             byteCount: Int64(bytes.count))
 
-        let successPrefix = "herdr-mobile-log-success-\(identifier)"
+        let successPrefix = "heeler-log-success-\(identifier)"
         let successDirectoryCommand =
             "/bin/sh -c 'umask 077; "
             + "directory=$(mktemp -d \"/tmp/\(successPrefix).XXXXXXXX\") || exit 1; "
-            + "printf \"__HERDR_MOBILE_STAGE_DIR__=%s\\n\" \"$directory\"'"
+            + "printf \"__HEELER_STAGE_DIR__=%s\\n\" \"$directory\"'"
         let successTransport = try await SSHTransport.connect(
             settings: environment.makeSettings(
                 socket: .absolutePath("/tmp/herdr-image-stage-unused.sock"),
@@ -46,12 +46,12 @@ struct ImageStagingE2ETests {
         defer { try? FileManager.default.removeItem(at: successDirectory) }
         try await successTransport.close()
 
-        let failurePrefix = "herdr-mobile-log-failure-\(identifier)"
+        let failurePrefix = "heeler-log-failure-\(identifier)"
         let failureDirectoryCommand =
             "/bin/sh -c 'umask 077; "
             + "directory=$(mktemp -d \"/tmp/\(failurePrefix).XXXXXXXX\") || exit 1; "
             + "chmod 0755 \"$directory\" || exit 1; "
-            + "printf \"__HERDR_MOBILE_STAGE_DIR__=%s\\n\" \"$directory\"'"
+            + "printf \"__HEELER_STAGE_DIR__=%s\\n\" \"$directory\"'"
         let failureTransport = try await SSHTransport.connect(
             settings: environment.makeSettings(
                 socket: .absolutePath("/tmp/herdr-image-stage-unused.sock"),
@@ -130,11 +130,11 @@ struct ImageStagingE2ETests {
     @Test func cancellationRemovesOnlyTheCurrentIncompletePart() async throws {
         let environment = try #require(LocalSSHTestEnvironment.current)
         let identifier = UUID().uuidString.lowercased()
-        let remotePrefix = "herdr-mobile-cancel-\(identifier)"
+        let remotePrefix = "heeler-cancel-\(identifier)"
         let stageDirectoryCommand =
             "/bin/sh -c 'umask 077; "
             + "directory=$(mktemp -d \"/tmp/\(remotePrefix).XXXXXXXX\") || exit 1; "
-            + "printf \"__HERDR_MOBILE_STAGE_DIR__=%s\\n\" \"$directory\"'"
+            + "printf \"__HEELER_STAGE_DIR__=%s\\n\" \"$directory\"'"
         let localURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("image-stage-cancel-\(identifier).jpg")
         let bytes = Data(repeating: 0xA5, count: 8 * 1_024 * 1_024)

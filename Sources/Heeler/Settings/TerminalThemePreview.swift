@@ -21,7 +21,7 @@ struct TerminalThemePreview: UIViewRepresentable {
 @MainActor
 final class TerminalThemePreviewView: UITerminalView {
     private static let previewLines: [String] = [
-        "\u{1B}[2J\u{1B}[H\u{1B}[1;36mherdr-mobile\u{1B}[0m",
+        "\u{1B}[2J\u{1B}[H\u{1B}[1;36mheeler\u{1B}[0m",
         "\u{1B}[32m● connected\u{1B}[0m  mac-studio",
         "",
         "\u{1B}[34m~/Projects/herdr\u{1B}[0m",
