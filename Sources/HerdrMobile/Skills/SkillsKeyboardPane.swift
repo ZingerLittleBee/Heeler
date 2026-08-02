@@ -12,12 +12,14 @@ struct SkillsKeyboardPane: View {
     let onInsert: (AgentSkill) -> Void
 
     var body: some View {
+        // No `.task` here: the pager builds every pane the moment the
+        // keyboard comes up, so appearance would probe eagerly. The keyboard
+        // triggers `loadIfNeeded()` when this tab is actually selected.
         VStack(spacing: 0) {
             content
             Divider()
             refreshRow
         }
-        .task { await store.loadIfNeeded() }
     }
 
     @ViewBuilder

@@ -208,6 +208,13 @@ final class TerminalKeysKeyboardView: UIInputView, UIInputViewAudioFeedback {
         for (candidate, page) in pageViews {
             page.accessibilityElementsHidden = candidate != tab
         }
+        // Lazy on purpose: the pager builds every pane when the keyboard
+        // comes up, so this — the tab actually reached, by tap or swipe — is
+        // the first honest signal the user wants the list. Repeat selections
+        // no-op inside the store.
+        if tab == .skills, let store = context?.skills?.store {
+            Task { await store.loadIfNeeded() }
+        }
     }
 
     private func scrollToSelectedPage(animated: Bool) {
