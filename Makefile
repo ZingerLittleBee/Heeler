@@ -1,10 +1,10 @@
-# Task runner for HerdrMobile. Typical flows:
+# Task runner for Heeler. Typical flows:
 #   make install                 # build Debug and run it on the connected iPhone
 #   make bump && make testflight # next TestFlight build (build number must be unique per upload)
 
-PROJECT := HerdrMobile.xcodeproj
-SCHEME  := HerdrMobile
-ARCHIVE := build/HerdrMobile.xcarchive
+PROJECT := Heeler.xcodeproj
+SCHEME  := Heeler
+ARCHIVE := build/Heeler.xcarchive
 DERIVED := build/DerivedData
 APP_ID  := dev.bybee.heeler
 SIM     ?= iPhone 17
@@ -34,7 +34,7 @@ check-device:
 
 install: check-device build ## Build Debug, install on the iPhone, and relaunch it
 	xcrun devicectl device install app --device $(DEVICE) \
-		$(DERIVED)/Build/Products/Debug-iphoneos/HerdrMobile.app
+		$(DERIVED)/Build/Products/Debug-iphoneos/Heeler.app
 	xcrun devicectl device process launch --terminate-existing --device $(DEVICE) $(APP_ID)
 
 sim: generate ## Build Debug and run it on the simulator (override with SIM=<name>)
@@ -42,7 +42,7 @@ sim: generate ## Build Debug and run it on the simulator (override with SIM=<nam
 		-destination 'platform=iOS Simulator,name=$(SIM)' -derivedDataPath $(DERIVED) build
 	xcrun simctl boot '$(SIM)' 2>/dev/null || true
 	open -a Simulator
-	xcrun simctl install booted $(DERIVED)/Build/Products/Debug-iphonesimulator/HerdrMobile.app
+	xcrun simctl install booted $(DERIVED)/Build/Products/Debug-iphonesimulator/Heeler.app
 	xcrun simctl launch --terminate-running-process booted $(APP_ID)
 
 archive: generate ## Archive a Release build for distribution

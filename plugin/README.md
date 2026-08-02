@@ -1,4 +1,4 @@
-# Herdr Mobile Pairing plugin
+# Heeler Pairing plugin
 
 A [herdr plugin](https://herdr.dev/docs/plugins/) that renders a **Pairing Code**
 QR so the herdr-mobile app can add this machine as a Host by scanning it
@@ -52,8 +52,8 @@ Open the Pairing Code popup:
 herdr plugin action invoke herdr-mobile.pairing.pair
 ```
 
-Scan the code in HerdrMobile to add this machine as a Host. Then open the
-HerdrMobile settings, enable Agent Notifications, grant the iOS notification
+Scan the code in Heeler to add this machine as a Host. Then open the
+Heeler settings, enable Agent Notifications, grant the iOS notification
 permission, and enable Notifications for this Host. Leave **Custom Push
 Relay** empty to use the production endpoint at
 `https://heeler-apns.bybee.dev`.

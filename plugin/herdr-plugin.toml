@@ -1,5 +1,5 @@
 id = "herdr-mobile.pairing"
-name = "Herdr Mobile Pairing"
+name = "Heeler Pairing"
 version = "0.3.0"
 min_herdr_version = "0.7.5"
 description = "Pair a herdr-mobile device by scanning a QR Pairing Code"

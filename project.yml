@@ -1,4 +1,4 @@
-name: HerdrMobile
+name: Heeler
 options:
   bundleIdPrefix: dev.bybee
   deploymentTarget:
@@ -27,16 +27,16 @@ packages:
     exactVersion: "1.3.1"
 
 targets:
-  HerdrMobile:
+  Heeler:
     type: application
     platform: iOS
     sources:
-      - Sources/HerdrMobile
+      - Sources/Heeler
       # Notification code shared with the service extension: envelope
       # decryption, Notification Key store, alert renderer (ADR 0008).
-      - Sources/HerdrNotificationCore
+      - Sources/HeelerNotificationCore
     entitlements:
-      path: Sources/HerdrMobile/HerdrMobile.entitlements
+      path: Sources/Heeler/Heeler.entitlements
       properties:
         # Development here covers Debug/local device builds (sandbox APNs);
         # App Store / TestFlight re-signing flips it to production, so the
@@ -75,31 +75,31 @@ targets:
       - package: GhosttyTerminal
       - package: GhosttyTerminal
         product: GhosttyTheme
-      - target: HerdrNotificationService
+      - target: HeelerNotificationService
 
   # Decrypts Agent Notifications before display (ADR 0008, #71). A thin
-  # shell: the logic lives in HerdrNotificationCore, tested from the app
+  # shell: the logic lives in HeelerNotificationCore, tested from the app
   # suite. The extension cannot link the app, so the shared sources (and the
   # few app files they lean on) are compiled in directly.
-  HerdrNotificationService:
+  HeelerNotificationService:
     type: app-extension
     platform: iOS
     sources:
-      - Sources/HerdrNotificationService
-      - Sources/HerdrNotificationCore
-      - Sources/HerdrMobile/Support/Base64URL.swift
-      - Sources/HerdrMobile/Transport/SecretStore.swift
+      - Sources/HeelerNotificationService
+      - Sources/HeelerNotificationCore
+      - Sources/Heeler/Support/Base64URL.swift
+      - Sources/Heeler/Transport/SecretStore.swift
       # For AgentStatus; Foundation-only by construction (JSONValue is the
       # generated file's one in-repo dependency).
-      - Sources/HerdrMobile/Transport/Generated/HerdrAPITypes.swift
-      - Sources/HerdrMobile/Transport/JSONValue.swift
+      - Sources/Heeler/Transport/Generated/HerdrAPITypes.swift
+      - Sources/Heeler/Transport/JSONValue.swift
     entitlements:
-      path: Sources/HerdrNotificationService/HerdrNotificationService.entitlements
+      path: Sources/HeelerNotificationService/HeelerNotificationService.entitlements
       properties:
         com.apple.security.application-groups:
           - group.dev.bybee.heeler.shared
     info:
-      path: Sources/HerdrNotificationService/Info.plist
+      path: Sources/HeelerNotificationService/Info.plist
       properties:
         # An app extension's versions must match its containing app's, or
         # App Store validation rejects the bundle. XcodeGen would otherwise
@@ -119,11 +119,11 @@ targets:
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "4"
 
-  HerdrMobileTests:
+  HeelerTests:
     type: bundle.unit-test
     platform: iOS
     sources:
-      - Tests/HerdrMobileTests
+      - Tests/HeelerTests
       # Shared Pairing Code vectors (ADR 0007): the same file the Node plugin
       # tests consume, bundled so the Swift tests cannot drift from it.
       - path: plugin/test-vectors/pairing-code-v1.json
@@ -136,16 +136,16 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.tests
     dependencies:
-      - target: HerdrMobile
+      - target: Heeler
       - package: GhosttyTerminal
 
 schemes:
-  HerdrMobile:
+  Heeler:
     build:
       targets:
-        HerdrMobile: all
+        Heeler: all
     test:
       targets:
-        - HerdrMobileTests
+        - HeelerTests
     run:
       config: Debug

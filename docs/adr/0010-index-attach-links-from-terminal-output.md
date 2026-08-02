@@ -1,6 +1,6 @@
 # Index Attach Links from terminal output
 
-HerdrMobile will not make terminal text directly tappable while libghostty lacks
+Heeler will not make terminal text directly tappable while libghostty lacks
 a public iOS point-to-link query. Each Attach instead owns a bounded,
 memory-only index of web links observed in its terminal output and presents that
 index through native UI. This avoids waiting on a long libghostty development

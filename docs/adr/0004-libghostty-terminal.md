@@ -30,7 +30,7 @@ the native text-selection presentation requested by Ghostty's iOS delegate.
   prebuilt XCFramework. Pin its exact version, retain SwiftPM's checksum
   verification, and review supply-chain changes before every update.
 - libghostty's embedding API is still evolving. Keep all package-specific code
-  behind `HerdrTerminalView` and the terminal selection presenter.
+  behind `HeelerTerminalView` and the terminal selection presenter.
 - The custom control keyboard sends raw terminal sequences. A small incremental
   DEC cursor-mode tracker preserves application-cursor sequences because the
   wrapper does not expose its internal synthetic-key path publicly.
@@ -51,7 +51,7 @@ the native text-selection presentation requested by Ghostty's iOS delegate.
   correct.
 - Terminal zoom is app state, not surface state. The package's own pinch
   handler mutates the surface font size through a private counter the host app
-  cannot read, so `HerdrTerminalView` disables that gesture and owns pinch and
+  cannot read, so `HeelerTerminalView` disables that gesture and owns pinch and
   ⌘+/⌘- itself, routing every change through `TerminalController`'s per-session
   configuration. That keeps one persisted app-wide size, applies it to open and
   future Attach terminals alike, and lets Ghostty's cell-size callback resize

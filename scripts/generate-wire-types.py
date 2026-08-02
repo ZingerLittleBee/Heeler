@@ -6,7 +6,7 @@ Usage:
     scripts/generate-wire-types.py --schema herdr-schema.json
     scripts/generate-wire-types.py --check    # fail if the committed output is stale
 
-Output: Sources/HerdrMobile/Transport/Generated/HerdrAPITypes.swift
+Output: Sources/Heeler/Transport/Generated/HerdrAPITypes.swift
 
 Scope and shape are deliberate (see issue #7 and spec #20):
 
@@ -40,7 +40,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-OUTPUT_PATH = REPO_ROOT / "Sources/HerdrMobile/Transport/Generated/HerdrAPITypes.swift"
+OUTPUT_PATH = REPO_ROOT / "Sources/Heeler/Transport/Generated/HerdrAPITypes.swift"
 
 # The v1 method surface (#7). Params types are derived from the schema's
 # request oneOf; empty params objects are skipped (the hand-written envelope
