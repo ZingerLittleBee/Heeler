@@ -7,6 +7,9 @@ import UIKit
 @MainActor
 @Suite("Keys keyboard")
 struct TerminalKeysKeyboardTests {
+    /// An iPhone 17's width, the pane pager's page size in these tests.
+    private static let pageWidth: CGFloat = 402
+
     private func makeContext(
         defaults: UserDefaults,
         onManage: @escaping () -> Void = {}
@@ -144,6 +147,73 @@ struct TerminalKeysKeyboardTests {
             }
         }
         return seen.count
+    }
+
+    /// The panes have to be laid out side by side for a swipe to have anything
+    /// to drag: a single reused container can only be tapped between.
+    @Test func panesArePagedSideBySide() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            keysContext: makeContext(defaults: defaults))
+        terminal.setKeyboardMode(.controls)
+        let keyboard = try #require(terminal.keysKeyboard)
+        keyboard.frame = CGRect(x: 0, y: 0, width: Self.pageWidth, height: 224)
+        keyboard.layoutIfNeeded()
+
+        #expect(keyboard.pager.isPagingEnabled)
+        #expect(keyboard.pager.contentSize.width == Self.pageWidth * 3)
+    }
+
+    @Test func selectingATabScrollsToItsPage() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            keysContext: makeContext(defaults: defaults))
+        terminal.setKeyboardMode(.controls)
+        let keyboard = try #require(terminal.keysKeyboard)
+        keyboard.frame = CGRect(x: 0, y: 0, width: Self.pageWidth, height: 224)
+        keyboard.layoutIfNeeded()
+
+        keyboard.select(.appearance)
+        #expect(keyboard.pager.contentOffset.x == Self.pageWidth * 2)
+
+        keyboard.returnToControls()
+        #expect(keyboard.pager.contentOffset.x == 0)
+    }
+
+    /// The offset a drag settles on is the only thing standing between the
+    /// gesture and the selection, so pin the mapping rather than the gesture.
+    @Test func aSettledOffsetPicksThePaneUnderIt() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            keysContext: makeContext(defaults: defaults))
+        terminal.setKeyboardMode(.controls)
+        let keyboard = try #require(terminal.keysKeyboard)
+
+        #expect(keyboard.tab(nearestTo: 0, pageWidth: Self.pageWidth) == .controls)
+        // Mid-drag, past the halfway point: the tab bar lights the pane the
+        // finger is bringing in, not the one it is pushing out.
+        #expect(keyboard.tab(nearestTo: 250, pageWidth: Self.pageWidth) == .snippets)
+        #expect(keyboard.tab(nearestTo: 804, pageWidth: Self.pageWidth) == .appearance)
+        // Rubber-banding past either end, and a pager that has yet to be laid
+        // out, must not name a tab that isn't there.
+        #expect(keyboard.tab(nearestTo: -60, pageWidth: Self.pageWidth) == .controls)
+        #expect(keyboard.tab(nearestTo: 1_100, pageWidth: Self.pageWidth) == nil)
+        #expect(keyboard.tab(nearestTo: 0, pageWidth: 0) == nil)
+    }
+
+    /// Swiping is only ever offered for the tabs the keyboard was built with.
+    @Test func aTerminalWithoutContextHasNothingToSwipeTo() throws {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        terminal.setKeyboardMode(.controls)
+        let keyboard = try #require(terminal.keysKeyboard)
+        keyboard.frame = CGRect(x: 0, y: 0, width: Self.pageWidth, height: 224)
+        keyboard.layoutIfNeeded()
+
+        #expect(keyboard.pager.contentSize.width == Self.pageWidth)
+        #expect(keyboard.tab(nearestTo: Self.pageWidth, pageWidth: Self.pageWidth) == nil)
     }
 
     @Test func everyTabHasItsOwnIconAndLabel() {

@@ -48,14 +48,23 @@ final class TerminalKeysKeyboardView: UIInputView, UIInputViewAudioFeedback {
     private weak var terminalView: HerdrTerminalView?
     private let keyboardHeight: CGFloat
     private let context: TerminalKeysContext?
-    private let contentContainer = UIView()
+    /// The panes laid out side by side, one keyboard wide each. Tapping a tab
+    /// and swiping across the content are then the same move — a page change —
+    /// rather than two mechanisms that have to be kept in agreement. Not
+    /// private: tests read where the content area stands.
+    let pager: UIScrollView = TerminalKeysPagerView()
+    private let pages = UIStackView()
+    private var pageViews: [TerminalKeysTab: UIView] = [:]
     private lazy var tabBar = TerminalKeysTabBar(tabs: tabs) { [weak self] tab in
         self?.select(tab)
     }
     private var controlPad: TerminalControlPadView?
-    /// Held strongly: nothing else owns it, and its view lives in the keyboard
-    /// window rather than in a view controller's hierarchy.
-    private var paneHost: UIHostingController<AnyView>?
+    /// Held strongly: nothing else owns them, and their views live in the
+    /// keyboard window rather than in a view controller's hierarchy.
+    private var paneHosts: [TerminalKeysTab: UIHostingController<AnyView>] = [:]
+    /// The width the page offset was last computed against. `contentOffset` is
+    /// in points, so a resize silently leaves the pager between two panes.
+    private var laidOutPagerWidth: CGFloat = 0
     private(set) var selectedTab: TerminalKeysTab = .controls
 
     var enableInputClicksWhenVisible: Bool { true }
@@ -79,6 +88,7 @@ final class TerminalKeysKeyboardView: UIInputView, UIInputViewAudioFeedback {
         backgroundColor = .systemBackground
         configureLayout()
         select(.controls)
+        localInputEnabledDidChange()
     }
 
     @available(*, unavailable)
@@ -90,6 +100,13 @@ final class TerminalKeysKeyboardView: UIInputView, UIInputViewAudioFeedback {
         CGSize(width: UIView.noIntrinsicMetric, height: keyboardHeight)
     }
 
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard pager.bounds.width != laidOutPagerWidth else { return }
+        laidOutPagerWidth = pager.bounds.width
+        scrollToSelectedPage(animated: false)
+    }
+
     /// Called after a Snippet is sent. The user's next move is almost always
     /// Enter, which lives on the control pad.
     func returnToControls() {
@@ -97,16 +114,45 @@ final class TerminalKeysKeyboardView: UIInputView, UIInputViewAudioFeedback {
     }
 
     private func configureLayout() {
-        contentContainer.translatesAutoresizingMaskIntoConstraints = false
+        pager.translatesAutoresizingMaskIntoConstraints = false
+        pager.isPagingEnabled = true
+        pager.showsHorizontalScrollIndicator = false
+        pager.contentInsetAdjustmentBehavior = .never
+        // The keys want their highlight the instant they are touched; the pager
+        // takes the touch away again if the finger turns out to be swiping.
+        pager.delaysContentTouches = false
+        pager.delegate = self
+        pages.axis = .horizontal
+        pages.translatesAutoresizingMaskIntoConstraints = false
         tabBar.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(contentContainer)
+        pager.addSubview(pages)
+        addSubview(pager)
         addSubview(tabBar)
 
+        let content = pager.contentLayoutGuide
+        let frame = pager.frameLayoutGuide
+
+        for tab in tabs {
+            let page = makePage(for: tab)
+            pageViews[tab] = page
+            pages.addArrangedSubview(page)
+            // Each pane exactly one keyboard wide: what paging needs to land on
+            // a pane boundary. Sized one by one rather than as a multiple of the
+            // whole row, which the layout engine solves a hair short.
+            page.widthAnchor.constraint(equalTo: frame.widthAnchor).isActive = true
+        }
+
         NSLayoutConstraint.activate([
-            contentContainer.topAnchor.constraint(equalTo: topAnchor),
-            contentContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
-            contentContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
-            contentContainer.bottomAnchor.constraint(equalTo: tabBar.topAnchor),
+            pager.topAnchor.constraint(equalTo: topAnchor),
+            pager.leadingAnchor.constraint(equalTo: leadingAnchor),
+            pager.trailingAnchor.constraint(equalTo: trailingAnchor),
+            pager.bottomAnchor.constraint(equalTo: tabBar.topAnchor),
+
+            pages.topAnchor.constraint(equalTo: content.topAnchor),
+            pages.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            pages.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            pages.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            pages.heightAnchor.constraint(equalTo: frame.heightAnchor),
 
             tabBar.leadingAnchor.constraint(equalTo: leadingAnchor),
             tabBar.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -119,59 +165,50 @@ final class TerminalKeysKeyboardView: UIInputView, UIInputViewAudioFeedback {
     /// terminal with no context — is ignored rather than shown empty.
     func select(_ tab: TerminalKeysTab) {
         guard tabs.contains(tab) else { return }
+        applySelection(tab)
+        // Off screen there is no animation to watch, and a test that renders
+        // the keyboard immediately after would catch it mid-flight.
+        scrollToSelectedPage(animated: window != nil)
+    }
+
+    /// The selection itself, without moving the pager: a drag has already moved
+    /// it, and animating back to where the finger is would fight the gesture.
+    private func applySelection(_ tab: TerminalKeysTab) {
         selectedTab = tab
         tabBar.select(tab)
+        // VoiceOver would otherwise walk straight from the last control key
+        // into the Snippets list sitting off screen beside it.
+        for (candidate, page) in pageViews {
+            page.accessibilityElementsHidden = candidate != tab
+        }
+    }
 
-        controlPad?.isHidden = tab != .controls
-        paneHost?.view.isHidden = tab == .controls
+    private func scrollToSelectedPage(animated: Bool) {
+        guard let index = tabs.firstIndex(of: selectedTab), pager.bounds.width > 0 else { return }
+        let offset = CGPoint(x: CGFloat(index) * pager.bounds.width, y: 0)
+        guard pager.contentOffset != offset else { return }
+        pager.setContentOffset(offset, animated: animated)
+    }
 
+    private func makePage(for tab: TerminalKeysTab) -> UIView {
         switch tab {
         case .controls:
-            installControlPadIfNeeded()
+            guard let terminalView else { return UIView() }
+            let pad = TerminalControlPadView(terminalView: terminalView)
+            controlPad = pad
+            return pad
         case .snippets, .appearance:
-            installPane(for: tab)
+            guard let context else { return UIView() }
+            let host = UIHostingController(
+                rootView: AnyView(paneContent(for: tab, context: context)))
+            host.view.backgroundColor = .clear
+            // Not a child view controller: the input view lives in the keyboard
+            // window, not in the screen's hierarchy, so containment would claim
+            // a parent relationship that isn't true. The strong reference above
+            // is what keeps it alive.
+            paneHosts[tab] = host
+            return host.view
         }
-        localInputEnabledDidChange()
-    }
-
-    private func installControlPadIfNeeded() {
-        guard controlPad == nil, let terminalView else { return }
-        let pad = TerminalControlPadView(terminalView: terminalView)
-        pad.translatesAutoresizingMaskIntoConstraints = false
-        contentContainer.addSubview(pad)
-        NSLayoutConstraint.activate([
-            pad.topAnchor.constraint(equalTo: contentContainer.topAnchor),
-            pad.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
-            pad.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
-            pad.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
-        ])
-        controlPad = pad
-    }
-
-    private func installPane(for tab: TerminalKeysTab) {
-        guard let context else { return }
-        let root = AnyView(paneContent(for: tab, context: context))
-        if let paneHost {
-            paneHost.rootView = root
-            paneHost.view.isHidden = false
-            return
-        }
-
-        let host = UIHostingController(rootView: root)
-        host.view.backgroundColor = .clear
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        // Not a child view controller: the input view lives in the keyboard
-        // window, not in the screen's hierarchy, so containment would claim a
-        // parent relationship that isn't true. The strong reference above is
-        // what keeps it alive.
-        contentContainer.addSubview(host.view)
-        NSLayoutConstraint.activate([
-            host.view.topAnchor.constraint(equalTo: contentContainer.topAnchor),
-            host.view.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
-            host.view.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
-        ])
-        paneHost = host
     }
 
     @ViewBuilder
@@ -204,13 +241,43 @@ final class TerminalKeysKeyboardView: UIInputView, UIInputViewAudioFeedback {
     /// an image upload. The control keys and Snippets do not.
     func localInputEnabledDidChange() {
         let isEnabled = terminalView?.isLocalInputEnabled ?? true
-        controlPad?.isUserInteractionEnabled = isEnabled
-        controlPad?.alpha = isEnabled ? 1 : 0.5
-
-        let paneSendsInput = selectedTab == .snippets
-        paneHost?.view.isUserInteractionEnabled = isEnabled || !paneSendsInput
-        paneHost?.view.alpha = (paneSendsInput && !isEnabled) ? 0.5 : 1
+        for pane in [controlPad, paneHosts[.snippets]?.view].compactMap({ $0 }) {
+            pane.isUserInteractionEnabled = isEnabled
+            pane.alpha = isEnabled ? 1 : 0.5
+        }
     }
+}
+
+extension TerminalKeysKeyboardView: UIScrollViewDelegate {
+    /// The tab bar follows the finger rather than the settled page: a pane
+    /// dragged halfway in with the old tab still lit reads as a stuck UI.
+    ///
+    /// Only while a finger is involved. A programmatic scroll already knows its
+    /// tab, and a resize hands out offsets measured against the old width.
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        guard scrollView.isDragging || scrollView.isDecelerating,
+              let tab = tab(
+                  nearestTo: scrollView.contentOffset.x, pageWidth: scrollView.bounds.width),
+              tab != selectedTab
+        else { return }
+        applySelection(tab)
+    }
+
+    /// Which pane a horizontal offset has landed on. UIKit owns the drag; this
+    /// mapping is the part of the swipe that is ours.
+    func tab(nearestTo offsetX: CGFloat, pageWidth: CGFloat) -> TerminalKeysTab? {
+        guard pageWidth > 0 else { return nil }
+        let index = Int((offsetX / pageWidth).rounded())
+        return tabs.indices.contains(index) ? tabs[index] : nil
+    }
+}
+
+/// The pane pager, which takes its touches back from the keys.
+/// `UIScrollView` refuses by default to cancel a touch that landed on a
+/// `UIControl`, which would leave a control key held — and repeating — for the
+/// length of a swipe across the pad.
+private final class TerminalKeysPagerView: UIScrollView {
+    override func touchesShouldCancel(in view: UIView) -> Bool { true }
 }
 
 /// The icon row along the bottom. Selection is a filled capsule behind the
