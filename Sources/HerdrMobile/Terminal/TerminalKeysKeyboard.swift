@@ -7,6 +7,7 @@ import UIKit
 enum TerminalKeysTab: Int, CaseIterable, Identifiable {
     case controls
     case snippets
+    case skills
     case appearance
 
     var id: Self { self }
@@ -16,6 +17,7 @@ enum TerminalKeysTab: Int, CaseIterable, Identifiable {
         case .controls: "square.grid.3x3"
         // Not `curlybraces`: that says "code snippet", and these are phrases.
         case .snippets: "quote.bubble"
+        case .skills: "sparkles"
         case .appearance: "paintpalette"
         }
     }
@@ -24,20 +26,42 @@ enum TerminalKeysTab: Int, CaseIterable, Identifiable {
         switch self {
         case .controls: "Control Keys"
         case .snippets: "Snippets"
+        case .skills: "Skills"
         case .appearance: "Terminal Appearance"
         }
     }
 }
 
-/// What the Keys keyboard needs from the app to fill its Snippets and
-/// Appearance panes. A terminal built without one — a preview, a test — shows
-/// the control keys alone rather than empty tabs.
+/// What the Skills pane needs from the screen: the store that probes and
+/// caches the agent's skills. Only agents of a kind with a skills source
+/// catalog get one; the tab is hidden otherwise.
+@MainActor
+struct TerminalSkillsContext {
+    let store: SkillsPaneStore
+}
+
+/// What the Keys keyboard needs from the app to fill its Snippets, Skills,
+/// and Appearance panes. A terminal built without one — a preview, a test —
+/// shows the control keys alone rather than empty tabs.
 @MainActor
 struct TerminalKeysContext {
     let settings: TerminalSettings
+    /// Nil hides the Skills tab: the agent's kind has no skills mechanism
+    /// this app knows how to probe.
+    let skills: TerminalSkillsContext?
     /// Opens the Snippets management surface. That means leaving the keyboard,
     /// so the screen owns the presentation and the keyboard only asks.
     let manageSnippets: () -> Void
+
+    init(
+        settings: TerminalSettings,
+        skills: TerminalSkillsContext? = nil,
+        manageSnippets: @escaping () -> Void
+    ) {
+        self.settings = settings
+        self.skills = skills
+        self.manageSnippets = manageSnippets
+    }
 }
 
 /// The Keys keyboard: one pane at a time above a row of icon tabs.
@@ -70,7 +94,10 @@ final class TerminalKeysKeyboardView: UIInputView, UIInputViewAudioFeedback {
     var enableInputClicksWhenVisible: Bool { true }
 
     private var tabs: [TerminalKeysTab] {
-        context == nil ? [.controls] : TerminalKeysTab.allCases
+        guard let context else { return [.controls] }
+        return TerminalKeysTab.allCases.filter {
+            $0 != .skills || context.skills != nil
+        }
     }
 
     init(
@@ -197,7 +224,7 @@ final class TerminalKeysKeyboardView: UIInputView, UIInputViewAudioFeedback {
             let pad = TerminalControlPadView(terminalView: terminalView)
             controlPad = pad
             return pad
-        case .snippets, .appearance:
+        case .snippets, .skills, .appearance:
             guard let context else { return UIView() }
             let host = UIHostingController(
                 rootView: AnyView(paneContent(for: tab, context: context)))
@@ -227,6 +254,17 @@ final class TerminalKeysKeyboardView: UIInputView, UIInputViewAudioFeedback {
                     returnToControls()
                 },
                 onManage: context.manageSnippets)
+        case .skills:
+            if let skills = context.skills {
+                SkillsKeyboardPane(
+                    store: skills.store,
+                    onInsert: { [weak self] skill in
+                        guard let self, let terminalView else { return }
+                        UIDevice.current.playInputClick()
+                        terminalView.sendInsertedText(skill.insertionText)
+                        returnToControls()
+                    })
+            }
         case .appearance:
             TerminalAppearancePane(
                 themes: context.settings.themes,
@@ -241,7 +279,10 @@ final class TerminalKeysKeyboardView: UIInputView, UIInputViewAudioFeedback {
     /// an image upload. The control keys and Snippets do not.
     func localInputEnabledDidChange() {
         let isEnabled = terminalView?.isLocalInputEnabled ?? true
-        for pane in [controlPad, paneHosts[.snippets]?.view].compactMap({ $0 }) {
+        let inputPanes = [
+            controlPad, paneHosts[.snippets]?.view, paneHosts[.skills]?.view,
+        ]
+        for pane in inputPanes.compactMap({ $0 }) {
             pane.isUserInteractionEnabled = isEnabled
             pane.alpha = isEnabled ? 1 : 0.5
         }

@@ -29,6 +29,9 @@ struct AgentDetailView: View {
     /// pops the collapsed stack on iPhone.
     private let onClosed: () -> Void
     @State private var attach: AgentAttachStore
+    /// Nil for agent kinds without a skills source catalog; the Keys
+    /// keyboard hides the Skills tab in that case.
+    @State private var skills: SkillsPaneStore?
     @State private var keyboardControl = TerminalKeyboardControl()
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isConfirmingClose = false
@@ -71,6 +74,27 @@ struct AgentDetailView: View {
             ) {
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
             })
+        _skills = State(initialValue: Self.makeSkillsStore(for: agent, console: console))
+    }
+
+    /// The Skills pane's store, or nil when this agent's kind has no skills
+    /// source catalog. Captures launch-time context on purpose: the project
+    /// root is the worktree checkout or launch cwd, never the live cwd.
+    private static func makeSkillsStore(
+        for agent: ConsoleAgent, console: ConsoleStore
+    ) -> SkillsPaneStore? {
+        guard
+            let kind = SupportedAgentKind(rawValue: agent.agent.kind),
+            SkillSourceCatalog.supports(kind)
+        else { return nil }
+        let projectRoot = agent.skillsProjectRoot
+        return SkillsPaneStore { [console] forceRefresh in
+            try await console.fetchSkills(
+                kind: kind,
+                projectRoot: projectRoot,
+                on: agent.hostID,
+                forceRefresh: forceRefresh)
+        }
     }
 
     private var terminalScreen: TerminalScreenView {
@@ -91,7 +115,10 @@ struct AgentDetailView: View {
         screen.onSnippet = { text, bracketed in
             attach.insertSnippet(text, bracketedPaste: bracketed)
         }
-        screen.keysContext = TerminalKeysContext(settings: terminal) {
+        screen.keysContext = TerminalKeysContext(
+            settings: terminal,
+            skills: skills.map { TerminalSkillsContext(store: $0) }
+        ) {
             isManagingSnippets = true
         }
         screen.claimsKeyboard = { keyboardHandoff.consume(agent.id) }

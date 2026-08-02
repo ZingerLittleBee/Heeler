@@ -132,6 +132,14 @@ protocol Transport: Sendable {
     /// registration write.
     func replaceNotificationConfig(_ contents: Data) async throws
 
+    /// Lists the skills / custom slash commands installed for a kind on this
+    /// Host: global sources under the remote home plus project sources under
+    /// the query's project root, per `SkillSourceCatalog`. Kinds without a
+    /// catalog entry return empty. Reads the filesystem over exec, so
+    /// alternative transports without a Host process environment report
+    /// nothing by default.
+    func listSkills(_ query: SkillListQuery) async throws -> [AgentSkill]
+
     /// Whether the underlying connection to the Host is still alive. The
     /// reconnect machinery (#18) decides "re-subscribe on this connection or
     /// re-establish it" from this flag.
@@ -148,6 +156,10 @@ extension Transport {
     func listSessions() async throws -> [HerdrSession] { [] }
 
     func availableAgentKinds() async throws -> [SupportedAgentKind] {
+        []
+    }
+
+    func listSkills(_ query: SkillListQuery) async throws -> [AgentSkill] {
         []
     }
 
@@ -270,6 +282,23 @@ struct AgentLaunchRequest: Sendable, Equatable {
         self.arguments = arguments
         self.workspaceID = workspaceID
         self.cwd = cwd
+    }
+}
+
+/// What the skills probe needs to know: whose sources to walk and where the
+/// agent's project lives. The project root is the *launch* directory context
+/// (worktree checkout or agent cwd), deliberately not the live foreground
+/// cwd — agents load project skills from where they started, and a `cd`
+/// inside the session does not change that set.
+struct SkillListQuery: Sendable, Equatable {
+    let kind: SupportedAgentKind
+    /// Absolute project root, or nil when the agent's project is unknown;
+    /// nil skips project sources rather than failing the probe.
+    let projectRoot: String?
+
+    init(kind: SupportedAgentKind, projectRoot: String? = nil) {
+        self.kind = kind
+        self.projectRoot = projectRoot
     }
 }
 

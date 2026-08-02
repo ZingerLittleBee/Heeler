@@ -20,6 +20,10 @@ final class ConsoleStore {
     @ObservationIgnored private var projections: [
         Host.ID: HostConsoleProjection
     ] = [:]
+    /// Skills probed per Host connection: keyed on the connection generation
+    /// so a reconnect naturally invalidates, and evicted per Host on insert
+    /// so stale generations cannot accumulate.
+    @ObservationIgnored private var skillsCache: [SkillsCacheKey: [AgentSkill]] = [:]
     @ObservationIgnored private let makeSession:
         @Sendable (Host, [EventSubscription]) -> EventsSession
     @ObservationIgnored private let snapshotRetryDelay: Duration
@@ -148,6 +152,39 @@ final class ConsoleStore {
 
     func availableAgentKinds(on hostID: Host.ID) async throws -> [SupportedAgentKind] {
         try await projection(for: hostID).availableAgentKinds()
+    }
+
+    private struct SkillsCacheKey: Hashable {
+        let hostID: Host.ID
+        let generation: UInt64
+        let kind: SupportedAgentKind
+        let projectRoot: String?
+    }
+
+    /// The Skills pane's data source: probes the Host over its live Console
+    /// connection, cached per (connection, kind, project root) until the
+    /// connection is replaced. `forceRefresh` is the pane's manual refresh.
+    func fetchSkills(
+        kind: SupportedAgentKind,
+        projectRoot: String?,
+        on hostID: Host.ID,
+        forceRefresh: Bool = false
+    ) async throws -> [AgentSkill] {
+        let generation = hostConnectionGenerations[hostID] ?? 0
+        let key = SkillsCacheKey(
+            hostID: hostID, generation: generation, kind: kind, projectRoot: projectRoot)
+        if !forceRefresh, let cached = skillsCache[key] {
+            return cached
+        }
+        let query = SkillListQuery(kind: kind, projectRoot: projectRoot)
+        let skills = try await projection(for: hostID).session.withTransport { transport in
+            try await transport.listSkills(query)
+        }
+        skillsCache = skillsCache.filter {
+            $0.key.hostID != hostID || $0.key.generation == generation
+        }
+        skillsCache[key] = skills
+        return skills
     }
 
     @discardableResult
