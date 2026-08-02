@@ -7,6 +7,16 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- The Keys keyboard has a Skills pane for Claude Code agents: the skills
+  installed on the Host — the project's own under its `.claude/skills` and
+  the global ones under `~/.claude/skills` — listed by name and description,
+  one tap inserting the `/skill-name` slash command into the terminal
+  without sending it. The list is probed once per connection and refreshable
+  from the pane; agents of a kind without a known skills mechanism don't
+  show the tab.
+
 ### Fixed
 
 - A Host no longer gets stuck offline because one Agent's pane exited. The

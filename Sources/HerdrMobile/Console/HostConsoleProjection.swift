@@ -315,6 +315,7 @@ final class HostConsoleProjection {
                 agent: agent,
                 workspaceLabel: workspace?.label,
                 repoName: workspace?.worktree?.repoName,
+                checkoutPath: workspace?.worktree?.checkoutPath,
                 lastOutputSnippet: agentsByPane[agent.paneID]?.lastOutputSnippet)
         }
         for (paneID, change) in latestStatusChanges

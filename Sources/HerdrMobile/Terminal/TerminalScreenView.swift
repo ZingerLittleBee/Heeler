@@ -743,10 +743,17 @@ final class HerdrTerminalView: UITerminalView {
 
     /// Sends a Snippet the user tapped in the Keys keyboard.
     func sendSnippet(_ snippet: Snippet) {
+        sendInsertedText(snippet.body)
+    }
+
+    /// Sends text a keyboard pane inserts on the user's behalf — a Snippet's
+    /// body, a skill's slash command. Same delivery semantics either way: no
+    /// submit byte of its own.
+    func sendInsertedText(_ text: String) {
         guard isLocalInputEnabled else { return }
         reliableInputDidBegin()
-        recordCommittedText(snippet.body)
-        callbackBridge.snippet(snippet.body, bracketed: usesBracketedPaste)
+        recordCommittedText(text)
+        callbackBridge.snippet(text, bracketed: usesBracketedPaste)
     }
 
     override func deleteBackward() {

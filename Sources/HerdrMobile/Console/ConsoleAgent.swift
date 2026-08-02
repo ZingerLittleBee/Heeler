@@ -20,11 +20,33 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     /// Worktree repo name where the workspace has one — sharper context than
     /// a raw checkout path.
     let repoName: String?
+    /// Worktree checkout path where the workspace has one: the directory
+    /// whose files the agent actually sees, which for a linked worktree is
+    /// the checkout rather than the main repository root.
+    let checkoutPath: String?
     /// Trailing terminal output (`pane.read`, ANSI stripped), fetched after
     /// snapshots and status changes; nil until the first read lands.
     var lastOutputSnippet: String?
 
     var id: ID { ID(hostID: hostID, paneID: agent.paneID) }
+
+    init(
+        hostID: Host.ID,
+        hostName: String,
+        agent: Agent,
+        workspaceLabel: String?,
+        repoName: String?,
+        checkoutPath: String? = nil,
+        lastOutputSnippet: String? = nil
+    ) {
+        self.hostID = hostID
+        self.hostName = hostName
+        self.agent = agent
+        self.workspaceLabel = workspaceLabel
+        self.repoName = repoName
+        self.checkoutPath = checkoutPath
+        self.lastOutputSnippet = lastOutputSnippet
+    }
 
     /// The keyboard switcher's chip label. The project leads, as it does on
     /// the card, but without the card's `label · repo` pairing: a chip has
@@ -32,6 +54,15 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     /// where each one is working.
     var switcherLabel: String {
         workspaceLabel ?? repoName ?? agent.displayName
+    }
+
+    /// The directory the skills probe treats as the agent's project root:
+    /// the worktree checkout when the workspace has one, else the agent's
+    /// launch cwd. Deliberately not the live foreground cwd — agents load
+    /// project skills from where they started.
+    var skillsProjectRoot: String? {
+        if let checkoutPath, !checkoutPath.isEmpty { return checkoutPath }
+        return agent.cwd.isEmpty ? nil : agent.cwd
     }
 }
 

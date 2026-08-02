@@ -380,6 +380,36 @@ actor SSHTransport: Transport {
         return SupportedAgentKind.allCases.filter(discovered.contains)
     }
 
+    func listSkills(_ query: SkillListQuery) async throws -> [AgentSkill] {
+        let sources = SkillSourceCatalog.sources(for: query.kind)
+        guard !sources.isEmpty else { return [] }
+        let home = try await remoteHomeDirectory()
+        let resolved = sources.compactMap { source -> SkillProbe.ResolvedSource? in
+            let root: String?
+            switch source.root {
+            case .home: root = home
+            case .project: root = query.projectRoot
+            }
+            // A root that cannot be quoted safely skips its sources rather
+            // than failing the probe: the global half of the pane still works
+            // when a project path is exotic.
+            guard let root, !root.isEmpty else { return nil }
+            let trimmed = root.hasSuffix("/") ? String(root.dropLast()) : root
+            guard
+                let quoted = RemoteShellPath.quotedAbsolute(
+                    "\(trimmed)/\(source.relativePath)")
+            else { return nil }
+            return SkillProbe.ResolvedSource(
+                scope: source.scope, quotedDirectory: quoted, layout: source.layout)
+        }
+        guard !resolved.isEmpty else { return [] }
+        let command = SkillProbe.command(for: resolved)
+        let output = try await withRequestDeadline(requestTimeout) {
+            try await self.runHostCommand(command)
+        }
+        return SkillProbe.skills(fromProbeOutput: output)
+    }
+
     private func runHostCommand(_ command: String) async throws -> Data {
         try await execChannelBudget.withChannel {
             do {
