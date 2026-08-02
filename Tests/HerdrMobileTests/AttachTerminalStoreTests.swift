@@ -1171,6 +1171,24 @@ struct AgentAttachStoreTests {
         await store.leave().value
     }
 
+    @Test func teardownRunsEvenAfterTheStoreItselfIsReleased() async throws {
+        // The owner is `@State` on a view SwiftUI discards right after
+        // `onDisappear`, so the teardown task is often the store's last
+        // holder. It must run to completion regardless — a skipped teardown
+        // leaves the live session holding the Host's only terminal channel,
+        // and every later attach queues behind it forever.
+        let transport = ScriptedTransport()
+        var store: AgentAttachStore? = makeStore(transport: transport, generation: 0)
+        try await goLive(store!, transport)
+
+        store!.leave()
+        store = nil  // SwiftUI discarding the view's state.
+
+        try await waitUntil("the session must end without its owner") {
+            await transport.hasLiveAttachSession == false
+        }
+    }
+
     @Test func aSpuriousReappearanceOffStageDoesNotResurrectTheTerminal() async throws {
         // The same disappear/appear pair also lands on *departing* screens
         // (an Agent switch, a notification deep link), whose views keep

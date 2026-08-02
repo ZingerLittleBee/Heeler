@@ -295,11 +295,17 @@ final class AgentAttachStore {
         invalidateAttachLinkOpen()
         attachLinkOpenFailure = nil
         linkIndex.clear()
-        return enqueueLifecycleTransition { [weak self] in
-            guard let self else { return }
-            await self.image.leaveAttach()
-            await self.terminal.stop()
-            self.linkIndex.clear()
+        // Strongly captured on purpose: the owner is `@State` on a view
+        // SwiftUI discards right after `onDisappear`, so this task is often
+        // the store's last holder. A weak capture silently skips the
+        // teardown once the store deallocates — the live session then holds
+        // the Host's terminal channel forever and every later attach queues
+        // behind it on "Connecting…". The retain is temporary and
+        // self-breaking: the task releases the store when the teardown ends.
+        return enqueueLifecycleTransition { [self] in
+            await image.leaveAttach()
+            await terminal.stop()
+            linkIndex.clear()
         }
     }
 
