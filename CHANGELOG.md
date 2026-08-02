@@ -31,6 +31,15 @@ Entries reference the issue that motivated them.
   on an explicit keyboard request, so a restored keyboard wore a transparent
   toolbar.
 
+- The black-terminal-that-never-connects has lost its last hiding place. The
+  earlier reattach fix assumed the spurious disappear/appear pair SwiftUI
+  hands out arrives with a gap in between; when a notification deep link or
+  the new-agent flow's push landed both in one transaction, the deferred
+  teardown ran *after* the reattach had already decided there was nothing to
+  undo, and the visible screen kept a permanently stopped terminal. The
+  departure is now recorded synchronously in `onDisappear`, so the reattach
+  on `onAppear` always sees it.
+
 - Agent status colours are readable in light mode. The Working badge painted
   its text in Catppuccin Latte's yellow over a wash of the same yellow, which
   measured 2.3:1 — far under the 4.5:1 that small text needs — and Done's

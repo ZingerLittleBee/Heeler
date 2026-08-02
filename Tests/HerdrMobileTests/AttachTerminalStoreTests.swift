@@ -406,7 +406,7 @@ struct AgentAttachStoreTests {
             ]
         }
 
-        await store.leave()
+        await store.leave().value
     }
 
     @Test func aNewDistinctLinkIsIndexedWithoutSendingTerminalInput() async throws {
@@ -424,7 +424,7 @@ struct AgentAttachStoreTests {
         }
         #expect(await transport.attachInputs.isEmpty)
 
-        await store.leave()
+        await store.leave().value
     }
 
     @Test func failedOpenKeepsTheLinkAndOffersExactCopyRecovery() async throws {
@@ -456,7 +456,7 @@ struct AgentAttachStoreTests {
         #expect(store.attachLinks.map(\.target) == [exactTarget])
         #expect(store.attachLinkOpenFailure == nil)
 
-        await store.leave()
+        await store.leave().value
     }
 
     @Test func anOlderFailedOpenCannotReplaceTheLatestSuccessfulOpen() async throws {
@@ -502,7 +502,7 @@ struct AgentAttachStoreTests {
         #expect(store.attachLinkOpenFailure == nil)
         #expect(store.attachLinks.count == 2)
 
-        await store.leave()
+        await store.leave().value
     }
 
     @Test func leavingAttachCancelsAPendingSystemOpenWithoutLaterMutation() async throws {
@@ -522,7 +522,7 @@ struct AgentAttachStoreTests {
             opener.pendingTarget == link.target
         }
 
-        await store.leave()
+        await store.leave().value
         try await waitUntil("leaving Attach should cancel the system open") {
             opener.cancelledTargets == [link.target]
         }
@@ -568,7 +568,7 @@ struct AgentAttachStoreTests {
             ]
         }
 
-        await store.leave()
+        await store.leave().value
     }
 
     @Test func redrawnViewportTextSupplementsOutputWithoutJoiningRows() async throws {
@@ -592,7 +592,7 @@ struct AgentAttachStoreTests {
             ]
         }
 
-        await store.leave()
+        await store.leave().value
     }
 
     @Test func softWrappedViewportDoesNotAddPrefixesOfStreamTargets() async throws {
@@ -614,7 +614,7 @@ struct AgentAttachStoreTests {
 
         #expect(store.attachLinks.map(\.target) == [target])
 
-        await store.leave()
+        await store.leave().value
     }
 
     /// The screen is rescanned on every viewport snapshot, so a screen holding
@@ -646,7 +646,7 @@ struct AgentAttachStoreTests {
                 "the same screen produced a different link list on rescan")
         }
 
-        await store.leave()
+        await store.leave().value
     }
 
     @Test func repeatedViewportLayoutsKeepTheLongestAmbiguousTarget() async throws {
@@ -666,7 +666,7 @@ struct AgentAttachStoreTests {
 
         #expect(store.attachLinks.map(\.target) == [target])
 
-        await store.leave()
+        await store.leave().value
     }
 
     @Test func repeatedViewportSnapshotsDoNotRewriteStreamRecency() async throws {
@@ -696,7 +696,7 @@ struct AgentAttachStoreTests {
                 "https://older.example/result",
             ])
 
-        await store.leave()
+        await store.leave().value
     }
 
     @Test func osc8AcceptsC1IntroducerAndStringTerminatorForms() async throws {
@@ -729,7 +729,7 @@ struct AgentAttachStoreTests {
             ]
         }
 
-        await store.leave()
+        await store.leave().value
     }
 
     @Test func c1ControlsSeparateAdjacentVisibleURLs() async throws {
@@ -754,7 +754,7 @@ struct AgentAttachStoreTests {
             ]
         }
 
-        await store.leave()
+        await store.leave().value
     }
 
     @Test func osc8TargetsReuseWebValidationAndCollectionBounds() async throws {
@@ -797,7 +797,7 @@ struct AgentAttachStoreTests {
         #expect(store.attachLinks.last?.target == "https://example.com/item/1")
         #expect(!store.attachLinks.contains { $0.target == maximumTarget })
 
-        await store.leave()
+        await store.leave().value
     }
 
     @Test func exactRepeatsMoveToFrontAndTheLeastRecentLinkIsEvicted() async throws {
@@ -827,7 +827,7 @@ struct AgentAttachStoreTests {
                 $0.target == "https://example.com/item?index=20#detail"
             })
 
-        await store.leave()
+        await store.leave().value
     }
 
     @Test func oneOutputChunkKeepsTheLatestLinksBeyondCollectionCapacity() async throws {
@@ -851,7 +851,7 @@ struct AgentAttachStoreTests {
                 $0.target == "https://example.com/item/4"
             })
 
-        await store.leave()
+        await store.leave().value
     }
 
     @Test func targetAtTheByteLimitIsAcceptedAndAnOversizedTargetIsIgnoredWhole()
@@ -882,7 +882,7 @@ struct AgentAttachStoreTests {
                 maximumTarget,
             ])
 
-        await store.leave()
+        await store.leave().value
     }
 
     @Test func balancedURLPunctuationIsRetainedWhileSurroundingPunctuationIsExcluded()
@@ -907,7 +907,7 @@ struct AgentAttachStoreTests {
                 "https://example.com/wiki/Function_(mathematics)"
             ])
 
-        await store.leave()
+        await store.leave().value
     }
 
     @Test func arbitraryOutputChunksJoinButRealLineBreaksDoNot() async throws {
@@ -927,7 +927,7 @@ struct AgentAttachStoreTests {
             ]
         }
 
-        await store.leave()
+        await store.leave().value
     }
 
     @Test func webPolicyRejectsUnsafeTargetsAndKeepsPrivateTargetsLiteral() async throws {
@@ -953,7 +953,7 @@ struct AgentAttachStoreTests {
                 "http://127.0.0.1:8443/path?q=x#fragment",
             ])
 
-        await store.leave()
+        await store.leave().value
     }
 
     @Test func linksSurviveTerminalRecoveryButLeavingAttachClearsThem() async throws {
@@ -993,12 +993,12 @@ struct AgentAttachStoreTests {
                 "https://before.example/retry",
             ])
 
-        await store.leave()
+        await store.leave().value
         #expect(store.attachLinks.isEmpty)
 
         let laterAttach = makeStore(transport: transport, generation: 1)
         #expect(laterAttach.attachLinks.isEmpty)
-        await laterAttach.leave()
+        await laterAttach.leave().value
     }
 
     @Test func transportReplacementStopsTheOldTerminalBeforeReattaching() async throws {
@@ -1017,7 +1017,7 @@ struct AgentAttachStoreTests {
         try await goLive(store, transport, cols: 100, rows: 30)
         #expect(await transport.attachRequests.count == 2)
 
-        await store.leave()
+        await store.leave().value
     }
 
     @Test func rapidTransportReplacementsCoalesceToTheLatestGeneration() async throws {
@@ -1035,7 +1035,7 @@ struct AgentAttachStoreTests {
         try await goLive(store, transport, cols: 100, rows: 30)
         #expect(await transport.attachRequests.count == 2)
 
-        await store.leave()
+        await store.leave().value
     }
 
     @Test func transportReplacementPreservesImageAttachState() async throws {
@@ -1062,7 +1062,7 @@ struct AgentAttachStoreTests {
 
         #expect(store.imageState == surfacedFailure)
 
-        await store.leave()
+        await store.leave().value
         #expect(store.imageState == .idle)
     }
 
@@ -1076,7 +1076,7 @@ struct AgentAttachStoreTests {
         let initialID = store.terminalID
 
         store.transportGenerationDidChange(1)
-        await store.leave()
+        await store.leave().value
 
         #expect(store.terminalID == initialID)
         #expect(store.terminalStatus == .stopped)
@@ -1101,7 +1101,7 @@ struct AgentAttachStoreTests {
         try await goLive(store, transport)
         let leftID = store.terminalID
 
-        await store.leave()
+        await store.leave().value
         #expect(store.terminalStatus == .stopped)
 
         store.rejoin()
@@ -1121,7 +1121,36 @@ struct AgentAttachStoreTests {
             store.attachLinks.map(\.target) == ["https://example.com/back"]
         }
 
-        await store.leave()
+        await store.leave().value
+    }
+
+    @Test func sameTransactionDisappearAppearPairComesBackConnecting() async throws {
+        // SwiftUI can hand the spurious disappear/appear pair out
+        // back-to-back in one transaction (a notification deep link or the
+        // new-agent push landing amid sheet-dismissal churn). The departure
+        // must be recorded synchronously: a Task-deferred leave() runs only
+        // after rejoin() has already no-opped on hasLeft == false, and the
+        // visible screen keeps a permanently stopped terminal — black, no
+        // overlay, no recovery.
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+
+        try await goLive(store, transport)
+        let leftID = store.terminalID
+
+        store.leave()
+        store.rejoin()
+
+        // On stage throughout: never a black surface with nothing to say.
+        #expect(store.terminalStatus != .stopped)
+        try await waitUntil("the terminal pipeline should be rebuilt") {
+            store.terminalID != leftID
+        }
+
+        try await goLive(store, transport)
+        #expect(await transport.attachRequests.count == 2)
+
+        await store.leave().value
     }
 
     @Test func rejoinWithoutLeaveLeavesTheLiveTerminalAlone() async throws {
@@ -1138,7 +1167,7 @@ struct AgentAttachStoreTests {
         #expect(store.terminalStatus == .live)
         #expect(await transport.attachRequests.count == 1)
 
-        await store.leave()
+        await store.leave().value
     }
 
     @Test func leaveRacingARejoinKeepsTheAttachDown() async throws {
@@ -1149,10 +1178,10 @@ struct AgentAttachStoreTests {
 
         try await goLive(store, transport)
 
-        await store.leave()
+        await store.leave().value
         let leftID = store.terminalID
         store.rejoin()
-        await store.leave()
+        await store.leave().value
 
         try await Task.sleep(for: .milliseconds(50))
         #expect(store.terminalID == leftID)

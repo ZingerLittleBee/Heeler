@@ -279,12 +279,14 @@ struct AgentDetailView: View {
         }
         // Paired with the leave below: SwiftUI hands out onDisappear for
         // removals the user never made, and the state that comes back is the
-        // one that left. Rejoining is what makes that survivable.
+        // one that left. Rejoining is what makes that survivable — and both
+        // calls must stay synchronous, because the spurious pair can land in
+        // one transaction and rejoin() can only undo a leave it can see.
         .onAppear {
             attach.rejoin()
         }
         .onDisappear {
-            Task { await attach.leave() }
+            attach.leave()
         }
     }
 

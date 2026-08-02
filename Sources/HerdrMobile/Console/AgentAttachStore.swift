@@ -235,7 +235,7 @@ final class AgentAttachStore {
     func confirmClose() async -> Bool {
         await close.confirmClose()
         guard close.state == .closed else { return false }
-        await leave()
+        await leave().value
         return true
     }
 
@@ -260,22 +260,30 @@ final class AgentAttachStore {
         }
     }
 
-    func leave() async {
+    /// Leaves the screen: records the departure and enqueues the teardown,
+    /// then returns the teardown for callers that must wait for it.
+    ///
+    /// Recording is synchronous on purpose. SwiftUI can hand out a spurious
+    /// disappear/appear pair back-to-back in one transaction, and `rejoin()`
+    /// can only undo a departure that is already visible when it runs — a
+    /// leave deferred behind a Task hop runs *after* the rejoin has already
+    /// no-opped, and strands a visible screen on a permanently stopped
+    /// terminal: black, no overlay, no way back.
+    @discardableResult
+    func leave() -> Task<Void, Never> {
         guard !hasLeft else {
-            await lifecycleTask?.value
-            return
+            return lifecycleTask ?? Task {}
         }
         hasLeft = true
         invalidateAttachLinkOpen()
         attachLinkOpenFailure = nil
         linkIndex.clear()
-        let transition = enqueueLifecycleTransition { [weak self] in
+        return enqueueLifecycleTransition { [weak self] in
             guard let self else { return }
             await self.image.leaveAttach()
             await self.terminal.stop()
             self.linkIndex.clear()
         }
-        await transition.value
     }
 
     @discardableResult
