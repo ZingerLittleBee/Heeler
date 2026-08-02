@@ -17,6 +17,16 @@ Entries reference the issue that motivated them.
   until the Agent actually paints. If an attach dies before it starts, whatever
   the Host said is still shown — that message is the only diagnosis there is.
 
+- Switching Agents with the keyboard up no longer starts the new terminal at
+  full height and shrinks it a moment later, which also sent the "Connecting…"
+  dialog jumping from the middle of the screen to the middle of the terminal.
+  The keyboard's height now outlives the switch, like the raised keyboard
+  itself already did.
+
+- The terminal's status dialog wears the terminal theme instead of a system
+  material card, so "Connecting…" and "Session Ended" stop looking like a
+  piece of some other app over a Solarized or Nord grid.
+
 - The Agent list now removes rows from disconnected Hosts immediately, rejects
   stale snapshots that finish after a disconnect, and rechecks membership when
   an Agent process exits back to an ordinary shell.

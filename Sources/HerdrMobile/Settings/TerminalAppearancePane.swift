@@ -136,8 +136,8 @@ struct TerminalThemeSwatchCard: View {
     var isSelected = false
     var compact = false
 
-    private var palette: TerminalThemeSwatchPalette {
-        option.swatchPalette(for: scheme)
+    private var palette: TerminalThemePalette {
+        option.palette(for: scheme)
     }
 
     private var cornerRadius: CGFloat { compact ? 6 : 8 }
@@ -175,24 +175,30 @@ struct TerminalThemeSwatchCard: View {
     }
 }
 
-struct TerminalThemeSwatchPalette {
+/// The four colours anything drawn in the terminal's own clothes needs: the
+/// settings swatches, and the status dialog that sits over the grid.
+struct TerminalThemePalette {
     let background: Color
     let foreground: Color
     let accent: Color
     let success: Color
+
+    /// The fallback for a theme this build cannot resolve: system colours,
+    /// which follow the appearance instead of the terminal.
+    static let system = TerminalThemePalette(
+        background: Color(uiColor: .systemBackground),
+        foreground: Color(uiColor: .label),
+        accent: .accentColor,
+        success: .green)
 }
 
 extension TerminalThemeOption {
-    func swatchPalette(for colorScheme: ColorScheme) -> TerminalThemeSwatchPalette {
+    func palette(for colorScheme: ColorScheme) -> TerminalThemePalette {
         guard let definition = swatchDefinition(for: colorScheme) else {
-            return TerminalThemeSwatchPalette(
-                background: Color(uiColor: .systemBackground),
-                foreground: Color(uiColor: .label),
-                accent: .accentColor,
-                success: .green)
+            return .system
         }
         let foreground = Color(hex: definition.foreground) ?? .primary
-        return TerminalThemeSwatchPalette(
+        return TerminalThemePalette(
             background: Color(hex: definition.background) ?? Color(uiColor: .systemBackground),
             foreground: foreground,
             // ANSI 4 (blue) and 2 (green): the two colours a prompt and a
@@ -209,7 +215,7 @@ extension TerminalThemeOption {
     /// the terminal surface (the safe areas and the transparent bar region) so
     /// the theme owns the whole screen instead of stopping at the grid.
     func surfaceBackground(for colorScheme: ColorScheme) -> Color {
-        swatchPalette(for: colorScheme).background
+        palette(for: colorScheme).background
     }
 
     /// Chrome legibility follows the theme's luminance rather than the system
