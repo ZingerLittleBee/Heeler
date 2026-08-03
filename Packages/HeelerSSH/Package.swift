@@ -1,0 +1,31 @@
+// swift-tools-version: 6.2
+
+import PackageDescription
+
+let package = Package(
+    name: "HeelerSSH",
+    platforms: [
+        .iOS(.v26),
+    ],
+    products: [
+        .library(name: "HeelerSSH", targets: ["HeelerSSH"]),
+    ],
+    targets: [
+        .binaryTarget(
+            name: "COpenSSL",
+            path: "Artifacts/COpenSSL.xcframework"
+        ),
+        .binaryTarget(
+            name: "CLibSSH2",
+            path: "Artifacts/CLibSSH2.xcframework"
+        ),
+        .target(
+            name: "HeelerSSH",
+            dependencies: ["CLibSSH2", "COpenSSL"]
+        ),
+        .testTarget(
+            name: "HeelerSSHTests",
+            dependencies: ["HeelerSSH"]
+        ),
+    ]
+)

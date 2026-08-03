@@ -15,6 +15,11 @@ settings:
     CODE_SIGN_STYLE: Automatic
 
 packages:
+  # Repository-local package owning the libssh2/OpenSSL implementation and
+  # checked-in native artifacts. The active app transport remains Citadel
+  # until the atomic cutover defined by ADR 0011.
+  HeelerSSH:
+    path: Packages/HeelerSSH
   # Pinned exactly: Citadel resolves swift-nio-ssh from the Wellz26 fork,
   # a supply-chain-sensitive dependency that must never drift silently.
   Citadel:
@@ -71,6 +76,7 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
     dependencies:
+      - package: HeelerSSH
       - package: Citadel
       - package: GhosttyTerminal
       - package: GhosttyTerminal
@@ -137,6 +143,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.tests
     dependencies:
       - target: Heeler
+      - package: HeelerSSH
       - package: GhosttyTerminal
 
 schemes:
