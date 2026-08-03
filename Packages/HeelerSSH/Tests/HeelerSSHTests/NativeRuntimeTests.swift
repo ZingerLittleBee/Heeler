@@ -2,6 +2,6 @@ import Testing
 @testable import HeelerSSH
 
 @Test
-func initializesAndFreesLibSSH2() {
+func initializesLibSSH2() {
     #expect(NativeRuntime.smokeTest())
 }

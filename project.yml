@@ -154,5 +154,12 @@ schemes:
     test:
       targets:
         - HeelerTests
+      environmentVariables:
+        HEELER_SSH_E2E_REQUIRED: $(HEELER_SSH_E2E_REQUIRED)
+        HEELER_SSH_E2E_HOST: $(HEELER_SSH_E2E_HOST)
+        HEELER_SSH_E2E_PORT: $(HEELER_SSH_E2E_PORT)
+        HEELER_SSH_E2E_LEGACY_PORT: $(HEELER_SSH_E2E_LEGACY_PORT)
+        HEELER_SSH_E2E_USERNAME: $(HEELER_SSH_E2E_USERNAME)
+        HEELER_SSH_E2E_PASSWORD: $(HEELER_SSH_E2E_PASSWORD)
     run:
       config: Debug
