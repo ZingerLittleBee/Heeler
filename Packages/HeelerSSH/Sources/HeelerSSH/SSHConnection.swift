@@ -110,6 +110,24 @@ public final class SSHConnection: Sendable {
         try await driver.execute(command: command, input: input, timeout: timeout)
     }
 
+    /// Opens one SSH session channel, requests the configured PTY, and then
+    /// executes `command` directly. No login shell or shell request is exposed
+    /// to the caller's terminal stream.
+    public func openPTY(
+        command: String,
+        terminal: String = "xterm-256color",
+        columns: Int,
+        rows: Int,
+        timeout: Duration
+    ) async throws -> SSHPTYChannel {
+        try await driver.openPTY(
+            command: command,
+            terminal: terminal,
+            columns: columns,
+            rows: rows,
+            timeout: timeout)
+    }
+
     /// Opens one direct-streamlocal channel, writes one request, reads one
     /// newline-terminated response, and closes the channel. Every call owns a
     /// fresh channel to preserve one-request-per-socket protocols.

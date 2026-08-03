@@ -15,6 +15,11 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(HeelerSSHTransport.maxConcurrentForwardingChannels == 8)
     }
 
+    @Test("ordinary session admission reserves the Attach slot")
+    func sessionAdmissionStartsAtEight() {
+        #expect(HeelerSSHTransport.maxConcurrentExecChannels == 8)
+    }
+
     @Test("protocol mismatches remain typed at the Transport seam")
     func protocolMismatchStaysTyped() {
         #expect(
@@ -47,6 +52,81 @@ struct HeelerSSHTransportBehaviorE2ETests {
     func jumpEventsStream() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
         try await exerciseEventsStream(settings: environment.jumpSettings())
+    }
+
+    @Test("direct Host Attach preserves PTY IO, resize, end, and reuse")
+    func directAttach() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        try await exerciseAttach(
+            settings: environment.directSettings(),
+            socketPath: environment.socketPath)
+    }
+
+    @Test("Jump Host Attach preserves PTY IO, resize, end, and reuse")
+    func jumpAttach() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        try await exerciseAttach(
+            settings: environment.jumpSettings(),
+            socketPath: environment.socketPath)
+    }
+
+    @Test("direct Host clean Attach exit frees the reserved channel")
+    func directCleanAttachExit() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        try await exerciseCleanAttachExit(settings: environment.directSettings())
+    }
+
+    @Test("Jump Host clean Attach exit frees the reserved channel")
+    func jumpCleanAttachExit() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        try await exerciseCleanAttachExit(settings: environment.jumpSettings())
+    }
+
+    @Test("one Host admits exactly one live Attach")
+    func attachIsExclusive() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let first = try await transport.attachTerminal(
+            TerminalAttachRequest(target: "fixture:pane", cols: 80, rows: 24))
+        var iterator = first.output.makeAsyncIterator()
+        var output = ""
+        try await expectAttachOutput(&iterator, accumulated: &output, contains: "TTY-OK")
+        await #expect(throws: TransportError.terminalChannelAlreadyOpen) {
+            _ = try await transport.attachTerminal(
+                TerminalAttachRequest(target: "fixture:second", cols: 80, rows: 24))
+        }
+
+        await first.end()
+        let replacement = try await transport.attachTerminal(
+            TerminalAttachRequest(target: "fixture:replacement", cols: 80, rows: 24))
+        await replacement.end()
+    }
+
+    @Test("nonzero Attach exit reports the primary channel failure and wakes input")
+    func failedAttachExitFreesChannel() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let failed = try await transport.attachTerminal(
+            TerminalAttachRequest(target: "fixture:failure", cols: 80, rows: 24))
+        var iterator = failed.output.makeAsyncIterator()
+        var output = ""
+        try await expectAttachOutput(&iterator, accumulated: &output, contains: "TTY-OK")
+        failed.send(Data("__fail__\n".utf8))
+        await #expect(
+            throws: TransportError.channelFailed(
+                detail: "attach channel: remote exit status 23")
+        ) {
+            while try await iterator.next() != nil {}
+        }
+
+        let replacement = try await transport.attachTerminal(
+            TerminalAttachRequest(target: "fixture:replacement", cols: 80, rows: 24))
+        await replacement.end()
+        #expect(try await transport.ping().protocolVersion == 17)
     }
 
     @Test("remote Events close is typed and frees only the reserved channel")
@@ -348,6 +428,77 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(try await transport.ping().protocolVersion == 17)
     }
 
+    private func exerciseAttach(
+        settings: SSHTransportSettings,
+        socketPath: String
+    ) async throws {
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        defer { Task { try? await transport.close() } }
+        let session = try await transport.attachTerminal(
+            TerminalAttachRequest(
+                target: "fixture:pane",
+                takeover: true,
+                cols: 80,
+                rows: 24))
+        var iterator = session.output.makeAsyncIterator()
+        var output = ""
+        try await expectAttachOutput(&iterator, accumulated: &output, contains: "24 80")
+        #expect(output.hasPrefix("TTY-OK"))
+        #expect(output.contains("ARGS:fixture:pane --takeover"))
+        #expect(output.contains("SOCKET:\(socketPath)"))
+        #expect(!output.contains("HERDR_SOCKET_PATH"))
+        #expect(!output.contains("heeler-attach"))
+
+        session.send(Data("raw-\u{1B}[A\n".utf8))
+        try await expectAttachOutput(
+            &iterator,
+            accumulated: &output,
+            contains: "GOT:raw-\u{1B}[A")
+        session.resize(cols: 109, rows: 47)
+        session.send(Data("probe\n".utf8))
+        try await expectAttachOutput(&iterator, accumulated: &output, contains: "47 109")
+
+        let started = ContinuousClock.now
+        await session.end()
+        #expect(ContinuousClock.now - started < .seconds(3))
+        #expect(try await iterator.next() == nil)
+        #expect(try await transport.ping().protocolVersion == 17)
+
+        let replacement = try await transport.attachTerminal(
+            TerminalAttachRequest(target: "fixture:replacement", cols: 80, rows: 24))
+        await replacement.end()
+    }
+
+    private func exerciseCleanAttachExit(settings: SSHTransportSettings) async throws {
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        defer { Task { try? await transport.close() } }
+        let session = try await transport.attachTerminal(
+            TerminalAttachRequest(target: "fixture:clean", cols: 80, rows: 24))
+        var iterator = session.output.makeAsyncIterator()
+        var output = ""
+        try await expectAttachOutput(&iterator, accumulated: &output, contains: "TTY-OK")
+        session.send(Data("__exit__\n".utf8))
+        while let chunk = try await iterator.next() {
+            output += String(decoding: chunk, as: UTF8.self)
+        }
+
+        let replacement = try await transport.attachTerminal(
+            TerminalAttachRequest(target: "fixture:replacement", cols: 80, rows: 24))
+        await replacement.end()
+        #expect(try await transport.ping().protocolVersion == 17)
+    }
+
+    private func expectAttachOutput(
+        _ iterator: inout AsyncThrowingStream<Data, any Error>.AsyncIterator,
+        accumulated: inout String,
+        contains marker: String
+    ) async throws {
+        while !accumulated.contains(marker) {
+            let chunk = try #require(try await iterator.next())
+            accumulated += String(decoding: chunk, as: UTF8.self)
+        }
+    }
+
     private func exerciseHostExecOperations(
         settings: SSHTransportSettings,
         homePath: String
@@ -460,6 +611,7 @@ private struct HeelerSSHTransportBehaviorEnvironment: Decodable, Sendable {
         }
         settings.homeCommand =
             "/bin/sh -c 'printf \"__HEELER_HOME__=%s\\n\" \"$1\"' home \(quotedHome)"
+        settings.attachCommand = "\(homePath)/.heeler-ci/fake-attach"
         return settings
     }
 

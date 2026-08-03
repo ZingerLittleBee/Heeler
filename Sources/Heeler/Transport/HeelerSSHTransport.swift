@@ -5,9 +5,14 @@ private struct HeelerSSHSessionListResponse: Decodable {
     let sessions: [HerdrSession]
 }
 
+private enum HeelerSSHAttachPumpError: Error, Sendable {
+    case input(String)
+    case output(String)
+}
+
 /// The libssh2-backed app Transport. Ordinary herdr RPCs use fresh
-/// direct-streamlocal channels, while Events owns one reserved long-lived
-/// forwarding channel per Host (ADR 0011).
+/// direct-streamlocal channels, Events owns one reserved forwarding channel,
+/// and Attach owns one reserved PTY exec channel per Host (ADR 0011).
 actor HeelerSSHTransport: Transport {
     static let supportedProtocolVersion = 17
     static let maximumResponseBytes = 1_048_576
@@ -20,6 +25,7 @@ actor HeelerSSHTransport: Transport {
     private let wakeCommand: String
     private let sessionListCommand: String
     private let agentDiscoveryCommand: String
+    private let attachCommand: String
     private let homeCommand: String
     private let forwardingChannelBudget: SSHChannelBudget
     private let execChannelBudget: SSHChannelBudget
@@ -36,6 +42,15 @@ actor HeelerSSHTransport: Transport {
     private var eventsChannelState: EventsChannelState = .idle
     private var nextEventsReaderID: UInt64 = 0
     private var endedEventsReaders: Set<UInt64> = []
+
+    private enum TerminalChannelState: Equatable {
+        case idle
+        case opening
+        case streaming(readerID: UInt64)
+    }
+
+    private var terminalChannelState: TerminalChannelState = .idle
+    private var nextTerminalReaderID: UInt64 = 0
 
     /// Establishes the libssh2 Transport through the same app-owned
     /// credentials and TOFU policy as the production connection path.
@@ -110,6 +125,7 @@ actor HeelerSSHTransport: Transport {
         wakeCommand = "herdr remote-client-bridge"
         sessionListCommand = SSHTransportSettings.defaultSessionListCommand
         agentDiscoveryCommand = SSHTransportSettings.defaultAgentDiscoveryCommand
+        attachCommand = "herdr agent attach"
         homeCommand = "printf '__HEELER_HOME__=%s\\n' \"$HOME\""
         forwardingChannelBudget = SSHChannelBudget(
             capacity: Self.maxConcurrentForwardingChannels)
@@ -123,6 +139,7 @@ actor HeelerSSHTransport: Transport {
         wakeCommand = settings.wakeCommand
         sessionListCommand = settings.sessionListCommand
         agentDiscoveryCommand = settings.agentDiscoveryCommand
+        attachCommand = settings.attachCommand
         homeCommand = settings.homeCommand
         forwardingChannelBudget = SSHChannelBudget(
             capacity: Self.maxConcurrentForwardingChannels)
@@ -658,11 +675,6 @@ actor HeelerSSHTransport: Transport {
         "LC_ALL=C \(command)"
     }
 
-    private func unsupported<Value>(_ operation: String) throws -> Value {
-        throw TransportError.channelFailed(
-            detail: "HeelerSSH \(operation) is implemented by a later migration ticket.")
-    }
-
     func subscribeToEvents(
         _ subscriptions: [EventSubscription]
     ) async throws -> HerdrEventStream {
@@ -853,6 +865,194 @@ actor HeelerSSHTransport: Transport {
     func attachTerminal(
         _ request: TerminalAttachRequest
     ) async throws -> TerminalAttachSession {
-        try unsupported("attachTerminal")
+        guard terminalChannelState == .idle else {
+            throw TransportError.terminalChannelAlreadyOpen
+        }
+        terminalChannelState = .opening
+
+        do {
+            let socketPath = try await resolvedSocketPath()
+            let command = try Self.attachExecCommand(
+                attachCommand: attachCommand,
+                request: request,
+                socketPath: socketPath)
+            let channel: SSHPTYChannel
+            do {
+                channel = try await connection.openPTY(
+                    command: command,
+                    columns: request.cols,
+                    rows: request.rows,
+                    timeout: requestTimeout)
+            } catch {
+                throw await mapOperationError(error)
+            }
+
+            let (output, continuation) = AsyncThrowingStream<Data, any Error>.makeStream()
+            let input = TerminalAttachInputQueue()
+            nextTerminalReaderID &+= 1
+            let readerID = nextTerminalReaderID
+            terminalChannelState = .streaming(readerID: readerID)
+            let readerTask = Task {
+                await self.runAttachChannel(
+                    readerID: readerID,
+                    channel: channel,
+                    input: input,
+                    output: continuation)
+            }
+            return TerminalAttachSession(output: output, input: input) {
+                input.finish()
+                readerTask.cancel()
+                await readerTask.value
+            }
+        } catch {
+            terminalChannelState = .idle
+            throw error
+        }
+    }
+
+    /// Builds the remote exec request used after the PTY has been accepted.
+    /// `HERDR_SOCKET_PATH` is set by the command itself, not an SSH environment
+    /// request that the Host may reject. The SSH server invokes its command
+    /// processor for every exec request, but no interactive login shell is
+    /// started or exposed to the terminal stream.
+    static func attachExecCommand(
+        attachCommand: String,
+        request: TerminalAttachRequest,
+        socketPath: String
+    ) throws -> String {
+        let unquotable: (Character) -> Bool = { character in
+            character == "'" || character == "\\"
+                || character.unicodeScalars.contains(where: {
+                    CharacterSet.controlCharacters.contains($0)
+                })
+        }
+        guard
+            !attachCommand.isEmpty,
+            !request.target.isEmpty,
+            !request.target.contains(where: unquotable)
+        else {
+            throw TransportError.channelFailed(
+                detail: "attach target cannot be quoted for the remote command")
+        }
+        guard let quotedSocketPath = RemoteShellPath.quotedAbsolute(socketPath) else {
+            throw TransportError.channelFailed(
+                detail: "The remote socket path cannot be quoted safely.")
+        }
+        let takeover = request.takeover ? " --takeover" : ""
+        return "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
+            + "exec \(attachCommand) \"$1\"\(takeover)' attach "
+            + "'\(request.target)' \(quotedSocketPath)"
+    }
+
+    private func runAttachChannel(
+        readerID: UInt64,
+        channel: SSHPTYChannel,
+        input: TerminalAttachInputQueue,
+        output continuation: AsyncThrowingStream<Data, any Error>.Continuation
+    ) async {
+        var failure: TransportError?
+        var sawCleanEnd = false
+        var pumpFailure: HeelerSSHAttachPumpError?
+
+        do {
+            do {
+                sawCleanEnd = try await withThrowingTaskGroup(of: Bool.self) { group in
+                    group.addTask {
+                        do {
+                            try await SSHTransport.writeTerminalAttachInput(
+                                input,
+                                write: { data in
+                                    try await channel.write(data, timeout: self.requestTimeout)
+                                },
+                                resize: { columns, rows in
+                                    try await channel.resize(
+                                        columns: columns,
+                                        rows: rows,
+                                        timeout: self.requestTimeout)
+                                })
+                            return false
+                        } catch is CancellationError {
+                            throw CancellationError()
+                        } catch {
+                            throw HeelerSSHAttachPumpError.input(String(describing: error))
+                        }
+                    }
+                    group.addTask {
+                        do {
+                            while !Task.isCancelled {
+                                let bytes: Data?
+                                do {
+                                    bytes = try await channel.read(
+                                        maximumBytes: 16 * 1024,
+                                        timeout: .seconds(1))
+                                } catch SSHError.timedOut {
+                                    continue
+                                }
+                                guard let bytes else {
+                                    let status = try await channel.exitStatus(
+                                        timeout: self.requestTimeout)
+                                    guard status == 0 else {
+                                        throw HeelerSSHAttachPumpError.output(
+                                            "remote exit status \(status)")
+                                    }
+                                    return true
+                                }
+                                if !bytes.isEmpty { continuation.yield(bytes) }
+                            }
+                            throw CancellationError()
+                        } catch is CancellationError {
+                            throw CancellationError()
+                        } catch let error as HeelerSSHAttachPumpError {
+                            throw error
+                        } catch {
+                            throw HeelerSSHAttachPumpError.output(String(describing: error))
+                        }
+                    }
+                    defer {
+                        input.finish()
+                        group.cancelAll()
+                    }
+                    return try await group.next() ?? true
+                }
+            } catch let error as HeelerSSHAttachPumpError {
+                pumpFailure = error
+                throw error
+            }
+            failure = nil
+        } catch is CancellationError {
+            failure = nil
+        } catch {
+            if Task.isCancelled || sawCleanEnd {
+                failure = nil
+            } else {
+                switch pumpFailure {
+                case .input(let detail):
+                    failure = .channelFailed(detail: "attach input: \(detail)")
+                case .output(let detail):
+                    failure = .channelFailed(detail: "attach channel: \(detail)")
+                case nil:
+                    failure = .channelFailed(detail: "attach channel: \(error)")
+                }
+            }
+        }
+
+        do {
+            try await channel.close(timeout: .seconds(2))
+        } catch {
+            let cleanupFailure = await mapOperationError(error)
+            if failure == nil, !Task.isCancelled, !sawCleanEnd {
+                failure = cleanupFailure
+            }
+        }
+
+        input.finish()
+        if terminalChannelState == .streaming(readerID: readerID) {
+            terminalChannelState = .idle
+        }
+        if let failure {
+            continuation.finish(throwing: failure)
+        } else {
+            continuation.finish()
+        }
     }
 }

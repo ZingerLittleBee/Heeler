@@ -144,6 +144,23 @@ printf '%s\n' \
     '---' \
     'Fixture body.' \
     > "$fixture_home/.codex/skills/fixture/SKILL.md"
+printf '%s\n' \
+    '#!/bin/sh' \
+    'stty -echo' \
+    'printf "TTY-OK\\n"' \
+    'printf "ARGS:%s\\n" "$*"' \
+    'printf "SOCKET:%s\\n" "$HERDR_SOCKET_PATH"' \
+    'stty size' \
+    'while IFS= read -r line; do' \
+    '    case "$line" in' \
+    '        __exit__) exit 0 ;;' \
+    '        __fail__) exit 23 ;;' \
+    '    esac' \
+    '    printf "GOT:%s\\n" "$line"' \
+    '    stty size' \
+    'done' \
+    > "$fixture_home/.heeler-ci/fake-attach"
+chmod 755 "$fixture_home/.heeler-ci/fake-attach"
 sudo -n chown "$fixture_uid":20 "$fixture_home"
 
 ssh-keygen -q -t ed25519 -N '' -f "$fixture_dir/host_ed25519"
@@ -434,6 +451,21 @@ if grep -q 'skipped:' "$e2e_log" \
     exit 1
 fi
 
+pty_log="$fixture_dir/pty-e2e.log"
+xcodebuild test \
+    -project Heeler.xcodeproj \
+    -scheme Heeler \
+    -destination "$simulator_destination" \
+    -collect-test-diagnostics never \
+    -only-testing:HeelerTests/HeelerSSHPTYE2ETests \
+    2>&1 | tee "$pty_log"
+
+if grep -q 'skipped:' "$pty_log" \
+    || ! grep -q "Test run with 3 tests in 1 suite passed" "$pty_log"; then
+    echo "The mandatory HeelerSSH PTY suite did not execute all three tests" >&2
+    exit 1
+fi
+
 streamlocal_log="$fixture_dir/streamlocal-e2e.log"
 xcodebuild test \
     -project Heeler.xcodeproj \
@@ -474,8 +506,8 @@ xcodebuild test \
     2>&1 | tee "$transport_behavior_log"
 
 if grep -q 'skipped:' "$transport_behavior_log" \
-    || ! grep -q "Test run with 17 tests in 1 suite passed" "$transport_behavior_log"; then
-    echo "The mandatory HeelerSSH Transport suite did not execute all seventeen tests" >&2
+    || ! grep -q "Test run with 24 tests in 1 suite passed" "$transport_behavior_log"; then
+    echo "The mandatory HeelerSSH Transport suite did not execute all twenty-four tests" >&2
     exit 1
 fi
 

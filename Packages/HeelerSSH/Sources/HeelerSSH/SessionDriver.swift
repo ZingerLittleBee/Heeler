@@ -50,6 +50,13 @@ actor SessionDriver {
     private var forwarding = false
     private var nextStreamLocalChannelID: UInt64 = 0
     private var streamLocalChannels: [UInt64: OpaquePointer] = [:]
+    private struct PTYChannelState {
+        let channel: OpaquePointer
+        var reachedEOF = false
+        var closed = false
+    }
+    private var nextPTYChannelID: UInt64 = 0
+    private var ptyChannels: [UInt64: PTYChannelState] = [:]
 
     // Actor reentrancy would otherwise allow a second task to call libssh2
     // while the first one is suspended on socket readiness.
@@ -226,6 +233,259 @@ actor SessionDriver {
                 invalidateResources()
             }
             throw normalized
+        }
+    }
+
+    func openPTY(
+        command: String,
+        terminal: String,
+        columns: Int,
+        rows: Int,
+        timeout: Duration
+    ) async throws -> SSHPTYChannel {
+        await acquireOperation()
+        defer { releaseOperation() }
+
+        guard valid, !forwarding, authenticated, let session else {
+            throw SSHError.connectionInvalidated
+        }
+        guard
+            !command.isEmpty,
+            !command.utf8.contains(0),
+            command.utf8.count <= Int(UInt32.max),
+            !terminal.isEmpty,
+            !terminal.utf8.contains(0),
+            terminal.utf8.count <= Int(UInt32.max),
+            columns > 0,
+            columns <= Int(Int32.max),
+            rows > 0,
+            rows <= Int(Int32.max)
+        else {
+            throw SSHError.channelFailed
+        }
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        var channel: OpaquePointer?
+
+        do {
+            channel = try await openSessionChannel(session: session, deadline: deadline)
+            guard let channel else { throw SSHError.channelFailed }
+            try await configurePTY(
+                channel: channel,
+                terminal: terminal,
+                columns: columns,
+                rows: rows,
+                deadline: deadline)
+            try await startExec(
+                channel: channel,
+                command: command,
+                session: session,
+                deadline: deadline)
+
+            nextPTYChannelID &+= 1
+            let id = nextPTYChannelID
+            ptyChannels[id] = PTYChannelState(channel: channel)
+            return SSHPTYChannel(id: id, driver: self)
+        } catch {
+            let normalized = normalize(error)
+            if let channel {
+                do {
+                    try await cleanChannel(
+                        channel,
+                        session: session,
+                        deadline: ContinuousClock.now.advanced(by: .seconds(2)),
+                        cancellable: false)
+                } catch {
+                    invalidateResources()
+                }
+            } else {
+                invalidateResources()
+            }
+            throw normalized
+        }
+    }
+
+    func writePTY(id: UInt64, data: Data, timeout: Duration) async throws {
+        guard !data.isEmpty else { return }
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        var offset = 0
+
+        while offset < data.count {
+            await acquireOperation()
+            let progress: (written: Int, descriptor: Int32, directions: SocketDirections)
+            do {
+                try checkProgress(deadline: deadline)
+                guard valid, let session else { throw SSHError.connectionInvalidated }
+                guard let channel = ptyChannels[id]?.channel else {
+                    throw SSHError.channelFailed
+                }
+                let written = data.withUnsafeBytes { bytes -> Int in
+                    guard let baseAddress = bytes.baseAddress else { return 0 }
+                    return libssh2_channel_write_ex(
+                        channel,
+                        0,
+                        baseAddress.advanced(by: offset).assumingMemoryBound(to: CChar.self),
+                        data.count - offset)
+                }
+                guard written >= 0 || written == Int(LIBSSH2_ERROR_EAGAIN) else {
+                    throw SSHError.channelFailed
+                }
+                progress = (written, descriptor, sessionDirections(session))
+                releaseOperation()
+            } catch {
+                releaseOperation()
+                throw normalize(error)
+            }
+
+            if progress.written > 0 {
+                offset += progress.written
+                await Task.yield()
+            } else {
+                try await SocketReadiness.wait(
+                    descriptor: progress.descriptor,
+                    directions: progress.directions,
+                    until: deadline)
+            }
+        }
+    }
+
+    func readPTY(
+        id: UInt64,
+        maximumBytes: Int,
+        timeout: Duration
+    ) async throws -> Data? {
+        guard maximumBytes > 0 else { throw SSHError.channelFailed }
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+
+        while true {
+            await acquireOperation()
+            let progress: (
+                data: Data,
+                eof: Bool,
+                descriptor: Int32,
+                directions: SocketDirections
+            )
+            do {
+                try checkProgress(deadline: deadline)
+                guard valid, let session else { throw SSHError.connectionInvalidated }
+                guard let channel = ptyChannels[id]?.channel else {
+                    throw SSHError.channelFailed
+                }
+                var buffer = [UInt8](repeating: 0, count: maximumBytes)
+                let data = try readAvailable(channel: channel, stream: 0, buffer: &buffer)
+                let eof = libssh2_channel_eof(channel) == 1
+                if eof { ptyChannels[id]?.reachedEOF = true }
+                progress = (data, eof, descriptor, sessionDirections(session))
+                releaseOperation()
+            } catch {
+                releaseOperation()
+                throw normalize(error)
+            }
+
+            if !progress.data.isEmpty { return progress.data }
+            if progress.eof { return nil }
+            try await SocketReadiness.wait(
+                descriptor: progress.descriptor,
+                directions: progress.directions,
+                until: deadline)
+        }
+    }
+
+    func resizePTY(
+        id: UInt64,
+        columns: Int,
+        rows: Int,
+        timeout: Duration
+    ) async throws {
+        guard
+            columns > 0,
+            columns <= Int(Int32.max),
+            rows > 0,
+            rows <= Int(Int32.max)
+        else {
+            throw SSHError.channelFailed
+        }
+        await acquireOperation()
+        defer { releaseOperation() }
+
+        guard valid, session != nil else { throw SSHError.connectionInvalidated }
+        guard let channel = ptyChannels[id]?.channel else { throw SSHError.channelFailed }
+        let result = try await repeatUntilComplete(
+            deadline: ContinuousClock.now.advanced(by: timeout)
+        ) {
+            libssh2_channel_request_pty_size_ex(channel, Int32(columns), Int32(rows), 0, 0)
+        }
+        guard result == 0 else { throw SSHError.channelFailed }
+    }
+
+    func sendPTYEOF(id: UInt64, timeout: Duration) async throws {
+        await acquireOperation()
+        defer { releaseOperation() }
+
+        guard valid, session != nil else { throw SSHError.connectionInvalidated }
+        guard let channel = ptyChannels[id]?.channel else { throw SSHError.channelFailed }
+        let result = try await repeatUntilComplete(
+            deadline: ContinuousClock.now.advanced(by: timeout)
+        ) {
+            libssh2_channel_send_eof(channel)
+        }
+        guard result == 0 || result == LIBSSH2_ERROR_CHANNEL_EOF_SENT else {
+            throw SSHError.channelFailed
+        }
+    }
+
+    func ptyExitStatus(id: UInt64, timeout: Duration) async throws -> Int32 {
+        await acquireOperation()
+        defer { releaseOperation() }
+
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        try checkProgress(deadline: deadline)
+        guard valid, session != nil else { throw SSHError.connectionInvalidated }
+        guard let state = ptyChannels[id], state.reachedEOF else {
+            throw SSHError.channelFailed
+        }
+
+        let closeResult = try await repeatUntilComplete(deadline: deadline) {
+            libssh2_channel_close(state.channel)
+        }
+        guard closeResult == 0 || closeResult == LIBSSH2_ERROR_CHANNEL_CLOSED else {
+            throw SSHError.channelFailed
+        }
+        let waitResult = try await repeatUntilComplete(deadline: deadline) {
+            libssh2_channel_wait_closed(state.channel)
+        }
+        guard waitResult == 0 || waitResult == LIBSSH2_ERROR_CHANNEL_CLOSED else {
+            throw SSHError.channelFailed
+        }
+        ptyChannels[id]?.closed = true
+        return Int32(libssh2_channel_get_exit_status(state.channel))
+    }
+
+    func closePTY(id: UInt64, timeout: Duration) async throws {
+        await acquireOperation()
+        defer { releaseOperation() }
+
+        guard let state = ptyChannels.removeValue(forKey: id) else { return }
+        guard valid, let session else { return }
+        do {
+            let deadline = ContinuousClock.now.advanced(by: timeout)
+            if state.closed {
+                let freeResult = try await repeatUntilComplete(
+                    deadline: deadline,
+                    cancellable: false
+                ) {
+                    libssh2_channel_free(state.channel)
+                }
+                guard freeResult == 0 else { throw SSHError.channelFailed }
+            } else {
+                try await cleanChannel(
+                    state.channel,
+                    session: session,
+                    deadline: deadline,
+                    cancellable: false)
+            }
+        } catch {
+            invalidateResources()
+            throw normalize(error)
         }
     }
 
@@ -890,6 +1150,35 @@ actor SessionDriver {
         guard result == 0 else { throw SSHError.channelFailed }
     }
 
+    private func configurePTY(
+        channel: OpaquePointer,
+        terminal: String,
+        columns: Int,
+        rows: Int,
+        deadline: ContinuousClock.Instant
+    ) async throws {
+        let mergeResult = libssh2_channel_handle_extended_data2(
+            channel,
+            LIBSSH2_CHANNEL_EXTENDED_DATA_MERGE)
+        guard mergeResult == 0 else { throw SSHError.channelFailed }
+
+        let result = try await repeatUntilComplete(deadline: deadline) {
+            terminal.withCString { terminalPointer in
+                libssh2_channel_request_pty_ex(
+                    channel,
+                    terminalPointer,
+                    UInt32(terminal.utf8.count),
+                    nil,
+                    0,
+                    Int32(columns),
+                    Int32(rows),
+                    0,
+                    0)
+            }
+        }
+        guard result == 0 else { throw SSHError.channelFailed }
+    }
+
     private func exchange(
         channel: OpaquePointer,
         input: Data,
@@ -1174,6 +1463,7 @@ actor SessionDriver {
         valid = false
         authenticated = false
         streamLocalChannels.removeAll()
+        ptyChannels.removeAll()
         InvalidatedSessionTeardown.reclaim(&session)
         closeDescriptor()
     }

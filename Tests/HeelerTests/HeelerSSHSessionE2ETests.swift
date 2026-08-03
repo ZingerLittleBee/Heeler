@@ -293,6 +293,112 @@ struct HeelerSSHSessionE2ETests {
     }
 }
 
+@Suite(
+    "HeelerSSH PTY e2e",
+    .enabled(
+        if: HeelerSSHTestEnvironment.isAvailable,
+        "requires the disposable password-authenticated sshd fixture"),
+    .serialized,
+    .timeLimit(.minutes(1)))
+struct HeelerSSHPTYE2ETests {
+    @Test("PTY exec preserves raw IO, merged output, geometry, and exit status")
+    func ptyExecPreservesTerminalSemantics() async throws {
+        let environment = try #require(HeelerSSHTestEnvironment.current)
+        let connection = try await environment.connect()
+
+        try await withClosingConnection(connection) { connection in
+            let channel = try await connection.openPTY(
+                command: "stty -echo; printf 'STDOUT\\n'; printf 'STDERR\\n' >&2; "
+                    + "stty size; while IFS= read -r line; do "
+                    + "printf 'GOT:%s\\n' \"$line\"; stty size; "
+                    + "[ \"$line\" = done ] && exit 23; done",
+                columns: 80,
+                rows: 24,
+                timeout: .seconds(5))
+
+            var output = Data()
+            try await readPTY(channel, into: &output, until: "24 80")
+            let initial = String(decoding: output, as: UTF8.self)
+            #expect(initial.contains("STDOUT"))
+            #expect(initial.contains("STDERR"))
+
+            try await channel.write(Data("raw-\u{1B}[A\n".utf8), timeout: .seconds(5))
+            try await readPTY(channel, into: &output, until: "GOT:raw-\u{1B}[A")
+            try await channel.resize(
+                columns: 101,
+                rows: 43,
+                timeout: .seconds(5))
+            try await channel.write(Data("done\n".utf8), timeout: .seconds(5))
+            try await readPTY(channel, into: &output, until: "43 101")
+            while let chunk = try await channel.read(timeout: .seconds(5)) {
+                output.append(chunk)
+            }
+            #expect(try await channel.exitStatus(timeout: .seconds(1)) == 23)
+            try await channel.close(timeout: .seconds(2))
+
+            let reused = try await connection.execute("printf reused", timeout: .seconds(5))
+            #expect(reused.stdout == Data("reused".utf8))
+        }
+    }
+
+    @Test("PTY EOF remains observable after a clean remote exit")
+    func ptyEOFAndExitStatusAreObservable() async throws {
+        let environment = try #require(HeelerSSHTestEnvironment.current)
+        let connection = try await environment.connect()
+
+        try await withClosingConnection(connection) { connection in
+            let channel = try await connection.openPTY(
+                command: "printf 'DONE\\n'",
+                columns: 80,
+                rows: 24,
+                timeout: .seconds(5))
+
+            var output = Data()
+            while let chunk = try await channel.read(timeout: .seconds(5)) {
+                output.append(chunk)
+            }
+            #expect(String(decoding: output, as: UTF8.self).contains("DONE"))
+            #expect(try await channel.exitStatus(timeout: .seconds(1)) == 0)
+            try await channel.close(timeout: .seconds(2))
+        }
+    }
+
+    @Test("explicit PTY close is prompt and leaves the connection reusable")
+    func explicitPTYClosePreservesConnection() async throws {
+        let environment = try #require(HeelerSSHTestEnvironment.current)
+        let connection = try await environment.connect()
+
+        try await withClosingConnection(connection) { connection in
+            let channel = try await connection.openPTY(
+                command: "printf 'READY\\n'; exec sleep 30",
+                columns: 80,
+                rows: 24,
+                timeout: .seconds(5))
+            var output = Data()
+            try await readPTY(channel, into: &output, until: "READY")
+
+            let started = ContinuousClock.now
+            try await channel.close(timeout: .seconds(2))
+            #expect(ContinuousClock.now - started < .seconds(3))
+            try await channel.close(timeout: .seconds(1))
+
+            let reused = try await connection.execute("printf reused", timeout: .seconds(5))
+            #expect(reused.stdout == Data("reused".utf8))
+        }
+    }
+}
+
+private func readPTY(
+    _ channel: SSHPTYChannel,
+    into output: inout Data,
+    until marker: String
+) async throws {
+    while !String(decoding: output, as: UTF8.self).contains(marker) {
+        let chunk = try #require(try await channel.read(timeout: .seconds(5)))
+        output.append(chunk)
+    }
+}
+
 private struct HeelerSSHTestEnvironment: Sendable {
     let endpoint: SSHEndpoint
     let legacyEndpoint: SSHEndpoint?

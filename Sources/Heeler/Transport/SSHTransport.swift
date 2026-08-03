@@ -74,10 +74,10 @@ struct SSHTransportSettings: Sendable {
     var agentDiscoveryCommand: String = Self.defaultAgentDiscoveryCommand
     /// Command that attaches interactively to a Pane, run on the Host's
     /// dedicated terminal channel with a PTY (#11); the attach target and
-    /// takeover flag are appended (see `attachBootstrapLine`). Injectable so
-    /// tests can substitute a script at the environment boundary; per-Host
-    /// override also covers hosts where herdr is not on the login shell's
-    /// PATH.
+    /// takeover flag are appended. Citadel uses `attachBootstrapLine`, while
+    /// the libssh2 adapter sends it as a direct PTY exec request. Injectable
+    /// so tests can substitute a script at the environment boundary; per-Host
+    /// override also covers hosts where herdr is not on PATH.
     var attachCommand: String = "herdr agent attach"
     /// Command used to print a marker-delimited remote home directory. It is
     /// injectable only at the environment boundary for real-SSH tests.

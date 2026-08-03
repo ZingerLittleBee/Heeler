@@ -1086,6 +1086,46 @@ struct TerminalAttachTests {
                 + "'w1:p1' '/tmp/fake.sock'\n")
     }
 
+    @Test func libssh2ExecUsesTheSameSocketAndTakeoverCommandWithoutBootstrap() throws {
+        let command = try HeelerSSHTransport.attachExecCommand(
+            attachCommand: "herdr agent attach",
+            request: TerminalAttachRequest(
+                target: "w1:p1",
+                takeover: true,
+                cols: 80,
+                rows: 24),
+            socketPath: "/home/u/.config/herdr/sessions/dev/herdr.sock")
+
+        #expect(
+            command == "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
+                + "exec herdr agent attach \"$1\" --takeover' attach "
+                + "'w1:p1' '/home/u/.config/herdr/sessions/dev/herdr.sock'")
+        #expect(!command.contains("heeler-attach"))
+        #expect(!command.contains("printf"))
+        #expect(!command.hasSuffix("\n"))
+    }
+
+    @Test(arguments: [
+        "", "w1'p1", #"w1\p1"#, "w1\np1", "w1\rp1", "w1\u{1B}p1",
+    ])
+    func libssh2ExecRefusesUnquotableTargets(target: String) {
+        #expect(throws: TransportError.self) {
+            _ = try HeelerSSHTransport.attachExecCommand(
+                attachCommand: "herdr agent attach",
+                request: TerminalAttachRequest(target: target, cols: 80, rows: 24),
+                socketPath: "/tmp/fake.sock")
+        }
+    }
+
+    @Test func libssh2ExecRefusesUnquotableSocketPaths() {
+        #expect(throws: TransportError.self) {
+            _ = try HeelerSSHTransport.attachExecCommand(
+                attachCommand: "herdr agent attach",
+                request: TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24),
+                socketPath: "/tmp/it's-a.sock")
+        }
+    }
+
     @Test(arguments: [
         "", "w1'p1", #"w1\p1"#, "w1\np1", "w1\rp1", "w1\u{1B}p1",
     ])
