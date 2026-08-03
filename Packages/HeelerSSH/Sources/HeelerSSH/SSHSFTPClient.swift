@@ -43,6 +43,19 @@ public final class SSHSFTPClient: Sendable {
             timeout: timeout)
     }
 
+    /// Reads one complete optional file without exposing a native read handle.
+    /// A missing file is the expected `nil` case; every other SFTP status is
+    /// surfaced as a path-free `SSHError`.
+    public func readFileIfPresent(
+        at path: String,
+        timeout: Duration
+    ) async throws -> Data? {
+        try await driver.readSFTPFileIfPresent(
+            id: id,
+            path: path,
+            timeout: timeout)
+    }
+
     public func openFileForWriting(
         at path: String,
         permissions: UInt32,

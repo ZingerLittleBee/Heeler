@@ -97,6 +97,13 @@ struct SessionDriverE2ETests {
             to: final,
             timeout: .seconds(5))
         #expect(try await sftp.attributes(at: final, timeout: .seconds(5)).size == UInt64(bytes.count))
+        #expect(
+            try await sftp.readFileIfPresent(at: final, timeout: .seconds(5))
+                == bytes)
+        #expect(
+            try await sftp.readFileIfPresent(
+                at: "\(directory)/absent.json",
+                timeout: .seconds(5)) == nil)
         try await sftp.removeFile(at: final, timeout: .seconds(5))
         await #expect(throws: SSHError.sftpFailure(status: 2)) {
             _ = try await sftp.attributes(at: final, timeout: .seconds(5))

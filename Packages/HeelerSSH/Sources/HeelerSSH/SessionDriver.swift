@@ -854,6 +854,144 @@ actor SessionDriver {
         try checkSFTPResult(result, sftp: sftp, session: session)
     }
 
+    func readSFTPFileIfPresent(
+        id: UInt64,
+        path: String,
+        timeout: Duration
+    ) async throws -> Data? {
+        guard Self.isValidSFTPPath(path) else { throw SSHError.channelFailed }
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        guard let fileID = try await openSFTPFileForReadingIfPresent(
+            sftpID: id,
+            path: path,
+            deadline: deadline)
+        else { return nil }
+
+        do {
+            var contents = Data()
+            while let chunk = try await readSFTPFileChunk(
+                sftpID: id,
+                fileID: fileID,
+                deadline: deadline)
+            {
+                contents.append(chunk)
+            }
+            try await closeSFTPFile(
+                sftpID: id,
+                fileID: fileID,
+                timeout: timeout)
+            return contents
+        } catch {
+            try? await closeSFTPFile(
+                sftpID: id,
+                fileID: fileID,
+                timeout: .seconds(2))
+            throw normalize(error)
+        }
+    }
+
+    private func openSFTPFileForReadingIfPresent(
+        sftpID: UInt64,
+        path: String,
+        deadline: ContinuousClock.Instant
+    ) async throws -> UInt64? {
+        await acquireOperation()
+        defer { releaseOperation() }
+        guard valid, let session, let sftp = sftpClients[sftpID]?.handle else {
+            throw SSHError.connectionInvalidated
+        }
+
+        while true {
+            try checkProgress(deadline: deadline)
+            let file = path.withCString { pathPointer in
+                libssh2_sftp_open_ex(
+                    sftp,
+                    pathPointer,
+                    UInt32(path.utf8.count),
+                    UInt(LIBSSH2_FXF_READ),
+                    0,
+                    Int32(LIBSSH2_SFTP_OPENFILE))
+            }
+            if let file {
+                nextSFTPFileID &+= 1
+                let fileID = nextSFTPFileID
+                sftpClients[sftpID]?.files[fileID] = file
+                return fileID
+            }
+
+            let error = libssh2_session_last_errno(session)
+            if error == LIBSSH2_ERROR_EAGAIN {
+                try await waitForSession(session, deadline: deadline)
+                continue
+            }
+            if Self.isConnectionLoss(error) {
+                invalidateResources()
+                throw SSHError.connectionInvalidated
+            }
+            let status = UInt64(libssh2_sftp_last_error(sftp))
+            if status == UInt64(LIBSSH2_FX_NO_SUCH_FILE) { return nil }
+            throw SSHError.sftpFailure(status: status)
+        }
+    }
+
+    private func readSFTPFileChunk(
+        sftpID: UInt64,
+        fileID: UInt64,
+        deadline: ContinuousClock.Instant
+    ) async throws -> Data? {
+        let maximumChunkBytes = 64 * 1_024
+
+        while true {
+            await acquireOperation()
+            let progress: (
+                data: Data,
+                reachedEOF: Bool,
+                descriptor: Int32,
+                directions: SocketDirections
+            )
+            do {
+                try checkProgress(deadline: deadline)
+                guard
+                    valid,
+                    let session,
+                    let state = sftpClients[sftpID],
+                    let file = state.files[fileID]
+                else {
+                    throw SSHError.connectionInvalidated
+                }
+                var buffer = [UInt8](repeating: 0, count: maximumChunkBytes)
+                let read = buffer.withUnsafeMutableBytes { bytes -> Int in
+                    guard let baseAddress = bytes.baseAddress else { return 0 }
+                    return libssh2_sftp_read(
+                        file,
+                        baseAddress.assumingMemoryBound(to: CChar.self),
+                        bytes.count)
+                }
+                if read < 0, read != Int(LIBSSH2_ERROR_EAGAIN) {
+                    throw mappedSFTPError(sftp: state.handle, code: Int32(read))
+                }
+                progress = (
+                    read > 0 ? Data(buffer.prefix(read)) : Data(),
+                    read == 0,
+                    descriptor,
+                    sessionDirections(session))
+                releaseOperation()
+            } catch {
+                let normalized = normalize(error)
+                if normalized == .connectionInvalidated { invalidateResources() }
+                releaseOperation()
+                throw normalized
+            }
+
+            if !progress.data.isEmpty { return progress.data }
+            if progress.reachedEOF { return nil }
+            try await SocketReadiness.wait(
+                descriptor: progress.descriptor,
+                directions: progress.directions,
+                until: deadline)
+        }
+    }
+
     func openSFTPFileForWriting(
         sftpID: UInt64,
         path: String,

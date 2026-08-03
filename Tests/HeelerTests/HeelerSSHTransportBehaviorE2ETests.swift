@@ -42,6 +42,22 @@ struct HeelerSSHTransportBehaviorE2ETests {
         try await exerciseOrdinaryRPCs(settings: environment.jumpSettings())
     }
 
+    @Test("direct Host notification files preserve atomic SFTP behavior")
+    func directNotificationFiles() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        try await exerciseNotificationFiles(
+            settings: environment.directSettings(),
+            homePath: environment.homePath)
+    }
+
+    @Test("Jump Host notification files preserve atomic SFTP behavior")
+    func jumpNotificationFiles() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        try await exerciseNotificationFiles(
+            settings: environment.jumpSettings(),
+            homePath: environment.homePath)
+    }
+
     @Test("direct Host Events preserve framing, concurrency, and slot reuse")
     func directEventsStream() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
@@ -391,6 +407,128 @@ struct HeelerSSHTransportBehaviorE2ETests {
             try await transport.renameAgent(
                 AgentRenameParams(target: "api-error", name: "fixture"))
         }
+    }
+
+    private func exerciseNotificationFiles(
+        settings baseSettings: SSHTransportSettings,
+        homePath: String
+    ) async throws {
+        let configDirectory =
+            "\(homePath)/.heeler-ci/notify-\(UUID().uuidString.lowercased())"
+        let quotedDirectory = try #require(RemoteShellPath.quotedAbsolute(configDirectory))
+
+        var missingSettings = baseSettings
+        missingSettings.pluginListCommand =
+            "printf '%s' '{\"id\":\"cli:plugin\",\"result\":{\"plugins\":[]}}'"
+        missingSettings.notificationConfigDirCommand = "/bin/sh -c 'exit 99'"
+        let missingTransport = try await HeelerSSHTransport.connect(settings: missingSettings)
+        await #expect(throws: NotificationRegistrationError.pluginNotInstalled) {
+            _ = try await missingTransport.readNotificationRegistration()
+        }
+        try await missingTransport.close()
+
+        var settings = baseSettings
+        settings.pluginListCommand =
+            "printf '%s' '{\"id\":\"cli:plugin\",\"result\":{\"plugins\":["
+            + "{\"plugin_id\":\"heeler.pairing\",\"enabled\":true}]}}'"
+        settings.notificationConfigDirCommand =
+            "/bin/sh -c 'umask 077; mkdir -p \"$1\" || exit 1; "
+            + "printf \"__HEELER_PLUGIN_CONFIG_DIR__=%s\\n\" \"$1\"' notify "
+            + quotedDirectory
+        settings.sessionListCommand = notificationInspectionCommand(
+            quotedDirectory: quotedDirectory)
+
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        defer { Task { try? await transport.close() } }
+
+        #expect(try await transport.readNotificationRegistration() == nil)
+        #expect(try await transport.readNotificationConfig() == nil)
+
+        let firstRegistration = Data(
+            #"{"v":1,"devices":[{"token":"private-device-token","key":"private-notification-key"}]}"#.utf8)
+        try await transport.replaceNotificationRegistration(firstRegistration)
+        #expect(try await transport.readNotificationRegistration() == firstRegistration)
+
+        let configuration = Data(
+            #"{"relay_url":"https://relay.example.test/","future_knob":"kept"}"#.utf8)
+        try await transport.replaceNotificationConfig(configuration)
+        let decodedConfiguration = try NotificationConfigFile.decode(
+            try await transport.readNotificationConfig())
+        #expect(decodedConfiguration.relayURL == "https://relay.example.test")
+
+        let previousLive = Data(#"{"v":1,"devices":[]}"#.utf8)
+        try await transport.replaceNotificationRegistration(previousLive)
+        #expect(try await transport.readNotificationRegistration() == previousLive)
+
+        let cancellation = Task {
+            try await transport.replaceNotificationRegistration(
+                Data(repeating: 0x61, count: 32 * 1_024 * 1_024))
+        }
+        try await Task.sleep(for: .milliseconds(5))
+        cancellation.cancel()
+        await #expect(throws: TransportError.cancelled) {
+            try await cancellation.value
+        }
+        try? await transport.close()
+
+        let verificationTransport = try await HeelerSSHTransport.connect(settings: settings)
+        defer { Task { try? await verificationTransport.close() } }
+        #expect(
+            try await verificationTransport.readNotificationRegistration() == previousLive)
+
+        _ = try await verificationTransport.listSessions()
+        do {
+            try await verificationTransport.replaceNotificationRegistration(
+                Data("replacement".utf8))
+            Issue.record("A failed atomic rename unexpectedly succeeded.")
+        } catch let error as NotificationRegistrationError {
+            guard case .writeFailed = error else {
+                Issue.record("Expected writeFailed, got \(error).")
+                return
+            }
+        }
+        _ = try await verificationTransport.listSessions()
+
+        try await verificationTransport.close()
+        do {
+            _ = try await verificationTransport.readNotificationRegistration()
+            Issue.record("A disconnected notification read unexpectedly succeeded.")
+        } catch let error as NotificationRegistrationError {
+            guard case .readFailed = error else {
+                Issue.record("Expected readFailed, got \(error).")
+                return
+            }
+        }
+        do {
+            try await verificationTransport.replaceNotificationConfig(Data("{}".utf8))
+            Issue.record("A disconnected notification write unexpectedly succeeded.")
+        } catch let error as NotificationRegistrationError {
+            guard case .writeFailed = error else {
+                Issue.record("Expected writeFailed, got \(error).")
+                return
+            }
+        }
+    }
+
+    private func notificationInspectionCommand(quotedDirectory: String) -> String {
+        "/bin/sh -c 'directory=$1; "
+            + "mode() { stat -c \"%a\" \"$1\" 2>/dev/null || stat -f \"%Lp\" \"$1\"; }; "
+            + "if [ ! -e \"$directory/.failure-mode\" ]; then "
+            + "[ \"$(mode \"$directory\")\" = 700 ] || exit 31; "
+            + "[ \"$(mode \"$directory/notifications.json\")\" = 600 ] || exit 32; "
+            + "[ \"$(mode \"$directory/notify.json\")\" = 600 ] || exit 33; "
+            + "[ -z \"$(find \"$directory\" -maxdepth 1 -name \"*.tmp-*\" -print -quit)\" ] "
+            + "|| exit 34; "
+            + "rm -f \"$directory/notifications.json\" || exit 35; "
+            + "mkdir \"$directory/notifications.json\" || exit 36; "
+            + "touch \"$directory/.failure-mode\" || exit 37; "
+            + "else "
+            + "[ -d \"$directory/notifications.json\" ] || exit 38; "
+            + "[ -z \"$(find \"$directory\" -maxdepth 1 -name \"*.tmp-*\" -print -quit)\" ] "
+            + "|| exit 39; "
+            + "chmod 700 \"$directory\"; rm -rf -- \"$directory\" || exit 40; "
+            + "fi; printf \"{\\\"sessions\\\":[]}\\n\"' inspect "
+            + quotedDirectory
     }
 
     private func exerciseEventsStream(settings: SSHTransportSettings) async throws {

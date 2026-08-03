@@ -11,6 +11,30 @@ private enum HeelerSSHAttachPumpError: Error, Sendable {
     case output(String)
 }
 
+private enum HeelerSSHNotificationFileError: Error, Sendable {
+    case permissionVerificationFailed
+}
+
+private actor HeelerSSHNotificationFileCompletion {
+    private var finished = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        guard !finished else { return }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func finish() {
+        guard !finished else { return }
+        finished = true
+        let pendingWaiters = waiters
+        waiters.removeAll(keepingCapacity: false)
+        for waiter in pendingWaiters { waiter.resume() }
+    }
+}
+
 /// Linearizes explicit Attach shutdown with terminal output delivery.
 ///
 /// `AsyncThrowingStream.Continuation.finish()` preserves buffered elements,
@@ -158,8 +182,11 @@ actor HeelerSSHTransport: Transport {
     private let attachCommand: String
     private let homeCommand: String
     private let stageDirectoryCommand: String
+    private let pluginListCommand: String
+    private let notificationConfigDirCommand: String
     private let channelAdmission: SSHChannelAdmission
     private let homeDirectory = SharedAsyncOperation<String>(cachesSuccess: true)
+    private let notificationConfigDirectory = SharedAsyncOperation<String>(cachesSuccess: true)
     private let wake = SharedAsyncOperation<Void>(cachesSuccess: false)
     private var connected = true
 
@@ -182,6 +209,7 @@ actor HeelerSSHTransport: Transport {
     private var terminalChannelState: TerminalChannelState = .idle
     private var nextTerminalReaderID: UInt64 = 0
     private var imageStageClients: [UUID: SSHSFTPClient] = [:]
+    private var notificationFileClients: [UUID: SSHSFTPClient] = [:]
 
     /// Establishes the libssh2 Transport through the same app-owned
     /// credentials and TOFU policy as the production connection path.
@@ -259,6 +287,10 @@ actor HeelerSSHTransport: Transport {
         attachCommand = "herdr agent attach"
         homeCommand = "printf '__HEELER_HOME__=%s\\n' \"$HOME\""
         stageDirectoryCommand = SSHTransportSettings.defaultStageDirectoryCommand
+        pluginListCommand = "herdr plugin list --json"
+        notificationConfigDirCommand =
+            "/bin/sh -c 'printf \"__HEELER_PLUGIN_CONFIG_DIR__=%s\\n\" "
+            + "\"$(herdr plugin config-dir \(SSHTransportSettings.notificationPluginID))\"'"
         channelAdmission = SSHChannelAdmission()
     }
 
@@ -272,6 +304,8 @@ actor HeelerSSHTransport: Transport {
         attachCommand = settings.attachCommand
         homeCommand = settings.homeCommand
         stageDirectoryCommand = settings.stageDirectoryCommand
+        pluginListCommand = settings.pluginListCommand
+        notificationConfigDirCommand = settings.notificationConfigDirCommand
         channelAdmission = SSHChannelAdmission()
     }
 
@@ -555,6 +589,367 @@ actor HeelerSSHTransport: Transport {
             decoding: WorkspaceInfoResponse.self)
     }
 
+    // MARK: Notification plugin files
+
+    static let notificationRegistrationFileName = "notifications.json"
+    static let notificationConfigFileName = "notify.json"
+
+    func readNotificationRegistration() async throws -> Data? {
+        try await readPluginConfigFile(named: Self.notificationRegistrationFileName)
+    }
+
+    func replaceNotificationRegistration(_ contents: Data) async throws {
+        try await replacePluginConfigFile(
+            named: Self.notificationRegistrationFileName,
+            contents: contents)
+    }
+
+    func readNotificationConfig() async throws -> Data? {
+        try await readPluginConfigFile(named: Self.notificationConfigFileName)
+    }
+
+    func replaceNotificationConfig(_ contents: Data) async throws {
+        try await replacePluginConfigFile(
+            named: Self.notificationConfigFileName,
+            contents: contents)
+    }
+
+    private func readPluginConfigFile(named name: String) async throws -> Data? {
+        try await withNotificationFileRequestDeadline {
+            guard await self.notificationConnectionIsAvailable() else {
+                throw NotificationRegistrationError.readFailed(
+                    detail: "The SSH connection is unavailable.")
+            }
+            let directory = try await self.notificationPluginConfigDirectory()
+            let path = "\(directory)/\(name)"
+            let operationID = UUID()
+            return try await self.channelAdmission.withChannel(.ordinarySession) {
+                try await self.performNotificationFileRead(
+                    at: path,
+                    configDirectory: directory,
+                    operationID: operationID)
+            }
+        }
+    }
+
+    private func replacePluginConfigFile(named name: String, contents: Data) async throws {
+        try await withNotificationFileRequestDeadline {
+            guard await self.notificationConnectionIsAvailable() else {
+                throw NotificationRegistrationError.writeFailed(
+                    detail: "The SSH connection is unavailable.")
+            }
+            let directory = try await self.notificationPluginConfigDirectory()
+            let path = "\(directory)/\(name)"
+            let operationID = UUID()
+            try await self.channelAdmission.withChannel(.ordinarySession) {
+                try await self.performNotificationFileReplace(
+                    contents,
+                    at: path,
+                    configDirectory: directory,
+                    operationID: operationID)
+            }
+        }
+    }
+
+    private func notificationConnectionIsAvailable() async -> Bool {
+        guard connected else { return false }
+        return await connection.isConnected
+    }
+
+    private func performNotificationFileRead(
+        at path: String,
+        configDirectory: String,
+        operationID: UUID
+    ) async throws -> Data? {
+        let sftp: SSHSFTPClient
+        do {
+            sftp = try await connection.openSFTP(timeout: requestTimeout)
+        } catch {
+            throw try Self.notificationReadError(error)
+        }
+        notificationFileClients[operationID] = sftp
+
+        do {
+            try Task.checkCancellation()
+            try await enforceNotificationPermissions(
+                0o700,
+                at: configDirectory,
+                over: sftp)
+            let contents = try await sftp.readFileIfPresent(
+                at: path,
+                timeout: requestTimeout)
+            if contents != nil {
+                try await enforceNotificationPermissions(0o600, at: path, over: sftp)
+            }
+            notificationFileClients[operationID] = nil
+            try await sftp.close(timeout: requestTimeout)
+            return contents
+        } catch {
+            notificationFileClients[operationID] = nil
+            try? await sftp.close(timeout: .seconds(2))
+            throw try Self.notificationReadError(error)
+        }
+    }
+
+    private func performNotificationFileReplace(
+        _ contents: Data,
+        at path: String,
+        configDirectory: String,
+        operationID: UUID
+    ) async throws {
+        let sftp: SSHSFTPClient
+        do {
+            sftp = try await connection.openSFTP(timeout: requestTimeout)
+        } catch {
+            throw try Self.notificationWriteError(error)
+        }
+        notificationFileClients[operationID] = sftp
+        var temporaryPath: String? = "\(path).tmp-\(UUID().uuidString.lowercased())"
+
+        do {
+            try Task.checkCancellation()
+            try await enforceNotificationPermissions(
+                0o700,
+                at: configDirectory,
+                over: sftp)
+            guard let currentTemporaryPath = temporaryPath else {
+                throw NotificationRegistrationError.writeFailed(
+                    detail: "The private temporary file is unavailable.")
+            }
+            let file = try await sftp.openFileForWriting(
+                at: currentTemporaryPath,
+                permissions: 0o600,
+                timeout: requestTimeout)
+            do {
+                try await enforceNotificationPermissions(
+                    0o600,
+                    at: currentTemporaryPath,
+                    over: sftp)
+                if !contents.isEmpty {
+                    let timeout = requestTimeout
+                    let write = Task {
+                        try await file.write(contents, timeout: timeout)
+                    }
+                    try await write.value
+                }
+                try await file.close(timeout: requestTimeout)
+            } catch {
+                try? await file.close(timeout: .seconds(2))
+                throw error
+            }
+
+            let temporaryAttributes = try await sftp.attributes(
+                at: currentTemporaryPath,
+                timeout: requestTimeout)
+            guard
+                temporaryAttributes.size == UInt64(contents.count),
+                temporaryAttributes.permissions == 0o600
+            else {
+                throw NotificationRegistrationError.writeFailed(
+                    detail: "The private temporary file failed verification.")
+            }
+            try Task.checkCancellation()
+            try await sftp.renameFileAtomically(
+                from: currentTemporaryPath,
+                to: path,
+                timeout: requestTimeout)
+            temporaryPath = nil
+            notificationFileClients[operationID] = nil
+            try? await sftp.close(timeout: .seconds(2))
+        } catch {
+            notificationFileClients[operationID] = nil
+            if let temporaryPath {
+                await bestEffortRemoveNotificationTemporaryFile(
+                    at: temporaryPath,
+                    over: sftp)
+            }
+            try? await sftp.close(timeout: .seconds(2))
+            throw try Self.notificationWriteError(error)
+        }
+    }
+
+    private func enforceNotificationPermissions(
+        _ permissions: UInt32,
+        at path: String,
+        over sftp: SSHSFTPClient
+    ) async throws {
+        try await sftp.setPermissions(permissions, at: path, timeout: requestTimeout)
+        let attributes = try await sftp.attributes(at: path, timeout: requestTimeout)
+        guard attributes.permissions == permissions else {
+            throw HeelerSSHNotificationFileError.permissionVerificationFailed
+        }
+    }
+
+    private func bestEffortRemoveNotificationTemporaryFile(
+        at path: String,
+        over currentSFTP: SSHSFTPClient
+    ) async {
+        let currentCleanup = Task {
+            do {
+                try await currentSFTP.removeFile(at: path, timeout: .seconds(2))
+                return true
+            } catch {
+                return false
+            }
+        }
+        if await currentCleanup.value { return }
+
+        let cleanup = Task {
+            try? await self.channelAdmission.withChannel(.ordinarySession) {
+                guard
+                    let sftp = try? await self.connection.openSFTP(timeout: .seconds(2))
+                else { return }
+                try? await sftp.removeFile(at: path, timeout: .seconds(2))
+                try? await sftp.close(timeout: .seconds(2))
+            }
+        }
+        await cleanup.value
+    }
+
+    private func withNotificationFileRequestDeadline<T: Sendable>(
+        _ operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        let completion = HeelerSSHNotificationFileCompletion()
+        do {
+            return try await withRequestDeadline {
+                do {
+                    let value = try await operation()
+                    await completion.finish()
+                    return value
+                } catch {
+                    await completion.finish()
+                    throw error
+                }
+            }
+        } catch {
+            let cleanupWait = Task {
+                _ = try? await AsyncDeadline.run(for: .seconds(5)) {
+                    await completion.wait()
+                }
+            }
+            await cleanupWait.value
+            throw error
+        }
+    }
+
+    private func notificationPluginConfigDirectory() async throws -> String {
+        try await notificationConfigDirectory.value {
+            try await self.resolveNotificationConfigDirectory()
+        }
+    }
+
+    private func resolveNotificationConfigDirectory() async throws -> String {
+        let listOutput = try await runNotificationPluginProbe(command: pluginListCommand)
+        try requireNotificationPlugin(in: listOutput)
+        let output = try await runNotificationPluginProbe(command: notificationConfigDirCommand)
+        guard
+            let directory = Self.markerValue(
+                in: output,
+                prefix: Self.pluginConfigDirOutputPrefix),
+            RemoteShellPath.isQuotableAbsolute(directory)
+        else {
+            throw NotificationRegistrationError.pluginProbeFailed(
+                detail: "The plugin config directory response was invalid.")
+        }
+        return directory
+    }
+
+    private func requireNotificationPlugin(in listOutput: Data) throws {
+        let list: NotificationPluginListEnvelope
+        do {
+            list = try JSONDecoder().decode(NotificationPluginListEnvelope.self, from: listOutput)
+        } catch {
+            throw NotificationRegistrationError.pluginProbeFailed(
+                detail: "The plugin list response was invalid.")
+        }
+        let installed = list.result.plugins.contains { plugin in
+            plugin.pluginID == SSHTransportSettings.notificationPluginID
+                && plugin.enabled != false
+        }
+        guard installed else {
+            throw NotificationRegistrationError.pluginNotInstalled
+        }
+    }
+
+    private func runNotificationPluginProbe(command: String) async throws -> Data {
+        do {
+            let result = try await runExec(Self.cLocaleCommand(command))
+            guard result.exitStatus == 0, result.reachedEOF else {
+                throw NotificationRegistrationError.pluginProbeFailed(
+                    detail: "The Host plugin probe failed.")
+            }
+            return result.stdout
+        } catch TransportError.cancelled {
+            throw TransportError.cancelled
+        } catch TransportError.timedOut {
+            throw TransportError.timedOut
+        } catch let error as NotificationRegistrationError {
+            throw error
+        } catch {
+            throw NotificationRegistrationError.pluginProbeFailed(
+                detail: "The Host plugin probe failed.")
+        }
+    }
+
+    private struct NotificationPluginListEnvelope: Decodable {
+        struct ResultBody: Decodable {
+            let plugins: [Entry]
+        }
+
+        struct Entry: Decodable {
+            let pluginID: String?
+            let enabled: Bool?
+
+            private enum CodingKeys: String, CodingKey {
+                case pluginID = "plugin_id"
+                case enabled
+            }
+        }
+
+        let result: ResultBody
+    }
+
+    private static func notificationReadError(_ error: any Error) throws -> Never {
+        if isNotificationCancellation(error) { throw TransportError.cancelled }
+        if isNotificationTimeout(error) { throw TransportError.timedOut }
+        if let error = error as? NotificationRegistrationError { throw error }
+        throw NotificationRegistrationError.readFailed(
+            detail: notificationFailureDetail(error))
+    }
+
+    private static func notificationWriteError(_ error: any Error) throws -> Never {
+        if isNotificationCancellation(error) { throw TransportError.cancelled }
+        if isNotificationTimeout(error) { throw TransportError.timedOut }
+        if let error = error as? NotificationRegistrationError { throw error }
+        throw NotificationRegistrationError.writeFailed(
+            detail: notificationFailureDetail(error))
+    }
+
+    private static func isNotificationCancellation(_ error: any Error) -> Bool {
+        if error is CancellationError { return true }
+        if error as? SSHError == .cancelled { return true }
+        if error as? TransportError == .cancelled { return true }
+        return false
+    }
+
+    private static func isNotificationTimeout(_ error: any Error) -> Bool {
+        if error as? SSHError == .timedOut { return true }
+        if error as? TransportError == .timedOut { return true }
+        return false
+    }
+
+    private static func notificationFailureDetail(_ error: any Error) -> String {
+        if let error = error as? SSHError,
+            case .sftpFailure(let status) = error
+        {
+            return "SFTP failed with status \(status)."
+        }
+        if error as? SSHError == .sftpUnavailable {
+            return "SFTP is unavailable."
+        }
+        return "The SSH file operation failed."
+    }
+
     // MARK: Image staging
 
     func stageImage(
@@ -800,7 +1195,12 @@ actor HeelerSSHTransport: Transport {
         connected = false
         let stagingClients = Array(imageStageClients.values)
         imageStageClients.removeAll()
+        let notificationClients = Array(notificationFileClients.values)
+        notificationFileClients.removeAll()
         for sftp in stagingClients {
+            try? await sftp.close(timeout: .seconds(2))
+        }
+        for sftp in notificationClients {
             try? await sftp.close(timeout: .seconds(2))
         }
         do {
@@ -1023,6 +1423,7 @@ actor HeelerSSHTransport: Transport {
 
     private static let homeOutputPrefix = "__HEELER_HOME__="
     private static let stageDirectoryOutputPrefix = "__HEELER_STAGE_DIR__="
+    private static let pluginConfigDirOutputPrefix = "__HEELER_PLUGIN_CONFIG_DIR__="
 
     private static func markerValue(in output: Data, prefix: String) -> String? {
         String(decoding: output, as: UTF8.self)
