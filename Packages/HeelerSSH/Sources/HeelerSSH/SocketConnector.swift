@@ -7,15 +7,33 @@ enum SocketConnector {
         to endpoint: SSHEndpoint,
         until deadline: ContinuousClock.Instant
     ) async throws -> Int32 {
+        try await connect(
+            to: endpoint,
+            until: deadline,
+            resolver: DNSServiceAddressResolver(),
+            makeSocket: { socket($0, $1, $2) })
+    }
+
+    static func connect(
+        to endpoint: SSHEndpoint,
+        until deadline: ContinuousClock.Instant,
+        resolver: any SocketAddressResolving,
+        makeSocket: @escaping @Sendable (Int32, Int32, Int32) -> Int32
+    ) async throws -> Int32 {
         guard !endpoint.host.isEmpty, endpoint.port > 0 else {
             throw SSHError.invalidEndpoint
         }
 
-        let addresses = try await resolve(endpoint)
+        try checkProgress(until: deadline)
+        let addresses = try await resolver.resolve(endpoint, until: deadline)
         var lastError: SSHError = .connectionFailed
         for address in addresses {
             do {
-                return try await connect(to: address, until: deadline)
+                try checkProgress(until: deadline)
+                return try await connect(
+                    to: address,
+                    until: deadline,
+                    makeSocket: makeSocket)
             } catch let error as SSHError {
                 if error == .cancelled || error == .timedOut {
                     throw error
@@ -26,56 +44,12 @@ enum SocketConnector {
         throw lastError
     }
 
-    private static func resolve(_ endpoint: SSHEndpoint) async throws -> [SocketAddress] {
-        try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                var hints = addrinfo()
-                hints.ai_flags = AI_ADDRCONFIG
-                hints.ai_family = AF_UNSPEC
-                hints.ai_socktype = SOCK_STREAM
-                hints.ai_protocol = IPPROTO_TCP
-
-                var result: UnsafeMutablePointer<addrinfo>?
-                let status = getaddrinfo(
-                    endpoint.host,
-                    String(endpoint.port),
-                    &hints,
-                    &result)
-                guard status == 0, let first = result else {
-                    continuation.resume(throwing: SSHError.connectionFailed)
-                    return
-                }
-                defer { freeaddrinfo(first) }
-
-                var addresses: [SocketAddress] = []
-                var current: UnsafeMutablePointer<addrinfo>? = first
-                while let info = current?.pointee {
-                    if let pointer = info.ai_addr, info.ai_addrlen > 0 {
-                        addresses.append(
-                            SocketAddress(
-                                family: info.ai_family,
-                                type: info.ai_socktype,
-                                protocol: info.ai_protocol,
-                                bytes: Data(
-                                    bytes: pointer,
-                                    count: Int(info.ai_addrlen))))
-                    }
-                    current = info.ai_next
-                }
-                guard !addresses.isEmpty else {
-                    continuation.resume(throwing: SSHError.connectionFailed)
-                    return
-                }
-                continuation.resume(returning: addresses)
-            }
-        }
-    }
-
     private static func connect(
         to address: SocketAddress,
-        until deadline: ContinuousClock.Instant
+        until deadline: ContinuousClock.Instant,
+        makeSocket: @escaping @Sendable (Int32, Int32, Int32) -> Int32
     ) async throws -> Int32 {
-        let descriptor = socket(address.family, address.type, address.protocol)
+        let descriptor = makeSocket(address.family, address.type, address.protocol)
         guard descriptor >= 0 else { throw SSHError.connectionFailed }
         var ownsDescriptor = true
         defer {
@@ -114,9 +88,16 @@ enum SocketConnector {
         ownsDescriptor = false
         return descriptor
     }
+
+    private static func checkProgress(
+        until deadline: ContinuousClock.Instant
+    ) throws {
+        if Task.isCancelled { throw SSHError.cancelled }
+        if ContinuousClock.now >= deadline { throw SSHError.timedOut }
+    }
 }
 
-private struct SocketAddress: Sendable {
+struct SocketAddress: Sendable, Equatable {
     let family: Int32
     let type: Int32
     let `protocol`: Int32

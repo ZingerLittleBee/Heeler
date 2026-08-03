@@ -10,6 +10,26 @@ import Testing
         "requires a password-authenticated sshd fixture"),
     .serialized)
 struct SessionDriverE2ETests {
+    @Test("public connection resolves localhost before authenticating")
+    func publicConnectionResolvesLocalhost() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await SSHConnection.connect(
+            to: SSHEndpoint(host: "localhost", port: environment.endpoint.port),
+            timeout: .seconds(5))
+
+        try await connection.authenticate(
+            username: environment.username,
+            password: environment.password,
+            timeout: .seconds(5))
+        let result = try await connection.execute(
+            "printf resolved",
+            timeout: .seconds(5))
+
+        #expect(result.stdout == Data("resolved".utf8))
+        #expect(result.exitStatus == 0)
+        try await connection.close(timeout: .seconds(1))
+    }
+
     @Test("remote transport loss reclaims every owned native resource")
     func remoteTransportLossReclaimsResources() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
