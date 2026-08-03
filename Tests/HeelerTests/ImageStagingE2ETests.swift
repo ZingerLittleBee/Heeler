@@ -1,5 +1,4 @@
 import Foundation
-import Logging
 import Testing
 
 @testable import Heeler
@@ -7,152 +6,43 @@ import Testing
 @Suite(
     "Image staging e2e",
     .enabled(
-        if: LocalSSHTestEnvironment.isAvailable,
-        "requires localhost sshd, SFTP, and an authorized Ed25519 test key"),
+        if: HeelerSSHTransportBehaviorEnvironment.current != nil,
+        "requires the disposable direct and Jump Host fixtures"),
     .serialized,
-    .timeLimit(.minutes(1)))
+    .timeLimit(.minutes(2)))
 struct ImageStagingE2ETests {
-    @Test func stagingAndCompensationDoNotLogRemotePaths() async throws {
-        let environment = try #require(LocalSSHTestEnvironment.current)
-        let logRecorder = SFTPLogRecorder()
-        LoggingSystem.bootstrap { _ in
-            SFTPPathCapturingLogHandler(recorder: logRecorder)
-        }
-
-        let identifier = UUID().uuidString.lowercased()
-        let localURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("image-stage-log-\(identifier).png")
-        let bytes = Data(repeating: 0x7A, count: 1_024)
-        try bytes.write(to: localURL)
-        defer { try? FileManager.default.removeItem(at: localURL) }
-        let image = PreparedImage(
-            fileURL: localURL,
-            format: .png,
-            pixelWidth: 32,
-            pixelHeight: 32,
-            byteCount: Int64(bytes.count))
-
-        let successPrefix = "heeler-log-success-\(identifier)"
-        let successDirectoryCommand =
-            "/bin/sh -c 'umask 077; "
-            + "directory=$(mktemp -d \"/tmp/\(successPrefix).XXXXXXXX\") || exit 1; "
-            + "printf \"__HEELER_STAGE_DIR__=%s\\n\" \"$directory\"'"
-        let successTransport = try await SSHTransport.connect(
-            settings: environment.makeSettings(
-                socket: .absolutePath("/tmp/herdr-image-stage-unused.sock"),
-                stageDirectoryCommand: successDirectoryCommand))
-        let staged = try await successTransport.stageImage(image) { _ in }
-        let successDirectory = staged.fileURL.deletingLastPathComponent()
-        defer { try? FileManager.default.removeItem(at: successDirectory) }
-        try await successTransport.close()
-
-        let failurePrefix = "heeler-log-failure-\(identifier)"
-        let failureDirectoryCommand =
-            "/bin/sh -c 'umask 077; "
-            + "directory=$(mktemp -d \"/tmp/\(failurePrefix).XXXXXXXX\") || exit 1; "
-            + "chmod 0755 \"$directory\" || exit 1; "
-            + "printf \"__HEELER_STAGE_DIR__=%s\\n\" \"$directory\"'"
-        let failureTransport = try await SSHTransport.connect(
-            settings: environment.makeSettings(
-                socket: .absolutePath("/tmp/herdr-image-stage-unused.sock"),
-                stageDirectoryCommand: failureDirectoryCommand))
-        await #expect(throws: ImageStagingError.permissionEnforcementFailed) {
-            _ = try await failureTransport.stageImage(image) { _ in }
-        }
-        try await failureTransport.close()
-        let failureDirectory = try #require(
-            FileManager.default.contentsOfDirectory(
-                at: URL(fileURLWithPath: "/tmp"),
-                includingPropertiesForKeys: nil
-            ).first { $0.lastPathComponent.hasPrefix(failurePrefix) })
-        defer { try? FileManager.default.removeItem(at: failureDirectory) }
-
-        let messages = logRecorder.messages
-        #expect(!messages.contains { $0.contains(successPrefix) })
-        #expect(!messages.contains { $0.contains(staged.path) })
-        #expect(!messages.contains { $0.contains(failurePrefix) })
+    @Test func directStagingStreamsPrivateFileAndAtomicallyRenamesThePart() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        try await exercisePrivateAtomicStage(settings: environment.directSettings())
     }
 
-    @Test func streamsPrivateFileAndAtomicallyRenamesThePart() async throws {
-        let environment = try #require(LocalSSHTestEnvironment.current)
-        let localURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("image-stage-\(UUID().uuidString).png")
-        let bytes = Data((0..<200_000).map { UInt8(truncatingIfNeeded: $0) })
-        try bytes.write(to: localURL)
-        defer { try? FileManager.default.removeItem(at: localURL) }
-        let image = PreparedImage(
-            fileURL: localURL,
-            format: .png,
-            pixelWidth: 320,
-            pixelHeight: 200,
-            byteCount: Int64(bytes.count))
-        let progress = ProgressRecorder()
-        let transport = try await SSHTransport.connect(
-            settings: environment.makeSettings(
-                socket: .absolutePath("/tmp/herdr-image-stage-unused.sock")))
-
-        let staged: StagedImage
-        do {
-            staged = try await transport.stageImage(image) { value in
-                await progress.record(value)
-            }
-        } catch {
-            try? await transport.close()
-            throw error
-        }
-        defer { try? FileManager.default.removeItem(at: staged.fileURL.deletingLastPathComponent()) }
-
-        #expect(staged.path.hasPrefix("/"))
-        #expect(staged.path.hasSuffix(".png"))
-        #expect(!staged.path.contains(localURL.lastPathComponent))
-        #expect(try Data(contentsOf: staged.fileURL) == bytes)
-        let fileAttributes = try FileManager.default.attributesOfItem(atPath: staged.path)
-        let directoryAttributes = try FileManager.default.attributesOfItem(
-            atPath: staged.fileURL.deletingLastPathComponent().path)
-        #expect((fileAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
-        #expect((directoryAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o700)
-        #expect(
-            try FileManager.default.contentsOfDirectory(
-                atPath: staged.fileURL.deletingLastPathComponent().path)
-                == [staged.fileURL.lastPathComponent])
-        let values = await progress.values
-        #expect(values.first == ImageStageProgress(transferredBytes: 0, totalBytes: bytes.count))
-        #expect(
-            values.last
-                == ImageStageProgress(
-                    transferredBytes: bytes.count,
-                    totalBytes: bytes.count))
-        #expect(values.map(\.transferredBytes) == values.map(\.transferredBytes).sorted())
-
-        try await transport.close()
+    @Test func jumpStagingStreamsPrivateFileAndAtomicallyRenamesThePart() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        try await exercisePrivateAtomicStage(settings: environment.jumpSettings())
     }
 
     @Test func cancellationRemovesOnlyTheCurrentIncompletePart() async throws {
-        let environment = try #require(LocalSSHTestEnvironment.current)
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
         let identifier = UUID().uuidString.lowercased()
         let remotePrefix = "heeler-cancel-\(identifier)"
-        let stageDirectoryCommand =
+        var settings = environment.directSettings()
+        let stagingRoot = "\(environment.homePath)/.heeler-ci"
+        let quotedStagingRoot = try #require(RemoteShellPath.quotedAbsolute(stagingRoot))
+        settings.stageDirectoryCommand =
             "/bin/sh -c 'umask 077; "
-            + "directory=$(mktemp -d \"/tmp/\(remotePrefix).XXXXXXXX\") || exit 1; "
-            + "printf \"__HEELER_STAGE_DIR__=%s\\n\" \"$directory\"'"
-        let localURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("image-stage-cancel-\(identifier).jpg")
-        let bytes = Data(repeating: 0xA5, count: 8 * 1_024 * 1_024)
-        try bytes.write(to: localURL)
-        defer { try? FileManager.default.removeItem(at: localURL) }
-        let image = PreparedImage(
-            fileURL: localURL,
-            format: .jpeg,
-            pixelWidth: 4_096,
-            pixelHeight: 2_048,
-            byteCount: Int64(bytes.count))
+            + "directory=$(mktemp -d \"$1/\(remotePrefix).XXXXXXXX\") || exit 1; "
+            + "printf keep > \"$directory/sentinel\"; "
+            + "printf \"__HEELER_STAGE_DIR__=%s\\n\" \"$directory\"' stage "
+            + quotedStagingRoot
+        let prepared = try makePreparedImage(
+            named: "image-stage-cancel-\(identifier).jpg",
+            byteCount: ImagePreparer.maximumEncodedByteCount,
+            format: .jpeg)
+        defer { try? FileManager.default.removeItem(at: prepared.image.fileURL) }
         let holdProgress = ScriptedTransportCallGate()
-        let transport = try await SSHTransport.connect(
-            settings: environment.makeSettings(
-                socket: .absolutePath("/tmp/herdr-image-stage-unused.sock"),
-                stageDirectoryCommand: stageDirectoryCommand))
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
         let task = Task {
-            try await transport.stageImage(image) { value in
+            try await transport.stageImage(prepared.image) { value in
                 if value.transferredBytes > 0 {
                     await holdProgress.waitUntilOpen()
                 }
@@ -168,128 +58,194 @@ struct ImageStagingE2ETests {
         await #expect(throws: ImageStagingError.cancelled) {
             _ = try await task.value
         }
-        let stagedDirectories = try FileManager.default.contentsOfDirectory(
-            at: URL(fileURLWithPath: "/tmp"),
+        let parent = try #require(
+            try stagedDirectories(in: stagingRoot, prefix: remotePrefix).first)
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let contents = try FileManager.default.contentsOfDirectory(
+            at: parent,
             includingPropertiesForKeys: nil)
-            .filter { $0.lastPathComponent.hasPrefix(remotePrefix) }
-        #expect(stagedDirectories.count == 1)
-        let directory = try #require(stagedDirectories.first)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        #expect(
-            try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+        #expect(contents.contains { $0.lastPathComponent == "sentinel" })
+        let stageDirectory = try #require(
+            contents.first { $0.lastPathComponent.hasPrefix("stage-") })
+        #expect(try FileManager.default.contentsOfDirectory(atPath: stageDirectory.path).isEmpty)
+        #expect(try await transport.ping().protocolVersion == 17)
         try await transport.close()
     }
 
     @Test func disconnectedTransportSurfacesRetryableTransferFailure() async throws {
-        let environment = try #require(LocalSSHTestEnvironment.current)
-        let localURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("image-stage-disconnected-\(UUID().uuidString).png")
-        let bytes = Data(repeating: 0x3C, count: 1_024)
-        try bytes.write(to: localURL)
-        defer { try? FileManager.default.removeItem(at: localURL) }
-        let image = PreparedImage(
-            fileURL: localURL,
-            format: .png,
-            pixelWidth: 32,
-            pixelHeight: 32,
-            byteCount: Int64(bytes.count))
-        let transport = try await SSHTransport.connect(
-            settings: environment.makeSettings(
-                socket: .absolutePath("/tmp/herdr-image-stage-unused.sock")))
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let prepared = try makePreparedImage(
+            named: "image-stage-disconnected-\(UUID().uuidString).png",
+            byteCount: 1_024,
+            format: .png)
+        defer { try? FileManager.default.removeItem(at: prepared.image.fileURL) }
+        let transport = try await HeelerSSHTransport.connect(settings: environment.directSettings())
         try await transport.close()
 
-        await #expect(throws: ImageStagingError.transferFailed) {
-            _ = try await transport.stageImage(image) { _ in }
+        do {
+            _ = try await transport.stageImage(prepared.image) { _ in }
+            Issue.record("A disconnected transport unexpectedly staged an image.")
+        } catch let error as ImageStagingError {
+            #expect(error == .transferFailed)
+            #expect(error.isRetryable)
         }
     }
 
-    @Test func stagingSharesCapacityWithRPCsWhileEventsAndAttachAreLive() async throws {
-        let environment = try #require(LocalSSHTestEnvironment.current)
-        let server = try FakeHerdrServer { request in
-            if request.method == "events.subscribe" {
-                return .streamThenHold([
-                    .write(
-                        #"{"id":"\#(request.id)","result":{"type":"subscription_started"}}"#)
-                ])
-            }
-            return nil
+    @Test func sftpStatusFailureIsRetryableAndDoesNotExposeTheRemotePath() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let privatePath = "/root/heeler-private-\(UUID().uuidString)"
+        var settings = environment.directSettings()
+        settings.stageDirectoryCommand =
+            "printf '__HEELER_STAGE_DIR__=%s\\n' '\(privatePath)'"
+        let prepared = try makePreparedImage(
+            named: "image-stage-status-\(UUID().uuidString).png",
+            byteCount: 1_024,
+            format: .png)
+        defer { try? FileManager.default.removeItem(at: prepared.image.fileURL) }
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        defer { Task { try? await transport.close() } }
+
+        do {
+            _ = try await transport.stageImage(prepared.image) { _ in }
+            Issue.record("An inaccessible staging parent unexpectedly succeeded.")
+        } catch let error as ImageStagingError {
+            #expect(error == .transferFailed)
+            #expect(error.isRetryable)
+            #expect(!String(describing: error).contains(privatePath))
         }
-        defer { server.stop() }
+    }
 
-        let identifier = UUID().uuidString.lowercased()
-        let attachScript = FileManager.default.temporaryDirectory
-            .appendingPathComponent("image-stage-attach-\(identifier).sh")
-        try """
-        printf 'READY\\n'
-        exec sleep 30
-        """.write(to: attachScript, atomically: true, encoding: .utf8)
-        defer { try? FileManager.default.removeItem(at: attachScript) }
+    @Test func directEventsAndAttachStayLiveDuringStagingAndEightRPCs() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        try await exerciseConcurrentChannels(settings: environment.directSettings())
+    }
 
-        let localURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("image-stage-capacity-\(identifier).png")
-        let bytes = Data(repeating: 0x4B, count: 200_000)
-        try bytes.write(to: localURL)
-        defer { try? FileManager.default.removeItem(at: localURL) }
-        let image = PreparedImage(
-            fileURL: localURL,
-            format: .png,
-            pixelWidth: 320,
-            pixelHeight: 200,
-            byteCount: Int64(bytes.count))
+    @Test func jumpEventsAndAttachStayLiveDuringStagingAndEightRPCs() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        try await exerciseConcurrentChannels(settings: environment.jumpSettings())
+    }
 
-        var settings = environment.makeSettings(
-            socket: .absolutePath(server.socketPath),
-            wakeCommand: "false",
-            requestTimeout: .seconds(20))
-        settings.attachCommand = "/bin/sh \(attachScript.path)"
-        let transport = try await SSHTransport.connect(settings: settings)
-        let events = try await transport.subscribeToEvents([.global(.paneCreated)])
-        let attach = try await transport.attachTerminal(
-            TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24))
-        var attachOutput = attach.output.makeAsyncIterator()
-        var attachText = ""
-        while !attachText.contains("READY") {
-            guard let bytes = try await attachOutput.next() else {
-                Issue.record("Attach ended before the capacity test was ready.")
-                break
-            }
-            attachText += String(decoding: bytes, as: UTF8.self)
+    private func exercisePrivateAtomicStage(settings: SSHTransportSettings) async throws {
+        let prepared = try makePreparedImage(
+            named: "image-stage-\(UUID().uuidString).png",
+            byteCount: 200_000,
+            format: .png)
+        defer { try? FileManager.default.removeItem(at: prepared.image.fileURL) }
+        let progress = ProgressRecorder()
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+
+        let staged = try await transport.stageImage(prepared.image) { value in
+            await progress.record(value)
         }
+        let stageDirectory = staged.fileURL.deletingLastPathComponent()
+        let parentDirectory = stageDirectory.deletingLastPathComponent()
+        defer { try? FileManager.default.removeItem(at: parentDirectory) }
 
-        let requests = (0..<SSHTransport.maxConcurrentExecChannels).map { _ in
-            Task { try await transport.listAgents() }
-        }
+        #expect(staged.path.hasPrefix("/"))
+        #expect(staged.path.hasSuffix(".png"))
+        #expect(!staged.path.contains(prepared.image.fileURL.lastPathComponent))
+        #expect(try Data(contentsOf: staged.fileURL) == prepared.bytes)
+        let fileAttributes = try FileManager.default.attributesOfItem(atPath: staged.path)
+        let stageAttributes = try FileManager.default.attributesOfItem(atPath: stageDirectory.path)
+        let parentAttributes = try FileManager.default.attributesOfItem(atPath: parentDirectory.path)
+        #expect((fileAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+        #expect((stageAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o700)
+        #expect((parentAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o700)
         #expect(
-            await server.wait(for: {
-                $0.receivedRequests.filter { $0.method == "agent.list" }.count
-                    == SSHTransport.maxConcurrentExecChannels
-            }))
+            try FileManager.default.contentsOfDirectory(atPath: stageDirectory.path)
+                == [staged.fileURL.lastPathComponent])
+        let values = await progress.values
+        #expect(values.first == ImageStageProgress(
+            transferredBytes: 0,
+            totalBytes: prepared.bytes.count))
+        #expect(values.last == ImageStageProgress(
+            transferredBytes: prepared.bytes.count,
+            totalBytes: prepared.bytes.count))
+        #expect(values.map(\.transferredBytes) == values.map(\.transferredBytes).sorted())
 
+        try await transport.close()
+    }
+
+    private func exerciseConcurrentChannels(settings: SSHTransportSettings) async throws {
+        let prepared = try makePreparedImage(
+            named: "image-stage-concurrent-\(UUID().uuidString).png",
+            byteCount: 2 * 1_024 * 1_024,
+            format: .png)
+        defer { try? FileManager.default.removeItem(at: prepared.image.fileURL) }
+        let holdProgress = ScriptedTransportCallGate()
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        let events = try await transport.subscribeToEvents([.global(.paneCreated)])
+        var eventIterator = events.events.makeAsyncIterator()
+        let attach = try await transport.attachTerminal(
+            TerminalAttachRequest(target: "fixture:staging", cols: 80, rows: 24))
+        var attachIterator = attach.output.makeAsyncIterator()
         let staging = Task {
-            try await transport.stageImage(image) { _ in }
-        }
-        try await Task.sleep(for: .milliseconds(150))
-
-        requests[0].cancel()
-        await #expect(throws: TransportError.cancelled) {
-            _ = try await requests[0].value
-        }
-        let staged = try await staging.value
-        defer {
-            try? FileManager.default.removeItem(
-                at: staged.fileURL.deletingLastPathComponent())
-        }
-        #expect(try Data(contentsOf: staged.fileURL) == bytes)
-
-        for request in requests.dropFirst() {
-            request.cancel()
-            await #expect(throws: TransportError.cancelled) {
-                _ = try await request.value
+            try await transport.stageImage(prepared.image) { value in
+                if value.transferredBytes > 0 {
+                    await holdProgress.waitUntilOpen()
+                }
             }
         }
+        try await waitUntil("SFTP should hold one ordinary session slot") {
+            await holdProgress.entryCount > 0
+        }
+
+        try await AsyncDeadline.run(for: .seconds(10)) {
+            try await withThrowingTaskGroup(of: ServerInfo.self) { group in
+                for _ in 0..<HeelerSSHTransport.maxConcurrentForwardingChannels {
+                    group.addTask { try await transport.ping() }
+                }
+                for try await server in group {
+                    #expect(server.protocolVersion == 17)
+                }
+            }
+        }
+
+        await holdProgress.open()
+        let staged = try await staging.value
+        let parentDirectory = staged.fileURL.deletingLastPathComponent()
+            .deletingLastPathComponent()
+        defer { try? FileManager.default.removeItem(at: parentDirectory) }
+        #expect(try Data(contentsOf: staged.fileURL) == prepared.bytes)
+        #expect(try await transport.ping().protocolVersion == 17)
+
+        let event = try await eventIterator.next()
+        #expect(event?.kind == HerdrEventKind(name: "future_herdr_event"))
+        attach.send(Data("probe-after-stage\n".utf8))
+        var attachOutput = ""
+        while !attachOutput.contains("GOT:probe-after-stage") {
+            let chunk = try #require(try await attachIterator.next())
+            attachOutput += String(decoding: chunk, as: UTF8.self)
+        }
+
         await attach.end()
         await events.end()
         try await transport.close()
+    }
+
+    private func makePreparedImage(
+        named name: String,
+        byteCount: Int,
+        format: PreparedImageFormat
+    ) throws -> (image: PreparedImage, bytes: Data) {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+        let bytes = Data((0..<byteCount).map { UInt8(truncatingIfNeeded: $0) })
+        try bytes.write(to: url)
+        return (
+            PreparedImage(
+                fileURL: url,
+                format: format,
+                pixelWidth: 4_096,
+                pixelHeight: 2_048,
+                byteCount: Int64(bytes.count)),
+            bytes)
+    }
+
+    private func stagedDirectories(in parent: String, prefix: String) throws -> [URL] {
+        try FileManager.default.contentsOfDirectory(
+            at: URL(fileURLWithPath: parent),
+            includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix(prefix) }
     }
 
     private func waitUntil(
@@ -299,7 +255,7 @@ struct ImageStagingE2ETests {
     ) async throws {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
-            if await condition() { break }
+            if await condition() { return }
             try await Task.sleep(for: .milliseconds(5))
         }
         #expect(await condition(), comment)
@@ -311,36 +267,5 @@ struct ImageStagingE2ETests {
         func record(_ progress: ImageStageProgress) {
             values.append(progress)
         }
-    }
-}
-
-private final class SFTPLogRecorder: @unchecked Sendable {
-    private let lock = NSLock()
-    private var storage: [String] = []
-
-    var messages: [String] {
-        lock.withLock { storage }
-    }
-
-    func record(_ message: String) {
-        lock.withLock {
-            storage.append(message)
-        }
-    }
-}
-
-private struct SFTPPathCapturingLogHandler: LogHandler {
-    let recorder: SFTPLogRecorder
-    var metadataProvider: Logger.MetadataProvider?
-    var metadata: Logger.Metadata = [:]
-    var logLevel: Logger.Level = .trace
-
-    subscript(metadataKey key: String) -> Logger.Metadata.Value? {
-        get { metadata[key] }
-        set { metadata[key] = newValue }
-    }
-
-    func log(event: LogEvent) {
-        recorder.record(event.message.description)
     }
 }

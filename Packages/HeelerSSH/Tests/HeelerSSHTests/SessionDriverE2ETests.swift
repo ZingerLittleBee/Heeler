@@ -58,6 +58,73 @@ struct SessionDriverE2ETests {
                 isValid: false))
         }
     }
+
+    @Test("minimal SFTP surface creates, writes, attributes, renames, and removes")
+    func minimalSFTPSurface() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        let rootResult = try await connection.execute(
+            "mktemp -d /tmp/heeler-sftp.XXXXXXXX",
+            timeout: .seconds(5))
+        let root = String(decoding: rootResult.stdout, as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let directory = "\(root)/private"
+        let partial = "\(directory)/image.part"
+        let final = "\(directory)/image.png"
+        let bytes = Data((0..<200_000).map { UInt8(truncatingIfNeeded: $0) })
+
+        let sftp = try await connection.openSFTP(timeout: .seconds(5))
+        try await sftp.createDirectory(
+            at: directory,
+            permissions: 0o700,
+            timeout: .seconds(5))
+        try await sftp.setPermissions(0o700, at: directory, timeout: .seconds(5))
+        #expect(try await sftp.attributes(at: directory, timeout: .seconds(5)).permissions == 0o700)
+
+        let file = try await sftp.openFileForWriting(
+            at: partial,
+            permissions: 0o600,
+            timeout: .seconds(5))
+        try await file.write(bytes, timeout: .seconds(5))
+        try await file.close(timeout: .seconds(5))
+        try await sftp.setPermissions(0o600, at: partial, timeout: .seconds(5))
+        let partialAttributes = try await sftp.attributes(at: partial, timeout: .seconds(5))
+        #expect(partialAttributes.size == UInt64(bytes.count))
+        #expect(partialAttributes.permissions == 0o600)
+
+        try await sftp.renameFileAtomically(
+            from: partial,
+            to: final,
+            timeout: .seconds(5))
+        #expect(try await sftp.attributes(at: final, timeout: .seconds(5)).size == UInt64(bytes.count))
+        try await sftp.removeFile(at: final, timeout: .seconds(5))
+        await #expect(throws: SSHError.sftpFailure(status: 2)) {
+            _ = try await sftp.attributes(at: final, timeout: .seconds(5))
+        }
+
+        try await sftp.close(timeout: .seconds(5))
+        _ = try await connection.execute("rm -rf -- '\(root)'", timeout: .seconds(5))
+        try await connection.close(timeout: .seconds(2))
+    }
+
+    @Test("SFTP status errors never include remote paths")
+    func sftpStatusErrorsArePathFree() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        let sftp = try await connection.openSFTP(timeout: .seconds(5))
+        let privatePath = "/tmp/heeler-private-\(UUID().uuidString)"
+
+        do {
+            _ = try await sftp.attributes(at: privatePath, timeout: .seconds(5))
+            Issue.record("A missing remote path unexpectedly existed.")
+        } catch {
+            #expect(error as? SSHError == .sftpFailure(status: 2))
+            #expect(!String(describing: error).contains(privatePath))
+        }
+
+        try await sftp.close(timeout: .seconds(5))
+        try await connection.close(timeout: .seconds(2))
+    }
 }
 
 private struct SessionDriverTestEnvironment: Sendable {
@@ -82,4 +149,15 @@ private struct SessionDriverTestEnvironment: Sendable {
             username: username,
             password: password)
     }()
+
+    func connect() async throws -> SSHConnection {
+        let connection = try await SSHConnection.connect(
+            to: endpoint,
+            timeout: .seconds(5))
+        try await connection.authenticate(
+            username: username,
+            password: password,
+            timeout: .seconds(5))
+        return connection
+    }
 }

@@ -156,6 +156,12 @@ public final class SSHConnection: Sendable {
             timeout: timeout)
     }
 
+    /// Opens the package's deliberately small SFTP surface on one SSH session
+    /// channel. Closing the returned client leaves this connection reusable.
+    public func openSFTP(timeout: Duration) async throws -> SSHSFTPClient {
+        try await driver.openSFTP(timeout: timeout)
+    }
+
     /// Whether this session still has a live native connection that can
     /// safely admit another operation. An uncertain channel outcome makes
     /// this false before the app can reuse the connection.

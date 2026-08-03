@@ -143,8 +143,11 @@ final class HeelerSSHAttachOutputGate: Sendable {
 actor HeelerSSHTransport: Transport {
     static let supportedProtocolVersion = 17
     static let maximumResponseBytes = 1_048_576
-    static let maxConcurrentForwardingChannels = 8
-    static let maxConcurrentExecChannels = 8
+    static let maxConcurrentForwardingChannels =
+        SSHChannelAdmission.Limits.production.ordinaryForwarding
+    static let maxConcurrentExecChannels =
+        SSHChannelAdmission.Limits.production.ordinarySession
+    static let maxConnectionChannels = SSHChannelAdmission.Limits.production.connection
 
     private let connection: SSHConnection
     private let socketLocation: HerdrSocketLocation
@@ -154,8 +157,8 @@ actor HeelerSSHTransport: Transport {
     private let agentDiscoveryCommand: String
     private let attachCommand: String
     private let homeCommand: String
-    private let forwardingChannelBudget: SSHChannelBudget
-    private let execChannelBudget: SSHChannelBudget
+    private let stageDirectoryCommand: String
+    private let channelAdmission: SSHChannelAdmission
     private let homeDirectory = SharedAsyncOperation<String>(cachesSuccess: true)
     private let wake = SharedAsyncOperation<Void>(cachesSuccess: false)
     private var connected = true
@@ -178,6 +181,7 @@ actor HeelerSSHTransport: Transport {
 
     private var terminalChannelState: TerminalChannelState = .idle
     private var nextTerminalReaderID: UInt64 = 0
+    private var imageStageClients: [UUID: SSHSFTPClient] = [:]
 
     /// Establishes the libssh2 Transport through the same app-owned
     /// credentials and TOFU policy as the production connection path.
@@ -254,9 +258,8 @@ actor HeelerSSHTransport: Transport {
         agentDiscoveryCommand = SSHTransportSettings.defaultAgentDiscoveryCommand
         attachCommand = "herdr agent attach"
         homeCommand = "printf '__HEELER_HOME__=%s\\n' \"$HOME\""
-        forwardingChannelBudget = SSHChannelBudget(
-            capacity: Self.maxConcurrentForwardingChannels)
-        execChannelBudget = SSHChannelBudget(capacity: Self.maxConcurrentExecChannels)
+        stageDirectoryCommand = SSHTransportSettings.defaultStageDirectoryCommand
+        channelAdmission = SSHChannelAdmission()
     }
 
     private init(connection: SSHConnection, settings: SSHTransportSettings) {
@@ -268,9 +271,8 @@ actor HeelerSSHTransport: Transport {
         agentDiscoveryCommand = settings.agentDiscoveryCommand
         attachCommand = settings.attachCommand
         homeCommand = settings.homeCommand
-        forwardingChannelBudget = SSHChannelBudget(
-            capacity: Self.maxConcurrentForwardingChannels)
-        execChannelBudget = SSHChannelBudget(capacity: Self.maxConcurrentExecChannels)
+        stageDirectoryCommand = settings.stageDirectoryCommand
+        channelAdmission = SSHChannelAdmission()
     }
 
     private static func connectDirect(
@@ -346,7 +348,7 @@ actor HeelerSSHTransport: Transport {
             .algorithmNegotiationFailed, .connectionInvalidated:
             return .sshUnreachable(detail: String(describing: error))
         case .channelFailed, .streamLocalOpenFailed, .unexpectedEOF,
-            .responseTooLarge:
+            .responseTooLarge, .sftpUnavailable, .sftpFailure:
             return .channelFailed(detail: String(describing: error))
         }
     }
@@ -553,6 +555,239 @@ actor HeelerSSHTransport: Transport {
             decoding: WorkspaceInfoResponse.self)
     }
 
+    // MARK: Image staging
+
+    func stageImage(
+        _ image: PreparedImage,
+        progress: @escaping @Sendable (ImageStageProgress) async -> Void
+    ) async throws -> StagedImage {
+        guard
+            image.byteCount > 0,
+            image.byteCount <= Int64(ImagePreparer.maximumEncodedByteCount),
+            let localSize = try? FileManager.default.attributesOfItem(
+                atPath: image.fileURL.path)[.size] as? NSNumber,
+            localSize.int64Value == image.byteCount
+        else {
+            throw ImageStagingError.invalidPreparedImage
+        }
+        guard connected, await connection.isConnected else {
+            throw ImageStagingError.transferFailed
+        }
+
+        await progress(ImageStageProgress(transferredBytes: 0, totalBytes: image.byteCount))
+        let parentDirectory = try await createStageParentDirectory()
+        let operationID = UUID()
+
+        do {
+            return try await channelAdmission.withChannel(.ordinarySession) {
+                try await withTaskCancellationHandler {
+                    try await self.performImageStage(
+                        image,
+                        parentDirectory: parentDirectory,
+                        operationID: operationID,
+                        progress: progress)
+                } onCancel: {
+                    Task { await self.cancelImageStage(operationID) }
+                }
+            }
+        } catch let error as ImageStagingError {
+            throw error
+        } catch is CancellationError {
+            throw ImageStagingError.cancelled
+        } catch {
+            throw Task.isCancelled
+                ? ImageStagingError.cancelled : ImageStagingError.transferFailed
+        }
+    }
+
+    private func createStageParentDirectory() async throws -> String {
+        do {
+            let result = try await runExec(Self.cLocaleCommand(stageDirectoryCommand))
+            guard
+                result.exitStatus == 0,
+                result.reachedEOF,
+                let directory = Self.markerValue(
+                    in: result.stdout,
+                    prefix: Self.stageDirectoryOutputPrefix)
+            else {
+                throw ImageStagingError.remoteTemporaryDirectoryFailed
+            }
+            return try StagedImage(path: "\(directory)/placeholder").fileURL
+                .deletingLastPathComponent().path
+        } catch let error as ImageStagingError {
+            throw error
+        } catch TransportError.cancelled {
+            throw ImageStagingError.cancelled
+        } catch {
+            let connectionIsConnected = await connection.isConnected
+            if !connected || !connectionIsConnected {
+                throw ImageStagingError.transferFailed
+            }
+            throw ImageStagingError.remoteTemporaryDirectoryFailed
+        }
+    }
+
+    private func performImageStage(
+        _ image: PreparedImage,
+        parentDirectory: String,
+        operationID: UUID,
+        progress: @escaping @Sendable (ImageStageProgress) async -> Void
+    ) async throws -> StagedImage {
+        let sftp: SSHSFTPClient
+        do {
+            sftp = try await connection.openSFTP(timeout: requestTimeout)
+        } catch SSHError.sftpUnavailable {
+            throw ImageStagingError.sftpUnavailable
+        } catch {
+            if Task.isCancelled { throw ImageStagingError.cancelled }
+            throw ImageStagingError.transferFailed
+        }
+        imageStageClients[operationID] = sftp
+
+        let stageID = UUID().uuidString.lowercased()
+        let remoteDirectory = "\(parentDirectory)/stage-\(stageID)"
+        let finalPath = "\(remoteDirectory)/image.\(image.format.fileExtension)"
+        var partPath: String? = "\(finalPath).part"
+
+        do {
+            try await enforcePermissions(0o700, at: parentDirectory, over: sftp)
+            try await sftp.createDirectory(
+                at: remoteDirectory,
+                permissions: 0o700,
+                timeout: requestTimeout)
+            try await enforcePermissions(0o700, at: remoteDirectory, over: sftp)
+
+            guard let currentPartPath = partPath else {
+                throw ImageStagingError.transferFailed
+            }
+            try await streamImage(
+                image,
+                to: currentPartPath,
+                over: sftp,
+                progress: progress)
+            try Task.checkCancellation()
+
+            let uploadedAttributes = try await sftp.attributes(
+                at: currentPartPath,
+                timeout: requestTimeout)
+            guard uploadedAttributes.size == UInt64(image.byteCount) else {
+                throw ImageStagingError.byteCountMismatch
+            }
+            guard uploadedAttributes.permissions == 0o600 else {
+                throw ImageStagingError.permissionEnforcementFailed
+            }
+            try await sftp.renameFileAtomically(
+                from: currentPartPath,
+                to: finalPath,
+                timeout: requestTimeout)
+            partPath = nil
+
+            let finalAttributes = try await sftp.attributes(
+                at: finalPath,
+                timeout: requestTimeout)
+            guard finalAttributes.size == UInt64(image.byteCount) else {
+                throw ImageStagingError.byteCountMismatch
+            }
+            guard finalAttributes.permissions == 0o600 else {
+                throw ImageStagingError.permissionEnforcementFailed
+            }
+            let staged = try StagedImage(path: finalPath)
+            imageStageClients[operationID] = nil
+            try await sftp.close(timeout: requestTimeout)
+            return staged
+        } catch {
+            imageStageClients[operationID] = nil
+            try? await sftp.close(timeout: .seconds(2))
+            if let partPath {
+                await bestEffortRemoveRemoteFile(at: partPath)
+            }
+            if Task.isCancelled { throw ImageStagingError.cancelled }
+            if let stagingError = error as? ImageStagingError {
+                throw stagingError
+            }
+            if error as? SSHError == .sftpUnavailable {
+                throw ImageStagingError.sftpUnavailable
+            }
+            throw ImageStagingError.transferFailed
+        }
+    }
+
+    private func enforcePermissions(
+        _ permissions: UInt32,
+        at path: String,
+        over sftp: SSHSFTPClient
+    ) async throws {
+        try await sftp.setPermissions(permissions, at: path, timeout: requestTimeout)
+        let attributes = try await sftp.attributes(at: path, timeout: requestTimeout)
+        guard attributes.permissions == permissions else {
+            throw ImageStagingError.permissionEnforcementFailed
+        }
+    }
+
+    private func streamImage(
+        _ image: PreparedImage,
+        to remotePath: String,
+        over sftp: SSHSFTPClient,
+        progress: @escaping @Sendable (ImageStageProgress) async -> Void
+    ) async throws {
+        let localFile: FileHandle
+        do {
+            localFile = try FileHandle(forReadingFrom: image.fileURL)
+        } catch {
+            throw ImageStagingError.localReadFailed
+        }
+        defer { try? localFile.close() }
+
+        let remoteFile = try await sftp.openFileForWriting(
+            at: remotePath,
+            permissions: 0o600,
+            timeout: requestTimeout)
+        do {
+            try await enforcePermissions(0o600, at: remotePath, over: sftp)
+            let chunkSize = 64 * 1_024
+            var transferred: Int64 = 0
+            while transferred < image.byteCount {
+                try Task.checkCancellation()
+                let remaining = image.byteCount - transferred
+                let requested = min(chunkSize, Int(remaining))
+                guard
+                    let data = try localFile.read(upToCount: requested),
+                    !data.isEmpty
+                else {
+                    throw ImageStagingError.byteCountMismatch
+                }
+                try await remoteFile.write(data, timeout: requestTimeout)
+                transferred += Int64(data.count)
+                await progress(ImageStageProgress(
+                    transferredBytes: transferred,
+                    totalBytes: image.byteCount))
+            }
+            guard try localFile.read(upToCount: 1)?.isEmpty != false else {
+                throw ImageStagingError.byteCountMismatch
+            }
+            try await remoteFile.close(timeout: requestTimeout)
+        } catch {
+            try? await remoteFile.close(timeout: .seconds(2))
+            throw error
+        }
+    }
+
+    private func cancelImageStage(_ operationID: UUID) async {
+        guard let sftp = imageStageClients[operationID] else { return }
+        try? await sftp.close(timeout: .seconds(2))
+    }
+
+    private func bestEffortRemoveRemoteFile(at path: String) async {
+        let cleanup = Task {
+            guard let sftp = try? await self.connection.openSFTP(timeout: .seconds(2)) else {
+                return
+            }
+            try? await sftp.removeFile(at: path, timeout: .seconds(2))
+            try? await sftp.close(timeout: .seconds(2))
+        }
+        await cleanup.value
+    }
+
     var isConnected: Bool {
         get async {
             guard connected else { return false }
@@ -563,6 +798,11 @@ actor HeelerSSHTransport: Transport {
     func close() async throws {
         guard connected else { return }
         connected = false
+        let stagingClients = Array(imageStageClients.values)
+        imageStageClients.removeAll()
+        for sftp in stagingClients {
+            try? await sftp.close(timeout: .seconds(2))
+        }
         do {
             try await connection.close(timeout: .seconds(2))
         } catch {
@@ -609,7 +849,7 @@ actor HeelerSSHTransport: Transport {
             params: params)
         let responseLine = try await withRequestDeadline {
             let socketPath = try await self.resolvedSocketPath()
-            return try await self.forwardingChannelBudget.withChannel {
+            return try await self.channelAdmission.withChannel(.ordinaryForwarding) {
                 do {
                     return try await self.connection.exchangeStreamLocal(
                         socketPath: socketPath,
@@ -723,7 +963,7 @@ actor HeelerSSHTransport: Transport {
     }
 
     private func runExec(_ command: String) async throws -> SSHExecResult {
-        try await execChannelBudget.withChannel {
+        try await channelAdmission.withChannel(.ordinarySession) {
             do {
                 return try await self.connection.execute(
                     command,
@@ -775,12 +1015,14 @@ actor HeelerSSHTransport: Transport {
         case .connectionInvalidated:
             return .sshUnreachable(detail: "The SSH connection is no longer reusable.")
         case .invalidEndpoint, .connectionFailed, .algorithmNegotiationFailed,
-            .channelFailed, .forwardingDenied, .targetUnreachable:
+            .channelFailed, .forwardingDenied, .targetUnreachable,
+            .sftpUnavailable, .sftpFailure:
             return .channelFailed(detail: String(describing: error))
         }
     }
 
     private static let homeOutputPrefix = "__HEELER_HOME__="
+    private static let stageDirectoryOutputPrefix = "__HEELER_STAGE_DIR__="
 
     private static func markerValue(in output: Data, prefix: String) -> String? {
         String(decoding: output, as: UTF8.self)
@@ -809,9 +1051,14 @@ actor HeelerSSHTransport: Transport {
             throw TransportError.eventsChannelAlreadyOpen
         }
         eventsChannelState = .opening
+        var admissionLease: SSHChannelAdmissionLease?
         do {
+            let lease = try await channelAdmission.acquire(.events)
+            admissionLease = lease
             let (stream, readerID) = try await withColdStartWake {
-                try await self.openEventsChannel(subscriptions)
+                try await self.openEventsChannel(
+                    subscriptions,
+                    admissionLease: lease)
             }
             if endedEventsReaders.remove(readerID) != nil {
                 eventsChannelState = .idle
@@ -820,13 +1067,15 @@ actor HeelerSSHTransport: Transport {
             }
             return stream
         } catch {
+            if let admissionLease { await admissionLease.release() }
             eventsChannelState = .idle
             throw error
         }
     }
 
     private func openEventsChannel(
-        _ subscriptions: [EventSubscription]
+        _ subscriptions: [EventSubscription],
+        admissionLease: SSHChannelAdmissionLease
     ) async throws -> (HerdrEventStream, readerID: UInt64) {
         guard connected else {
             throw TransportError.sshUnreachable(detail: "The SSH connection is closed.")
@@ -864,6 +1113,7 @@ actor HeelerSSHTransport: Transport {
             await self.runEventsChannel(
                 readerID: readerID,
                 channel: channel,
+                admissionLease: admissionLease,
                 ack: ackContinuation,
                 events: eventContinuation)
         }
@@ -899,6 +1149,7 @@ actor HeelerSSHTransport: Transport {
     private func runEventsChannel(
         readerID: UInt64,
         channel: SSHStreamLocalChannel,
+        admissionLease: SSHChannelAdmissionLease,
         ack ackContinuation: AsyncThrowingStream<Data, any Error>.Continuation,
         events eventContinuation: AsyncThrowingStream<HerdrEvent, any Error>.Continuation
     ) async {
@@ -964,6 +1215,7 @@ actor HeelerSSHTransport: Transport {
                 streamFailure = failure
             }
         }
+        await admissionLease.release()
 
         eventsChannelReaderDidEnd(readerID)
         ackContinuation.finish(throwing: ackFailure)
@@ -996,8 +1248,11 @@ actor HeelerSSHTransport: Transport {
             throw TransportError.terminalChannelAlreadyOpen
         }
         terminalChannelState = .opening
+        var admissionLease: SSHChannelAdmissionLease?
 
         do {
+            let lease = try await channelAdmission.acquire(.attach)
+            admissionLease = lease
             let socketPath = try await resolvedSocketPath()
             let command = try Self.attachExecCommand(
                 attachCommand: attachCommand,
@@ -1023,6 +1278,7 @@ actor HeelerSSHTransport: Transport {
                 await self.runAttachChannel(
                     readerID: readerID,
                     channel: channel,
+                    admissionLease: lease,
                     input: input,
                     output: outputSource.gate)
             }
@@ -1036,6 +1292,7 @@ actor HeelerSSHTransport: Transport {
                 await readerTask.value
             }
         } catch {
+            if let admissionLease { await admissionLease.release() }
             terminalChannelState = .idle
             throw error
         }
@@ -1078,6 +1335,7 @@ actor HeelerSSHTransport: Transport {
     private func runAttachChannel(
         readerID: UInt64,
         channel: SSHPTYChannel,
+        admissionLease: SSHChannelAdmissionLease,
         input: TerminalAttachInputQueue,
         output: HeelerSSHAttachOutputGate
     ) async {
@@ -1175,6 +1433,7 @@ actor HeelerSSHTransport: Transport {
                 failure = cleanupFailure
             }
         }
+        await admissionLease.release()
 
         input.finish()
         if terminalChannelState == .streaming(readerID: readerID) {

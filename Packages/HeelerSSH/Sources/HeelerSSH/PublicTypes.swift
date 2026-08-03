@@ -52,5 +52,12 @@ public enum SSHError: Error, Sendable, Equatable {
     case streamLocalOpenFailed
     case unexpectedEOF
     case responseTooLarge(limit: Int)
+    case sftpUnavailable
+    case sftpFailure(status: UInt64)
     case connectionInvalidated
+}
+
+public struct SSHSFTPAttributes: Sendable, Equatable {
+    public let size: UInt64?
+    public let permissions: UInt32?
 }

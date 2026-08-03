@@ -518,6 +518,21 @@ if grep -q 'skipped:' "$transport_behavior_log" \
     exit 1
 fi
 
+image_staging_log="$fixture_dir/image-staging-e2e.log"
+xcodebuild test \
+    -project Heeler.xcodeproj \
+    -scheme Heeler \
+    -destination "$simulator_destination" \
+    -collect-test-diagnostics never \
+    -only-testing:HeelerTests/ImageStagingE2ETests \
+    2>&1 | tee "$image_staging_log"
+
+if grep -q 'skipped:' "$image_staging_log" \
+    || ! grep -q "Test run with 7 tests in 1 suite passed" "$image_staging_log"; then
+    echo "The mandatory HeelerSSH image-staging suite did not execute all seven tests" >&2
+    exit 1
+fi
+
 for variable in \
     HEELER_SSH_E2E_REQUIRED \
     HEELER_SSH_E2E_HOST \
@@ -538,9 +553,11 @@ package_e2e_log="$fixture_dir/package-e2e.log"
 clear_simulator_environment
 
 if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
+    || grep -q 'skipped:' "$package_e2e_log" \
+    || ! grep -q 'Test run with 13 tests in 2 suites passed' "$package_e2e_log" \
     || ! grep -q 'Test "remote transport loss reclaims every owned native resource" passed' \
         "$package_e2e_log"; then
-    echo "The mandatory HeelerSSH native resource reclamation test did not execute" >&2
+    echo "The mandatory HeelerSSH package suites did not execute all thirteen tests" >&2
     exit 1
 fi
 

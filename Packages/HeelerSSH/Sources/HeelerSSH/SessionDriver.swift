@@ -57,6 +57,13 @@ actor SessionDriver {
     }
     private var nextPTYChannelID: UInt64 = 0
     private var ptyChannels: [UInt64: PTYChannelState] = [:]
+    private struct SFTPState {
+        let handle: OpaquePointer
+        var files: [UInt64: OpaquePointer] = [:]
+    }
+    private var nextSFTPID: UInt64 = 0
+    private var nextSFTPFileID: UInt64 = 0
+    private var sftpClients: [UInt64: SFTPState] = [:]
 
     // Actor reentrancy would otherwise allow a second task to call libssh2
     // while the first one is suspended on socket readiness.
@@ -708,6 +715,335 @@ actor SessionDriver {
                 session: session,
                 deadline: ContinuousClock.now.advanced(by: timeout),
                 cancellable: false)
+        } catch {
+            invalidateResources()
+            throw normalize(error)
+        }
+    }
+
+    func openSFTP(timeout: Duration) async throws -> SSHSFTPClient {
+        await acquireOperation()
+        defer { releaseOperation() }
+
+        guard valid, !forwarding, authenticated, let session else {
+            throw SSHError.connectionInvalidated
+        }
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+
+        do {
+            while true {
+                try checkProgress(deadline: deadline)
+                if let sftp = libssh2_sftp_init(session) {
+                    nextSFTPID &+= 1
+                    let id = nextSFTPID
+                    sftpClients[id] = SFTPState(handle: sftp)
+                    return SSHSFTPClient(id: id, driver: self)
+                }
+                let error = libssh2_session_last_errno(session)
+                if error == LIBSSH2_ERROR_EAGAIN {
+                    try await waitForSession(session, deadline: deadline)
+                } else if Self.isConnectionLoss(error) {
+                    throw SSHError.connectionInvalidated
+                } else {
+                    throw SSHError.sftpUnavailable
+                }
+            }
+        } catch {
+            let normalized = normalize(error)
+            if normalized == .cancelled
+                || normalized == .timedOut
+                || normalized == .connectionInvalidated
+            {
+                invalidateResources()
+            }
+            throw normalized
+        }
+    }
+
+    func createSFTPDirectory(
+        id: UInt64,
+        path: String,
+        permissions: UInt32,
+        timeout: Duration
+    ) async throws {
+        guard Self.isValidSFTPPath(path), Self.isValidPermissions(permissions) else {
+            throw SSHError.channelFailed
+        }
+        await acquireOperation()
+        defer { releaseOperation() }
+        guard valid, let session, let sftp = sftpClients[id]?.handle else {
+            throw SSHError.connectionInvalidated
+        }
+        let result = try await repeatUntilComplete(
+            deadline: ContinuousClock.now.advanced(by: timeout)
+        ) {
+            path.withCString { pathPointer in
+                libssh2_sftp_mkdir_ex(
+                    sftp,
+                    pathPointer,
+                    UInt32(path.utf8.count),
+                    Int(permissions))
+            }
+        }
+        try checkSFTPResult(result, sftp: sftp, session: session)
+    }
+
+    func sftpAttributes(
+        id: UInt64,
+        path: String,
+        timeout: Duration
+    ) async throws -> SSHSFTPAttributes {
+        guard Self.isValidSFTPPath(path) else { throw SSHError.channelFailed }
+        await acquireOperation()
+        defer { releaseOperation() }
+        guard valid, let session, let sftp = sftpClients[id]?.handle else {
+            throw SSHError.connectionInvalidated
+        }
+        var attributes = LIBSSH2_SFTP_ATTRIBUTES()
+        let result = try await repeatUntilComplete(
+            deadline: ContinuousClock.now.advanced(by: timeout)
+        ) {
+            path.withCString { pathPointer in
+                libssh2_sftp_stat_ex(
+                    sftp,
+                    pathPointer,
+                    UInt32(path.utf8.count),
+                    Int32(LIBSSH2_SFTP_STAT),
+                    &attributes)
+            }
+        }
+        try checkSFTPResult(result, sftp: sftp, session: session)
+        let hasSize = attributes.flags & UInt(LIBSSH2_SFTP_ATTR_SIZE) != 0
+        let hasPermissions = attributes.flags & UInt(LIBSSH2_SFTP_ATTR_PERMISSIONS) != 0
+        return SSHSFTPAttributes(
+            size: hasSize ? attributes.filesize : nil,
+            permissions: hasPermissions
+                ? UInt32(truncatingIfNeeded: attributes.permissions) & 0o777
+                : nil)
+    }
+
+    func setSFTPPermissions(
+        id: UInt64,
+        path: String,
+        permissions: UInt32,
+        timeout: Duration
+    ) async throws {
+        guard Self.isValidSFTPPath(path), Self.isValidPermissions(permissions) else {
+            throw SSHError.channelFailed
+        }
+        await acquireOperation()
+        defer { releaseOperation() }
+        guard valid, let session, let sftp = sftpClients[id]?.handle else {
+            throw SSHError.connectionInvalidated
+        }
+        var attributes = LIBSSH2_SFTP_ATTRIBUTES()
+        attributes.flags = UInt(LIBSSH2_SFTP_ATTR_PERMISSIONS)
+        attributes.permissions = UInt(permissions)
+        let result = try await repeatUntilComplete(
+            deadline: ContinuousClock.now.advanced(by: timeout)
+        ) {
+            path.withCString { pathPointer in
+                libssh2_sftp_stat_ex(
+                    sftp,
+                    pathPointer,
+                    UInt32(path.utf8.count),
+                    Int32(LIBSSH2_SFTP_SETSTAT),
+                    &attributes)
+            }
+        }
+        try checkSFTPResult(result, sftp: sftp, session: session)
+    }
+
+    func openSFTPFileForWriting(
+        sftpID: UInt64,
+        path: String,
+        permissions: UInt32,
+        timeout: Duration
+    ) async throws -> SSHSFTPFile {
+        guard Self.isValidSFTPPath(path), Self.isValidPermissions(permissions) else {
+            throw SSHError.channelFailed
+        }
+        await acquireOperation()
+        defer { releaseOperation() }
+        guard valid, let session, let sftp = sftpClients[sftpID]?.handle else {
+            throw SSHError.connectionInvalidated
+        }
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        let flags = UInt(
+            LIBSSH2_FXF_WRITE | LIBSSH2_FXF_CREAT | LIBSSH2_FXF_TRUNC | LIBSSH2_FXF_EXCL)
+
+        while true {
+            try checkProgress(deadline: deadline)
+            let file = path.withCString { pathPointer in
+                libssh2_sftp_open_ex(
+                    sftp,
+                    pathPointer,
+                    UInt32(path.utf8.count),
+                    flags,
+                    Int(permissions),
+                    Int32(LIBSSH2_SFTP_OPENFILE))
+            }
+            if let file {
+                nextSFTPFileID &+= 1
+                let fileID = nextSFTPFileID
+                sftpClients[sftpID]?.files[fileID] = file
+                return SSHSFTPFile(sftpID: sftpID, fileID: fileID, driver: self)
+            }
+            let error = libssh2_session_last_errno(session)
+            if error == LIBSSH2_ERROR_EAGAIN {
+                try await waitForSession(session, deadline: deadline)
+            } else {
+                throw mappedSFTPError(sftp: sftp, code: error)
+            }
+        }
+    }
+
+    func writeSFTPFile(
+        sftpID: UInt64,
+        fileID: UInt64,
+        data: Data,
+        timeout: Duration
+    ) async throws {
+        guard !data.isEmpty else { return }
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        var offset = 0
+
+        while offset < data.count {
+            await acquireOperation()
+            let progress: (written: Int, descriptor: Int32, directions: SocketDirections)
+            do {
+                try checkProgress(deadline: deadline)
+                guard
+                    valid,
+                    let session,
+                    let state = sftpClients[sftpID],
+                    let file = state.files[fileID]
+                else {
+                    throw SSHError.connectionInvalidated
+                }
+                let written = data.withUnsafeBytes { bytes -> Int in
+                    guard let baseAddress = bytes.baseAddress else { return 0 }
+                    return libssh2_sftp_write(
+                        file,
+                        baseAddress.advanced(by: offset).assumingMemoryBound(to: CChar.self),
+                        data.count - offset)
+                }
+                if written < 0, written != Int(LIBSSH2_ERROR_EAGAIN) {
+                    throw mappedSFTPError(sftp: state.handle, code: Int32(written))
+                }
+                progress = (written, descriptor, sessionDirections(session))
+                releaseOperation()
+            } catch {
+                let normalized = normalize(error)
+                if normalized == .connectionInvalidated { invalidateResources() }
+                releaseOperation()
+                throw normalized
+            }
+
+            if progress.written > 0 {
+                offset += progress.written
+                await Task.yield()
+            } else {
+                try await SocketReadiness.wait(
+                    descriptor: progress.descriptor,
+                    directions: progress.directions,
+                    until: deadline)
+            }
+        }
+    }
+
+    func closeSFTPFile(
+        sftpID: UInt64,
+        fileID: UInt64,
+        timeout: Duration
+    ) async throws {
+        await acquireOperation()
+        defer { releaseOperation() }
+        guard let state = sftpClients[sftpID], let file = state.files[fileID] else { return }
+        guard valid, session != nil else { return }
+        do {
+            let result = try await repeatUntilComplete(
+                deadline: ContinuousClock.now.advanced(by: timeout),
+                cancellable: false
+            ) {
+                libssh2_sftp_close_handle(file)
+            }
+            guard result == 0 else { throw SSHError.channelFailed }
+            sftpClients[sftpID]?.files[fileID] = nil
+        } catch {
+            invalidateResources()
+            throw normalize(error)
+        }
+    }
+
+    func removeSFTPFile(
+        id: UInt64,
+        path: String,
+        timeout: Duration
+    ) async throws {
+        guard Self.isValidSFTPPath(path) else { throw SSHError.channelFailed }
+        await acquireOperation()
+        defer { releaseOperation() }
+        guard valid, let session, let sftp = sftpClients[id]?.handle else {
+            throw SSHError.connectionInvalidated
+        }
+        let result = try await repeatUntilComplete(
+            deadline: ContinuousClock.now.advanced(by: timeout)
+        ) {
+            path.withCString { pathPointer in
+                libssh2_sftp_unlink_ex(sftp, pathPointer, UInt32(path.utf8.count))
+            }
+        }
+        try checkSFTPResult(result, sftp: sftp, session: session)
+    }
+
+    func renameSFTPFileAtomically(
+        id: UInt64,
+        sourcePath: String,
+        destinationPath: String,
+        timeout: Duration
+    ) async throws {
+        guard
+            Self.isValidSFTPPath(sourcePath),
+            Self.isValidSFTPPath(destinationPath)
+        else {
+            throw SSHError.channelFailed
+        }
+        await acquireOperation()
+        defer { releaseOperation() }
+        guard valid, let session, let sftp = sftpClients[id]?.handle else {
+            throw SSHError.connectionInvalidated
+        }
+        let result = try await repeatUntilComplete(
+            deadline: ContinuousClock.now.advanced(by: timeout)
+        ) {
+            sourcePath.withCString { sourcePointer in
+                destinationPath.withCString { destinationPointer in
+                    libssh2_sftp_posix_rename_ex(
+                        sftp,
+                        sourcePointer,
+                        sourcePath.utf8.count,
+                        destinationPointer,
+                        destinationPath.utf8.count)
+                }
+            }
+        }
+        try checkSFTPResult(result, sftp: sftp, session: session)
+    }
+
+    func closeSFTP(id: UInt64, timeout: Duration) async throws {
+        await acquireOperation()
+        defer { releaseOperation() }
+        guard let state = sftpClients.removeValue(forKey: id) else { return }
+        guard valid, session != nil else { return }
+        do {
+            let result = try await repeatUntilComplete(
+                deadline: ContinuousClock.now.advanced(by: timeout),
+                cancellable: false
+            ) {
+                libssh2_sftp_shutdown(state.handle)
+            }
+            guard result == 0 else { throw SSHError.channelFailed }
         } catch {
             invalidateResources()
             throw normalize(error)
@@ -1454,6 +1790,46 @@ actor SessionDriver {
         }
     }
 
+    private func checkSFTPResult(
+        _ result: Int32,
+        sftp: OpaquePointer,
+        session: OpaquePointer
+    ) throws {
+        guard result == 0 else {
+            let error = mappedSFTPError(sftp: sftp, code: result)
+            if error == .connectionInvalidated { invalidateResources() }
+            throw error
+        }
+        guard valid, self.session == session else { throw SSHError.connectionInvalidated }
+    }
+
+    private func mappedSFTPError(sftp: OpaquePointer, code: Int32) -> SSHError {
+        if Self.isConnectionLoss(code) { return .connectionInvalidated }
+        return .sftpFailure(status: UInt64(libssh2_sftp_last_error(sftp)))
+    }
+
+    private static func isConnectionLoss(_ code: Int32) -> Bool {
+        switch code {
+        case LIBSSH2_ERROR_SOCKET_NONE,
+            LIBSSH2_ERROR_SOCKET_SEND,
+            LIBSSH2_ERROR_SOCKET_RECV,
+            LIBSSH2_ERROR_SOCKET_DISCONNECT:
+            true
+        default:
+            false
+        }
+    }
+
+    private static func isValidSFTPPath(_ path: String) -> Bool {
+        !path.isEmpty
+            && !path.utf8.contains(0)
+            && path.utf8.count <= Int(UInt32.max)
+    }
+
+    private static func isValidPermissions(_ permissions: UInt32) -> Bool {
+        permissions & ~0o777 == 0
+    }
+
     private func normalize(_ error: any Error) -> SSHError {
         if let error = error as? SSHError { return error }
         return .connectionFailed
@@ -1464,6 +1840,7 @@ actor SessionDriver {
         authenticated = false
         streamLocalChannels.removeAll()
         ptyChannels.removeAll()
+        sftpClients.removeAll()
         InvalidatedSessionTeardown.reclaim(&session)
         closeDescriptor()
     }

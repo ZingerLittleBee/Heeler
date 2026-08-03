@@ -529,7 +529,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
     }
 }
 
-private struct HeelerSSHTransportBehaviorEnvironment: Decodable, Sendable {
+struct HeelerSSHTransportBehaviorEnvironment: Decodable, Sendable {
     let host: String
     let port: UInt16
     let username: String
@@ -621,6 +621,10 @@ private struct HeelerSSHTransportBehaviorEnvironment: Decodable, Sendable {
         settings.homeCommand =
             "/bin/sh -c 'printf \"__HEELER_HOME__=%s\\n\" \"$1\"' home \(quotedHome)"
         settings.attachCommand = "\(homePath)/.heeler-ci/fake-attach"
+        settings.stageDirectoryCommand =
+            "/bin/sh -c 'umask 077; "
+            + "directory=$(mktemp -d \"$1/heeler.XXXXXXXX\") || exit 1; "
+            + "printf \"__HEELER_STAGE_DIR__=%s\\n\" \"$directory\"' stage \(quotedHome)/.heeler-ci"
         return settings
     }
 

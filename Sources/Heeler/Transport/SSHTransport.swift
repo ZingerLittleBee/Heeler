@@ -30,6 +30,10 @@ enum SocatDiscovery: Sendable, Equatable {
 /// How to reach one Host, authenticate against it, and find its herdr socket.
 struct SSHTransportSettings: Sendable {
     static let defaultSessionListCommand = "herdr session list --json"
+    static let defaultStageDirectoryCommand =
+        "/bin/sh -c 'umask 077; "
+        + "directory=$(mktemp -d \"${TMPDIR:-/tmp}/heeler.XXXXXXXX\") || exit 1; "
+        + "printf \"__HEELER_STAGE_DIR__=%s\\n\" \"$directory\"'"
     static let agentAvailabilityMarker = "__HEELER_AGENT_KIND__="
 
     /// The Heeler plugin (ADR 0007/0008) whose config dir holds the
@@ -85,10 +89,7 @@ struct SSHTransportSettings: Sendable {
     /// Creates one private directory beneath the Host operating system's
     /// selected temporary root. The marker makes login-shell noise harmless;
     /// callers never interpolate image names or paths into this command.
-    var stageDirectoryCommand: String =
-        "/bin/sh -c 'umask 077; "
-        + "directory=$(mktemp -d \"${TMPDIR:-/tmp}/heeler.XXXXXXXX\") || exit 1; "
-        + "printf \"__HEELER_STAGE_DIR__=%s\\n\" \"$directory\"'"
+    var stageDirectoryCommand: String = Self.defaultStageDirectoryCommand
     /// Official Host-local CLI for listing installed plugins (offline, like
     /// session discovery). Notification Registration gates on the
     /// Heeler plugin being installed and enabled before touching its
