@@ -24,6 +24,7 @@ jump_target_pid=""
 jump_forwarding_denied_pid=""
 fake_herdr_pid=""
 simulator_udid=""
+simulator_destination=""
 
 cleanup() {
     local status=$?
@@ -387,6 +388,7 @@ if [[ -z "$simulator_udid" ]]; then
     echo "No available iPhone 17 Simulator was found" >&2
     exit 1
 fi
+simulator_destination="platform=iOS Simulator,id=$simulator_udid"
 xcrun simctl boot "$simulator_udid" >/dev/null 2>&1 || true
 xcrun simctl bootstatus "$simulator_udid" -b
 xcrun simctl spawn "$simulator_udid" launchctl setenv \
@@ -400,7 +402,7 @@ e2e_log="$fixture_dir/e2e.log"
 xcodebuild test \
     -project Heeler.xcodeproj \
     -scheme Heeler \
-    -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+    -destination "$simulator_destination" \
     -collect-test-diagnostics never \
     -only-testing:HeelerTests/HeelerSSHSessionE2ETests \
     2>&1 | tee "$e2e_log"
@@ -415,7 +417,7 @@ streamlocal_log="$fixture_dir/streamlocal-e2e.log"
 xcodebuild test \
     -project Heeler.xcodeproj \
     -scheme Heeler \
-    -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+    -destination "$simulator_destination" \
     -collect-test-diagnostics never \
     -only-testing:HeelerTests/HeelerSSHDirectStreamLocalE2ETests \
     2>&1 | tee "$streamlocal_log"
@@ -430,7 +432,7 @@ jump_log="$fixture_dir/jump-e2e.log"
 xcodebuild test \
     -project Heeler.xcodeproj \
     -scheme Heeler \
-    -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+    -destination "$simulator_destination" \
     -collect-test-diagnostics never \
     -only-testing:HeelerTests/HeelerSSHJumpHostGateE2ETests \
     2>&1 | tee "$jump_log"
@@ -455,7 +457,7 @@ package_e2e_log="$fixture_dir/package-e2e.log"
     cd Packages/HeelerSSH
     xcodebuild test \
         -scheme HeelerSSH \
-        -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+        -destination "$simulator_destination" \
         -collect-test-diagnostics never
 ) 2>&1 | tee "$package_e2e_log"
 clear_simulator_environment
@@ -470,5 +472,5 @@ fi
 xcodebuild test \
     -project Heeler.xcodeproj \
     -scheme Heeler \
-    -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+    -destination "$simulator_destination" \
     -collect-test-diagnostics never

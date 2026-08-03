@@ -89,8 +89,8 @@ jobs:
           xcodebuild -version
           xcrun simctl list runtimes
 
-      # OS=latest targets whatever iOS runtime the image currently ships, so a
-      # runtime-version bump on the runner image does not break the build. The
-      # app deployment target is iOS 26, matching the runtimes macos-26 ships.
+      # The script selects one available iPhone 17 UDID, boots it, injects the
+      # fixture environment there, and targets that same device for every test
+      # action. The app deployment target is iOS 26.
       - name: Build and test
         run: scripts/run-ci-ios-tests.sh
