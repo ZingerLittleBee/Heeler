@@ -28,10 +28,17 @@ struct TransportErrorPresentationTests {
                 == "The connection failed: connection reset")
     }
 
-    @Test func streamLocalOpenFailureNamesBothObservableCauses() {
+    @Test func streamLocalOpenFailureLeadsWithHerdrNotRunning() {
         #expect(
             TransportError.streamLocalOpenFailed(path: "/tmp/herdr.sock").connectionGuidance
-                == "herdr may not be running, or SSH stream-local forwarding may be disabled.")
+                == "herdr is not running on this Host. If it is running, "
+                + "check SSH stream-local forwarding.")
+    }
+
+    @Test func serverNotRunningAvoidsSocketImplementationLanguage() {
+        #expect(
+            TransportError.serverNotRunning(path: "/tmp/herdr.sock").connectionGuidance
+                == "herdr is not running on this Host.")
     }
 
     /// A server rejection reads as herdr's own sentence, not as a Swift value

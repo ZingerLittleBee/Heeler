@@ -5,9 +5,9 @@ private struct HeelerSSHSessionListResponse: Decodable {
     let sessions: [HerdrSession]
 }
 
-/// The libssh2-backed app Transport. This slice owns ordinary herdr RPCs and
-/// Host-side exec discovery; Events, Attach, SFTP, and Pairing migrate in the
-/// dependency-ordered tickets that follow the Jump Host gate (ADR 0011).
+/// The libssh2-backed app Transport. Ordinary herdr RPCs use fresh
+/// direct-streamlocal channels, while Events owns one reserved long-lived
+/// forwarding channel per Host (ADR 0011).
 actor HeelerSSHTransport: Transport {
     static let supportedProtocolVersion = 17
     static let maximumResponseBytes = 1_048_576
@@ -26,6 +26,16 @@ actor HeelerSSHTransport: Transport {
     private let homeDirectory = SharedAsyncOperation<String>(cachesSuccess: true)
     private let wake = SharedAsyncOperation<Void>(cachesSuccess: false)
     private var connected = true
+
+    private enum EventsChannelState: Equatable {
+        case idle
+        case opening
+        case streaming(readerID: UInt64)
+    }
+
+    private var eventsChannelState: EventsChannelState = .idle
+    private var nextEventsReaderID: UInt64 = 0
+    private var endedEventsReaders: Set<UInt64> = []
 
     /// Establishes the libssh2 Transport through the same app-owned
     /// credentials and TOFU policy as the production connection path.
@@ -656,8 +666,190 @@ actor HeelerSSHTransport: Transport {
     func subscribeToEvents(
         _ subscriptions: [EventSubscription]
     ) async throws -> HerdrEventStream {
-        try unsupported("subscribeToEvents")
+        guard eventsChannelState == .idle else {
+            throw TransportError.eventsChannelAlreadyOpen
+        }
+        eventsChannelState = .opening
+        do {
+            let (stream, readerID) = try await withColdStartWake {
+                try await self.openEventsChannel(subscriptions)
+            }
+            if endedEventsReaders.remove(readerID) != nil {
+                eventsChannelState = .idle
+            } else {
+                eventsChannelState = .streaming(readerID: readerID)
+            }
+            return stream
+        } catch {
+            eventsChannelState = .idle
+            throw error
+        }
     }
+
+    private func openEventsChannel(
+        _ subscriptions: [EventSubscription]
+    ) async throws -> (HerdrEventStream, readerID: UInt64) {
+        guard connected else {
+            throw TransportError.sshUnreachable(detail: "The SSH connection is closed.")
+        }
+        let socketPath = try await resolvedSocketPath()
+        let requestID = UUID().uuidString
+        let requestLine = try HerdrWire.subscribeRequestLine(
+            id: requestID,
+            subscriptions: subscriptions)
+        let channel: SSHStreamLocalChannel
+        do {
+            channel = try await connection.openStreamLocal(
+                socketPath: socketPath,
+                timeout: requestTimeout)
+        } catch SSHError.streamLocalOpenFailed {
+            throw try await classifyStreamLocalOpenFailure(socketPath: socketPath)
+        } catch {
+            throw await mapOperationError(error)
+        }
+
+        do {
+            try await channel.write(Data(requestLine.utf8), timeout: requestTimeout)
+        } catch {
+            try? await channel.close(timeout: .seconds(2))
+            throw await mapOperationError(error)
+        }
+
+        let (events, eventContinuation) = AsyncThrowingStream<HerdrEvent, any Error>.makeStream(
+            bufferingPolicy: .bufferingNewest(HerdrEventStream.bufferLimit))
+        let (ackLines, ackContinuation) = AsyncThrowingStream<Data, any Error>.makeStream(
+            bufferingPolicy: .bufferingNewest(1))
+        nextEventsReaderID &+= 1
+        let readerID = nextEventsReaderID
+        let readerTask = Task {
+            await self.runEventsChannel(
+                readerID: readerID,
+                channel: channel,
+                ack: ackContinuation,
+                events: eventContinuation)
+        }
+
+        do {
+            let ackLine = try await withRequestDeadline {
+                var iterator = ackLines.makeAsyncIterator()
+                guard let line = try await iterator.next() else {
+                    throw TransportError.channelFailed(
+                        detail: "events channel ended before ack")
+                }
+                return line
+            }
+            _ = try HerdrWire.decodeResult(
+                SubscriptionStartedResponse.self,
+                fromResponseLine: ackLine,
+                requestID: requestID)
+        } catch {
+            readerTask.cancel()
+            await readerTask.value
+            endedEventsReaders.remove(readerID)
+            throw error
+        }
+
+        return (
+            HerdrEventStream(events: events) {
+                readerTask.cancel()
+                await readerTask.value
+            },
+            readerID)
+    }
+
+    private func runEventsChannel(
+        readerID: UInt64,
+        channel: SSHStreamLocalChannel,
+        ack ackContinuation: AsyncThrowingStream<Data, any Error>.Continuation,
+        events eventContinuation: AsyncThrowingStream<HerdrEvent, any Error>.Continuation
+    ) async {
+        var pending = Data()
+        var sawAck = false
+        var streamFailure: TransportError?
+        var ackFailure = TransportError.cancelled
+
+        do {
+            while !Task.isCancelled {
+                let chunk: Data?
+                do {
+                    chunk = try await channel.read(
+                        maximumBytes: 16 * 1024,
+                        timeout: .seconds(1))
+                } catch SSHError.timedOut {
+                    continue
+                }
+                guard let chunk else {
+                    if sawAck {
+                        streamFailure = .channelFailed(
+                            detail: "events channel closed by remote")
+                    } else {
+                        ackFailure = .channelFailed(
+                            detail: "events channel ended before ack")
+                        streamFailure = ackFailure
+                    }
+                    break
+                }
+                pending.append(chunk)
+                guard pending.count <= Self.maximumResponseBytes else {
+                    throw TransportError.malformedResponse(
+                        "events line exceeds \(Self.maximumResponseBytes) bytes")
+                }
+                while let line = Self.takeLine(from: &pending) {
+                    if !sawAck {
+                        sawAck = true
+                        ackContinuation.yield(line)
+                        ackContinuation.finish()
+                    } else if let event = HerdrWire.decodeEvent(fromLine: line) {
+                        if case .dropped = eventContinuation.yield(event) {
+                            _ = eventContinuation.yield(.eventsDropped)
+                        }
+                    }
+                }
+            }
+        } catch SSHError.cancelled {
+            streamFailure = nil
+        } catch is CancellationError {
+            streamFailure = nil
+        } catch {
+            let failure = await mapOperationError(error)
+            ackFailure = failure
+            streamFailure = failure
+        }
+
+        do {
+            try await channel.close(timeout: .seconds(2))
+        } catch {
+            let failure = await mapOperationError(error)
+            if !Task.isCancelled {
+                ackFailure = failure
+                streamFailure = failure
+            }
+        }
+
+        eventsChannelReaderDidEnd(readerID)
+        ackContinuation.finish(throwing: ackFailure)
+        if let streamFailure {
+            eventContinuation.finish(throwing: streamFailure)
+        } else {
+            eventContinuation.finish()
+        }
+    }
+
+    private func eventsChannelReaderDidEnd(_ readerID: UInt64) {
+        if eventsChannelState == .streaming(readerID: readerID) {
+            eventsChannelState = .idle
+        } else {
+            endedEventsReaders.insert(readerID)
+        }
+    }
+
+    private static func takeLine(from pending: inout Data) -> Data? {
+        guard let newline = pending.firstIndex(of: 0x0A) else { return nil }
+        let line = Data(pending[...newline])
+        pending.removeSubrange(...newline)
+        return line
+    }
+
     func attachTerminal(
         _ request: TerminalAttachRequest
     ) async throws -> TerminalAttachSession {

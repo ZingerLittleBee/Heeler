@@ -25,12 +25,9 @@ struct ReconnectPolicy: Sendable, Equatable {
     }
 }
 
-/// Keepalive for the events session (#18). Citadel 0.12.1 exposes no
-/// SSH-level keepalive (no ignore-packet or global-request API in it or its
-/// NIOSSH fork) and no path to the NIO channel for TCP keepalive socket
-/// options (`SSHClient.session` is internal; the `channelHandlers:` connect
-/// parameter is stored but never installed). So the session pings herdr over
-/// the ordinary RPC path instead — which is also the stronger check: it
+/// Keepalive for the events session (#18). The Transport seam deliberately
+/// exposes no SSH-specific keepalive machinery, so the session pings herdr
+/// over the ordinary RPC path instead — which is also the stronger check: it
 /// generates SSH traffic that keeps NAT mappings alive, is bounded by the
 /// per-request deadline, and exercises the whole path (SSH + socat + herdr),
 /// so a dead connection is detected within interval + request timeout.
@@ -89,8 +86,8 @@ enum EventsSessionUpdate: Sendable, Equatable {
 /// connection down deliberately (call once the app's background grace period
 /// elapses — iOS freezes sockets anyway when the process suspends, and an
 /// explicit close makes resume cheap and deterministic),
-/// `end()` is terminal. All teardown is by explicit close, never by
-/// cancelling a live exec channel (ADR 0002). Lifecycle calls serialize
+/// `end()` is terminal. All teardown closes the live forwarding channel
+/// explicitly. Lifecycle calls serialize
 /// internally — a `resume()` racing into a `suspend()`'s in-flight teardown
 /// waits for it instead of interleaving (quick background→foreground
 /// bounces are routine on iOS; callers never need to serialize their own
@@ -246,7 +243,7 @@ actor EventsSession {
     }
 
     /// Runs an ordinary RPC against the currently installed Transport.
-    /// Calls are intentionally concurrent; `SSHTransport` owns its channel
+    /// Calls are intentionally concurrent; the Transport owns its channel
     /// budget. The Transport value never becomes caller-owned state.
     func withTransport<Value: Sendable>(
         _ operation: @escaping @Sendable (any Transport) async throws -> Value
@@ -413,7 +410,7 @@ actor EventsSession {
                 continue
             }
             let failure =
-                streamFailure ?? pendingKeepaliveFailure
+                pendingKeepaliveFailure ?? streamFailure
                 ?? .channelFailed(detail: "events stream ended unexpectedly")
             pendingKeepaliveFailure = nil
             guard failure.isRetryable else {
@@ -514,8 +511,8 @@ actor EventsSession {
     }
 
     /// Ends the current activation and closes everything. The run task is
-    /// cancelled but deliberately not awaited: an SSH/NIO bridge may ignore
-    /// task cancellation while a connection is stalled. Generation checks
+    /// cancelled but deliberately not awaited: a stalled SSH operation may
+    /// ignore task cancellation. Generation checks
     /// make any late result harmless, while an installed Transport is still
     /// closed explicitly before lifecycle teardown returns.
     private func windDown() async {

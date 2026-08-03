@@ -63,6 +63,9 @@ class Server:
 
             envelope = json.loads(request)
             method = envelope.get("method")
+            if method == "events.subscribe":
+                self._serve_events(connection, envelope)
+                return
             if method == "eof":
                 return
             if method == "hang":
@@ -94,6 +97,91 @@ class Server:
                     connection.sendall(payload[offset : offset + chunk_size])
                 except BrokenPipeError:
                     return
+
+    def _serve_events(self, connection: socket.socket, envelope: object) -> None:
+        request_id = envelope.get("id") if isinstance(envelope, dict) else None
+        params = envelope.get("params", {}) if isinstance(envelope, dict) else {}
+        subscriptions = params.get("subscriptions", []) if isinstance(params, dict) else []
+        pane_ids = {
+            subscription.get("pane_id")
+            for subscription in subscriptions
+            if isinstance(subscription, dict) and subscription.get("pane_id") is not None
+        }
+
+        if "fixture:reject" in pane_ids:
+            self._send_event_line(
+                connection,
+                {
+                    "id": request_id,
+                    "error": {
+                        "code": "fixture_rejected",
+                        "message": "scripted rejection",
+                    },
+                },
+            )
+            return
+
+        if "fixture:no-ack" in pane_ids:
+            while connection.recv(1024):
+                pass
+            return
+
+        self._send_event_line(
+            connection,
+            {
+                "id": request_id,
+                "result": {"type": "subscription_started"},
+            },
+        )
+
+        if "fixture:remote-close" in pane_ids:
+            self._send_event_line(
+                connection,
+                {
+                    "event": "pane_agent_status_changed",
+                    "data": {"pane_id": "fixture:remote-close"},
+                },
+            )
+            return
+
+        if subscriptions != [{"type": "pane.created"}]:
+            self._send_event_line(
+                connection,
+                {"event": "fixture_noncanonical_subscription", "data": subscriptions},
+            )
+            return
+
+        try:
+            connection.sendall(b"this is not json\n")
+        except BrokenPipeError:
+            return
+        lines = [
+            {
+                "event": "future_herdr_event",
+                "data": {"value": "preserved"},
+            },
+            {
+                "event": "pane_created",
+                "data": {"pane_id": "fixture:event"},
+            },
+            {
+                "event": "pane_created",
+                "data": {"pane_id": "fixture:event"},
+            },
+        ]
+        for line in lines:
+            self._send_event_line(connection, line)
+
+        while connection.recv(1024):
+            pass
+
+    def _send_event_line(self, connection: socket.socket, line: object) -> None:
+        payload = json.dumps(line, separators=(",", ":")).encode() + b"\n"
+        for offset in range(0, len(payload), 7):
+            try:
+                connection.sendall(payload[offset : offset + 7])
+            except BrokenPipeError:
+                return
 
     def _result(self, method: str, params: object) -> object:
         if method == "ping" or method == "partial":

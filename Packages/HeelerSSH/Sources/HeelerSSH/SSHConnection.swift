@@ -126,6 +126,18 @@ public final class SSHConnection: Sendable {
             timeout: timeout)
     }
 
+    /// Opens one long-lived direct-streamlocal channel. The returned handle
+    /// owns only that channel; closing it leaves this SSH connection reusable
+    /// when native teardown succeeds.
+    public func openStreamLocal(
+        socketPath: String,
+        timeout: Duration
+    ) async throws -> SSHStreamLocalChannel {
+        try await driver.openStreamLocal(
+            socketPath: socketPath,
+            timeout: timeout)
+    }
+
     /// Whether this session still has a live native connection that can
     /// safely admit another operation. An uncertain channel outcome makes
     /// this false before the app can reuse the connection.

@@ -37,6 +37,11 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Host event updates now use herdr's socket directly over SSH, remain live
+  while ordinary requests run, and recover cleanly when only the Events
+  channel drops. Connection failures now lead with "herdr is not running"
+  instead of exposing remote socket implementation language. (#117)
+
 - Switching Agents — from the switcher strip, a notification, or right after
   starting a new one — no longer strands the terminal on "Connecting…"
   forever. The synchronous-departure fix let SwiftUI discard the departing

@@ -18,9 +18,9 @@ extension TransportError {
         case .socketNotFound:
             "The herdr socket was not found. Check this Host's session."
         case .serverNotRunning:
-            "herdr is not answering on this Host."
+            "herdr is not running on this Host."
         case .streamLocalOpenFailed:
-            "herdr may not be running, or SSH stream-local forwarding may be disabled."
+            "herdr is not running on this Host. If it is running, check SSH stream-local forwarding."
         case .socatMissing:
             "socat was not found. Install it or update this Host's socat path."
         case .protocolVersionMismatch(let server, let supported):

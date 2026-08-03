@@ -4,7 +4,7 @@ import Testing
 @testable import Heeler
 
 @Suite(
-    "HeelerSSH ordinary Transport behavior e2e",
+    "HeelerSSH Transport behavior e2e",
     .enabled(
         if: HeelerSSHTransportBehaviorEnvironment.current != nil,
         "requires the disposable direct and Jump Host fixtures"),
@@ -35,6 +35,79 @@ struct HeelerSSHTransportBehaviorE2ETests {
     func jumpOrdinaryRPCs() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
         try await exerciseOrdinaryRPCs(settings: environment.jumpSettings())
+    }
+
+    @Test("direct Host Events preserve framing, concurrency, and slot reuse")
+    func directEventsStream() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        try await exerciseEventsStream(settings: environment.directSettings())
+    }
+
+    @Test("Jump Host Events preserve framing, concurrency, and slot reuse")
+    func jumpEventsStream() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        try await exerciseEventsStream(settings: environment.jumpSettings())
+    }
+
+    @Test("remote Events close is typed and frees only the reserved channel")
+    func remoteEventsClosePreservesConnection() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let stream = try await transport.subscribeToEvents([
+            .pane(.agentStatusChanged, paneID: "fixture:remote-close")
+        ])
+        var iterator = stream.events.makeAsyncIterator()
+        #expect(try await iterator.next()?.data["pane_id"] == .string("fixture:remote-close"))
+        await #expect(
+            throws: TransportError.channelFailed(detail: "events channel closed by remote")
+        ) {
+            _ = try await iterator.next()
+        }
+
+        #expect(try await transport.ping().protocolVersion == 17)
+        let replacement = try await transport.subscribeToEvents([.global(.paneCreated)])
+        await replacement.end()
+        #expect(await transport.isConnected)
+    }
+
+    @Test("rejected Events ack frees the reserved channel")
+    func rejectedEventsAckPreservesConnection() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        await #expect(
+            throws: HerdrAPIError(code: "fixture_rejected", message: "scripted rejection")
+        ) {
+            _ = try await transport.subscribeToEvents([
+                .pane(.agentStatusChanged, paneID: "fixture:reject")
+            ])
+        }
+
+        let replacement = try await transport.subscribeToEvents([.global(.paneCreated)])
+        await replacement.end()
+        #expect(try await transport.ping().protocolVersion == 17)
+    }
+
+    @Test("missing Events ack times out and frees the reserved channel")
+    func missingEventsAckPreservesConnection() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        var settings = environment.directSettings()
+        settings.requestTimeout = .milliseconds(100)
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        defer { Task { try? await transport.close() } }
+
+        await #expect(throws: TransportError.timedOut) {
+            _ = try await transport.subscribeToEvents([
+                .pane(.agentStatusChanged, paneID: "fixture:no-ack")
+            ])
+        }
+
+        let replacement = try await transport.subscribeToEvents([.global(.paneCreated)])
+        await replacement.end()
+        #expect(try await transport.ping().protocolVersion == 17)
     }
 
     @Test("Host exec discovery and home-relative sockets match on direct and Jump paths")
@@ -238,6 +311,41 @@ struct HeelerSSHTransportBehaviorE2ETests {
             try await transport.renameAgent(
                 AgentRenameParams(target: "api-error", name: "fixture"))
         }
+    }
+
+    private func exerciseEventsStream(settings: SSHTransportSettings) async throws {
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        defer { Task { try? await transport.close() } }
+
+        #expect(try await transport.ping().protocolVersion == 17)
+        let stream = try await transport.subscribeToEvents([.global(.paneCreated)])
+        await #expect(throws: TransportError.eventsChannelAlreadyOpen) {
+            _ = try await transport.subscribeToEvents([.global(.paneCreated)])
+        }
+
+        try await withThrowingTaskGroup(of: ServerInfo.self) { group in
+            for _ in 0..<HeelerSSHTransport.maxConcurrentForwardingChannels {
+                group.addTask { try await transport.ping() }
+            }
+            for try await info in group {
+                #expect(info.protocolVersion == 17)
+            }
+        }
+
+        var iterator = stream.events.makeAsyncIterator()
+        let unknown = try await iterator.next()
+        #expect(unknown?.kind == HerdrEventKind(name: "future_herdr_event"))
+        #expect(unknown?.data["value"] == .string("preserved"))
+
+        let canonical = try await iterator.next()
+        #expect(canonical?.kind == GlobalEventKind.paneCreated.kind)
+        #expect(canonical?.data["pane_id"] == .string("fixture:event"))
+        #expect(try await iterator.next() == canonical)
+
+        await stream.end()
+        let replacement = try await transport.subscribeToEvents([.global(.paneCreated)])
+        await replacement.end()
+        #expect(try await transport.ping().protocolVersion == 17)
     }
 
     private func exerciseHostExecOperations(

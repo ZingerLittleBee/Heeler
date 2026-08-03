@@ -118,11 +118,10 @@ extension HerdrEvent {
     static let eventsDropped = HerdrEvent(kind: .eventsDropped, data: .null)
 }
 
-/// A live `events.subscribe` stream over its Host's dedicated exec channel.
+/// A live `events.subscribe` stream over its Host's dedicated forwarding channel.
 ///
-/// Ending is explicit: call `end()`. A live exec channel does not respond to
-/// Swift task cancellation (ADR 0002), so abandoning the stream without
-/// `end()` leaks the channel until the SSH connection closes.
+/// Ending is explicit: call `end()`. Abandoning the stream without `end()`
+/// leaves the forwarding channel live until the SSH connection closes.
 final class HerdrEventStream: Sendable {
     /// Buffer bound for the event delivery path (#22), sized for stall
     /// absorption, not history: events are single JSON lines (hundreds of

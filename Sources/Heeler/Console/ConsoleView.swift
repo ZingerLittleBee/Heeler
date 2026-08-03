@@ -337,7 +337,7 @@ struct ConsoleView: View {
     private func summary(for failure: TransportError) -> String {
         switch failure {
         case .sshUnreachable: "SSH unavailable"
-        case .serverNotRunning: "herdr is not answering"
+        case .serverNotRunning: "herdr is not running"
         case .timedOut: "request timed out"
         case .cancelled: "request was cancelled"
         case .channelFailed: "connection dropped"
