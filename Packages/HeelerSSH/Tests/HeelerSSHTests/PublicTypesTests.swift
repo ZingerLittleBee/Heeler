@@ -22,3 +22,15 @@ func publicSessionValuesPreserveTheirData() {
     #expect(result.exitStatus == 7)
     #expect(result.reachedEOF)
 }
+
+@Test("Host Key algorithms preserve the NIOSSH prefix before modern RSA fallback")
+func hostKeyAlgorithmsPreserveNIOSSHOrder() {
+    #expect(SessionDriver.hostKeyAlgorithms == [
+        "ssh-ed25519",
+        "ecdsa-sha2-nistp384",
+        "ecdsa-sha2-nistp256",
+        "ecdsa-sha2-nistp521",
+        "rsa-sha2-512",
+        "rsa-sha2-256",
+    ])
+}

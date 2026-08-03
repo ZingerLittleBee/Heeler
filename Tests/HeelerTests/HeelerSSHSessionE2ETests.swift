@@ -1,6 +1,9 @@
+import CryptoKit
 import Foundation
 import HeelerSSH
 import Testing
+
+@testable import Heeler
 
 @Suite(
     "HeelerSSH session e2e",
@@ -63,6 +66,54 @@ struct HeelerSSHSessionE2ETests {
                 timeout: .seconds(5))
             let result = try await connection.execute("printf reused", timeout: .seconds(5))
             #expect(result.stdout == Data("reused".utf8))
+        }
+    }
+
+    @Test("authorized Device Key authenticates and executes through real sshd")
+    func authorizedDeviceKeyAuthenticates() async throws {
+        let environment = try #require(HeelerSSHTestEnvironment.current)
+        let privateKey = try Curve25519.Signing.PrivateKey(
+            rawRepresentation: Data((0..<32).map(UInt8.init)))
+        let deviceKey = DeviceKey(privateKey: privateKey)
+        let connection = try await SSHConnection.connect(
+            to: environment.endpoint,
+            timeout: .seconds(5))
+
+        try await withClosingConnection(connection) { connection in
+            try await connection.authenticate(
+                username: environment.username,
+                publicKey: deviceKey.publicKeyBlob,
+                signer: { data in
+                    try deviceKey.privateKey.signature(for: data)
+                },
+                timeout: .seconds(5))
+            let result = try await connection.execute(
+                "printf device-key",
+                timeout: .seconds(5))
+
+            #expect(result.stdout == Data("device-key".utf8))
+            #expect(result.exitStatus == 0)
+        }
+    }
+
+    @Test("unauthorized Device Key has a distinct authentication error")
+    func unauthorizedDeviceKeyFailsAuthentication() async throws {
+        let environment = try #require(HeelerSSHTestEnvironment.current)
+        let deviceKey = DeviceKey(privateKey: Curve25519.Signing.PrivateKey())
+        let connection = try await SSHConnection.connect(
+            to: environment.endpoint,
+            timeout: .seconds(5))
+
+        try await withClosingConnection(connection) { connection in
+            await #expect(throws: SSHError.authenticationFailed) {
+                try await connection.authenticate(
+                    username: environment.username,
+                    publicKey: deviceKey.publicKeyBlob,
+                    signer: { data in
+                        try deviceKey.privateKey.signature(for: data)
+                    },
+                    timeout: .seconds(5))
+            }
         }
     }
 

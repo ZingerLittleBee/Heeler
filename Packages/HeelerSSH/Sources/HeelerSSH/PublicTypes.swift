@@ -34,6 +34,11 @@ public struct SSHExecResult: Sendable, Equatable {
     }
 }
 
+/// Synchronously signs the SSH authentication challenge supplied by libssh2.
+/// The private key remains owned by the caller; the package receives only the
+/// resulting signature bytes.
+public typealias SSHSigningClosure = @Sendable (Data) throws -> Data
+
 public enum SSHError: Error, Sendable, Equatable {
     case invalidEndpoint
     case connectionFailed

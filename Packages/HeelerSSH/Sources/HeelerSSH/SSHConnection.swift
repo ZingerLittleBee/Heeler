@@ -30,6 +30,19 @@ public final class SSHConnection: Sendable {
             timeout: timeout)
     }
 
+    public func authenticate(
+        username: String,
+        publicKey: Data,
+        signer: @escaping SSHSigningClosure,
+        timeout: Duration
+    ) async throws {
+        try await driver.authenticate(
+            username: username,
+            publicKey: publicKey,
+            signer: signer,
+            timeout: timeout)
+    }
+
     public func execute(
         _ command: String,
         input: Data = Data(),

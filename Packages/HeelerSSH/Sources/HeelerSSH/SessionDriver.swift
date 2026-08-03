@@ -4,14 +4,16 @@ import Darwin
 import Foundation
 
 actor SessionDriver {
-    private static let hostKeyPreference = [
+    static let hostKeyAlgorithms = [
         "ssh-ed25519",
         "ecdsa-sha2-nistp384",
         "ecdsa-sha2-nistp256",
         "ecdsa-sha2-nistp521",
         "rsa-sha2-512",
         "rsa-sha2-256",
-    ].joined(separator: ",")
+    ]
+
+    private static let hostKeyPreference = hostKeyAlgorithms.joined(separator: ",")
 
     private static let keyExchangePreference = [
         "curve25519-sha256",
@@ -106,6 +108,53 @@ actor SessionDriver {
                             passwordPointer,
                             UInt32(password.utf8.count),
                             nil)
+                    }
+                }
+            }
+            guard result == 0 else { throw mapAuthenticationError(result) }
+            authenticated = true
+        } catch {
+            let normalized = normalize(error)
+            if normalized != .authenticationFailed {
+                invalidateResources()
+            }
+            throw normalized
+        }
+    }
+
+    func authenticate(
+        username: String,
+        publicKey: Data,
+        signer: @escaping SSHSigningClosure,
+        timeout: Duration
+    ) async throws {
+        await acquireOperation()
+        defer { releaseOperation() }
+
+        guard valid, !authenticated, let session else {
+            throw SSHError.connectionInvalidated
+        }
+        guard !username.isEmpty, !publicKey.isEmpty else {
+            throw SSHError.authenticationFailed
+        }
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        let retainedContext = Unmanaged.passRetained(SigningContext(signer: signer))
+        defer { retainedContext.release() }
+        var abstract: UnsafeMutableRawPointer? = retainedContext.toOpaque()
+
+        do {
+            let result = try await repeatUntilComplete(deadline: deadline) {
+                username.withCString { usernamePointer in
+                    publicKey.withUnsafeBytes { publicKeyBytes in
+                        withUnsafeMutablePointer(to: &abstract) { abstractPointer in
+                            libssh2_userauth_publickey(
+                                session,
+                                usernamePointer,
+                                publicKeyBytes.bindMemory(to: UInt8.self).baseAddress,
+                                publicKeyBytes.count,
+                                signPublicKey,
+                                abstractPointer)
+                        }
                     }
                 }
             }
@@ -543,6 +592,58 @@ actor SessionDriver {
         } else {
             operationWaiters.removeFirst().resume()
         }
+    }
+}
+
+private final class SigningContext: Sendable {
+    let signer: SSHSigningClosure
+
+    init(signer: @escaping SSHSigningClosure) {
+        self.signer = signer
+    }
+}
+
+private func signPublicKey(
+    _ session: OpaquePointer?,
+    _ signaturePointer: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>?,
+    _ signatureLength: UnsafeMutablePointer<Int>?,
+    _ dataPointer: UnsafePointer<UInt8>?,
+    _ dataLength: Int,
+    _ abstract: UnsafeMutablePointer<UnsafeMutableRawPointer?>?
+) -> Int32 {
+    guard
+        session != nil,
+        let signaturePointer,
+        let signatureLength,
+        let dataPointer,
+        dataLength >= 0,
+        let contextPointer = abstract?.pointee
+    else {
+        return LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED
+    }
+
+    signaturePointer.pointee = nil
+    signatureLength.pointee = 0
+    let context = Unmanaged<SigningContext>
+        .fromOpaque(contextPointer)
+        .takeUnretainedValue()
+
+    do {
+        let signature = try context.signer(Data(bytes: dataPointer, count: dataLength))
+        // SessionDriver initializes libssh2 with its default malloc/free
+        // allocator. libssh2 takes ownership here and frees this buffer after
+        // copying it into the authentication packet.
+        guard !signature.isEmpty, let allocation = malloc(signature.count) else {
+            return LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED
+        }
+        signature.copyBytes(
+            to: allocation.assumingMemoryBound(to: UInt8.self),
+            count: signature.count)
+        signaturePointer.pointee = allocation.assumingMemoryBound(to: UInt8.self)
+        signatureLength.pointee = signature.count
+        return 0
+    } catch {
+        return LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED
     }
 }
 

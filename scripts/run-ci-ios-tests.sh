@@ -94,6 +94,9 @@ sudo -n chown "$fixture_uid":20 "$fixture_home"
 
 ssh-keygen -q -t ed25519 -N '' -f "$fixture_dir/host_ed25519"
 ssh-keygen -q -t rsa -b 3072 -N '' -f "$fixture_dir/host_rsa"
+printf '%s\n' \
+    'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAOhB7/zzhC+HXDdGOdLwJln5NYwm6UNXx3chmQSVTG4 heeler-ci-device-key' \
+    > "$fixture_dir/authorized_keys"
 
 modern_config="$fixture_dir/sshd-modern.conf"
 legacy_config="$fixture_dir/sshd-legacy.conf"
@@ -111,7 +114,8 @@ write_common_config() {
         "PidFile $pid_file" \
         "PasswordAuthentication yes" \
         "KbdInteractiveAuthentication no" \
-        "PubkeyAuthentication no" \
+        "PubkeyAuthentication yes" \
+        "AuthorizedKeysFile $fixture_dir/authorized_keys" \
         "UsePAM yes" \
         "PermitRootLogin no" \
         "AllowUsers $fixture_username" \
@@ -209,8 +213,8 @@ xcodebuild test \
     2>&1 | tee "$e2e_log"
 
 if grep -q 'skipped:' "$e2e_log" \
-    || ! grep -q "Test run with 11 tests in 1 suite passed" "$e2e_log"; then
-    echo "The mandatory HeelerSSH real-sshd suite did not execute all eleven tests" >&2
+    || ! grep -q "Test run with 13 tests in 1 suite passed" "$e2e_log"; then
+    echo "The mandatory HeelerSSH real-sshd suite did not execute all thirteen tests" >&2
     exit 1
 fi
 
