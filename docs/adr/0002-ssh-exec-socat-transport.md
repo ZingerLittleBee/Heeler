@@ -1,3 +1,7 @@
+---
+status: superseded by ADR-0011
+---
+
 # Transport: herdr JSON API over SSH exec + socat, no herdr changes
 
 The app reaches herdr's JSON API (NDJSON over a Unix domain socket, one request per connection) by opening a no-PTY SSH exec channel running `socat - UNIX-CONNECT:<sock>` per request, plus one long-lived channel for `events.subscribe`. Interactive terminals use a separate SSH PTY shell channel. Citadel 0.12.1 cannot combine a PTY request with an exec request, so the app writes an injection-safe `exec herdr agent attach <pane>` bootstrap line into that shell; `exec` replaces the shell, making the resulting channel mechanically equivalent to a PTY exec channel for lifecycle and byte streaming. We deliberately require `socat` on every host and change nothing in herdr.
