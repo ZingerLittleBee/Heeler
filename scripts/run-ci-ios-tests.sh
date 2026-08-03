@@ -132,6 +132,18 @@ sudo -n dscl . -create "/Users/$fixture_username" PrimaryGroupID 20
 sudo -n dscl . -create "/Users/$fixture_username" NFSHomeDirectory "$fixture_home"
 sudo -n dscl . -create "/Users/$fixture_username" IsHidden 1
 sudo -n dscl . -passwd "/Users/$fixture_username" "$fixture_password"
+mkdir -p \
+    "$fixture_home/.config/herdr/sessions/fixture" \
+    "$fixture_home/.codex/skills/fixture" \
+    "$fixture_home/.heeler-ci"
+chmod 777 "$fixture_home/.heeler-ci"
+printf '%s\n' \
+    '---' \
+    'name: fixture' \
+    'description: Real SSH fixture skill.' \
+    '---' \
+    'Fixture body.' \
+    > "$fixture_home/.codex/skills/fixture/SKILL.md"
 sudo -n chown "$fixture_uid":20 "$fixture_home"
 
 ssh-keygen -q -t ed25519 -N '' -f "$fixture_dir/host_ed25519"
@@ -233,13 +245,18 @@ printf '%s\n' \
     "AllowStreamLocalForwarding yes" \
     >> "$jump_forwarding_denied_config"
 
-streamlocal_socket="$fixture_dir/herdr.sock"
-streamlocal_stale_socket="$fixture_dir/stale.sock"
-streamlocal_missing_socket="$fixture_dir/missing.sock"
-streamlocal_count_file="$fixture_dir/streamlocal-count"
+streamlocal_socket="$fixture_home/.config/herdr/herdr.sock"
+streamlocal_stale_socket="$fixture_home/.heeler-ci/stale.sock"
+streamlocal_wake_failure_socket="$fixture_home/.heeler-ci/stale-wake-failure.sock"
+streamlocal_missing_socket="$fixture_home/.heeler-ci/missing.sock"
+streamlocal_count_file="$fixture_home/.heeler-ci/streamlocal-count"
+ln -s \
+    "$streamlocal_socket" \
+    "$fixture_home/.config/herdr/sessions/fixture/herdr.sock"
 /usr/bin/python3 scripts/fixtures/fake-herdr-streamlocal.py \
     --socket "$streamlocal_socket" \
     --stale-socket "$streamlocal_stale_socket" \
+    --stale-socket "$streamlocal_wake_failure_socket" \
     --count-file "$streamlocal_count_file" \
     > "$fixture_dir/fake-herdr.log" 2>&1 &
 fake_herdr_pid=$!
@@ -290,7 +307,8 @@ for attempt in $(seq 1 50); do
         && nc -z 127.0.0.1 "$jump_target_port" >/dev/null 2>&1 \
         && nc -z 127.0.0.1 "$jump_forwarding_denied_port" >/dev/null 2>&1 \
         && [[ -S "$streamlocal_socket" ]] \
-        && [[ -S "$streamlocal_stale_socket" ]]; then
+        && [[ -S "$streamlocal_stale_socket" ]] \
+        && [[ -S "$streamlocal_wake_failure_socket" ]]; then
         break
     fi
     if ! kill -0 "$modern_pid" 2>/dev/null \
@@ -324,7 +342,8 @@ if ! nc -z 127.0.0.1 "$modern_port" >/dev/null 2>&1 \
     || ! nc -z 127.0.0.1 "$jump_target_port" >/dev/null 2>&1 \
     || ! nc -z 127.0.0.1 "$jump_forwarding_denied_port" >/dev/null 2>&1 \
     || [[ ! -S "$streamlocal_socket" ]] \
-    || [[ ! -S "$streamlocal_stale_socket" ]]; then
+    || [[ ! -S "$streamlocal_stale_socket" ]] \
+    || [[ ! -S "$streamlocal_wake_failure_socket" ]]; then
     cat "$fixture_dir/sshd-modern.log" >&2
     cat "$fixture_dir/sshd-legacy.log" >&2
     cat "$fixture_dir/sshd-restricted.log" >&2
@@ -347,7 +366,7 @@ export HEELER_SSH_E2E_PASSWORD="$fixture_password"
 export HEELER_SSH_E2E_STREAMLOCAL_SOCKET="$streamlocal_socket"
 
 fixture_configuration=$(printf \
-    '{"host":"127.0.0.1","port":%s,"legacyPort":%s,"restrictedPort":%s,"stallPort":%s,"globalPolicyPort":%s,"keyPolicyPort":%s,"username":"%s","password":"%s","streamLocalSocketPath":"%s","socketPath":"%s","staleSocketPath":"%s","missingSocketPath":"%s","countFilePath":"%s"}' \
+    '{"host":"127.0.0.1","port":%s,"legacyPort":%s,"restrictedPort":%s,"stallPort":%s,"globalPolicyPort":%s,"keyPolicyPort":%s,"username":"%s","password":"%s","streamLocalSocketPath":"%s","socketPath":"%s","staleSocketPath":"%s","wakeFailureStaleSocketPath":"%s","missingSocketPath":"%s","countFilePath":"%s","homePath":"%s"}' \
     "$modern_port" \
     "$legacy_port" \
     "$restricted_port" \
@@ -359,8 +378,10 @@ fixture_configuration=$(printf \
     "$streamlocal_socket" \
     "$streamlocal_socket" \
     "$streamlocal_stale_socket" \
+    "$streamlocal_wake_failure_socket" \
     "$streamlocal_missing_socket" \
-    "$streamlocal_count_file")
+    "$streamlocal_count_file" \
+    "$fixture_home")
 fixture_configuration_base64=$(printf '%s' "$fixture_configuration" | base64)
 jump_fixture_configuration=$(printf \
     '{"host":"127.0.0.1","jumpPort":%s,"forwardingDeniedPort":%s,"targetHost":"127.0.0.1","targetPort":%s,"outerStallPort":%s,"innerStallHost":"127.0.0.1","innerStallPort":%s,"username":"%s","socketPath":"%s"}' \
@@ -440,6 +461,21 @@ xcodebuild test \
 if grep -q 'skipped:' "$jump_log" \
     || ! grep -q "Test run with 9 tests in 1 suite passed" "$jump_log"; then
     echo "The mandatory HeelerSSH Jump Host gate suite did not execute" >&2
+    exit 1
+fi
+
+transport_behavior_log="$fixture_dir/transport-behavior-e2e.log"
+xcodebuild test \
+    -project Heeler.xcodeproj \
+    -scheme Heeler \
+    -destination "$simulator_destination" \
+    -collect-test-diagnostics never \
+    -only-testing:HeelerTests/HeelerSSHTransportBehaviorE2ETests \
+    2>&1 | tee "$transport_behavior_log"
+
+if grep -q 'skipped:' "$transport_behavior_log" \
+    || ! grep -q "Test run with 12 tests in 1 suite passed" "$transport_behavior_log"; then
+    echo "The mandatory HeelerSSH ordinary Transport suite did not execute" >&2
     exit 1
 fi
 

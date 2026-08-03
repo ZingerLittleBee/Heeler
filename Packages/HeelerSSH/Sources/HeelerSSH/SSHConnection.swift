@@ -126,6 +126,13 @@ public final class SSHConnection: Sendable {
             timeout: timeout)
     }
 
+    /// Whether this session still has a live native connection that can
+    /// safely admit another operation. An uncertain channel outcome makes
+    /// this false before the app can reuse the connection.
+    public var isConnected: Bool {
+        get async { await driver.isReusable }
+    }
+
     public func close(timeout: Duration) async throws {
         var firstError: (any Error)?
         do {

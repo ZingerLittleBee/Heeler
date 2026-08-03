@@ -210,6 +210,7 @@
 		D8E9ECA03166EA6AA2BAE712 /* SSHCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BA0D80E59E5C49E5F164DB4 /* SSHCredentials.swift */; };
 		D8FA3A3189491AC2A765C6BC /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBC80D00F652CB84103C246F /* SettingsView.swift */; };
 		D909BD8D7C3DFCD776AAA781 /* AgentSkill.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9FD6FF5FE83C022600169BE /* AgentSkill.swift */; };
+		DA607F169DB8EF4549F65134 /* HeelerSSHTransportBehaviorE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7683DF30B1A0E9FA0064AAA2 /* HeelerSSHTransportBehaviorE2ETests.swift */; };
 		DB28307A5B8386139CA7EDEE /* TerminalKeyboardInset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CF0F9F0EDF8757DC1D275D2 /* TerminalKeyboardInset.swift */; };
 		DB3815F790623647C0050290 /* PairingScanStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45DB60007029322902FD1AFF /* PairingScanStore.swift */; };
 		DE020395E7459D508F0CC401 /* NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDC98A5038CD109556BE903F /* NotificationSettingsView.swift */; };
@@ -379,6 +380,7 @@
 		7461B7A0FD2A4CDF34352D45 /* PairingCodeVectorFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingCodeVectorFile.swift; sourceTree = "<group>"; };
 		7625958E48639DCE4F5A8391 /* EventsSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsSession.swift; sourceTree = "<group>"; };
 		764EB7D298185F64BA26C8B2 /* HerdrEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrEvents.swift; sourceTree = "<group>"; };
+		7683DF30B1A0E9FA0064AAA2 /* HeelerSSHTransportBehaviorE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeelerSSHTransportBehaviorE2ETests.swift; sourceTree = "<group>"; };
 		7780BE78D868DB0A8275E6FB /* Heeler.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Heeler.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		78F85C588963C3CE948AA9E4 /* AgentNotificationBannerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationBannerStore.swift; sourceTree = "<group>"; };
 		79662827F6A91D8EFBF112F7 /* HostListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostListView.swift; sourceTree = "<group>"; };
@@ -564,6 +566,7 @@
 				D6F5C337F9BC29D46E48E35E /* HeelerSSHJumpHostGateE2ETests.swift */,
 				F75E8F9733C77314E6D222AC /* HeelerSSHNativeRuntimeTests.swift */,
 				B1AEA55D1F06B12005DEEE5F /* HeelerSSHSessionE2ETests.swift */,
+				7683DF30B1A0E9FA0064AAA2 /* HeelerSSHTransportBehaviorE2ETests.swift */,
 				16A6D0F6E54809BDE46AC1AE /* HerdrEventsTests.swift */,
 				31F09325DE68693680E5A3BB /* HerdrSocketLocationTests.swift */,
 				A30FA0CFA49274EB428AD3E0 /* HerdrWireTests.swift */,
@@ -1295,6 +1298,7 @@
 				C3CAE683F15A2DB5866FE702 /* HeelerSSHJumpHostGateE2ETests.swift in Sources */,
 				BFFC881E19AD745075F7155E /* HeelerSSHNativeRuntimeTests.swift in Sources */,
 				C626797B247A8ED6513D2EBB /* HeelerSSHSessionE2ETests.swift in Sources */,
+				DA607F169DB8EF4549F65134 /* HeelerSSHTransportBehaviorE2ETests.swift in Sources */,
 				7F8EA3E191EEC97479E3DC04 /* HerdrEventsTests.swift in Sources */,
 				2E82149F859FCBF05F9E999B /* HerdrSocketLocationTests.swift in Sources */,
 				8BC6A5F3341FEE8734ECB0B0 /* HerdrWireTests.swift in Sources */,

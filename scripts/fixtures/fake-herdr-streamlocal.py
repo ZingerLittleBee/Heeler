@@ -12,15 +12,15 @@ import time
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--socket", required=True)
-    parser.add_argument("--stale-socket", required=True)
+    parser.add_argument("--stale-socket", action="append", required=True)
     parser.add_argument("--count-file", required=True)
     return parser.parse_args()
 
 
 class Server:
-    def __init__(self, socket_path: str, stale_socket_path: str, count_file: str) -> None:
+    def __init__(self, socket_path: str, stale_socket_paths: list[str], count_file: str) -> None:
         self.socket_path = socket_path
-        self.stale_socket_path = stale_socket_path
+        self.stale_socket_paths = stale_socket_paths
         self.count_file = count_file
         self.count = 0
         self.count_lock = threading.Lock()
@@ -28,10 +28,11 @@ class Server:
 
     def start(self) -> None:
         self._unlink_paths()
-        stale = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        stale.bind(self.stale_socket_path)
-        stale.close()
-        os.chmod(self.stale_socket_path, 0o777)
+        for stale_socket_path in self.stale_socket_paths:
+            stale = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            stale.bind(stale_socket_path)
+            stale.close()
+            os.chmod(stale_socket_path, 0o777)
 
         self.listener.bind(self.socket_path)
         os.chmod(self.socket_path, 0o777)
@@ -67,17 +68,25 @@ class Server:
             if method == "hang":
                 time.sleep(30)
                 return
+            params = envelope.get("params", {})
+            if method == "pane.read" and params.get("pane_id") == "hang":
+                time.sleep(30)
+                return
             if method == "oversized":
                 payload = b"x" * (1_048_576 + 1)
                 chunk_size = 16 * 1024
             else:
-                payload = json.dumps(
-                    {
+                if method == "agent.rename" and params.get("target") == "api-error":
+                    response = {
                         "id": envelope.get("id"),
-                        "result": {"protocol": 17, "version": "fake"},
-                    },
-                    separators=(",", ":"),
-                ).encode() + b"\n"
+                        "error": {"code": "fixture_error", "message": "scripted failure"},
+                    }
+                else:
+                    response = {
+                        "id": envelope.get("id"),
+                        "result": self._result(method, params),
+                    }
+                payload = json.dumps(response, separators=(",", ":")).encode() + b"\n"
                 chunk_size = 7
 
             for offset in range(0, len(payload), chunk_size):
@@ -85,6 +94,132 @@ class Server:
                     connection.sendall(payload[offset : offset + chunk_size])
                 except BrokenPipeError:
                     return
+
+    def _result(self, method: str, params: object) -> object:
+        if method == "ping" or method == "partial":
+            return {"protocol": 17, "version": "fake"}
+        if method == "agent.list":
+            return {"type": "agent_list", "agents": []}
+        if method == "session.snapshot":
+            return {
+                "type": "session_snapshot",
+                "snapshot": {
+                    "version": "fake",
+                    "protocol": 17,
+                    "workspaces": [],
+                    "tabs": [],
+                    "panes": [],
+                    "layouts": [],
+                    "agents": [],
+                },
+            }
+        if method == "pane.read":
+            pane_id = params.get("pane_id", "pane-1") if isinstance(params, dict) else "pane-1"
+            return {
+                "type": "pane_read",
+                "read": {
+                    "pane_id": pane_id,
+                    "workspace_id": "workspace-1",
+                    "tab_id": "tab-1",
+                    "source": "recent",
+                    "format": "text",
+                    "text": "fixture output",
+                    "revision": 1,
+                    "truncated": False,
+                },
+            }
+        if method == "pane.close":
+            return {"type": "ok"}
+        if method == "tab.create":
+            return {
+                "type": "tab_created",
+                "tab": self._tab("tab-new", "workspace-1"),
+                "root_pane": self._pane("pane-new", "tab-new", "workspace-1"),
+            }
+        if method == "worktree.create":
+            return {
+                "type": "worktree_created",
+                "workspace": self._workspace("workspace-worktree"),
+                "tab": self._tab("tab-worktree", "workspace-worktree"),
+                "root_pane": self._pane(
+                    "pane-worktree", "tab-worktree", "workspace-worktree"
+                ),
+                "worktree": {
+                    "path": "/tmp/worktree",
+                    "branch": "task/fixture",
+                    "is_bare": False,
+                    "is_detached": False,
+                    "is_prunable": False,
+                    "is_linked_worktree": True,
+                    "label": "fixture",
+                    "open_workspace_id": "workspace-worktree",
+                },
+            }
+        if method == "agent.start":
+            pane_id = params.get("pane_id", "pane-new") if isinstance(params, dict) else "pane-new"
+            workspace_id = (
+                "workspace-worktree" if pane_id == "pane-worktree" else "workspace-1"
+            )
+            return {
+                "type": "agent_started",
+                "argv": ["codex"],
+                "agent": self._agent(pane_id, workspace_id),
+            }
+        if method == "agent.rename":
+            return {"type": "agent_info", "agent": self._agent()}
+        if method == "workspace.rename":
+            return {"type": "workspace_info", "workspace": self._workspace()}
+        return {"type": "ok"}
+
+    def _agent(self, pane_id: str = "pane-1", workspace_id: str = "workspace-1") -> object:
+        return {
+            "terminal_id": "terminal-1",
+            "agent": "codex",
+            "terminal_title": "fixture",
+            "terminal_title_stripped": "fixture",
+            "agent_status": "idle",
+            "workspace_id": workspace_id,
+            "tab_id": "tab-worktree" if workspace_id == "workspace-worktree" else "tab-new",
+            "pane_id": pane_id,
+            "focused": False,
+            "cwd": "/tmp",
+            "foreground_cwd": "/tmp",
+            "revision": 1,
+        }
+
+    def _workspace(self, workspace_id: str = "workspace-1") -> object:
+        return {
+            "workspace_id": workspace_id,
+            "number": 1,
+            "label": "Fixture",
+            "focused": False,
+            "pane_count": 1,
+            "tab_count": 1,
+            "active_tab_id": "tab-1",
+            "agent_status": "idle",
+        }
+
+    def _tab(self, tab_id: str, workspace_id: str) -> object:
+        return {
+            "tab_id": tab_id,
+            "workspace_id": workspace_id,
+            "number": 1,
+            "label": "Fixture",
+            "focused": False,
+            "pane_count": 1,
+            "agent_status": "idle",
+        }
+
+    def _pane(self, pane_id: str, tab_id: str, workspace_id: str) -> object:
+        return {
+            "pane_id": pane_id,
+            "terminal_id": f"terminal-{pane_id}",
+            "workspace_id": workspace_id,
+            "tab_id": tab_id,
+            "focused": False,
+            "agent_status": "idle",
+            "revision": 1,
+        }
 
     def _increment_count(self) -> None:
         with self.count_lock:
@@ -99,7 +234,7 @@ class Server:
         os.replace(temporary, self.count_file)
 
     def _unlink_paths(self) -> None:
-        for path in (self.socket_path, self.stale_socket_path):
+        for path in (self.socket_path, *self.stale_socket_paths):
             try:
                 os.unlink(path)
             except FileNotFoundError:

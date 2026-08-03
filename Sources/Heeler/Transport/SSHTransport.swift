@@ -108,7 +108,7 @@ struct SSHTransportSettings: Sendable {
     /// degrade gracefully, a slow one should still answer.
     var requestTimeout: Duration = .seconds(15)
 
-    private static var defaultAgentDiscoveryCommand: String {
+    static var defaultAgentDiscoveryCommand: String {
         let checks = SupportedAgentKind.allCases.map { kind in
             "command -v \(kind.executable) >/dev/null 2>&1"
                 + " && printf \"\(agentAvailabilityMarker)%s\\n\" \"\(kind.rawValue)\""

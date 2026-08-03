@@ -331,6 +331,10 @@ actor SessionDriver {
         invalidateResources()
     }
 
+    var isReusable: Bool {
+        valid && session != nil && descriptor >= 0 && authenticated
+    }
+
 #if DEBUG
     func resourceStateForTesting() -> SessionDriverResourceState {
         SessionDriverResourceState(
