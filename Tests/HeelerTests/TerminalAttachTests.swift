@@ -17,6 +17,33 @@ struct TerminalAttachTests {
         case rejectedResize
     }
 
+    @Test func explicitEndDiscardsUnreadAndLaterLibSSH2Output() async throws {
+        let source = HeelerSSHAttachOutputGate.makeStream()
+        var iterator = source.output.makeAsyncIterator()
+
+        source.gate.yield(Data("before-end".utf8))
+        source.gate.beginExplicitEnd()
+        source.gate.yield(Data("after-end".utf8))
+        source.gate.finish()
+
+        #expect(try await iterator.next() == nil)
+    }
+
+    @Test func cleanLibSSH2ExitDrainsAcceptedOutputBeforeFinishing() async throws {
+        let source = HeelerSSHAttachOutputGate.makeStream()
+        var iterator = source.output.makeAsyncIterator()
+        let first = Data("first".utf8)
+        let second = Data("second".utf8)
+
+        source.gate.yield(first)
+        source.gate.yield(second)
+        source.gate.finish()
+
+        #expect(try await iterator.next() == first)
+        #expect(try await iterator.next() == second)
+        #expect(try await iterator.next() == nil)
+    }
+
     @Test func writerPropagatesResizeFailure() async {
         let input = TerminalAttachInputQueue()
         input.resize(cols: 120, rows: 40)

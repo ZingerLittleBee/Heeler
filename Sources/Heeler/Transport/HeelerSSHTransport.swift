@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import HeelerSSH
 
 private struct HeelerSSHSessionListResponse: Decodable {
@@ -8,6 +9,132 @@ private struct HeelerSSHSessionListResponse: Decodable {
 private enum HeelerSSHAttachPumpError: Error, Sendable {
     case input(String)
     case output(String)
+}
+
+/// Linearizes explicit Attach shutdown with terminal output delivery.
+///
+/// `AsyncThrowingStream.Continuation.finish()` preserves buffered elements,
+/// so a finished stream alone cannot guarantee that `end()` makes later
+/// iterator reads return nil. This gate owns the buffer so explicit end can
+/// discard it, while clean remote exit still drains every accepted byte.
+final class HeelerSSHAttachOutputGate: Sendable {
+    private enum Completion {
+        case finished
+        case failed(any Error)
+    }
+
+    private struct State: ~Copyable {
+        var buffered: [Data] = []
+        var bufferedIndex = 0
+        var waiter: CheckedContinuation<Data?, any Error>?
+        var completion: Completion?
+        var isExplicitlyEnding = false
+        var isConsumerCancelled = false
+    }
+
+    private let state = Mutex(State())
+
+    static func makeStream() -> (
+        output: AsyncThrowingStream<Data, any Error>,
+        gate: HeelerSSHAttachOutputGate
+    ) {
+        let gate = HeelerSSHAttachOutputGate()
+        let output = AsyncThrowingStream<Data, any Error> {
+            try await gate.next()
+        }
+        return (output, gate)
+    }
+
+    func beginExplicitEnd() {
+        state.withLock { state in
+            guard !state.isExplicitlyEnding else { return }
+            state.isExplicitlyEnding = true
+            state.buffered.removeAll(keepingCapacity: false)
+            state.bufferedIndex = 0
+            state.waiter?.resume(returning: nil)
+            state.waiter = nil
+        }
+    }
+
+    func yield(_ bytes: Data) {
+        state.withLock { state in
+            guard
+                !state.isExplicitlyEnding,
+                !state.isConsumerCancelled,
+                state.completion == nil
+            else { return }
+            if let waiting = state.waiter {
+                state.waiter = nil
+                waiting.resume(returning: bytes)
+            } else {
+                state.buffered.append(bytes)
+            }
+        }
+    }
+
+    func finish(throwing failure: (any Error)? = nil) {
+        state.withLock { state in
+            guard state.completion == nil else { return }
+            state.completion = failure.map(Completion.failed) ?? .finished
+            guard
+                state.bufferedIndex == state.buffered.count,
+                let waiter = state.waiter
+            else { return }
+            state.waiter = nil
+            if let failure {
+                waiter.resume(throwing: failure)
+            } else {
+                waiter.resume(returning: nil)
+            }
+        }
+    }
+
+    private func next() async throws -> Data? {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                state.withLock { state in
+                    if state.isExplicitlyEnding || state.isConsumerCancelled {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    if state.bufferedIndex < state.buffered.count {
+                        let bytes = state.buffered[state.bufferedIndex]
+                        state.bufferedIndex += 1
+                        if state.bufferedIndex == state.buffered.count {
+                            state.buffered.removeAll(keepingCapacity: true)
+                            state.bufferedIndex = 0
+                        }
+                        continuation.resume(returning: bytes)
+                        return
+                    }
+                    if let completion = state.completion {
+                        switch completion {
+                        case .finished:
+                            continuation.resume(returning: nil)
+                        case .failed(let failure):
+                            continuation.resume(throwing: failure)
+                        }
+                        return
+                    }
+                    precondition(state.waiter == nil, "Attach output has more than one consumer")
+                    state.waiter = continuation
+                }
+            }
+        } onCancel: {
+            cancelConsumer()
+        }
+    }
+
+    private func cancelConsumer() {
+        state.withLock { state in
+            guard !state.isConsumerCancelled else { return }
+            state.isConsumerCancelled = true
+            state.buffered.removeAll(keepingCapacity: false)
+            state.bufferedIndex = 0
+            state.waiter?.resume(returning: nil)
+            state.waiter = nil
+        }
+    }
 }
 
 /// The libssh2-backed app Transport. Ordinary herdr RPCs use fresh
@@ -887,7 +1014,7 @@ actor HeelerSSHTransport: Transport {
                 throw await mapOperationError(error)
             }
 
-            let (output, continuation) = AsyncThrowingStream<Data, any Error>.makeStream()
+            let outputSource = HeelerSSHAttachOutputGate.makeStream()
             let input = TerminalAttachInputQueue()
             nextTerminalReaderID &+= 1
             let readerID = nextTerminalReaderID
@@ -897,9 +1024,13 @@ actor HeelerSSHTransport: Transport {
                     readerID: readerID,
                     channel: channel,
                     input: input,
-                    output: continuation)
+                    output: outputSource.gate)
             }
-            return TerminalAttachSession(output: output, input: input) {
+            return TerminalAttachSession(
+                output: outputSource.output,
+                input: input,
+                onEndStarted: outputSource.gate.beginExplicitEnd
+            ) {
                 input.finish()
                 readerTask.cancel()
                 await readerTask.value
@@ -948,7 +1079,7 @@ actor HeelerSSHTransport: Transport {
         readerID: UInt64,
         channel: SSHPTYChannel,
         input: TerminalAttachInputQueue,
-        output continuation: AsyncThrowingStream<Data, any Error>.Continuation
+        output: HeelerSSHAttachOutputGate
     ) async {
         var failure: TransportError?
         var sawCleanEnd = false
@@ -997,7 +1128,7 @@ actor HeelerSSHTransport: Transport {
                                     }
                                     return true
                                 }
-                                if !bytes.isEmpty { continuation.yield(bytes) }
+                                if !bytes.isEmpty { output.yield(bytes) }
                             }
                             throw CancellationError()
                         } catch is CancellationError {
@@ -1050,9 +1181,9 @@ actor HeelerSSHTransport: Transport {
             terminalChannelState = .idle
         }
         if let failure {
-            continuation.finish(throwing: failure)
+            output.finish(throwing: failure)
         } else {
-            continuation.finish()
+            output.finish()
         }
     }
 }

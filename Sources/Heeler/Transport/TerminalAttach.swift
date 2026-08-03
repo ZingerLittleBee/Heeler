@@ -255,15 +255,18 @@ final class TerminalAttachSession: Sendable {
     /// after `end()`; finishes throwing if the channel dies.
     let output: AsyncThrowingStream<Data, any Error>
     private let input: TerminalAttachInputQueue
+    private let onEndStarted: @Sendable () -> Void
     private let ender: @Sendable () async -> Void
 
     init(
         output: AsyncThrowingStream<Data, any Error>,
         input: TerminalAttachInputQueue,
+        onEndStarted: @escaping @Sendable () -> Void = {},
         ender: @escaping @Sendable () async -> Void
     ) {
         self.output = output
         self.input = input
+        self.onEndStarted = onEndStarted
         self.ender = ender
     }
 
@@ -289,6 +292,7 @@ final class TerminalAttachSession: Sendable {
     /// Closes the terminal channel explicitly and waits for its teardown;
     /// `output` then finishes without error. Idempotent.
     func end() async {
+        onEndStarted()
         input.finish()
         await ender()
     }

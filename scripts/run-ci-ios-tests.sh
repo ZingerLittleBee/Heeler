@@ -155,6 +155,13 @@ printf '%s\n' \
     '    case "$line" in' \
     '        __exit__) exit 0 ;;' \
     '        __fail__) exit 23 ;;' \
+    '        __end_race__)' \
+    '            printf "END-RACE-READY\\n"' \
+    '            sleep 1' \
+    '            printf "END-RACE-BEFORE\\n"' \
+    '            sleep 10' \
+    '            printf "END-RACE-AFTER\\n"' \
+    '            continue ;;' \
     '    esac' \
     '    printf "GOT:%s\\n" "$line"' \
     '    stty size' \

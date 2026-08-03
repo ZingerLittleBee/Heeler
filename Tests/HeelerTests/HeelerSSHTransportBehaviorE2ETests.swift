@@ -458,6 +458,15 @@ struct HeelerSSHTransportBehaviorE2ETests {
         session.send(Data("probe\n".utf8))
         try await expectAttachOutput(&iterator, accumulated: &output, contains: "47 109")
 
+        session.send(Data("__end_race__\n".utf8))
+        try await expectAttachOutput(
+            &iterator,
+            accumulated: &output,
+            contains: "END-RACE-READY")
+        // The fixture writes another chunk after one second, then waits ten
+        // seconds before a final chunk. Sleeping two seconds deliberately
+        // leaves the first tail unread and the second scheduled after end.
+        try await Task.sleep(for: .seconds(2))
         let started = ContinuousClock.now
         await session.end()
         #expect(ContinuousClock.now - started < .seconds(3))
