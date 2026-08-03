@@ -47,6 +47,7 @@ actor SessionDriver {
     private var descriptor: Int32 = -1
     private var authenticated = false
     private var valid = true
+    private var forwarding = false
 
     // Actor reentrancy would otherwise allow a second task to call libssh2
     // while the first one is suspended on socket readiness.
@@ -57,30 +58,35 @@ actor SessionDriver {
         await acquireOperation()
         defer { releaseOperation() }
 
-        guard valid, session == nil, descriptor < 0 else {
+        guard valid, !forwarding, session == nil, descriptor < 0 else {
             throw SSHError.connectionInvalidated
         }
         let deadline = ContinuousClock.now.advanced(by: timeout)
 
         do {
-            guard NativeLibrary.initializationResult == 0 else {
-                throw SSHError.connectionFailed
-            }
             descriptor = try await SocketConnector.connect(to: endpoint, until: deadline)
-            guard let createdSession = libssh2_session_init_ex(nil, nil, nil, nil) else {
-                throw SSHError.connectionFailed
-            }
-            session = createdSession
-            libssh2_session_set_blocking(createdSession, 0)
-            try configureAlgorithms(createdSession)
+            return try await performHandshake(deadline: deadline)
+        } catch {
+            invalidateResources()
+            throw normalize(error)
+        }
+    }
 
-            let handshakeResult = try await repeatUntilComplete(deadline: deadline) {
-                libssh2_session_handshake(createdSession, descriptor)
-            }
-            guard handshakeResult == 0 else {
-                throw mapSessionError(handshakeResult)
-            }
-            return try extractHostKey(createdSession)
+    func handshake(
+        transport: any SSHByteTransport,
+        timeout: Duration
+    ) async throws -> SSHHostKey {
+        await acquireOperation()
+        defer { releaseOperation() }
+
+        guard valid, !forwarding, session == nil, descriptor < 0 else {
+            throw SSHError.connectionInvalidated
+        }
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+
+        do {
+            descriptor = try transport.takeDescriptor()
+            return try await performHandshake(deadline: deadline)
         } catch {
             invalidateResources()
             throw normalize(error)
@@ -91,7 +97,7 @@ actor SessionDriver {
         await acquireOperation()
         defer { releaseOperation() }
 
-        guard valid, !authenticated, let session else {
+        guard valid, !forwarding, !authenticated, let session else {
             throw SSHError.connectionInvalidated
         }
         guard !username.isEmpty else { throw SSHError.authenticationFailed }
@@ -131,7 +137,7 @@ actor SessionDriver {
         await acquireOperation()
         defer { releaseOperation() }
 
-        guard valid, !authenticated, let session else {
+        guard valid, !forwarding, !authenticated, let session else {
             throw SSHError.connectionInvalidated
         }
         guard !username.isEmpty, !publicKey.isEmpty else {
@@ -173,7 +179,7 @@ actor SessionDriver {
         await acquireOperation()
         defer { releaseOperation() }
 
-        guard valid, authenticated, let session else {
+        guard valid, !forwarding, authenticated, let session else {
             throw SSHError.connectionInvalidated
         }
         guard !command.isEmpty else { throw SSHError.channelFailed }
@@ -230,7 +236,7 @@ actor SessionDriver {
         await acquireOperation()
         defer { releaseOperation() }
 
-        guard valid, authenticated, let session else {
+        guard valid, !forwarding, authenticated, let session else {
             throw SSHError.connectionInvalidated
         }
         guard
@@ -289,7 +295,8 @@ actor SessionDriver {
         await acquireOperation()
         defer { releaseOperation() }
 
-        guard valid else {
+        guard valid, !forwarding else {
+            if forwarding { throw SSHError.channelFailed }
             invalidateResources()
             return
         }
@@ -348,6 +355,290 @@ actor SessionDriver {
             }
             guard result == 0 else { throw SSHError.algorithmNegotiationFailed }
         }
+    }
+
+    private func performHandshake(
+        deadline: ContinuousClock.Instant
+    ) async throws -> SSHHostKey {
+        guard NativeLibrary.initializationResult == 0 else {
+            throw SSHError.connectionFailed
+        }
+        guard let createdSession = libssh2_session_init_ex(nil, nil, nil, nil) else {
+            throw SSHError.connectionFailed
+        }
+        session = createdSession
+        libssh2_session_set_blocking(createdSession, 0)
+        try configureAlgorithms(createdSession)
+
+        let handshakeResult = try await repeatUntilComplete(deadline: deadline) {
+            libssh2_session_handshake(createdSession, descriptor)
+        }
+        guard handshakeResult == 0 else {
+            throw mapSessionError(handshakeResult)
+        }
+        return try extractHostKey(createdSession)
+    }
+
+    func openDirectTCPIP(
+        endpoint: SSHEndpoint,
+        timeout: Duration
+    ) async throws -> DirectTCPIPByteTransport {
+        await acquireOperation()
+        defer { releaseOperation() }
+
+        guard
+            valid,
+            !forwarding,
+            authenticated,
+            let session,
+            !endpoint.host.isEmpty,
+            endpoint.port > 0
+        else {
+            throw SSHError.connectionInvalidated
+        }
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        var channel: OpaquePointer?
+
+        do {
+            channel = try await openDirectTCPIPChannel(
+                endpoint: endpoint,
+                session: session,
+                deadline: deadline)
+            guard let channel else { throw SSHError.channelFailed }
+            let transport = try DirectTCPIPByteTransport()
+            let pumpDescriptor = try transport.takePumpDescriptor()
+            forwarding = true
+            let task = Task { [self] in
+                await pumpDirectTCPIP(
+                    channel: channel,
+                    bridgeDescriptor: pumpDescriptor,
+                    session: session)
+            }
+            transport.start(task)
+            return transport
+        } catch {
+            let normalized = normalize(error)
+            if let channel {
+                do {
+                    try await cleanChannel(
+                        channel,
+                        session: session,
+                        deadline: ContinuousClock.now.advanced(by: .seconds(2)),
+                        cancellable: false)
+                } catch {
+                    invalidateResources()
+                }
+            } else if normalized == .timedOut || normalized == .cancelled {
+                invalidateResources()
+            }
+            throw normalized
+        }
+    }
+
+    private func openDirectTCPIPChannel(
+        endpoint: SSHEndpoint,
+        session: OpaquePointer,
+        deadline: ContinuousClock.Instant
+    ) async throws -> OpaquePointer {
+        while true {
+            try checkProgress(deadline: deadline)
+            let channel = endpoint.host.withCString { hostPointer in
+                libssh2_channel_direct_tcpip_ex(
+                    session,
+                    hostPointer,
+                    Int32(endpoint.port),
+                    "127.0.0.1",
+                    0)
+            }
+            if let channel { return channel }
+
+            let error = libssh2_session_last_errno(session)
+            if error == LIBSSH2_ERROR_EAGAIN {
+                try await waitForSession(session, deadline: deadline)
+            } else {
+                throw classifyDirectTCPIPOpenFailure(session)
+            }
+        }
+    }
+
+    private func classifyDirectTCPIPOpenFailure(_ session: OpaquePointer) -> SSHError {
+        var messagePointer: UnsafeMutablePointer<CChar>?
+        var messageLength: Int32 = 0
+        _ = libssh2_session_last_error(session, &messagePointer, &messageLength, 0)
+        guard let messagePointer, messageLength > 0 else { return .channelFailed }
+        let message = String(
+            decoding: Data(bytes: messagePointer, count: Int(messageLength)),
+            as: UTF8.self)
+            .lowercased()
+        if message.contains("administratively prohibited")
+            || message.contains("forwarding disabled")
+            || message.contains("not allowed")
+        {
+            return .forwardingDenied
+        }
+        if message.contains("connect failed") || message.contains("connection refused") {
+            return .targetUnreachable
+        }
+        return .channelFailed
+    }
+
+    private func pumpDirectTCPIP(
+        channel: OpaquePointer,
+        bridgeDescriptor: Int32,
+        session: OpaquePointer
+    ) async -> Result<Void, SSHError> {
+        defer {
+            Darwin.close(bridgeDescriptor)
+            forwarding = false
+        }
+
+        do {
+            try await runDirectTCPIPPump(
+                channel: channel,
+                bridgeDescriptor: bridgeDescriptor,
+                session: session)
+            try await cleanChannel(
+                channel,
+                session: session,
+                deadline: ContinuousClock.now.advanced(by: .seconds(2)),
+                cancellable: false)
+            return .success(())
+        } catch {
+            let normalized = normalize(error)
+            do {
+                try await cleanChannel(
+                    channel,
+                    session: session,
+                    deadline: ContinuousClock.now.advanced(by: .seconds(2)),
+                    cancellable: false)
+            } catch {
+                invalidateResources()
+            }
+            return .failure(normalized)
+        }
+    }
+
+    private func runDirectTCPIPPump(
+        channel: OpaquePointer,
+        bridgeDescriptor: Int32,
+        session: OpaquePointer
+    ) async throws {
+        let bufferLimit = 1_048_576
+        var toOuter = Data()
+        var toInner = Data()
+        var scratch = [UInt8](repeating: 0, count: 32 * 1024)
+        var innerEOF = false
+        var outerEOF = false
+
+        while true {
+            if Task.isCancelled { throw SSHError.cancelled }
+            guard valid else { throw SSHError.connectionInvalidated }
+            var madeProgress = false
+
+            if !innerEOF, toOuter.count < bufferLimit {
+                let readCount = scratch.withUnsafeMutableBytes { bytes in
+                    Darwin.read(bridgeDescriptor, bytes.baseAddress, bytes.count)
+                }
+                if readCount > 0 {
+                    toOuter.append(contentsOf: scratch.prefix(readCount))
+                    madeProgress = true
+                } else if readCount == 0 {
+                    innerEOF = true
+                    madeProgress = true
+                } else if errno != EAGAIN && errno != EWOULDBLOCK {
+                    throw SSHError.connectionFailed
+                }
+            }
+
+            if !toOuter.isEmpty {
+                let written = toOuter.withUnsafeBytes { bytes -> Int in
+                    guard let baseAddress = bytes.baseAddress else { return 0 }
+                    return libssh2_channel_write_ex(
+                        channel,
+                        0,
+                        baseAddress.assumingMemoryBound(to: CChar.self),
+                        bytes.count)
+                }
+                if written > 0 {
+                    toOuter.removeFirst(written)
+                    madeProgress = true
+                } else if written != Int(LIBSSH2_ERROR_EAGAIN) {
+                    throw SSHError.connectionFailed
+                }
+            }
+
+            if !outerEOF, toInner.count < bufferLimit {
+                let readCount = scratch.withUnsafeMutableBytes { bytes -> Int in
+                    guard let baseAddress = bytes.baseAddress else { return 0 }
+                    return libssh2_channel_read_ex(
+                        channel,
+                        0,
+                        baseAddress.assumingMemoryBound(to: CChar.self),
+                        bytes.count)
+                }
+                if readCount > 0 {
+                    toInner.append(contentsOf: scratch.prefix(readCount))
+                    madeProgress = true
+                } else if readCount != 0 && readCount != Int(LIBSSH2_ERROR_EAGAIN) {
+                    throw SSHError.connectionFailed
+                }
+                if libssh2_channel_eof(channel) == 1 {
+                    outerEOF = true
+                    madeProgress = true
+                }
+            }
+
+            if !toInner.isEmpty {
+                let written = toInner.withUnsafeBytes { bytes in
+                    Darwin.write(bridgeDescriptor, bytes.baseAddress, bytes.count)
+                }
+                if written > 0 {
+                    toInner.removeFirst(written)
+                    madeProgress = true
+                } else if written < 0, errno != EAGAIN, errno != EWOULDBLOCK {
+                    throw SSHError.connectionFailed
+                }
+            }
+
+            if outerEOF, toInner.isEmpty {
+                _ = Darwin.shutdown(bridgeDescriptor, SHUT_WR)
+            }
+            if innerEOF, toOuter.isEmpty { return }
+
+            if !madeProgress {
+                var innerDirections: SocketDirections = []
+                if !innerEOF, toOuter.count < bufferLimit { innerDirections.insert(.read) }
+                if !toInner.isEmpty { innerDirections.insert(.write) }
+                let pumpDeadline = ContinuousClock.now.advanced(by: .seconds(60))
+                do {
+                    try await SocketReadiness.wait(
+                        for: [
+                            .init(
+                                descriptor: descriptor,
+                                directions: sessionDirections(session)),
+                            .init(
+                                descriptor: bridgeDescriptor,
+                                directions: innerDirections),
+                        ],
+                        until: pumpDeadline)
+                } catch SSHError.timedOut {
+                    continue
+                }
+            }
+        }
+    }
+
+    private func sessionDirections(_ session: OpaquePointer) -> SocketDirections {
+        let rawDirections = libssh2_session_block_directions(session)
+        var directions: SocketDirections = []
+        if rawDirections & LIBSSH2_SESSION_BLOCK_INBOUND != 0 {
+            directions.insert(.read)
+        }
+        if rawDirections & LIBSSH2_SESSION_BLOCK_OUTBOUND != 0 {
+            directions.insert(.write)
+        }
+        if directions.isEmpty { directions = [.read, .write] }
+        return directions
     }
 
     private func extractHostKey(_ session: OpaquePointer) throws -> SSHHostKey {

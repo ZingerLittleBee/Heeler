@@ -46,3 +46,16 @@ temporary Unix-socket fake herdr server, then runs the mandatory
 invoke socat. The suite includes a repeatable 25-exchange loopback benchmark;
 its output records local channel open, exchange, and close cost and is not a
 WAN latency promise.
+
+## Jump Host acceptance
+
+`SSHConnection.connectThrough(to:timeout:)` opens a `direct-tcpip` channel on
+an authenticated Jump Host and runs a second, independent SSH session over its
+byte stream. The target performs its own Host Key verification and
+authentication. Closing the target connection tears down the target session,
+forwarding channel, and Jump Host session in that order.
+
+The same CI fixture also runs `HeelerSSHJumpHostGateE2ETests` against two
+disposable sshd instances with independent Host Keys. The suite is a hard gate
+for protocol-17 direct-streamlocal traffic, failure taxonomy, cancellation,
+deadlines, cleanup, and sequential and concurrent stress.

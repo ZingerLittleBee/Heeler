@@ -47,6 +47,8 @@ public enum SSHError: Error, Sendable, Equatable {
     case timedOut
     case cancelled
     case channelFailed
+    case forwardingDenied
+    case targetUnreachable
     case streamLocalOpenFailed
     case unexpectedEOF
     case responseTooLarge(limit: Int)

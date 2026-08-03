@@ -1,13 +1,31 @@
 import Foundation
 
+enum SSHConnectionTeardownStep: Sendable, Equatable {
+    case targetSession
+    case forwardingChannel
+    case jumpSession
+}
+
 public final class SSHConnection: Sendable {
     public let hostKey: SSHHostKey
 
     private let driver: SessionDriver
+    private let parent: SSHConnection?
+    private let byteTransport: (any SSHByteTransport)?
+    private let teardownObserver: (@Sendable (SSHConnectionTeardownStep) -> Void)?
 
-    private init(driver: SessionDriver, hostKey: SSHHostKey) {
+    private init(
+        driver: SessionDriver,
+        hostKey: SSHHostKey,
+        parent: SSHConnection? = nil,
+        byteTransport: (any SSHByteTransport)? = nil,
+        teardownObserver: (@Sendable (SSHConnectionTeardownStep) -> Void)? = nil
+    ) {
         self.driver = driver
         self.hostKey = hostKey
+        self.parent = parent
+        self.byteTransport = byteTransport
+        self.teardownObserver = teardownObserver
     }
 
     public static func connect(
@@ -17,6 +35,47 @@ public final class SSHConnection: Sendable {
         let driver = SessionDriver()
         let hostKey = try await driver.handshake(endpoint: endpoint, timeout: timeout)
         return SSHConnection(driver: driver, hostKey: hostKey)
+    }
+
+    /// Opens an SSH connection to `endpoint` through this authenticated Jump
+    /// Host. The returned connection owns both hops and closes them in target,
+    /// forwarding-channel, Jump Host order.
+    public func connectThrough(
+        to endpoint: SSHEndpoint,
+        timeout: Duration
+    ) async throws -> SSHConnection {
+        try await connectThrough(
+            to: endpoint,
+            timeout: timeout,
+            teardownObserver: nil)
+    }
+
+    func connectThrough(
+        to endpoint: SSHEndpoint,
+        timeout: Duration,
+        teardownObserver: (@Sendable (SSHConnectionTeardownStep) -> Void)?
+    ) async throws -> SSHConnection {
+        let transport = try await driver.openDirectTCPIP(
+            endpoint: endpoint,
+            timeout: timeout)
+        let targetDriver = SessionDriver()
+        do {
+            let hostKey = try await targetDriver.handshake(
+                transport: transport,
+                timeout: timeout)
+            return SSHConnection(
+                driver: targetDriver,
+                hostKey: hostKey,
+                parent: self,
+                byteTransport: transport,
+                teardownObserver: teardownObserver)
+        } catch {
+            await targetDriver.invalidate()
+            transport.abort()
+            try? await transport.close(timeout: .seconds(2))
+            try? await close(timeout: .seconds(2))
+            throw error
+        }
     }
 
     public func authenticate(
@@ -68,11 +127,40 @@ public final class SSHConnection: Sendable {
     }
 
     public func close(timeout: Duration) async throws {
-        try await driver.close(timeout: timeout)
+        var firstError: (any Error)?
+        do {
+            try await driver.close(timeout: timeout)
+        } catch {
+            firstError = error
+        }
+        if byteTransport != nil { teardownObserver?(.targetSession) }
+        if let byteTransport {
+            do {
+                try await byteTransport.close(timeout: timeout)
+            } catch {
+                if firstError == nil { firstError = error }
+            }
+            teardownObserver?(.forwardingChannel)
+        }
+        if let parent {
+            do {
+                try await parent.close(timeout: timeout)
+            } catch {
+                if firstError == nil { firstError = error }
+            }
+            teardownObserver?(.jumpSession)
+        }
+        if let firstError { throw firstError }
     }
 
     deinit {
         let driver = driver
-        Task { await driver.invalidate() }
+        let byteTransport = byteTransport
+        let parent = parent
+        Task {
+            await driver.invalidate()
+            byteTransport?.abort()
+            if let parent { try? await parent.close(timeout: .seconds(2)) }
+        }
     }
 }

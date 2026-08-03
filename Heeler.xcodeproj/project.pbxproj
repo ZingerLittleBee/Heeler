@@ -189,6 +189,7 @@
 		C1F06F7588D4713392223CC5 /* RecentWorkspaceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7BD377C8BB7AA8205DD8AFC /* RecentWorkspaceStore.swift */; };
 		C30EE891E4215D9F2D3B7821 /* DeviceKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 016BA41A48C6D6CCCEB10A47 /* DeviceKeyTests.swift */; };
 		C345ECAFFFA3CBDC2C4B2BB7 /* NotificationRegistrationFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 297D9D4C1F200A21A2A0AA64 /* NotificationRegistrationFileTests.swift */; };
+		C3CAE683F15A2DB5866FE702 /* HeelerSSHJumpHostGateE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6F5C337F9BC29D46E48E35E /* HeelerSSHJumpHostGateE2ETests.swift */; };
 		C626797B247A8ED6513D2EBB /* HeelerSSHSessionE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1AEA55D1F06B12005DEEE5F /* HeelerSSHSessionE2ETests.swift */; };
 		C9241B10F450B97F215FB28E /* RenameStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D6E7022FBB1A7A39C88ACA9 /* RenameStoreTests.swift */; };
 		C99BC52057BA048DDC4DE046 /* TerminalByteFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = C681336687D32709DA583BCC /* TerminalByteFeed.swift */; };
@@ -470,6 +471,7 @@
 		D5C058D102046A707547A0FD /* GeneratedWireTypesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedWireTypesTests.swift; sourceTree = "<group>"; };
 		D6EA52B6C673891A3ABBA27E /* AgentNotificationBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationBannerView.swift; sourceTree = "<group>"; };
 		D6F4E5BC2440CFE0FEB3591B /* HeelerSSHHostKeyVerifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeelerSSHHostKeyVerifier.swift; sourceTree = "<group>"; };
+		D6F5C337F9BC29D46E48E35E /* HeelerSSHJumpHostGateE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeelerSSHJumpHostGateE2ETests.swift; sourceTree = "<group>"; };
 		D722D78B9FF1C3697A389EA0 /* SSHJumpHostE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHJumpHostE2ETests.swift; sourceTree = "<group>"; };
 		DA5434768FDE9237B7BD721E /* Snippet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Snippet.swift; sourceTree = "<group>"; };
 		DA59306306EAEAA6DA78E337 /* TerminalAgentSwitcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAgentSwitcherTests.swift; sourceTree = "<group>"; };
@@ -559,6 +561,7 @@
 				233075006FC2C8907BBFF40F /* GitBranchNameTests.swift */,
 				5B48DF894D26308FA815E656 /* HeelerSSHDirectStreamLocalE2ETests.swift */,
 				E70C49925D454207F859F897 /* HeelerSSHHostKeyPolicyTests.swift */,
+				D6F5C337F9BC29D46E48E35E /* HeelerSSHJumpHostGateE2ETests.swift */,
 				F75E8F9733C77314E6D222AC /* HeelerSSHNativeRuntimeTests.swift */,
 				B1AEA55D1F06B12005DEEE5F /* HeelerSSHSessionE2ETests.swift */,
 				16A6D0F6E54809BDE46AC1AE /* HerdrEventsTests.swift */,
@@ -1289,6 +1292,7 @@
 				745597578F4E92FCC065823A /* GitBranchNameTests.swift in Sources */,
 				4D0A9B8F7343093907B24788 /* HeelerSSHDirectStreamLocalE2ETests.swift in Sources */,
 				0E50946869DD6FC41373079B /* HeelerSSHHostKeyPolicyTests.swift in Sources */,
+				C3CAE683F15A2DB5866FE702 /* HeelerSSHJumpHostGateE2ETests.swift in Sources */,
 				BFFC881E19AD745075F7155E /* HeelerSSHNativeRuntimeTests.swift in Sources */,
 				C626797B247A8ED6513D2EBB /* HeelerSSHSessionE2ETests.swift in Sources */,
 				7F8EA3E191EEC97479E3DC04 /* HerdrEventsTests.swift in Sources */,

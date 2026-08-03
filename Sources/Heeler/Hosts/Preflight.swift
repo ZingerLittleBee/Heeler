@@ -116,6 +116,11 @@ struct PreflightReport: Equatable, Sendable {
             hint =
                 "Could not open the herdr socket at \(path). Start herdr on the Host, "
                 + "or enable SSH stream-local forwarding and run the checks again."
+        case .tcpForwardingUnavailable:
+            check = .connection
+            hint =
+                "The Jump Host refused TCP forwarding. Enable AllowTcpForwarding "
+                + "in its SSH server configuration and try again."
         case .protocolVersionMismatch(let server, let supported):
             check = .protocolCompatible
             hint =

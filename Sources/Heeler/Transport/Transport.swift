@@ -504,6 +504,9 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// an unexpected host key. Carries the underlying failure so screens can
     /// reuse the existing guidance while naming the Jump Host as the culprit.
     case jumpHostFailed(TransportError)
+    /// The Jump Host accepted SSH authentication but its server or key policy
+    /// prohibits the direct-tcpip channel required to reach the Host.
+    case tcpForwardingUnavailable
     /// The Host rejected our credentials (key not authorized, wrong
     /// password, or the offered auth method is unavailable).
     case authenticationFailed
@@ -567,7 +570,8 @@ indirect enum TransportError: Error, Sendable, Equatable {
         case .sshUnreachable, .serverNotRunning, .timedOut, .cancelled, .channelFailed,
             .apiRejected:
             true
-        case .authenticationFailed, .deviceKeyCorrupt, .hostKeyRejected, .hostKeyMismatch,
+        case .authenticationFailed, .tcpForwardingUnavailable,
+            .deviceKeyCorrupt, .hostKeyRejected, .hostKeyMismatch,
             .socketNotFound, .socatMissing, .protocolVersionMismatch,
             .streamLocalOpenFailed,
             .homeDirectoryUnresolvable, .eventsChannelAlreadyOpen,

@@ -51,6 +51,7 @@ struct PreflightReportTests {
         (.channelFailed(detail: "boom"), .connection),
         (.eventsChannelAlreadyOpen, .connection),
         (.jumpHostFailed(.sshUnreachable(detail: "refused")), .connection),
+        (.tcpForwardingUnavailable, .connection),
         (.socatMissing(path: "/usr/bin/socat"), .socat),
         (.socketNotFound(path: "/home/dev/.config/herdr/herdr.sock"), .herdrInstalled),
         (.homeDirectoryUnresolvable(detail: "no $HOME"), .remoteEnvironment),
@@ -100,6 +101,17 @@ struct PreflightReportTests {
         }
         #expect(hint.contains("Jump Host"))
         #expect(hint.contains("same password"))
+    }
+
+    @Test func forwardingPolicyHintNamesTheRequiredServerSetting() {
+        let report = PreflightReport.failure(
+            .tcpForwardingUnavailable, authMethod: .deviceKey)
+        guard case .failed(let hint) = report[.connection] else {
+            Issue.record("connection check should fail")
+            return
+        }
+        #expect(hint.contains("Jump Host"))
+        #expect(hint.contains("AllowTcpForwarding"))
     }
 
     @Test func protocolMismatchHintNamesBothVersions() {

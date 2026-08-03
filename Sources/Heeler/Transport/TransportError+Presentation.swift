@@ -5,6 +5,8 @@ extension TransportError {
             "SSH unavailable: \(detail)"
         case .jumpHostFailed(let underlying):
             "Jump Host: \(underlying.connectionGuidance)"
+        case .tcpForwardingUnavailable:
+            "SSH TCP forwarding is disabled. Enable it on the Jump Host."
         case .authenticationFailed:
             "Authentication failed. Update this Host's credentials or authorized key."
         case .deviceKeyCorrupt:

@@ -10,31 +10,50 @@ struct SocketDirections: OptionSet, Sendable {
 }
 
 enum SocketReadiness {
+    struct Interest: Sendable {
+        let descriptor: Int32
+        let directions: SocketDirections
+    }
+
     static func wait(
         descriptor: Int32,
         directions: SocketDirections,
         until deadline: ContinuousClock.Instant,
         cancellable: Bool = true
     ) async throws {
-        guard !directions.isEmpty else {
+        try await wait(
+            for: [Interest(descriptor: descriptor, directions: directions)],
+            until: deadline,
+            cancellable: cancellable)
+    }
+
+    static func wait(
+        for interests: [Interest],
+        until deadline: ContinuousClock.Instant,
+        cancellable: Bool = true
+    ) async throws {
+        let activeInterests = interests.filter { !$0.directions.isEmpty }
+        guard !activeInterests.isEmpty else {
             await Task.yield()
             return
         }
 
         let waiter = DispatchWaiter()
-        if directions.contains(.read) {
-            let source = DispatchSource.makeReadSource(
-                fileDescriptor: descriptor,
-                queue: DispatchQueue.global(qos: .userInitiated))
-            source.setEventHandler { waiter.finish(.success(())) }
-            waiter.add(source)
-        }
-        if directions.contains(.write) {
-            let source = DispatchSource.makeWriteSource(
-                fileDescriptor: descriptor,
-                queue: DispatchQueue.global(qos: .userInitiated))
-            source.setEventHandler { waiter.finish(.success(())) }
-            waiter.add(source)
+        for interest in activeInterests {
+            if interest.directions.contains(.read) {
+                let source = DispatchSource.makeReadSource(
+                    fileDescriptor: interest.descriptor,
+                    queue: DispatchQueue.global(qos: .userInitiated))
+                source.setEventHandler { waiter.finish(.success(())) }
+                waiter.add(source)
+            }
+            if interest.directions.contains(.write) {
+                let source = DispatchSource.makeWriteSource(
+                    fileDescriptor: interest.descriptor,
+                    queue: DispatchQueue.global(qos: .userInitiated))
+                source.setEventHandler { waiter.finish(.success(())) }
+                waiter.add(source)
+            }
         }
 
         let timer = DispatchSource.makeTimerSource(

@@ -13,6 +13,75 @@ actor HeelerSSHTransport: Transport {
     private let requestTimeout: Duration
     private var connected = true
 
+    /// Establishes the libssh2 tracer through the same app-owned credentials
+    /// and TOFU policy as the production Transport. This is the Jump Host gate
+    /// from ADR 0011; broader capability migration remains in later tickets.
+    static func connect(settings: SSHTransportSettings) async throws -> HeelerSSHTransport {
+        guard case .absolutePath(let socketPath) = settings.socket else {
+            throw TransportError.homeDirectoryUnresolvable(
+                detail: "The Jump Host gate requires an absolute fixture socket path.")
+        }
+        let targetEndpoint = try endpoint(host: settings.host, port: settings.port)
+        guard let jump = settings.jump else {
+            let connection = try await connectDirect(
+                endpoint: targetEndpoint,
+                username: settings.username,
+                credentials: settings.credentials,
+                policy: settings.hostKeyPolicy,
+                timeout: settings.requestTimeout)
+            return HeelerSSHTransport(
+                connection: connection,
+                socketPath: socketPath,
+                requestTimeout: settings.requestTimeout)
+        }
+
+        let jumpEndpoint = try endpoint(host: jump.host, port: jump.port)
+        let jumpConnection: SSHConnection
+        do {
+            jumpConnection = try await connectDirect(
+                endpoint: jumpEndpoint,
+                username: jump.username,
+                credentials: jump.credentials,
+                policy: settings.hostKeyPolicy,
+                timeout: settings.requestTimeout)
+        } catch {
+            throw TransportError.jumpHostFailed(mapConnect(error))
+        }
+
+        let targetConnection: SSHConnection
+        do {
+            targetConnection = try await jumpConnection.connectThrough(
+                to: targetEndpoint,
+                timeout: settings.requestTimeout)
+        } catch SSHError.forwardingDenied {
+            throw TransportError.jumpHostFailed(.tcpForwardingUnavailable)
+        } catch SSHError.targetUnreachable {
+            throw TransportError.sshUnreachable(detail: "The Host is unreachable from the Jump Host.")
+        } catch {
+            throw mapConnect(error)
+        }
+
+        do {
+            try await HeelerSSHHostKeyVerifier(
+                host: settings.host,
+                port: settings.port,
+                policy: settings.hostKeyPolicy)
+                .verify(targetConnection.hostKey)
+            try await authenticate(
+                targetConnection,
+                username: settings.username,
+                credentials: settings.credentials,
+                timeout: settings.requestTimeout)
+            return HeelerSSHTransport(
+                connection: targetConnection,
+                socketPath: socketPath,
+                requestTimeout: settings.requestTimeout)
+        } catch {
+            try? await targetConnection.close(timeout: .seconds(2))
+            throw mapConnect(error)
+        }
+    }
+
     init(
         connection: SSHConnection,
         socketPath: String,
@@ -21,6 +90,84 @@ actor HeelerSSHTransport: Transport {
         self.connection = connection
         self.socketPath = socketPath
         self.requestTimeout = requestTimeout
+    }
+
+    private static func connectDirect(
+        endpoint: SSHEndpoint,
+        username: String,
+        credentials: SSHCredentials,
+        policy: HostKeyPolicy,
+        timeout: Duration
+    ) async throws -> SSHConnection {
+        let connection = try await SSHConnection.connect(to: endpoint, timeout: timeout)
+        do {
+            try await HeelerSSHHostKeyVerifier(
+                host: endpoint.host,
+                port: Int(endpoint.port),
+                policy: policy)
+                .verify(connection.hostKey)
+            try await authenticate(
+                connection,
+                username: username,
+                credentials: credentials,
+                timeout: timeout)
+            return connection
+        } catch {
+            try? await connection.close(timeout: .seconds(2))
+            throw error
+        }
+    }
+
+    private static func authenticate(
+        _ connection: SSHConnection,
+        username: String,
+        credentials: SSHCredentials,
+        timeout: Duration
+    ) async throws {
+        switch credentials {
+        case .password(let password):
+            try await connection.authenticate(
+                username: username,
+                password: password,
+                timeout: timeout)
+        case .ed25519(let privateKey):
+            let deviceKey = DeviceKey(privateKey: privateKey)
+            try await connection.authenticate(
+                username: username,
+                publicKey: deviceKey.publicKeyBlob,
+                signer: { data in try deviceKey.privateKey.signature(for: data) },
+                timeout: timeout)
+        }
+    }
+
+    private static func endpoint(host: String, port: Int) throws -> SSHEndpoint {
+        guard let port = UInt16(exactly: port), !host.isEmpty else {
+            throw TransportError.sshUnreachable(detail: "Invalid SSH endpoint.")
+        }
+        return SSHEndpoint(host: host, port: port)
+    }
+
+    private static func mapConnect(_ error: any Error) -> TransportError {
+        if let error = error as? TransportError { return error }
+        guard let error = error as? SSHError else {
+            return .sshUnreachable(detail: String(describing: error))
+        }
+        switch error {
+        case .authenticationFailed:
+            return .authenticationFailed
+        case .timedOut:
+            return .timedOut
+        case .cancelled:
+            return .cancelled
+        case .forwardingDenied:
+            return .tcpForwardingUnavailable
+        case .targetUnreachable, .connectionFailed, .invalidEndpoint,
+            .algorithmNegotiationFailed, .connectionInvalidated:
+            return .sshUnreachable(detail: String(describing: error))
+        case .channelFailed, .streamLocalOpenFailed, .unexpectedEOF,
+            .responseTooLarge:
+            return .channelFailed(detail: String(describing: error))
+        }
     }
 
     func ping() async throws -> ServerInfo {
@@ -101,7 +248,8 @@ actor HeelerSSHTransport: Transport {
         case .streamLocalOpenFailed:
             return .streamLocalOpenFailed(path: "<unknown>")
         case .invalidEndpoint, .connectionFailed, .algorithmNegotiationFailed,
-            .channelFailed, .connectionInvalidated:
+            .channelFailed, .forwardingDenied, .targetUnreachable,
+            .connectionInvalidated:
             return .channelFailed(detail: String(describing: error))
         }
     }

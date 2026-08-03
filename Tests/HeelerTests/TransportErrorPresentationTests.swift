@@ -15,6 +15,13 @@ struct TransportErrorPresentationTests {
                 == "Jump Host: The connection timed out.")
     }
 
+    @Test func forwardingPolicyFailureNamesTheJumpHostRepair() {
+        #expect(
+            TransportError.tcpForwardingUnavailable.connectionGuidance
+                == "SSH TCP forwarding is disabled. Enable it on the Jump Host.")
+        #expect(TransportError.tcpForwardingUnavailable.isRetryable == false)
+    }
+
     @Test func channelFailureIncludesItsDiagnosticDetail() {
         #expect(
             TransportError.channelFailed(detail: "connection reset").connectionGuidance

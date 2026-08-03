@@ -8,6 +8,8 @@ restricted_port=55224
 stall_port=55225
 streamlocal_global_policy_port=55226
 streamlocal_key_policy_port=55227
+jump_target_port=55228
+jump_forwarding_denied_port=55229
 fixture_username="heelerssh${RANDOM}"
 fixture_password="$(uuidgen)-$(uuidgen)"
 fixture_uid=550
@@ -18,6 +20,8 @@ restricted_pid=""
 stall_pid=""
 streamlocal_global_policy_pid=""
 streamlocal_key_policy_pid=""
+jump_target_pid=""
+jump_forwarding_denied_pid=""
 fake_herdr_pid=""
 simulator_udid=""
 
@@ -44,6 +48,10 @@ cleanup() {
     stop_sshd \
         "$streamlocal_key_policy_pid" \
         "$fixture_dir/sshd-streamlocal-key-policy.pid"
+    stop_sshd "$jump_target_pid" "$fixture_dir/sshd-jump-target.pid"
+    stop_sshd \
+        "$jump_forwarding_denied_pid" \
+        "$fixture_dir/sshd-jump-forwarding-denied.pid"
     if dscl . -read "/Users/$fixture_username" >/dev/null 2>&1; then
         sudo -n dscl . -delete "/Users/$fixture_username"
     fi
@@ -69,7 +77,8 @@ clear_simulator_environment() {
         HEELER_SSH_E2E_RESTRICTED_PORT \
         HEELER_SSH_E2E_STALL_PORT \
         HEELER_SSH_E2E_STREAMLOCAL_SOCKET \
-        HEELER_SSH_E2E_CONFIG; do
+        HEELER_SSH_E2E_CONFIG \
+        HEELER_SSH_JUMP_E2E_CONFIG; do
         xcrun simctl spawn "$simulator_udid" launchctl unsetenv "$variable" >/dev/null 2>&1
     done
 }
@@ -98,7 +107,9 @@ for port in \
     "$restricted_port" \
     "$stall_port" \
     "$streamlocal_global_policy_port" \
-    "$streamlocal_key_policy_port"; do
+    "$streamlocal_key_policy_port" \
+    "$jump_target_port" \
+    "$jump_forwarding_denied_port"; do
     if nc -z 127.0.0.1 "$port" >/dev/null 2>&1; then
         echo "TCP port $port is already in use" >&2
         exit 1
@@ -124,18 +135,22 @@ sudo -n chown "$fixture_uid":20 "$fixture_home"
 
 ssh-keygen -q -t ed25519 -N '' -f "$fixture_dir/host_ed25519"
 ssh-keygen -q -t rsa -b 3072 -N '' -f "$fixture_dir/host_rsa"
+ssh-keygen -q -t ed25519 -N '' -f "$fixture_dir/host_jump_target_ed25519"
 printf '%s\n' \
     'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAOhB7/zzhC+HXDdGOdLwJln5NYwm6UNXx3chmQSVTG4 heeler-ci-device-key' \
     > "$fixture_dir/authorized_keys"
 printf '%s\n' \
     'no-port-forwarding ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAOhB7/zzhC+HXDdGOdLwJln5NYwm6UNXx3chmQSVTG4 heeler-ci-device-key' \
     > "$fixture_dir/authorized_keys-no-forwarding"
+cp "$fixture_dir/authorized_keys" "$fixture_dir/authorized_keys-jump-target"
 
 modern_config="$fixture_dir/sshd-modern.conf"
 legacy_config="$fixture_dir/sshd-legacy.conf"
 restricted_config="$fixture_dir/sshd-restricted.conf"
 streamlocal_global_policy_config="$fixture_dir/sshd-streamlocal-global-policy.conf"
 streamlocal_key_policy_config="$fixture_dir/sshd-streamlocal-key-policy.conf"
+jump_target_config="$fixture_dir/sshd-jump-target.conf"
+jump_forwarding_denied_config="$fixture_dir/sshd-jump-forwarding-denied.conf"
 
 write_common_config() {
     local port=$1
@@ -196,6 +211,26 @@ printf '%s\n' \
     "AllowTcpForwarding yes" \
     "AllowStreamLocalForwarding yes" \
     >> "$streamlocal_key_policy_config"
+write_common_config \
+    "$jump_target_port" \
+    "$fixture_dir/host_jump_target_ed25519" \
+    "$fixture_dir/sshd-jump-target.pid" > "$jump_target_config"
+sed -i '' \
+    "s|AuthorizedKeysFile $fixture_dir/authorized_keys|AuthorizedKeysFile $fixture_dir/authorized_keys-jump-target|" \
+    "$jump_target_config"
+printf '%s\n' \
+    "AllowTcpForwarding yes" \
+    "AllowStreamLocalForwarding yes" \
+    >> "$jump_target_config"
+write_common_config \
+    "$jump_forwarding_denied_port" \
+    "$fixture_dir/host_ed25519" \
+    "$fixture_dir/sshd-jump-forwarding-denied.pid" \
+    > "$jump_forwarding_denied_config"
+printf '%s\n' \
+    "AllowTcpForwarding no" \
+    "AllowStreamLocalForwarding yes" \
+    >> "$jump_forwarding_denied_config"
 
 streamlocal_socket="$fixture_dir/herdr.sock"
 streamlocal_stale_socket="$fixture_dir/stale.sock"
@@ -223,6 +258,12 @@ streamlocal_global_policy_pid=$!
 sudo -n /usr/sbin/sshd -D -e -f "$streamlocal_key_policy_config" \
     > "$fixture_dir/sshd-streamlocal-key-policy.log" 2>&1 &
 streamlocal_key_policy_pid=$!
+sudo -n /usr/sbin/sshd -D -e -f "$jump_target_config" \
+    > "$fixture_dir/sshd-jump-target.log" 2>&1 &
+jump_target_pid=$!
+sudo -n /usr/sbin/sshd -D -e -f "$jump_forwarding_denied_config" \
+    > "$fixture_dir/sshd-jump-forwarding-denied.log" 2>&1 &
+jump_forwarding_denied_pid=$!
 /usr/bin/python3 -c '
 import socket
 import sys
@@ -245,6 +286,8 @@ for attempt in $(seq 1 50); do
         && nc -z 127.0.0.1 "$stall_port" >/dev/null 2>&1 \
         && nc -z 127.0.0.1 "$streamlocal_global_policy_port" >/dev/null 2>&1 \
         && nc -z 127.0.0.1 "$streamlocal_key_policy_port" >/dev/null 2>&1 \
+        && nc -z 127.0.0.1 "$jump_target_port" >/dev/null 2>&1 \
+        && nc -z 127.0.0.1 "$jump_forwarding_denied_port" >/dev/null 2>&1 \
         && [[ -S "$streamlocal_socket" ]] \
         && [[ -S "$streamlocal_stale_socket" ]]; then
         break
@@ -255,12 +298,16 @@ for attempt in $(seq 1 50); do
         || ! kill -0 "$stall_pid" 2>/dev/null \
         || ! kill -0 "$streamlocal_global_policy_pid" 2>/dev/null \
         || ! kill -0 "$streamlocal_key_policy_pid" 2>/dev/null \
+        || ! kill -0 "$jump_target_pid" 2>/dev/null \
+        || ! kill -0 "$jump_forwarding_denied_pid" 2>/dev/null \
         || ! kill -0 "$fake_herdr_pid" 2>/dev/null; then
         cat "$fixture_dir/sshd-modern.log" >&2
         cat "$fixture_dir/sshd-legacy.log" >&2
         cat "$fixture_dir/sshd-restricted.log" >&2
         cat "$fixture_dir/sshd-streamlocal-global-policy.log" >&2
         cat "$fixture_dir/sshd-streamlocal-key-policy.log" >&2
+        cat "$fixture_dir/sshd-jump-target.log" >&2
+        cat "$fixture_dir/sshd-jump-forwarding-denied.log" >&2
         cat "$fixture_dir/fake-herdr.log" >&2
         exit 1
     fi
@@ -273,6 +320,8 @@ if ! nc -z 127.0.0.1 "$modern_port" >/dev/null 2>&1 \
     || ! nc -z 127.0.0.1 "$stall_port" >/dev/null 2>&1 \
     || ! nc -z 127.0.0.1 "$streamlocal_global_policy_port" >/dev/null 2>&1 \
     || ! nc -z 127.0.0.1 "$streamlocal_key_policy_port" >/dev/null 2>&1 \
+    || ! nc -z 127.0.0.1 "$jump_target_port" >/dev/null 2>&1 \
+    || ! nc -z 127.0.0.1 "$jump_forwarding_denied_port" >/dev/null 2>&1 \
     || [[ ! -S "$streamlocal_socket" ]] \
     || [[ ! -S "$streamlocal_stale_socket" ]]; then
     cat "$fixture_dir/sshd-modern.log" >&2
@@ -280,6 +329,8 @@ if ! nc -z 127.0.0.1 "$modern_port" >/dev/null 2>&1 \
     cat "$fixture_dir/sshd-restricted.log" >&2
     cat "$fixture_dir/sshd-streamlocal-global-policy.log" >&2
     cat "$fixture_dir/sshd-streamlocal-key-policy.log" >&2
+    cat "$fixture_dir/sshd-jump-target.log" >&2
+    cat "$fixture_dir/sshd-jump-forwarding-denied.log" >&2
     cat "$fixture_dir/fake-herdr.log" >&2
     exit 1
 fi
@@ -310,6 +361,16 @@ fixture_configuration=$(printf \
     "$streamlocal_missing_socket" \
     "$streamlocal_count_file")
 fixture_configuration_base64=$(printf '%s' "$fixture_configuration" | base64)
+jump_fixture_configuration=$(printf \
+    '{"host":"127.0.0.1","jumpPort":%s,"forwardingDeniedPort":%s,"targetHost":"127.0.0.1","targetPort":%s,"outerStallPort":%s,"innerStallHost":"127.0.0.1","innerStallPort":%s,"username":"%s","socketPath":"%s"}' \
+    "$modern_port" \
+    "$jump_forwarding_denied_port" \
+    "$jump_target_port" \
+    "$stall_port" \
+    "$stall_port" \
+    "$fixture_username" \
+    "$streamlocal_socket")
+jump_fixture_configuration_base64=$(printf '%s' "$jump_fixture_configuration" | base64)
 simulator_udid=$(xcrun simctl list devices available | awk '
     /iPhone 17 \(/ {
         for (field = 1; field <= NF; field += 1) {
@@ -331,6 +392,9 @@ xcrun simctl bootstatus "$simulator_udid" -b
 xcrun simctl spawn "$simulator_udid" launchctl setenv \
     HEELER_SSH_E2E_CONFIG \
     "$fixture_configuration_base64"
+xcrun simctl spawn "$simulator_udid" launchctl setenv \
+    HEELER_SSH_JUMP_E2E_CONFIG \
+    "$jump_fixture_configuration_base64"
 
 e2e_log="$fixture_dir/e2e.log"
 xcodebuild test \
@@ -359,6 +423,21 @@ xcodebuild test \
 if grep -q 'skipped:' "$streamlocal_log" \
     || ! grep -q "Test run with 11 tests in 1 suite passed" "$streamlocal_log"; then
     echo "The mandatory no-socat direct-streamlocal suite did not execute all eleven tests" >&2
+    exit 1
+fi
+
+jump_log="$fixture_dir/jump-e2e.log"
+xcodebuild test \
+    -project Heeler.xcodeproj \
+    -scheme Heeler \
+    -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+    -collect-test-diagnostics never \
+    -only-testing:HeelerTests/HeelerSSHJumpHostGateE2ETests \
+    2>&1 | tee "$jump_log"
+
+if grep -q 'skipped:' "$jump_log" \
+    || ! grep -q "Test run with 9 tests in 1 suite passed" "$jump_log"; then
+    echo "The mandatory HeelerSSH Jump Host gate suite did not execute" >&2
     exit 1
 fi
 
