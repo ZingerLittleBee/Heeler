@@ -523,6 +523,11 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// The socket file exists but nothing accepts connections: the herdr
     /// server is not running (cold-start wake is #6).
     case serverNotRunning(path: String)
+    /// libssh2 cannot distinguish a listening Unix socket rejected by SSH
+    /// policy from a stale socket file. The Host needs either herdr started or
+    /// stream-local forwarding enabled; presenting a narrower cause would be
+    /// fabricated precision.
+    case streamLocalOpenFailed(path: String)
     /// No socat executable was found: not at the Host's preferred path, and
     /// not on the Host's PATH. `path` is the preferred path that was tried.
     case socatMissing(path: String)
@@ -564,6 +569,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
             true
         case .authenticationFailed, .deviceKeyCorrupt, .hostKeyRejected, .hostKeyMismatch,
             .socketNotFound, .socatMissing, .protocolVersionMismatch,
+            .streamLocalOpenFailed,
             .homeDirectoryUnresolvable, .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse:
             false

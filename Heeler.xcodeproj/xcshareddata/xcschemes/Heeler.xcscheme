@@ -90,6 +90,11 @@
             isEnabled = "YES">
          </EnvironmentVariable>
          <EnvironmentVariable
+            key = "HEELER_SSH_E2E_STREAMLOCAL_SOCKET"
+            value = "$(HEELER_SSH_E2E_STREAMLOCAL_SOCKET)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
             key = "HEELER_SSH_E2E_USERNAME"
             value = "$(HEELER_SSH_E2E_USERNAME)"
             isEnabled = "YES">

@@ -55,6 +55,7 @@ struct PreflightReportTests {
         (.socketNotFound(path: "/home/dev/.config/herdr/herdr.sock"), .herdrInstalled),
         (.homeDirectoryUnresolvable(detail: "no $HOME"), .remoteEnvironment),
         (.serverNotRunning(path: "/home/dev/.config/herdr/herdr.sock"), .serverRunning),
+        (.streamLocalOpenFailed(path: "/home/dev/.config/herdr/herdr.sock"), .serverRunning),
         (.protocolVersionMismatch(server: 18, supported: 17), .protocolCompatible),
         (.malformedResponse("junk"), .protocolCompatible),
     ])

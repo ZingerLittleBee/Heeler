@@ -221,6 +221,70 @@ actor SessionDriver {
         }
     }
 
+    func exchangeStreamLocal(
+        socketPath: String,
+        request: Data,
+        maximumResponseBytes: Int,
+        timeout: Duration
+    ) async throws -> Data {
+        await acquireOperation()
+        defer { releaseOperation() }
+
+        guard valid, authenticated, let session else {
+            throw SSHError.connectionInvalidated
+        }
+        guard
+            socketPath.hasPrefix("/"),
+            !socketPath.utf8.contains(0),
+            !request.isEmpty,
+            request.last == 0x0A,
+            maximumResponseBytes > 0
+        else {
+            throw SSHError.channelFailed
+        }
+
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        var channel: OpaquePointer?
+
+        do {
+            channel = try await openStreamLocalChannel(
+                socketPath: socketPath,
+                session: session,
+                deadline: deadline)
+            guard let channel else { throw SSHError.streamLocalOpenFailed }
+            let response = try await exchangeResponseLine(
+                channel: channel,
+                request: request,
+                maximumResponseBytes: maximumResponseBytes,
+                session: session,
+                deadline: deadline)
+            try await cleanChannel(
+                channel,
+                session: session,
+                deadline: deadline,
+                cancellable: true)
+            return response
+        } catch {
+            let normalized = normalize(error)
+            if let channel {
+                do {
+                    try await cleanChannel(
+                        channel,
+                        session: session,
+                        deadline: ContinuousClock.now.advanced(by: .seconds(2)),
+                        cancellable: false)
+                } catch {
+                    invalidateResources()
+                }
+            } else if normalized != .streamLocalOpenFailed {
+                // A timeout or cancellation while opening has an uncertain
+                // channel outcome. Do not admit later work on this session.
+                invalidateResources()
+            }
+            throw normalized
+        }
+    }
+
     func close(timeout: Duration) async throws {
         await acquireOperation()
         defer { releaseOperation() }
@@ -324,6 +388,31 @@ actor SessionDriver {
         }
     }
 
+    private func openStreamLocalChannel(
+        socketPath: String,
+        session: OpaquePointer,
+        deadline: ContinuousClock.Instant
+    ) async throws -> OpaquePointer {
+        while true {
+            try checkProgress(deadline: deadline)
+            let channel = socketPath.withCString { socketPathPointer in
+                libssh2_channel_direct_streamlocal_ex(
+                    session,
+                    socketPathPointer,
+                    "127.0.0.1",
+                    0)
+            }
+            if let channel { return channel }
+
+            let error = libssh2_session_last_errno(session)
+            if error == LIBSSH2_ERROR_EAGAIN {
+                try await waitForSession(session, deadline: deadline)
+            } else {
+                throw SSHError.streamLocalOpenFailed
+            }
+        }
+    }
+
     private func startExec(
         channel: OpaquePointer,
         command: String,
@@ -406,6 +495,64 @@ actor SessionDriver {
                     stderr: stderr,
                     exitStatus: Int32(libssh2_channel_get_exit_status(channel)),
                     reachedEOF: true)
+            }
+            if !madeProgress {
+                try await waitForSession(session, deadline: deadline)
+            }
+        }
+    }
+
+    private func exchangeResponseLine(
+        channel: OpaquePointer,
+        request: Data,
+        maximumResponseBytes: Int,
+        session: OpaquePointer,
+        deadline: ContinuousClock.Instant
+    ) async throws -> Data {
+        var requestOffset = 0
+        var response = Data()
+        var buffer = [UInt8](repeating: 0, count: 16 * 1024)
+
+        while true {
+            try checkProgress(deadline: deadline)
+            var madeProgress = false
+
+            if requestOffset < request.count {
+                let written = request.withUnsafeBytes { bytes -> Int in
+                    guard let baseAddress = bytes.baseAddress else { return 0 }
+                    return libssh2_channel_write_ex(
+                        channel,
+                        0,
+                        baseAddress.advanced(by: requestOffset)
+                            .assumingMemoryBound(to: CChar.self),
+                        request.count - requestOffset)
+                }
+                if written > 0 {
+                    requestOffset += written
+                    madeProgress = true
+                } else if written != Int(LIBSSH2_ERROR_EAGAIN) {
+                    throw SSHError.channelFailed
+                }
+            }
+
+            let received = try readAvailable(channel: channel, stream: 0, buffer: &buffer)
+            if !received.isEmpty {
+                response.append(received)
+                madeProgress = true
+                if let newline = response.firstIndex(of: 0x0A) {
+                    let lineLength = response.distance(from: response.startIndex, to: newline) + 1
+                    guard lineLength <= maximumResponseBytes else {
+                        throw SSHError.responseTooLarge(limit: maximumResponseBytes)
+                    }
+                    return Data(response.prefix(lineLength))
+                }
+                guard response.count <= maximumResponseBytes else {
+                    throw SSHError.responseTooLarge(limit: maximumResponseBytes)
+                }
+            }
+
+            if libssh2_channel_eof(channel) == 1 {
+                throw SSHError.unexpectedEOF
             }
             if !madeProgress {
                 try await waitForSession(session, deadline: deadline)

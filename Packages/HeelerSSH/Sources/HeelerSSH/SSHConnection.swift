@@ -51,6 +51,22 @@ public final class SSHConnection: Sendable {
         try await driver.execute(command: command, input: input, timeout: timeout)
     }
 
+    /// Opens one direct-streamlocal channel, writes one request, reads one
+    /// newline-terminated response, and closes the channel. Every call owns a
+    /// fresh channel to preserve one-request-per-socket protocols.
+    public func exchangeStreamLocal(
+        socketPath: String,
+        request: Data,
+        maximumResponseBytes: Int = 1_048_576,
+        timeout: Duration
+    ) async throws -> Data {
+        try await driver.exchangeStreamLocal(
+            socketPath: socketPath,
+            request: request,
+            maximumResponseBytes: maximumResponseBytes,
+            timeout: timeout)
+    }
+
     public func close(timeout: Duration) async throws {
         try await driver.close(timeout: timeout)
     }

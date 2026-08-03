@@ -6,6 +6,8 @@ modern_port=55222
 legacy_port=55223
 restricted_port=55224
 stall_port=55225
+streamlocal_global_policy_port=55226
+streamlocal_key_policy_port=55227
 fixture_username="heelerssh${RANDOM}"
 fixture_password="$(uuidgen)-$(uuidgen)"
 fixture_uid=550
@@ -14,6 +16,10 @@ modern_pid=""
 legacy_pid=""
 restricted_pid=""
 stall_pid=""
+streamlocal_global_policy_pid=""
+streamlocal_key_policy_pid=""
+fake_herdr_pid=""
+simulator_udid=""
 
 cleanup() {
     local status=$?
@@ -25,9 +31,19 @@ cleanup() {
         kill "$stall_pid" >/dev/null 2>&1
         wait "$stall_pid" 2>/dev/null
     fi
+    if [[ -n "$fake_herdr_pid" ]]; then
+        kill "$fake_herdr_pid" >/dev/null 2>&1
+        wait "$fake_herdr_pid" 2>/dev/null
+    fi
     stop_sshd "$modern_pid" "$fixture_dir/sshd-modern.pid"
     stop_sshd "$legacy_pid" "$fixture_dir/sshd-legacy.pid"
     stop_sshd "$restricted_pid" "$fixture_dir/sshd-restricted.pid"
+    stop_sshd \
+        "$streamlocal_global_policy_pid" \
+        "$fixture_dir/sshd-streamlocal-global-policy.pid"
+    stop_sshd \
+        "$streamlocal_key_policy_pid" \
+        "$fixture_dir/sshd-streamlocal-key-policy.pid"
     if dscl . -read "/Users/$fixture_username" >/dev/null 2>&1; then
         sudo -n dscl . -delete "/Users/$fixture_username"
     fi
@@ -40,13 +56,21 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 clear_simulator_environment() {
+    if [[ -z "$simulator_udid" ]]; then
+        return
+    fi
     for variable in \
         HEELER_SSH_E2E_REQUIRED \
         HEELER_SSH_E2E_HOST \
         HEELER_SSH_E2E_PORT \
         HEELER_SSH_E2E_USERNAME \
-        HEELER_SSH_E2E_PASSWORD; do
-        xcrun simctl spawn booted launchctl unsetenv "$variable" >/dev/null 2>&1
+        HEELER_SSH_E2E_PASSWORD \
+        HEELER_SSH_E2E_LEGACY_PORT \
+        HEELER_SSH_E2E_RESTRICTED_PORT \
+        HEELER_SSH_E2E_STALL_PORT \
+        HEELER_SSH_E2E_STREAMLOCAL_SOCKET \
+        HEELER_SSH_E2E_CONFIG; do
+        xcrun simctl spawn "$simulator_udid" launchctl unsetenv "$variable" >/dev/null 2>&1
     done
 }
 
@@ -68,7 +92,13 @@ stop_sshd() {
     fi
 }
 
-for port in "$modern_port" "$legacy_port" "$restricted_port" "$stall_port"; do
+for port in \
+    "$modern_port" \
+    "$legacy_port" \
+    "$restricted_port" \
+    "$stall_port" \
+    "$streamlocal_global_policy_port" \
+    "$streamlocal_key_policy_port"; do
     if nc -z 127.0.0.1 "$port" >/dev/null 2>&1; then
         echo "TCP port $port is already in use" >&2
         exit 1
@@ -97,10 +127,15 @@ ssh-keygen -q -t rsa -b 3072 -N '' -f "$fixture_dir/host_rsa"
 printf '%s\n' \
     'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAOhB7/zzhC+HXDdGOdLwJln5NYwm6UNXx3chmQSVTG4 heeler-ci-device-key' \
     > "$fixture_dir/authorized_keys"
+printf '%s\n' \
+    'no-port-forwarding ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAOhB7/zzhC+HXDdGOdLwJln5NYwm6UNXx3chmQSVTG4 heeler-ci-device-key' \
+    > "$fixture_dir/authorized_keys-no-forwarding"
 
 modern_config="$fixture_dir/sshd-modern.conf"
 legacy_config="$fixture_dir/sshd-legacy.conf"
 restricted_config="$fixture_dir/sshd-restricted.conf"
+streamlocal_global_policy_config="$fixture_dir/sshd-streamlocal-global-policy.conf"
+streamlocal_key_policy_config="$fixture_dir/sshd-streamlocal-key-policy.conf"
 
 write_common_config() {
     local port=$1
@@ -140,6 +175,38 @@ write_common_config \
     "$fixture_dir/host_ed25519" \
     "$fixture_dir/sshd-restricted.pid" > "$restricted_config"
 printf '%s\n' "MaxSessions 0" >> "$restricted_config"
+write_common_config \
+    "$streamlocal_global_policy_port" \
+    "$fixture_dir/host_ed25519" \
+    "$fixture_dir/sshd-streamlocal-global-policy.pid" \
+    > "$streamlocal_global_policy_config"
+printf '%s\n' \
+    "AllowTcpForwarding yes" \
+    "AllowStreamLocalForwarding no" \
+    >> "$streamlocal_global_policy_config"
+write_common_config \
+    "$streamlocal_key_policy_port" \
+    "$fixture_dir/host_ed25519" \
+    "$fixture_dir/sshd-streamlocal-key-policy.pid" \
+    > "$streamlocal_key_policy_config"
+sed -i '' \
+    "s|AuthorizedKeysFile $fixture_dir/authorized_keys|AuthorizedKeysFile $fixture_dir/authorized_keys-no-forwarding|" \
+    "$streamlocal_key_policy_config"
+printf '%s\n' \
+    "AllowTcpForwarding yes" \
+    "AllowStreamLocalForwarding yes" \
+    >> "$streamlocal_key_policy_config"
+
+streamlocal_socket="$fixture_dir/herdr.sock"
+streamlocal_stale_socket="$fixture_dir/stale.sock"
+streamlocal_missing_socket="$fixture_dir/missing.sock"
+streamlocal_count_file="$fixture_dir/streamlocal-count"
+/usr/bin/python3 scripts/fixtures/fake-herdr-streamlocal.py \
+    --socket "$streamlocal_socket" \
+    --stale-socket "$streamlocal_stale_socket" \
+    --count-file "$streamlocal_count_file" \
+    > "$fixture_dir/fake-herdr.log" 2>&1 &
+fake_herdr_pid=$!
 
 sudo -n /usr/sbin/sshd -D -e -f "$modern_config" \
     > "$fixture_dir/sshd-modern.log" 2>&1 &
@@ -150,6 +217,12 @@ legacy_pid=$!
 sudo -n /usr/sbin/sshd -D -e -f "$restricted_config" \
     > "$fixture_dir/sshd-restricted.log" 2>&1 &
 restricted_pid=$!
+sudo -n /usr/sbin/sshd -D -e -f "$streamlocal_global_policy_config" \
+    > "$fixture_dir/sshd-streamlocal-global-policy.log" 2>&1 &
+streamlocal_global_policy_pid=$!
+sudo -n /usr/sbin/sshd -D -e -f "$streamlocal_key_policy_config" \
+    > "$fixture_dir/sshd-streamlocal-key-policy.log" 2>&1 &
+streamlocal_key_policy_pid=$!
 /usr/bin/python3 -c '
 import socket
 import sys
@@ -169,16 +242,26 @@ for attempt in $(seq 1 50); do
     if nc -z 127.0.0.1 "$modern_port" >/dev/null 2>&1 \
         && nc -z 127.0.0.1 "$legacy_port" >/dev/null 2>&1 \
         && nc -z 127.0.0.1 "$restricted_port" >/dev/null 2>&1 \
-        && nc -z 127.0.0.1 "$stall_port" >/dev/null 2>&1; then
+        && nc -z 127.0.0.1 "$stall_port" >/dev/null 2>&1 \
+        && nc -z 127.0.0.1 "$streamlocal_global_policy_port" >/dev/null 2>&1 \
+        && nc -z 127.0.0.1 "$streamlocal_key_policy_port" >/dev/null 2>&1 \
+        && [[ -S "$streamlocal_socket" ]] \
+        && [[ -S "$streamlocal_stale_socket" ]]; then
         break
     fi
     if ! kill -0 "$modern_pid" 2>/dev/null \
         || ! kill -0 "$legacy_pid" 2>/dev/null \
         || ! kill -0 "$restricted_pid" 2>/dev/null \
-        || ! kill -0 "$stall_pid" 2>/dev/null; then
+        || ! kill -0 "$stall_pid" 2>/dev/null \
+        || ! kill -0 "$streamlocal_global_policy_pid" 2>/dev/null \
+        || ! kill -0 "$streamlocal_key_policy_pid" 2>/dev/null \
+        || ! kill -0 "$fake_herdr_pid" 2>/dev/null; then
         cat "$fixture_dir/sshd-modern.log" >&2
         cat "$fixture_dir/sshd-legacy.log" >&2
         cat "$fixture_dir/sshd-restricted.log" >&2
+        cat "$fixture_dir/sshd-streamlocal-global-policy.log" >&2
+        cat "$fixture_dir/sshd-streamlocal-key-policy.log" >&2
+        cat "$fixture_dir/fake-herdr.log" >&2
         exit 1
     fi
     sleep 0.1
@@ -187,10 +270,17 @@ done
 if ! nc -z 127.0.0.1 "$modern_port" >/dev/null 2>&1 \
     || ! nc -z 127.0.0.1 "$legacy_port" >/dev/null 2>&1 \
     || ! nc -z 127.0.0.1 "$restricted_port" >/dev/null 2>&1 \
-    || ! nc -z 127.0.0.1 "$stall_port" >/dev/null 2>&1; then
+    || ! nc -z 127.0.0.1 "$stall_port" >/dev/null 2>&1 \
+    || ! nc -z 127.0.0.1 "$streamlocal_global_policy_port" >/dev/null 2>&1 \
+    || ! nc -z 127.0.0.1 "$streamlocal_key_policy_port" >/dev/null 2>&1 \
+    || [[ ! -S "$streamlocal_socket" ]] \
+    || [[ ! -S "$streamlocal_stale_socket" ]]; then
     cat "$fixture_dir/sshd-modern.log" >&2
     cat "$fixture_dir/sshd-legacy.log" >&2
     cat "$fixture_dir/sshd-restricted.log" >&2
+    cat "$fixture_dir/sshd-streamlocal-global-policy.log" >&2
+    cat "$fixture_dir/sshd-streamlocal-key-policy.log" >&2
+    cat "$fixture_dir/fake-herdr.log" >&2
     exit 1
 fi
 
@@ -202,6 +292,45 @@ export HEELER_SSH_E2E_RESTRICTED_PORT="$restricted_port"
 export HEELER_SSH_E2E_STALL_PORT="$stall_port"
 export HEELER_SSH_E2E_USERNAME="$fixture_username"
 export HEELER_SSH_E2E_PASSWORD="$fixture_password"
+export HEELER_SSH_E2E_STREAMLOCAL_SOCKET="$streamlocal_socket"
+
+fixture_configuration=$(printf \
+    '{"host":"127.0.0.1","port":%s,"legacyPort":%s,"restrictedPort":%s,"stallPort":%s,"globalPolicyPort":%s,"keyPolicyPort":%s,"username":"%s","password":"%s","streamLocalSocketPath":"%s","socketPath":"%s","staleSocketPath":"%s","missingSocketPath":"%s","countFilePath":"%s"}' \
+    "$modern_port" \
+    "$legacy_port" \
+    "$restricted_port" \
+    "$stall_port" \
+    "$streamlocal_global_policy_port" \
+    "$streamlocal_key_policy_port" \
+    "$fixture_username" \
+    "$fixture_password" \
+    "$streamlocal_socket" \
+    "$streamlocal_socket" \
+    "$streamlocal_stale_socket" \
+    "$streamlocal_missing_socket" \
+    "$streamlocal_count_file")
+fixture_configuration_base64=$(printf '%s' "$fixture_configuration" | base64)
+simulator_udid=$(xcrun simctl list devices available | awk '
+    /iPhone 17 \(/ {
+        for (field = 1; field <= NF; field += 1) {
+            value = $field
+            gsub(/[()]/, "", value)
+            if (value ~ /^[0-9A-F-]{36}$/) {
+                candidate = value
+            }
+        }
+    }
+    END { print candidate }
+')
+if [[ -z "$simulator_udid" ]]; then
+    echo "No available iPhone 17 Simulator was found" >&2
+    exit 1
+fi
+xcrun simctl boot "$simulator_udid" >/dev/null 2>&1 || true
+xcrun simctl bootstatus "$simulator_udid" -b
+xcrun simctl spawn "$simulator_udid" launchctl setenv \
+    HEELER_SSH_E2E_CONFIG \
+    "$fixture_configuration_base64"
 
 e2e_log="$fixture_dir/e2e.log"
 xcodebuild test \
@@ -213,8 +342,23 @@ xcodebuild test \
     2>&1 | tee "$e2e_log"
 
 if grep -q 'skipped:' "$e2e_log" \
-    || ! grep -q "Test run with 13 tests in 1 suite passed" "$e2e_log"; then
-    echo "The mandatory HeelerSSH real-sshd suite did not execute all thirteen tests" >&2
+    || ! grep -q "Test run with 14 tests in 1 suite passed" "$e2e_log"; then
+    echo "The mandatory HeelerSSH real-sshd suite did not execute all fourteen tests" >&2
+    exit 1
+fi
+
+streamlocal_log="$fixture_dir/streamlocal-e2e.log"
+xcodebuild test \
+    -project Heeler.xcodeproj \
+    -scheme Heeler \
+    -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+    -collect-test-diagnostics never \
+    -only-testing:HeelerTests/HeelerSSHDirectStreamLocalE2ETests \
+    2>&1 | tee "$streamlocal_log"
+
+if grep -q 'skipped:' "$streamlocal_log" \
+    || ! grep -q "Test run with 11 tests in 1 suite passed" "$streamlocal_log"; then
+    echo "The mandatory no-socat direct-streamlocal suite did not execute all eleven tests" >&2
     exit 1
 fi
 
@@ -224,7 +368,7 @@ for variable in \
     HEELER_SSH_E2E_PORT \
     HEELER_SSH_E2E_USERNAME \
     HEELER_SSH_E2E_PASSWORD; do
-    xcrun simctl spawn booted launchctl setenv "$variable" "${!variable}"
+    xcrun simctl spawn "$simulator_udid" launchctl setenv "$variable" "${!variable}"
 done
 
 package_e2e_log="$fixture_dir/package-e2e.log"

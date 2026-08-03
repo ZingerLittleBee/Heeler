@@ -25,13 +25,14 @@ checksums will be committed beside them. Normal app and CI builds will consume
 the checked-in artifacts rather than rebuilding OpenSSL; dependency updates are
 the only workflow that regenerates them.
 
-libssh2 does not expose the server description that distinguishes a missing
-Unix socket from a stale socket after a stream-local channel-open failure. On
-that failure path, Heeler will run one read-only remote `test -S` diagnostic:
-a missing socket maps to `socketNotFound`, an existing socket maps to
-`serverNotRunning` and retains the bounded cold-start wake, and an SSH policy
-denial maps to `streamLocalForwardingUnavailable`. This diagnostic is not a
-socat transport fallback.
+libssh2 does not expose the server description that distinguishes a stale Unix
+socket from SSH forwarding policy denial after a stream-local channel-open
+failure. On that failure path, Heeler will run one read-only remote `test -S`
+diagnostic. A missing socket maps to `socketNotFound`. When the socket exists,
+Heeler reports one honest combined failure: herdr may not be running, or SSH
+stream-local forwarding may be disabled. It does not claim a narrower cause
+that the client cannot observe. This diagnostic is not a socat transport
+fallback.
 
 Cancellation and timeout recovery will be channel-scoped only when the
 affected channel has been allocated and can be closed cleanly. A timeout while

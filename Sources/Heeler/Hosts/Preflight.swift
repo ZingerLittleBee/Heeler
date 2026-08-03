@@ -111,6 +111,11 @@ struct PreflightReport: Equatable, Sendable {
             hint =
                 "The socket at \(path) exists but nothing answers: the herdr server "
                 + "is not running. Start herdr on the Host and run the checks again."
+        case .streamLocalOpenFailed(let path):
+            check = .serverRunning
+            hint =
+                "Could not open the herdr socket at \(path). Start herdr on the Host, "
+                + "or enable SSH stream-local forwarding and run the checks again."
         case .protocolVersionMismatch(let server, let supported):
             check = .protocolCompatible
             hint =

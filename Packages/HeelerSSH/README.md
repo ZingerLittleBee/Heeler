@@ -37,3 +37,12 @@ listed in the provenance record. libssh2 is compiled with its obsolete cipher
 and signature switches disabled; the small reviewed patch in `Patches/`
 removes SHA-1 key exchange and MAC methods that libssh2 1.11.1 otherwise has no
 build switch for.
+
+## Direct-streamlocal acceptance
+
+`scripts/run-ci-ios-tests.sh` provisions disposable OpenSSH endpoints and a
+temporary Unix-socket fake herdr server, then runs the mandatory
+`HeelerSSHDirectStreamLocalE2ETests` suite. The fixture does not install or
+invoke socat. The suite includes a repeatable 25-exchange loopback benchmark;
+its output records local channel open, exchange, and close cost and is not a
+WAN latency promise.

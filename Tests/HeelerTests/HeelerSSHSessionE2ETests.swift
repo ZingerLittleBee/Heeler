@@ -195,6 +195,22 @@ struct HeelerSSHSessionE2ETests {
         }
     }
 
+    @Test("direct-streamlocal exchanges one NDJSON line through real sshd")
+    func directStreamLocalExchangesNDJSONLine() async throws {
+        let environment = try #require(HeelerSSHTestEnvironment.current)
+        let socketPath = try #require(environment.streamLocalSocketPath)
+        let connection = try await environment.connect()
+
+        try await withClosingConnection(connection) { connection in
+            let response = try await connection.exchangeStreamLocal(
+                socketPath: socketPath,
+                request: Data("{\"id\":\"red\",\"method\":\"ping\",\"params\":{}}\n".utf8),
+                timeout: .seconds(5))
+
+            #expect(response == Data("{\"id\":\"red\",\"result\":{\"protocol\":17,\"version\":\"fake\"}}\n".utf8))
+        }
+    }
+
     @Test("caller cancellation completes promptly and invalidates uncertain cleanup")
     func cancellationInvalidatesUncertainCleanup() async throws {
         let environment = try #require(HeelerSSHTestEnvironment.current)
@@ -282,6 +298,7 @@ private struct HeelerSSHTestEnvironment: Sendable {
     let legacyEndpoint: SSHEndpoint?
     let restrictedEndpoint: SSHEndpoint?
     let stallEndpoint: SSHEndpoint?
+    let streamLocalSocketPath: String?
     let username: String
     let password: String
 
@@ -292,6 +309,28 @@ private struct HeelerSSHTestEnvironment: Sendable {
 
     static let current: HeelerSSHTestEnvironment? = {
         let environment = ProcessInfo.processInfo.environment
+        if
+            let encoded = environment["HEELER_SSH_E2E_CONFIG"],
+            let data = Data(base64Encoded: encoded),
+            let configuration = try? JSONDecoder().decode(
+                HeelerSSHTestConfiguration.self,
+                from: data)
+        {
+            return HeelerSSHTestEnvironment(
+                endpoint: SSHEndpoint(host: configuration.host, port: configuration.port),
+                legacyEndpoint: configuration.legacyPort.map {
+                    SSHEndpoint(host: configuration.host, port: $0)
+                },
+                restrictedEndpoint: configuration.restrictedPort.map {
+                    SSHEndpoint(host: configuration.host, port: $0)
+                },
+                stallEndpoint: configuration.stallPort.map {
+                    SSHEndpoint(host: configuration.host, port: $0)
+                },
+                streamLocalSocketPath: configuration.streamLocalSocketPath,
+                username: configuration.username,
+                password: configuration.password)
+        }
         guard
             environment["HEELER_SSH_E2E_REQUIRED"] == "1",
             let host = environment["HEELER_SSH_E2E_HOST"],
@@ -313,6 +352,7 @@ private struct HeelerSSHTestEnvironment: Sendable {
             stallEndpoint: endpoint(
                 host: host,
                 port: environment["HEELER_SSH_E2E_STALL_PORT"]),
+            streamLocalSocketPath: environment["HEELER_SSH_E2E_STREAMLOCAL_SOCKET"],
             username: username,
             password: password)
     }()
@@ -339,6 +379,17 @@ private struct HeelerSSHTestEnvironment: Sendable {
         guard let port, let parsedPort = UInt16(port) else { return nil }
         return SSHEndpoint(host: host, port: parsedPort)
     }
+}
+
+private struct HeelerSSHTestConfiguration: Decodable {
+    let host: String
+    let port: UInt16
+    let legacyPort: UInt16?
+    let restrictedPort: UInt16?
+    let stallPort: UInt16?
+    let streamLocalSocketPath: String?
+    let username: String
+    let password: String
 }
 
 private func withClosingConnection<Result>(
