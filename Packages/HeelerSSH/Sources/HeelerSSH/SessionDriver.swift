@@ -1,4 +1,5 @@
 import CLibSSH2
+import CHeelerSSHSupport
 import Darwin
 import Foundation
 
@@ -210,6 +211,15 @@ actor SessionDriver {
         invalidateResources()
     }
 
+#if DEBUG
+    func resourceStateForTesting() -> SessionDriverResourceState {
+        SessionDriverResourceState(
+            hasSession: session != nil,
+            descriptorIsOpen: descriptor >= 0,
+            isValid: valid)
+    }
+#endif
+
     private func configureAlgorithms(_ session: OpaquePointer) throws {
         let preferences: [(Int32, String)] = [
             (LIBSSH2_METHOD_HOSTKEY, Self.hostKeyPreference),
@@ -359,25 +369,17 @@ actor SessionDriver {
         stream: Int32,
         buffer: inout [UInt8]
     ) throws -> Data {
-        var output = Data()
-        while true {
-            let count = buffer.withUnsafeMutableBytes { bytes -> Int in
-                guard let baseAddress = bytes.baseAddress else { return 0 }
-                return libssh2_channel_read_ex(
-                    channel,
-                    stream,
-                    baseAddress.assumingMemoryBound(to: CChar.self),
-                    bytes.count)
-            }
-            if count > 0 {
-                output.append(buffer, count: count)
-                continue
-            }
-            if count == 0 || count == Int(LIBSSH2_ERROR_EAGAIN) {
-                return output
-            }
-            throw SSHError.channelFailed
+        let count = buffer.withUnsafeMutableBytes { bytes -> Int in
+            guard let baseAddress = bytes.baseAddress else { return 0 }
+            return libssh2_channel_read_ex(
+                channel,
+                stream,
+                baseAddress.assumingMemoryBound(to: CChar.self),
+                bytes.count)
         }
+        if count > 0 { return Data(buffer.prefix(count)) }
+        if count == 0 || count == Int(LIBSSH2_ERROR_EAGAIN) { return Data() }
+        throw SSHError.channelFailed
     }
 
     private func cleanChannel(
@@ -514,16 +516,8 @@ actor SessionDriver {
     private func invalidateResources() {
         valid = false
         authenticated = false
+        InvalidatedSessionTeardown.reclaim(&session)
         closeDescriptor()
-        if let session {
-            // Once the socket is closed libssh2 cannot wait for peer traffic;
-            // a retry only advances its nonblocking channel cleanup state.
-            var result = libssh2_session_free(session)
-            while result == LIBSSH2_ERROR_EAGAIN {
-                result = libssh2_session_free(session)
-            }
-            self.session = nil
-        }
     }
 
     private func closeDescriptor() {
@@ -551,6 +545,31 @@ actor SessionDriver {
         }
     }
 }
+
+enum InvalidatedSessionTeardown {
+    typealias FreeSession = (OpaquePointer) -> Int32
+
+    @discardableResult
+    static func reclaim(
+        _ session: inout OpaquePointer?,
+        using freeSession: FreeSession = heeler_libssh2_abandon_session
+    ) -> Int32 {
+        guard let ownedSession = session else { return 0 }
+        let result = freeSession(ownedSession)
+        if result == 0 {
+            session = nil
+        }
+        return result
+    }
+}
+
+#if DEBUG
+struct SessionDriverResourceState: Sendable, Equatable {
+    let hasSession: Bool
+    let descriptorIsOpen: Bool
+    let isValid: Bool
+}
+#endif
 
 enum NativeLibrary {
     static let initializationResult = libssh2_init(0)

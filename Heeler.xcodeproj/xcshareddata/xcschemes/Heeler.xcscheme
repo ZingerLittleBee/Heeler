@@ -80,6 +80,16 @@
             isEnabled = "YES">
          </EnvironmentVariable>
          <EnvironmentVariable
+            key = "HEELER_SSH_E2E_RESTRICTED_PORT"
+            value = "$(HEELER_SSH_E2E_RESTRICTED_PORT)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "HEELER_SSH_E2E_STALL_PORT"
+            value = "$(HEELER_SSH_E2E_STALL_PORT)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
             key = "HEELER_SSH_E2E_USERNAME"
             value = "$(HEELER_SSH_E2E_USERNAME)"
             isEnabled = "YES">

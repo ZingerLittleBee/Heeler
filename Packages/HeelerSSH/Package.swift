@@ -20,8 +20,12 @@ let package = Package(
             path: "Artifacts/CLibSSH2.xcframework"
         ),
         .target(
+            name: "CHeelerSSHSupport",
+            dependencies: ["CLibSSH2"]
+        ),
+        .target(
             name: "HeelerSSH",
-            dependencies: ["CLibSSH2", "COpenSSL"]
+            dependencies: ["CLibSSH2", "COpenSSL", "CHeelerSSHSupport"]
         ),
         .testTarget(
             name: "HeelerSSHTests",
