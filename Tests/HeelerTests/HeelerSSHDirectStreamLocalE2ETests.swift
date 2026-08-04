@@ -9,7 +9,7 @@ import Testing
     "HeelerSSH direct-streamlocal e2e",
     .enabled(
         if: DirectStreamLocalTestEnvironment.current != nil,
-        "requires the disposable no-socat stream-local fixture"),
+        "requires the disposable stream-local fixture"),
     .serialized)
 struct HeelerSSHDirectStreamLocalE2ETests {
     @Test("Transport ping validates protocol 17 and opens a fresh channel")

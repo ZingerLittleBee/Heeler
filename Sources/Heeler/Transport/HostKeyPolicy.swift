@@ -8,9 +8,9 @@ struct HostKeyCandidate: Sendable, Equatable {
 }
 
 /// TOFU host key policy: trust the fingerprint the user confirmed on first
-/// connect, hard-fail when a known Host's key changes. Citadel never leaks
-/// through this surface — the UI implements the confirmation and injects the
-/// store without seeing SSH primitives.
+/// connect, hard-fail when a known Host's key changes. No SSH primitive
+/// leaks through this surface — the UI implements the confirmation and injects
+/// the store without seeing one.
 struct HostKeyPolicy: Sendable {
     /// Fingerprints of already-trusted Hosts.
     var knownHosts: any KnownHostsStore

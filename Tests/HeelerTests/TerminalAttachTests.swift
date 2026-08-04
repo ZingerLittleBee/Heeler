@@ -5,12 +5,11 @@ import UIKit
 
 @testable import Heeler
 
-/// The attach bootstrap line (#11): the command typed into the PTY channel's
-/// login shell. It must `exec` the attach process (so its exit ends the
-/// channel), pin the herdr CLI to the Host's socket via `HERDR_SOCKET_PATH`
-/// (a named-session target is "not found" on the default socket), quote the
-/// target and socket safely for POSIX shells and fish alike, and refuse
-/// targets that cannot be quoted safely for both.
+/// The attach exec command (#11): the command sent as the PTY channel's exec
+/// request. It must `exec` the attach process (so its exit ends the channel),
+/// pin the herdr CLI to the Host's socket via `HERDR_SOCKET_PATH` (a
+/// named-session target is "not found" on the default socket), quote the
+/// target and socket safely, and refuse targets that cannot be quoted safely.
 @Suite("Terminal attach")
 struct TerminalAttachTests {
     private enum WriterProbeError: Error {
@@ -49,8 +48,7 @@ struct TerminalAttachTests {
         input.resize(cols: 120, rows: 40)
 
         await #expect(throws: WriterProbeError.self) {
-            try await SSHTransport.writeTerminalAttachInput(
-                input,
+            try await input.pump(
                 write: { _ in },
                 resize: { _, _ in throw WriterProbeError.rejectedResize })
         }
@@ -1075,45 +1073,20 @@ struct TerminalAttachTests {
                 == NSRange(location: 0, length: 8))
     }
 
-    @Test func execsTheAttachCommandWithQuotedTargetAndSocketScope() throws {
-        let line = try SSHTransport.attachBootstrapLine(
-            attachCommand: "herdr agent attach",
-            request: TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24),
-            socketPath: "/home/u/.config/herdr/sessions/dev/herdr.sock")
-        #expect(
-            line == "exec /bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
-                + "printf \"\\033_heeler-attach\\033\\134\"; "
-                + "exec herdr agent attach \"$1\"' attach "
-                + "'w1:p1' '/home/u/.config/herdr/sessions/dev/herdr.sock'\n")
-    }
-
-    @Test func takeoverAppendsHerdrsFlag() throws {
-        let line = try SSHTransport.attachBootstrapLine(
-            attachCommand: "herdr agent attach",
-            request: TerminalAttachRequest(target: "w1:p1", takeover: true, cols: 80, rows: 24),
-            socketPath: "/home/u/.config/herdr/herdr.sock")
-        #expect(
-            line == "exec /bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
-                + "printf \"\\033_heeler-attach\\033\\134\"; "
-                + "exec herdr agent attach \"$1\" --takeover' attach "
-                + "'w1:p1' '/home/u/.config/herdr/herdr.sock'\n")
-    }
-
     @Test func injectableAttachCommandRidesThrough() throws {
         // Tests substitute a script at the environment boundary, like the
         // wake command.
-        let line = try SSHTransport.attachBootstrapLine(
+        let command = try HeelerSSHTransport.attachExecCommand(
             attachCommand: "/bin/sh /tmp/fake-attach.sh",
             request: TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24),
             socketPath: "/tmp/fake.sock")
         #expect(
-            line == "exec /bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
-                + "printf \"\\033_heeler-attach\\033\\134\"; "
+            command == "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
                 + "exec /bin/sh /tmp/fake-attach.sh \"$1\"' attach "
-                + "'w1:p1' '/tmp/fake.sock'\n")
+                + "'w1:p1' '/tmp/fake.sock'")
     }
 
-    @Test func libssh2ExecUsesTheSameSocketAndTakeoverCommandWithoutBootstrap() throws {
+    @Test func execUsesTheSocketScopeAndTakeoverFlag() throws {
         let command = try HeelerSSHTransport.attachExecCommand(
             attachCommand: "herdr agent attach",
             request: TerminalAttachRequest(
@@ -1127,30 +1100,8 @@ struct TerminalAttachTests {
             command == "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
                 + "exec herdr agent attach \"$1\" --takeover' attach "
                 + "'w1:p1' '/home/u/.config/herdr/sessions/dev/herdr.sock'")
-        #expect(!command.contains("heeler-attach"))
-        #expect(!command.contains("printf"))
+        // An exec request, not a line typed into a shell: no trailing newline.
         #expect(!command.hasSuffix("\n"))
-    }
-
-    @Test(arguments: [
-        "", "w1'p1", #"w1\p1"#, "w1\np1", "w1\rp1", "w1\u{1B}p1",
-    ])
-    func libssh2ExecRefusesUnquotableTargets(target: String) {
-        #expect(throws: TransportError.self) {
-            _ = try HeelerSSHTransport.attachExecCommand(
-                attachCommand: "herdr agent attach",
-                request: TerminalAttachRequest(target: target, cols: 80, rows: 24),
-                socketPath: "/tmp/fake.sock")
-        }
-    }
-
-    @Test func libssh2ExecRefusesUnquotableSocketPaths() {
-        #expect(throws: TransportError.self) {
-            _ = try HeelerSSHTransport.attachExecCommand(
-                attachCommand: "herdr agent attach",
-                request: TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24),
-                socketPath: "/tmp/it's-a.sock")
-        }
     }
 
     @Test(arguments: [
@@ -1160,7 +1111,7 @@ struct TerminalAttachTests {
         // A Pane id with quotes or control characters could only come from a
         // hostile server; refusing beats handing it a shell.
         #expect(throws: TransportError.self) {
-            _ = try SSHTransport.attachBootstrapLine(
+            _ = try HeelerSSHTransport.attachExecCommand(
                 attachCommand: "herdr agent attach",
                 request: TerminalAttachRequest(target: target, cols: 80, rows: 24),
                 socketPath: "/tmp/fake.sock")
@@ -1169,72 +1120,11 @@ struct TerminalAttachTests {
 
     @Test func unquotableSocketPathsAreRefused() {
         #expect(throws: TransportError.self) {
-            _ = try SSHTransport.attachBootstrapLine(
+            _ = try HeelerSSHTransport.attachExecCommand(
                 attachCommand: "herdr agent attach",
                 request: TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24),
                 socketPath: "/tmp/it's-a.sock")
         }
-    }
-
-    @Test func gateWithholdsTheLoginShellNoiseUntilTheHandshake() {
-        var gate = AttachBootstrapGate()
-        // What the real channel says before the bootstrap runs: a banner, a
-        // prompt, and the shell's echo of the line that prints the marker.
-        // The echo carries the literal text of the escape, which is exactly
-        // why it cannot be mistaken for the marker itself.
-        let noise = Data(
-            ("Last login: Sun Aug  2 13:28:08 2026\r\n"
-                + "\u{1B}[32muser@host\u{1B}[0m ~ % "
-                + #"exec /bin/sh -c 'printf "\033_heeler-attach\033\134"; exec herdr'"#
-                + "\r\n").utf8)
-        #expect(gate.admit(noise).isEmpty)
-        #expect(!gate.isOpen)
-
-        let opened = gate.admit(AttachBootstrapHandshake.marker + Data("\u{1B}[2JTUI".utf8))
-        #expect(gate.isOpen)
-        #expect(opened == Data("\u{1B}[2JTUI".utf8))
-        // Open for good: no rescanning, no second handshake.
-        #expect(gate.admit(Data("more".utf8)) == Data("more".utf8))
-        #expect(gate.flush().isEmpty)
-    }
-
-    @Test func gateMatchesAHandshakeSplitAcrossChunks() {
-        var gate = AttachBootstrapGate()
-        let marker = AttachBootstrapHandshake.marker
-        for index in 1..<marker.count {
-            var split = AttachBootstrapGate()
-            #expect(split.admit(Data(marker.prefix(index))).isEmpty)
-            #expect(split.admit(Data(marker.suffix(from: index)) + Data("go".utf8))
-                == Data("go".utf8))
-        }
-        // And byte by byte, the worst case a slow link can produce.
-        for byte in marker {
-            #expect(gate.admit(Data([byte])).isEmpty)
-        }
-        #expect(gate.isOpen)
-    }
-
-    @Test func gateHandsBackTheNoiseWhenTheHandshakeNeverCame() {
-        // herdr missing from the Host's PATH: the shell's complaint is the
-        // only diagnosis the user will ever get, so it must survive.
-        var gate = AttachBootstrapGate()
-        let failure = Data("sh: herdr: command not found\r\n".utf8)
-        #expect(gate.admit(failure).isEmpty)
-        #expect(gate.flush() == failure)
-        #expect(gate.flush().isEmpty)
-    }
-
-    @Test func gateBoundsTheWithheldNoiseWithoutLosingTheHandshake() {
-        var gate = AttachBootstrapGate()
-        let flood = Data(repeating: UInt8(ascii: "x"), count: 64 * 1024)
-        #expect(gate.admit(flood).isEmpty)
-        // A copy, so the bound can be read without spending the gate.
-        var counted = gate
-        #expect(counted.flush().count <= AttachBootstrapGate.maximumWithheldBytes)
-        // Trimming must not eat a marker that straddles the boundary.
-        let marker = AttachBootstrapHandshake.marker
-        #expect(gate.admit(Data(marker.prefix(3))).isEmpty)
-        #expect(gate.admit(Data(marker.suffix(from: 3)) + Data("tui".utf8)) == Data("tui".utf8))
     }
 
     @Test func sessionDropsEmptyKeystrokeWrites() async {

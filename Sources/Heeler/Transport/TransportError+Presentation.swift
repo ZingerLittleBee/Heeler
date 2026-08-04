@@ -21,10 +21,6 @@ extension TransportError {
             "herdr is not running on this Host."
         case .streamLocalOpenFailed:
             "herdr is not running on this Host. If it is running, check SSH stream-local forwarding."
-        case .socatMissing:
-            // Unreachable: the Host contract no longer involves socat, so only
-            // the superseded backend raises this and it leaves with it.
-            "The connection failed unexpectedly."
         case .protocolVersionMismatch(let server, let supported):
             "herdr protocol \(server) is incompatible with app protocol \(supported)."
         case .homeDirectoryUnresolvable:

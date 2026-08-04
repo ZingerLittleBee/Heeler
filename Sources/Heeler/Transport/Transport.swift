@@ -1,7 +1,7 @@
 import Foundation
 
 /// The app-side abstraction that executes herdr API requests over SSH.
-/// UI code talks to Transport, never to SSH primitives (ADR 0002).
+/// UI code talks to Transport, never to SSH primitives (ADR 0011).
 protocol Transport: Sendable {
     /// Verifies the server speaks a protocol version we support and returns
     /// its identity. Must be the first herdr API call on every new connection
@@ -174,7 +174,7 @@ extension Transport {
     }
 
     /// Non-SSH test doubles and alternative transports can state that SFTP is
-    /// unavailable without importing or emulating Citadel.
+    /// unavailable without importing or emulating an SSH library.
     func stageImage(
         _ image: PreparedImage,
         progress: @escaping @Sendable (ImageStageProgress) async -> Void
@@ -531,16 +531,13 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// stream-local forwarding enabled; presenting a narrower cause would be
     /// fabricated precision.
     case streamLocalOpenFailed(path: String)
-    /// No socat executable was found: not at the Host's preferred path, and
-    /// not on the Host's PATH. `path` is the preferred path that was tried.
-    case socatMissing(path: String)
     /// The server speaks a herdr protocol version this build does not support.
     case protocolVersionMismatch(server: Int, supported: Int)
     /// The remote home directory could not be resolved, so a home-relative
     /// socket location has no path.
     case homeDirectoryUnresolvable(detail: String)
     /// A second events channel was requested while one is live; each Host
-    /// keeps exactly one dedicated events channel (ADR 0002 headroom).
+    /// keeps exactly one dedicated events channel (ADR 0011 headroom).
     case eventsChannelAlreadyOpen
     /// A second terminal channel was requested while one is live; each Host
     /// keeps exactly one interactive terminal surface at a time.
@@ -572,7 +569,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
             true
         case .authenticationFailed, .tcpForwardingUnavailable,
             .deviceKeyCorrupt, .hostKeyRejected, .hostKeyMismatch,
-            .socketNotFound, .socatMissing, .protocolVersionMismatch,
+            .socketNotFound, .protocolVersionMismatch,
             .streamLocalOpenFailed,
             .homeDirectoryUnresolvable, .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse:

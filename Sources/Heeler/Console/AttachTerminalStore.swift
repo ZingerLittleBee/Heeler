@@ -112,7 +112,7 @@ final class AttachTerminalStore {
     }
 
     /// Ends the session by explicit close (a live exec channel ignores task
-    /// cancellation, ADR 0002) and waits for the teardown. Terminal: the
+    /// cancellation, ADR 0011) and waits for the teardown. Terminal: the
     /// detail screen creates a fresh store after a Host reconnect.
     ///
     /// The run task is also cancelled: before a session exists it can be

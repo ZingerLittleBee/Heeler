@@ -163,7 +163,7 @@ import Testing
     }
 
     @Test func nonJSONResponseIsMalformed() throws {
-        let line = "2026/07/18 socat[123] E connect(): No such file or directory"
+        let line = "bash: line 1: herdr: command not found"
 
         #expect(throws: TransportError.self) {
             try HerdrWire.decodeResult(

@@ -20,7 +20,7 @@ struct HostTests {
         #expect(host.socketLocation == .namedSession("work"))
     }
 
-    /// Hosts written by the exec+socat backend carry a `socatPath` the product
+    /// Hosts serialized before ADR 0011 carry a `socatPath` the product
     /// no longer has (ADR 0011). It must never fail a decode — not even when it
     /// holds a value the old validation would have rejected — and the next save
     /// must drop it rather than carry a dead field forward forever.

@@ -3,8 +3,8 @@ import Foundation
 /// Runs the pairing ceremony for a scanned Pairing Code: the seam between UI
 /// stores and real SSH, mirroring `TransportConnector`. Production is
 /// `SSHPairingConnector`; tests inject a scripted fake, so screen logic never
-/// touches Citadel. The ceremony client lives beside Transport, not inside
-/// it — Transport keeps its herdr socket semantics (ADR 0007).
+/// touches an SSH library. The ceremony client lives beside Transport, not
+/// inside it — Transport keeps its herdr socket semantics (ADR 0007).
 protocol PairingConnector: Sendable {
     /// Performs the ceremony: reach a candidate address presenting the
     /// pinned host key, authenticate with the Bootstrap Key, submit the

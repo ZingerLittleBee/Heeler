@@ -397,7 +397,6 @@ private struct HeelerSSHJumpHostTestEnvironment: Decodable, Sendable {
             credentials: credentials,
             hostKeyPolicy: policy ?? acceptingPolicy(),
             socket: .absolutePath(socketPath),
-            socatPath: "/not-used",
             jump: SSHJumpSettings(
                 host: host,
                 port: Int(jumpPort ?? self.jumpPort),

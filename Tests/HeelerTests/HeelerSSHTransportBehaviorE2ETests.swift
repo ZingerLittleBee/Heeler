@@ -45,15 +45,15 @@ struct HeelerSSHTransportBehaviorE2ETests {
     /// The ADR 0011 Host contract in one test: SSH access plus a running herdr.
     /// Nothing here is injected — the catalog Host maps straight onto production
     /// settings, so the connection resolves the default-session socket over the
-    /// real home probe and reaches herdr with no socat anywhere in the path.
-    @Test("the production connector reaches a direct Host with no socat configured")
-    func productionConnectorReachesADirectHostWithoutSocat() async throws {
+    /// real home probe and reaches herdr with no Host-side helper in the path.
+    @Test("the production connector reaches a direct Host")
+    func productionConnectorReachesADirectHost() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
         try await exerciseProductionConnector(host: environment.directHost())
     }
 
-    @Test("the production connector reaches a Jump Host target with no socat configured")
-    func productionConnectorReachesAJumpHostWithoutSocat() async throws {
+    @Test("the production connector reaches a Jump Host target")
+    func productionConnectorReachesAJumpHostTarget() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
         try await exerciseProductionConnector(host: environment.jumpHost())
     }
@@ -821,7 +821,6 @@ struct HeelerSSHTransportBehaviorEnvironment: Decodable, Sendable {
             credentials: credentials,
             hostKeyPolicy: HostKeyPolicy(knownHosts: InMemoryKnownHostsStore()) { _ in true },
             socket: socket ?? .absolutePath(socketPath),
-            socatPath: "/must-not-run/socat",
             jump: jump)
         settings.sessionListCommand =
             "printf '%s\\n' '{\"sessions\":[{\"name\":\"fixture\","

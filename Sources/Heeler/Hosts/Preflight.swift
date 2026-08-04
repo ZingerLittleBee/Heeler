@@ -136,11 +136,6 @@ struct PreflightReport: Equatable, Sendable {
             // taxonomy total anyway.
             check = .connection
             hint = "The connection is busy. Try again."
-        case .socatMissing:
-            // The Host contract no longer mentions socat, so only the
-            // superseded backend can raise this. It leaves with that backend.
-            check = .connection
-            hint = "The connection failed unexpectedly. Try again."
         case .jumpHostFailed(let underlying):
             // The first hop broke, so the Host itself was never contacted and
             // nothing about it has been disproved. Name the Jump Host as the

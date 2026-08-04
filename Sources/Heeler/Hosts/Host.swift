@@ -32,9 +32,9 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     /// case only when both machines share an account name.
     var jumpUsername: String
 
-    /// `socatPath` is deliberately absent: Hosts written by the exec+socat
-    /// backend still carry it, and leaving it out of the keys both ignores it
-    /// on decode and drops it on the Host's next save (ADR 0011).
+    /// `socatPath` is deliberately absent: Hosts serialized before ADR 0011
+    /// still carry it on disk, and leaving it out of the keys both ignores it
+    /// on decode and drops it on the Host's next save.
     private enum CodingKeys: String, CodingKey {
         case id, name, address, port, username, authMethod, sessionName
         case jumpAddress, jumpPort, jumpUsername

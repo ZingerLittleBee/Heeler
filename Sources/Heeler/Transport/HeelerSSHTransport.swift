@@ -1323,7 +1323,7 @@ actor HeelerSSHTransport: Transport {
     private func wakeServer(socketPath: String) async throws {
         try await withRequestDeadline {
             try await self.wake.value {
-                let command = try SSHTransport.wakeExecCommand(
+                let command = try Self.wakeExecCommand(
                     wakeCommand: self.wakeCommand,
                     socketPath: socketPath,
                     socketLocation: self.socketLocation)
@@ -1474,6 +1474,33 @@ actor HeelerSSHTransport: Transport {
 
     private static func cLocaleCommand(_ command: String) -> String {
         "LC_ALL=C \(command)"
+    }
+
+    /// The exec command that wakes a stopped herdr server (#6). A named
+    /// session scopes the wake to its own state directory, so the spawned
+    /// server serves the socket the request is actually waiting on.
+    static func wakeExecCommand(
+        wakeCommand: String, socketPath: String, socketLocation: HerdrSocketLocation
+    ) throws -> String {
+        guard let quotedSocketPath = RemoteShellPath.quotedAbsolute(socketPath) else {
+            throw TransportError.channelFailed(
+                detail: "The remote socket path cannot be quoted safely.")
+        }
+        let command: String
+        switch socketLocation {
+        case .namedSession(let sessionName):
+            guard HerdrSessionName.isValid(sessionName) else {
+                throw TransportError.channelFailed(
+                    detail: "The herdr session name is invalid.")
+            }
+            command = "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
+                + "export HERDR_SESSION=\"$2\"; \(wakeCommand) < /dev/null' wake "
+                + "\(quotedSocketPath) \(sessionName)"
+        case .defaultSession, .absolutePath:
+            command = "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
+                + "\(wakeCommand) < /dev/null' wake \(quotedSocketPath)"
+        }
+        return cLocaleCommand(command)
     }
 
     func subscribeToEvents(
@@ -1780,8 +1807,7 @@ actor HeelerSSHTransport: Transport {
                 sawCleanEnd = try await withThrowingTaskGroup(of: Bool.self) { group in
                     group.addTask {
                         do {
-                            try await SSHTransport.writeTerminalAttachInput(
-                                input,
+                            try await input.pump(
                                 write: { data in
                                     try await channel.write(data, timeout: self.requestTimeout)
                                 },

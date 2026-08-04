@@ -9,7 +9,7 @@ import UIKit
 /// at another app, pulling down the notification shade, or answering a
 /// message costs nothing on return. Only when the grace period elapses — or
 /// the system reclaims its time — does the app consider itself suspended and
-/// tear the connections down (the deliberate teardown of ADR 0002; iOS
+/// tear the connections down (the deliberate teardown of ADR 0011; iOS
 /// freezes the sockets anyway once the process is suspended).
 enum AppActivityPhase: Sendable, Equatable {
     case active

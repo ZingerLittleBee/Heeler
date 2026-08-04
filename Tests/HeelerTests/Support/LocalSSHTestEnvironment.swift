@@ -3,10 +3,10 @@ import Foundation
 
 @testable import Heeler
 
-/// Probes for the local e2e prerequisites: an sshd on localhost, a socat
-/// binary, and an Ed25519 key seed whose public half is authorized for the
-/// current user. Tests that need real SSH are skipped when any piece is
-/// missing, so the pure parts of the suite still run anywhere.
+/// Probes for the local e2e prerequisites: an sshd on localhost and an Ed25519
+/// key seed whose public half is authorized for the current user. Tests that
+/// need real SSH are skipped when either piece is missing, so the pure parts
+/// of the suite still run anywhere.
 ///
 /// Defaults match the transport-spike setup (`.local/transport-spike`);
 /// everything is overridable via environment variables:
@@ -14,13 +14,11 @@ import Foundation
 ///   HERDR_TEST_SSH_USER  ssh username (default: the host user, derived from
 ///                        the simulator container path)
 ///   HERDR_TEST_SSH_PORT  sshd port (default 22)
-///   HERDR_TEST_SOCAT     absolute socat path (default /opt/homebrew/bin/socat)
 struct LocalSSHTestEnvironment: Sendable {
     let host = "127.0.0.1"
     let port: Int
     let username: String
     let privateKey: Curve25519.Signing.PrivateKey
-    let socatPath: String
 
     static var isAvailable: Bool { current != nil }
 
@@ -49,14 +47,10 @@ struct LocalSSHTestEnvironment: Sendable {
             return nil
         }
 
-        let socatPath = environment["HERDR_TEST_SOCAT"] ?? "/opt/homebrew/bin/socat"
-        guard FileManager.default.isExecutableFile(atPath: socatPath) else { return nil }
-
         let port = environment["HERDR_TEST_SSH_PORT"].flatMap(Int.init) ?? 22
         guard sshdIsListening(onPort: port) else { return nil }
 
-        return LocalSSHTestEnvironment(
-            port: port, username: username, privateKey: key, socatPath: socatPath)
+        return LocalSSHTestEnvironment(port: port, username: username, privateKey: key)
     }
 
     /// The simulator has no usable user database (NSUserName and getpwuid are
@@ -66,48 +60,6 @@ struct LocalSSHTestEnvironment: Sendable {
         let components = URL(fileURLWithPath: NSHomeDirectory()).pathComponents
         guard components.count >= 3, components[1] == "Users" else { return nil }
         return components[2]
-    }
-
-    /// The harness sshd standing in for a Jump Host. Hopping 127.0.0.1 ->
-    /// 127.0.0.1 drives the same direct-tcpip path a real Jump Host would,
-    /// without needing a second machine.
-    var loopbackJump: SSHJumpSettings {
-        SSHJumpSettings(
-            host: host, port: port, username: username, credentials: .ed25519(privateKey))
-    }
-
-    /// Transport settings for the harness Host with test defaults: seeded-key
-    /// credentials and an auto-accepting TOFU policy over a fresh in-memory
-    /// store. Host key behavior itself is under test only in
-    /// `SSHHostKeyE2ETests`, which passes its own policy.
-    func makeSettings(
-        socket: HerdrSocketLocation,
-        socatPath: String? = nil,
-        socatDiscovery: SocatDiscovery? = nil,
-        wakeCommand: String? = nil,
-        requestTimeout: Duration? = nil,
-        homeCommand: String? = nil,
-        stageDirectoryCommand: String? = nil,
-        credentials: SSHCredentials? = nil,
-        hostKeyPolicy: HostKeyPolicy? = nil,
-        jump: SSHJumpSettings? = nil
-    ) -> SSHTransportSettings {
-        var settings = SSHTransportSettings(
-            host: host,
-            port: port,
-            username: username,
-            credentials: credentials ?? .ed25519(privateKey),
-            hostKeyPolicy: hostKeyPolicy
-                ?? HostKeyPolicy(knownHosts: InMemoryKnownHostsStore()) { _ in true },
-            socket: socket,
-            socatPath: socatPath ?? self.socatPath,
-            jump: jump)
-        if let socatDiscovery { settings.socatDiscovery = socatDiscovery }
-        if let wakeCommand { settings.wakeCommand = wakeCommand }
-        if let requestTimeout { settings.requestTimeout = requestTimeout }
-        if let homeCommand { settings.homeCommand = homeCommand }
-        if let stageDirectoryCommand { settings.stageDirectoryCommand = stageDirectoryCommand }
-        return settings
     }
 
     private static func sshdIsListening(onPort port: Int) -> Bool {
