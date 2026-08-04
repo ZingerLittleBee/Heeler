@@ -17,27 +17,41 @@ struct PreflightReportTests {
     }
 
     @Test func failurePassesEarlierChecksAndBlocksLaterOnes() {
+        let socketPath = "/home/dev/.config/herdr/herdr.sock"
         let report = PreflightReport.failure(
-            .socatMissing(path: "/usr/bin/socat"), authMethod: .deviceKey)
+            .socketNotFound(path: socketPath), authMethod: .deviceKey)
 
         #expect(report[.connection] == .passed)
         #expect(report[.remoteEnvironment] == .passed)
-        guard case .failed(let hint) = report[.socat] else {
-            Issue.record("socat check should fail")
+        guard case .failed(let hint) = report[.herdrInstalled] else {
+            Issue.record("herdr check should fail")
             return
         }
-        #expect(hint.contains("/usr/bin/socat"))
-        // The hint has to say PATH was tried too, or "not at /usr/bin/socat"
-        // reads as "go fix that path" when the path was never the problem.
-        #expect(hint.contains("PATH"))
-        // macOS Hosts whose PATH the probe cannot see still need the answer
-        // spelled out; both Homebrew prefixes are candidates to type in (#42).
-        #expect(hint.contains("/opt/homebrew/bin/socat"))
-        #expect(hint.contains("/usr/local/bin/socat"))
-        #expect(report[.herdrInstalled] == .blocked)
+        #expect(hint.contains(socketPath))
         #expect(report[.serverRunning] == .blocked)
         #expect(report[.protocolCompatible] == .blocked)
         #expect(!report.isFullyPassed)
+    }
+
+    /// SSH access plus a running herdr are the whole Host contract now
+    /// (ADR 0011): the checklist must not send anyone off to install a helper.
+    @Test func theChecklistNeverAsksForSocat() {
+        for check in PreflightCheck.allCases {
+            #expect(!check.title.localizedCaseInsensitiveContains("socat"))
+        }
+    }
+
+    @Test func streamLocalFailureGuidesTowardForwardingRatherThanInstallation() {
+        let report = PreflightReport.failure(
+            .streamLocalOpenFailed(path: "/home/dev/.config/herdr/herdr.sock"),
+            authMethod: .deviceKey)
+        guard case .failed(let hint) = report[.serverRunning] else {
+            Issue.record("server check should fail")
+            return
+        }
+        #expect(hint.localizedCaseInsensitiveContains("stream-local forwarding"))
+        #expect(!hint.localizedCaseInsensitiveContains("socat"))
+        #expect(!hint.localizedCaseInsensitiveContains("install"))
     }
 
     @Test(arguments: [
@@ -52,7 +66,6 @@ struct PreflightReportTests {
         (.eventsChannelAlreadyOpen, .connection),
         (.jumpHostFailed(.sshUnreachable(detail: "refused")), .connection),
         (.tcpForwardingUnavailable, .connection),
-        (.socatMissing(path: "/usr/bin/socat"), .socat),
         (.socketNotFound(path: "/home/dev/.config/herdr/herdr.sock"), .herdrInstalled),
         (.homeDirectoryUnresolvable(detail: "no $HOME"), .remoteEnvironment),
         (.serverNotRunning(path: "/home/dev/.config/herdr/herdr.sock"), .serverRunning),
@@ -128,6 +141,6 @@ struct PreflightReportTests {
     @Test func plainFailureAttachesTheGivenHintToTheGivenCheck() {
         let report = PreflightReport.failure(check: .connection, hint: "no password saved")
         #expect(report[.connection] == .failed(hint: "no password saved"))
-        #expect(report[.socat] == .blocked)
+        #expect(report[.herdrInstalled] == .blocked)
     }
 }

@@ -9,8 +9,6 @@ enum PreflightCheck: CaseIterable, Sendable {
     case connection
     /// The login shell exposes a usable absolute home directory.
     case remoteEnvironment
-    /// A socat executable was found on the Host.
-    case socat
     /// The herdr socket path exists on the Host.
     case herdrInstalled
     /// The socket accepts connections (a wake attempt already ran).
@@ -22,7 +20,6 @@ enum PreflightCheck: CaseIterable, Sendable {
         switch self {
         case .connection: "SSH connection"
         case .remoteEnvironment: "remote environment"
-        case .socat: "socat installed"
         case .herdrInstalled: "herdr installed"
         case .serverRunning: "herdr server running"
         case .protocolCompatible: "protocol compatible"
@@ -89,13 +86,6 @@ struct PreflightReport: Equatable, Sendable {
                 "Host key changed: trusted \(known.displayString), the Host presented "
                 + "\(presented.displayString). This can be a reinstalled server or an attack — "
                 + "verify with the Host's owner before trusting it."
-        case .socatMissing(let path):
-            check = .socat
-            hint =
-                "No socat on the Host: not at \(path), and not on the Host's PATH. "
-                + "Install it (apt install socat / brew install socat), or enter its "
-                + "absolute path in this Host's settings. Homebrew puts it at "
-                + "/opt/homebrew/bin/socat (Apple Silicon) or /usr/local/bin/socat (Intel)."
         case .socketNotFound(let path):
             check = .herdrInstalled
             hint =
@@ -146,6 +136,11 @@ struct PreflightReport: Equatable, Sendable {
             // taxonomy total anyway.
             check = .connection
             hint = "The connection is busy. Try again."
+        case .socatMissing:
+            // The Host contract no longer mentions socat, so only the
+            // superseded backend can raise this. It leaves with that backend.
+            check = .connection
+            hint = "The connection failed unexpectedly. Try again."
         case .jumpHostFailed(let underlying):
             // The first hop broke, so the Host itself was never contacted and
             // nothing about it has been disproved. Name the Jump Host as the
