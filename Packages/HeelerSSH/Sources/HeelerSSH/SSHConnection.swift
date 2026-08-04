@@ -194,6 +194,12 @@ public final class SSHConnection: Sendable {
     public var isSFTPWriteDelayedForTesting: Bool {
         get async { await driver.isSFTPWriteDelayedForTesting }
     }
+
+    public func holdNextSessionWaitForTesting(
+        _ hold: @escaping @Sendable () async -> Void
+    ) async {
+        await driver.holdNextSessionWaitForTesting(hold)
+    }
 #endif
 
     public func close(timeout: Duration) async throws {

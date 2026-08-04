@@ -19,18 +19,29 @@ enum SocketReadiness {
         descriptor: Int32,
         directions: SocketDirections,
         until deadline: ContinuousClock.Instant,
-        cancellable: Bool = true
+        cancellable: Bool = true,
+        watching watch: SessionActivityWatch? = nil
     ) async throws {
         try await wait(
             for: [Interest(descriptor: descriptor, directions: directions)],
             until: deadline,
-            cancellable: cancellable)
+            cancellable: cancellable,
+            watching: watch)
     }
 
+    /// Waits until one of `interests` is ready, the deadline passes, or the
+    /// watched session takes bytes off its socket.
+    ///
+    /// That last clause is not a convenience. A socket source only reports an
+    /// edge, and on a shared libssh2 session another operation can consume the
+    /// bytes this one is waiting for before its source is even armed. The
+    /// watch carries the receive count observed before the caller released the
+    /// session, so an arming that already missed its bytes returns at once.
     static func wait(
         for interests: [Interest],
         until deadline: ContinuousClock.Instant,
-        cancellable: Bool = true
+        cancellable: Bool = true,
+        watching watch: SessionActivityWatch? = nil
     ) async throws {
         let activeInterests = interests.filter { !$0.directions.isEmpty }
         guard !activeInterests.isEmpty else {
@@ -63,6 +74,15 @@ enum SocketReadiness {
         waiter.add(timer)
         waiter.activateAll()
 
+        // Registering only once the sources are live keeps a release from the
+        // session and a release from the socket on the same path. Failing to
+        // register means the session already moved, so this wait has nothing
+        // left to learn from the socket.
+        defer { watch?.unregister(waiter) }
+        if let watch, !watch.register(waiter) {
+            waiter.finish(.success(()))
+        }
+
         if cancellable {
             try await withTaskCancellationHandler {
                 try await waiter.value()
@@ -92,7 +112,7 @@ enum SocketReadiness {
     }
 }
 
-private final class DispatchWaiter: @unchecked Sendable {
+final class DispatchWaiter: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<Void, any Error>?
     private var result: Result<Void, any Error>?

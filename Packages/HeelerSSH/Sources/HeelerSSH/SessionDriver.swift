@@ -68,12 +68,17 @@ actor SessionDriver {
 #if DEBUG
     private var nextSFTPWriteDelayForTesting: Duration?
     private var sftpWriteDelayIsActiveForTesting = false
+    private var nextSessionWaitHoldForTesting: (@Sendable () async -> Void)?
 #endif
 
     // Actor reentrancy would otherwise allow a second task to call libssh2
     // while the first one is suspended on socket readiness.
     private var operationInProgress = false
     private var operationWaiters: [CheckedContinuation<Void, Never>] = []
+
+    // Whoever holds the session may consume the bytes the operations waiting
+    // for it are blocked on, which leaves them nothing to see on the socket.
+    private let activity = SessionActivity()
 
     func handshake(endpoint: SSHEndpoint, timeout: Duration) async throws -> SSHHostKey {
         await acquireOperation()
@@ -386,7 +391,7 @@ actor SessionDriver {
 
         while offset < data.count {
             await acquireOperation()
-            let progress: (written: Int, descriptor: Int32, directions: SocketDirections)
+            let progress: (written: Int, wait: SessionWaitPlan)
             do {
                 try checkProgress(deadline: deadline)
                 guard valid, let session else { throw SSHError.connectionInvalidated }
@@ -404,7 +409,7 @@ actor SessionDriver {
                 guard written >= 0 || written == Int(LIBSSH2_ERROR_EAGAIN) else {
                     throw SSHError.channelFailed
                 }
-                progress = (written, descriptor, sessionDirections(session))
+                progress = (written, sessionWaitPlan(session))
                 releaseOperation()
             } catch {
                 releaseOperation()
@@ -415,10 +420,7 @@ actor SessionDriver {
                 offset += progress.written
                 await Task.yield()
             } else {
-                try await SocketReadiness.wait(
-                    descriptor: progress.descriptor,
-                    directions: progress.directions,
-                    until: deadline)
+                try await awaitSessionProgress(progress.wait, until: deadline)
             }
         }
     }
@@ -433,12 +435,7 @@ actor SessionDriver {
 
         while true {
             await acquireOperation()
-            let progress: (
-                data: Data,
-                eof: Bool,
-                descriptor: Int32,
-                directions: SocketDirections
-            )
+            let progress: (data: Data, eof: Bool, wait: SessionWaitPlan)
             do {
                 try checkProgress(deadline: deadline)
                 guard valid, let session else { throw SSHError.connectionInvalidated }
@@ -449,7 +446,7 @@ actor SessionDriver {
                 let data = try readAvailable(channel: channel, stream: 0, buffer: &buffer)
                 let eof = libssh2_channel_eof(channel) == 1
                 if eof { ptyChannels[id]?.reachedEOF = true }
-                progress = (data, eof, descriptor, sessionDirections(session))
+                progress = (data, eof, sessionWaitPlan(session))
                 releaseOperation()
             } catch {
                 releaseOperation()
@@ -458,10 +455,7 @@ actor SessionDriver {
 
             if !progress.data.isEmpty { return progress.data }
             if progress.eof { return nil }
-            try await SocketReadiness.wait(
-                descriptor: progress.descriptor,
-                directions: progress.directions,
-                until: deadline)
+            try await awaitSessionProgress(progress.wait, until: deadline)
         }
     }
 
@@ -684,7 +678,7 @@ actor SessionDriver {
 
         while offset < data.count {
             await acquireOperation()
-            let progress: (written: Int, descriptor: Int32, directions: SocketDirections)
+            let progress: (written: Int, wait: SessionWaitPlan)
             do {
                 try checkProgress(deadline: deadline)
                 guard
@@ -705,7 +699,7 @@ actor SessionDriver {
                 guard written >= 0 || written == Int(LIBSSH2_ERROR_EAGAIN) else {
                     throw SSHError.channelFailed
                 }
-                progress = (written, descriptor, sessionDirections(session))
+                progress = (written, sessionWaitPlan(session))
                 releaseOperation()
             } catch {
                 releaseOperation()
@@ -716,10 +710,7 @@ actor SessionDriver {
                 offset += progress.written
                 await Task.yield()
             } else {
-                try await SocketReadiness.wait(
-                    descriptor: progress.descriptor,
-                    directions: progress.directions,
-                    until: deadline)
+                try await awaitSessionProgress(progress.wait, until: deadline)
             }
         }
     }
@@ -734,12 +725,7 @@ actor SessionDriver {
 
         while true {
             await acquireOperation()
-            let progress: (
-                data: Data,
-                eof: Bool,
-                descriptor: Int32,
-                directions: SocketDirections
-            )
+            let progress: (data: Data, eof: Bool, wait: SessionWaitPlan)
             do {
                 try checkProgress(deadline: deadline)
                 guard
@@ -754,8 +740,7 @@ actor SessionDriver {
                 progress = (
                     data,
                     libssh2_channel_eof(channel) == 1,
-                    descriptor,
-                    sessionDirections(session))
+                    sessionWaitPlan(session))
                 releaseOperation()
             } catch {
                 releaseOperation()
@@ -764,10 +749,7 @@ actor SessionDriver {
 
             if !progress.data.isEmpty { return progress.data }
             if progress.eof { return nil }
-            try await SocketReadiness.wait(
-                descriptor: progress.descriptor,
-                directions: progress.directions,
-                until: deadline)
+            try await awaitSessionProgress(progress.wait, until: deadline)
         }
     }
 
@@ -1011,12 +993,7 @@ actor SessionDriver {
 
         while true {
             await acquireOperation()
-            let progress: (
-                data: Data,
-                reachedEOF: Bool,
-                descriptor: Int32,
-                directions: SocketDirections
-            )
+            let progress: (data: Data, reachedEOF: Bool, wait: SessionWaitPlan)
             do {
                 try checkProgress(deadline: deadline)
                 guard
@@ -1041,8 +1018,7 @@ actor SessionDriver {
                 progress = (
                     read > 0 ? Data(buffer.prefix(read)) : Data(),
                     read == 0,
-                    descriptor,
-                    sessionDirections(session))
+                    sessionWaitPlan(session))
                 releaseOperation()
             } catch {
                 let normalized = normalize(error)
@@ -1053,10 +1029,7 @@ actor SessionDriver {
 
             if !progress.data.isEmpty { return progress.data }
             if progress.reachedEOF { return nil }
-            try await SocketReadiness.wait(
-                descriptor: progress.descriptor,
-                directions: progress.directions,
-                until: deadline)
+            try await awaitSessionProgress(progress.wait, until: deadline)
         }
     }
 
@@ -1129,7 +1102,7 @@ actor SessionDriver {
 
         while offset < data.count {
             await acquireOperation()
-            let progress: (written: Int, descriptor: Int32, directions: SocketDirections)
+            let progress: (written: Int, wait: SessionWaitPlan)
             do {
                 try checkProgress(deadline: deadline)
                 guard
@@ -1150,7 +1123,7 @@ actor SessionDriver {
                 if written < 0, written != Int(LIBSSH2_ERROR_EAGAIN) {
                     throw mappedSFTPError(sftp: state.handle, code: Int32(written))
                 }
-                progress = (written, descriptor, sessionDirections(session))
+                progress = (written, sessionWaitPlan(session))
                 releaseOperation()
             } catch {
                 let normalized = normalize(error)
@@ -1163,10 +1136,7 @@ actor SessionDriver {
                 offset += progress.written
                 await Task.yield()
             } else {
-                try await SocketReadiness.wait(
-                    descriptor: progress.descriptor,
-                    directions: progress.directions,
-                    until: deadline)
+                try await awaitSessionProgress(progress.wait, until: deadline)
             }
         }
     }
@@ -1396,6 +1366,14 @@ actor SessionDriver {
         sftpWriteDelayIsActiveForTesting
     }
 
+    /// Holds the next operation that blocks on the session in the window it
+    /// naturally passes through: released to the next operation, not yet
+    /// watching the socket. Widening that window turns the race this driver
+    /// has to survive into something a test can drive.
+    func holdNextSessionWaitForTesting(_ hold: @escaping @Sendable () async -> Void) {
+        nextSessionWaitHoldForTesting = hold
+    }
+
     func resourceStateForTesting() -> SessionDriverResourceState {
         SessionDriverResourceState(
             hasSession: session != nil,
@@ -1432,6 +1410,7 @@ actor SessionDriver {
         }
         session = createdSession
         libssh2_session_set_blocking(createdSession, 0)
+        activity.install(on: createdSession)
         try configureAlgorithms(createdSession)
 
         let handshakeResult = try await repeatUntilComplete(deadline: deadline) {
@@ -1690,6 +1669,42 @@ actor SessionDriver {
                 }
             }
         }
+    }
+
+    /// Everything a blocked operation needs to wait on the session, captured
+    /// while it still holds the session. Another operation may drain the
+    /// socket between that capture and the wait actually arming, so the plan
+    /// carries the receive count that makes such a drain detectable.
+    private struct SessionWaitPlan {
+        let descriptor: Int32
+        let directions: SocketDirections
+        let watch: SessionActivityWatch
+    }
+
+    private func sessionWaitPlan(_ session: OpaquePointer) -> SessionWaitPlan {
+        SessionWaitPlan(
+            descriptor: descriptor,
+            directions: sessionDirections(session),
+            watch: activity.watch())
+    }
+
+    private func awaitSessionProgress(
+        _ plan: SessionWaitPlan,
+        until deadline: ContinuousClock.Instant,
+        cancellable: Bool = true
+    ) async throws {
+#if DEBUG
+        if let hold = nextSessionWaitHoldForTesting {
+            nextSessionWaitHoldForTesting = nil
+            await hold()
+        }
+#endif
+        try await SocketReadiness.wait(
+            descriptor: plan.descriptor,
+            directions: plan.directions,
+            until: deadline,
+            cancellable: cancellable,
+            watching: plan.watch)
     }
 
     private func sessionDirections(_ session: OpaquePointer) -> SocketDirections {
@@ -2027,18 +2042,8 @@ actor SessionDriver {
         deadline: ContinuousClock.Instant,
         cancellable: Bool = true
     ) async throws {
-        let rawDirections = libssh2_session_block_directions(session)
-        var directions: SocketDirections = []
-        if rawDirections & LIBSSH2_SESSION_BLOCK_INBOUND != 0 {
-            directions.insert(.read)
-        }
-        if rawDirections & LIBSSH2_SESSION_BLOCK_OUTBOUND != 0 {
-            directions.insert(.write)
-        }
-        if directions.isEmpty { directions = [.read, .write] }
-        try await SocketReadiness.wait(
-            descriptor: descriptor,
-            directions: directions,
+        try await awaitSessionProgress(
+            sessionWaitPlan(session),
             until: deadline,
             cancellable: cancellable)
     }
@@ -2164,6 +2169,9 @@ actor SessionDriver {
     }
 
     private func releaseOperation() {
+        // Handing the session on is the first moment another operation can act
+        // on what this one already pulled off the socket.
+        activity.wakeStaleWaiters()
         if operationWaiters.isEmpty {
             operationInProgress = false
         } else {
