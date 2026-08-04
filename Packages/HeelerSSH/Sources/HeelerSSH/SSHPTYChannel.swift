@@ -6,6 +6,13 @@ import Foundation
 /// Native pointers remain inside `SessionDriver`. Reads, writes, and resizes
 /// take short turns on the driver so the live terminal does not monopolize the
 /// SSH session while other channels make progress.
+///
+/// That holds in one direction only. An ordinary RPC — `execute`,
+/// `executeResponseLine`, `exchangeStreamLocal` — takes the same operation
+/// mutex and holds it for its entire round trip, so terminal output,
+/// keystrokes and resizes queue behind one until it completes or its own
+/// deadline ends it. The effect is delay rather than failure: the terminal is
+/// not torn down, it simply stops moving meanwhile. See #130.
 public final class SSHPTYChannel: Sendable {
     private let id: UInt64
     private let driver: SessionDriver
