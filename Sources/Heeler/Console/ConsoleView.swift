@@ -303,6 +303,15 @@ struct ConsoleView: View {
     /// otherwise a connected Host can still have a failing snapshot RPC.
     private var hostIssues: [HostIssue] {
         hosts.hosts.compactMap { host in
+            // The two failing arms present through different functions on
+            // purpose. A retryable failure reaches `.reconnecting` and reads as
+            // the short `summary(for:)` phrase, because the session will retry
+            // it and there is nothing for the user to do; a non-retryable one
+            // reaches `.failed` and reads as `connectionGuidance` in full,
+            // because that text names the action only the user can take. The
+            // split is exhaustive at the source: `.reconnecting` is emitted
+            // solely past a `guard failure.isRetryable`, so `summary(for:)`
+            // needs arms for the retryable set alone.
             switch console.hostStatuses[host.id] {
             case .reconnecting(_, _, let failure):
                 return HostIssue(
