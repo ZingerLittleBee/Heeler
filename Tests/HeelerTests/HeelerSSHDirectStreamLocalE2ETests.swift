@@ -8,14 +8,14 @@ import Testing
 @Suite(
     "HeelerSSH direct-streamlocal e2e",
     .enabled(
-        if: DirectStreamLocalTestEnvironment.current != nil,
+        if: RealSSHFixture.gate(DirectStreamLocalTestEnvironment.current != nil),
         "requires the disposable stream-local fixture"),
     .serialized)
 struct HeelerSSHDirectStreamLocalE2ETests {
     @Test("Transport ping validates protocol 17 and opens a fresh channel")
     func transportPingUsesFreshChannels() async throws {
         let environment = try #require(DirectStreamLocalTestEnvironment.current)
-        let connection = try await environment.passwordConnection(to: environment.endpoint)
+        let connection = try await environment.deviceKeyConnection(to: environment.endpoint)
         let before = try await environment.connectionCount(using: connection)
         let transport: any Transport = HeelerSSHTransport(
             connection: connection,
@@ -34,7 +34,7 @@ struct HeelerSSHDirectStreamLocalE2ETests {
     @Test("partial request writes and response reads complete one line")
     func partialReadsAndWritesComplete() async throws {
         let environment = try #require(DirectStreamLocalTestEnvironment.current)
-        let connection = try await environment.passwordConnection(to: environment.endpoint)
+        let connection = try await environment.deviceKeyConnection(to: environment.endpoint)
         try await withClosingDirectConnection(connection) { connection in
             let padding = String(repeating: "x", count: 4 * 1024 * 1024)
             let request = requestLine(method: "partial", extra: padding)
@@ -50,7 +50,7 @@ struct HeelerSSHDirectStreamLocalE2ETests {
     @Test("orderly EOF before a response line preserves connection reuse")
     func eofPreservesConnectionReuse() async throws {
         let environment = try #require(DirectStreamLocalTestEnvironment.current)
-        let connection = try await environment.passwordConnection(to: environment.endpoint)
+        let connection = try await environment.deviceKeyConnection(to: environment.endpoint)
         try await withClosingDirectConnection(connection) { connection in
             await #expect(throws: SSHError.unexpectedEOF) {
                 _ = try await connection.exchangeStreamLocal(
@@ -65,7 +65,7 @@ struct HeelerSSHDirectStreamLocalE2ETests {
     @Test("one MiB response bound preserves connection reuse")
     func responseBoundPreservesConnectionReuse() async throws {
         let environment = try #require(DirectStreamLocalTestEnvironment.current)
-        let connection = try await environment.passwordConnection(to: environment.endpoint)
+        let connection = try await environment.deviceKeyConnection(to: environment.endpoint)
         try await withClosingDirectConnection(connection) { connection in
             await #expect(throws: SSHError.responseTooLarge(limit: 1_048_576)) {
                 _ = try await connection.exchangeStreamLocal(
@@ -80,7 +80,7 @@ struct HeelerSSHDirectStreamLocalE2ETests {
     @Test("timeout closes only its channel and preserves connection reuse")
     func timeoutPreservesConnectionReuse() async throws {
         let environment = try #require(DirectStreamLocalTestEnvironment.current)
-        let connection = try await environment.passwordConnection(to: environment.endpoint)
+        let connection = try await environment.deviceKeyConnection(to: environment.endpoint)
         try await withClosingDirectConnection(connection) { connection in
             await #expect(throws: SSHError.timedOut) {
                 _ = try await connection.exchangeStreamLocal(
@@ -95,7 +95,7 @@ struct HeelerSSHDirectStreamLocalE2ETests {
     @Test("cancellation closes only its channel and preserves connection reuse")
     func cancellationPreservesConnectionReuse() async throws {
         let environment = try #require(DirectStreamLocalTestEnvironment.current)
-        let connection = try await environment.passwordConnection(to: environment.endpoint)
+        let connection = try await environment.deviceKeyConnection(to: environment.endpoint)
         try await withClosingDirectConnection(connection) { connection in
             let exchange = Task {
                 try await connection.exchangeStreamLocal(
@@ -113,7 +113,7 @@ struct HeelerSSHDirectStreamLocalE2ETests {
     @Test("missing socket maps from one read-only diagnostic")
     func missingSocketMapsToSocketNotFound() async throws {
         let environment = try #require(DirectStreamLocalTestEnvironment.current)
-        let connection = try await environment.passwordConnection(to: environment.endpoint)
+        let connection = try await environment.deviceKeyConnection(to: environment.endpoint)
         let transport = HeelerSSHTransport(
             connection: connection,
             socketPath: environment.missingSocketPath)
@@ -129,7 +129,7 @@ struct HeelerSSHDirectStreamLocalE2ETests {
     @Test("stale socket reports the honest combined cause")
     func staleSocketMapsToCombinedFailure() async throws {
         let environment = try #require(DirectStreamLocalTestEnvironment.current)
-        let connection = try await environment.passwordConnection(to: environment.endpoint)
+        let connection = try await environment.deviceKeyConnection(to: environment.endpoint)
         let transport = HeelerSSHTransport(
             connection: connection,
             socketPath: environment.staleSocketPath)
@@ -145,7 +145,7 @@ struct HeelerSSHDirectStreamLocalE2ETests {
     @Test("global forwarding denial reports the honest combined cause")
     func globalPolicyDenialMapsToCombinedFailure() async throws {
         let environment = try #require(DirectStreamLocalTestEnvironment.current)
-        let connection = try await environment.passwordConnection(
+        let connection = try await environment.deviceKeyConnection(
             to: environment.globalPolicyEndpoint)
         let transport = HeelerSSHTransport(
             connection: connection,
@@ -176,10 +176,24 @@ struct HeelerSSHDirectStreamLocalE2ETests {
         try await transport.close()
     }
 
-    @Test("repeatable loopback benchmark records open exchange and close")
-    func benchmarkRecordsLatency() async throws {
+    /// The spike measured both transports on loopback over the same
+    /// authenticated session: 22.368 ms per exchange through `exec` + `socat`
+    /// against 0.514 ms through direct-streamlocal (spec #110, ADR 0011,
+    /// recorded in `Packages/HeelerSSH/README.md`).
+    static let recordedSocatBaselinePerExchange = Duration.microseconds(22_368)
+
+    /// The socat backend is gone, so its baseline can never be re-measured; the
+    /// benchmark compares against the recorded figure instead. A quarter of it
+    /// is the "materially faster" bar: enough headroom that a loaded machine
+    /// does not fail, tight enough to catch anything that puts a remote process
+    /// back in the request path. It bounds neither WAN latency nor any
+    /// particular machine's speed.
+    static let benchmarkCeilingPerExchange = recordedSocatBaselinePerExchange / 4
+
+    @Test("repeatable loopback benchmark stays far under the exec-plus-socat baseline")
+    func benchmarkStaysUnderRecordedBaseline() async throws {
         let environment = try #require(DirectStreamLocalTestEnvironment.current)
-        let connection = try await environment.passwordConnection(to: environment.endpoint)
+        let connection = try await environment.deviceKeyConnection(to: environment.endpoint)
         try await withClosingDirectConnection(connection) { connection in
             let iterations = 25
             let started = ContinuousClock.now
@@ -187,10 +201,13 @@ struct HeelerSSHDirectStreamLocalE2ETests {
                 try await expectPing(connection, socketPath: environment.socketPath)
             }
             let elapsed = ContinuousClock.now - started
+            let perExchange = elapsed / iterations
             print(
                 "direct-streamlocal loopback benchmark: \(iterations) fresh channel exchanges "
-                    + "completed in \(elapsed); this is not a WAN latency promise")
-            #expect(elapsed > .zero)
+                    + "completed in \(elapsed), \(perExchange) each, against a recorded "
+                    + "exec-plus-socat baseline of \(Self.recordedSocatBaselinePerExchange) "
+                    + "each; this is not a WAN latency promise")
+            #expect(perExchange < Self.benchmarkCeilingPerExchange)
         }
     }
 }
@@ -201,7 +218,7 @@ private struct DirectStreamLocalTestEnvironment: Decodable, Sendable {
     let globalPolicyPort: UInt16
     let keyPolicyPort: UInt16
     let username: String
-    let password: String
+    let deviceKeySeed: String
     let socketPath: String
     let staleSocketPath: String
     let missingSocketPath: String
@@ -223,24 +240,8 @@ private struct DirectStreamLocalTestEnvironment: Decodable, Sendable {
         return try? JSONDecoder().decode(DirectStreamLocalTestEnvironment.self, from: data)
     }()
 
-    func passwordConnection(to endpoint: SSHEndpoint) async throws -> SSHConnection {
-        let connection = try await SSHConnection.connect(to: endpoint, timeout: .seconds(5))
-        do {
-            try await connection.authenticate(
-                username: username,
-                password: password,
-                timeout: .seconds(5))
-            return connection
-        } catch {
-            try? await connection.close(timeout: .seconds(2))
-            throw error
-        }
-    }
-
     func deviceKeyConnection(to endpoint: SSHEndpoint) async throws -> SSHConnection {
-        let privateKey = try Curve25519.Signing.PrivateKey(
-            rawRepresentation: Data((0..<32).map(UInt8.init)))
-        let deviceKey = DeviceKey(privateKey: privateKey)
+        let deviceKey = DeviceKey(privateKey: try RealSSHFixture.deviceKey(seed: deviceKeySeed))
         let connection = try await SSHConnection.connect(to: endpoint, timeout: .seconds(5))
         do {
             try await connection.authenticate(

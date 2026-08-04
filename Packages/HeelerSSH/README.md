@@ -42,9 +42,39 @@ build switch for.
 
 `scripts/run-ci-ios-tests.sh` provisions disposable OpenSSH endpoints and a
 temporary Unix-socket fake herdr server, then runs the mandatory
-`HeelerSSHDirectStreamLocalE2ETests` suite. The suite includes a repeatable
+`HeelerSSHDirectStreamLocalE2ETests` suite.
+
+Every sshd instance runs unprivileged, as the invoking account, so the whole
+gate runs on a developer machine with no `sudo` and leaves nothing behind. Each
+session is forced through POSIX `sh` with an isolated `HOME` and a fixed `PATH`
+that contains a `herdr` stub and no `socat`, so the fixture means the same thing
+on every machine and can never reach a real herdr server. The single exception
+is real password authentication: macOS cannot verify an account password
+without root, and an unprivileged sshd can only authenticate the account it
+already runs as. Those two tests need a disposable account and one root-owned
+sshd, so they skip without passwordless `sudo` and are mandatory in merge CI
+(`HEELER_CI_MANDATORY=1`).
+
+The suite includes a repeatable
 25-exchange loopback benchmark; its output records local channel open,
 exchange, and close cost and is not a WAN latency promise.
+
+### Recorded exec-plus-socat baseline
+
+The transport spike measured both transports on loopback over the same
+authenticated session (spec #110, ADR 0011):
+
+| Transport | Mean per exchange |
+| --- | --- |
+| `exec` + `socat` | 22.368 ms |
+| `direct-streamlocal` | 0.514 ms |
+
+The socat backend was deleted with the Citadel cutover, so that number cannot be
+re-measured; it is kept here as the fixed comparison point. The benchmark
+asserts the mean stays under a quarter of the socat baseline. That is a
+regression detector — it catches a change that reintroduces per-request remote
+process startup — and deliberately not a promise about any particular machine,
+and never about a WAN path.
 
 ## Jump Host acceptance
 

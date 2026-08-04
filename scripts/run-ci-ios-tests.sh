@@ -1,4 +1,21 @@
 #!/bin/bash
+#
+# Merge-gate fixture plus the iOS Simulator test run.
+#
+# Every sshd instance runs unprivileged: as the invoking user, on a loopback
+# high port, out of one disposable directory. No sudo, no system SSH service,
+# no machine state to undo. `SetEnv HOME=` gives each session an isolated home
+# so nothing here can reach a real herdr socket, and a forced POSIX-sh wrapper
+# puts a herdr stub ahead of PATH so the cold-start wake can never start or talk
+# to a live server.
+#
+# One exception. macOS cannot verify a password without root, and an
+# unprivileged sshd can only authenticate the account it already runs as, whose
+# password CI does not know. The two real-password tests therefore need a
+# disposable account and one root-owned sshd, provisioned only when passwordless
+# sudo is available. Merge CI has it and demands it (HEELER_CI_MANDATORY=1);
+# a developer laptop without it still runs twelve of the thirteen mandatory
+# behaviours, and the script says loudly which one it left out.
 
 set -euo pipefail
 
@@ -11,10 +28,14 @@ streamlocal_key_policy_port=55227
 jump_target_port=55228
 jump_forwarding_denied_port=55229
 pairing_port=55230
-fixture_username="heelerssh${RANDOM}"
-fixture_password="$(uuidgen)-$(uuidgen)"
-fixture_uid=550
-fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/heeler-ssh-ci.XXXXXX")"
+password_port=55231
+
+# AF_UNIX paths cap at 104 bytes on macOS and the fixture nests herdr sockets
+# several directories deep, so anchor at /tmp: the per-user TMPDIR alone is
+# already 69 characters and overflows the limit.
+fixture_dir="$(mktemp -d /tmp/heeler-ci.XXXXXX)"
+fixture_username="$(id -un)"
+fixture_home="$fixture_dir/home"
 modern_pid=""
 legacy_pid=""
 restricted_pid=""
@@ -25,9 +46,25 @@ jump_target_pid=""
 jump_forwarding_denied_pid=""
 pairing_pid=""
 pairing_mismatched_pid=""
+password_pid=""
 fake_herdr_pid=""
 simulator_udid=""
 simulator_destination=""
+
+# The privileged password fixture, provisioned only when sudo -n works.
+password_username=""
+password_secret=""
+password_home=""
+password_uid=550
+password_fixture_available=0
+
+# Merge CI must run the complete mandatory matrix; a laptop need not.
+mandatory_matrix=0
+case "${HEELER_CI_MANDATORY:-${CI:-}}" in
+    1 | true | TRUE) mandatory_matrix=1 ;;
+esac
+
+unprivileged_sshd_pids=()
 
 cleanup() {
     local status=$?
@@ -43,25 +80,19 @@ cleanup() {
         kill "$fake_herdr_pid" >/dev/null 2>&1
         wait "$fake_herdr_pid" 2>/dev/null
     fi
-    stop_sshd "$modern_pid" "$fixture_dir/sshd-modern.pid"
-    stop_sshd "$legacy_pid" "$fixture_dir/sshd-legacy.pid"
-    stop_sshd "$restricted_pid" "$fixture_dir/sshd-restricted.pid"
-    stop_sshd \
-        "$streamlocal_global_policy_pid" \
-        "$fixture_dir/sshd-streamlocal-global-policy.pid"
-    stop_sshd \
-        "$streamlocal_key_policy_pid" \
-        "$fixture_dir/sshd-streamlocal-key-policy.pid"
-    stop_sshd "$jump_target_pid" "$fixture_dir/sshd-jump-target.pid"
-    stop_sshd \
-        "$jump_forwarding_denied_pid" \
-        "$fixture_dir/sshd-jump-forwarding-denied.pid"
-    stop_sshd "$pairing_pid" "$fixture_dir/sshd-pairing.pid"
-    stop_sshd \
-        "$pairing_mismatched_pid" \
-        "$fixture_dir/sshd-pairing-mismatched.pid"
-    if dscl . -read "/Users/$fixture_username" >/dev/null 2>&1; then
-        sudo -n dscl . -delete "/Users/$fixture_username"
+    local pid
+    for pid in "${unprivileged_sshd_pids[@]:-}"; do
+        if [[ -n "$pid" ]]; then
+            kill "$pid" >/dev/null 2>&1
+            wait "$pid" 2>/dev/null
+        fi
+    done
+    if [[ -n "$password_pid" ]]; then
+        stop_privileged_sshd "$password_pid" "$fixture_dir/sshd-password.pid"
+    fi
+    if [[ -n "$password_username" ]] \
+        && dscl . -read "/Users/$password_username" >/dev/null 2>&1; then
+        sudo -n dscl . -delete "/Users/$password_username"
     fi
     if [[ -d "$fixture_dir" ]]; then
         rm -rf -- "$fixture_dir"
@@ -71,16 +102,18 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# Clears the fixture environment from both the Simulator and this shell. The
+# shell half matters: the Simulator test process inherits it, so unsetting only
+# the launchd values leaves HEELER_SSH_E2E_REQUIRED visible and the
+# fixture-backed suites fail instead of skipping once the fixture is gone.
 clear_simulator_environment() {
-    if [[ -z "$simulator_udid" ]]; then
-        return
-    fi
+    local variable
     for variable in \
         HEELER_SSH_E2E_REQUIRED \
         HEELER_SSH_E2E_HOST \
         HEELER_SSH_E2E_PORT \
         HEELER_SSH_E2E_USERNAME \
-        HEELER_SSH_E2E_PASSWORD \
+        HEELER_SSH_E2E_DEVICE_KEY_SEED \
         HEELER_SSH_E2E_LEGACY_PORT \
         HEELER_SSH_E2E_RESTRICTED_PORT \
         HEELER_SSH_E2E_STALL_PORT \
@@ -88,11 +121,14 @@ clear_simulator_environment() {
         HEELER_SSH_E2E_CONFIG \
         HEELER_SSH_JUMP_E2E_CONFIG \
         HEELER_PAIRING_E2E_CONFIG; do
-        xcrun simctl spawn "$simulator_udid" launchctl unsetenv "$variable" >/dev/null 2>&1
+        if [[ -n "$simulator_udid" ]]; then
+            xcrun simctl spawn "$simulator_udid" launchctl unsetenv "$variable" >/dev/null 2>&1
+        fi
+        unset "$variable"
     done
 }
 
-stop_sshd() {
+stop_privileged_sshd() {
     local launcher_pid=$1
     local pid_file=$2
     local daemon_pid=""
@@ -110,6 +146,18 @@ stop_sshd() {
     fi
 }
 
+# Sets started_sshd_pid rather than printing it: a command substitution would
+# run the append to unprivileged_sshd_pids in a subshell and lose it.
+started_sshd_pid=""
+start_unprivileged_sshd() {
+    local config=$1
+    local log=$2
+
+    /usr/sbin/sshd -D -e -f "$config" > "$log" 2>&1 &
+    started_sshd_pid=$!
+    unprivileged_sshd_pids+=("$started_sshd_pid")
+}
+
 for port in \
     "$modern_port" \
     "$legacy_port" \
@@ -119,7 +167,8 @@ for port in \
     "$streamlocal_key_policy_port" \
     "$jump_target_port" \
     "$jump_forwarding_denied_port" \
-    "$pairing_port"; do
+    "$pairing_port" \
+    "$password_port"; do
     if nc -z 127.0.0.1 "$port" >/dev/null 2>&1; then
         echo "TCP port $port is already in use" >&2
         exit 1
@@ -130,26 +179,24 @@ if nc -z ::1 "$pairing_port" >/dev/null 2>&1; then
     exit 1
 fi
 
-while dscl . -search /Users UniqueID "$fixture_uid" | grep -q .; do
-    fixture_uid=$((fixture_uid + 1))
+sftp_server=""
+for candidate in /usr/libexec/sftp-server /usr/lib/openssh/sftp-server; do
+    if [[ -x "$candidate" ]]; then
+        sftp_server="$candidate"
+        break
+    fi
 done
+if [[ -z "$sftp_server" ]]; then
+    echo "No sftp-server binary was found; the SFTP suites cannot run" >&2
+    exit 1
+fi
 
-fixture_home="$fixture_dir/home"
-mkdir -p "$fixture_home"
 chmod 755 "$fixture_dir"
-sudo -n dscl . -create "/Users/$fixture_username"
-sudo -n dscl . -create "/Users/$fixture_username" RealName "Heeler SSH CI"
-sudo -n dscl . -create "/Users/$fixture_username" UserShell /bin/zsh
-sudo -n dscl . -create "/Users/$fixture_username" UniqueID "$fixture_uid"
-sudo -n dscl . -create "/Users/$fixture_username" PrimaryGroupID 20
-sudo -n dscl . -create "/Users/$fixture_username" NFSHomeDirectory "$fixture_home"
-sudo -n dscl . -create "/Users/$fixture_username" IsHidden 1
-sudo -n dscl . -passwd "/Users/$fixture_username" "$fixture_password"
 mkdir -p \
     "$fixture_home/.config/herdr/sessions/fixture" \
     "$fixture_home/.codex/skills/fixture" \
-    "$fixture_home/.heeler-ci"
-chmod 777 "$fixture_home/.heeler-ci"
+    "$fixture_home/.heeler-ci" \
+    "$fixture_dir/bin"
 printf '%s\n' \
     '---' \
     'name: fixture' \
@@ -181,20 +228,42 @@ printf '%s\n' \
     'done' \
     > "$fixture_home/.heeler-ci/fake-attach"
 chmod 755 "$fixture_home/.heeler-ci/fake-attach"
-sudo -n chown "$fixture_uid":20 "$fixture_home"
+
+# The cold-start wake runs `herdr remote-client-bridge` on the Host. The fixture
+# has no herdr server, and a real one must never be reached, so stand in for the
+# binary with a stub that succeeds and does nothing. Without it the combined
+# cause tests see command-not-found instead of a wake that simply did not help.
+printf '%s\n' '#!/bin/sh' 'exit 0' > "$fixture_dir/bin/herdr"
+chmod 755 "$fixture_dir/bin/herdr"
+
+# The acceptance Host must have no socat. The forced session PATH below is the
+# only PATH the product ever sees on this Host, so assert socat is absent from
+# it rather than from the machine: a developer with socat in Homebrew still runs
+# a genuinely socat-free Host.
+fixture_session_path="$fixture_dir/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+IFS=':' read -r -a fixture_path_entries <<< "$fixture_session_path"
+for entry in "${fixture_path_entries[@]}"; do
+    if [[ -x "$entry/socat" ]]; then
+        echo "socat is reachable at $entry/socat; the Host must not provide it" >&2
+        exit 1
+    fi
+done
 
 ssh-keygen -q -t ed25519 -N '' -f "$fixture_dir/host_ed25519"
 ssh-keygen -q -t rsa -b 3072 -N '' -f "$fixture_dir/host_rsa"
 ssh-keygen -q -t ed25519 -N '' -f "$fixture_dir/host_jump_target_ed25519"
-printf '%s\n' \
-    'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAOhB7/zzhC+HXDdGOdLwJln5NYwm6UNXx3chmQSVTG4 heeler-ci-device-key' \
-    > "$fixture_dir/authorized_keys"
-printf '%s\n' \
-    'no-port-forwarding ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAOhB7/zzhC+HXDdGOdLwJln5NYwm6UNXx3chmQSVTG4 heeler-ci-device-key' \
+
+# A throwaway Device Key per run. The suites receive its seed in the fixture
+# configuration, so no key committed to this repository ever authorizes a login.
+ssh-keygen -q -t ed25519 -N '' -C heeler-ci-device-key -f "$fixture_dir/device_key"
+device_key_seed="$(/usr/bin/python3 \
+    scripts/fixtures/openssh-ed25519-seed.py "$fixture_dir/device_key")"
+cp "$fixture_dir/device_key.pub" "$fixture_dir/authorized_keys"
+printf 'no-port-forwarding %s\n' "$(<"$fixture_dir/device_key.pub")" \
     > "$fixture_dir/authorized_keys-no-forwarding"
 cp "$fixture_dir/authorized_keys" "$fixture_dir/authorized_keys-jump-target"
 
-pairing_username="$(id -un)"
+pairing_username="$fixture_username"
 pairing_home="$fixture_dir/pairing-home"
 pairing_authorized_keys="$pairing_home/.ssh/authorized_keys"
 pairing_state_root="$fixture_dir/pairing-state"
@@ -212,6 +281,7 @@ jump_target_config="$fixture_dir/sshd-jump-target.conf"
 jump_forwarding_denied_config="$fixture_dir/sshd-jump-forwarding-denied.conf"
 pairing_config="$fixture_dir/sshd-pairing.conf"
 pairing_mismatched_config="$fixture_dir/sshd-pairing-mismatched.conf"
+password_config="$fixture_dir/sshd-password.conf"
 
 write_common_config() {
     local port=$1
@@ -223,7 +293,7 @@ write_common_config() {
         "ListenAddress 127.0.0.1" \
         "HostKey $host_key" \
         "PidFile $pid_file" \
-        "PasswordAuthentication yes" \
+        "PasswordAuthentication no" \
         "KbdInteractiveAuthentication no" \
         "PubkeyAuthentication yes" \
         "AuthorizedKeysFile $fixture_dir/authorized_keys" \
@@ -234,8 +304,26 @@ write_common_config() {
         "PerSourcePenalties no" \
         "PrintMotd no" \
         "PrintLastLog no" \
-        "LogLevel VERBOSE"
+        "LogLevel VERBOSE" \
+        "Subsystem sftp $sftp_server" \
+        "SetEnv HOME=$fixture_home" \
+        "ForceCommand $force_posix_shell"
 }
+
+# An unprivileged sshd runs sessions under the invoking account's login shell,
+# so the fixture would otherwise mean something different on every machine (the
+# old privileged fixture pinned /bin/zsh on its throwaway account). Re-exec every
+# session under POSIX sh instead, with the fixture PATH asserted above: sshd
+# overwrites a `SetEnv PATH` with its own default, so it has to happen here.
+# SSH_ORIGINAL_COMMAND carries the subsystem command too, so SFTP keeps working.
+# This must never be set on the Pairing sshd, where it would override the
+# authorized_keys forced command.
+# The leading `exec` matters: without it the account's login shell forks a child
+# for the wrapper, and a session that kills its own parent (the package's native
+# resource reclamation test) would kill that child instead of the sshd session.
+force_posix_shell="exec /bin/sh -c 'PATH=$fixture_session_path; export PATH;"
+force_posix_shell+=" if [ -n \"\$SSH_ORIGINAL_COMMAND\" ]; then"
+force_posix_shell+=" exec /bin/sh -c \"\$SSH_ORIGINAL_COMMAND\"; else exec /bin/sh; fi'"
 
 write_common_config \
     "$modern_port" \
@@ -314,7 +402,8 @@ write_pairing_config() {
         "PerSourcePenalties no" \
         "PrintMotd no" \
         "PrintLastLog no" \
-        "LogLevel VERBOSE"
+        "LogLevel VERBOSE" \
+        "Subsystem sftp $sftp_server"
 }
 
 write_pairing_config \
@@ -342,33 +431,83 @@ ln -s \
     > "$fixture_dir/fake-herdr.log" 2>&1 &
 fake_herdr_pid=$!
 
-sudo -n /usr/sbin/sshd -D -e -f "$modern_config" \
-    > "$fixture_dir/sshd-modern.log" 2>&1 &
-modern_pid=$!
-sudo -n /usr/sbin/sshd -D -e -f "$legacy_config" \
-    > "$fixture_dir/sshd-legacy.log" 2>&1 &
-legacy_pid=$!
-sudo -n /usr/sbin/sshd -D -e -f "$restricted_config" \
-    > "$fixture_dir/sshd-restricted.log" 2>&1 &
-restricted_pid=$!
-sudo -n /usr/sbin/sshd -D -e -f "$streamlocal_global_policy_config" \
-    > "$fixture_dir/sshd-streamlocal-global-policy.log" 2>&1 &
-streamlocal_global_policy_pid=$!
-sudo -n /usr/sbin/sshd -D -e -f "$streamlocal_key_policy_config" \
-    > "$fixture_dir/sshd-streamlocal-key-policy.log" 2>&1 &
-streamlocal_key_policy_pid=$!
-sudo -n /usr/sbin/sshd -D -e -f "$jump_target_config" \
-    > "$fixture_dir/sshd-jump-target.log" 2>&1 &
-jump_target_pid=$!
-sudo -n /usr/sbin/sshd -D -e -f "$jump_forwarding_denied_config" \
-    > "$fixture_dir/sshd-jump-forwarding-denied.log" 2>&1 &
-jump_forwarding_denied_pid=$!
-sudo -n /usr/sbin/sshd -D -e -f "$pairing_config" \
-    > "$fixture_dir/sshd-pairing.log" 2>&1 &
-pairing_pid=$!
-sudo -n /usr/sbin/sshd -D -e -f "$pairing_mismatched_config" \
-    > "$fixture_dir/sshd-pairing-mismatched.log" 2>&1 &
-pairing_mismatched_pid=$!
+start_unprivileged_sshd "$modern_config" "$fixture_dir/sshd-modern.log"
+modern_pid=$started_sshd_pid
+start_unprivileged_sshd "$legacy_config" "$fixture_dir/sshd-legacy.log"
+legacy_pid=$started_sshd_pid
+start_unprivileged_sshd "$restricted_config" "$fixture_dir/sshd-restricted.log"
+restricted_pid=$started_sshd_pid
+start_unprivileged_sshd \
+    "$streamlocal_global_policy_config" \
+    "$fixture_dir/sshd-streamlocal-global-policy.log"
+streamlocal_global_policy_pid=$started_sshd_pid
+start_unprivileged_sshd \
+    "$streamlocal_key_policy_config" \
+    "$fixture_dir/sshd-streamlocal-key-policy.log"
+streamlocal_key_policy_pid=$started_sshd_pid
+start_unprivileged_sshd "$jump_target_config" "$fixture_dir/sshd-jump-target.log"
+jump_target_pid=$started_sshd_pid
+start_unprivileged_sshd \
+    "$jump_forwarding_denied_config" \
+    "$fixture_dir/sshd-jump-forwarding-denied.log"
+jump_forwarding_denied_pid=$started_sshd_pid
+start_unprivileged_sshd "$pairing_config" "$fixture_dir/sshd-pairing.log"
+pairing_pid=$started_sshd_pid
+start_unprivileged_sshd \
+    "$pairing_mismatched_config" "$fixture_dir/sshd-pairing-mismatched.log"
+pairing_mismatched_pid=$started_sshd_pid
+
+# Real password authentication is the one behaviour macOS cannot exercise
+# unprivileged: only root can verify an account password, and an unprivileged
+# sshd can only authenticate the account it already runs as.
+if sudo -n true >/dev/null 2>&1; then
+    password_username="heelerssh${RANDOM}"
+    password_secret="$(uuidgen)-$(uuidgen)"
+    password_home="$fixture_dir/password-home"
+    while dscl . -search /Users UniqueID "$password_uid" | grep -q .; do
+        password_uid=$((password_uid + 1))
+    done
+    mkdir -p "$password_home"
+    sudo -n dscl . -create "/Users/$password_username"
+    sudo -n dscl . -create "/Users/$password_username" RealName "Heeler SSH CI"
+    sudo -n dscl . -create "/Users/$password_username" UserShell /bin/zsh
+    sudo -n dscl . -create "/Users/$password_username" UniqueID "$password_uid"
+    sudo -n dscl . -create "/Users/$password_username" PrimaryGroupID 20
+    sudo -n dscl . -create "/Users/$password_username" NFSHomeDirectory "$password_home"
+    sudo -n dscl . -create "/Users/$password_username" IsHidden 1
+    sudo -n dscl . -passwd "/Users/$password_username" "$password_secret"
+    sudo -n chown "$password_uid":20 "$password_home"
+    printf '%s\n' \
+        "Port $password_port" \
+        "ListenAddress 127.0.0.1" \
+        "HostKey $fixture_dir/host_ed25519" \
+        "PidFile $fixture_dir/sshd-password.pid" \
+        "PasswordAuthentication yes" \
+        "KbdInteractiveAuthentication no" \
+        "PubkeyAuthentication yes" \
+        "AuthorizedKeysFile $fixture_dir/authorized_keys" \
+        "UsePAM yes" \
+        "PermitRootLogin no" \
+        "AllowUsers $password_username" \
+        "StrictModes no" \
+        "PerSourcePenalties no" \
+        "PrintMotd no" \
+        "PrintLastLog no" \
+        "LogLevel VERBOSE" \
+        "Subsystem sftp $sftp_server" \
+        > "$password_config"
+    sudo -n /usr/sbin/sshd -D -e -f "$password_config" \
+        > "$fixture_dir/sshd-password.log" 2>&1 &
+    password_pid=$!
+    password_fixture_available=1
+elif [[ "$mandatory_matrix" == "1" ]]; then
+    echo "Merge CI requires passwordless sudo for the real-password fixture" >&2
+    exit 1
+else
+    echo "==> No passwordless sudo: skipping the real-password sshd fixture." >&2
+    echo "==> Twelve of the thirteen mandatory behaviours still run." >&2
+fi
+
 /usr/bin/python3 -c '
 import socket
 import sys
@@ -384,74 +523,79 @@ while True:
 ' "$stall_port" >/dev/null 2>&1 &
 stall_pid=$!
 
+fixture_pids=(
+    "$modern_pid"
+    "$legacy_pid"
+    "$restricted_pid"
+    "$stall_pid"
+    "$streamlocal_global_policy_pid"
+    "$streamlocal_key_policy_pid"
+    "$jump_target_pid"
+    "$jump_forwarding_denied_pid"
+    "$pairing_pid"
+    "$pairing_mismatched_pid"
+    "$fake_herdr_pid"
+)
+if [[ "$password_fixture_available" == "1" ]]; then
+    fixture_pids+=("$password_pid")
+fi
+
+fixture_ports=(
+    "$modern_port"
+    "$legacy_port"
+    "$restricted_port"
+    "$stall_port"
+    "$streamlocal_global_policy_port"
+    "$streamlocal_key_policy_port"
+    "$jump_target_port"
+    "$jump_forwarding_denied_port"
+    "$pairing_port"
+)
+if [[ "$password_fixture_available" == "1" ]]; then
+    fixture_ports+=("$password_port")
+fi
+
+fixture_is_listening() {
+    local port
+    for port in "${fixture_ports[@]}"; do
+        nc -z 127.0.0.1 "$port" >/dev/null 2>&1 || return 1
+    done
+    nc -z ::1 "$pairing_port" >/dev/null 2>&1 || return 1
+    [[ -S "$streamlocal_socket" ]] || return 1
+    [[ -S "$streamlocal_stale_socket" ]] || return 1
+    [[ -S "$streamlocal_wake_failure_socket" ]] || return 1
+    return 0
+}
+
+dump_fixture_logs() {
+    local log
+    for log in "$fixture_dir"/*.log; do
+        [[ -f "$log" ]] || continue
+        echo "===== $log" >&2
+        cat "$log" >&2
+    done
+}
+
 for attempt in $(seq 1 50); do
-    if nc -z 127.0.0.1 "$modern_port" >/dev/null 2>&1 \
-        && nc -z 127.0.0.1 "$legacy_port" >/dev/null 2>&1 \
-        && nc -z 127.0.0.1 "$restricted_port" >/dev/null 2>&1 \
-        && nc -z 127.0.0.1 "$stall_port" >/dev/null 2>&1 \
-        && nc -z 127.0.0.1 "$streamlocal_global_policy_port" >/dev/null 2>&1 \
-        && nc -z 127.0.0.1 "$streamlocal_key_policy_port" >/dev/null 2>&1 \
-        && nc -z 127.0.0.1 "$jump_target_port" >/dev/null 2>&1 \
-        && nc -z 127.0.0.1 "$jump_forwarding_denied_port" >/dev/null 2>&1 \
-        && nc -z 127.0.0.1 "$pairing_port" >/dev/null 2>&1 \
-        && nc -z ::1 "$pairing_port" >/dev/null 2>&1 \
-        && [[ -S "$streamlocal_socket" ]] \
-        && [[ -S "$streamlocal_stale_socket" ]] \
-        && [[ -S "$streamlocal_wake_failure_socket" ]]; then
+    if fixture_is_listening; then
         break
     fi
-    if ! kill -0 "$modern_pid" 2>/dev/null \
-        || ! kill -0 "$legacy_pid" 2>/dev/null \
-        || ! kill -0 "$restricted_pid" 2>/dev/null \
-        || ! kill -0 "$stall_pid" 2>/dev/null \
-        || ! kill -0 "$streamlocal_global_policy_pid" 2>/dev/null \
-        || ! kill -0 "$streamlocal_key_policy_pid" 2>/dev/null \
-        || ! kill -0 "$jump_target_pid" 2>/dev/null \
-        || ! kill -0 "$jump_forwarding_denied_pid" 2>/dev/null \
-        || ! kill -0 "$pairing_pid" 2>/dev/null \
-        || ! kill -0 "$pairing_mismatched_pid" 2>/dev/null \
-        || ! kill -0 "$fake_herdr_pid" 2>/dev/null; then
-        cat "$fixture_dir/sshd-modern.log" >&2
-        cat "$fixture_dir/sshd-legacy.log" >&2
-        cat "$fixture_dir/sshd-restricted.log" >&2
-        cat "$fixture_dir/sshd-streamlocal-global-policy.log" >&2
-        cat "$fixture_dir/sshd-streamlocal-key-policy.log" >&2
-        cat "$fixture_dir/sshd-jump-target.log" >&2
-        cat "$fixture_dir/sshd-jump-forwarding-denied.log" >&2
-        cat "$fixture_dir/sshd-pairing.log" >&2
-        cat "$fixture_dir/sshd-pairing-mismatched.log" >&2
-        cat "$fixture_dir/fake-herdr.log" >&2
-        exit 1
-    fi
+    for pid in "${fixture_pids[@]}"; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            dump_fixture_logs
+            exit 1
+        fi
+    done
     sleep 0.1
 done
 
-if ! nc -z 127.0.0.1 "$modern_port" >/dev/null 2>&1 \
-    || ! nc -z 127.0.0.1 "$legacy_port" >/dev/null 2>&1 \
-    || ! nc -z 127.0.0.1 "$restricted_port" >/dev/null 2>&1 \
-    || ! nc -z 127.0.0.1 "$stall_port" >/dev/null 2>&1 \
-    || ! nc -z 127.0.0.1 "$streamlocal_global_policy_port" >/dev/null 2>&1 \
-    || ! nc -z 127.0.0.1 "$streamlocal_key_policy_port" >/dev/null 2>&1 \
-    || ! nc -z 127.0.0.1 "$jump_target_port" >/dev/null 2>&1 \
-    || ! nc -z 127.0.0.1 "$jump_forwarding_denied_port" >/dev/null 2>&1 \
-    || ! nc -z 127.0.0.1 "$pairing_port" >/dev/null 2>&1 \
-    || ! nc -z ::1 "$pairing_port" >/dev/null 2>&1 \
-    || [[ ! -S "$streamlocal_socket" ]] \
-    || [[ ! -S "$streamlocal_stale_socket" ]] \
-    || [[ ! -S "$streamlocal_wake_failure_socket" ]]; then
-    cat "$fixture_dir/sshd-modern.log" >&2
-    cat "$fixture_dir/sshd-legacy.log" >&2
-    cat "$fixture_dir/sshd-restricted.log" >&2
-    cat "$fixture_dir/sshd-streamlocal-global-policy.log" >&2
-    cat "$fixture_dir/sshd-streamlocal-key-policy.log" >&2
-    cat "$fixture_dir/sshd-jump-target.log" >&2
-    cat "$fixture_dir/sshd-jump-forwarding-denied.log" >&2
-    cat "$fixture_dir/sshd-pairing.log" >&2
-    cat "$fixture_dir/sshd-pairing-mismatched.log" >&2
-    cat "$fixture_dir/fake-herdr.log" >&2
+if ! fixture_is_listening; then
+    dump_fixture_logs
     exit 1
 fi
 
+# `HEELER_SSH_E2E_REQUIRED=1` is the contract that turns a missing fixture into
+# a failure instead of a green skip: see Tests/HeelerTests/Support/RealSSHFixture.
 export HEELER_SSH_E2E_REQUIRED=1
 export HEELER_SSH_E2E_HOST=127.0.0.1
 export HEELER_SSH_E2E_PORT="$modern_port"
@@ -459,11 +603,19 @@ export HEELER_SSH_E2E_LEGACY_PORT="$legacy_port"
 export HEELER_SSH_E2E_RESTRICTED_PORT="$restricted_port"
 export HEELER_SSH_E2E_STALL_PORT="$stall_port"
 export HEELER_SSH_E2E_USERNAME="$fixture_username"
-export HEELER_SSH_E2E_PASSWORD="$fixture_password"
+export HEELER_SSH_E2E_DEVICE_KEY_SEED="$device_key_seed"
 export HEELER_SSH_E2E_STREAMLOCAL_SOCKET="$streamlocal_socket"
 
+password_fixture_json=null
+if [[ "$password_fixture_available" == "1" ]]; then
+    password_fixture_json=$(printf \
+        '{"port":%s,"username":"%s","password":"%s"}' \
+        "$password_port" \
+        "$password_username" \
+        "$password_secret")
+fi
 fixture_configuration=$(printf \
-    '{"host":"127.0.0.1","port":%s,"legacyPort":%s,"restrictedPort":%s,"stallPort":%s,"globalPolicyPort":%s,"keyPolicyPort":%s,"username":"%s","password":"%s","streamLocalSocketPath":"%s","socketPath":"%s","staleSocketPath":"%s","wakeFailureStaleSocketPath":"%s","missingSocketPath":"%s","countFilePath":"%s","homePath":"%s"}' \
+    '{"host":"127.0.0.1","port":%s,"legacyPort":%s,"restrictedPort":%s,"stallPort":%s,"globalPolicyPort":%s,"keyPolicyPort":%s,"username":"%s","deviceKeySeed":"%s","passwordFixture":%s,"streamLocalSocketPath":"%s","socketPath":"%s","staleSocketPath":"%s","wakeFailureStaleSocketPath":"%s","missingSocketPath":"%s","countFilePath":"%s","homePath":"%s"}' \
     "$modern_port" \
     "$legacy_port" \
     "$restricted_port" \
@@ -471,7 +623,8 @@ fixture_configuration=$(printf \
     "$streamlocal_global_policy_port" \
     "$streamlocal_key_policy_port" \
     "$fixture_username" \
-    "$fixture_password" \
+    "$device_key_seed" \
+    "$password_fixture_json" \
     "$streamlocal_socket" \
     "$streamlocal_socket" \
     "$streamlocal_stale_socket" \
@@ -481,13 +634,14 @@ fixture_configuration=$(printf \
     "$fixture_home")
 fixture_configuration_base64=$(printf '%s' "$fixture_configuration" | base64)
 jump_fixture_configuration=$(printf \
-    '{"host":"127.0.0.1","jumpPort":%s,"forwardingDeniedPort":%s,"targetHost":"127.0.0.1","targetPort":%s,"outerStallPort":%s,"innerStallHost":"127.0.0.1","innerStallPort":%s,"username":"%s","socketPath":"%s"}' \
+    '{"host":"127.0.0.1","jumpPort":%s,"forwardingDeniedPort":%s,"targetHost":"127.0.0.1","targetPort":%s,"outerStallPort":%s,"innerStallHost":"127.0.0.1","innerStallPort":%s,"username":"%s","deviceKeySeed":"%s","socketPath":"%s"}' \
     "$modern_port" \
     "$jump_forwarding_denied_port" \
     "$jump_target_port" \
     "$stall_port" \
     "$stall_port" \
     "$fixture_username" \
+    "$device_key_seed" \
     "$streamlocal_socket")
 jump_fixture_configuration_base64=$(printf '%s' "$jump_fixture_configuration" | base64)
 if ! pairing_node_path="$(command -v node)"; then
@@ -500,9 +654,10 @@ if [[ ! -f "$pairing_accept_script" ]]; then
     exit 1
 fi
 pairing_fixture_configuration=$(printf \
-    '{"host":"127.0.0.1","port":%s,"mismatchedHostAddress":"::1","username":"%s","nodePath":"%s","acceptScriptPath":"%s","homePath":"%s","authorizedKeysPath":"%s","localStateRoot":"%s","remoteStateRoot":"%s"}' \
+    '{"host":"127.0.0.1","port":%s,"mismatchedHostAddress":"::1","username":"%s","deviceKeySeed":"%s","nodePath":"%s","acceptScriptPath":"%s","homePath":"%s","authorizedKeysPath":"%s","localStateRoot":"%s","remoteStateRoot":"%s"}' \
     "$pairing_port" \
     "$pairing_username" \
+    "$device_key_seed" \
     "$pairing_node_path" \
     "$pairing_accept_script" \
     "$pairing_home" \
@@ -540,117 +695,110 @@ xcrun simctl spawn "$simulator_udid" launchctl setenv \
     HEELER_PAIRING_E2E_CONFIG \
     "$pairing_fixture_configuration_base64"
 
-e2e_log="$fixture_dir/e2e.log"
-xcodebuild test \
-    -project Heeler.xcodeproj \
-    -scheme Heeler \
-    -destination "$simulator_destination" \
-    -collect-test-diagnostics never \
-    -only-testing:HeelerTests/HeelerSSHSessionE2ETests \
-    2>&1 | tee "$e2e_log"
+# Swift Testing filters exit zero having run nothing, so every mandatory suite
+# asserts its executed count. `run_suite` also refuses any skip: with
+# HEELER_SSH_E2E_REQUIRED set a fixture-backed suite must fail rather than skip,
+# so a skip here means a condition that can still hide missing coverage.
+run_suite() {
+    local suite=$1
+    local expected_tests=$2
+    local expected_suites=$3
+    local expected_skips=${4:-0}
+    local log="$fixture_dir/$suite.log"
+    local noun="suite"
+    local skips
 
-if grep -q 'skipped:' "$e2e_log" \
-    || ! grep -q "Test run with 14 tests in 1 suite passed" "$e2e_log"; then
-    echo "The mandatory HeelerSSH real-sshd suite did not execute all fourteen tests" >&2
-    exit 1
+    if [[ "$expected_suites" != "1" ]]; then
+        noun="suites"
+    fi
+    xcodebuild test \
+        -project Heeler.xcodeproj \
+        -scheme Heeler \
+        -destination "$simulator_destination" \
+        -collect-test-diagnostics never \
+        "-only-testing:HeelerTests/$suite" \
+        2>&1 | tee "$log"
+
+    skips=$(grep -cE '(Test|Suite) .* skipped' "$log" || true)
+    if [[ "$skips" != "$expected_skips" ]]; then
+        echo "$suite skipped $skips tests; exactly $expected_skips may skip" >&2
+        exit 1
+    fi
+    if ! grep -q \
+        "Test run with $expected_tests tests in $expected_suites $noun passed" \
+        "$log"; then
+        echo "$suite did not execute all $expected_tests tests" >&2
+        exit 1
+    fi
+}
+
+# Every behaviour the merge gate treats as mandatory names the test that proves
+# it. A count alone cannot show that Events, resize, or SFTP specifically ran.
+assert_behavior() {
+    local behavior=$1
+    local log_name=$2
+    local test_name=$3
+    local log="$fixture_dir/$log_name.log"
+
+    if ! grep -qF "Test $test_name passed" "$log"; then
+        echo "Mandatory behaviour not proven: $behavior ($test_name)" >&2
+        exit 1
+    fi
+}
+
+# The direct-streamlocal suite asserts that a stale socket is still stale.
+# HeelerSSHTransportBehaviorE2ETests relinks that socket, so it must run after.
+# Swift Testing counts a skipped test in the run total, so only the permitted
+# skip count changes when the privileged password fixture is absent.
+session_skip_count=0
+if [[ "$password_fixture_available" != "1" ]]; then
+    session_skip_count=2
 fi
+run_suite HeelerSSHSessionE2ETests 14 1 "$session_skip_count"
+run_suite HeelerSSHPTYE2ETests 3 1
+run_suite HeelerSSHDirectStreamLocalE2ETests 11 1
+run_suite HeelerSSHJumpHostGateE2ETests 9 1
+run_suite HeelerSSHTransportBehaviorE2ETests 30 1
+run_suite ImageStagingE2ETests 7 1
+run_suite PairingCeremonyE2ETests 11 1
 
-pty_log="$fixture_dir/pty-e2e.log"
-xcodebuild test \
-    -project Heeler.xcodeproj \
-    -scheme Heeler \
-    -destination "$simulator_destination" \
-    -collect-test-diagnostics never \
-    -only-testing:HeelerTests/HeelerSSHPTYE2ETests \
-    2>&1 | tee "$pty_log"
-
-if grep -q 'skipped:' "$pty_log" \
-    || ! grep -q "Test run with 3 tests in 1 suite passed" "$pty_log"; then
-    echo "The mandatory HeelerSSH PTY suite did not execute all three tests" >&2
-    exit 1
+if [[ "$password_fixture_available" == "1" ]]; then
+    assert_behavior "real Password" HeelerSSHSessionE2ETests \
+        '"password authentication and exec round trip through real sshd"'
 fi
-
-streamlocal_log="$fixture_dir/streamlocal-e2e.log"
-xcodebuild test \
-    -project Heeler.xcodeproj \
-    -scheme Heeler \
-    -destination "$simulator_destination" \
-    -collect-test-diagnostics never \
-    -only-testing:HeelerTests/HeelerSSHDirectStreamLocalE2ETests \
-    2>&1 | tee "$streamlocal_log"
-
-if grep -q 'skipped:' "$streamlocal_log" \
-    || ! grep -q "Test run with 11 tests in 1 suite passed" "$streamlocal_log"; then
-    echo "The mandatory direct-streamlocal suite did not execute all eleven tests" >&2
-    exit 1
-fi
-
-jump_log="$fixture_dir/jump-e2e.log"
-xcodebuild test \
-    -project Heeler.xcodeproj \
-    -scheme Heeler \
-    -destination "$simulator_destination" \
-    -collect-test-diagnostics never \
-    -only-testing:HeelerTests/HeelerSSHJumpHostGateE2ETests \
-    2>&1 | tee "$jump_log"
-
-if grep -q 'skipped:' "$jump_log" \
-    || ! grep -q "Test run with 9 tests in 1 suite passed" "$jump_log"; then
-    echo "The mandatory HeelerSSH Jump Host gate suite did not execute" >&2
-    exit 1
-fi
-
-transport_behavior_log="$fixture_dir/transport-behavior-e2e.log"
-xcodebuild test \
-    -project Heeler.xcodeproj \
-    -scheme Heeler \
-    -destination "$simulator_destination" \
-    -collect-test-diagnostics never \
-    -only-testing:HeelerTests/HeelerSSHTransportBehaviorE2ETests \
-    2>&1 | tee "$transport_behavior_log"
-
-if grep -q 'skipped:' "$transport_behavior_log" \
-    || ! grep -q "Test run with 30 tests in 1 suite passed" "$transport_behavior_log"; then
-    echo "The mandatory HeelerSSH Transport suite did not execute all thirty tests" >&2
-    exit 1
-fi
-
-image_staging_log="$fixture_dir/image-staging-e2e.log"
-xcodebuild test \
-    -project Heeler.xcodeproj \
-    -scheme Heeler \
-    -destination "$simulator_destination" \
-    -collect-test-diagnostics never \
-    -only-testing:HeelerTests/ImageStagingE2ETests \
-    2>&1 | tee "$image_staging_log"
-
-if grep -q 'skipped:' "$image_staging_log" \
-    || ! grep -q "Test run with 7 tests in 1 suite passed" "$image_staging_log"; then
-    echo "The mandatory HeelerSSH image-staging suite did not execute all seven tests" >&2
-    exit 1
-fi
-
-pairing_log="$fixture_dir/pairing-e2e.log"
-xcodebuild test \
-    -project Heeler.xcodeproj \
-    -scheme Heeler \
-    -destination "$simulator_destination" \
-    -collect-test-diagnostics never \
-    -only-testing:HeelerTests/PairingCeremonyE2ETests \
-    2>&1 | tee "$pairing_log"
-
-if grep -q 'skipped:' "$pairing_log" \
-    || ! grep -q "Test run with 11 tests in 1 suite passed" "$pairing_log"; then
-    echo "The mandatory Pairing ceremony suite did not execute all eleven tests" >&2
-    exit 1
-fi
+assert_behavior "Device Key" HeelerSSHSessionE2ETests \
+    '"authorized Device Key authenticates and executes through real sshd"'
+assert_behavior "Bootstrap Key" PairingCeremonyE2ETests \
+    'fullCeremonyEnrollsTheDeviceKeyAndVerifies()'
+assert_behavior "two-hop trust" HeelerSSHJumpHostGateE2ETests \
+    '"TOFU records both endpoints once and identifies either mismatch"'
+assert_behavior "RPC" HeelerSSHDirectStreamLocalE2ETests \
+    '"Transport ping validates protocol 17 and opens a fresh channel"'
+assert_behavior "Events" HeelerSSHTransportBehaviorE2ETests \
+    '"direct Host Events preserve framing, concurrency, and slot reuse"'
+assert_behavior "PTY" HeelerSSHPTYE2ETests \
+    '"PTY exec preserves raw IO, merged output, geometry, and exit status"'
+assert_behavior "resize" HeelerSSHTransportBehaviorE2ETests \
+    '"direct Host Attach preserves PTY IO, resize, end, and reuse"'
+assert_behavior "SFTP" ImageStagingE2ETests \
+    'directStagingStreamsPrivateFileAndAtomicallyRenamesThePart()'
+assert_behavior "forwarding denial" HeelerSSHDirectStreamLocalE2ETests \
+    '"global forwarding denial reports the honest combined cause"'
+assert_behavior "key-policy forwarding denial" HeelerSSHDirectStreamLocalE2ETests \
+    '"authorized_keys forwarding denial reports the honest combined cause"'
+assert_behavior "cancellation" HeelerSSHDirectStreamLocalE2ETests \
+    '"cancellation closes only its channel and preserves connection reuse"'
+assert_behavior "timeout" HeelerSSHDirectStreamLocalE2ETests \
+    '"timeout closes only its channel and preserves connection reuse"'
+assert_behavior "teardown" HeelerSSHSessionE2ETests \
+    '"clean channel close leaves the connection reusable"'
 
 for variable in \
     HEELER_SSH_E2E_REQUIRED \
     HEELER_SSH_E2E_HOST \
     HEELER_SSH_E2E_PORT \
     HEELER_SSH_E2E_USERNAME \
-    HEELER_SSH_E2E_PASSWORD; do
+    HEELER_SSH_E2E_DEVICE_KEY_SEED; do
     xcrun simctl spawn "$simulator_udid" launchctl setenv "$variable" "${!variable}"
 done
 

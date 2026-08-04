@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 
@@ -6,7 +7,7 @@ import Testing
 @Suite(
     "HeelerSSH Transport behavior e2e",
     .enabled(
-        if: HeelerSSHTransportBehaviorEnvironment.current != nil,
+        if: RealSSHFixture.gate(HeelerSSHTransportBehaviorEnvironment.current != nil),
         "requires the disposable direct and Jump Host fixtures"),
     .serialized)
 struct HeelerSSHTransportBehaviorE2ETests {
@@ -455,7 +456,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
         let settings = SSHTransportSettings(
             host: host,
-            credentials: .password(environment.password),
+            credentials: environment.credentials,
             hostKeyPolicy: HostKeyPolicy(knownHosts: InMemoryKnownHostsStore()) { _ in true })
 
         let transport = try await SSHTransportConnector().connect(settings: settings)
@@ -816,11 +817,11 @@ struct HeelerSSHTransportBehaviorE2ETests {
     }
 }
 
-struct HeelerSSHTransportBehaviorEnvironment: Decodable, Sendable {
+struct HeelerSSHTransportBehaviorEnvironment: Sendable {
     let host: String
     let port: UInt16
     let username: String
-    let password: String
+    let deviceKey: Curve25519.Signing.PrivateKey
     let socketPath: String
     let staleSocketPath: String
     let wakeFailureStaleSocketPath: String
@@ -837,13 +838,14 @@ struct HeelerSSHTransportBehaviorEnvironment: Decodable, Sendable {
             let jumpEncoded = ProcessInfo.processInfo.environment["HEELER_SSH_JUMP_E2E_CONFIG"],
             let jumpData = Data(base64Encoded: jumpEncoded),
             let direct = try? JSONDecoder().decode(DirectFixture.self, from: directData),
-            let jump = try? JSONDecoder().decode(JumpFixture.self, from: jumpData)
+            let jump = try? JSONDecoder().decode(JumpFixture.self, from: jumpData),
+            let deviceKey = try? RealSSHFixture.deviceKey(seed: direct.deviceKeySeed)
         else { return nil }
         return HeelerSSHTransportBehaviorEnvironment(
             host: direct.host,
             port: direct.port,
             username: direct.username,
-            password: direct.password,
+            deviceKey: deviceKey,
             socketPath: direct.socketPath,
             staleSocketPath: direct.staleSocketPath,
             wakeFailureStaleSocketPath: direct.wakeFailureStaleSocketPath,
@@ -854,13 +856,18 @@ struct HeelerSSHTransportBehaviorEnvironment: Decodable, Sendable {
             targetPort: jump.targetPort)
     }()
 
+    /// The fixture authorizes one throwaway Device Key. Everything but the two
+    /// dedicated password tests authenticates with it, which is also what a real
+    /// Host does.
+    var credentials: SSHCredentials { .ed25519(deviceKey) }
+
     func directSettings(
         socket: HerdrSocketLocation? = nil
     ) -> SSHTransportSettings {
         settings(
             host: host,
             port: port,
-            credentials: .password(password),
+            credentials: credentials,
             jump: nil,
             socket: socket)
     }
@@ -868,7 +875,7 @@ struct HeelerSSHTransportBehaviorEnvironment: Decodable, Sendable {
     func jumpSettings(
         socket: HerdrSocketLocation? = nil
     ) -> SSHTransportSettings {
-        let credentials = SSHCredentials.password(password)
+        let credentials = self.credentials
         return settings(
             host: targetHost,
             port: targetPort,
@@ -890,7 +897,7 @@ struct HeelerSSHTransportBehaviorEnvironment: Decodable, Sendable {
             address: host,
             port: Int(port),
             username: username,
-            authMethod: .password)
+            authMethod: .deviceKey)
     }
 
     /// The same fixture reached through the Jump Host hop. Both hops share the
@@ -901,7 +908,7 @@ struct HeelerSSHTransportBehaviorEnvironment: Decodable, Sendable {
             address: targetHost,
             port: Int(targetPort),
             username: username,
-            authMethod: .password,
+            authMethod: .deviceKey,
             jumpAddress: host,
             jumpPort: Int(jumpPort))
     }
@@ -991,7 +998,7 @@ struct HeelerSSHTransportBehaviorEnvironment: Decodable, Sendable {
         let host: String
         let port: UInt16
         let username: String
-        let password: String
+        let deviceKeySeed: String
         let socketPath: String
         let staleSocketPath: String
         let wakeFailureStaleSocketPath: String

@@ -8,8 +8,8 @@ import Testing
 @Suite(
     "HeelerSSH session e2e",
     .enabled(
-        if: HeelerSSHTestEnvironment.isAvailable,
-        "requires the disposable password-authenticated sshd fixture"),
+        if: RealSSHFixture.gate(HeelerSSHTestEnvironment.isAvailable),
+        "requires the disposable unprivileged sshd fixture"),
     .serialized)
 struct HeelerSSHSessionE2ETests {
     @Test("handshake exposes the negotiated Host Key before authentication")
@@ -25,10 +25,14 @@ struct HeelerSSHSessionE2ETests {
         }
     }
 
-    @Test("password authentication and exec round trip through real sshd")
+    @Test(
+        "password authentication and exec round trip through real sshd",
+        .enabled(
+            if: HeelerSSHTestEnvironment.hasPasswordFixture,
+            "requires the privileged password-authenticated sshd fixture"))
     func passwordAuthenticationExecutesCommand() async throws {
         let environment = try #require(HeelerSSHTestEnvironment.current)
-        let connection = try await environment.connect()
+        let connection = try await environment.passwordConnection()
 
         try await withClosingConnection(connection) { connection in
             let input = Data(repeating: 0x78, count: 256 * 1024)
@@ -45,24 +49,29 @@ struct HeelerSSHSessionE2ETests {
         }
     }
 
-    @Test("incorrect password has a distinct authentication error")
+    @Test(
+        "incorrect password has a distinct authentication error",
+        .enabled(
+            if: HeelerSSHTestEnvironment.hasPasswordFixture,
+            "requires the privileged password-authenticated sshd fixture"))
     func incorrectPasswordFailsAuthentication() async throws {
         let environment = try #require(HeelerSSHTestEnvironment.current)
+        let password = try #require(environment.passwordFixture)
         let connection = try await SSHConnection.connect(
-            to: environment.endpoint,
+            to: password.endpoint,
             timeout: .seconds(5))
 
         try await withClosingConnection(connection) { connection in
             await #expect(throws: SSHError.authenticationFailed) {
                 try await connection.authenticate(
-                    username: environment.username,
+                    username: password.username,
                     password: "wrong-\(UUID().uuidString)",
                     timeout: .seconds(5))
             }
 
             try await connection.authenticate(
-                username: environment.username,
-                password: environment.password,
+                username: password.username,
+                password: password.password,
                 timeout: .seconds(5))
             let result = try await connection.execute("printf reused", timeout: .seconds(5))
             #expect(result.stdout == Data("reused".utf8))
@@ -72,9 +81,7 @@ struct HeelerSSHSessionE2ETests {
     @Test("authorized Device Key authenticates and executes through real sshd")
     func authorizedDeviceKeyAuthenticates() async throws {
         let environment = try #require(HeelerSSHTestEnvironment.current)
-        let privateKey = try Curve25519.Signing.PrivateKey(
-            rawRepresentation: Data((0..<32).map(UInt8.init)))
-        let deviceKey = DeviceKey(privateKey: privateKey)
+        let deviceKey = DeviceKey(privateKey: environment.deviceKey)
         let connection = try await SSHConnection.connect(
             to: environment.endpoint,
             timeout: .seconds(5))
@@ -127,10 +134,7 @@ struct HeelerSSHSessionE2ETests {
         try await withClosingConnection(connection) { connection in
             let authentication = Task {
                 await Task.yield()
-                try await connection.authenticate(
-                    username: environment.username,
-                    password: environment.password,
-                    timeout: .seconds(5))
+                try await environment.authenticate(connection, timeout: .seconds(5))
             }
             authentication.cancel()
 
@@ -138,10 +142,7 @@ struct HeelerSSHSessionE2ETests {
                 try await authentication.value
             }
             await #expect(throws: SSHError.connectionInvalidated) {
-                try await connection.authenticate(
-                    username: environment.username,
-                    password: environment.password,
-                    timeout: .seconds(1))
+                try await environment.authenticate(connection, timeout: .seconds(1))
             }
         }
     }
@@ -149,7 +150,7 @@ struct HeelerSSHSessionE2ETests {
     @Test(
         "unsupported server algorithms have a distinct negotiation error",
         .enabled(
-            if: HeelerSSHTestEnvironment.hasLegacyEndpoint,
+            if: RealSSHFixture.gate(HeelerSSHTestEnvironment.hasLegacyEndpoint),
             "requires the legacy-algorithm sshd fixture"))
     func unsupportedAlgorithmsFailNegotiation() async throws {
         let environment = try #require(HeelerSSHTestEnvironment.current)
@@ -165,7 +166,7 @@ struct HeelerSSHSessionE2ETests {
     @Test(
         "uncertain channel open invalidates the connection",
         .enabled(
-            if: HeelerSSHTestEnvironment.hasRestrictedEndpoint,
+            if: RealSSHFixture.gate(HeelerSSHTestEnvironment.hasRestrictedEndpoint),
             "requires the no-session-channel sshd fixture"))
     func failedChannelOpenInvalidatesConnection() async throws {
         let environment = try #require(HeelerSSHTestEnvironment.current)
@@ -256,7 +257,7 @@ struct HeelerSSHSessionE2ETests {
     @Test(
         "handshake deadline completes promptly",
         .enabled(
-            if: HeelerSSHTestEnvironment.hasStallEndpoint,
+            if: RealSSHFixture.gate(HeelerSSHTestEnvironment.hasStallEndpoint),
             "requires the non-speaking TCP fixture"))
     func handshakeDeadlineCompletesPromptly() async throws {
         let environment = try #require(HeelerSSHTestEnvironment.current)
@@ -274,7 +275,7 @@ struct HeelerSSHSessionE2ETests {
     @Test(
         "handshake cancellation completes promptly",
         .enabled(
-            if: HeelerSSHTestEnvironment.hasStallEndpoint,
+            if: RealSSHFixture.gate(HeelerSSHTestEnvironment.hasStallEndpoint),
             "requires the non-speaking TCP fixture"))
     func handshakeCancellationCompletesPromptly() async throws {
         let environment = try #require(HeelerSSHTestEnvironment.current)
@@ -296,8 +297,8 @@ struct HeelerSSHSessionE2ETests {
 @Suite(
     "HeelerSSH PTY e2e",
     .enabled(
-        if: HeelerSSHTestEnvironment.isAvailable,
-        "requires the disposable password-authenticated sshd fixture"),
+        if: RealSSHFixture.gate(HeelerSSHTestEnvironment.isAvailable),
+        "requires the disposable unprivileged sshd fixture"),
     .serialized,
     .timeLimit(.minutes(1)))
 struct HeelerSSHPTYE2ETests {
@@ -400,18 +401,30 @@ private func readPTY(
 }
 
 private struct HeelerSSHTestEnvironment: Sendable {
+    /// The privileged half of the fixture. macOS cannot verify an account
+    /// password without root, so this is the one endpoint the unprivileged
+    /// fixture cannot provide; everything else authenticates with the Device
+    /// Key the fixture authorizes.
+    struct PasswordFixture: Sendable {
+        let endpoint: SSHEndpoint
+        let username: String
+        let password: String
+    }
+
     let endpoint: SSHEndpoint
     let legacyEndpoint: SSHEndpoint?
     let restrictedEndpoint: SSHEndpoint?
     let stallEndpoint: SSHEndpoint?
     let streamLocalSocketPath: String?
     let username: String
-    let password: String
+    let deviceKey: Curve25519.Signing.PrivateKey
+    let passwordFixture: PasswordFixture?
 
     static var isAvailable: Bool { current != nil }
     static var hasLegacyEndpoint: Bool { current?.legacyEndpoint != nil }
     static var hasRestrictedEndpoint: Bool { current?.restrictedEndpoint != nil }
     static var hasStallEndpoint: Bool { current?.stallEndpoint != nil }
+    static var hasPasswordFixture: Bool { current?.passwordFixture != nil }
 
     static let current: HeelerSSHTestEnvironment? = {
         let environment = ProcessInfo.processInfo.environment
@@ -420,7 +433,8 @@ private struct HeelerSSHTestEnvironment: Sendable {
             let data = Data(base64Encoded: encoded),
             let configuration = try? JSONDecoder().decode(
                 HeelerSSHTestConfiguration.self,
-                from: data)
+                from: data),
+            let deviceKey = try? RealSSHFixture.deviceKey(seed: configuration.deviceKeySeed)
         {
             return HeelerSSHTestEnvironment(
                 endpoint: SSHEndpoint(host: configuration.host, port: configuration.port),
@@ -435,15 +449,21 @@ private struct HeelerSSHTestEnvironment: Sendable {
                 },
                 streamLocalSocketPath: configuration.streamLocalSocketPath,
                 username: configuration.username,
-                password: configuration.password)
+                deviceKey: deviceKey,
+                passwordFixture: configuration.passwordFixture.map {
+                    PasswordFixture(
+                        endpoint: SSHEndpoint(host: configuration.host, port: $0.port),
+                        username: $0.username,
+                        password: $0.password)
+                })
         }
         guard
-            environment["HEELER_SSH_E2E_REQUIRED"] == "1",
             let host = environment["HEELER_SSH_E2E_HOST"],
             let portText = environment["HEELER_SSH_E2E_PORT"],
             let port = UInt16(portText),
             let username = environment["HEELER_SSH_E2E_USERNAME"],
-            let password = environment["HEELER_SSH_E2E_PASSWORD"]
+            let seed = environment["HEELER_SSH_E2E_DEVICE_KEY_SEED"],
+            let deviceKey = try? RealSSHFixture.deviceKey(seed: seed)
         else {
             return nil
         }
@@ -460,7 +480,8 @@ private struct HeelerSSHTestEnvironment: Sendable {
                 port: environment["HEELER_SSH_E2E_STALL_PORT"]),
             streamLocalSocketPath: environment["HEELER_SSH_E2E_STREAMLOCAL_SOCKET"],
             username: username,
-            password: password)
+            deviceKey: deviceKey,
+            passwordFixture: nil)
     }()
 
     func connect() async throws -> SSHConnection {
@@ -470,9 +491,32 @@ private struct HeelerSSHTestEnvironment: Sendable {
     func connect(to endpoint: SSHEndpoint) async throws -> SSHConnection {
         let connection = try await SSHConnection.connect(to: endpoint, timeout: .seconds(5))
         do {
+            try await authenticate(connection, timeout: .seconds(5))
+            return connection
+        } catch {
+            try? await connection.close(timeout: .seconds(2))
+            throw error
+        }
+    }
+
+    func authenticate(_ connection: SSHConnection, timeout: Duration) async throws {
+        let key = DeviceKey(privateKey: deviceKey)
+        try await connection.authenticate(
+            username: username,
+            publicKey: key.publicKeyBlob,
+            signer: { try key.privateKey.signature(for: $0) },
+            timeout: timeout)
+    }
+
+    func passwordConnection() async throws -> SSHConnection {
+        let fixture = try #require(passwordFixture)
+        let connection = try await SSHConnection.connect(
+            to: fixture.endpoint,
+            timeout: .seconds(5))
+        do {
             try await connection.authenticate(
-                username: username,
-                password: password,
+                username: fixture.username,
+                password: fixture.password,
                 timeout: .seconds(5))
             return connection
         } catch {
@@ -488,6 +532,12 @@ private struct HeelerSSHTestEnvironment: Sendable {
 }
 
 private struct HeelerSSHTestConfiguration: Decodable {
+    struct PasswordFixture: Decodable {
+        let port: UInt16
+        let username: String
+        let password: String
+    }
+
     let host: String
     let port: UInt16
     let legacyPort: UInt16?
@@ -495,7 +545,8 @@ private struct HeelerSSHTestConfiguration: Decodable {
     let stallPort: UInt16?
     let streamLocalSocketPath: String?
     let username: String
-    let password: String
+    let deviceKeySeed: String
+    let passwordFixture: PasswordFixture?
 }
 
 private func withClosingConnection<Result>(

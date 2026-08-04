@@ -8,7 +8,7 @@ import Testing
 @Suite(
     "HeelerSSH Jump Host gate e2e",
     .enabled(
-        if: HeelerSSHJumpHostTestEnvironment.current != nil,
+        if: RealSSHFixture.gate(HeelerSSHJumpHostTestEnvironment.current != nil),
         "requires the disposable two-sshd Jump Host fixture"),
     .serialized)
 struct HeelerSSHJumpHostGateE2ETests {
@@ -349,6 +349,7 @@ private struct HeelerSSHJumpHostTestEnvironment: Decodable, Sendable {
     let innerStallHost: String
     let innerStallPort: UInt16
     let username: String
+    let deviceKeySeed: String
     let socketPath: String
 
     var jumpEndpoint: SSHEndpoint { SSHEndpoint(host: host, port: jumpPort) }
@@ -357,10 +358,7 @@ private struct HeelerSSHJumpHostTestEnvironment: Decodable, Sendable {
         SSHEndpoint(host: innerStallHost, port: innerStallPort)
     }
     var deviceKey: Curve25519.Signing.PrivateKey {
-        get throws {
-            try Curve25519.Signing.PrivateKey(
-                rawRepresentation: Data((0..<32).map(UInt8.init)))
-        }
+        get throws { try RealSSHFixture.deviceKey(seed: deviceKeySeed) }
     }
 
     static let current: HeelerSSHJumpHostTestEnvironment? = {

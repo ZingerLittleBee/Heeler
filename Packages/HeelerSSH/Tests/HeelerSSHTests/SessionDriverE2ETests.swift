@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 
@@ -6,8 +7,9 @@ import Testing
 @Suite(
     "Session driver resource e2e",
     .enabled(
-        if: SessionDriverTestEnvironment.current != nil,
-        "requires a password-authenticated sshd fixture"),
+        if: SessionDriverTestEnvironment.current != nil
+            || SessionDriverTestEnvironment.isRequired,
+        "requires the disposable sshd fixture"),
     .serialized)
 struct SessionDriverE2ETests {
     @Test("public connection resolves localhost before authenticating")
@@ -17,10 +19,7 @@ struct SessionDriverE2ETests {
             to: SSHEndpoint(host: "localhost", port: environment.endpoint.port),
             timeout: .seconds(5))
 
-        try await connection.authenticate(
-            username: environment.username,
-            password: environment.password,
-            timeout: .seconds(5))
+        try await environment.authenticate(connection)
         let result = try await connection.execute(
             "printf resolved",
             timeout: .seconds(5))
@@ -78,9 +77,11 @@ struct SessionDriverE2ETests {
             _ = try await driver.handshake(
                 endpoint: environment.endpoint,
                 timeout: .seconds(5))
+            let privateKey = environment.privateKey
             try await driver.authenticate(
                 username: environment.username,
-                password: environment.password,
+                publicKey: environment.publicKeyBlob,
+                signer: { try privateKey.signature(for: $0) },
                 timeout: .seconds(5))
 
             await #expect(throws: SSHError.self) {
@@ -183,34 +184,59 @@ struct SessionDriverE2ETests {
 private struct SessionDriverTestEnvironment: Sendable {
     let endpoint: SSHEndpoint
     let username: String
-    let password: String
+    let privateKey: Curve25519.Signing.PrivateKey
+
+    /// Merge CI demands real SSH coverage. When the flag is set the suite stays
+    /// enabled even without a decodable fixture, so a missing fixture fails at
+    /// the per-test `#require` instead of skipping green.
+    static var isRequired: Bool {
+        ProcessInfo.processInfo.environment["HEELER_SSH_E2E_REQUIRED"] == "1"
+    }
 
     static let current: SessionDriverTestEnvironment? = {
         let environment = ProcessInfo.processInfo.environment
         guard
-            environment["HEELER_SSH_E2E_REQUIRED"] == "1",
             let host = environment["HEELER_SSH_E2E_HOST"],
             let portText = environment["HEELER_SSH_E2E_PORT"],
             let port = UInt16(portText),
             let username = environment["HEELER_SSH_E2E_USERNAME"],
-            let password = environment["HEELER_SSH_E2E_PASSWORD"]
+            let seed = environment["HEELER_SSH_E2E_DEVICE_KEY_SEED"],
+            let seedData = Data(base64Encoded: seed),
+            let privateKey = try? Curve25519.Signing.PrivateKey(rawRepresentation: seedData)
         else {
             return nil
         }
         return SessionDriverTestEnvironment(
             endpoint: SSHEndpoint(host: host, port: port),
             username: username,
-            password: password)
+            privateKey: privateKey)
     }()
+
+    /// SSH wire-format public key blob (RFC 4253 §6.6).
+    var publicKeyBlob: Data {
+        var blob = Data()
+        for field in [Data("ssh-ed25519".utf8), privateKey.publicKey.rawRepresentation] {
+            var length = UInt32(field.count).bigEndian
+            withUnsafeBytes(of: &length) { blob.append(contentsOf: $0) }
+            blob.append(field)
+        }
+        return blob
+    }
 
     func connect() async throws -> SSHConnection {
         let connection = try await SSHConnection.connect(
             to: endpoint,
             timeout: .seconds(5))
+        try await authenticate(connection)
+        return connection
+    }
+
+    func authenticate(_ connection: SSHConnection) async throws {
+        let privateKey = self.privateKey
         try await connection.authenticate(
             username: username,
-            password: password,
+            publicKey: publicKeyBlob,
+            signer: { try privateKey.signature(for: $0) },
             timeout: .seconds(5))
-        return connection
     }
 }

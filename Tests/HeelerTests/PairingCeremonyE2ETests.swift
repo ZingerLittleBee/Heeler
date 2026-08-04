@@ -15,7 +15,7 @@ import Testing
 @Suite(
     "Pairing ceremony e2e",
     .enabled(
-        if: PairingE2EEnvironment.isAvailable,
+        if: RealSSHFixture.gate(PairingE2EEnvironment.isAvailable),
         "requires localhost sshd, an authorized Ed25519 test key, node, and the plugin checkout"),
     .serialized)
 struct PairingCeremonyE2ETests {
@@ -491,8 +491,7 @@ private struct PairingE2EEnvironment: Sendable {
             let encoded = environment["HEELER_PAIRING_E2E_CONFIG"],
             let data = Data(base64Encoded: encoded),
             let configuration = try? JSONDecoder().decode(Configuration.self, from: data),
-            let privateKey = try? Curve25519.Signing.PrivateKey(
-                rawRepresentation: Data((0..<32).map(UInt8.init)))
+            let privateKey = try? RealSSHFixture.deviceKey(seed: configuration.deviceKeySeed)
         {
             return PairingE2EEnvironment(
                 base: Base(
@@ -540,6 +539,7 @@ private struct PairingE2EEnvironment: Sendable {
         let port: Int
         let mismatchedHostAddress: String?
         let username: String
+        let deviceKeySeed: String
         let nodePath: String
         let acceptScriptPath: String
         let homePath: String
@@ -625,8 +625,12 @@ private struct StagedPairing {
         switch forcedCommand {
         case .plugin:
             // Mandatory CI uses the runner's account for sshd but an isolated
-            // HOME so the real accept entrypoint edits only fixture keys.
-            command = "HOME='\(environment.homePath)'"
+            // HOME so the real accept entrypoint edits only fixture keys. The
+            // Pairing sshd cannot force POSIX sh without overriding this very
+            // forced command, so use `env` rather than a variable prefix: the
+            // account's login shell parses this line and not every shell
+            // accepts `VAR=value command`.
+            command = "env HOME='\(environment.homePath)'"
                 + " '\(environment.nodePath)' '\(environment.acceptScriptPath)'"
                 + " --state-dir '\(remoteStateDir.path)' --pairing-id \(pairingId)"
         case .hang:

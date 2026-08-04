@@ -6,7 +6,7 @@ import Testing
 @Suite(
     "Image staging e2e",
     .enabled(
-        if: HeelerSSHTransportBehaviorEnvironment.current != nil,
+        if: RealSSHFixture.gate(HeelerSSHTransportBehaviorEnvironment.current != nil),
         "requires the disposable direct and Jump Host fixtures"),
     .serialized,
     .timeLimit(.minutes(2)))

@@ -11,11 +11,12 @@
 # - The committed Heeler.xcodeproj (project + shared Heeler scheme)
 #   is the source of truth for CI. project.yml/xcodegen is a local convenience
 #   only; CI never regenerates the project.
-# - The HeelerSSH session suite is mandatory in CI. The test script provisions
-#   disposable high-port sshd instances and a temporary unprivileged account,
-#   asserts that every real-sshd test ran, then cleans up both daemons and the
-#   account. The remaining locally-gated e2e suites skip cleanly without a
-#   local sshd and seeded key.
+# - The real-SSH suites are mandatory in CI. The test script provisions
+#   disposable high-port sshd instances that run unprivileged as the runner
+#   account, plus a Unix-socket fake herdr server, and asserts both the executed
+#   test count and the named test behind every mandatory behaviour. Only the
+#   real-password fixture needs sudo, because macOS cannot verify an account
+#   password without root.
 # - Wire-type codegen drift is checked against a committed schema snapshot
 #   (scripts/herdr-schema.json), captured from herdr 0.7.4 via
 #   `herdr api schema --json`. CI has no herdr binary, so `--schema` feeds the
@@ -97,4 +98,9 @@ jobs:
       # fixture environment there, and targets that same device for every test
       # action. The app deployment target is iOS 26.
       - name: Build and test
+        # The fixture runs unprivileged; HEELER_CI_MANDATORY makes the one
+        # privileged part (the real-password sshd) a hard requirement here
+        # rather than something merge CI may quietly run without.
+        env:
+          HEELER_CI_MANDATORY: "1"
         run: scripts/run-ci-ios-tests.sh
