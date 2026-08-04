@@ -175,7 +175,21 @@ final class HeelerSSHAttachOutputGate: Sendable {
 /// direct-streamlocal channels, Events owns one reserved forwarding channel,
 /// and Attach owns one reserved PTY exec channel per Host (ADR 0011).
 actor HeelerSSHTransport: Transport {
-    static let supportedProtocolVersion = 17
+    /// Lowest herdr protocol this build can drive. Below it, methods this app
+    /// calls may genuinely be absent, so the Host is refused.
+    static let minimumProtocolVersion = 17
+    /// Highest protocol the committed schema snapshot
+    /// (`scripts/herdr-schema.json`) was generated against. A Host above this
+    /// is accepted and fully usable; it is merely newer than this build knows.
+    ///
+    /// The version check is a floor rather than an equality on purpose. herdr
+    /// states no stability guarantee, and CLAUDE.md's contract is to parse
+    /// leniently and *surface* mismatches — surfacing and refusing are not the
+    /// same thing. Equality turned protocol 19, which is additively compatible
+    /// with 17 in every one of its 164 shared definitions, into an unusable
+    /// Host (#140); bumping the constant would have rebuilt the same outage at
+    /// protocol 20.
+    static let generatedProtocolVersion = 19
     static let maximumResponseBytes = 1_048_576
     static let maxConcurrentForwardingChannels =
         SSHChannelAdmission.Limits.production.ordinaryForwarding
@@ -412,12 +426,15 @@ actor HeelerSSHTransport: Transport {
     }
 
     static func serverInfo(from pong: PongResponse) throws -> ServerInfo {
-        guard pong.protocolVersion == Self.supportedProtocolVersion else {
+        guard pong.protocolVersion >= Self.minimumProtocolVersion else {
             throw TransportError.protocolVersionMismatch(
                 server: pong.protocolVersion,
-                supported: Self.supportedProtocolVersion)
+                supported: Self.minimumProtocolVersion)
         }
-        return ServerInfo(version: pong.version, protocolVersion: pong.protocolVersion)
+        return ServerInfo(
+            version: pong.version,
+            protocolVersion: pong.protocolVersion,
+            exceedsGeneratedProtocol: pong.protocolVersion > Self.generatedProtocolVersion)
     }
 
     func listSessions() async throws -> [HerdrSession] {

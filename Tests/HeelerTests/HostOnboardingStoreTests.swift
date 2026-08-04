@@ -127,7 +127,7 @@ struct HostOnboardingStoreTests {
     @Test func pingFailureFailsItsCheckAndStillClosesTheTransport() async throws {
         let (store, connector) = try makeStore(
             outcome: .connects(
-                pingResult: .failure(.protocolVersionMismatch(server: 18, supported: 17))))
+                pingResult: .failure(.protocolVersionMismatch(server: 16, supported: 17))))
 
         await store.runChecks()
 

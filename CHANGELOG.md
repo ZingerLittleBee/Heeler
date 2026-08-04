@@ -54,6 +54,13 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Hosts running herdr 0.8.0 connect again. The protocol check demanded the
+  exact version this build was generated against, so herdr 0.8.0 (protocol
+  19) failed preflight outright even though every method Heeler calls is
+  unchanged. Heeler now requires a minimum protocol and accepts anything at
+  or above it; a Host newer than this build still connects and simply notes,
+  under the checklist, that features added after it may be unavailable. (#140)
+
 - Host event updates now use herdr's socket directly over SSH, remain live
   while ordinary requests run, and recover cleanly when only the Events
   channel drops. Connection failures now lead with "herdr is not running"

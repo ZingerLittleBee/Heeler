@@ -799,7 +799,7 @@ run_suite HeelerSSHSessionE2ETests 14 1 "$session_skip_count"
 run_suite HeelerSSHPTYE2ETests 3 1
 run_suite HeelerSSHDirectStreamLocalE2ETests 12 1
 run_suite HeelerSSHJumpHostGateE2ETests 9 1
-run_suite HeelerSSHTransportBehaviorE2ETests 30 1
+run_suite HeelerSSHTransportBehaviorE2ETests 31 1
 run_suite ImageStagingE2ETests 7 1
 run_suite WeakNetworkE2ETests 8 1
 run_suite PairingCeremonyE2ETests 11 1

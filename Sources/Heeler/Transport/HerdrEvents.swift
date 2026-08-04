@@ -19,7 +19,7 @@ struct HerdrEventKind: Hashable, Sendable {
         self = Self.byWireName[wireName] ?? HerdrEventKind(name: wireName)
     }
 
-    /// All kinds herdr 0.7.4's schema declares subscribable.
+    /// All kinds herdr 0.8.0's schema declares subscribable.
     static let known: [HerdrEventKind] =
         GlobalEventKind.allCases.map(\.kind)
         + PaneEventKind.allCases.map(\.kind)
@@ -49,6 +49,13 @@ enum GlobalEventKind: String, CaseIterable, Sendable {
     case workspaceMetadataUpdated = "workspace.metadata_updated"
     case workspaceRenamed = "workspace.renamed"
     case workspaceMoved = "workspace.moved"
+    /// Added in protocol 19 (#140). Declared here so it decodes canonically
+    /// rather than passing through as an unmapped wire name, and deliberately
+    /// left out of `HostConsoleProjection.membershipKinds`: reordering changes
+    /// no membership and no label, and the Console projects Agents by pane
+    /// rather than rendering workspace order. `workspace.moved` is the
+    /// precedent — same category, present here, equally unsubscribed.
+    case workspaceReordered = "workspace.reordered"
     case workspaceClosed = "workspace.closed"
     case workspaceFocused = "workspace.focused"
     case worktreeCreated = "worktree.created"

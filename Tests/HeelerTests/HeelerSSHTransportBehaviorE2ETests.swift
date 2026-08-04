@@ -21,14 +21,58 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(HeelerSSHTransport.maxConcurrentExecChannels == 8)
     }
 
-    @Test("protocol mismatches remain typed at the Transport seam")
-    func protocolMismatchStaysTyped() {
+    /// Both directions of the floor, because a fix tested in one direction is
+    /// untested in the direction that broke. This test replaces one that
+    /// asserted protocol 18 was *refused*: that encoded the equality rule
+    /// #140 removed, and a server above the generated version is now usable.
+    @Test("the protocol floor admits newer servers and refuses older ones")
+    func protocolFloorAdmitsNewerAndRefusesOlder() throws {
+        // Below the floor: refused, because methods this app calls may be absent.
         #expect(
-            throws: TransportError.protocolVersionMismatch(server: 18, supported: 17)
+            throws: TransportError.protocolVersionMismatch(server: 16, supported: 17)
         ) {
             _ = try HeelerSSHTransport.serverInfo(
-                from: PongResponse(protocolVersion: 18, version: "future"))
+                from: PongResponse(protocolVersion: 16, version: "ancient"))
         }
+
+        // At the floor and at the generated version: usable, no notice.
+        for version in [
+            HeelerSSHTransport.minimumProtocolVersion,
+            HeelerSSHTransport.generatedProtocolVersion,
+        ] {
+            let info = try HeelerSSHTransport.serverInfo(
+                from: PongResponse(protocolVersion: version, version: "known"))
+            #expect(info.protocolVersion == version)
+            #expect(!info.exceedsGeneratedProtocol)
+        }
+
+        // Above the generated version: still usable — this is the case that
+        // made the user's 0.8.0 Host unusable — and it carries the notice.
+        let newer = try HeelerSSHTransport.serverInfo(
+            from: PongResponse(
+                protocolVersion: HeelerSSHTransport.generatedProtocolVersion + 1,
+                version: "future"))
+        #expect(newer.exceedsGeneratedProtocol)
+        #expect(newer.version == "future")
+    }
+
+    /// The exact reply the user's live herdr 0.8.0 returns, captured from
+    /// `~/.config/herdr/herdr.sock`. Pins the regression itself rather than a
+    /// synthetic version number.
+    @Test("the live herdr 0.8.0 pong connects rather than being refused")
+    func liveZeroEightZeroPongIsAccepted() throws {
+        let pong = try JSONDecoder().decode(
+            PongResponse.self,
+            from: Data(
+                #"""
+                {"type":"pong","version":"0.8.0","protocol":19,
+                 "capabilities":{"live_handoff":true,"detached_server_daemon":true}}
+                """#.utf8))
+        let info = try HeelerSSHTransport.serverInfo(from: pong)
+
+        #expect(info.version == "0.8.0")
+        #expect(info.protocolVersion == 19)
+        #expect(!info.exceedsGeneratedProtocol)
     }
 
     @Test("direct Host ordinary RPCs preserve the Transport seam")

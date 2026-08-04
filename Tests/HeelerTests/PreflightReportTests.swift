@@ -69,7 +69,9 @@ struct PreflightReportTests {
         (.socketNotFound(path: "/home/dev/.config/herdr/herdr.sock"), .herdrInstalled),
         (.homeDirectoryUnresolvable(detail: "no $HOME"), .remoteEnvironment),
         (.streamLocalOpenFailed(path: "/home/dev/.config/herdr/herdr.sock"), .serverRunning),
-        (.protocolVersionMismatch(server: 18, supported: 17), .protocolCompatible),
+        // Below the floor: the only direction that still produces this error
+        // (#140 made a newer server usable rather than a mismatch).
+        (.protocolVersionMismatch(server: 16, supported: 17), .protocolCompatible),
         (.malformedResponse("junk"), .protocolCompatible),
     ])
     func mapsEveryTransportErrorOntoItsCheck(error: TransportError, check: PreflightCheck) {
@@ -128,12 +130,12 @@ struct PreflightReportTests {
 
     @Test func protocolMismatchHintNamesBothVersions() {
         let report = PreflightReport.failure(
-            .protocolVersionMismatch(server: 18, supported: 17), authMethod: .deviceKey)
+            .protocolVersionMismatch(server: 16, supported: 17), authMethod: .deviceKey)
         guard case .failed(let hint) = report[.protocolCompatible] else {
             Issue.record("protocol check should fail")
             return
         }
-        #expect(hint.contains("18"))
+        #expect(hint.contains("16"))
         #expect(hint.contains("17"))
     }
 

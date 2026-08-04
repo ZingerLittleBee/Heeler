@@ -331,10 +331,16 @@ struct WorktreeSpec: Sendable, Equatable {
 struct ServerInfo: Sendable, Equatable {
     let version: String
     let protocolVersion: Int
+    /// The Host speaks a protocol newer than the schema snapshot this build
+    /// was generated against. Purely advisory: the connection is usable, and
+    /// herdr's additions have been additive, but features introduced after
+    /// this build cannot be driven. Consumers surface it, never refuse on it.
+    let exceedsGeneratedProtocol: Bool
 
-    init(version: String, protocolVersion: Int) {
+    init(version: String, protocolVersion: Int, exceedsGeneratedProtocol: Bool = false) {
         self.version = version
         self.protocolVersion = protocolVersion
+        self.exceedsGeneratedProtocol = exceedsGeneratedProtocol
     }
 }
 

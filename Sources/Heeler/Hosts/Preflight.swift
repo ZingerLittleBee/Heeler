@@ -108,9 +108,11 @@ struct PreflightReport: Equatable, Sendable {
                 + "in its SSH server configuration and try again."
         case .protocolVersionMismatch(let server, let supported):
             check = .protocolCompatible
+            // Only reachable below the floor now: a newer Host connects and
+            // carries an advisory notice instead of failing here.
             hint =
-                "The Host speaks herdr protocol \(server); this app supports "
-                + "\(supported). Update herdr on the Host or update the app."
+                "The Host speaks herdr protocol \(server); this app needs at least "
+                + "\(supported). Update herdr on the Host."
         case .malformedResponse(let detail):
             check = .protocolCompatible
             hint = "The server's reply did not parse as herdr protocol. (\(detail))"

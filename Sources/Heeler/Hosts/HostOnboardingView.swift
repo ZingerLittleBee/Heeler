@@ -81,7 +81,15 @@ struct HostOnboardingView: View {
                 }
             } footer: {
                 if let info = store.serverInfo {
-                    Text("herdr \(info.version) · protocol \(info.protocolVersion)")
+                    // The notice is advisory and the checks still pass: a Host
+                    // newer than this build is usable, just not fully known.
+                    Text(
+                        info.exceedsGeneratedProtocol
+                            ? "herdr \(info.version) · protocol \(info.protocolVersion) — "
+                                + "newer than this app was built against, so features added "
+                                + "after protocol \(HeelerSSHTransport.generatedProtocolVersion) "
+                                + "may be unavailable."
+                            : "herdr \(info.version) · protocol \(info.protocolVersion)")
                 }
             }
 
