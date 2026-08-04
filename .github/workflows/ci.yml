@@ -89,6 +89,12 @@ jobs:
       - name: Test VPS SSH access scripts
         run: scripts/test-vps-ssh-access-scripts.sh
 
+      # Binary supply-chain gate: artifact checksums, device and Simulator
+      # slices, and the algorithm policy (no OpenSSL legacy provider, no
+      # obsolete SSH methods) that ADR 0011 commits to.
+      - name: Verify HeelerSSH native artifacts
+        run: make verify-ssh-artifacts
+
       - name: Show Xcode and simulator versions
         run: |
           xcodebuild -version
