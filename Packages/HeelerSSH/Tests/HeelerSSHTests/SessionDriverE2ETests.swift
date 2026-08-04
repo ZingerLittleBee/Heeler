@@ -179,6 +179,84 @@ struct SessionDriverE2ETests {
         try await sftp.close(timeout: .seconds(5))
         try await connection.close(timeout: .seconds(2))
     }
+
+    /// The lost wakeup this guards against: one operation releases the session
+    /// after EAGAIN, and before its socket watch is armed another operation
+    /// takes the bytes it was waiting for off the shared socket. Nothing is
+    /// left to signal, so a purely edge-triggered wait sleeps out its whole
+    /// deadline on data that already arrived. The hold widens that window from
+    /// a few instructions to something a test can drive.
+    @Test("a wait armed after another operation drained the socket retries at once")
+    func blockedReadSurvivesAConcurrentDrain() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        let blocked = try await connection.openPTY(
+            command: "cat",
+            columns: 80,
+            rows: 24,
+            timeout: .seconds(5))
+        let draining = try await connection.openPTY(
+            command: "cat",
+            columns: 80,
+            rows: 24,
+            timeout: .seconds(5))
+        let hold = SessionWaitHold()
+
+        await connection.holdNextSessionWaitForTesting { await hold.waitUntilReleased() }
+        let read = Task { try await blocked.read(timeout: .seconds(6)) }
+        try await waitUntilTrue("the read should reach the wait") { await hold.hasEntered }
+
+        // The held channel's echo reaches the socket while that channel cannot
+        // watch it, and the other channel's round trip is what consumes it.
+        try await blocked.write(Data("held\n".utf8), timeout: .seconds(5))
+        try await Task.sleep(for: .milliseconds(500))
+        try await draining.write(Data("drain\n".utf8), timeout: .seconds(5))
+        _ = try await draining.read(timeout: .seconds(5))
+
+        await hold.release()
+        let released = ContinuousClock.now
+        let output = try #require(try await read.value)
+        #expect(String(decoding: output, as: UTF8.self).contains("held"))
+        #expect(released.duration(to: .now) < .seconds(2))
+
+        try await blocked.close(timeout: .seconds(5))
+        try await draining.close(timeout: .seconds(5))
+        try await connection.close(timeout: .seconds(2))
+    }
+
+    private func waitUntilTrue(
+        _ comment: Comment,
+        timeout: Duration = .seconds(5),
+        condition: () async -> Bool
+    ) async throws {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while ContinuousClock.now < deadline {
+            if await condition() { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(await condition(), comment)
+    }
+}
+
+/// A one-shot gate the driver parks in, so the test controls exactly what runs
+/// while an operation sits between releasing the session and watching it.
+private actor SessionWaitHold {
+    private(set) var hasEntered = false
+    private var isReleased = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func waitUntilReleased() async {
+        hasEntered = true
+        guard !isReleased else { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func release() {
+        isReleased = true
+        let resumed = waiters
+        waiters.removeAll()
+        for waiter in resumed { waiter.resume() }
+    }
 }
 
 private struct SessionDriverTestEnvironment: Sendable {
