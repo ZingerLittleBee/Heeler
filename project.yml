@@ -16,15 +16,9 @@ settings:
 
 packages:
   # Repository-local package owning the libssh2/OpenSSL implementation and
-  # checked-in native artifacts. The active app transport remains Citadel
-  # until the atomic cutover defined by ADR 0011.
+  # checked-in native artifacts. The one SSH backend (ADR 0011).
   HeelerSSH:
     path: Packages/HeelerSSH
-  # Pinned exactly: Citadel resolves swift-nio-ssh from the Wellz26 fork,
-  # a supply-chain-sensitive dependency that must never drift silently.
-  Citadel:
-    url: https://github.com/orlandos-nl/Citadel.git
-    exactVersion: "0.12.1"
   # Pinned because this package embeds a prebuilt libghostty XCFramework and
   # libghostty's public API is still evolving independently from Ghostty.
   GhosttyTerminal:
@@ -65,9 +59,10 @@ targets:
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "Heeler uses the microphone to transcribe your spoken reply into the message box. Audio is processed on device and never leaves your phone."
         # Scan to Pair (#62) reads the Pairing Code QR from the computer screen.
         INFOPLIST_KEY_NSCameraUsageDescription: "Heeler uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything."
-        # Only exempt encryption is used (standard SSH algorithms via Citadel,
-        # OS-provided CryptoKit); declaring it here keeps every TestFlight
-        # upload from stalling on the Missing Compliance prompt.
+        # Only exempt encryption is used (standard SSH algorithms via the
+        # HeelerSSH package's libssh2/OpenSSL, OS-provided CryptoKit);
+        # declaring it here keeps every TestFlight upload from stalling on the
+        # Missing Compliance prompt.
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         # iPhone + iPad.
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -77,7 +72,6 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
     dependencies:
       - package: HeelerSSH
-      - package: Citadel
       - package: GhosttyTerminal
       - package: GhosttyTerminal
         product: GhosttyTheme
