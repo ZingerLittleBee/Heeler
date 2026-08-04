@@ -7,7 +7,9 @@
 # no machine state to undo. `SetEnv HOME=` gives each session an isolated home
 # so nothing here can reach a real herdr socket, and a forced POSIX-sh wrapper
 # puts a herdr stub ahead of PATH so the cold-start wake can never start or talk
-# to a live server.
+# to a live server. The weak-network route is unprivileged for the same reason:
+# a TCP proxy in front of one sshd, steered per test, rather than `pfctl` or a
+# machine-wide Network Link Conditioner.
 #
 # One exception. macOS cannot verify a password without root, and an
 # unprivileged sshd can only authenticate the account it already runs as, whose
@@ -29,6 +31,10 @@ jump_target_port=55228
 jump_forwarding_denied_port=55229
 pairing_port=55230
 password_port=55231
+# The unprivileged impairment proxy: a degraded route to the modern sshd, plus
+# the control port the weak-network suite steers it through.
+weak_network_port=55232
+weak_network_control_port=55233
 
 # AF_UNIX paths cap at 104 bytes on macOS and the fixture nests herdr sockets
 # several directories deep, so anchor at /tmp: the per-user TMPDIR alone is
@@ -48,6 +54,7 @@ pairing_pid=""
 pairing_mismatched_pid=""
 password_pid=""
 fake_herdr_pid=""
+weak_network_pid=""
 simulator_udid=""
 simulator_destination=""
 
@@ -79,6 +86,10 @@ cleanup() {
     if [[ -n "$fake_herdr_pid" ]]; then
         kill "$fake_herdr_pid" >/dev/null 2>&1
         wait "$fake_herdr_pid" 2>/dev/null
+    fi
+    if [[ -n "$weak_network_pid" ]]; then
+        kill "$weak_network_pid" >/dev/null 2>&1
+        wait "$weak_network_pid" 2>/dev/null
     fi
     local pid
     for pid in "${unprivileged_sshd_pids[@]:-}"; do
@@ -114,6 +125,8 @@ clear_simulator_environment() {
         HEELER_SSH_E2E_PORT \
         HEELER_SSH_E2E_USERNAME \
         HEELER_SSH_E2E_DEVICE_KEY_SEED \
+        HEELER_SSH_E2E_WEAK_PORT \
+        HEELER_SSH_E2E_WEAK_CONTROL_PORT \
         HEELER_SSH_E2E_LEGACY_PORT \
         HEELER_SSH_E2E_RESTRICTED_PORT \
         HEELER_SSH_E2E_STALL_PORT \
@@ -168,7 +181,9 @@ for port in \
     "$jump_target_port" \
     "$jump_forwarding_denied_port" \
     "$pairing_port" \
-    "$password_port"; do
+    "$password_port" \
+    "$weak_network_port" \
+    "$weak_network_control_port"; do
     if nc -z 127.0.0.1 "$port" >/dev/null 2>&1; then
         echo "TCP port $port is already in use" >&2
         exit 1
@@ -431,6 +446,19 @@ ln -s \
     > "$fixture_dir/fake-herdr.log" 2>&1 &
 fake_herdr_pid=$!
 
+# The weak-network route. `pfctl`/`dummynet` need root and the Network Link
+# Conditioner is machine-wide, so degrade one TCP path instead: the suite
+# points its Host at this port and steers latency, bandwidth, fragmentation
+# and abrupt severance through the control port. Deterministic by construction
+# — every knob is a fixed duration or a byte count.
+/usr/bin/python3 scripts/fixtures/weak-network-proxy.py \
+    --listen-port "$weak_network_port" \
+    --control-port "$weak_network_control_port" \
+    --target-host 127.0.0.1 \
+    --target-port "$modern_port" \
+    > "$fixture_dir/weak-network.log" 2>&1 &
+weak_network_pid=$!
+
 start_unprivileged_sshd "$modern_config" "$fixture_dir/sshd-modern.log"
 modern_pid=$started_sshd_pid
 start_unprivileged_sshd "$legacy_config" "$fixture_dir/sshd-legacy.log"
@@ -535,6 +563,7 @@ fixture_pids=(
     "$pairing_pid"
     "$pairing_mismatched_pid"
     "$fake_herdr_pid"
+    "$weak_network_pid"
 )
 if [[ "$password_fixture_available" == "1" ]]; then
     fixture_pids+=("$password_pid")
@@ -550,6 +579,8 @@ fixture_ports=(
     "$jump_target_port"
     "$jump_forwarding_denied_port"
     "$pairing_port"
+    "$weak_network_port"
+    "$weak_network_control_port"
 )
 if [[ "$password_fixture_available" == "1" ]]; then
     fixture_ports+=("$password_port")
@@ -605,6 +636,8 @@ export HEELER_SSH_E2E_STALL_PORT="$stall_port"
 export HEELER_SSH_E2E_USERNAME="$fixture_username"
 export HEELER_SSH_E2E_DEVICE_KEY_SEED="$device_key_seed"
 export HEELER_SSH_E2E_STREAMLOCAL_SOCKET="$streamlocal_socket"
+export HEELER_SSH_E2E_WEAK_PORT="$weak_network_port"
+export HEELER_SSH_E2E_WEAK_CONTROL_PORT="$weak_network_control_port"
 
 password_fixture_json=null
 if [[ "$password_fixture_available" == "1" ]]; then
@@ -615,13 +648,15 @@ if [[ "$password_fixture_available" == "1" ]]; then
         "$password_secret")
 fi
 fixture_configuration=$(printf \
-    '{"host":"127.0.0.1","port":%s,"legacyPort":%s,"restrictedPort":%s,"stallPort":%s,"globalPolicyPort":%s,"keyPolicyPort":%s,"username":"%s","deviceKeySeed":"%s","passwordFixture":%s,"streamLocalSocketPath":"%s","socketPath":"%s","staleSocketPath":"%s","wakeFailureStaleSocketPath":"%s","missingSocketPath":"%s","countFilePath":"%s","homePath":"%s"}' \
+    '{"host":"127.0.0.1","port":%s,"legacyPort":%s,"restrictedPort":%s,"stallPort":%s,"globalPolicyPort":%s,"keyPolicyPort":%s,"weakNetworkPort":%s,"weakNetworkControlPort":%s,"username":"%s","deviceKeySeed":"%s","passwordFixture":%s,"streamLocalSocketPath":"%s","socketPath":"%s","staleSocketPath":"%s","wakeFailureStaleSocketPath":"%s","missingSocketPath":"%s","countFilePath":"%s","homePath":"%s"}' \
     "$modern_port" \
     "$legacy_port" \
     "$restricted_port" \
     "$stall_port" \
     "$streamlocal_global_policy_port" \
     "$streamlocal_key_policy_port" \
+    "$weak_network_port" \
+    "$weak_network_control_port" \
     "$fixture_username" \
     "$device_key_seed" \
     "$password_fixture_json" \
@@ -798,7 +833,9 @@ for variable in \
     HEELER_SSH_E2E_HOST \
     HEELER_SSH_E2E_PORT \
     HEELER_SSH_E2E_USERNAME \
-    HEELER_SSH_E2E_DEVICE_KEY_SEED; do
+    HEELER_SSH_E2E_DEVICE_KEY_SEED \
+    HEELER_SSH_E2E_WEAK_PORT \
+    HEELER_SSH_E2E_WEAK_CONTROL_PORT; do
     xcrun simctl spawn "$simulator_udid" launchctl setenv "$variable" "${!variable}"
 done
 
@@ -814,10 +851,12 @@ clear_simulator_environment
 
 if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || grep -q 'skipped:' "$package_e2e_log" \
-    || ! grep -q 'Test run with 15 tests in 2 suites passed' "$package_e2e_log" \
+    || ! grep -q 'Test run with 16 tests in 2 suites passed' "$package_e2e_log" \
     || ! grep -q 'Test "remote transport loss reclaims every owned native resource" passed' \
+        "$package_e2e_log" \
+    || ! grep -q 'Test "an abruptly severed weak link reclaims every owned native resource" passed' \
         "$package_e2e_log"; then
-    echo "The mandatory HeelerSSH package suites did not execute all fifteen tests" >&2
+    echo "The mandatory HeelerSSH package suites did not execute all sixteen tests" >&2
     exit 1
 fi
 
