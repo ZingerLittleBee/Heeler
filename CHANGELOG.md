@@ -22,6 +22,14 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- Hosts no longer need `socat`. Heeler now reaches herdr's socket over an SSH
+  stream-local forward instead of launching a remote helper per request, so
+  SSH access and a running herdr server are the whole prerequisite. The socat
+  path field is gone from Add/Edit Host, the onboarding checklist has dropped
+  its "socat installed" row, and existing Hosts carry over untouched — nothing
+  to reconfigure. If a Host's SSH server has stream-local forwarding turned
+  off (it is on by default), the checks now say so. (#122)
+
 - The app is now named **Heeler**: the home-screen name, the microphone and
   camera permission prompts, and the notification extension's display name
   all say Heeler instead of Herdr. herdr remains the name of the server it

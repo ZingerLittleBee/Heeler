@@ -127,8 +127,8 @@ turning either account into a general-purpose VPS login.
 - macOS Remote Login enabled for the intended Mac user.
 - A public-key login path that has been tested before password authentication
   is disabled anywhere.
-- `socat` and herdr installed on the Mac as described by the main transport
-  documentation.
+- herdr installed on the Mac, with its SSH server permitting stream-local
+  forwarding, as described by the main transport documentation.
 
 The examples use:
 
