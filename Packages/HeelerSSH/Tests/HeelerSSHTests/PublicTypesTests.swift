@@ -23,8 +23,11 @@ func publicSessionValuesPreserveTheirData() {
     #expect(result.reachedEOF)
 }
 
-@Test("Host Key algorithms preserve the NIOSSH prefix before modern RSA fallback")
-func hostKeyAlgorithmsPreserveNIOSSHOrder() {
+/// Frozen order, not a preference to tune: an existing algorithm-aware TOFU
+/// record must keep matching, so reordering these would present a stored Host
+/// as a key change (ADR 0011).
+@Test("Host Key algorithms preserve the migrated prefix before modern RSA fallback")
+func hostKeyAlgorithmsPreserveMigratedOrder() {
     #expect(SessionDriver.hostKeyAlgorithms == [
         "ssh-ed25519",
         "ecdsa-sha2-nistp384",
