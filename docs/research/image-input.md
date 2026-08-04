@@ -2,6 +2,15 @@
 
 Date: 2026-07-23
 
+> **Superseded in part, 2026-08-04.** The SSH backend named throughout this
+> review no longer exists. ADR 0011 replaced Citadel, NIOSSH, and SwiftNIO with
+> the repository-local `HeelerSSH` package (libssh2 + OpenSSL), and image
+> staging now runs over that package's SFTP client. The design conclusions below
+> — remote path, SFTP rather than the PTY, `Transport` as the boundary, shared
+> channel budget — all still hold; only the named dependency changed. Statements
+> about Citadel are kept as the record of what was true on 2026-07-23 and are
+> marked where they are now historical.
+
 ## Decision
 
 Image input is feasible without changing Attach into a file-transfer protocol.
@@ -37,7 +46,8 @@ binary transfer with terminal input.
 
 ## Current system findings
 
-- `Transport` is already the boundary between UI code and Citadel. The image
+- `Transport` is already the boundary between UI code and the SSH backend
+  (Citadel at the time of writing; `HeelerSSH` since ADR 0011). The image
   feature should extend that boundary rather than expose SFTP primitives.
 - `TerminalAttachSession` already carries one ordered stream of terminal input,
   output, and resize events. Image-path insertion should use that same input
@@ -45,8 +55,10 @@ binary transfer with terminal input.
 - `SSHTransport` reserves capacity for short request channels, events, and
   Attach under OpenSSH's usual session-channel limit. SFTP must acquire capacity
   from the same bounded pool.
-- Citadel 0.12.1 is pinned and provides an SFTP client with streamed writes. No
-  new SSH dependency is required.
+- The pinned SSH dependency already provides an SFTP client with streamed
+  writes, so no new SSH dependency is required. (This was Citadel 0.12.1 on
+  2026-07-23; it is `HeelerSSH`'s libssh2-backed `SSHSFTPClient` since
+  ADR 0011.)
 - The Attach keyboard accessory already has room for a system Paste control,
   and the embedded Ghostty view has an app-owned text-input seam.
 - iOS does not need a terminal `Ctrl+V` key. A system Paste control provides the
@@ -109,7 +121,7 @@ The concrete transport owns:
 - atomic rename to the final random filename;
 - validation of the returned absolute path.
 
-UI code never sees Citadel types, constructs remote commands, chooses remote
+UI code never sees SSH backend types, constructs remote commands, chooses remote
 paths, or manages SSH permits.
 
 `ImageAttachStore` owns the operation lifecycle:
@@ -395,7 +407,7 @@ inside `Attach Image`.
 ### Real SSH integration tests
 
 - macOS and Linux temporary-directory creation;
-- real Citadel SFTP streamed writes;
+- real SFTP streamed writes through the pinned SSH backend;
 - directory mode `0700` and file mode `0600`;
 - `.part` to final atomic rename;
 - current-operation compensation after failure and cancellation;
@@ -449,5 +461,6 @@ The MVP is ready when:
 - [Apple: UIPasteboard](https://developer.apple.com/documentation/uikit/uipasteboard/)
 - [RFC 4254: The Secure Shell Connection Protocol](https://datatracker.ietf.org/doc/html/rfc4254)
 - [Citadel SFTP client](https://github.com/orlandos-nl/Citadel/blob/ae8562f895de06ccb86fdb1cbb65fd99c8976e12/README.md#sftp-client)
+  (the SSH backend on 2026-07-23; replaced by `HeelerSSH` in ADR 0011)
 - [Herdr remote workflow](https://herdr.dev/docs/how-to-work/)
 - [Herdr clipboard bridge commit](https://github.com/ogulcancelik/herdr/commit/ed478be)
