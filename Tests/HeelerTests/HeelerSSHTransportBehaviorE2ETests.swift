@@ -460,25 +460,44 @@ struct HeelerSSHTransportBehaviorE2ETests {
         try await transport.replaceNotificationRegistration(previousLive)
         #expect(try await transport.readNotificationRegistration() == previousLive)
 
+        await transport.delayNextNotificationSFTPWriteForTesting(.seconds(10))
         let cancellation = Task {
             try await transport.replaceNotificationRegistration(
-                Data(repeating: 0x61, count: 32 * 1_024 * 1_024))
+                Data(repeating: 0x61, count: 1_024 * 1_024))
         }
-        try await Task.sleep(for: .milliseconds(5))
+        let writeEntryDeadline = ContinuousClock.now + .seconds(3)
+        var activeState = await transport.notificationFileStateForTesting()
+        while !activeState.writeIsDelayed, ContinuousClock.now < writeEntryDeadline {
+            try await Task.sleep(for: .milliseconds(10))
+            activeState = await transport.notificationFileStateForTesting()
+        }
+        try #require(activeState.writeIsDelayed)
+        #expect(activeState.activeClientCount == 1)
+        #expect(activeState.ordinarySessionCount == 1)
+        #expect(activeState.connectionChannelCount == 1)
+        #expect(activeState.temporaryPaths.count == 1)
+        let temporaryPath = try #require(activeState.temporaryPaths.first)
+
+        let cancellationStarted = ContinuousClock.now
         cancellation.cancel()
         await #expect(throws: TransportError.cancelled) {
             try await cancellation.value
         }
-        try? await transport.close()
+        #expect(cancellationStarted.duration(to: .now) < .seconds(5))
 
-        let verificationTransport = try await HeelerSSHTransport.connect(settings: settings)
-        defer { Task { try? await verificationTransport.close() } }
+        let settledState = await transport.notificationFileStateForTesting()
+        #expect(!settledState.writeIsDelayed)
+        #expect(settledState.activeClientCount == 0)
+        #expect(settledState.temporaryPaths.isEmpty)
+        #expect(settledState.ordinarySessionCount == 0)
+        #expect(settledState.connectionChannelCount == 0)
+        #expect(try await transport.readRemoteFileForTesting(at: temporaryPath) == nil)
         #expect(
-            try await verificationTransport.readNotificationRegistration() == previousLive)
+            try await transport.readNotificationRegistration() == previousLive)
 
-        _ = try await verificationTransport.listSessions()
+        _ = try await transport.listSessions()
         do {
-            try await verificationTransport.replaceNotificationRegistration(
+            try await transport.replaceNotificationRegistration(
                 Data("replacement".utf8))
             Issue.record("A failed atomic rename unexpectedly succeeded.")
         } catch let error as NotificationRegistrationError {
@@ -487,11 +506,11 @@ struct HeelerSSHTransportBehaviorE2ETests {
                 return
             }
         }
-        _ = try await verificationTransport.listSessions()
+        _ = try await transport.listSessions()
 
-        try await verificationTransport.close()
+        try await transport.close()
         do {
-            _ = try await verificationTransport.readNotificationRegistration()
+            _ = try await transport.readNotificationRegistration()
             Issue.record("A disconnected notification read unexpectedly succeeded.")
         } catch let error as NotificationRegistrationError {
             guard case .readFailed = error else {
@@ -500,7 +519,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
             }
         }
         do {
-            try await verificationTransport.replaceNotificationConfig(Data("{}".utf8))
+            try await transport.replaceNotificationConfig(Data("{}".utf8))
             Issue.record("A disconnected notification write unexpectedly succeeded.")
         } catch let error as NotificationRegistrationError {
             guard case .writeFailed = error else {

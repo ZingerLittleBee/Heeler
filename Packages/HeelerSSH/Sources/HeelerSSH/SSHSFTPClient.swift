@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// One SFTP subsystem channel owned by an authenticated SSH connection.
 ///
@@ -7,6 +8,7 @@ import Foundation
 public final class SSHSFTPClient: Sendable {
     private let id: UInt64
     private let driver: SessionDriver
+    private let closed = Mutex(false)
 
     init(id: UInt64, driver: SessionDriver) {
         self.id = id
@@ -72,6 +74,19 @@ public final class SSHSFTPClient: Sendable {
         try await driver.removeSFTPFile(id: id, path: path, timeout: timeout)
     }
 
+    /// Removes one exact operation-owned path during failure compensation.
+    /// This call ignores caller cancellation, verifies that the path is absent,
+    /// and remains bounded by `timeout`.
+    public func removeFileForCompensation(
+        at path: String,
+        timeout: Duration
+    ) async throws {
+        try await driver.removeSFTPFileForCompensation(
+            id: id,
+            path: path,
+            timeout: timeout)
+    }
+
     public func renameFileAtomically(
         from sourcePath: String,
         to destinationPath: String,
@@ -86,10 +101,22 @@ public final class SSHSFTPClient: Sendable {
 
     /// Closes only this SFTP subsystem channel. Idempotent.
     public func close(timeout: Duration) async throws {
+        let shouldClose = closed.withLock { closed in
+            guard !closed else { return false }
+            closed = true
+            return true
+        }
+        guard shouldClose else { return }
         try await driver.closeSFTP(id: id, timeout: timeout)
     }
 
     deinit {
+        let shouldClose = closed.withLock { closed in
+            guard !closed else { return false }
+            closed = true
+            return true
+        }
+        guard shouldClose else { return }
         let id = id
         let driver = driver
         Task { try? await driver.closeSFTP(id: id, timeout: .seconds(2)) }
@@ -101,6 +128,7 @@ public final class SSHSFTPFile: Sendable {
     private let sftpID: UInt64
     private let fileID: UInt64
     private let driver: SessionDriver
+    private let closed = Mutex(false)
 
     init(sftpID: UInt64, fileID: UInt64, driver: SessionDriver) {
         self.sftpID = sftpID
@@ -118,6 +146,12 @@ public final class SSHSFTPFile: Sendable {
 
     /// Closes only this file handle. Idempotent.
     public func close(timeout: Duration) async throws {
+        let shouldClose = closed.withLock { closed in
+            guard !closed else { return false }
+            closed = true
+            return true
+        }
+        guard shouldClose else { return }
         try await driver.closeSFTPFile(
             sftpID: sftpID,
             fileID: fileID,
@@ -125,6 +159,12 @@ public final class SSHSFTPFile: Sendable {
     }
 
     deinit {
+        let shouldClose = closed.withLock { closed in
+            guard !closed else { return false }
+            closed = true
+            return true
+        }
+        guard shouldClose else { return }
         let sftpID = sftpID
         let fileID = fileID
         let driver = driver

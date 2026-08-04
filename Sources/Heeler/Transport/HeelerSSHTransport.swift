@@ -15,6 +15,16 @@ private enum HeelerSSHNotificationFileError: Error, Sendable {
     case permissionVerificationFailed
 }
 
+#if DEBUG
+struct HeelerSSHNotificationFileStateForTesting: Sendable, Equatable {
+    let activeClientCount: Int
+    let temporaryPaths: [String]
+    let ordinarySessionCount: Int
+    let connectionChannelCount: Int
+    let writeIsDelayed: Bool
+}
+#endif
+
 private actor HeelerSSHNotificationFileCompletion {
     private var finished = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
@@ -210,6 +220,7 @@ actor HeelerSSHTransport: Transport {
     private var nextTerminalReaderID: UInt64 = 0
     private var imageStageClients: [UUID: SSHSFTPClient] = [:]
     private var notificationFileClients: [UUID: SSHSFTPClient] = [:]
+    private var notificationTemporaryPaths: [UUID: String] = [:]
 
     /// Establishes the libssh2 Transport through the same app-owned
     /// credentials and TOFU policy as the production connection path.
@@ -705,6 +716,7 @@ actor HeelerSSHTransport: Transport {
         }
         notificationFileClients[operationID] = sftp
         var temporaryPath: String? = "\(path).tmp-\(UUID().uuidString.lowercased())"
+        notificationTemporaryPaths[operationID] = temporaryPath
 
         do {
             try Task.checkCancellation()
@@ -726,11 +738,7 @@ actor HeelerSSHTransport: Transport {
                     at: currentTemporaryPath,
                     over: sftp)
                 if !contents.isEmpty {
-                    let timeout = requestTimeout
-                    let write = Task {
-                        try await file.write(contents, timeout: timeout)
-                    }
-                    try await write.value
+                    try await file.write(contents, timeout: requestTimeout)
                 }
                 try await file.close(timeout: requestTimeout)
             } catch {
@@ -754,17 +762,30 @@ actor HeelerSSHTransport: Transport {
                 to: path,
                 timeout: requestTimeout)
             temporaryPath = nil
+            notificationTemporaryPaths[operationID] = nil
+            try await sftp.close(timeout: .seconds(2))
             notificationFileClients[operationID] = nil
-            try? await sftp.close(timeout: .seconds(2))
         } catch {
-            notificationFileClients[operationID] = nil
+            let operationError = error
+            var compensationFailed = false
             if let temporaryPath {
-                await bestEffortRemoveNotificationTemporaryFile(
-                    at: temporaryPath,
-                    over: sftp)
+                do {
+                    try await removeNotificationTemporaryFile(
+                        at: temporaryPath,
+                        over: sftp)
+                } catch {
+                    compensationFailed = true
+                }
             }
+            notificationTemporaryPaths[operationID] = nil
             try? await sftp.close(timeout: .seconds(2))
-            throw try Self.notificationWriteError(error)
+            notificationFileClients[operationID] = nil
+            if !(await connection.isConnected) { connected = false }
+            if compensationFailed {
+                throw NotificationRegistrationError.writeFailed(
+                    detail: "The incomplete temporary file could not be removed safely.")
+            }
+            throw try Self.notificationWriteError(operationError)
         }
     }
 
@@ -780,30 +801,13 @@ actor HeelerSSHTransport: Transport {
         }
     }
 
-    private func bestEffortRemoveNotificationTemporaryFile(
+    private func removeNotificationTemporaryFile(
         at path: String,
         over currentSFTP: SSHSFTPClient
-    ) async {
-        let currentCleanup = Task {
-            do {
-                try await currentSFTP.removeFile(at: path, timeout: .seconds(2))
-                return true
-            } catch {
-                return false
-            }
-        }
-        if await currentCleanup.value { return }
-
-        let cleanup = Task {
-            try? await self.channelAdmission.withChannel(.ordinarySession) {
-                guard
-                    let sftp = try? await self.connection.openSFTP(timeout: .seconds(2))
-                else { return }
-                try? await sftp.removeFile(at: path, timeout: .seconds(2))
-                try? await sftp.close(timeout: .seconds(2))
-            }
-        }
-        await cleanup.value
+    ) async throws {
+        try await currentSFTP.removeFileForCompensation(
+            at: path,
+            timeout: .seconds(2))
     }
 
     private func withNotificationFileRequestDeadline<T: Sendable>(
@@ -822,15 +826,42 @@ actor HeelerSSHTransport: Transport {
                 }
             }
         } catch {
-            let cleanupWait = Task {
-                _ = try? await AsyncDeadline.run(for: .seconds(5)) {
-                    await completion.wait()
-                }
-            }
-            await cleanupWait.value
+            await completion.wait()
             throw error
         }
     }
+
+#if DEBUG
+    func delayNextNotificationSFTPWriteForTesting(_ delay: Duration) async {
+        await connection.delayNextSFTPWriteForTesting(delay)
+    }
+
+    func notificationFileStateForTesting() async -> HeelerSSHNotificationFileStateForTesting {
+        let admission = await channelAdmission.snapshot()
+        return HeelerSSHNotificationFileStateForTesting(
+            activeClientCount: notificationFileClients.count,
+            temporaryPaths: notificationTemporaryPaths.values.sorted(),
+            ordinarySessionCount: admission.ordinarySession,
+            connectionChannelCount: admission.connection,
+            writeIsDelayed: await connection.isSFTPWriteDelayedForTesting)
+    }
+
+    func readRemoteFileForTesting(at path: String) async throws -> Data? {
+        try await channelAdmission.withChannel(.ordinarySession) {
+            let sftp = try await self.connection.openSFTP(timeout: self.requestTimeout)
+            do {
+                let contents = try await sftp.readFileIfPresent(
+                    at: path,
+                    timeout: self.requestTimeout)
+                try await sftp.close(timeout: .seconds(2))
+                return contents
+            } catch {
+                try? await sftp.close(timeout: .seconds(2))
+                throw error
+            }
+        }
+    }
+#endif
 
     private func notificationPluginConfigDirectory() async throws -> String {
         try await notificationConfigDirectory.value {

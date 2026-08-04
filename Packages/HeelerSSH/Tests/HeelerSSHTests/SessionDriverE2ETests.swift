@@ -108,6 +108,13 @@ struct SessionDriverE2ETests {
         await #expect(throws: SSHError.sftpFailure(status: 2)) {
             _ = try await sftp.attributes(at: final, timeout: .seconds(5))
         }
+        try await sftp.removeFileForCompensation(
+            at: final,
+            timeout: .seconds(5))
+        #expect(
+            try await sftp.readFileIfPresent(
+                at: final,
+                timeout: .seconds(5)) == nil)
 
         try await sftp.close(timeout: .seconds(5))
         _ = try await connection.execute("rm -rf -- '\(root)'", timeout: .seconds(5))

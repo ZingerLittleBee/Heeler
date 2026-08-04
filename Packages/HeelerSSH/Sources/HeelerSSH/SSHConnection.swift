@@ -169,6 +169,16 @@ public final class SSHConnection: Sendable {
         get async { await driver.isReusable }
     }
 
+#if DEBUG
+    public func delayNextSFTPWriteForTesting(_ delay: Duration) async {
+        await driver.delayNextSFTPWriteForTesting(delay)
+    }
+
+    public var isSFTPWriteDelayedForTesting: Bool {
+        get async { await driver.isSFTPWriteDelayedForTesting }
+    }
+#endif
+
     public func close(timeout: Duration) async throws {
         var firstError: (any Error)?
         do {

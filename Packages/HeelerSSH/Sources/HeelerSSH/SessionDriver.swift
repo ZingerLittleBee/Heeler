@@ -65,6 +65,11 @@ actor SessionDriver {
     private var nextSFTPFileID: UInt64 = 0
     private var sftpClients: [UInt64: SFTPState] = [:]
 
+#if DEBUG
+    private var nextSFTPWriteDelayForTesting: Duration?
+    private var sftpWriteDelayIsActiveForTesting = false
+#endif
+
     // Actor reentrancy would otherwise allow a second task to call libssh2
     // while the first one is suspended on socket readiness.
     private var operationInProgress = false
@@ -1043,6 +1048,19 @@ actor SessionDriver {
         timeout: Duration
     ) async throws {
         guard !data.isEmpty else { return }
+#if DEBUG
+        if let delay = nextSFTPWriteDelayForTesting {
+            nextSFTPWriteDelayForTesting = nil
+            sftpWriteDelayIsActiveForTesting = true
+            do {
+                try await Task.sleep(for: delay)
+                sftpWriteDelayIsActiveForTesting = false
+            } catch {
+                sftpWriteDelayIsActiveForTesting = false
+                throw error
+            }
+        }
+#endif
         let deadline = ContinuousClock.now.advanced(by: timeout)
         var offset = 0
 
@@ -1119,20 +1137,94 @@ actor SessionDriver {
         path: String,
         timeout: Duration
     ) async throws {
+        try await removeSFTPFile(
+            id: id,
+            path: path,
+            timeout: timeout,
+            cancellable: true,
+            verifyAbsence: false)
+    }
+
+    func removeSFTPFileForCompensation(
+        id: UInt64,
+        path: String,
+        timeout: Duration
+    ) async throws {
+        do {
+            try await removeSFTPFile(
+                id: id,
+                path: path,
+                timeout: timeout,
+                cancellable: false,
+                verifyAbsence: true)
+        } catch {
+            let normalized = normalize(error)
+            // A failed compensating unlink leaves remote state uncertain. Do
+            // not admit later work on a connection that may still own it.
+            invalidateResources()
+            throw normalized
+        }
+    }
+
+    private func removeSFTPFile(
+        id: UInt64,
+        path: String,
+        timeout: Duration,
+        cancellable: Bool,
+        verifyAbsence: Bool
+    ) async throws {
         guard Self.isValidSFTPPath(path) else { throw SSHError.channelFailed }
         await acquireOperation()
         defer { releaseOperation() }
         guard valid, let session, let sftp = sftpClients[id]?.handle else {
             throw SSHError.connectionInvalidated
         }
+        let deadline = ContinuousClock.now.advanced(by: timeout)
         let result = try await repeatUntilComplete(
-            deadline: ContinuousClock.now.advanced(by: timeout)
+            deadline: deadline,
+            cancellable: cancellable
         ) {
             path.withCString { pathPointer in
                 libssh2_sftp_unlink_ex(sftp, pathPointer, UInt32(path.utf8.count))
             }
         }
-        try checkSFTPResult(result, sftp: sftp, session: session)
+        if result != 0 {
+            if Self.isConnectionLoss(result) { throw SSHError.connectionInvalidated }
+            let status = UInt64(libssh2_sftp_last_error(sftp))
+            guard verifyAbsence, status == UInt64(LIBSSH2_FX_NO_SUCH_FILE) else {
+                try checkSFTPResult(result, sftp: sftp, session: session)
+                return
+            }
+        }
+        guard verifyAbsence else {
+            try checkSFTPResult(result, sftp: sftp, session: session)
+            return
+        }
+
+        var attributes = LIBSSH2_SFTP_ATTRIBUTES()
+        let statResult = try await repeatUntilComplete(
+            deadline: deadline,
+            cancellable: false
+        ) {
+            path.withCString { pathPointer in
+                libssh2_sftp_stat_ex(
+                    sftp,
+                    pathPointer,
+                    UInt32(path.utf8.count),
+                    Int32(LIBSSH2_SFTP_STAT),
+                    &attributes)
+            }
+        }
+        if statResult == 0 { throw SSHError.channelFailed }
+        if Self.isConnectionLoss(statResult) { throw SSHError.connectionInvalidated }
+        let status = UInt64(libssh2_sftp_last_error(sftp))
+        guard status == UInt64(LIBSSH2_FX_NO_SUCH_FILE) else {
+            try checkSFTPResult(statResult, sftp: sftp, session: session)
+            return
+        }
+        guard valid, self.session == session else {
+            throw SSHError.connectionInvalidated
+        }
     }
 
     func renameSFTPFileAtomically(
@@ -1233,6 +1325,14 @@ actor SessionDriver {
     }
 
 #if DEBUG
+    func delayNextSFTPWriteForTesting(_ delay: Duration) {
+        nextSFTPWriteDelayForTesting = delay
+    }
+
+    var isSFTPWriteDelayedForTesting: Bool {
+        sftpWriteDelayIsActiveForTesting
+    }
+
     func resourceStateForTesting() -> SessionDriverResourceState {
         SessionDriverResourceState(
             hasSession: session != nil,
