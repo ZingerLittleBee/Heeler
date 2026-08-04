@@ -121,10 +121,15 @@ struct WeakNetworkE2ETests {
         try await waitUntil("the upload should report a transferred chunk") {
             await progressed.count > 0
         }
+        // Cancellation itself is honoured promptly even while the write is
+        // blocked on the link, and "promptly" is asserted rather than asserted
+        // in prose: the compensation path spends at most its two two-second
+        // SFTP closes, so anything approaching ten seconds means the cancel is
+        // waiting on the link instead of abandoning it.
+        let cancelledAt = ContinuousClock.now
         staging.cancel()
-        // Cancellation itself is honoured promptly and in bounded time even
-        // while the write is blocked on the link.
         await #expect(throws: ImageStagingError.cancelled) { _ = try await staging.value }
+        #expect(cancelledAt.duration(to: .now) < .seconds(10))
 
         try await fixture.control.apply(.degraded)
         // The reuse property is what a cancelled upload owes the rest of the
@@ -143,11 +148,22 @@ struct WeakNetworkE2ETests {
         // Deterministic in the link speed, not racy: fails 3/3 at 16 KiB/s,
         // passes 2/2 at 256 KiB/s, and passes 2/2 at 16 KiB/s when the link is
         // restored immediately before the cancel.
-        await withKnownIssue(
+        //
+        // The matcher admits only the invalidation itself. Without it the block
+        // would absorb any failure inside it — a ping that succeeded while
+        // reporting the wrong protocol version would go green as "the known
+        // issue", which is the opposite of what this records.
+        try await withKnownIssue(
             "cancelling a rate-starved upload invalidates the whole SSH session"
         ) {
             let server = try await transport.ping()
             #expect(server.protocolVersion == 17)
+        } matching: { issue in
+            guard
+                let error = issue.error as? TransportError,
+                case .sshUnreachable = error
+            else { return false }
+            return true
         }
         try? await transport.close()
     }
@@ -264,6 +280,7 @@ struct WeakNetworkE2ETests {
         // is not what this measures.
         try await exerciseOneRound(fixture: fixture)
         let baseline = OpenFileDescriptorCount.current
+        let before = try await fixture.control.stats()
         for _ in 0..<rounds {
             try await exerciseOneRound(fixture: fixture)
         }
@@ -276,8 +293,11 @@ struct WeakNetworkE2ETests {
         #expect(
             final <= baseline + 2,
             "descriptors grew from \(baseline) to \(final) across \(rounds) rounds")
-        let stats = try await fixture.control.stats()
-        #expect(stats.liveConnections == 0, "the proxy still holds \(stats.liveConnections)")
+        // A census over rounds that never opened anything would also be flat,
+        // so count the connections the proxy actually accepted: one per round,
+        // since every channel a round opens rides the same TCP connection.
+        let after = try await fixture.control.stats()
+        #expect(after.acceptedConnections - before.acceptedConnections == rounds)
     }
 
     private func exerciseOneRound(fixture: WeakNetworkFixture) async throws {

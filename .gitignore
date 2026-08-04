@@ -20,6 +20,10 @@ relay/.wrangler/
 relay/node_modules/
 *.p8
 
+# Python (test fixtures under scripts/fixtures)
+__pycache__/
+*.pyc
+
 # macOS
 .DS_Store
 

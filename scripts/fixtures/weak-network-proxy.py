@@ -86,10 +86,16 @@ class TokenBucket:
     def consume(self, count: int) -> None:
         if self.bytes_per_second <= 0:
             return
+        # The ceiling must admit the request itself. Clamping at one second's
+        # worth alone would make `available >= count` unreachable whenever a
+        # segment is larger than the per-second budget, and the loop would then
+        # sleep forever — wedging a pump thread, which no test deadline can
+        # interrupt. Today's profiles never ask for it; a future one might.
+        ceiling = max(float(self.bytes_per_second), float(count))
         while True:
             now = time.monotonic()
             self.available = min(
-                float(self.bytes_per_second),
+                ceiling,
                 self.available + (now - self.updated_at) * self.bytes_per_second,
             )
             self.updated_at = now

@@ -10,7 +10,11 @@ import Testing
         if: SessionDriverTestEnvironment.current != nil
             || SessionDriverTestEnvironment.isRequired,
         "requires the disposable sshd fixture"),
-    .serialized)
+    .serialized,
+    // Every test here is bounded by its own deadline, so anything that has not
+    // finished inside the limit is stalled and must fail rather than hang the
+    // runner out to the xcodebuild timeout.
+    .timeLimit(.minutes(2)))
 struct SessionDriverE2ETests {
     @Test("public connection resolves localhost before authenticating")
     func publicConnectionResolvesLocalhost() async throws {
@@ -110,7 +114,12 @@ struct SessionDriverE2ETests {
         let proxy = try #require(WeakNetworkProxyFixture.current)
         try await proxy.degrade()
         let endpoint = SSHEndpoint(host: environment.endpoint.host, port: proxy.port)
-        let rounds = 3
+        // Five rounds rather than three, holding the tolerance at two: that
+        // lifts the margin between "flat" and "leaking one per round" from one
+        // descriptor to three, without spending any of the flake budget that
+        // tightening the tolerance would. It also severs five sessions instead
+        // of three, which is the assertion this test exists for.
+        let rounds = 5
 
         // One warm-up round: the first connection allocates caches that never
         // come back, and that is not what the census measures.
@@ -391,6 +400,14 @@ private struct WeakNetworkProxyFixture: Sendable {
         let descriptor = socket(AF_INET, SOCK_STREAM, 0)
         guard descriptor >= 0 else { throw WeakNetworkProxyFixtureError.unreachable }
         defer { close(descriptor) }
+
+        // Bound the blocking calls: a control thread that never returns would
+        // leave a continuation un-resumed, which no test time limit can
+        // interrupt, hanging the run instead of failing it.
+        var limit = timeval(tv_sec: 5, tv_usec: 0)
+        let limitSize = socklen_t(MemoryLayout<timeval>.size)
+        setsockopt(descriptor, SOL_SOCKET, SO_RCVTIMEO, &limit, limitSize)
+        setsockopt(descriptor, SOL_SOCKET, SO_SNDTIMEO, &limit, limitSize)
 
         var address = sockaddr_in()
         address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)

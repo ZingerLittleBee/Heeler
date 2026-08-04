@@ -21,6 +21,12 @@
 
 set -euo pipefail
 
+# The gate must leave the worktree byte-identical: this workflow treats a clean
+# worktree as a verification precondition, so a stray `__pycache__` beside the
+# Python fixtures is a standing false signal. `.gitignore` covers it too; this
+# stops it being written in the first place.
+export PYTHONDONTWRITEBYTECODE=1
+
 modern_port=55222
 legacy_port=55223
 restricted_port=55224

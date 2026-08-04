@@ -5,7 +5,7 @@ import Foundation
 /// Every knob is a fixed duration or a byte count, so the same profile treats
 /// the link the same way on every run. `jitterMillis` is the only stochastic
 /// one and is drawn from `jitterSeed`, so it replays exactly too.
-struct WeakNetworkProfile: Sendable, Encodable, Equatable {
+struct WeakNetworkProfile: Sendable, Codable, Equatable {
     /// Delivery delay applied once to each chunk read off the source socket.
     var latencyMillis: Double = 0
     var jitterMillis: Double = 0
@@ -68,8 +68,21 @@ struct WeakNetworkProxyControl: Sendable {
 
     private static let queue = DispatchQueue(label: "dev.bybee.heeler.weak-network-control")
 
+    /// Puts a profile in force and proves it landed.
+    ///
+    /// A proxy that accepted the request and ignored it would look identical to
+    /// one that applied it, and four of the seven weak-network tests would pass
+    /// over an undegraded link. Comparing the echoed profile against what was
+    /// sent is what closes that: the impairment is verified, not assumed.
     func apply(_ profile: WeakNetworkProfile) async throws {
-        _ = try await send(ControlRequest(command: "profile", profile: profile))
+        let response = try await send(ControlRequest(command: "profile", profile: profile))
+        guard let applied = response.profile else {
+            throw WeakNetworkProxyError.rejected("the proxy echoed no profile")
+        }
+        guard applied == profile else {
+            throw WeakNetworkProxyError.rejected(
+                "the proxy applied \(applied) rather than \(profile)")
+        }
     }
 
     /// Restores pass-through forwarding and zeroes the byte counters.
@@ -123,6 +136,14 @@ struct WeakNetworkProxyControl: Sendable {
         }
         defer { close(descriptor) }
 
+        // Swift Testing cannot unblock a continuation that never resumes, so a
+        // wedged control thread would hang the whole run to the xcodebuild
+        // timeout rather than failing it. These bound that to five seconds.
+        var limit = timeval(tv_sec: 5, tv_usec: 0)
+        let limitSize = socklen_t(MemoryLayout<timeval>.size)
+        setsockopt(descriptor, SOL_SOCKET, SO_RCVTIMEO, &limit, limitSize)
+        setsockopt(descriptor, SOL_SOCKET, SO_SNDTIMEO, &limit, limitSize)
+
         var address = sockaddr_in()
         address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         address.sin_family = sa_family_t(AF_INET)
@@ -171,6 +192,7 @@ struct WeakNetworkProxyControl: Sendable {
     private struct ControlResponse: Decodable {
         var ok: Bool?
         var error: String?
+        var profile: WeakNetworkProfile?
         var cutConnections: Int?
         var acceptedConnections: Int?
         var liveConnections: Int?
