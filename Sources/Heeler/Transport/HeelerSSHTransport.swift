@@ -1454,13 +1454,18 @@ actor HeelerSSHTransport: Transport {
             return .malformedResponse("response line exceeds \(limit) bytes")
         case .authenticationFailed:
             return .authenticationFailed
-        case .streamLocalOpenFailed:
-            return .streamLocalOpenFailed(path: "<unknown>")
         case .connectionInvalidated:
             return .sshUnreachable(detail: "The SSH connection is no longer reusable.")
+        // `.streamLocalOpenFailed` falls here on purpose. Only
+        // `classifyStreamLocalOpenFailure` may produce the path-bearing
+        // `TransportError` of the same name, because only it knows the socket
+        // path and has run `test -S` against it. Both stream-local open sites
+        // catch the SSH error before reaching this generic mapper; were one to
+        // stop doing so, a diagnostic-free `.channelFailed` is honest where a
+        // fabricated path would not be.
         case .invalidEndpoint, .connectionFailed, .algorithmNegotiationFailed,
-            .channelFailed, .forwardingDenied, .targetUnreachable,
-            .sftpUnavailable, .sftpFailure:
+            .channelFailed, .streamLocalOpenFailed, .forwardingDenied,
+            .targetUnreachable, .sftpUnavailable, .sftpFailure:
             return .channelFailed(detail: String(describing: error))
         }
     }
