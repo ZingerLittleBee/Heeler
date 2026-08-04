@@ -15,8 +15,6 @@ struct WeakNetworkProfile: Sendable, Codable, Equatable {
     /// Largest single write onto the destination socket. Small values force
     /// the peer through many partial reads and EAGAIN cycles.
     var segmentBytes: Int = 0
-    var cutAfterBytesToServer: Int = 0
-    var cutAfterBytesToClient: Int = 0
 
     /// A link that is slow and choppy but still workable: roughly a poor
     /// mobile connection. Sized so the product's default 15 s request deadline

@@ -58,10 +58,6 @@ class Profile:
         # the peer through many partial reads and EAGAIN cycles, which is the
         # shape of link that has surfaced readiness bugs before.
         self.segment_bytes = int(values.get("segmentBytes", 0))
-        # Abrupt loss: RST the connection once this many bytes have crossed in
-        # that direction. 0 disables it.
-        self.cut_after_bytes_to_server = int(values.get("cutAfterBytesToServer", 0))
-        self.cut_after_bytes_to_client = int(values.get("cutAfterBytesToClient", 0))
 
     def describe(self) -> dict:
         return {
@@ -70,8 +66,6 @@ class Profile:
             "jitterSeed": self.jitter_seed,
             "bandwidthBytesPerSecond": self.bandwidth_bytes_per_second,
             "segmentBytes": self.segment_bytes,
-            "cutAfterBytesToServer": self.cut_after_bytes_to_server,
-            "cutAfterBytesToClient": self.cut_after_bytes_to_client,
         }
 
 
@@ -137,11 +131,15 @@ class Connection:
         self.close()
         self.proxy.forget(self)
 
-    def cut(self) -> None:
-        """Sever both halves abruptly, so the peer sees RST rather than EOF."""
+    def cut(self) -> bool:
+        """Severs both halves abruptly, so the peer sees RST rather than EOF.
+
+        Returns whether this call was the one that severed the connection, so a
+        second `cut` command over the same live set cannot count it twice.
+        """
         with self.lock:
             if self.is_cut:
-                return
+                return False
             self.is_cut = True
         linger = struct.pack("ii", 1, 0)
         for endpoint in (self.client, self.upstream):
@@ -153,6 +151,7 @@ class Connection:
                 endpoint.close()
             except OSError:
                 pass
+        return True
 
     def close(self) -> None:
         for endpoint in (self.client, self.upstream):
@@ -169,7 +168,6 @@ class Connection:
         # at a well-defined point instead of part-way through a write.
         bucket = TokenBucket(0)
         jitter = None
-        forwarded = 0
 
         while True:
             try:
@@ -188,12 +186,6 @@ class Connection:
                 bucket = TokenBucket(profile.bandwidth_bytes_per_second)
             if jitter is None:
                 jitter = random.Random(profile.jitter_seed + self.index)
-            limit = (
-                profile.cut_after_bytes_to_server
-                if direction == "toServer"
-                else profile.cut_after_bytes_to_client
-            )
-
             delay = profile.latency_millis
             if profile.jitter_millis > 0:
                 delay += jitter.uniform(0, profile.jitter_millis)
@@ -208,11 +200,7 @@ class Connection:
                     destination.sendall(segment)
                 except OSError:
                     return
-                forwarded += len(segment)
                 self.proxy.count(direction, len(segment))
-                if limit > 0 and forwarded >= limit:
-                    self.cut()
-                    return
 
 
 class Proxy:
@@ -326,10 +314,10 @@ class Proxy:
         if command == "cut":
             with self.lock:
                 live = list(self.connections)
-                self.cuts += len(live)
-            for connection in live:
-                connection.cut()
-            return {"ok": True, "cutConnections": len(live)}
+            severed = sum(1 for connection in live if connection.cut())
+            with self.lock:
+                self.cuts += severed
+            return {"ok": True, "cutConnections": severed}
         if command == "stats":
             with self.lock:
                 return {

@@ -112,7 +112,6 @@ struct SessionDriverE2ETests {
     func abruptWeakLinkLossReclaimsResources() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
         let proxy = try #require(WeakNetworkProxyFixture.current)
-        try await proxy.degrade()
         let endpoint = SSHEndpoint(host: environment.endpoint.host, port: proxy.port)
         // Five rounds rather than three, holding the tolerance at two: that
         // lifts the margin between "flat" and "leaking one per round" from one
@@ -121,20 +120,44 @@ struct SessionDriverE2ETests {
         // of three, which is the assertion this test exists for.
         let rounds = 5
 
-        // One warm-up round: the first connection allocates caches that never
-        // come back, and that is not what the census measures.
-        try await severOneSession(environment: environment, endpoint: endpoint, proxy: proxy)
-        let baseline = openFileDescriptorCount()
-        for _ in 0..<rounds {
-            try await severOneSession(environment: environment, endpoint: endpoint, proxy: proxy)
+        try await withDegradedLink(proxy) {
+            // One warm-up round: the first connection allocates caches that
+            // never come back, and that is not what the census measures.
+            try await severOneSession(
+                environment: environment, endpoint: endpoint, proxy: proxy)
+            let baseline = openFileDescriptorCount()
+            for _ in 0..<rounds {
+                try await severOneSession(
+                    environment: environment, endpoint: endpoint, proxy: proxy)
+            }
+            let final = openFileDescriptorCount()
+            print(
+                "[weak-network] driver descriptors: baseline \(baseline), "
+                    + "after \(rounds) severed sessions \(final)")
+            #expect(
+                final <= baseline + 2,
+                "descriptors grew from \(baseline) to \(final) across \(rounds) sessions")
         }
-        let final = openFileDescriptorCount()
-        print(
-            "[weak-network] driver descriptors: baseline \(baseline), "
-                + "after \(rounds) severed sessions \(final)")
-        #expect(
-            final <= baseline + 2,
-            "descriptors grew from \(baseline) to \(final) across \(rounds) severed sessions")
+    }
+
+    /// Runs `body` with the link degraded and always restores it afterwards.
+    ///
+    /// The proxy is process-wide and this suite is serialized, so a test that
+    /// throws part-way through would otherwise leave the next one running on a
+    /// degraded link — about the hardest cross-test contamination to diagnose.
+    /// A `defer` cannot do this job: restoring is asynchronous, and a detached
+    /// task might not have run by the time the next test starts.
+    private func withDegradedLink(
+        _ proxy: WeakNetworkProxyFixture,
+        _ body: () async throws -> Void
+    ) async throws {
+        try await proxy.degrade()
+        do {
+            try await body()
+        } catch {
+            try? await proxy.reset()
+            throw error
+        }
         try await proxy.reset()
     }
 
