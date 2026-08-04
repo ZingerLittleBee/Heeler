@@ -1322,7 +1322,12 @@ actor HeelerSSHTransport: Transport {
             } catch TransportError.timedOut {
                 throw TransportError.timedOut
             } catch {
-                throw TransportError.serverNotRunning(path: path)
+                // The wake is a recovery attempt, not a diagnostic: its exit
+                // status is evidence about the wake command, not about the
+                // socket. A Host can run herdr from a login shell while `herdr`
+                // is absent from the non-interactive PATH, so a failed wake
+                // says nothing new — the original classification stands.
+                throw TransportError.streamLocalOpenFailed(path: path)
             }
             return try await operation()
         }

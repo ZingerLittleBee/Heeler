@@ -35,12 +35,6 @@ struct TransportErrorPresentationTests {
                 + "check SSH stream-local forwarding.")
     }
 
-    @Test func serverNotRunningAvoidsSocketImplementationLanguage() {
-        #expect(
-            TransportError.serverNotRunning(path: "/tmp/herdr.sock").connectionGuidance
-                == "herdr is not running on this Host.")
-    }
-
     /// A server rejection reads as herdr's own sentence, not as a Swift value
     /// printed at the user.
     @Test func serverRejectionQuotesTheServersMessage() {

@@ -320,7 +320,12 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(try await transport.availableAgentKinds() == [.codex])
     }
 
-    @Test("stale socket wake retries once and preserves both failure types")
+    /// Three wake outcomes, one bound: a wake that works recovers the request,
+    /// and a wake that fails or changes nothing both surface the combined
+    /// cause. The two failing cases are kept apart deliberately — they exercise
+    /// different arms even though neither may narrow the classification the
+    /// socket handed us.
+    @Test("stale socket wake retries once and never narrows the failure")
     func staleSocketWakeIsBounded() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
         var recovering = environment.directSettings(
@@ -341,7 +346,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
         let failed = try await HeelerSSHTransport.connect(settings: failing)
         _ = try await failed.listSessions()
         await #expect(
-            throws: TransportError.serverNotRunning(
+            throws: TransportError.streamLocalOpenFailed(
                 path: environment.wakeFailureStaleSocketPath)
         ) {
             _ = try await failed.ping()
@@ -366,8 +371,8 @@ struct HeelerSSHTransportBehaviorE2ETests {
 
     /// The wake starts but never exits, as a wedged Host leaves it. The
     /// request must surface `.timedOut` at its own deadline rather than hang
-    /// on the wake — and must not launder the timeout into
-    /// `.serverNotRunning`, which would claim knowledge the Host never gave.
+    /// on the wake — and must not launder the timeout into the socket
+    /// classification, which would hide the deadline the Host never met.
     @Test("a hung wake command surfaces the timeout rather than a stopped server")
     func hungWakeSurfacesTimedOut() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)

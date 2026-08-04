@@ -523,9 +523,6 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// The herdr API socket path does not exist on the Host: herdr is not
     /// installed there, or the socket path is wrong.
     case socketNotFound(path: String)
-    /// The socket file exists but nothing accepts connections: the herdr
-    /// server is not running (cold-start wake is #6).
-    case serverNotRunning(path: String)
     /// libssh2 cannot distinguish a listening Unix socket rejected by SSH
     /// policy from a stale socket file. The Host needs either herdr started or
     /// stream-local forwarding enabled; presenting a narrower cause would be
@@ -564,7 +561,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
         switch self {
         // A rejection is retryable because herdr's error codes are open-ended
         // and most of them describe a target that moved, not a broken setup.
-        case .sshUnreachable, .serverNotRunning, .timedOut, .cancelled, .channelFailed,
+        case .sshUnreachable, .timedOut, .cancelled, .channelFailed,
             .apiRejected:
             true
         case .authenticationFailed, .tcpForwardingUnavailable,

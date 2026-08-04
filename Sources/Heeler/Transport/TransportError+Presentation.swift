@@ -17,8 +17,6 @@ extension TransportError {
             "The host key changed. Verify the machine before updating trust."
         case .socketNotFound:
             "The herdr socket was not found. Check this Host's session."
-        case .serverNotRunning:
-            "herdr is not running on this Host."
         case .streamLocalOpenFailed:
             "herdr is not running on this Host. If it is running, check SSH stream-local forwarding."
         case .protocolVersionMismatch(let server, let supported):
