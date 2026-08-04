@@ -55,48 +55,8 @@
       </CommandLineArguments>
       <EnvironmentVariables>
          <EnvironmentVariable
-            key = "HEELER_SSH_E2E_HOST"
-            value = "$(HEELER_SSH_E2E_HOST)"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-         <EnvironmentVariable
-            key = "HEELER_SSH_E2E_LEGACY_PORT"
-            value = "$(HEELER_SSH_E2E_LEGACY_PORT)"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-         <EnvironmentVariable
-            key = "HEELER_SSH_E2E_PASSWORD"
-            value = "$(HEELER_SSH_E2E_PASSWORD)"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-         <EnvironmentVariable
-            key = "HEELER_SSH_E2E_PORT"
-            value = "$(HEELER_SSH_E2E_PORT)"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-         <EnvironmentVariable
             key = "HEELER_SSH_E2E_REQUIRED"
             value = "$(HEELER_SSH_E2E_REQUIRED)"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-         <EnvironmentVariable
-            key = "HEELER_SSH_E2E_RESTRICTED_PORT"
-            value = "$(HEELER_SSH_E2E_RESTRICTED_PORT)"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-         <EnvironmentVariable
-            key = "HEELER_SSH_E2E_STALL_PORT"
-            value = "$(HEELER_SSH_E2E_STALL_PORT)"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-         <EnvironmentVariable
-            key = "HEELER_SSH_E2E_STREAMLOCAL_SOCKET"
-            value = "$(HEELER_SSH_E2E_STREAMLOCAL_SOCKET)"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-         <EnvironmentVariable
-            key = "HEELER_SSH_E2E_USERNAME"
-            value = "$(HEELER_SSH_E2E_USERNAME)"
             isEnabled = "YES">
          </EnvironmentVariable>
       </EnvironmentVariables>

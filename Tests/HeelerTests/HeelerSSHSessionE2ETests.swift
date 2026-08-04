@@ -426,17 +426,25 @@ private struct HeelerSSHTestEnvironment: Sendable {
     static var hasStallEndpoint: Bool { current?.stallEndpoint != nil }
     static var hasPasswordFixture: Bool { current?.passwordFixture != nil }
 
+    /// The whole fixture arrives as one base64 JSON blob from
+    /// `scripts/run-ci-ios-tests.sh`; there is deliberately no per-variable
+    /// fallback. The scheme forwards its test-environment allow-list as empty
+    /// strings when the invoking shell has not exported them, so a fallback
+    /// assembled out of individual variables could never see a Device Key seed
+    /// and was unreachable.
     static let current: HeelerSSHTestEnvironment? = {
         let environment = ProcessInfo.processInfo.environment
-        if
+        guard
             let encoded = environment["HEELER_SSH_E2E_CONFIG"],
             let data = Data(base64Encoded: encoded),
             let configuration = try? JSONDecoder().decode(
                 HeelerSSHTestConfiguration.self,
                 from: data),
             let deviceKey = try? RealSSHFixture.deviceKey(seed: configuration.deviceKeySeed)
-        {
-            return HeelerSSHTestEnvironment(
+        else {
+            return nil
+        }
+        return HeelerSSHTestEnvironment(
                 endpoint: SSHEndpoint(host: configuration.host, port: configuration.port),
                 legacyEndpoint: configuration.legacyPort.map {
                     SSHEndpoint(host: configuration.host, port: $0)
@@ -456,32 +464,6 @@ private struct HeelerSSHTestEnvironment: Sendable {
                         username: $0.username,
                         password: $0.password)
                 })
-        }
-        guard
-            let host = environment["HEELER_SSH_E2E_HOST"],
-            let portText = environment["HEELER_SSH_E2E_PORT"],
-            let port = UInt16(portText),
-            let username = environment["HEELER_SSH_E2E_USERNAME"],
-            let seed = environment["HEELER_SSH_E2E_DEVICE_KEY_SEED"],
-            let deviceKey = try? RealSSHFixture.deviceKey(seed: seed)
-        else {
-            return nil
-        }
-        return HeelerSSHTestEnvironment(
-            endpoint: SSHEndpoint(host: host, port: port),
-            legacyEndpoint: endpoint(
-                host: host,
-                port: environment["HEELER_SSH_E2E_LEGACY_PORT"]),
-            restrictedEndpoint: endpoint(
-                host: host,
-                port: environment["HEELER_SSH_E2E_RESTRICTED_PORT"]),
-            stallEndpoint: endpoint(
-                host: host,
-                port: environment["HEELER_SSH_E2E_STALL_PORT"]),
-            streamLocalSocketPath: environment["HEELER_SSH_E2E_STREAMLOCAL_SOCKET"],
-            username: username,
-            deviceKey: deviceKey,
-            passwordFixture: nil)
     }()
 
     func connect() async throws -> SSHConnection {
@@ -525,10 +507,6 @@ private struct HeelerSSHTestEnvironment: Sendable {
         }
     }
 
-    private static func endpoint(host: String, port: String?) -> SSHEndpoint? {
-        guard let port, let parsedPort = UInt16(port) else { return nil }
-        return SSHEndpoint(host: host, port: parsedPort)
-    }
 }
 
 private struct HeelerSSHTestConfiguration: Decodable {

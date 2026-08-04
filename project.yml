@@ -148,15 +148,13 @@ schemes:
     test:
       targets:
         - HeelerTests
+      # The only variable the app test process needs from the invoking shell.
+      # The fixture itself arrives through the Simulator's launchd environment
+      # as HEELER_SSH_E2E_CONFIG / HEELER_SSH_JUMP_E2E_CONFIG /
+      # HEELER_PAIRING_E2E_CONFIG, which must stay off this list: an entry here
+      # is forwarded unconditionally, substituting an empty string when the
+      # shell has not exported it, and would shadow the launchd value.
       environmentVariables:
         HEELER_SSH_E2E_REQUIRED: $(HEELER_SSH_E2E_REQUIRED)
-        HEELER_SSH_E2E_HOST: $(HEELER_SSH_E2E_HOST)
-        HEELER_SSH_E2E_PORT: $(HEELER_SSH_E2E_PORT)
-        HEELER_SSH_E2E_LEGACY_PORT: $(HEELER_SSH_E2E_LEGACY_PORT)
-        HEELER_SSH_E2E_RESTRICTED_PORT: $(HEELER_SSH_E2E_RESTRICTED_PORT)
-        HEELER_SSH_E2E_STALL_PORT: $(HEELER_SSH_E2E_STALL_PORT)
-        HEELER_SSH_E2E_STREAMLOCAL_SOCKET: $(HEELER_SSH_E2E_STREAMLOCAL_SOCKET)
-        HEELER_SSH_E2E_USERNAME: $(HEELER_SSH_E2E_USERNAME)
-        HEELER_SSH_E2E_PASSWORD: $(HEELER_SSH_E2E_PASSWORD)
     run:
       config: Debug
