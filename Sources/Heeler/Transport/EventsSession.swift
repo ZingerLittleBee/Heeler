@@ -389,6 +389,18 @@ actor EventsSession {
             var streamFailure: TransportError?
             do {
                 for try await event in stream.events {
+                    // Teardown cancels this task but deliberately does not
+                    // await it (see `windDown`), and a channel closed with
+                    // events still buffered delivers them before finishing.
+                    // Without this check those late events would be yielded
+                    // *after* the terminal `.suspended`/`.ended` status and,
+                    // under a full bounded buffer, shed it — breaking the
+                    // guarantee that a terminal transition is the last thing
+                    // the consumer sees. Discarding them is safe: `.suspended`
+                    // already declares everything since the last `.connected`
+                    // stale, and the `.connected` that follows a resume
+                    // obliges a fresh snapshot anyway.
+                    guard activationIsCurrent(generation) else { break }
                     noteConnectionActivity()
                     yieldUpdate(.event(event))
                 }
