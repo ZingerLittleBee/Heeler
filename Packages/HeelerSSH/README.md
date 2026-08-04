@@ -42,10 +42,9 @@ build switch for.
 
 `scripts/run-ci-ios-tests.sh` provisions disposable OpenSSH endpoints and a
 temporary Unix-socket fake herdr server, then runs the mandatory
-`HeelerSSHDirectStreamLocalE2ETests` suite. The fixture does not install or
-invoke socat. The suite includes a repeatable 25-exchange loopback benchmark;
-its output records local channel open, exchange, and close cost and is not a
-WAN latency promise.
+`HeelerSSHDirectStreamLocalE2ETests` suite. The suite includes a repeatable
+25-exchange loopback benchmark; its output records local channel open,
+exchange, and close cost and is not a WAN latency promise.
 
 ## Jump Host acceptance
 

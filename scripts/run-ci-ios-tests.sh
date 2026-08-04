@@ -581,7 +581,7 @@ xcodebuild test \
 
 if grep -q 'skipped:' "$streamlocal_log" \
     || ! grep -q "Test run with 11 tests in 1 suite passed" "$streamlocal_log"; then
-    echo "The mandatory no-socat direct-streamlocal suite did not execute all eleven tests" >&2
+    echo "The mandatory direct-streamlocal suite did not execute all eleven tests" >&2
     exit 1
 fi
 

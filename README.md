@@ -84,7 +84,7 @@ ciphertext (see [PRIVACY.md](PRIVACY.md)).
 ## Stack
 
 - SwiftUI, iOS 26+, iPhone + iPad
-- [Citadel](https://github.com/orlandos-nl/Citadel) for SSH
+- The repository-local `Packages/HeelerSSH` (libssh2 + OpenSSL) for SSH
 - [libghostty-spm](https://github.com/lakr233/libghostty-spm) for terminal emulation and Metal rendering
 
 See `docs/adr/` for why these choices were made (the transport story in particular is not obvious).

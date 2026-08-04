@@ -14,7 +14,8 @@
 # - The HeelerSSH session suite is mandatory in CI. The test script provisions
 #   disposable high-port sshd instances and a temporary unprivileged account,
 #   asserts that every real-sshd test ran, then cleans up both daemons and the
-#   account. Older Citadel e2e suites retain their local availability gates.
+#   account. The remaining locally-gated e2e suites skip cleanly without a
+#   local sshd and seeded key.
 # - Wire-type codegen drift is checked against a committed schema snapshot
 #   (scripts/herdr-schema.json), captured from herdr 0.7.4 via
 #   `herdr api schema --json`. CI has no herdr binary, so `--schema` feeds the

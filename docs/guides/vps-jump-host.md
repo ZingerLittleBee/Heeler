@@ -650,5 +650,5 @@ private key or another Mac credential.
 - [OpenSSH `sshd_config`](https://man.openbsd.org/sshd_config)
 - [OpenSSH `authorized_keys` options](https://man.openbsd.org/sshd#AUTHORIZED_KEYS_FILE_FORMAT)
 - [Apple: Allow a remote computer to access your Mac](https://support.apple.com/guide/mac-help/mchlp1066/mac)
-- [Transport ADR](../adr/0002-ssh-exec-socat-transport.md)
+- [Transport ADR](../adr/0011-libssh2-direct-streamlocal-transport.md)
 - [Pairing ADR](../adr/0007-pairing-via-herdr-plugin.md)

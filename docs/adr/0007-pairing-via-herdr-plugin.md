@@ -7,7 +7,7 @@ Decisions fixed during design:
 - **Plugin**: Node ≥ 20 (`node:crypto` exports the raw Ed25519 seed; `qrcode` renders without system dependencies; `npm ci` build), living in this repo under `plugin/`. Developed via `herdr plugin link`; publishing requires this repo to become public first.
 - **Pairing Code payload**: minimal and versioned — user-selected candidate addresses (enumerated, likely ones pre-checked), port, username, host key fingerprint, Bootstrap Key seed, expiry. No herdr session data; session discovery stays in preflight.
 - **Bootstrap Key**: single-use, 2-minute TTL, `restrict,command=` line pointing at the plugin's accept script; deleted on success, expiry, or stale-line sweep. Enrollment is fully automatic — no human confirmation on the computer — with the enrolled fingerprint displayed afterward and a one-key revoke as the compensating control.
-- **App**: scanning is the primary action when adding a Host; the manual form and copy-paste `authorized_keys` line remain the fallback. Pairing uses a dedicated one-shot client beside `SSHTransport`, which keeps its socat/herdr semantics.
+- **App**: scanning is the primary action when adding a Host; the manual form and copy-paste `authorized_keys` line remain the fallback. Pairing uses a dedicated one-shot client beside the Transport, which keeps its herdr socket semantics.
 - **Testing**: real-sshd e2e on both ends (the app exercises the actual accept script as a forced command) plus shared protocol test vectors consumed by both the Node and Swift implementations.
 
 ## Considered Options
