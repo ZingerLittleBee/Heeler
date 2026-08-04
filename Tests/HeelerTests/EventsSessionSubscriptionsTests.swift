@@ -270,6 +270,59 @@ struct EventsSessionSubscriptionsTests {
         await session.end()
     }
 
+    /// The opposite race, and the routine one on iOS: a quick
+    /// background→foreground bounce lands `resume()` while `suspend()`'s
+    /// teardown is still mid-flight. The session serializes lifecycle
+    /// transitions itself, so the teardown completes fully before the new
+    /// activation dials and the app layer never has to serialize its own
+    /// calls. The interleaving is deterministic because the transport's
+    /// `close()` is gated by the test, pinning `suspend()` inside its
+    /// teardown when `resume()` is issued.
+    @Test func resumeRacingIntoSuspendTeardownWaitsForTeardownToFinish() async throws {
+        let first = ScriptedTransport()
+        let second = ScriptedTransport()
+        let closeGate = ScriptedTransportCallGate()
+        await first.gateNextClose(using: closeGate)
+        let connector = SequencedTransportConnector([first, second])
+        let session = EventsSession(
+            subscriptions: initial,
+            connect: { try await connector.connect() },
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .milliseconds(10), multiplier: 2, maxDelay: .milliseconds(50)),
+            keepalive: nil)
+        var updates = session.updates.makeAsyncIterator()
+
+        await session.resume()
+        #expect(await updates.next() == .status(.connected))
+
+        let suspending = Task { await session.suspend() }
+        try await waitUntil("the teardown should park inside the transport close") {
+            await closeGate.entryCount == 1
+        }
+        let resuming = Task { await session.resume() }
+        // The bounce must not jump the queue: no new dial while the teardown
+        // is parked at the gated close.
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(await connector.connectCount == 1)
+
+        await closeGate.open()
+        await suspending.value
+        await resuming.value
+
+        #expect(await updates.next() == .status(.suspended))
+        #expect(await updates.next() == .status(.connected))
+        #expect(await connector.connectCount == 2)
+        #expect(await first.isClosed)
+        #expect(await !second.isClosed)
+
+        // The run loop reference survived the bounce: end() still tears the
+        // second transport down — nothing leaks.
+        await session.end()
+        #expect(await updates.next() == .status(.ended))
+        #expect(await updates.next() == nil)
+        #expect(await second.isClosed)
+    }
+
     private func waitUntil(
         _ message: String,
         timeout: Duration = .seconds(2),
