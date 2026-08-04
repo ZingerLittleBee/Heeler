@@ -676,7 +676,7 @@ actor HeelerSSHTransport: Transport {
         do {
             sftp = try await connection.openSFTP(timeout: requestTimeout)
         } catch {
-            throw try Self.notificationReadError(error)
+            try Self.notificationReadError(error)
         }
         notificationFileClients[operationID] = sftp
 
@@ -698,7 +698,7 @@ actor HeelerSSHTransport: Transport {
         } catch {
             notificationFileClients[operationID] = nil
             try? await sftp.close(timeout: .seconds(2))
-            throw try Self.notificationReadError(error)
+            try Self.notificationReadError(error)
         }
     }
 
@@ -712,7 +712,7 @@ actor HeelerSSHTransport: Transport {
         do {
             sftp = try await connection.openSFTP(timeout: requestTimeout)
         } catch {
-            throw try Self.notificationWriteError(error)
+            try Self.notificationWriteError(error)
         }
         notificationFileClients[operationID] = sftp
         var temporaryPath: String? = "\(path).tmp-\(UUID().uuidString.lowercased())"
@@ -785,7 +785,7 @@ actor HeelerSSHTransport: Transport {
                 throw NotificationRegistrationError.writeFailed(
                     detail: "The incomplete temporary file could not be removed safely.")
             }
-            throw try Self.notificationWriteError(operationError)
+            try Self.notificationWriteError(operationError)
         }
     }
 
