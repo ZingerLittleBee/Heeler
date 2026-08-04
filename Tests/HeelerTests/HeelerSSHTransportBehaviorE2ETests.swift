@@ -830,6 +830,12 @@ struct HeelerSSHTransportBehaviorEnvironment: Sendable {
     let jumpPort: UInt16
     let targetHost: String
     let targetPort: UInt16
+    /// The unprivileged impairment proxy in front of the direct fixture sshd,
+    /// and the control port that steers it. Optional in the wire format so an
+    /// older fixture still decodes; the weak-network suite `#require`s them, so
+    /// under the merge gate a fixture without a proxy fails rather than skips.
+    let weakNetworkPort: UInt16?
+    let weakNetworkControlPort: UInt16?
 
     static let current: HeelerSSHTransportBehaviorEnvironment? = {
         guard
@@ -853,7 +859,9 @@ struct HeelerSSHTransportBehaviorEnvironment: Sendable {
             homePath: direct.homePath,
             jumpPort: jump.jumpPort,
             targetHost: jump.targetHost,
-            targetPort: jump.targetPort)
+            targetPort: jump.targetPort,
+            weakNetworkPort: direct.weakNetworkPort,
+            weakNetworkControlPort: direct.weakNetworkControlPort)
     }()
 
     /// The fixture authorizes one throwaway Device Key. Everything but the two
@@ -885,6 +893,21 @@ struct HeelerSSHTransportBehaviorEnvironment: Sendable {
                 port: Int(jumpPort),
                 username: username,
                 credentials: credentials),
+            socket: socket)
+    }
+
+    /// The same direct fixture reached through the impairment proxy, so the
+    /// whole SSH byte stream — RPC, SFTP, PTY and the forwarded herdr socket
+    /// alike — crosses a link the test controls.
+    func weakNetworkSettings(
+        port: UInt16,
+        socket: HerdrSocketLocation? = nil
+    ) -> SSHTransportSettings {
+        settings(
+            host: host,
+            port: port,
+            credentials: credentials,
+            jump: nil,
             socket: socket)
     }
 
@@ -1004,6 +1027,8 @@ struct HeelerSSHTransportBehaviorEnvironment: Sendable {
         let wakeFailureStaleSocketPath: String
         let countFilePath: String
         let homePath: String
+        let weakNetworkPort: UInt16?
+        let weakNetworkControlPort: UInt16?
     }
 
     private struct JumpFixture: Decodable {

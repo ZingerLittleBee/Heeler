@@ -795,6 +795,7 @@ run_suite HeelerSSHDirectStreamLocalE2ETests 11 1
 run_suite HeelerSSHJumpHostGateE2ETests 9 1
 run_suite HeelerSSHTransportBehaviorE2ETests 30 1
 run_suite ImageStagingE2ETests 7 1
+run_suite WeakNetworkE2ETests 7 1
 run_suite PairingCeremonyE2ETests 11 1
 
 if [[ "$password_fixture_available" == "1" ]]; then
@@ -827,6 +828,24 @@ assert_behavior "timeout" HeelerSSHDirectStreamLocalE2ETests \
     '"timeout closes only its channel and preserves connection reuse"'
 assert_behavior "teardown" HeelerSSHSessionE2ETests \
     '"clean channel close leaves the connection reusable"'
+
+# The weak-network half of the stress criterion. Each of these runs the named
+# behaviour over the impairment proxy — added latency, a bandwidth cap,
+# fragmentation, and abrupt severance — rather than over loopback at full speed.
+assert_behavior "weak-network concurrent RPCs" WeakNetworkE2ETests \
+    '"concurrent RPCs survive latency, a bandwidth cap, and fragmentation"'
+assert_behavior "weak-network Events, Attach and SFTP staging" WeakNetworkE2ETests \
+    '"Events and Attach stay live while SFTP stages over a degraded link"'
+assert_behavior "weak-network cancellation" WeakNetworkE2ETests \
+    '"cancelling a rate-starved upload frees only its own channel"'
+assert_behavior "weak-network timeout" WeakNetworkE2ETests \
+    '"bandwidth starvation times out instead of wedging the connection"'
+assert_behavior "weak-network reconnect" WeakNetworkE2ETests \
+    '"an abruptly severed link surfaces and a fresh connection recovers"'
+assert_behavior "weak-network app lifecycle" WeakNetworkE2ETests \
+    '"the events session survives a cut and a background round trip"'
+assert_behavior "weak-network descriptor reclamation" WeakNetworkE2ETests \
+    '"repeated degraded rounds reclaim every file descriptor"'
 
 for variable in \
     HEELER_SSH_E2E_REQUIRED \
