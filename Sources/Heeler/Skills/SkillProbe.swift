@@ -3,7 +3,7 @@ import Foundation
 /// The one-round-trip skills probe: builds the exec command that walks a
 /// kind's source directories and parses its marker-framed output back into
 /// `AgentSkill`s. Markers keep login-shell noise harmless, exactly like the
-/// socat and agent-availability probes.
+/// home-directory and agent-availability probes.
 enum SkillProbe {
     /// File markers carry the source's index so the parser can map each file
     /// back to its scope and command prefix: `__HEELER_SKILL_3__=path`.

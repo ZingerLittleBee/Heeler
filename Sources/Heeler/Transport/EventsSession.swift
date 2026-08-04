@@ -29,8 +29,9 @@ struct ReconnectPolicy: Sendable, Equatable {
 /// exposes no SSH-specific keepalive machinery, so the session pings herdr
 /// over the ordinary RPC path instead — which is also the stronger check: it
 /// generates SSH traffic that keeps NAT mappings alive, is bounded by the
-/// per-request deadline, and exercises the whole path (SSH + socat + herdr),
-/// so a dead connection is detected within interval + request timeout.
+/// per-request deadline, and exercises the whole path (SSH + the forwarded
+/// socket + herdr), so a dead connection is detected within interval +
+/// request timeout.
 struct KeepalivePolicy: Sendable, Equatable {
     /// Idle time between pings while the events channel is live. Pings are
     /// skipped while real traffic within the interval — a successful RPC or

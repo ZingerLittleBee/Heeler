@@ -610,8 +610,8 @@ xcodebuild test \
     2>&1 | tee "$transport_behavior_log"
 
 if grep -q 'skipped:' "$transport_behavior_log" \
-    || ! grep -q "Test run with 26 tests in 1 suite passed" "$transport_behavior_log"; then
-    echo "The mandatory HeelerSSH Transport suite did not execute all twenty-six tests" >&2
+    || ! grep -q "Test run with 28 tests in 1 suite passed" "$transport_behavior_log"; then
+    echo "The mandatory HeelerSSH Transport suite did not execute all twenty-eight tests" >&2
     exit 1
 fi
 

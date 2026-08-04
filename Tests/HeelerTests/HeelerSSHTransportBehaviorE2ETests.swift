@@ -42,6 +42,22 @@ struct HeelerSSHTransportBehaviorE2ETests {
         try await exerciseOrdinaryRPCs(settings: environment.jumpSettings())
     }
 
+    /// The ADR 0011 Host contract in one test: SSH access plus a running herdr.
+    /// Nothing here is injected — the catalog Host maps straight onto production
+    /// settings, so the connection resolves the default-session socket over the
+    /// real home probe and reaches herdr with no socat anywhere in the path.
+    @Test("the production connector reaches a direct Host with no socat configured")
+    func productionConnectorReachesADirectHostWithoutSocat() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        try await exerciseProductionConnector(host: environment.directHost())
+    }
+
+    @Test("the production connector reaches a Jump Host target with no socat configured")
+    func productionConnectorReachesAJumpHostWithoutSocat() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        try await exerciseProductionConnector(host: environment.jumpHost())
+    }
+
     @Test("direct Host notification files preserve atomic SFTP behavior")
     func directNotificationFiles() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
@@ -368,6 +384,21 @@ struct HeelerSSHTransportBehaviorE2ETests {
         }
         let after = try await connectionCount(from: transport)
         #expect(after - before == 12)
+    }
+
+    private func exerciseProductionConnector(host: Host) async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let settings = SSHTransportSettings(
+            host: host,
+            credentials: .password(environment.password),
+            hostKeyPolicy: HostKeyPolicy(knownHosts: InMemoryKnownHostsStore()) { _ in true })
+
+        let transport = try await SSHTransportConnector().connect(settings: settings)
+        defer { Task { try? await transport.close() } }
+
+        #expect(transport is HeelerSSHTransport)
+        #expect(try await transport.ping() == ServerInfo(version: "fake", protocolVersion: 17))
+        #expect(try await transport.listAgents().isEmpty)
     }
 
     private func exerciseOrdinaryRPCs(settings: SSHTransportSettings) async throws {
@@ -749,6 +780,31 @@ struct HeelerSSHTransportBehaviorEnvironment: Decodable, Sendable {
                 username: username,
                 credentials: credentials),
             socket: socket)
+    }
+
+    /// A catalog Host for the direct fixture, exactly as onboarding would save
+    /// it: a blank session name resolves the default socket over the Host's own
+    /// home directory.
+    func directHost() -> Host {
+        Host(
+            name: "Fixture",
+            address: host,
+            port: Int(port),
+            username: username,
+            authMethod: .password)
+    }
+
+    /// The same fixture reached through the Jump Host hop. Both hops share the
+    /// account and credential, which is what the Host model already assumes.
+    func jumpHost() -> Host {
+        Host(
+            name: "Fixture behind a Jump Host",
+            address: targetHost,
+            port: Int(targetPort),
+            username: username,
+            authMethod: .password,
+            jumpAddress: host,
+            jumpPort: Int(jumpPort))
     }
 
     private func settings(
