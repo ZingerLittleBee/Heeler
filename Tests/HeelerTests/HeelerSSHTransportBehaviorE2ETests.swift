@@ -74,6 +74,46 @@ struct HeelerSSHTransportBehaviorE2ETests {
             homePath: environment.homePath)
     }
 
+    /// "Not installed" is a recoverable instruction to the user; anything else
+    /// is a Host problem. Collapsing the two would tell someone to install a
+    /// plugin that is already there, so every way the probe can fail stays
+    /// distinct from absence.
+    @Test("a disabled or unprobeable notification plugin stays distinguishable")
+    func notificationPluginProbeFailuresStayTyped() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+
+        // Installed but switched off: herdr will not run it, so it counts as
+        // not installed rather than as a broken Host.
+        var disabled = environment.directSettings()
+        disabled.pluginListCommand =
+            "printf '%s' '{\"id\":\"cli:plugin\",\"result\":{\"plugins\":["
+            + "{\"plugin_id\":\"heeler.pairing\",\"enabled\":false}]}}'"
+        #expect(
+            try await notificationRegistrationFailure(settings: disabled)
+                == .pluginNotInstalled)
+
+        // herdr missing from the Host's PATH: the probe exits nonzero.
+        var missingBinary = environment.directSettings()
+        missingBinary.pluginListCommand = "/nonexistent/herdr plugin list --json"
+        try await expectPluginProbeFailure(
+            settings: missingBinary, "a Host without herdr on PATH")
+
+        // The probe runs and succeeds but answers with something that is not
+        // a plugin list.
+        var unparseable = environment.directSettings()
+        unparseable.pluginListCommand = "printf '%s' 'herdr: not json'"
+        try await expectPluginProbeFailure(
+            settings: unparseable, "an unparseable plugin list")
+
+        // The plugin resolves, but the config-directory probe answers without
+        // its marker, so there is no directory to trust.
+        var unmarkedDirectory = environment.directSettings()
+        unmarkedDirectory.pluginListCommand = Self.installedPluginListCommand
+        unmarkedDirectory.notificationConfigDirCommand = "printf 'no marker here\\n'"
+        try await expectPluginProbeFailure(
+            settings: unmarkedDirectory, "a config directory probe without its marker")
+    }
+
     @Test("direct Host Events preserve framing, concurrency, and slot reuse")
     func directEventsStream() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
@@ -321,6 +361,31 @@ struct HeelerSSHTransportBehaviorE2ETests {
             _ = try await unrecovered.ping()
         }
         try await unrecovered.close()
+    }
+
+    /// The wake starts but never exits, as a wedged Host leaves it. The
+    /// request must surface `.timedOut` at its own deadline rather than hang
+    /// on the wake — and must not launder the timeout into
+    /// `.serverNotRunning`, which would claim knowledge the Host never gave.
+    @Test("a hung wake command surfaces the timeout rather than a stopped server")
+    func hungWakeSurfacesTimedOut() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let socketPath = environment.wakeFailureStaleSocketPath
+        var resetting = environment.directSettings(socket: .absolutePath(socketPath))
+        resetting.sessionListCommand = environment.resetStaleSocketCommand(socketPath)
+        let reset = try await HeelerSSHTransport.connect(settings: resetting)
+        _ = try await reset.listSessions()
+        try await reset.close()
+
+        var settings = environment.directSettings(socket: .absolutePath(socketPath))
+        settings.wakeCommand = "sleep 600"
+        settings.requestTimeout = .seconds(2)
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        defer { Task { try? await transport.close() } }
+
+        let started = ContinuousClock.now
+        await #expect(throws: TransportError.timedOut) { _ = try await transport.ping() }
+        #expect(started.duration(to: .now) < .seconds(30))
     }
 
     @Test("a missing socket is distinguished without attempting wake")
@@ -709,6 +774,40 @@ struct HeelerSSHTransportBehaviorE2ETests {
         let skill = try #require(skills.first { $0.name == "fixture" })
         #expect(skill.path == "\(homePath)/.codex/skills/fixture/SKILL.md")
         #expect(try await transport.readSkillFile(atPath: skill.path).contains("Fixture body."))
+    }
+
+    private static let installedPluginListCommand =
+        "printf '%s' '{\"id\":\"cli:plugin\",\"result\":{\"plugins\":["
+        + "{\"plugin_id\":\"heeler.pairing\",\"enabled\":true}]}}'"
+
+    /// The `NotificationRegistrationError` a registration read raises on a
+    /// Host connected with `settings`, or nil if the read succeeded.
+    private func notificationRegistrationFailure(
+        settings: SSHTransportSettings
+    ) async throws -> NotificationRegistrationError? {
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        defer { Task { try? await transport.close() } }
+        do {
+            _ = try await transport.readNotificationRegistration()
+            return nil
+        } catch let error as NotificationRegistrationError {
+            return error
+        }
+    }
+
+    private func expectPluginProbeFailure(
+        settings: SSHTransportSettings,
+        _ subject: String
+    ) async throws {
+        let failure = try await notificationRegistrationFailure(settings: settings)
+        let error = try #require(
+            failure,
+            Comment(rawValue: "\(subject) must not read as success"))
+        guard case .pluginProbeFailed = error else {
+            Issue.record(
+                Comment(rawValue: "\(subject) expected pluginProbeFailed, got \(error)"))
+            return
+        }
     }
 
     private func connectionCount(from transport: HeelerSSHTransport) async throws -> Int {
