@@ -797,7 +797,7 @@ if [[ "$password_fixture_available" != "1" ]]; then
 fi
 run_suite HeelerSSHSessionE2ETests 14 1 "$session_skip_count"
 run_suite HeelerSSHPTYE2ETests 3 1
-run_suite HeelerSSHDirectStreamLocalE2ETests 11 1
+run_suite HeelerSSHDirectStreamLocalE2ETests 12 1
 run_suite HeelerSSHJumpHostGateE2ETests 9 1
 run_suite HeelerSSHTransportBehaviorE2ETests 30 1
 run_suite ImageStagingE2ETests 7 1
@@ -828,6 +828,9 @@ assert_behavior "forwarding denial" HeelerSSHDirectStreamLocalE2ETests \
     '"global forwarding denial reports the honest combined cause"'
 assert_behavior "key-policy forwarding denial" HeelerSSHDirectStreamLocalE2ETests \
     '"authorized_keys forwarding denial reports the honest combined cause"'
+assert_behavior "forwarding denial surviving a failed wake" \
+    HeelerSSHDirectStreamLocalE2ETests \
+    '"a failed wake does not narrow a forwarding denial"'
 assert_behavior "cancellation" HeelerSSHDirectStreamLocalE2ETests \
     '"cancellation closes only its channel and preserves connection reuse"'
 assert_behavior "timeout" HeelerSSHDirectStreamLocalE2ETests \

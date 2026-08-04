@@ -176,6 +176,33 @@ struct HeelerSSHDirectStreamLocalE2ETests {
         try await transport.close()
     }
 
+    /// The two denial tests above let the wake succeed, so they prove only that
+    /// a wake which cannot help leaves the classification alone. This pins the
+    /// pairing that actually ships: forwarding denied by policy *and* the wake
+    /// itself failing, which is what a Host whose herdr is absent from the
+    /// non-interactive PATH does every time. The wake is a recovery attempt, so
+    /// its exit status is no evidence about the socket and must not narrow the
+    /// combined cause. `staleSocketWakeIsBounded` covers the same wake arms
+    /// against a stale-socket fixture, where there is no policy denial to lose.
+    @Test("a failed wake does not narrow a forwarding denial")
+    func failedWakeKeepsTheForwardingDenial() async throws {
+        let environment = try #require(DirectStreamLocalTestEnvironment.current)
+        // An unresolvable absolute path: the fixture forces a `herdr` stub onto
+        // the session PATH, so only bypassing PATH entirely reproduces "herdr
+        // is not reachable from a non-interactive shell" deterministically.
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.settings(
+                endpoint: environment.globalPolicyEndpoint,
+                wakeCommand: "/nonexistent/herdr remote-client-bridge"))
+
+        await #expect(
+            throws: TransportError.streamLocalOpenFailed(path: environment.socketPath)
+        ) {
+            _ = try await transport.ping()
+        }
+        try await transport.close()
+    }
+
     /// The spike measured both transports on loopback over the same
     /// authenticated session: 22.368 ms per exchange through `exec` + `socat`
     /// against 0.514 ms through direct-streamlocal (spec #110, ADR 0011,
@@ -239,6 +266,25 @@ private struct DirectStreamLocalTestEnvironment: Decodable, Sendable {
         }
         return try? JSONDecoder().decode(DirectStreamLocalTestEnvironment.self, from: data)
     }()
+
+    /// Reaches a fixture through the full `connect(settings:)` path, which —
+    /// unlike `HeelerSSHTransport(connection:socketPath:)`, which hardcodes the
+    /// wake command — lets a test choose how the cold-start wake behaves.
+    func settings(
+        endpoint: SSHEndpoint,
+        wakeCommand: String
+    ) throws -> SSHTransportSettings {
+        var settings = SSHTransportSettings(
+            host: endpoint.host,
+            port: Int(endpoint.port),
+            username: username,
+            credentials: .ed25519(try RealSSHFixture.deviceKey(seed: deviceKeySeed)),
+            hostKeyPolicy: HostKeyPolicy(knownHosts: InMemoryKnownHostsStore()) { _ in true },
+            socket: .absolutePath(socketPath),
+            jump: nil)
+        settings.wakeCommand = wakeCommand
+        return settings
+    }
 
     func deviceKeyConnection(to endpoint: SSHEndpoint) async throws -> SSHConnection {
         let deviceKey = DeviceKey(privateKey: try RealSSHFixture.deviceKey(seed: deviceKeySeed))
