@@ -191,6 +191,42 @@ struct WeakNetworkE2ETests {
         try await transport.close()
     }
 
+    /// `EventsSession.ensureTransport` chooses between resubscribing in place
+    /// and redialling on this one property. If it stays true on a dead
+    /// connection, Events resubscribes forever onto nothing — the failure
+    /// User Story 11 exists to prevent. Every other assertion of it in the repo
+    /// is positive, so nothing pinned the transition until this test.
+    @Test("a severed link makes the transport report itself disconnected")
+    func severedLinkReportsTheTransportDisconnected() async throws {
+        let fixture = try #require(WeakNetworkFixture.current)
+        try await fixture.control.reset()
+        try await fixture.control.apply(.degraded)
+
+        var settings = fixture.settings()
+        settings.requestTimeout = .seconds(10)
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        // Anti-vacuity. A property that were false from birth would satisfy the
+        // closing assertion for free, so pin it true on arrival and again after
+        // traffic that proves the connection genuinely came up.
+        #expect(await transport.isConnected)
+        #expect(try await transport.ping().protocolVersion == 17)
+        #expect(await transport.isConnected)
+
+        // Guarded: a cut that severed nothing would leave the rest of this
+        // test asserting against a perfectly healthy link.
+        #expect(try await fixture.control.cut() > 0)
+        // Path-dependent, so the case is deliberately not pinned — only that
+        // the dead link stops the request.
+        await #expect(throws: (any Error).self) { _ = try await transport.ping() }
+
+        // No `close()` above this line, and that absence is the test. The
+        // property must go false because the SSH layer died, not because it was
+        // told to. Nothing else enforces it: move a close up here in a future
+        // tidy-up and this test silently stops proving anything.
+        #expect(await transport.isConnected == false)
+        try? await transport.close()
+    }
+
     @Test("an abruptly severed link surfaces and a fresh connection recovers")
     func abruptLinkLossSurfacesAndRecovers() async throws {
         let fixture = try #require(WeakNetworkFixture.current)

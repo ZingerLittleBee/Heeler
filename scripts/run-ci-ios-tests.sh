@@ -801,7 +801,7 @@ run_suite HeelerSSHDirectStreamLocalE2ETests 12 1
 run_suite HeelerSSHJumpHostGateE2ETests 9 1
 run_suite HeelerSSHTransportBehaviorE2ETests 30 1
 run_suite ImageStagingE2ETests 7 1
-run_suite WeakNetworkE2ETests 7 1
+run_suite WeakNetworkE2ETests 8 1
 run_suite PairingCeremonyE2ETests 11 1
 
 if [[ "$password_fixture_available" == "1" ]]; then
@@ -855,6 +855,11 @@ assert_behavior "weak-network app lifecycle" WeakNetworkE2ETests \
     '"the events session survives a cut and a background round trip"'
 assert_behavior "weak-network descriptor reclamation" WeakNetworkE2ETests \
     '"repeated degraded rounds reclaim every file descriptor"'
+# The producer side of the property EventsSession redials on. Every other
+# assertion of it in the repo is positive, so this is the only one that would
+# notice it sticking true on a dead connection.
+assert_behavior "disconnect is reported" WeakNetworkE2ETests \
+    '"a severed link makes the transport report itself disconnected"'
 
 for variable in \
     HEELER_SSH_E2E_REQUIRED \
@@ -863,7 +868,8 @@ for variable in \
     HEELER_SSH_E2E_USERNAME \
     HEELER_SSH_E2E_DEVICE_KEY_SEED \
     HEELER_SSH_E2E_WEAK_PORT \
-    HEELER_SSH_E2E_WEAK_CONTROL_PORT; do
+    HEELER_SSH_E2E_WEAK_CONTROL_PORT \
+    HEELER_SSH_E2E_STREAMLOCAL_SOCKET; do
     xcrun simctl spawn "$simulator_udid" launchctl setenv "$variable" "${!variable}"
 done
 
@@ -879,12 +885,14 @@ clear_simulator_environment
 
 if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || grep -q 'skipped:' "$package_e2e_log" \
-    || ! grep -q 'Test run with 16 tests in 2 suites passed' "$package_e2e_log" \
+    || ! grep -q 'Test run with 17 tests in 2 suites passed' "$package_e2e_log" \
     || ! grep -q 'Test "remote transport loss reclaims every owned native resource" passed' \
         "$package_e2e_log" \
     || ! grep -q 'Test "an abruptly severed weak link reclaims every owned native resource" passed' \
+        "$package_e2e_log" \
+    || ! grep -q 'Test "a severed link makes a stream-local connection report itself disconnected" passed' \
         "$package_e2e_log"; then
-    echo "The mandatory HeelerSSH package suites did not execute all sixteen tests" >&2
+    echo "The mandatory HeelerSSH package suites did not execute all seventeen tests" >&2
     exit 1
 fi
 

@@ -140,6 +140,74 @@ struct SessionDriverE2ETests {
         }
     }
 
+    /// The same transition as the app-level test in `WeakNetworkE2ETests`, one
+    /// layer down and over the stream-local path specifically.
+    ///
+    /// The distinction is the whole point. `openStreamLocalChannel` reads the
+    /// libssh2 errno and discards it, so every non-`EAGAIN` failure arrives as
+    /// `.streamLocalOpenFailed` — and both callers skip `invalidateResources()`
+    /// on exactly that case, because a policy denial or a stale socket must not
+    /// tear down a healthy session. A genuine socket loss is therefore
+    /// indistinguishable from a refusal, and `isReusable` keeps reporting true
+    /// on a dead connection. That is #138.
+    ///
+    /// The app layer masks it: `classifyStreamLocalOpenFailure` probes with
+    /// `test -S` over an *exec* channel, and exec does invalidate, so the
+    /// diagnostic tears the session down as a side effect. Route this through
+    /// `execute` instead of `exchangeStreamLocal` and it passes while proving
+    /// nothing.
+    @Test("a severed link makes a stream-local connection report itself disconnected")
+    func severedLinkReportsTheStreamLocalConnectionDisconnected() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let proxy = try #require(WeakNetworkProxyFixture.current)
+        let socketPath = try #require(SessionDriverTestEnvironment.streamLocalSocketPath)
+        let endpoint = SSHEndpoint(host: environment.endpoint.host, port: proxy.port)
+
+        try await withDegradedLink(proxy) {
+            let connection = try await SSHConnection.connect(
+                to: endpoint,
+                timeout: .seconds(15))
+            try await environment.authenticate(connection)
+            // Anti-vacuity: true on arrival, and true again after a real
+            // stream-local round trip, so the closing assertion cannot be
+            // satisfied by a property that was never true.
+            #expect(await connection.isConnected)
+            let response = try await connection.exchangeStreamLocal(
+                socketPath: socketPath,
+                request: Data(#"{"id":"probe","method":"ping"}\#n"#.utf8),
+                timeout: .seconds(10))
+            #expect(!response.isEmpty)
+            #expect(await connection.isConnected)
+
+            #expect(try await proxy.cut() > 0)
+            await #expect(throws: (any Error).self) {
+                _ = try await connection.exchangeStreamLocal(
+                    socketPath: socketPath,
+                    request: Data(#"{"id":"after","method":"ping"}\#n"#.utf8),
+                    timeout: .seconds(10))
+            }
+
+            // No `close(timeout:)` above this line: the property must go false
+            // because the link died, not because it was told to.
+            //
+            // The matcher admits only a failed expectation, so a thrown error
+            // or an API misuse inside the block still fails the test rather
+            // than being absorbed as the known issue.
+            // `isConnected` is `driver.isReusable`, whose first term is `valid`,
+            // so this already fails on the missing `invalidateResources()`.
+            // Asserting the driver state directly would localise it further but
+            // needs a test hook on `SSHConnection` that production does not
+            // have, which is not worth widening the public surface for.
+            await withKnownIssue("#138: the stream-local path never invalidates") {
+                #expect(await connection.isConnected == false)
+            } matching: { issue in
+                guard case .expectationFailed = issue.kind else { return false }
+                return true
+            }
+            try? await connection.close(timeout: .seconds(2))
+        }
+    }
+
     /// Runs `body` with the link degraded and always restores it afterwards.
     ///
     /// The proxy is process-wide and this suite is serialized, so a test that
@@ -482,6 +550,10 @@ private struct SessionDriverTestEnvironment: Sendable {
     static var isRequired: Bool {
         ProcessInfo.processInfo.environment["HEELER_SSH_E2E_REQUIRED"] == "1"
     }
+
+    /// The fixture's forwarded herdr socket, needed by the stream-local path.
+    static let streamLocalSocketPath: String? =
+        ProcessInfo.processInfo.environment["HEELER_SSH_E2E_STREAMLOCAL_SOCKET"]
 
     static let current: SessionDriverTestEnvironment? = {
         let environment = ProcessInfo.processInfo.environment
