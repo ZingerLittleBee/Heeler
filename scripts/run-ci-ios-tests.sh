@@ -821,6 +821,16 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     exit 1
 fi
 
+# The full lane runs with no fixture configured, so every fixture-backed suite
+# must skip — hence the clear above. The gate is still in force, though, and
+# `HEELER_SSH_E2E_REQUIRED=0` says exactly that: driven by the gate, nothing
+# configured. Suites whose only remaining route is a machine-owned resource
+# (PairingCeremonyE2ETests would otherwise re-target the developer's own sshd
+# and rewrite their real authorized_keys) refuse it and skip; see
+# RealSSHFixture.isUnderMergeGate. cleanup() unsets it again on exit.
+export HEELER_SSH_E2E_REQUIRED=0
+xcrun simctl spawn "$simulator_udid" launchctl setenv HEELER_SSH_E2E_REQUIRED 0
+
 xcodebuild test \
     -project Heeler.xcodeproj \
     -scheme Heeler \

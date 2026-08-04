@@ -508,6 +508,14 @@ private struct PairingE2EEnvironment: Sendable {
                 remoteStateRoot: configuration.remoteStateRoot)
         }
 
+        // Developer convenience only, and deliberately unavailable under the
+        // merge gate: this path targets the machine's own sshd on port 22 and
+        // rewrites the developer's real `~/.ssh/authorized_keys`. It restores
+        // them byte-exactly, but a crash mid-run does not, and the gate's
+        // "no machine state to undo" contract cannot depend on not crashing.
+        // With the fallback refused the suite skips in the gate's final full
+        // lane, exactly as every other fixture-backed suite does.
+        guard !RealSSHFixture.isUnderMergeGate else { return nil }
         guard let local = LocalSSHTestEnvironment.current else { return nil }
         let nodePath = environment["HERDR_TEST_NODE"] ?? "/opt/homebrew/bin/node"
         guard FileManager.default.isExecutableFile(atPath: nodePath) else { return nil }
