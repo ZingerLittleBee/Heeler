@@ -227,12 +227,20 @@ actor HeelerSSHTransport: Transport {
     static func connect(settings: SSHTransportSettings) async throws -> HeelerSSHTransport {
         let targetEndpoint = try endpoint(host: settings.host, port: settings.port)
         guard let jump = settings.jump else {
-            let connection = try await connectDirect(
-                endpoint: targetEndpoint,
-                username: settings.username,
-                credentials: settings.credentials,
-                policy: settings.hostKeyPolicy,
-                timeout: settings.requestTimeout)
+            let connection: SSHConnection
+            do {
+                connection = try await connectDirect(
+                    endpoint: targetEndpoint,
+                    username: settings.username,
+                    credentials: settings.credentials,
+                    policy: settings.hostKeyPolicy,
+                    timeout: settings.requestTimeout)
+            } catch {
+                // Every other hop maps before it throws; the direct hop must
+                // too, or a raw SSHError escapes the TransportError taxonomy
+                // the app and preflight classify against.
+                throw mapConnect(error)
+            }
             return HeelerSSHTransport(
                 connection: connection,
                 settings: settings)
