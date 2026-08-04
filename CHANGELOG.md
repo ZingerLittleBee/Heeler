@@ -22,6 +22,15 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- A Host whose SSH server has stream-local forwarding turned off now says so
+  even when herdr isn't on the SSH session's `PATH`. Heeler tries to start
+  herdr once before giving up; when that attempt itself failed, the checks
+  used to report "the herdr server is not running" and drop the forwarding
+  half of the diagnosis. Since a typical macOS Host keeps herdr at
+  `~/.local/bin` or `/opt/homebrew/bin` — neither on the default `PATH` of an
+  SSH command — that hit exactly the Hosts most likely to need the forwarding
+  advice. (#125)
+
 - Hosts no longer need `socat`. Heeler now reaches herdr's socket over an SSH
   stream-local forward instead of launching a remote helper per request, so
   SSH access and a running herdr server are the whole prerequisite. The socat

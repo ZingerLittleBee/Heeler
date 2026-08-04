@@ -557,6 +557,9 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// Whether reconnecting without user intervention can plausibly recover.
     /// Configuration, trust, authentication, and protocol failures instead
     /// stop so the UI can explain the required action.
+    /// `.streamLocalOpenFailed` is configuration-class: neither of the two
+    /// causes it cannot tell apart — a stopped herdr, disabled stream-local
+    /// forwarding — resolves without the user acting on the Host (ADR 0011).
     var isRetryable: Bool {
         switch self {
         // A rejection is retryable because herdr's error codes are open-ended

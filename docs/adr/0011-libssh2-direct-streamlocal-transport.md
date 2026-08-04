@@ -34,6 +34,19 @@ stream-local forwarding may be disabled. It does not claim a narrower cause
 that the client cannot observe. This diagnostic is not a socat transport
 fallback.
 
+That combined failure is therefore not retryable, and the two properties are
+not separable. A cause the client cannot narrow is a cause only the user can
+resolve, by starting herdr or by enabling stream-local forwarding — so the
+failure has to reach a surface that names both actions. Heeler renders
+`connectionGuidance` on the failed path only; while a Host is reconnecting it
+shows no guidance, and the reconnect policy has no attempt cap. Marking this
+error retryable would hand a Host with `AllowStreamLocalForwarding no` — a
+permanent configuration error, the exact case this classification exists to
+make legible — an unbounded silent reconnect loop that never displays the
+sentence written for it. An honest combined failure must stop in order to be
+displayed. A later bounded-retry design could revisit this, but only together
+with a surface that shows guidance while retrying.
+
 Cancellation and timeout recovery will be channel-scoped only when the
 affected channel has been allocated and can be closed cleanly. A timeout while
 opening a channel, handshaking, authenticating, or establishing a nested Jump
