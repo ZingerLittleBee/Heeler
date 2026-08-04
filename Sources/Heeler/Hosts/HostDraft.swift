@@ -12,7 +12,6 @@ struct HostDraft: Equatable, Sendable {
     /// Blank means "keep the stored password" when editing.
     var password = ""
     var sessionName = ""
-    var socatPath = Host.defaultSocatPath
     /// Blank means a direct connection. When set, Address/Port above are
     /// resolved from the Jump Host, not from this device.
     var jumpAddress = ""
@@ -30,7 +29,6 @@ struct HostDraft: Equatable, Sendable {
         username = host.username
         authMethod = host.authMethod
         sessionName = host.sessionName
-        socatPath = host.socatPath
         jumpAddress = host.jumpAddress
         jumpPort = String(host.jumpPort)
         jumpUsername = host.jumpUsername
@@ -52,12 +50,10 @@ struct HostDraft: Equatable, Sendable {
 
     var isValid: Bool {
         let trimmedSessionName = sessionName.trimmingCharacters(in: .whitespaces)
-        let trimmedSocatPath = socatPath.trimmingCharacters(in: .whitespaces)
         return !address.trimmingCharacters(in: .whitespaces).isEmpty
             && !username.trimmingCharacters(in: .whitespaces).isEmpty
             && portNumber != nil
             && (trimmedSessionName.isEmpty || HerdrSessionName.isValid(trimmedSessionName))
-            && RemoteShellPath.isQuotableAbsolute(trimmedSocatPath)
             // A blank jump address disables the hop entirely, so its port only
             // has to parse when the hop is actually in use.
             && (!usesJumpHost || jumpPortNumber != nil)
@@ -86,7 +82,6 @@ struct HostDraft: Equatable, Sendable {
             username: username.trimmingCharacters(in: .whitespaces),
             authMethod: authMethod,
             sessionName: sessionName.trimmingCharacters(in: .whitespaces),
-            socatPath: socatPath.trimmingCharacters(in: .whitespaces),
             jumpAddress: jumpAddress.trimmingCharacters(in: .whitespaces),
             jumpPort: jumpPortNumber ?? 22,
             jumpUsername: jumpUsername.trimmingCharacters(in: .whitespaces))

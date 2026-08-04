@@ -12,11 +12,6 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         case password
     }
 
-    /// Where socat usually lives on a stock Linux server. Tried first, then
-    /// the Host's own PATH; editable per Host for the case where neither
-    /// answers (ADR 0002).
-    static let defaultSocatPath = "/usr/bin/socat"
-
     let id: UUID
     /// Optional display label; blank falls back to `user@address`.
     var name: String
@@ -28,8 +23,6 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     /// while this field remains editable for older herdr versions. Blank
     /// means the default herdr session.
     var sessionName: String
-    /// Preferred absolute socat path on the Host.
-    var socatPath: String
     /// Optional Jump Host this Host is reached through. Blank means a direct
     /// connection; when set, `address`/`port` are resolved from the Jump Host
     /// and normally point at a loopback port held open by a reverse tunnel.
@@ -39,8 +32,11 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     /// case only when both machines share an account name.
     var jumpUsername: String
 
+    /// `socatPath` is deliberately absent: Hosts written by the exec+socat
+    /// backend still carry it, and leaving it out of the keys both ignores it
+    /// on decode and drops it on the Host's next save (ADR 0011).
     private enum CodingKeys: String, CodingKey {
-        case id, name, address, port, username, authMethod, sessionName, socatPath
+        case id, name, address, port, username, authMethod, sessionName
         case jumpAddress, jumpPort, jumpUsername
     }
 
@@ -63,7 +59,6 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         username: String,
         authMethod: AuthMethod = .deviceKey,
         sessionName: String = "",
-        socatPath: String = Host.defaultSocatPath,
         jumpAddress: String = "",
         jumpPort: Int = 22,
         jumpUsername: String = ""
@@ -75,7 +70,6 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         self.username = username
         self.authMethod = authMethod
         self.sessionName = sessionName
-        self.socatPath = socatPath
         self.jumpAddress = jumpAddress
         self.jumpPort = jumpPort
         self.jumpUsername = jumpUsername
@@ -90,8 +84,6 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         username = try container.decode(String.self, forKey: .username)
         authMethod = try container.decode(AuthMethod.self, forKey: .authMethod)
         sessionName = try container.decodeIfPresent(String.self, forKey: .sessionName) ?? ""
-        socatPath =
-            try container.decodeIfPresent(String.self, forKey: .socatPath) ?? Self.defaultSocatPath
         // Absent in Hosts saved before jump-host support; a blank address
         // decodes as the direct connection those Hosts already had.
         jumpAddress = try container.decodeIfPresent(String.self, forKey: .jumpAddress) ?? ""
@@ -102,10 +94,6 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         guard trimmedSessionName.isEmpty || HerdrSessionName.isValid(trimmedSessionName) else {
             throw DecodingError.dataCorruptedError(
                 forKey: .sessionName, in: container, debugDescription: "Invalid herdr session name")
-        }
-        guard RemoteShellPath.isQuotableAbsolute(socatPath) else {
-            throw DecodingError.dataCorruptedError(
-                forKey: .socatPath, in: container, debugDescription: "Invalid remote socat path")
         }
     }
 

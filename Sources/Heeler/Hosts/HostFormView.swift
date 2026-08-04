@@ -99,19 +99,6 @@ struct HostFormView: View {
                         Text("Leave blank to connect to the Host directly.")
                     }
                 }
-
-                Section {
-                    TextField("socat path", text: $draft.socatPath)
-                        .font(.callout.monospaced())
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                } header: {
-                    Text("Advanced")
-                } footer: {
-                    Text(
-                        "Absolute path of socat on the Host. Tried first; "
-                            + "otherwise the Host's own PATH is searched.")
-                }
             }
             .navigationTitle(editing == nil ? "Add Host" : "Edit Host")
             .navigationBarTitleDisplayMode(.inline)

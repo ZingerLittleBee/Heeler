@@ -53,7 +53,10 @@ struct SSHTransportSettings: Sendable {
     /// else. Execution never relies on the login shell resolving `socat`: the
     /// path discovery settles on is absolute, so PATH is consulted at most
     /// once per connection and never again (ADR 0002).
-    var socatPath: String
+    ///
+    /// Only the superseded exec+socat backend reads this. No production caller
+    /// supplies it any more, and it disappears with that backend (ADR 0011).
+    var socatPath: String = "/usr/bin/socat"
     /// How to locate socat when the preferred path is not executable.
     var socatDiscovery: SocatDiscovery = .automatic
     /// Optional Jump Host. When set, the Transport authenticates against the
