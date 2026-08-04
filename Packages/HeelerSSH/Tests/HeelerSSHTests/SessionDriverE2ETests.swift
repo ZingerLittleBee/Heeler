@@ -30,6 +30,45 @@ struct SessionDriverE2ETests {
         try await connection.close(timeout: .seconds(1))
     }
 
+    @Test("bounded response-line exec closes channels on success and failure")
+    func boundedResponseLineExec() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+
+        let response = try await connection.executeResponseLine(
+            "IFS= read -r line; printf 'accepted:%s\\n' \"$line\"",
+            input: Data("device-key-line\n".utf8),
+            maximumResponseBytes: 64,
+            timeout: .seconds(5))
+        #expect(response == Data("accepted:device-key-line\n".utf8))
+
+        await #expect(throws: SSHError.responseTooLarge(limit: 64)) {
+            _ = try await connection.executeResponseLine(
+                "i=0; while [ \"$i\" -lt 65 ]; do printf x; i=$((i + 1)); done; printf '\\n'",
+                input: Data("device-key-line\n".utf8),
+                maximumResponseBytes: 64,
+                timeout: .seconds(5))
+        }
+        let reuse = try await connection.execute(
+            "printf reusable",
+            timeout: .seconds(5))
+        #expect(reuse.stdout == Data("reusable".utf8))
+        #expect(reuse.exitStatus == 0)
+
+        await #expect(throws: SSHError.timedOut) {
+            _ = try await connection.executeResponseLine(
+                "sleep 30",
+                input: Data("device-key-line\n".utf8),
+                maximumResponseBytes: 64,
+                timeout: .milliseconds(100))
+        }
+        await #expect(throws: SSHError.connectionInvalidated) {
+            _ = try await connection.execute(
+                "printf unreachable",
+                timeout: .seconds(5))
+        }
+    }
+
     @Test("remote transport loss reclaims every owned native resource")
     func remoteTransportLossReclaimsResources() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)

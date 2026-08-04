@@ -248,6 +248,69 @@ actor SessionDriver {
         }
     }
 
+    func executeResponseLine(
+        command: String,
+        input: Data,
+        maximumResponseBytes: Int,
+        timeout: Duration
+    ) async throws -> Data {
+        await acquireOperation()
+        defer { releaseOperation() }
+
+        guard valid, !forwarding, authenticated, let session else {
+            throw SSHError.connectionInvalidated
+        }
+        guard
+            !command.isEmpty,
+            !input.isEmpty,
+            input.last == 0x0A,
+            !input.dropLast().contains(0x0A),
+            maximumResponseBytes > 0
+        else {
+            throw SSHError.channelFailed
+        }
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        var channel: OpaquePointer?
+
+        do {
+            channel = try await openSessionChannel(session: session, deadline: deadline)
+            guard let channel else { throw SSHError.channelFailed }
+            try await startExec(
+                channel: channel,
+                command: command,
+                session: session,
+                deadline: deadline)
+            let response = try await exchangeResponseLine(
+                channel: channel,
+                request: input,
+                maximumResponseBytes: maximumResponseBytes,
+                session: session,
+                deadline: deadline)
+            try await cleanChannel(
+                channel,
+                session: session,
+                deadline: deadline,
+                cancellable: true)
+            return response
+        } catch {
+            let normalized = normalize(error)
+            if let channel {
+                do {
+                    try await cleanChannel(
+                        channel,
+                        session: session,
+                        deadline: ContinuousClock.now.advanced(by: .seconds(2)),
+                        cancellable: false)
+                } catch {
+                    invalidateResources()
+                }
+            } else {
+                invalidateResources()
+            }
+            throw normalized
+        }
+    }
+
     func openPTY(
         command: String,
         terminal: String,

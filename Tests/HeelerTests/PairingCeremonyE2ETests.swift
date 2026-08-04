@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import HeelerSSH
 import Synchronization
 import Testing
 
@@ -24,18 +25,24 @@ struct PairingCeremonyE2ETests {
             let pinned = try await Self.discoverHostKeyFingerprint(environment.base)
             let staged = try StagedPairing(environment: environment, ttlSeconds: 120)
             defer { staged.cleanUp() }
-            let snapshot = AuthorizedKeysSnapshot(username: environment.base.username)
+            let snapshot = AuthorizedKeysSnapshot(path: environment.authorizedKeysPath)
             defer {
                 snapshot.restore()
                 #expect(snapshot.isRestoredByteExact)
             }
-            try snapshot.append(line: staged.authorizedKeysLine)
+            try await snapshot.append(
+                line: staged.authorizedKeysLine,
+                environment: environment)
 
             let deviceKey = DeviceKey(privateKey: .init())
-            // A TEST-NET-1 address first: unroutable, so success proves the
-            // client fails over to the next candidate within its timeout.
+            // A dead address and, in mandatory CI, a live sshd with another
+            // Host Key precede the pinned Host. Success proves ordered
+            // reachability and Host Key failover before authentication.
+            let candidates = ["192.0.2.1"]
+                + (environment.mismatchedHostAddress.map { [$0] } ?? [])
+                + [environment.base.host]
             let code = PairingCode(
-                addresses: ["192.0.2.1", environment.base.host],
+                addresses: candidates,
                 port: environment.base.port,
                 username: environment.base.username,
                 hostKeyFingerprint: pinned,
@@ -76,12 +83,14 @@ struct PairingCeremonyE2ETests {
             let pinned = try await Self.discoverHostKeyFingerprint(environment.base)
             let staged = try StagedPairing(environment: environment, ttlSeconds: -30)
             defer { staged.cleanUp() }
-            let snapshot = AuthorizedKeysSnapshot(username: environment.base.username)
+            let snapshot = AuthorizedKeysSnapshot(path: environment.authorizedKeysPath)
             defer {
                 snapshot.restore()
                 #expect(snapshot.isRestoredByteExact)
             }
-            try snapshot.append(line: staged.authorizedKeysLine)
+            try await snapshot.append(
+                line: staged.authorizedKeysLine,
+                environment: environment)
 
             let code = PairingCode(
                 addresses: [environment.base.host],
@@ -109,12 +118,14 @@ struct PairingCeremonyE2ETests {
             let staged = try StagedPairing(
                 environment: environment, ttlSeconds: 120, writePendingState: false)
             defer { staged.cleanUp() }
-            let snapshot = AuthorizedKeysSnapshot(username: environment.base.username)
+            let snapshot = AuthorizedKeysSnapshot(path: environment.authorizedKeysPath)
             defer {
                 snapshot.restore()
                 #expect(snapshot.isRestoredByteExact)
             }
-            try snapshot.append(line: staged.authorizedKeysLine)
+            try await snapshot.append(
+                line: staged.authorizedKeysLine,
+                environment: environment)
 
             let code = PairingCode(
                 addresses: [environment.base.host],
@@ -187,6 +198,220 @@ struct PairingCeremonyE2ETests {
         }
     }
 
+    @Test func configOnlyPairingVerifiesTheExistingDeviceKeyDirectly() async throws {
+        let environment = try #require(PairingE2EEnvironment.current)
+        let pinned = try await Self.discoverHostKeyFingerprint(environment.base)
+        let code = PairingCode(
+            addresses: [environment.base.host],
+            port: environment.base.port,
+            username: environment.base.username,
+            hostKeyFingerprint: pinned,
+            bootstrap: nil)
+        let steps = Mutex<[PairingStep]>([])
+
+        let result = try await Self.connector.pair(
+            code: code,
+            deviceKey: DeviceKey(privateKey: environment.base.privateKey)
+        ) { step in
+            steps.withLock { $0.append(step) }
+        }
+
+        #expect(result.address == environment.base.host)
+        #expect(result.hostKeyFingerprint == pinned)
+        #expect(steps.withLock { $0 } == [.reach, .verify])
+    }
+
+    @Test func verificationRejectsAnEnrollmentClaimThatDidNotPersistTheKey() async throws {
+        let environment = try #require(PairingE2EEnvironment.current)
+        try await AuthorizedKeysTestLock.shared.withLock {
+            let pinned = try await Self.discoverHostKeyFingerprint(environment.base)
+            let deviceKey = DeviceKey(privateKey: .init())
+            let fingerprint = HostKeyFingerprint(publicKeyBlob: deviceKey.publicKeyBlob)
+            let staged = try StagedPairing(
+                environment: environment,
+                ttlSeconds: 120,
+                forcedCommand: .acceptWithoutEnrollment(
+                    fingerprint: fingerprint.displayString))
+            defer { staged.cleanUp() }
+            let snapshot = AuthorizedKeysSnapshot(path: environment.authorizedKeysPath)
+            defer {
+                snapshot.restore()
+                #expect(snapshot.isRestoredByteExact)
+            }
+            try await snapshot.append(
+                line: staged.authorizedKeysLine,
+                environment: environment)
+            let code = PairingCode(
+                addresses: [environment.base.host],
+                port: environment.base.port,
+                username: environment.base.username,
+                hostKeyFingerprint: pinned,
+                bootstrap: .init(seed: staged.seed, expiresAt: staged.expiresAt))
+            let steps = Mutex<[PairingStep]>([])
+
+            let error = await #expect(throws: PairingCeremonyError.self) {
+                _ = try await Self.connector.pair(code: code, deviceKey: deviceKey) {
+                    step in steps.withLock { $0.append(step) }
+                }
+            }
+            guard case .verificationFailed = error else {
+                Issue.record("expected verificationFailed, got \(String(describing: error))")
+                return
+            }
+            #expect(steps.withLock { $0 } == [.reach, .enroll, .verify])
+        }
+    }
+
+    @Test func enrollmentTimeoutKeepsTheEnrollFailureTaxonomy() async throws {
+        let environment = try #require(PairingE2EEnvironment.current)
+        try await AuthorizedKeysTestLock.shared.withLock {
+            let pinned = try await Self.discoverHostKeyFingerprint(environment.base)
+            let staged = try StagedPairing(
+                environment: environment,
+                ttlSeconds: 120,
+                forcedCommand: .hang)
+            defer { staged.cleanUp() }
+            let snapshot = AuthorizedKeysSnapshot(path: environment.authorizedKeysPath)
+            defer {
+                snapshot.restore()
+                #expect(snapshot.isRestoredByteExact)
+            }
+            try await snapshot.append(
+                line: staged.authorizedKeysLine,
+                environment: environment)
+            let code = PairingCode(
+                addresses: [environment.base.host],
+                port: environment.base.port,
+                username: environment.base.username,
+                hostKeyFingerprint: pinned,
+                bootstrap: .init(seed: staged.seed, expiresAt: staged.expiresAt))
+            let connector = SSHPairingConnector(
+                perAddressTimeout: .seconds(2),
+                enrollTimeout: .milliseconds(150),
+                deviceKeyComment: "heeler-e2e")
+
+            await #expect(
+                throws: PairingCeremonyError.enrollmentFailed(
+                    detail: "the Enrollment exchange timed out")
+            ) {
+                _ = try await connector.pair(
+                    code: code,
+                    deviceKey: DeviceKey(privateKey: .init())) { _ in }
+            }
+        }
+    }
+
+    @Test func enrollmentCancellationRemainsTaskCancellation() async throws {
+        let environment = try #require(PairingE2EEnvironment.current)
+        try await AuthorizedKeysTestLock.shared.withLock {
+            let pinned = try await Self.discoverHostKeyFingerprint(environment.base)
+            let staged = try StagedPairing(
+                environment: environment,
+                ttlSeconds: 120,
+                forcedCommand: .hang)
+            defer { staged.cleanUp() }
+            let snapshot = AuthorizedKeysSnapshot(path: environment.authorizedKeysPath)
+            defer {
+                snapshot.restore()
+                #expect(snapshot.isRestoredByteExact)
+            }
+            try await snapshot.append(
+                line: staged.authorizedKeysLine,
+                environment: environment)
+            let code = PairingCode(
+                addresses: [environment.base.host],
+                port: environment.base.port,
+                username: environment.base.username,
+                hostKeyFingerprint: pinned,
+                bootstrap: .init(seed: staged.seed, expiresAt: staged.expiresAt))
+            let pairing = Task {
+                try await Self.connector.pair(
+                    code: code,
+                    deviceKey: DeviceKey(privateKey: .init())) { _ in }
+            }
+            try await Task.sleep(for: .milliseconds(150))
+            pairing.cancel()
+
+            await #expect(throws: CancellationError.self) {
+                _ = try await pairing.value
+            }
+        }
+    }
+
+    @Test func enrollmentRejectsAnOversizedResponseLine() async throws {
+        let environment = try #require(PairingE2EEnvironment.current)
+        try await AuthorizedKeysTestLock.shared.withLock {
+            let pinned = try await Self.discoverHostKeyFingerprint(environment.base)
+            let staged = try StagedPairing(
+                environment: environment,
+                ttlSeconds: 120,
+                forcedCommand: .oversizedResponse)
+            defer { staged.cleanUp() }
+            let snapshot = AuthorizedKeysSnapshot(path: environment.authorizedKeysPath)
+            defer {
+                snapshot.restore()
+                #expect(snapshot.isRestoredByteExact)
+            }
+            try await snapshot.append(
+                line: staged.authorizedKeysLine,
+                environment: environment)
+            let code = PairingCode(
+                addresses: [environment.base.host],
+                port: environment.base.port,
+                username: environment.base.username,
+                hostKeyFingerprint: pinned,
+                bootstrap: .init(seed: staged.seed, expiresAt: staged.expiresAt))
+
+            let error = await #expect(throws: PairingCeremonyError.self) {
+                _ = try await Self.connector.pair(
+                    code: code,
+                    deviceKey: DeviceKey(privateKey: .init())) { _ in }
+            }
+            guard case .enrollmentFailed = error else {
+                Issue.record("expected enrollmentFailed, got \(String(describing: error))")
+                return
+            }
+        }
+    }
+
+    @Test func enrollmentVerifiesTheReturnedDeviceFingerprint() async throws {
+        let environment = try #require(PairingE2EEnvironment.current)
+        try await AuthorizedKeysTestLock.shared.withLock {
+            let pinned = try await Self.discoverHostKeyFingerprint(environment.base)
+            let staged = try StagedPairing(
+                environment: environment,
+                ttlSeconds: 120,
+                forcedCommand: .acceptWithoutEnrollment(
+                    fingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"))
+            defer { staged.cleanUp() }
+            let snapshot = AuthorizedKeysSnapshot(path: environment.authorizedKeysPath)
+            defer {
+                snapshot.restore()
+                #expect(snapshot.isRestoredByteExact)
+            }
+            try await snapshot.append(
+                line: staged.authorizedKeysLine,
+                environment: environment)
+            let code = PairingCode(
+                addresses: [environment.base.host],
+                port: environment.base.port,
+                username: environment.base.username,
+                hostKeyFingerprint: pinned,
+                bootstrap: .init(seed: staged.seed, expiresAt: staged.expiresAt))
+
+            let error = await #expect(throws: PairingCeremonyError.self) {
+                _ = try await Self.connector.pair(
+                    code: code,
+                    deviceKey: DeviceKey(privateKey: .init())) { _ in }
+            }
+            guard case .enrollmentFailed(let detail) = error else {
+                Issue.record("expected enrollmentFailed, got \(String(describing: error))")
+                return
+            }
+            #expect(detail.contains("different key"))
+        }
+    }
+
     private static let connector = SSHPairingConnector(
         perAddressTimeout: .seconds(2), deviceKeyComment: "heeler-e2e")
 
@@ -194,18 +419,14 @@ struct PairingCeremonyE2ETests {
     /// same way the plugin discovers it at code-generation time. Pinning it
     /// keeps these tests independent of which host key sshd negotiates.
     private static func discoverHostKeyFingerprint(
-        _ base: LocalSSHTestEnvironment
+        _ base: PairingE2EEnvironment.Base
     ) async throws -> HostKeyFingerprint {
-        let seen = Mutex<HostKeyFingerprint?>(nil)
-        let policy = HostKeyPolicy(knownHosts: InMemoryKnownHostsStore()) { candidate in
-            seen.withLock { $0 = candidate.fingerprint }
-            return true
-        }
-        let transport = try await SSHTransport.connect(
-            settings: base.makeSettings(
-                socket: .absolutePath("/tmp/herdr-irrelevant.sock"), hostKeyPolicy: policy))
-        try await transport.close()
-        return try #require(seen.withLock { $0 })
+        let connection = try await SSHConnection.connect(
+            to: SSHEndpoint(host: base.host, port: UInt16(base.port)),
+            timeout: .seconds(5))
+        let fingerprint = HostKeyFingerprint(publicKeyBlob: connection.hostKey.key)
+        try await connection.close(timeout: .seconds(2))
+        return fingerprint
     }
 }
 
@@ -244,18 +465,51 @@ struct PairingReachFailureTests {
 /// (the accept script runs from the working tree, exactly as
 /// `herdr plugin link` would run it). Overridable via HERDR_TEST_NODE.
 private struct PairingE2EEnvironment: Sendable {
-    let base: LocalSSHTestEnvironment
+    struct Base: Sendable {
+        let host: String
+        let port: Int
+        let username: String
+        let privateKey: Curve25519.Signing.PrivateKey
+    }
+
+    let base: Base
+    let mismatchedHostAddress: String?
     let nodePath: String
     let acceptScriptPath: String
+    let homePath: String
+    let authorizedKeysPath: String
+    let localStateRoot: String
+    let remoteStateRoot: String
 
     static var isAvailable: Bool { current != nil }
 
     static let current: PairingE2EEnvironment? = probe()
 
     private static func probe() -> PairingE2EEnvironment? {
-        guard let base = LocalSSHTestEnvironment.current else { return nil }
-
         let environment = ProcessInfo.processInfo.environment
+        if
+            let encoded = environment["HEELER_PAIRING_E2E_CONFIG"],
+            let data = Data(base64Encoded: encoded),
+            let configuration = try? JSONDecoder().decode(Configuration.self, from: data),
+            let privateKey = try? Curve25519.Signing.PrivateKey(
+                rawRepresentation: Data((0..<32).map(UInt8.init)))
+        {
+            return PairingE2EEnvironment(
+                base: Base(
+                    host: configuration.host,
+                    port: configuration.port,
+                    username: configuration.username,
+                    privateKey: privateKey),
+                mismatchedHostAddress: configuration.mismatchedHostAddress,
+                nodePath: configuration.nodePath,
+                acceptScriptPath: configuration.acceptScriptPath,
+                homePath: configuration.homePath,
+                authorizedKeysPath: configuration.authorizedKeysPath,
+                localStateRoot: configuration.localStateRoot,
+                remoteStateRoot: configuration.remoteStateRoot)
+        }
+
+        guard let local = LocalSSHTestEnvironment.current else { return nil }
         let nodePath = environment["HERDR_TEST_NODE"] ?? "/opt/homebrew/bin/node"
         guard FileManager.default.isExecutableFile(atPath: nodePath) else { return nil }
 
@@ -267,7 +521,31 @@ private struct PairingE2EEnvironment: Sendable {
         guard FileManager.default.fileExists(atPath: acceptScript) else { return nil }
 
         return PairingE2EEnvironment(
-            base: base, nodePath: nodePath, acceptScriptPath: acceptScript)
+            base: Base(
+                host: local.host,
+                port: local.port,
+                username: local.username,
+                privateKey: local.privateKey),
+            mismatchedHostAddress: nil,
+            nodePath: nodePath,
+            acceptScriptPath: acceptScript,
+            homePath: "/Users/\(local.username)",
+            authorizedKeysPath: "/Users/\(local.username)/.ssh/authorized_keys",
+            localStateRoot: FileManager.default.temporaryDirectory.path,
+            remoteStateRoot: FileManager.default.temporaryDirectory.path)
+    }
+
+    private struct Configuration: Decodable {
+        let host: String
+        let port: Int
+        let mismatchedHostAddress: String?
+        let username: String
+        let nodePath: String
+        let acceptScriptPath: String
+        let homePath: String
+        let authorizedKeysPath: String
+        let localStateRoot: String
+        let remoteStateRoot: String
     }
 }
 
@@ -277,6 +555,13 @@ private struct PairingE2EEnvironment: Sendable {
 /// `pairing-session.js`/`authorized-keys.js`; composed in Swift because the
 /// simulator cannot spawn Node itself.
 private struct StagedPairing {
+    enum ForcedCommand {
+        case plugin
+        case hang
+        case acceptWithoutEnrollment(fingerprint: String)
+        case oversizedResponse
+    }
+
     let seed: Data
     let publicLine: String
     let pairingId: String
@@ -305,7 +590,10 @@ private struct StagedPairing {
     }
 
     init(
-        environment: PairingE2EEnvironment, ttlSeconds: Int, writePendingState: Bool = true
+        environment: PairingE2EEnvironment,
+        ttlSeconds: Int,
+        writePendingState: Bool = true,
+        forcedCommand: ForcedCommand = .plugin
     ) throws {
         let bootstrapKey = Curve25519.Signing.PrivateKey()
         seed = bootstrapKey.rawRepresentation
@@ -314,17 +602,54 @@ private struct StagedPairing {
             .map { String(format: "%02x", $0) }.joined()
         let expiresAtSeconds = Int(Date().timeIntervalSince1970) + ttlSeconds
         expiresAt = Date(timeIntervalSince1970: TimeInterval(expiresAtSeconds))
-        stateDir = FileManager.default.temporaryDirectory
+        stateDir = URL(fileURLWithPath: environment.localStateRoot, isDirectory: true)
             .appendingPathComponent("herdr-pairing-e2e-\(pairingId)", isDirectory: true)
+        let remoteStateDir = URL(
+            fileURLWithPath: environment.remoteStateRoot,
+            isDirectory: true
+        ).appendingPathComponent("herdr-pairing-e2e-\(pairingId)", isDirectory: true)
 
-        // The forced command embeds absolute paths, single-quoted exactly
-        // like the plugin's acceptCommand; the paths involved carry no
-        // quotes on any supported setup.
-        for path in [environment.nodePath, environment.acceptScriptPath, stateDir.path] {
+        try FileManager.default.createDirectory(
+            at: stateDir,
+            withIntermediateDirectories: true)
+
+        for path in [
+            environment.nodePath,
+            environment.acceptScriptPath,
+            environment.homePath,
+            remoteStateDir.path,
+        ] {
             precondition(!path.contains("'"), "unquotable path in test setup: \(path)")
         }
-        let command = "'\(environment.nodePath)' '\(environment.acceptScriptPath)'"
-            + " --state-dir '\(stateDir.path)' --pairing-id \(pairingId)"
+        let command: String
+        switch forcedCommand {
+        case .plugin:
+            // Mandatory CI uses the runner's account for sshd but an isolated
+            // HOME so the real accept entrypoint edits only fixture keys.
+            command = "HOME='\(environment.homePath)'"
+                + " '\(environment.nodePath)' '\(environment.acceptScriptPath)'"
+                + " --state-dir '\(remoteStateDir.path)' --pairing-id \(pairingId)"
+        case .hang:
+            command = try Self.writeForcedCommandScript(
+                localDirectory: stateDir,
+                remoteDirectory: remoteStateDir,
+                contents: "#!/bin/sh\nsleep 30\n")
+        case .acceptWithoutEnrollment(let fingerprint):
+            command = try Self.writeForcedCommandScript(
+                localDirectory: stateDir,
+                remoteDirectory: remoteStateDir,
+                contents: "#!/bin/sh\nIFS= read -r ignored\nprintf '%s\\n' "
+                    + "'HERDR-ENROLL:OK:\(fingerprint)'\n")
+        case .oversizedResponse:
+            command = try Self.writeForcedCommandScript(
+                localDirectory: stateDir,
+                remoteDirectory: remoteStateDir,
+                contents: "#!/bin/sh\ni=0\nwhile [ \"$i\" -lt 5000 ]; do "
+                    + "printf x; i=$((i + 1)); done\nprintf '\\n'\n")
+        }
+        precondition(
+            !command.contains("\"") && !command.contains("\n"),
+            "forced command is not authorized_keys-safe")
         authorizedKeysLine =
             "restrict,command=\"\(command)\" \(publicLine)"
             + " herdr-pairing:\(pairingId):exp:\(expiresAtSeconds)"
@@ -348,6 +673,22 @@ private struct StagedPairing {
     func cleanUp() {
         try? FileManager.default.removeItem(at: stateDir)
     }
+
+    private static func writeForcedCommandScript(
+        localDirectory: URL,
+        remoteDirectory: URL,
+        contents: String
+    ) throws -> String {
+        let name = "forced-command"
+        let localPath = localDirectory.appendingPathComponent(name)
+        try contents.write(to: localPath, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: localPath.path)
+        let remotePath = remoteDirectory.appendingPathComponent(name).path
+        precondition(!remotePath.contains("'"), "unquotable forced-command path")
+        return "'\(remotePath)'"
+    }
 }
 
 /// Snapshot of the host user's real authorized_keys, restored byte-exactly
@@ -356,21 +697,43 @@ private struct StagedPairing {
 /// back and `isRestoredByteExact` proves it with a SHA-256 comparison — the
 /// suite's acceptance criterion for touching the real file at all.
 private struct AuthorizedKeysSnapshot {
+    private struct PublicationError: Error {}
+
     private let path: String
     private let original: Data?
+    private let permissions: Int
 
-    init(username: String) {
-        path = "/Users/\(username)/.ssh/authorized_keys"
+    init(path: String) {
+        self.path = path
         original = FileManager.default.contents(atPath: path)
+        permissions =
+            (try? FileManager.default.attributesOfItem(atPath: path)[.posixPermissions] as? Int)
+            ?? 0o600
     }
 
-    /// Appends one line, preserving prior content. Non-atomic on purpose:
-    /// rewriting in place keeps the permissions sshd's StrictModes checks.
-    func append(line: String) throws {
+    /// Appends one line with an atomic replacement. The disposable Docker
+    /// sshd and the Simulator observe this file through the same bind mount;
+    /// an in-place truncate after the server-side Node helper has renamed the
+    /// file can expose a partial options word to sshd.
+    func append(
+        line: String,
+        environment: PairingE2EEnvironment
+    ) async throws {
         var content = original.map { String(decoding: $0, as: UTF8.self) } ?? ""
         if !content.isEmpty, !content.hasSuffix("\n") { content += "\n" }
         content += line + "\n"
-        try content.write(toFile: path, atomically: false, encoding: .utf8)
+        let expected = Data(content.utf8)
+
+        for attempt in 0..<10 {
+            try write(expected)
+            if try await remoteContents(environment: environment) == expected {
+                return
+            }
+            if attempt < 9 {
+                try await Task.sleep(for: .milliseconds(25))
+            }
+        }
+        throw PublicationError()
     }
 
     var currentContents: String {
@@ -380,7 +743,7 @@ private struct AuthorizedKeysSnapshot {
 
     func restore() {
         if let original {
-            try? original.write(to: URL(fileURLWithPath: path))
+            try? write(original)
         } else {
             try? FileManager.default.removeItem(atPath: path)
         }
@@ -391,5 +754,49 @@ private struct AuthorizedKeysSnapshot {
         guard let original else { return current == nil }
         guard let current else { return false }
         return SHA256.hash(data: current) == SHA256.hash(data: original) && current == original
+    }
+
+    private func write(_ data: Data) throws {
+        try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: permissions],
+            ofItemAtPath: path)
+    }
+
+    private func remoteContents(
+        environment: PairingE2EEnvironment
+    ) async throws -> Data {
+        guard let port = UInt16(exactly: environment.base.port) else {
+            throw PublicationError()
+        }
+        let endpoint = SSHEndpoint(
+            host: environment.base.host,
+            port: port)
+        let connection = try await SSHConnection.connect(
+            to: endpoint,
+            timeout: .seconds(2))
+        do {
+            let identity = DeviceKey(privateKey: environment.base.privateKey)
+            try await connection.authenticate(
+                username: environment.base.username,
+                publicKey: identity.publicKeyBlob,
+                signer: { challenge in
+                    try identity.privateKey.signature(for: challenge)
+                },
+                timeout: .seconds(2))
+            let remotePath = "\(environment.homePath)/.ssh/authorized_keys"
+            precondition(!remotePath.contains("'"), "unquotable authorized_keys path")
+            let result = try await connection.execute(
+                "cat -- '\(remotePath)'",
+                timeout: .seconds(2))
+            try await connection.close(timeout: .seconds(2))
+            guard result.reachedEOF, result.exitStatus == 0 else {
+                throw PublicationError()
+            }
+            return result.stdout
+        } catch {
+            try? await connection.close(timeout: .seconds(2))
+            throw error
+        }
     }
 }

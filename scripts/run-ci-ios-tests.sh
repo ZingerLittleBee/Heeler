@@ -10,6 +10,7 @@ streamlocal_global_policy_port=55226
 streamlocal_key_policy_port=55227
 jump_target_port=55228
 jump_forwarding_denied_port=55229
+pairing_port=55230
 fixture_username="heelerssh${RANDOM}"
 fixture_password="$(uuidgen)-$(uuidgen)"
 fixture_uid=550
@@ -22,6 +23,8 @@ streamlocal_global_policy_pid=""
 streamlocal_key_policy_pid=""
 jump_target_pid=""
 jump_forwarding_denied_pid=""
+pairing_pid=""
+pairing_mismatched_pid=""
 fake_herdr_pid=""
 simulator_udid=""
 simulator_destination=""
@@ -53,6 +56,10 @@ cleanup() {
     stop_sshd \
         "$jump_forwarding_denied_pid" \
         "$fixture_dir/sshd-jump-forwarding-denied.pid"
+    stop_sshd "$pairing_pid" "$fixture_dir/sshd-pairing.pid"
+    stop_sshd \
+        "$pairing_mismatched_pid" \
+        "$fixture_dir/sshd-pairing-mismatched.pid"
     if dscl . -read "/Users/$fixture_username" >/dev/null 2>&1; then
         sudo -n dscl . -delete "/Users/$fixture_username"
     fi
@@ -79,7 +86,8 @@ clear_simulator_environment() {
         HEELER_SSH_E2E_STALL_PORT \
         HEELER_SSH_E2E_STREAMLOCAL_SOCKET \
         HEELER_SSH_E2E_CONFIG \
-        HEELER_SSH_JUMP_E2E_CONFIG; do
+        HEELER_SSH_JUMP_E2E_CONFIG \
+        HEELER_PAIRING_E2E_CONFIG; do
         xcrun simctl spawn "$simulator_udid" launchctl unsetenv "$variable" >/dev/null 2>&1
     done
 }
@@ -110,12 +118,17 @@ for port in \
     "$streamlocal_global_policy_port" \
     "$streamlocal_key_policy_port" \
     "$jump_target_port" \
-    "$jump_forwarding_denied_port"; do
+    "$jump_forwarding_denied_port" \
+    "$pairing_port"; do
     if nc -z 127.0.0.1 "$port" >/dev/null 2>&1; then
         echo "TCP port $port is already in use" >&2
         exit 1
     fi
 done
+if nc -z ::1 "$pairing_port" >/dev/null 2>&1; then
+    echo "TCP endpoint [::1]:$pairing_port is already in use" >&2
+    exit 1
+fi
 
 while dscl . -search /Users UniqueID "$fixture_uid" | grep -q .; do
     fixture_uid=$((fixture_uid + 1))
@@ -181,6 +194,15 @@ printf '%s\n' \
     > "$fixture_dir/authorized_keys-no-forwarding"
 cp "$fixture_dir/authorized_keys" "$fixture_dir/authorized_keys-jump-target"
 
+pairing_username="$(id -un)"
+pairing_home="$fixture_dir/pairing-home"
+pairing_authorized_keys="$pairing_home/.ssh/authorized_keys"
+pairing_state_root="$fixture_dir/pairing-state"
+mkdir -p "$pairing_home/.ssh" "$pairing_state_root"
+cp "$fixture_dir/authorized_keys" "$pairing_authorized_keys"
+chmod 700 "$pairing_home/.ssh"
+chmod 600 "$pairing_authorized_keys"
+
 modern_config="$fixture_dir/sshd-modern.conf"
 legacy_config="$fixture_dir/sshd-legacy.conf"
 restricted_config="$fixture_dir/sshd-restricted.conf"
@@ -188,6 +210,8 @@ streamlocal_global_policy_config="$fixture_dir/sshd-streamlocal-global-policy.co
 streamlocal_key_policy_config="$fixture_dir/sshd-streamlocal-key-policy.conf"
 jump_target_config="$fixture_dir/sshd-jump-target.conf"
 jump_forwarding_denied_config="$fixture_dir/sshd-jump-forwarding-denied.conf"
+pairing_config="$fixture_dir/sshd-pairing.conf"
+pairing_mismatched_config="$fixture_dir/sshd-pairing-mismatched.conf"
 
 write_common_config() {
     local port=$1
@@ -269,6 +293,39 @@ printf '%s\n' \
     "AllowStreamLocalForwarding yes" \
     >> "$jump_forwarding_denied_config"
 
+write_pairing_config() {
+    local listen_address=$1
+    local host_key=$2
+    local pid_file=$3
+
+    printf '%s\n' \
+        "Port $pairing_port" \
+        "ListenAddress $listen_address" \
+        "HostKey $host_key" \
+        "PidFile $pid_file" \
+        "PasswordAuthentication no" \
+        "KbdInteractiveAuthentication no" \
+        "PubkeyAuthentication yes" \
+        "AuthorizedKeysFile $pairing_authorized_keys" \
+        "UsePAM yes" \
+        "PermitRootLogin no" \
+        "AllowUsers $pairing_username" \
+        "StrictModes no" \
+        "PerSourcePenalties no" \
+        "PrintMotd no" \
+        "PrintLastLog no" \
+        "LogLevel VERBOSE"
+}
+
+write_pairing_config \
+    127.0.0.1 \
+    "$fixture_dir/host_ed25519" \
+    "$fixture_dir/sshd-pairing.pid" > "$pairing_config"
+write_pairing_config \
+    ::1 \
+    "$fixture_dir/host_jump_target_ed25519" \
+    "$fixture_dir/sshd-pairing-mismatched.pid" > "$pairing_mismatched_config"
+
 streamlocal_socket="$fixture_home/.config/herdr/herdr.sock"
 streamlocal_stale_socket="$fixture_home/.heeler-ci/stale.sock"
 streamlocal_wake_failure_socket="$fixture_home/.heeler-ci/stale-wake-failure.sock"
@@ -306,6 +363,12 @@ jump_target_pid=$!
 sudo -n /usr/sbin/sshd -D -e -f "$jump_forwarding_denied_config" \
     > "$fixture_dir/sshd-jump-forwarding-denied.log" 2>&1 &
 jump_forwarding_denied_pid=$!
+sudo -n /usr/sbin/sshd -D -e -f "$pairing_config" \
+    > "$fixture_dir/sshd-pairing.log" 2>&1 &
+pairing_pid=$!
+sudo -n /usr/sbin/sshd -D -e -f "$pairing_mismatched_config" \
+    > "$fixture_dir/sshd-pairing-mismatched.log" 2>&1 &
+pairing_mismatched_pid=$!
 /usr/bin/python3 -c '
 import socket
 import sys
@@ -330,6 +393,8 @@ for attempt in $(seq 1 50); do
         && nc -z 127.0.0.1 "$streamlocal_key_policy_port" >/dev/null 2>&1 \
         && nc -z 127.0.0.1 "$jump_target_port" >/dev/null 2>&1 \
         && nc -z 127.0.0.1 "$jump_forwarding_denied_port" >/dev/null 2>&1 \
+        && nc -z 127.0.0.1 "$pairing_port" >/dev/null 2>&1 \
+        && nc -z ::1 "$pairing_port" >/dev/null 2>&1 \
         && [[ -S "$streamlocal_socket" ]] \
         && [[ -S "$streamlocal_stale_socket" ]] \
         && [[ -S "$streamlocal_wake_failure_socket" ]]; then
@@ -343,6 +408,8 @@ for attempt in $(seq 1 50); do
         || ! kill -0 "$streamlocal_key_policy_pid" 2>/dev/null \
         || ! kill -0 "$jump_target_pid" 2>/dev/null \
         || ! kill -0 "$jump_forwarding_denied_pid" 2>/dev/null \
+        || ! kill -0 "$pairing_pid" 2>/dev/null \
+        || ! kill -0 "$pairing_mismatched_pid" 2>/dev/null \
         || ! kill -0 "$fake_herdr_pid" 2>/dev/null; then
         cat "$fixture_dir/sshd-modern.log" >&2
         cat "$fixture_dir/sshd-legacy.log" >&2
@@ -351,6 +418,8 @@ for attempt in $(seq 1 50); do
         cat "$fixture_dir/sshd-streamlocal-key-policy.log" >&2
         cat "$fixture_dir/sshd-jump-target.log" >&2
         cat "$fixture_dir/sshd-jump-forwarding-denied.log" >&2
+        cat "$fixture_dir/sshd-pairing.log" >&2
+        cat "$fixture_dir/sshd-pairing-mismatched.log" >&2
         cat "$fixture_dir/fake-herdr.log" >&2
         exit 1
     fi
@@ -365,6 +434,8 @@ if ! nc -z 127.0.0.1 "$modern_port" >/dev/null 2>&1 \
     || ! nc -z 127.0.0.1 "$streamlocal_key_policy_port" >/dev/null 2>&1 \
     || ! nc -z 127.0.0.1 "$jump_target_port" >/dev/null 2>&1 \
     || ! nc -z 127.0.0.1 "$jump_forwarding_denied_port" >/dev/null 2>&1 \
+    || ! nc -z 127.0.0.1 "$pairing_port" >/dev/null 2>&1 \
+    || ! nc -z ::1 "$pairing_port" >/dev/null 2>&1 \
     || [[ ! -S "$streamlocal_socket" ]] \
     || [[ ! -S "$streamlocal_stale_socket" ]] \
     || [[ ! -S "$streamlocal_wake_failure_socket" ]]; then
@@ -375,6 +446,8 @@ if ! nc -z 127.0.0.1 "$modern_port" >/dev/null 2>&1 \
     cat "$fixture_dir/sshd-streamlocal-key-policy.log" >&2
     cat "$fixture_dir/sshd-jump-target.log" >&2
     cat "$fixture_dir/sshd-jump-forwarding-denied.log" >&2
+    cat "$fixture_dir/sshd-pairing.log" >&2
+    cat "$fixture_dir/sshd-pairing-mismatched.log" >&2
     cat "$fixture_dir/fake-herdr.log" >&2
     exit 1
 fi
@@ -417,6 +490,27 @@ jump_fixture_configuration=$(printf \
     "$fixture_username" \
     "$streamlocal_socket")
 jump_fixture_configuration_base64=$(printf '%s' "$jump_fixture_configuration" | base64)
+if ! pairing_node_path="$(command -v node)"; then
+    echo "Node is required for the mandatory Pairing ceremony suite" >&2
+    exit 1
+fi
+pairing_accept_script="$PWD/plugin/src/pair-accept.js"
+if [[ ! -f "$pairing_accept_script" ]]; then
+    echo "Pairing accept entrypoint not found at $pairing_accept_script" >&2
+    exit 1
+fi
+pairing_fixture_configuration=$(printf \
+    '{"host":"127.0.0.1","port":%s,"mismatchedHostAddress":"::1","username":"%s","nodePath":"%s","acceptScriptPath":"%s","homePath":"%s","authorizedKeysPath":"%s","localStateRoot":"%s","remoteStateRoot":"%s"}' \
+    "$pairing_port" \
+    "$pairing_username" \
+    "$pairing_node_path" \
+    "$pairing_accept_script" \
+    "$pairing_home" \
+    "$pairing_authorized_keys" \
+    "$pairing_state_root" \
+    "$pairing_state_root")
+pairing_fixture_configuration_base64=$(printf \
+    '%s' "$pairing_fixture_configuration" | base64)
 simulator_udid=$(xcrun simctl list devices available | awk '
     /iPhone 17 \(/ {
         for (field = 1; field <= NF; field += 1) {
@@ -442,6 +536,9 @@ xcrun simctl spawn "$simulator_udid" launchctl setenv \
 xcrun simctl spawn "$simulator_udid" launchctl setenv \
     HEELER_SSH_JUMP_E2E_CONFIG \
     "$jump_fixture_configuration_base64"
+xcrun simctl spawn "$simulator_udid" launchctl setenv \
+    HEELER_PAIRING_E2E_CONFIG \
+    "$pairing_fixture_configuration_base64"
 
 e2e_log="$fixture_dir/e2e.log"
 xcodebuild test \
@@ -533,6 +630,21 @@ if grep -q 'skipped:' "$image_staging_log" \
     exit 1
 fi
 
+pairing_log="$fixture_dir/pairing-e2e.log"
+xcodebuild test \
+    -project Heeler.xcodeproj \
+    -scheme Heeler \
+    -destination "$simulator_destination" \
+    -collect-test-diagnostics never \
+    -only-testing:HeelerTests/PairingCeremonyE2ETests \
+    2>&1 | tee "$pairing_log"
+
+if grep -q 'skipped:' "$pairing_log" \
+    || ! grep -q "Test run with 11 tests in 1 suite passed" "$pairing_log"; then
+    echo "The mandatory Pairing ceremony suite did not execute all eleven tests" >&2
+    exit 1
+fi
+
 for variable in \
     HEELER_SSH_E2E_REQUIRED \
     HEELER_SSH_E2E_HOST \
@@ -554,10 +666,10 @@ clear_simulator_environment
 
 if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || grep -q 'skipped:' "$package_e2e_log" \
-    || ! grep -q 'Test run with 13 tests in 2 suites passed' "$package_e2e_log" \
+    || ! grep -q 'Test run with 14 tests in 2 suites passed' "$package_e2e_log" \
     || ! grep -q 'Test "remote transport loss reclaims every owned native resource" passed' \
         "$package_e2e_log"; then
-    echo "The mandatory HeelerSSH package suites did not execute all thirteen tests" >&2
+    echo "The mandatory HeelerSSH package suites did not execute all fourteen tests" >&2
     exit 1
 fi
 

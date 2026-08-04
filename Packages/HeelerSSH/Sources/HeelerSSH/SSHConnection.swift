@@ -110,6 +110,23 @@ public final class SSHConnection: Sendable {
         try await driver.execute(command: command, input: input, timeout: timeout)
     }
 
+    /// Opens one SSH session channel, sends exactly one newline-terminated
+    /// input line, reads one bounded newline-terminated stdout response, and
+    /// closes the channel. This is for forced-command request/response
+    /// protocols whose process lifetime must not control the caller's bound.
+    public func executeResponseLine(
+        _ command: String,
+        input: Data,
+        maximumResponseBytes: Int,
+        timeout: Duration
+    ) async throws -> Data {
+        try await driver.executeResponseLine(
+            command: command,
+            input: input,
+            maximumResponseBytes: maximumResponseBytes,
+            timeout: timeout)
+    }
+
     /// Opens one SSH session channel, requests the configured PTY, and then
     /// executes `command` directly. No login shell or shell request is exposed
     /// to the caller's terminal stream.

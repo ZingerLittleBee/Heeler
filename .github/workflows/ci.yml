@@ -80,6 +80,9 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
 
       - name: Test VPS SSH access scripts
         run: scripts/test-vps-ssh-access-scripts.sh
