@@ -40,6 +40,10 @@ final class SessionActivity: @unchecked Sendable {
     /// The pointer handed to libssh2 is unretained: the session belongs to the
     /// driver that owns this object, so libssh2 can never receive on it after
     /// the owner is gone.
+    ///
+    /// This claims the session's single user abstract slot. Any future use of
+    /// the abstract has to share this pointer rather than overwrite it, or the
+    /// receive callback will reinterpret whatever replaced it.
     func install(on session: OpaquePointer) {
         guard let abstract = libssh2_session_abstract(session) else { return }
         abstract.pointee = Unmanaged.passUnretained(self).toOpaque()
@@ -112,7 +116,11 @@ private func sessionReceive(
     guard received >= 0 else {
         // libssh2 reads these as negated errno values, not as its own codes.
         let code = errno
-        if code == EINTR { return -Int(EINTR) }
+        // EINTR reports as EAGAIN, exactly as upstream's `_libssh2_recv` does:
+        // recv leaves its arguments untouched on EINTR but bytes may still be
+        // waiting, and -EAGAIN is the only value libssh2's callers retry on.
+        // Anything else becomes a fatal LIBSSH2_ERROR_SOCKET_RECV.
+        if code == EINTR { return -Int(EAGAIN) }
         if code == EAGAIN || code == EWOULDBLOCK { return -Int(EAGAIN) }
         return -Int(code)
     }

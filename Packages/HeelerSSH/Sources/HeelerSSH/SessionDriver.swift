@@ -1653,6 +1653,13 @@ actor SessionDriver {
                 if !innerEOF, toOuter.count < bufferLimit { innerDirections.insert(.read) }
                 if !toInner.isEmpty { innerDirections.insert(.write) }
                 let pumpDeadline = ContinuousClock.now.advanced(by: .seconds(60))
+                // The one wait in the driver that needs no SessionActivity
+                // watch. `forwarding` is a hard mutual-exclusion gate: every
+                // other entry point refuses while it is set, and `close`
+                // throws rather than run. Once this pump is up, the outer
+                // session has no other operation that could drain the socket
+                // out from under it, so the socket edge is the only edge
+                // there is. Do not copy this to a site that shares a session.
                 do {
                     try await SocketReadiness.wait(
                         for: [
