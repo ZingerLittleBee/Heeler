@@ -37,15 +37,19 @@ fallback.
 That combined failure is therefore not retryable, and the two properties are
 not separable. A cause the client cannot narrow is a cause only the user can
 resolve, by starting herdr or by enabling stream-local forwarding — so the
-failure has to reach a surface that names both actions. Heeler renders
-`connectionGuidance` on the failed path only; while a Host is reconnecting it
-shows no guidance, and the reconnect policy has no attempt cap. Marking this
-error retryable would hand a Host with `AllowStreamLocalForwarding no` — a
+failure has to reach the user unprompted, not merely be reachable. The Console
+is the surface a user watches, and there `connectionGuidance` is rendered for a
+failed Host only; a reconnecting one shows a short summary phrase that names no
+action. The Host detail sheet does render the full guidance while a Host is
+reconnecting, but only for a user who already suspected something and opened
+it. Combined with a reconnect policy that has no attempt cap, marking this
+error retryable would leave a Host with `AllowStreamLocalForwarding no` — a
 permanent configuration error, the exact case this classification exists to
-make legible — an unbounded silent reconnect loop that never displays the
-sentence written for it. An honest combined failure must stop in order to be
-displayed. A later bounded-retry design could revisit this, but only together
-with a surface that shows guidance while retrying.
+make legible — retrying forever behind that actionless phrase, with the
+sentence written for it parked one navigation away. Stopping is what moves the
+actionable text to where the user is already looking. A later bounded-retry
+design could revisit this, but it would have to carry the guidance onto the
+ambient surface, or terminate soon enough that the failed state carries it.
 
 Cancellation and timeout recovery will be channel-scoped only when the
 affected channel has been allocated and can be closed cleanly. A timeout while
