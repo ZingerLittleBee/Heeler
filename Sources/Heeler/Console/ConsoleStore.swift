@@ -67,7 +67,9 @@ final class ConsoleStore {
     /// meantime, and `resume()` has nothing to re-activate on it — so without
     /// the second half the Console shows a connection that is already gone
     /// until the keepalive gets round to noticing, up to its interval plus a
-    /// request timeout later (#142).
+    /// request timeout later (#142). A Host already stopped on a
+    /// non-retryable failure is asked once more here too, because otherwise
+    /// only the Retry button would ever ask it again (#147).
     func reactivate() async {
         await activate(revalidating: true)
     }
@@ -80,12 +82,20 @@ final class ConsoleStore {
                 await projection.resume()
             }
             guard revalidating else { return }
-            // All at once: re-proving is a ping, but its only bound is the
-            // Transport's request timeout, and a Host frozen with the app is
-            // exactly the case that runs it out. Serially that is N timeouts
-            // holding the lifecycle chain, and behind that chain sits any
-            // suspend() the user triggers by leaving again — including the
-            // didFinishSuspending() that releases the background assertion.
+            // Every Host, not only one the user has navigated to: recovery
+            // that depends on navigation just trades the Retry button for
+            // another hidden step, and the Console is a single list across
+            // all Hosts anyway, so it has no notion of one being on screen.
+            // The population this costs anything for is the Hosts currently
+            // *failed*, which is normally none (#147).
+            //
+            // All at once: re-proving is one bounded round trip per Host, but
+            // its only bound is the Transport's request timeout, and a Host
+            // frozen with the app is exactly the case that runs it out.
+            // Serially that is N timeouts holding the lifecycle chain, and
+            // behind that chain sits any suspend() the user triggers by
+            // leaving again — including the didFinishSuspending() that
+            // releases the background assertion.
             await withTaskGroup(of: Void.self) { group in
                 for projection in projections {
                     group.addTask { await projection.revalidate() }

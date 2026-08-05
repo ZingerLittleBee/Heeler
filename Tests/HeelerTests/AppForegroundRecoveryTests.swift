@@ -40,6 +40,16 @@ import Testing
 /// period absorbed the trip, or the process was frozen before its grace timer
 /// could fire. Either way the app is back holding a connection nothing tore
 /// down, and `resume()` alone has nothing to re-activate.
+///
+/// The adjacent state is a Host already stopped on a non-retryable failure
+/// (#147). There `resume()` no-ops for the same reason — the reconnect loop
+/// returned with the phase still `.active` — and the ping has nothing left to
+/// ping, so nothing ever asks that Host again and the user's natural recovery
+/// (restart herdr, come back) does nothing. The return asks it once more. That
+/// is a single attempt on an explicit user action, not a softening of the
+/// classification: `herdrStoppedWhileAwayFailsTheHostWithItsSetupGuidance`
+/// still pins that a stopped herdr fails rather than retries, and the cases
+/// below pin that a still-broken Host lands straight back on `.failed`.
 @MainActor
 @Suite("App foreground recovery")
 struct AppForegroundRecoveryTests {
@@ -311,6 +321,173 @@ struct AppForegroundRecoveryTests {
         store.setHosts([])
     }
 
+    /// The recovery #147 adds: a Host correctly stopped on a non-retryable
+    /// failure is asked once more when the user comes back, so fixing the Host
+    /// and returning is enough on its own.
+    ///
+    /// Without it the Host is never asked again by anything. `run()` returned
+    /// with the phase still `.active`, so `resume()` no-ops; `liveStream` is
+    /// nil, so the ping no-ops. Only the Retry button was left, and a user who
+    /// has just restarted herdr has no reason to expect they need it.
+    @Test func aFailedHostIsAskedAgainOnTheNextForegroundReturn() async throws {
+        let host = Host.fixture()
+        let socketPath = "/home/dev/.config/herdr/herdr.sock"
+        let stopped = ScriptedTransport(snapshot: .openSession)
+        let restarted = ScriptedTransport(snapshot: .openSession)
+        let store = makeStore(attempts: ConnectionAttemptQueue([
+            .success(stopped), .success(restarted),
+        ]))
+        let activity = AppActivityCoordinator(
+            gracePeriod: .seconds(60), granter: GrantingBackgroundExecutionGranter())
+        let driver = Task {
+            await ConsoleActivityDriver(activity: activity, console: store).run()
+        }
+        defer { driver.cancel() }
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Host should come up connected") {
+            store.hostStatuses[host.id] == .connected
+        }
+
+        // herdr stops while the app is away. The return's ping opens a
+        // stream-local channel onto a socket nothing is serving, which is
+        // configuration-class and correctly stops the reconnect loop.
+        await stopped.failPing(atCall: 2, with: .streamLocalOpenFailed(path: socketPath))
+        activity.didEnterBackground()
+        activity.didBecomeActive()
+        try await waitUntil("the stopped herdr should fail the Host") {
+            store.hostStatuses[host.id] == .failed(.streamLocalOpenFailed(path: socketPath))
+        }
+
+        // The user does exactly what the guidance asks — restarts herdr — and
+        // comes back to the app. No Retry tap, no Host edit, nothing else.
+        activity.didEnterBackground()
+        activity.didBecomeActive()
+
+        try await waitUntil("coming back should ask the repaired Host again") {
+            store.hostStatuses[host.id] == .connected
+        }
+        #expect(await restarted.pingCount == 1)
+        store.setHosts([])
+    }
+
+    /// The same return against a Host that is still broken: it must land back
+    /// on `.failed` carrying the same guidance, having shown nothing in
+    /// between that reads as recovery, and must make exactly one attempt per
+    /// return rather than looping.
+    @Test func aStillBrokenHostReturnsToFailedWithoutAFlickerOfRecovery() async throws {
+        let host = Host.fixture()
+        let socketPath = "/home/dev/.config/herdr/herdr.sock"
+        let failure = TransportError.streamLocalOpenFailed(path: socketPath)
+        let stopped = ScriptedTransport(snapshot: .openSession)
+        let stillStopped = ScriptedTransport(snapshot: .openSession)
+        // Every dial after the first finds herdr still down, however many the
+        // app makes — so the count below measures the app's cadence rather
+        // than the end of a scripted queue.
+        for ordinal in 1...10 {
+            await stillStopped.failPing(atCall: ordinal, with: failure)
+        }
+        let connector = SequencedTransportConnector([stopped, stillStopped])
+        let store = makeStore(connector: connector)
+        let activity = AppActivityCoordinator(
+            gracePeriod: .seconds(60), granter: GrantingBackgroundExecutionGranter())
+        let driver = Task {
+            await ConsoleActivityDriver(activity: activity, console: store).run()
+        }
+        defer { driver.cancel() }
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Host should come up connected") {
+            store.hostStatuses[host.id] == .connected
+        }
+        let generation = try #require(store.hostConnectionGenerations[host.id])
+
+        await stopped.failPing(atCall: 2, with: failure)
+        activity.didEnterBackground()
+        activity.didBecomeActive()
+        try await waitUntil("the stopped herdr should fail the Host") {
+            store.hostStatuses[host.id] == .failed(failure)
+        }
+
+        // Back again, with the Host still broken.
+        activity.didEnterBackground()
+        activity.didBecomeActive()
+        try await waitUntil("the return should make its one attempt") {
+            await stillStopped.pingCount == 1
+        }
+        await settle()
+
+        #expect(store.hostStatuses[host.id] == .failed(failure))
+        #expect(
+            failure.connectionGuidance == """
+                herdr is not running on this Host. If it is running, check SSH \
+                stream-local forwarding.
+                """)
+        // And no flicker. Both of these are the *absence* of a `.connected`,
+        // established structurally rather than by having polled at the right
+        // moment: the generation only advances when the projection handles a
+        // `.connected`, and a `.connected` is only reached by subscribing, so
+        // a channel that was never subscribed never announced recovery.
+        #expect(store.hostConnectionGenerations[host.id] == generation)
+        #expect(await stillStopped.capturedSubscriptions.isEmpty)
+        // One attempt, not a loop: the initial dial plus this return's.
+        #expect(await connector.connectCount == 2)
+
+        // And one *per return* — a second return makes exactly one more.
+        activity.didEnterBackground()
+        activity.didBecomeActive()
+        try await waitUntil("the second return should make one more attempt") {
+            await stillStopped.pingCount == 2
+        }
+        await settle()
+        #expect(await stillStopped.pingCount == 2)
+        #expect(store.hostStatuses[host.id] == .failed(failure))
+        store.setHosts([])
+    }
+
+    /// The recovery is keyed on the Host being `.failed`, not on which failure
+    /// stopped it. `.socketNotFound` is the sibling class the same ping
+    /// produces — a named session whose socket is gone — and narrowing the
+    /// recovery to `.streamLocalOpenFailed` alone would strand this Host
+    /// forever with every other case here still green.
+    @Test func aFailedHostIsAskedAgainWhicheverNonRetryableClassStoppedIt() async throws {
+        let host = Host.fixture()
+        let stopped = ScriptedTransport(snapshot: .openSession)
+        let restarted = ScriptedTransport(snapshot: .openSession)
+        let store = makeStore(attempts: ConnectionAttemptQueue([
+            .success(stopped), .success(restarted),
+        ]))
+        let activity = AppActivityCoordinator(
+            gracePeriod: .seconds(60), granter: GrantingBackgroundExecutionGranter())
+        let driver = Task {
+            await ConsoleActivityDriver(activity: activity, console: store).run()
+        }
+        defer { driver.cancel() }
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Host should come up connected") {
+            store.hostStatuses[host.id] == .connected
+        }
+
+        let missingSocket = "/home/dev/.config/herdr/sessions/work/herdr.sock"
+        await stopped.failPing(atCall: 2, with: .socketNotFound(path: missingSocket))
+        activity.didEnterBackground()
+        activity.didBecomeActive()
+        try await waitUntil("a missing socket should fail the Host") {
+            store.hostStatuses[host.id] == .failed(.socketNotFound(path: missingSocket))
+        }
+
+        activity.didEnterBackground()
+        activity.didBecomeActive()
+        try await waitUntil("coming back should ask this Host again too") {
+            store.hostStatuses[host.id] == .connected
+        }
+        store.setHosts([])
+    }
+
     /// A store whose session factory hands out scripted transports in order,
     /// in the keepalive shape production uses (`ConsoleStore.sshSessionFactory`
     /// takes the default): 30 s, far longer than any of these tests live.
@@ -322,6 +499,28 @@ struct AppForegroundRecoveryTests {
                 reconnectPolicy: Self.fastPolicy,
                 keepalive: .default)
         }
+    }
+
+    /// The same store over a connector that repeats its last transport, for
+    /// cases that must count how many attempts the app makes rather than run
+    /// a scripted queue dry.
+    private func makeStore(connector: SequencedTransportConnector) -> ConsoleStore {
+        ConsoleStore(snapshotRetryDelay: .milliseconds(10)) { _, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: { try await connector.connect() },
+                reconnectPolicy: Self.fastPolicy,
+                keepalive: .default)
+        }
+    }
+
+    /// Gives any further attempt room to happen before asserting that none
+    /// did. Absence cannot be polled for: a count that must stay at one is
+    /// only meaningful once the work that would have raised it has had time
+    /// to run. Everything here is in-memory on a fast reconnect policy, so a
+    /// loop would overshoot this many times over.
+    private func settle() async {
+        try? await Task.sleep(for: .milliseconds(50))
     }
 
     /// Polls until `condition` holds, yielding so the store's tasks progress.

@@ -72,13 +72,35 @@ final class HostConsoleProjection {
         await session.resume()
     }
 
-    /// Re-proves a session that was never told to suspend — the app froze
-    /// before its teardown ran, or the trip out was short enough that the
-    /// grace period absorbed it — and that therefore comes back believing it
-    /// is still connected. `resume()` is a no-op on such a session, so
-    /// without this nothing asks it until the keepalive's next turn (#142).
+    /// Re-proves this Host on a foreground return, by whatever means its
+    /// current state calls for.
+    ///
+    /// A session that was never told to suspend — the app froze before its
+    /// teardown ran, or the trip out was short enough that the grace period
+    /// absorbed it — comes back believing it is still connected. `resume()`
+    /// is a no-op on such a session, so without this nothing asks it until
+    /// the keepalive's next turn (#142). That case is a ping.
+    ///
+    /// A session already stopped on a non-retryable failure is restarted
+    /// instead (#147). Its reconnect loop returned while the phase stayed
+    /// `.active`, so `resume()` no-ops and no live channel remains to ping:
+    /// nothing would ever ask that Host again, and a user who went and
+    /// restarted herdr would come back to the same failure until they found
+    /// the Retry button.
+    ///
+    /// This is deliberately not a retry cadence. The classification that
+    /// stopped the loop stands — retrying a stopped herdr on reconnect timing
+    /// would be a hot loop against a server that is not there, and would bury
+    /// the guidance the user needs. It is one attempt on an explicit user
+    /// action, and coming back to the app is one. A Host that is still broken
+    /// lands straight back on `.failed` carrying the same guidance, having
+    /// emitted nothing in between that could read as recovery.
     func revalidate() async {
-        await session.revalidate()
+        if case .failed = status {
+            await session.retry()
+        } else {
+            await session.revalidate()
+        }
     }
 
     func suspend() async {

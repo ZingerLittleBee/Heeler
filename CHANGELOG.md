@@ -54,6 +54,14 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- A Host that stopped with "herdr is not running on this Host" now recovers on
+  its own once you fix it: restart herdr, come back to the app, and the Host
+  reconnects without you doing anything else. Until now that failure was final
+  until you found the Retry button — the app never asked the Host again, so
+  the obvious recovery of going and fixing it changed nothing. A Host that is
+  still broken simply says so again, with the same guidance and without
+  flickering through a moment that looks like it reconnected. (#147)
+
 - An Attach terminal that comes back blank after time in the background now
   either repaints or tells you it stopped responding. Returning to the
   foreground asks the remote to redraw, which is the only way to tell a dead
