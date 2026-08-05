@@ -129,23 +129,37 @@ The app-side abstraction that executes herdr API requests and delivers event str
 _Avoid_: client, bridge, tunnel
 
 **Connection Guidance**:
-The sentence that names the action only the user can take to restore a Host,
-as against the short phrase describing what the app is doing about it. Shown
-in two situations: when the transport has stopped, so nothing changes until
-the user acts; and on the Host detail screen, whose subject is one Host's
-connection health and which the user reaches deliberately — from that Host's
-row once something looked wrong, or straight from adding it. There an
-imperative answers the question the screen was opened to ask, so it appears
-while a retry is in flight too. That does not rest on the Host being unproven,
-which nothing on the Host records: retryability is a claim about the
-transport, not about the cause — a mistyped address fails as retryable — so a
-retry in flight never by itself means the user cannot help.
-Every other surface is ambient: the user came for the Agents, not to diagnose
-a Host. There a failing Host is described by what the app is doing, with no
-imperative — while a retry is in flight an instruction misstates who has to
-act, and invites a restart that discards the attempt already running. The rule
-reads the status and the surface, both of which the code has, and never asks
-who is acting; during a reconnect on a screen the user opened, both are.
+The text a `TransportError` carries for the user, `connectionGuidance`, as
+against the shorter phrase the Console composes for the same error in
+`summary(for:)`. Only two statuses carry a `TransportError` at all,
+`.reconnecting` and `.failed`, and they partition the error set: the session
+emits `.failed` only where `isRetryable` is false and `.reconnecting` only
+where it is true. On `.failed` the text names an action the user can take in
+10 of the 12 cases `isRetryable` rejects outright; on `.reconnecting` it does
+so in none of the 5 it accepts, restating what happened and appending the
+transport's raw detail in three of them (`jumpHostFailed` prefixes and
+inherits whichever it wraps). So what the guidance adds over the Console's
+phrase during a reconnect is raw detail or nothing, never an instruction, and
+the name promises more than the strings deliver; #163 owns whether the strings
+gain actions or the term is renamed.
+Four surfaces turn those two statuses into text. The Console list shows the
+short phrase on `.reconnecting` and the guidance on `.failed`. The Agent
+detail screen (`MissingAgentPresentation`) shows a fixed "nothing to do"
+message on `.reconnecting` and the guidance on `.failed`. The Host detail
+screen (`HostOnboardingView.connectionErrorMessage`) shows the guidance on
+both, and is the only surface that shows it while a retry is in flight. The
+Hosts sheet rows (`HostConnectionPresentation`) show a status chip,
+"Reconnecting…" or "Unavailable", and never the guidance at all: a chip is not
+guidance, so those rows sit outside this term.
+Two exceptions the description keeps rather than tidies away. The Host detail
+footer is gated on no manual Reconnect being in flight, so pressing Reconnect
+suppresses the guidance entirely for the length of the retry call plus 1.2 s —
+on `.failed` as much as on `.reconnecting` (#160). And that screen is reached
+four ways: a Host row, the add form, a finished Pairing scan, and a deep link,
+which is what the Console's own issue buttons use to push the user onto it.
+Only the two surfaces with a presentation type of their own are tested; the
+Console list and the Host detail footer live inside `View` bodies and have no
+coverage.
 _Avoid_: error message, connection error, retry hint
 
 **Background Grace Period**:

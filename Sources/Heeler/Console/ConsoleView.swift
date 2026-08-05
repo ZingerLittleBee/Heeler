@@ -313,12 +313,9 @@ struct ConsoleView: View {
     private var hostIssues: [HostIssue] {
         hosts.hosts.compactMap { host in
             // The two failing arms present through different functions on
-            // purpose. A retryable failure reaches `.reconnecting` and reads as
-            // the short `summary(for:)` phrase, because the session will retry
-            // it and there is nothing for the user to do; a non-retryable one
-            // reaches `.failed` and reads as `connectionGuidance` in full,
-            // because that text names the action only the user can take. The
-            // split is exhaustive at the source: `.reconnecting` is emitted
+            // purpose; see Connection Guidance in `CONTEXT.md` for what each
+            // surface shows (#156). What is local to here: the split is
+            // exhaustive at the source, because `.reconnecting` is emitted
             // solely past a `guard failure.isRetryable`, so `summary(for:)`
             // needs arms for the retryable set alone.
             switch console.hostStatuses[host.id] {
@@ -384,24 +381,21 @@ struct ConsoleView: View {
 /// and a Host that is reconnecting, each leave the list exactly as empty as
 /// a pane that closed. Reading the empty list alone, "this pane is no longer
 /// reported" is simply false in both: it names the Agent for the Host's
-/// trouble and points at the wrong remedy, while the text naming the action
-/// the user must take (`connectionGuidance`) rendered only in the Console
-/// list behind it.
+/// trouble and points at the wrong remedy, while the failure's own
+/// `connectionGuidance` rendered only in the Console list behind it.
 ///
-/// Only `.failed` gets that guidance. `.reconnecting` deliberately does not:
-/// it is emitted solely past a `guard failure.isRetryable`, so the session is
-/// working on it and naming a user action would misstate who has to act. It
-/// gets its own message instead of borrowing either neighbour.
-///
-/// That is the app's rule rather than this screen's: see Connection Guidance
-/// in `CONTEXT.md`, which also says why the Host detail screen shows the
-/// guidance for `.reconnecting` where this screen does not (#156).
+/// Only `.failed` gets that guidance here; `.reconnecting` gets a message
+/// written for it rather than borrowing either neighbour (#154). See
+/// Connection Guidance in `CONTEXT.md`, which records what all four
+/// status-reading surfaces show and points at #163 for whether the split is
+/// right (#156).
 struct MissingAgentPresentation: Equatable {
     /// Which situation emptied the list. Explicit so that collapsing them
     /// into a single message cannot happen by accident.
     enum Cause: Hashable {
         /// The Host's session stopped on a failure no retry can clear; the
-        /// guidance names the action only the user can take.
+        /// guidance for most of that set names an action only the user can
+        /// take.
         case hostFailed
         /// The connection dropped and the session is re-establishing it.
         /// Nobody needs to act, so this says so instead of borrowing either
@@ -452,9 +446,12 @@ struct MissingAgentPresentation: Equatable {
             // mark is the point; a whole screen whose message is "nothing to
             // do" should not open by shouting.
             systemImage = "arrow.trianglehead.2.clockwise"
-            // Deliberately not `connectionGuidance`, which names an action
-            // the user must take: `.reconnecting` is emitted solely past a
-            // `guard failure.isRetryable`, so the app is the one acting.
+            // Deliberately not `connectionGuidance`. `.reconnecting` is
+            // emitted solely past a `guard failure.isRetryable`, and for that
+            // set the guidance names no action either — it restates the
+            // failure with the transport's raw detail. This says what is
+            // happening instead. Whether the retryable set should name
+            // actions at all is #163.
             message = named(
                 "The connection dropped and is being re-established. "
                     + "Nothing to do — the Agents come back on their own.")
