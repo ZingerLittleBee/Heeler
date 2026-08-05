@@ -19,6 +19,26 @@ struct TerminalSessionHandler: Sendable {
     }
 }
 
+/// The identity of one terminal pipeline, and so of the SwiftUI surface built
+/// on top of it.
+///
+/// Deliberately not `ObjectIdentifier(store)`. That is the store's *address*,
+/// and the allocator hands a freed address straight back to the next
+/// allocation of the same shape — 200 stores built and dropped in a row
+/// produced two distinct `ObjectIdentifier`s between them. SwiftUI compares
+/// against the identity it recorded at its *last render*, not against the
+/// store that is currently live, so a store landing on an address any earlier
+/// generation held presents an identity SwiftUI has already seen; it sees
+/// nothing change, keeps the surface it already built, and never calls
+/// `makeUIView` again. That call is the only place a feed acquires a sink, so
+/// the replacement's bytes buffer forever behind a stale screen while the
+/// session reads as live (#143).
+struct TerminalSurfaceID: Hashable, Sendable {
+    private let value = UUID()
+
+    init() {}
+}
+
 /// The Agent detail screen's session pipeline: a full interactive terminal
 /// over the Host's terminal channel — raw PTY bytes into the view through a
 /// `TerminalByteFeed`, keystrokes back out, geometry changes as SSH
@@ -63,6 +83,10 @@ final class AttachTerminalStore {
     private(set) var status: Status = .waitingForSize
     /// The byte pipe the terminal view consumes.
     let feed = TerminalByteFeed()
+    /// What the screen identifies this pipeline's surface by. Owned by the
+    /// store and unique for its lifetime, so a replacement is always a
+    /// different surface to SwiftUI.
+    let surfaceID = TerminalSurfaceID()
 
     private let target: String
     private let takeover: Bool

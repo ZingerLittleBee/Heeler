@@ -63,8 +63,8 @@ final class AgentAttachStore {
         close = ClosePaneStore(paneTitle: paneTitle, close: closePane)
     }
 
-    var terminalID: ObjectIdentifier {
-        ObjectIdentifier(terminal)
+    var terminalID: TerminalSurfaceID {
+        terminal.surfaceID
     }
 
     /// What the screen should say about the terminal.

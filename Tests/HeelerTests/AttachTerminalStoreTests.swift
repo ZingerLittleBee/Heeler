@@ -1465,6 +1465,144 @@ struct AgentAttachStoreTests {
         #expect(await transport.attachRequests.count == 1)
     }
 
+    @Test func everyTerminalPresentsAnIdentityNoDiscardedTerminalEverHeld() {
+        // The reconnect path is a teardown followed by a replacement moments
+        // later, which is the allocation pattern most likely to hand the
+        // replacement its predecessor's address. Building and dropping stores
+        // in a tight loop is that pattern with the timing taken out: an
+        // address-derived identity collapses onto a handful of reused values,
+        // an identity the store owns cannot (#143).
+        let transport = ScriptedTransport()
+        var identities: [AnyHashable] = []
+        for _ in 0..<200 {
+            identities.append(
+                AnyHashable(makeStore(transport: transport, generation: 0).terminalID))
+        }
+
+        #expect(Set(identities).count == 200)
+    }
+
+    @Test func aReplacedTerminalGetsASurfaceOfItsOwnThatItsBytesReach() async throws {
+        // The identity's whole job: a replacement terminal must make SwiftUI
+        // build a new surface, because `makeUIView` is the only place the new
+        // feed is attached. A surface that is not rebuilt leaves the new
+        // session writing into a feed with nowhere to go — bytes buffered
+        // forever behind a stale screen, with the session reading as live.
+        //
+        // One replacement pins the identity being *per pipeline* rather than
+        // shared, and nothing more: the predecessor is still held while the
+        // replacement is allocated, so even an address could not collide here.
+        // Address reuse needs two replacements between renders — see
+        // `aTerminalTwoReplacementsPastTheLastRenderStillGetsASurfaceOfItsOwn`.
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+        let stage = SurfaceIdentityStage()
+        stage.update(id: store.terminalID, feed: store.terminalFeed)
+
+        try await goLive(store, transport)
+        await transport.emitAttachOutput(Data("before".utf8))
+        try await waitUntil("the first session should reach the first surface") {
+            stage.surfaces.last?.text.contains("before") == true
+        }
+        #expect(stage.surfaces.count == 1)
+
+        let replacedID = store.terminalID
+        store.transportGenerationDidChange(1)
+        try await waitUntil("the terminal pipeline should be replaced") {
+            store.terminalID != replacedID
+        }
+
+        stage.update(id: store.terminalID, feed: store.terminalFeed)
+        #expect(stage.surfaces.count == 2)
+
+        try await goLive(store, transport, cols: 100, rows: 30)
+        await transport.emitAttachOutput(Data("after".utf8))
+        try await waitUntil("the replacement's bytes should reach its own surface") {
+            stage.surfaces.last?.text.contains("after") == true
+        }
+        #expect(stage.surfaces.first?.text.contains("after") == false)
+
+        await store.leave().value
+    }
+
+    @Test func aTerminalTwoReplacementsPastTheLastRenderStillGetsASurfaceOfItsOwn() async throws {
+        // SwiftUI does not compare a pipeline's identity against the live
+        // predecessor — it compares against the identity it recorded at its
+        // last render. Two replacements between renders put a *freed*
+        // generation on the other side of that comparison: generation N is
+        // released before N+2 is allocated, and the allocator hands the
+        // address straight back. Measured, thirteen consecutive terminal
+        // generations occupied two addresses, so N and N+2 necessarily share
+        // one. An address-derived identity leaves the surface unbuilt and the
+        // third generation's feed without a sink (#143).
+        //
+        // Whether the shipped screen really skips a render between two
+        // replacements is unproven and needs a hosted-view harness (#152).
+        // The identity has to survive it either way.
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+        let stage = SurfaceIdentityStage()
+        stage.update(id: store.terminalID, feed: store.terminalFeed)
+
+        try await goLive(store, transport)
+        await transport.emitAttachOutput(Data("before".utf8))
+        try await waitUntil("the first session should reach the first surface") {
+            stage.surfaces.last?.text.contains("before") == true
+        }
+        #expect(stage.surfaces.count == 1)
+
+        for generation in UInt64(1)...2 {
+            let replacedID = store.terminalID
+            store.transportGenerationDidChange(generation)
+            try await waitUntil("terminal generation \(generation) should be built") {
+                store.terminalID != replacedID
+            }
+        }
+
+        stage.update(id: store.terminalID, feed: store.terminalFeed)
+        #expect(stage.surfaces.count == 2)
+
+        try await goLive(store, transport, cols: 100, rows: 30)
+        await transport.emitAttachOutput(Data("after".utf8))
+        try await waitUntil("the third generation's bytes should reach its own surface") {
+            stage.surfaces.last?.text.contains("after") == true
+        }
+        #expect(stage.surfaces.first?.text.contains("after") == false)
+
+        await store.leave().value
+    }
+
+    /// SwiftUI's `.id()` rule with nothing else in it: an unchanged identity
+    /// keeps the surface already built, a changed one builds another. The
+    /// attach mirrors `TerminalScreenView.makeUIView`, which is the only place
+    /// a feed ever acquires a sink.
+    @MainActor
+    private final class SurfaceIdentityStage {
+        private(set) var surfaces: [Surface] = []
+        private var currentID: AnyHashable?
+
+        func update(id: some Hashable, feed: TerminalByteFeed) {
+            let id = AnyHashable(id)
+            guard id != currentID else { return }
+            currentID = id
+            let surface = Surface()
+            surfaces.append(surface)
+            feed.attach(surface)
+        }
+    }
+
+    @MainActor
+    private final class Surface: TerminalByteSink {
+        private(set) var chunks: [Data] = []
+        var text: String {
+            String(decoding: chunks.reduce(Data(), +), as: UTF8.self)
+        }
+
+        func receive(_ data: Data) {
+            chunks.append(data)
+        }
+    }
+
     @Test func successfulCloseLeavesTheWholeAttachInteraction() async throws {
         let transport = ScriptedTransport()
         let closeCalls = CloseCallRecorder()
