@@ -69,8 +69,8 @@ final class ConsoleStore {
     /// until the keepalive gets round to noticing, up to its interval plus a
     /// request timeout later (#142). A Host already stopped on a
     /// non-retryable failure is asked once more here too: `resume()` no-ops on
-    /// it as well, so on a return no suspension preceded nothing else would
-    /// ask it again (#147).
+    /// it as well, so on a return that no suspension preceded, nothing else
+    /// would ask it again (#147).
     func reactivate() async {
         await activate(revalidating: true)
     }
