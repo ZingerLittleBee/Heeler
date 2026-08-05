@@ -70,6 +70,53 @@ struct ConsoleDetailPresentationTests {
         store.setHosts([])
     }
 
+    /// The rule being right is not enough: the detail column has to read the
+    /// live collections, and until now nothing checked that it did.
+    ///
+    /// #146 was exactly that mistake — the rule was correct and the screen
+    /// still blamed the Agent, because of *what it was handed*. Passing an
+    /// empty `hostStatuses` reproduces it in full with the whole suite green
+    /// (measured: 853 tests, exit 0), and no test could catch it because the
+    /// detail column cannot be rendered: a hosted `NavigationSplitView` builds
+    /// its columns and navigation bar and never the content inside them
+    /// (measured under #152).
+    ///
+    /// So this calls the store-taking initializer the view calls, with both
+    /// stores live. It is the reading that is under test here; the rule itself
+    /// is covered by the tests around it.
+    @Test func theDetailColumnReadsTheLiveHostStatuses() async throws {
+        let host = Host.fixture()
+        let socketPath = "/home/dev/.config/herdr/herdr.sock"
+        let transport = ScriptedTransport(snapshot: .fixture())
+        await transport.failPing(
+            atCall: 1, with: .streamLocalOpenFailed(path: socketPath))
+        let console = makeStore(transport: transport)
+        let hosts = HostStore(volatileHosts: [host])
+
+        console.setHosts([host])
+        await console.resume()
+        try await waitUntil("the Host should stop on a failure no retry clears") {
+            console.hostStatuses[host.id]
+                == .failed(.streamLocalOpenFailed(path: socketPath))
+        }
+        #expect(console.agents.isEmpty)
+
+        // Exactly what `ConsoleView.detail` builds, by the same call.
+        let presentation = MissingAgentPresentation(
+            agentID: ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1"),
+            console: console,
+            hosts: hosts)
+
+        // Reading an empty status map instead of the live one lands on
+        // `.paneGone` — the defect, and what this pins against.
+        #expect(presentation.cause == .hostFailed)
+        #expect(presentation.message == "\(host.displayName): \(Self.socketGuidance)")
+        // The Host name proves the other collection is live too: it is read
+        // from the `HostStore`, not from the status map.
+        #expect(presentation.message.hasPrefix(host.displayName))
+        console.setHosts([])
+    }
+
     /// The other half: with the Host fine, the placeholder means what it says.
     @Test func aVanishedPaneOnAHealthyHostStillSaysTheAgentIsGone() {
         let host = Host.fixture()

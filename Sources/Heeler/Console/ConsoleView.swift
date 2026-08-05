@@ -186,10 +186,11 @@ struct ConsoleView: View {
                 // because its pane went: a failed Host empties the list the
                 // same way, and blaming the Agent for that hides the only
                 // text that says what to do about it (#146).
+                // The stores, not their contents: which collections this reads
+                // is the part a test can then assert, and the part #146 got
+                // wrong.
                 let presentation = MissingAgentPresentation(
-                    agentID: id,
-                    hostStatuses: console.hostStatuses,
-                    hosts: hosts.hosts)
+                    agentID: id, console: console, hosts: hosts)
                 ContentUnavailableView(
                     presentation.title, systemImage: presentation.systemImage,
                     description: Text(presentation.message))
@@ -420,13 +421,11 @@ struct MissingAgentPresentation: Equatable {
     /// so `ConsoleAgent.ID` carries the `hostID`, and keeping the resolution
     /// here means no call site can apply a *different* rule to it.
     ///
-    /// It does not make the call site safe. Passing an empty `hostStatuses`
-    /// restores the defect outright — every failed Host falls back to the
-    /// placeholder — and nothing would fail, because no test instantiates
-    /// `ConsoleView` (#152). What makes that remote is the type rather than
-    /// this design: `console.hostStatuses` is the only value of its type in
-    /// scope at the call site, so the mistake has to be written deliberately
-    /// rather than arrived at by refactoring.
+    /// This initializer takes the *contents* and so cannot police where they
+    /// came from — passing an empty `hostStatuses` restores #146's defect
+    /// outright, since every failed Host then falls back to the placeholder.
+    /// The detail column therefore does not call it; it calls the store-taking
+    /// initializer below, which is the one under test (#152).
     init(
         agentID: ConsoleAgent.ID,
         hostStatuses: [Host.ID: EventsSessionStatus],
@@ -474,6 +473,29 @@ struct MissingAgentPresentation: Equatable {
             systemImage = "rectangle.on.rectangle.slash"
             message = "This Agent's pane is no longer reported."
         }
+    }
+
+    /// What the Console's detail column shows when the selected Agent is not
+    /// in the list.
+    ///
+    /// This exists to be called from a test, and deleting it would cost real
+    /// coverage rather than tidy up an unused overload. The defect it guards
+    /// (#146) is *which collections the view reads*, not what the rule does
+    /// with them, and that could not be reached: a hosted `NavigationSplitView`
+    /// builds its columns and navigation bar but never the SwiftUI content
+    /// inside them, so the detail column cannot be rendered in a test and
+    /// asserted against (measured under #152).
+    ///
+    /// Taking the stores instead of their contents is what makes the seam
+    /// worth having. The reader is now written once, here, where a test calls
+    /// exactly what the view calls — rather than at a call site that no test
+    /// can reach.
+    @MainActor
+    init(agentID: ConsoleAgent.ID, console: ConsoleStore, hosts: HostStore) {
+        self.init(
+            agentID: agentID,
+            hostStatuses: console.hostStatuses,
+            hosts: hosts.hosts)
     }
 }
 
