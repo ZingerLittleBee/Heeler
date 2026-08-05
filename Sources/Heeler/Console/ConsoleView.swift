@@ -408,8 +408,16 @@ struct MissingAgentPresentation: Equatable {
 
     /// Resolves the Host from the selection rather than taking a status the
     /// caller looked up: the pane address alone is not unique across Hosts,
-    /// so `ConsoleAgent.ID` carries the `hostID` precisely so this question
-    /// can be answered here instead of at each call site.
+    /// so `ConsoleAgent.ID` carries the `hostID`, and keeping the resolution
+    /// here means no call site can apply a *different* rule to it.
+    ///
+    /// It does not make the call site safe. Passing an empty `hostStatuses`
+    /// restores the defect outright — every failed Host falls back to the
+    /// placeholder — and nothing would fail, because no test instantiates
+    /// `ConsoleView` (#152). What makes that remote is the type rather than
+    /// this design: `console.hostStatuses` is the only value of its type in
+    /// scope at the call site, so the mistake has to be written deliberately
+    /// rather than arrived at by refactoring.
     init(
         agentID: ConsoleAgent.ID,
         hostStatuses: [Host.ID: EventsSessionStatus],
