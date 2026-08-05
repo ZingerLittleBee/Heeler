@@ -885,14 +885,20 @@ clear_simulator_environment
 
 if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || grep -q 'skipped:' "$package_e2e_log" \
-    || ! grep -q 'Test run with 17 tests in 2 suites passed' "$package_e2e_log" \
+    || ! grep -q 'Test run with 19 tests in 2 suites passed' "$package_e2e_log" \
     || ! grep -q 'Test "remote transport loss reclaims every owned native resource" passed' \
         "$package_e2e_log" \
     || ! grep -q 'Test "an abruptly severed weak link reclaims every owned native resource" passed' \
         "$package_e2e_log" \
     || ! grep -q 'Test "a severed link makes a stream-local connection report itself disconnected" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "a teardown that only runs out of its budget spares the session" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "a genuine transport failure during teardown still invalidates the session" passed' \
         "$package_e2e_log"; then
-    echo "The mandatory HeelerSSH package suites did not execute all seventeen tests" >&2
+    echo "The mandatory HeelerSSH package suites did not execute all nineteen tests" >&2
     exit 1
 fi
 

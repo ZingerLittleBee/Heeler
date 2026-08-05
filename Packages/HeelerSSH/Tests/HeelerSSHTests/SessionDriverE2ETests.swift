@@ -201,6 +201,136 @@ struct SessionDriverE2ETests {
         }
     }
 
+    /// #136 at all four teardown sites, with no link involved in causing it.
+    ///
+    /// Every `deinit` in the package closes on the same hardcoded `.seconds(2)`,
+    /// so on a link slow enough to exhaust it `repeatUntilComplete` throws
+    /// `SSHError.timedOut` — and the shared teardown `catch` used to read that
+    /// as evidence of a corrupt session, taking Events, Attach and every other
+    /// channel on the connection down with the one abandoned transfer.
+    ///
+    /// A zero budget reaches that same throw deterministically: the deadline is
+    /// already past at `repeatUntilComplete`'s first progress check, so it
+    /// expires before libssh2 is called at all. That leaves the session provably
+    /// healthy underneath, which is the state the old code could not tell from
+    /// a dead one — and it needs no impairment proxy to reproduce.
+    ///
+    /// `isConnected` alone would not prove survival: it is a local flag, and a
+    /// change that only stopped clearing it would satisfy it while leaving the
+    /// session wedged. Every site is therefore followed by a real round trip.
+    @Test("a teardown that only runs out of its budget spares the session")
+    func expiredTeardownBudgetSparesTheSession() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let socketPath = try #require(SessionDriverTestEnvironment.streamLocalSocketPath)
+        let connection = try await environment.connect()
+        let home = try await remoteHome(of: connection)
+
+        for site in TeardownSite.allCases {
+            let close = try await site.open(
+                on: connection,
+                socketPath: socketPath,
+                stagePath: "\(home)/teardown-\(UUID().uuidString).part")
+            await #expect(
+                throws: SSHError.timedOut,
+                "\(site.rawValue) did not report the expired budget"
+            ) {
+                try await close(.zero)
+            }
+            #expect(await connection.isConnected, "\(site.rawValue) invalidated the session")
+            let echo = try await connection.execute("printf survived", timeout: .seconds(5))
+            #expect(
+                echo.stdout == Data("survived".utf8),
+                "\(site.rawValue) left the session unusable")
+        }
+
+        try await connection.close(timeout: .seconds(2))
+    }
+
+    /// The other direction of #136, and the reason its fix classifies rather
+    /// than exempts. A close that fails for a reason other than the clock has to
+    /// keep invalidating: the session really is gone, and `isReusable` must say
+    /// so or `EventsSession` resubscribes forever onto nothing. Make teardown
+    /// unconditionally non-invalidating — the obvious wrong fix — and three of
+    /// the four sites here go red.
+    ///
+    /// The fourth, `closeSFTP`, cannot be driven into that branch, and this
+    /// asserts why rather than passing over it: measured on a severed link,
+    /// `libssh2_sftp_shutdown` reports success, so `guard result == 0` never
+    /// fires and a deadline expiry is the only failure that site has ever been
+    /// able to report — which is also why sparing an expiry there gives up no
+    /// protection that existed before. Should a libssh2 bump start surfacing
+    /// the loss, this is the expectation that says so, and the site moves
+    /// across.
+    ///
+    /// One connection per site: invalidation is one-way, so a shared connection
+    /// would let site one satisfy sites two through four for free.
+    @Test("a genuine transport failure during teardown still invalidates the session")
+    func genuineTeardownFailureStillInvalidatesTheSession() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let proxy = try #require(WeakNetworkProxyFixture.current)
+        let socketPath = try #require(SessionDriverTestEnvironment.streamLocalSocketPath)
+        let endpoint = SSHEndpoint(host: environment.endpoint.host, port: proxy.port)
+
+        for site in TeardownSite.allCases {
+            let connection = try await SSHConnection.connect(to: endpoint, timeout: .seconds(15))
+            try await environment.authenticate(connection)
+            let home = try await remoteHome(of: connection)
+            let close = try await site.open(
+                on: connection,
+                socketPath: socketPath,
+                stagePath: "\(home)/teardown-\(UUID().uuidString).part")
+            // Anti-vacuity: a property that were false already would satisfy the
+            // closing assertion without the severance proving anything.
+            #expect(await connection.isConnected, "\(site.rawValue) started disconnected")
+
+            #expect(try await proxy.cut() > 0)
+            // The reset has to have landed before the close touches the socket,
+            // or libssh2 queues into a connection that has not failed yet.
+            try await Task.sleep(for: .milliseconds(500))
+            var thrown: (any Error)?
+            do {
+                try await close(.seconds(10))
+            } catch {
+                thrown = error
+            }
+
+            guard site.reportsALostLinkFromTeardown else {
+                if let thrown {
+                    Issue.record(
+                        """
+                        \(site.rawValue) now reports a lost link as \(thrown). \
+                        Move it across and assert the invalidation instead.
+                        """)
+                }
+                try? await connection.close(timeout: .seconds(2))
+                continue
+            }
+            #expect(
+                thrown as? SSHError == .channelFailed,
+                "\(site.rawValue) reported \(String(describing: thrown)) for a severed link")
+            // No `close(timeout:)` above this line: the property must go false
+            // because the link died during teardown, not because it was told to.
+            #expect(
+                await connection.isConnected == false,
+                "\(site.rawValue) spared a session the link had already killed")
+            try? await connection.close(timeout: .seconds(2))
+        }
+        try await proxy.reset()
+    }
+
+    /// The fixture gives each session an isolated `HOME` inside its disposable
+    /// directory, so anything staged there is cleaned up with the fixture —
+    /// which matters here because half these connections are dead before they
+    /// could unlink anything.
+    private func remoteHome(of connection: SSHConnection) async throws -> String {
+        let result = try await connection.execute(
+            "printf %s \"$HOME\"",
+            timeout: .seconds(15))
+        let home = String(decoding: result.stdout, as: UTF8.self)
+        #expect(home.hasPrefix("/"))
+        return home
+    }
+
     /// Runs `body` with the link degraded and always restores it afterwards.
     ///
     /// The proxy is process-wide and this suite is serialized, so a test that
@@ -402,6 +532,74 @@ struct SessionDriverE2ETests {
             try await Task.sleep(for: .milliseconds(5))
         }
         #expect(await condition(), comment)
+    }
+}
+
+/// The four `close*` paths that share one teardown verdict in `SessionDriver`.
+///
+/// Naming them as data is what keeps the two directions of #136 from drifting
+/// apart: both tests walk this list, so neither can end up covering three sites
+/// while the other covers four, and a fifth site added to the driver without a
+/// case here is a visible omission rather than a silent one.
+private enum TeardownSite: String, CaseIterable {
+    case pty = "closePTY"
+    case streamLocal = "closeStreamLocal"
+    case sftpFile = "closeSFTPFile"
+    case sftp = "closeSFTP"
+
+    /// Whether severing the link is enough to make this site's close fail.
+    ///
+    /// Three of the four reach libssh2's transport and report the loss. The
+    /// exception is `closeSFTP`: measured against this fixture,
+    /// `libssh2_sftp_shutdown` returns success on a link that is already gone,
+    /// so `guard result == 0` never fires there and the clock is the only
+    /// failure that site can report.
+    var reportsALostLinkFromTeardown: Bool {
+        switch self {
+        case .pty, .streamLocal, .sftpFile: true
+        case .sftp: false
+        }
+    }
+
+    /// Opens this site's resource and hands back the close under test, so the
+    /// caller decides the budget and when it runs.
+    func open(
+        on connection: SSHConnection,
+        socketPath: String,
+        stagePath: String
+    ) async throws -> @Sendable (Duration) async throws -> Void {
+        switch self {
+        case .pty:
+            let channel = try await connection.openPTY(
+                command: "cat",
+                columns: 80,
+                rows: 24,
+                timeout: .seconds(15))
+            return { try await channel.close(timeout: $0) }
+        case .streamLocal:
+            let channel = try await connection.openStreamLocal(
+                socketPath: socketPath,
+                timeout: .seconds(15))
+            return { try await channel.close(timeout: $0) }
+        case .sftpFile:
+            let client = try await connection.openSFTP(timeout: .seconds(15))
+            let file = try await client.openFileForWriting(
+                at: stagePath,
+                permissions: 0o600,
+                timeout: .seconds(15))
+            // The client has to outlive the close under test, and only the body
+            // referencing it will do that — a bare `[client]` capture list is
+            // not enough. Release it early and `SSHSFTPClient.deinit` shuts the
+            // whole subsystem down first, taking this file out of the driver's
+            // map, and the close under test returns having done nothing.
+            return { budget in
+                defer { withExtendedLifetime(client) {} }
+                try await file.close(timeout: budget)
+            }
+        case .sftp:
+            let client = try await connection.openSFTP(timeout: .seconds(15))
+            return { try await client.close(timeout: $0) }
+        }
     }
 }
 

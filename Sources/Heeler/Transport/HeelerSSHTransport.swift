@@ -1030,16 +1030,20 @@ actor HeelerSSHTransport: Transport {
         let operationID = UUID()
 
         do {
+            // No cancellation handler. One used to race the staging task from
+            // `onCancel:`, closing the SFTP client out from under it so the
+            // compensation had to open a fresh one to unlink the `.part` — and
+            // that fresh open is what killed the connection on a slow link
+            // (#136). Cancellation reaches the blocked write on its own:
+            // `checkProgress` and the socket wait the driver parks in are both
+            // cancellable, so the write unwinds and the structured compensation
+            // below runs with the client it already owns.
             return try await channelAdmission.withChannel(.ordinarySession) {
-                try await withTaskCancellationHandler {
-                    try await self.performImageStage(
-                        image,
-                        parentDirectory: parentDirectory,
-                        operationID: operationID,
-                        progress: progress)
-                } onCancel: {
-                    Task { await self.cancelImageStage(operationID) }
-                }
+                try await self.performImageStage(
+                    image,
+                    parentDirectory: parentDirectory,
+                    operationID: operationID,
+                    progress: progress)
             }
         } catch let error as ImageStagingError {
             throw error
@@ -1148,10 +1152,10 @@ actor HeelerSSHTransport: Transport {
             return staged
         } catch {
             imageStageClients[operationID] = nil
-            try? await sftp.close(timeout: .seconds(2))
             if let partPath {
-                await bestEffortRemoveRemoteFile(at: partPath)
+                await bestEffortRemoveRemoteFile(at: partPath, over: sftp)
             }
+            try? await sftp.close(timeout: .seconds(2))
             if Task.isCancelled { throw ImageStagingError.cancelled }
             if let stagingError = error as? ImageStagingError {
                 throw stagingError
@@ -1223,18 +1227,23 @@ actor HeelerSSHTransport: Transport {
         }
     }
 
-    private func cancelImageStage(_ operationID: UUID) async {
-        guard let sftp = imageStageClients[operationID] else { return }
-        try? await sftp.close(timeout: .seconds(2))
-    }
-
-    private func bestEffortRemoveRemoteFile(at path: String) async {
+    /// Unlinks one abandoned `.part` so the user's image bytes do not outlive
+    /// the failed operation, on the SFTP client that operation already owns.
+    ///
+    /// Detached, because the caller is usually a cancelled task and the unlink
+    /// would inherit that cancellation and skip. Never on a *fresh* client:
+    /// `SessionDriver.openSFTP` invalidates the whole session when its own
+    /// budget expires, deliberately — an abandoned `libssh2_sftp_init` leaves
+    /// session state no later call can clean up — and a cleanup that can kill
+    /// the connection is not best-effort. Opening one here on a two-second
+    /// budget is what made cancelling an upload over a slow link report
+    /// `.sshUnreachable` on the user's next request (#136).
+    private func bestEffortRemoveRemoteFile(
+        at path: String,
+        over sftp: SSHSFTPClient
+    ) async {
         let cleanup = Task {
-            guard let sftp = try? await self.connection.openSFTP(timeout: .seconds(2)) else {
-                return
-            }
             try? await sftp.removeFile(at: path, timeout: .seconds(2))
-            try? await sftp.close(timeout: .seconds(2))
         }
         await cleanup.value
     }

@@ -54,6 +54,17 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Cancelling an image upload on a slow connection no longer kills the Host.
+  The cleanup that follows a cancelled or failed upload ran on fixed
+  two-second budgets, and running out of one was treated as evidence that the
+  SSH connection was broken — so on a weak mobile link, cancelling an upload
+  silently tore down Events, Attach, and everything else sharing that
+  connection, and reported it as "The SSH connection is no longer reusable."
+  on whatever you did next. Running out of time is no longer read as a broken
+  connection, and the cleanup no longer opens a second connection it may not
+  have time to finish. A connection that genuinely dies is still reported as
+  dead. (#136)
+
 - A Host that stopped with "herdr is not running on this Host" now recovers on
   its own once you fix it: restart herdr, come back to the app, and the Host
   reconnects without you doing anything else. Until now that failure was final

@@ -553,8 +553,7 @@ actor SessionDriver {
                     cancellable: false)
             }
         } catch {
-            invalidateResources()
-            throw normalize(error)
+            throw teardownFailure(error)
         }
     }
 
@@ -772,8 +771,7 @@ actor SessionDriver {
                 deadline: ContinuousClock.now.advanced(by: timeout),
                 cancellable: false)
         } catch {
-            invalidateResources()
-            throw normalize(error)
+            throw teardownFailure(error)
         }
     }
 
@@ -1166,8 +1164,7 @@ actor SessionDriver {
             guard result == 0 else { throw SSHError.channelFailed }
             sftpClients[sftpID]?.files[fileID] = nil
         } catch {
-            invalidateResources()
-            throw normalize(error)
+            throw teardownFailure(error)
         }
     }
 
@@ -1314,8 +1311,7 @@ actor SessionDriver {
             }
             guard result == 0 else { throw SSHError.channelFailed }
         } catch {
-            invalidateResources()
-            throw normalize(error)
+            throw teardownFailure(error)
         }
     }
 
@@ -2169,6 +2165,32 @@ actor SessionDriver {
     private func normalize(_ error: any Error) -> SSHError {
         if let error = error as? SSHError { return error }
         return .connectionFailed
+    }
+
+    /// The single verdict every `close*` teardown path takes on its own failure:
+    /// `closePTY`, `closeStreamLocal`, `closeSFTP`, and `closeSFTPFile`.
+    ///
+    /// All four run on a budget their caller hands down, and every `deinit` in
+    /// the package hands down the same `.seconds(2)` constant regardless of how
+    /// fast the link is. Exhausting that budget arrives here as an ordinary
+    /// `SSHError.timedOut` from `repeatUntilComplete`, which the shared
+    /// `catch { invalidateResources() }` these four used to run could not tell
+    /// from a genuine transport failure — so on a slow enough link, tearing down
+    /// one abandoned upload took Events, Attach, and every other channel on the
+    /// connection with it, and reported it as `.sshUnreachable` on whatever the
+    /// user did next (#136).
+    ///
+    /// Running out of time is not evidence that the session is corrupt, so
+    /// expiry spares it: the caller's own handle is already out of its map,
+    /// which bounds the loss to the one channel that could not be drained.
+    /// Every other failure still invalidates — a close that failed for a reason
+    /// other than the clock says the session itself is no longer trustworthy.
+    /// `mappedStreamLocalOpenError` and `mappedSFTPError` split their two causes
+    /// on one signal the same way.
+    private func teardownFailure(_ error: any Error) -> SSHError {
+        let normalized = normalize(error)
+        if normalized != .timedOut { invalidateResources() }
+        return normalized
     }
 
     private func invalidateResources() {

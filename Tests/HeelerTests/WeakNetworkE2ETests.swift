@@ -133,38 +133,25 @@ struct WeakNetworkE2ETests {
 
         try await fixture.control.apply(.degraded)
         // The reuse property is what a cancelled upload owes the rest of the
-        // Host: Events and Attach share this connection. It does not hold on a
-        // slow link, and the assertion stays as written so the day it starts
-        // holding this test says so.
+        // Host: Events and Attach share this connection.
         //
-        // Mechanism: the compensation path closes the SFTP client and file with
-        // hardcoded two-second budgets (`cancelImageStage`, `streamImage`'s
-        // catch), while `SessionDriver.closeSFTP`/`closeSFTPFile` treat any
-        // error from that close — a mere deadline expiry included — as grounds
-        // for `invalidateResources()`. Below roughly 256 KiB/s the SFTP
-        // shutdown cannot drain the partially written chunk inside two seconds,
-        // so the whole SSH session is torn down; `cancelImageStage` swallows
-        // the throw with `try?`, so the next RPC is the first sign of it.
-        // Deterministic in the link speed, not racy: fails 3/3 at 16 KiB/s,
-        // passes 2/2 at 256 KiB/s, and passes 2/2 at 16 KiB/s when the link is
-        // restored immediately before the cancel.
+        // The two rates are both load-bearing and neither may be relaxed to
+        // make this pass. The cancellation above has to happen at 16 KiB/s,
+        // because that is the rate at which the compensation path's two
+        // two-second SFTP closes cannot drain and so expire — the defect this
+        // regression-tests (#136). The ping has to happen at 256 KiB/s, because
+        // at 16 KiB/s a ping is slow enough to time out on its own and this
+        // would stop being a session-invalidation detector.
         //
-        // The matcher admits only the invalidation itself. Without it the block
-        // would absorb any failure inside it — a ping that succeeded while
-        // reporting the wrong protocol version would go green as "the known
-        // issue", which is the opposite of what this records.
-        try await withKnownIssue(
-            "cancelling a rate-starved upload invalidates the whole SSH session"
-        ) {
-            let server = try await transport.ping()
-            #expect(server.protocolVersion == 17)
-        } matching: { issue in
-            guard
-                let error = issue.error as? TransportError,
-                case .sshUnreachable = error
-            else { return false }
-            return true
-        }
+        // What used to fail here: `SessionDriver.closeSFTP`/`closeSFTPFile`
+        // treated any error from that close — a mere deadline expiry included —
+        // as grounds for `invalidateResources()`, which is one-way, so the
+        // whole SSH session died at cancel time and this ping never reached the
+        // network. `cancelImageStage` swallows the throw with `try?`, so the
+        // next RPC was the first sign of it. `teardownFailure` now spares the
+        // session when only the clock ran out.
+        let server = try await transport.ping()
+        #expect(server.protocolVersion == 17)
         try? await transport.close()
     }
 
