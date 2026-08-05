@@ -4,14 +4,21 @@ import Testing
 @testable import Heeler
 
 /// What the session screen's detail column says when the selected Agent is no
-/// longer in the Console list (#146).
+/// longer in the Console list (#146, #154).
 ///
-/// Two situations empty that list and the screen has to tell them apart. Every
-/// non-`.connected` status runs `invalidateSnapshot()`, so a Host that failed
-/// clears `agentsByPane` exactly as a closed pane does — and the placeholder
-/// then blamed the Agent for the Host's failure while `connectionGuidance`,
-/// the only text naming the action the user can take, rendered solely in the
-/// Console list behind the screen.
+/// Three situations empty that list and the screen has to tell them apart.
+/// Every non-`.connected` status runs `invalidateSnapshot()`, so a Host that
+/// failed and a Host that is reconnecting each clear `agentsByPane` exactly as
+/// a closed pane does — and the placeholder then blamed the Agent for the
+/// Host's trouble, while the text written for the failure rendered only in the
+/// Console list behind the screen: the guidance on `.failed`, the shorter
+/// phrase that list composes on `.reconnecting`. Which surface renders which
+/// text is Connection Guidance in `CONTEXT.md`; what this suite pins is what
+/// reaches this screen.
+///
+/// So the tests cover all three causes and the fields that carry them —
+/// message, title and icon — plus which Host the screen reads them from, and
+/// that the column reads the live stores rather than a snapshot (#152).
 ///
 /// #142 is what made that routine rather than rare: every foreground return
 /// re-proves the connection, so a herdr stopped while the app was away takes
@@ -160,10 +167,10 @@ struct ConsoleDetailPresentationTests {
     ///
     /// This half was split out of `aPausedOrHealthyHostStillSaysTheAgentIsGone`,
     /// which used to assert `.reconnecting` got the placeholder. The property
-    /// that test existed to pin — that this screen never borrows the
-    /// `.failed` guidance, which names an action the user must take — moves
-    /// here with it and is asserted against the underlying failure's own
-    /// guidance string, so the split cannot quietly become a deletion.
+    /// that test existed to pin — that this screen never borrows the text
+    /// `.failed` would have shown, `connectionGuidance` — moves here with it
+    /// and is asserted against the underlying failure's own guidance string,
+    /// so the split cannot quietly become a deletion.
     @Test func aReconnectingHostSaysSoAndStillBorrowsNoGuidance() {
         let host = Host.fixture()
         let failures: [TransportError] = [
@@ -185,9 +192,12 @@ struct ConsoleDetailPresentationTests {
             // the moment it most needs to explain itself.
             #expect(!presentation.message.isEmpty)
             #expect(presentation.message == "\(host.displayName): \(Self.reconnectingMessage)")
-            // The teeth carried over from the test this was split out of: the
-            // guidance names a user action, and here the app is the one
-            // acting, so none of it may appear.
+            // The teeth carried over from the test this was split out of.
+            // Neither failure's guidance names an action — both are in the
+            // retryable set, which restates what happened and appends the raw
+            // detail in `sshUnreachable` — so borrowing it would put the
+            // failure itself on a screen whose whole message is that nothing
+            // needs doing.
             #expect(!presentation.message.contains(failure.connectionGuidance))
             // Nor may it fall back to blaming the Agent.
             #expect(!presentation.message.contains("no longer reported"))
