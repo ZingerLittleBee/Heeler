@@ -211,6 +211,8 @@ final class AgentAttachStore {
 
     func didBecomeActive() {
         image.didBecomeActive()
+        guard !hasLeft else { return }
+        terminal.didBecomeActive()
     }
 
     func didEnterBackground() {

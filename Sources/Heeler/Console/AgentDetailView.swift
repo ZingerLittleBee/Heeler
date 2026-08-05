@@ -269,12 +269,15 @@ struct AgentDetailView: View {
         // is exactly the work worth finishing while the app is briefly out of
         // sight, and it is cancelled only once the app really suspends.
         .onChange(of: activity.phase) { _, phase in
-            switch phase {
-            case .active:
-                attach.didBecomeActive()
-            case .suspended:
-                attach.didEnterBackground()
-            }
+            guard phase == .suspended else { return }
+            attach.didEnterBackground()
+        }
+        // Not the phase: a background→foreground round trip the grace period
+        // absorbs never leaves `.active`, so the return that has to prove the
+        // attach channel is exactly the one an `onChange` on the phase cannot
+        // see (#141).
+        .onChange(of: activity.activationCount) { _, _ in
+            attach.didBecomeActive()
         }
         .onChange(of: console.hostConnectionGenerations[agent.hostID]) { _, generation in
             attach.transportGenerationDidChange(generation)

@@ -54,6 +54,14 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- An Attach terminal that comes back blank after time in the background now
+  either repaints or tells you it stopped responding. Returning to the
+  foreground asks the remote to redraw, which is the only way to tell a dead
+  terminal from an agent that simply has nothing to say — `herdr agent
+  attach` draws on change, so silence looks identical either way. A terminal
+  that does not answer ends with a Reattach button instead of staying a black
+  screen with no error and nothing to reconnect. (#141)
+
 - Coming back to a session after leaving the app no longer lands on a blank
   screen that never recovers. Returning to the foreground now re-proves each
   Host's connection, so one that died while you were away reconnects — and

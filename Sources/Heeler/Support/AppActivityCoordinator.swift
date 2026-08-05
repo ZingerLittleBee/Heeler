@@ -96,6 +96,18 @@ final class AppActivityCoordinator {
 
     private(set) var phase: AppActivityPhase = .active
 
+    /// Increments on every foreground return, whether or not the grace period
+    /// ever reached `.suspended`.
+    ///
+    /// `phase` cannot carry that signal. A background→foreground round trip
+    /// the grace period absorbs never leaves `.active`, so a SwiftUI
+    /// `onChange` on the phase observes nothing and the return goes unnoticed
+    /// — the same coalescing `events` exists to defeat. `events` has a single
+    /// consumer by construction; screens that come and go need a value they
+    /// can observe instead, and a monotonic counter is one no `onChange` can
+    /// miss.
+    private(set) var activationCount: UInt64 = 0
+
     /// Every transition, in order and exactly once each. Buffered rather than
     /// latest-value: a background→foreground round trip that completes before
     /// the consumer gets to run must still produce both the teardown and the
@@ -123,6 +135,7 @@ final class AppActivityCoordinator {
         graceTask = nil
         releaseBackgroundExecution()
         phase = .active
+        activationCount &+= 1
         eventsContinuation.yield(.activated)
     }
 

@@ -11,10 +11,12 @@ import Testing
 struct AttachTerminalStoreTests {
     private func makeStore(
         transport: ScriptedTransport?, target: String = "w1:p1", takeover: Bool = false,
+        livenessProbeTimeout: Duration = AttachTerminalStore.defaultLivenessProbeTimeout,
         input: TerminalInputController = TerminalInputController()
     ) -> (AttachTerminalStore, captured: Captured) {
         let store = AttachTerminalStore(
-            target: target, takeover: takeover, input: input
+            target: target, takeover: takeover,
+            livenessProbeTimeout: livenessProbeTimeout, input: input
         ) { request, handler in
             guard let transport else {
                 throw TransportError.sshUnreachable(detail: "The Host is not connected.")
@@ -119,6 +121,74 @@ struct AttachTerminalStoreTests {
         try await goLive(store, transport)
 
         #expect(await transport.attachRequests.first?.takeover == true)
+        await store.stop()
+    }
+
+    // MARK: Returning from the background (#141)
+
+    @Test func returningToTheForegroundAsksTheRemoteToRepaint() async throws {
+        // `herdr agent attach` is ratatui: it repaints on change, never on a
+        // timer, so "no bytes" is its normal steady state and cannot itself
+        // be a liveness signal. A window-change is the one thing that makes a
+        // live remote speak without waiting on the agent — and the frame it
+        // answers with is exactly what a surface that came back empty needs.
+        let transport = ScriptedTransport()
+        let (store, _) = makeStore(transport: transport)
+
+        try await goLive(store, transport, cols: 80, rows: 24)
+        store.didBecomeActive()
+
+        try await waitUntil("the return should nudge the remote PTY") {
+            await transport.attachInputs == [
+                .resize(cols: 79, rows: 24),
+                .resize(cols: 80, rows: 24),
+            ]
+        }
+        await store.stop()
+    }
+
+    @Test func aSessionThatNeverAnswersTheRepaintStopsBeingBlank() async throws {
+        // The #141 report: the app comes back, the terminal is blank, and
+        // `.live` draws no overlay — so a dead channel is indistinguishable
+        // from a quiet agent and the screen says nothing, forever. Silence
+        // past the deadline has to become a visible ending with a way back.
+        let transport = ScriptedTransport()
+        let (store, _) = makeStore(
+            transport: transport, livenessProbeTimeout: .milliseconds(200))
+
+        try await goLive(store, transport)
+        store.didBecomeActive()
+
+        try await waitUntil("an unanswered repaint must not leave the screen blank") {
+            if case .ended = store.status { return true }
+            return false
+        }
+        guard case .ended(let message) = store.status else {
+            Issue.record("the session should have ended visibly")
+            return
+        }
+        #expect(message == AttachTerminalStore.unresponsiveMessage)
+        await store.stop()
+    }
+
+    @Test func aRepaintAfterReturningKeepsTheSessionLive() async throws {
+        // The other half: a healthy session that answers must be left alone.
+        // A probe that ends quiet-but-live sessions would be worse than the
+        // bug it replaces.
+        let transport = ScriptedTransport()
+        let (store, captured) = makeStore(
+            transport: transport, livenessProbeTimeout: .milliseconds(200))
+
+        try await goLive(store, transport)
+        store.didBecomeActive()
+        #expect(await transport.emitAttachOutput(Data("\u{1B}[2Jrepainted".utf8)))
+
+        try await waitUntil("the repaint should reach the terminal") {
+            captured.text.hasSuffix("repainted")
+        }
+        try await Task.sleep(for: .milliseconds(400))
+        #expect(store.status == .live)
+
         await store.stop()
     }
 
@@ -1515,5 +1585,67 @@ private final class CancellationAwareAttachLinkOpener {
         cancelledTargets.append(target)
         continuation?.resume(returning: false)
         continuation = nil
+    }
+}
+
+/// The Attach screen's owner, covering only what the foreground return has to
+/// travel through to reach the terminal pipeline (#141).
+@MainActor
+@Suite("Agent attach store foreground")
+struct AgentAttachStoreForegroundTests {
+    private func makeStore(
+        transport: ScriptedTransport, isOnStage: @escaping () -> Bool = { true }
+    ) -> AgentAttachStore {
+        AgentAttachStore(
+            target: "w1:p1",
+            paneTitle: "pane",
+            transportGeneration: 1,
+            isOnStage: isOnStage,
+            runTerminal: { request, handler in
+                let session = try await transport.attachTerminal(request)
+                do {
+                    try await handler.run(session)
+                    await session.end()
+                } catch {
+                    await session.end()
+                    throw error
+                }
+            },
+            stageImage: { _, _ in throw TransportError.cancelled },
+            closePane: {})
+    }
+
+    private func waitUntil(
+        _ comment: Comment, timeout: Duration = .seconds(5),
+        condition: () async -> Bool
+    ) async throws {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if await condition() { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(await condition(), comment)
+    }
+
+    @Test func theForegroundReturnReachesTheLiveTerminal() async throws {
+        // `didBecomeActive()` used to forward to the image store alone, so
+        // nothing on the Attach path reacted to foregrounding at all.
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("attach should open") { await transport.hasLiveAttachSession }
+        #expect(await transport.emitAttachOutput(Data("\u{1B}[2J".utf8)))
+        try await waitUntil("terminal should go live") { store.terminalStatus == .live }
+
+        store.didBecomeActive()
+
+        try await waitUntil("the return should reach the terminal's remote") {
+            await transport.attachInputs == [
+                .resize(cols: 79, rows: 24),
+                .resize(cols: 80, rows: 24),
+            ]
+        }
+        await store.leave().value
     }
 }

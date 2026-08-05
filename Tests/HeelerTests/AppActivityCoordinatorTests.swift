@@ -34,6 +34,27 @@ struct AppActivityCoordinatorTests {
         #expect(granter.beginCount == 1)
     }
 
+    @Test func aBounceTheGracePeriodAbsorbsStillCountsAsAReturn() async throws {
+        // The edge #141 loses: the round trip never leaves `.active`, so a
+        // SwiftUI `onChange` on the phase observes nothing and the screens
+        // that must prove their channels on return are never told. The
+        // counter is what they observe instead, so it has to move here.
+        let granter = FakeBackgroundExecutionGranter()
+        let coordinator = AppActivityCoordinator(
+            gracePeriod: .seconds(60), granter: granter)
+        #expect(coordinator.activationCount == 0)
+
+        coordinator.didEnterBackground()
+        coordinator.didBecomeActive()
+
+        #expect(coordinator.phase == .active)
+        #expect(coordinator.activationCount == 1)
+
+        coordinator.didEnterBackground()
+        coordinator.didBecomeActive()
+        #expect(coordinator.activationCount == 2)
+    }
+
     @Test func gracePeriodElapsingSuspends() async throws {
         let granter = FakeBackgroundExecutionGranter()
         let coordinator = AppActivityCoordinator(
