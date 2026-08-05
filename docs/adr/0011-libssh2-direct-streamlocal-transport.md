@@ -51,6 +51,21 @@ actionable text to where the user is already looking. A later bounded-retry
 design could revisit this, but it would have to carry the guidance onto the
 ambient surface, or terminate soon enough that the failed state carries it.
 
+Correction (#156): the clause "but only for a user who already suspected
+something and opened it" is false, and it is not part of this decision. It
+arrived with `b34e67b`, a later correction to this same paragraph's claims
+about where guidance is shown. Measured against `HostListView`, that sheet's
+detail screen (`HostOnboardingView`) is reached four ways — a Host row, a
+saved add form (`HostListView.swift:165`), a finished Pairing scan (`:183`),
+and a deep link (`:225`) that the Console's own issue buttons use — and two of
+them, the add form and the Pairing scan, push the user onto it with nothing
+suspected. Suspicion is not what that surface selects for, so nothing should
+be inferred from the clause; what is true of the screen is that its subject is
+one Host's connection health and that it is not ambient. The decision rests on
+the sentence before the clause — the Console, the surface a user watches,
+withholds the guidance while a Host is reconnecting — and is unchanged. See
+Connection Guidance in `CONTEXT.md` for what each of the four surfaces shows.
+
 Cancellation and timeout recovery will be channel-scoped only when the
 affected channel has been allocated and can be closed cleanly. A timeout while
 opening a channel, handshaking, authenticating, or establishing a nested Jump

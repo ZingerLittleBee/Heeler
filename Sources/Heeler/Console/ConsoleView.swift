@@ -381,8 +381,9 @@ struct ConsoleView: View {
 /// and a Host that is reconnecting, each leave the list exactly as empty as
 /// a pane that closed. Reading the empty list alone, "this pane is no longer
 /// reported" is simply false in both: it names the Agent for the Host's
-/// trouble and points at the wrong remedy, while the failure's own
-/// `connectionGuidance` rendered only in the Console list behind it.
+/// trouble and points at the wrong remedy, while the text written for the
+/// failure — the guidance on `.failed`, the Console's short phrase on
+/// `.reconnecting` — rendered only in the Console list behind it.
 ///
 /// Only `.failed` gets that guidance here; `.reconnecting` gets a message
 /// written for it rather than borrowing either neighbour (#154). See
@@ -449,9 +450,10 @@ struct MissingAgentPresentation: Equatable {
             // Deliberately not `connectionGuidance`. `.reconnecting` is
             // emitted solely past a `guard failure.isRetryable`, and for that
             // set the guidance names no action either — it restates the
-            // failure with the transport's raw detail. This says what is
-            // happening instead. Whether the retryable set should name
-            // actions at all is #163.
+            // failure, appending the transport's raw detail in three of the
+            // five and nothing at all in `timedOut` and `cancelled`. This
+            // says what is happening instead. Whether the retryable set
+            // should name actions at all is #163.
             message = named(
                 "The connection dropped and is being re-established. "
                     + "Nothing to do — the Agents come back on their own.")
