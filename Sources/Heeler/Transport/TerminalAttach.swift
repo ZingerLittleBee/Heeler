@@ -230,9 +230,10 @@ final class TerminalAttachInputQueue: Sendable {
 /// channel: raw PTY bytes out, keystrokes and window changes in. The byte
 /// stream feeds the terminal emulator directly without app-level framing.
 ///
-/// Ending is explicit: call `end()`. A live PTY channel does not respond to
-/// Swift task cancellation (ADR 0011), so abandoning the session without
-/// `end()` leaks the channel until the SSH connection closes.
+/// Ending is explicit: call `end()`. The channel is closed by the session's
+/// own teardown, which nothing else invokes — dropping the session, or
+/// cancelling the task reading `output`, leaves the channel open until the
+/// SSH connection closes.
 final class TerminalAttachSession: Sendable {
     /// Raw PTY output in arrival order. Finishes without error when the
     /// remote attach exits cleanly (the user detached inside the TUI) or

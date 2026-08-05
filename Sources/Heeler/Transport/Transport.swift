@@ -547,18 +547,18 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// one; each Host keeps exactly one interactive terminal surface at a
     /// time, and each session serves exactly one of them.
     case terminalChannelAlreadyOpen
-    /// The request exceeded its per-request deadline; its exec channel was
+    /// The request exceeded its per-request deadline; the channel it held was
     /// closed.
     case timedOut
-    /// The request's task was cancelled before completing; any exec channel
-    /// it held was closed.
+    /// The request's task was cancelled before completing; any channel it
+    /// held was closed.
     case cancelled
     /// The channel produced bytes that do not decode as a herdr response.
     case malformedResponse(String)
     /// herdr answered with an error envelope: the request arrived intact and
     /// the server rejected it on its own terms.
     case apiRejected(code: String, message: String)
-    /// The exec channel failed outside the known failure shapes; carries the
+    /// The channel failed outside the known failure shapes; carries the
     /// underlying description for diagnostics.
     case channelFailed(detail: String)
 

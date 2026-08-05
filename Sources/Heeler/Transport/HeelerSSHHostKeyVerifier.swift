@@ -1,9 +1,9 @@
 import Foundation
 import HeelerSSH
 
-/// Applies the app-owned TOFU policy to Host Keys surfaced by either SSH
-/// backend during the migration. Authentication must not begin until this
-/// verifier returns successfully.
+/// Applies the app-owned TOFU policy to Host Keys surfaced by the SSH
+/// transport. Authentication must not begin until this verifier returns
+/// successfully.
 struct HeelerSSHHostKeyVerifier: Sendable {
     private let host: String
     private let port: Int
