@@ -221,6 +221,13 @@ actor EventsSession {
     /// session drops into the ordinary visible `.reconnecting` sequence
     /// instead of sitting on a dead link.
     ///
+    /// Every failure class is reported, not just the timeout a hung socket
+    /// produces: post-#138 a severed link classifies as `.sshUnreachable`, and
+    /// a herdr that stopped while the app was away classifies as the
+    /// non-retryable `.streamLocalOpenFailed` / `.socketNotFound`, which
+    /// correctly takes the Host to `.failed` with its setup guidance rather
+    /// than retrying something no retry can fix.
+    ///
     /// No-op unless a channel is actually live: a suspended session is
     /// `resume()`'s business, and one already reconnecting is visibly working
     /// on it.

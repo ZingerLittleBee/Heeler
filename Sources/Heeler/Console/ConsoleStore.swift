@@ -65,8 +65,9 @@ final class ConsoleStore {
     /// whatever is not. A session the app was still holding when it went away
     /// comes back believing it is connected even when its link died in the
     /// meantime, and `resume()` has nothing to re-activate on it — so without
-    /// the second half the Console sits on a dead Host with no reconnect and
-    /// nothing to show for it (#141).
+    /// the second half the Console shows a connection that is already gone
+    /// until the keepalive gets round to noticing, up to its interval plus a
+    /// request timeout later (#142).
     func reactivate() async {
         await activate(revalidating: true)
     }
@@ -74,10 +75,20 @@ final class ConsoleStore {
     private func activate(revalidating: Bool) async {
         await enqueueLifecycleTransition { [self] in
             isActive = true
-            for projection in projections.values {
+            let projections = Array(self.projections.values)
+            for projection in projections {
                 await projection.resume()
-                if revalidating {
-                    await projection.revalidate()
+            }
+            guard revalidating else { return }
+            // All at once: re-proving is a ping, but its only bound is the
+            // Transport's request timeout, and a Host frozen with the app is
+            // exactly the case that runs it out. Serially that is N timeouts
+            // holding the lifecycle chain, and behind that chain sits any
+            // suspend() the user triggers by leaving again — including the
+            // didFinishSuspending() that releases the background assertion.
+            await withTaskGroup(of: Void.self) { group in
+                for projection in projections {
+                    group.addTask { await projection.revalidate() }
                 }
             }
         }

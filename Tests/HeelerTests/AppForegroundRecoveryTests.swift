@@ -3,16 +3,31 @@ import Testing
 
 @testable import Heeler
 
-/// Foreground recovery (#141): what the app does to its Host connections when
+/// Foreground recovery (#142): what the app does to its Host connections when
 /// it returns from the background, driven through the same activity events
 /// `ContentView` subscribes to.
 ///
-/// The failure these pin is silent by construction. A link that dies while the
-/// app is away produces no error, because nothing is attempting anything: the
-/// reconnect loop is parked on an events stream that a frozen socket never
-/// ends. So the session comes back reporting `.connected`, the Console keeps
-/// listing its Agents, and the Attach terminal keeps rendering `.live` with no
-/// overlay — a blank screen that never transitions and never retries.
+/// A link that dies while the app is away produces no error at the moment it
+/// dies, because nothing is attempting anything: the reconnect loop is parked
+/// on an events stream that a frozen socket never ends. So the session comes
+/// back reporting `.connected`, the Console keeps listing its Agents, and the
+/// Attach terminal keeps rendering `.live` with no overlay.
+///
+/// What re-proving on return buys is **latency, not recovery that would
+/// otherwise never happen**. The keepalive is still armed across the freeze —
+/// this trip never suspends the session, so `stopKeepalive()` never runs — and
+/// `ContinuousClock` advances while a process is frozen, so its expired sleep
+/// returns promptly on thaw and the same `keepaliveDidFail` path notices the
+/// dead link within its interval plus the request timeout. Foregrounding makes
+/// that immediate, at the moment a user is looking at whatever the answer
+/// means.
+///
+/// These tests therefore run in the **production keepalive shape**
+/// (`.default`, 30 s), not with the keepalive disabled: every case here
+/// settles in well under a second, so a 30 s timer provably cannot be what
+/// recovered it, and removing `revalidate()` turns them red rather than
+/// slower. That is what distinguishes the two mechanisms without putting a
+/// test on the clock.
 ///
 /// The trigger is a return *without an intervening suspension*: the grace
 /// period absorbed the trip, or the process was frozen before its grace timer
@@ -28,9 +43,7 @@ struct AppForegroundRecoveryTests {
     @Test func foregroundingSurfacesALinkThatDiedWhileTheAppWasAway() async throws {
         let host = Host.fixture()
         // The connection the app was holding when it went away, and what it
-        // gets on the repair attempt. Keepalive is off on purpose: recovery
-        // must come from the foreground transition itself, not from a timer
-        // that happened to be due.
+        // gets on the repair attempt.
         let stale = ScriptedTransport(snapshot: .openSession)
         let store = makeStore(attempts: ConnectionAttemptQueue([
             .success(stale),
@@ -104,7 +117,10 @@ struct AppForegroundRecoveryTests {
         try await waitUntil("and the Host should end up connected again") {
             store.hostStatuses[host.id] == .connected
         }
-        #expect(await repaired.isConnected)
+        // The repaired transport is the one now carrying the events channel,
+        // and the dead one was closed rather than left open behind it.
+        #expect(!(await repaired.capturedSubscriptions.isEmpty))
+        #expect(await stale.isClosed)
         store.setHosts([])
     }
 
@@ -141,14 +157,151 @@ struct AppForegroundRecoveryTests {
         store.setHosts([])
     }
 
-    /// A store whose session factory hands out scripted transports in order.
+    /// The class a severed link actually produces post-#138 is
+    /// `.sshUnreachable`, not the `.timedOut` the other cases script: #138
+    /// classifies a stream-local open that failed on a dead connection by its
+    /// errno, and connection loss lands there. Reporting only `.timedOut` out
+    /// of `revalidate()` would leave the real production failure swallowed and
+    /// every other test here green, so the class is pinned explicitly.
+    @Test func foregroundingSurfacesALinkThatDiedUnreachableNotOnlyOneThatTimedOut()
+        async throws
+    {
+        let host = Host.fixture()
+        let stale = ScriptedTransport(snapshot: .openSession)
+        let repaired = ScriptedTransport(snapshot: .openSession)
+        let store = makeStore(attempts: ConnectionAttemptQueue([
+            .success(stale), .success(repaired),
+        ]))
+        let activity = AppActivityCoordinator(
+            gracePeriod: .seconds(60), granter: GrantingBackgroundExecutionGranter())
+        let driver = Task {
+            await ConsoleActivityDriver(activity: activity, console: store).run()
+        }
+        defer { driver.cancel() }
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Host should come up connected") {
+            store.hostStatuses[host.id] == .connected
+        }
+        let generation = try #require(store.hostConnectionGenerations[host.id])
+
+        await stale.failPing(
+            atCall: 2, with: .sshUnreachable(detail: "the Host is unreachable"))
+        activity.didEnterBackground()
+        activity.didBecomeActive()
+
+        try await waitUntil("an unreachable link must be repaired, not swallowed") {
+            (store.hostConnectionGenerations[host.id] ?? generation) > generation
+        }
+        try await waitUntil("and the Host should end up connected again") {
+            store.hostStatuses[host.id] == .connected
+        }
+        store.setHosts([])
+    }
+
+    /// herdr stopped while the app was away, SSH itself fine: the ping opens a
+    /// stream-local channel, herdr refuses it, and the transport's probe
+    /// reports the configuration-class `.streamLocalOpenFailed` (or
+    /// `.socketNotFound`). Both are non-retryable, so re-proving on return
+    /// takes the Host terminally to `.failed` carrying the setup guidance
+    /// instead of reconnecting forever against a server that is not there.
+    /// That is the intended outcome — nothing an automatic retry can fix — and
+    /// it is decided here rather than left implicit, because unlike the
+    /// severed-link lane #138 moved, this one is reached on every foreground
+    /// return while herdr is down.
+    @Test func herdrStoppedWhileAwayFailsTheHostWithItsSetupGuidance() async throws {
+        let host = Host.fixture()
+        let stale = ScriptedTransport(snapshot: .openSession)
+        let socketPath = "/home/dev/.config/herdr/herdr.sock"
+        let store = makeStore(attempts: ConnectionAttemptQueue([.success(stale)]))
+        let activity = AppActivityCoordinator(
+            gracePeriod: .seconds(60), granter: GrantingBackgroundExecutionGranter())
+        let driver = Task {
+            await ConsoleActivityDriver(activity: activity, console: store).run()
+        }
+        defer { driver.cancel() }
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Host should come up connected") {
+            store.hostStatuses[host.id] == .connected
+        }
+
+        await stale.failPing(atCall: 2, with: .streamLocalOpenFailed(path: socketPath))
+        activity.didEnterBackground()
+        activity.didBecomeActive()
+
+        try await waitUntil("a stopped herdr should fail the Host, not retry it") {
+            store.hostStatuses[host.id] == .failed(.streamLocalOpenFailed(path: socketPath))
+        }
+        // And it stops there: no reconnect attempt follows a failure only the
+        // user can clear.
+        #expect(await stale.pingCount == 2)
+        store.setHosts([])
+    }
+
+    /// Every Host is re-proved at once. The ping `revalidate()` sends is
+    /// bounded only by the transport's request timeout, and a frozen Host is
+    /// exactly the case that runs it out; awaiting them one Host at a time
+    /// would hold the store's lifecycle chain — and with it any queued
+    /// `suspend()`, and the background assertion its completion releases —
+    /// for N times that bound.
+    @Test func everyHostIsReProvedConcurrently() async throws {
+        let first = Host.fixture(name: "first")
+        let second = Host.fixture(name: "second")
+        let firstTransport = ScriptedTransport(snapshot: .fixture())
+        let secondTransport = ScriptedTransport(snapshot: .fixture())
+        let store = ConsoleStore(snapshotRetryDelay: .milliseconds(10)) {
+            host, subscriptions in
+            let transport = host.id == first.id ? firstTransport : secondTransport
+            return EventsSession(
+                subscriptions: subscriptions,
+                connect: { transport },
+                reconnectPolicy: Self.fastPolicy,
+                keepalive: .default)
+        }
+
+        store.setHosts([first, second])
+        await store.resume()
+        try await waitUntil("both Hosts should come up connected") {
+            store.hostStatuses[first.id] == .connected
+                && store.hostStatuses[second.id] == .connected
+        }
+
+        // Park both re-proving pings. A ping records its arrival before
+        // waiting, so a serial revalidation could never reach the second Host
+        // while the first is still parked.
+        let firstPing = ScriptedTransportCallGate()
+        let secondPing = ScriptedTransportCallGate()
+        await firstTransport.gateNextPing(using: firstPing)
+        await secondTransport.gateNextPing(using: secondPing)
+
+        let reactivation = Task { await store.reactivate() }
+        try await waitUntil("both Hosts should be in flight at once") {
+            let firstReached = await firstTransport.pingCount == 2
+            let secondReached = await secondTransport.pingCount == 2
+            return firstReached && secondReached
+        }
+
+        await firstPing.open()
+        await secondPing.open()
+        await reactivation.value
+        #expect(store.hostStatuses[first.id] == .connected)
+        #expect(store.hostStatuses[second.id] == .connected)
+        store.setHosts([])
+    }
+
+    /// A store whose session factory hands out scripted transports in order,
+    /// in the keepalive shape production uses (`ConsoleStore.sshSessionFactory`
+    /// takes the default): 30 s, far longer than any of these tests live.
     private func makeStore(attempts: ConnectionAttemptQueue) -> ConsoleStore {
         ConsoleStore(snapshotRetryDelay: .milliseconds(10)) { _, subscriptions in
             EventsSession(
                 subscriptions: subscriptions,
                 connect: { try await attempts.next() },
                 reconnectPolicy: Self.fastPolicy,
-                keepalive: nil)
+                keepalive: .default)
         }
     }
 

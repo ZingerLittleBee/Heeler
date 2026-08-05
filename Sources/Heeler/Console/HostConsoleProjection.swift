@@ -76,7 +76,7 @@ final class HostConsoleProjection {
     /// before its teardown ran, or the trip out was short enough that the
     /// grace period absorbed it — and that therefore comes back believing it
     /// is still connected. `resume()` is a no-op on such a session, so
-    /// without this nothing ever asks it (#141).
+    /// without this nothing asks it until the keepalive's next turn (#142).
     func revalidate() async {
         await session.revalidate()
     }

@@ -44,6 +44,7 @@ final actor ScriptedTransport: Transport {
     /// on how many the idle loop generated.
     private(set) var pingCount = 0
     private var pingFailures: [Int: TransportError] = [:]
+    private var pingGate: ScriptedTransportCallGate?
     private var closeGate: ScriptedTransportCallGate?
 
     private var serverInfo: ServerInfo
@@ -232,6 +233,12 @@ final actor ScriptedTransport: Transport {
         pingFailures[ordinal] = failure
     }
 
+    /// Parks the next `ping` on `gate`, after counting it, so a test can hold
+    /// one Host's liveness proof in flight while inspecting another's.
+    func gateNextPing(using gate: ScriptedTransportCallGate) {
+        pingGate = gate
+    }
+
     /// Parks the next `close()` on `gate` — which records the entry before
     /// waiting — so a test can pin a session teardown mid-flight.
     func gateNextClose(using gate: ScriptedTransportCallGate) {
@@ -250,7 +257,11 @@ final actor ScriptedTransport: Transport {
 
     func ping() async throws -> ServerInfo {
         pingCount += 1
-        if let failure = pingFailures[pingCount] { throw failure }
+        let failure = pingFailures[pingCount]
+        let gate = pingGate
+        pingGate = nil
+        await gate?.waitUntilOpen()
+        if let failure { throw failure }
         return serverInfo
     }
 

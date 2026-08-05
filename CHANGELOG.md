@@ -64,11 +64,11 @@ Entries reference the issue that motivated them.
   once it is on the screen, so a redraw that arrives but lands nowhere visible
   ends the same way instead of passing for a healthy session. (#141)
 
-- Coming back to a session after leaving the app no longer lands on a blank
-  screen that never recovers. Returning to the foreground now re-proves each
-  Host's connection, so one that died while you were away reconnects — and
-  says it is reconnecting — instead of sitting there silently on a link
-  nothing had noticed was gone. (#141)
+- Coming back to a session after leaving the app no longer shows a connection
+  that is already gone. Returning to the foreground now re-proves each Host,
+  so one whose link died while you were away starts reconnecting — and says
+  so — the moment you look at it, instead of appearing connected for up to
+  another half a minute until the keepalive notices. (#142)
 
 - A Host that drops off the network mid-request now reconnects on its own
   instead of stopping with the wrong advice. A severed link failed the same
