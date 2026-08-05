@@ -128,6 +128,21 @@ _Avoid_: subscribe, enable push
 The app-side abstraction that executes herdr API requests and delivers event streams over SSH. UI code talks to Transport, never to SSH primitives.
 _Avoid_: client, bridge, tunnel
 
+**Connection Guidance**:
+The sentence that names the action only the user can take to restore a Host,
+as against the short phrase describing what the app is doing about it. Shown
+in exactly two situations: when the transport has stopped, so nothing changes
+until the user acts; and during Host setup, where the configuration has never
+been proven and a retryable failure is as likely to be a mistyped address as
+a real outage. Everywhere else a failing Host is described by what the app is
+doing, with no imperative — while a retry is in flight an instruction
+misstates who has to act, and invites a restart that discards the attempt
+already running. Retryability is a claim about the transport, not about the
+cause, so it stands in for "the user cannot help" only once the Host has
+connected at least once; the app infers that from which surface is asking
+rather than from the Host record, which #159 tracks.
+_Avoid_: error message, connection error, retry hint
+
 **Background Grace Period**:
 The window after backgrounding during which the app keeps running under an iOS background-execution assertion and holds its Host connections, so a short trip out of the app costs nothing on return. Only when it elapses does the app suspend and tear the connections down. Bounded by what iOS grants (tens of seconds); staying reachable for longer is what Agent Notifications are for.
 _Avoid_: background mode, keep alive (that's the events session's ping)

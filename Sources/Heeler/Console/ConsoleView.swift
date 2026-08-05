@@ -392,13 +392,9 @@ struct ConsoleView: View {
 /// working on it and naming a user action would misstate who has to act. It
 /// gets its own message instead of borrowing either neighbour.
 ///
-/// That split is **this screen's convention, not the app's**. `hostIssues`
-/// above makes the same one between `summary(for:)` and `connectionGuidance`,
-/// but `HostOnboardingView.connectionErrorMessage` matches `.reconnecting`
-/// and `.failed` together and shows the guidance for both — arguably right
-/// there, since onboarding is a setup flow where the user *is* the one
-/// acting. Which convention governs where is open in #156; do not read this
-/// type as having settled it.
+/// That is the app's rule rather than this screen's: see Connection Guidance
+/// in `CONTEXT.md`, which also says why Host setup shows the guidance for
+/// `.reconnecting` where this screen does not (#156).
 struct MissingAgentPresentation: Equatable {
     /// Which situation emptied the list. Explicit so that collapsing them
     /// into a single message cannot happen by accident.
