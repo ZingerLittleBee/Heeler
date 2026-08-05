@@ -111,6 +111,7 @@
 		76D19F97EA2662895D730A98 /* ConsoleStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14FB8560976CE777FB5A105 /* ConsoleStore.swift */; };
 		76EAFFA9DAD45987F02DC536 /* AsyncDeadline.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25E1DC34365B2E2FA6C5AA8 /* AsyncDeadline.swift */; };
 		77B45AA7E6B648D1C2531951 /* NotificationRegistrationCeremony.swift in Sources */ = {isa = PBXBuildFile; fileRef = A03953ADE9FBC5162FBFF29F /* NotificationRegistrationCeremony.swift */; };
+		7A73A34256C7B55060AAE9DE /* ConsoleDetailPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86F44B0C95580FC88ED880FD /* ConsoleDetailPresentationTests.swift */; };
 		7AAD57A0A0BF63FE16C76C17 /* TerminalStatusDialogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 856C56B29DCF048C09AF7C1C /* TerminalStatusDialogTests.swift */; };
 		7BD7F228AC8A9EDA13A63C2C /* DeviceKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4F4EF125BAB77F0DE121AAB /* DeviceKey.swift */; };
 		7CF1965195B7578472B615B9 /* Snippet.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA5434768FDE9237B7BD721E /* Snippet.swift */; };
@@ -388,6 +389,7 @@
 		856C56B29DCF048C09AF7C1C /* TerminalStatusDialogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalStatusDialogTests.swift; sourceTree = "<group>"; };
 		86642A7BA9C1F1E3456D64E3 /* SSHChannelAdmission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHChannelAdmission.swift; sourceTree = "<group>"; };
 		86CF5F0136C3ED0B1F7F4EED /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
+		86F44B0C95580FC88ED880FD /* ConsoleDetailPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleDetailPresentationTests.swift; sourceTree = "<group>"; };
 		87C2343D5ED9436077682CD1 /* WakeCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeCommandTests.swift; sourceTree = "<group>"; };
 		88062AE11DDF93EB77A63D6B /* SSHPairingConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHPairingConnector.swift; sourceTree = "<group>"; };
 		88E1434C9C39A6419A3A0D79 /* HostConsoleProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostConsoleProjection.swift; sourceTree = "<group>"; };
@@ -535,6 +537,7 @@
 				93417EFE29FA2DC3DD3FAF9F /* AsyncDeadlineTests.swift */,
 				8C5A562F5A01AE08691B8479 /* AttachTerminalStoreTests.swift */,
 				414B652A16576BEDEE9AE000 /* ClosePaneStoreTests.swift */,
+				86F44B0C95580FC88ED880FD /* ConsoleDetailPresentationTests.swift */,
 				00807A3942817BEE9800534F /* ConsoleStoreTests.swift */,
 				BEFE51A74497E9691DBD8D7D /* DemoScreenshotModeTests.swift */,
 				7FCA00B5F2A05A599D74FCCE /* DeviceKeyStoreTests.swift */,
@@ -1255,6 +1258,7 @@
 				E40D1C6F825ABCD68AA5F196 /* AttachTerminalStoreTests.swift in Sources */,
 				5150B659FACE9AFD9ECF9F6D /* AuthorizedKeysTestLock.swift in Sources */,
 				61F58007C6B81F14D2F6B58B /* ClosePaneStoreTests.swift in Sources */,
+				7A73A34256C7B55060AAE9DE /* ConsoleDetailPresentationTests.swift in Sources */,
 				AA6498ABD1E1782C0B5D8F5B /* ConsoleStoreTests.swift in Sources */,
 				F96B2A54E2C6FF38CF5407BA /* DemoScreenshotModeTests.swift in Sources */,
 				E563373DB446DBEF8B1701E3 /* DeviceKeyStoreTests.swift in Sources */,

@@ -182,9 +182,17 @@ struct ConsoleView: View {
                 // detail column would reuse the old view's state.
                 .id(id)
             } else {
+                // The Agent is gone from the list, but not necessarily
+                // because its pane went: a failed Host empties the list the
+                // same way, and blaming the Agent for that hides the only
+                // text that says what to do about it (#146).
+                let presentation = MissingAgentPresentation(
+                    agentID: id,
+                    hostStatuses: console.hostStatuses,
+                    hosts: hosts.hosts)
                 ContentUnavailableView(
-                    "Agent Gone", systemImage: "rectangle.on.rectangle.slash",
-                    description: Text("This Agent's pane is no longer reported."))
+                    presentation.title, systemImage: presentation.systemImage,
+                    description: Text(presentation.message))
             }
         } else {
             ContentUnavailableView(
@@ -363,6 +371,66 @@ struct ConsoleView: View {
         await console.retryHost(id)
         try? await Task.sleep(for: .milliseconds(1_200))
         reconnectingHostIDs.remove(id)
+    }
+}
+
+/// What the detail column shows when the selected Agent is no longer in the
+/// Console list. Two different situations empty that list and they need
+/// different answers (#146).
+///
+/// They are easy to conflate because every non-`.connected` status runs
+/// `invalidateSnapshot()`, clearing `agentsByPane` — so a Host that failed
+/// leaves the list exactly as empty as a pane that closed. Reading the empty
+/// list alone, "this pane is no longer reported" is simply false in the
+/// failed case: it names the Agent for the Host's failure and points at the
+/// wrong remedy, while the text naming the action the user must take
+/// (`connectionGuidance`) rendered only in the Console list behind it.
+///
+/// Only `.failed` gets the guidance. `.reconnecting` deliberately does not:
+/// it is emitted solely past a `guard failure.isRetryable`, so the session is
+/// working on it and there is nothing for the user to do — the same split
+/// `hostIssues` above makes between `summary(for:)` and `connectionGuidance`.
+struct MissingAgentPresentation: Equatable {
+    /// Which situation emptied the list. Explicit so that collapsing the two
+    /// into a single message cannot happen by accident.
+    enum Cause: Equatable {
+        /// The Host's session stopped on a failure no retry can clear; the
+        /// guidance names the action only the user can take.
+        case hostFailed
+        /// The Host is fine and this one pane is gone.
+        case paneGone
+    }
+
+    let cause: Cause
+    let title: String
+    let systemImage: String
+    let message: String
+
+    /// Resolves the Host from the selection rather than taking a status the
+    /// caller looked up: the pane address alone is not unique across Hosts,
+    /// so `ConsoleAgent.ID` carries the `hostID` precisely so this question
+    /// can be answered here instead of at each call site.
+    init(
+        agentID: ConsoleAgent.ID,
+        hostStatuses: [Host.ID: EventsSessionStatus],
+        hosts: [Host]
+    ) {
+        let hostName = hosts.first { $0.id == agentID.hostID }?.displayName
+        guard case .failed(let failure) = hostStatuses[agentID.hostID] else {
+            cause = .paneGone
+            title = "Agent Gone"
+            systemImage = "rectangle.on.rectangle.slash"
+            message = "This Agent's pane is no longer reported."
+            return
+        }
+        cause = .hostFailed
+        title = "Host Unavailable"
+        systemImage = failure.isHostKeySecurityFailure
+            ? "exclamationmark.shield.fill" : "exclamationmark.triangle.fill"
+        // Named like the Console list's own entry, so the same Host reads the
+        // same way in both places.
+        message = hostName.map { "\($0): \(failure.connectionGuidance)" }
+            ?? failure.connectionGuidance
     }
 }
 

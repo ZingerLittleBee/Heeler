@@ -54,6 +54,15 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- A Host that fails while you have one of its Agents open now says why on the
+  session screen. It used to read "This Agent's pane is no longer reported" —
+  blaming the Agent for the Host's problem, and pointing you at the wrong
+  thing to fix — because a failed Host empties the Agent list in exactly the
+  way a closed pane does. The screen now carries the same connection guidance
+  the Host list shows, so a stopped herdr reads as "herdr is not running on
+  this Host…" where you are actually looking. A pane that really did close on
+  a healthy Host still says so. (#146)
+
 - Cancelling an image upload on a slow connection no longer kills the Host.
   The cleanup that follows a cancelled or failed upload ran on fixed
   two-second budgets, and running out of one was treated as evidence that the
