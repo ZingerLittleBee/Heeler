@@ -23,9 +23,11 @@ enum AppActivityPhase: Sendable, Equatable {
 /// and drawing nothing*, and the foreground return that follows can land in
 /// the same update cycle, so a consumer that only compares the value it last
 /// saw can miss the round trip entirely — and with it both the teardown and
-/// the resume. That is #141: the app came back holding a connection nothing
-/// had torn down and nothing would re-establish, so the session rendered
-/// blank with no reconnect and no error.
+/// the resume. That is #142: the app came back holding a connection nothing
+/// had torn down and nothing had asked whether it was still alive, so a
+/// session whose link died while the app was away kept rendering as
+/// connected — no reconnect, no error — until the keepalive got round to
+/// noticing, up to its interval plus a request timeout later.
 ///
 /// `activated` is reported on *every* return to the foreground, not only
 /// after a suspension: a connection frozen along with the process may have

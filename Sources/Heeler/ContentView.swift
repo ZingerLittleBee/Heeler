@@ -6,7 +6,7 @@ import SwiftUI
 /// (see AppActivityCoordinator), then are torn down deliberately. Every
 /// return to the foreground re-activates them — and, for a connection the
 /// app was still holding, re-proves it, because a link can die while the app
-/// is away without anything having noticed (#141).
+/// is away without anything having noticed (#142).
 struct ContentView: View {
     let pushRegistration: PushRegistrationStore
     let notificationRouter: AgentNotificationRouter
@@ -118,7 +118,7 @@ struct ContentView: View {
         // of its phase — the suspension happens while the app is in the
         // background and rendering nothing, and a view that only compares the
         // value it last saw misses both that edge and the resume behind it
-        // (#141).
+        // (#142).
         .task {
             await ConsoleActivityDriver(activity: activity, console: console).run()
         }

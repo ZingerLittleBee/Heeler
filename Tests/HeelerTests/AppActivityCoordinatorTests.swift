@@ -131,7 +131,7 @@ struct AppActivityCoordinatorTests {
     /// A whole background→foreground round trip can land between two looks at
     /// `phase` — it happens while the app is in the background drawing
     /// nothing — and a consumer that compares values would see no change at
-    /// all, tearing nothing down and resuming nothing (#141).
+    /// all, tearing nothing down and resuming nothing (#142).
     @Test func everyTransitionIsDeliveredEvenWhenNothingWatchesThePhase() async throws {
         let granter = FakeBackgroundExecutionGranter()
         let coordinator = AppActivityCoordinator(

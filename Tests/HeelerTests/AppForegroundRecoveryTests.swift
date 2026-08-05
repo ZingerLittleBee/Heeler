@@ -22,6 +22,13 @@ import Testing
 /// that immediate, at the moment a user is looking at whatever the answer
 /// means.
 ///
+/// That mechanism rests on **code inspection, not measurement**. A simulator
+/// never suspends the process, so nothing here — or anywhere in the suite —
+/// demonstrates that the keepalive really survives a real iOS suspension and
+/// fires on thaw. The "up to 45 s without this fix" figure is therefore read
+/// off the tree (30 s interval plus the request timeout), not observed on a
+/// device; anyone relying on the number should measure it before trusting it.
+///
 /// These tests therefore run in the **production keepalive shape**
 /// (`.default`, 30 s), not with the keepalive disabled: every case here
 /// settles in well under a second, so a 30 s timer provably cannot be what
@@ -277,12 +284,24 @@ struct AppForegroundRecoveryTests {
         await firstTransport.gateNextPing(using: firstPing)
         await secondTransport.gateNextPing(using: secondPing)
 
-        let reactivation = Task { await store.reactivate() }
+        let completion = LifecycleCompletionProbe()
+        let reactivation = Task {
+            await store.reactivate()
+            await completion.finish()
+        }
         try await waitUntil("both Hosts should be in flight at once") {
             let firstReached = await firstTransport.pingCount == 2
             let secondReached = await secondTransport.pingCount == 2
             return firstReached && secondReached
         }
+
+        // Concurrent, but still *structured*: with both pings parked the
+        // activation has not returned, so a suspend() the user triggers by
+        // leaving again — and the didFinishSuspending() that releases the
+        // background assertion — queues behind the re-proving rather than
+        // racing it. Fire-and-forget would satisfy the check above and fail
+        // here.
+        #expect(!(await completion.isFinished))
 
         await firstPing.open()
         await secondPing.open()
@@ -340,6 +359,15 @@ private actor ConnectionAttemptQueue {
             throw TransportError.sshUnreachable(detail: "connection queue exhausted")
         }
         return try remaining.removeFirst().get()
+    }
+}
+
+/// Records whether the reactivation Task has returned yet.
+private actor LifecycleCompletionProbe {
+    private(set) var isFinished = false
+
+    func finish() {
+        isFinished = true
     }
 }
 
