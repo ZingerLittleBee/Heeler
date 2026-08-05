@@ -83,10 +83,16 @@ final class HostConsoleProjection {
     ///
     /// A session already stopped on a non-retryable failure is restarted
     /// instead (#147). Its reconnect loop returned while the phase stayed
-    /// `.active`, so `resume()` no-ops and no live channel remains to ping:
-    /// nothing would ever ask that Host again, and a user who went and
-    /// restarted herdr would come back to the same failure until they found
-    /// the Retry button.
+    /// `.active`, so `resume()` no-ops and no live channel remains to ping.
+    /// The gap that leaves is the same one #142 covers for connected Hosts,
+    /// and it is exactly that narrow: an absence longer than
+    /// `AppActivityCoordinator.defaultGracePeriod` does run `suspend()` — the
+    /// phase is still `.active`, so `deactivate()` proceeds — and the return's
+    /// `resume()` then restarts the run loop on its own. What was left
+    /// stranded is a return *inside* the grace period, or one where the
+    /// process froze before its teardown could run. Inside that window a user
+    /// who went and restarted herdr came back to the same failure until they
+    /// found the Retry button.
     ///
     /// This is deliberately not a retry cadence. The classification that
     /// stopped the loop stands — retrying a stopped herdr on reconnect timing

@@ -92,12 +92,15 @@ Entries reference the issue that motivated them.
   dead. (#136)
 
 - A Host that stopped with "herdr is not running on this Host" now recovers on
-  its own once you fix it: restart herdr, come back to the app, and the Host
-  reconnects without you doing anything else. Until now that failure was final
-  until you found the Retry button — the app never asked the Host again, so
-  the obvious recovery of going and fixing it changed nothing. A Host that is
-  still broken simply says so again, with the same guidance and without
-  flickering through a moment that looks like it reconnected. (#147)
+  its own once you fix it, however long you were away: restart herdr, come
+  back to the app, and the Host reconnects without you doing anything else.
+  Until now this depended on the length of the trip. Leaving the app for more
+  than about twenty seconds tore the connection down, and coming back rebuilt
+  it, so that route already worked; a quicker trip — or one where iOS froze
+  the app before that teardown could run — did not, and the Host stayed failed
+  with no way back but the Retry button. Every return now asks it once. A Host
+  that is still broken simply says so again, with the same guidance and
+  without flickering through a moment that looks like it reconnected. (#147)
 
 - An Attach terminal that comes back blank after time in the background now
   either repaints or tells you it stopped responding. Returning to the
