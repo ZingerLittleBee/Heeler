@@ -12,7 +12,8 @@ struct AttachTerminalStoreTests {
     private func makeStore(
         transport: ScriptedTransport?, target: String = "w1:p1", takeover: Bool = false,
         livenessProbeTimeout: Duration = AttachTerminalStore.defaultLivenessProbeTimeout,
-        input: TerminalInputController = TerminalInputController()
+        input: TerminalInputController = TerminalInputController(),
+        attachesSurface: Bool = true
     ) -> (AttachTerminalStore, captured: Captured) {
         let store = AttachTerminalStore(
             target: target, takeover: takeover,
@@ -31,16 +32,23 @@ struct AttachTerminalStoreTests {
             }
         }
         let captured = Captured()
-        store.feed.attach { data in captured.chunks.append(data) }
+        if attachesSurface {
+            store.feed.attach(captured)
+        }
         return (store, captured)
     }
 
-    /// Reference box for bytes the feed delivered, in order.
+    /// Stands in for the Ghostty surface: a terminal the feed can deliver to,
+    /// and one the test can drop to model SwiftUI replacing it.
     @MainActor
-    private final class Captured {
+    private final class Captured: TerminalByteSink {
         var chunks: [Data] = []
         var text: String {
             String(decoding: chunks.reduce(Data(), +), as: UTF8.self)
+        }
+
+        func receive(_ data: Data) {
+            chunks.append(data)
         }
     }
 
@@ -190,6 +198,84 @@ struct AttachTerminalStoreTests {
         #expect(store.status == .live)
 
         await store.stop()
+    }
+
+    @Test func aRepaintDroppedAboveTheTransportStopsBeingBlank() async throws {
+        // W2. The remote is alive and answers the window-change with a full
+        // frame — and the frame is written into a surface SwiftUI already
+        // threw away, so the user's screen is byte-identical to the blank one
+        // they came back to. An arriving byte is therefore not proof of
+        // anything on its own: only a byte that reached a live surface is.
+        let transport = ScriptedTransport()
+        let (store, _) = makeStore(
+            transport: transport, livenessProbeTimeout: .milliseconds(200),
+            attachesSurface: false)
+        var surface: Captured? = Captured()
+        if let surface { store.feed.attach(surface) }
+
+        try await goLive(store, transport)
+        #expect(surface?.chunks.isEmpty == false)
+        // The surface goes away under a live session; the sink stays behind.
+        surface = nil
+
+        store.didBecomeActive()
+        try await waitUntil("the return should nudge the remote PTY") {
+            await transport.attachInputs.contains(.resize(cols: 79, rows: 24))
+        }
+        #expect(await transport.emitAttachOutput(Data("\u{1B}[2Jrepainted".utf8)))
+
+        try await waitUntil("a repaint nobody can see must not leave the session live") {
+            if case .ended = store.status { return true }
+            return false
+        }
+        guard case .ended(let message) = store.status else {
+            Issue.record("the session should have ended visibly")
+            return
+        }
+        #expect(message == AttachTerminalStore.unresponsiveMessage)
+        await store.stop()
+    }
+
+    @Test func aRepaintWithNoSurfaceToLandOnStopsBeingBlank() async throws {
+        // The other half of W2 (#143's shape): the session is live and the
+        // remote answers, but no surface ever attached to this feed, so every
+        // byte is held in the buffer and the screen shows none of them.
+        // Held-for-later is not "the user saw it" either.
+        let transport = ScriptedTransport()
+        let (store, _) = makeStore(
+            transport: transport, livenessProbeTimeout: .milliseconds(200),
+            attachesSurface: false)
+
+        try await goLive(store, transport)
+        store.didBecomeActive()
+        try await waitUntil("the return should nudge the remote PTY") {
+            await transport.attachInputs.contains(.resize(cols: 79, rows: 24))
+        }
+        #expect(await transport.emitAttachOutput(Data("\u{1B}[2Jrepainted".utf8)))
+
+        try await waitUntil("a repaint with nowhere to land must not leave the session live") {
+            if case .ended = store.status { return true }
+            return false
+        }
+        await store.stop()
+    }
+
+    @Test func theRepaintDeadlineOutlastsTheTransportsOwnWriteBudget() {
+        // The probe's deadline has to cover the window-change the transport is
+        // still trying to write: `TerminalAttachInputQueue.pump` hands each
+        // resize to `channel.resize(timeout: requestTimeout)`. A shorter
+        // deadline calls the remote unresponsive while the transport still
+        // expects that very write to land — and the transport's own failure is
+        // both later and more accurate.
+        let settings = SSHTransportSettings(
+            host: "example.invalid",
+            port: 22,
+            username: "u",
+            credentials: .password("p"),
+            hostKeyPolicy: HostKeyPolicy(knownHosts: InMemoryKnownHostsStore()) { _ in false },
+            socket: .defaultSession)
+
+        #expect(AttachTerminalStore.defaultLivenessProbeTimeout > settings.requestTimeout)
     }
 
     @Test func keystrokesForwardToTheSession() async throws {
@@ -1647,5 +1733,61 @@ struct AgentAttachStoreForegroundTests {
             ]
         }
         await store.leave().value
+    }
+}
+
+/// The Attach store's byte pipe. Its delivery report is the only thing that
+/// can tell a repaint the user saw from one that vanished on the way (#141).
+@MainActor
+@Suite("Terminal byte feed")
+struct TerminalByteFeedTests {
+    /// Stands in for the Ghostty surface the representable view creates.
+    @MainActor
+    private final class Surface: TerminalByteSink {
+        var chunks: [Data] = []
+
+        func receive(_ data: Data) {
+            chunks.append(data)
+        }
+    }
+
+    @Test func bytesWrittenBeforeAnySurfaceAreHeldForTheFirstOne() {
+        let feed = TerminalByteFeed()
+
+        #expect(feed.write(Data("opening".utf8)) == .buffered)
+
+        let surface = Surface()
+        feed.attach(surface)
+        #expect(surface.chunks == [Data("opening".utf8)])
+    }
+
+    @Test func bytesWrittenIntoALiveSurfaceAreDelivered() {
+        let feed = TerminalByteFeed()
+        let surface = Surface()
+        feed.attach(surface)
+
+        #expect(feed.write(Data("frame".utf8)) == .delivered)
+        #expect(surface.chunks == [Data("frame".utf8)])
+    }
+
+    @Test func bytesWrittenAfterTheSurfaceIsGoneAreReportedDropped() {
+        // The W2 mechanism: SwiftUI replaced the view, the feed's sink is a
+        // dead reference, and the bytes reach nobody. Silently returning here
+        // is what let a blank screen look like a healthy session.
+        let feed = TerminalByteFeed()
+        var surface: Surface? = Surface()
+        if let surface { feed.attach(surface) }
+        surface = nil
+
+        #expect(feed.write(Data("frame".utf8)) == .dropped)
+    }
+
+    @Test func anEmptyChunkIsNeverReportedAsDelivered() {
+        let feed = TerminalByteFeed()
+        let surface = Surface()
+        feed.attach(surface)
+
+        #expect(feed.write(Data()) == .dropped)
+        #expect(surface.chunks.isEmpty)
     }
 }

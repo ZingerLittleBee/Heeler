@@ -50,11 +50,10 @@ final class AttachTerminalStore {
     /// How long a session that was asked to repaint gets to answer before it
     /// is declared unresponsive.
     ///
-    /// Generous on purpose. Being wrong costs the user a Reattach, and a full
-    /// TUI frame over a weak link is not instant; being right is the
-    /// difference between a screen that says something and one that says
-    /// nothing at all.
-    static let defaultLivenessProbeTimeout: Duration = .seconds(5)
+    /// Not a number of its own: the repaint is requested by resizing the PTY,
+    /// so the deadline is the transport's budget for that write plus what the
+    /// answer costs on top of it. See ``TerminalAttachRepaintBudget``.
+    static let defaultLivenessProbeTimeout = TerminalAttachRepaintBudget.deadline
 
     /// What the screen says when the remote never answered the repaint. The
     /// Reattach button beside it is the guidance; the message only has to
@@ -142,6 +141,10 @@ final class AttachTerminalStore {
     /// answers a window-change with a full frame, which is exactly what a
     /// surface that came back empty is missing. Silence past the deadline is
     /// the answer instead, and it ends the session visibly.
+    ///
+    /// What counts as an answer is a frame that reached the screen, not one
+    /// that reached the store: a repaint dropped into a stale surface leaves
+    /// exactly the blank the probe exists to catch. See `consume`.
     func didBecomeActive() {
         guard status == .live, let session, let cols, let rows, cols > 1 else { return }
         beginProbe()
@@ -278,10 +281,15 @@ final class AttachTerminalStore {
                 if status == .connecting {
                     status = .live
                 }
-                // Any byte is the proof an outstanding probe was waiting for.
-                if probeTask != nil { endProbe() }
                 observeOutput(bytes)
-                feed.write(bytes)
+                // Only a byte the user can actually see answers a probe. A
+                // chunk written into a surface SwiftUI has replaced, or held
+                // for a surface that never attached, changes nothing on screen
+                // — and treating its arrival as an answer would turn the one
+                // detectable failure back into a silent blank screen (#141).
+                if feed.write(bytes) == .delivered, probeTask != nil {
+                    endProbe()
+                }
             }
         } catch {
             finishSession(inputGeneration)

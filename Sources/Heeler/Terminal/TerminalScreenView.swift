@@ -82,9 +82,9 @@ struct TerminalScreenView: UIViewRepresentable {
         view.raisesKeyboardWhenReady = claimsKeyboard?() ?? false
         keyboardControl?.terminal = view
         context.coordinator.terminalView = view
-        feed.attach { [weak view] data in
-            view?.receive(data)
-        }
+        // The feed holds this weakly and reports every write that misses it,
+        // so a surface SwiftUI replaces cannot swallow output unnoticed (#141).
+        feed.attach(view)
         return view
     }
 
@@ -283,7 +283,7 @@ private final class TerminalInputTextRange: UITextRange {
 
 /// The app-owned seam around libghostty-spm. It keeps keyboard policy and the
 /// host-managed session lifecycle out of the SwiftUI screen.
-final class HeelerTerminalView: UITerminalView {
+final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private let callbackBridge: TerminalSessionCallbackBridge
     private let terminalController: TerminalController
     let terminalSession: InMemoryTerminalSession

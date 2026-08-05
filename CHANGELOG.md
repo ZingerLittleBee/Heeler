@@ -60,7 +60,9 @@ Entries reference the issue that motivated them.
   terminal from an agent that simply has nothing to say — `herdr agent
   attach` draws on change, so silence looks identical either way. A terminal
   that does not answer ends with a Reattach button instead of staying a black
-  screen with no error and nothing to reconnect. (#141)
+  screen with no error and nothing to reconnect — and an answer only counts
+  once it is on the screen, so a redraw that arrives but lands nowhere visible
+  ends the same way instead of passing for a healthy session. (#141)
 
 - Coming back to a session after leaving the app no longer lands on a blank
   screen that never recovers. Returning to the foreground now re-proves each

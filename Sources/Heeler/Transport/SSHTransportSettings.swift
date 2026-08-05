@@ -72,7 +72,15 @@ struct SSHTransportSettings: Sendable {
     /// on expiry the request fails with `.timedOut` and its channel is
     /// closed. Short in tests, generous by default: a hung host should
     /// degrade gracefully, a slow one should still answer.
-    var requestTimeout: Duration = .seconds(15)
+    ///
+    /// It also bounds each individual PTY write and window-change on a live
+    /// attach channel (`HeelerSSHTransport.runAttachChannel`), which is what
+    /// `TerminalAttachRepaintBudget` is measured against.
+    var requestTimeout: Duration = Self.defaultRequestTimeout
+
+    /// The default of ``requestTimeout``, named so budgets derived from it
+    /// cannot drift out of step with it.
+    static let defaultRequestTimeout: Duration = .seconds(15)
 
     static var defaultAgentDiscoveryCommand: String {
         let checks = SupportedAgentKind.allCases.map { kind in
