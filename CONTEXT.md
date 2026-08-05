@@ -131,16 +131,21 @@ _Avoid_: client, bridge, tunnel
 **Connection Guidance**:
 The sentence that names the action only the user can take to restore a Host,
 as against the short phrase describing what the app is doing about it. Shown
-in exactly two situations: when the transport has stopped, so nothing changes
-until the user acts; and during Host setup, where the configuration has never
-been proven and a retryable failure is as likely to be a mistyped address as
-a real outage. Everywhere else a failing Host is described by what the app is
-doing, with no imperative — while a retry is in flight an instruction
-misstates who has to act, and invites a restart that discards the attempt
-already running. Retryability is a claim about the transport, not about the
-cause, so it stands in for "the user cannot help" only once the Host has
-connected at least once; the app infers that from which surface is asking
-rather than from the Host record, which #159 tracks.
+in two situations: when the transport has stopped, so nothing changes until
+the user acts; and on the Host detail screen, whose subject is one Host's
+connection health and which the user reaches deliberately — from that Host's
+row once something looked wrong, or straight from adding it. There an
+imperative answers the question the screen was opened to ask, so it appears
+while a retry is in flight too. That does not rest on the Host being unproven,
+which nothing on the Host records: retryability is a claim about the
+transport, not about the cause — a mistyped address fails as retryable — so a
+retry in flight never by itself means the user cannot help.
+Every other surface is ambient: the user came for the Agents, not to diagnose
+a Host. There a failing Host is described by what the app is doing, with no
+imperative — while a retry is in flight an instruction misstates who has to
+act, and invites a restart that discards the attempt already running. The rule
+reads the status and the surface, both of which the code has, and never asks
+who is acting; during a reconnect on a screen the user opened, both are.
 _Avoid_: error message, connection error, retry hint
 
 **Background Grace Period**:

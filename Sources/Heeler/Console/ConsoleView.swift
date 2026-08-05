@@ -394,8 +394,8 @@ struct ConsoleView: View {
 /// gets its own message instead of borrowing either neighbour.
 ///
 /// That is the app's rule rather than this screen's: see Connection Guidance
-/// in `CONTEXT.md`, which also says why Host setup shows the guidance for
-/// `.reconnecting` where this screen does not (#156).
+/// in `CONTEXT.md`, which also says why the Host detail screen shows the
+/// guidance for `.reconnecting` where this screen does not (#156).
 struct MissingAgentPresentation: Equatable {
     /// Which situation emptied the list. Explicit so that collapsing them
     /// into a single message cannot happen by accident.

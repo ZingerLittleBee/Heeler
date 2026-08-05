@@ -198,6 +198,10 @@ struct HostOnboardingView: View {
         }
     }
 
+    /// `.reconnecting` and `.failed` share an arm on purpose. This is the Host
+    /// detail screen, which the user is on deliberately, so the guidance is
+    /// what they opened it for; the Console list and the Agent screen show it
+    /// for `.failed` only. See Connection Guidance in `CONTEXT.md` (#156).
     private var connectionErrorMessage: String? {
         switch connectionStatus {
         case .reconnecting(_, _, let failure), .failed(let failure):
