@@ -209,10 +209,39 @@ final class AgentAttachStore {
         image.insertPath()
     }
 
-    func didBecomeActive() {
+    /// The app returned to the foreground, `afterLongAbsence` reporting
+    /// whether it was gone at least the grace period.
+    ///
+    /// A short bounce leaves the terminal alone and merely asks the remote to
+    /// repaint. A long one replaces the pipeline outright, and does so
+    /// unconditionally rather than on evidence that anything is wrong.
+    ///
+    /// The reason is that the failure is not observable from here. A terminal
+    /// that comes back from a real suspension can be blank because its
+    /// Ghostty surface was freed — in which case every byte written to it is
+    /// silently discarded — or because the surface survived and its renderer
+    /// never restarted, in which case the bytes are accepted, parsed, and
+    /// simply never drawn. Nothing the app can read tells the second case
+    /// apart from a healthy terminal: the sink is alive, the write succeeds,
+    /// and the viewport text updates. Detection that cannot see it would
+    /// leave the user on the same black screen this exists to end, which is
+    /// how the earlier delivery-based probe failed (#141).
+    ///
+    /// So the trigger is the absence itself, which is measurable, instead of
+    /// the damage, which is not. A rebuild is what the user already does by
+    /// hand — switching Agents and back — and it is the one repair known to
+    /// work in both cases, because the replacement carries a new surface id
+    /// and SwiftUI therefore builds a new terminal view with a new surface.
+    /// The cost is one new `herdr agent attach` on the existing connection,
+    /// paid only on returns from a genuine suspension.
+    func didBecomeActive(afterLongAbsence: Bool) {
         image.didBecomeActive()
         guard !hasLeft else { return }
-        terminal.didBecomeActive()
+        guard afterLongAbsence else {
+            terminal.didBecomeActive()
+            return
+        }
+        replaceTerminal { [weak self] in self?.hasLeft == false }
     }
 
     func didEnterBackground() {
@@ -227,11 +256,26 @@ final class AgentAttachStore {
     func transportGenerationDidChange(_ generation: UInt64?) {
         guard let generation, generation != transportGeneration, !hasLeft else { return }
         transportGeneration = generation
+        replaceTerminal { [weak self] in
+            guard let self else { return false }
+            return !self.hasLeft && self.transportGeneration == generation
+        }
+    }
+
+    /// Tears the terminal pipeline down and builds a fresh one, serialized
+    /// behind any earlier transition. `isStillWanted` is re-asked after the
+    /// teardown, which is the only await in here and therefore the only place
+    /// the reason for the replacement can go stale.
+    ///
+    /// The new pipeline carries a new `TerminalSurfaceID`, which is what makes
+    /// SwiftUI build a new terminal view rather than reuse the one on screen.
+    private func replaceTerminal(while isStillWanted: @escaping @MainActor () -> Bool) {
+        guard isStillWanted() else { return }
         enqueueLifecycleTransition { [weak self] in
-            guard let self, !self.hasLeft, self.transportGeneration == generation else { return }
+            guard let self, isStillWanted() else { return }
             let previous = self.terminal
             await previous.stop()
-            guard !self.hasLeft, self.transportGeneration == generation else { return }
+            guard isStillWanted() else { return }
             self.terminal = Self.makeTerminal(
                 target: self.target,
                 input: self.input,

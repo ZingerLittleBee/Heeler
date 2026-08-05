@@ -1878,7 +1878,7 @@ struct AgentAttachStoreForegroundTests {
         #expect(await transport.emitAttachOutput(Data("\u{1B}[2J".utf8)))
         try await waitUntil("terminal should go live") { store.terminalStatus == .live }
 
-        store.didBecomeActive()
+        store.didBecomeActive(afterLongAbsence: false)
 
         try await waitUntil("the return should reach the terminal's remote") {
             await transport.attachInputs == [
@@ -1886,6 +1886,68 @@ struct AgentAttachStoreForegroundTests {
                 .resize(cols: 80, rows: 24),
             ]
         }
+        await store.leave().value
+    }
+
+    /// The #141 repair. A terminal that comes back from a real suspension can
+    /// be blank for two reasons that the app cannot tell apart from a healthy
+    /// one — a freed Ghostty surface silently discarding every byte, or a
+    /// surviving surface whose renderer never restarted — so the pipeline is
+    /// replaced on the absence rather than on evidence of damage.
+    ///
+    /// The replacement is what the user does by hand today by switching
+    /// Agents and back: a new surface id, so SwiftUI builds a new terminal
+    /// view, and a new `herdr agent attach` behind it.
+    @Test func aLongAbsenceRebuildsTheTerminalOntoAFreshSurface() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("attach should open") { await transport.hasLiveAttachSession }
+        #expect(await transport.emitAttachOutput(Data("\u{1B}[2J".utf8)))
+        try await waitUntil("terminal should go live") { store.terminalStatus == .live }
+        let surfaceBefore = store.terminalID
+        #expect(await transport.attachRequests.count == 1)
+
+        store.didBecomeActive(afterLongAbsence: true)
+
+        try await waitUntil("the blank surface must be replaced, not nudged") {
+            store.terminalID != surfaceBefore
+        }
+        // The new pipeline is a real one: it reopens the attach rather than
+        // leaving the screen on a store with nothing behind it.
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the replacement should reopen the attach") {
+            await transport.attachRequests.count == 2
+        }
+        await store.leave().value
+    }
+
+    /// The other half: a glance at a notification must not cost a reattach.
+    /// Without this the repair would restart the remote agent's TUI every
+    /// time the user looked at the lock screen.
+    @Test func aShortBounceKeepsTheTerminalItAlreadyHas() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("attach should open") { await transport.hasLiveAttachSession }
+        #expect(await transport.emitAttachOutput(Data("\u{1B}[2J".utf8)))
+        try await waitUntil("terminal should go live") { store.terminalStatus == .live }
+        let surfaceBefore = store.terminalID
+
+        store.didBecomeActive(afterLongAbsence: false)
+
+        try await waitUntil("the short bounce should still nudge the remote") {
+            await transport.attachInputs == [
+                .resize(cols: 79, rows: 24),
+                .resize(cols: 80, rows: 24),
+            ]
+        }
+        #expect(
+            store.terminalID == surfaceBefore,
+            "a bounce inside the grace period must not rebuild the terminal")
+        #expect(await transport.attachRequests.count == 1)
         await store.leave().value
     }
 }

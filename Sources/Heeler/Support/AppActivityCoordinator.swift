@@ -110,6 +110,19 @@ final class AppActivityCoordinator {
     /// miss.
     private(set) var activationCount: UInt64 = 0
 
+    /// Whether the absence that ended in the most recent activation lasted at
+    /// least the grace period.
+    ///
+    /// Measured on a clock rather than inferred from `phase`, because the
+    /// process is frozen for exactly the absences that matter. When iOS
+    /// suspends us before the grace timer fires, no `.suspended` is ever
+    /// published and the app comes back believing it never left — yet the
+    /// wall clock says it was gone for minutes. This is the only signal that
+    /// survives that freeze, and it is what tells a glance at a notification
+    /// apart from an absence long enough to have cost the Attach terminal its
+    /// surface (#141).
+    private(set) var lastAbsenceOutlastedGrace = false
+
     /// Every transition, in order and exactly once each. Buffered rather than
     /// latest-value: a background→foreground round trip that completes before
     /// the consumer gets to run must still produce both the teardown and the
@@ -119,15 +132,22 @@ final class AppActivityCoordinator {
     private nonisolated let eventsContinuation: AsyncStream<AppActivityEvent>.Continuation
     @ObservationIgnored private let gracePeriod: Duration
     @ObservationIgnored private let granter: any BackgroundExecutionGranting
+    /// Injected so a test can state an absence instead of sleeping one.
+    /// `ContinuousClock` on purpose: it keeps counting while the process is
+    /// suspended, which `SuspendingClock` does not.
+    @ObservationIgnored private let now: @MainActor () -> ContinuousClock.Instant
     @ObservationIgnored private var token: BackgroundExecutionToken?
     @ObservationIgnored private var graceTask: Task<Void, Never>?
+    @ObservationIgnored private var leftForegroundAt: ContinuousClock.Instant?
 
     init(
         gracePeriod: Duration = AppActivityCoordinator.defaultGracePeriod,
-        granter: any BackgroundExecutionGranting = UIKitBackgroundExecutionGranter()
+        granter: any BackgroundExecutionGranting = UIKitBackgroundExecutionGranter(),
+        now: @escaping @MainActor () -> ContinuousClock.Instant = { ContinuousClock.now }
     ) {
         self.gracePeriod = gracePeriod
         self.granter = granter
+        self.now = now
         (events, eventsContinuation) = AsyncStream.makeStream(
             of: AppActivityEvent.self, bufferingPolicy: .unbounded)
     }
@@ -137,12 +157,18 @@ final class AppActivityCoordinator {
         graceTask = nil
         releaseBackgroundExecution()
         phase = .active
+        // Reported before `activationCount`, which is what observers key off:
+        // the counter is the edge, and the flag must already be true when it
+        // is read.
+        lastAbsenceOutlastedGrace = leftForegroundAt.map { now() - $0 >= gracePeriod } ?? false
+        leftForegroundAt = nil
         activationCount &+= 1
         eventsContinuation.yield(.activated)
     }
 
     func didEnterBackground() {
         guard phase == .active, graceTask == nil else { return }
+        leftForegroundAt = now()
         token = granter.begin { [weak self] in self?.backgroundTimeDidExpire() }
         guard token != nil else {
             // Without background time the process is about to freeze, so a

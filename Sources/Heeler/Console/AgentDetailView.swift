@@ -277,7 +277,8 @@ struct AgentDetailView: View {
         // attach channel is exactly the one an `onChange` on the phase cannot
         // see (#141).
         .onChange(of: activity.activationCount) { _, _ in
-            attach.didBecomeActive()
+            attach.didBecomeActive(
+                afterLongAbsence: activity.lastAbsenceOutlastedGrace)
         }
         .onChange(of: console.hostConnectionGenerations[agent.hostID]) { _, generation in
             attach.transportGenerationDidChange(generation)

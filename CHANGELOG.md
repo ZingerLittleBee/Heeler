@@ -54,6 +54,15 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- An open Agent terminal no longer comes back blank after the app has been in
+  the background for a while. Returning after more than the 20-second grace
+  period now rebuilds the terminal by itself — the same thing you could
+  already do by hand by switching to another Agent and back — so the screen
+  goes through "Connecting…" to a freshly painted terminal instead of sitting
+  black with no error and nothing to reconnect. Quick trips out of the app,
+  glancing at a notification or the lock screen, are unaffected and keep the
+  terminal they had. (#141)
+
 - A Host that is reconnecting no longer tells you its Agent has gone. The
   session screen said "This Agent's pane is no longer reported" whenever the
   Agent list emptied, which a dropped connection does exactly as a closed
