@@ -51,6 +51,10 @@ private actor HeelerSSHNotificationFileCompletion {
 /// so a finished stream alone cannot guarantee that `end()` makes later
 /// iterator reads return nil. This gate owns the buffer so explicit end can
 /// discard it, while clean remote exit still drains every accepted byte.
+///
+/// The stream has exactly one consumer. A second concurrent reader is
+/// refused with `TransportError.terminalChannelAlreadyOpen` and leaves the
+/// first reader running; see `next()`.
 final class HeelerSSHAttachOutputGate: Sendable {
     private enum Completion {
         case finished
@@ -67,6 +71,15 @@ final class HeelerSSHAttachOutputGate: Sendable {
     }
 
     private let state = Mutex(State())
+
+    #if DEBUG
+        /// Whether a consumer is parked waiting for the next chunk. Lets
+        /// tests enter the double-consumer window deterministically instead
+        /// of guessing at it with a sleep.
+        var hasParkedConsumerForTesting: Bool {
+            state.withLock { $0.waiter != nil }
+        }
+    #endif
 
     static func makeStream() -> (
         output: AsyncThrowingStream<Data, any Error>,
@@ -150,7 +163,27 @@ final class HeelerSSHAttachOutputGate: Sendable {
                         }
                         return
                     }
-                    precondition(state.waiter == nil, "Attach output has more than one consumer")
+                    // Exactly one consumer may read an Attach session. A
+                    // second one is a caller mistake in the UI layer — a
+                    // departing SwiftUI iterator that outlived its view is
+                    // the shape this app has already shipped once (#97) —
+                    // and it must not take the process down with it (#137).
+                    //
+                    // The extra consumer is refused by *throwing* rather
+                    // than by being handed a finished stream:
+                    // `AsyncThrowingStream(unfolding:)` shares one storage
+                    // across every iterator made from it and clears that
+                    // storage the first time the closure returns nil, so
+                    // ending the extra consumer would end the legitimate
+                    // consumer's stream along with it. Throwing leaves the
+                    // storage, this gate's buffer, and the first consumer's
+                    // registration below untouched, and it reaches the user
+                    // as a recoverable session error instead of silence.
+                    guard state.waiter == nil else {
+                        continuation.resume(
+                            throwing: TransportError.terminalChannelAlreadyOpen)
+                        return
+                    }
                     state.waiter = continuation
                 }
             }

@@ -54,6 +54,13 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- The app no longer quits outright if two parts of the terminal screen read
+  one Attach session at the same time — a stale view left behind by a screen
+  transition was enough. The live terminal now keeps running untouched, and
+  the duplicate reader is turned away with "Another terminal is already open
+  on this Host." and a Reattach button, so the worst case is one surface that
+  has to be reopened rather than the whole app disappearing. (#137)
+
 - A Host that fails while you have one of its Agents open now says why on the
   session screen. It used to read "This Agent's pane is no longer reported" —
   blaming the Agent for the Host's problem, and pointing you at the wrong

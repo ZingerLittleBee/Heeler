@@ -542,8 +542,10 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// A second events channel was requested while one is live; each Host
     /// keeps exactly one dedicated events channel (ADR 0011 headroom).
     case eventsChannelAlreadyOpen
-    /// A second terminal channel was requested while one is live; each Host
-    /// keeps exactly one interactive terminal surface at a time.
+    /// A second terminal channel was requested while one is live, or a
+    /// second reader tried to consume a terminal session that already has
+    /// one; each Host keeps exactly one interactive terminal surface at a
+    /// time, and each session serves exactly one of them.
     case terminalChannelAlreadyOpen
     /// The request exceeded its per-request deadline; its exec channel was
     /// closed.

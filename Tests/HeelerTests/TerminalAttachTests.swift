@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import Synchronization
 import Testing
 import UIKit
 
@@ -41,6 +42,107 @@ struct TerminalAttachTests {
         #expect(try await iterator.next() == first)
         #expect(try await iterator.next() == second)
         #expect(try await iterator.next() == nil)
+    }
+
+    /// How an Attach output consumer finished, flattened so one `#expect`
+    /// can separate "refused", "handed an ended stream", and "still hanging".
+    private enum AttachConsumerOutcome: Equatable, Sendable {
+        case drained([Data])
+        case failed(String)
+    }
+
+    /// A second concurrent reader of one Attach session is a mistake in the
+    /// UI layer — a departing SwiftUI iterator that outlived its view is the
+    /// shape this app already shipped once (#97) — and killing the process
+    /// over it is worse than the mistake (#137). The extra reader is refused
+    /// where it stands, and the legitimate reader carries on.
+    @Test(.timeLimit(.minutes(1)))
+    func aSecondAttachOutputConsumerIsRefusedAndLeavesTheFirstRunning() async throws {
+        let source = HeelerSSHAttachOutputGate.makeStream()
+        let gate = source.gate
+        let stream = source.output
+
+        let first = Task { () -> AttachConsumerOutcome in
+            var seen: [Data] = []
+            do {
+                for try await bytes in stream { seen.append(bytes) }
+                return .drained(seen)
+            } catch {
+                return .failed(String(describing: error))
+            }
+        }
+        let parked = await Self.waitForParkedConsumer(gate)
+        #expect(parked, "the first consumer never parked on the gate")
+
+        let second = Task { () -> AttachConsumerOutcome in
+            var iterator = stream.makeAsyncIterator()
+            do {
+                guard let bytes = try await iterator.next() else { return .drained([]) }
+                return .drained([bytes])
+            } catch {
+                return .failed(String(describing: error))
+            }
+        }
+        let refusal = await Self.outcome(of: second)
+        #expect(
+            refusal == .failed(String(describing: TransportError.terminalChannelAlreadyOpen)),
+            """
+            the extra consumer must be refused, not trapped, ended, or left \
+            hanging: \(String(describing: refusal))
+            """)
+
+        // Refusing it must leave the first consumer's registration alone:
+        // it is still parked, and everything sent afterwards reaches it.
+        #expect(
+            gate.hasParkedConsumerForTesting,
+            "refusing the extra consumer cleared the first consumer's waiter")
+        let afterRefusal = Data("after-the-refusal".utf8)
+        let stillFlowing = Data("still-flowing".utf8)
+        gate.yield(afterRefusal)
+        gate.yield(stillFlowing)
+        gate.finish()
+        let served = await Self.outcome(of: first)
+        #expect(
+            served == .drained([afterRefusal, stillFlowing]),
+            """
+            the first consumer must keep receiving output unaffected: \
+            \(String(describing: served))
+            """)
+    }
+
+    /// Polls until a consumer is registered on the gate, so the test enters
+    /// the double-consumer window deterministically rather than by sleeping.
+    private static func waitForParkedConsumer(
+        _ gate: HeelerSSHAttachOutputGate,
+        within limit: Duration = .seconds(5)
+    ) async -> Bool {
+        let deadline = ContinuousClock.now + limit
+        while ContinuousClock.now < deadline {
+            if gate.hasParkedConsumerForTesting { return true }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        return false
+    }
+
+    /// Awaits a consumer under a deadline and reports `nil` when it never
+    /// settles. A bare `await task.value` would let a mutation that parks a
+    /// consumer forever wedge the whole run instead of failing this test.
+    private static func outcome(
+        of task: Task<AttachConsumerOutcome, Never>,
+        within limit: Duration = .seconds(5)
+    ) async -> AttachConsumerOutcome? {
+        let settled = Mutex<AttachConsumerOutcome?>(nil)
+        let recorder = Task {
+            let value = await task.value
+            settled.withLock { $0 = value }
+        }
+        defer { recorder.cancel() }
+        let deadline = ContinuousClock.now + limit
+        while ContinuousClock.now < deadline {
+            if let value = settled.withLock({ $0 }) { return value }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        return nil
     }
 
     @Test func writerPropagatesResizeFailure() async {
