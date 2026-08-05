@@ -736,6 +736,11 @@ xcrun simctl spawn "$simulator_udid" launchctl setenv \
     HEELER_PAIRING_E2E_CONFIG \
     "$pairing_fixture_configuration_base64"
 
+# Every lane whose executed count and skip budget this script pins exactly. The
+# full lane's provenance assertion draws its evidence from these, so a lane that
+# is not listed here proves nothing.
+pinned_lane_logs=()
+
 # Swift Testing filters exit zero having run nothing, so every mandatory suite
 # asserts its executed count. `run_suite` also refuses any skip: with
 # HEELER_SSH_E2E_REQUIRED set a fixture-backed suite must fail rather than skip,
@@ -771,6 +776,7 @@ run_suite() {
         echo "$suite did not execute all $expected_tests tests" >&2
         exit 1
     fi
+    pinned_lane_logs+=("$log")
 }
 
 # Every behaviour the merge gate treats as mandatory names the test that proves
@@ -785,6 +791,81 @@ assert_behavior() {
         echo "Mandatory behaviour not proven: $behavior ($test_name)" >&2
         exit 1
     fi
+}
+
+# The full lane runs with no fixture configured, so the fixture-backed suites
+# skip there by design. That design is also how eleven percent of the lane's
+# headline total can execute nothing while the run still reports success, which
+# is why the full lane is not asserted on a total: the number a total guard
+# would compare is satisfied by exactly the failure it exists to catch.
+#
+# Provenance is asserted instead. A full-lane skip is permitted only when one of
+# the lanes this script pins with an exact executed count and an exact skip
+# budget ran that same test to a pass. This is deliberately not an allow-list of
+# suite names: a suite cannot be entered into it without also being made to run
+# somewhere the gate checks, so a ninth suite joining the skip list fails here,
+# by name, rather than reading as a rounding difference.
+assert_full_lane_coverage() {
+    local log=$1
+    local executed_floor=$2
+    local covered="$fixture_dir/pinned-lane-passes.txt"
+    local skipped="$fixture_dir/full-lane-skips.txt"
+    local unproven
+    local total
+    local skips
+    local executed
+
+    # `Test <name> passed after 1.234 seconds.` — the run summary reads
+    # `Test run with N tests in M suites passed after ...`, which the same
+    # pattern would otherwise reduce to a name, so it is deleted first.
+    cat "${pinned_lane_logs[@]}" \
+        | sed -n \
+            -e '/Test run with /d' \
+            -e 's/^.*Test \(.*\) passed after .*$/\1/p' \
+        | LC_ALL=C sort -u > "$covered"
+    if [[ "$password_fixture_available" != "1" ]]; then
+        # The one behaviour a developer laptop may omit, and the only place a
+        # full-lane skip is allowed to go unproven. Merge CI cannot reach this
+        # branch: an absent privileged fixture already exits above. The two
+        # tests are named rather than counted, so the exemption cannot widen
+        # into a budget that later skips can hide inside.
+        printf '%s\n' \
+            '"password authentication and exec round trip through real sshd"' \
+            '"incorrect password has a distinct authentication error"' \
+            >> "$covered"
+        LC_ALL=C sort -u -o "$covered" "$covered"
+    fi
+
+    sed -n 's/^.*Test \(.*\) skipped: .*$/\1/p' "$log" \
+        | LC_ALL=C sort -u > "$skipped"
+    unproven=$(LC_ALL=C comm -23 "$skipped" "$covered")
+    if [[ -n "$unproven" ]]; then
+        echo "The full lane skipped tests that no pinned lane proved:" >&2
+        echo "$unproven" >&2
+        echo "Make each one run in a lane run_suite pins, or fix the skip." >&2
+        exit 1
+    fi
+
+    total=$(sed -n \
+        's/^.*Test run with \([0-9][0-9]*\) tests in .* passed after .*$/\1/p' \
+        "$log" | tail -n 1)
+    if [[ -z "$total" ]]; then
+        echo "The full lane printed no passing run summary" >&2
+        exit 1
+    fi
+    skips=$(grep -c 'Test .* skipped:' "$log" || true)
+    executed=$((total - skips))
+    # A floor, not an equality: adding tests must not require editing this
+    # script, but losing coverage must be a deliberate act. Re-derive it as the
+    # run summary's total minus the count of `Test ... skipped:` lines in the
+    # same log. The total alone is not usable here — it counts the skips.
+    if ((executed < executed_floor)); then
+        echo "The full lane executed $executed tests ($total minus $skips" \
+            "skipped); at least $executed_floor must run" >&2
+        exit 1
+    fi
+    echo "==> Full lane executed $executed of $total tests," \
+        "$skips skipped and all of them proven elsewhere." >&2
 }
 
 # The direct-streamlocal suite asserts that a stale socket is still stale.
@@ -814,6 +895,11 @@ assert_behavior "Bootstrap Key" PairingCeremonyE2ETests \
     'fullCeremonyEnrollsTheDeviceKeyAndVerifies()'
 assert_behavior "two-hop trust" HeelerSSHJumpHostGateE2ETests \
     '"TOFU records both endpoints once and identifies either mismatch"'
+# Trust at both hops is not the product. This is: connect the jump, forward to
+# the target, authenticate it, exchange a real ping, and tear the two sessions
+# down in order. Folded into the trust assertion it was invisible to rename.
+assert_behavior "Jump Host product path" HeelerSSHJumpHostGateE2ETests \
+    '"protocol 17 ping traverses independent SSH hops"'
 assert_behavior "RPC" HeelerSSHDirectStreamLocalE2ETests \
     '"Transport ping validates protocol 17 and opens a fresh channel"'
 assert_behavior "Events" HeelerSSHTransportBehaviorE2ETests \
@@ -901,6 +987,7 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     echo "The mandatory HeelerSSH package suites did not execute all nineteen tests" >&2
     exit 1
 fi
+pinned_lane_logs+=("$package_e2e_log")
 
 # The full lane runs with no fixture configured, so every fixture-backed suite
 # must skip — hence the clear above. The gate is still in force, though, and
@@ -912,8 +999,36 @@ fi
 export HEELER_SSH_E2E_REQUIRED=0
 xcrun simctl spawn "$simulator_udid" launchctl setenv HEELER_SSH_E2E_REQUIRED 0
 
+full_lane_log="$fixture_dir/full-lane.log"
 xcodebuild test \
     -project Heeler.xcodeproj \
     -scheme Heeler \
     -destination "$simulator_destination" \
-    -collect-test-diagnostics never
+    -collect-test-diagnostics never \
+    2>&1 | tee "$full_lane_log"
+
+# The floor is the executed count this lane reached when the assertion was
+# written: 864 in the run summary less the 95 tests the eight fixture-backed
+# suites skip. Every one of those 95 executes in a lane above.
+assert_full_lane_coverage "$full_lane_log" 769
+
+# The three groups that run only here, and so had no assertion of any kind
+# before this. Each names the behaviour rather than counting the suite.
+assert_behavior "admission reserves the production Events and Attach slots" \
+    full-lane 'productionLimitsReserveEventsAndAttachWithinTheConnectionCeiling()'
+assert_behavior "admission stays non-blocking" full-lane \
+    'sessionSaturationDoesNotBlockForwardingAdmission()'
+assert_behavior "admission respects the connection ceiling" full-lane \
+    'connectionCeilingBoundsForwardingAndSessionTogether()'
+assert_behavior "a cancelled waiter frees its admission capacity" full-lane \
+    'cancelledWaiterDoesNotLeakConnectionCapacity()'
+assert_behavior "TOFU migrates a legacy record rather than re-prompting" \
+    full-lane 'matchingLegacyRecordMigratesAlgorithmMetadata()'
+assert_behavior "TOFU refuses a changed key without overwriting it" full-lane \
+    'changedKeyFailsWithoutConfirmationOrOverwrite()'
+assert_behavior "no obsolete algorithm is negotiable" full-lane \
+    '"the session driver negotiates no obsolete algorithm"'
+assert_behavior "no private key entry point exists" full-lane \
+    '"the SSH package has no private key entry point"'
+assert_behavior "signing never exports a key" full-lane \
+    '"the transport signs through CryptoKit rather than exporting a key"'
