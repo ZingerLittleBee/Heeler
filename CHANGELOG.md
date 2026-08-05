@@ -60,6 +60,15 @@ Entries reference the issue that motivated them.
   says it is reconnecting — instead of sitting there silently on a link
   nothing had noticed was gone. (#141)
 
+- A Host that drops off the network mid-request now reconnects on its own
+  instead of stopping with the wrong advice. A severed link failed the same
+  way a refused forward does, so Heeler blamed the Host's setup — "herdr is
+  not running on this Host. If it is running, check SSH stream-local
+  forwarding." — and treated it as something only the user could fix, which
+  stops automatic reconnection. A dropped link now reports itself as an
+  unavailable connection and retries, while a genuinely disabled forward or a
+  stopped herdr still gets the setup advice. (#138)
+
 - Hosts running herdr 0.8.0 connect again. The protocol check demanded the
   exact version this build was generated against, so herdr 0.8.0 (protocol
   19) failed preflight outright even though every method Heeler calls is

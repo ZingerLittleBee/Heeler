@@ -614,8 +614,12 @@ actor SessionDriver {
                     invalidateResources()
                 }
             } else if normalized != .streamLocalOpenFailed {
-                // A timeout or cancellation while opening has an uncertain
-                // channel outcome. Do not admit later work on this session.
+                // `.streamLocalOpenFailed` now means only what it says: the
+                // server refused this one channel and the session is intact.
+                // Everything else — a timeout or cancellation with an uncertain
+                // channel outcome, or the socket loss
+                // `mappedStreamLocalOpenError` reports as `.connectionInvalidated`
+                // — must not admit later work on this session.
                 invalidateResources()
             }
             throw normalized
@@ -661,6 +665,8 @@ actor SessionDriver {
                     invalidateResources()
                 }
             } else if normalized != .streamLocalOpenFailed {
+                // The same rule `exchangeStreamLocal` states above: only a
+                // refusal of this one channel leaves the session usable.
                 invalidateResources()
             }
             throw normalized
@@ -1785,9 +1791,26 @@ actor SessionDriver {
             if error == LIBSSH2_ERROR_EAGAIN {
                 try await waitForSession(session, deadline: deadline)
             } else {
-                throw SSHError.streamLocalOpenFailed
+                throw Self.mappedStreamLocalOpenError(error)
             }
         }
+    }
+
+    /// Two causes arrive on the same failure path and the errno is all that
+    /// separates them. SSH forwarding policy or a stale socket refuses this one
+    /// channel and leaves the session healthy, so the callers must spare it;
+    /// a socket-level loss means there is no session left to spare, and
+    /// reporting it as a refusal is what lets `isReusable` stay true on a dead
+    /// connection. `mappedSFTPError` splits the same two cases the same way,
+    /// down to the verdict it returns for the loss.
+    ///
+    /// `mapSessionError` is deliberately not consulted: it classifies
+    /// handshake- and authentication-class codes and funnels everything else
+    /// into `.connectionFailed`, which would erase the `.streamLocalOpenFailed`
+    /// the socket diagnostic above this layer keys on.
+    private static func mappedStreamLocalOpenError(_ code: Int32) -> SSHError {
+        if isConnectionLoss(code) { return .connectionInvalidated }
+        return .streamLocalOpenFailed
     }
 
     private func startExec(

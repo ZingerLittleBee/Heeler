@@ -143,13 +143,14 @@ struct SessionDriverE2ETests {
     /// The same transition as the app-level test in `WeakNetworkE2ETests`, one
     /// layer down and over the stream-local path specifically.
     ///
-    /// The distinction is the whole point. `openStreamLocalChannel` reads the
-    /// libssh2 errno and discards it, so every non-`EAGAIN` failure arrives as
-    /// `.streamLocalOpenFailed` — and both callers skip `invalidateResources()`
-    /// on exactly that case, because a policy denial or a stale socket must not
-    /// tear down a healthy session. A genuine socket loss is therefore
-    /// indistinguishable from a refusal, and `isReusable` keeps reporting true
-    /// on a dead connection. That is #138.
+    /// The distinction is the whole point. Both callers skip
+    /// `invalidateResources()` on `.streamLocalOpenFailed`, because a policy
+    /// denial or a stale socket must not tear down a healthy session — so the
+    /// only thing keeping a genuine socket loss from hiding behind that
+    /// exemption is `openStreamLocalChannel` classifying the libssh2 errno
+    /// instead of discarding it (#138). Discard it again and `isReusable` goes
+    /// back to reporting true on a dead connection, which is what this test
+    /// fails on.
     ///
     /// The app layer masks it: `classifyStreamLocalOpenFailure` probes with
     /// `test -S` over an *exec* channel, and exec does invalidate, so the
@@ -190,20 +191,12 @@ struct SessionDriverE2ETests {
             // No `close(timeout:)` above this line: the property must go false
             // because the link died, not because it was told to.
             //
-            // The matcher admits only a failed expectation, so a thrown error
-            // or an API misuse inside the block still fails the test rather
-            // than being absorbed as the known issue.
             // `isConnected` is `driver.isReusable`, whose first term is `valid`,
-            // so this already fails on the missing `invalidateResources()`.
-            // Asserting the driver state directly would localise it further but
-            // needs a test hook on `SSHConnection` that production does not
-            // have, which is not worth widening the public surface for.
-            await withKnownIssue("#138: the stream-local path never invalidates") {
-                #expect(await connection.isConnected == false)
-            } matching: { issue in
-                guard case .expectationFailed = issue.kind else { return false }
-                return true
-            }
+            // so this fails on a missing `invalidateResources()`. Asserting the
+            // driver state directly would localise it further but needs a test
+            // hook on `SSHConnection` that production does not have, which is
+            // not worth widening the public surface for.
+            #expect(await connection.isConnected == false)
             try? await connection.close(timeout: .seconds(2))
         }
     }
