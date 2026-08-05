@@ -278,6 +278,22 @@ struct AttachTerminalStoreTests {
         #expect(AttachTerminalStore.defaultLivenessProbeTimeout > settings.requestTimeout)
     }
 
+    @Test func theRepaintDeadlineStaysInsideWhatAUserWillStareAtABlankScreenFor() {
+        // The ceiling to the test above's floor. Every other test here injects
+        // a millisecond-scale probe timeout, so without this the production
+        // default is unpinned from above: raising
+        // `TerminalAttachRepaintBudget.remoteAnswer` to an hour keeps the whole
+        // suite green while restoring the exact defect #141 fixed — a screen
+        // black for an hour is, to the user holding the phone, black forever.
+        //
+        // 30s is the loosest bound that is still a bound. The derivation is
+        // 15s delivery + 5s answer = 20s, so this leaves half again as much
+        // headroom for `requestTimeout` or `remoteAnswer` to grow on evidence
+        // without the test fighting the change, while rejecting any value in
+        // the minutes-and-up range where the deadline stops being a deadline.
+        #expect(AttachTerminalStore.defaultLivenessProbeTimeout <= .seconds(30))
+    }
+
     @Test func keystrokesForwardToTheSession() async throws {
         let transport = ScriptedTransport()
         let (store, _) = makeStore(transport: transport)
