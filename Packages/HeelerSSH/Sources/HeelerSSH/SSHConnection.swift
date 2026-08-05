@@ -6,6 +6,34 @@ enum SSHConnectionTeardownStep: Sendable, Equatable {
     case jumpSession
 }
 
+/// Its `deinit`, like those of `SSHPTYChannel`, `SSHStreamLocalChannel`,
+/// `SSHSFTPClient` and `SSHSFTPFile`, hands remote cleanup to an unstructured
+/// `Task` that nothing retains: `deinit` returns with that work still
+/// outstanding, and no caller can await it. In a test process that reads as
+/// flakiness rather than as failure, because the work begins whenever the last
+/// reference happens to drop — so its cost can land on a later test than the
+/// one whose assertions provoked it.
+///
+/// The cost is uneven across the five, and this `deinit` is the cheap end. It
+/// invalidates the driver — no operation mutex, no deadline — and only for a
+/// connection opened through a Jump Host does it also abort the forwarding
+/// transport and close the parent, so a direct connection reaches no close at
+/// all. The one close it can reach, `SessionDriver.close`, is cancellable, and
+/// its two-second budget bounds only the native calls: the deadline is computed
+/// after `acquireOperation()` returns, so the wait for the driver's operation
+/// mutex ahead of it is unbounded. The four channel `deinit`s are the expensive
+/// end — they take that same mutex and then run non-cancellably.
+///
+/// #139 is linked for its timing evidence, not as a cause — nothing here
+/// establishes that these `deinit`s produce it; it records the same failure
+/// moving between two adjacent tests of one suite, which is timing no single
+/// test controls, and its own `deinit` hypothesis was built on
+/// `SSHPTYChannel`. #136 has since stopped the four `close*` channel teardowns
+/// invalidating the session when a close only ran out of time, but that
+/// verdict reaches no further: `SessionDriver.close`, the close reached from
+/// here, still invalidates on any failure including a bare expiry, as do the
+/// two-second cleanup in `execute`'s catch and its sibling operation paths, of
+/// which #149 tracks only some.
 public final class SSHConnection: Sendable {
     public let hostKey: SSHHostKey
 
