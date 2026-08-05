@@ -29,6 +29,10 @@ struct ConsoleDetailPresentationTests {
 
     private static let paneGoneMessage = "This Agent's pane is no longer reported."
 
+    private static let reconnectingMessage =
+        "The connection dropped and is being re-established. "
+        + "Nothing to do — the Agents come back on their own."
+
     /// The case the ticket names: a Host actually driven to `.failed`, and
     /// what the screen renders once its Agent list has emptied.
     @Test func aFailedHostShowsItsGuidanceInsteadOfBlamingTheAgent() async throws {
@@ -104,22 +108,53 @@ struct ConsoleDetailPresentationTests {
         #expect(onBroken.message == "\(broken.displayName): \(Self.socketGuidance)")
     }
 
-    /// `.reconnecting` must not borrow the failed Host's guidance. It is
-    /// emitted solely past a `guard failure.isRetryable`, so the session is
-    /// working on it and the text naming a user action would be a lie about
-    /// who has to act — the same split the Console list already makes.
-    @Test func aReconnectingOrPausedHostDoesNotBorrowTheFailedGuidance() {
+    /// A reconnecting Host says so, rather than reporting the Agent as gone
+    /// at the exact moment the app is recovering (#154).
+    ///
+    /// This half was split out of `aPausedOrHealthyHostStillSaysTheAgentIsGone`,
+    /// which used to assert `.reconnecting` got the placeholder. The property
+    /// that test existed to pin — that this screen never borrows the
+    /// `.failed` guidance, which names an action the user must take — moves
+    /// here with it and is asserted against the underlying failure's own
+    /// guidance string, so the split cannot quietly become a deletion.
+    @Test func aReconnectingHostSaysSoAndStillBorrowsNoGuidance() {
         let host = Host.fixture()
-        let inFlight: [EventsSessionStatus?] = [
-            .reconnecting(attempt: 2, delay: .seconds(1), failure: .timedOut),
-            .reconnecting(
-                attempt: 1, delay: .seconds(1),
-                failure: .sshUnreachable(detail: "the Host is unreachable")),
-            .suspended,
-            .connected,
-            nil,
+        let failures: [TransportError] = [
+            .timedOut,
+            .sshUnreachable(detail: "the Host is unreachable"),
         ]
-        for status in inFlight {
+        for failure in failures {
+            let presentation = MissingAgentPresentation(
+                agentID: ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1"),
+                hostStatuses: [
+                    host.id: .reconnecting(
+                        attempt: 2, delay: .seconds(1), failure: failure)
+                ],
+                hosts: [host])
+
+            #expect(presentation.cause == .hostReconnecting)
+            #expect(presentation.title == "Reconnecting…")
+            // A message that renders empty would leave the screen blank at
+            // the moment it most needs to explain itself.
+            #expect(!presentation.message.isEmpty)
+            #expect(presentation.message == "\(host.displayName): \(Self.reconnectingMessage)")
+            // The teeth carried over from the test this was split out of: the
+            // guidance names a user action, and here the app is the one
+            // acting, so none of it may appear.
+            #expect(!presentation.message.contains(failure.connectionGuidance))
+            // Nor may it fall back to blaming the Agent.
+            #expect(!presentation.message.contains("no longer reported"))
+        }
+    }
+
+    /// The remainder of that original test. A paused or healthy Host still
+    /// gets the placeholder — `.suspended` deliberately included, because a
+    /// suspended session is not re-establishing anything, it is waiting to be
+    /// told to, and claiming otherwise would be a different wrong answer.
+    @Test func aPausedOrHealthyHostStillSaysTheAgentIsGone() {
+        let host = Host.fixture()
+        let atRest: [EventsSessionStatus?] = [.suspended, .connected, .ended, nil]
+        for status in atRest {
             let presentation = MissingAgentPresentation(
                 agentID: ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1"),
                 hostStatuses: status.map { [host.id: $0] } ?? [:],
@@ -162,22 +197,27 @@ struct ConsoleDetailPresentationTests {
         }
     }
 
-    /// The two causes stay two. Nothing here may end up shared between them —
-    /// a single message covering both is the defect restated.
-    @Test func theTwoCausesNeverCollapseIntoOneAnswer() {
+    /// The three causes stay three, on every field the screen renders. A
+    /// shared message is the defect restated; a shared title or icon is the
+    /// same collapse arriving through the part of the screen a user reads
+    /// first.
+    @Test func theThreeCausesNeverCollapseIntoOneAnswer() {
         let host = Host.fixture()
         let agentID = ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1")
-        let failed = MissingAgentPresentation(
-            agentID: agentID,
-            hostStatuses: [host.id: .failed(.streamLocalOpenFailed(path: "/s"))],
-            hosts: [host])
-        let gone = MissingAgentPresentation(
-            agentID: agentID, hostStatuses: [host.id: .connected], hosts: [host])
+        func presentation(_ status: EventsSessionStatus) -> MissingAgentPresentation {
+            MissingAgentPresentation(
+                agentID: agentID, hostStatuses: [host.id: status], hosts: [host])
+        }
+        let all = [
+            presentation(.failed(.streamLocalOpenFailed(path: "/s"))),
+            presentation(.reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut)),
+            presentation(.connected),
+        ]
 
-        #expect(failed.cause != gone.cause)
-        #expect(failed.title != gone.title)
-        #expect(failed.message != gone.message)
-        #expect(failed.systemImage != gone.systemImage)
+        #expect(Set(all.map(\.cause)).count == 3)
+        #expect(Set(all.map(\.title)).count == 3)
+        #expect(Set(all.map(\.message)).count == 3)
+        #expect(Set(all.map(\.systemImage)).count == 3)
     }
 
     /// A changed host key is a security refusal, not an ordinary outage, and

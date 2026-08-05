@@ -375,28 +375,41 @@ struct ConsoleView: View {
 }
 
 /// What the detail column shows when the selected Agent is no longer in the
-/// Console list. Two different situations empty that list and they need
-/// different answers (#146).
+/// Console list. Three different situations empty that list and they need
+/// three different answers (#146, #154).
 ///
 /// They are easy to conflate because every non-`.connected` status runs
-/// `invalidateSnapshot()`, clearing `agentsByPane` — so a Host that failed
-/// leaves the list exactly as empty as a pane that closed. Reading the empty
-/// list alone, "this pane is no longer reported" is simply false in the
-/// failed case: it names the Agent for the Host's failure and points at the
-/// wrong remedy, while the text naming the action the user must take
-/// (`connectionGuidance`) rendered only in the Console list behind it.
+/// `invalidateSnapshot()`, clearing `agentsByPane` — so a Host that failed,
+/// and a Host that is reconnecting, each leave the list exactly as empty as
+/// a pane that closed. Reading the empty list alone, "this pane is no longer
+/// reported" is simply false in both: it names the Agent for the Host's
+/// trouble and points at the wrong remedy, while the text naming the action
+/// the user must take (`connectionGuidance`) rendered only in the Console
+/// list behind it.
 ///
-/// Only `.failed` gets the guidance. `.reconnecting` deliberately does not:
+/// Only `.failed` gets that guidance. `.reconnecting` deliberately does not:
 /// it is emitted solely past a `guard failure.isRetryable`, so the session is
-/// working on it and there is nothing for the user to do — the same split
-/// `hostIssues` above makes between `summary(for:)` and `connectionGuidance`.
+/// working on it and naming a user action would misstate who has to act. It
+/// gets its own message instead of borrowing either neighbour.
+///
+/// That split is **this screen's convention, not the app's**. `hostIssues`
+/// above makes the same one between `summary(for:)` and `connectionGuidance`,
+/// but `HostOnboardingView.connectionErrorMessage` matches `.reconnecting`
+/// and `.failed` together and shows the guidance for both — arguably right
+/// there, since onboarding is a setup flow where the user *is* the one
+/// acting. Which convention governs where is open in #156; do not read this
+/// type as having settled it.
 struct MissingAgentPresentation: Equatable {
-    /// Which situation emptied the list. Explicit so that collapsing the two
+    /// Which situation emptied the list. Explicit so that collapsing them
     /// into a single message cannot happen by accident.
-    enum Cause: Equatable {
+    enum Cause: Hashable {
         /// The Host's session stopped on a failure no retry can clear; the
         /// guidance names the action only the user can take.
         case hostFailed
+        /// The connection dropped and the session is re-establishing it.
+        /// Nobody needs to act, so this says so instead of borrowing either
+        /// of the others (#154).
+        case hostReconnecting
         /// The Host is fine and this one pane is gone.
         case paneGone
     }
@@ -424,21 +437,47 @@ struct MissingAgentPresentation: Equatable {
         hosts: [Host]
     ) {
         let hostName = hosts.first { $0.id == agentID.hostID }?.displayName
-        guard case .failed(let failure) = hostStatuses[agentID.hostID] else {
+        // Named like the Console list's own entries, so the same Host reads
+        // the same way in both places.
+        func named(_ text: String) -> String {
+            hostName.map { "\($0): \(text)" } ?? text
+        }
+        switch hostStatuses[agentID.hostID] {
+        case .failed(let failure):
+            cause = .hostFailed
+            title = "Host Unavailable"
+            systemImage = failure.isHostKeySecurityFailure
+                ? "exclamationmark.shield.fill" : "exclamationmark.triangle.fill"
+            message = named(failure.connectionGuidance)
+        case .reconnecting:
+            cause = .hostReconnecting
+            title = "Reconnecting…"
+            // Deliberately not the Console list's `wifi.exclamationmark`.
+            // There the row is one entry in a list of issues, where the alert
+            // mark is the point; a whole screen whose message is "nothing to
+            // do" should not open by shouting.
+            systemImage = "arrow.trianglehead.2.clockwise"
+            // Deliberately not `connectionGuidance`, which names an action
+            // the user must take: `.reconnecting` is emitted solely past a
+            // `guard failure.isRetryable`, so the app is the one acting.
+            message = named(
+                "The connection dropped and is being re-established. "
+                    + "Nothing to do — the Agents come back on their own.")
+        case .connected, .suspended, .ended, nil:
+            // `.suspended` stays here on purpose. A suspended session is not
+            // re-establishing anything; it is waiting to be told to, so
+            // "reconnecting" would be the wrong claim. There is a real gap
+            // behind that — nothing is emitted between the resume and the
+            // `.connected` that ends it, so a Host dialling on the foreground
+            // return is indistinguishable from one sitting idle, and the
+            // window is a whole SSH connect plus ping wide. Closing it means
+            // a new status at the transport seam, not a case here, so it is
+            // #155 rather than something widened into this.
             cause = .paneGone
             title = "Agent Gone"
             systemImage = "rectangle.on.rectangle.slash"
             message = "This Agent's pane is no longer reported."
-            return
         }
-        cause = .hostFailed
-        title = "Host Unavailable"
-        systemImage = failure.isHostKeySecurityFailure
-            ? "exclamationmark.shield.fill" : "exclamationmark.triangle.fill"
-        // Named like the Console list's own entry, so the same Host reads the
-        // same way in both places.
-        message = hostName.map { "\($0): \(failure.connectionGuidance)" }
-            ?? failure.connectionGuidance
     }
 }
 

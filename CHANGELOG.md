@@ -54,6 +54,16 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- A Host that is reconnecting no longer tells you its Agent has gone. The
+  session screen said "This Agent's pane is no longer reported" whenever the
+  Agent list emptied, which a dropped connection does exactly as a closed
+  pane does — so the app reported a permanent loss at the moment it was
+  successfully recovering. It now says the connection dropped and is being
+  re-established, and that there is nothing for you to do, which is the
+  truth: nothing here needs you. A Host that failed for a reason only you
+  can fix still shows what to do about it, and a pane that really did close
+  still says so. (#154)
+
 - The app no longer quits outright if two parts of the terminal screen read
   one Attach session at the same time — a stale view left behind by a screen
   transition was enough. The live terminal now keeps running untouched, and
