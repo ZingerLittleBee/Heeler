@@ -72,6 +72,15 @@ final class HostConsoleProjection {
         await session.resume()
     }
 
+    /// Re-proves a session that was never told to suspend — the app froze
+    /// before its teardown ran, or the trip out was short enough that the
+    /// grace period absorbed it — and that therefore comes back believing it
+    /// is still connected. `resume()` is a no-op on such a session, so
+    /// without this nothing ever asks it (#141).
+    func revalidate() async {
+        await session.revalidate()
+    }
+
     func suspend() async {
         await session.suspend()
     }

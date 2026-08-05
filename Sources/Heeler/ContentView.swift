@@ -3,8 +3,10 @@ import SwiftUI
 /// Root view: the Console (#8), with Host management (#14) behind it. App
 /// activity drives the events sessions' suspend/resume (spec #20): the
 /// connections survive a backgrounding for the length of the grace period
-/// (see AppActivityCoordinator), then are torn down deliberately; returning
-/// to the foreground after a real suspension re-syncs.
+/// (see AppActivityCoordinator), then are torn down deliberately. Every
+/// return to the foreground re-activates them — and, for a connection the
+/// app was still holding, re-proves it, because a link can die while the app
+/// is away without anything having noticed (#141).
 struct ContentView: View {
     let pushRegistration: PushRegistrationStore
     let notificationRouter: AgentNotificationRouter
@@ -109,21 +111,16 @@ struct ContentView: View {
                 break
             }
         }
-        // Only a real suspension moves the connections. A backgrounding the
-        // grace period absorbed never reaches here, so a quick trip out of
+        // Only a real suspension moves the connections: a backgrounding the
+        // grace period absorbed emits no `.suspended`, so a quick trip out of
         // the app leaves the events sessions and Attach terminals untouched.
-        .onChange(of: activity.phase) {
-            switch activity.phase {
-            case .active:
-                Task { await console.resume() }
-            case .suspended:
-                // The background assertion is held until this returns, so
-                // the SSH teardown finishes before the process freezes.
-                Task {
-                    await console.suspend()
-                    activity.didFinishSuspending()
-                }
-            }
+        // Driven off the coordinator's event stream rather than an `onChange`
+        // of its phase — the suspension happens while the app is in the
+        // background and rendering nothing, and a view that only compares the
+        // value it last saw misses both that edge and the resume behind it
+        // (#141).
+        .task {
+            await ConsoleActivityDriver(activity: activity, console: console).run()
         }
         .task { await pushRegistration.refresh() }
     }

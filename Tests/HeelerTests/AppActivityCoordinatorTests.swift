@@ -106,6 +106,43 @@ struct AppActivityCoordinatorTests {
         #expect(granter.liveTokenCount == 1)
     }
 
+    /// The transitions are delivered as events, not inferred from the phase.
+    /// A whole background→foreground round trip can land between two looks at
+    /// `phase` — it happens while the app is in the background drawing
+    /// nothing — and a consumer that compares values would see no change at
+    /// all, tearing nothing down and resuming nothing (#141).
+    @Test func everyTransitionIsDeliveredEvenWhenNothingWatchesThePhase() async throws {
+        let granter = FakeBackgroundExecutionGranter()
+        let coordinator = AppActivityCoordinator(
+            gracePeriod: .milliseconds(20), granter: granter)
+        var events = coordinator.events.makeAsyncIterator()
+
+        coordinator.didEnterBackground()
+        try await waitUntil("the grace period should expire into a suspension") {
+            coordinator.phase == .suspended
+        }
+        coordinator.didBecomeActive()
+
+        #expect(coordinator.phase == .active)
+        #expect(await events.next() == .suspended)
+        #expect(await events.next() == .activated)
+    }
+
+    /// A return the grace period absorbed still reports an activation: the
+    /// connection may have died while the app was away, and nothing else in
+    /// the app is going to ask it.
+    @Test func aBounceInsideTheGracePeriodStillReportsAnActivation() async throws {
+        let granter = FakeBackgroundExecutionGranter()
+        let coordinator = AppActivityCoordinator(
+            gracePeriod: .seconds(60), granter: granter)
+        var events = coordinator.events.makeAsyncIterator()
+
+        coordinator.didEnterBackground()
+        coordinator.didBecomeActive()
+
+        #expect(await events.next() == .activated)
+    }
+
     /// Polls until `condition` holds, yielding so the coordinator's grace
     /// task progresses.
     private func waitUntil(

@@ -54,6 +54,12 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Coming back to a session after leaving the app no longer lands on a blank
+  screen that never recovers. Returning to the foreground now re-proves each
+  Host's connection, so one that died while you were away reconnects — and
+  says it is reconnecting — instead of sitting there silently on a link
+  nothing had noticed was gone. (#141)
+
 - Hosts running herdr 0.8.0 connect again. The protocol check demanded the
   exact version this build was generated against, so herdr 0.8.0 (protocol
   19) failed preflight outright even though every method Heeler calls is

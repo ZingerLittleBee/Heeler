@@ -209,6 +209,38 @@ actor EventsSession {
         await enqueueLifecycleTransition { await self.restart() }
     }
 
+    /// Re-proves a session that believes it is still connected, and reports
+    /// the truth either way.
+    ///
+    /// Nothing in this actor's own machinery asks a live connection whether
+    /// it survived the app being suspended: the reconnect loop is parked on
+    /// the events stream, which a frozen socket never ends, and the keepalive
+    /// only speaks up on its own schedule. Foregrounding is the moment to
+    /// ask, because that is the moment a user is looking at whatever the
+    /// answer means. A failed ping goes down the keepalive's own path, so the
+    /// session drops into the ordinary visible `.reconnecting` sequence
+    /// instead of sitting on a dead link.
+    ///
+    /// No-op unless a channel is actually live: a suspended session is
+    /// `resume()`'s business, and one already reconnecting is visibly working
+    /// on it.
+    func revalidate() async {
+        guard
+            phase == .active,
+            let stream = liveStream,
+            let transport = currentTransport
+        else { return }
+        do {
+            let latency = try await measureLatency(on: transport)
+            latencyContinuation.yield(latency)
+            noteConnectionActivity()
+        } catch is CancellationError {
+        } catch TransportError.cancelled {
+        } catch {
+            await keepaliveDidFail(Self.transportFailure(error), on: stream)
+        }
+    }
+
     /// Deliberate teardown for backgrounding: ends the events channel by
     /// explicit close, closes the SSH connection, and stops all reconnect
     /// activity. Returns once everything is down. No-op unless active.

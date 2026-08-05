@@ -58,10 +58,27 @@ final class ConsoleStore {
     }
 
     func resume() async {
+        await activate(revalidating: false)
+    }
+
+    /// Foreground activation: activates whatever is suspended, and re-proves
+    /// whatever is not. A session the app was still holding when it went away
+    /// comes back believing it is connected even when its link died in the
+    /// meantime, and `resume()` has nothing to re-activate on it — so without
+    /// the second half the Console sits on a dead Host with no reconnect and
+    /// nothing to show for it (#141).
+    func reactivate() async {
+        await activate(revalidating: true)
+    }
+
+    private func activate(revalidating: Bool) async {
         await enqueueLifecycleTransition { [self] in
             isActive = true
             for projection in projections.values {
                 await projection.resume()
+                if revalidating {
+                    await projection.revalidate()
+                }
             }
         }
     }

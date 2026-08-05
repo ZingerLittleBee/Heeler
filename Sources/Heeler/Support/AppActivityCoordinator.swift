@@ -16,6 +16,25 @@ enum AppActivityPhase: Sendable, Equatable {
     case suspended
 }
 
+/// What the coordinator hands whoever drives the Host connections.
+///
+/// Deliberately a stream of events rather than an observation of `phase`.
+/// The suspension is produced by a timer *while the app is in the background
+/// and drawing nothing*, and the foreground return that follows can land in
+/// the same update cycle, so a consumer that only compares the value it last
+/// saw can miss the round trip entirely — and with it both the teardown and
+/// the resume. That is #141: the app came back holding a connection nothing
+/// had torn down and nothing would re-establish, so the session rendered
+/// blank with no reconnect and no error.
+///
+/// `activated` is reported on *every* return to the foreground, not only
+/// after a suspension: a connection frozen along with the process may have
+/// died in the meantime without anything having asked it.
+enum AppActivityEvent: Sendable, Equatable {
+    case activated
+    case suspended
+}
+
 /// A UIKit background-execution assertion, reduced to what the coordinator
 /// needs so it can be tested without a running `UIApplication`.
 struct BackgroundExecutionToken: Hashable, Sendable {
@@ -77,6 +96,13 @@ final class AppActivityCoordinator {
 
     private(set) var phase: AppActivityPhase = .active
 
+    /// Every transition, in order and exactly once each. Buffered rather than
+    /// latest-value: a background→foreground round trip that completes before
+    /// the consumer gets to run must still produce both the teardown and the
+    /// activation.
+    @ObservationIgnored nonisolated let events: AsyncStream<AppActivityEvent>
+    @ObservationIgnored
+    private nonisolated let eventsContinuation: AsyncStream<AppActivityEvent>.Continuation
     @ObservationIgnored private let gracePeriod: Duration
     @ObservationIgnored private let granter: any BackgroundExecutionGranting
     @ObservationIgnored private var token: BackgroundExecutionToken?
@@ -88,6 +114,8 @@ final class AppActivityCoordinator {
     ) {
         self.gracePeriod = gracePeriod
         self.granter = granter
+        (events, eventsContinuation) = AsyncStream.makeStream(
+            of: AppActivityEvent.self, bufferingPolicy: .unbounded)
     }
 
     func didBecomeActive() {
@@ -95,6 +123,7 @@ final class AppActivityCoordinator {
         graceTask = nil
         releaseBackgroundExecution()
         phase = .active
+        eventsContinuation.yield(.activated)
     }
 
     func didEnterBackground() {
@@ -130,6 +159,7 @@ final class AppActivityCoordinator {
         graceTask = nil
         guard phase != .suspended else { return }
         phase = .suspended
+        eventsContinuation.yield(.suspended)
     }
 
     private func backgroundTimeDidExpire() {
