@@ -216,14 +216,22 @@ struct SessionDriverE2ETests {
         let environment = try #require(SessionDriverTestEnvironment.current)
         let observer = try await environment.connect()
         let payloadSize = 32 * 1_048_576
-        let writer = try await RawTCPWriter.launch(
-            payloadSize: payloadSize,
-            using: observer)
+        // Known before launch so a timeout/cancel/parse failure can still clean
+        // the remote process and temp dir without a parsed PID handle.
+        let directory = "/tmp/heeler-raw-tcp-\(UUID().uuidString)"
         let driver = SessionDriver()
         var transport: DirectTCPIPByteTransport?
         var descriptor: Int32 = -1
+        var writer: RawTCPWriter?
+        var primaryError: (any Error)?
 
         do {
+            writer = try await RawTCPWriter.launch(
+                directory: directory,
+                payloadSize: payloadSize,
+                using: observer)
+            let launched = try #require(writer)
+
             _ = try await driver.handshake(
                 endpoint: environment.endpoint,
                 timeout: .seconds(5))
@@ -234,12 +242,12 @@ struct SessionDriverE2ETests {
                 signer: { try privateKey.signature(for: $0) },
                 timeout: .seconds(5))
             let opened = try await driver.openDirectTCPIP(
-                endpoint: SSHEndpoint(host: "127.0.0.1", port: writer.port),
+                endpoint: SSHEndpoint(host: "127.0.0.1", port: launched.port),
                 timeout: .seconds(5))
             transport = opened
             descriptor = try opened.takeDescriptor()
 
-            let preDrainState = try await writer.waitUntilStartedAndSettled(using: observer)
+            let preDrainState = try await launched.waitUntilStartedAndSettled(using: observer)
             #expect(
                 preDrainState == .blocked,
                 "the raw writer completed before the bounded pump was drained")
@@ -279,22 +287,37 @@ struct SessionDriverE2ETests {
             #expect(firstMismatch == nil, Comment(rawValue: firstMismatch ?? "payload matched"))
             #expect(offset == payloadSize)
             #expect(reachedEOF)
-            #expect(try await writer.completedByteCount(using: observer) == payloadSize)
+            #expect(try await launched.completedByteCount(using: observer) == payloadSize)
 
             Darwin.close(descriptor)
             descriptor = -1
             try await opened.close(timeout: .seconds(5))
             transport = nil
             try await driver.close(timeout: .seconds(2))
-            try await writer.cleanup(using: observer)
-            try await observer.close(timeout: .seconds(2))
         } catch {
             if descriptor >= 0 { Darwin.close(descriptor) }
             transport?.abort()
             await driver.invalidate()
-            try? await writer.cleanup(using: observer)
-            try? await observer.close(timeout: .seconds(2))
-            throw error
+            primaryError = error
+        }
+
+        // Always wait for cleanup (with or without a PID handle) before closing
+        // the observer. Prefer the body error if cleanup also fails.
+        do {
+            try await RawTCPWriter.cleanup(
+                directory: directory,
+                processID: writer?.processID,
+                using: observer)
+        } catch {
+            if primaryError == nil {
+                primaryError = error
+            }
+        }
+
+        try? await observer.close(timeout: .seconds(2))
+
+        if let primaryError {
+            throw primaryError
         }
     }
 
@@ -640,24 +663,28 @@ private enum RawTCPWriterState: Equatable {
 private enum RawTCPWriterError: Error {
     case invalidLaunchResponse(String)
     case markerFailed(String)
+    case cleanupFailed(String)
     case readFailed(Int32)
 }
 
 /// A disposable raw producer launched through the existing real-SSH fixture.
-/// Its directory lives under the fixture's isolated HOME and is removed by the
-/// test as well as by the fixture's own teardown.
+/// The caller chooses a unique `/tmp/heeler-raw-tcp-<UUID>` path before launch
+/// so start failures can still clean the remote process without a parsed PID.
 private struct RawTCPWriter {
     let directory: String
     let processID: Int32
     let port: UInt16
 
     static func launch(
+        directory: String,
         payloadSize: Int,
         using observer: SSHConnection
     ) async throws -> RawTCPWriter {
+        let quotedDirectory = shellQuote(directory)
         let command = """
             set -eu
-            directory=$(mktemp -d "$HOME/heeler-raw-tcp.XXXXXX")
+            directory=\(quotedDirectory)
+            mkdir "$directory"
             /bin/cat >"$directory/writer.py"
             /usr/bin/python3 "$directory/writer.py" "$directory" '\(payloadSize)' </dev/null >"$directory/stdout" 2>"$directory/stderr" &
             writer_pid=$!
@@ -684,15 +711,14 @@ private struct RawTCPWriter {
         guard
             result.exitStatus == 0,
             response.count == 3,
-            response[0].hasPrefix("/"),
-            response[0].contains("/heeler-raw-tcp."),
+            response[0] == directory,
             let processID = Int32(response[1]),
             let port = UInt16(response[2])
         else {
             throw RawTCPWriterError.invalidLaunchResponse(
                 String(decoding: result.stderr, as: UTF8.self))
         }
-        return RawTCPWriter(directory: response[0], processID: processID, port: port)
+        return RawTCPWriter(directory: directory, processID: processID, port: port)
     }
 
     func waitUntilStartedAndSettled(
@@ -752,11 +778,147 @@ private struct RawTCPWriter {
         return count
     }
 
-    func cleanup(using observer: SSHConnection) async throws {
-        let path = Self.shellQuote(directory)
-        _ = try await observer.execute(
-            "kill \(processID) 2>/dev/null || true; rm -rf -- \(path)",
-            timeout: .seconds(5))
+    /// Kill only processes whose command line references this fixture's
+    /// `writer.py`, then remove and verify the directory is gone.
+    ///
+    /// `processID` may be nil when launch failed before a handle was parsed;
+    /// cleanup still finds owned processes via the known writer path.
+    static func cleanup(
+        directory: String,
+        processID: Int32?,
+        using observer: SSHConnection
+    ) async throws {
+        let quotedDirectory = shellQuote(directory)
+        let knownPID = processID.map(String.init) ?? ""
+        // Single remote script: ownership-checked TERM/KILL, then directory
+        // removal with process and path verification. No silent PID reuse kill.
+        let command = """
+            set -eu
+            directory=\(quotedDirectory)
+            writer_py="$directory/writer.py"
+            known_pid='\(knownPID)'
+
+            case "$directory" in
+              /tmp/heeler-raw-tcp-*) ;;
+              *)
+                printf 'refusing unexpected cleanup path: %s\\n' "$directory" >&2
+                exit 1
+                ;;
+            esac
+
+            owned=""
+            append_owned() {
+              pid="$1"
+              case " $owned " in
+                *" $pid "*) ;;
+                *) owned="${owned:+$owned }$pid" ;;
+              esac
+            }
+
+            command_for_pid() {
+              pid="$1"
+              cmd=$(ps -p "$pid" -o command= 2>/dev/null || true)
+              if [ -z "$cmd" ]; then
+                cmd=$(ps -p "$pid" -o args= 2>/dev/null || true)
+              fi
+              printf '%s' "$cmd"
+            }
+
+            is_owned() {
+              pid="$1"
+              kill -0 "$pid" 2>/dev/null || return 1
+              cmd=$(command_for_pid "$pid")
+              case "$cmd" in
+                *"$writer_py"*) return 0 ;;
+                *) return 1 ;;
+              esac
+            }
+
+            # PIDs whose command line references this fixture's writer.py.
+            collect_owned_from_ps() {
+              ps -A -o pid= -o command= 2>/dev/null | while IFS= read -r pid cmd; do
+                [ -n "${pid:-}" ] || continue
+                case "$cmd" in
+                  *"$writer_py"*) printf '%s ' "$pid" ;;
+                esac
+              done
+            }
+
+            if [ -n "$known_pid" ] && is_owned "$known_pid"; then
+              append_owned "$known_pid"
+            fi
+
+            for pid in $(collect_owned_from_ps); do
+              append_owned "$pid"
+            done
+
+            for pid in $owned; do
+              kill -TERM "$pid" 2>/dev/null || true
+            done
+
+            attempts=0
+            while [ -n "$owned" ] && [ "$attempts" -lt 40 ]; do
+              remaining=""
+              for pid in $owned; do
+                if kill -0 "$pid" 2>/dev/null; then
+                  remaining="${remaining:+$remaining }$pid"
+                fi
+              done
+              owned=$remaining
+              [ -z "$owned" ] && break
+              attempts=$((attempts + 1))
+              sleep 0.05
+            done
+
+            for pid in $owned; do
+              kill -KILL "$pid" 2>/dev/null || true
+            done
+
+            attempts=0
+            while [ -n "$owned" ] && [ "$attempts" -lt 20 ]; do
+              remaining=""
+              for pid in $owned; do
+                if kill -0 "$pid" 2>/dev/null; then
+                  remaining="${remaining:+$remaining }$pid"
+                fi
+              done
+              owned=$remaining
+              [ -z "$owned" ] && break
+              attempts=$((attempts + 1))
+              sleep 0.05
+            done
+
+            if [ -n "$owned" ]; then
+              printf 'writer process(es) still alive: %s\\n' "$owned" >&2
+              exit 1
+            fi
+
+            rm -rf -- "$directory"
+
+            if [ -e "$directory" ]; then
+              printf 'directory still present: %s\\n' "$directory" >&2
+              exit 1
+            fi
+
+            leftover=$(collect_owned_from_ps)
+            leftover=$(printf '%s' "$leftover" | tr -s '[:space:]' ' ' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            if [ -n "$leftover" ]; then
+              printf 'writer process still present after cleanup: %s\\n' "$leftover" >&2
+              exit 1
+            fi
+            """
+        let result = try await observer.execute(command, timeout: .seconds(10))
+        guard result.exitStatus == 0 else {
+            let detail = [
+                String(decoding: result.stderr, as: UTF8.self),
+                String(decoding: result.stdout, as: UTF8.self),
+            ]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " | ")
+            throw RawTCPWriterError.cleanupFailed(
+                detail.isEmpty ? "exit status \(result.exitStatus)" : detail)
+        }
     }
 
     private static func shellQuote(_ value: String) -> String {
