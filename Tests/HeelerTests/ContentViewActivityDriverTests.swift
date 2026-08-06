@@ -10,8 +10,9 @@ import UIKit
 /// re-probe (#142). Deleting those three lines used to leave the whole suite
 /// green, because no test could reach the stores `ContentView` builds inside
 /// itself. The injection seam on `ContentView.init` exists so this test can
-/// hand the real view a scripted Console and a fast coordinator, host it,
-/// and watch the injected stores for the driver's effects.
+/// hand the real view a volatile Host catalog, a scripted Console, and a
+/// fast coordinator, host it, and watch the injected stores for the
+/// driver's effects.
 @MainActor
 @Suite("ContentView activity driver")
 struct ContentViewActivityDriverTests {
@@ -23,22 +24,6 @@ struct ContentViewActivityDriverTests {
     /// via `didFinishSuspending()` once the teardown has returned.
     @Test func backgroundingPastTheGracePeriodSuspendsTheConsoleConnection() async throws {
         let host = Host.fixture()
-        // ContentView builds its own HostStore from UserDefaults.standard,
-        // and its first `.task` aligns the Console with that catalog. Seed
-        // exactly this Host so the view's own wiring connects it, and put
-        // back whatever the simulator had.
-        let defaults = UserDefaults.standard
-        let previousCatalog = defaults.data(forKey: "hosts")
-        defaults.removeObject(forKey: "hosts")
-        try HostStore(defaults: defaults, secrets: InMemorySecretStore()).add(host)
-        defer {
-            if let previousCatalog {
-                defaults.set(previousCatalog, forKey: "hosts")
-            } else {
-                defaults.removeObject(forKey: "hosts")
-            }
-        }
-
         let transport = ScriptedTransport(snapshot: .fixture())
         let console = ConsoleStore(snapshotRetryDelay: .milliseconds(10)) { _, subscriptions in
             EventsSession(
@@ -58,6 +43,7 @@ struct ContentViewActivityDriverTests {
                 pushRegistration: PushRegistrationStore(
                     client: ScriptedPushRegistrationClient(), environment: .sandbox),
                 notificationRouter: AgentNotificationRouter(),
+                hostStore: HostStore(volatileHosts: [host]),
                 console: console,
                 activity: activity))
         // A plain UIKit hierarchy is enough: the window needs no connected
@@ -69,8 +55,8 @@ struct ContentViewActivityDriverTests {
         defer { window.isHidden = true }
 
         // The view's own first `.task` aligns the injected Console with the
-        // seeded catalog and resumes it.
-        try await waitUntil("the seeded Host should come up connected") {
+        // injected catalog and resumes it.
+        try await waitUntil("the injected Host should come up connected") {
             console.hostStatuses[host.id] == .connected
         }
 

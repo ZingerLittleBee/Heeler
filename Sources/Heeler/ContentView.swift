@@ -10,7 +10,7 @@ import SwiftUI
 struct ContentView: View {
     let pushRegistration: PushRegistrationStore
     let notificationRouter: AgentNotificationRouter
-    @State private var hostStore = HostStore()
+    @State private var hostStore: HostStore
     @State private var console: ConsoleStore
     @State private var notificationPreferences: NotificationPreferencesStore
     @State private var terminalThemes = TerminalThemeSettings()
@@ -23,21 +23,23 @@ struct ContentView: View {
     @State private var activity: AppActivityCoordinator
     @Environment(\.scenePhase) private var scenePhase
 
-    /// `console` and `activity` are injectable so a test can drive the
-    /// activity wiring below and observe that something consumed it:
-    /// `ContentViewActivityDriverTests` is what turns deleting the `.task`
-    /// that runs `ConsoleActivityDriver` red (#167). Defaults are the
-    /// production values, so call sites and behavior are unchanged:
-    /// `ConsoleStore()` is the real one, reaching the real
-    /// `sshSessionFactory()`.
+    /// `hostStore`, `console`, and `activity` are injectable so a test can
+    /// drive the activity wiring below and observe that something consumed
+    /// it: `ContentViewActivityDriverTests` is what turns deleting the
+    /// `.task` that runs `ConsoleActivityDriver` red (#167). Defaults are
+    /// the production values, so call sites and behavior are unchanged:
+    /// `HostStore()` reads the real persisted catalog and `ConsoleStore()`
+    /// reaches the real `sshSessionFactory()`.
     init(
         pushRegistration: PushRegistrationStore,
         notificationRouter: AgentNotificationRouter,
+        hostStore: HostStore = HostStore(),
         console: ConsoleStore = ConsoleStore(),
         activity: AppActivityCoordinator = AppActivityCoordinator()
     ) {
         self.pushRegistration = pushRegistration
         self.notificationRouter = notificationRouter
+        _hostStore = State(initialValue: hostStore)
         _console = State(initialValue: console)
         _activity = State(initialValue: activity)
         let relaySettings = NotificationRelaySettings()
