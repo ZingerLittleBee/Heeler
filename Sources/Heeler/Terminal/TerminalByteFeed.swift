@@ -15,19 +15,6 @@ protocol TerminalByteSink: AnyObject {
 /// arrive before the view exists are buffered, so opening output is never lost.
 @MainActor
 final class TerminalByteFeed {
-    /// What became of a chunk handed to ``write(_:)``.
-    ///
-    /// None of these cases acknowledges drawing. `.delivered` means only that
-    /// a non-empty chunk was synchronously handed to a live sink object.
-    enum Delivery: Equatable {
-        /// Handed to a live sink object; presentation remains unobserved.
-        case delivered
-        /// No sink has attached yet; held for the first one that does.
-        case buffered
-        /// A sink attached and has since gone away. The bytes are lost.
-        case dropped
-    }
-
     private weak var sink: (any TerminalByteSink)?
     /// Whether a surface has ever attached. Distinguishes "no surface yet",
     /// whose bytes are still coming, from "the surface is gone", whose bytes
@@ -47,18 +34,15 @@ final class TerminalByteFeed {
         }
     }
 
-    @discardableResult
-    func write(_ data: Data) -> Delivery {
-        // An empty chunk proves nothing: the transport yields only non-empty
-        // ones (`HeelerSSHTransport.runAttachChannel`), and reporting this as
-        // delivered would hand a liveness probe a free answer.
-        guard !data.isEmpty else { return .dropped }
+    func write(_ data: Data) {
+        guard !data.isEmpty else { return }
         if let sink {
             sink.receive(data)
-            return .delivered
+            return
         }
-        guard !hasAttached else { return .dropped }
+        // Opening bytes wait for the first surface. Once a surface has gone
+        // away, its old pipeline must not replay stale bytes into a later one.
+        guard !hasAttached else { return }
         buffered.append(data)
-        return .buffered
     }
 }

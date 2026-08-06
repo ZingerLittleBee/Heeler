@@ -110,15 +110,22 @@ final class AppActivityCoordinator {
     /// miss.
     private(set) var activationCount: UInt64 = 0
 
-    /// How long the app was away before the most recent activation, or nil
-    /// when no background edge preceded it.
+    /// Whether the most recent absence crossed a boundary where iOS could have
+    /// suspended the process. This does not claim that suspension occurred or
+    /// that any particular layer failed; it identifies when foreground-only
+    /// resources can no longer be assumed to have survived (#141).
     ///
-    /// Measured rather than inferred from `phase`: iOS can freeze the process
-    /// before the grace timer runs, so an absence lasting minutes may still
-    /// return from `.active`. Consumers decide what duration matters to their
-    /// own recovery policy; the coordinator does not turn the 20-second
-    /// connection grace period into a claim about terminal suspension (#141).
+    /// An observed `.suspended` transition is conclusive for this policy. The
+    /// duration is the fallback for the other real path: iOS freezes the
+    /// process before the grace task runs, then the monotonic clock shows on
+    /// return that the Background Grace Period elapsed while no Swift task ran.
+    private(set) var lastAbsenceMayHaveSuspended = false
+
+    #if DEBUG
+    /// Retained only for the on-device recovery diagnostic. Release behavior
+    /// consumes `lastAbsenceMayHaveSuspended`, not this presentation detail.
     private(set) var lastAbsenceDuration: Duration?
+    #endif
 
     /// Every transition, in order and exactly once each. Buffered rather than
     /// latest-value: a background→foreground round trip that completes before
@@ -136,6 +143,7 @@ final class AppActivityCoordinator {
     @ObservationIgnored private var token: BackgroundExecutionToken?
     @ObservationIgnored private var graceTask: Task<Void, Never>?
     @ObservationIgnored private var leftForegroundAt: ContinuousClock.Instant?
+    @ObservationIgnored private var observedSuspensionDuringAbsence = false
 
     init(
         gracePeriod: Duration = AppActivityCoordinator.defaultGracePeriod,
@@ -154,11 +162,15 @@ final class AppActivityCoordinator {
         graceTask = nil
         releaseBackgroundExecution()
         phase = .active
-        // Reported before `activationCount`, which is what observers key off:
-        // the counter is the edge, and the duration must already be available
-        // when it is read.
-        lastAbsenceDuration = leftForegroundAt.map { now() - $0 }
+        // Reported before `activationCount`, which is what observers key off.
+        let absenceDuration = leftForegroundAt.map { now() - $0 }
+        lastAbsenceMayHaveSuspended = observedSuspensionDuringAbsence
+            || absenceDuration.map { $0 >= gracePeriod } == true
+        #if DEBUG
+        lastAbsenceDuration = absenceDuration
+        #endif
         leftForegroundAt = nil
+        observedSuspensionDuringAbsence = false
         activationCount &+= 1
         eventsContinuation.yield(.activated)
     }
@@ -196,6 +208,7 @@ final class AppActivityCoordinator {
     private func suspend() {
         graceTask = nil
         guard phase != .suspended else { return }
+        observedSuspensionDuringAbsence = true
         phase = .suspended
         eventsContinuation.yield(.suspended)
     }

@@ -28,10 +28,12 @@ final class AgentAttachStore {
     private let isOnStage: () -> Bool
 
     private(set) var terminal: AttachTerminalStore
+    #if DEBUG
     /// Whether UIKit built and attached the current terminal surface. This is
     /// a lifecycle observation only; Ghostty exposes no acknowledgement that
     /// its render loop presented a frame.
     private(set) var terminalSurfaceAttached = false
+    #endif
     let input: TerminalInputController
     let image: ImageAttachStore
     let close: ClosePaneStore
@@ -125,10 +127,12 @@ final class AgentAttachStore {
         terminal.viewDidResize(cols: cols, rows: rows)
     }
 
+    #if DEBUG
     func terminalSurfaceDidAttach(_ surfaceID: TerminalSurfaceID) {
         guard !hasLeft, surfaceID == terminalID else { return }
         terminalSurfaceAttached = true
     }
+    #endif
 
     func viewportTextDidChange(_ text: String) {
         guard !hasLeft else { return }
@@ -218,12 +222,18 @@ final class AgentAttachStore {
         image.insertPath()
     }
 
-    /// A short foreground bounce keeps this Attach interaction intact and
-    /// asks its current PTY to repaint. Extended-absence replacement is owned
-    /// by `AgentDetailView`, the boundary that can recreate this entire store.
-    func didBecomeActive() {
+    /// A short foreground bounce keeps the current PTY and asks it to repaint.
+    /// Once the app may have suspended, replace the complete terminal pipeline
+    /// immediately: PTY Attach, input session ownership, byte feed and surface
+    /// identity. The surrounding Attach interaction remains the same owner, so
+    /// links, image actions and a reviewed Paste survive the recovery.
+    func didBecomeActive(afterPossibleSuspension: Bool = false) {
         image.didBecomeActive()
         guard !hasLeft else { return }
+        guard !afterPossibleSuspension else {
+            replaceTerminal { [weak self] in self?.hasLeft == false }
+            return
+        }
         terminal.didBecomeActive()
     }
 
@@ -257,14 +267,16 @@ final class AgentAttachStore {
         enqueueLifecycleTransition { [weak self] in
             guard let self, isStillWanted() else { return }
             let previous = self.terminal
-            await previous.stop()
+            await previous.stop(preservingPendingPaste: true)
             guard isStillWanted() else { return }
             self.terminal = Self.makeTerminal(
                 target: self.target,
                 input: self.input,
                 runTerminal: self.runTerminal,
                 linkIndex: self.linkIndex)
+            #if DEBUG
             self.terminalSurfaceAttached = false
+            #endif
         }
     }
 
@@ -304,7 +316,9 @@ final class AgentAttachStore {
                 input: self.input,
                 runTerminal: self.runTerminal,
                 linkIndex: self.linkIndex)
+            #if DEBUG
             self.terminalSurfaceAttached = false
+            #endif
         }
     }
 

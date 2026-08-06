@@ -10,7 +10,7 @@ struct AppActivityCoordinatorTests {
     /// because iOS freezes the process for exactly the absences that matter:
     /// the grace timer never fires, no `.suspended` is published, and the app
     /// comes back believing it never left (#141). Only a clock survives that.
-    @Test func anAbsenceDurationIsReportedOnTheReturn() async throws {
+    @Test func aMultiMinuteFrozenAbsenceMayHaveSuspended() async throws {
         var clock = ContinuousClock.now
         let coordinator = AppActivityCoordinator(
             gracePeriod: .seconds(20),
@@ -24,7 +24,10 @@ struct AppActivityCoordinatorTests {
         coordinator.didBecomeActive()
 
         #expect(coordinator.phase == .active)
+        #expect(coordinator.lastAbsenceMayHaveSuspended)
+        #if DEBUG
         #expect(coordinator.lastAbsenceDuration == .seconds(180))
+        #endif
     }
 
     /// Deliberately configured away from `defaultGracePeriod`, and with an
@@ -32,7 +35,7 @@ struct AppActivityCoordinatorTests {
     /// of this coordinator's own 60s. A comparison written against the static
     /// default instead of the injected value passes every other test in this
     /// suite and fails only here.
-    @Test func anAbsenceIsNotClassifiedByTheConnectionGracePeriod() async throws {
+    @Test func theInjectedBackgroundGracePeriodDefinesTheBoundary() async throws {
         var clock = ContinuousClock.now
         let coordinator = AppActivityCoordinator(
             gracePeriod: .seconds(60),
@@ -44,12 +47,12 @@ struct AppActivityCoordinatorTests {
         clock = clock.advanced(by: .seconds(30))
         coordinator.didBecomeActive()
 
-        #expect(coordinator.lastAbsenceDuration == .seconds(30))
+        #expect(!coordinator.lastAbsenceMayHaveSuspended)
     }
 
     /// Two consecutive edges report their own durations rather than retaining
     /// or classifying the previous one.
-    @Test func eachReturnReportsItsOwnAbsence() async throws {
+    @Test func theBackgroundGraceBoundaryIsInclusiveAndResets() async throws {
         var clock = ContinuousClock.now
         let coordinator = AppActivityCoordinator(
             gracePeriod: .seconds(20),
@@ -59,12 +62,12 @@ struct AppActivityCoordinatorTests {
         coordinator.didEnterBackground()
         clock = clock.advanced(by: .seconds(20))
         coordinator.didBecomeActive()
-        #expect(coordinator.lastAbsenceDuration == .seconds(20))
+        #expect(coordinator.lastAbsenceMayHaveSuspended)
 
         coordinator.didEnterBackground()
         clock = clock.advanced(by: .milliseconds(19_999))
         coordinator.didBecomeActive()
-        #expect(coordinator.lastAbsenceDuration == .milliseconds(19_999))
+        #expect(!coordinator.lastAbsenceMayHaveSuspended)
     }
 
     /// A foreground return with no backgrounding behind it — the app becoming
@@ -76,7 +79,7 @@ struct AppActivityCoordinatorTests {
 
         coordinator.didBecomeActive()
 
-        #expect(coordinator.lastAbsenceDuration == nil)
+        #expect(!coordinator.lastAbsenceMayHaveSuspended)
     }
 
     @Test func backgroundingStaysActiveForTheGracePeriod() async throws {
@@ -158,6 +161,7 @@ struct AppActivityCoordinatorTests {
 
         #expect(coordinator.phase == .active)
         #expect(granter.liveTokenCount == 0)
+        #expect(coordinator.lastAbsenceMayHaveSuspended)
     }
 
     @Test func systemReclaimingItsTimeSuspendsAndReturnsTheAssertion() async throws {
@@ -174,6 +178,9 @@ struct AppActivityCoordinatorTests {
         // Holding an expired assertion is how an app gets killed, so it is
         // returned before the teardown rather than after it.
         #expect(granter.liveTokenCount == 0)
+
+        coordinator.didBecomeActive()
+        #expect(coordinator.lastAbsenceMayHaveSuspended)
     }
 
     @Test func refusedBackgroundTimeSuspendsImmediately() {
@@ -186,6 +193,9 @@ struct AppActivityCoordinatorTests {
 
         #expect(coordinator.phase == .suspended)
         #expect(granter.liveTokenCount == 0)
+
+        coordinator.didBecomeActive()
+        #expect(coordinator.lastAbsenceMayHaveSuspended)
     }
 
     @Test func repeatedBackgroundingDoesNotStackAssertions() async throws {

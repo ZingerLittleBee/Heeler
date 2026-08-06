@@ -87,6 +87,7 @@ final class AttachTerminalStore {
     private var cols: Int?
     private var rows: Int?
     private var stopRequested = false
+    private var preservesPendingPasteOnStop = false
     private var session: TerminalAttachSession?
     private var inputGeneration: TerminalInputController.SessionGeneration?
     private var runTask: Task<Void, Never>?
@@ -161,8 +162,9 @@ final class AttachTerminalStore {
     /// queued for the Host's terminal channel, and teardown must abort that
     /// wait rather than sit behind whoever holds the channel — a stop must
     /// never depend on the channel becoming available.
-    func stop() async {
+    func stop(preservingPendingPaste: Bool = false) async {
         stopRequested = true
+        preservesPendingPasteOnStop = preservingPendingPaste
         if let session {
             await session.end()
         }
@@ -251,7 +253,9 @@ final class AttachTerminalStore {
 
     private func finishSession(_ inputGeneration: TerminalInputController.SessionGeneration) {
         self.session = nil
-        input.endSession(inputGeneration)
+        input.endSession(
+            inputGeneration,
+            preservingPendingPaste: preservesPendingPasteOnStop)
         if self.inputGeneration == inputGeneration {
             self.inputGeneration = nil
         }

@@ -55,12 +55,14 @@ final class TerminalInputController {
         return generation
     }
 
-    func endSession(_ generation: SessionGeneration) {
+    func endSession(_ generation: SessionGeneration, preservingPendingPaste: Bool = false) {
         guard generation == liveGeneration else { return }
         liveGeneration = nil
         writer = nil
         scroller = nil
-        cancelPaste()
+        if !preservingPendingPaste {
+            cancelPaste()
+        }
     }
 
     func pause() {

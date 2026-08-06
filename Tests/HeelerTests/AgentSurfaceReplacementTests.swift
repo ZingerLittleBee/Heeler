@@ -24,12 +24,8 @@ struct AgentSurfaceReplacementTests {
     /// A replacement surface must take over the feed, or output goes to a view
     /// the user cannot see.
     ///
-    /// This is the point #141 left undefended: the feed holds its sink weakly
-    /// precisely so a surface SwiftUI replaced cannot silently swallow output,
-    /// and nothing asserted that the replacement ever attaches. The released
-    /// predecessor is what makes the assertion conclusive — if the new surface
-    /// never registered, the sink is the dead one and the write is `.dropped`
-    /// rather than `.delivered`.
+    /// The released predecessor plus the new surface's parsed viewport make the
+    /// replacement conclusive without inventing a renderer acknowledgement.
     @Test func aReplacementSurfaceTakesOverTheFeed() async throws {
         struct Harness: View {
             let feed: TerminalByteFeed
@@ -56,7 +52,7 @@ struct AgentSurfaceReplacementTests {
         // or a stale sink would still look live.
         weak var predecessor = Self.terminals(in: controller.view).first
         #expect(predecessor != nil, "the first surface should exist")
-        #expect(feed.write(Data("first".utf8)) == .delivered)
+        feed.write(Data("first".utf8))
 
         controller.rootView = Harness(feed: feed, surface: 2)
         controller.view.setNeedsLayout()
@@ -68,9 +64,10 @@ struct AgentSurfaceReplacementTests {
             Self.terminals(in: controller.view).first,
             "SwiftUI should have built a replacement surface")
         #expect(predecessor == nil, "the replaced surface should have gone away")
-        #expect(
-            feed.write(Data("second".utf8)) == .delivered,
-            "output after a replacement must reach the surface on screen")
+        feed.write(Data("second".utf8))
+        try #require(await Self.eventually {
+            replacement.terminalSession.readViewportText()?.contains("second") == true
+        }, "output after a replacement must reach the replacement's terminal session")
         #expect(Self.terminals(in: controller.view).count == 1)
         _ = replacement
     }
@@ -155,29 +152,24 @@ struct AgentSurfaceReplacementTests {
             "\(repeats) of \(surfaces.count - 1) switches reused the previous surface")
     }
 
-    /// The call-site seam for #141. The operator's known recovery is an Agent
-    /// switch, which replaces the whole `AgentDetailView` and its
-    /// `AgentAttachStore`; swapping only the terminal surface is a smaller
-    /// lifecycle and is not equivalent evidence.
-    @Test func aLongAbsenceRecreatesTheCompleteAttachInteraction() async throws {
+    /// The production call-site seam for #141. Recovery must replace every
+    /// terminal-owned object while leaving the surrounding Attach interaction
+    /// intact: links, an image result, and a Paste awaiting confirmation all
+    /// belong to this Attach until the user actually leaves it.
+    @Test func aPossibleSuspensionRebuildsTheTerminalAndPreservesAttachState() async throws {
         var now = ContinuousClock.now
         let activity = AppActivityCoordinator(
             gracePeriod: .seconds(20),
             granter: SurfaceTestBackgroundGranter(),
             now: { now })
         let transport = ScriptedTransport()
-        var stores: [AgentAttachStore] = []
-        let makeAttachStore: @MainActor () -> AgentAttachStore = {
-            let store = Self.makeAttachStore(transport: transport)
-            stores.append(store)
-            return store
-        }
+        let owner = Self.makeAttachStore(transport: transport)
         let agent = Self.makeAgent(pane: "w1:p1")
         let controller = UIHostingController(
             rootView: Self.makeDetailView(
                 agent: agent,
                 activity: activity,
-                attachStoreFactory: makeAttachStore))
+                attachStore: owner))
         let window = Self.makeLocalTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)
@@ -188,47 +180,81 @@ struct AgentSurfaceReplacementTests {
         }, "the first PTY Attach should open")
         #expect(await transport.emitAttachOutput(Data("opening".utf8)))
         try #require(await Self.eventually {
-            stores.first?.terminalStatus == .live
+            owner.terminalStatus == .live
         }, "the first Attach should become live")
-        let firstSurface = try #require(Self.terminals(in: controller.view).first)
+        let firstTerminalID = owner.terminalID
+        let firstFeed = owner.terminalFeed
+        weak var predecessor: HeelerTerminalView?
+        let firstSurfaceID: ObjectIdentifier
+        do {
+            let firstSurface = try #require(Self.terminals(in: controller.view).first)
+            predecessor = firstSurface
+            firstSurfaceID = ObjectIdentifier(firstSurface)
+        }
+
+        owner.viewportTextDidChange("https://before.example/recovery")
+        owner.selectImage(DataImageSelection(data: Data([0x01])))
+        try #require(await Self.eventually {
+            owner.imageState.isFailed
+        }, "the image result should surface before recovery")
+        let imageResult = owner.imageState
+        owner.requestPaste("git status\ngit diff", bracketedPaste: true)
+        let pendingPaste = try #require(owner.pendingPaste)
 
         activity.didEnterBackground()
         now = now.advanced(by: .seconds(5))
         activity.didBecomeActive()
         try await Task.sleep(for: .milliseconds(100))
 
-        #expect(stores.count == 1, "a short bounce must keep the current Attach owner")
         #expect(
             await transport.attachRequests.count == 1,
             "a short bounce must not open another PTY Attach")
         #expect(
-            stores[0].terminalStatus == .live,
+            owner.terminalStatus == .live,
             "a short bounce must not show Connecting")
         #expect(
-            Self.terminals(in: controller.view).first === firstSurface,
+            Self.terminals(in: controller.view).first.map(ObjectIdentifier.init) == firstSurfaceID,
             "a short bounce must keep the terminal surface")
+        #expect(owner.terminalID == firstTerminalID)
+        #expect(owner.terminalFeed === firstFeed)
 
         activity.didEnterBackground()
-        now = now.advanced(by: .seconds(180))
+        now = now.advanced(by: .seconds(20))
         activity.didBecomeActive()
 
-        let didRecreateOwner = try await Self.eventually {
-            stores.count == 2
+        let didReplaceTerminal = try await Self.eventually {
+            owner.terminalID != firstTerminalID
         }
         let didExecuteAnotherAttach = try await Self.eventually {
             controller.view.setNeedsLayout()
             controller.view.layoutIfNeeded()
             return await transport.attachRequests.count == 2
         }
-        for store in stores {
-            await store.leave().value
-        }
+        try #require(didReplaceTerminal, "recovery should replace the terminal pipeline")
+        try #require(didExecuteAnotherAttach, "the replacement should execute a new PTY Attach")
+        try #require(await Self.eventually {
+            predecessor == nil
+        }, "the old terminal surface should detach")
+        let replacement = try #require(
+            Self.terminals(in: controller.view).first,
+            "recovery should create and attach a new terminal surface")
+
+        #expect(ObjectIdentifier(replacement) != firstSurfaceID)
+        #expect(owner.terminalFeed !== firstFeed, "the replacement needs a new byte feed")
+        #expect(owner.attachLinks.map(\.target) == ["https://before.example/recovery"])
+        #expect(owner.imageState == imageResult)
+        #expect(owner.pendingPaste == pendingPaste)
+
+        #expect(await transport.emitAttachOutput(Data("recovered-frame".utf8)))
+        try #require(await Self.eventually {
+            owner.terminalStatus == .live
+                && replacement.terminalSession.readViewportText()?.contains("recovered-frame") == true
+        }, "new output should reach the new surface and leave a visible live terminal")
+
+        await owner.leave().value
         window.isHidden = true
         window.rootViewController = nil
         await Task.yield()
-
-        #expect(didRecreateOwner, "a long absence should build a new Attach owner")
-        #expect(didExecuteAnotherAttach, "the replacement should execute a new Attach")
     }
 
     @Test func recoveryDiagnosticNamesEveryLayerWithoutInventingPresentationProof() {
@@ -237,7 +263,7 @@ struct AgentSurfaceReplacementTests {
         #expect(
             diagnostic.lines(attachStatus: .connecting, terminalSurfaceAttached: true) == [
                 "Away: 180 s",
-                "SSH connection: generation 7 observed; liveness unobserved",
+                "SSH generation: 7",
                 "Attach session/channel: new PTY Attach opening; first output unobserved",
                 "Terminal surface: new surface attached",
                 "Render loop: unobserved (no presentation acknowledgement)",
@@ -329,7 +355,7 @@ struct AgentSurfaceReplacementTests {
     private static func makeDetailView(
         agent: ConsoleAgent,
         activity: AppActivityCoordinator,
-        attachStoreFactory: @escaping @MainActor () -> AgentAttachStore
+        attachStore: AgentAttachStore
     ) -> AgentDetailView {
         let defaults = UserDefaults(suiteName: "attach-recovery-\(UUID())") ?? .standard
         let console = ConsoleStore(snapshotRetryDelay: .seconds(30)) { _, subscriptions in
@@ -355,7 +381,7 @@ struct AgentSurfaceReplacementTests {
             isOnStage: { true },
             onSwitch: { _ in },
             onClosed: {},
-            attachStoreFactory: attachStoreFactory)
+            attachStore: attachStore)
     }
 
     private static func makeAttachStore(transport: ScriptedTransport) -> AgentAttachStore {

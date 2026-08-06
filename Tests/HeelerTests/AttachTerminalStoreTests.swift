@@ -1747,8 +1747,8 @@ struct AgentAttachStoreForegroundTests {
 
 }
 
-/// The Attach store's byte pipe. Its delivery report distinguishes whether a
-/// sink object exists; it does not acknowledge drawing or presentation.
+/// The Attach store's byte pipe: opening bytes buffer for the first surface,
+/// while bytes from an obsolete pipeline are not replayed into a later one.
 @MainActor
 @Suite("Terminal byte feed")
 struct TerminalByteFeedTests {
@@ -1765,7 +1765,7 @@ struct TerminalByteFeedTests {
     @Test func bytesWrittenBeforeAnySurfaceAreHeldForTheFirstOne() {
         let feed = TerminalByteFeed()
 
-        #expect(feed.write(Data("opening".utf8)) == .buffered)
+        feed.write(Data("opening".utf8))
 
         let surface = Surface()
         feed.attach(surface)
@@ -1777,28 +1777,28 @@ struct TerminalByteFeedTests {
         let surface = Surface()
         feed.attach(surface)
 
-        #expect(feed.write(Data("frame".utf8)) == .delivered)
+        feed.write(Data("frame".utf8))
         #expect(surface.chunks == [Data("frame".utf8)])
     }
 
-    @Test func bytesWrittenAfterTheSurfaceIsGoneAreReportedDropped() {
-        // The W2 mechanism: SwiftUI replaced the view, the feed's sink is a
-        // dead reference, and the bytes reach nobody. Silently returning here
-        // is what let a blank screen look like a healthy session.
+    @Test func bytesWrittenAfterTheSurfaceIsGoneAreNotReplayed() {
         let feed = TerminalByteFeed()
         var surface: Surface? = Surface()
         if let surface { feed.attach(surface) }
         surface = nil
 
-        #expect(feed.write(Data("frame".utf8)) == .dropped)
+        feed.write(Data("obsolete".utf8))
+        let replacement = Surface()
+        feed.attach(replacement)
+        #expect(replacement.chunks.isEmpty)
     }
 
-    @Test func anEmptyChunkIsNeverReportedAsDelivered() {
+    @Test func anEmptyChunkDoesNotReachTheSurface() {
         let feed = TerminalByteFeed()
         let surface = Surface()
         feed.attach(surface)
 
-        #expect(feed.write(Data()) == .dropped)
+        feed.write(Data())
         #expect(surface.chunks.isEmpty)
     }
 }

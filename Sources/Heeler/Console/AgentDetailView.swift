@@ -2,20 +2,6 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
-/// Extended-absence recovery is intentionally separate from the connection's
-/// 20-second background grace. The reported device reproductions all required
-/// roughly three minutes or more; a 25-second observation did not establish a
-/// safe boundary. Two minutes is a conservative product trigger inside the
-/// measured repro window, not a claim about which layer failed (#141).
-enum AgentAttachRecoveryPolicy {
-    static let fullLifecycleAbsence: Duration = .seconds(120)
-
-    static func requiresFullLifecycle(after absence: Duration?) -> Bool {
-        guard let absence else { return false }
-        return absence >= fullLifecycleAbsence
-    }
-}
-
 #if DEBUG
 struct AttachRecoveryDiagnostic {
     let absence: Duration
@@ -38,9 +24,9 @@ struct AttachRecoveryDiagnostic {
 
     private var sshObservation: String {
         guard let sshGeneration else {
-            return "SSH connection: generation unobserved; liveness unobserved"
+            return "SSH generation: unobserved"
         }
-        return "SSH connection: generation \(sshGeneration) observed; liveness unobserved"
+        return "SSH generation: \(sshGeneration)"
     }
 
     private func attachObservation(_ status: AttachTerminalStore.Status) -> String {
@@ -86,9 +72,6 @@ struct AgentDetailView: View {
     /// dismiss — the owner clears the sidebar selection instead, which also
     /// pops the collapsed stack on iPhone.
     private let onClosed: () -> Void
-    /// Builds one complete Attach interaction. Kept as a factory because a
-    /// recovery may need the same lifecycle boundary as an Agent switch.
-    private let makeAttachStore: @MainActor () -> AgentAttachStore
     @State private var attach: AgentAttachStore
     /// Nil for agent kinds without a skills source catalog; the Keys
     /// keyboard hides the Skills tab in that case.
@@ -122,7 +105,7 @@ struct AgentDetailView: View {
         isOnStage: @escaping () -> Bool,
         onSwitch: @escaping (ConsoleAgent.ID) -> Void,
         onClosed: @escaping () -> Void,
-        attachStoreFactory: (@MainActor () -> AgentAttachStore)? = nil
+        attachStore: AgentAttachStore? = nil
     ) {
         self.agent = agent
         self.console = console
@@ -133,8 +116,8 @@ struct AgentDetailView: View {
         self.keyboardInset = keyboardInset
         self.onSwitch = onSwitch
         self.onClosed = onClosed
-        let makeAttachStore = attachStoreFactory ?? {
-            AgentAttachStore(
+        _attach = State(
+            initialValue: attachStore ?? AgentAttachStore(
                 target: agent.agent.paneID,
                 paneTitle: Self.displayTitle(for: agent),
                 transportGeneration: console.hostConnectionGenerations[agent.hostID],
@@ -143,10 +126,7 @@ struct AgentDetailView: View {
                 stageImage: console.imageStager(for: agent.hostID)
             ) {
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
-            }
-        }
-        self.makeAttachStore = makeAttachStore
-        _attach = State(initialValue: makeAttachStore())
+            })
         _skills = State(initialValue: Self.makeSkillsStore(for: agent, console: console))
     }
 
@@ -174,9 +154,11 @@ struct AgentDetailView: View {
         let currentAttach = attach
         let surfaceID = currentAttach.terminalID
         var screen = TerminalScreenView(feed: currentAttach.terminalFeed)
+        #if DEBUG
         screen.onSurfaceAttached = {
             currentAttach.terminalSurfaceDidAttach(surfaceID)
         }
+        #endif
         screen.onSizeChanged = { cols, rows in
             attach.viewDidResize(cols: cols, rows: rows)
         }
@@ -420,27 +402,16 @@ struct AgentDetailView: View {
     }
 
     private func handleActivation() {
-        let absence = activity.lastAbsenceDuration
-        guard AgentAttachRecoveryPolicy.requiresFullLifecycle(after: absence) else {
-            attach.didBecomeActive()
-            return
-        }
-
-        // Match the operator's proven recovery boundary: an Agent switch
-        // discards this complete owner, then builds a new terminal input
-        // pipeline whose first layout opens a fresh PTY channel and executes a
-        // new `herdr agent attach`. The old owner is marked departed before
-        // the new one is published, matching the ordering of a switch without
-        // claiming that asynchronous channel teardown has already completed.
-        let previous = attach
-        previous.leave()
-        attach = makeAttachStore()
+        let afterPossibleSuspension = activity.lastAbsenceMayHaveSuspended
+        attach.didBecomeActive(afterPossibleSuspension: afterPossibleSuspension)
 
         #if DEBUG
-        if let absence {
+        if afterPossibleSuspension, let absence = activity.lastAbsenceDuration {
             attachRecoveryDiagnostic = AttachRecoveryDiagnostic(
                 absence: absence,
                 sshGeneration: console.hostConnectionGenerations[agent.hostID])
+        } else {
+            attachRecoveryDiagnostic = nil
         }
         #endif
     }
