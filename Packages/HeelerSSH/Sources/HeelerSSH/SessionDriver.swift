@@ -78,6 +78,7 @@ actor SessionDriver {
     private var nextCompensationUnlinkWaitHoldForTesting: (@Sendable () async -> Void)?
     private var nextCompensationStatWaitHoldForTesting: (@Sendable () async -> Void)?
     private var nextCompensationShutdownHoldForTesting: (@Sendable () async -> Void)?
+    private var shouldFailNextSFTPInitBeforeEAGAINForTesting = false
 #endif
 
     // Actor reentrancy would otherwise allow a second task to call libssh2
@@ -801,6 +802,12 @@ actor SessionDriver {
         do {
             while true {
                 try checkProgress(deadline: deadline)
+#if DEBUG
+                if shouldFailNextSFTPInitBeforeEAGAINForTesting {
+                    shouldFailNextSFTPInitBeforeEAGAINForTesting = false
+                    throw SSHError.sftpUnavailable
+                }
+#endif
                 if let sftp = libssh2_sftp_init(session) {
                     nextSFTPID &+= 1
                     let id = nextSFTPID
@@ -822,12 +829,10 @@ actor SessionDriver {
             // libssh2 1.11.1 keeps one in-progress SFTP-init state per session,
             // including its channel and allocation. Any failure after EAGAIN
             // may abandon that state, and a later init would resume it; only
-            // session teardown can safely discard it.
-            if initWasPending
-                || normalized == .cancelled
-                || normalized == .timedOut
-                || normalized == .connectionInvalidated
-            {
+            // session teardown can safely discard it. Before the first init
+            // call (or after an ordinary non-EAGAIN failure), there is no
+            // native init state to reclaim and the session remains reusable.
+            if initWasPending || normalized == .connectionInvalidated {
                 invalidateResources()
             }
             throw normalized
@@ -1193,7 +1198,10 @@ actor SessionDriver {
         path: String,
         timeout: Duration
     ) async throws {
-        try await removeSFTPFile(
+        guard Self.isValidSFTPPath(path) else { throw SSHError.channelFailed }
+        await acquireOperation()
+        defer { releaseOperation() }
+        try await removeSFTPFileHoldingOperation(
             id: id,
             path: path,
             timeout: timeout,
@@ -1206,8 +1214,15 @@ actor SessionDriver {
         path: String,
         timeout: Duration
     ) async throws {
+        guard Self.isValidSFTPPath(path) else { throw SSHError.channelFailed }
+        await acquireOperation()
+        defer { releaseOperation() }
+
+        // Keep this permit through failure reclamation. If caller close ran
+        // between the failed unlink/stat and shutdown, it could remove the
+        // only SFTP state and leave this code unable to reclaim the handle.
         do {
-            try await removeSFTPFile(
+            try await removeSFTPFileHoldingOperation(
                 id: id,
                 path: path,
                 timeout: timeout,
@@ -1217,7 +1232,7 @@ actor SessionDriver {
             let normalized = normalize(error)
             var shutdownFailed = false
             do {
-                try await reclaimSFTPAfterCompensationFailure(id: id)
+                try await reclaimSFTPAfterCompensationFailureHoldingOperation(id: id)
             } catch {
                 shutdownFailed = true
             }
@@ -1232,9 +1247,11 @@ actor SessionDriver {
         }
     }
 
-    private func reclaimSFTPAfterCompensationFailure(id: UInt64) async throws {
-        await acquireOperation()
-        defer { releaseOperation() }
+    private func reclaimSFTPAfterCompensationFailureHoldingOperation(
+        id: UInt64
+    ) async throws {
+        // The caller owns the operation permit until this handle is either
+        // shut down here or reclaimed by whole-session invalidation.
         guard let state = sftpClients.removeValue(forKey: id) else { return }
         guard valid, session != nil else { throw SSHError.connectionInvalidated }
 
@@ -1260,16 +1277,13 @@ actor SessionDriver {
         }
     }
 
-    private func removeSFTPFile(
+    private func removeSFTPFileHoldingOperation(
         id: UInt64,
         path: String,
         timeout: Duration,
         cancellable: Bool,
         verifyAbsence: Bool
     ) async throws {
-        guard Self.isValidSFTPPath(path) else { throw SSHError.channelFailed }
-        await acquireOperation()
-        defer { releaseOperation() }
         guard valid, let session, let sftp = sftpClients[id]?.handle else {
             throw SSHError.connectionInvalidated
         }
@@ -1462,6 +1476,14 @@ actor SessionDriver {
         _ hold: @escaping @Sendable () async -> Void
     ) {
         nextCompensationShutdownHoldForTesting = hold
+    }
+
+    func failNextSFTPInitBeforeEAGAINForTesting() {
+        shouldFailNextSFTPInitBeforeEAGAINForTesting = true
+    }
+
+    var operationWaiterCountForTesting: Int {
+        operationWaiters.count
     }
 
     func resourceStateForTesting() -> SessionDriverResourceState {

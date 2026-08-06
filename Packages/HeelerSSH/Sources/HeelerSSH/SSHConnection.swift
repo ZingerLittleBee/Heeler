@@ -258,6 +258,14 @@ public final class SSHConnection: Sendable {
     ) async {
         await driver.holdNextCompensationShutdownForTesting(hold)
     }
+
+    public func failNextSFTPInitBeforeEAGAINForTesting() async {
+        await driver.failNextSFTPInitBeforeEAGAINForTesting()
+    }
+
+    public var operationWaiterCountForTesting: Int {
+        get async { await driver.operationWaiterCountForTesting }
+    }
 #endif
 
     public func close(timeout: Duration) async throws {

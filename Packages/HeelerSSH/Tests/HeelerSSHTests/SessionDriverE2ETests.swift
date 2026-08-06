@@ -487,21 +487,60 @@ struct SessionDriverE2ETests {
             try? await connection.close(timeout: .seconds(1))
         }
 
-        let expiredOpenConnection = try await environment.connect()
-        await #expect(throws: SSHError.timedOut) {
-            _ = try await expiredOpenConnection.openSFTP(timeout: .zero)
-        }
-        #expect(await expiredOpenConnection.isConnected == false)
-        try? await expiredOpenConnection.close(timeout: .seconds(1))
+    }
 
-        let cancelledConnection = try await environment.connect()
-        let cancelledOpen = Task {
-            withUnsafeCurrentTask { task in task?.cancel() }
-            return try await cancelledConnection.openSFTP(timeout: .seconds(5))
+    /// No libssh2 init state exists before the first native call or before a
+    /// non-EAGAIN native failure. These errors must not poison the SSH session.
+    @Test("openSFTP pre-init failures spare the SSH session")
+    func openSFTPPreInitFailuresSpareSession() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+
+        for failure in OpenSFTPPreInitFailure.allCases {
+            let connection = try await environment.connect()
+            let error = await failure.trigger(on: connection)
+
+            #expect(error == failure.expectedError)
+            #expect(await connection.isConnected, "\(failure.rawValue) invalidated pre-init")
+            let echo = try await connection.execute("printf preinit", timeout: .seconds(5))
+            #expect(echo.stdout == Data("preinit".utf8))
+            try await connection.close(timeout: .seconds(2))
         }
-        await #expect(throws: SSHError.cancelled) { _ = try await cancelledOpen.value }
-        #expect(await cancelledConnection.isConnected == false)
-        try? await cancelledConnection.close(timeout: .seconds(1))
+    }
+
+    /// Once init has returned EAGAIN, libssh2 owns singular session state. The
+    /// same timeout/cancellation classifications become fatal after this gate.
+    @Test("openSFTP pending init failures invalidate the SSH session")
+    func openSFTPPendingInitFailuresInvalidateSession() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let proxy = try #require(WeakNetworkProxyFixture.current)
+        let endpoint = SSHEndpoint(host: environment.endpoint.host, port: proxy.port)
+
+        for failure in OpenSFTPPendingFailure.allCases {
+            try await proxy.reset()
+            let connection = try await SSHConnection.connect(to: endpoint, timeout: .seconds(15))
+            try await environment.authenticate(connection)
+            try await proxy.degrade()
+            let wait = SessionWaitHold()
+            await connection.holdNextSessionWaitForTesting { await wait.waitUntilReleased() }
+            let opening = Task {
+                try await connection.openSFTP(timeout: failure.timeout)
+            }
+
+            try await waitUntilTrue("\(failure.rawValue) should follow init EAGAIN") {
+                await wait.hasEntered
+            }
+            if failure == .cancelled {
+                opening.cancel()
+            } else {
+                try await Task.sleep(for: .milliseconds(250))
+            }
+            await wait.release()
+
+            await #expect(throws: failure.expectedError) { _ = try await opening.value }
+            #expect(await connection.isConnected == false)
+            try? await connection.close(timeout: .seconds(1))
+        }
+        try await proxy.reset()
     }
 
     /// libssh2 1.11.1 shutdown frees both the phase packet and the SFTP channel.
@@ -522,8 +561,13 @@ struct SessionDriverE2ETests {
             try await phase.prepare(path: path, on: connection)
             let sftp = try await connection.openSFTP(timeout: .seconds(5))
             let wait = SessionWaitHold()
+            let shutdown = SessionWaitHold()
+            let closeProbe = SSHErrorCompletionProbe()
             try await proxy.degrade()
             await phase.holdNextWait(on: connection) { await wait.waitUntilReleased() }
+            await connection.holdNextCompensationShutdownForTesting {
+                await shutdown.waitUntilReleased()
+            }
 
             let removal = Task {
                 do {
@@ -538,11 +582,31 @@ struct SessionDriverE2ETests {
             try await waitUntilTrue("\(phase.rawValue) should enter EAGAIN") {
                 await wait.hasEntered
             }
+            let queuedClose = Task {
+                do {
+                    try await sftp.close(timeout: .zero)
+                    await closeProbe.finish(error: nil)
+                } catch {
+                    await closeProbe.finish(error: error as? SSHError)
+                }
+            }
+            try await waitUntilTrue("caller close should queue behind compensation") {
+                await connection.operationWaiterCountForTesting == 1
+            }
             try await Task.sleep(for: .milliseconds(250))
             await wait.release()
+            try await waitUntilTrue("compensation should retain SFTP ownership") {
+                let shutdownEntered = await shutdown.hasEntered
+                let closeCompleted = await closeProbe.completed
+                return shutdownEntered || closeCompleted
+            }
+            #expect(await shutdown.hasEntered, "queued close stole \(phase.rawValue) state")
+            #expect(await closeProbe.completed == false)
+            await shutdown.release()
 
             #expect(await removal.value == .timedOut)
-            try await sftp.close(timeout: .seconds(2))
+            await queuedClose.value
+            #expect(await closeProbe.error == nil)
             try await sftp.close(timeout: .seconds(2))
             #expect(await connection.isConnected)
             let echo = try await connection.execute("printf reclaimed", timeout: .seconds(5))
@@ -1299,6 +1363,60 @@ private enum Issue149ExecSite: String, CaseIterable {
     }
 }
 
+private enum OpenSFTPPreInitFailure: String, CaseIterable {
+    case timedOut
+    case cancelled
+    case sftpUnavailable
+
+    var expectedError: SSHError {
+        switch self {
+        case .timedOut: .timedOut
+        case .cancelled: .cancelled
+        case .sftpUnavailable: .sftpUnavailable
+        }
+    }
+
+    func trigger(on connection: SSHConnection) async -> SSHError? {
+        do {
+            switch self {
+            case .timedOut:
+                _ = try await connection.openSFTP(timeout: .zero)
+            case .cancelled:
+                let opening = Task {
+                    withUnsafeCurrentTask { task in task?.cancel() }
+                    return try await connection.openSFTP(timeout: .seconds(5))
+                }
+                _ = try await opening.value
+            case .sftpUnavailable:
+                await connection.failNextSFTPInitBeforeEAGAINForTesting()
+                _ = try await connection.openSFTP(timeout: .seconds(5))
+            }
+            return nil
+        } catch {
+            return error as? SSHError
+        }
+    }
+}
+
+private enum OpenSFTPPendingFailure: String, CaseIterable {
+    case timedOut
+    case cancelled
+
+    var timeout: Duration {
+        switch self {
+        case .timedOut: .milliseconds(200)
+        case .cancelled: .seconds(5)
+        }
+    }
+
+    var expectedError: SSHError {
+        switch self {
+        case .timedOut: .timedOut
+        case .cancelled: .cancelled
+        }
+    }
+}
+
 private enum CompensationEAGAINPhase: String, CaseIterable {
     case unlink
     case stat
@@ -1341,6 +1459,16 @@ private actor SessionWaitHold {
         let resumed = waiters
         waiters.removeAll()
         for waiter in resumed { waiter.resume() }
+    }
+}
+
+private actor SSHErrorCompletionProbe {
+    private(set) var completed = false
+    private(set) var error: SSHError?
+
+    func finish(error: SSHError?) {
+        self.error = error
+        completed = true
     }
 }
 

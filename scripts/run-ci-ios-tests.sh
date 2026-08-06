@@ -971,7 +971,7 @@ clear_simulator_environment
 
 if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || grep -q 'skipped:' "$package_e2e_log" \
-    || ! grep -q 'Test run with 24 tests in 2 suites passed' "$package_e2e_log" \
+    || ! grep -q 'Test run with 26 tests in 2 suites passed' "$package_e2e_log" \
     || ! grep -q 'Test "remote transport loss reclaims every owned native resource" passed' \
         "$package_e2e_log" \
     || ! grep -q 'Test "an abruptly severed weak link reclaims every owned native resource" passed' \
@@ -988,6 +988,12 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
         'Test "issue 149 exec cleanup expiry invalidates allocated channels" passed' \
         "$package_e2e_log" \
     || ! grep -q \
+        'Test "openSFTP pre-init failures spare the SSH session" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "openSFTP pending init failures invalidate the SSH session" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
         'Test "compensation expiry reclaims SFTP and spares the SSH session" passed' \
         "$package_e2e_log" \
     || ! grep -q \
@@ -999,7 +1005,7 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || ! grep -q \
         'Test "direct TCP/IP pump backpressures a fast raw writer without losing bytes" passed' \
         "$package_e2e_log"; then
-    echo "The mandatory HeelerSSH package suites did not execute all twenty-four tests" >&2
+    echo "The mandatory HeelerSSH package suites did not execute all twenty-six tests" >&2
     exit 1
 fi
 pinned_lane_logs+=("$package_e2e_log")
