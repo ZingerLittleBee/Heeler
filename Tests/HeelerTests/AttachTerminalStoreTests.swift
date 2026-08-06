@@ -1391,6 +1391,54 @@ struct AgentAttachStoreTests {
         await store.leave().value
     }
 
+    @Test func fastRouteReturnAfterOffStageRecoveryAbortBuildsANewTerminal() async throws {
+        // A possible-suspension recovery can stop its predecessor while the
+        // router moves this screen off stage, before SwiftUI delivers the
+        // corresponding onDisappear. If the route returns just as quickly,
+        // rejoin must be able to replace that now-stopped pipeline.
+        let transport = ScriptedTransport()
+        let endGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachEnd(on: endGate)
+        let stage = SelectedPane(current: "w1:p1")
+        let store = makeStore(
+            transport: transport, generation: 0,
+            isOnStage: { stage.contains("w1:p1") })
+
+        try await goLive(store, transport)
+        let predecessorID = store.terminalID
+
+        store.didBecomeActive(afterPossibleSuspension: true)
+        try await waitUntil("recovery should wait for the predecessor PTY to end") {
+            await endGate.entryCount == 1
+        }
+
+        stage.current = "w1:p2"
+        let routeChecksBeforeRelease = stage.readCount
+        await endGate.open()
+        try await waitUntil("recovery should observe the authoritative off-stage route") {
+            stage.readCount > routeChecksBeforeRelease
+        }
+
+        #expect(store.terminalID == predecessorID)
+        #expect(store.terminalStatus == .stopped)
+        #expect(await transport.attachRequests.count == 1)
+        #expect(await transport.hasLiveAttachSession == false)
+
+        // The route returns before a delayed onDisappear can call leave().
+        stage.current = "w1:p1"
+        store.rejoin()
+        #expect(store.terminalStatus == .connecting)
+        try await waitUntil("the returned screen should build a terminal") {
+            store.terminalID != predecessorID
+        }
+
+        try await goLive(store, transport)
+        #expect(store.terminalStatus == .live)
+        #expect(await transport.attachRequests.count == 2)
+
+        await store.leave().value
+    }
+
     @Test func offStageSizeReportDoesNotStartARejoinedTerminal() async throws {
         // Rejoin legitimately builds a fresh pipeline while this Agent is on
         // stage. If the route changes before SwiftUI's departing view reports

@@ -319,7 +319,11 @@ final class AgentAttachStore {
             let previous = self.terminal
             await previous.stop(preservingPendingPaste: true)
             guard isStillWanted() else {
-                self.finishTerminalRecovery(ownedBy: recoveryOwner)
+                if !self.isOnStage() {
+                    self.abortTerminalRecoveryOffStage(ownedBy: recoveryOwner)
+                } else {
+                    self.finishTerminalRecovery(ownedBy: recoveryOwner)
+                }
                 return
             }
             self.terminal = Self.makeTerminal(
@@ -387,7 +391,7 @@ final class AgentAttachStore {
                 return
             }
             guard self.isOnStage() else {
-                self.abortRejoinOffStage(ownedBy: recoveryOwner)
+                self.abortTerminalRecoveryOffStage(ownedBy: recoveryOwner)
                 return
             }
             guard self.terminal.status == .stopped else {
@@ -403,13 +407,14 @@ final class AgentAttachStore {
         }
     }
 
-    /// A rejoin that became invalid while queued never completed. Record that
-    /// outcome so a later on-stage appearance can try again even if SwiftUI has
-    /// not delivered the departing screen's delayed `onDisappear` yet. Only
-    /// the transition that still owns recovery may change this state; a stale
-    /// operation must not turn a newer on-stage transition back into a leave.
-    private func abortRejoinOffStage(ownedBy owner: UUID) {
-        guard terminalRecoveryOwner == owner else { return }
+    /// A terminal transition that stopped its predecessor but became invalid
+    /// off stage never completed. Record that outcome so a later on-stage
+    /// appearance can try again even if SwiftUI has not delivered the
+    /// departing screen's delayed `onDisappear` yet. Only the transition that
+    /// still owns recovery may change this state; a stale operation must not
+    /// turn a newer on-stage transition back into a leave.
+    private func abortTerminalRecoveryOffStage(ownedBy owner: UUID) {
+        guard terminalRecoveryOwner == owner, !isOnStage() else { return }
         hasLeft = true
         finishTerminalRecovery(ownedBy: owner)
     }
