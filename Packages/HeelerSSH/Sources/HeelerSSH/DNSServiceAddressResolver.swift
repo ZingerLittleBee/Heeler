@@ -38,7 +38,7 @@ struct DNSServiceAddressResolver: SocketAddressResolving {
     }
 }
 
-struct DNSServiceFunctions: @unchecked Sendable {
+struct DNSServiceFunctions: Sendable {
     typealias Start = @Sendable (
         UnsafeMutablePointer<DNSServiceRef?>,
         String,

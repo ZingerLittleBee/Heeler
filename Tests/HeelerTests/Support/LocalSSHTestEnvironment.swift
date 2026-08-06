@@ -20,8 +20,6 @@ struct LocalSSHTestEnvironment: Sendable {
     let username: String
     let privateKey: Curve25519.Signing.PrivateKey
 
-    static var isAvailable: Bool { current != nil }
-
     static let current: LocalSSHTestEnvironment? = probe()
 
     private static func probe() -> LocalSSHTestEnvironment? {

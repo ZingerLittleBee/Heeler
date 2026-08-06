@@ -436,14 +436,10 @@ actor HeelerSSHTransport: Transport {
             return .sshUnreachable(detail: String(describing: error))
         }
         switch error {
-        case .authenticationFailed:
-            return .authenticationFailed
-        case .timedOut:
-            return .timedOut
-        case .cancelled:
-            return .cancelled
-        case .forwardingDenied:
-            return .tcpForwardingUnavailable
+        case .authenticationFailed, .timedOut, .cancelled, .forwardingDenied:
+            // Owned by `sharedClassification` so `map` cannot disagree (#133).
+            return sharedClassification(for: error)
+                ?? .channelFailed(detail: String(describing: error))
         case .targetUnreachable, .connectionFailed, .invalidEndpoint,
             .algorithmNegotiationFailed, .connectionInvalidated:
             return .sshUnreachable(detail: String(describing: error))
@@ -1503,16 +1499,14 @@ actor HeelerSSHTransport: Transport {
             return .channelFailed(detail: String(describing: error))
         }
         switch error {
-        case .timedOut:
-            return .timedOut
-        case .cancelled:
-            return .cancelled
+        case .authenticationFailed, .timedOut, .cancelled, .forwardingDenied:
+            // Owned by `sharedClassification` so `mapConnect` cannot disagree (#133).
+            return sharedClassification(for: error)
+                ?? .channelFailed(detail: String(describing: error))
         case .unexpectedEOF:
             return .malformedResponse("stream-local channel closed before a response line")
         case .responseTooLarge(let limit):
             return .malformedResponse("response line exceeds \(limit) bytes")
-        case .authenticationFailed:
-            return .authenticationFailed
         case .connectionInvalidated:
             return .sshUnreachable(detail: "The SSH connection is no longer reusable.")
         // `.streamLocalOpenFailed` falls here on purpose. Only
@@ -1523,9 +1517,31 @@ actor HeelerSSHTransport: Transport {
         // stop doing so, a diagnostic-free `.channelFailed` is honest where a
         // fabricated path would not be.
         case .invalidEndpoint, .connectionFailed, .algorithmNegotiationFailed,
-            .channelFailed, .streamLocalOpenFailed, .forwardingDenied,
+            .channelFailed, .streamLocalOpenFailed,
             .targetUnreachable, .sftpUnavailable, .sftpFailure:
             return .channelFailed(detail: String(describing: error))
+        }
+    }
+
+    /// User-visible classifications that both connect-time (`mapConnect`) and
+    /// post-connect (`map`) mappers must agree on for the same `SSHError`.
+    /// Path-specific cases stay in each mapper; this only owns the shared set
+    /// so one error cannot drift into two UI outcomes (#133).
+    static func sharedClassification(for error: SSHError) -> TransportError? {
+        switch error {
+        case .authenticationFailed:
+            return .authenticationFailed
+        case .timedOut:
+            return .timedOut
+        case .cancelled:
+            return .cancelled
+        case .forwardingDenied:
+            return .tcpForwardingUnavailable
+        case .invalidEndpoint, .connectionFailed, .algorithmNegotiationFailed,
+            .channelFailed, .streamLocalOpenFailed, .unexpectedEOF,
+            .responseTooLarge, .connectionInvalidated, .targetUnreachable,
+            .sftpUnavailable, .sftpFailure:
+            return nil
         }
     }
 

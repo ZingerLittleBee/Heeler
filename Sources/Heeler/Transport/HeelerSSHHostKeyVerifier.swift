@@ -21,13 +21,7 @@ struct HeelerSSHHostKeyVerifier: Sendable {
         }
     }
 
-    func verify(publicKeyBlob: Data) async throws(TransportError) {
-        if let failure = await failure(publicKeyBlob: publicKeyBlob) {
-            throw failure
-        }
-    }
-
-    func failure(publicKeyBlob: Data) async -> TransportError? {
+    private func failure(publicKeyBlob: Data) async -> TransportError? {
         let fingerprint = HostKeyFingerprint(publicKeyBlob: publicKeyBlob)
         if let known = await policy.knownHosts.fingerprint(
             host: host,

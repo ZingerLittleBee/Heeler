@@ -3,6 +3,12 @@ import Synchronization
 
 /// Separates OpenSSH forwarding and session admission while enforcing one
 /// finite ceiling over every live SSH channel on a Host connection.
+///
+/// Session categories leave headroom under sshd's default `MaxSessions` of 10
+/// (ADR 0011). That server-side limit is the real binding constraint for exec,
+/// PTY, and SFTP channels, and the app cannot observe it: an abandoned channel
+/// teardown can spend a session slot without releasing the admission lease
+/// (#148). App-side counters therefore cannot promise MaxSessions safety.
 actor SSHChannelAdmission {
     enum ChannelClass: Sendable {
         case ordinaryForwarding
@@ -18,6 +24,12 @@ actor SSHChannelAdmission {
         let attach: Int
         let connection: Int
 
+        /// Production budgets. `connection` restates the sum of the four
+        /// category budgets (8+1+8+1), so the connection-level guard does not
+        /// bind under these categories — it only constrains a future category
+        /// that would otherwise grow without a connection cap. Per-category
+        /// budgets are the live admission limits today; do not treat 18 as a
+        /// tighter guarantee than those budgets or than server `MaxSessions`.
         static let production = Limits(
             ordinaryForwarding: 8,
             events: 1,

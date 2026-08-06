@@ -486,22 +486,6 @@ actor SessionDriver {
         guard result == 0 else { throw SSHError.channelFailed }
     }
 
-    func sendPTYEOF(id: UInt64, timeout: Duration) async throws {
-        await acquireOperation()
-        defer { releaseOperation() }
-
-        guard valid, session != nil else { throw SSHError.connectionInvalidated }
-        guard let channel = ptyChannels[id]?.channel else { throw SSHError.channelFailed }
-        let result = try await repeatUntilComplete(
-            deadline: ContinuousClock.now.advanced(by: timeout)
-        ) {
-            libssh2_channel_send_eof(channel)
-        }
-        guard result == 0 || result == LIBSSH2_ERROR_CHANNEL_EOF_SENT else {
-            throw SSHError.channelFailed
-        }
-    }
-
     func ptyExitStatus(id: UInt64, timeout: Duration) async throws -> Int32 {
         await acquireOperation()
         defer { releaseOperation() }

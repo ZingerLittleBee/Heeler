@@ -42,11 +42,6 @@ public final class SSHPTYChannel: Sendable {
             timeout: timeout)
     }
 
-    /// Sends EOF while keeping the channel available for reads and status.
-    public func sendEOF(timeout: Duration) async throws {
-        try await driver.sendPTYEOF(id: id, timeout: timeout)
-    }
-
     /// Completes the close handshake and returns the remote status after
     /// `read` has reported EOF.
     public func exitStatus(timeout: Duration) async throws -> Int32 {

@@ -11,7 +11,13 @@ struct SSHChannelAdmissionTests {
         #expect(limits.events == 1)
         #expect(limits.ordinarySession == 8)
         #expect(limits.attach == 1)
-        #expect(limits.connection == 18)
+        // Production `connection` restates the category sum; it is not a
+        // tighter live ceiling under these four budgets (#133, ADR 0011).
+        #expect(
+            limits.connection
+                == limits.ordinaryForwarding + limits.events
+                + limits.ordinarySession + limits.attach)
+        // Session categories leave headroom under sshd's default MaxSessions.
         #expect(limits.ordinarySession + limits.attach < 10)
 
         let admission = SSHChannelAdmission()
