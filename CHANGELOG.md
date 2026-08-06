@@ -56,9 +56,10 @@ Entries reference the issue that motivated them.
 
 - An open Agent terminal no longer stays blank after the app may have suspended.
   Returning at or beyond the Background Grace Period, or after an observed
-  suspension, now opens a new PTY Attach with a new terminal surface while
-  preserving links, image actions, and pending Paste review. Brief trips out of
-  the app keep the existing Attach and do not show Connecting. (#141)
+  suspension, now shows Connecting while the old PTY stops, then opens a new PTY
+  Attach with a new terminal surface while preserving links, image actions, and
+  pending Paste review. Brief trips out of the app keep the existing Attach and
+  do not show Connecting. (#141)
 
 - A Host that is reconnecting no longer tells you its Agent has gone. The
   session screen said "This Agent's pane is no longer reported" whenever the

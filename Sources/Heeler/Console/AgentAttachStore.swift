@@ -14,7 +14,10 @@ struct AttachLinkOpenFailure: Identifiable, Equatable {
 
 #if DEBUG
 struct AttachRecoveryDiagnosticTransition: Equatable {
-    let previousAttachStatus: AttachTerminalStore.Status
+    /// The predecessor store's last status before recovery was scheduled. It
+    /// is historical presentation state, not a probe of either the old or the
+    /// current channel.
+    let previousStoreStatus: AttachTerminalStore.Status
     let previousSurfaceAttached: Bool
 }
 #endif
@@ -56,6 +59,11 @@ final class AgentAttachStore {
     private var attachLinkOpenTask: Task<Void, Never>?
     private var attachLinkOpenID: UInt64 = 0
     private var hasLeft = false
+    /// A terminal replacement has been scheduled but its predecessor may still
+    /// be stopping. This is presentation state, not a transport claim: while it
+    /// is true the screen must show recovery instead of the predecessor's stale
+    /// `.live` state and its empty overlay.
+    private var terminalRecoveryPending = false
 
     init(
         target: String,
@@ -89,10 +97,14 @@ final class AgentAttachStore {
     /// A stopped terminal on a screen that has *not* left is one `rejoin()` is
     /// already replacing, so it reads as connecting: the alternative is a black
     /// surface with no overlay and nothing to say for itself. A screen that has
-    /// left keeps the real status — it is on its way off stage and must not
-    /// flash a spinner on the way out.
+    /// left or is no longer the router's current detail keeps the real status —
+    /// it is on its way off stage and must not flash a spinner on the way out.
     var terminalStatus: AttachTerminalStore.Status {
-        if terminal.status == .stopped, !hasLeft {
+        guard !hasLeft, isOnStage() else { return terminal.status }
+        if terminalRecoveryPending {
+            return .connecting
+        }
+        if terminal.status == .stopped {
             return .connecting
         }
         return terminal.status
@@ -250,7 +262,7 @@ final class AgentAttachStore {
             input.detachSessionForReplacement()
             #if DEBUG
             recoveryDiagnosticTransition = AttachRecoveryDiagnosticTransition(
-                previousAttachStatus: terminal.status,
+                previousStoreStatus: terminal.status,
                 previousSurfaceAttached: terminalSurfaceAttached)
             terminalSurfaceAttached = false
             #endif
@@ -290,9 +302,14 @@ final class AgentAttachStore {
     /// SwiftUI build a new terminal view rather than reuse the one on screen.
     private func replaceTerminal(while isStillWanted: @escaping @MainActor () -> Bool) {
         guard isStillWanted() else { return }
+        // Synchronous on purpose. `previous.stop()` can wait on the SSH channel
+        // teardown, and the user must see recovery throughout that wait rather
+        // than the predecessor's `.live` status and an EmptyView overlay.
+        terminalRecoveryPending = true
         enqueueLifecycleTransition { [weak self] in
             guard let self else { return }
             guard isStillWanted() else {
+                self.terminalRecoveryPending = false
                 #if DEBUG
                 self.recoveryDiagnosticTransition = nil
                 #endif
@@ -301,6 +318,7 @@ final class AgentAttachStore {
             let previous = self.terminal
             await previous.stop(preservingPendingPaste: true)
             guard isStillWanted() else {
+                self.terminalRecoveryPending = false
                 #if DEBUG
                 self.recoveryDiagnosticTransition = nil
                 #endif
@@ -311,6 +329,7 @@ final class AgentAttachStore {
                 input: self.input,
                 runTerminal: self.runTerminal,
                 linkIndex: self.linkIndex)
+            self.terminalRecoveryPending = false
             #if DEBUG
             self.terminalSurfaceAttached = false
             self.recoveryDiagnosticTransition = nil
@@ -375,6 +394,7 @@ final class AgentAttachStore {
             return lifecycleTask ?? Task {}
         }
         hasLeft = true
+        terminalRecoveryPending = false
         invalidateAttachLinkOpen()
         attachLinkOpenFailure = nil
         linkIndex.clear()

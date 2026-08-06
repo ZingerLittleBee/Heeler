@@ -269,6 +269,123 @@ struct AgentSurfaceReplacementTests {
         await Task.yield()
     }
 
+    /// The production View -> owner path must honor an actual suspension even
+    /// when the measured absence is well below the injected Background Grace
+    /// Period. Duration is only the fallback for a process frozen before the
+    /// coordinator can publish `.suspended`.
+    @Test func anObservedSuspensionBelowTheGracePeriodRebuildsTheProductionAttach()
+        async throws
+    {
+        var now = ContinuousClock.now
+        let activity = AppActivityCoordinator(
+            gracePeriod: .seconds(20),
+            granter: RefusingSurfaceTestBackgroundGranter(),
+            now: { now })
+        let transport = ScriptedTransport()
+        let owner = Self.makeAttachStore(transport: transport)
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                agent: Self.makeAgent(pane: "w1:p1"),
+                activity: activity,
+                attachStore: owner))
+        let window = Self.makeLocalTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        controller.view.layoutIfNeeded()
+
+        try #require(await Self.eventually {
+            await transport.attachRequests.count == 1
+        }, "the first PTY Attach should open")
+        #expect(await transport.emitAttachOutput(Data("opening".utf8)))
+        try #require(await Self.eventually {
+            owner.terminalStatus == .live
+        }, "the first Attach should become live")
+        let firstTerminalID = owner.terminalID
+
+        activity.didEnterBackground()
+        #expect(activity.phase == .suspended)
+        now = now.advanced(by: .seconds(5))
+        activity.didBecomeActive()
+
+        try #require(await Self.eventually {
+            owner.terminalID != firstTerminalID
+        }, "an observed suspension should replace the terminal below the time boundary")
+        try #require(await Self.eventually {
+            controller.view.setNeedsLayout()
+            controller.view.layoutIfNeeded()
+            return await transport.attachRequests.count == 2
+        }, "the production view should open a new PTY Attach")
+
+        await owner.leave().value
+        window.isHidden = true
+        window.rootViewController = nil
+        await Task.yield()
+    }
+
+    /// Recovery is visible at the same production presentation seam the hosted
+    /// screen's `statusOverlay` consumes, before stopping the predecessor can
+    /// finish. A blocked close must never leave the user looking at `.live` and
+    /// therefore `EmptyView`.
+    @Test func recoveryShowsConnectingWhileThePreviousPTYIsStillStopping() async throws {
+        var now = ContinuousClock.now
+        let activity = AppActivityCoordinator(
+            gracePeriod: .seconds(20),
+            granter: RefusingSurfaceTestBackgroundGranter(),
+            now: { now })
+        let transport = ScriptedTransport()
+        let endGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachEnd(on: endGate)
+        let owner = Self.makeAttachStore(transport: transport)
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                agent: Self.makeAgent(pane: "w1:p1"),
+                activity: activity,
+                attachStore: owner))
+        let window = Self.makeLocalTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        controller.view.layoutIfNeeded()
+
+        try #require(await Self.eventually { await transport.hasLiveAttachSession })
+        #expect(await transport.emitAttachOutput(Data("opening".utf8)))
+        try #require(await Self.eventually { owner.terminalStatus == .live })
+        let liveCenter = try #require(
+            Self.color(
+                in: Self.renderedImage(of: controller.view),
+                atUnit: CGPoint(x: 0.5, y: 0.5)))
+
+        activity.didEnterBackground()
+        #expect(activity.phase == .suspended)
+        now = now.advanced(by: .seconds(5))
+        activity.didBecomeActive()
+        try #require(await Self.eventually { await endGate.entryCount == 1 })
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+        await Task.yield()
+
+        #expect(
+            owner.terminalStatus == .connecting,
+            "the hosted screen must show Connecting while the old PTY stop is pending")
+        let recoveringCenter = try #require(
+            Self.color(
+                in: Self.renderedImage(of: controller.view),
+                atUnit: CGPoint(x: 0.5, y: 0.5)))
+        #expect(
+            recoveringCenter != liveCenter,
+            "the hosted screen must draw its Connecting dialog over the live terminal")
+
+        await endGate.open()
+        try #require(await Self.eventually {
+            controller.view.setNeedsLayout()
+            controller.view.layoutIfNeeded()
+            return await transport.attachRequests.count == 2
+        })
+        await owner.leave().value
+        window.isHidden = true
+        window.rootViewController = nil
+        await Task.yield()
+    }
+
     @Test func recoveryDiagnosticNamesEveryLayerWithoutInventingPresentationProof() {
         let diagnostic = AttachRecoveryDiagnostic(absence: .seconds(180), sshGeneration: 7)
 
@@ -315,7 +432,8 @@ struct AgentSurfaceReplacementTests {
                 "Away: 180 s",
                 "SSH generation: 7",
                 "Attach replacement: pending",
-                "Previous Attach session/channel: live",
+                "Previous Attach store status: output observed before recovery",
+                "Current Attach channel/liveness: unobserved",
                 "Previous terminal surface: attached",
                 "Render loop: unobserved (no presentation acknowledgement)",
             ])
@@ -346,6 +464,37 @@ struct AgentSurfaceReplacementTests {
         }
         walk(root)
         return found
+    }
+
+    static func renderedImage(of root: UIView) -> UIImage {
+        UIGraphicsImageRenderer(bounds: root.bounds).image { _ in
+            root.drawHierarchy(in: root.bounds, afterScreenUpdates: true)
+        }
+    }
+
+    static func color(in image: UIImage, atUnit point: CGPoint) -> UInt32? {
+        guard let cgImage = image.cgImage else { return nil }
+        let width = cgImage.width
+        let height = cgImage.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        guard
+            let context = CGContext(
+                data: &pixels,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        let x = min(width - 1, max(0, Int(point.x * CGFloat(width))))
+        let y = min(height - 1, max(0, Int(point.y * CGFloat(height))))
+        let index = (y * width + x) * 4
+        return UInt32(pixels[index]) << 16
+            | UInt32(pixels[index + 1]) << 8
+            | UInt32(pixels[index + 2])
     }
 
     /// A SwiftUI/UIKit hierarchy is sufficient for these replacement tests.
@@ -492,6 +641,17 @@ private final class SurfaceTestBackgroundGranter: BackgroundExecutionGranting {
     ) -> BackgroundExecutionToken? {
         defer { nextRawValue += 1 }
         return BackgroundExecutionToken(rawValue: nextRawValue)
+    }
+
+    func end(_: BackgroundExecutionToken) {}
+}
+
+@MainActor
+private final class RefusingSurfaceTestBackgroundGranter: BackgroundExecutionGranting {
+    func begin(
+        onExpiration _: @escaping @MainActor @Sendable () -> Void
+    ) -> BackgroundExecutionToken? {
+        nil
     }
 
     func end(_: BackgroundExecutionToken) {}

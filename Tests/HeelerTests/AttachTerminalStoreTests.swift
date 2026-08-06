@@ -1795,6 +1795,9 @@ struct AgentAttachStoreForegroundTests {
         try await Task.sleep(for: .milliseconds(50))
 
         #expect(store.terminalID == terminalID)
+        #expect(
+            store.terminalStatus == .stopped,
+            "a cancelled off-stage recovery must not leave a stale Connecting state")
         #expect(await transport.attachRequests.count == 1)
         #expect(await transport.hasLiveAttachSession == false)
 

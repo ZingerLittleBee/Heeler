@@ -17,8 +17,9 @@ struct AttachRecoveryDiagnostic {
                 "Away: \(absence.components.seconds) s",
                 sshObservation,
                 "Attach replacement: pending",
-                "Previous Attach session/channel: "
-                    + previousAttachObservation(transition.previousAttachStatus),
+                "Previous Attach store status: "
+                    + previousStoreObservation(transition.previousStoreStatus),
+                "Current Attach channel/liveness: unobserved",
                 "Previous terminal surface: "
                     + (transition.previousSurfaceAttached ? "attached" : "not attached"),
                 "Render loop: unobserved (no presentation acknowledgement)",
@@ -57,18 +58,18 @@ struct AttachRecoveryDiagnostic {
         }
     }
 
-    private func previousAttachObservation(_ status: AttachTerminalStore.Status) -> String {
+    private func previousStoreObservation(_ status: AttachTerminalStore.Status) -> String {
         switch status {
         case .waitingForSize:
-            "waiting for terminal size"
+            "waiting for terminal size before recovery"
         case .connecting:
-            "opening; first output unobserved"
+            "opening before recovery; first output unobserved"
         case .live:
-            "live"
+            "output observed before recovery"
         case .ended(let message):
-            "ended: \(message)"
+            "ended before recovery: \(message)"
         case .stopped:
-            "stopped"
+            "stopped before recovery"
         }
     }
 }
