@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import UIKit
 
 @testable import Heeler
 
@@ -1391,6 +1392,57 @@ struct AgentAttachStoreTests {
         await store.leave().value
     }
 
+    @Test func fastRouteReturnAfterPreStopRecoveryAbortReplacesTheWholeTerminal() async throws {
+        // Recovery is scheduled while this screen owns the route, but its
+        // queued operation may not run until after the route moved away. The
+        // first guard then aborts before stopping the predecessor. Returning
+        // before delayed onDisappear must still replace that untrusted `.live`
+        // pipeline rather than making rejoin() a no-op.
+        let transport = ScriptedTransport()
+        let endGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachEnd(on: endGate)
+        let stage = SelectedPane(current: "w1:p1")
+        let store = makeStore(
+            transport: transport, generation: 0,
+            isOnStage: { stage.contains("w1:p1") })
+
+        try await goLive(store, transport)
+        let predecessorID = store.terminalID
+
+        store.didBecomeActive(afterPossibleSuspension: true)
+        let routeChecksBeforeAbort = stage.readCount
+        stage.current = "w1:p2"
+        try await waitUntil("recovery should hit its first guard off stage") {
+            stage.readCount > routeChecksBeforeAbort
+        }
+
+        #expect(store.terminalID == predecessorID)
+        #expect(await transport.attachRequests.count == 1)
+
+        stage.current = "w1:p1"
+        store.rejoin()
+        #expect(
+            store.terminalStatus == .connecting,
+            "the returned screen must not expose its untrusted predecessor as live")
+        try await waitUntil(
+            "the returned screen should stop the whole predecessor pipeline",
+            timeout: .seconds(1)
+        ) {
+            await endGate.entryCount == 1
+        }
+
+        await endGate.open()
+        try await waitUntil("the returned screen should build a terminal") {
+            store.terminalID != predecessorID
+        }
+        try await goLive(store, transport)
+
+        #expect(store.terminalStatus == .live)
+        #expect(await transport.attachRequests.count == 2)
+
+        await store.leave().value
+    }
+
     @Test func fastRouteReturnAfterOffStageRecoveryAbortBuildsANewTerminal() async throws {
         // A possible-suspension recovery can stop its predecessor while the
         // router moves this screen off stage, before SwiftUI delivers the
@@ -1437,6 +1489,87 @@ struct AgentAttachStoreTests {
         #expect(await transport.attachRequests.count == 2)
 
         await store.leave().value
+    }
+
+    @Test func delayedLeaveAfterRecoveryAbortStillCleansTheWholeAttachInteraction()
+        async throws
+    {
+        // A recovery that stopped its predecessor can abort off stage before
+        // SwiftUI delivers the real onDisappear. The abort must make rejoin
+        // possible without pretending leave cleanup already ran: that delayed
+        // leave still owns links, image preparation and the input pause.
+        let transport = ScriptedTransport()
+        let terminalEndGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachEnd(on: terminalEndGate)
+        let imageGate = ScriptedTransportCallGate()
+        let imageStager = GatedAttachImageStager(gate: imageGate)
+        let opener = CancellationAwareAttachLinkOpener()
+        let stage = SelectedPane(current: "w1:p1")
+        let store = makeStore(
+            transport: transport, generation: 0,
+            isOnStage: { stage.contains("w1:p1") },
+            stageImage: { image, reporter in
+                try await imageStager.stage(image, reporter)
+            })
+
+        try await goLive(store, transport)
+        await transport.emitAttachOutput(Data("https://example.com/leave-cleanup\n".utf8))
+        try await waitUntil("the link should be collected") {
+            store.attachLinks.count == 1
+        }
+        let link = try #require(store.attachLinks.first)
+        store.openAttachLink(link, using: opener.open)
+        try await waitUntil("the system open should be pending") {
+            opener.pendingTarget == link.target
+        }
+
+        store.selectImage(DataImageSelection(data: try tinyJPEGData()))
+        try await waitUntil("image staging should retain its prepared file") {
+            await imageStager.preparedFileURL != nil
+        }
+        let preparedFileURL = try #require(await imageStager.preparedFileURL)
+        #expect(FileManager.default.fileExists(atPath: preparedFileURL.path))
+        #expect(!store.isLocalInputEnabled)
+
+        let predecessorID = store.terminalID
+        store.didBecomeActive(afterPossibleSuspension: true)
+        try await waitUntil("recovery should wait for the predecessor PTY to end") {
+            await terminalEndGate.entryCount == 1
+        }
+
+        stage.current = "w1:p2"
+        let routeChecksBeforeRelease = stage.readCount
+        await terminalEndGate.open()
+        try await waitUntil("recovery should abort after stopping off stage") {
+            stage.readCount > routeChecksBeforeRelease
+        }
+        #expect(store.terminalID == predecessorID)
+        #expect(store.terminalStatus == .stopped)
+
+        let leaveTask = store.leave()
+        for _ in 0..<10 { await Task.yield() }
+        #expect(store.attachLinks.isEmpty)
+        #expect(opener.cancelledTargets == [link.target])
+
+        await imageGate.open()
+        await leaveTask.value
+        try await waitUntil("image leave cleanup should settle") {
+            !store.imageState.isBusy
+        }
+
+        #expect(store.imageState == .idle)
+        #expect(store.isLocalInputEnabled)
+        #expect(!FileManager.default.fileExists(atPath: preparedFileURL.path))
+        #expect(await imageStager.cancellationCount == 1)
+
+        // Repeated leave observes the same completed cleanup rather than
+        // cancelling or clearing any boundary a second time.
+        await store.leave().value
+        #expect(opener.cancelledTargets == [link.target])
+        #expect(await imageStager.cancellationCount == 1)
+
+        opener.resolvePending(accepted: false)
+        store.cancelImage()
     }
 
     @Test func offStageSizeReportDoesNotStartARejoinedTerminal() async throws {
@@ -1757,6 +1890,7 @@ struct AgentAttachStoreTests {
         target: String = "w1:p1",
         isOnStage: @escaping () -> Bool = { true },
         runTerminal: TerminalSessionRunner? = nil,
+        stageImage: ImageStager? = nil,
         close: @escaping () async throws -> Void = {}
     ) -> AgentAttachStore {
         AgentAttachStore(
@@ -1774,10 +1908,17 @@ struct AgentAttachStoreTests {
                     throw error
                 }
             },
-            stageImage: { _, _ in
-                throw ImageStagingError.transferFailed
-            },
+            stageImage: stageImage ?? { _, _ in throw ImageStagingError.transferFailed },
             closePane: close)
+    }
+
+    private func tinyJPEGData() throws -> Data {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 16, height: 16))
+        let image = renderer.image { context in
+            UIColor.systemBlue.setFill()
+            context.cgContext.fill(CGRect(x: 0, y: 0, width: 16, height: 16))
+        }
+        return try #require(image.jpegData(compressionQuality: 0.8))
     }
 
     /// Brings the terminal up the way an attach does: the size report opens
@@ -1964,6 +2105,39 @@ private final class CancellationAwareAttachLinkOpener {
         cancelledTargets.append(target)
         continuation?.resume(returning: false)
         continuation = nil
+    }
+
+    func resolvePending(accepted: Bool) {
+        pendingTarget = nil
+        continuation?.resume(returning: accepted)
+        continuation = nil
+    }
+}
+
+private actor GatedAttachImageStager {
+    let gate: ScriptedTransportCallGate
+    private(set) var preparedFileURL: URL?
+    private(set) var cancellationCount = 0
+
+    init(gate: ScriptedTransportCallGate) {
+        self.gate = gate
+    }
+
+    func stage(
+        _ image: PreparedImage,
+        _ reporter: ImageStageProgressReporter
+    ) async throws -> StagedImage {
+        preparedFileURL = image.fileURL
+        await reporter.report(
+            ImageStageProgress(transferredBytes: 0, totalBytes: image.byteCount))
+        await gate.waitUntilOpen()
+        do {
+            try Task.checkCancellation()
+        } catch {
+            cancellationCount += 1
+            throw error
+        }
+        throw ImageStagingError.transferFailed
     }
 }
 

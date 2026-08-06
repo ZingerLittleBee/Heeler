@@ -28,6 +28,16 @@ struct AttachRecoveryDiagnosticTransition: Equatable {
 @MainActor
 @Observable
 final class AgentAttachStore {
+    /// Attach presence and leave cleanup are related, but not interchangeable.
+    /// A recovery may become invalid off stage before SwiftUI delivers the
+    /// real leave callback. That transition requires a later full terminal
+    /// replacement, while `leave()` still owns the interaction cleanup.
+    private enum LifecycleState {
+        case active
+        case rejoinRequired
+        case left
+    }
+
     private let target: String
     private let runTerminal: TerminalSessionRunner
     private let linkIndex: AttachLinkIndex
@@ -58,7 +68,7 @@ final class AgentAttachStore {
     private var lifecycleID: UInt64 = 0
     private var attachLinkOpenTask: Task<Void, Never>?
     private var attachLinkOpenID: UInt64 = 0
-    private var hasLeft = false
+    private var lifecycleState = LifecycleState.active
     /// Owns recovery presentation for the latest scheduled replacement. Its
     /// predecessor may still be stopping, but an older queued transition cannot
     /// clear the token a newer transition installed. This is presentation
@@ -102,7 +112,7 @@ final class AgentAttachStore {
     /// left or is no longer the router's current detail keeps the real status —
     /// it is on its way off stage and must not flash a spinner on the way out.
     var terminalStatus: AttachTerminalStore.Status {
-        guard !hasLeft, isOnStage() else { return terminal.status }
+        guard lifecycleState == .active, isOnStage() else { return terminal.status }
         if terminalRecoveryOwner != nil {
             return .connecting
         }
@@ -153,24 +163,24 @@ final class AgentAttachStore {
     /// start anything: a departed view still lays out during its exit
     /// transition, before SwiftUI necessarily delivers `onDisappear`.
     func viewDidResize(cols: Int, rows: Int) {
-        guard !hasLeft, isOnStage() else { return }
+        guard lifecycleState == .active, isOnStage() else { return }
         terminal.viewDidResize(cols: cols, rows: rows)
     }
 
     #if DEBUG
     func terminalSurfaceDidAttach(_ surfaceID: TerminalSurfaceID) {
-        guard !hasLeft, surfaceID == terminalID else { return }
+        guard lifecycleState == .active, surfaceID == terminalID else { return }
         terminalSurfaceAttached = true
     }
     #endif
 
     func viewportTextDidChange(_ text: String) {
-        guard !hasLeft else { return }
+        guard lifecycleState == .active else { return }
         linkIndex.receiveViewportText(text)
     }
 
     func openAttachLink(_ link: AttachLink, using open: @escaping AttachLinkOpener) {
-        guard !hasLeft else { return }
+        guard lifecycleState == .active else { return }
         attachLinkOpenFailure = nil
         invalidateAttachLinkOpen()
         let openID = attachLinkOpenID
@@ -179,7 +189,7 @@ final class AgentAttachStore {
             guard
                 let self,
                 !Task.isCancelled,
-                !self.hasLeft,
+                self.lifecycleState == .active,
                 self.attachLinkOpenID == openID
             else {
                 return
@@ -260,7 +270,7 @@ final class AgentAttachStore {
     /// links, image actions and a reviewed Paste survive the recovery.
     func didBecomeActive(afterPossibleSuspension: Bool = false) {
         image.didBecomeActive()
-        guard !hasLeft, isOnStage() else { return }
+        guard lifecycleState == .active, isOnStage() else { return }
         guard !afterPossibleSuspension else {
             input.detachSessionForReplacement()
             #if DEBUG
@@ -271,7 +281,7 @@ final class AgentAttachStore {
             #endif
             replaceTerminal { [weak self] in
                 guard let self else { return false }
-                return !self.hasLeft && self.isOnStage()
+                return self.lifecycleState == .active && self.isOnStage()
             }
             return
         }
@@ -288,18 +298,20 @@ final class AgentAttachStore {
     /// stager resolves the live Transport per call, so a retryable or
     /// completed upload stays actionable across the reconnect.
     func transportGenerationDidChange(_ generation: UInt64?) {
-        guard let generation, generation != transportGeneration, !hasLeft else { return }
+        guard let generation, generation != transportGeneration,
+            lifecycleState == .active
+        else { return }
         transportGeneration = generation
         replaceTerminal { [weak self] in
             guard let self else { return false }
-            return !self.hasLeft && self.transportGeneration == generation
+            return self.lifecycleState == .active && self.transportGeneration == generation
         }
     }
 
     /// Tears the terminal pipeline down and builds a fresh one, serialized
-    /// behind any earlier transition. `isStillWanted` is re-asked after the
-    /// teardown, which is the only await in here and therefore the only place
-    /// the reason for the replacement can go stale.
+    /// behind any earlier transition. `isStillWanted` is re-asked when the
+    /// queued operation starts and after teardown: the route can change both
+    /// while this waits for an earlier transition and while `stop()` awaits.
     ///
     /// The new pipeline carries a new `TerminalSurfaceID`, which is what makes
     /// SwiftUI build a new terminal view rather than reuse the one on screen.
@@ -313,7 +325,11 @@ final class AgentAttachStore {
         enqueueLifecycleTransition { [weak self] in
             guard let self else { return }
             guard isStillWanted() else {
-                self.finishTerminalRecovery(ownedBy: recoveryOwner)
+                if !self.isOnStage() {
+                    self.abortTerminalRecoveryOffStage(ownedBy: recoveryOwner)
+                } else {
+                    self.finishTerminalRecovery(ownedBy: recoveryOwner)
+                }
                 return
             }
             let previous = self.terminal
@@ -360,7 +376,8 @@ final class AgentAttachStore {
         return true
     }
 
-    /// The Attach screen came back after `leave()`.
+    /// The Attach screen came back after `leave()` or an off-stage recovery
+    /// abort.
     ///
     /// `leave()` rides `onDisappear`, which SwiftUI also fires for removals the
     /// user never made — and the state that comes back is the one that left. A
@@ -376,8 +393,9 @@ final class AgentAttachStore {
     /// and hold the Host's only terminal channel, leaving the screen the user
     /// is actually looking at queued behind it on "Connecting…" forever.
     func rejoin() {
-        guard hasLeft, isOnStage() else { return }
-        hasLeft = false
+        guard lifecycleState != .active, isOnStage() else { return }
+        let requiresFullReplacement = lifecycleState == .rejoinRequired
+        lifecycleState = .active
         // A rejoin is the latest terminal transition even when it is queued
         // behind an in-flight recovery and the teardown leave enqueued after
         // it. Take presentation ownership synchronously so the recovery task
@@ -386,13 +404,25 @@ final class AgentAttachStore {
         terminalRecoveryOwner = recoveryOwner
         enqueueLifecycleTransition { [weak self] in
             guard let self else { return }
-            guard !self.hasLeft else {
+            guard self.lifecycleState == .active else {
                 self.finishTerminalRecovery(ownedBy: recoveryOwner)
                 return
             }
             guard self.isOnStage() else {
                 self.abortTerminalRecoveryOffStage(ownedBy: recoveryOwner)
                 return
+            }
+            if requiresFullReplacement, self.terminal.status != .stopped {
+                await self.terminal.stop(preservingPendingPaste: true)
+                guard self.terminalRecoveryOwner == recoveryOwner else { return }
+                guard self.lifecycleState == .active else {
+                    self.finishTerminalRecovery(ownedBy: recoveryOwner)
+                    return
+                }
+                guard self.isOnStage() else {
+                    self.abortTerminalRecoveryOffStage(ownedBy: recoveryOwner)
+                    return
+                }
             }
             guard self.terminal.status == .stopped else {
                 self.finishTerminalRecovery(ownedBy: recoveryOwner)
@@ -407,15 +437,18 @@ final class AgentAttachStore {
         }
     }
 
-    /// A terminal transition that stopped its predecessor but became invalid
-    /// off stage never completed. Record that outcome so a later on-stage
-    /// appearance can try again even if SwiftUI has not delivered the
-    /// departing screen's delayed `onDisappear` yet. Only the transition that
-    /// still owns recovery may change this state; a stale operation must not
-    /// turn a newer on-stage transition back into a leave.
+    /// A terminal transition that became invalid off stage never completed,
+    /// whether it aborted before or after stopping its predecessor. Record
+    /// that outcome so a later on-stage appearance can try again even if
+    /// SwiftUI has not delivered the departing screen's delayed
+    /// `onDisappear` yet. Only the transition that still owns recovery may
+    /// change this state; a stale operation must not turn a newer on-stage
+    /// transition back into a leave.
     private func abortTerminalRecoveryOffStage(ownedBy owner: UUID) {
-        guard terminalRecoveryOwner == owner, !isOnStage() else { return }
-        hasLeft = true
+        guard terminalRecoveryOwner == owner, lifecycleState == .active,
+            !isOnStage()
+        else { return }
+        lifecycleState = .rejoinRequired
         finishTerminalRecovery(ownedBy: owner)
     }
 
@@ -430,10 +463,10 @@ final class AgentAttachStore {
     /// terminal: black, no overlay, no way back.
     @discardableResult
     func leave() -> Task<Void, Never> {
-        guard !hasLeft else {
+        guard lifecycleState != .left else {
             return lifecycleTask ?? Task {}
         }
-        hasLeft = true
+        lifecycleState = .left
         terminalRecoveryOwner = nil
         #if DEBUG
         recoveryDiagnosticTransition = nil
