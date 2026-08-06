@@ -59,11 +59,13 @@ final class AgentAttachStore {
     private var attachLinkOpenTask: Task<Void, Never>?
     private var attachLinkOpenID: UInt64 = 0
     private var hasLeft = false
-    /// A terminal replacement has been scheduled but its predecessor may still
-    /// be stopping. This is presentation state, not a transport claim: while it
-    /// is true the screen must show recovery instead of the predecessor's stale
-    /// `.live` state and its empty overlay.
-    private var terminalRecoveryPending = false
+    /// Owns recovery presentation for the latest scheduled replacement. Its
+    /// predecessor may still be stopping, but an older queued transition cannot
+    /// clear the token a newer transition installed. This is presentation
+    /// state, not a transport claim: while it exists the screen must show
+    /// recovery instead of the predecessor's stale `.live` state and its empty
+    /// overlay.
+    private var terminalRecoveryOwner: UUID?
 
     init(
         target: String,
@@ -101,7 +103,7 @@ final class AgentAttachStore {
     /// it is on its way off stage and must not flash a spinner on the way out.
     var terminalStatus: AttachTerminalStore.Status {
         guard !hasLeft, isOnStage() else { return terminal.status }
-        if terminalRecoveryPending {
+        if terminalRecoveryOwner != nil {
             return .connecting
         }
         if terminal.status == .stopped {
@@ -305,23 +307,18 @@ final class AgentAttachStore {
         // Synchronous on purpose. `previous.stop()` can wait on the SSH channel
         // teardown, and the user must see recovery throughout that wait rather
         // than the predecessor's `.live` status and an EmptyView overlay.
-        terminalRecoveryPending = true
+        let recoveryOwner = UUID()
+        terminalRecoveryOwner = recoveryOwner
         enqueueLifecycleTransition { [weak self] in
             guard let self else { return }
             guard isStillWanted() else {
-                self.terminalRecoveryPending = false
-                #if DEBUG
-                self.recoveryDiagnosticTransition = nil
-                #endif
+                self.finishTerminalRecovery(ownedBy: recoveryOwner)
                 return
             }
             let previous = self.terminal
             await previous.stop(preservingPendingPaste: true)
             guard isStillWanted() else {
-                self.terminalRecoveryPending = false
-                #if DEBUG
-                self.recoveryDiagnosticTransition = nil
-                #endif
+                self.finishTerminalRecovery(ownedBy: recoveryOwner)
                 return
             }
             self.terminal = Self.makeTerminal(
@@ -329,12 +326,22 @@ final class AgentAttachStore {
                 input: self.input,
                 runTerminal: self.runTerminal,
                 linkIndex: self.linkIndex)
-            self.terminalRecoveryPending = false
-            #if DEBUG
-            self.terminalSurfaceAttached = false
-            self.recoveryDiagnosticTransition = nil
-            #endif
+            self.finishTerminalRecovery(ownedBy: recoveryOwner, didReplaceTerminal: true)
         }
+    }
+
+    private func finishTerminalRecovery(
+        ownedBy owner: UUID,
+        didReplaceTerminal: Bool = false
+    ) {
+        guard terminalRecoveryOwner == owner else { return }
+        terminalRecoveryOwner = nil
+        #if DEBUG
+        if didReplaceTerminal {
+            terminalSurfaceAttached = false
+        }
+        recoveryDiagnosticTransition = nil
+        #endif
     }
 
     func retryTerminal() {
@@ -394,7 +401,10 @@ final class AgentAttachStore {
             return lifecycleTask ?? Task {}
         }
         hasLeft = true
-        terminalRecoveryPending = false
+        terminalRecoveryOwner = nil
+        #if DEBUG
+        recoveryDiagnosticTransition = nil
+        #endif
         invalidateAttachLinkOpen()
         attachLinkOpenFailure = nil
         linkIndex.clear()

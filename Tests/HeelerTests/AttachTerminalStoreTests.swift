@@ -1084,6 +1084,50 @@ struct AgentAttachStoreTests {
         await store.leave().value
     }
 
+    /// A stale queued replacement must not hide recovery owned by the latest
+    /// Transport generation. Both changes arrive in one MainActor turn: the
+    /// first observes that it is stale, while the second remains parked in the
+    /// predecessor PTY's explicit teardown.
+    @Test func rapidTransportReplacementsKeepLatestRecoveryVisibleUntilTeardownFinishes()
+        async throws
+    {
+        let transport = ScriptedTransport()
+        let endGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachEnd(on: endGate)
+        let store = makeStore(transport: transport, generation: 0)
+        let initialID = store.terminalID
+
+        try await goLive(store, transport)
+
+        store.transportGenerationDidChange(1)
+        #expect(store.terminalStatus == .connecting)
+        store.transportGenerationDidChange(2)
+        #expect(store.terminalStatus == .connecting)
+
+        try await waitUntil("the latest replacement should reach the old PTY teardown") {
+            await endGate.entryCount == 1
+        }
+        #expect(store.terminalID == initialID)
+        #expect(
+            store.terminalStatus == .connecting,
+            "stale replacement cleanup must not expose the predecessor's live presentation")
+        #expect(await transport.attachRequests.count == 1)
+
+        await endGate.open()
+        try await waitUntil("the latest replacement should land") {
+            store.terminalID != initialID
+        }
+        #expect(
+            store.terminalStatus == .waitingForSize,
+            "completed recovery must not leave a stale Connecting overlay")
+
+        try await goLive(store, transport, cols: 100, rows: 30)
+        #expect(await transport.attachRequests.count == 2)
+        #expect(store.terminalStatus == .live)
+
+        await store.leave().value
+    }
+
     @Test func transportReplacementPreservesImageAttachState() async throws {
         // A reconnect replaces the terminal pipeline but must not touch the
         // image interaction: its stager resolves the live Transport per
