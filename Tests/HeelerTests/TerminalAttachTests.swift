@@ -110,6 +110,54 @@ struct TerminalAttachTests {
             """)
     }
 
+    /// Buffered output still belongs to the task that first consumed this
+    /// stream. A later task must not be able to take a ready chunk simply
+    /// because the legitimate consumer is between reads (#153).
+    @Test(.timeLimit(.minutes(1)))
+    func aSecondAttachOutputConsumerIsRefusedWhileBytesAreStillBuffered() async throws {
+        let source = HeelerSSHAttachOutputGate.makeStream()
+        let gate = source.gate
+        let stream = source.output
+        let firstChunk = Data("chunk-a".utf8)
+        let secondChunk = Data("chunk-b".utf8)
+
+        gate.yield(firstChunk)
+
+        // The first read establishes the legitimate consumer before more
+        // output is buffered. This ordering catches a claim that is reset by
+        // a later yield as well as a missing claim.
+        var firstIterator = stream.makeAsyncIterator()
+        let firstSeen = try await firstIterator.next()
+        gate.yield(secondChunk)
+        gate.finish()
+
+        let second = Task { () -> AttachConsumerOutcome in
+            var iterator = stream.makeAsyncIterator()
+            do {
+                guard let bytes = try await iterator.next() else { return .drained([]) }
+                return .drained([bytes])
+            } catch {
+                return .failed(String(describing: error))
+            }
+        }
+        let refusal = await Self.outcome(of: second)
+        #expect(
+            refusal == .failed(String(describing: TransportError.terminalChannelAlreadyOpen)),
+            """
+            a second consumer must be refused while bytes are buffered, not \
+            handed one of them: \(String(describing: refusal))
+            """)
+
+        let secondSeen = try await firstIterator.next()
+        let trailer = try await firstIterator.next()
+        #expect(
+            [firstSeen, secondSeen, trailer] == [firstChunk, secondChunk, nil],
+            """
+            the first consumer must receive every buffered byte in order: \
+            \([firstSeen, secondSeen, trailer].map { $0.map { String(decoding: $0, as: UTF8.self) } })
+            """)
+    }
+
     /// Polls until a consumer is registered on the gate, so the test enters
     /// the double-consumer window deterministically rather than by sleeping.
     private static func waitForParkedConsumer(

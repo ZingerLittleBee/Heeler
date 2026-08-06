@@ -52,9 +52,10 @@ private actor HeelerSSHNotificationFileCompletion {
 /// iterator reads return nil. This gate owns the buffer so explicit end can
 /// discard it, while clean remote exit still drains every accepted byte.
 ///
-/// The stream has exactly one consumer. A second concurrent reader is
-/// refused with `TransportError.terminalChannelAlreadyOpen` and leaves the
-/// first reader running; see `next()`.
+/// The stream has exactly one consumer task. The first task to read claims
+/// the stream; reads from another task are refused with
+/// `TransportError.terminalChannelAlreadyOpen` and leave the claimant running,
+/// whether output is parked or buffered; see `next()`.
 final class HeelerSSHAttachOutputGate: Sendable {
     private enum Completion {
         case finished
@@ -68,6 +69,20 @@ final class HeelerSSHAttachOutputGate: Sendable {
         var completion: Completion?
         var isExplicitlyEnding = false
         var isConsumerCancelled = false
+        var consumer: TaskIdentity?
+    }
+
+    /// A stable scalar derived from the task performing a read. The unfolding
+    /// stream does not expose iterator identity, and `UnsafeCurrentTask` is
+    /// explicitly non-Sendable, so the gate retains only its hash value.
+    private struct TaskIdentity: Equatable {
+        private let value: Int
+
+        static var current: TaskIdentity {
+            withUnsafeCurrentTask { task in
+                TaskIdentity(value: task?.hashValue ?? 0)
+            }
+        }
     }
 
     private let state = Mutex(State())
@@ -137,9 +152,20 @@ final class HeelerSSHAttachOutputGate: Sendable {
     }
 
     private func next() async throws -> Data? {
-        try await withTaskCancellationHandler {
+        let reader = TaskIdentity.current
+        return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 state.withLock { state in
+                    // A parked waiter only identifies overlapping reads. A
+                    // buffered read completes synchronously, so the claim
+                    // must persist across calls and be checked before every
+                    // branch. The first task to read owns the stream (#153).
+                    guard state.consumer == nil || state.consumer == reader else {
+                        continuation.resume(
+                            throwing: TransportError.terminalChannelAlreadyOpen)
+                        return
+                    }
+                    state.consumer = reader
                     if state.isExplicitlyEnding || state.isConsumerCancelled {
                         continuation.resume(returning: nil)
                         return
@@ -163,27 +189,10 @@ final class HeelerSSHAttachOutputGate: Sendable {
                         }
                         return
                     }
-                    // Exactly one consumer may read an Attach session. A
-                    // second one is a caller mistake in the UI layer — a
-                    // departing SwiftUI iterator that outlived its view is
-                    // the shape this app has already shipped once (#97) —
-                    // and it must not take the process down with it (#137).
-                    //
-                    // The extra consumer is refused by *throwing* rather
-                    // than by being handed a finished stream:
-                    // `AsyncThrowingStream(unfolding:)` shares one storage
-                    // across every iterator made from it and clears that
-                    // storage the first time the closure returns nil, so
-                    // ending the extra consumer would end the legitimate
-                    // consumer's stream along with it. Throwing leaves the
-                    // storage, this gate's buffer, and the first consumer's
-                    // registration below untouched, and it reaches the user
-                    // as a recoverable session error instead of silence.
-                    guard state.waiter == nil else {
-                        continuation.resume(
-                            throwing: TransportError.terminalChannelAlreadyOpen)
-                        return
-                    }
+                    // Throwing at the extra consumer is load-bearing: an
+                    // unfolding stream shares storage across iterators, and
+                    // returning nil here would end the legitimate consumer's
+                    // stream too (#137).
                     state.waiter = continuation
                 }
             }
