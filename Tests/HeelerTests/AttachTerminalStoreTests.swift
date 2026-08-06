@@ -1745,6 +1745,117 @@ struct AgentAttachStoreForegroundTests {
         await store.leave().value
     }
 
+    @Test func activationDoesNotRecoverAnAgentThatAlreadyLeftTheStage() async throws {
+        let transport = ScriptedTransport()
+        var isOnStage = true
+        let store = makeStore(transport: transport, isOnStage: { isOnStage })
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("attach should open") { await transport.hasLiveAttachSession }
+        #expect(await transport.emitAttachOutput(Data("opening".utf8)))
+        try await waitUntil("terminal should go live") { store.terminalStatus == .live }
+        let terminalID = store.terminalID
+
+        // The router switches first. SwiftUI's onDisappear can arrive later,
+        // so hasLeft is still false when this old view observes activation.
+        isOnStage = false
+        store.didBecomeActive(afterPossibleSuspension: true)
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(store.terminalID == terminalID)
+        #expect(store.terminalStatus == .live)
+        #expect(await transport.attachRequests.count == 1)
+        #expect(await transport.hasLiveAttachSession)
+
+        await store.leave().value
+    }
+
+    @Test func leavingTheStageDuringRecoveryDoesNotBuildAnInvisibleAttach() async throws {
+        let transport = ScriptedTransport()
+        let endGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachEnd(on: endGate)
+        var isOnStage = true
+        let store = makeStore(transport: transport, isOnStage: { isOnStage })
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("attach should open") { await transport.hasLiveAttachSession }
+        #expect(await transport.emitAttachOutput(Data("opening".utf8)))
+        try await waitUntil("terminal should go live") { store.terminalStatus == .live }
+        let terminalID = store.terminalID
+
+        store.didBecomeActive(afterPossibleSuspension: true)
+        try await waitUntil("recovery should begin stopping the old PTY") {
+            await endGate.entryCount == 1
+        }
+        isOnStage = false
+        await endGate.open()
+        try await waitUntil("the old PTY should finish stopping") {
+            await transport.hasLiveAttachSession == false
+        }
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(store.terminalID == terminalID)
+        #expect(await transport.attachRequests.count == 1)
+        #expect(await transport.hasLiveAttachSession == false)
+
+        await store.leave().value
+    }
+
+    @Test func recoveryDoesNotConfirmReviewedPasteThroughThePredecessorWriter() async throws {
+        let transport = ScriptedTransport()
+        let endGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachEnd(on: endGate)
+        let store = makeStore(transport: transport)
+        let text = "git status\ngit diff"
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("attach should open") { await transport.hasLiveAttachSession }
+        #expect(await transport.emitAttachOutput(Data("opening".utf8)))
+        try await waitUntil("terminal should go live") { store.terminalStatus == .live }
+        store.requestPaste(text, bracketedPaste: true)
+        let review = try #require(store.pendingPaste)
+
+        store.didBecomeActive(afterPossibleSuspension: true)
+        try await waitUntil("recovery should begin stopping the old PTY") {
+            await endGate.entryCount == 1
+        }
+
+        #expect(!store.canConfirmPaste)
+        store.confirmPaste()
+        #expect(store.pendingPaste == review)
+        #expect(await transport.attachInputs.compactMap { input -> Data? in
+            if case .keystrokes(let data) = input { return data }
+            return nil
+        }.isEmpty)
+
+        let predecessorID = store.terminalID
+        await endGate.open()
+        try await waitUntil("the replacement pipeline should be created") {
+            store.terminalID != predecessorID
+        }
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the replacement Attach should open") {
+            await transport.attachRequests.count == 2
+        }
+        #expect(await transport.emitAttachOutput(Data("recovered".utf8)))
+        try await waitUntil("the replacement Attach should become live") {
+            store.terminalStatus == .live
+        }
+
+        #expect(store.canConfirmPaste)
+        store.confirmPaste()
+        let expectedPaste = TerminalBracketedPaste.encode(text, bracketed: true)
+        try await waitUntil("Paste should use the replacement writer exactly once") {
+            await transport.attachInputs.compactMap { input -> Data? in
+                if case .keystrokes(let data) = input { return data }
+                return nil
+            } == [expectedPaste]
+        }
+        #expect(store.pendingPaste == nil)
+
+        await store.leave().value
+    }
+
 }
 
 /// The Attach store's byte pipe: opening bytes buffer for the first surface,

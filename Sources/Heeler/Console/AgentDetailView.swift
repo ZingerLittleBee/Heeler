@@ -9,9 +9,22 @@ struct AttachRecoveryDiagnostic {
 
     func lines(
         attachStatus: AttachTerminalStore.Status,
-        terminalSurfaceAttached: Bool
+        terminalSurfaceAttached: Bool,
+        transition: AttachRecoveryDiagnosticTransition?
     ) -> [String] {
-        [
+        if let transition {
+            return [
+                "Away: \(absence.components.seconds) s",
+                sshObservation,
+                "Attach replacement: pending",
+                "Previous Attach session/channel: "
+                    + previousAttachObservation(transition.previousAttachStatus),
+                "Previous terminal surface: "
+                    + (transition.previousSurfaceAttached ? "attached" : "not attached"),
+                "Render loop: unobserved (no presentation acknowledgement)",
+            ]
+        }
+        return [
             "Away: \(absence.components.seconds) s",
             sshObservation,
             "Attach session/channel: \(attachObservation(attachStatus))",
@@ -41,6 +54,21 @@ struct AttachRecoveryDiagnostic {
             "new PTY Attach ended: \(message)"
         case .stopped:
             "new PTY Attach stopped"
+        }
+    }
+
+    private func previousAttachObservation(_ status: AttachTerminalStore.Status) -> String {
+        switch status {
+        case .waitingForSize:
+            "waiting for terminal size"
+        case .connecting:
+            "opening; first output unobserved"
+        case .live:
+            "live"
+        case .ended(let message):
+            "ended: \(message)"
+        case .stopped:
+            "stopped"
         }
     }
 }
@@ -427,7 +455,8 @@ struct AgentDetailView: View {
                     Array(
                         diagnostic.lines(
                             attachStatus: attach.terminalStatus,
-                            terminalSurfaceAttached: attach.terminalSurfaceAttached
+                            terminalSurfaceAttached: attach.terminalSurfaceAttached,
+                            transition: attach.recoveryDiagnosticTransition
                         ).enumerated()),
                     id: \.offset
                 ) { _, line in
@@ -653,6 +682,7 @@ struct AgentDetailView: View {
                     }
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Paste") { attach.confirmPaste() }
+                            .disabled(!attach.canConfirmPaste)
                     }
                 }
             }

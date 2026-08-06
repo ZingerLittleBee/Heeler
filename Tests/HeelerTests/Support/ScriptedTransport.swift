@@ -62,6 +62,7 @@ final actor ScriptedTransport: Transport {
     private var liveAttachID: UInt64?
     private var attachContinuation: AsyncThrowingStream<Data, any Error>.Continuation?
     private var attachInputTask: Task<Void, Never>?
+    private var nextAttachEndGate: ScriptedTransportCallGate?
     private(set) var stageRequests: [PreparedImage] = []
     private var stageOutcomes: [Result<StagedImage, ImageStagingError>] = []
     private var stageGate: ScriptedTransportCallGate?
@@ -157,6 +158,10 @@ final actor ScriptedTransport: Transport {
     ) {
         stageOutcomes = outcomes
         stageGate = gate
+    }
+
+    func gateNextAttachEnd(on gate: ScriptedTransportCallGate) {
+        nextAttachEndGate = gate
     }
 
     /// Pushes one event onto the live stream; false if none is live.
@@ -369,6 +374,8 @@ final actor ScriptedTransport: Transport {
         let attachID = nextAttachID
         let (output, outputContinuation) = AsyncThrowingStream<Data, any Error>.makeStream()
         let input = TerminalAttachInputQueue()
+        let endGate = nextAttachEndGate
+        nextAttachEndGate = nil
         liveAttachID = attachID
         attachContinuation = outputContinuation
         attachInputTask = Task {
@@ -377,6 +384,7 @@ final actor ScriptedTransport: Transport {
             }
         }
         return TerminalAttachSession(output: output, input: input) {
+            await endGate?.waitUntilOpen()
             await self.endAttach(id: attachID)
         }
     }

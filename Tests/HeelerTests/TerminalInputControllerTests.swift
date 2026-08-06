@@ -94,6 +94,46 @@ struct TerminalInputControllerTests {
         #expect(controller.pendingPaste == nil)
     }
 
+    @Test func reviewedPasteWaitsForTheReplacementWriterAndSubmitsOnce() throws {
+        var oldWrites: [Data] = []
+        var replacementWrites: [Data] = []
+        let controller = TerminalInputController()
+        let oldGeneration = controller.beginSession { oldWrites.append($0) }
+        let text = "git status\ngit diff"
+
+        #expect(controller.requestPaste(text, bracketedPaste: true).requiresReview)
+        let review = try #require(controller.pendingPaste)
+        controller.detachSessionForReplacement()
+        controller.endSession(oldGeneration, preservingPendingPaste: true)
+
+        #expect(!controller.canConfirmPaste)
+        #expect(!controller.confirmPaste())
+        #expect(controller.pendingPaste == review)
+        #expect(oldWrites.isEmpty)
+
+        _ = controller.beginSession { replacementWrites.append($0) }
+        #expect(controller.canConfirmPaste)
+        #expect(controller.confirmPaste())
+        #expect(
+            replacementWrites == [
+                TerminalBracketedPaste.start + Data(text.utf8) + TerminalBracketedPaste.end
+            ])
+        #expect(controller.pendingPaste == nil)
+        #expect(!controller.confirmPaste())
+        #expect(replacementWrites.count == 1)
+    }
+
+    @Test func ordinarySessionEndStillCancelsReviewedPaste() {
+        let controller = TerminalInputController()
+        let generation = controller.beginSession { _ in }
+
+        #expect(controller.requestPaste("git status\ngit diff").requiresReview)
+        controller.endSession(generation)
+
+        #expect(controller.pendingPaste == nil)
+        #expect(!controller.canConfirmPaste)
+    }
+
     @Test func cancelIsTheSafeMultilineDefault() {
         var writes: [Data] = []
         let controller = TerminalInputController()

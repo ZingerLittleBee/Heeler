@@ -12,6 +12,13 @@ struct AttachLinkOpenFailure: Identifiable, Equatable {
     }
 }
 
+#if DEBUG
+struct AttachRecoveryDiagnosticTransition: Equatable {
+    let previousAttachStatus: AttachTerminalStore.Status
+    let previousSurfaceAttached: Bool
+}
+#endif
+
 /// Owns the complete Agent Attach interaction: terminal lifetime, input
 /// generation and pause state, image staging, reconnect replacement, close,
 /// and deterministic leave ordering. The view only forwards UI events.
@@ -33,6 +40,10 @@ final class AgentAttachStore {
     /// a lifecycle observation only; Ghostty exposes no acknowledgement that
     /// its render loop presented a frame.
     private(set) var terminalSurfaceAttached = false
+    /// Captures the old pipeline synchronously when recovery is scheduled.
+    /// Until replacement finishes, the current `terminal` and any attached
+    /// surface still belong to that predecessor and must not be labelled new.
+    private(set) var recoveryDiagnosticTransition: AttachRecoveryDiagnosticTransition?
     #endif
     let input: TerminalInputController
     let image: ImageAttachStore
@@ -109,6 +120,10 @@ final class AgentAttachStore {
 
     var pendingPaste: TerminalInputController.PasteReview? {
         input.pendingPaste
+    }
+
+    var canConfirmPaste: Bool {
+        terminal.status == .live && input.canConfirmPaste
     }
 
     var pasteErrorMessage: String? {
@@ -191,6 +206,7 @@ final class AgentAttachStore {
     }
 
     func confirmPaste() {
+        guard canConfirmPaste else { return }
         _ = input.confirmPaste()
     }
 
@@ -229,9 +245,19 @@ final class AgentAttachStore {
     /// links, image actions and a reviewed Paste survive the recovery.
     func didBecomeActive(afterPossibleSuspension: Bool = false) {
         image.didBecomeActive()
-        guard !hasLeft else { return }
+        guard !hasLeft, isOnStage() else { return }
         guard !afterPossibleSuspension else {
-            replaceTerminal { [weak self] in self?.hasLeft == false }
+            input.detachSessionForReplacement()
+            #if DEBUG
+            recoveryDiagnosticTransition = AttachRecoveryDiagnosticTransition(
+                previousAttachStatus: terminal.status,
+                previousSurfaceAttached: terminalSurfaceAttached)
+            terminalSurfaceAttached = false
+            #endif
+            replaceTerminal { [weak self] in
+                guard let self else { return false }
+                return !self.hasLeft && self.isOnStage()
+            }
             return
         }
         terminal.didBecomeActive()
@@ -265,10 +291,21 @@ final class AgentAttachStore {
     private func replaceTerminal(while isStillWanted: @escaping @MainActor () -> Bool) {
         guard isStillWanted() else { return }
         enqueueLifecycleTransition { [weak self] in
-            guard let self, isStillWanted() else { return }
+            guard let self else { return }
+            guard isStillWanted() else {
+                #if DEBUG
+                self.recoveryDiagnosticTransition = nil
+                #endif
+                return
+            }
             let previous = self.terminal
             await previous.stop(preservingPendingPaste: true)
-            guard isStillWanted() else { return }
+            guard isStillWanted() else {
+                #if DEBUG
+                self.recoveryDiagnosticTransition = nil
+                #endif
+                return
+            }
             self.terminal = Self.makeTerminal(
                 target: self.target,
                 input: self.input,
@@ -276,6 +313,7 @@ final class AgentAttachStore {
                 linkIndex: self.linkIndex)
             #if DEBUG
             self.terminalSurfaceAttached = false
+            self.recoveryDiagnosticTransition = nil
             #endif
         }
     }

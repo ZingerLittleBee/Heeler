@@ -58,7 +58,7 @@ final class AttachTerminalStore {
         /// Opening the attach channel, and waiting for the remote attach to
         /// say something. Nothing is on the terminal yet.
         case connecting
-        /// The session has painted; bytes are flowing both ways.
+        /// The new PTY Attach has produced output and owns the current input writer.
         case live
         /// The session ended remotely (clean detach or channel death); the
         /// message is user-facing and `retry()` reattaches.
@@ -233,11 +233,11 @@ final class AttachTerminalStore {
 
         do {
             for try await bytes in session.output {
-                // Live when the session has something to show, not when the
+                // Live when the new PTY Attach produces output, not when the
                 // channel opens: the transport withholds the login shell's
-                // noise, so an open channel with nothing on it yet is still a
-                // blank screen. "Connecting…" stays up until the remote attach
-                // paints.
+                // noise, so an open channel with no output yet is still
+                // connecting. This does not prove that a renderer presented
+                // the bytes on screen.
                 if status == .connecting {
                     status = .live
                 }

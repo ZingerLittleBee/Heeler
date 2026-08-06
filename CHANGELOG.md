@@ -108,16 +108,6 @@ Entries reference the issue that motivated them.
   that is still broken simply says so again, with the same guidance and
   without flickering through a moment that looks like it reconnected. (#147)
 
-- An Attach terminal that comes back blank after time in the background now
-  either repaints or tells you it stopped responding. Returning to the
-  foreground asks the remote to redraw, which is the only way to tell a dead
-  terminal from an agent that simply has nothing to say — `herdr agent
-  attach` draws on change, so silence looks identical either way. A terminal
-  that does not answer ends with a Reattach button instead of staying a black
-  screen with no error and nothing to reconnect — and an answer only counts
-  once it is on the screen, so a redraw that arrives but lands nowhere visible
-  ends the same way instead of passing for a healthy session. (#141)
-
 - Coming back to a session after leaving the app no longer shows a connection
   that is already gone. Returning to the foreground now re-proves each Host,
   so one whose link died while you were away starts reconnecting — and says

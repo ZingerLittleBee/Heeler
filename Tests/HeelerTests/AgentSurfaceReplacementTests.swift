@@ -249,7 +249,19 @@ struct AgentSurfaceReplacementTests {
         try #require(await Self.eventually {
             owner.terminalStatus == .live
                 && replacement.terminalSession.readViewportText()?.contains("recovered-frame") == true
-        }, "new output should reach the new surface and leave a visible live terminal")
+        }, "new PTY output should reach the replacement Ghostty viewport")
+
+        owner.confirmPaste()
+        let expectedPaste =
+            TerminalBracketedPaste.start + Data("git status\ngit diff".utf8)
+            + TerminalBracketedPaste.end
+        try #require(await Self.eventually {
+            await transport.attachInputs.filter {
+                if case .keystrokes = $0 { return true }
+                return false
+            } == [.keystrokes(expectedPaste)]
+        }, "the reviewed Paste should submit once through the replacement writer")
+        #expect(owner.pendingPaste == nil)
 
         await owner.leave().value
         window.isHidden = true
@@ -261,13 +273,67 @@ struct AgentSurfaceReplacementTests {
         let diagnostic = AttachRecoveryDiagnostic(absence: .seconds(180), sshGeneration: 7)
 
         #expect(
-            diagnostic.lines(attachStatus: .connecting, terminalSurfaceAttached: true) == [
+            diagnostic.lines(
+                attachStatus: .connecting,
+                terminalSurfaceAttached: true,
+                transition: nil
+            ) == [
                 "Away: 180 s",
                 "SSH generation: 7",
                 "Attach session/channel: new PTY Attach opening; first output unobserved",
                 "Terminal surface: new surface attached",
                 "Render loop: unobserved (no presentation acknowledgement)",
             ])
+    }
+
+    @Test func recoveryDiagnosticDoesNotCallTheOldPipelineNewWhileReplacementIsQueued()
+        async throws
+    {
+        let transport = ScriptedTransport()
+        let endGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachEnd(on: endGate)
+        let owner = Self.makeAttachStore(transport: transport)
+        owner.viewDidResize(cols: 80, rows: 24)
+        try #require(await Self.eventually { await transport.hasLiveAttachSession })
+        #expect(await transport.emitAttachOutput(Data("opening".utf8)))
+        try #require(await Self.eventually { owner.terminalStatus == .live })
+        let oldTerminalID = owner.terminalID
+        owner.terminalSurfaceDidAttach(oldTerminalID)
+        let diagnostic = AttachRecoveryDiagnostic(absence: .seconds(180), sshGeneration: 7)
+
+        owner.didBecomeActive(afterPossibleSuspension: true)
+        try #require(await Self.eventually { await endGate.entryCount == 1 })
+
+        #expect(owner.terminalID == oldTerminalID)
+        #expect(!owner.terminalSurfaceAttached)
+        #expect(
+            diagnostic.lines(
+                attachStatus: owner.terminalStatus,
+                terminalSurfaceAttached: owner.terminalSurfaceAttached,
+                transition: owner.recoveryDiagnosticTransition
+            ) == [
+                "Away: 180 s",
+                "SSH generation: 7",
+                "Attach replacement: pending",
+                "Previous Attach session/channel: live",
+                "Previous terminal surface: attached",
+                "Render loop: unobserved (no presentation acknowledgement)",
+            ])
+
+        await endGate.open()
+        try #require(await Self.eventually { owner.terminalID != oldTerminalID })
+
+        #expect(owner.recoveryDiagnosticTransition == nil)
+        #expect(owner.terminalStatus == .waitingForSize)
+        #expect(!owner.terminalSurfaceAttached)
+        #expect(
+            diagnostic.lines(
+                attachStatus: owner.terminalStatus,
+                terminalSurfaceAttached: owner.terminalSurfaceAttached,
+                transition: owner.recoveryDiagnosticTransition
+            ).contains("Attach session/channel: new PTY Attach waiting for terminal size"))
+
+        await owner.leave().value
     }
 
     // MARK: Fixtures
