@@ -382,11 +382,15 @@ final class AgentAttachStore {
         terminalRecoveryOwner = recoveryOwner
         enqueueLifecycleTransition { [weak self] in
             guard let self else { return }
-            guard
-                !self.hasLeft,
-                self.isOnStage(),
-                self.terminal.status == .stopped
-            else {
+            guard !self.hasLeft else {
+                self.finishTerminalRecovery(ownedBy: recoveryOwner)
+                return
+            }
+            guard self.isOnStage() else {
+                self.abortRejoinOffStage(ownedBy: recoveryOwner)
+                return
+            }
+            guard self.terminal.status == .stopped else {
                 self.finishTerminalRecovery(ownedBy: recoveryOwner)
                 return
             }
@@ -397,6 +401,17 @@ final class AgentAttachStore {
                 linkIndex: self.linkIndex)
             self.finishTerminalRecovery(ownedBy: recoveryOwner, didReplaceTerminal: true)
         }
+    }
+
+    /// A rejoin that became invalid while queued never completed. Record that
+    /// outcome so a later on-stage appearance can try again even if SwiftUI has
+    /// not delivered the departing screen's delayed `onDisappear` yet. Only
+    /// the transition that still owns recovery may change this state; a stale
+    /// operation must not turn a newer on-stage transition back into a leave.
+    private func abortRejoinOffStage(ownedBy owner: UUID) {
+        guard terminalRecoveryOwner == owner else { return }
+        hasLeft = true
+        finishTerminalRecovery(ownedBy: owner)
     }
 
     /// Leaves the screen: records the departure and enqueues the teardown,
