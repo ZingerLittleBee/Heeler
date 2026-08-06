@@ -22,19 +22,18 @@ struct TerminalAttachRequest: Sendable, Equatable {
 ///
 /// OpenSSH still hands every exec request to the remote account shell as
 /// `shell -c command`, even when Heeler requests a PTY and an exec together
-/// (no interactive login shell, no socat bootstrap). That shell, and the
-/// session that wraps it, can still emit MOTD, lastlog, profile fragments,
-/// or other non-interactive startup bytes before the `printf` of this marker
-/// and the subsequent `exec herdr agent attach`. None of that belongs on
-/// the terminal: it would paint until the TUI's first frame wiped it — a
-/// flash of somebody else's output on every attach.
+/// (no interactive login shell, no socat bootstrap). The account shell or SSH
+/// session can still emit generic startup or rc chatter before the `printf` of
+/// this marker and the subsequent `exec herdr agent attach`. None of that
+/// belongs on the terminal: it would paint until the TUI's first frame wiped
+/// it, a flash of unrelated output on every attach.
 ///
 /// So the attach exec command prints this marker immediately before it
 /// execs attach, and everything up to it is dropped. Printing it as real
-/// control bytes is what makes it unambiguous: a shell that echoes the
-/// command line carries the literal text `\033`, never an ESC byte, so the
-/// marker cannot match its own echo. APC is the one string terminals are
-/// required to ignore, which keeps a stray copy harmless.
+/// control bytes is what makes it unambiguous: chatter that contains the
+/// literal text `\033` has no ESC byte, so it cannot open the gate. APC is the
+/// one string terminals are required to ignore, which keeps a stray copy
+/// harmless.
 enum AttachBootstrapHandshake {
     static let marker = Data("\u{1B}_heeler-attach\u{1B}\\".utf8)
     /// `marker` as a `printf` format. Octal throughout: the format has to
@@ -46,9 +45,8 @@ enum AttachBootstrapHandshake {
 /// Holds an attach channel's output back until the bootstrap handshake lands.
 ///
 /// The withheld bytes are buffered rather than dropped: a channel that dies
-/// before the handshake (herdr missing from the Host's PATH, a shell that
-/// cannot run the attach command) has said everything it is ever going to
-/// say in exactly that noise, so `flush()` hands it back as the diagnosis.
+/// before the handshake has said everything it is ever going to say in that
+/// startup diagnostic, so `flush()` hands it back.
 struct AttachBootstrapGate {
     /// A ceiling for a channel that never handshakes. The tail is what
     /// carries the failure, and it stays far longer than the marker, so a

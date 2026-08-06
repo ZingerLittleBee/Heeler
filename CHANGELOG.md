@@ -22,13 +22,6 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
-- Attach again withholds remote shell startup noise until herdr's TUI is
-  ready. The attach exec prints a short handshake marker immediately before
-  `herdr agent attach`, and the client drops everything before it — so MOTD,
-  lastlog, and other non-interactive shell chatter no longer flash on the
-  terminal for the length of attach startup. A channel that dies before the
-  handshake still hands the withheld text back as the diagnosis. (#166)
-
 - A Host whose SSH server has stream-local forwarding turned off now says so
   even when herdr isn't on the SSH session's `PATH`. Heeler tries to start
   herdr once before giving up; when that attempt itself failed, the checks
@@ -60,6 +53,12 @@ Entries reference the issue that motivated them.
   `authorized_keys` keeps working.
 
 ### Fixed
+
+- Attach again withholds generic remote startup and SSH rc chatter until the
+  attach command begins. The attach exec prints a short handshake marker
+  immediately before `herdr agent attach`, and the client drops everything
+  before it. A channel that dies before the handshake still emits the withheld
+  text once as the diagnosis. (#166)
 
 - An open Agent terminal no longer stays blank after the app may have suspended.
   Returning at or beyond the Background Grace Period, or after an observed
