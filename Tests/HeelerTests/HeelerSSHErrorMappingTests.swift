@@ -3,26 +3,50 @@ import Testing
 
 @testable import Heeler
 
-/// Pins the shared SSHError → TransportError classifications so connect-time
-/// and post-connect mappers cannot drift (#133).
+/// Exercises the real connect-time and post-connect mappers (#133).
 @Suite("HeelerSSH error mapping")
 struct HeelerSSHErrorMappingTests {
-    @Test func sharedClassificationsAgreeOnUserVisibleOutcomes() {
+    @Test func connectAndOperationMappersAgreeOnForwardingDenied() {
+        let error = SSHError.forwardingDenied
         #expect(
-            HeelerSSHTransport.sharedClassification(for: .forwardingDenied)
+            HeelerSSHTransport.mapConnectForTesting(error)
                 == .tcpForwardingUnavailable)
         #expect(
-            HeelerSSHTransport.sharedClassification(for: .authenticationFailed)
-                == .authenticationFailed)
-        #expect(HeelerSSHTransport.sharedClassification(for: .timedOut) == .timedOut)
-        #expect(HeelerSSHTransport.sharedClassification(for: .cancelled) == .cancelled)
+            HeelerSSHTransport.mapOperationForTesting(error)
+                == .tcpForwardingUnavailable)
     }
 
-    @Test func pathSpecificErrorsAreNotSharedClassifications() {
-        #expect(HeelerSSHTransport.sharedClassification(for: .channelFailed) == nil)
-        #expect(HeelerSSHTransport.sharedClassification(for: .streamLocalOpenFailed) == nil)
-        #expect(HeelerSSHTransport.sharedClassification(for: .targetUnreachable) == nil)
-        #expect(HeelerSSHTransport.sharedClassification(for: .connectionInvalidated) == nil)
-        #expect(HeelerSSHTransport.sharedClassification(for: .unexpectedEOF) == nil)
+    @Test func connectAndOperationMappersAgreeOnAuthTimeoutAndCancel() {
+        #expect(
+            HeelerSSHTransport.mapConnectForTesting(SSHError.authenticationFailed)
+                == .authenticationFailed)
+        #expect(
+            HeelerSSHTransport.mapOperationForTesting(SSHError.authenticationFailed)
+                == .authenticationFailed)
+
+        #expect(HeelerSSHTransport.mapConnectForTesting(SSHError.timedOut) == .timedOut)
+        #expect(HeelerSSHTransport.mapOperationForTesting(SSHError.timedOut) == .timedOut)
+
+        #expect(HeelerSSHTransport.mapConnectForTesting(SSHError.cancelled) == .cancelled)
+        #expect(HeelerSSHTransport.mapOperationForTesting(SSHError.cancelled) == .cancelled)
+    }
+
+    @Test func pathSpecificMappersStillDivergeWhereIntended() {
+        // Connect treats a dead connection as unreachable; operations treat it
+        // as a reusable-connection loss with its own copy.
+        #expect(
+            HeelerSSHTransport.mapConnectForTesting(SSHError.connectionInvalidated)
+                == .sshUnreachable(detail: String(describing: SSHError.connectionInvalidated)))
+        #expect(
+            HeelerSSHTransport.mapOperationForTesting(SSHError.connectionInvalidated)
+                == .sshUnreachable(detail: "The SSH connection is no longer reusable."))
+
+        // Generic channel failure is the same classification on both paths.
+        #expect(
+            HeelerSSHTransport.mapConnectForTesting(SSHError.channelFailed)
+                == .channelFailed(detail: String(describing: SSHError.channelFailed)))
+        #expect(
+            HeelerSSHTransport.mapOperationForTesting(SSHError.channelFailed)
+                == .channelFailed(detail: String(describing: SSHError.channelFailed)))
     }
 }

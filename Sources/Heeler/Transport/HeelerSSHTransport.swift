@@ -339,24 +339,26 @@ actor HeelerSSHTransport: Transport {
         }
     }
 
+    /// Test and fixture entry that already holds an authenticated connection.
+    /// Command defaults come from `SSHTransportSettings` statics so they cannot
+    /// drift from the production `init(connection:settings:)` path (#133).
     init(
         connection: SSHConnection,
         socketPath: String,
-        requestTimeout: Duration = .seconds(15)
+        requestTimeout: Duration = SSHTransportSettings.defaultRequestTimeout
     ) {
         self.connection = connection
         socketLocation = .absolutePath(socketPath)
         self.requestTimeout = requestTimeout
-        wakeCommand = "herdr remote-client-bridge"
+        wakeCommand = SSHTransportSettings.defaultWakeCommand
         sessionListCommand = SSHTransportSettings.defaultSessionListCommand
         agentDiscoveryCommand = SSHTransportSettings.defaultAgentDiscoveryCommand
-        attachCommand = "herdr agent attach"
-        homeCommand = "printf '__HEELER_HOME__=%s\\n' \"$HOME\""
+        attachCommand = SSHTransportSettings.defaultAttachCommand
+        homeCommand = SSHTransportSettings.defaultHomeCommand
         stageDirectoryCommand = SSHTransportSettings.defaultStageDirectoryCommand
-        pluginListCommand = "herdr plugin list --json"
+        pluginListCommand = SSHTransportSettings.defaultPluginListCommand
         notificationConfigDirCommand =
-            "/bin/sh -c 'printf \"__HEELER_PLUGIN_CONFIG_DIR__=%s\\n\" "
-            + "\"$(herdr plugin config-dir \(SSHTransportSettings.notificationPluginID))\"'"
+            SSHTransportSettings.defaultNotificationConfigDirCommand
         channelAdmission = SSHChannelAdmission()
     }
 
@@ -435,16 +437,20 @@ actor HeelerSSHTransport: Transport {
         guard let error = error as? SSHError else {
             return .sshUnreachable(detail: String(describing: error))
         }
+        // Shared cases resolve here before any connect-only arm, so a later
+        // generic `.channelFailed` list cannot reclassify them (#133).
+        if let shared = sharedClassification(for: error) {
+            return shared
+        }
         switch error {
-        case .authenticationFailed, .timedOut, .cancelled, .forwardingDenied:
-            // Owned by `sharedClassification` so `map` cannot disagree (#133).
-            return sharedClassification(for: error)
-                ?? .channelFailed(detail: String(describing: error))
         case .targetUnreachable, .connectionFailed, .invalidEndpoint,
             .algorithmNegotiationFailed, .connectionInvalidated:
             return .sshUnreachable(detail: String(describing: error))
         case .channelFailed, .streamLocalOpenFailed, .unexpectedEOF,
             .responseTooLarge, .sftpUnavailable, .sftpFailure:
+            return .channelFailed(detail: String(describing: error))
+        case .authenticationFailed, .timedOut, .cancelled, .forwardingDenied:
+            // Exhaustiveness only: `sharedClassification` is total over these.
             return .channelFailed(detail: String(describing: error))
         }
     }
@@ -1498,11 +1504,12 @@ actor HeelerSSHTransport: Transport {
         guard let error = error as? SSHError else {
             return .channelFailed(detail: String(describing: error))
         }
+        // Shared cases resolve here before any operation-only arm, so a later
+        // generic `.channelFailed` list cannot reclassify them (#133).
+        if let shared = sharedClassification(for: error) {
+            return shared
+        }
         switch error {
-        case .authenticationFailed, .timedOut, .cancelled, .forwardingDenied:
-            // Owned by `sharedClassification` so `mapConnect` cannot disagree (#133).
-            return sharedClassification(for: error)
-                ?? .channelFailed(detail: String(describing: error))
         case .unexpectedEOF:
             return .malformedResponse("stream-local channel closed before a response line")
         case .responseTooLarge(let limit):
@@ -1520,14 +1527,16 @@ actor HeelerSSHTransport: Transport {
             .channelFailed, .streamLocalOpenFailed,
             .targetUnreachable, .sftpUnavailable, .sftpFailure:
             return .channelFailed(detail: String(describing: error))
+        case .authenticationFailed, .timedOut, .cancelled, .forwardingDenied:
+            // Exhaustiveness only: `sharedClassification` is total over these.
+            return .channelFailed(detail: String(describing: error))
         }
     }
 
-    /// User-visible classifications that both connect-time (`mapConnect`) and
-    /// post-connect (`map`) mappers must agree on for the same `SSHError`.
-    /// Path-specific cases stay in each mapper; this only owns the shared set
-    /// so one error cannot drift into two UI outcomes (#133).
-    static func sharedClassification(for error: SSHError) -> TransportError? {
+    /// Classifications that both connect-time (`mapConnect`) and post-connect
+    /// (`map`) apply first for the same `SSHError`. Path-specific arms never
+    /// see these cases while this returns non-nil (#133).
+    private static func sharedClassification(for error: SSHError) -> TransportError? {
         switch error {
         case .authenticationFailed:
             return .authenticationFailed
@@ -1544,6 +1553,18 @@ actor HeelerSSHTransport: Transport {
             return nil
         }
     }
+
+    #if DEBUG
+    /// Test surface for the real connect-time mapper; not a second taxonomy.
+    static func mapConnectForTesting(_ error: any Error) -> TransportError {
+        mapConnect(error)
+    }
+
+    /// Test surface for the real post-connect mapper; not a second taxonomy.
+    static func mapOperationForTesting(_ error: any Error) -> TransportError {
+        map(error)
+    }
+    #endif
 
     private static let homeOutputPrefix = "__HEELER_HOME__="
     private static let stageDirectoryOutputPrefix = "__HEELER_STAGE_DIR__="

@@ -7,8 +7,10 @@ import Synchronization
 /// Session categories leave headroom under sshd's default `MaxSessions` of 10
 /// (ADR 0011). That server-side limit is the real binding constraint for exec,
 /// PTY, and SFTP channels, and the app cannot observe it: an abandoned channel
-/// teardown can spend a session slot without releasing the admission lease
-/// (#148). App-side counters therefore cannot promise MaxSessions safety.
+/// teardown still releases the app admission lease unconditionally, while the
+/// server session slot can remain occupied (#148). App counters and
+/// `isConnected` may therefore still look available after the server has
+/// already spent the slot; they cannot promise MaxSessions safety.
 actor SSHChannelAdmission {
     enum ChannelClass: Sendable {
         case ordinaryForwarding

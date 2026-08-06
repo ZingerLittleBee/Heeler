@@ -267,9 +267,9 @@ private struct DirectStreamLocalTestEnvironment: Decodable, Sendable {
         return try? JSONDecoder().decode(DirectStreamLocalTestEnvironment.self, from: data)
     }()
 
-    /// Reaches a fixture through the full `connect(settings:)` path, which —
-    /// unlike `HeelerSSHTransport(connection:socketPath:)`, which hardcodes the
-    /// wake command — lets a test choose how the cold-start wake behaves.
+    /// Reaches a fixture through the full `connect(settings:)` path, which
+    /// accepts an injectable wake command so a test can choose how the
+    /// cold-start wake behaves.
     func settings(
         endpoint: SSHEndpoint,
         wakeCommand: String

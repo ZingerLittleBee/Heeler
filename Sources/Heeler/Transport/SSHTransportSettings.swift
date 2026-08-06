@@ -7,11 +7,31 @@ struct SSHTransportSettings: Sendable {
         "/bin/sh -c 'umask 077; "
         + "directory=$(mktemp -d \"${TMPDIR:-/tmp}/heeler.XXXXXXXX\") || exit 1; "
         + "printf \"__HEELER_STAGE_DIR__=%s\\n\" \"$directory\"'"
+    static let defaultWakeCommand = "herdr remote-client-bridge"
+    static let defaultAttachCommand = "herdr agent attach"
+    static let defaultHomeCommand = "printf '__HEELER_HOME__=%s\\n' \"$HOME\""
+    static let defaultPluginListCommand = "herdr plugin list --json"
     static let agentAvailabilityMarker = "__HEELER_AGENT_KIND__="
 
     /// The Heeler plugin (ADR 0007/0008) whose config dir holds the
     /// Notification Registration file.
     static let notificationPluginID = "heeler.pairing"
+
+    static let defaultNotificationConfigDirCommand =
+        "/bin/sh -c 'printf \"__HEELER_PLUGIN_CONFIG_DIR__=%s\\n\" "
+        + "\"$(herdr plugin config-dir \(notificationPluginID))\"'"
+
+    /// The default of ``requestTimeout``, named so budgets derived from it
+    /// cannot drift out of step with it.
+    static let defaultRequestTimeout: Duration = .seconds(15)
+
+    static var defaultAgentDiscoveryCommand: String {
+        let checks = SupportedAgentKind.allCases.map { kind in
+            "command -v \(kind.executable) >/dev/null 2>&1"
+                + " && printf \"\(agentAvailabilityMarker)%s\\n\" \"\(kind.rawValue)\""
+        }
+        return "/bin/sh -c '\(checks.joined(separator: "; ")); exit 0'"
+    }
 
     var host: String
     var port: Int
@@ -33,7 +53,7 @@ struct SSHTransportSettings: Sendable {
     /// exits on stdin EOF. Injectable so tests can substitute a script at
     /// the environment boundary; per-Host override also covers hosts where
     /// herdr is not on the login shell's PATH.
-    var wakeCommand: String = "herdr remote-client-bridge"
+    var wakeCommand: String = Self.defaultWakeCommand
     /// Official Host-local CLI command for discovering default and named
     /// sessions. It does not depend on a running API socket.
     var sessionListCommand: String = Self.defaultSessionListCommand
@@ -47,10 +67,10 @@ struct SSHTransportSettings: Sendable {
     /// takeover flag are appended. Injectable so tests can substitute a script
     /// at the environment boundary; per-Host override also covers hosts where
     /// herdr is not on PATH.
-    var attachCommand: String = "herdr agent attach"
+    var attachCommand: String = Self.defaultAttachCommand
     /// Command used to print a marker-delimited remote home directory. It is
     /// injectable only at the environment boundary for real-SSH tests.
-    var homeCommand: String = "printf '__HEELER_HOME__=%s\\n' \"$HOME\""
+    var homeCommand: String = Self.defaultHomeCommand
     /// Creates one private directory beneath the Host operating system's
     /// selected temporary root. The marker makes login-shell noise harmless;
     /// callers never interpolate image names or paths into this command.
@@ -60,14 +80,12 @@ struct SSHTransportSettings: Sendable {
     /// Heeler plugin being installed and enabled before touching its
     /// config dir — `herdr plugin config-dir` happily prints (and creates) a
     /// directory for any id, so it cannot carry the "is it installed" check.
-    var pluginListCommand: String = "herdr plugin list --json"
+    var pluginListCommand: String = Self.defaultPluginListCommand
     /// Prints the marker-delimited config dir of the Heeler plugin;
     /// herdr creates the directory if missing. Runs under POSIX sh because
     /// login shells do not share substitution syntax; the marker makes
     /// login-shell noise harmless.
-    var notificationConfigDirCommand: String =
-        "/bin/sh -c 'printf \"__HEELER_PLUGIN_CONFIG_DIR__=%s\\n\" "
-        + "\"$(herdr plugin config-dir \(SSHTransportSettings.notificationPluginID))\"'"
+    var notificationConfigDirCommand: String = Self.defaultNotificationConfigDirCommand
     /// Per-request deadline covering the queue wait and the channel exchange;
     /// on expiry the request fails with `.timedOut` and its channel is
     /// closed. Short in tests, generous by default: a hung host should
@@ -76,18 +94,6 @@ struct SSHTransportSettings: Sendable {
     /// It also bounds each individual PTY write and window-change on a live
     /// attach channel (`HeelerSSHTransport.runAttachChannel`).
     var requestTimeout: Duration = Self.defaultRequestTimeout
-
-    /// The default of ``requestTimeout``, named so budgets derived from it
-    /// cannot drift out of step with it.
-    static let defaultRequestTimeout: Duration = .seconds(15)
-
-    static var defaultAgentDiscoveryCommand: String {
-        let checks = SupportedAgentKind.allCases.map { kind in
-            "command -v \(kind.executable) >/dev/null 2>&1"
-                + " && printf \"\(agentAvailabilityMarker)%s\\n\" \"\(kind.rawValue)\""
-        }
-        return "/bin/sh -c '\(checks.joined(separator: "; ")); exit 0'"
-    }
 }
 
 /// The Jump Host in front of a Host: its own coordinates and credentials. Its
