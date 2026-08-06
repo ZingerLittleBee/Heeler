@@ -1232,6 +1232,7 @@ struct TerminalAttachTests {
             socketPath: "/tmp/fake.sock")
         #expect(
             command == "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
+                + "printf \"\(AttachBootstrapHandshake.markerPrintfFormat)\"; "
                 + "exec /bin/sh /tmp/fake-attach.sh \"$1\"' attach "
                 + "'w1:p1' '/tmp/fake.sock'")
     }
@@ -1248,6 +1249,7 @@ struct TerminalAttachTests {
 
         #expect(
             command == "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
+                + "printf \"\(AttachBootstrapHandshake.markerPrintfFormat)\"; "
                 + "exec herdr agent attach \"$1\" --takeover' attach "
                 + "'w1:p1' '/home/u/.config/herdr/sessions/dev/herdr.sock'")
         // An exec request, not a line typed into a shell: no trailing newline.
@@ -1275,6 +1277,106 @@ struct TerminalAttachTests {
                 request: TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24),
                 socketPath: "/tmp/it's-a.sock")
         }
+    }
+
+    /// The attach exec path must emit the handshake marker immediately before
+    /// `herdr agent attach`. Without it, the pure gate tests below can pass
+    /// while production still dumps shell noise into the terminal (#166).
+    /// Output-side wiring is the same type: every attach read is fed through
+    /// `HeelerSSHTransport.admitAttachChannelOutput`, asserted here so a
+    /// decorative gate cannot satisfy the suite alone.
+    @Test func attachExecCommandWiresTheBootstrapHandshakeMarker() throws {
+        let command = try HeelerSSHTransport.attachExecCommand(
+            attachCommand: "herdr agent attach",
+            request: TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24),
+            socketPath: "/tmp/fake.sock")
+        let markerPrintf = "printf \"\(AttachBootstrapHandshake.markerPrintfFormat)\";"
+        #expect(command.contains(markerPrintf))
+        // Marker is the last thing before exec of attach, not after it.
+        let printfRange = try #require(command.range(of: markerPrintf))
+        let execRange = try #require(command.range(of: "exec herdr agent attach"))
+        #expect(printfRange.upperBound <= execRange.lowerBound)
+
+        // Output path: the production admit helper is the gate, not a
+        // passthrough. A bare yield of channel bytes would fail this.
+        var gate = AttachBootstrapGate()
+        let noise = Data("Last login: noise\r\n".utf8)
+        #expect(
+            HeelerSSHTransport.admitAttachChannelOutput(noise, through: &gate)
+                .isEmpty)
+        let afterMarker = AttachBootstrapHandshake.marker + Data("TUI".utf8)
+        #expect(
+            HeelerSSHTransport.admitAttachChannelOutput(afterMarker, through: &gate)
+                == Data("TUI".utf8))
+        let residual = Data("command not found\r\n".utf8)
+        var unopened = AttachBootstrapGate()
+        #expect(
+            HeelerSSHTransport.admitAttachChannelOutput(residual, through: &unopened)
+                .isEmpty)
+        #expect(
+            HeelerSSHTransport.flushAttachChannelOutput(through: &unopened)
+                == residual)
+    }
+
+    @Test func gateWithholdsTheLoginShellNoiseUntilTheHandshake() {
+        var gate = AttachBootstrapGate()
+        // What a remote shell may still emit before attach runs: MOTD-style
+        // banner, a prompt fragment, and an echo that carries the literal
+        // text of the escape sequence — never the ESC bytes themselves, so
+        // the echo cannot open the gate.
+        let noise = Data(
+            ("Last login: Sun Aug  2 13:28:08 2026\r\n"
+                + "\u{1B}[32muser@host\u{1B}[0m ~ % "
+                + #"exec /bin/sh -c 'printf "\033_heeler-attach\033\134"; exec herdr'"#
+                + "\r\n").utf8)
+        #expect(gate.admit(noise).isEmpty)
+        #expect(!gate.isOpen)
+
+        let opened = gate.admit(AttachBootstrapHandshake.marker + Data("\u{1B}[2JTUI".utf8))
+        #expect(gate.isOpen)
+        #expect(opened == Data("\u{1B}[2JTUI".utf8))
+        // Open for good: no rescanning, no second handshake.
+        #expect(gate.admit(Data("more".utf8)) == Data("more".utf8))
+        #expect(gate.flush().isEmpty)
+    }
+
+    @Test func gateMatchesAHandshakeSplitAcrossChunks() {
+        var gate = AttachBootstrapGate()
+        let marker = AttachBootstrapHandshake.marker
+        for index in 1..<marker.count {
+            var split = AttachBootstrapGate()
+            #expect(split.admit(Data(marker.prefix(index))).isEmpty)
+            #expect(split.admit(Data(marker.suffix(from: index)) + Data("go".utf8))
+                == Data("go".utf8))
+        }
+        // And byte by byte, the worst case a slow link can produce.
+        for byte in marker {
+            #expect(gate.admit(Data([byte])).isEmpty)
+        }
+        #expect(gate.isOpen)
+    }
+
+    @Test func gateHandsBackTheNoiseWhenTheHandshakeNeverCame() {
+        // herdr missing from the Host's PATH: the shell's complaint is the
+        // only diagnosis the user will ever get, so it must survive.
+        var gate = AttachBootstrapGate()
+        let failure = Data("sh: herdr: command not found\r\n".utf8)
+        #expect(gate.admit(failure).isEmpty)
+        #expect(gate.flush() == failure)
+        #expect(gate.flush().isEmpty)
+    }
+
+    @Test func gateBoundsTheWithheldNoiseWithoutLosingTheHandshake() {
+        var gate = AttachBootstrapGate()
+        let flood = Data(repeating: UInt8(ascii: "x"), count: 64 * 1024)
+        #expect(gate.admit(flood).isEmpty)
+        // A copy, so the bound can be read without spending the gate.
+        var counted = gate
+        #expect(counted.flush().count <= AttachBootstrapGate.maximumWithheldBytes)
+        // Trimming must not eat a marker that straddles the boundary.
+        let marker = AttachBootstrapHandshake.marker
+        #expect(gate.admit(Data(marker.prefix(3))).isEmpty)
+        #expect(gate.admit(Data(marker.suffix(from: 3)) + Data("tui".utf8)) == Data("tui".utf8))
     }
 
     @Test func sessionDropsEmptyKeystrokeWrites() async {

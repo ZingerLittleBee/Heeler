@@ -22,6 +22,13 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- Attach again withholds remote shell startup noise until herdr's TUI is
+  ready. The attach exec prints a short handshake marker immediately before
+  `herdr agent attach`, and the client drops everything before it — so MOTD,
+  lastlog, and other non-interactive shell chatter no longer flash on the
+  terminal for the length of attach startup. A channel that dies before the
+  handshake still hands the withheld text back as the diagnosis. (#166)
+
 - A Host whose SSH server has stream-local forwarding turned off now says so
   even when herdr isn't on the SSH session's `PATH`. Heeler tries to start
   herdr once before giving up; when that attempt itself failed, the checks

@@ -1882,9 +1882,11 @@ actor HeelerSSHTransport: Transport {
 
     /// Builds the remote exec request used after the PTY has been accepted.
     /// `HERDR_SOCKET_PATH` is set by the command itself, not an SSH environment
-    /// request that the Host may reject. The SSH server invokes its command
-    /// processor for every exec request, but no interactive login shell is
-    /// started or exposed to the terminal stream.
+    /// request that the Host may reject. OpenSSH still runs the request through
+    /// the account shell as `shell -c …`, so non-interactive startup noise can
+    /// still reach the PTY; the handshake marker is printed immediately before
+    /// `exec` of attach so the bootstrap gate can drop everything earlier.
+    /// See `AttachBootstrapHandshake`.
     static func attachExecCommand(
         attachCommand: String,
         request: TerminalAttachRequest,
@@ -1909,9 +1911,30 @@ actor HeelerSSHTransport: Transport {
                 detail: "The remote socket path cannot be quoted safely.")
         }
         let takeover = request.takeover ? " --takeover" : ""
+        // The marker goes out last thing before the exec, so everything the
+        // remote shell said on its own way here can be dropped.
         return "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
+            + "printf \"\(AttachBootstrapHandshake.markerPrintfFormat)\"; "
             + "exec \(attachCommand) \"$1\"\(takeover)' attach "
             + "'\(request.target)' \(quotedSocketPath)"
+    }
+
+    /// Production attach-channel output filter. `runAttachChannel` yields the
+    /// result of every read through this helper so shell noise never reaches
+    /// the terminal; tests assert against it so a pure gate cannot pass alone.
+    static func admitAttachChannelOutput(
+        _ bytes: Data,
+        through gate: inout AttachBootstrapGate
+    ) -> Data {
+        gate.admit(bytes)
+    }
+
+    /// Hands back withheld noise when the attach channel ends before the
+    /// handshake. Empty once the gate is open.
+    static func flushAttachChannelOutput(
+        through gate: inout AttachBootstrapGate
+    ) -> Data {
+        gate.flush()
     }
 
     private func runAttachChannel(
@@ -1948,6 +1971,13 @@ actor HeelerSSHTransport: Transport {
                         }
                     }
                     group.addTask {
+                        // Remote shell startup noise stays off the terminal
+                        // until the attach exec prints the bootstrap marker.
+                        var gate = AttachBootstrapGate()
+                        func yieldAdmitted(_ bytes: Data) {
+                            guard !bytes.isEmpty else { return }
+                            output.yield(bytes)
+                        }
                         do {
                             while !Task.isCancelled {
                                 let bytes: Data?
@@ -1962,19 +1992,30 @@ actor HeelerSSHTransport: Transport {
                                     let status = try await channel.exitStatus(
                                         timeout: self.requestTimeout)
                                     guard status == 0 else {
+                                        // Ended before the handshake: the
+                                        // withheld noise is the diagnosis.
+                                        yieldAdmitted(
+                                            Self.flushAttachChannelOutput(through: &gate))
                                         throw HeelerSSHAttachPumpError.output(
                                             "remote exit status \(status)")
                                     }
+                                    yieldAdmitted(
+                                        Self.flushAttachChannelOutput(through: &gate))
                                     return true
                                 }
-                                if !bytes.isEmpty { output.yield(bytes) }
+                                yieldAdmitted(
+                                    Self.admitAttachChannelOutput(bytes, through: &gate))
                             }
                             throw CancellationError()
                         } catch is CancellationError {
+                            // The user left. Nothing withheld is worth
+                            // painting on the way out.
                             throw CancellationError()
                         } catch let error as HeelerSSHAttachPumpError {
                             throw error
                         } catch {
+                            yieldAdmitted(
+                                Self.flushAttachChannelOutput(through: &gate))
                             throw HeelerSSHAttachPumpError.output(String(describing: error))
                         }
                     }
