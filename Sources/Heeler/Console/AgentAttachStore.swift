@@ -373,16 +373,24 @@ final class AgentAttachStore {
     func rejoin() {
         guard hasLeft, isOnStage() else { return }
         hasLeft = false
+        // A rejoin is the latest terminal transition even when it is queued
+        // behind an in-flight recovery and the teardown leave enqueued after
+        // it. Take presentation ownership synchronously so the recovery task
+        // cannot expose its intermediate pipeline before this one lands.
+        let recoveryOwner = UUID()
+        terminalRecoveryOwner = recoveryOwner
         enqueueLifecycleTransition { [weak self] in
-            guard let self, !self.hasLeft, self.terminal.status == .stopped else { return }
+            guard let self else { return }
+            guard !self.hasLeft, self.terminal.status == .stopped else {
+                self.finishTerminalRecovery(ownedBy: recoveryOwner)
+                return
+            }
             self.terminal = Self.makeTerminal(
                 target: self.target,
                 input: self.input,
                 runTerminal: self.runTerminal,
                 linkIndex: self.linkIndex)
-            #if DEBUG
-            self.terminalSurfaceAttached = false
-            #endif
+            self.finishTerminalRecovery(ownedBy: recoveryOwner, didReplaceTerminal: true)
         }
     }
 

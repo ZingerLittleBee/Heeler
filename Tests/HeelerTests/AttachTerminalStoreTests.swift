@@ -1128,6 +1128,60 @@ struct AgentAttachStoreTests {
         await store.leave().value
     }
 
+    /// SwiftUI may pair the foreground recovery with a synchronous
+    /// disappear/appear transaction. The returning screen still owns the
+    /// recovery presentation while the predecessor PTY is ending; exposing
+    /// that predecessor's `.live` status here produces a silent black screen.
+    @Test func leaveAndRejoinDuringRecoveryStaysConnectingUntilTheLatestPipelineLands()
+        async throws
+    {
+        let transport = ScriptedTransport()
+        let endGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachEnd(on: endGate)
+        let store = makeStore(transport: transport, generation: 0)
+        let predecessorID = store.terminalID
+
+        try await goLive(store, transport)
+
+        store.didBecomeActive(afterPossibleSuspension: true)
+        try await waitUntil("recovery should reach the predecessor PTY teardown") {
+            await endGate.entryCount == 1
+        }
+        #expect(store.terminalID == predecessorID)
+        #expect(store.terminalStatus == .connecting)
+
+        // Stack several newer Transport generations behind the suspended
+        // recovery. None of their stale cleanup paths may take presentation
+        // ownership from the later rejoin.
+        store.transportGenerationDidChange(1)
+        store.transportGenerationDidChange(2)
+        store.transportGenerationDidChange(3)
+
+        let leaveTask = store.leave()
+        store.rejoin()
+
+        #expect(store.terminalID == predecessorID)
+        #expect(
+            store.terminalStatus == .connecting,
+            "the returning screen must retain recovery while its predecessor is still ending")
+        #expect(await transport.attachRequests.count == 1)
+
+        await endGate.open()
+        await leaveTask.value
+        try await waitUntil("the rejoined pipeline should supersede the recovery pipeline") {
+            store.terminalID != predecessorID && store.terminalStatus == .waitingForSize
+        }
+        #expect(
+            store.terminalStatus == .waitingForSize,
+            "completed recovery must not retain a stale Connecting overlay")
+
+        try await goLive(store, transport, cols: 100, rows: 30)
+        #expect(await transport.attachRequests.count == 2)
+        #expect(store.terminalStatus == .live)
+
+        await store.leave().value
+    }
+
     @Test func transportReplacementPreservesImageAttachState() async throws {
         // A reconnect replaces the terminal pipeline but must not touch the
         // image interaction: its stager resolves the live Transport per
