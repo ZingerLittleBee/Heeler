@@ -35,6 +35,7 @@ struct ConsoleView: View {
     /// later — an extra reflow, and a Connecting dialog that visibly jumps
     /// from the middle of the screen to the middle of the terminal.
     @State private var keyboardInset = TerminalKeyboardInset()
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         // A split view instead of a plain stack for the iPad's sake: regular
@@ -191,14 +192,32 @@ struct ConsoleView: View {
                 // wrong.
                 let presentation = MissingAgentPresentation(
                     agentID: id, console: console, hosts: hosts)
-                ContentUnavailableView(
-                    presentation.title, systemImage: presentation.systemImage,
-                    description: Text(presentation.message))
+                missingAgentSurface(presentation)
             }
         } else {
             ContentUnavailableView(
                 "No Agent Selected", systemImage: "rectangle.on.rectangle",
                 description: Text("Choose an Agent to open its terminal."))
+        }
+    }
+
+    @ViewBuilder
+    private func missingAgentSurface(_ presentation: MissingAgentPresentation) -> some View {
+        if presentation.cause == .hostSyncing {
+            let theme = terminal.themes.selection(for: colorScheme)
+            ZStack {
+                theme.surfaceBackground(for: colorScheme)
+                    .ignoresSafeArea()
+                TerminalStatusDialog(
+                    glyph: .progress,
+                    title: presentation.title,
+                    palette: theme.palette(for: colorScheme),
+                    dimsBackground: false)
+            }
+        } else {
+            ContentUnavailableView(
+                presentation.title, systemImage: presentation.systemImage,
+                description: Text(presentation.message))
         }
     }
 
@@ -373,8 +392,8 @@ struct ConsoleView: View {
 }
 
 /// What the detail column shows when the selected Agent is no longer in the
-/// Console list. Three different situations empty that list and they need
-/// three different answers (#146, #154).
+/// Console list. Four different situations empty that list and they need
+/// four different answers (#141, #146, #154).
 ///
 /// They are easy to conflate because every non-`.connected` status runs
 /// `invalidateSnapshot()`, clearing `agentsByPane` — so a Host that failed,
@@ -402,6 +421,10 @@ struct MissingAgentPresentation: Equatable {
         /// Nobody needs to act, so this says so instead of borrowing either
         /// of the others (#154).
         case hostReconnecting
+        /// The Host transport is connected, but its first replacement
+        /// snapshot has not landed yet, so the selected pane is not known to
+        /// be present or gone.
+        case hostSyncing
         /// The Host is fine and this one pane is gone.
         case paneGone
     }
@@ -424,7 +447,8 @@ struct MissingAgentPresentation: Equatable {
     init(
         agentID: ConsoleAgent.ID,
         hostStatuses: [Host.ID: EventsSessionStatus],
-        hosts: [Host]
+        hosts: [Host],
+        hostsAwaitingSnapshot: Set<Host.ID> = []
     ) {
         let hostName = hosts.first { $0.id == agentID.hostID }?.displayName
         // Named like the Console list's own entries, so the same Host reads
@@ -432,7 +456,20 @@ struct MissingAgentPresentation: Equatable {
         func named(_ text: String) -> String {
             hostName.map { "\($0): \(text)" } ?? text
         }
-        switch hostStatuses[agentID.hostID] {
+        let hostStatus = hostStatuses[agentID.hostID]
+        if hostsAwaitingSnapshot.contains(agentID.hostID) {
+            switch hostStatus {
+            case .failed, .reconnecting, .ended:
+                break
+            case .connected, .suspended, nil:
+                cause = .hostSyncing
+                title = "Connecting…"
+                systemImage = "hourglass"
+                message = named("Loading the latest Agents.")
+                return
+            }
+        }
+        switch hostStatus {
         case .failed(let failure):
             cause = .hostFailed
             title = "Host Unavailable"
@@ -494,7 +531,8 @@ struct MissingAgentPresentation: Equatable {
         self.init(
             agentID: agentID,
             hostStatuses: console.hostStatuses,
-            hosts: hosts.hosts)
+            hosts: hosts.hosts,
+            hostsAwaitingSnapshot: console.hostsAwaitingSnapshot)
     }
 }
 

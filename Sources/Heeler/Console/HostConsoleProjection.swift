@@ -15,6 +15,10 @@ final class HostConsoleProjection {
     private(set) var latency: Duration?
     private(set) var syncError: String?
     private(set) var transportGeneration: UInt64 = 0
+    /// Whether the Host's current connection generation has produced a
+    /// snapshot. `.connected` arrives before that request completes, so an
+    /// empty projection in this window means "unknown", not "no Agents".
+    private(set) var isAwaitingSnapshot = true
 
     private let snapshotRetryDelay: Duration
     private let onChange: @MainActor @Sendable () -> Void
@@ -326,6 +330,7 @@ final class HostConsoleProjection {
 
     private func invalidateSnapshot() {
         snapshotEpoch &+= 1
+        isAwaitingSnapshot = true
         resyncPending = false
         resyncRetryTask?.cancel()
         resyncRetryTask = nil
@@ -362,6 +367,7 @@ final class HostConsoleProjection {
             nextAgents[paneID] = row
         }
         latestStatusChanges.removeAll(keepingCapacity: true)
+        isAwaitingSnapshot = false
         agentsByPane = nextAgents
         workspaces = snapshot.workspaces
             .map { ConsoleWorkspace(id: $0.workspaceID, label: $0.label) }

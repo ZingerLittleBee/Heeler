@@ -12,6 +12,10 @@ final class ConsoleStore {
     private(set) var hostLatencies: [Host.ID: Duration] = [:]
     private(set) var hostSyncErrors: [Host.ID: String] = [:]
     private(set) var hostConnectionGenerations: [Host.ID: UInt64] = [:]
+    /// Hosts whose current connection has not produced its first snapshot.
+    /// Their empty Agent projection is loading state, not proof that a pane
+    /// disappeared.
+    private(set) var hostsAwaitingSnapshot: Set<Host.ID> = []
     /// Latest snapshot workspaces by Host. This is observable state rather
     /// than a projection lookup so an open New Agent picker refreshes when a
     /// snapshot arrives or a workspace membership event resyncs the Host.
@@ -319,6 +323,8 @@ final class ConsoleStore {
             uniqueKeysWithValues: current.map {
                 ($0.host.id, $0.transportGeneration)
             })
+        hostsAwaitingSnapshot = Set(
+            current.lazy.filter(\.isAwaitingSnapshot).map(\.host.id))
         let nextWorkspacesByHost = Dictionary(
             uniqueKeysWithValues: current.map {
                 ($0.host.id, $0.workspaces)

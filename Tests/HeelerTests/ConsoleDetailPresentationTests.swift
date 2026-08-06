@@ -6,7 +6,7 @@ import Testing
 /// What the session screen's detail column says when the selected Agent is no
 /// longer in the Console list (#146, #154).
 ///
-/// Three situations empty that list and the screen has to tell them apart.
+/// Four situations empty that list and the screen has to tell them apart.
 /// Every non-`.connected` status runs `invalidateSnapshot()`, so a Host that
 /// failed and a Host that is reconnecting each clear `agentsByPane` exactly as
 /// a closed pane does — and the placeholder then blamed the Agent for the
@@ -16,7 +16,7 @@ import Testing
 /// text is Connection Guidance in `CONTEXT.md`; what this suite pins is what
 /// reaches this screen.
 ///
-/// So the tests cover all three causes and the fields that carry them —
+/// So the tests cover all four causes and the fields that carry them —
 /// message, title and icon — plus which Host the screen reads them from, and
 /// that the column reads the live stores rather than a snapshot (#152).
 ///
@@ -139,6 +139,23 @@ struct ConsoleDetailPresentationTests {
         #expect(!presentation.message.contains("herdr"))
     }
 
+    /// A resumed Host publishes `.connected` before its replacement snapshot
+    /// lands. During that bounded window the selected pane is unknown, not
+    /// gone, so the detail must retain a loading presentation instead of
+    /// flashing the terminal failure placeholder (#141).
+    @Test func aConnectedHostAwaitingItsSnapshotShowsLoading() {
+        let host = Host.fixture()
+        let presentation = MissingAgentPresentation(
+            agentID: ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1"),
+            hostStatuses: [host.id: .connected],
+            hosts: [host],
+            hostsAwaitingSnapshot: [host.id])
+
+        #expect(presentation.cause == .hostSyncing)
+        #expect(presentation.title == "Connecting…")
+        #expect(!presentation.message.contains("no longer reported"))
+    }
+
     /// The selection's own Host decides. Reading any-failed-Host, or the first
     /// entry in the map, would put one Host's outage on another Host's screen.
     @Test func onlyTheSelectedAgentsOwnHostDecidesWhatTheScreenSays() {
@@ -254,11 +271,11 @@ struct ConsoleDetailPresentationTests {
         }
     }
 
-    /// The three causes stay three, on every field the screen renders. A
+    /// The four causes stay distinct on every field the screen renders. A
     /// shared message is the defect restated; a shared title or icon is the
     /// same collapse arriving through the part of the screen a user reads
     /// first.
-    @Test func theThreeCausesNeverCollapseIntoOneAnswer() {
+    @Test func theFourCausesNeverCollapseIntoOneAnswer() {
         let host = Host.fixture()
         let agentID = ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1")
         func presentation(_ status: EventsSessionStatus) -> MissingAgentPresentation {
@@ -269,12 +286,17 @@ struct ConsoleDetailPresentationTests {
             presentation(.failed(.streamLocalOpenFailed(path: "/s"))),
             presentation(.reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut)),
             presentation(.connected),
+            MissingAgentPresentation(
+                agentID: agentID,
+                hostStatuses: [host.id: .connected],
+                hosts: [host],
+                hostsAwaitingSnapshot: [host.id]),
         ]
 
-        #expect(Set(all.map(\.cause)).count == 3)
-        #expect(Set(all.map(\.title)).count == 3)
-        #expect(Set(all.map(\.message)).count == 3)
-        #expect(Set(all.map(\.systemImage)).count == 3)
+        #expect(Set(all.map(\.cause)).count == 4)
+        #expect(Set(all.map(\.title)).count == 4)
+        #expect(Set(all.map(\.message)).count == 4)
+        #expect(Set(all.map(\.systemImage)).count == 4)
     }
 
     /// A changed host key is a security refusal, not an ordinary outage, and
