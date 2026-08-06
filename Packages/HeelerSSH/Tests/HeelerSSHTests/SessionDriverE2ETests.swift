@@ -303,11 +303,18 @@ struct SessionDriverE2ETests {
 
         // Always wait for cleanup (with or without a PID handle) before closing
         // the observer. Prefer the body error if cleanup also fails.
+        // The current task may already be cancelled (timeout body); run remote
+        // cleanup in a fresh unstructured context so execute is not short-circuited.
         do {
-            try await RawTCPWriter.cleanup(
-                directory: directory,
-                processID: writer?.processID,
-                using: observer)
+            let cleanupDirectory = directory
+            let cleanupProcessID = writer?.processID
+            let cleanupObserver = observer
+            try await Task.detached {
+                try await RawTCPWriter.cleanup(
+                    directory: cleanupDirectory,
+                    processID: cleanupProcessID,
+                    using: cleanupObserver)
+            }.value
         } catch {
             if primaryError == nil {
                 primaryError = error
@@ -778,25 +785,26 @@ private struct RawTCPWriter {
         return count
     }
 
-    /// Kill only processes whose command line references this fixture's
-    /// `writer.py`, then remove and verify the directory is gone.
+    /// Kill only processes currently owned by this fixture's `writer.py`, then
+    /// remove and verify the directory is gone.
     ///
     /// `processID` may be nil when launch failed before a handle was parsed;
-    /// cleanup still finds owned processes via the known writer path.
+    /// cleanup finds owned processes via the known writer path. A PID is owned
+    /// only while its command is `/usr/bin/python3` with this exact path.
     static func cleanup(
         directory: String,
         processID: Int32?,
         using observer: SSHConnection
     ) async throws {
+        _ = processID
         let quotedDirectory = shellQuote(directory)
-        let knownPID = processID.map(String.init) ?? ""
-        // Single remote script: ownership-checked TERM/KILL, then directory
-        // removal with process and path verification. No silent PID reuse kill.
+        // Single remote script: recompute ownership before every TERM/KILL and
+        // during polls so a reused PID is never signaled. Final check is a
+        // fresh ownership scan plus path absence.
         let command = """
             set -eu
             directory=\(quotedDirectory)
             writer_py="$directory/writer.py"
-            known_pid='\(knownPID)'
 
             case "$directory" in
               /tmp/heeler-raw-tcp-*) ;;
@@ -806,90 +814,42 @@ private struct RawTCPWriter {
                 ;;
             esac
 
-            owned=""
-            append_owned() {
-              pid="$1"
-              case " $owned " in
-                *" $pid "*) ;;
-                *) owned="${owned:+$owned }$pid" ;;
-              esac
+            # Field 2 must be the interpreter; full line must contain exact path.
+            # (A plain `read -r pid cmd` under /bin/sh puts the whole line in pid.)
+            collect_owned() {
+              ps -A -o pid= -o command= 2>/dev/null \\
+                | awk -v needle="$writer_py" \\
+                  '$2 == "/usr/bin/python3" && index($0, needle) { print $1 }'
             }
 
-            command_for_pid() {
-              pid="$1"
-              cmd=$(ps -p "$pid" -o command= 2>/dev/null || true)
-              if [ -z "$cmd" ]; then
-                cmd=$(ps -p "$pid" -o args= 2>/dev/null || true)
-              fi
-              printf '%s' "$cmd"
-            }
-
-            is_owned() {
-              pid="$1"
-              kill -0 "$pid" 2>/dev/null || return 1
-              cmd=$(command_for_pid "$pid")
-              case "$cmd" in
-                *"$writer_py"*) return 0 ;;
-                *) return 1 ;;
-              esac
-            }
-
-            # PIDs whose command line references this fixture's writer.py.
-            collect_owned_from_ps() {
-              ps -A -o pid= -o command= 2>/dev/null | while IFS= read -r pid cmd; do
-                [ -n "${pid:-}" ] || continue
-                case "$cmd" in
-                  *"$writer_py"*) printf '%s ' "$pid" ;;
-                esac
-              done
-            }
-
-            if [ -n "$known_pid" ] && is_owned "$known_pid"; then
-              append_owned "$known_pid"
-            fi
-
-            for pid in $(collect_owned_from_ps); do
-              append_owned "$pid"
-            done
-
-            for pid in $owned; do
+            for pid in $(collect_owned); do
               kill -TERM "$pid" 2>/dev/null || true
             done
 
             attempts=0
-            while [ -n "$owned" ] && [ "$attempts" -lt 40 ]; do
-              remaining=""
-              for pid in $owned; do
-                if kill -0 "$pid" 2>/dev/null; then
-                  remaining="${remaining:+$remaining }$pid"
-                fi
-              done
-              owned=$remaining
+            while [ "$attempts" -lt 40 ]; do
+              owned=$(collect_owned)
               [ -z "$owned" ] && break
               attempts=$((attempts + 1))
               sleep 0.05
             done
 
-            for pid in $owned; do
+            for pid in $(collect_owned); do
               kill -KILL "$pid" 2>/dev/null || true
             done
 
             attempts=0
-            while [ -n "$owned" ] && [ "$attempts" -lt 20 ]; do
-              remaining=""
-              for pid in $owned; do
-                if kill -0 "$pid" 2>/dev/null; then
-                  remaining="${remaining:+$remaining }$pid"
-                fi
-              done
-              owned=$remaining
+            while [ "$attempts" -lt 20 ]; do
+              owned=$(collect_owned)
               [ -z "$owned" ] && break
               attempts=$((attempts + 1))
               sleep 0.05
             done
 
-            if [ -n "$owned" ]; then
-              printf 'writer process(es) still alive: %s\\n' "$owned" >&2
+            leftover=$(collect_owned)
+            if [ -n "$leftover" ]; then
+              printf 'writer process(es) still alive: %s\\n' \\
+                "$(printf '%s' "$leftover" | tr '\\n' ' ')" >&2
               exit 1
             fi
 
@@ -900,10 +860,10 @@ private struct RawTCPWriter {
               exit 1
             fi
 
-            leftover=$(collect_owned_from_ps)
-            leftover=$(printf '%s' "$leftover" | tr -s '[:space:]' ' ' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            leftover=$(collect_owned)
             if [ -n "$leftover" ]; then
-              printf 'writer process still present after cleanup: %s\\n' "$leftover" >&2
+              printf 'writer process still present after cleanup: %s\\n' \\
+                "$(printf '%s' "$leftover" | tr '\\n' ' ')" >&2
               exit 1
             fi
             """
