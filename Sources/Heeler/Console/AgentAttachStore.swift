@@ -28,6 +28,10 @@ final class AgentAttachStore {
     private let isOnStage: () -> Bool
 
     private(set) var terminal: AttachTerminalStore
+    /// Whether UIKit built and attached the current terminal surface. This is
+    /// a lifecycle observation only; Ghostty exposes no acknowledgement that
+    /// its render loop presented a frame.
+    private(set) var terminalSurfaceAttached = false
     let input: TerminalInputController
     let image: ImageAttachStore
     let close: ClosePaneStore
@@ -121,6 +125,11 @@ final class AgentAttachStore {
         terminal.viewDidResize(cols: cols, rows: rows)
     }
 
+    func terminalSurfaceDidAttach(_ surfaceID: TerminalSurfaceID) {
+        guard !hasLeft, surfaceID == terminalID else { return }
+        terminalSurfaceAttached = true
+    }
+
     func viewportTextDidChange(_ text: String) {
         guard !hasLeft else { return }
         linkIndex.receiveViewportText(text)
@@ -209,39 +218,13 @@ final class AgentAttachStore {
         image.insertPath()
     }
 
-    /// The app returned to the foreground, `afterLongAbsence` reporting
-    /// whether it was gone at least the grace period.
-    ///
-    /// A short bounce leaves the terminal alone and merely asks the remote to
-    /// repaint. A long one replaces the pipeline outright, and does so
-    /// unconditionally rather than on evidence that anything is wrong.
-    ///
-    /// The reason is that the failure is not observable from here. A terminal
-    /// that comes back from a real suspension can be blank because its
-    /// Ghostty surface was freed — in which case every byte written to it is
-    /// silently discarded — or because the surface survived and its renderer
-    /// never restarted, in which case the bytes are accepted, parsed, and
-    /// simply never drawn. Nothing the app can read tells the second case
-    /// apart from a healthy terminal: the sink is alive, the write succeeds,
-    /// and the viewport text updates. Detection that cannot see it would
-    /// leave the user on the same black screen this exists to end, which is
-    /// how the earlier delivery-based probe failed (#141).
-    ///
-    /// So the trigger is the absence itself, which is measurable, instead of
-    /// the damage, which is not. A rebuild is what the user already does by
-    /// hand — switching Agents and back — and it is the one repair known to
-    /// work in both cases, because the replacement carries a new surface id
-    /// and SwiftUI therefore builds a new terminal view with a new surface.
-    /// The cost is one new `herdr agent attach` on the existing connection,
-    /// paid only on returns from a genuine suspension.
-    func didBecomeActive(afterLongAbsence: Bool) {
+    /// A short foreground bounce keeps this Attach interaction intact and
+    /// asks its current PTY to repaint. Extended-absence replacement is owned
+    /// by `AgentDetailView`, the boundary that can recreate this entire store.
+    func didBecomeActive() {
         image.didBecomeActive()
         guard !hasLeft else { return }
-        guard afterLongAbsence else {
-            terminal.didBecomeActive()
-            return
-        }
-        replaceTerminal { [weak self] in self?.hasLeft == false }
+        terminal.didBecomeActive()
     }
 
     func didEnterBackground() {
@@ -281,6 +264,7 @@ final class AgentAttachStore {
                 input: self.input,
                 runTerminal: self.runTerminal,
                 linkIndex: self.linkIndex)
+            self.terminalSurfaceAttached = false
         }
     }
 
@@ -320,6 +304,7 @@ final class AgentAttachStore {
                 input: self.input,
                 runTerminal: self.runTerminal,
                 linkIndex: self.linkIndex)
+            self.terminalSurfaceAttached = false
         }
     }
 

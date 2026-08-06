@@ -17,33 +17,6 @@ struct TerminalAttachRequest: Sendable, Equatable {
     }
 }
 
-/// How long a foreground repaint request may go unanswered before the Attach
-/// screen calls the session unresponsive (#141).
-///
-/// The screen asks for the repaint by resizing the PTY, so its deadline has to
-/// be built out of the transport's own budget for that resize rather than
-/// guessed: a deadline shorter than the transport's would declare the remote
-/// dead while the transport still expects the very same write to land, and the
-/// transport's own failure is both later and more accurate.
-enum TerminalAttachRepaintBudget {
-    /// Getting one window-change onto the wire. `TerminalAttachInputQueue.pump`
-    /// hands each resize to `channel.resize(timeout:)` with the transport's
-    /// per-request timeout, so this is the longest the transport itself will
-    /// wait before calling that write failed.
-    static let windowChangeDelivery = SSHTransportSettings.defaultRequestTimeout
-
-    /// What the answer costs on top of delivery: one round trip on a link that
-    /// has just come out of suspension, the remote's SIGWINCH handling and full
-    /// ratatui repaint, and up to a second of the attach reader's own poll
-    /// interval (`channel.read(timeout: .seconds(1))`) before the first byte is
-    /// yielded. Deliberately loose — being early costs a live session, being
-    /// late costs a few seconds of a screen that was already blank.
-    static let remoteAnswer: Duration = .seconds(5)
-
-    /// The deadline the Attach screen arms when it asks for a repaint.
-    static let deadline = windowChangeDelivery + remoteAnswer
-}
-
 /// Input riding down a live Attach session. Keystrokes and resizes are
 /// reliable, while touch scrolling is bounded and may be coalesced.
 enum TerminalAttachInput: Sendable, Equatable {

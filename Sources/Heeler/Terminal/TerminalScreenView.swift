@@ -38,6 +38,9 @@ final class TerminalKeyboardControl {
 /// session, while its write and resize callbacks flow back to Attach.
 struct TerminalScreenView: UIViewRepresentable {
     let feed: TerminalByteFeed
+    /// Reports creation and feed attachment of the concrete UIKit surface.
+    /// It does not claim that Ghostty presented a frame.
+    var onSurfaceAttached: (() -> Void)?
     var onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)?
     var onViewportTextChanged: ((String) -> Void)?
     var onSend: ((Data) -> Void)?
@@ -85,6 +88,7 @@ struct TerminalScreenView: UIViewRepresentable {
         // The feed holds this weakly and reports every write that misses it,
         // so a surface SwiftUI replaces cannot swallow output unnoticed (#141).
         feed.attach(view)
+        onSurfaceAttached?()
         return view
     }
 

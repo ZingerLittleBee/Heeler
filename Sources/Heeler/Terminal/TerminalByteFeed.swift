@@ -3,10 +3,9 @@ import Foundation
 /// The surface a `TerminalByteFeed` writes into.
 ///
 /// Held weakly by the feed on purpose: SwiftUI remakes the representable view
-/// whenever it likes, and the feed is the only place that can tell "the user
-/// saw these bytes" from "these bytes went into a view that no longer exists"
-/// (#141). A closure sink cannot answer that question — `[weak view]` swallows
-/// the difference — so the sink is an object the feed can check.
+/// whenever it likes. An object sink lets the feed distinguish a live receiver
+/// from a released one; it does not reveal whether the receiver drew or
+/// presented the bytes (#141).
 @MainActor
 protocol TerminalByteSink: AnyObject {
     func receive(_ data: Data)
@@ -18,17 +17,14 @@ protocol TerminalByteSink: AnyObject {
 final class TerminalByteFeed {
     /// What became of a chunk handed to ``write(_:)``.
     ///
-    /// Only `.delivered` means the bytes are on a surface the user is looking
-    /// at. The other two are both "the screen did not change", by different
-    /// routes, and callers that need proof of a visible repaint must treat
-    /// them as such — see `AttachTerminalStore.consume`.
+    /// None of these cases acknowledges drawing. `.delivered` means only that
+    /// a non-empty chunk was synchronously handed to a live sink object.
     enum Delivery: Equatable {
-        /// Written into a live surface.
+        /// Handed to a live sink object; presentation remains unobserved.
         case delivered
-        /// No surface has attached yet; held for the first one that does.
+        /// No sink has attached yet; held for the first one that does.
         case buffered
-        /// A surface attached and has since gone away. The bytes are lost and
-        /// nothing on screen changed.
+        /// A sink attached and has since gone away. The bytes are lost.
         case dropped
     }
 

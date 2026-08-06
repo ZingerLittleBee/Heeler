@@ -74,8 +74,7 @@ struct SSHTransportSettings: Sendable {
     /// degrade gracefully, a slow one should still answer.
     ///
     /// It also bounds each individual PTY write and window-change on a live
-    /// attach channel (`HeelerSSHTransport.runAttachChannel`), which is what
-    /// `TerminalAttachRepaintBudget` is measured against.
+    /// attach channel (`HeelerSSHTransport.runAttachChannel`).
     var requestTimeout: Duration = Self.defaultRequestTimeout
 
     /// The default of ``requestTimeout``, named so budgets derived from it

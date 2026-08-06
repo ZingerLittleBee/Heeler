@@ -43,7 +43,10 @@ struct AgentSurfaceReplacementTests {
 
         let feed = TerminalByteFeed()
         let controller = UIHostingController(rootView: Harness(feed: feed, surface: 1))
-        let window = try await makeTestWindow(
+        // This seam needs a UIKit hierarchy, not a connected app scene. A
+        // scene is absent in some headless test-host launches, which made the
+        // otherwise deterministic loop fail before it reached AgentDetailView.
+        let window = Self.makeLocalTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)
         defer { window.isHidden = true }
@@ -118,7 +121,7 @@ struct AgentSurfaceReplacementTests {
         let make = Self.detailViewFactory()
         let controller = UIHostingController(
             rootView: Harness(agent: agents[0], make: make))
-        let window = try await makeTestWindow(
+        let window = Self.makeLocalTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)
         defer { window.isHidden = true }
@@ -152,6 +155,95 @@ struct AgentSurfaceReplacementTests {
             "\(repeats) of \(surfaces.count - 1) switches reused the previous surface")
     }
 
+    /// The call-site seam for #141. The operator's known recovery is an Agent
+    /// switch, which replaces the whole `AgentDetailView` and its
+    /// `AgentAttachStore`; swapping only the terminal surface is a smaller
+    /// lifecycle and is not equivalent evidence.
+    @Test func aLongAbsenceRecreatesTheCompleteAttachInteraction() async throws {
+        var now = ContinuousClock.now
+        let activity = AppActivityCoordinator(
+            gracePeriod: .seconds(20),
+            granter: SurfaceTestBackgroundGranter(),
+            now: { now })
+        let transport = ScriptedTransport()
+        var stores: [AgentAttachStore] = []
+        let makeAttachStore: @MainActor () -> AgentAttachStore = {
+            let store = Self.makeAttachStore(transport: transport)
+            stores.append(store)
+            return store
+        }
+        let agent = Self.makeAgent(pane: "w1:p1")
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                agent: agent,
+                activity: activity,
+                attachStoreFactory: makeAttachStore))
+        let window = Self.makeLocalTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        controller.view.layoutIfNeeded()
+
+        try #require(await Self.eventually {
+            await transport.attachRequests.count == 1
+        }, "the first PTY Attach should open")
+        #expect(await transport.emitAttachOutput(Data("opening".utf8)))
+        try #require(await Self.eventually {
+            stores.first?.terminalStatus == .live
+        }, "the first Attach should become live")
+        let firstSurface = try #require(Self.terminals(in: controller.view).first)
+
+        activity.didEnterBackground()
+        now = now.advanced(by: .seconds(5))
+        activity.didBecomeActive()
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(stores.count == 1, "a short bounce must keep the current Attach owner")
+        #expect(
+            await transport.attachRequests.count == 1,
+            "a short bounce must not open another PTY Attach")
+        #expect(
+            stores[0].terminalStatus == .live,
+            "a short bounce must not show Connecting")
+        #expect(
+            Self.terminals(in: controller.view).first === firstSurface,
+            "a short bounce must keep the terminal surface")
+
+        activity.didEnterBackground()
+        now = now.advanced(by: .seconds(180))
+        activity.didBecomeActive()
+
+        let didRecreateOwner = try await Self.eventually {
+            stores.count == 2
+        }
+        let didExecuteAnotherAttach = try await Self.eventually {
+            controller.view.setNeedsLayout()
+            controller.view.layoutIfNeeded()
+            return await transport.attachRequests.count == 2
+        }
+        for store in stores {
+            await store.leave().value
+        }
+        window.isHidden = true
+        window.rootViewController = nil
+        await Task.yield()
+
+        #expect(didRecreateOwner, "a long absence should build a new Attach owner")
+        #expect(didExecuteAnotherAttach, "the replacement should execute a new Attach")
+    }
+
+    @Test func recoveryDiagnosticNamesEveryLayerWithoutInventingPresentationProof() {
+        let diagnostic = AttachRecoveryDiagnostic(absence: .seconds(180), sshGeneration: 7)
+
+        #expect(
+            diagnostic.lines(attachStatus: .connecting, terminalSurfaceAttached: true) == [
+                "Away: 180 s",
+                "SSH connection: generation 7 observed; liveness unobserved",
+                "Attach session/channel: new PTY Attach opening; first output unobserved",
+                "Terminal surface: new surface attached",
+                "Render loop: unobserved (no presentation acknowledgement)",
+            ])
+    }
+
     // MARK: Fixtures
 
     static func terminals(in root: UIView) -> [HeelerTerminalView] {
@@ -162,6 +254,20 @@ struct AgentSurfaceReplacementTests {
         }
         walk(root)
         return found
+    }
+
+    /// A SwiftUI/UIKit hierarchy is sufficient for these replacement tests.
+    /// Requiring `UIApplication.connectedScenes` made the test precondition
+    /// depend on how the headless runner launched its host, before any product
+    /// code ran.
+    static func makeLocalTestWindow(
+        frame: CGRect,
+        rootViewController: UIViewController
+    ) -> UIWindow {
+        let window = UIWindow(frame: frame)
+        window.rootViewController = rootViewController
+        window.makeKeyAndVisible()
+        return window
     }
 
     static func makeAgent(pane: String, host: UUID = UUID()) -> ConsoleAgent {
@@ -219,4 +325,82 @@ struct AgentSurfaceReplacementTests {
                 onClosed: {})
         }
     }
+
+    private static func makeDetailView(
+        agent: ConsoleAgent,
+        activity: AppActivityCoordinator,
+        attachStoreFactory: @escaping @MainActor () -> AgentAttachStore
+    ) -> AgentDetailView {
+        let defaults = UserDefaults(suiteName: "attach-recovery-\(UUID())") ?? .standard
+        let console = ConsoleStore(snapshotRetryDelay: .seconds(30)) { _, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: { throw TransportError.sshUnreachable(detail: "fixture") },
+                reconnectPolicy: .default,
+                keepalive: .default)
+        }
+        let terminal = TerminalSettings(
+            themes: TerminalThemeSettings(defaults: defaults),
+            zoom: TerminalZoomSettings(defaults: defaults),
+            fonts: TerminalFontSettings(defaults: defaults),
+            snippets: SnippetStore(defaults: defaults))
+        return AgentDetailView(
+            agent: agent,
+            console: console,
+            terminal: terminal,
+            hosts: [],
+            activity: activity,
+            keyboardHandoff: TerminalKeyboardHandoff(),
+            keyboardInset: TerminalKeyboardInset(),
+            isOnStage: { true },
+            onSwitch: { _ in },
+            onClosed: {},
+            attachStoreFactory: attachStoreFactory)
+    }
+
+    private static func makeAttachStore(transport: ScriptedTransport) -> AgentAttachStore {
+        AgentAttachStore(
+            target: "w1:p1",
+            paneTitle: "pane",
+            transportGeneration: 1,
+            isOnStage: { true },
+            runTerminal: { request, handler in
+                let session = try await transport.attachTerminal(request)
+                do {
+                    try await handler.run(session)
+                    await session.end()
+                } catch {
+                    await session.end()
+                    throw error
+                }
+            },
+            stageImage: { _, _ in throw TransportError.cancelled },
+            closePane: {})
+    }
+
+    private static func eventually(
+        timeout: Duration = .seconds(5),
+        condition: () async -> Bool
+    ) async throws -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if await condition() { return true }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        return await condition()
+    }
+}
+
+@MainActor
+private final class SurfaceTestBackgroundGranter: BackgroundExecutionGranting {
+    private var nextRawValue = 1
+
+    func begin(
+        onExpiration _: @escaping @MainActor @Sendable () -> Void
+    ) -> BackgroundExecutionToken? {
+        defer { nextRawValue += 1 }
+        return BackgroundExecutionToken(rawValue: nextRawValue)
+    }
+
+    func end(_: BackgroundExecutionToken) {}
 }

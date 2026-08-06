@@ -10,7 +10,7 @@ struct AppActivityCoordinatorTests {
     /// because iOS freezes the process for exactly the absences that matter:
     /// the grace timer never fires, no `.suspended` is published, and the app
     /// comes back believing it never left (#141). Only a clock survives that.
-    @Test func anAbsencePastTheGracePeriodIsReportedOnTheReturn() async throws {
+    @Test func anAbsenceDurationIsReportedOnTheReturn() async throws {
         var clock = ContinuousClock.now
         let coordinator = AppActivityCoordinator(
             gracePeriod: .seconds(20),
@@ -24,7 +24,7 @@ struct AppActivityCoordinatorTests {
         coordinator.didBecomeActive()
 
         #expect(coordinator.phase == .active)
-        #expect(coordinator.lastAbsenceOutlastedGrace)
+        #expect(coordinator.lastAbsenceDuration == .seconds(180))
     }
 
     /// Deliberately configured away from `defaultGracePeriod`, and with an
@@ -32,7 +32,7 @@ struct AppActivityCoordinatorTests {
     /// of this coordinator's own 60s. A comparison written against the static
     /// default instead of the injected value passes every other test in this
     /// suite and fails only here.
-    @Test func aBounceInsideTheGracePeriodIsNotAFullAbsence() async throws {
+    @Test func anAbsenceIsNotClassifiedByTheConnectionGracePeriod() async throws {
         var clock = ContinuousClock.now
         let coordinator = AppActivityCoordinator(
             gracePeriod: .seconds(60),
@@ -44,13 +44,12 @@ struct AppActivityCoordinatorTests {
         clock = clock.advanced(by: .seconds(30))
         coordinator.didBecomeActive()
 
-        #expect(!coordinator.lastAbsenceOutlastedGrace)
+        #expect(coordinator.lastAbsenceDuration == .seconds(30))
     }
 
-    /// The boundary itself, pinned from both sides so the comparison cannot
-    /// be loosened to `>` or widened to a different constant without a
-    /// failure. A grace period the app never actually left is not an absence.
-    @Test func theGracePeriodBoundaryIsInclusiveAndNotWider() async throws {
+    /// Two consecutive edges report their own durations rather than retaining
+    /// or classifying the previous one.
+    @Test func eachReturnReportsItsOwnAbsence() async throws {
         var clock = ContinuousClock.now
         let coordinator = AppActivityCoordinator(
             gracePeriod: .seconds(20),
@@ -60,16 +59,12 @@ struct AppActivityCoordinatorTests {
         coordinator.didEnterBackground()
         clock = clock.advanced(by: .seconds(20))
         coordinator.didBecomeActive()
-        #expect(
-            coordinator.lastAbsenceOutlastedGrace,
-            "an absence exactly the grace period long has outlasted it")
+        #expect(coordinator.lastAbsenceDuration == .seconds(20))
 
         coordinator.didEnterBackground()
         clock = clock.advanced(by: .milliseconds(19_999))
         coordinator.didBecomeActive()
-        #expect(
-            !coordinator.lastAbsenceOutlastedGrace,
-            "a millisecond short of the grace period has not")
+        #expect(coordinator.lastAbsenceDuration == .milliseconds(19_999))
     }
 
     /// A foreground return with no backgrounding behind it — the app becoming
@@ -81,7 +76,7 @@ struct AppActivityCoordinatorTests {
 
         coordinator.didBecomeActive()
 
-        #expect(!coordinator.lastAbsenceOutlastedGrace)
+        #expect(coordinator.lastAbsenceDuration == nil)
     }
 
     @Test func backgroundingStaysActiveForTheGracePeriod() async throws {

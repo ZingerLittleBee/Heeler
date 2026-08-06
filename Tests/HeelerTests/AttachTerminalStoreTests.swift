@@ -11,13 +11,10 @@ import Testing
 struct AttachTerminalStoreTests {
     private func makeStore(
         transport: ScriptedTransport?, target: String = "w1:p1", takeover: Bool = false,
-        livenessProbeTimeout: Duration = AttachTerminalStore.defaultLivenessProbeTimeout,
-        input: TerminalInputController = TerminalInputController(),
-        attachesSurface: Bool = true
+        input: TerminalInputController = TerminalInputController()
     ) -> (AttachTerminalStore, captured: Captured) {
         let store = AttachTerminalStore(
-            target: target, takeover: takeover,
-            livenessProbeTimeout: livenessProbeTimeout, input: input
+            target: target, takeover: takeover, input: input
         ) { request, handler in
             guard let transport else {
                 throw TransportError.sshUnreachable(detail: "The Host is not connected.")
@@ -32,9 +29,7 @@ struct AttachTerminalStoreTests {
             }
         }
         let captured = Captured()
-        if attachesSurface {
-            store.feed.attach(captured)
-        }
+        store.feed.attach(captured)
         return (store, captured)
     }
 
@@ -153,145 +148,6 @@ struct AttachTerminalStoreTests {
             ]
         }
         await store.stop()
-    }
-
-    @Test func aSessionThatNeverAnswersTheRepaintStopsBeingBlank() async throws {
-        // The #141 report: the app comes back, the terminal is blank, and
-        // `.live` draws no overlay — so a dead channel is indistinguishable
-        // from a quiet agent and the screen says nothing, forever. Silence
-        // past the deadline has to become a visible ending with a way back.
-        let transport = ScriptedTransport()
-        let (store, _) = makeStore(
-            transport: transport, livenessProbeTimeout: .milliseconds(200))
-
-        try await goLive(store, transport)
-        store.didBecomeActive()
-
-        try await waitUntil("an unanswered repaint must not leave the screen blank") {
-            if case .ended = store.status { return true }
-            return false
-        }
-        guard case .ended(let message) = store.status else {
-            Issue.record("the session should have ended visibly")
-            return
-        }
-        #expect(message == AttachTerminalStore.unresponsiveMessage)
-        await store.stop()
-    }
-
-    @Test func aRepaintAfterReturningKeepsTheSessionLive() async throws {
-        // The other half: a healthy session that answers must be left alone.
-        // A probe that ends quiet-but-live sessions would be worse than the
-        // bug it replaces.
-        let transport = ScriptedTransport()
-        let (store, captured) = makeStore(
-            transport: transport, livenessProbeTimeout: .milliseconds(200))
-
-        try await goLive(store, transport)
-        store.didBecomeActive()
-        #expect(await transport.emitAttachOutput(Data("\u{1B}[2Jrepainted".utf8)))
-
-        try await waitUntil("the repaint should reach the terminal") {
-            captured.text.hasSuffix("repainted")
-        }
-        try await Task.sleep(for: .milliseconds(400))
-        #expect(store.status == .live)
-
-        await store.stop()
-    }
-
-    @Test func aRepaintDroppedAboveTheTransportStopsBeingBlank() async throws {
-        // W2. The remote is alive and answers the window-change with a full
-        // frame — and the frame is written into a surface SwiftUI already
-        // threw away, so the user's screen is byte-identical to the blank one
-        // they came back to. An arriving byte is therefore not proof of
-        // anything on its own: only a byte that reached a live surface is.
-        let transport = ScriptedTransport()
-        let (store, _) = makeStore(
-            transport: transport, livenessProbeTimeout: .milliseconds(200),
-            attachesSurface: false)
-        var surface: Captured? = Captured()
-        if let surface { store.feed.attach(surface) }
-
-        try await goLive(store, transport)
-        #expect(surface?.chunks.isEmpty == false)
-        // The surface goes away under a live session; the sink stays behind.
-        surface = nil
-
-        store.didBecomeActive()
-        try await waitUntil("the return should nudge the remote PTY") {
-            await transport.attachInputs.contains(.resize(cols: 79, rows: 24))
-        }
-        #expect(await transport.emitAttachOutput(Data("\u{1B}[2Jrepainted".utf8)))
-
-        try await waitUntil("a repaint nobody can see must not leave the session live") {
-            if case .ended = store.status { return true }
-            return false
-        }
-        guard case .ended(let message) = store.status else {
-            Issue.record("the session should have ended visibly")
-            return
-        }
-        #expect(message == AttachTerminalStore.unresponsiveMessage)
-        await store.stop()
-    }
-
-    @Test func aRepaintWithNoSurfaceToLandOnStopsBeingBlank() async throws {
-        // The other half of W2 (#143's shape): the session is live and the
-        // remote answers, but no surface ever attached to this feed, so every
-        // byte is held in the buffer and the screen shows none of them.
-        // Held-for-later is not "the user saw it" either.
-        let transport = ScriptedTransport()
-        let (store, _) = makeStore(
-            transport: transport, livenessProbeTimeout: .milliseconds(200),
-            attachesSurface: false)
-
-        try await goLive(store, transport)
-        store.didBecomeActive()
-        try await waitUntil("the return should nudge the remote PTY") {
-            await transport.attachInputs.contains(.resize(cols: 79, rows: 24))
-        }
-        #expect(await transport.emitAttachOutput(Data("\u{1B}[2Jrepainted".utf8)))
-
-        try await waitUntil("a repaint with nowhere to land must not leave the session live") {
-            if case .ended = store.status { return true }
-            return false
-        }
-        await store.stop()
-    }
-
-    @Test func theRepaintDeadlineOutlastsTheTransportsOwnWriteBudget() {
-        // The probe's deadline has to cover the window-change the transport is
-        // still trying to write: `TerminalAttachInputQueue.pump` hands each
-        // resize to `channel.resize(timeout: requestTimeout)`. A shorter
-        // deadline calls the remote unresponsive while the transport still
-        // expects that very write to land — and the transport's own failure is
-        // both later and more accurate.
-        let settings = SSHTransportSettings(
-            host: "example.invalid",
-            port: 22,
-            username: "u",
-            credentials: .password("p"),
-            hostKeyPolicy: HostKeyPolicy(knownHosts: InMemoryKnownHostsStore()) { _ in false },
-            socket: .defaultSession)
-
-        #expect(AttachTerminalStore.defaultLivenessProbeTimeout > settings.requestTimeout)
-    }
-
-    @Test func theRepaintDeadlineStaysInsideWhatAUserWillStareAtABlankScreenFor() {
-        // The ceiling to the test above's floor. Every other test here injects
-        // a millisecond-scale probe timeout, so without this the production
-        // default is unpinned from above: raising
-        // `TerminalAttachRepaintBudget.remoteAnswer` to an hour keeps the whole
-        // suite green while restoring the exact defect #141 fixed — a screen
-        // black for an hour is, to the user holding the phone, black forever.
-        //
-        // 30s is the loosest bound that is still a bound. The derivation is
-        // 15s delivery + 5s answer = 20s, so this leaves half again as much
-        // headroom for `requestTimeout` or `remoteAnswer` to grow on evidence
-        // without the test fighting the change, while rejecting any value in
-        // the minutes-and-up range where the deadline stops being a deadline.
-        #expect(AttachTerminalStore.defaultLivenessProbeTimeout <= .seconds(30))
     }
 
     @Test func keystrokesForwardToTheSession() async throws {
@@ -1878,7 +1734,7 @@ struct AgentAttachStoreForegroundTests {
         #expect(await transport.emitAttachOutput(Data("\u{1B}[2J".utf8)))
         try await waitUntil("terminal should go live") { store.terminalStatus == .live }
 
-        store.didBecomeActive(afterLongAbsence: false)
+        store.didBecomeActive()
 
         try await waitUntil("the return should reach the terminal's remote") {
             await transport.attachInputs == [
@@ -1889,71 +1745,10 @@ struct AgentAttachStoreForegroundTests {
         await store.leave().value
     }
 
-    /// The #141 repair. A terminal that comes back from a real suspension can
-    /// be blank for two reasons that the app cannot tell apart from a healthy
-    /// one — a freed Ghostty surface silently discarding every byte, or a
-    /// surviving surface whose renderer never restarted — so the pipeline is
-    /// replaced on the absence rather than on evidence of damage.
-    ///
-    /// The replacement is what the user does by hand today by switching
-    /// Agents and back: a new surface id, so SwiftUI builds a new terminal
-    /// view, and a new `herdr agent attach` behind it.
-    @Test func aLongAbsenceRebuildsTheTerminalOntoAFreshSurface() async throws {
-        let transport = ScriptedTransport()
-        let store = makeStore(transport: transport)
-
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("attach should open") { await transport.hasLiveAttachSession }
-        #expect(await transport.emitAttachOutput(Data("\u{1B}[2J".utf8)))
-        try await waitUntil("terminal should go live") { store.terminalStatus == .live }
-        let surfaceBefore = store.terminalID
-        #expect(await transport.attachRequests.count == 1)
-
-        store.didBecomeActive(afterLongAbsence: true)
-
-        try await waitUntil("the blank surface must be replaced, not nudged") {
-            store.terminalID != surfaceBefore
-        }
-        // The new pipeline is a real one: it reopens the attach rather than
-        // leaving the screen on a store with nothing behind it.
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the replacement should reopen the attach") {
-            await transport.attachRequests.count == 2
-        }
-        await store.leave().value
-    }
-
-    /// The other half: a glance at a notification must not cost a reattach.
-    /// Without this the repair would restart the remote agent's TUI every
-    /// time the user looked at the lock screen.
-    @Test func aShortBounceKeepsTheTerminalItAlreadyHas() async throws {
-        let transport = ScriptedTransport()
-        let store = makeStore(transport: transport)
-
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("attach should open") { await transport.hasLiveAttachSession }
-        #expect(await transport.emitAttachOutput(Data("\u{1B}[2J".utf8)))
-        try await waitUntil("terminal should go live") { store.terminalStatus == .live }
-        let surfaceBefore = store.terminalID
-
-        store.didBecomeActive(afterLongAbsence: false)
-
-        try await waitUntil("the short bounce should still nudge the remote") {
-            await transport.attachInputs == [
-                .resize(cols: 79, rows: 24),
-                .resize(cols: 80, rows: 24),
-            ]
-        }
-        #expect(
-            store.terminalID == surfaceBefore,
-            "a bounce inside the grace period must not rebuild the terminal")
-        #expect(await transport.attachRequests.count == 1)
-        await store.leave().value
-    }
 }
 
-/// The Attach store's byte pipe. Its delivery report is the only thing that
-/// can tell a repaint the user saw from one that vanished on the way (#141).
+/// The Attach store's byte pipe. Its delivery report distinguishes whether a
+/// sink object exists; it does not acknowledge drawing or presentation.
 @MainActor
 @Suite("Terminal byte feed")
 struct TerminalByteFeedTests {

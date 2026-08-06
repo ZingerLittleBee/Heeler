@@ -67,19 +67,6 @@ final class AttachTerminalStore {
         case stopped
     }
 
-    /// How long a session that was asked to repaint gets to answer before it
-    /// is declared unresponsive.
-    ///
-    /// Not a number of its own: the repaint is requested by resizing the PTY,
-    /// so the deadline is the transport's budget for that write plus what the
-    /// answer costs on top of it. See ``TerminalAttachRepaintBudget``.
-    static let defaultLivenessProbeTimeout = TerminalAttachRepaintBudget.deadline
-
-    /// What the screen says when the remote never answered the repaint. The
-    /// Reattach button beside it is the guidance; the message only has to
-    /// stop the user from believing they are looking at a live terminal.
-    static let unresponsiveMessage = "The terminal stopped responding while the app was away."
-
     private(set) var status: Status = .waitingForSize
     /// The byte pipe the terminal view consumes.
     let feed = TerminalByteFeed()
@@ -90,7 +77,6 @@ final class AttachTerminalStore {
 
     private let target: String
     private let takeover: Bool
-    private let livenessProbeTimeout: Duration
     private let input: TerminalInputController
     private let observeOutput: @MainActor @Sendable (Data) -> Void
     private let finishOutput: @MainActor @Sendable () -> Void
@@ -104,15 +90,9 @@ final class AttachTerminalStore {
     private var session: TerminalAttachSession?
     private var inputGeneration: TerminalInputController.SessionGeneration?
     private var runTask: Task<Void, Never>?
-    private var probeTask: Task<Void, Never>?
-    private var probeGeneration: UInt64 = 0
-    /// Set by a probe that went unanswered, so the ending `run()` reports
-    /// what actually happened rather than the ordinary detach wording.
-    private var pendingEndMessage: String?
 
     init(
         target: String, takeover: Bool = false,
-        livenessProbeTimeout: Duration = AttachTerminalStore.defaultLivenessProbeTimeout,
         input: TerminalInputController = TerminalInputController(),
         observeOutput: @escaping @MainActor @Sendable (Data) -> Void = { _ in },
         finishOutput: @escaping @MainActor @Sendable () -> Void = {},
@@ -120,7 +100,6 @@ final class AttachTerminalStore {
     ) {
         self.target = target
         self.takeover = takeover
-        self.livenessProbeTimeout = livenessProbeTimeout
         self.input = input
         self.observeOutput = observeOutput
         self.finishOutput = finishOutput
@@ -152,26 +131,12 @@ final class AttachTerminalStore {
 
     /// The app returned to the foreground.
     ///
-    /// A session that was `.live` when the app went away comes back with no
-    /// way to tell a dead channel from a quiet agent. `herdr agent attach` is
-    /// ratatui: it repaints on change, never on a timer, so silence is its
-    /// normal steady state — and the transport's attach reader treats every
-    /// read timeout as idle, so silence never ends the output stream either.
-    /// `.live` draws no overlay, so the screen shows nothing, says nothing,
-    /// and offers nothing to reconnect (#141).
-    ///
-    /// Asking the remote PTY to repaint is the one liveness signal that does
-    /// not wait on the agent, and it doubles as the repair: a live TUI
-    /// answers a window-change with a full frame, which is exactly what a
-    /// surface that came back empty is missing. Silence past the deadline is
-    /// the answer instead, and it ends the session visibly.
-    ///
-    /// What counts as an answer is a frame that reached the screen, not one
-    /// that reached the store: a repaint dropped into a stale surface leaves
-    /// exactly the blank the probe exists to catch. See `consume`.
+    /// A short bounce asks the remote TUI to repaint without replacing the
+    /// current session. Extended absences are recovered at the owner boundary
+    /// instead, because this store cannot observe presentation and must not
+    /// treat a byte handed to a sink object as proof that a frame was drawn.
     func didBecomeActive() {
         guard status == .live, let session, let cols, let rows, cols > 1 else { return }
-        beginProbe()
         // A window-change only reaches the remote when the size actually
         // changes, so the nudge is a shrink followed by a restore. Both ride
         // the reliable input queue, in order, on the live channel; the
@@ -198,7 +163,6 @@ final class AttachTerminalStore {
     /// never depend on the channel becoming available.
     func stop() async {
         stopRequested = true
-        endProbe()
         if let session {
             await session.end()
         }
@@ -210,39 +174,8 @@ final class AttachTerminalStore {
     }
 
     private func start() {
-        endProbe()
-        pendingEndMessage = nil
         status = .connecting
         runTask = Task { await self.run() }
-    }
-
-    /// Arms the deadline the remote has to answer a repaint request within.
-    /// The generation makes a late timeout from a superseded probe harmless.
-    private func beginProbe() {
-        probeTask?.cancel()
-        probeGeneration &+= 1
-        let generation = probeGeneration
-        probeTask = Task { [weak self, livenessProbeTimeout] in
-            try? await Task.sleep(for: livenessProbeTimeout)
-            guard !Task.isCancelled else { return }
-            await self?.probeDeadlineDidPass(generation)
-        }
-    }
-
-    private func endProbe() {
-        probeTask?.cancel()
-        probeTask = nil
-        probeGeneration &+= 1
-    }
-
-    /// Nothing came back. The channel cannot be proven, so the session ends
-    /// where the user can see it instead of staying `.live` and blank. The
-    /// explicit close is what makes `run()` finish and report.
-    private func probeDeadlineDidPass(_ generation: UInt64) async {
-        guard generation == probeGeneration, status == .live, let session else { return }
-        probeTask = nil
-        pendingEndMessage = Self.unresponsiveMessage
-        await session.end()
     }
 
     /// One session lifetime: open at the current geometry, pump output until
@@ -268,7 +201,7 @@ final class AttachTerminalStore {
             return
         }
         guard !stopRequested else { return }
-        status = .ended(pendingEndMessage ?? "The session ended.")
+        status = .ended("The session ended.")
     }
 
     private func consume(
@@ -307,14 +240,7 @@ final class AttachTerminalStore {
                     status = .live
                 }
                 observeOutput(bytes)
-                // Only a byte the user can actually see answers a probe. A
-                // chunk written into a surface SwiftUI has replaced, or held
-                // for a surface that never attached, changes nothing on screen
-                // — and treating its arrival as an answer would turn the one
-                // detectable failure back into a silent blank screen (#141).
-                if feed.write(bytes) == .delivered, probeTask != nil {
-                    endProbe()
-                }
+                feed.write(bytes)
             }
         } catch {
             finishSession(inputGeneration)

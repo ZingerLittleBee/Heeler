@@ -2,6 +2,64 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
+/// Extended-absence recovery is intentionally separate from the connection's
+/// 20-second background grace. The reported device reproductions all required
+/// roughly three minutes or more; a 25-second observation did not establish a
+/// safe boundary. Two minutes is a conservative product trigger inside the
+/// measured repro window, not a claim about which layer failed (#141).
+enum AgentAttachRecoveryPolicy {
+    static let fullLifecycleAbsence: Duration = .seconds(120)
+
+    static func requiresFullLifecycle(after absence: Duration?) -> Bool {
+        guard let absence else { return false }
+        return absence >= fullLifecycleAbsence
+    }
+}
+
+#if DEBUG
+struct AttachRecoveryDiagnostic {
+    let absence: Duration
+    let sshGeneration: UInt64?
+
+    func lines(
+        attachStatus: AttachTerminalStore.Status,
+        terminalSurfaceAttached: Bool
+    ) -> [String] {
+        [
+            "Away: \(absence.components.seconds) s",
+            sshObservation,
+            "Attach session/channel: \(attachObservation(attachStatus))",
+            "Terminal surface: "
+                + (terminalSurfaceAttached
+                    ? "new surface attached" : "attachment not yet observed"),
+            "Render loop: unobserved (no presentation acknowledgement)",
+        ]
+    }
+
+    private var sshObservation: String {
+        guard let sshGeneration else {
+            return "SSH connection: generation unobserved; liveness unobserved"
+        }
+        return "SSH connection: generation \(sshGeneration) observed; liveness unobserved"
+    }
+
+    private func attachObservation(_ status: AttachTerminalStore.Status) -> String {
+        switch status {
+        case .waitingForSize:
+            "new PTY Attach waiting for terminal size"
+        case .connecting:
+            "new PTY Attach opening; first output unobserved"
+        case .live:
+            "new PTY Attach produced output"
+        case .ended(let message):
+            "new PTY Attach ended: \(message)"
+        case .stopped:
+            "new PTY Attach stopped"
+        }
+    }
+}
+#endif
+
 /// The Agent detail screen: one interactive Attach terminal. Ghostty owns
 /// rendering, scrollback, and IME; the adapter routes input-row taps and touch
 /// scrolling without adding separate terminal chrome.
@@ -28,6 +86,9 @@ struct AgentDetailView: View {
     /// dismiss — the owner clears the sidebar selection instead, which also
     /// pops the collapsed stack on iPhone.
     private let onClosed: () -> Void
+    /// Builds one complete Attach interaction. Kept as a factory because a
+    /// recovery may need the same lifecycle boundary as an Agent switch.
+    private let makeAttachStore: @MainActor () -> AgentAttachStore
     @State private var attach: AgentAttachStore
     /// Nil for agent kinds without a skills source catalog; the Keys
     /// keyboard hides the Skills tab in that case.
@@ -44,6 +105,9 @@ struct AgentDetailView: View {
     @State private var isRenamingWorkspace = false
     @State private var isShowingAttachLinks = false
     @State private var closeErrorMessage: String?
+    #if DEBUG
+    @State private var attachRecoveryDiagnostic: AttachRecoveryDiagnostic?
+    #endif
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.openURL) private var openURL
 
@@ -57,7 +121,8 @@ struct AgentDetailView: View {
         keyboardInset: TerminalKeyboardInset,
         isOnStage: @escaping () -> Bool,
         onSwitch: @escaping (ConsoleAgent.ID) -> Void,
-        onClosed: @escaping () -> Void
+        onClosed: @escaping () -> Void,
+        attachStoreFactory: (@MainActor () -> AgentAttachStore)? = nil
     ) {
         self.agent = agent
         self.console = console
@@ -68,8 +133,8 @@ struct AgentDetailView: View {
         self.keyboardInset = keyboardInset
         self.onSwitch = onSwitch
         self.onClosed = onClosed
-        _attach = State(
-            initialValue: AgentAttachStore(
+        let makeAttachStore = attachStoreFactory ?? {
+            AgentAttachStore(
                 target: agent.agent.paneID,
                 paneTitle: Self.displayTitle(for: agent),
                 transportGeneration: console.hostConnectionGenerations[agent.hostID],
@@ -78,7 +143,10 @@ struct AgentDetailView: View {
                 stageImage: console.imageStager(for: agent.hostID)
             ) {
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
-            })
+            }
+        }
+        self.makeAttachStore = makeAttachStore
+        _attach = State(initialValue: makeAttachStore())
         _skills = State(initialValue: Self.makeSkillsStore(for: agent, console: console))
     }
 
@@ -103,7 +171,12 @@ struct AgentDetailView: View {
     }
 
     private var terminalScreen: TerminalScreenView {
-        var screen = TerminalScreenView(feed: attach.terminalFeed)
+        let currentAttach = attach
+        let surfaceID = currentAttach.terminalID
+        var screen = TerminalScreenView(feed: currentAttach.terminalFeed)
+        screen.onSurfaceAttached = {
+            currentAttach.terminalSurfaceDidAttach(surfaceID)
+        }
         screen.onSizeChanged = { cols, rows in
             attach.viewDidResize(cols: cols, rows: rows)
         }
@@ -277,8 +350,7 @@ struct AgentDetailView: View {
         // attach channel is exactly the one an `onChange` on the phase cannot
         // see (#141).
         .onChange(of: activity.activationCount) { _, _ in
-            attach.didBecomeActive(
-                afterLongAbsence: activity.lastAbsenceOutlastedGrace)
+            handleActivation()
         }
         .onChange(of: console.hostConnectionGenerations[agent.hostID]) { _, generation in
             attach.transportGenerationDidChange(generation)
@@ -310,6 +382,9 @@ struct AgentDetailView: View {
         terminalScreen
             .id(attach.terminalID)
         .overlay { statusOverlay }
+        #if DEBUG
+        .overlay(alignment: .topLeading) { attachRecoveryDiagnosticOverlay }
+        #endif
         .safeAreaInset(edge: .bottom, spacing: 0) {
             imageAttachStatus
         }
@@ -343,6 +418,63 @@ struct AgentDetailView: View {
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
     }
+
+    private func handleActivation() {
+        let absence = activity.lastAbsenceDuration
+        guard AgentAttachRecoveryPolicy.requiresFullLifecycle(after: absence) else {
+            attach.didBecomeActive()
+            return
+        }
+
+        // Match the operator's proven recovery boundary: an Agent switch
+        // discards this complete owner, then builds a new terminal input
+        // pipeline whose first layout opens a fresh PTY channel and executes a
+        // new `herdr agent attach`. The old owner is marked departed before
+        // the new one is published, matching the ordering of a switch without
+        // claiming that asynchronous channel teardown has already completed.
+        let previous = attach
+        previous.leave()
+        attach = makeAttachStore()
+
+        #if DEBUG
+        if let absence {
+            attachRecoveryDiagnostic = AttachRecoveryDiagnostic(
+                absence: absence,
+                sshGeneration: console.hostConnectionGenerations[agent.hostID])
+        }
+        #endif
+    }
+
+    #if DEBUG
+    @ViewBuilder
+    private var attachRecoveryDiagnosticOverlay: some View {
+        if let diagnostic = attachRecoveryDiagnostic {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Attach recovery diagnostic")
+                    .fontWeight(.semibold)
+                ForEach(
+                    Array(
+                        diagnostic.lines(
+                            attachStatus: attach.terminalStatus,
+                            terminalSurfaceAttached: attach.terminalSurfaceAttached
+                        ).enumerated()),
+                    id: \.offset
+                ) { _, line in
+                    Text(line)
+                }
+            }
+            .font(.caption.monospaced())
+            .foregroundStyle(.white)
+            .padding(8)
+            .background(.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
+            .padding(8)
+            .allowsHitTesting(false)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("attach-recovery-diagnostic")
+        }
+    }
+
+    #endif
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {

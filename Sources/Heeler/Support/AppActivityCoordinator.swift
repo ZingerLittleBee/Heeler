@@ -110,18 +110,15 @@ final class AppActivityCoordinator {
     /// miss.
     private(set) var activationCount: UInt64 = 0
 
-    /// Whether the absence that ended in the most recent activation lasted at
-    /// least the grace period.
+    /// How long the app was away before the most recent activation, or nil
+    /// when no background edge preceded it.
     ///
-    /// Measured on a clock rather than inferred from `phase`, because the
-    /// process is frozen for exactly the absences that matter. When iOS
-    /// suspends us before the grace timer fires, no `.suspended` is ever
-    /// published and the app comes back believing it never left — yet the
-    /// wall clock says it was gone for minutes. This is the only signal that
-    /// survives that freeze, and it is what tells a glance at a notification
-    /// apart from an absence long enough to have cost the Attach terminal its
-    /// surface (#141).
-    private(set) var lastAbsenceOutlastedGrace = false
+    /// Measured rather than inferred from `phase`: iOS can freeze the process
+    /// before the grace timer runs, so an absence lasting minutes may still
+    /// return from `.active`. Consumers decide what duration matters to their
+    /// own recovery policy; the coordinator does not turn the 20-second
+    /// connection grace period into a claim about terminal suspension (#141).
+    private(set) var lastAbsenceDuration: Duration?
 
     /// Every transition, in order and exactly once each. Buffered rather than
     /// latest-value: a background→foreground round trip that completes before
@@ -158,9 +155,9 @@ final class AppActivityCoordinator {
         releaseBackgroundExecution()
         phase = .active
         // Reported before `activationCount`, which is what observers key off:
-        // the counter is the edge, and the flag must already be true when it
-        // is read.
-        lastAbsenceOutlastedGrace = leftForegroundAt.map { now() - $0 >= gracePeriod } ?? false
+        // the counter is the edge, and the duration must already be available
+        // when it is read.
+        lastAbsenceDuration = leftForegroundAt.map { now() - $0 }
         leftForegroundAt = nil
         activationCount &+= 1
         eventsContinuation.yield(.activated)
