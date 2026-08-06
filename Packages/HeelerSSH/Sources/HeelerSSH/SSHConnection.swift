@@ -228,6 +228,36 @@ public final class SSHConnection: Sendable {
     ) async {
         await driver.holdNextSessionWaitForTesting(hold)
     }
+
+    public func holdNextExecChannelAllocationForTesting(
+        _ hold: @escaping @Sendable () async -> Void
+    ) async {
+        await driver.holdNextExecChannelAllocationForTesting(hold)
+    }
+
+    public func holdNextExecCleanupForTesting(
+        _ hold: @escaping @Sendable () async -> Void
+    ) async {
+        await driver.holdNextExecCleanupForTesting(hold)
+    }
+
+    public func holdNextCompensationUnlinkWaitForTesting(
+        _ hold: @escaping @Sendable () async -> Void
+    ) async {
+        await driver.holdNextCompensationUnlinkWaitForTesting(hold)
+    }
+
+    public func holdNextCompensationStatWaitForTesting(
+        _ hold: @escaping @Sendable () async -> Void
+    ) async {
+        await driver.holdNextCompensationStatWaitForTesting(hold)
+    }
+
+    public func holdNextCompensationShutdownForTesting(
+        _ hold: @escaping @Sendable () async -> Void
+    ) async {
+        await driver.holdNextCompensationShutdownForTesting(hold)
+    }
 #endif
 
     public func close(timeout: Duration) async throws {

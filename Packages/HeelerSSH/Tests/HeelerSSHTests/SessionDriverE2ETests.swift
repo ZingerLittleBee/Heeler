@@ -445,19 +445,37 @@ struct SessionDriverE2ETests {
         try await proxy.reset()
     }
 
-    /// The four sites #149 actually owns are not the four `close*` sites above.
-    /// Each abandons in-progress native state that no later Heeler operation can
-    /// safely adopt: singular SFTP init/request state, or an allocated exec
-    /// channel whose only pointer is about to leave scope. A deadline at these
-    /// sites therefore remains connection-fatal even though #136 correctly
-    /// spares a deadline at an ordinary `close*` teardown.
-    @Test("issue 149 deadlines invalidate each operation with abandoned native state")
-    func issue149DeadlinesInvalidateAbandonedNativeState() async throws {
+    /// The allocation gate proves the exec catch owns a channel; the cleanup
+    /// gate proves the secondary two-second budget has started. Expiring those
+    /// budgets while the gates are held removes the timing guesses this test
+    /// previously used to infer both facts.
+    @Test("issue 149 exec cleanup expiry invalidates allocated channels")
+    func issue149ExecCleanupExpiryInvalidatesAllocatedChannels() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
 
-        for site in Issue149Site.allCases {
+        for site in Issue149ExecSite.allCases {
             let connection = try await environment.connect()
-            let error = await site.expire(on: connection)
+            let allocated = SessionWaitHold()
+            let cleanup = SessionWaitHold()
+            await connection.holdNextExecChannelAllocationForTesting {
+                await allocated.waitUntilReleased()
+            }
+            await connection.holdNextExecCleanupForTesting {
+                await cleanup.waitUntilReleased()
+            }
+
+            let operation = Task { await site.expire(on: connection) }
+            try await waitUntilTrue("\(site.rawValue) should allocate its channel") {
+                await allocated.hasEntered
+            }
+            try await Task.sleep(for: .milliseconds(150))
+            await allocated.release()
+            try await waitUntilTrue("\(site.rawValue) should enter catch cleanup") {
+                await cleanup.hasEntered
+            }
+            try await Task.sleep(for: .milliseconds(2_100))
+            await cleanup.release()
+            let error = await operation.value
 
             #expect(error == .timedOut, "\(site.rawValue) reported \(String(describing: error))")
             #expect(
@@ -469,6 +487,13 @@ struct SessionDriverE2ETests {
             try? await connection.close(timeout: .seconds(1))
         }
 
+        let expiredOpenConnection = try await environment.connect()
+        await #expect(throws: SSHError.timedOut) {
+            _ = try await expiredOpenConnection.openSFTP(timeout: .zero)
+        }
+        #expect(await expiredOpenConnection.isConnected == false)
+        try? await expiredOpenConnection.close(timeout: .seconds(1))
+
         let cancelledConnection = try await environment.connect()
         let cancelledOpen = Task {
             withUnsafeCurrentTask { task in task?.cancel() }
@@ -477,6 +502,106 @@ struct SessionDriverE2ETests {
         await #expect(throws: SSHError.cancelled) { _ = try await cancelledOpen.value }
         #expect(await cancelledConnection.isConnected == false)
         try? await cancelledConnection.close(timeout: .seconds(1))
+    }
+
+    /// libssh2 1.11.1 shutdown frees both the phase packet and the SFTP channel.
+    /// Holding a named phase after its EAGAIN proves native state exists before
+    /// expiry; successful driver-side shutdown must then spare the SSH session.
+    @Test("compensation expiry reclaims SFTP and spares the SSH session")
+    func compensationExpiryReclaimsSFTPAndSparesSession() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let proxy = try #require(WeakNetworkProxyFixture.current)
+        let endpoint = SSHEndpoint(host: environment.endpoint.host, port: proxy.port)
+
+        for phase in CompensationEAGAINPhase.allCases {
+            try await proxy.reset()
+            let connection = try await SSHConnection.connect(to: endpoint, timeout: .seconds(15))
+            try await environment.authenticate(connection)
+            let home = try await remoteHome(of: connection)
+            let path = "\(home)/compensation-\(phase.rawValue)-\(UUID().uuidString).part"
+            try await phase.prepare(path: path, on: connection)
+            let sftp = try await connection.openSFTP(timeout: .seconds(5))
+            let wait = SessionWaitHold()
+            try await proxy.degrade()
+            await phase.holdNextWait(on: connection) { await wait.waitUntilReleased() }
+
+            let removal = Task {
+                do {
+                    try await sftp.removeFileForCompensation(
+                        at: path,
+                        timeout: .milliseconds(200))
+                    return nil as SSHError?
+                } catch {
+                    return error as? SSHError
+                }
+            }
+            try await waitUntilTrue("\(phase.rawValue) should enter EAGAIN") {
+                await wait.hasEntered
+            }
+            try await Task.sleep(for: .milliseconds(250))
+            await wait.release()
+
+            #expect(await removal.value == .timedOut)
+            try await sftp.close(timeout: .seconds(2))
+            try await sftp.close(timeout: .seconds(2))
+            #expect(await connection.isConnected)
+            let echo = try await connection.execute("printf reclaimed", timeout: .seconds(5))
+            #expect(echo.stdout == Data("reclaimed".utf8))
+            try await connection.close(timeout: .seconds(2))
+        }
+        try await proxy.reset()
+    }
+
+    /// The subsystem is removed from the client map before shutdown starts.
+    /// If its bounded native shutdown cannot run to completion, only whole-
+    /// session teardown can reclaim the handle that no client may adopt.
+    @Test("compensation shutdown failure invalidates the SSH session")
+    func compensationShutdownFailureInvalidatesSession() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let proxy = try #require(WeakNetworkProxyFixture.current)
+        let endpoint = SSHEndpoint(host: environment.endpoint.host, port: proxy.port)
+        let connection = try await SSHConnection.connect(to: endpoint, timeout: .seconds(15))
+        try await environment.authenticate(connection)
+        let home = try await remoteHome(of: connection)
+        let path = "\(home)/compensation-shutdown-\(UUID().uuidString).part"
+        let sftp = try await connection.openSFTP(timeout: .seconds(5))
+        let unlinkWait = SessionWaitHold()
+        let shutdown = SessionWaitHold()
+        try await proxy.degrade()
+        await connection.holdNextCompensationUnlinkWaitForTesting {
+            await unlinkWait.waitUntilReleased()
+        }
+        await connection.holdNextCompensationShutdownForTesting {
+            await shutdown.waitUntilReleased()
+        }
+
+        let removal = Task {
+            do {
+                try await sftp.removeFileForCompensation(
+                    at: path,
+                    timeout: .milliseconds(200))
+                return nil as SSHError?
+            } catch {
+                return error as? SSHError
+            }
+        }
+        try await waitUntilTrue("unlink should enter EAGAIN") { await unlinkWait.hasEntered }
+        try await Task.sleep(for: .milliseconds(250))
+        await unlinkWait.release()
+        try await waitUntilTrue("compensation should enter bounded SFTP shutdown") {
+            await shutdown.hasEntered
+        }
+        if await shutdown.hasEntered {
+            try await Task.sleep(for: .milliseconds(2_100))
+        }
+        await shutdown.release()
+
+        #expect(await removal.value == .timedOut)
+        #expect(await connection.isConnected == false)
+        try await sftp.close(timeout: .seconds(2))
+        try await sftp.close(timeout: .seconds(2))
+        try? await connection.close(timeout: .seconds(1))
+        try await proxy.reset()
     }
 
     /// A real link loss takes the same per-site verdict for a different reason:
@@ -495,26 +620,42 @@ struct SessionDriverE2ETests {
             #expect(await connection.isConnected, "\(site.rawValue) started disconnected")
 
             let body = try await site.transportFailureOperation(on: connection)
-            var operation: Task<SSHError?, Never>?
-            let heldWait = site == .openSFTP ? SessionWaitHold() : nil
-            if let heldWait {
+            let operation: Task<SSHError?, Never>
+            let operationGate = SessionWaitHold()
+            let cleanupGate = SessionWaitHold()
+            switch site {
+            case .execute, .executeResponseLine:
+                await connection.holdNextExecChannelAllocationForTesting {
+                    await operationGate.waitUntilReleased()
+                }
+                await connection.holdNextExecCleanupForTesting {
+                    await cleanupGate.waitUntilReleased()
+                }
+            case .openSFTP:
                 try await proxy.degrade()
                 await connection.holdNextSessionWaitForTesting {
-                    await heldWait.waitUntilReleased()
+                    await operationGate.waitUntilReleased()
                 }
-                operation = Task { await body() }
-                try await waitUntilTrue("openSFTP should reach EAGAIN") {
-                    await heldWait.hasEntered
+            case .removeSFTPFileForCompensation:
+                try await proxy.degrade()
+                await connection.holdNextCompensationUnlinkWaitForTesting {
+                    await operationGate.waitUntilReleased()
                 }
-            } else if site.startsBeforeSeverance {
-                operation = Task { await body() }
-                try await Task.sleep(for: .milliseconds(300))
+            }
+
+            operation = Task { await body() }
+            try await waitUntilTrue("\(site.rawValue) should reach its native wait") {
+                await operationGate.hasEntered
             }
             #expect(try await proxy.cut() > 0)
-            await heldWait?.release()
-            try await Task.sleep(for: .milliseconds(500))
-            let activeOperation = operation ?? Task { await body() }
-            let error = await activeOperation.value
+            await operationGate.release()
+            if site.isExec {
+                try await waitUntilTrue("\(site.rawValue) should enter catch cleanup") {
+                    await cleanupGate.hasEntered
+                }
+                await cleanupGate.release()
+            }
+            let error = await operation.value
 
             #expect(error != nil, "\(site.rawValue) did not report the severed transport")
             #expect(
@@ -1095,36 +1236,8 @@ private enum Issue149Site: String, CaseIterable {
     case openSFTP
     case removeSFTPFileForCompensation
 
-    var startsBeforeSeverance: Bool {
-        switch self {
-        case .execute, .executeResponseLine: true
-        case .openSFTP, .removeSFTPFileForCompensation: false
-        }
-    }
-
-    func expire(on connection: SSHConnection) async -> SSHError? {
-        do {
-            switch self {
-            case .execute:
-                _ = try await connection.execute("sleep 30", timeout: .milliseconds(100))
-            case .executeResponseLine:
-                _ = try await connection.executeResponseLine(
-                    "sleep 30",
-                    input: Data("request\n".utf8),
-                    maximumResponseBytes: 64,
-                    timeout: .milliseconds(100))
-            case .openSFTP:
-                _ = try await connection.openSFTP(timeout: .zero)
-            case .removeSFTPFileForCompensation:
-                let sftp = try await connection.openSFTP(timeout: .seconds(5))
-                try await sftp.removeFileForCompensation(
-                    at: "/tmp/heeler-issue-149-\(UUID().uuidString)",
-                    timeout: .zero)
-            }
-            return nil
-        } catch {
-            return error as? SSHError
-        }
+    var isExec: Bool {
+        self == .execute || self == .executeResponseLine
     }
 
     func transportFailureOperation(
@@ -1159,6 +1272,53 @@ private enum Issue149Site: String, CaseIterable {
             } catch {
                 return error as? SSHError
             }
+        }
+    }
+}
+
+private enum Issue149ExecSite: String, CaseIterable {
+    case execute
+    case executeResponseLine
+
+    func expire(on connection: SSHConnection) async -> SSHError? {
+        do {
+            switch self {
+            case .execute:
+                _ = try await connection.execute("sleep 30", timeout: .milliseconds(100))
+            case .executeResponseLine:
+                _ = try await connection.executeResponseLine(
+                    "sleep 30",
+                    input: Data("request\n".utf8),
+                    maximumResponseBytes: 64,
+                    timeout: .milliseconds(100))
+            }
+            return nil
+        } catch {
+            return error as? SSHError
+        }
+    }
+}
+
+private enum CompensationEAGAINPhase: String, CaseIterable {
+    case unlink
+    case stat
+
+    func prepare(path: String, on connection: SSHConnection) async throws {
+        guard self == .stat else { return }
+        _ = try await connection.execute(
+            "printf staged > '\(path)'",
+            timeout: .seconds(5))
+    }
+
+    func holdNextWait(
+        on connection: SSHConnection,
+        _ hold: @escaping @Sendable () async -> Void
+    ) async {
+        switch self {
+        case .unlink:
+            await connection.holdNextCompensationUnlinkWaitForTesting(hold)
+        case .stat:
+            await connection.holdNextCompensationStatWaitForTesting(hold)
         }
     }
 }
