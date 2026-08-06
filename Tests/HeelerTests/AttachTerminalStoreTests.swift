@@ -1183,6 +1183,117 @@ struct AgentAttachStoreTests {
         await store.leave().value
     }
 
+    @Test func staleRecoveryCannotPublishATerminalAfterLeaveAndRejoinChangesOwner()
+        async throws
+    {
+        let transport = ScriptedTransport()
+        let terminalEndGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachEnd(on: terminalEndGate)
+        let imageGate = ScriptedTransportCallGate()
+        let imageStager = GatedAttachImageStager(gate: imageGate)
+        let store = makeStore(
+            transport: transport, generation: 0,
+            stageImage: { image, reporter in
+                try await imageStager.stage(image, reporter)
+            })
+
+        try await goLive(store, transport)
+        let predecessorID = store.terminalID
+
+        // Keep the later real leave suspended after the stale recovery gets
+        // its publication opportunity. This exposes the exact pipeline that a
+        // render pass could resize before the latest rejoin replaces it.
+        store.selectImage(DataImageSelection(data: try tinyJPEGData()))
+        try await waitUntil("image staging should be pending") {
+            await imageStager.preparedFileURL != nil
+        }
+        store.didBecomeActive(afterPossibleSuspension: true)
+        try await waitUntil("recovery should wait for predecessor teardown") {
+            await terminalEndGate.entryCount == 1
+        }
+
+        let leaveTask = store.leave()
+        store.rejoin()
+        await terminalEndGate.open()
+        try await waitUntil("the real leave should cancel image staging") {
+            await imageStager.cancellationRequestCount == 1
+        }
+
+        #expect(
+            store.terminalID == predecessorID,
+            "a recovery that lost ownership must not publish an intermediate terminal")
+        store.viewDidResize(cols: 100, rows: 30)
+
+        await imageGate.open()
+        await leaveTask.value
+        try await waitUntil("the latest rejoin should publish its terminal") {
+            store.terminalID != predecessorID
+        }
+        try await goLive(store, transport, cols: 100, rows: 30)
+        #expect(
+            await transport.attachRequests.count == 2,
+            "only the predecessor and latest rejoin may open Attach channels")
+
+        await store.leave().value
+    }
+
+    @Test func staleRejoinCannotPublishATerminalAfterANewerLeaveAndRejoin()
+        async throws
+    {
+        let transport = ScriptedTransport()
+        let terminalEndGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachEnd(on: terminalEndGate)
+        let imageGate = ScriptedTransportCallGate()
+        let imageStager = GatedAttachImageStager(gate: imageGate)
+        let store = makeStore(
+            transport: transport, generation: 0,
+            stageImage: { image, reporter in
+                try await imageStager.stage(image, reporter)
+            })
+
+        try await goLive(store, transport)
+        let predecessorID = store.terminalID
+
+        let firstLeaveTask = store.leave()
+        store.rejoin()
+        try await waitUntil("the first leave should wait for predecessor teardown") {
+            await terminalEndGate.entryCount == 1
+        }
+
+        // The terminal input session remains live until teardown completes, so
+        // this real image operation can hold the newer leave immediately after
+        // the stale rejoin's publication point.
+        store.selectImage(DataImageSelection(data: try tinyJPEGData()))
+        try await waitUntil("image staging should be pending") {
+            await imageStager.preparedFileURL != nil
+        }
+        let latestLeaveTask = store.leave()
+        store.rejoin()
+
+        await terminalEndGate.open()
+        await firstLeaveTask.value
+        try await waitUntil("the newer leave should cancel image staging") {
+            await imageStager.cancellationRequestCount == 1
+        }
+
+        #expect(
+            store.terminalID == predecessorID,
+            "a rejoin that lost ownership must not publish an intermediate terminal")
+        store.viewDidResize(cols: 100, rows: 30)
+
+        await imageGate.open()
+        await latestLeaveTask.value
+        try await waitUntil("the latest rejoin should publish its terminal") {
+            store.terminalID != predecessorID
+        }
+        try await goLive(store, transport, cols: 100, rows: 30)
+        #expect(
+            await transport.attachRequests.count == 2,
+            "only the predecessor and latest rejoin may open Attach channels")
+
+        await store.leave().value
+    }
+
     @Test func transportReplacementPreservesImageAttachState() async throws {
         // A reconnect replaces the terminal pipeline but must not touch the
         // image interaction: its stager resolves the live Transport per
@@ -1274,9 +1385,9 @@ struct AgentAttachStoreTests {
         // back-to-back in one transaction (a notification deep link or the
         // new-agent push landing amid sheet-dismissal churn). The departure
         // must be recorded synchronously: a Task-deferred leave() runs only
-        // after rejoin() has already no-opped on hasLeft == false, and the
-        // visible screen keeps a permanently stopped terminal — black, no
-        // overlay, no recovery.
+        // after rejoin() has already no-opped in the active lifecycle state,
+        // and the visible screen keeps a permanently stopped terminal — black,
+        // no overlay, no recovery.
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
 
@@ -1301,8 +1412,9 @@ struct AgentAttachStoreTests {
     @Test func queuedRejoinDoesNotBuildATerminalAfterTheRouteMovesOffStage() async throws {
         // A spurious disappear/appear can queue rejoin behind the old PTY's
         // teardown. The router may then select another Agent before this
-        // view receives its real onDisappear, leaving hasLeft false while the
-        // queued operation becomes runnable. The route remains authoritative.
+        // view receives its real onDisappear, leaving the lifecycle active
+        // while the queued operation becomes runnable. The route remains
+        // authoritative.
         let transport = ScriptedTransport()
         let endGate = ScriptedTransportCallGate()
         await transport.gateNextAttachEnd(on: endGate)
@@ -1376,7 +1488,7 @@ struct AgentAttachStoreTests {
         #expect(await transport.hasLiveAttachSession == false)
 
         // The route returns before SwiftUI delivers the delayed onDisappear.
-        // No second leave() repairs hasLeft for us: rejoin itself must recover
+        // No second leave() records the departure for us: rejoin itself must recover
         // the stopped pipeline instead of leaving a permanent Connecting view.
         stage.current = "w1:p1"
         store.rejoin()
@@ -1570,6 +1682,54 @@ struct AgentAttachStoreTests {
 
         opener.resolvePending(accepted: false)
         store.cancelImage()
+    }
+
+    @Test func delayedRealLeaveAfterRecoveryAbortCancelsReviewedPaste() async throws {
+        let transport = ScriptedTransport()
+        let terminalEndGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachEnd(on: terminalEndGate)
+        let stage = SelectedPane(current: "w1:p1")
+        let store = makeStore(
+            transport: transport, generation: 0,
+            isOnStage: { stage.contains("w1:p1") })
+        let text = "git status\ngit diff"
+
+        try await goLive(store, transport)
+        store.requestPaste(text, bracketedPaste: true)
+        #expect(store.pendingPaste != nil)
+
+        store.didBecomeActive(afterPossibleSuspension: true)
+        try await waitUntil("recovery should wait for predecessor teardown") {
+            await terminalEndGate.entryCount == 1
+        }
+        stage.current = "w1:p2"
+        let routeChecksBeforeRelease = stage.readCount
+        await terminalEndGate.open()
+        try await waitUntil("recovery should abort after stopping off stage") {
+            stage.readCount > routeChecksBeforeRelease
+        }
+        #expect(store.pendingPaste != nil)
+
+        await store.leave().value
+        #expect(
+            store.pendingPaste == nil,
+            "a real departure must clear Paste even after replacement detached its writer")
+
+        stage.current = "w1:p1"
+        store.rejoin()
+        let stoppedID = store.terminalID
+        try await waitUntil("the later rejoin should publish a terminal") {
+            store.terminalID != stoppedID
+        }
+        try await goLive(store, transport)
+        #expect(!store.canConfirmPaste)
+        store.confirmPaste()
+        #expect(await transport.attachInputs.compactMap { input -> Data? in
+            if case .keystrokes(let data) = input { return data }
+            return nil
+        }.isEmpty)
+
+        await store.leave().value
     }
 
     @Test func offStageSizeReportDoesNotStartARejoinedTerminal() async throws {
@@ -2117,6 +2277,7 @@ private final class CancellationAwareAttachLinkOpener {
 private actor GatedAttachImageStager {
     let gate: ScriptedTransportCallGate
     private(set) var preparedFileURL: URL?
+    private(set) var cancellationRequestCount = 0
     private(set) var cancellationCount = 0
 
     init(gate: ScriptedTransportCallGate) {
@@ -2130,7 +2291,11 @@ private actor GatedAttachImageStager {
         preparedFileURL = image.fileURL
         await reporter.report(
             ImageStageProgress(transferredBytes: 0, totalBytes: image.byteCount))
-        await gate.waitUntilOpen()
+        await withTaskCancellationHandler {
+            await gate.waitUntilOpen()
+        } onCancel: {
+            Task { await self.recordCancellationRequest() }
+        }
         do {
             try Task.checkCancellation()
         } catch {
@@ -2138,6 +2303,10 @@ private actor GatedAttachImageStager {
             throw error
         }
         throw ImageStagingError.transferFailed
+    }
+
+    private func recordCancellationRequest() {
+        cancellationRequestCount += 1
     }
 }
 
@@ -2214,7 +2383,8 @@ struct AgentAttachStoreForegroundTests {
         let terminalID = store.terminalID
 
         // The router switches first. SwiftUI's onDisappear can arrive later,
-        // so hasLeft is still false when this old view observes activation.
+        // so the lifecycle is still active when this old view observes
+        // activation.
         isOnStage = false
         store.didBecomeActive(afterPossibleSuspension: true)
         try await Task.sleep(for: .milliseconds(100))

@@ -342,6 +342,7 @@ final class AgentAttachStore {
                 }
                 return
             }
+            guard self.terminalRecoveryOwner == recoveryOwner else { return }
             self.terminal = Self.makeTerminal(
                 target: self.target,
                 input: self.input,
@@ -428,6 +429,7 @@ final class AgentAttachStore {
                 self.finishTerminalRecovery(ownedBy: recoveryOwner)
                 return
             }
+            guard self.terminalRecoveryOwner == recoveryOwner else { return }
             self.terminal = Self.makeTerminal(
                 target: self.target,
                 input: self.input,
@@ -474,6 +476,7 @@ final class AgentAttachStore {
         invalidateAttachLinkOpen()
         attachLinkOpenFailure = nil
         linkIndex.clear()
+        input.cancelPaste()
         // Strongly captured on purpose: the owner is `@State` on a view
         // SwiftUI discards right after `onDisappear`, so this task is often
         // the store's last holder. A weak capture silently skips the
