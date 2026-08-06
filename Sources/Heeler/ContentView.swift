@@ -20,14 +20,26 @@ struct ContentView: View {
     @State private var appearance = AppAppearanceSettings()
     @State private var relaySettings: NotificationRelaySettings
     @State private var bannerStore: AgentNotificationBannerStore
-    @State private var activity = AppActivityCoordinator()
+    @State private var activity: AppActivityCoordinator
     @Environment(\.scenePhase) private var scenePhase
 
-    init(pushRegistration: PushRegistrationStore, notificationRouter: AgentNotificationRouter) {
+    /// `console` and `activity` are injectable so a test can drive the
+    /// activity wiring below and observe that something consumed it:
+    /// `ContentViewActivityDriverTests` is what turns deleting the `.task`
+    /// that runs `ConsoleActivityDriver` red (#167). Defaults are the
+    /// production values, so call sites and behavior are unchanged:
+    /// `ConsoleStore()` is the real one, reaching the real
+    /// `sshSessionFactory()`.
+    init(
+        pushRegistration: PushRegistrationStore,
+        notificationRouter: AgentNotificationRouter,
+        console: ConsoleStore = ConsoleStore(),
+        activity: AppActivityCoordinator = AppActivityCoordinator()
+    ) {
         self.pushRegistration = pushRegistration
         self.notificationRouter = notificationRouter
-        let console = ConsoleStore()
         _console = State(initialValue: console)
+        _activity = State(initialValue: activity)
         let relaySettings = NotificationRelaySettings()
         _relaySettings = State(initialValue: relaySettings)
         // Preference reads/writes borrow the Console's live per-Host SSH
