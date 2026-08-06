@@ -50,22 +50,21 @@ enum TerminalFontCatalog {
         "IBMPlexMono-Bold",
     ]
 
-    /// The family names that are actually resolvable after registration.
-    /// A face that failed to register is deliberately not reported, so the
-    /// UI can hide a font it cannot honour instead of offering a choice that
-    /// silently renders as something else.
+    /// Family names read from the bundled face files after a registration
+    /// attempt. URL-derived descriptors describe the file; they do not prove
+    /// CoreText matching will resolve the face. Missing files are omitted so
+    /// the UI does not offer a choice we did not ship.
     static func registerBundledFonts(in bundle: Bundle = .main) -> Set<String> {
         let urls = bundledFaces.compactMap {
             bundle.url(forResource: $0, withExtension: "ttf")
         }
         guard !urls.isEmpty else { return [] }
-        // iOS 26 SDK deprecates CTFontManagerRegisterFontsForURLs in favour of
-        // CTFontManagerRegisterFontURLs (available since iOS 13). enabled=true
-        // matches the old API's "register for matching" behaviour; a nil
-        // registrationHandler is intentional: re-registering an already-
-        // registered URL reports an error that we deliberately ignore, and
-        // success is decided by whether the family resolves below.
-        CTFontManagerRegisterFontURLs(urls as CFArray, .process, true, nil)
+        // Deliberately retain the deprecated CTFontManagerRegisterFontsForURLs:
+        // CTFontManagerRegisterFontURLs reports completion and errors only via
+        // an async registrationHandler, while this catalog must know
+        // registration has finished before returning available families. A
+        // nil errors out-parameter ignores expected re-registration failures.
+        CTFontManagerRegisterFontsForURLs(urls as CFArray, .process, nil)
 
         return Set(
             urls.compactMap { url in
@@ -85,7 +84,7 @@ final class TerminalFontSettings {
     private static let defaultsKey = "terminal-font-family"
 
     private(set) var selection: TerminalFontOption
-    /// `.system` plus whichever bundled families registered successfully.
+    /// `.system` plus bundled options whose face files are present in the bundle.
     let availableOptions: [TerminalFontOption]
     @ObservationIgnored private nonisolated(unsafe) let defaults: UserDefaults
 
