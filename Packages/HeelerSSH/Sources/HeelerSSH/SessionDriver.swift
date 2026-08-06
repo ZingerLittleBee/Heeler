@@ -242,6 +242,9 @@ actor SessionDriver {
                         deadline: ContinuousClock.now.advanced(by: .seconds(2)),
                         cancellable: false)
                 } catch {
+                    // This is the last owner of the allocated exec channel.
+                    // If cleanup cannot finish, only session teardown can
+                    // reclaim its native channel and server session slot.
                     invalidateResources()
                 }
             } else {
@@ -307,6 +310,9 @@ actor SessionDriver {
                         deadline: ContinuousClock.now.advanced(by: .seconds(2)),
                         cancellable: false)
                 } catch {
+                    // The response-line channel has no owner after this scope.
+                    // A failed cleanup therefore requires session teardown to
+                    // reclaim the native channel and its server session slot.
                     invalidateResources()
                 }
             } else {
@@ -767,6 +773,7 @@ actor SessionDriver {
             throw SSHError.connectionInvalidated
         }
         let deadline = ContinuousClock.now.advanced(by: timeout)
+        var initWasPending = false
 
         do {
             while true {
@@ -779,6 +786,7 @@ actor SessionDriver {
                 }
                 let error = libssh2_session_last_errno(session)
                 if error == LIBSSH2_ERROR_EAGAIN {
+                    initWasPending = true
                     try await waitForSession(session, deadline: deadline)
                 } else if Self.isConnectionLoss(error) {
                     throw SSHError.connectionInvalidated
@@ -788,7 +796,12 @@ actor SessionDriver {
             }
         } catch {
             let normalized = normalize(error)
-            if normalized == .cancelled
+            // libssh2 1.11.1 keeps one in-progress SFTP-init state per session,
+            // including its channel and allocation. Any failure after EAGAIN
+            // may abandon that state, and a later init would resume it; only
+            // session teardown can safely discard it.
+            if initWasPending
+                || normalized == .cancelled
                 || normalized == .timedOut
                 || normalized == .connectionInvalidated
             {
@@ -1179,8 +1192,10 @@ actor SessionDriver {
                 verifyAbsence: true)
         } catch {
             let normalized = normalize(error)
-            // A failed compensating unlink leaves remote state uncertain. Do
-            // not admit later work on a connection that may still own it.
+            // libssh2 1.11.1 retains singular unlink/stat state, packets, and
+            // request IDs on the SFTP handle across EAGAIN. If compensation is
+            // abandoned, a later unlink or stat could resume that operation;
+            // session teardown is the only reclamation this API can guarantee.
             invalidateResources()
             throw normalized
         }

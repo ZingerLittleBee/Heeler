@@ -445,6 +445,86 @@ struct SessionDriverE2ETests {
         try await proxy.reset()
     }
 
+    /// The four sites #149 actually owns are not the four `close*` sites above.
+    /// Each abandons in-progress native state that no later Heeler operation can
+    /// safely adopt: singular SFTP init/request state, or an allocated exec
+    /// channel whose only pointer is about to leave scope. A deadline at these
+    /// sites therefore remains connection-fatal even though #136 correctly
+    /// spares a deadline at an ordinary `close*` teardown.
+    @Test("issue 149 deadlines invalidate each operation with abandoned native state")
+    func issue149DeadlinesInvalidateAbandonedNativeState() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+
+        for site in Issue149Site.allCases {
+            let connection = try await environment.connect()
+            let error = await site.expire(on: connection)
+
+            #expect(error == .timedOut, "\(site.rawValue) reported \(String(describing: error))")
+            #expect(
+                await connection.isConnected == false,
+                "\(site.rawValue) kept a session with abandoned native state reusable")
+            await #expect(throws: SSHError.connectionInvalidated) {
+                _ = try await connection.execute("printf poisoned", timeout: .seconds(1))
+            }
+            try? await connection.close(timeout: .seconds(1))
+        }
+
+        let cancelledConnection = try await environment.connect()
+        let cancelledOpen = Task {
+            withUnsafeCurrentTask { task in task?.cancel() }
+            return try await cancelledConnection.openSFTP(timeout: .seconds(5))
+        }
+        await #expect(throws: SSHError.cancelled) { _ = try await cancelledOpen.value }
+        #expect(await cancelledConnection.isConnected == false)
+        try? await cancelledConnection.close(timeout: .seconds(1))
+    }
+
+    /// A real link loss takes the same per-site verdict for a different reason:
+    /// there is no healthy transport left to preserve. One connection per site
+    /// prevents the first one-way invalidation from satisfying the rest.
+    @Test("issue 149 transport failures invalidate each tracked operation")
+    func issue149TransportFailuresInvalidateTrackedOperations() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let proxy = try #require(WeakNetworkProxyFixture.current)
+        let endpoint = SSHEndpoint(host: environment.endpoint.host, port: proxy.port)
+
+        for site in Issue149Site.allCases {
+            try await proxy.reset()
+            let connection = try await SSHConnection.connect(to: endpoint, timeout: .seconds(15))
+            try await environment.authenticate(connection)
+            #expect(await connection.isConnected, "\(site.rawValue) started disconnected")
+
+            let body = try await site.transportFailureOperation(on: connection)
+            var operation: Task<SSHError?, Never>?
+            let heldWait = site == .openSFTP ? SessionWaitHold() : nil
+            if let heldWait {
+                try await proxy.degrade()
+                await connection.holdNextSessionWaitForTesting {
+                    await heldWait.waitUntilReleased()
+                }
+                operation = Task { await body() }
+                try await waitUntilTrue("openSFTP should reach EAGAIN") {
+                    await heldWait.hasEntered
+                }
+            } else if site.startsBeforeSeverance {
+                operation = Task { await body() }
+                try await Task.sleep(for: .milliseconds(300))
+            }
+            #expect(try await proxy.cut() > 0)
+            await heldWait?.release()
+            try await Task.sleep(for: .milliseconds(500))
+            let activeOperation = operation ?? Task { await body() }
+            let error = await activeOperation.value
+
+            #expect(error != nil, "\(site.rawValue) did not report the severed transport")
+            #expect(
+                await connection.isConnected == false,
+                "\(site.rawValue) spared a session after genuine transport loss")
+            try? await connection.close(timeout: .seconds(1))
+        }
+        try await proxy.reset()
+    }
+
     /// The fixture gives each session an isolated `HOME` inside its disposable
     /// directory, so anything staged there is cleaned up with the fixture —
     /// which matters here because half these connections are dead before they
@@ -1003,6 +1083,82 @@ private enum TeardownSite: String, CaseIterable {
         case .sftp:
             let client = try await connection.openSFTP(timeout: .seconds(15))
             return { try await client.close(timeout: $0) }
+        }
+    }
+}
+
+/// The exact four sites named by #149. Similar cleanup catches elsewhere in
+/// `SessionDriver` are deliberately absent because the issue does not own them.
+private enum Issue149Site: String, CaseIterable {
+    case execute
+    case executeResponseLine
+    case openSFTP
+    case removeSFTPFileForCompensation
+
+    var startsBeforeSeverance: Bool {
+        switch self {
+        case .execute, .executeResponseLine: true
+        case .openSFTP, .removeSFTPFileForCompensation: false
+        }
+    }
+
+    func expire(on connection: SSHConnection) async -> SSHError? {
+        do {
+            switch self {
+            case .execute:
+                _ = try await connection.execute("sleep 30", timeout: .milliseconds(100))
+            case .executeResponseLine:
+                _ = try await connection.executeResponseLine(
+                    "sleep 30",
+                    input: Data("request\n".utf8),
+                    maximumResponseBytes: 64,
+                    timeout: .milliseconds(100))
+            case .openSFTP:
+                _ = try await connection.openSFTP(timeout: .zero)
+            case .removeSFTPFileForCompensation:
+                let sftp = try await connection.openSFTP(timeout: .seconds(5))
+                try await sftp.removeFileForCompensation(
+                    at: "/tmp/heeler-issue-149-\(UUID().uuidString)",
+                    timeout: .zero)
+            }
+            return nil
+        } catch {
+            return error as? SSHError
+        }
+    }
+
+    func transportFailureOperation(
+        on connection: SSHConnection
+    ) async throws -> @Sendable () async -> SSHError? {
+        let sftp: SSHSFTPClient? = switch self {
+        case .removeSFTPFileForCompensation:
+            try await connection.openSFTP(timeout: .seconds(5))
+        case .execute, .executeResponseLine, .openSFTP:
+            nil
+        }
+        return {
+            do {
+                switch self {
+                case .execute:
+                    _ = try await connection.execute("sleep 30", timeout: .seconds(10))
+                case .executeResponseLine:
+                    _ = try await connection.executeResponseLine(
+                        "sleep 30",
+                        input: Data("request\n".utf8),
+                        maximumResponseBytes: 64,
+                        timeout: .seconds(10))
+                case .openSFTP:
+                    _ = try await connection.openSFTP(timeout: .seconds(10))
+                case .removeSFTPFileForCompensation:
+                    guard let sftp else { return .connectionFailed }
+                    try await sftp.removeFileForCompensation(
+                        at: "/tmp/heeler-issue-149-\(UUID().uuidString)",
+                        timeout: .seconds(10))
+                }
+                return nil
+            } catch {
+                return error as? SSHError
+            }
         }
     }
 }
