@@ -1297,6 +1297,85 @@ struct AgentAttachStoreTests {
         await store.leave().value
     }
 
+    @Test func queuedRejoinDoesNotBuildATerminalAfterTheRouteMovesOffStage() async throws {
+        // A spurious disappear/appear can queue rejoin behind the old PTY's
+        // teardown. The router may then select another Agent before this
+        // view receives its real onDisappear, leaving hasLeft false while the
+        // queued operation becomes runnable. The route remains authoritative.
+        let transport = ScriptedTransport()
+        let endGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachEnd(on: endGate)
+        let stage = SelectedPane(current: "w1:p1")
+        let store = makeStore(
+            transport: transport, generation: 0,
+            isOnStage: { stage.contains("w1:p1") })
+
+        try await goLive(store, transport)
+        let leftID = store.terminalID
+
+        let leaveTask = store.leave()
+        store.rejoin()
+        try await waitUntil("the queued rejoin should wait behind PTY teardown") {
+            await endGate.entryCount == 1
+        }
+
+        stage.current = "w1:p2"
+        let routeChecksBeforeRelease = stage.readCount
+        await endGate.open()
+        await leaveTask.value
+
+        // Either the queued operation rechecks the route, or the defective
+        // implementation visibly replaces the terminal. This makes settling
+        // deterministic on both sides of the TDD cycle without a time delay.
+        try await waitUntil("the queued rejoin should settle") {
+            stage.readCount > routeChecksBeforeRelease || store.terminalID != leftID
+        }
+
+        #expect(store.terminalID == leftID)
+        #expect(store.terminalStatus == .stopped)
+        #expect(await transport.attachRequests.count == 1)
+        #expect(await transport.hasLiveAttachSession == false)
+
+        await store.leave().value
+    }
+
+    @Test func offStageSizeReportDoesNotStartARejoinedTerminal() async throws {
+        // Rejoin legitimately builds a fresh pipeline while this Agent is on
+        // stage. If the route changes before SwiftUI's departing view reports
+        // its next size, that callback must not open an invisible Attach.
+        let transport = ScriptedTransport()
+        let endGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachEnd(on: endGate)
+        let stage = SelectedPane(current: "w1:p1")
+        let store = makeStore(
+            transport: transport, generation: 0,
+            isOnStage: { stage.contains("w1:p1") })
+
+        try await goLive(store, transport)
+        let leftID = store.terminalID
+
+        let leaveTask = store.leave()
+        store.rejoin()
+        try await waitUntil("the rejoin should wait behind PTY teardown") {
+            await endGate.entryCount == 1
+        }
+        await endGate.open()
+        await leaveTask.value
+        try await waitUntil("the on-stage rejoin should build its terminal") {
+            store.terminalID != leftID
+        }
+        #expect(store.terminalStatus == .waitingForSize)
+
+        stage.current = "w1:p2"
+        store.viewDidResize(cols: 100, rows: 30)
+
+        #expect(store.terminalStatus == .waitingForSize)
+        #expect(await transport.attachRequests.count == 1)
+        #expect(await transport.hasLiveAttachSession == false)
+
+        await store.leave().value
+    }
+
     @Test func teardownRunsEvenAfterTheStoreItselfIsReleased() async throws {
         // The owner is `@State` on a view SwiftUI discards right after
         // `onDisappear`, so the teardown task is often the store's last
@@ -1676,9 +1755,15 @@ struct AgentAttachStoreTests {
 @MainActor
 private final class SelectedPane {
     var current: String
+    private(set) var readCount = 0
 
     init(current: String) {
         self.current = current
+    }
+
+    func contains(_ paneID: String) -> Bool {
+        readCount += 1
+        return current == paneID
     }
 }
 

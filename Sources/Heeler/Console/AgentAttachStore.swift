@@ -149,10 +149,11 @@ final class AgentAttachStore {
         return message
     }
 
-    /// A size report from a screen that has left must not start anything:
-    /// a departed view still lays out during its exit transition.
+    /// A size report from a screen that has left or moved off stage must not
+    /// start anything: a departed view still lays out during its exit
+    /// transition, before SwiftUI necessarily delivers `onDisappear`.
     func viewDidResize(cols: Int, rows: Int) {
-        guard !hasLeft else { return }
+        guard !hasLeft, isOnStage() else { return }
         terminal.viewDidResize(cols: cols, rows: rows)
     }
 
@@ -381,7 +382,11 @@ final class AgentAttachStore {
         terminalRecoveryOwner = recoveryOwner
         enqueueLifecycleTransition { [weak self] in
             guard let self else { return }
-            guard !self.hasLeft, self.terminal.status == .stopped else {
+            guard
+                !self.hasLeft,
+                self.isOnStage(),
+                self.terminal.status == .stopped
+            else {
                 self.finishTerminalRecovery(ownedBy: recoveryOwner)
                 return
             }
