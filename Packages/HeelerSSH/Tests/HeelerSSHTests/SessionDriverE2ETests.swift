@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 import Testing
 
@@ -198,6 +199,102 @@ struct SessionDriverE2ETests {
             // not worth widening the public surface for.
             #expect(await connection.isConnected == false)
             try? await connection.close(timeout: .seconds(2))
+        }
+    }
+
+    /// The direct-tcpip pump must stop replenishing the remote channel window
+    /// once its one-megabyte inbound buffer is full. A nested SSH session
+    /// cannot prove that: its own libssh2 channel window can stop the producer
+    /// before this pump is the limiting layer.
+    ///
+    /// This uses the fixture connection only as an observer and launcher. The
+    /// bytes themselves travel from a fast raw TCP writer on the Host, through
+    /// a separate production `SessionDriver.openDirectTCPIP`, and into the
+    /// exact `DirectTCPIPByteTransport` descriptor a nested session would use.
+    @Test("direct TCP/IP pump backpressures a fast raw writer without losing bytes")
+    func directTCPIPPumpBackpressuresFastRawWriter() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let observer = try await environment.connect()
+        let payloadSize = 32 * 1_048_576
+        let writer = try await RawTCPWriter.launch(
+            payloadSize: payloadSize,
+            using: observer)
+        let driver = SessionDriver()
+        var transport: DirectTCPIPByteTransport?
+        var descriptor: Int32 = -1
+
+        do {
+            _ = try await driver.handshake(
+                endpoint: environment.endpoint,
+                timeout: .seconds(5))
+            let privateKey = environment.privateKey
+            try await driver.authenticate(
+                username: environment.username,
+                publicKey: environment.publicKeyBlob,
+                signer: { try privateKey.signature(for: $0) },
+                timeout: .seconds(5))
+            let opened = try await driver.openDirectTCPIP(
+                endpoint: SSHEndpoint(host: "127.0.0.1", port: writer.port),
+                timeout: .seconds(5))
+            transport = opened
+            descriptor = try opened.takeDescriptor()
+
+            let preDrainState = try await writer.waitUntilStartedAndSettled(using: observer)
+            #expect(
+                preDrainState == .blocked,
+                "the raw writer completed before the bounded pump was drained")
+
+            var offset = 0
+            var firstMismatch: String?
+            var reachedEOF = false
+            var chunk = [UInt8](repeating: 0, count: 4_096)
+            let readDeadline = ContinuousClock.now.advanced(by: .seconds(90))
+            while ContinuousClock.now < readDeadline {
+                let count = chunk.withUnsafeMutableBytes { bytes in
+                    Darwin.read(descriptor, bytes.baseAddress, bytes.count)
+                }
+                if count > 0 {
+                    if firstMismatch == nil {
+                        for index in 0..<count {
+                            let expected = UInt8((offset + index) % 251)
+                            if chunk[index] != expected {
+                                firstMismatch =
+                                    "byte \(offset + index) was \(chunk[index]), expected \(expected)"
+                                break
+                            }
+                        }
+                    }
+                    offset += count
+                    try await Task.sleep(for: .milliseconds(1))
+                } else if count == 0 {
+                    reachedEOF = true
+                    break
+                } else if errno == EAGAIN || errno == EWOULDBLOCK {
+                    try await Task.sleep(for: .milliseconds(1))
+                } else {
+                    throw RawTCPWriterError.readFailed(errno)
+                }
+            }
+
+            #expect(firstMismatch == nil, Comment(rawValue: firstMismatch ?? "payload matched"))
+            #expect(offset == payloadSize)
+            #expect(reachedEOF)
+            #expect(try await writer.completedByteCount(using: observer) == payloadSize)
+
+            Darwin.close(descriptor)
+            descriptor = -1
+            try await opened.close(timeout: .seconds(5))
+            transport = nil
+            try await driver.close(timeout: .seconds(2))
+            try await writer.cleanup(using: observer)
+            try await observer.close(timeout: .seconds(2))
+        } catch {
+            if descriptor >= 0 { Darwin.close(descriptor) }
+            transport?.abort()
+            await driver.invalidate()
+            try? await writer.cleanup(using: observer)
+            try? await observer.close(timeout: .seconds(2))
+            throw error
         }
     }
 
@@ -533,6 +630,191 @@ struct SessionDriverE2ETests {
         }
         #expect(await condition(), comment)
     }
+}
+
+private enum RawTCPWriterState: Equatable {
+    case blocked
+    case completed
+}
+
+private enum RawTCPWriterError: Error {
+    case invalidLaunchResponse(String)
+    case markerFailed(String)
+    case readFailed(Int32)
+}
+
+/// A disposable raw producer launched through the existing real-SSH fixture.
+/// Its directory lives under the fixture's isolated HOME and is removed by the
+/// test as well as by the fixture's own teardown.
+private struct RawTCPWriter {
+    let directory: String
+    let processID: Int32
+    let port: UInt16
+
+    static func launch(
+        payloadSize: Int,
+        using observer: SSHConnection
+    ) async throws -> RawTCPWriter {
+        let command = """
+            set -eu
+            directory=$(mktemp -d "$HOME/heeler-raw-tcp.XXXXXX")
+            /bin/cat >"$directory/writer.py"
+            /usr/bin/python3 "$directory/writer.py" "$directory" '\(payloadSize)' </dev/null >"$directory/stdout" 2>"$directory/stderr" &
+            writer_pid=$!
+            attempts=0
+            while [ ! -s "$directory/port" ] && kill -0 "$writer_pid" 2>/dev/null; do
+                attempts=$((attempts + 1))
+                [ "$attempts" -lt 500 ] || break
+                sleep 0.01
+            done
+            if [ ! -s "$directory/port" ]; then
+                cat "$directory/stderr" >&2
+                exit 1
+            fi
+            printf '%s\n%s\n' "$directory" "$writer_pid"
+            cat "$directory/port"
+            """
+        let result = try await observer.execute(
+            command,
+            input: Data(pythonSource.utf8),
+            timeout: .seconds(10))
+        let response = String(decoding: result.stdout, as: UTF8.self)
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .map(String.init)
+        guard
+            result.exitStatus == 0,
+            response.count == 3,
+            response[0].hasPrefix("/"),
+            response[0].contains("/heeler-raw-tcp."),
+            let processID = Int32(response[1]),
+            let port = UInt16(response[2])
+        else {
+            throw RawTCPWriterError.invalidLaunchResponse(
+                String(decoding: result.stderr, as: UTF8.self))
+        }
+        return RawTCPWriter(directory: response[0], processID: processID, port: port)
+    }
+
+    func waitUntilStartedAndSettled(
+        using observer: SSHConnection
+    ) async throws -> RawTCPWriterState {
+        let path = Self.shellQuote(directory)
+        let command = """
+            attempts=0
+            while [ ! -f \(path)/started ]; do
+                kill -0 \(processID) 2>/dev/null || exit 1
+                attempts=$((attempts + 1))
+                [ "$attempts" -lt 1500 ] || exit 1
+                sleep 0.01
+            done
+            printf 'started\n'
+            attempts=0
+            while [ ! -f \(path)/blocked ] && [ ! -f \(path)/completed ]; do
+                kill -0 \(processID) 2>/dev/null || exit 1
+                attempts=$((attempts + 1))
+                [ "$attempts" -lt 1500 ] || exit 1
+                sleep 0.01
+            done
+            if [ -f \(path)/completed ]; then
+                printf 'completed\n'
+            else
+                printf 'blocked\n'
+            fi
+            """
+        let result = try await observer.execute(command, timeout: .seconds(20))
+        let markers = String(decoding: result.stdout, as: UTF8.self)
+            .split(separator: "\n")
+            .map(String.init)
+        guard result.exitStatus == 0, markers.first == "started" else {
+            throw RawTCPWriterError.markerFailed(
+                String(decoding: result.stderr, as: UTF8.self))
+        }
+        switch markers.last {
+        case "blocked": return .blocked
+        case "completed": return .completed
+        default:
+            throw RawTCPWriterError.markerFailed(markers.joined(separator: "\n"))
+        }
+    }
+
+    func completedByteCount(using observer: SSHConnection) async throws -> Int {
+        let result = try await observer.execute(
+            "cat \(Self.shellQuote(directory))/completed",
+            timeout: .seconds(5))
+        guard
+            result.exitStatus == 0,
+            let count = Int(String(decoding: result.stdout, as: UTF8.self)
+                .trimmingCharacters(in: .whitespacesAndNewlines))
+        else {
+            throw RawTCPWriterError.markerFailed(
+                String(decoding: result.stderr, as: UTF8.self))
+        }
+        return count
+    }
+
+    func cleanup(using observer: SSHConnection) async throws {
+        let path = Self.shellQuote(directory)
+        _ = try await observer.execute(
+            "kill \(processID) 2>/dev/null || true; rm -rf -- \(path)",
+            timeout: .seconds(5))
+    }
+
+    private static func shellQuote(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    private static let pythonSource = #"""
+import os
+import select
+import socket
+import sys
+
+directory = sys.argv[1]
+payload_size = int(sys.argv[2])
+pattern = bytes(range(251)) * 263
+
+def publish(name, value):
+    temporary = os.path.join(directory, name + ".tmp")
+    with open(temporary, "w", encoding="ascii") as marker:
+        marker.write(str(value))
+        marker.flush()
+        os.fsync(marker.fileno())
+    os.replace(temporary, os.path.join(directory, name))
+
+listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+listener.bind(("127.0.0.1", 0))
+listener.listen(1)
+publish("port", listener.getsockname()[1])
+
+connection, _ = listener.accept()
+listener.close()
+publish("started", 1)
+connection.setblocking(False)
+sent = 0
+reported_block = False
+while sent < payload_size:
+    length = min(65_536, payload_size - sent)
+    start = sent % 251
+    data = pattern[start:start + length]
+    try:
+        written = connection.send(data)
+        if written == 0:
+            raise RuntimeError("raw writer socket closed")
+        sent += written
+    except BlockingIOError:
+        _, writable, _ = select.select([], [connection], [], 1.0)
+        if writable:
+            continue
+        if not reported_block:
+            publish("blocked", sent)
+            reported_block = True
+        connection.setblocking(True)
+
+connection.shutdown(socket.SHUT_WR)
+connection.close()
+publish("completed", sent)
+"""#
 }
 
 /// The four `close*` paths that share one teardown verdict in `SessionDriver`.
