@@ -59,9 +59,13 @@ enum TerminalFontCatalog {
             bundle.url(forResource: $0, withExtension: "ttf")
         }
         guard !urls.isEmpty else { return [] }
-        // Re-registering an already-registered URL fails, which is expected
-        // and harmless: what matters is whether the family resolves after.
-        CTFontManagerRegisterFontsForURLs(urls as CFArray, .process, nil)
+        // iOS 26 SDK deprecates CTFontManagerRegisterFontsForURLs in favour of
+        // CTFontManagerRegisterFontURLs (available since iOS 13). enabled=true
+        // matches the old API's "register for matching" behaviour; a nil
+        // registrationHandler is intentional: re-registering an already-
+        // registered URL reports an error that we deliberately ignore, and
+        // success is decided by whether the family resolves below.
+        CTFontManagerRegisterFontURLs(urls as CFArray, .process, true, nil)
 
         return Set(
             urls.compactMap { url in

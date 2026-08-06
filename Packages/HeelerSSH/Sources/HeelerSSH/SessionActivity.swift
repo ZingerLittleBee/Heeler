@@ -64,7 +64,10 @@ final class SessionActivity: @unchecked Sendable {
     }
 
     func unregister(_ waiter: DispatchWaiter) {
-        lock.withLock { registrations.removeValue(forKey: ObjectIdentifier(waiter)) }
+        // Side-effect only: drop any registration for this waiter. Assignment
+        // to nil keeps the withLock body Void-returning; removeValue's
+        // Registration? is not a result callers need.
+        lock.withLock { registrations[ObjectIdentifier(waiter)] = nil }
     }
 
     /// Releases every wait armed before the most recent receive. The driver
