@@ -933,9 +933,14 @@ struct SessionDriverE2ETests {
         try await connection.close(timeout: .seconds(2))
     }
 
+    /// How long phase-gate probes may wait to observe a held path under CI load.
+    /// This is a test-observation guard only; product operation timeouts
+    /// (100ms / 200ms / 2s) are independent and must not be widened to match.
+    private static let phaseGateObservationBudget: Duration = .seconds(15)
+
     private func waitUntilTrue(
         _ comment: Comment,
-        timeout: Duration = .seconds(5),
+        timeout: Duration = SessionDriverE2ETests.phaseGateObservationBudget,
         condition: () async -> Bool
     ) async throws {
         let deadline = ContinuousClock.now.advanced(by: timeout)
