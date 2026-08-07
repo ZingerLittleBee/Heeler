@@ -70,6 +70,9 @@ password_secret=""
 password_home=""
 password_uid=550
 password_fixture_available=0
+password_pid_file="$fixture_dir/sshd-password.pid"
+password_log="$fixture_dir/sshd-password.log"
+password_log_printed=0
 
 # Merge CI must run the complete mandatory matrix; a laptop need not.
 mandatory_matrix=0
@@ -81,6 +84,7 @@ unprivileged_sshd_pids=()
 
 cleanup() {
     local status=$?
+    local preserve_password_fixture=0
     trap - EXIT INT TERM
     set +e
 
@@ -105,14 +109,30 @@ cleanup() {
         fi
     done
     if [[ -n "$password_pid" ]]; then
-        stop_privileged_sshd "$password_pid" "$fixture_dir/sshd-password.pid"
+        if stop_privileged_sshd "$password_pid" "$password_pid_file"; then
+            password_pid=""
+        else
+            preserve_password_fixture=1
+            if [[ "$status" -eq 0 ]]; then
+                status=1
+            fi
+            echo "Failed to stop privileged sshd PID $password_pid." >&2
+            echo "Preserving password account $password_username and fixture" \
+                "directory $fixture_dir for diagnosis and manual cleanup." >&2
+        fi
     fi
-    if [[ -n "$password_username" ]] \
-        && dscl . -read "/Users/$password_username" >/dev/null 2>&1; then
-        sudo -n dscl . -delete "/Users/$password_username"
+    if [[ "$status" -ne 0 && "$password_log_printed" != "1" \
+        && -f "$password_log" ]]; then
+        cat "$password_log" >&2
     fi
-    if [[ -d "$fixture_dir" ]]; then
-        rm -rf -- "$fixture_dir"
+    if [[ "$preserve_password_fixture" != "1" ]]; then
+        if [[ -n "$password_username" ]] \
+            && dscl . -read "/Users/$password_username" >/dev/null 2>&1; then
+            sudo -n dscl . -delete "/Users/$password_username"
+        fi
+        if [[ -d "$fixture_dir" ]]; then
+            rm -rf -- "$fixture_dir"
+        fi
     fi
 
     exit "$status"
@@ -151,18 +171,64 @@ stop_privileged_sshd() {
     local launcher_pid=$1
     local pid_file=$2
     local daemon_pid=""
+    local target_pid=""
 
     if [[ -f "$pid_file" ]]; then
         daemon_pid="$(<"$pid_file")"
     fi
     if [[ "$daemon_pid" =~ ^[0-9]+$ ]]; then
-        sudo -n kill "$daemon_pid" 2>/dev/null
-    elif [[ -n "$launcher_pid" ]]; then
-        sudo -n kill "$launcher_pid" 2>/dev/null
+        target_pid=$daemon_pid
+    elif [[ "$launcher_pid" =~ ^[0-9]+$ ]]; then
+        target_pid=$launcher_pid
+    else
+        return 0
     fi
-    if [[ -n "$launcher_pid" ]]; then
-        wait "$launcher_pid" 2>/dev/null
+
+    if sudo -n kill "$target_pid" 2>/dev/null; then
+        # Reap the launcher after the accepted stop signal. A signal exit status
+        # is expected and does not mean that the stop failed.
+        if [[ "$launcher_pid" =~ ^[0-9]+$ ]]; then
+            wait "$launcher_pid" 2>/dev/null || true
+        fi
+    elif ps -p "$target_pid" >/dev/null 2>&1; then
+        # Do not wait on a process that is still live: cleanup must retain its
+        # state and report the failed stop instead of blocking indefinitely.
+        return 1
+    elif [[ "$launcher_pid" =~ ^[0-9]+$ ]]; then
+        # The process exited before the signal; reap the background launcher.
+        wait "$launcher_pid" 2>/dev/null || true
     fi
+
+    ! ps -p "$target_pid" >/dev/null 2>&1
+}
+
+start_password_sshd() {
+    local attempt
+
+    # Start this short-lived root fixture only when its suite is ready to run.
+    # The invoking shell intentionally owns the diagnostic log redirect.
+    # shellcheck disable=SC2024
+    sudo -n /usr/sbin/sshd -D -e -f "$password_config" \
+        > "$password_log" 2>&1 &
+    password_pid=$!
+
+    for ((attempt = 0; attempt < 50; attempt += 1)); do
+        if sudo -n kill -0 "$password_pid" >/dev/null 2>&1 \
+            && nc -z 127.0.0.1 "$password_port" >/dev/null 2>&1; then
+            return 0
+        fi
+        if ! sudo -n kill -0 "$password_pid" >/dev/null 2>&1; then
+            break
+        fi
+        sleep 0.1
+    done
+
+    if stop_privileged_sshd "$password_pid" "$password_pid_file"; then
+        password_pid=""
+    fi
+    cat "$password_log" >&2
+    password_log_printed=1
+    return 1
 }
 
 # Sets started_sshd_pid rather than printing it: a command substitution would
@@ -225,6 +291,8 @@ printf '%s\n' \
     '---' \
     'Fixture body.' \
     > "$fixture_home/.codex/skills/fixture/SKILL.md"
+# The dollar expressions below belong to the generated fixture script.
+# shellcheck disable=SC2016
 printf '%s\n' \
     '#!/bin/sh' \
     'stty -echo' \
@@ -515,7 +583,7 @@ if sudo -n true >/dev/null 2>&1; then
         "Port $password_port" \
         "ListenAddress 127.0.0.1" \
         "HostKey $fixture_dir/host_ed25519" \
-        "PidFile $fixture_dir/sshd-password.pid" \
+        "PidFile $password_pid_file" \
         "PasswordAuthentication yes" \
         "KbdInteractiveAuthentication no" \
         "PubkeyAuthentication yes" \
@@ -530,9 +598,6 @@ if sudo -n true >/dev/null 2>&1; then
         "LogLevel VERBOSE" \
         "Subsystem sftp $sftp_server" \
         > "$password_config"
-    sudo -n /usr/sbin/sshd -D -e -f "$password_config" \
-        > "$fixture_dir/sshd-password.log" 2>&1 &
-    password_pid=$!
     password_fixture_available=1
 elif [[ "$mandatory_matrix" == "1" ]]; then
     echo "Merge CI requires passwordless sudo for the real-password fixture" >&2
@@ -571,10 +636,6 @@ fixture_pids=(
     "$fake_herdr_pid"
     "$weak_network_pid"
 )
-if [[ "$password_fixture_available" == "1" ]]; then
-    fixture_pids+=("$password_pid")
-fi
-
 fixture_ports=(
     "$modern_port"
     "$legacy_port"
@@ -588,9 +649,6 @@ fixture_ports=(
     "$weak_network_port"
     "$weak_network_control_port"
 )
-if [[ "$password_fixture_available" == "1" ]]; then
-    fixture_ports+=("$password_port")
-fi
 
 fixture_is_listening() {
     local port
@@ -750,6 +808,7 @@ run_suite() {
     local expected_tests=$2
     local expected_suites=$3
     local expected_skips=${4:-0}
+    local action=${5:-test}
     local log="$fixture_dir/$suite.log"
     local noun="suite"
     local skips
@@ -757,7 +816,7 @@ run_suite() {
     if [[ "$expected_suites" != "1" ]]; then
         noun="suites"
     fi
-    xcodebuild test \
+    xcodebuild "$action" \
         -project Heeler.xcodeproj \
         -scheme Heeler \
         -destination "$simulator_destination" \
@@ -873,10 +932,28 @@ assert_full_lane_coverage() {
 # Swift Testing counts a skipped test in the run total, so only the permitted
 # skip count changes when the privileged password fixture is absent.
 session_skip_count=0
+session_action="test"
 if [[ "$password_fixture_available" != "1" ]]; then
     session_skip_count=2
 fi
-run_suite HeelerSSHSessionE2ETests 14 1 "$session_skip_count"
+if [[ "$password_fixture_available" == "1" ]]; then
+    session_action="test-without-building"
+    # Keep compilation outside the short-lived privileged fixture window.
+    xcodebuild build-for-testing \
+        -project Heeler.xcodeproj \
+        -scheme Heeler \
+        -destination "$simulator_destination" \
+        -collect-test-diagnostics never
+    start_password_sshd || exit 1
+fi
+run_suite HeelerSSHSessionE2ETests 14 1 "$session_skip_count" "$session_action"
+if [[ "$password_fixture_available" == "1" ]]; then
+    if stop_privileged_sshd "$password_pid" "$password_pid_file"; then
+        password_pid=""
+    else
+        exit 1
+    fi
+fi
 run_suite HeelerSSHPTYE2ETests 3 1
 run_suite HeelerSSHDirectStreamLocalE2ETests 12 1
 run_suite HeelerSSHJumpHostGateE2ETests 9 1
