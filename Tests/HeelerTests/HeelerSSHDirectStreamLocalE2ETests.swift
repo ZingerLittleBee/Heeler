@@ -212,22 +212,18 @@ struct HeelerSSHDirectStreamLocalE2ETests {
         try await transport.close()
     }
 
-    /// The spike measured both transports on loopback over the same
-    /// authenticated session: 22.368 ms per exchange through `exec` + `socat`
-    /// against 0.514 ms through direct-streamlocal (spec #110, ADR 0011,
-    /// recorded in `Packages/HeelerSSH/README.md`).
+    /// Historical spike measurement (spec #110, ADR 0011, recorded in
+    /// `Packages/HeelerSSH/README.md`): 22.368 ms per exchange through
+    /// `exec` + `socat` against 0.514 ms through direct-streamlocal on the
+    /// same authenticated loopback session. Printed for comparison only —
+    /// absolute loopback timing is scheduler-dependent across CI runs and is
+    /// not a merge gate. Accidental remote-process fallback is guarded by the
+    /// socat-free Host PATH in `scripts/run-ci-ios-tests.sh` and by the rest
+    /// of this suite's functional direct-streamlocal coverage.
     static let recordedSocatBaselinePerExchange = Duration.microseconds(22_368)
 
-    /// The socat backend is gone, so its baseline can never be re-measured; the
-    /// benchmark compares against the recorded figure instead. A quarter of it
-    /// is the "materially faster" bar: enough headroom that a loaded machine
-    /// does not fail, tight enough to catch anything that puts a remote process
-    /// back in the request path. It bounds neither WAN latency nor any
-    /// particular machine's speed.
-    static let benchmarkCeilingPerExchange = recordedSocatBaselinePerExchange / 4
-
-    @Test("repeatable loopback benchmark stays far under the exec-plus-socat baseline")
-    func benchmarkStaysUnderRecordedBaseline() async throws {
+    @Test("repeatable loopback measurement prints comparison telemetry")
+    func loopbackMeasurementPrintsComparisonTelemetry() async throws {
         let environment = try #require(DirectStreamLocalTestEnvironment.current)
         let connection = try await environment.deviceKeyConnection(to: environment.endpoint)
         try await withClosingDirectConnection(connection) { connection in
@@ -239,11 +235,10 @@ struct HeelerSSHDirectStreamLocalE2ETests {
             let elapsed = ContinuousClock.now - started
             let perExchange = elapsed / iterations
             print(
-                "direct-streamlocal loopback benchmark: \(iterations) fresh channel exchanges "
+                "direct-streamlocal loopback telemetry: \(iterations) fresh channel exchanges "
                     + "completed in \(elapsed), \(perExchange) each, against a recorded "
                     + "exec-plus-socat baseline of \(Self.recordedSocatBaselinePerExchange) "
-                    + "each; this is not a WAN latency promise")
-            #expect(perExchange < Self.benchmarkCeilingPerExchange)
+                    + "each; telemetry only, not a merge gate or WAN latency promise")
         }
     }
 }
