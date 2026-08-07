@@ -70,7 +70,7 @@ password_secret=""
 password_home=""
 password_uid=550
 password_fixture_available=0
-password_user_created=0
+password_user_cleanup_needed=0
 password_ssh_sacl_added=0
 password_pid_file="$fixture_dir/sshd-password.pid"
 password_log="$fixture_dir/sshd-password.log"
@@ -128,7 +128,8 @@ cleanup() {
         cat "$password_log" >&2
     fi
     if [[ "$preserve_password_fixture" != "1" ]]; then
-        if [[ "$password_user_created" == "1" ]]; then
+        if [[ "$password_user_cleanup_needed" == "1" ]] \
+            && dscl . -read "/Users/$password_username" >/dev/null 2>&1; then
             if [[ "$password_ssh_sacl_added" == "1" ]]; then
                 if ! sudo -n /usr/sbin/dseditgroup -o edit \
                     -d "$password_username" -t user com.apple.access_ssh; then
@@ -191,6 +192,7 @@ stop_privileged_sshd() {
     local pid_file=$2
     local attempt
     local daemon_pid=""
+    local launcher_state=""
     local target_pid=""
 
     if [[ -f "$pid_file" ]]; then
@@ -214,18 +216,30 @@ stop_privileged_sshd() {
         if ps -p "$target_pid" >/dev/null 2>&1; then
             return 1
         fi
-        # Reap the launcher only after the target is no longer live. A signal
-        # exit status is expected and does not mean that the stop failed.
-        if [[ "$launcher_pid" =~ ^[0-9]+$ ]]; then
-            wait "$launcher_pid" 2>/dev/null || true
-        fi
     elif ps -p "$target_pid" >/dev/null 2>&1; then
         # Do not wait on a process that is still live: cleanup must retain its
         # state and report the failed stop instead of blocking indefinitely.
         return 1
-    elif [[ "$launcher_pid" =~ ^[0-9]+$ ]]; then
-        # The process exited before the signal; reap the background launcher.
-        wait "$launcher_pid" 2>/dev/null || true
+    fi
+
+    # sudo may remain as a distinct launcher after the daemon exits. Bash 3
+    # has no bounded wait, so poll until that child is absent or a zombie
+    # before reaping it. A live launcher after the deadline is a failed stop,
+    # and cleanup must preserve its evidence without waiting on it.
+    if [[ "$launcher_pid" =~ ^[0-9]+$ ]]; then
+        for ((attempt = 0; attempt < 50; attempt += 1)); do
+            launcher_state="$(ps -o state= -p "$launcher_pid" 2>/dev/null || true)"
+            if [[ -z "$launcher_state" \
+                || "$launcher_state" =~ ^[[:space:]]*Z ]]; then
+                wait "$launcher_pid" 2>/dev/null || true
+                break
+            fi
+            sleep 0.1
+        done
+        if [[ -n "$launcher_state" \
+            && ! "$launcher_state" =~ ^[[:space:]]*Z ]]; then
+            return 1
+        fi
     fi
 
     ! ps -p "$target_pid" >/dev/null 2>&1
@@ -741,8 +755,10 @@ if sudo -n true >/dev/null 2>&1; then
         password_uid=$((password_uid + 1))
     done
     mkdir -p "$password_home"
+    # EXIT/INT/TERM may arrive after sysadminctl creates only part of the user
+    # record, so declare cleanup intent before starting that side effect.
+    password_user_cleanup_needed=1
     create_password_user
-    password_user_created=1
     sudo -n dscl . -create "/Users/$password_username" IsHidden 1
     sudo -n chown "$password_uid":20 "$password_home"
     if dscl . -read /Groups/com.apple.access_ssh >/dev/null 2>&1; then

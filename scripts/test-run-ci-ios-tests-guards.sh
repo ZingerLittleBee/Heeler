@@ -50,7 +50,7 @@ trap 'rm -rf "$work"' EXIT
 expected_full_lane_total=864
 expected_full_lane_skips=95
 expected_capture_executed=769
-expected_cases=35
+expected_cases=38
 
 # The lanes run-ci-ios-tests.sh writes, in the order it writes them. The capture
 # is the concatenation of exactly these, so splitting it on the xcodebuild
@@ -563,7 +563,7 @@ printf '%s\n' 4242 > "$case_dir/sshd-password.pid"
     password_log="$case_dir/sshd-password.log"
     password_log_printed=0
     password_username=heeler-ci-password
-    password_user_created=1
+    password_user_cleanup_needed=1
     password_ssh_sacl_added=1
     ps_probe_count=0
 
@@ -614,6 +614,211 @@ else
 fi
 
 echo
+echo "== a distinct privileged sshd launcher is also bounded =="
+case_dir=$(new_case privileged-launcher-timeout)
+command_log="$work/privileged-launcher-timeout-commands.log"
+printf '%s\n' 4242 > "$case_dir/sshd-password.pid"
+# The target daemon is already gone, but the distinct sudo launcher remains a
+# live non-zombie. Cleanup must not enter an unbounded Bash 3 wait for it.
+# shellcheck disable=SC2034,SC2329
+(
+    fixture_dir="$case_dir"
+    fixture_username=ci
+    fixture_home="$case_dir/home"
+    simulator_udid=""
+    stall_pid=""
+    fake_herdr_pid=""
+    weak_network_pid=""
+    unprivileged_sshd_pids=()
+    password_pid=4343
+    password_pid_file="$case_dir/sshd-password.pid"
+    password_log="$case_dir/sshd-password.log"
+    password_log_printed=0
+    password_username=heeler-ci-password
+    password_user_cleanup_needed=0
+    password_ssh_sacl_added=0
+
+    sudo() {
+        printf 'sudo %s\n' "$*" >> "$command_log"
+        return 0
+    }
+    ps() {
+        local pid=""
+        while (( $# > 0 )); do
+            if [[ "$1" == "-p" && $# -gt 1 ]]; then
+                pid=$2
+            fi
+            shift
+        done
+        if [[ "$pid" == "4343" ]]; then
+            printf 'S\n'
+            return 0
+        fi
+        return 1
+    }
+    sleep() {
+        printf 'sleep %s\n' "$*" >> "$command_log"
+    }
+    wait() {
+        printf 'wait %s\n' "$*" >> "$command_log"
+        return 0
+    }
+
+    cleanup
+)
+cleanup_exit=$?
+sleep_count=$(grep -c '^sleep ' "$command_log" || true)
+reason=""
+if [[ "$cleanup_exit" == 0 ]]; then
+    reason="cleanup succeeded while the distinct launcher stayed live"
+elif grep -q '^wait ' "$command_log"; then
+    reason="cleanup waited on a live non-zombie launcher"
+elif (( sleep_count == 0 )); then
+    reason="cleanup did not poll the distinct launcher for bounded shutdown"
+elif (( sleep_count > 60 )); then
+    reason="cleanup exceeded the bounded distinct-launcher shutdown polls"
+elif [[ ! -d "$case_dir" ]]; then
+    reason="cleanup removed fixture evidence while the distinct launcher stayed live"
+fi
+case_labels+=("a live distinct privileged launcher times out without wait")
+ran=$((ran + 1))
+if [[ -z "$reason" ]]; then
+    printf 'ok    expected-pass  exit=%-3s  %s\n' "$cleanup_exit" \
+        "a live distinct privileged launcher times out without wait"
+    passed=$((passed + 1))
+else
+    printf 'FAIL  exit=%-3s  %s\n          (%s)\n' "$cleanup_exit" \
+        "a live distinct privileged launcher times out without wait" "$reason"
+    failed=$((failed + 1))
+fi
+
+echo
+echo "== password SSH access removal failure preserves evidence =="
+case_dir=$(new_case password-sacl-removal-failure)
+command_log="$work/password-sacl-removal-failure-commands.log"
+# The extracted cleanup function consumes these variables and command stubs
+# through eval, which static analysis cannot follow.
+# shellcheck disable=SC2034,SC2329
+cleanup_output=$(
+    (
+        fixture_dir="$case_dir"
+        fixture_username=ci
+        fixture_home="$case_dir/home"
+        simulator_udid=""
+        stall_pid=""
+        fake_herdr_pid=""
+        weak_network_pid=""
+        unprivileged_sshd_pids=()
+        password_pid=""
+        password_pid_file="$case_dir/sshd-password.pid"
+        password_log="$case_dir/sshd-password.log"
+        password_log_printed=0
+        password_username=heeler-ci-password
+        password_user_cleanup_needed=1
+        password_ssh_sacl_added=1
+
+        dscl() {
+            printf 'dscl %s\n' "$*" >> "$command_log"
+            return 0
+        }
+        sudo() {
+            printf 'sudo %s\n' "$*" >> "$command_log"
+            if [[ "$*" == *"/usr/sbin/dseditgroup -o edit -d "* ]]; then
+                return 1
+            fi
+            return 0
+        }
+
+        cleanup
+    ) 2>&1
+)
+cleanup_exit=$?
+reason=""
+if [[ "$cleanup_exit" == 0 ]]; then
+    reason="cleanup succeeded after SSH access removal failed"
+elif grep -qF '/usr/sbin/sysadminctl -deleteUser' "$command_log"; then
+    reason="cleanup deleted the account after SSH access removal failed"
+elif [[ ! -d "$case_dir" ]]; then
+    reason="cleanup removed fixture evidence after SSH access removal failed"
+elif ! printf '%s\n' "$cleanup_output" \
+    | grep -qF "Failed to remove password account heeler-ci-password from SSH access."; then
+    reason="cleanup did not diagnose the SSH access removal failure"
+fi
+case_labels+=("password SSH access removal failure preserves evidence")
+ran=$((ran + 1))
+if [[ -z "$reason" ]]; then
+    printf 'ok    expected-pass  exit=%-3s  %s\n' "$cleanup_exit" \
+        "password SSH access removal failure preserves evidence"
+    passed=$((passed + 1))
+else
+    printf 'FAIL  exit=%-3s  %s\n          (%s)\n' "$cleanup_exit" \
+        "password SSH access removal failure preserves evidence" "$reason"
+    failed=$((failed + 1))
+fi
+
+echo
+echo "== an absent password account is a successful cleanup no-op =="
+# There is no hermetic seam for injecting EXIT/INT/TERM between the cleanup
+# intent assignment and the privileged sysadminctl spawn. The cases below
+# prove both resulting record states instead; do not replace them with a
+# source-order assertion.
+case_dir=$(new_case password-account-absent)
+command_log="$work/password-account-absent-commands.log"
+# The extracted cleanup function consumes these variables and command stubs
+# through eval, which static analysis cannot follow.
+# shellcheck disable=SC2034,SC2329
+(
+    fixture_dir="$case_dir"
+    fixture_username=ci
+    fixture_home="$case_dir/home"
+    simulator_udid=""
+    stall_pid=""
+    fake_herdr_pid=""
+    weak_network_pid=""
+    unprivileged_sshd_pids=()
+    password_pid=""
+    password_pid_file="$case_dir/sshd-password.pid"
+    password_log="$case_dir/sshd-password.log"
+    password_log_printed=0
+    password_username=heeler-ci-password
+    password_user_cleanup_needed=1
+    password_ssh_sacl_added=0
+
+    dscl() {
+        printf 'dscl %s\n' "$*" >> "$command_log"
+        return 1
+    }
+    sudo() {
+        printf 'sudo %s\n' "$*" >> "$command_log"
+        return 0
+    }
+
+    cleanup
+)
+cleanup_exit=$?
+reason=""
+if [[ "$cleanup_exit" != 0 ]]; then
+    reason="cleanup failed when the password account record was absent"
+elif ! grep -qF 'dscl . -read /Users/heeler-ci-password' "$command_log"; then
+    reason="cleanup did not query the exact password account record"
+elif grep -qF '/usr/sbin/sysadminctl -deleteUser' "$command_log"; then
+    reason="cleanup tried to delete an absent password account"
+elif [[ -d "$case_dir" ]]; then
+    reason="cleanup preserved fixture evidence for an absent password account"
+fi
+case_labels+=("an absent password account is a successful cleanup no-op")
+ran=$((ran + 1))
+if [[ -z "$reason" ]]; then
+    printf 'ok    expected-pass  exit=%-3s  %s\n' "$cleanup_exit" \
+        "an absent password account is a successful cleanup no-op"
+    passed=$((passed + 1))
+else
+    printf 'FAIL  exit=%-3s  %s\n          (%s)\n' "$cleanup_exit" \
+        "an absent password account is a successful cleanup no-op" "$reason"
+    failed=$((failed + 1))
+fi
+
+echo
 echo "== password account deletion failure preserves evidence =="
 case_dir=$(new_case password-delete-failure)
 command_log="$work/password-delete-failure-commands.log"
@@ -635,9 +840,13 @@ cleanup_output=$(
         password_log="$case_dir/sshd-password.log"
         password_log_printed=0
         password_username=heeler-ci-password
-        password_user_created=1
+        password_user_cleanup_needed=1
         password_ssh_sacl_added=0
 
+        dscl() {
+            printf 'dscl %s\n' "$*" >> "$command_log"
+            return 0
+        }
         sudo() {
             printf 'sudo %s\n' "$*" >> "$command_log"
             return 1
@@ -652,6 +861,10 @@ if [[ "$cleanup_exit" == 0 ]]; then
     reason="cleanup succeeded after password account deletion failed"
 elif [[ ! -d "$case_dir" ]]; then
     reason="cleanup removed fixture evidence after password account deletion failed"
+elif ! grep -qF 'dscl . -read /Users/heeler-ci-password' "$command_log"; then
+    reason="cleanup did not query the exact partial password account record"
+elif ! grep -qF '/usr/sbin/sysadminctl -deleteUser' "$command_log"; then
+    reason="cleanup did not try to delete the partial password account record"
 elif ! printf '%s\n' "$cleanup_output" \
     | grep -qF "Failed to delete password account heeler-ci-password."; then
     reason="cleanup did not diagnose the password account deletion failure"
