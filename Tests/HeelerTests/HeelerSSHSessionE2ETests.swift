@@ -37,7 +37,8 @@ struct HeelerSSHSessionE2ETests {
         try await withClosingConnection(connection) { connection in
             let input = Data(repeating: 0x78, count: 256 * 1024)
             let result = try await connection.execute(
-                "wc -c; yes y | head -c 524288; printf 'stderr-chunk' >&2; exit 23",
+                "wc -c; yes y | head -c 524288; printf 'stderr-chunk' >&2; "
+                    + "exec 1>&- 2>&-; sleep 0.1; exit 23",
                 input: input,
                 timeout: .seconds(10))
 

@@ -239,11 +239,10 @@ actor SessionDriver {
                 input: input,
                 session: session,
                 deadline: deadline)
-            try await cleanChannel(
-                channel,
-                session: session,
-                deadline: deadline,
-                cancellable: true)
+            let freeResult = try await repeatUntilComplete(deadline: deadline) {
+                libssh2_channel_free(channel)
+            }
+            guard freeResult == 0 else { throw SSHError.channelFailed }
             return result
         } catch {
             let normalized = normalize(error)
@@ -527,20 +526,11 @@ actor SessionDriver {
             throw SSHError.channelFailed
         }
 
-        let closeResult = try await repeatUntilComplete(deadline: deadline) {
-            libssh2_channel_close(state.channel)
-        }
-        guard closeResult == 0 || closeResult == LIBSSH2_ERROR_CHANNEL_CLOSED else {
-            throw SSHError.channelFailed
-        }
-        let waitResult = try await repeatUntilComplete(deadline: deadline) {
-            libssh2_channel_wait_closed(state.channel)
-        }
-        guard waitResult == 0 || waitResult == LIBSSH2_ERROR_CHANNEL_CLOSED else {
-            throw SSHError.channelFailed
-        }
+        let exitStatus = try await exitStatusAfterChannelClose(
+            channel: state.channel,
+            deadline: deadline)
         ptyChannels[id]?.closed = true
-        return Int32(libssh2_channel_get_exit_status(state.channel))
+        return exitStatus
     }
 
     func closePTY(id: UInt64, timeout: Duration) async throws {
@@ -2025,10 +2015,13 @@ actor SessionDriver {
             }
 
             if libssh2_channel_eof(channel) == 1 {
+                let exitStatus = try await exitStatusAfterChannelClose(
+                    channel: channel,
+                    deadline: deadline)
                 return SSHExecResult(
                     stdout: stdout,
                     stderr: stderr,
-                    exitStatus: Int32(libssh2_channel_get_exit_status(channel)),
+                    exitStatus: exitStatus,
                     reachedEOF: true)
             }
             if !madeProgress {
@@ -2111,6 +2104,28 @@ actor SessionDriver {
         if count > 0 { return Data(buffer.prefix(count)) }
         if count == 0 || count == Int(LIBSSH2_ERROR_EAGAIN) { return Data() }
         throw SSHError.channelFailed
+    }
+
+    /// Close the remote channel, wait for the peer to acknowledge close, then
+    /// read exit status. Remote EOF can precede the exit-status request, so
+    /// status is only reliable after wait_closed.
+    private func exitStatusAfterChannelClose(
+        channel: OpaquePointer,
+        deadline: ContinuousClock.Instant
+    ) async throws -> Int32 {
+        let closeResult = try await repeatUntilComplete(deadline: deadline) {
+            libssh2_channel_close(channel)
+        }
+        guard closeResult == 0 || closeResult == LIBSSH2_ERROR_CHANNEL_CLOSED else {
+            throw SSHError.channelFailed
+        }
+        let waitResult = try await repeatUntilComplete(deadline: deadline) {
+            libssh2_channel_wait_closed(channel)
+        }
+        guard waitResult == 0 || waitResult == LIBSSH2_ERROR_CHANNEL_CLOSED else {
+            throw SSHError.channelFailed
+        }
+        return Int32(libssh2_channel_get_exit_status(channel))
     }
 
     private func cleanChannel(
