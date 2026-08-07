@@ -213,42 +213,85 @@ struct HeelerSSHSessionE2ETests {
         }
     }
 
+    /// The allocation gate proves exec owns a channel; the cleanup gate proves
+    /// the secondary two-second budget has started. Expiring that budget while
+    /// the gates are held removes the 100ms timing guess that flaked under CI
+    /// load (run 31164134232): cancel could finish after clean channel setup
+    /// and leave the connection reusable instead of invalidated.
     @Test("caller cancellation completes promptly and invalidates uncertain cleanup")
     func cancellationInvalidatesUncertainCleanup() async throws {
         let environment = try #require(HeelerSSHTestEnvironment.current)
         let connection = try await environment.connect()
 
         try await withClosingConnection(connection) { connection in
-            let started = ContinuousClock.now
+            let allocated = SessionPhaseGate()
+            let cleanup = SessionPhaseGate()
+            await connection.holdNextExecChannelAllocationForTesting {
+                await allocated.waitUntilReleased()
+            }
+            await connection.holdNextExecCleanupForTesting {
+                await cleanup.waitUntilReleased()
+            }
+
             let command = Task {
                 try await connection.execute("sleep 30", timeout: .seconds(40))
             }
-            try await Task.sleep(for: .milliseconds(100))
+            try await waitUntilPhase("cancellation should allocate its channel") {
+                await allocated.hasEntered
+            }
             command.cancel()
+            await allocated.release()
+            try await waitUntilPhase("cancellation should enter catch cleanup") {
+                await cleanup.hasEntered
+            }
+            try await Task.sleep(for: .milliseconds(2_100))
+            await cleanup.release()
 
             await #expect(throws: SSHError.cancelled) {
                 _ = try await command.value
             }
-            #expect(ContinuousClock.now - started < .seconds(3))
-
             await #expect(throws: SSHError.connectionInvalidated) {
                 _ = try await connection.execute("printf poisoned", timeout: .seconds(1))
             }
         }
     }
 
+    /// Same phase-gate sequence as cancellation: force the deadline past while
+    /// allocation is held so cleanup is always uncertain, then hold cleanup past
+    /// its two-second budget so invalidation is deterministic.
     @Test("deadline completes promptly and invalidates uncertain cleanup")
     func deadlineInvalidatesUncertainCleanup() async throws {
         let environment = try #require(HeelerSSHTestEnvironment.current)
         let connection = try await environment.connect()
 
         try await withClosingConnection(connection) { connection in
-            let started = ContinuousClock.now
-            await #expect(throws: SSHError.timedOut) {
-                _ = try await connection.execute("sleep 30", timeout: .milliseconds(150))
+            let allocated = SessionPhaseGate()
+            let cleanup = SessionPhaseGate()
+            await connection.holdNextExecChannelAllocationForTesting {
+                await allocated.waitUntilReleased()
             }
-            #expect(ContinuousClock.now - started < .seconds(3))
+            await connection.holdNextExecCleanupForTesting {
+                await cleanup.waitUntilReleased()
+            }
 
+            let command = Task {
+                try await connection.execute("sleep 30", timeout: .milliseconds(150))
+            }
+            try await waitUntilPhase("deadline should allocate its channel") {
+                await allocated.hasEntered
+            }
+            // Let the 150ms execute budget expire while allocation is held.
+            try await Task.sleep(for: .milliseconds(200))
+            await allocated.release()
+            try await waitUntilPhase("deadline should enter catch cleanup") {
+                await cleanup.hasEntered
+            }
+            try await Task.sleep(for: .milliseconds(2_100))
+            await cleanup.release()
+
+            await #expect(throws: SSHError.timedOut) {
+                _ = try await command.value
+            }
             await #expect(throws: SSHError.connectionInvalidated) {
                 _ = try await connection.execute("printf poisoned", timeout: .seconds(1))
             }
@@ -540,4 +583,42 @@ private func withClosingConnection<Result>(
         try? await connection.close(timeout: .seconds(2))
         throw error
     }
+}
+
+/// One-shot phase gate for DEBUG exec seams: the driver parks here so the test
+/// can cancel or expire a budget only after allocation/cleanup has begun.
+private actor SessionPhaseGate {
+    private(set) var hasEntered = false
+    private var isReleased = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func waitUntilReleased() async {
+        hasEntered = true
+        guard !isReleased else { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func release() {
+        isReleased = true
+        let resumed = waiters
+        waiters.removeAll()
+        for waiter in resumed { waiter.resume() }
+    }
+}
+
+/// Observation budget for phase-gate probes under CI load only. Product
+/// operation timeouts (150ms / 2s) stay independent and must not widen to match.
+private let phaseGateObservationBudget: Duration = .seconds(15)
+
+private func waitUntilPhase(
+    _ comment: Comment,
+    timeout: Duration = phaseGateObservationBudget,
+    condition: () async -> Bool
+) async throws {
+    let deadline = ContinuousClock.now.advanced(by: timeout)
+    while ContinuousClock.now < deadline {
+        if await condition() { return }
+        try await Task.sleep(for: .milliseconds(5))
+    }
+    #expect(await condition(), comment)
 }
