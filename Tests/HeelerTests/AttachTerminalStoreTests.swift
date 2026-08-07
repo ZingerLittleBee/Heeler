@@ -1409,6 +1409,59 @@ struct AgentAttachStoreTests {
         await store.leave().value
     }
 
+    @Test func foregroundMountChurnCannotStrandTheCurrentOnStageAttach() async throws {
+        // The R3 device trace reached foreground after the predecessor had
+        // already left. Its replacement view established a fresh terminal,
+        // claimed the pending possible-suspension activation, then SwiftUI
+        // delivered the mount's appear/disappear churn in the opposite order:
+        // the appear was a no-op while active and the delayed disappear cleared
+        // the queued recovery before stopping its terminal. The router still
+        // named this Agent throughout, so the visible owner must recover rather
+        // than remain permanently stopped.
+        let transport = ScriptedTransport()
+        let stage = SelectedPane(current: "w1:p1")
+        let store = makeStore(
+            transport: transport, generation: 0,
+            isOnStage: { stage.contains("w1:p1") })
+
+        try await goLive(store, transport)
+        await store.leave().value
+        let predecessorID = store.terminalID
+
+        store.rejoin()
+        try await waitUntil("the mounting view should establish a fresh terminal") {
+            store.terminalID != predecessorID
+        }
+        let mountingTerminalID = store.terminalID
+
+        store.didBecomeActive(afterPossibleSuspension: true)
+        store.rejoin()
+        store.leave()
+
+        try await waitUntil("the current on-stage owner should replace the stopped terminal") {
+            store.terminalID != mountingTerminalID
+        }
+        try #require(
+            store.terminalID != mountingTerminalID,
+            "the current on-stage owner was stranded on its stopped mounting terminal")
+        try await waitUntil("the recovered owner should open one replacement Attach") {
+            store.viewDidResize(cols: 80, rows: 24)
+            return await transport.attachRequests.count == 2
+        }
+        #expect(await transport.emitAttachOutput(Data("recovered".utf8)))
+        try await waitUntil("the visible replacement Attach should become live") {
+            store.terminalStatus == .live
+        }
+
+        for _ in 0..<10 { await Task.yield() }
+        #expect(store.terminalStatus == .live)
+        #expect(await transport.attachRequests.count == 2)
+
+        stage.current = "w1:p2"
+        await store.leave().value
+        #expect(await transport.hasLiveAttachSession == false)
+    }
+
     @Test func queuedRejoinDoesNotBuildATerminalAfterTheRouteMovesOffStage() async throws {
         // A spurious disappear/appear can queue rejoin behind the old PTY's
         // teardown. The router may then select another Agent before this

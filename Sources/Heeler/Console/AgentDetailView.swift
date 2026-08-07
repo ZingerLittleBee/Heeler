@@ -2,79 +2,6 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
-#if DEBUG
-struct AttachRecoveryDiagnostic {
-    let absence: Duration
-    let sshGeneration: UInt64?
-
-    func lines(
-        attachStatus: AttachTerminalStore.Status,
-        terminalSurfaceAttached: Bool,
-        transition: AttachRecoveryDiagnosticTransition?
-    ) -> [String] {
-        if let transition {
-            return [
-                "Away: \(absence.components.seconds) s",
-                sshObservation,
-                "Attach replacement: pending",
-                "Previous Attach store status: "
-                    + previousStoreObservation(transition.previousStoreStatus),
-                "Current Attach channel/liveness: unobserved",
-                "Previous terminal surface: "
-                    + (transition.previousSurfaceAttached ? "attached" : "not attached"),
-                "Render loop: unobserved (no presentation acknowledgement)",
-            ]
-        }
-        return [
-            "Away: \(absence.components.seconds) s",
-            sshObservation,
-            "Attach session/channel: \(attachObservation(attachStatus))",
-            "Terminal surface: "
-                + (terminalSurfaceAttached
-                    ? "new surface attached" : "attachment not yet observed"),
-            "Render loop: unobserved (no presentation acknowledgement)",
-        ]
-    }
-
-    private var sshObservation: String {
-        guard let sshGeneration else {
-            return "SSH generation: unobserved"
-        }
-        return "SSH generation: \(sshGeneration)"
-    }
-
-    private func attachObservation(_ status: AttachTerminalStore.Status) -> String {
-        switch status {
-        case .waitingForSize:
-            "new PTY Attach waiting for terminal size"
-        case .connecting:
-            "new PTY Attach opening; first output unobserved"
-        case .live:
-            "new PTY Attach produced output"
-        case .ended(let message):
-            "new PTY Attach ended: \(message)"
-        case .stopped:
-            "new PTY Attach stopped"
-        }
-    }
-
-    private func previousStoreObservation(_ status: AttachTerminalStore.Status) -> String {
-        switch status {
-        case .waitingForSize:
-            "waiting for terminal size before recovery"
-        case .connecting:
-            "opening before recovery; first output unobserved"
-        case .live:
-            "output observed before recovery"
-        case .ended(let message):
-            "ended before recovery: \(message)"
-        case .stopped:
-            "stopped before recovery"
-        }
-    }
-}
-#endif
-
 /// The Agent detail screen: one interactive Attach terminal. Ghostty owns
 /// rendering, scrollback, and IME; the adapter routes input-row taps and touch
 /// scrolling without adding separate terminal chrome.
@@ -117,9 +44,6 @@ struct AgentDetailView: View {
     @State private var isRenamingWorkspace = false
     @State private var isShowingAttachLinks = false
     @State private var closeErrorMessage: String?
-    #if DEBUG
-    @State private var attachRecoveryDiagnostic: AttachRecoveryDiagnostic?
-    #endif
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.openURL) private var openURL
 
@@ -180,14 +104,7 @@ struct AgentDetailView: View {
     }
 
     private var terminalScreen: TerminalScreenView {
-        let currentAttach = attach
-        let surfaceID = currentAttach.terminalID
-        var screen = TerminalScreenView(feed: currentAttach.terminalFeed)
-        #if DEBUG
-        screen.onSurfaceAttached = {
-            currentAttach.terminalSurfaceDidAttach(surfaceID)
-        }
-        #endif
+        var screen = TerminalScreenView(feed: attach.terminalFeed)
         screen.onSizeChanged = { cols, rows in
             attach.viewDidResize(cols: cols, rows: rows)
         }
@@ -360,7 +277,9 @@ struct AgentDetailView: View {
         // absorbs never leaves `.active`, so the return that has to prove the
         // attach channel is exactly the one an `onChange` on the phase cannot
         // see (#141).
-        .onChange(of: activity.activationCount) { _, _ in
+        // `initial` lets a replacement screen claim an activation that landed
+        // after its predecessor disappeared but before this observer existed.
+        .onChange(of: activity.activationCount, initial: true) { _, _ in
             handleActivation()
         }
         .onChange(of: console.hostConnectionGenerations[agent.hostID]) { _, generation in
@@ -393,9 +312,6 @@ struct AgentDetailView: View {
         terminalScreen
             .id(attach.terminalID)
         .overlay { statusOverlay }
-        #if DEBUG
-        .overlay(alignment: .topLeading) { attachRecoveryDiagnosticOverlay }
-        #endif
         .safeAreaInset(edge: .bottom, spacing: 0) {
             imageAttachStatus
         }
@@ -433,49 +349,7 @@ struct AgentDetailView: View {
     private func handleActivation() {
         let afterPossibleSuspension = activity.lastAbsenceMayHaveSuspended
         attach.didBecomeActive(afterPossibleSuspension: afterPossibleSuspension)
-
-        #if DEBUG
-        if afterPossibleSuspension, let absence = activity.lastAbsenceDuration {
-            attachRecoveryDiagnostic = AttachRecoveryDiagnostic(
-                absence: absence,
-                sshGeneration: console.hostConnectionGenerations[agent.hostID])
-        } else {
-            attachRecoveryDiagnostic = nil
-        }
-        #endif
     }
-
-    #if DEBUG
-    @ViewBuilder
-    private var attachRecoveryDiagnosticOverlay: some View {
-        if let diagnostic = attachRecoveryDiagnostic {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Attach recovery diagnostic")
-                    .fontWeight(.semibold)
-                ForEach(
-                    Array(
-                        diagnostic.lines(
-                            attachStatus: attach.terminalStatus,
-                            terminalSurfaceAttached: attach.terminalSurfaceAttached,
-                            transition: attach.recoveryDiagnosticTransition
-                        ).enumerated()),
-                    id: \.offset
-                ) { _, line in
-                    Text(line)
-                }
-            }
-            .font(.caption.monospaced())
-            .foregroundStyle(.white)
-            .padding(8)
-            .background(.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
-            .padding(8)
-            .allowsHitTesting(false)
-            .accessibilityElement(children: .combine)
-            .accessibilityIdentifier("attach-recovery-diagnostic")
-        }
-    }
-
-    #endif
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {

@@ -269,6 +269,168 @@ struct AgentSurfaceReplacementTests {
         await Task.yield()
     }
 
+    /// The R3 device trace caught the foreground edge between Attach owners:
+    /// the live predecessor ended while the app was away, activation 2 carried
+    /// `possibleSuspension=true`, and only then did SwiftUI construct the
+    /// visible replacement around a fresh terminal already stopped by its
+    /// lifecycle churn. An `onChange` observer born after that edge never sees
+    /// it, so the stopped terminal cannot open its first PTY Attach.
+    @Test func aReplacementOwnerClaimsThePossibleSuspensionActivationItMissed()
+        async throws
+    {
+        var now = ContinuousClock.now
+        let activity = AppActivityCoordinator(
+            gracePeriod: .seconds(20),
+            granter: SurfaceTestBackgroundGranter(),
+            now: { now })
+        activity.didBecomeActive()
+
+        let oldTransport = ScriptedTransport()
+        let oldOwner = Self.makeAttachStore(transport: oldTransport)
+        let agent = Self.makeAgent(pane: "w1:p1")
+        let controller = UIHostingController(
+            rootView: AnyView(
+                Self.makeDetailView(
+                    agent: agent,
+                    activity: activity,
+                    attachStore: oldOwner)))
+        let window = Self.makeLocalTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        controller.view.layoutIfNeeded()
+
+        try #require(await Self.eventually { await oldTransport.hasLiveAttachSession })
+        #expect(await oldTransport.emitAttachOutput(Data("opening".utf8)))
+        try #require(await Self.eventually { oldOwner.terminalStatus == .live })
+
+        activity.didEnterBackground()
+        await oldTransport.failAttachStream(.channelFailed(detail: "app was away"))
+        try #require(await Self.eventually {
+            if case .ended = oldOwner.terminalStatus { return true }
+            return false
+        }, "the live predecessor should end while the app is away")
+
+        controller.rootView = AnyView(Color.clear)
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+        try #require(await Self.eventually { oldOwner.terminalStatus == .stopped })
+
+        now = now.advanced(by: .seconds(20))
+        activity.didBecomeActive()
+        #expect(activity.activationCount == 2)
+        #expect(activity.lastAbsenceMayHaveSuspended)
+
+        let replacementTransport = ScriptedTransport()
+        let replacementOwner = Self.makeAttachStore(transport: replacementTransport)
+        await replacementOwner.terminal.stop()
+        let stoppedTerminalID = replacementOwner.terminalID
+
+        controller.rootView = AnyView(
+            Self.makeDetailView(
+                agent: agent,
+                activity: activity,
+                attachStore: replacementOwner))
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+
+        try #require(await Self.eventually {
+            replacementOwner.terminalID != stoppedTerminalID
+        }, "the current owner should claim the missed possible-suspension activation")
+        try #require(await Self.eventually {
+            controller.view.setNeedsLayout()
+            controller.view.layoutIfNeeded()
+            return await replacementTransport.attachRequests.count == 1
+        }, "the recovered current owner should open a PTY Attach")
+        #expect(await replacementTransport.emitAttachOutput(Data("recovered".utf8)))
+        try #require(await Self.eventually { replacementOwner.terminalStatus == .live })
+        for _ in 0..<10 { await Task.yield() }
+        #expect(
+            await replacementTransport.attachRequests.count == 1,
+            "the replacement owner must claim one activation exactly once")
+
+        await replacementOwner.leave().value
+        window.isHidden = true
+        window.rootViewController = nil
+        await Task.yield()
+    }
+
+    @Test func transportReplacementPreservesActivationAcrossSwiftUIMountChurn()
+        async throws
+    {
+        struct Harness: View {
+            let detail: AgentDetailView
+            let mounts: [Int]
+
+            var body: some View {
+                ZStack {
+                    ForEach(mounts, id: \.self) { mount in
+                        detail.id(mount)
+                    }
+                }
+            }
+        }
+
+        var now = ContinuousClock.now
+        let activity = AppActivityCoordinator(
+            gracePeriod: .seconds(20),
+            granter: SurfaceTestBackgroundGranter(),
+            now: { now })
+        activity.didBecomeActive()
+
+        let transport = ScriptedTransport()
+        let endGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachEnd(on: endGate)
+        let owner = Self.makeAttachStore(transport: transport)
+        let detail = Self.makeDetailView(
+            agent: Self.makeAgent(pane: "w1:p1"),
+            activity: activity,
+            attachStore: owner)
+        let controller = UIHostingController(
+            rootView: Harness(detail: detail, mounts: [0]))
+        let window = Self.makeLocalTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        controller.view.layoutIfNeeded()
+
+        try #require(await Self.eventually { await transport.hasLiveAttachSession })
+        #expect(await transport.emitAttachOutput(Data("opening".utf8)))
+        try #require(await Self.eventually { owner.terminalStatus == .live })
+
+        activity.didEnterBackground()
+        now = now.advanced(by: .seconds(20))
+        activity.didBecomeActive()
+        try #require(await Self.eventually { await endGate.entryCount == 1 })
+
+        controller.rootView = Harness(detail: detail, mounts: [0, 1])
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+        try #require(await Self.eventually {
+            Self.terminals(in: controller.view).count == 2
+        }, "the replacement mount should be visible before the predecessor disappears")
+
+        owner.transportGenerationDidChange(2)
+        controller.rootView = Harness(detail: detail, mounts: [1])
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+        await Task.yield()
+
+        await endGate.open()
+        try #require(await Self.eventually {
+            controller.view.setNeedsLayout()
+            controller.view.layoutIfNeeded()
+            return await transport.attachRequests.count == 2
+        }, "the visible on-stage Attach must survive the predecessor's real onDisappear")
+        #expect(await transport.emitAttachOutput(Data("recovered".utf8)))
+        try #require(await Self.eventually { owner.terminalStatus == .live })
+        #expect(Self.terminals(in: controller.view).count == 1)
+
+        await owner.leave().value
+    }
+
     /// The production View -> owner path must honor an actual suspension even
     /// when the measured absence is well below the injected Background Grace
     /// Period. Duration is only the fallback for a process frozen before the
@@ -384,74 +546,6 @@ struct AgentSurfaceReplacementTests {
         window.isHidden = true
         window.rootViewController = nil
         await Task.yield()
-    }
-
-    @Test func recoveryDiagnosticNamesEveryLayerWithoutInventingPresentationProof() {
-        let diagnostic = AttachRecoveryDiagnostic(absence: .seconds(180), sshGeneration: 7)
-
-        #expect(
-            diagnostic.lines(
-                attachStatus: .connecting,
-                terminalSurfaceAttached: true,
-                transition: nil
-            ) == [
-                "Away: 180 s",
-                "SSH generation: 7",
-                "Attach session/channel: new PTY Attach opening; first output unobserved",
-                "Terminal surface: new surface attached",
-                "Render loop: unobserved (no presentation acknowledgement)",
-            ])
-    }
-
-    @Test func recoveryDiagnosticDoesNotCallTheOldPipelineNewWhileReplacementIsQueued()
-        async throws
-    {
-        let transport = ScriptedTransport()
-        let endGate = ScriptedTransportCallGate()
-        await transport.gateNextAttachEnd(on: endGate)
-        let owner = Self.makeAttachStore(transport: transport)
-        owner.viewDidResize(cols: 80, rows: 24)
-        try #require(await Self.eventually { await transport.hasLiveAttachSession })
-        #expect(await transport.emitAttachOutput(Data("opening".utf8)))
-        try #require(await Self.eventually { owner.terminalStatus == .live })
-        let oldTerminalID = owner.terminalID
-        owner.terminalSurfaceDidAttach(oldTerminalID)
-        let diagnostic = AttachRecoveryDiagnostic(absence: .seconds(180), sshGeneration: 7)
-
-        owner.didBecomeActive(afterPossibleSuspension: true)
-        try #require(await Self.eventually { await endGate.entryCount == 1 })
-
-        #expect(owner.terminalID == oldTerminalID)
-        #expect(!owner.terminalSurfaceAttached)
-        #expect(
-            diagnostic.lines(
-                attachStatus: owner.terminalStatus,
-                terminalSurfaceAttached: owner.terminalSurfaceAttached,
-                transition: owner.recoveryDiagnosticTransition
-            ) == [
-                "Away: 180 s",
-                "SSH generation: 7",
-                "Attach replacement: pending",
-                "Previous Attach store status: output observed before recovery",
-                "Current Attach channel/liveness: unobserved",
-                "Previous terminal surface: attached",
-                "Render loop: unobserved (no presentation acknowledgement)",
-            ])
-
-        await endGate.open()
-        try #require(await Self.eventually { owner.terminalID != oldTerminalID })
-
-        #expect(owner.recoveryDiagnosticTransition == nil)
-        #expect(owner.terminalStatus == .waitingForSize)
-        #expect(!owner.terminalSurfaceAttached)
-        #expect(
-            diagnostic.lines(
-                attachStatus: owner.terminalStatus,
-                terminalSurfaceAttached: owner.terminalSurfaceAttached,
-                transition: owner.recoveryDiagnosticTransition
-            ).contains("Attach session/channel: new PTY Attach waiting for terminal size"))
-
-        await owner.leave().value
     }
 
     // MARK: Fixtures
