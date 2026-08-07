@@ -50,7 +50,7 @@ trap 'rm -rf "$work"' EXIT
 expected_full_lane_total=864
 expected_full_lane_skips=95
 expected_capture_executed=769
-expected_cases=33
+expected_cases=35
 
 # The lanes run-ci-ios-tests.sh writes, in the order it writes them. The capture
 # is the concatenation of exactly these, so splitting it on the xcodebuild
@@ -93,6 +93,9 @@ extract_shipped_function() {
 extract_shipped_function assert_full_lane_coverage
 extract_shipped_function assert_behavior
 extract_shipped_function run_suite
+extract_shipped_function cleanup
+extract_shipped_function clear_simulator_environment
+extract_shipped_function stop_privileged_sshd
 
 # The floor is read out of the gate's own call site rather than restated here.
 # Restating it made the two literals drift silently, and the drift that matters
@@ -537,6 +540,133 @@ run_suite_case fail "did not execute all 4 tests" \
 run_suite_case fail "skipped 2 tests; exactly 0 may skip" \
     "an unbudgeted skip is refused" HeelerSSHSessionE2ETests \
     HeelerSSHSessionE2ETests 14 1
+
+echo
+echo "== privileged sshd stop is bounded before preserving evidence =="
+case_dir=$(new_case privileged-stop-timeout)
+command_log="$case_dir/commands.log"
+printf '%s\n' 4242 > "$case_dir/sshd-password.pid"
+# The extracted cleanup functions consume these variables and command stubs
+# through eval, which static analysis cannot follow.
+# shellcheck disable=SC2034,SC2329
+(
+    fixture_dir="$case_dir"
+    fixture_username=ci
+    fixture_home="$case_dir/home"
+    simulator_udid=""
+    stall_pid=""
+    fake_herdr_pid=""
+    weak_network_pid=""
+    unprivileged_sshd_pids=()
+    password_pid=4242
+    password_pid_file="$case_dir/sshd-password.pid"
+    password_log="$case_dir/sshd-password.log"
+    password_log_printed=0
+    password_username=heeler-ci-password
+    password_user_created=1
+    password_ssh_sacl_added=1
+    ps_probe_count=0
+
+    sudo() {
+        printf 'sudo %s\n' "$*" >> "$command_log"
+        return 0
+    }
+    ps() {
+        ps_probe_count=$((ps_probe_count + 1))
+        (( ps_probe_count <= 100 ))
+    }
+    sleep() {
+        printf 'sleep %s\n' "$*" >> "$command_log"
+    }
+    wait() {
+        printf 'wait %s\n' "$*" >> "$command_log"
+        return 0
+    }
+
+    cleanup
+)
+cleanup_exit=$?
+sleep_count=$(grep -c '^sleep ' "$command_log")
+reason=""
+if [[ "$cleanup_exit" == 0 ]]; then
+    reason="cleanup succeeded while privileged sshd stayed live"
+elif grep -q '^wait ' "$command_log"; then
+    reason="cleanup waited on a privileged sshd that was still live"
+elif (( sleep_count == 0 )); then
+    reason="cleanup did not poll for bounded privileged sshd shutdown"
+elif (( sleep_count > 60 )); then
+    reason="cleanup exceeded the bounded privileged sshd shutdown polls"
+elif grep -qE 'dseditgroup|sysadminctl' "$command_log"; then
+    reason="cleanup modified the account after privileged sshd stop failed"
+elif [[ ! -d "$case_dir" ]]; then
+    reason="cleanup removed fixture evidence after privileged sshd stop failed"
+fi
+case_labels+=("a live privileged sshd times out and preserves evidence")
+ran=$((ran + 1))
+if [[ -z "$reason" ]]; then
+    printf 'ok    expected-pass  exit=%-3s  %s\n' "$cleanup_exit" \
+        "a live privileged sshd times out and preserves evidence"
+    passed=$((passed + 1))
+else
+    printf 'FAIL  exit=%-3s  %s\n          (%s)\n' "$cleanup_exit" \
+        "a live privileged sshd times out and preserves evidence" "$reason"
+    failed=$((failed + 1))
+fi
+
+echo
+echo "== password account deletion failure preserves evidence =="
+case_dir=$(new_case password-delete-failure)
+command_log="$work/password-delete-failure-commands.log"
+# The extracted cleanup functions consume these variables and the sudo stub
+# through eval, which static analysis cannot follow.
+# shellcheck disable=SC2034,SC2329
+cleanup_output=$(
+    (
+        fixture_dir="$case_dir"
+        fixture_username=ci
+        fixture_home="$case_dir/home"
+        simulator_udid=""
+        stall_pid=""
+        fake_herdr_pid=""
+        weak_network_pid=""
+        unprivileged_sshd_pids=()
+        password_pid=""
+        password_pid_file="$case_dir/sshd-password.pid"
+        password_log="$case_dir/sshd-password.log"
+        password_log_printed=0
+        password_username=heeler-ci-password
+        password_user_created=1
+        password_ssh_sacl_added=0
+
+        sudo() {
+            printf 'sudo %s\n' "$*" >> "$command_log"
+            return 1
+        }
+
+        cleanup
+    ) 2>&1
+)
+cleanup_exit=$?
+reason=""
+if [[ "$cleanup_exit" == 0 ]]; then
+    reason="cleanup succeeded after password account deletion failed"
+elif [[ ! -d "$case_dir" ]]; then
+    reason="cleanup removed fixture evidence after password account deletion failed"
+elif ! printf '%s\n' "$cleanup_output" \
+    | grep -qF "Failed to delete password account heeler-ci-password."; then
+    reason="cleanup did not diagnose the password account deletion failure"
+fi
+case_labels+=("password account deletion failure preserves evidence")
+ran=$((ran + 1))
+if [[ -z "$reason" ]]; then
+    printf 'ok    expected-pass  exit=%-3s  %s\n' "$cleanup_exit" \
+        "password account deletion failure preserves evidence"
+    passed=$((passed + 1))
+else
+    printf 'FAIL  exit=%-3s  %s\n          (%s)\n' "$cleanup_exit" \
+        "password account deletion failure preserves evidence" "$reason"
+    failed=$((failed + 1))
+fi
 
 echo
 # The point of the count: a harness that silently stops running cases would

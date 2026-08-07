@@ -130,15 +130,28 @@ cleanup() {
     if [[ "$preserve_password_fixture" != "1" ]]; then
         if [[ "$password_user_created" == "1" ]]; then
             if [[ "$password_ssh_sacl_added" == "1" ]]; then
-                sudo -n /usr/sbin/dseditgroup -o edit \
-                    -d "$password_username" -t user com.apple.access_ssh
+                if ! sudo -n /usr/sbin/dseditgroup -o edit \
+                    -d "$password_username" -t user com.apple.access_ssh; then
+                    preserve_password_fixture=1
+                    if [[ "$status" -eq 0 ]]; then
+                        status=1
+                    fi
+                    echo "Failed to remove password account $password_username from SSH access." >&2
+                fi
             fi
-            sudo -n /usr/sbin/sysadminctl \
-                -deleteUser "$password_username" -keepHome
+            if [[ "$preserve_password_fixture" != "1" ]] \
+                && ! sudo -n /usr/sbin/sysadminctl \
+                    -deleteUser "$password_username" -keepHome; then
+                preserve_password_fixture=1
+                if [[ "$status" -eq 0 ]]; then
+                    status=1
+                fi
+                echo "Failed to delete password account $password_username." >&2
+            fi
         fi
-        if [[ -d "$fixture_dir" ]]; then
-            rm -rf -- "$fixture_dir"
-        fi
+    fi
+    if [[ "$preserve_password_fixture" != "1" && -d "$fixture_dir" ]]; then
+        rm -rf -- "$fixture_dir"
     fi
 
     exit "$status"
@@ -176,6 +189,7 @@ clear_simulator_environment() {
 stop_privileged_sshd() {
     local launcher_pid=$1
     local pid_file=$2
+    local attempt
     local daemon_pid=""
     local target_pid=""
 
@@ -191,8 +205,17 @@ stop_privileged_sshd() {
     fi
 
     if sudo -n kill "$target_pid" 2>/dev/null; then
-        # Reap the launcher after the accepted stop signal. A signal exit status
-        # is expected and does not mean that the stop failed.
+        for ((attempt = 0; attempt < 50; attempt += 1)); do
+            if ! ps -p "$target_pid" >/dev/null 2>&1; then
+                break
+            fi
+            sleep 0.1
+        done
+        if ps -p "$target_pid" >/dev/null 2>&1; then
+            return 1
+        fi
+        # Reap the launcher only after the target is no longer live. A signal
+        # exit status is expected and does not mean that the stop failed.
         if [[ "$launcher_pid" =~ ^[0-9]+$ ]]; then
             wait "$launcher_pid" 2>/dev/null || true
         fi
@@ -723,9 +746,9 @@ if sudo -n true >/dev/null 2>&1; then
     sudo -n dscl . -create "/Users/$password_username" IsHidden 1
     sudo -n chown "$password_uid":20 "$password_home"
     if dscl . -read /Groups/com.apple.access_ssh >/dev/null 2>&1; then
+        password_ssh_sacl_added=1
         sudo -n /usr/sbin/dseditgroup -o edit \
             -a "$password_username" -t user com.apple.access_ssh
-        password_ssh_sacl_added=1
     fi
     printf '%s\n' \
         "Port $password_port" \
