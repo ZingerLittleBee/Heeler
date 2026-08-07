@@ -644,6 +644,7 @@ if sudo -n true >/dev/null 2>&1; then
     sudo -n dscl . -create "/Users/$password_username" PrimaryGroupID 20
     sudo -n dscl . -create "/Users/$password_username" NFSHomeDirectory "$password_home"
     sudo -n dscl . -create "/Users/$password_username" IsHidden 1
+    sudo -n dscl . -create "/Users/$password_username" GeneratedUID "$(/usr/bin/uuidgen)"
     sudo -n dscl . -passwd "/Users/$password_username" "$password_secret"
     sudo -n chown "$password_uid":20 "$password_home"
     printf '%s\n' \
