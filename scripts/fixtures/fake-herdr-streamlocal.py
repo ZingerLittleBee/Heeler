@@ -24,6 +24,8 @@ class Server:
         self.count_file = count_file
         self.count = 0
         self.count_lock = threading.Lock()
+        self.hang_request_ids: set[str] = set()
+        self.hang_condition = threading.Condition()
         self.listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 
     def start(self) -> None:
@@ -69,13 +71,23 @@ class Server:
             if method == "eof":
                 return
             if method == "hang":
+                self._record_hang_request(envelope.get("id"))
                 time.sleep(30)
                 return
             params = envelope.get("params", {})
             if method == "pane.read" and params.get("pane_id") == "hang":
                 time.sleep(30)
                 return
-            if method == "oversized":
+            if method == "fixture.await_hang":
+                response = {
+                    "id": envelope.get("id"),
+                    "result": {
+                        "observed": self._await_hang_request(envelope.get("extra"))
+                    },
+                }
+                payload = json.dumps(response, separators=(",", ":")).encode() + b"\n"
+                chunk_size = 7
+            elif method == "oversized":
                 payload = b"x" * (1_048_576 + 1)
                 chunk_size = 16 * 1024
             else:
@@ -97,6 +109,25 @@ class Server:
                     connection.sendall(payload[offset : offset + chunk_size])
                 except BrokenPipeError:
                     return
+
+    def _record_hang_request(self, request_id: object) -> None:
+        if not isinstance(request_id, str):
+            return
+        with self.hang_condition:
+            self.hang_request_ids.add(request_id)
+            self.hang_condition.notify_all()
+
+    def _await_hang_request(self, request_id: object) -> bool:
+        if not isinstance(request_id, str):
+            return False
+        with self.hang_condition:
+            observed = self.hang_condition.wait_for(
+                lambda: request_id in self.hang_request_ids,
+                timeout=20,
+            )
+            if observed:
+                self.hang_request_ids.discard(request_id)
+            return observed
 
     def _serve_events(self, connection: socket.socket, envelope: object) -> None:
         request_id = envelope.get("id") if isinstance(envelope, dict) else None

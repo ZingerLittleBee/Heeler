@@ -97,16 +97,25 @@ struct HeelerSSHDirectStreamLocalE2ETests {
         let environment = try #require(DirectStreamLocalTestEnvironment.current)
         let connection = try await environment.deviceKeyConnection(to: environment.endpoint)
         try await withClosingDirectConnection(connection) { connection in
-            let exchange = Task {
-                try await connection.exchangeStreamLocal(
-                    socketPath: environment.socketPath,
-                    request: requestLine(method: "hang"),
-                    timeout: .seconds(30))
+            // The connection under test serializes libssh2 calls, so the fixture
+            // acknowledgement must travel over a separate SSH session.
+            let observer = try await environment.deviceKeyConnection(to: environment.endpoint)
+            try await withClosingDirectConnection(observer) { observer in
+                let requestID = UUID().uuidString
+                let exchange = Task {
+                    try await connection.exchangeStreamLocal(
+                        socketPath: environment.socketPath,
+                        request: requestLine(id: requestID, method: "hang"),
+                        timeout: .seconds(30))
+                }
+                defer { exchange.cancel() }
+                try await environment.waitUntilHangRequestObserved(
+                    requestID,
+                    using: observer)
+                exchange.cancel()
+                await #expect(throws: SSHError.cancelled) { _ = try await exchange.value }
+                try await expectPing(connection, socketPath: environment.socketPath)
             }
-            try await Task.sleep(for: .milliseconds(100))
-            exchange.cancel()
-            await #expect(throws: SSHError.cancelled) { _ = try await exchange.value }
-            try await expectPing(connection, socketPath: environment.socketPath)
         }
     }
 
@@ -307,10 +316,34 @@ private struct DirectStreamLocalTestEnvironment: Decodable, Sendable {
         let result = try await connection.execute("cat \(quotedPath)", timeout: .seconds(5))
         return try #require(Int(String(decoding: result.stdout, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)))
     }
+
+    func waitUntilHangRequestObserved(
+        _ requestID: String,
+        using connection: SSHConnection
+    ) async throws {
+        let response = try await connection.exchangeStreamLocal(
+            socketPath: socketPath,
+            request: requestLine(method: "fixture.await_hang", extra: requestID),
+            timeout: .seconds(25))
+        let observation = try JSONDecoder().decode(HangObservation.self, from: response)
+        try #require(observation.result.observed)
+    }
 }
 
-private func requestLine(method: String, extra: String? = nil) -> Data {
-    var object: [String: String] = ["id": UUID().uuidString, "method": method]
+private struct HangObservation: Decodable {
+    struct Result: Decodable {
+        let observed: Bool
+    }
+
+    let result: Result
+}
+
+private func requestLine(
+    id: String = UUID().uuidString,
+    method: String,
+    extra: String? = nil
+) -> Data {
+    var object: [String: String] = ["id": id, "method": method]
     if let extra { object["extra"] = extra }
     let encoded = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
     var line = encoded ?? Data()
