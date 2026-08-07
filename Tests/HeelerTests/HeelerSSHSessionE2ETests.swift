@@ -67,13 +67,13 @@ struct HeelerSSHSessionE2ETests {
                 try await connection.authenticate(
                     username: password.username,
                     password: "wrong-\(UUID().uuidString)",
-                    timeout: .seconds(5))
+                    timeout: passwordAuthenticationObservationBudget)
             }
 
             try await connection.authenticate(
                 username: password.username,
                 password: password.password,
-                timeout: .seconds(5))
+                timeout: passwordAuthenticationObservationBudget)
             let result = try await connection.execute("printf reused", timeout: .seconds(5))
             #expect(result.stdout == Data("reused".utf8))
         }
@@ -555,7 +555,7 @@ private struct HeelerSSHTestEnvironment: Sendable {
             try await connection.authenticate(
                 username: fixture.username,
                 password: fixture.password,
-                timeout: .seconds(5))
+                timeout: passwordAuthenticationObservationBudget)
             return connection
         } catch {
             try? await connection.close(timeout: .seconds(2))
@@ -621,6 +621,11 @@ private actor SessionPhaseGate {
 /// Observation budget for phase-gate probes under CI load only. Product
 /// operation timeouts (150ms / 2s) stay independent and must not widen to match.
 private let phaseGateObservationBudget: Duration = .seconds(15)
+
+/// Fixture budget for password authenticate under CI load only. macOS password
+/// verification/PAM has reached ~4.9s in CI; this is test-environment headroom,
+/// not a product timeout promise. Connect and exec budgets stay independent.
+private let passwordAuthenticationObservationBudget: Duration = .seconds(15)
 
 private func waitUntilPhase(
     _ comment: Comment,
