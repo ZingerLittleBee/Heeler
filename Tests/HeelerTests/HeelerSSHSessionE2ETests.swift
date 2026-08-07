@@ -245,11 +245,17 @@ struct HeelerSSHSessionE2ETests {
                 await cleanup.hasEntered
             }
             try await Task.sleep(for: .milliseconds(2_100))
+            // Prompt completion is independent of phase-observation wait and the
+            // deliberate 2.1s cleanup hold: start the clock only once cleanup is
+            // free to finish and the command should surface promptly.
+            let started = ContinuousClock.now
             await cleanup.release()
 
             await #expect(throws: SSHError.cancelled) {
                 _ = try await command.value
             }
+            #expect(ContinuousClock.now - started < .seconds(1))
+
             await #expect(throws: SSHError.connectionInvalidated) {
                 _ = try await connection.execute("printf poisoned", timeout: .seconds(1))
             }
@@ -287,11 +293,17 @@ struct HeelerSSHSessionE2ETests {
                 await cleanup.hasEntered
             }
             try await Task.sleep(for: .milliseconds(2_100))
+            // Prompt completion is independent of phase-observation wait and the
+            // deliberate 2.1s cleanup hold: start the clock only once cleanup is
+            // free to finish and the command should surface promptly.
+            let started = ContinuousClock.now
             await cleanup.release()
 
             await #expect(throws: SSHError.timedOut) {
                 _ = try await command.value
             }
+            #expect(ContinuousClock.now - started < .seconds(1))
+
             await #expect(throws: SSHError.connectionInvalidated) {
                 _ = try await connection.execute("printf poisoned", timeout: .seconds(1))
             }
