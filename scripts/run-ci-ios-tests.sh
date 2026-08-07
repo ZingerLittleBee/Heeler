@@ -70,6 +70,7 @@ password_secret=""
 password_home=""
 password_uid=550
 password_fixture_available=0
+password_user_created=0
 password_pid_file="$fixture_dir/sshd-password.pid"
 password_log="$fixture_dir/sshd-password.log"
 password_log_printed=0
@@ -126,9 +127,9 @@ cleanup() {
         cat "$password_log" >&2
     fi
     if [[ "$preserve_password_fixture" != "1" ]]; then
-        if [[ -n "$password_username" ]] \
-            && dscl . -read "/Users/$password_username" >/dev/null 2>&1; then
-            sudo -n dscl . -delete "/Users/$password_username"
+        if [[ "$password_user_created" == "1" ]]; then
+            sudo -n /usr/sbin/sysadminctl \
+                -deleteUser "$password_username" -keepHome
         fi
         if [[ -d "$fixture_dir" ]]; then
             rm -rf -- "$fixture_dir"
@@ -297,6 +298,81 @@ EXPECT
     unset HEELER_PASSWORD_SSH_PREFLIGHT_PASSWORD
     return "$status"
 }
+
+# sysadminctl owns creation of the complete local account record. Expect feeds
+# its password prompt without putting the secret in argv, a file, the command
+# transcript, or the sysadminctl environment.
+create_password_user() (
+    local status
+
+    export HEELER_SYSADMINCTL_PASSWORD="$password_secret"
+    export HEELER_SYSADMINCTL_USERNAME="$password_username"
+    export HEELER_SYSADMINCTL_UID="$password_uid"
+    export HEELER_SYSADMINCTL_HOME="$password_home"
+    if /usr/bin/expect <<'EXPECT'
+set timeout 30
+log_user 0
+
+set password $env(HEELER_SYSADMINCTL_PASSWORD)
+unset env(HEELER_SYSADMINCTL_PASSWORD)
+
+spawn /usr/bin/sudo -n /usr/sbin/sysadminctl \
+    -addUser $env(HEELER_SYSADMINCTL_USERNAME) \
+    -fullName {Heeler SSH CI} \
+    -UID $env(HEELER_SYSADMINCTL_UID) \
+    -GID 20 \
+    -shell /bin/zsh \
+    -home $env(HEELER_SYSADMINCTL_HOME) \
+    -password -
+
+set sent_password 0
+expect {
+    -re {(?i)user password:[[:space:]]*$} {
+        if {$sent_password} {
+            close
+            catch {wait}
+            exit 1
+        }
+        send -- "$password\r"
+        set sent_password 1
+        exp_continue
+    }
+    timeout {
+        close
+        catch {wait}
+        exit 1
+    }
+    eof {}
+}
+
+if {!$sent_password || [catch {wait} child_status]} {
+    exit 1
+}
+if {[llength $child_status] < 4 || [lindex $child_status 2] ne "0"} {
+    exit 1
+}
+if {[llength $child_status] >= 5 \
+    && [lindex $child_status 4] eq "CHILDKILLED"} {
+    exit 1
+}
+set child_exit [lindex $child_status 3]
+if {![string is integer -strict $child_exit] \
+    || $child_exit < 0 || $child_exit > 255} {
+    exit 1
+}
+exit $child_exit
+EXPECT
+    then
+        status=0
+    else
+        status=$?
+    fi
+    unset HEELER_SYSADMINCTL_PASSWORD
+    unset HEELER_SYSADMINCTL_USERNAME
+    unset HEELER_SYSADMINCTL_UID
+    unset HEELER_SYSADMINCTL_HOME
+    return "$status"
+)
 
 # Sets started_sshd_pid rather than printing it: a command substitution would
 # run the append to unprivileged_sshd_pids in a subshell and lose it.
@@ -637,15 +713,9 @@ if sudo -n true >/dev/null 2>&1; then
         password_uid=$((password_uid + 1))
     done
     mkdir -p "$password_home"
-    sudo -n dscl . -create "/Users/$password_username"
-    sudo -n dscl . -create "/Users/$password_username" RealName "Heeler SSH CI"
-    sudo -n dscl . -create "/Users/$password_username" UserShell /bin/zsh
-    sudo -n dscl . -create "/Users/$password_username" UniqueID "$password_uid"
-    sudo -n dscl . -create "/Users/$password_username" PrimaryGroupID 20
-    sudo -n dscl . -create "/Users/$password_username" NFSHomeDirectory "$password_home"
+    create_password_user
+    password_user_created=1
     sudo -n dscl . -create "/Users/$password_username" IsHidden 1
-    sudo -n dscl . -create "/Users/$password_username" GeneratedUID "$(/usr/bin/uuidgen)"
-    sudo -n dscl . -passwd "/Users/$password_username" "$password_secret"
     sudo -n chown "$password_uid":20 "$password_home"
     printf '%s\n' \
         "Port $password_port" \
