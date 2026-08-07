@@ -543,9 +543,9 @@ struct SessionDriverE2ETests {
     }
 
     /// libssh2 1.11.1 shutdown frees both the phase packet and the SFTP channel.
-    /// A throwing phase barrier proves the operation owns the subsystem before
-    /// failure; successful driver-side shutdown must retain that ownership,
-    /// unblock queued close, and spare the SSH session.
+    /// A throwing phase barrier runs after unlink/stat first reaches libssh2.
+    /// Successful driver-side shutdown must retain the subsystem ownership,
+    /// unblock queued close, remove the staged path, and spare the SSH session.
     @Test("compensation expiry reclaims SFTP and spares the SSH session")
     func compensationExpiryReclaimsSFTPAndSparesSession() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
@@ -1442,7 +1442,6 @@ private enum CompensationFaultPhase: String, CaseIterable {
     }
 
     func prepare(path: String, on connection: SSHConnection) async throws {
-        guard self == .stat else { return }
         _ = try await connection.execute(
             "printf staged > '\(path)'",
             timeout: .seconds(5))

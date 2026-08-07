@@ -2197,9 +2197,6 @@ actor SessionDriver {
         _ operation: () -> Int32
     ) async throws -> Int32 {
         guard let session else { throw SSHError.connectionInvalidated }
-#if DEBUG
-        try await runCompensationPhaseHookForTestingIfNeeded(phase)
-#endif
         while true {
             if cancellable {
                 try checkProgress(deadline: deadline)
@@ -2207,6 +2204,9 @@ actor SessionDriver {
                 throw SSHError.timedOut
             }
             let result = operation()
+#if DEBUG
+            try await runCompensationPhaseHookForTestingIfNeeded(phase)
+#endif
             if result != LIBSSH2_ERROR_EAGAIN { return result }
             try await waitForSession(
                 session,
