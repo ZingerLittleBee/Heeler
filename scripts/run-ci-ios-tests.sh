@@ -71,6 +71,7 @@ password_home=""
 password_uid=550
 password_fixture_available=0
 password_user_created=0
+password_ssh_sacl_added=0
 password_pid_file="$fixture_dir/sshd-password.pid"
 password_log="$fixture_dir/sshd-password.log"
 password_log_printed=0
@@ -128,6 +129,10 @@ cleanup() {
     fi
     if [[ "$preserve_password_fixture" != "1" ]]; then
         if [[ "$password_user_created" == "1" ]]; then
+            if [[ "$password_ssh_sacl_added" == "1" ]]; then
+                sudo -n /usr/sbin/dseditgroup -o edit \
+                    -d "$password_username" -t user com.apple.access_ssh
+            fi
             sudo -n /usr/sbin/sysadminctl \
                 -deleteUser "$password_username" -keepHome
         fi
@@ -717,6 +722,11 @@ if sudo -n true >/dev/null 2>&1; then
     password_user_created=1
     sudo -n dscl . -create "/Users/$password_username" IsHidden 1
     sudo -n chown "$password_uid":20 "$password_home"
+    if dscl . -read /Groups/com.apple.access_ssh >/dev/null 2>&1; then
+        sudo -n /usr/sbin/dseditgroup -o edit \
+            -a "$password_username" -t user com.apple.access_ssh
+        password_ssh_sacl_added=1
+    fi
     printf '%s\n' \
         "Port $password_port" \
         "ListenAddress 127.0.0.1" \
