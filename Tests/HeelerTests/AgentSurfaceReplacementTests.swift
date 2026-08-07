@@ -511,10 +511,9 @@ struct AgentSurfaceReplacementTests {
         try #require(await Self.eventually { await transport.hasLiveAttachSession })
         #expect(await transport.emitAttachOutput(Data("opening".utf8)))
         try #require(await Self.eventually { owner.terminalStatus == .live })
-        let liveCenter = try #require(
-            Self.color(
-                in: Self.renderedImage(of: controller.view),
-                atUnit: CGPoint(x: 0.5, y: 0.5)))
+        #expect(
+            TerminalStatusPresentation(status: owner.terminalStatus) == nil,
+            "the live hosted screen must not show a status dialog")
 
         activity.didEnterBackground()
         #expect(activity.phase == .suspended)
@@ -528,13 +527,9 @@ struct AgentSurfaceReplacementTests {
         #expect(
             owner.terminalStatus == .connecting,
             "the hosted screen must show Connecting while the old PTY stop is pending")
-        let recoveringCenter = try #require(
-            Self.color(
-                in: Self.renderedImage(of: controller.view),
-                atUnit: CGPoint(x: 0.5, y: 0.5)))
         #expect(
-            recoveringCenter != liveCenter,
-            "the hosted screen must draw its Connecting dialog over the live terminal")
+            TerminalStatusPresentation(status: owner.terminalStatus) == .connecting,
+            "the hosted screen must present its Connecting dialog over the live terminal")
 
         await endGate.open()
         try #require(await Self.eventually {
@@ -558,37 +553,6 @@ struct AgentSurfaceReplacementTests {
         }
         walk(root)
         return found
-    }
-
-    static func renderedImage(of root: UIView) -> UIImage {
-        UIGraphicsImageRenderer(bounds: root.bounds).image { _ in
-            root.drawHierarchy(in: root.bounds, afterScreenUpdates: true)
-        }
-    }
-
-    static func color(in image: UIImage, atUnit point: CGPoint) -> UInt32? {
-        guard let cgImage = image.cgImage else { return nil }
-        let width = cgImage.width
-        let height = cgImage.height
-        var pixels = [UInt8](repeating: 0, count: width * height * 4)
-        guard
-            let context = CGContext(
-                data: &pixels,
-                width: width,
-                height: height,
-                bitsPerComponent: 8,
-                bytesPerRow: width * 4,
-                space: CGColorSpaceCreateDeviceRGB(),
-                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        else { return nil }
-        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-
-        let x = min(width - 1, max(0, Int(point.x * CGFloat(width))))
-        let y = min(height - 1, max(0, Int(point.y * CGFloat(height))))
-        let index = (y * width + x) * 4
-        return UInt32(pixels[index]) << 16
-            | UInt32(pixels[index + 1]) << 8
-            | UInt32(pixels[index + 2])
     }
 
     /// A SwiftUI/UIKit hierarchy is sufficient for these replacement tests.

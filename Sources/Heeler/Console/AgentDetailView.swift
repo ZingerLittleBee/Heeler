@@ -455,27 +455,31 @@ struct AgentDetailView: View {
 
     @ViewBuilder
     private var statusOverlay: some View {
-        switch attach.terminalStatus {
-        case .waitingForSize, .connecting:
-            // No dim: a reattach would otherwise flash the whole screen dark.
-            TerminalStatusDialog(
-                glyph: .progress,
-                title: "Connecting…",
-                palette: themePalette,
-                dimsBackground: false)
-        case .ended(let message):
-            TerminalStatusDialog(
-                glyph: .symbol("cable.connector.slash"),
-                title: "Session Ended",
-                message: message,
-                palette: themePalette
-            ) {
-                Button("Reattach") { attach.retryTerminal() }
-                    .buttonStyle(.borderedProminent)
+        if let presentation = TerminalStatusPresentation(status: attach.terminalStatus) {
+            switch presentation.kind {
+            case .connecting:
+                // No dim: a reattach would otherwise flash the whole screen dark.
+                TerminalStatusDialog(
+                    glyph: .progress,
+                    title: presentation.title,
+                    message: presentation.message,
+                    palette: themePalette,
+                    dimsBackground: presentation.dimsBackground)
+            case .ended:
+                TerminalStatusDialog(
+                    glyph: .symbol("cable.connector.slash"),
+                    title: presentation.title,
+                    message: presentation.message,
+                    palette: themePalette,
+                    dimsBackground: presentation.dimsBackground
+                ) {
+                    Button("Reattach") { attach.retryTerminal() }
+                        .buttonStyle(.borderedProminent)
+                }
             }
-        // .live needs nothing, and .stopped only reaches the view while the
-        // screen is on its way off stage (see `AgentAttachStore.terminalStatus`).
-        case .live, .stopped:
+        } else {
+            // .live needs nothing, and .stopped only reaches the view while the
+            // screen is on its way off stage (see `AgentAttachStore.terminalStatus`).
             EmptyView()
         }
     }

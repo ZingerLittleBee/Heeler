@@ -20,6 +20,58 @@ enum TerminalStatusGlyph {
     case progress
 }
 
+/// The status overlay `AgentDetailView` presents for one terminal state.
+/// Keeping this mapping as a value lets hosted lifecycle tests observe the
+/// actual presentation choice without snapshotting Ghostty's live Metal tree.
+struct TerminalStatusPresentation: Equatable {
+    enum Kind: Equatable {
+        case connecting
+        case ended
+    }
+
+    let kind: Kind
+    let title: String
+    let message: String?
+    let dimsBackground: Bool
+
+    static let connecting = TerminalStatusPresentation(
+        kind: .connecting,
+        title: "Connecting…",
+        message: nil,
+        dimsBackground: false)
+
+    static func ended(message: String) -> TerminalStatusPresentation {
+        TerminalStatusPresentation(
+            kind: .ended,
+            title: "Session Ended",
+            message: message,
+            dimsBackground: true)
+    }
+
+    init?(status: AttachTerminalStore.Status) {
+        switch status {
+        case .waitingForSize, .connecting:
+            self = .connecting
+        case .ended(let message):
+            self = .ended(message: message)
+        case .live, .stopped:
+            return nil
+        }
+    }
+
+    private init(
+        kind: Kind,
+        title: String,
+        message: String?,
+        dimsBackground: Bool
+    ) {
+        self.kind = kind
+        self.title = title
+        self.message = message
+        self.dimsBackground = dimsBackground
+    }
+}
+
 struct TerminalStatusDialog<Actions: View>: View {
     let glyph: TerminalStatusGlyph
     let title: String
