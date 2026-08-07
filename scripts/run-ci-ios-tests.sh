@@ -231,6 +231,73 @@ start_password_sshd() {
     return 1
 }
 
+# Prove the disposable account through the same public boundary a Host uses.
+# Expect owns a PTY but suppresses its transcript; only the exported secret is
+# copied into Tcl, and it is removed from the child environment before ssh.
+password_ssh_preflight() {
+    local status
+
+    export HEELER_PASSWORD_SSH_PREFLIGHT_PASSWORD="$password_secret"
+    if /usr/bin/expect <<'EXPECT'
+set timeout 5
+log_user 0
+
+set password $env(HEELER_PASSWORD_SSH_PREFLIGHT_PASSWORD)
+unset env(HEELER_PASSWORD_SSH_PREFLIGHT_PASSWORD)
+
+spawn /usr/bin/ssh \
+    -F /dev/null \
+    -T \
+    -o PreferredAuthentications=password \
+    -o PasswordAuthentication=yes \
+    -o KbdInteractiveAuthentication=no \
+    -o PubkeyAuthentication=no \
+    -o NumberOfPasswordPrompts=1 \
+    -o ConnectTimeout=5 \
+    -o ConnectionAttempts=1 \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -o GlobalKnownHostsFile=/dev/null \
+    -o LogLevel=ERROR \
+    -p $env(HEELER_PASSWORD_SSH_PREFLIGHT_PORT) \
+    -l $env(HEELER_PASSWORD_SSH_PREFLIGHT_USERNAME) \
+    127.0.0.1 \
+    /bin/echo HEELER_PASSWORD_SSH_PREFLIGHT_OK
+
+expect {
+    -re {(?i)password:[[:space:]]*$} {
+        send -- "$password\r"
+    }
+    timeout { exit 1 }
+    eof { exit 1 }
+}
+
+set saw_sentinel 0
+expect {
+    -exact {HEELER_PASSWORD_SSH_PREFLIGHT_OK} {
+        set saw_sentinel 1
+        exp_continue
+    }
+    -re {(?i)password:[[:space:]]*$} { exit 1 }
+    timeout { exit 1 }
+    eof {}
+}
+
+if {!$saw_sentinel} {
+    exit 1
+}
+set child_status [wait]
+exit [lindex $child_status 3]
+EXPECT
+    then
+        status=0
+    else
+        status=$?
+    fi
+    unset HEELER_PASSWORD_SSH_PREFLIGHT_PASSWORD
+    return "$status"
+}
+
 # Sets started_sshd_pid rather than printing it: a command substitution would
 # run the append to unprivileged_sshd_pids in a subshell and lose it.
 started_sshd_pid=""
@@ -599,6 +666,25 @@ if sudo -n true >/dev/null 2>&1; then
         "Subsystem sftp $sftp_server" \
         > "$password_config"
     password_fixture_available=1
+    # Fail on host account authentication before compilation can hide it.
+    export HEELER_PASSWORD_SSH_PREFLIGHT_PORT="$password_port"
+    export HEELER_PASSWORD_SSH_PREFLIGHT_USERNAME="$password_username"
+    preflight_status=0
+    start_password_sshd || exit 1
+    password_ssh_preflight || preflight_status=$?
+    stop_status=0
+    stop_privileged_sshd "$password_pid" "$password_pid_file" \
+        || stop_status=$?
+    if [[ "$stop_status" == "0" ]]; then
+        password_pid=""
+    fi
+    unset HEELER_PASSWORD_SSH_PREFLIGHT_PORT
+    unset HEELER_PASSWORD_SSH_PREFLIGHT_USERNAME
+    if [[ "$preflight_status" != "0" || "$stop_status" != "0" ]]; then
+        cat "$password_log" >&2
+        password_log_printed=1
+        exit 1
+    fi
 elif [[ "$mandatory_matrix" == "1" ]]; then
     echo "Merge CI requires passwordless sudo for the real-password fixture" >&2
     exit 1
