@@ -73,11 +73,11 @@ actor SessionDriver {
     private var nextSFTPWriteDelayForTesting: Duration?
     private var sftpWriteDelayIsActiveForTesting = false
     private var nextSessionWaitHoldForTesting: (@Sendable () async -> Void)?
-    private var nextExecChannelAllocatedHoldForTesting: (@Sendable () async -> Void)?
-    private var nextExecCleanupHoldForTesting: (@Sendable () async -> Void)?
-    private var nextCompensationUnlinkWaitHoldForTesting: (@Sendable () async -> Void)?
-    private var nextCompensationStatWaitHoldForTesting: (@Sendable () async -> Void)?
-    private var nextCompensationShutdownHoldForTesting: (@Sendable () async -> Void)?
+    private var nextExecChannelAllocatedHoldForTesting: (@Sendable () async throws -> Void)?
+    private var nextExecCleanupHoldForTesting: (@Sendable () async throws -> Void)?
+    private var nextCompensationUnlinkPhaseHookForTesting: (@Sendable () async throws -> Void)?
+    private var nextCompensationStatPhaseHookForTesting: (@Sendable () async throws -> Void)?
+    private var nextCompensationShutdownHoldForTesting: (@Sendable () async throws -> Void)?
     private var shouldFailNextSFTPInitBeforeEAGAINForTesting = false
 #endif
 
@@ -226,7 +226,7 @@ actor SessionDriver {
             channel = try await openSessionChannel(session: session, deadline: deadline)
             guard let channel else { throw SSHError.channelFailed }
 #if DEBUG
-            await holdExecChannelAllocationForTestingIfNeeded()
+            try await holdExecChannelAllocationForTestingIfNeeded()
 #endif
             try await startExec(
                 channel: channel,
@@ -250,7 +250,7 @@ actor SessionDriver {
                 do {
                     let cleanupDeadline = ContinuousClock.now.advanced(by: .seconds(2))
 #if DEBUG
-                    await holdExecCleanupForTestingIfNeeded()
+                    try await holdExecCleanupForTestingIfNeeded()
 #endif
                     try await cleanChannel(
                         channel,
@@ -300,7 +300,7 @@ actor SessionDriver {
             channel = try await openSessionChannel(session: session, deadline: deadline)
             guard let channel else { throw SSHError.channelFailed }
 #if DEBUG
-            await holdExecChannelAllocationForTestingIfNeeded()
+            try await holdExecChannelAllocationForTestingIfNeeded()
 #endif
             try await startExec(
                 channel: channel,
@@ -325,7 +325,7 @@ actor SessionDriver {
                 do {
                     let cleanupDeadline = ContinuousClock.now.advanced(by: .seconds(2))
 #if DEBUG
-                    await holdExecCleanupForTestingIfNeeded()
+                    try await holdExecCleanupForTestingIfNeeded()
 #endif
                     try await cleanChannel(
                         channel,
@@ -1252,7 +1252,7 @@ actor SessionDriver {
 #if DEBUG
         if let hold = nextCompensationShutdownHoldForTesting {
             nextCompensationShutdownHoldForTesting = nil
-            await hold()
+            try await hold()
         }
 #endif
         let result = try await repeatUntilComplete(
@@ -1441,31 +1441,33 @@ actor SessionDriver {
     }
 
     func holdNextExecChannelAllocationForTesting(
-        _ hold: @escaping @Sendable () async -> Void
+        _ hold: @escaping @Sendable () async throws -> Void
     ) {
         nextExecChannelAllocatedHoldForTesting = hold
     }
 
-    func holdNextExecCleanupForTesting(_ hold: @escaping @Sendable () async -> Void) {
+    func holdNextExecCleanupForTesting(
+        _ hold: @escaping @Sendable () async throws -> Void
+    ) {
         nextExecCleanupHoldForTesting = hold
     }
 
-    func holdNextCompensationUnlinkWaitForTesting(
-        _ hold: @escaping @Sendable () async -> Void
+    func runNextCompensationUnlinkPhaseHookForTesting(
+        _ hook: @escaping @Sendable () async throws -> Void
     ) {
-        nextCompensationUnlinkWaitHoldForTesting = hold
+        nextCompensationUnlinkPhaseHookForTesting = hook
     }
 
-    func holdNextCompensationStatWaitForTesting(
-        _ hold: @escaping @Sendable () async -> Void
+    func runNextCompensationStatPhaseHookForTesting(
+        _ hook: @escaping @Sendable () async throws -> Void
     ) {
-        nextCompensationStatWaitHoldForTesting = hold
+        nextCompensationStatPhaseHookForTesting = hook
     }
 
-    func holdNextCompensationShutdownForTesting(
-        _ hold: @escaping @Sendable () async -> Void
+    func runNextCompensationShutdownHookForTesting(
+        _ hook: @escaping @Sendable () async throws -> Void
     ) {
-        nextCompensationShutdownHoldForTesting = hold
+        nextCompensationShutdownHoldForTesting = hook
     }
 
     func failNextSFTPInitBeforeEAGAINForTesting() {
@@ -2195,6 +2197,9 @@ actor SessionDriver {
         _ operation: () -> Int32
     ) async throws -> Int32 {
         guard let session else { throw SSHError.connectionInvalidated }
+#if DEBUG
+        try await runCompensationPhaseHookForTestingIfNeeded(phase)
+#endif
         while true {
             if cancellable {
                 try checkProgress(deadline: deadline)
@@ -2203,9 +2208,6 @@ actor SessionDriver {
             }
             let result = operation()
             if result != LIBSSH2_ERROR_EAGAIN { return result }
-#if DEBUG
-            await holdCompensationWaitForTestingIfNeeded(phase)
-#endif
             try await waitForSession(
                 session,
                 deadline: deadline,
@@ -2214,31 +2216,31 @@ actor SessionDriver {
     }
 
 #if DEBUG
-    private func holdExecChannelAllocationForTestingIfNeeded() async {
+    private func holdExecChannelAllocationForTestingIfNeeded() async throws {
         guard let hold = nextExecChannelAllocatedHoldForTesting else { return }
         nextExecChannelAllocatedHoldForTesting = nil
-        await hold()
+        try await hold()
     }
 
-    private func holdExecCleanupForTestingIfNeeded() async {
+    private func holdExecCleanupForTestingIfNeeded() async throws {
         guard let hold = nextExecCleanupHoldForTesting else { return }
         nextExecCleanupHoldForTesting = nil
-        await hold()
+        try await hold()
     }
 
-    private func holdCompensationWaitForTestingIfNeeded(
+    private func runCompensationPhaseHookForTestingIfNeeded(
         _ phase: SFTPCompensationPhase
-    ) async {
-        let hold: (@Sendable () async -> Void)?
+    ) async throws {
+        let hook: (@Sendable () async throws -> Void)?
         switch phase {
         case .unlink:
-            hold = nextCompensationUnlinkWaitHoldForTesting
-            nextCompensationUnlinkWaitHoldForTesting = nil
+            hook = nextCompensationUnlinkPhaseHookForTesting
+            nextCompensationUnlinkPhaseHookForTesting = nil
         case .stat:
-            hold = nextCompensationStatWaitHoldForTesting
-            nextCompensationStatWaitHoldForTesting = nil
+            hook = nextCompensationStatPhaseHookForTesting
+            nextCompensationStatPhaseHookForTesting = nil
         }
-        await hold?()
+        try await hook?()
     }
 #endif
 

@@ -230,33 +230,33 @@ public final class SSHConnection: Sendable {
     }
 
     public func holdNextExecChannelAllocationForTesting(
-        _ hold: @escaping @Sendable () async -> Void
+        _ hold: @escaping @Sendable () async throws -> Void
     ) async {
         await driver.holdNextExecChannelAllocationForTesting(hold)
     }
 
     public func holdNextExecCleanupForTesting(
-        _ hold: @escaping @Sendable () async -> Void
+        _ hold: @escaping @Sendable () async throws -> Void
     ) async {
         await driver.holdNextExecCleanupForTesting(hold)
     }
 
-    public func holdNextCompensationUnlinkWaitForTesting(
-        _ hold: @escaping @Sendable () async -> Void
+    public func runNextCompensationUnlinkPhaseHookForTesting(
+        _ hook: @escaping @Sendable () async throws -> Void
     ) async {
-        await driver.holdNextCompensationUnlinkWaitForTesting(hold)
+        await driver.runNextCompensationUnlinkPhaseHookForTesting(hook)
     }
 
-    public func holdNextCompensationStatWaitForTesting(
-        _ hold: @escaping @Sendable () async -> Void
+    public func runNextCompensationStatPhaseHookForTesting(
+        _ hook: @escaping @Sendable () async throws -> Void
     ) async {
-        await driver.holdNextCompensationStatWaitForTesting(hold)
+        await driver.runNextCompensationStatPhaseHookForTesting(hook)
     }
 
-    public func holdNextCompensationShutdownForTesting(
-        _ hold: @escaping @Sendable () async -> Void
+    public func runNextCompensationShutdownHookForTesting(
+        _ hook: @escaping @Sendable () async throws -> Void
     ) async {
-        await driver.holdNextCompensationShutdownForTesting(hold)
+        await driver.runNextCompensationShutdownHookForTesting(hook)
     }
 
     public func failNextSFTPInitBeforeEAGAINForTesting() async {
