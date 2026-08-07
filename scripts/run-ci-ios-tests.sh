@@ -327,7 +327,7 @@ spawn /usr/bin/sudo -n /usr/sbin/sysadminctl \
 
 set sent_password 0
 expect {
-    -re {(?i)user password:[[:space:]]*$} {
+    -re {(?i)password[^\r\n]*:[[:space:]]*$} {
         if {$sent_password} {
             close
             catch {wait}
