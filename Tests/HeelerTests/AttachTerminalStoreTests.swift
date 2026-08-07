@@ -1191,8 +1191,10 @@ struct AgentAttachStoreTests {
         await transport.gateNextAttachEnd(on: terminalEndGate)
         let imageGate = ScriptedTransportCallGate()
         let imageStager = GatedAttachImageStager(gate: imageGate)
+        let stage = SelectedPane(current: "w1:p1")
         let store = makeStore(
             transport: transport, generation: 0,
+            isOnStage: { stage.contains("w1:p1") },
             stageImage: { image, reporter in
                 try await imageStager.stage(image, reporter)
             })
@@ -1212,7 +1214,11 @@ struct AgentAttachStoreTests {
             await terminalEndGate.entryCount == 1
         }
 
+        // This is a real owner change, not the delayed on-stage disappear that
+        // possible-suspension recovery deliberately absorbs.
+        stage.current = "w1:p2"
         let leaveTask = store.leave()
+        stage.current = "w1:p1"
         store.rejoin()
         await terminalEndGate.open()
         try await waitUntil("the real leave should cancel image staging") {
