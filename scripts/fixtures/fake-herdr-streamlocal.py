@@ -7,6 +7,7 @@ import signal
 import socket
 import threading
 import time
+from typing import Optional
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -17,6 +18,31 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
+class _OneShotBarrier:
+    def __init__(self, condition: threading.Condition) -> None:
+        self.condition = condition
+        self.tokens: set[str] = set()
+
+    def record(self, token: object) -> None:
+        if not isinstance(token, str):
+            return
+        with self.condition:
+            self.tokens.add(token)
+            self.condition.notify_all()
+
+    def wait(self, token: object) -> bool:
+        if not isinstance(token, str):
+            return False
+        with self.condition:
+            observed = self.condition.wait_for(
+                lambda: token in self.tokens,
+                timeout=20,
+            )
+            if observed:
+                self.tokens.discard(token)
+            return observed
+
+
 class Server:
     def __init__(self, socket_path: str, stale_socket_paths: list[str], count_file: str) -> None:
         self.socket_path = socket_path
@@ -24,8 +50,9 @@ class Server:
         self.count_file = count_file
         self.count = 0
         self.count_lock = threading.Lock()
-        self.hang_request_ids: set[str] = set()
         self.hang_condition = threading.Condition()
+        self.hang_requests = _OneShotBarrier(self.hang_condition)
+        self.pane_hangs = _OneShotBarrier(self.hang_condition)
         self.listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 
     def start(self) -> None:
@@ -71,18 +98,39 @@ class Server:
             if method == "eof":
                 return
             if method == "hang":
-                self._record_hang_request(envelope.get("id"))
+                self.hang_requests.record(envelope.get("id"))
                 time.sleep(30)
                 return
             params = envelope.get("params", {})
             if method == "pane.read" and params.get("pane_id") == "hang":
                 time.sleep(30)
                 return
-            if method == "fixture.await_hang":
+            pane_id = params.get("pane_id") if isinstance(params, dict) else None
+            pane_hang_token = self._fixture_token(pane_id, "fixture:hang:")
+            if method == "pane.read" and pane_hang_token is not None:
+                self.pane_hangs.record(pane_hang_token)
+                time.sleep(30)
+                return
+            pane_observer_token = self._fixture_token(
+                pane_id,
+                "fixture:await-hang:",
+            )
+            if method == "pane.read" and pane_observer_token is not None:
+                observed = self.pane_hangs.wait(pane_observer_token)
+                response = {
+                    "id": envelope.get("id"),
+                    "result": self._pane_read_result(
+                        pane_id,
+                        "observed" if observed else "not observed",
+                    ),
+                }
+                payload = json.dumps(response, separators=(",", ":")).encode() + b"\n"
+                chunk_size = 7
+            elif method == "fixture.await_hang":
                 response = {
                     "id": envelope.get("id"),
                     "result": {
-                        "observed": self._await_hang_request(envelope.get("extra"))
+                        "observed": self.hang_requests.wait(envelope.get("extra"))
                     },
                 }
                 payload = json.dumps(response, separators=(",", ":")).encode() + b"\n"
@@ -110,24 +158,12 @@ class Server:
                 except BrokenPipeError:
                     return
 
-    def _record_hang_request(self, request_id: object) -> None:
-        if not isinstance(request_id, str):
-            return
-        with self.hang_condition:
-            self.hang_request_ids.add(request_id)
-            self.hang_condition.notify_all()
-
-    def _await_hang_request(self, request_id: object) -> bool:
-        if not isinstance(request_id, str):
-            return False
-        with self.hang_condition:
-            observed = self.hang_condition.wait_for(
-                lambda: request_id in self.hang_request_ids,
-                timeout=20,
-            )
-            if observed:
-                self.hang_request_ids.discard(request_id)
-            return observed
+    @staticmethod
+    def _fixture_token(value: object, prefix: str) -> Optional[str]:
+        if not isinstance(value, str) or not value.startswith(prefix):
+            return None
+        token = value[len(prefix) :]
+        return token or None
 
     def _serve_events(self, connection: socket.socket, envelope: object) -> None:
         request_id = envelope.get("id") if isinstance(envelope, dict) else None
@@ -234,19 +270,7 @@ class Server:
             }
         if method == "pane.read":
             pane_id = params.get("pane_id", "pane-1") if isinstance(params, dict) else "pane-1"
-            return {
-                "type": "pane_read",
-                "read": {
-                    "pane_id": pane_id,
-                    "workspace_id": "workspace-1",
-                    "tab_id": "tab-1",
-                    "source": "recent",
-                    "format": "text",
-                    "text": "fixture output",
-                    "revision": 1,
-                    "truncated": False,
-                },
-            }
+            return self._pane_read_result(pane_id, "fixture output")
         if method == "pane.close":
             return {"type": "ok"}
         if method == "tab.create":
@@ -289,6 +313,22 @@ class Server:
         if method == "workspace.rename":
             return {"type": "workspace_info", "workspace": self._workspace()}
         return {"type": "ok"}
+
+    @staticmethod
+    def _pane_read_result(pane_id: str, text: str) -> object:
+        return {
+            "type": "pane_read",
+            "read": {
+                "pane_id": pane_id,
+                "workspace_id": "workspace-1",
+                "tab_id": "tab-1",
+                "source": "recent",
+                "format": "text",
+                "text": text,
+                "revision": 1,
+                "truncated": False,
+            },
+        }
 
     def _agent(self, pane_id: str = "pane-1", workspace_id: str = "workspace-1") -> object:
         return {

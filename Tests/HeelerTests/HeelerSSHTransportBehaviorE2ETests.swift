@@ -463,10 +463,20 @@ struct HeelerSSHTransportBehaviorE2ETests {
         let transport = try await HeelerSSHTransport.connect(
             settings: environment.directSettings())
         defer { Task { try? await transport.close() } }
+        var observerSettings = environment.directSettings()
+        observerSettings.requestTimeout = .seconds(25)
+        let observer = try await HeelerSSHTransport.connect(settings: observerSettings)
+        defer { Task { try? await observer.close() } }
+
+        let hangToken = UUID().uuidString
         let request = Task {
-            try await transport.readPane(PaneReadParams(paneID: "hang", source: .recent))
+            try await transport.readPane(
+                PaneReadParams(paneID: "fixture:hang:\(hangToken)", source: .recent))
         }
-        try await Task.sleep(for: .milliseconds(100))
+        defer { request.cancel() }
+        let observation = try await observer.readPane(
+            PaneReadParams(paneID: "fixture:await-hang:\(hangToken)", source: .recent))
+        try #require(observation.text == "observed")
         request.cancel()
         await #expect(throws: TransportError.cancelled) { _ = try await request.value }
         #expect(try await transport.ping().protocolVersion == 17)
