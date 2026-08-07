@@ -292,7 +292,11 @@ struct HeelerSSHTransportBehaviorE2ETests {
     func missingEventsAckPreservesConnection() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
         var settings = environment.directSettings()
-        settings.requestTimeout = .milliseconds(100)
+        // Fixture never ACKs, so the first assertion stays deterministic at any
+        // finite budget. 100ms was a scheduling assertion under load (#145): the
+        // same timeout also bounds the replacement subscribe and ping that prove
+        // the channel was freed.
+        settings.requestTimeout = .seconds(1)
         let transport = try await HeelerSSHTransport.connect(settings: settings)
         defer { Task { try? await transport.close() } }
 
@@ -473,7 +477,11 @@ struct HeelerSSHTransportBehaviorE2ETests {
     func timedOutRequestPreservesReuse() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
         var settings = environment.directSettings()
-        settings.requestTimeout = .milliseconds(100)
+        // Hang fixture never answers, so the first assertion stays deterministic
+        // at any finite budget. 100ms was a scheduling assertion under load
+        // (#145): the same timeout also bounds the post-timeout ping that proves
+        // the channel was freed for reuse.
+        settings.requestTimeout = .seconds(1)
         let transport = try await HeelerSSHTransport.connect(settings: settings)
         defer { Task { try? await transport.close() } }
 
