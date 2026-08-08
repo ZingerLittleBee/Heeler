@@ -62,6 +62,7 @@ final actor ScriptedTransport: Transport {
     private var nextStreamID: UInt64 = 0
     private var liveStreamID: UInt64?
     private var eventContinuation: AsyncThrowingStream<HerdrEvent, any Error>.Continuation?
+    private var nextSubscriptionGate: ScriptedTransportCallGate?
     private var nextAttachID: UInt64 = 0
     private var liveAttachID: UInt64?
     private var attachContinuation: AsyncThrowingStream<Data, any Error>.Continuation?
@@ -181,6 +182,11 @@ final actor ScriptedTransport: Transport {
 
     func gateNextAttachEnd(on gate: ScriptedTransportCallGate) {
         nextAttachEndGate = gate
+    }
+
+    /// Pauses the next events subscription after recording its requested set.
+    func gateNextSubscription(using gate: ScriptedTransportCallGate) {
+        nextSubscriptionGate = gate
     }
 
     /// Pushes one event onto the live stream; false if none is live.
@@ -385,6 +391,9 @@ final actor ScriptedTransport: Transport {
             throw TransportError.eventsChannelAlreadyOpen
         }
         capturedSubscriptions.append(subscriptions)
+        let gate = nextSubscriptionGate
+        nextSubscriptionGate = nil
+        await gate?.waitUntilOpen()
         if let missing = subscriptions.firstMissingPane(in: missingPaneIDs) {
             throw HerdrAPIError(code: "pane_not_found", message: "pane \(missing) not found")
         }

@@ -14,6 +14,7 @@ struct AgentDetailView: View {
     private let isOnStage: () -> Bool
     private let onSwitch: (ConsoleAgent.ID) -> Void
     private let onClosed: () -> Void
+    @Environment(\.scenePhase) private var scenePhase
     @State private var monitor: AgentMonitorStore
     @State private var attach: AgentAttachStore
     @State private var isShowingAttach = false
@@ -43,8 +44,11 @@ struct AgentDetailView: View {
         self.onSwitch = onSwitch
         self.onClosed = onClosed
         _monitor = State(
-            initialValue: monitorStore ?? AgentMonitorStore(target: agent.agent.paneID) {
-                [console, agent] params in
+            initialValue: monitorStore ?? AgentMonitorStore(
+                target: agent.agent.paneID,
+                initialStatus: agent.agent.status,
+                statusUpdates: console.agentStatusUpdates(for: agent.id)
+            ) { [console, agent] params in
                 try await console.readAgent(params, on: agent.hostID)
             })
         _attach = State(
@@ -94,6 +98,9 @@ struct AgentDetailView: View {
                 }
             }
             .task { await monitor.open() }
+            .onChange(of: scenePhase, initial: true) { _, phase in
+                monitor.setForeground(phase == .active)
+            }
     }
 
     @ViewBuilder
@@ -103,17 +110,15 @@ struct AgentDetailView: View {
                 statusHeader
                 Divider()
                 if snapshot.characters.isEmpty {
-                    ContentUnavailableView(
-                        "No Output", systemImage: "rectangle.dashed",
-                        description: Text("The Agent's latest screen is empty."))
-                } else {
-                    ScrollView([.horizontal, .vertical]) {
-                        Text(snapshot)
-                            .font(.system(.body, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                            .padding()
+                    ScrollView {
+                        ContentUnavailableView(
+                            "No Output", systemImage: "rectangle.dashed",
+                            description: Text("The Agent's latest screen is empty."))
+                            .frame(maxWidth: .infinity, minHeight: 360)
                     }
+                    .refreshable { await monitor.refresh() }
+                } else {
+                    snapshotScrollView(snapshot)
                 }
             }
         } else {
@@ -122,7 +127,12 @@ struct AgentDetailView: View {
                 ContentUnavailableView {
                     Label("Couldn't Load Screen", systemImage: "exclamationmark.triangle")
                 } description: {
-                    Text(message)
+                    VStack(spacing: 8) {
+                        Text(message)
+                        if !monitor.liveUpdatesAvailable {
+                            liveUpdatesUnavailableLabel
+                        }
+                    }
                 } actions: {
                     Button("Retry") { Task { await monitor.retry() } }
                         .buttonStyle(.borderedProminent)
@@ -134,14 +144,63 @@ struct AgentDetailView: View {
         }
     }
 
+    private func snapshotScrollView(_ snapshot: AttributedString) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView([.horizontal, .vertical]) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(snapshot)
+                        .font(.system(.body, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .padding()
+                    Color.clear
+                        .frame(height: 1)
+                        .id(Self.outputBottomID)
+                }
+            }
+            .defaultScrollAnchor(.bottom, for: .initialOffset)
+            .refreshable { await monitor.refresh() }
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.visibleRect.maxY >= geometry.contentSize.height - 24
+            } action: { _, isPinned in
+                monitor.setBottomPinned(isPinned)
+            }
+            .onChange(of: monitor.contentChangeCount) {
+                guard monitor.isBottomPinned else { return }
+                proxy.scrollTo(Self.outputBottomID, anchor: .bottom)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if monitor.hasNewOutput {
+                    Button("New Output", systemImage: "arrow.down") {
+                        monitor.jumpToLatestOutput()
+                        withAnimation(.snappy) {
+                            proxy.scrollTo(Self.outputBottomID, anchor: .bottom)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .padding()
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+        }
+    }
+
     private var statusHeader: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let capturedAt = monitor.capturedAt {
-                Label(
-                    "Updated \(capturedAt.formatted(date: .omitted, time: .standard))",
-                    systemImage: "clock")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+            HStack {
+                AgentStatusBadge(status: monitor.agentStatus)
+                Spacer(minLength: 8)
+                if let capturedAt = monitor.capturedAt {
+                    Label(
+                        "Updated \(capturedAt.formatted(date: .omitted, time: .standard))",
+                        systemImage: "clock")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if !monitor.liveUpdatesAvailable {
+                liveUpdatesUnavailableLabel
             }
             if case .failed(let message) = monitor.state {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -162,4 +221,14 @@ struct AgentDetailView: View {
     private var title: String {
         AgentAttachView.displayTitle(for: agent)
     }
+
+    private var liveUpdatesUnavailableLabel: some View {
+        Label(
+            "Live updates unavailable. Pull to refresh.",
+            systemImage: "wifi.slash")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+    }
+
+    private static let outputBottomID = "agent-monitor-output-bottom"
 }
