@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "dependencyCoverage": {
+    "packageResolved": {
+      "libghostty-spm": ["libghostty-spm", "Ghostty", "GhosttyTheme"],
+      "msdisplaylink": ["MSDisplayLink"]
+    },
+    "heelerSSHBinaryTargets": {
+      "CLibSSH2": ["libssh2", "libssh2-bcrypt_pbkdf", "libssh2-cipher-chachapoly"],
+      "COpenSSL": ["OpenSSL"]
+    },
+    "projectPackages": {
+      "GhosttyTerminal": ["libghostty-spm", "Ghostty", "GhosttyTheme"],
+      "HeelerSSH": ["libssh2", "libssh2-bcrypt_pbkdf", "libssh2-cipher-chachapoly", "OpenSSL"]
+    },
+    "bundledFontFamilies": {
+      "IBMPlexMono": ["IBMPlexMono"],
+      "JetBrainsMono": ["JetBrainsMono"]
+    }
+  },
+  "components": [
+    {
+      "id": "Ghostty",
+      "displayName": "Ghostty",
+      "version": "35e1a0160c4f6797e1bb1ef8e7a2b8c6b114ab58",
+      "source": "https://github.com/ghostty-org/ghostty (libghostty binary via libghostty-spm 1.3.1)",
+      "spdx": "MIT",
+      "notice": "Ghostty-MIT.txt"
+    },
+    {
+      "id": "GhosttyTheme",
+      "displayName": "GhosttyTheme (iTerm2-Color-Schemes)",
+      "version": "1.3.1",
+      "source": "https://github.com/lakr233/libghostty-spm (product GhosttyTheme; color schemes © Mark Badolato)",
+      "spdx": "MIT",
+      "notice": "GhosttyTheme-MIT.txt"
+    },
+    {
+      "id": "IBMPlexMono",
+      "displayName": "IBM Plex Mono",
+      "version": null,
+      "source": "Sources/Heeler/Resources/Fonts",
+      "spdx": "OFL-1.1",
+      "notice": "IBMPlexMono-OFL-1.1.txt"
+    },
+    {
+      "id": "JetBrainsMono",
+      "displayName": "JetBrains Mono",
+      "version": null,
+      "source": "Sources/Heeler/Resources/Fonts",
+      "spdx": "OFL-1.1",
+      "notice": "JetBrainsMono-OFL-1.1.txt"
+    },
+    {
+      "id": "MSDisplayLink",
+      "displayName": "MSDisplayLink",
+      "version": "2.1.0",
+      "source": "https://github.com/Lakr233/MSDisplayLink.git",
+      "spdx": "MIT",
+      "notice": "MSDisplayLink-MIT.txt"
+    },
+    {
+      "id": "OpenSSL",
+      "displayName": "OpenSSL",
+      "version": "3.6.3",
+      "source": "Packages/HeelerSSH/Artifacts (tag openssl-3.6.3)",
+      "spdx": "Apache-2.0",
+      "notice": "OpenSSL-Apache-2.0.txt"
+    },
+    {
+      "id": "libghostty-spm",
+      "displayName": "libghostty-spm",
+      "version": "1.3.1",
+      "source": "https://github.com/lakr233/libghostty-spm.git",
+      "spdx": "MIT",
+      "notice": "libghostty-spm-MIT.txt"
+    },
+    {
+      "id": "libssh2",
+      "displayName": "libssh2",
+      "version": "1.11.1",
+      "source": "Packages/HeelerSSH/Artifacts (tag libssh2-1.11.1)",
+      "spdx": "BSD-3-Clause",
+      "notice": "libssh2-BSD-3-Clause.txt"
+    },
+    {
+      "id": "libssh2-bcrypt_pbkdf",
+      "displayName": "libssh2 bcrypt_pbkdf",
+      "version": "1.11.1",
+      "source": "libssh2-1.11.1/src/bcrypt_pbkdf.c",
+      "spdx": "MIT",
+      "notice": "libssh2-bcrypt_pbkdf-MIT.txt"
+    },
+    {
+      "id": "libssh2-cipher-chachapoly",
+      "displayName": "libssh2 cipher-chachapoly",
+      "version": "1.11.1",
+      "source": "libssh2-1.11.1/src/cipher-chachapoly.c",
+      "spdx": "BSD-2-Clause",
+      "notice": "libssh2-cipher-chachapoly-BSD-2-Clause.txt"
+    }
+  ]
+}

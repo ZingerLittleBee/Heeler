@@ -9,6 +9,12 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Settings > About now has Acknowledgements: every redistributed third-party
+  component ships with its exact upstream licence notice, including libssh2
+  and its secondary sources, OpenSSL, Ghostty and its stack, the monospaced
+  fonts, and the rest of the audited inventory. The catalogue fails loudly
+  when a notice is missing or malformed. (#161; PR #170)
+
 - The Keys keyboard has a Skills pane: the skills and custom slash commands
   installed on the Host for the agent you're attached to — the project's own
   and the global ones — listed by name and description, one tap inserting
