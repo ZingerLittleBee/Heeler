@@ -222,15 +222,13 @@ struct SessionDriverE2ETests {
         let driver = SessionDriver()
         var transport: DirectTCPIPByteTransport?
         var descriptor: Int32 = -1
-        var writer: RawTCPWriter?
         var primaryError: (any Error)?
 
         do {
-            writer = try await RawTCPWriter.launch(
+            let launched = try await RawTCPWriter.launch(
                 directory: directory,
                 payloadSize: payloadSize,
                 using: observer)
-            let launched = try #require(writer)
 
             _ = try await driver.handshake(
                 endpoint: environment.endpoint,
@@ -301,18 +299,16 @@ struct SessionDriverE2ETests {
             primaryError = error
         }
 
-        // Always wait for cleanup (with or without a PID handle) before closing
-        // the observer. Prefer the body error if cleanup also fails.
+        // Always wait for cleanup before closing the observer. Preserve the
+        // first body or teardown error if a later teardown step also fails.
         // The current task may already be cancelled (timeout body); run remote
         // cleanup in a fresh unstructured context so execute is not short-circuited.
         do {
             let cleanupDirectory = directory
-            let cleanupProcessID = writer?.processID
             let cleanupObserver = observer
             try await Task.detached {
                 try await RawTCPWriter.cleanup(
                     directory: cleanupDirectory,
-                    processID: cleanupProcessID,
                     using: cleanupObserver)
             }.value
         } catch {
@@ -321,7 +317,13 @@ struct SessionDriverE2ETests {
             }
         }
 
-        try? await observer.close(timeout: .seconds(2))
+        do {
+            try await observer.close(timeout: .seconds(2))
+        } catch {
+            if primaryError == nil {
+                primaryError = error
+            }
+        }
 
         if let primaryError {
             throw primaryError
@@ -1086,15 +1088,13 @@ private struct RawTCPWriter {
     /// Kill only processes currently owned by this fixture's `writer.py`, then
     /// remove and verify the directory is gone.
     ///
-    /// `processID` may be nil when launch failed before a handle was parsed;
-    /// cleanup finds owned processes via the known writer path. A PID is owned
-    /// only while its command is `/usr/bin/python3` with this exact path.
+    /// Cleanup finds owned processes via the known writer path even when launch
+    /// failed before a handle was parsed. A PID is owned only while its command
+    /// is `/usr/bin/python3` with this exact path as its first argument.
     static func cleanup(
         directory: String,
-        processID: Int32?,
         using observer: SSHConnection
     ) async throws {
-        _ = processID
         let quotedDirectory = shellQuote(directory)
         // Single remote script: recompute ownership before every TERM/KILL and
         // during polls so a reused PID is never signaled. Final check is a
@@ -1112,12 +1112,12 @@ private struct RawTCPWriter {
                 ;;
             esac
 
-            # Field 2 must be the interpreter; full line must contain exact path.
-            # (A plain `read -r pid cmd` under /bin/sh puts the whole line in pid.)
+            # Fields 2 and 3 must be the exact interpreter and script path.
+            # This excludes suffix matches and the path appearing in later args.
             collect_owned() {
               ps -A -o pid= -o command= 2>/dev/null \\
                 | awk -v needle="$writer_py" \\
-                  '$2 == "/usr/bin/python3" && index($0, needle) { print $1 }'
+                  '$2 == "/usr/bin/python3" && $3 == needle { print $1 }'
             }
 
             for pid in $(collect_owned); do
