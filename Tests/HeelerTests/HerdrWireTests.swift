@@ -129,8 +129,11 @@ import Testing
     }
 
     @Test func errorEnvelopeWithBlankIDStillThrowsAPIError() throws {
-        // Live capture: herdr answers a request it could not parse with
-        // id "" — the error must surface, not an id-mismatch complaint.
+        // Live capture: herdr 0.8.0 answers a request it could not parse with
+        // id "" — the error must surface as the server's rejection, not an
+        // id-mismatch complaint that leaves the caller without the payload.
+        // One request per connection makes the empty id attributable to the
+        // sole in-flight request on that connection (#177).
         let line =
             #"{"id":"","error":{"code":"invalid_request","message":"invalid request: missing field `source` at line 1 column 123"}}"#
 
@@ -139,6 +142,75 @@ import Testing
                 code: "invalid_request",
                 message: "invalid request: missing field `source` at line 1 column 123")
         ) {
+            try HerdrWire.decodeResult(
+                PongResponse.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
+        }
+    }
+
+    @Test func blankIDErrorIsNotReportedAsIDMismatch() throws {
+        // Regression guard for #177: the empty-id path must fail with the
+        // server's error, never TransportError.malformedResponse("response id …").
+        let line =
+            #"{"id":"","error":{"code":"invalid_request","message":"invalid request: missing field `source` at line 1 column 123"}}"#
+
+        do {
+            _ = try HerdrWire.decodeResult(
+                PongResponse.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
+            Issue.record("expected empty-id error envelope to throw")
+        } catch is HerdrAPIError {
+            // expected
+        } catch {
+            Issue.record("empty-id error must surface as HerdrAPIError, got \(error)")
+        }
+    }
+
+    @Test func mismatchedErrorIDStillThrowsAPIError() throws {
+        // events.subscribe probe failures use a derived id
+        // (`<requestID>:sub:<index>:probe`) that does not echo the request id.
+        // Same fallback as empty-id: the error is the actionable part.
+        let line =
+            #"{"id":"req-1:sub:0:probe","error":{"code":"pane_not_found","message":"pane not found"}}"#
+
+        #expect(
+            throws: HerdrAPIError(code: "pane_not_found", message: "pane not found")
+        ) {
+            try HerdrWire.decodeResult(
+                PongResponse.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
+        }
+    }
+
+    @Test func matchedSuccessResponseIsUnaffectedByErrorFallback() throws {
+        // AC #177: normal id-correlated success responses still require an
+        // exact id match and still return the decoded result.
+        let line =
+            #"{"id":"req-1","result":{"type":"pong","version":"0.8.0","protocol":19}}"#
+
+        let pong = try HerdrWire.decodeResult(
+            PongResponse.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
+
+        #expect(pong.version == "0.8.0")
+        #expect(pong.protocolVersion == 19)
+    }
+
+    @Test func matchedErrorResponseStillThrowsAPIError() throws {
+        // AC #177: a correctly correlated error envelope is unchanged.
+        let line =
+            #"{"id":"req-1","error":{"code":"agent_not_found","message":"no such agent"}}"#
+
+        #expect(
+            throws: HerdrAPIError(code: "agent_not_found", message: "no such agent")
+        ) {
+            try HerdrWire.decodeResult(
+                PongResponse.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
+        }
+    }
+
+    @Test func blankIDSuccessResultIsStillRejected() throws {
+        // Empty id is only a fallback for *error* envelopes. A success with
+        // id "" is not attributable as a normal result and stays malformed.
+        let line = #"{"id":"","result":{"type":"pong","version":"0.8.0","protocol":19}}"#
+
+        #expect(throws: TransportError.self) {
             try HerdrWire.decodeResult(
                 PongResponse.self, fromResponseLine: Data(line.utf8), requestID: "req-1")
         }

@@ -44,6 +44,14 @@ enum HerdrWire {
 
     /// Decodes one response line: unwraps the envelope, checks id correlation,
     /// and either returns the result or throws the server's error.
+    ///
+    /// Each herdr API connection serves one request, so the response on a
+    /// connection is always for that connection's sole in-flight request.
+    /// Success results still require an exact id match. Errors do not: herdr
+    /// 0.8.0 answers unparseable requests with `id: ""`, and
+    /// `events.subscribe` probe failures use a derived id that does not
+    /// echo the request id. Without this fallback those requests would pend
+    /// until the deadline instead of failing with the server's error (#177).
     static func decodeResult<R: Decodable>(
         _ type: R.Type, fromResponseLine data: Data, requestID: String
     ) throws -> R {
@@ -55,9 +63,8 @@ enum HerdrWire {
             let preview = String(decoding: lineData.prefix(200), as: UTF8.self)
             throw TransportError.malformedResponse("undecodable response line: \(preview)")
         }
-        // Server-reported errors win even when id correlation is off: herdr
-        // answers a request it could not parse with id "" (live-captured
-        // shape), and the error is the actionable part.
+        // Errors are attributable to the connection's sole in-flight request
+        // even when id correlation is off (empty id, subscribe probe ids).
         if let error = envelope.error {
             throw error
         }
