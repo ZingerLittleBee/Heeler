@@ -326,13 +326,15 @@ struct AttachTerminalStoreTests {
         }
     }
 
-    /// #151: when this store is the refused second consumer, the refusal
-    /// must end only this store's run. The transport's gate leaves the
-    /// legitimate consumer running; an unconditional `end()` in the runner's
-    /// catch would reach through the shared session and tear down the very
+    /// #151: when a store is the refused second consumer, the refusal must
+    /// end only that store's run. The transport's gate leaves the legitimate
+    /// consumer running; an unconditional `end()` in the runner's catch
+    /// would reach through the shared session and tear down the very
     /// terminal the gate just protected — so the runner's owned teardown
     /// (`runEndingSession`, which `HostConsoleProjection.terminalRunner`
-    /// uses) skips exactly that error, and the refusal stays visible here.
+    /// uses) skips exactly that error, and the refusal stays visible on the
+    /// offending store. Both consumers are real stores: the proof is the
+    /// first app terminal staying live and its screen still receiving.
     @Test(.timeLimit(.minutes(1)))
     func aRefusedSecondConsumerStoreLeavesTheFirstTerminalRunning() async throws {
         let gate = HeelerSSHAttachOutputGate()
@@ -341,38 +343,42 @@ struct AttachTerminalStoreTests {
             input: TerminalAttachInputQueue(),
             onEndStarted: gate.beginExplicitEnd
         ) {}
-
-        let first = Task { () -> [Data] in
-            var seen: [Data] = []
-            do {
-                for try await bytes in shared.output { seen.append(bytes) }
-            } catch {}
-            return seen
-        }
-        try await waitUntil("the first consumer should park on the gate") {
-            gate.hasParkedConsumerForTesting
-        }
-
-        let store = AttachTerminalStore(target: "w1:p1") { _, handler in
+        let runSharedSession: TerminalSessionRunner = { _, handler in
             try await handler.runEndingSession(shared)
         }
-        store.viewDidResize(cols: 80, rows: 24)
+
+        let first = AttachTerminalStore(target: "w1:p1", runTerminal: runSharedSession)
+        let firstScreen = Captured()
+        first.feed.attach(firstScreen)
+        first.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the first store should claim the gate") {
+            gate.hasParkedConsumerForTesting
+        }
+        gate.yield(Self.firstPaint)
+        try await waitUntil("the first store should go live") { first.status == .live }
+
+        let second = AttachTerminalStore(target: "w1:p1", runTerminal: runSharedSession)
+        second.viewDidResize(cols: 80, rows: 24)
         try await waitUntil("the refusal should surface on the offending store") {
-            store.status == .ended("Another terminal is already open on this Host.")
+            second.status == .ended("Another terminal is already open on this Host.")
         }
 
         // The refused store must not have ended the shared session: the
-        // first consumer is still parked and still receives output. Two
-        // chunks, so silent early termination cannot pass for survival.
-        #expect(
-            gate.hasParkedConsumerForTesting,
-            "the refused store ended the first consumer's registration")
-        let afterRefusal = Data("after-the-refusal".utf8)
-        let stillFlowing = Data("still-flowing".utf8)
-        gate.yield(afterRefusal)
-        gate.yield(stillFlowing)
-        gate.finish()
-        #expect(await first.value == [afterRefusal, stillFlowing])
+        // first terminal is still live, still registered on the gate, and
+        // its screen still receives output. Two chunks, so silent early
+        // termination cannot pass for survival.
+        #expect(first.status == .live, "the refusal ended the first store's session")
+        try await waitUntil("the first store should stay parked on the gate") {
+            gate.hasParkedConsumerForTesting
+        }
+        gate.yield(Data("after-the-refusal".utf8))
+        gate.yield(Data("still-flowing".utf8))
+        try await waitUntil("the first terminal should keep receiving output") {
+            firstScreen.text == "\u{1B}[2J" + "after-the-refusal" + "still-flowing"
+        }
+        #expect(first.status == .live, "later output must reach a still-live first terminal")
+
+        await first.stop()
     }
 
     @Test func stopEndsTheSessionAndIsTerminal() async throws {
