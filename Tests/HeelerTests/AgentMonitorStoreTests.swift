@@ -41,8 +41,8 @@ struct AgentMonitorStoreTests {
 
         await transport.setAgentText("after", target: "w1:p1")
         store.attachDidOpen()
-        await store.refreshAfterAttach()
-        await store.refreshAfterAttach()
+        await store.refreshOnReturn()
+        await store.refreshOnReturn()
 
         let snapshot = try #require(store.snapshot)
         #expect(String(snapshot.characters) == "after")
@@ -64,7 +64,7 @@ struct AgentMonitorStoreTests {
         }
         await transport.setAgentText("after Attach", target: "w1:p1")
         store.attachDidOpen()
-        let returning = Task { await store.refreshAfterAttach() }
+        let returning = Task { await store.refreshOnReturn() }
 
         await gate.open()
         await opening.value
@@ -109,7 +109,7 @@ struct AgentMonitorStoreTests {
 
         await transport.setAgentReadFailure(TransportError.timedOut)
         store.attachDidOpen()
-        await store.refreshAfterAttach()
+        await store.refreshOnReturn()
 
         #expect(store.state == .failed("The Host did not answer in time."))
         #expect(store.capturedAt == capturedAt)

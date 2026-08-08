@@ -51,7 +51,7 @@ final class AgentMonitorStore {
     }
 
     /// Refreshes once after Attach closes, then consumes the pending marker.
-    func refreshAfterAttach() async {
+    func refreshOnReturn() async {
         guard needsRefreshAfterAttach else { return }
         needsRefreshAfterAttach = false
         await waitForCurrentFetch()
@@ -87,6 +87,8 @@ final class AgentMonitorStore {
                 hasOpened = false
             }
         } catch {
+            // #181 owns special `agent_not_idle` handling for history
+            // backfill; this visible-screen cut surfaces every error honestly.
             state = .failed(Self.message(for: error))
         }
     }

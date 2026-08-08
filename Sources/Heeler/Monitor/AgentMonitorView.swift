@@ -90,7 +90,7 @@ struct AgentDetailView: View {
                 guard wasShowing, !isShowing else { return }
                 Task {
                     await attach.leave().value
-                    await monitor.refreshAfterAttach()
+                    await monitor.refreshOnReturn()
                 }
             }
             .task { await monitor.open() }
