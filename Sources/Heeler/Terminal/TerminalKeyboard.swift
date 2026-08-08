@@ -513,25 +513,38 @@ extension HeelerTerminalView {
         inputView as? TerminalKeysKeyboardView
     }
 
-    func installKeyboardSwitcher() {
+    /// Hooks the terminal into the keyboard's lifecycle, observed through
+    /// `notificationCenter`.
+    ///
+    /// Production keeps the default. The Console's detail column stages one
+    /// Attach at a time — keyed by Agent, with a switch replacing the whole
+    /// navigation path — the generated scene manifest enables no extra
+    /// windows, and iOS posts keyboard notifications per process. So no
+    /// keyboard event belonging to another live terminal exists to end a
+    /// handoff here; that half of #157 is not reachable in the shipped app.
+    /// Tests pass a center of their own, the same seam `TerminalKeyboardInset`
+    /// takes, so a keyboard settling in a neighbouring test cannot end this
+    /// terminal's handoff. There is nothing to balance: the center drops an
+    /// observer that deallocates.
+    func installKeyboardSwitcher(notificationCenter: NotificationCenter = .default) {
         inputAssistantItem.leadingBarButtonGroups = []
         inputAssistantItem.trailingBarButtonGroups = []
         _ = inputAccessoryView
-        NotificationCenter.default.addObserver(
+        notificationCenter.addObserver(
             self, selector: #selector(textKeyboardFrameDidChange(_:)),
             name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
-        NotificationCenter.default.addObserver(
+        notificationCenter.addObserver(
             self, selector: #selector(keyboardDismissalWillBegin(_:)),
             name: UIResponder.keyboardWillHideNotification, object: nil)
-        NotificationCenter.default.addObserver(
+        notificationCenter.addObserver(
             self, selector: #selector(keyboardPresentationWillBegin(_:)),
             name: UIResponder.keyboardWillShowNotification, object: nil)
-        NotificationCenter.default.addObserver(
+        notificationCenter.addObserver(
             self, selector: #selector(keyboardTransitionDidFinish(_:)),
             name: UIResponder.keyboardDidHideNotification, object: nil)
         // The other end of a transition: a terminal that inherited the
         // keyboard keeps its grid frozen until the keyboard has settled.
-        NotificationCenter.default.addObserver(
+        notificationCenter.addObserver(
             self, selector: #selector(keyboardTransitionDidFinish(_:)),
             name: UIResponder.keyboardDidShowNotification, object: nil)
     }

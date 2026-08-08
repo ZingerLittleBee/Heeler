@@ -107,7 +107,11 @@ struct TerminalScreenView: UIViewRepresentable {
         keysContext: TerminalKeysContext? = nil,
         theme: TerminalTheme = .default,
         fontSize: Float = TerminalZoomSettings.defaultFontSize,
-        fontFamily: String? = nil
+        fontFamily: String? = nil,
+        /// The center the terminal observes the keyboard through. Tests pass
+        /// their own so one test's keyboard cannot end another test's
+        /// handoff (#157); production keeps the default.
+        notificationCenter: NotificationCenter = .default
     ) -> HeelerTerminalView {
         let view = HeelerTerminalView(
             frame: .zero,
@@ -121,7 +125,7 @@ struct TerminalScreenView: UIViewRepresentable {
             theme: theme,
             fontSize: fontSize,
             fontFamily: fontFamily)
-        view.installKeyboardSwitcher()
+        view.installKeyboardSwitcher(notificationCenter: notificationCenter)
         return view
     }
 

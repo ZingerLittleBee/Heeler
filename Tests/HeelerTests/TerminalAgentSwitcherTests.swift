@@ -421,10 +421,15 @@ struct TerminalAgentSwitcherTests {
     @MainActor
     @Test func aClaimedHandoffFreezesTheGridUntilTheKeyboardSettles() async throws {
         var reportedGrids: [TerminalGrid] = []
+        // The terminal's own center, so a keyboard settling anywhere else in
+        // the process — another test's terminal, say — cannot end this
+        // handoff (#157).
+        let center = NotificationCenter()
         let terminal = TerminalScreenView.makeConfiguredTerminal(
             onSizeChanged: { columns, rows in
                 reportedGrids.append(TerminalGrid(columns: columns, rows: rows))
-            })
+            },
+            notificationCenter: center)
         let host = UIViewController()
         let window = try await makeTestWindow(
             frame: CGRect(x: 0, y: 0, width: 390, height: 700),
@@ -439,6 +444,13 @@ struct TerminalAgentSwitcherTests {
         host.view.addSubview(terminal)
         window.layoutIfNeeded()
 
+        // A foreign settle, posted to the process-wide center inside the
+        // handoff window. Before the isolation above, exactly this thawed the
+        // freeze early — that was #145's second failure — so the window below
+        // doubles as the proof that it no longer can.
+        NotificationCenter.default.post(
+            name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
+
         // The keyboard is arriving: every bounds UIKit animates through here
         // is a half-built grid Ghostty must not be measured against.
         for height: CGFloat in [520, 440, 360] {
@@ -450,8 +462,9 @@ struct TerminalAgentSwitcherTests {
         #expect(reportedGrids.isEmpty)
 
         // The keyboard settled. A keyboard that never left reports no
-        // did-show, so its end frame is what thaws the grid.
-        NotificationCenter.default.post(
+        // did-show, so its end frame is what thaws the grid — delivered on
+        // the terminal's own center, the only one it observes.
+        center.post(
             name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
         try await Self.waitForGridReportsToStop { reportedGrids }
         let escaped = reportedGrids
@@ -495,23 +508,31 @@ struct TerminalAgentSwitcherTests {
             rootViewController: host)
         defer { window.isHidden = true }
 
-        let inherited = TerminalScreenView.makeConfiguredTerminal()
+        // Both terminals observe the test's own center: with every terminal
+        // in the process on the shared one, any keyboard settling anywhere
+        // could end the handoff before the explicit call below (#157).
+        let center = NotificationCenter()
+        let inherited = TerminalScreenView.makeConfiguredTerminal(
+            notificationCenter: center)
         inherited.raisesKeyboardWhenReady = true
         inherited.frame = CGRect(x: 0, y: 0, width: 390, height: 400)
         host.view.addSubview(inherited)
-        // Every terminal in the process listens for the keyboard's frame, so
-        // any keyboard settling anywhere can be what ends this handoff. This
-        // call is then as likely to find the handoff already over as to be what
-        // ends it — but either way it is over once the call returns. Counting
-        // the rebuilds around the call would only catch the republish in the
-        // second case, which is scheduling rather than behaviour.
+        // A foreign settle inside the handoff window must leave the handoff
+        // standing, so the call below is necessarily what ends it — and the
+        // republish lands exactly there, not whenever a neighbour's keyboard
+        // happened to settle.
+        NotificationCenter.default.post(
+            name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
+        let rebuildsBeforeHandoffEnds = inherited.inputViewRebuildCount
         inherited.finishKeyboardTransitionLayout()
+        #expect(inherited.inputViewRebuildCount > rebuildsBeforeHandoffEnds)
 
         // A terminal that raised its own keyboard has no outgoing accessory to
         // account for, so the same call must leave its input views alone. That
         // makes it the yardstick as well: same surface, same window, same
         // keyboard, differing only in having no handoff to pay for.
-        let dismissing = TerminalScreenView.makeConfiguredTerminal()
+        let dismissing = TerminalScreenView.makeConfiguredTerminal(
+            notificationCenter: center)
         dismissing.frame = CGRect(x: 0, y: 0, width: 390, height: 400)
         host.view.addSubview(dismissing)
         dismissing.requestKeyboard()

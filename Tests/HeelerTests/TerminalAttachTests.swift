@@ -935,14 +935,18 @@ struct TerminalAttachTests {
     @MainActor
     @Test func theKeyboardRowLeavesInSyncWithTheKeyboard() throws {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
-        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        // The terminal's own center: a test's keyboard events must not reach
+        // another test's terminal, this one's included (#157).
+        let center = NotificationCenter()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            notificationCenter: center)
         window.addSubview(terminal)
         window.makeKeyAndVisible()
         terminal.requestKeyboard()
         let accessory = try #require(
             terminal.inputAccessoryView as? TerminalKeyboardAccessory)
 
-        NotificationCenter.default.post(
+        center.post(
             name: UIResponder.keyboardWillHideNotification, object: nil,
             userInfo: [UIResponder.keyboardAnimationDurationUserInfoKey: NSNumber(value: 0.0)])
 
@@ -1032,10 +1036,14 @@ struct TerminalAttachTests {
     @MainActor
     @Test func aKeyboardHandoffCoalescesItsTransientGridsIntoOneResize() async throws {
         var reportedGrids: [(columns: Int, rows: Int)] = []
+        // The terminal's own center, so a keyboard settling in a neighbouring
+        // test cannot end the handoff inside the freeze window below (#157).
+        let center = NotificationCenter()
         let terminal = TerminalScreenView.makeConfiguredTerminal(
             onSizeChanged: { columns, rows in
                 reportedGrids.append((columns, rows))
-            })
+            },
+            notificationCenter: center)
         let host = UIViewController()
         let window = try await makeTestWindow(
             frame: CGRect(x: 0, y: 0, width: 390, height: 700),
@@ -1100,7 +1108,11 @@ struct TerminalAttachTests {
     /// wearing a fully transparent toolbar until will-show restored it.
     @MainActor
     @Test func aRepresentedKeyboardRestoresItsDismissedAccessory() throws {
-        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        // The terminal's own center: a test's keyboard events must not reach
+        // another test's terminal, this one's included (#157).
+        let center = NotificationCenter()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            notificationCenter: center)
         let accessory = try #require(
             terminal.inputAccessoryView as? TerminalKeyboardAccessory)
 
@@ -1109,7 +1121,7 @@ struct TerminalAttachTests {
         accessory.animateDismissal(duration: 0)
         #expect(accessory.toolbarContentView.alpha == 0)
 
-        NotificationCenter.default.post(
+        center.post(
             name: UIResponder.keyboardWillShowNotification, object: nil,
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
                 x: 0, y: 554, width: 440, height: 436)])
