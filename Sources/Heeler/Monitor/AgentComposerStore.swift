@@ -159,11 +159,11 @@ final class AgentComposerStore: ComposerDraftOperations {
         }
         switch agentStatus {
         case .working:
-            .working
+            return .working
         case .done:
-            .done
+            return .done
         default:
-            .acknowledged
+            return .acknowledged
         }
     }
 
