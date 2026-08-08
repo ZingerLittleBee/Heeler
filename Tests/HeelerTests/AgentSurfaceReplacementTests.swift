@@ -7,7 +7,7 @@ import UIKit
 /// What happens when SwiftUI replaces a terminal surface (#152).
 ///
 /// Whole-screen replacement is the one path #143 could not disprove:
-/// `AgentDetailView` holds `@State private var attach`, so an Agent switch
+/// `AgentAttachView` holds `@State private var attach`, so an Agent switch
 /// releases one store and constructs another, in an order that is SwiftUI's
 /// and unspecified. These tests drive that replacement through the real view
 /// and observe what the feed does across it.
@@ -16,7 +16,7 @@ import UIKit
 /// `NavigationSplitView` builds its columns, separators and navigation bar but
 /// never the SwiftUI content inside them, so nothing below it can be observed
 /// (measured: 72 views, all chrome, identical with and without a selection).
-/// `AgentDetailView` is not subject to that — it is a plain view and its
+/// `AgentAttachView` is not subject to that — it is a plain view and its
 /// terminal surface really is built.
 @MainActor
 @Suite("Agent surface replacement")
@@ -41,7 +41,7 @@ struct AgentSurfaceReplacementTests {
         let controller = UIHostingController(rootView: Harness(feed: feed, surface: 1))
         // This seam needs a UIKit hierarchy, not a connected app scene. A
         // scene is absent in some headless test-host launches, which made the
-        // otherwise deterministic loop fail before it reached AgentDetailView.
+        // otherwise deterministic loop fail before it reached AgentAttachView.
         let window = Self.makeLocalTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)
@@ -102,7 +102,7 @@ struct AgentSurfaceReplacementTests {
     func anAgentSwitchBuildsASurfaceForTheNewStore() async throws {
         struct Harness: View {
             let agent: ConsoleAgent
-            let make: (ConsoleAgent) -> AgentDetailView
+            let make: (ConsoleAgent) -> AgentAttachView
 
             var body: some View {
                 // Mirrors what `ConsoleView` puts on its detail column: the
@@ -358,7 +358,7 @@ struct AgentSurfaceReplacementTests {
         async throws
     {
         struct Harness: View {
-            let detail: AgentDetailView
+            let detail: AgentAttachView
             let mounts: [Int]
 
             var body: some View {
@@ -589,7 +589,7 @@ struct AgentSurfaceReplacementTests {
     ///
     /// The stores are built once and shared across switches because that is
     /// what the Console does — only the Agent changes.
-    static func detailViewFactory() -> (ConsoleAgent) -> AgentDetailView {
+    static func detailViewFactory() -> (ConsoleAgent) -> AgentAttachView {
         let defaults = UserDefaults(suiteName: "agent-surface-\(UUID())") ?? .standard
         let console = ConsoleStore(snapshotRetryDelay: .seconds(30)) { _, subscriptions in
             EventsSession(
@@ -611,7 +611,7 @@ struct AgentSurfaceReplacementTests {
         let inset = TerminalKeyboardInset()
         let activity = AppActivityCoordinator()
         return { agent in
-            AgentDetailView(
+            AgentAttachView(
                 agent: agent,
                 console: console,
                 terminal: terminal,
@@ -629,7 +629,7 @@ struct AgentSurfaceReplacementTests {
         agent: ConsoleAgent,
         activity: AppActivityCoordinator,
         attachStore: AgentAttachStore
-    ) -> AgentDetailView {
+    ) -> AgentAttachView {
         let defaults = UserDefaults(suiteName: "attach-recovery-\(UUID())") ?? .standard
         let console = ConsoleStore(snapshotRetryDelay: .seconds(30)) { _, subscriptions in
             EventsSession(
@@ -643,7 +643,7 @@ struct AgentSurfaceReplacementTests {
             zoom: TerminalZoomSettings(defaults: defaults),
             fonts: TerminalFontSettings(defaults: defaults),
             snippets: SnippetStore(defaults: defaults))
-        return AgentDetailView(
+        return AgentAttachView(
             agent: agent,
             console: console,
             terminal: terminal,

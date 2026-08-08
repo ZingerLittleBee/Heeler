@@ -9,6 +9,12 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Opening an Agent now lands on Monitor: a color-preserving snapshot of its
+  latest screen with an honest capture time. Attach remains available as a
+  full-screen toolbar action for realtime interaction; leaving it closes the
+  live terminal and refreshes Monitor once. Agent Notification taps land on
+  Monitor as well. (#179)
+
 - Settings > About now has Acknowledgements: every redistributed third-party
   component ships with its exact upstream licence notice, including libssh2
   and its secondary sources, OpenSSL, Ghostty and its stack, the monospaced

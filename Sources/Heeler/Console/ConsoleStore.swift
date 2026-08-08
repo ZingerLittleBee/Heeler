@@ -239,6 +239,16 @@ final class ConsoleStore {
         }
     }
 
+    /// Monitor's one-shot snapshot source. It borrows the Host's live Console
+    /// transport so opening a detail screen never dials a parallel connection.
+    func readAgent(_ params: AgentReadParams, on hostID: Host.ID) async throws
+        -> PaneReadResult
+    {
+        try await projection(for: hostID).session.withTransport { transport in
+            try await transport.readAgent(params)
+        }
+    }
+
     @discardableResult
     func startAgent(
         _ request: AgentLaunchRequest,
