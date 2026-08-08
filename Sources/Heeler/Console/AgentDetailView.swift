@@ -2,10 +2,10 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
-/// The Agent detail screen: one interactive Attach terminal. Ghostty owns
+/// The full-screen interactive Attach destination. Ghostty owns
 /// rendering, scrollback, and IME; the adapter routes input-row taps and touch
 /// scrolling without adding separate terminal chrome.
-struct AgentDetailView: View {
+struct AgentAttachView: View {
     let agent: ConsoleAgent
     private let console: ConsoleStore
     private let terminal: TerminalSettings
@@ -578,7 +578,7 @@ struct AgentDetailView: View {
         return count == 1 ? "1 distinct link" : "\(count) distinct links"
     }
 
-    private static func displayTitle(for agent: ConsoleAgent) -> String {
+    static func displayTitle(for agent: ConsoleAgent) -> String {
         agent.agent.title.isEmpty ? agent.agent.displayName : agent.agent.title
     }
 }

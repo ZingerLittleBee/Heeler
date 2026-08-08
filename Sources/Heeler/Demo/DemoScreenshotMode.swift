@@ -362,6 +362,20 @@
                 workspaceID: agent?.workspaceID ?? "demo")
         }
 
+        func readAgent(_ params: AgentReadParams) async throws -> PaneReadResult {
+            let agent = profile.snapshot.agents.first(where: { $0.paneID == params.target })
+            return PaneReadResult(
+                format: params.format ?? .text,
+                paneID: params.target,
+                revision: 1,
+                source: params.source,
+                tabID: agent?.tabID ?? "demo:t1",
+                text: profile.terminalOutputs[params.target]
+                    ?? DemoScreenshotFixture.terminalOutput,
+                truncated: false,
+                workspaceID: agent?.workspaceID ?? "demo")
+        }
+
         func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
             guard let first = profile.snapshot.agents.first else {
                 throw TransportError.malformedResponse("Demo profile has no Agents.")

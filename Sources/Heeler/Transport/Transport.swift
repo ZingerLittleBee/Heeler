@@ -30,6 +30,13 @@ protocol Transport: Sendable {
     /// Reads a Pane's recent terminal output for the Console card snippet.
     func readPane(_ params: PaneReadParams) async throws -> PaneReadResult
 
+    /// Reads an Agent's terminal output. Unlike `pane.read`, this preserves
+    /// history semantics for alternate-screen Agents: history-capable sources
+    /// fail honestly while the Agent is working instead of silently degrading
+    /// to the visible screen. Monitor uses `.visible` for its always-available
+    /// snapshot and requests ANSI output for local rendering (ADR 0012).
+    func readAgent(_ params: AgentReadParams) async throws -> PaneReadResult
+
     /// Starts a new Agent: the new-agent flow (#12, User Story 8 — dispatch
     /// work from the road). Creates a fresh herdr tab in the chosen workspace,
     /// starts the requested agent in its root pane, and returns the Agent once

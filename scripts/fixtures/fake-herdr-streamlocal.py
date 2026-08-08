@@ -271,6 +271,20 @@ class Server:
         if method == "pane.read":
             pane_id = params.get("pane_id", "pane-1") if isinstance(params, dict) else "pane-1"
             return self._pane_read_result(pane_id, "fixture output")
+        if method == "agent.read":
+            request = params if isinstance(params, dict) else {}
+            target = request.get("target", "pane-1")
+            source = request.get("source", "recent")
+            output_format = request.get("format", "text")
+            text = "fixture agent output"
+            if output_format == "ansi" and request.get("strip_ansi") is False:
+                text = "\x1b[31mfixture agent output\x1b[0m"
+            return self._pane_read_result(
+                target,
+                text,
+                source=source,
+                output_format=output_format,
+            )
         if method == "pane.close":
             return {"type": "ok"}
         if method == "tab.create":
@@ -315,15 +329,20 @@ class Server:
         return {"type": "ok"}
 
     @staticmethod
-    def _pane_read_result(pane_id: str, text: str) -> object:
+    def _pane_read_result(
+        pane_id: str,
+        text: str,
+        source: str = "recent",
+        output_format: str = "text",
+    ) -> object:
         return {
             "type": "pane_read",
             "read": {
                 "pane_id": pane_id,
                 "workspace_id": "workspace-1",
                 "tab_id": "tab-1",
-                "source": "recent",
-                "format": "text",
+                "source": source,
+                "format": output_format,
                 "text": text,
                 "revision": 1,
                 "truncated": False,

@@ -612,6 +612,11 @@ actor HeelerSSHTransport: Transport {
             .read
     }
 
+    func readAgent(_ params: AgentReadParams) async throws -> PaneReadResult {
+        try await request(method: "agent.read", params: params, decoding: PaneReadResponse.self)
+            .read
+    }
+
     func startAgent(_ launch: AgentLaunchRequest) async throws -> Agent {
         let created = try await request(
             method: "tab.create",

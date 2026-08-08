@@ -544,6 +544,13 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(
             try await transport.readPane(PaneReadParams(paneID: "pane-1", source: .recent)).text
                 == "fixture output")
+        let agentRead = try await transport.readAgent(
+            AgentReadParams(
+                source: .visible, target: "pane-1", format: .ansi,
+                stripANSI: false))
+        #expect(agentRead.text == "\u{1B}[31mfixture agent output\u{1B}[0m")
+        #expect(agentRead.source == .visible)
+        #expect(agentRead.format == .ansi)
         try await transport.closePane(PaneTarget(paneID: "pane-1"))
         try await transport.renameAgent(AgentRenameParams(target: "pane-1", name: "fixture"))
         try await transport.renameWorkspace(

@@ -15,7 +15,7 @@ struct ConsoleView: View {
     @Bindable var notificationRouter: AgentNotificationRouter
     /// Announces foreground Blocked/Done transitions in-app (#77).
     let bannerStore: AgentNotificationBannerStore
-    /// Scene phase widened by the background grace period; the Attach screen
+    /// Scene phase widened by the background grace period; an Attach screen
     /// pauses its work on real suspensions only.
     let activity: AppActivityCoordinator
     @State private var hostSheet: HostSheet?
@@ -125,7 +125,7 @@ struct ConsoleView: View {
             }
         }
         .animation(.snappy, value: bannerStore.banner)
-        // A notification deep link must land on the Attach even when one of
+        // A notification deep link must land on Monitor even when one of
         // the Console's sheets covers it. The only other push a sheet can
         // cause is the new-agent flow's, which dismisses itself first, so
         // clearing here is a no-op for it.
@@ -178,9 +178,9 @@ struct ConsoleView: View {
                     onSwitch: { notificationRouter.path = [$0] },
                     onClosed: { notificationRouter.path = [] }
                 )
-                // Selecting another Agent must tear down the previous Attach
-                // and build a fresh one; without the explicit identity the
-                // detail column would reuse the old view's state.
+                // Selecting another Agent must tear down the previous Monitor
+                // and build fresh snapshot state; without the explicit identity
+                // the detail column would reuse the old view's state.
                 .id(id)
             } else {
                 // The Agent is gone from the list, but not necessarily
@@ -197,7 +197,7 @@ struct ConsoleView: View {
         } else {
             ContentUnavailableView(
                 "No Agent Selected", systemImage: "rectangle.on.rectangle",
-                description: Text("Choose an Agent to open its terminal."))
+                description: Text("Choose an Agent to monitor its latest screen."))
         }
     }
 
