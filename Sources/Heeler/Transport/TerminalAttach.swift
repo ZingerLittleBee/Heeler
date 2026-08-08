@@ -276,18 +276,29 @@ final class TerminalAttachSession: Sendable {
     /// Raw PTY output in arrival order. Finishes without error when the
     /// remote attach exits cleanly (the user detached inside the TUI) or
     /// after `end()`; finishes throwing if the channel dies.
-    let output: AsyncThrowingStream<Data, any Error>
+    ///
+    /// Each access returns its own stream over the shared source. An
+    /// unfolding stream keeps one produce storage per stream *instance*,
+    /// shared by every iterator, and its own cancellation handler clears
+    /// that storage for a reader whose task is already cancelled — before
+    /// the source underneath can refuse the read. Through a single shared
+    /// instance, such a reader silently terminates the legitimate consumer's
+    /// iteration (#164). A per-access stream confines the damage to the
+    /// offending reader; who may consume at all is still decided underneath,
+    /// where the first reading task claims the output (#153).
+    var output: AsyncThrowingStream<Data, any Error> { makeOutput() }
+    private let makeOutput: @Sendable () -> AsyncThrowingStream<Data, any Error>
     private let input: TerminalAttachInputQueue
     private let onEndStarted: @Sendable () -> Void
     private let ender: @Sendable () async -> Void
 
     init(
-        output: AsyncThrowingStream<Data, any Error>,
+        output makeOutput: @escaping @Sendable () -> AsyncThrowingStream<Data, any Error>,
         input: TerminalAttachInputQueue,
         onEndStarted: @escaping @Sendable () -> Void = {},
         ender: @escaping @Sendable () async -> Void
     ) {
-        self.output = output
+        self.makeOutput = makeOutput
         self.input = input
         self.onEndStarted = onEndStarted
         self.ender = ender
