@@ -1,7 +1,8 @@
 import Foundation
 
-/// Monitor's local scrollback cache: an ordered list of contiguous line runs
-/// separated by explicit gap markers, oldest first. In-memory only.
+/// Monitor's local scrollback cache: captured line runs and explicit gap
+/// markers, ordered oldest first. The final line run is always the live
+/// screen, kept separate from backfilled or sealed history. In-memory only.
 ///
 /// herdr exposes no history cursor (`agent.read` takes a source and a line
 /// count, capped at 1000 lines), so every reconciliation is an
@@ -11,8 +12,8 @@ import Foundation
 /// stitching rules are testable on their own.
 struct AgentMonitorHistory: Equatable, Sendable {
     enum Segment: Equatable, Sendable {
-        /// A contiguous run of captured lines. ANSI state flows within a run;
-        /// runs never sit adjacent to another run (a stitch merges them).
+        /// One contiguous captured run. Adjacent line segments may exist to
+        /// preserve the boundary between backfilled history and live output.
         case lines([String])
         /// An explicit marker that the content between the neighbouring runs
         /// could not be captured or reconciled. Never guessed around.
@@ -27,18 +28,22 @@ struct AgentMonitorHistory: Equatable, Sendable {
     /// whole-screen match is correct by construction there.
     static let minimumOverlap = 3
 
-    /// Invariant: `.lines` runs are never adjacent (a stitch merges them)
-    /// and a `.gap` is never first or last, so the cache always ends with
-    /// the live run.
+    /// The final `.lines` segment is always the live screen. Backfilled and
+    /// sealed live runs remain separate from it, including when they are
+    /// known to be contiguous; only a `.gap` claims unknown continuity.
     private(set) var segments: [Segment] = []
+
+    /// The range reconciled by the most recent backfill. It normally spans
+    /// the current history suffix and live run. After an unstitched read it
+    /// instead points at that read above the gap, so a later, deeper read can
+    /// extend it without moving captured history below the live screen.
+    private var backfillRange: Range<Int>?
 
     var isEmpty: Bool {
         segments.isEmpty
     }
 
-    /// The lines of the newest contiguous run. The live mirror of the
-    /// Agent's screen always lives here; backfill stitches onto its front
-    /// because a `recent` read ends at the same newest line.
+    /// The live mirror of the Agent's screen, always the final segment.
     var newestLines: [String] {
         guard case .lines(let lines) = segments.last else { return [] }
         return lines
@@ -47,18 +52,18 @@ struct AgentMonitorHistory: Equatable, Sendable {
     enum VisibleOutcome: Equatable, Sendable {
         /// The read carried no new content.
         case unchanged
-        /// The read's top overlapped the cache's bottom; the newly scrolled
-        /// lines were appended to the newest run.
+        /// The read's top overlapped the live screen's bottom; newly scrolled
+        /// lines were appended to the live run.
         case extended
         /// No usable overlap (an alternate-screen repaint, or a reconnect
-        /// that scrolled a full screen): the newest run was replaced.
+        /// that scrolled a full screen): a new live run was installed.
         case replaced
     }
 
     /// Reconciles one `visible` read with the live tail. The visible screen
-    /// is a sliding window: when its top lines match the cache's bottom
-    /// lines the window scrolled and only the fresh lines are appended;
-    /// otherwise the screen repainted and the tail is replaced outright.
+    /// is a sliding window: when its top lines match the live run's bottom,
+    /// only fresh lines are appended. Otherwise the old live run is sealed
+    /// as history and the repaint becomes a new live run below a gap.
     @discardableResult
     mutating func applyVisible(_ text: String) -> VisibleOutcome {
         let read = Self.splitLines(text)
@@ -67,12 +72,13 @@ struct AgentMonitorHistory: Equatable, Sendable {
             // screen must paint, or the store never renders and the view
             // loads forever.
             segments = [.lines(read)]
+            backfillRange = 0..<1
             return .replaced
         }
         guard read != newest else { return .unchanged }
         // A read fully contained at the tail (a shorter screen, or the same
-        // screen while the cache runs deeper) changes nothing. The empty
-        // read is excluded: a cleared screen is a replacement, not a no-op.
+        // screen while the live run accumulated scrolling) changes nothing.
+        // The empty read is excluded: a cleared screen is a replacement.
         if !read.isEmpty, read.count <= newest.count, newest.suffix(read.count) == read {
             return .unchanged
         }
@@ -85,13 +91,23 @@ struct AgentMonitorHistory: Equatable, Sendable {
             segments[segments.count - 1] = .lines(newest + fresh)
             return .extended
         }
-        segments[segments.count - 1] = .lines(read)
+
+        // Replacing only the live segment preserves every backfilled and
+        // previously sealed run. There is no content to seal when the old
+        // live screen was empty, so reuse that final slot in that case.
+        if newest.isEmpty {
+            segments[segments.count - 1] = .lines(read)
+        } else {
+            segments.append(.gap)
+            segments.append(.lines(read))
+        }
+        backfillRange = (segments.count - 1)..<segments.count
         return .replaced
     }
 
     struct BackfillOutcome: Equatable, Sendable {
         /// Lines the read added that the cache did not already hold. Zero
-        /// means the read was fully captured — the capture limit is reached.
+        /// means the read was fully captured: the capture limit is reached.
         var newLines: Int
         /// Whether an explicit gap marker was inserted because the read
         /// could not be overlap-stitched onto the cache.
@@ -99,49 +115,50 @@ struct AgentMonitorHistory: Equatable, Sendable {
     }
 
     /// Reconciles one `recent` read (the server's newest lines, up to its
-    /// cap) with the cache. While the Agent is idle the read's last line is
-    /// the cache's newest line, so the stitch is anchored at the end of the
-    /// newest run: the largest shared suffix proves the read's remaining
-    /// prefix is older content, which is prepended. Failing that, the read
-    /// may still contain the whole newest run (output raced the read): the
-    /// read then supersedes the tail outright. With no shared content at
-    /// all, the read's relation to the cache is unknowable — the old tail
-    /// is sealed, a gap marker records the missing region, and the read
-    /// becomes the new tail.
+    /// cap) with the range covered by the preceding backfill. The largest
+    /// shared suffix proves the read's remaining prefix is older content,
+    /// which is kept in a segment above the live screen. With no shared
+    /// content, the read is likewise placed above the live run with explicit
+    /// gaps rather than displacing the live screen or pretending continuity.
     @discardableResult
     mutating func stitchBackfill(_ text: String) -> BackfillOutcome {
         let read = Self.splitLines(text)
         guard !read.isEmpty else {
             return BackfillOutcome(newLines: 0, insertedGap: false)
         }
-        guard let newest = newestLinesIfPresent, !newest.isEmpty else {
-            if segments.isEmpty {
-                segments = [.lines(read)]
-            } else {
-                segments[segments.count - 1] = .lines(read)
-            }
+        guard let newest = newestLinesIfPresent else {
+            segments = [.lines(read)]
+            backfillRange = 0..<1
             return BackfillOutcome(newLines: read.count, insertedGap: false)
         }
-        let floor = min(Self.minimumOverlap, read.count, newest.count)
+        if newest.isEmpty {
+            let liveIndex = segments.count - 1
+            segments.insert(.lines(read), at: liveIndex)
+            backfillRange = liveIndex..<(liveIndex + 2)
+            return BackfillOutcome(newLines: read.count, insertedGap: false)
+        }
+
+        let range = validBackfillRange ?? ((segments.count - 1)..<segments.count)
+        let anchor = lines(in: range)
+        let floor = min(Self.minimumOverlap, read.count, anchor.count)
         if floor >= 1,
-            let overlap = Self.largestOverlap(suffixOf: read, suffixOf: newest, floor: floor)
+            let overlap = Self.largestOverlap(suffixOf: read, suffixOf: anchor, floor: floor)
         {
-            let older = read.prefix(read.count - overlap)
+            let older = Array(read.prefix(read.count - overlap))
             guard !older.isEmpty else {
                 return BackfillOutcome(newLines: 0, insertedGap: false)
             }
-            segments[segments.count - 1] = .lines(older + newest)
+            prepend(older, to: range)
             return BackfillOutcome(newLines: older.count, insertedGap: false)
         }
-        if newest.count >= Self.minimumOverlap,
-            Self.containment(of: newest, in: read) != nil
+        if anchor.count >= Self.minimumOverlap,
+            Self.containment(of: anchor, in: read) != nil
         {
-            segments[segments.count - 1] = .lines(read)
+            replaceBackfillRange(range, with: read)
             return BackfillOutcome(
-                newLines: read.count - newest.count, insertedGap: false)
+                newLines: max(0, read.count - anchor.count), insertedGap: false)
         }
-        segments.append(.gap)
-        segments.append(.lines(read))
+        insertUnstitchedBackfill(read)
         return BackfillOutcome(newLines: read.count, insertedGap: true)
     }
 
@@ -163,6 +180,78 @@ struct AgentMonitorHistory: Equatable, Sendable {
     private var newestLinesIfPresent: [String]? {
         guard case .lines(let lines) = segments.last else { return nil }
         return lines
+    }
+
+    private var validBackfillRange: Range<Int>? {
+        guard
+            let backfillRange,
+            backfillRange.lowerBound >= segments.startIndex,
+            backfillRange.upperBound <= segments.endIndex,
+            !backfillRange.isEmpty,
+            segments[backfillRange].allSatisfy({ segment in
+                if case .lines = segment { return true }
+                return false
+            })
+        else { return nil }
+        return backfillRange
+    }
+
+    private func lines(in range: Range<Int>) -> [String] {
+        range.flatMap { index in
+            guard case .lines(let lines) = segments[index] else { return [] }
+            return lines
+        }
+    }
+
+    private mutating func prepend(_ older: [String], to range: Range<Int>) {
+        guard case .lines(let first) = segments[range.lowerBound] else { return }
+        if range.lowerBound == segments.count - 1 {
+            segments.insert(.lines(older), at: range.lowerBound)
+            backfillRange = range.lowerBound..<(range.upperBound + 1)
+        } else {
+            segments[range.lowerBound] = .lines(older + first)
+            backfillRange = range
+        }
+    }
+
+    private mutating func replaceBackfillRange(
+        _ range: Range<Int>,
+        with read: [String]
+    ) {
+        guard range.upperBound == segments.endIndex else {
+            segments.replaceSubrange(range, with: [.lines(read)])
+            backfillRange = range.lowerBound..<(range.lowerBound + 1)
+            return
+        }
+
+        // A racing `recent` read can contain the previous screen before its
+        // newest lines. Preserve the live/history boundary by treating a
+        // screen-sized suffix as the new live run.
+        let liveCount = min(newestLines.count, read.count)
+        let history = Array(read.dropLast(liveCount))
+        let live = Array(read.suffix(liveCount))
+        let replacement: [Segment]
+        if history.isEmpty {
+            replacement = [.lines(live)]
+        } else {
+            replacement = [.lines(history), .lines(live)]
+        }
+        segments.replaceSubrange(range, with: replacement)
+        backfillRange = range.lowerBound..<(range.lowerBound + replacement.count)
+    }
+
+    private mutating func insertUnstitchedBackfill(_ read: [String]) {
+        let liveIndex = segments.count - 1
+        var insertion: [Segment] = []
+        if liveIndex > 0, segments[liveIndex - 1] != .gap {
+            insertion.append(.gap)
+        }
+        let readOffset = insertion.count
+        insertion.append(.lines(read))
+        insertion.append(.gap)
+        segments.insert(contentsOf: insertion, at: liveIndex)
+        let readIndex = liveIndex + readOffset
+        backfillRange = readIndex..<(readIndex + 1)
     }
 
     /// The largest `k >= floor` such that the two collections share a

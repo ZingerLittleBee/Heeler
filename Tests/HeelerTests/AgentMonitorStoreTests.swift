@@ -22,15 +22,18 @@ struct AgentMonitorStoreTests {
         }
         await transport.setAgentText("second", target: "w1:p1")
         #expect(await clock.advance() == .seconds(2))
+        let expected = [
+            "first", AgentMonitorStore.gapMarkerText, "second",
+        ].joined(separator: "\n")
         try await waitUntil("one clock tick should perform one refresh") {
-            guard store.snapshot.map({ String($0.characters) }) == "second" else {
+            guard store.snapshot.map({ String($0.characters) }) == expected else {
                 return false
             }
             return await transport.agentReadParams.count == 2
         }
 
         #expect(store.agentStatus == .working)
-        #expect(String(try #require(store.snapshot).characters) == "second")
+        #expect(String(try #require(store.snapshot).characters) == expected)
     }
 
     @Test func idleAndBackgroundStatesDoNotPoll() async throws {
@@ -104,30 +107,42 @@ struct AgentMonitorStoreTests {
 
         await transport.setAgentText("working", target: "w1:p1")
         #expect(await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .working)))
+        let workingSnapshot = [
+            "idle", AgentMonitorStore.gapMarkerText, "working",
+        ].joined(separator: "\n")
         try await waitUntil("Working should surface and refresh") {
             guard
                 store.agentStatus == .working,
-                store.snapshot.map({ String($0.characters) }) == "working"
+                store.snapshot.map({ String($0.characters) }) == workingSnapshot
             else { return false }
             return await agentReads(transport, source: .visible).count == 2
         }
 
         await transport.setAgentText("done", target: "w1:p1")
         #expect(await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .done)))
+        let doneSnapshot = [
+            "idle", AgentMonitorStore.gapMarkerText, "working",
+            AgentMonitorStore.gapMarkerText, "done",
+        ].joined(separator: "\n")
         try await waitUntil("Done should surface and refresh") {
             guard
                 store.agentStatus == .done,
-                store.snapshot.map({ String($0.characters) }) == "done"
+                store.snapshot.map({ String($0.characters) }) == doneSnapshot
             else { return false }
             return await agentReads(transport, source: .visible).count == 3
         }
 
         await transport.setAgentText("blocked", target: "w1:p1")
         #expect(await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .blocked)))
+        let blockedSnapshot = [
+            "idle", AgentMonitorStore.gapMarkerText, "working",
+            AgentMonitorStore.gapMarkerText, "done",
+            AgentMonitorStore.gapMarkerText, "blocked",
+        ].joined(separator: "\n")
         try await waitUntil("Blocked should surface and refresh") {
             guard
                 store.agentStatus == .blocked,
-                store.snapshot.map({ String($0.characters) }) == "blocked"
+                store.snapshot.map({ String($0.characters) }) == blockedSnapshot
             else { return false }
             return await agentReads(transport, source: .visible).count == 4
         }
@@ -322,7 +337,10 @@ struct AgentMonitorStoreTests {
         await store.refreshOnReturn()
 
         let snapshot = try #require(store.snapshot)
-        #expect(String(snapshot.characters) == "after")
+        #expect(
+            String(snapshot.characters)
+                == ["before", AgentMonitorStore.gapMarkerText, "after"]
+                .joined(separator: "\n"))
         #expect(await agentReads(transport, source: .visible).count == 2)
     }
 
@@ -355,7 +373,10 @@ struct AgentMonitorStoreTests {
         await returning.value
 
         let snapshot = try #require(store.snapshot)
-        #expect(String(snapshot.characters) == "after Attach")
+        #expect(
+            String(snapshot.characters)
+                == ["opening", AgentMonitorStore.gapMarkerText, "after Attach"]
+                .joined(separator: "\n"))
         #expect(await agentReads(transport, source: .visible).count == 2)
     }
 
@@ -520,9 +541,9 @@ struct AgentMonitorStoreTests {
         await store.open()
 
         let expected = [
-            "stale a", "stale b", "stale c",
-            AgentMonitorStore.gapMarkerText,
             "fresh 1", "fresh 2", "fresh 3",
+            AgentMonitorStore.gapMarkerText,
+            "stale a", "stale b", "stale c",
         ].joined(separator: "\n")
         #expect(String(try #require(store.snapshot).characters) == expected)
         #expect(store.historyState == .exhausted)
@@ -646,10 +667,54 @@ struct AgentMonitorStoreTests {
         #expect(
             String(try #require(store.snapshot).characters) == "l1\nl2\nl3\nl4\nl5\nl6")
 
-        // A repaint shares no overlap: the tail is replaced, not extended.
+        // A repaint shares no overlap: a new live run is installed.
         await transport.setAgentText("n1\nn2\nn3\nn4\nn5", target: "w1:p1")
         await store.refresh()
-        #expect(String(try #require(store.snapshot).characters) == "n1\nn2\nn3\nn4\nn5")
+        #expect(
+            String(try #require(store.snapshot).characters)
+                == [
+                    "l1", "l2", "l3", "l4", "l5", "l6",
+                    AgentMonitorStore.gapMarkerText,
+                    "n1", "n2", "n3", "n4", "n5",
+                ].joined(separator: "\n"))
+    }
+
+    @Test func liveReplacementResetsExhaustionAndAllowsAnotherBackfill() async throws {
+        let transport = ScriptedTransport()
+        await transport.setAgentText("s1\ns2\ns3\ns4", target: "w1:p1")
+        await transport.setAgentHistoryText(
+            "h1\nh2\nh3\nh4\nh5\nh6\ns1\ns2\ns3\ns4", target: "w1:p1")
+        let store = AgentMonitorStore(target: "w1:p1") { params in
+            try await transport.readAgent(params)
+        }
+        await store.open()
+        #expect(store.historyState == .exhausted)
+
+        await transport.setAgentText("r1\nr2\nr3\nr4", target: "w1:p1")
+        await store.refresh()
+
+        #expect(store.historyState == .idle)
+        let preserved = [
+            "h1", "h2", "h3", "h4", "h5", "h6", "s1", "s2", "s3", "s4",
+            AgentMonitorStore.gapMarkerText, "r1", "r2", "r3", "r4",
+        ].joined(separator: "\n")
+        #expect(String(try #require(store.snapshot).characters) == preserved)
+
+        await transport.setAgentHistoryText(
+            "new older 1\nnew older 2\nr1\nr2\nr3\nr4", target: "w1:p1")
+        store.topEdgeReached()
+        try await waitUntil("the replacement should allow a new backfill") {
+            store.historyState == .exhausted
+        }
+
+        #expect(await agentReads(transport, source: .recent).count == 2)
+        #expect(
+            String(try #require(store.snapshot).characters)
+                == [
+                    "h1", "h2", "h3", "h4", "h5", "h6", "s1", "s2", "s3", "s4",
+                    AgentMonitorStore.gapMarkerText, "new older 1", "new older 2", "r1",
+                    "r2", "r3", "r4",
+                ].joined(separator: "\n"))
     }
 
     private func agentReads(

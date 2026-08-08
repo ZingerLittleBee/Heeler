@@ -371,6 +371,12 @@ final class AgentMonitorStore {
         let hadContent = !history.isEmpty
         let outcome = history.applyVisible(text)
         guard outcome != .unchanged else { return }
+        if outcome == .replaced, historyState == .exhausted {
+            // Exhaustion describes the backfill window anchored to the old
+            // live run. A repaint invalidates that anchor, so the new live
+            // generation must be allowed to backfill from the top again.
+            historyState = agentStatus == .working ? .unavailable : .idle
+        }
         renderSnapshot()
         contentChangeCount &+= 1
         if hadContent, !isBottomPinned {
@@ -378,28 +384,42 @@ final class AgentMonitorStore {
         }
     }
 
-    /// Renders the whole cache — history runs stitched above the live
-    /// screen, with gap markers spliced between unreconciled regions. Each
-    /// run renders independently, so ANSI state flows within a captured run
-    /// and resets at a gap, which is the honest boundary anyway.
+    /// Renders the whole cache, with history above the live screen and gap
+    /// markers between unreconciled regions. Storage keeps history and live
+    /// runs separate, but adjacent line segments render together so ANSI
+    /// state still flows across every byte-proven boundary. It resets only
+    /// at a gap, which is the honest boundary anyway.
     private func renderSnapshot() {
-        var rendered = AttributedString()
-        var isFirstSegment = true
+        var renderedSegments: [AttributedString] = []
+        var contiguousParts: [String] = []
+
+        func flushContiguousLines() {
+            guard !contiguousParts.isEmpty else { return }
+            renderedSegments.append(
+                ANSISnapshotRenderer.render(contiguousParts.joined(separator: "\n")))
+            contiguousParts.removeAll(keepingCapacity: true)
+        }
+
         for segment in history.segments {
-            if !isFirstSegment {
-                rendered.append(AttributedString("\n"))
-            }
-            isFirstSegment = false
             switch segment {
             case .lines(let lines):
-                rendered.append(
-                    ANSISnapshotRenderer.render(lines.joined(separator: "\n")))
+                contiguousParts.append(lines.joined(separator: "\n"))
             case .gap:
+                flushContiguousLines()
                 var marker = AttributedString(Self.gapMarkerText)
                 marker.foregroundColor = Color.secondary
                 marker.inlinePresentationIntent = .emphasized
-                rendered.append(marker)
+                renderedSegments.append(marker)
             }
+        }
+        flushContiguousLines()
+
+        var rendered = AttributedString()
+        for (index, segment) in renderedSegments.enumerated() {
+            if index > 0 {
+                rendered.append(AttributedString("\n"))
+            }
+            rendered.append(segment)
         }
         snapshot = rendered
     }

@@ -23,7 +23,7 @@ struct AgentMonitorHistoryTests {
         #expect(history.applyVisible("l2\nl3\nl4\nl5\nl6") == .extended)
         #expect(history.newestLines == ["l1", "l2", "l3", "l4", "l5", "l6"])
 
-        // Repaint: no overlap, the tail is replaced.
+        // Repaint: no overlap, a new live run is installed.
         #expect(history.applyVisible("n1\nn2\nn3\nn4\nn5") == .replaced)
         #expect(history.newestLines == ["n1", "n2", "n3", "n4", "n5"])
 
@@ -39,7 +39,11 @@ struct AgentMonitorHistoryTests {
 
         let first = history.stitchBackfill("o1\no2\ns1\ns2\ns3\ns4")
         #expect(first == .init(newLines: 2, insertedGap: false))
-        #expect(history.newestLines == ["o1", "o2", "s1", "s2", "s3", "s4"])
+        #expect(
+            history.segments == [
+                .lines(["o1", "o2"]),
+                .lines(["s1", "s2", "s3", "s4"]),
+            ])
 
         // The same window again: fully captured, nothing new.
         let repeatRead = history.stitchBackfill("o1\no2\ns1\ns2\ns3\ns4")
@@ -48,7 +52,7 @@ struct AgentMonitorHistoryTests {
         // A window contained inside a deeper cache adds nothing either.
         let contained = history.stitchBackfill("s1\ns2\ns3\ns4")
         #expect(contained == .init(newLines: 0, insertedGap: false))
-        #expect(history.newestLines == ["o1", "o2", "s1", "s2", "s3", "s4"])
+        #expect(history.newestLines == ["s1", "s2", "s3", "s4"])
     }
 
     @Test func backfillSupersedesTheTailWhenTheWindowContainsIt() {
@@ -59,7 +63,11 @@ struct AgentMonitorHistoryTests {
         // The read is the better truth for the whole region.
         let outcome = history.stitchBackfill("o1\ns1\ns2\ns3\ns4\nn1\nn2")
         #expect(outcome == .init(newLines: 3, insertedGap: false))
-        #expect(history.newestLines == ["o1", "s1", "s2", "s3", "s4", "n1", "n2"])
+        #expect(
+            history.segments == [
+                .lines(["o1", "s1", "s2"]),
+                .lines(["s3", "s4", "n1", "n2"]),
+            ])
     }
 
     @Test func backfillWithoutSharedContentRecordsAGap() {
@@ -70,19 +78,19 @@ struct AgentMonitorHistoryTests {
         #expect(outcome == .init(newLines: 3, insertedGap: true))
         #expect(
             history.segments == [
-                .lines(["stale a", "stale b", "stale c"]),
-                .gap,
                 .lines(["fresh 1", "fresh 2", "fresh 3"]),
+                .gap,
+                .lines(["stale a", "stale b", "stale c"]),
             ])
 
-        // The next read stitches onto the new tail, below the gap.
+        // The next read extends the backfill run above the live screen.
         let second = history.stitchBackfill("older\nfresh 1\nfresh 2\nfresh 3")
         #expect(second == .init(newLines: 1, insertedGap: false))
         #expect(
             history.segments == [
-                .lines(["stale a", "stale b", "stale c"]),
-                .gap,
                 .lines(["older", "fresh 1", "fresh 2", "fresh 3"]),
+                .gap,
+                .lines(["stale a", "stale b", "stale c"]),
             ])
     }
 
@@ -94,7 +102,11 @@ struct AgentMonitorHistoryTests {
         // a whole-screen match is correct by construction.
         let outcome = history.stitchBackfill("older 1\nolder 2\nonly line")
         #expect(outcome == .init(newLines: 2, insertedGap: false))
-        #expect(history.newestLines == ["older 1", "older 2", "only line"])
+        #expect(
+            history.segments == [
+                .lines(["older 1", "older 2"]),
+                .lines(["only line"]),
+            ])
     }
 
     @Test func emptyFirstReadStillInstalls() {
@@ -116,9 +128,9 @@ struct AgentMonitorHistoryTests {
         #expect(short.insertedGap)
         #expect(
             history.segments == [
-                .lines(["a", "b", "c", "d"]),
-                .gap,
                 .lines(["x", "y", "c", "d"]),
+                .gap,
+                .lines(["a", "b", "c", "d"]),
             ])
 
         // The live tail holds the same line: a two-line overlap is a
@@ -135,5 +147,35 @@ struct AgentMonitorHistoryTests {
 
         #expect(history.stitchBackfill("") == .init(newLines: 0, insertedGap: false))
         #expect(history.newestLines == ["s1", "s2", "s3"])
+    }
+
+    @Test func nonoverlappingRepaintPreservesBackfilledHistory() {
+        var history = AgentMonitorHistory()
+        history.applyVisible("s1\ns2\ns3\ns4")
+        history.stitchBackfill("h1\nh2\nh3\nh4\nh5\nh6\ns1\ns2\ns3\ns4")
+
+        #expect(history.applyVisible("r1\nr2\nr3\nr4") == .replaced)
+        #expect(
+            history.segments == [
+                .lines(["h1", "h2", "h3", "h4", "h5", "h6"]),
+                .lines(["s1", "s2", "s3", "s4"]),
+                .gap,
+                .lines(["r1", "r2", "r3", "r4"]),
+            ])
+    }
+
+    @Test func emptyVisibleReadPreservesCapturedHistory() {
+        var history = AgentMonitorHistory()
+        history.applyVisible("s1\ns2\ns3\ns4")
+        history.stitchBackfill("h1\nh2\nh3\ns1\ns2\ns3\ns4")
+
+        #expect(history.applyVisible("") == .replaced)
+        #expect(
+            history.segments == [
+                .lines(["h1", "h2", "h3"]),
+                .lines(["s1", "s2", "s3", "s4"]),
+                .gap,
+                .lines([]),
+            ])
     }
 }
