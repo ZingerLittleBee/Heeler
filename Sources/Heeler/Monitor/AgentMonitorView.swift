@@ -16,6 +16,7 @@ struct AgentDetailView: View {
     private let onClosed: () -> Void
     @Environment(\.scenePhase) private var scenePhase
     @State private var monitor: AgentMonitorStore
+    @State private var composer: AgentComposerStore
     @State private var attach: AgentAttachStore
     @State private var isShowingAttach = false
 
@@ -31,6 +32,7 @@ struct AgentDetailView: View {
         onSwitch: @escaping (ConsoleAgent.ID) -> Void,
         onClosed: @escaping () -> Void,
         monitorStore: AgentMonitorStore? = nil,
+        composerStore: AgentComposerStore? = nil,
         attachStore: AgentAttachStore? = nil
     ) {
         self.agent = agent
@@ -51,6 +53,8 @@ struct AgentDetailView: View {
             ) { [console, agent] params in
                 try await console.readAgent(params, on: agent.hostID)
             })
+        _composer = State(
+            initialValue: composerStore ?? console.composerStore(for: agent))
         _attach = State(
             initialValue: attachStore ?? AgentAttachStore(
                 target: agent.agent.paneID,
@@ -65,7 +69,12 @@ struct AgentDetailView: View {
     }
 
     var body: some View {
-        monitorSurface
+        VStack(spacing: 0) {
+            monitorSurface
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Divider()
+            AgentComposerView(store: composer)
+        }
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -97,7 +106,10 @@ struct AgentDetailView: View {
                     await monitor.refreshOnReturn()
                 }
             }
-            .task { await monitor.open() }
+            .task {
+                composer.open()
+                await monitor.open()
+            }
             .onChange(of: scenePhase, initial: true) { _, phase in
                 monitor.setForeground(phase == .active)
             }

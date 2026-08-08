@@ -39,6 +39,10 @@ final actor FakeTransport: Transport {
         throw TransportError.channelFailed(detail: "FakeTransport does not script Agent reads")
     }
 
+    func promptAgent(_ params: AgentPromptParams) async throws -> Agent {
+        throw TransportError.channelFailed(detail: "FakeTransport does not script Agent prompts")
+    }
+
     func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream {
         throw TransportError.channelFailed(detail: "FakeTransport does not script events")
     }

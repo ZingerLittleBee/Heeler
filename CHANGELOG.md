@@ -21,6 +21,12 @@ Entries reference the issue that motivated them.
   automatically, while scrolling up holds position behind a New Output jump.
   (#180)
 
+- Monitor now includes a local Composer. Drafting makes no network requests;
+  Send delivers the complete message once and shows delivery, Agent work, and
+  Done states from acknowledgments and status pushes. Failed messages can be
+  retried or returned to the draft without losing text, and drafts survive
+  Attach, backgrounding, and Host reconnects. (#182)
+
 - Settings > About now has Acknowledgements: every redistributed third-party
   component ships with its exact upstream licence notice, including libssh2
   and its secondary sources, OpenSSL, Ghostty and its stack, the monospaced

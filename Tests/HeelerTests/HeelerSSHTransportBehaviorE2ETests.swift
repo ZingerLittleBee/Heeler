@@ -551,6 +551,10 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(agentRead.text == "\u{1B}[31mfixture agent output\u{1B}[0m")
         #expect(agentRead.source == .visible)
         #expect(agentRead.format == .ansi)
+        let prompted = try await transport.promptAgent(
+            AgentPromptParams(target: "pane-1", text: "fixture prompt"))
+        #expect(prompted.paneID == "pane-1")
+        #expect(prompted.status == .working)
         try await transport.closePane(PaneTarget(paneID: "pane-1"))
         try await transport.renameAgent(AgentRenameParams(target: "pane-1", name: "fixture"))
         try await transport.renameWorkspace(

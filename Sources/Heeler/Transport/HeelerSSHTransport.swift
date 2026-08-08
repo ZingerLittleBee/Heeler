@@ -617,6 +617,12 @@ actor HeelerSSHTransport: Transport {
             .read
     }
 
+    func promptAgent(_ params: AgentPromptParams) async throws -> Agent {
+        let response = try await request(
+            method: "agent.prompt", params: params, decoding: AgentPromptedResponse.self)
+        return Agent(response.agent)
+    }
+
     func startAgent(_ launch: AgentLaunchRequest) async throws -> Agent {
         let created = try await request(
             method: "tab.create",
