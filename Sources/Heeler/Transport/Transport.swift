@@ -1,7 +1,7 @@
 import Foundation
 
 /// The app-side abstraction that executes herdr API requests over SSH.
-/// UI code talks to Transport, never to SSH primitives (ADR 0002).
+/// UI code talks to Transport, never to SSH primitives (ADR 0011).
 protocol Transport: Sendable {
     /// Verifies the server speaks a protocol version we support and returns
     /// its identity. Must be the first herdr API call on every new connection
@@ -174,7 +174,7 @@ extension Transport {
     }
 
     /// Non-SSH test doubles and alternative transports can state that SFTP is
-    /// unavailable without importing or emulating Citadel.
+    /// unavailable without importing or emulating an SSH library.
     func stageImage(
         _ image: PreparedImage,
         progress: @escaping @Sendable (ImageStageProgress) async -> Void
@@ -331,10 +331,16 @@ struct WorktreeSpec: Sendable, Equatable {
 struct ServerInfo: Sendable, Equatable {
     let version: String
     let protocolVersion: Int
+    /// The Host speaks a protocol newer than the schema snapshot this build
+    /// was generated against. Purely advisory: the connection is usable, and
+    /// herdr's additions have been additive, but features introduced after
+    /// this build cannot be driven. Consumers surface it, never refuse on it.
+    let exceedsGeneratedProtocol: Bool
 
-    init(version: String, protocolVersion: Int) {
+    init(version: String, protocolVersion: Int, exceedsGeneratedProtocol: Bool = false) {
         self.version = version
         self.protocolVersion = protocolVersion
+        self.exceedsGeneratedProtocol = exceedsGeneratedProtocol
     }
 }
 
@@ -504,6 +510,9 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// an unexpected host key. Carries the underlying failure so screens can
     /// reuse the existing guidance while naming the Jump Host as the culprit.
     case jumpHostFailed(TransportError)
+    /// The Jump Host accepted SSH authentication but its server or key policy
+    /// prohibits the direct-tcpip channel required to reach the Host.
+    case tcpForwardingUnavailable
     /// The Host rejected our credentials (key not authorized, wrong
     /// password, or the offered auth method is unavailable).
     case authenticationFailed
@@ -520,50 +529,56 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// The herdr API socket path does not exist on the Host: herdr is not
     /// installed there, or the socket path is wrong.
     case socketNotFound(path: String)
-    /// The socket file exists but nothing accepts connections: the herdr
-    /// server is not running (cold-start wake is #6).
-    case serverNotRunning(path: String)
-    /// No socat executable was found: not at the Host's preferred path, and
-    /// not on the Host's PATH. `path` is the preferred path that was tried.
-    case socatMissing(path: String)
+    /// libssh2 cannot distinguish a listening Unix socket rejected by SSH
+    /// policy from a stale socket file. The Host needs either herdr started or
+    /// stream-local forwarding enabled; presenting a narrower cause would be
+    /// fabricated precision.
+    case streamLocalOpenFailed(path: String)
     /// The server speaks a herdr protocol version this build does not support.
     case protocolVersionMismatch(server: Int, supported: Int)
     /// The remote home directory could not be resolved, so a home-relative
     /// socket location has no path.
     case homeDirectoryUnresolvable(detail: String)
     /// A second events channel was requested while one is live; each Host
-    /// keeps exactly one dedicated events channel (ADR 0002 headroom).
+    /// keeps exactly one dedicated events channel (ADR 0011 headroom).
     case eventsChannelAlreadyOpen
-    /// A second terminal channel was requested while one is live; each Host
-    /// keeps exactly one interactive terminal surface at a time.
+    /// A second terminal channel was requested while one is live, or a
+    /// second reader tried to consume a terminal session that already has
+    /// one; each Host keeps exactly one interactive terminal surface at a
+    /// time, and each session serves exactly one of them.
     case terminalChannelAlreadyOpen
-    /// The request exceeded its per-request deadline; its exec channel was
+    /// The request exceeded its per-request deadline; the channel it held was
     /// closed.
     case timedOut
-    /// The request's task was cancelled before completing; any exec channel
-    /// it held was closed.
+    /// The request's task was cancelled before completing; any channel it
+    /// held was closed.
     case cancelled
     /// The channel produced bytes that do not decode as a herdr response.
     case malformedResponse(String)
     /// herdr answered with an error envelope: the request arrived intact and
     /// the server rejected it on its own terms.
     case apiRejected(code: String, message: String)
-    /// The exec channel failed outside the known failure shapes; carries the
+    /// The channel failed outside the known failure shapes; carries the
     /// underlying description for diagnostics.
     case channelFailed(detail: String)
 
     /// Whether reconnecting without user intervention can plausibly recover.
     /// Configuration, trust, authentication, and protocol failures instead
     /// stop so the UI can explain the required action.
+    /// `.streamLocalOpenFailed` is configuration-class: neither of the two
+    /// causes it cannot tell apart — a stopped herdr, disabled stream-local
+    /// forwarding — resolves without the user acting on the Host (ADR 0011).
     var isRetryable: Bool {
         switch self {
         // A rejection is retryable because herdr's error codes are open-ended
         // and most of them describe a target that moved, not a broken setup.
-        case .sshUnreachable, .serverNotRunning, .timedOut, .cancelled, .channelFailed,
+        case .sshUnreachable, .timedOut, .cancelled, .channelFailed,
             .apiRejected:
             true
-        case .authenticationFailed, .deviceKeyCorrupt, .hostKeyRejected, .hostKeyMismatch,
-            .socketNotFound, .socatMissing, .protocolVersionMismatch,
+        case .authenticationFailed, .tcpForwardingUnavailable,
+            .deviceKeyCorrupt, .hostKeyRejected, .hostKeyMismatch,
+            .socketNotFound, .protocolVersionMismatch,
+            .streamLocalOpenFailed,
             .homeDirectoryUnresolvable, .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse:
             false

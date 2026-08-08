@@ -1,20 +1,286 @@
 import Foundation
 import SwiftUI
+import Synchronization
 import Testing
 import UIKit
 
 @testable import Heeler
 
-/// The attach bootstrap line (#11): the command typed into the PTY channel's
-/// login shell. It must `exec` the attach process (so its exit ends the
-/// channel), pin the herdr CLI to the Host's socket via `HERDR_SOCKET_PATH`
-/// (a named-session target is "not found" on the default socket), quote the
-/// target and socket safely for POSIX shells and fish alike, and refuse
-/// targets that cannot be quoted safely for both.
+/// The attach exec command (#11): the command sent as the PTY channel's exec
+/// request. It must `exec` the attach process (so its exit ends the channel),
+/// pin the herdr CLI to the Host's socket via `HERDR_SOCKET_PATH` (a
+/// named-session target is "not found" on the default socket), quote the
+/// target and socket safely, and refuse targets that cannot be quoted safely.
 @Suite("Terminal attach")
 struct TerminalAttachTests {
     private enum WriterProbeError: Error {
         case rejectedResize
+    }
+
+    private enum FakeAttachChannelError: Error {
+        case rejectedWrite
+    }
+
+    @Test func attachOutputPumpWithholdsStartupChatterUntilTheHandshake() async throws {
+        let chatter = Data("ssh rc startup chatter\r\n".utf8)
+        let terminalFrame = Data("TUI".utf8)
+        let channel = FakeAttachPTYChannel(
+            reads: [chatter, AttachBootstrapHandshake.marker + terminalFrame, nil])
+        let input = TerminalAttachInputQueue()
+        let source = HeelerSSHAttachOutputGate.makeStream()
+
+        let cleanEnd = try await HeelerSSHTransport.runAttachPumps(
+            channel: channel,
+            input: input,
+            output: source.gate,
+            requestTimeout: .seconds(1))
+        source.gate.finish()
+
+        var iterator = source.output.makeAsyncIterator()
+        #expect(cleanEnd)
+        #expect(try await iterator.next() == terminalFrame)
+        #expect(try await iterator.next() == nil)
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func inputFailureFlushesWithheldStartupDiagnosticExactlyOnce() async throws {
+        let diagnostic = Data("ssh rc rejected the attach command\r\n".utf8)
+        let channel = FakeAttachPTYChannel(
+            reads: [diagnostic],
+            writeError: FakeAttachChannelError.rejectedWrite,
+            blockAfterReads: true)
+        let input = TerminalAttachInputQueue()
+        let source = HeelerSSHAttachOutputGate.makeStream()
+        let pump = Task {
+            do {
+                _ = try await HeelerSSHTransport.runAttachPumps(
+                    channel: channel,
+                    input: input,
+                    output: source.gate,
+                    requestTimeout: .seconds(1))
+                return "clean"
+            } catch {
+                return String(describing: error)
+            }
+        }
+
+        await channel.waitUntilFirstRead()
+        input.send(Data("x".utf8))
+        let failure = await pump.value
+        source.gate.finish()
+
+        var iterator = source.output.makeAsyncIterator()
+        #expect(failure.contains("input"))
+        #expect(try await iterator.next() == diagnostic)
+        #expect(try await iterator.next() == nil)
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func explicitCancellationDropsWithheldStartupChatter() async throws {
+        let chatter = Data("ssh rc startup chatter\r\n".utf8)
+        let channel = FakeAttachPTYChannel(
+            reads: [chatter],
+            blockAfterReads: true)
+        let input = TerminalAttachInputQueue()
+        let source = HeelerSSHAttachOutputGate.makeStream()
+        let pump = Task {
+            do {
+                _ = try await HeelerSSHTransport.runAttachPumps(
+                    channel: channel,
+                    input: input,
+                    output: source.gate,
+                    requestTimeout: .seconds(1))
+                return false
+            } catch is CancellationError {
+                return true
+            } catch {
+                return false
+            }
+        }
+
+        await channel.waitUntilFirstRead()
+        pump.cancel()
+        #expect(await pump.value)
+        source.gate.finish()
+
+        var iterator = source.output.makeAsyncIterator()
+        #expect(try await iterator.next() == nil)
+    }
+
+    @Test func explicitEndDiscardsUnreadAndLaterLibSSH2Output() async throws {
+        let source = HeelerSSHAttachOutputGate.makeStream()
+        var iterator = source.output.makeAsyncIterator()
+
+        source.gate.yield(Data("before-end".utf8))
+        source.gate.beginExplicitEnd()
+        source.gate.yield(Data("after-end".utf8))
+        source.gate.finish()
+
+        #expect(try await iterator.next() == nil)
+    }
+
+    @Test func cleanLibSSH2ExitDrainsAcceptedOutputBeforeFinishing() async throws {
+        let source = HeelerSSHAttachOutputGate.makeStream()
+        var iterator = source.output.makeAsyncIterator()
+        let first = Data("first".utf8)
+        let second = Data("second".utf8)
+
+        source.gate.yield(first)
+        source.gate.yield(second)
+        source.gate.finish()
+
+        #expect(try await iterator.next() == first)
+        #expect(try await iterator.next() == second)
+        #expect(try await iterator.next() == nil)
+    }
+
+    /// How an Attach output consumer finished, flattened so one `#expect`
+    /// can separate "refused", "handed an ended stream", and "still hanging".
+    private enum AttachConsumerOutcome: Equatable, Sendable {
+        case drained([Data])
+        case failed(String)
+    }
+
+    /// A second concurrent reader of one Attach session is a mistake in the
+    /// UI layer — a departing SwiftUI iterator that outlived its view is the
+    /// shape this app already shipped once (#97) — and killing the process
+    /// over it is worse than the mistake (#137). The extra reader is refused
+    /// where it stands, and the legitimate reader carries on.
+    @Test(.timeLimit(.minutes(1)))
+    func aSecondAttachOutputConsumerIsRefusedAndLeavesTheFirstRunning() async throws {
+        let source = HeelerSSHAttachOutputGate.makeStream()
+        let gate = source.gate
+        let stream = source.output
+
+        let first = Task { () -> AttachConsumerOutcome in
+            var seen: [Data] = []
+            do {
+                for try await bytes in stream { seen.append(bytes) }
+                return .drained(seen)
+            } catch {
+                return .failed(String(describing: error))
+            }
+        }
+        let parked = await Self.waitForParkedConsumer(gate)
+        #expect(parked, "the first consumer never parked on the gate")
+
+        let second = Task { () -> AttachConsumerOutcome in
+            var iterator = stream.makeAsyncIterator()
+            do {
+                guard let bytes = try await iterator.next() else { return .drained([]) }
+                return .drained([bytes])
+            } catch {
+                return .failed(String(describing: error))
+            }
+        }
+        let refusal = await Self.outcome(of: second)
+        #expect(
+            refusal == .failed(String(describing: TransportError.terminalChannelAlreadyOpen)),
+            """
+            the extra consumer must be refused, not trapped, ended, or left \
+            hanging: \(String(describing: refusal))
+            """)
+
+        // Refusing it must leave the first consumer's registration alone:
+        // it is still parked, and everything sent afterwards reaches it.
+        #expect(
+            gate.hasParkedConsumerForTesting,
+            "refusing the extra consumer cleared the first consumer's waiter")
+        let afterRefusal = Data("after-the-refusal".utf8)
+        let stillFlowing = Data("still-flowing".utf8)
+        gate.yield(afterRefusal)
+        gate.yield(stillFlowing)
+        gate.finish()
+        let served = await Self.outcome(of: first)
+        #expect(
+            served == .drained([afterRefusal, stillFlowing]),
+            """
+            the first consumer must keep receiving output unaffected: \
+            \(String(describing: served))
+            """)
+    }
+
+    /// Buffered output still belongs to the task that first consumed this
+    /// stream. A later task must not be able to take a ready chunk simply
+    /// because the legitimate consumer is between reads (#153).
+    @Test(.timeLimit(.minutes(1)))
+    func aSecondAttachOutputConsumerIsRefusedWhileBytesAreStillBuffered() async throws {
+        let source = HeelerSSHAttachOutputGate.makeStream()
+        let gate = source.gate
+        let stream = source.output
+        let firstChunk = Data("chunk-a".utf8)
+        let secondChunk = Data("chunk-b".utf8)
+
+        gate.yield(firstChunk)
+
+        // The first read establishes the legitimate consumer before more
+        // output is buffered. This ordering catches a claim that is reset by
+        // a later yield as well as a missing claim.
+        var firstIterator = stream.makeAsyncIterator()
+        let firstSeen = try await firstIterator.next()
+        gate.yield(secondChunk)
+        gate.finish()
+
+        let second = Task { () -> AttachConsumerOutcome in
+            var iterator = stream.makeAsyncIterator()
+            do {
+                guard let bytes = try await iterator.next() else { return .drained([]) }
+                return .drained([bytes])
+            } catch {
+                return .failed(String(describing: error))
+            }
+        }
+        let refusal = await Self.outcome(of: second)
+        #expect(
+            refusal == .failed(String(describing: TransportError.terminalChannelAlreadyOpen)),
+            """
+            a second consumer must be refused while bytes are buffered, not \
+            handed one of them: \(String(describing: refusal))
+            """)
+
+        let secondSeen = try await firstIterator.next()
+        let trailer = try await firstIterator.next()
+        #expect(
+            [firstSeen, secondSeen, trailer] == [firstChunk, secondChunk, nil],
+            """
+            the first consumer must receive every buffered byte in order: \
+            \([firstSeen, secondSeen, trailer].map { $0.map { String(decoding: $0, as: UTF8.self) } })
+            """)
+    }
+
+    /// Polls until a consumer is registered on the gate, so the test enters
+    /// the double-consumer window deterministically rather than by sleeping.
+    private static func waitForParkedConsumer(
+        _ gate: HeelerSSHAttachOutputGate,
+        within limit: Duration = .seconds(5)
+    ) async -> Bool {
+        let deadline = ContinuousClock.now + limit
+        while ContinuousClock.now < deadline {
+            if gate.hasParkedConsumerForTesting { return true }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        return false
+    }
+
+    /// Awaits a consumer under a deadline and reports `nil` when it never
+    /// settles. A bare `await task.value` would let a mutation that parks a
+    /// consumer forever wedge the whole run instead of failing this test.
+    private static func outcome(
+        of task: Task<AttachConsumerOutcome, Never>,
+        within limit: Duration = .seconds(5)
+    ) async -> AttachConsumerOutcome? {
+        let settled = Mutex<AttachConsumerOutcome?>(nil)
+        let recorder = Task {
+            let value = await task.value
+            settled.withLock { $0 = value }
+        }
+        defer { recorder.cancel() }
+        let deadline = ContinuousClock.now + limit
+        while ContinuousClock.now < deadline {
+            if let value = settled.withLock({ $0 }) { return value }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        return nil
     }
 
     @Test func writerPropagatesResizeFailure() async {
@@ -22,8 +288,7 @@ struct TerminalAttachTests {
         input.resize(cols: 120, rows: 40)
 
         await #expect(throws: WriterProbeError.self) {
-            try await SSHTransport.writeTerminalAttachInput(
-                input,
+            try await input.pump(
                 write: { _ in },
                 resize: { _, _ in throw WriterProbeError.rejectedResize })
         }
@@ -1048,42 +1313,37 @@ struct TerminalAttachTests {
                 == NSRange(location: 0, length: 8))
     }
 
-    @Test func execsTheAttachCommandWithQuotedTargetAndSocketScope() throws {
-        let line = try SSHTransport.attachBootstrapLine(
-            attachCommand: "herdr agent attach",
-            request: TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24),
-            socketPath: "/home/u/.config/herdr/sessions/dev/herdr.sock")
-        #expect(
-            line == "exec /bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
-                + "printf \"\\033_heeler-attach\\033\\134\"; "
-                + "exec herdr agent attach \"$1\"' attach "
-                + "'w1:p1' '/home/u/.config/herdr/sessions/dev/herdr.sock'\n")
-    }
-
-    @Test func takeoverAppendsHerdrsFlag() throws {
-        let line = try SSHTransport.attachBootstrapLine(
-            attachCommand: "herdr agent attach",
-            request: TerminalAttachRequest(target: "w1:p1", takeover: true, cols: 80, rows: 24),
-            socketPath: "/home/u/.config/herdr/herdr.sock")
-        #expect(
-            line == "exec /bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
-                + "printf \"\\033_heeler-attach\\033\\134\"; "
-                + "exec herdr agent attach \"$1\" --takeover' attach "
-                + "'w1:p1' '/home/u/.config/herdr/herdr.sock'\n")
-    }
-
     @Test func injectableAttachCommandRidesThrough() throws {
         // Tests substitute a script at the environment boundary, like the
         // wake command.
-        let line = try SSHTransport.attachBootstrapLine(
+        let command = try HeelerSSHTransport.attachExecCommand(
             attachCommand: "/bin/sh /tmp/fake-attach.sh",
             request: TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24),
             socketPath: "/tmp/fake.sock")
         #expect(
-            line == "exec /bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
-                + "printf \"\\033_heeler-attach\\033\\134\"; "
+            command == "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
+                + "printf \"\(AttachBootstrapHandshake.markerPrintfFormat)\"; "
                 + "exec /bin/sh /tmp/fake-attach.sh \"$1\"' attach "
-                + "'w1:p1' '/tmp/fake.sock'\n")
+                + "'w1:p1' '/tmp/fake.sock'")
+    }
+
+    @Test func execUsesTheSocketScopeAndTakeoverFlag() throws {
+        let command = try HeelerSSHTransport.attachExecCommand(
+            attachCommand: "herdr agent attach",
+            request: TerminalAttachRequest(
+                target: "w1:p1",
+                takeover: true,
+                cols: 80,
+                rows: 24),
+            socketPath: "/home/u/.config/herdr/sessions/dev/herdr.sock")
+
+        #expect(
+            command == "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
+                + "printf \"\(AttachBootstrapHandshake.markerPrintfFormat)\"; "
+                + "exec herdr agent attach \"$1\" --takeover' attach "
+                + "'w1:p1' '/home/u/.config/herdr/sessions/dev/herdr.sock'")
+        // An exec request, not a line typed into a shell: no trailing newline.
+        #expect(!command.hasSuffix("\n"))
     }
 
     @Test(arguments: [
@@ -1093,7 +1353,7 @@ struct TerminalAttachTests {
         // A Pane id with quotes or control characters could only come from a
         // hostile server; refusing beats handing it a shell.
         #expect(throws: TransportError.self) {
-            _ = try SSHTransport.attachBootstrapLine(
+            _ = try HeelerSSHTransport.attachExecCommand(
                 attachCommand: "herdr agent attach",
                 request: TerminalAttachRequest(target: target, cols: 80, rows: 24),
                 socketPath: "/tmp/fake.sock")
@@ -1102,23 +1362,36 @@ struct TerminalAttachTests {
 
     @Test func unquotableSocketPathsAreRefused() {
         #expect(throws: TransportError.self) {
-            _ = try SSHTransport.attachBootstrapLine(
+            _ = try HeelerSSHTransport.attachExecCommand(
                 attachCommand: "herdr agent attach",
                 request: TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24),
                 socketPath: "/tmp/it's-a.sock")
         }
     }
 
-    @Test func gateWithholdsTheLoginShellNoiseUntilTheHandshake() {
+    /// The attach exec path must emit the handshake marker immediately before
+    /// `herdr agent attach`. Without it, the pure gate tests below can pass
+    /// while production still lacks the marker that opens it (#166).
+    @Test func attachExecCommandWiresTheBootstrapHandshakeMarker() throws {
+        let command = try HeelerSSHTransport.attachExecCommand(
+            attachCommand: "herdr agent attach",
+            request: TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24),
+            socketPath: "/tmp/fake.sock")
+        let markerPrintf = "printf \"\(AttachBootstrapHandshake.markerPrintfFormat)\";"
+        #expect(command.contains(markerPrintf))
+        // Marker is the last thing before exec of attach, not after it.
+        let printfRange = try #require(command.range(of: markerPrintf))
+        let execRange = try #require(command.range(of: "exec herdr agent attach"))
+        #expect(printfRange.upperBound <= execRange.lowerBound)
+    }
+
+    @Test func gateWithholdsStartupChatterUntilTheHandshake() {
         var gate = AttachBootstrapGate()
-        // What the real channel says before the bootstrap runs: a banner, a
-        // prompt, and the shell's echo of the line that prints the marker.
-        // The echo carries the literal text of the escape, which is exactly
-        // why it cannot be mistaken for the marker itself.
+        // Literal escape text in startup chatter has no ESC bytes, so it cannot
+        // open the gate.
         let noise = Data(
-            ("Last login: Sun Aug  2 13:28:08 2026\r\n"
-                + "\u{1B}[32muser@host\u{1B}[0m ~ % "
-                + #"exec /bin/sh -c 'printf "\033_heeler-attach\033\134"; exec herdr'"#
+            ("ssh rc startup chatter\r\n"
+                + #"literal printf "\033_heeler-attach\033\134" text"#
                 + "\r\n").utf8)
         #expect(gate.admit(noise).isEmpty)
         #expect(!gate.isOpen)
@@ -1147,11 +1420,9 @@ struct TerminalAttachTests {
         #expect(gate.isOpen)
     }
 
-    @Test func gateHandsBackTheNoiseWhenTheHandshakeNeverCame() {
-        // herdr missing from the Host's PATH: the shell's complaint is the
-        // only diagnosis the user will ever get, so it must survive.
+    @Test func gateHandsBackTheStartupDiagnosticWhenTheHandshakeNeverCame() {
         var gate = AttachBootstrapGate()
-        let failure = Data("sh: herdr: command not found\r\n".utf8)
+        let failure = Data("ssh rc startup failure\r\n".utf8)
         #expect(gate.admit(failure).isEmpty)
         #expect(gate.flush() == failure)
         #expect(gate.flush().isEmpty)
@@ -1181,6 +1452,56 @@ struct TerminalAttachTests {
         await session?.end()
         let inputs = await transport.attachInputs
         #expect(inputs == [.keystrokes(Data("x".utf8))])
+    }
+}
+
+private actor FakeAttachPTYChannel: HeelerSSHAttachChannel {
+    private var reads: [Data?]
+    private let writeError: (any Error & Sendable)?
+    private let blockAfterReads: Bool
+    private var didReadFirst = false
+    private var firstReadWaiters: [CheckedContinuation<Void, Never>] = []
+
+    init(
+        reads: [Data?],
+        writeError: (any Error & Sendable)? = nil,
+        blockAfterReads: Bool = false
+    ) {
+        self.reads = reads
+        self.writeError = writeError
+        self.blockAfterReads = blockAfterReads
+    }
+
+    func write(_: Data, timeout _: Duration) async throws {
+        if let writeError { throw writeError }
+    }
+
+    func read(maximumBytes _: Int, timeout _: Duration) async throws -> Data? {
+        guard !reads.isEmpty else {
+            if blockAfterReads {
+                try await Task.sleep(for: .seconds(60))
+            }
+            return nil
+        }
+        let bytes = reads.removeFirst()
+        if !didReadFirst {
+            didReadFirst = true
+            let waiters = firstReadWaiters
+            firstReadWaiters.removeAll(keepingCapacity: false)
+            for waiter in waiters { waiter.resume() }
+        }
+        return bytes
+    }
+
+    func resize(columns _: Int, rows _: Int, timeout _: Duration) async throws {}
+
+    func exitStatus(timeout _: Duration) async throws -> Int32 { 0 }
+
+    func waitUntilFirstRead() async {
+        guard !didReadFirst else { return }
+        await withCheckedContinuation { continuation in
+            firstReadWaiters.append(continuation)
+        }
     }
 }
 

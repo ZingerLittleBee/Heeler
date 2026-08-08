@@ -19,7 +19,7 @@ struct HerdrEventKind: Hashable, Sendable {
         self = Self.byWireName[wireName] ?? HerdrEventKind(name: wireName)
     }
 
-    /// All kinds herdr 0.7.4's schema declares subscribable.
+    /// All kinds herdr 0.8.0's schema declares subscribable.
     static let known: [HerdrEventKind] =
         GlobalEventKind.allCases.map(\.kind)
         + PaneEventKind.allCases.map(\.kind)
@@ -49,6 +49,13 @@ enum GlobalEventKind: String, CaseIterable, Sendable {
     case workspaceMetadataUpdated = "workspace.metadata_updated"
     case workspaceRenamed = "workspace.renamed"
     case workspaceMoved = "workspace.moved"
+    /// Added in protocol 19 (#140). Declared here so it decodes canonically
+    /// rather than passing through as an unmapped wire name, and deliberately
+    /// left out of `HostConsoleProjection.membershipKinds`: reordering changes
+    /// no membership and no label, and the Console projects Agents by pane
+    /// rather than rendering workspace order. `workspace.moved` is the
+    /// precedent — same category, present here, equally unsubscribed.
+    case workspaceReordered = "workspace.reordered"
     case workspaceClosed = "workspace.closed"
     case workspaceFocused = "workspace.focused"
     case worktreeCreated = "worktree.created"
@@ -118,11 +125,10 @@ extension HerdrEvent {
     static let eventsDropped = HerdrEvent(kind: .eventsDropped, data: .null)
 }
 
-/// A live `events.subscribe` stream over its Host's dedicated exec channel.
+/// A live `events.subscribe` stream over its Host's dedicated forwarding channel.
 ///
-/// Ending is explicit: call `end()`. A live exec channel does not respond to
-/// Swift task cancellation (ADR 0002), so abandoning the stream without
-/// `end()` leaks the channel until the SSH connection closes.
+/// Ending is explicit: call `end()`. Abandoning the stream without `end()`
+/// leaves the forwarding channel live until the SSH connection closes.
 final class HerdrEventStream: Sendable {
     /// Buffer bound for the event delivery path (#22), sized for stall
     /// absorption, not history: events are single JSON lines (hundreds of

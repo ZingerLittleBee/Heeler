@@ -25,7 +25,7 @@ actor SharedAsyncOperation<Value: Sendable> {
 
     private var waiters: [Waiter] = []
     /// Waiter ids whose cancellation raced ahead of parking or resumption;
-    /// see the identical bookkeeping on SSHTransport's slot queue.
+    /// see the identical bookkeeping on `SSHChannelAdmission`'s waiter queue.
     private var cancelledWaiters: Set<UInt64> = []
     private var pendingWaiters: Set<UInt64> = []
     private var nextWaiterID: UInt64 = 0

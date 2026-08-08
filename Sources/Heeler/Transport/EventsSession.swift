@@ -25,15 +25,13 @@ struct ReconnectPolicy: Sendable, Equatable {
     }
 }
 
-/// Keepalive for the events session (#18). Citadel 0.12.1 exposes no
-/// SSH-level keepalive (no ignore-packet or global-request API in it or its
-/// NIOSSH fork) and no path to the NIO channel for TCP keepalive socket
-/// options (`SSHClient.session` is internal; the `channelHandlers:` connect
-/// parameter is stored but never installed). So the session pings herdr over
-/// the ordinary RPC path instead — which is also the stronger check: it
+/// Keepalive for the events session (#18). The Transport seam deliberately
+/// exposes no SSH-specific keepalive machinery, so the session pings herdr
+/// over the ordinary RPC path instead — which is also the stronger check: it
 /// generates SSH traffic that keeps NAT mappings alive, is bounded by the
-/// per-request deadline, and exercises the whole path (SSH + socat + herdr),
-/// so a dead connection is detected within interval + request timeout.
+/// per-request deadline, and exercises the whole path (SSH + the forwarded
+/// socket + herdr), so a dead connection is detected within interval +
+/// request timeout.
 struct KeepalivePolicy: Sendable, Equatable {
     /// Idle time between pings while the events channel is live. Pings are
     /// skipped while real traffic within the interval — a successful RPC or
@@ -89,8 +87,8 @@ enum EventsSessionUpdate: Sendable, Equatable {
 /// connection down deliberately (call once the app's background grace period
 /// elapses — iOS freezes sockets anyway when the process suspends, and an
 /// explicit close makes resume cheap and deterministic),
-/// `end()` is terminal. All teardown is by explicit close, never by
-/// cancelling a live exec channel (ADR 0002). Lifecycle calls serialize
+/// `end()` is terminal. All teardown closes the live forwarding channel
+/// explicitly. Lifecycle calls serialize
 /// internally — a `resume()` racing into a `suspend()`'s in-flight teardown
 /// waits for it instead of interleaving (quick background→foreground
 /// bounces are routine on iOS; callers never need to serialize their own
@@ -211,6 +209,45 @@ actor EventsSession {
         await enqueueLifecycleTransition { await self.restart() }
     }
 
+    /// Re-proves a session that believes it is still connected, and reports
+    /// the truth either way.
+    ///
+    /// Nothing in this actor's own machinery asks a live connection whether
+    /// it survived the app being suspended: the reconnect loop is parked on
+    /// the events stream, which a frozen socket never ends, and the keepalive
+    /// only speaks up on its own schedule. Foregrounding is the moment to
+    /// ask, because that is the moment a user is looking at whatever the
+    /// answer means. A failed ping goes down the keepalive's own path, so the
+    /// session drops into the ordinary visible `.reconnecting` sequence
+    /// instead of sitting on a dead link.
+    ///
+    /// Every failure class is reported, not just the timeout a hung socket
+    /// produces: post-#138 a severed link classifies as `.sshUnreachable`, and
+    /// a herdr that stopped while the app was away classifies as the
+    /// non-retryable `.streamLocalOpenFailed` / `.socketNotFound`, which
+    /// correctly takes the Host to `.failed` with its setup guidance rather
+    /// than retrying something no retry can fix.
+    ///
+    /// No-op unless a channel is actually live: a suspended session is
+    /// `resume()`'s business, and one already reconnecting is visibly working
+    /// on it.
+    func revalidate() async {
+        guard
+            phase == .active,
+            let stream = liveStream,
+            let transport = currentTransport
+        else { return }
+        do {
+            let latency = try await measureLatency(on: transport)
+            latencyContinuation.yield(latency)
+            noteConnectionActivity()
+        } catch is CancellationError {
+        } catch TransportError.cancelled {
+        } catch {
+            await keepaliveDidFail(Self.transportFailure(error), on: stream)
+        }
+    }
+
     /// Deliberate teardown for backgrounding: ends the events channel by
     /// explicit close, closes the SSH connection, and stops all reconnect
     /// activity. Returns once everything is down. No-op unless active.
@@ -246,7 +283,7 @@ actor EventsSession {
     }
 
     /// Runs an ordinary RPC against the currently installed Transport.
-    /// Calls are intentionally concurrent; `SSHTransport` owns its channel
+    /// Calls are intentionally concurrent; the Transport owns its channel
     /// budget. The Transport value never becomes caller-owned state.
     func withTransport<Value: Sendable>(
         _ operation: @escaping @Sendable (any Transport) async throws -> Value
@@ -391,6 +428,18 @@ actor EventsSession {
             var streamFailure: TransportError?
             do {
                 for try await event in stream.events {
+                    // Teardown cancels this task but deliberately does not
+                    // await it (see `windDown`), and a channel closed with
+                    // events still buffered delivers them before finishing.
+                    // Without this check those late events would be yielded
+                    // *after* the terminal `.suspended`/`.ended` status and,
+                    // under a full bounded buffer, shed it — breaking the
+                    // guarantee that a terminal transition is the last thing
+                    // the consumer sees. Discarding them is safe: `.suspended`
+                    // already declares everything since the last `.connected`
+                    // stale, and the `.connected` that follows a resume
+                    // obliges a fresh snapshot anyway.
+                    guard activationIsCurrent(generation) else { break }
                     noteConnectionActivity()
                     yieldUpdate(.event(event))
                 }
@@ -413,7 +462,7 @@ actor EventsSession {
                 continue
             }
             let failure =
-                streamFailure ?? pendingKeepaliveFailure
+                pendingKeepaliveFailure ?? streamFailure
                 ?? .channelFailed(detail: "events stream ended unexpectedly")
             pendingKeepaliveFailure = nil
             guard failure.isRetryable else {
@@ -514,8 +563,8 @@ actor EventsSession {
     }
 
     /// Ends the current activation and closes everything. The run task is
-    /// cancelled but deliberately not awaited: an SSH/NIO bridge may ignore
-    /// task cancellation while a connection is stalled. Generation checks
+    /// cancelled but deliberately not awaited: a stalled SSH operation may
+    /// ignore task cancellation. Generation checks
     /// make any late result harmless, while an installed Transport is still
     /// closed explicitly before lifecycle teardown returns.
     private func windDown() async {

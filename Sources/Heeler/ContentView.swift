@@ -3,12 +3,14 @@ import SwiftUI
 /// Root view: the Console (#8), with Host management (#14) behind it. App
 /// activity drives the events sessions' suspend/resume (spec #20): the
 /// connections survive a backgrounding for the length of the grace period
-/// (see AppActivityCoordinator), then are torn down deliberately; returning
-/// to the foreground after a real suspension re-syncs.
+/// (see AppActivityCoordinator), then are torn down deliberately. Every
+/// return to the foreground re-activates them — and, for a connection the
+/// app was still holding, re-proves it, because a link can die while the app
+/// is away without anything having noticed (#142).
 struct ContentView: View {
     let pushRegistration: PushRegistrationStore
     let notificationRouter: AgentNotificationRouter
-    @State private var hostStore = HostStore()
+    @State private var hostStore: HostStore
     @State private var console: ConsoleStore
     @State private var notificationPreferences: NotificationPreferencesStore
     @State private var terminalThemes = TerminalThemeSettings()
@@ -18,14 +20,28 @@ struct ContentView: View {
     @State private var appearance = AppAppearanceSettings()
     @State private var relaySettings: NotificationRelaySettings
     @State private var bannerStore: AgentNotificationBannerStore
-    @State private var activity = AppActivityCoordinator()
+    @State private var activity: AppActivityCoordinator
     @Environment(\.scenePhase) private var scenePhase
 
-    init(pushRegistration: PushRegistrationStore, notificationRouter: AgentNotificationRouter) {
+    /// `hostStore`, `console`, and `activity` are injectable so a test can
+    /// drive the activity wiring below and observe that something consumed
+    /// it: `ContentViewActivityDriverTests` is what turns deleting the
+    /// `.task` that runs `ConsoleActivityDriver` red (#167). Defaults are
+    /// the production values, so call sites and behavior are unchanged:
+    /// `HostStore()` reads the real persisted catalog and `ConsoleStore()`
+    /// reaches the real `sshSessionFactory()`.
+    init(
+        pushRegistration: PushRegistrationStore,
+        notificationRouter: AgentNotificationRouter,
+        hostStore: HostStore = HostStore(),
+        console: ConsoleStore = ConsoleStore(),
+        activity: AppActivityCoordinator = AppActivityCoordinator()
+    ) {
         self.pushRegistration = pushRegistration
         self.notificationRouter = notificationRouter
-        let console = ConsoleStore()
+        _hostStore = State(initialValue: hostStore)
         _console = State(initialValue: console)
+        _activity = State(initialValue: activity)
         let relaySettings = NotificationRelaySettings()
         _relaySettings = State(initialValue: relaySettings)
         // Preference reads/writes borrow the Console's live per-Host SSH
@@ -109,21 +125,16 @@ struct ContentView: View {
                 break
             }
         }
-        // Only a real suspension moves the connections. A backgrounding the
-        // grace period absorbed never reaches here, so a quick trip out of
+        // Only a real suspension moves the connections: a backgrounding the
+        // grace period absorbed emits no `.suspended`, so a quick trip out of
         // the app leaves the events sessions and Attach terminals untouched.
-        .onChange(of: activity.phase) {
-            switch activity.phase {
-            case .active:
-                Task { await console.resume() }
-            case .suspended:
-                // The background assertion is held until this returns, so
-                // the SSH teardown finishes before the process freezes.
-                Task {
-                    await console.suspend()
-                    activity.didFinishSuspending()
-                }
-            }
+        // Driven off the coordinator's event stream rather than an `onChange`
+        // of its phase — the suspension happens while the app is in the
+        // background and rendering nothing, and a view that only compares the
+        // value it last saw misses both that edge and the resume behind it
+        // (#142).
+        .task {
+            await ConsoleActivityDriver(activity: activity, console: console).run()
         }
         .task { await pushRegistration.refresh() }
     }

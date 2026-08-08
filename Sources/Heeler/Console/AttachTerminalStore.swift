@@ -19,6 +19,26 @@ struct TerminalSessionHandler: Sendable {
     }
 }
 
+/// The identity of one terminal pipeline, and so of the SwiftUI surface built
+/// on top of it.
+///
+/// Deliberately not `ObjectIdentifier(store)`. That is the store's *address*,
+/// and the allocator hands a freed address straight back to the next
+/// allocation of the same shape — 200 stores built and dropped in a row
+/// produced two distinct `ObjectIdentifier`s between them. SwiftUI compares
+/// against the identity it recorded at its *last render*, not against the
+/// store that is currently live, so a store landing on an address any earlier
+/// generation held presents an identity SwiftUI has already seen; it sees
+/// nothing change, keeps the surface it already built, and never calls
+/// `makeUIView` again. That call is the only place a feed acquires a sink, so
+/// the replacement's bytes buffer forever behind a stale screen while the
+/// session reads as live (#143).
+struct TerminalSurfaceID: Hashable, Sendable {
+    private let value = UUID()
+
+    init() {}
+}
+
 /// The Agent detail screen's session pipeline: a full interactive terminal
 /// over the Host's terminal channel — raw PTY bytes into the view through a
 /// `TerminalByteFeed`, keystrokes back out, geometry changes as SSH
@@ -38,7 +58,7 @@ final class AttachTerminalStore {
         /// Opening the attach channel, and waiting for the remote attach to
         /// say something. Nothing is on the terminal yet.
         case connecting
-        /// The session has painted; bytes are flowing both ways.
+        /// The new PTY Attach has produced output and owns the current input writer.
         case live
         /// The session ended remotely (clean detach or channel death); the
         /// message is user-facing and `retry()` reattaches.
@@ -50,6 +70,10 @@ final class AttachTerminalStore {
     private(set) var status: Status = .waitingForSize
     /// The byte pipe the terminal view consumes.
     let feed = TerminalByteFeed()
+    /// What the screen identifies this pipeline's surface by. Owned by the
+    /// store and unique for its lifetime, so a replacement is always a
+    /// different surface to SwiftUI.
+    let surfaceID = TerminalSurfaceID()
 
     private let target: String
     private let takeover: Bool
@@ -63,6 +87,7 @@ final class AttachTerminalStore {
     private var cols: Int?
     private var rows: Int?
     private var stopRequested = false
+    private var preservesPendingPasteOnStop = false
     private var session: TerminalAttachSession?
     private var inputGeneration: TerminalInputController.SessionGeneration?
     private var runTask: Task<Void, Never>?
@@ -105,22 +130,41 @@ final class AttachTerminalStore {
         input.send(keystrokes)
     }
 
+    /// The app returned to the foreground.
+    ///
+    /// A short bounce asks the remote TUI to repaint without replacing the
+    /// current session. Extended absences are recovered at the owner boundary
+    /// instead, because this store cannot observe presentation and must not
+    /// treat a byte handed to a sink object as proof that a frame was drawn.
+    func didBecomeActive() {
+        guard status == .live, let session, let cols, let rows, cols > 1 else { return }
+        // A window-change only reaches the remote when the size actually
+        // changes, so the nudge is a shrink followed by a restore. Both ride
+        // the reliable input queue, in order, on the live channel; the
+        // store's own geometry is untouched, so a later real resize still
+        // compares against what the view last reported.
+        session.resize(cols: cols - 1, rows: rows)
+        session.resize(cols: cols, rows: rows)
+    }
+
     /// Reattaches after the session ended remotely.
     func retry() {
         guard case .ended = status, runTask == nil else { return }
         start()
     }
 
-    /// Ends the session by explicit close (a live exec channel ignores task
-    /// cancellation, ADR 0002) and waits for the teardown. Terminal: the
-    /// detail screen creates a fresh store after a Host reconnect.
+    /// Ends the session by explicit close (only `end()` runs the channel's
+    /// teardown; abandoning the session does not) and waits for the teardown.
+    /// Terminal: the detail screen creates a fresh store after a Host
+    /// reconnect.
     ///
     /// The run task is also cancelled: before a session exists it can be
     /// queued for the Host's terminal channel, and teardown must abort that
     /// wait rather than sit behind whoever holds the channel — a stop must
     /// never depend on the channel becoming available.
-    func stop() async {
+    func stop(preservingPendingPaste: Bool = false) async {
         stopRequested = true
+        preservesPendingPasteOnStop = preservingPendingPaste
         if let session {
             await session.end()
         }
@@ -189,11 +233,11 @@ final class AttachTerminalStore {
 
         do {
             for try await bytes in session.output {
-                // Live when the session has something to show, not when the
+                // Live when the new PTY Attach produces output, not when the
                 // channel opens: the transport withholds the login shell's
-                // noise, so an open channel with nothing on it yet is still a
-                // blank screen. "Connecting…" stays up until the remote attach
-                // paints.
+                // noise, so an open channel with no output yet is still
+                // connecting. This does not prove that a renderer presented
+                // the bytes on screen.
                 if status == .connecting {
                     status = .live
                 }
@@ -209,7 +253,9 @@ final class AttachTerminalStore {
 
     private func finishSession(_ inputGeneration: TerminalInputController.SessionGeneration) {
         self.session = nil
-        input.endSession(inputGeneration)
+        input.endSession(
+            inputGeneration,
+            preservingPendingPaste: preservesPendingPasteOnStop)
         if self.inputGeneration == inputGeneration {
             self.inputGeneration = nil
         }

@@ -81,7 +81,15 @@ struct HostOnboardingView: View {
                 }
             } footer: {
                 if let info = store.serverInfo {
-                    Text("herdr \(info.version) · protocol \(info.protocolVersion)")
+                    // The notice is advisory and the checks still pass: a Host
+                    // newer than this build is usable, just not fully known.
+                    Text(
+                        info.exceedsGeneratedProtocol
+                            ? "herdr \(info.version) · protocol \(info.protocolVersion) — "
+                                + "newer than this app was built against, so features added "
+                                + "after protocol \(HeelerSSHTransport.generatedProtocolVersion) "
+                                + "may be unavailable."
+                            : "herdr \(info.version) · protocol \(info.protocolVersion)")
                 }
             }
 
@@ -190,6 +198,16 @@ struct HostOnboardingView: View {
         }
     }
 
+    /// `.reconnecting` and `.failed` share an arm here, which no other
+    /// surface does: the Console list and the Agent screen show the guidance
+    /// for `.failed` only, and the Hosts rows show a chip instead. So this is
+    /// the one place the guidance appears while a retry is in flight, where it
+    /// names no action — see Connection Guidance in `CONTEXT.md` (#156), and
+    /// #163 for whether that is the right text.
+    ///
+    /// The footer that renders this is additionally gated on `!isReconnecting`
+    /// (a manual Reconnect being in flight, not the status), so a press hides
+    /// it for both arms — recorded, not endorsed, in #160.
     private var connectionErrorMessage: String? {
         switch connectionStatus {
         case .reconnecting(_, _, let failure), .failed(let failure):

@@ -117,7 +117,7 @@ final actor FakeTransportConnector: TransportConnector {
         }
     }
 
-    /// Mirrors `TOFUHostKeyValidator.evaluate` at the policy level.
+    /// Mirrors `HeelerSSHHostKeyVerifier.verify` at the policy level.
     private func evaluateHostKey(
         _ fingerprint: HostKeyFingerprint, settings: SSHTransportSettings
     ) async throws {

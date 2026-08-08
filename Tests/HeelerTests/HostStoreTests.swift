@@ -20,6 +20,24 @@ struct HostTests {
         #expect(host.socketLocation == .namedSession("work"))
     }
 
+    /// Hosts serialized before ADR 0011 carry a `socatPath` the product
+    /// no longer has (ADR 0011). It must never fail a decode — not even when it
+    /// holds a value the old validation would have rejected — and the next save
+    /// must drop it rather than carry a dead field forward forever.
+    @Test func obsoleteSocatFieldDecodesAndIsNotWrittenBack() throws {
+        let legacy = """
+            {"id":"\(UUID().uuidString)","name":"Old","address":"old.example","port":22,
+             "username":"dev","authMethod":"deviceKey","socatPath":"socat"}
+            """
+
+        let host = try JSONDecoder().decode(Host.self, from: Data(legacy.utf8))
+        #expect(host.address == "old.example")
+
+        let fields = try #require(
+            JSONSerialization.jsonObject(with: try JSONEncoder().encode(host)) as? [String: Any])
+        #expect(fields["socatPath"] == nil)
+    }
+
     @Test func displayNameFallsBackToUserAtAddress() {
         var host = Host.fixture(name: "", address: "box.example", username: "dev")
         #expect(host.displayName == "dev@box.example")
@@ -63,7 +81,6 @@ struct HostStoreTests {
 
         let host = try #require(store.hosts.first)
         #expect(host.sessionName == "")
-        #expect(host.socatPath == Host.defaultSocatPath)
         // Hosts saved before jump-host support must keep connecting directly.
         #expect(!host.usesJumpHost)
         #expect(host.jumpPort == 22)

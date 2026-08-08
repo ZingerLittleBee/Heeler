@@ -35,6 +35,7 @@ struct ConsoleView: View {
     /// later — an extra reflow, and a Connecting dialog that visibly jumps
     /// from the middle of the screen to the middle of the terminal.
     @State private var keyboardInset = TerminalKeyboardInset()
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         // A split view instead of a plain stack for the iPad's sake: regular
@@ -182,14 +183,41 @@ struct ConsoleView: View {
                 // detail column would reuse the old view's state.
                 .id(id)
             } else {
-                ContentUnavailableView(
-                    "Agent Gone", systemImage: "rectangle.on.rectangle.slash",
-                    description: Text("This Agent's pane is no longer reported."))
+                // The Agent is gone from the list, but not necessarily
+                // because its pane went: a failed Host empties the list the
+                // same way, and blaming the Agent for that hides the only
+                // text that says what to do about it (#146).
+                // The stores, not their contents: which collections this reads
+                // is the part a test can then assert, and the part #146 got
+                // wrong.
+                let presentation = MissingAgentPresentation(
+                    agentID: id, console: console, hosts: hosts)
+                missingAgentSurface(presentation)
             }
         } else {
             ContentUnavailableView(
                 "No Agent Selected", systemImage: "rectangle.on.rectangle",
                 description: Text("Choose an Agent to open its terminal."))
+        }
+    }
+
+    @ViewBuilder
+    private func missingAgentSurface(_ presentation: MissingAgentPresentation) -> some View {
+        if presentation.cause == .hostSyncing {
+            let theme = terminal.themes.selection(for: colorScheme)
+            ZStack {
+                theme.surfaceBackground(for: colorScheme)
+                    .ignoresSafeArea()
+                TerminalStatusDialog(
+                    glyph: .progress,
+                    title: presentation.title,
+                    palette: theme.palette(for: colorScheme),
+                    dimsBackground: false)
+            }
+        } else {
+            ContentUnavailableView(
+                presentation.title, systemImage: presentation.systemImage,
+                description: Text(presentation.message))
         }
     }
 
@@ -303,6 +331,12 @@ struct ConsoleView: View {
     /// otherwise a connected Host can still have a failing snapshot RPC.
     private var hostIssues: [HostIssue] {
         hosts.hosts.compactMap { host in
+            // The two failing arms present through different functions on
+            // purpose; see Connection Guidance in `CONTEXT.md` for what each
+            // surface shows (#156). What is local to here: the split is
+            // exhaustive at the source, because `.reconnecting` is emitted
+            // solely past a `guard failure.isRetryable`, so `summary(for:)`
+            // needs arms for the retryable set alone.
             switch console.hostStatuses[host.id] {
             case .reconnecting(_, _, let failure):
                 return HostIssue(
@@ -337,7 +371,6 @@ struct ConsoleView: View {
     private func summary(for failure: TransportError) -> String {
         switch failure {
         case .sshUnreachable: "SSH unavailable"
-        case .serverNotRunning: "herdr is not answering"
         case .timedOut: "request timed out"
         case .cancelled: "request was cancelled"
         case .channelFailed: "connection dropped"
@@ -355,6 +388,151 @@ struct ConsoleView: View {
         await console.retryHost(id)
         try? await Task.sleep(for: .milliseconds(1_200))
         reconnectingHostIDs.remove(id)
+    }
+}
+
+/// What the detail column shows when the selected Agent is no longer in the
+/// Console list. Four different situations empty that list and they need
+/// four different answers (#141, #146, #154).
+///
+/// They are easy to conflate because every non-`.connected` status runs
+/// `invalidateSnapshot()`, clearing `agentsByPane` — so a Host that failed,
+/// and a Host that is reconnecting, each leave the list exactly as empty as
+/// a pane that closed. Reading the empty list alone, "this pane is no longer
+/// reported" is simply false in both: it names the Agent for the Host's
+/// trouble and points at the wrong remedy, while the text written for the
+/// failure — the guidance on `.failed`, the Console's short phrase on
+/// `.reconnecting` — rendered only in the Console list behind it.
+///
+/// Only `.failed` gets that guidance here; `.reconnecting` gets a message
+/// written for it rather than borrowing either neighbour (#154). See
+/// Connection Guidance in `CONTEXT.md`, which records what all four
+/// status-reading surfaces show and points at #163 for whether the split is
+/// right (#156).
+struct MissingAgentPresentation: Equatable {
+    /// Which situation emptied the list. Explicit so that collapsing them
+    /// into a single message cannot happen by accident.
+    enum Cause: Hashable {
+        /// The Host's session stopped on a failure no retry can clear; the
+        /// guidance for most of that set names an action only the user can
+        /// take.
+        case hostFailed
+        /// The connection dropped and the session is re-establishing it.
+        /// Nobody needs to act, so this says so instead of borrowing either
+        /// of the others (#154).
+        case hostReconnecting
+        /// The Host transport is connected, but its first replacement
+        /// snapshot has not landed yet, so the selected pane is not known to
+        /// be present or gone.
+        case hostSyncing
+        /// The Host is fine and this one pane is gone.
+        case paneGone
+    }
+
+    let cause: Cause
+    let title: String
+    let systemImage: String
+    let message: String
+
+    /// Resolves the Host from the selection rather than taking a status the
+    /// caller looked up: the pane address alone is not unique across Hosts,
+    /// so `ConsoleAgent.ID` carries the `hostID`, and keeping the resolution
+    /// here means no call site can apply a *different* rule to it.
+    ///
+    /// This initializer takes the *contents* and so cannot police where they
+    /// came from — passing an empty `hostStatuses` restores #146's defect
+    /// outright, since every failed Host then falls back to the placeholder.
+    /// The detail column therefore does not call it; it calls the store-taking
+    /// initializer below, which is the one under test (#152).
+    init(
+        agentID: ConsoleAgent.ID,
+        hostStatuses: [Host.ID: EventsSessionStatus],
+        hosts: [Host],
+        hostsAwaitingSnapshot: Set<Host.ID> = []
+    ) {
+        let hostName = hosts.first { $0.id == agentID.hostID }?.displayName
+        // Named like the Console list's own entries, so the same Host reads
+        // the same way in both places.
+        func named(_ text: String) -> String {
+            hostName.map { "\($0): \(text)" } ?? text
+        }
+        let hostStatus = hostStatuses[agentID.hostID]
+        if hostsAwaitingSnapshot.contains(agentID.hostID) {
+            switch hostStatus {
+            case .failed, .reconnecting, .ended:
+                break
+            case .connected, .suspended, nil:
+                cause = .hostSyncing
+                title = "Connecting…"
+                systemImage = "hourglass"
+                message = named("Loading the latest Agents.")
+                return
+            }
+        }
+        switch hostStatus {
+        case .failed(let failure):
+            cause = .hostFailed
+            title = "Host Unavailable"
+            systemImage = failure.isHostKeySecurityFailure
+                ? "exclamationmark.shield.fill" : "exclamationmark.triangle.fill"
+            message = named(failure.connectionGuidance)
+        case .reconnecting:
+            cause = .hostReconnecting
+            title = "Reconnecting…"
+            // Deliberately not the Console list's `wifi.exclamationmark`.
+            // There the row is one entry in a list of issues, where the alert
+            // mark is the point; a whole screen whose message is "nothing to
+            // do" should not open by shouting.
+            systemImage = "arrow.trianglehead.2.clockwise"
+            // Deliberately not `connectionGuidance`. `.reconnecting` is
+            // emitted solely past a `guard failure.isRetryable`, and for that
+            // set the guidance names no action either — it restates the
+            // failure, appending the transport's raw detail in three of the
+            // five and nothing at all in `timedOut` and `cancelled`. This
+            // says what is happening instead. Whether the retryable set
+            // should name actions at all is #163.
+            message = named(
+                "The connection dropped and is being re-established. "
+                    + "Nothing to do — the Agents come back on their own.")
+        case .connected, .suspended, .ended, nil:
+            // `.suspended` stays here on purpose. A suspended session is not
+            // re-establishing anything; it is waiting to be told to, so
+            // "reconnecting" would be the wrong claim. There is a real gap
+            // behind that — nothing is emitted between the resume and the
+            // `.connected` that ends it, so a Host dialling on the foreground
+            // return is indistinguishable from one sitting idle, and the
+            // window is a whole SSH connect plus ping wide. Closing it means
+            // a new status at the transport seam, not a case here, so it is
+            // #155 rather than something widened into this.
+            cause = .paneGone
+            title = "Agent Gone"
+            systemImage = "rectangle.on.rectangle.slash"
+            message = "This Agent's pane is no longer reported."
+        }
+    }
+
+    /// What the Console's detail column shows when the selected Agent is not
+    /// in the list.
+    ///
+    /// This exists to be called from a test, and deleting it would cost real
+    /// coverage rather than tidy up an unused overload. The defect it guards
+    /// (#146) is *which collections the view reads*, not what the rule does
+    /// with them, and that could not be reached: a hosted `NavigationSplitView`
+    /// builds its columns and navigation bar but never the SwiftUI content
+    /// inside them, so the detail column cannot be rendered in a test and
+    /// asserted against (measured under #152).
+    ///
+    /// Taking the stores instead of their contents is what makes the seam
+    /// worth having. The reader is now written once, here, where a test calls
+    /// exactly what the view calls — rather than at a call site that no test
+    /// can reach.
+    @MainActor
+    init(agentID: ConsoleAgent.ID, console: ConsoleStore, hosts: HostStore) {
+        self.init(
+            agentID: agentID,
+            hostStatuses: console.hostStatuses,
+            hosts: hosts.hosts,
+            hostsAwaitingSnapshot: console.hostsAwaitingSnapshot)
     }
 }
 

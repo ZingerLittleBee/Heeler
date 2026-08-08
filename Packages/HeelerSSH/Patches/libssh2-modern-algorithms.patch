@@ -1,0 +1,28 @@
+diff --git a/src/kex.c b/src/kex.c
+index 1f3defd..cc333d6 100644
+--- a/src/kex.c
++++ b/src/kex.c
+@@ -3259,9 +3259,6 @@ static const LIBSSH2_KEX_METHOD *libssh2_kex_methods[] = {
+     &kex_method_diffie_helman_group16_sha512,
+     &kex_method_diffie_helman_group18_sha512,
+     &kex_method_diffie_helman_group14_sha256,
+-    &kex_method_diffie_helman_group14_sha1,
+-    &kex_method_diffie_helman_group1_sha1,
+-    &kex_method_diffie_helman_group_exchange_sha1,
+     &kex_method_extension_negotiation,
+     &kex_method_strict_client_extension,
+     NULL
+diff --git a/src/mac.c b/src/mac.c
+index 92559e8..e1cac64 100644
+--- a/src/mac.c
++++ b/src/mac.c
+@@ -453,9 +453,6 @@ static const LIBSSH2_MAC_METHOD *mac_methods[] = {
+     &mac_method_hmac_sha2_512,
+     &mac_method_hmac_sha2_512_etm,
+ #endif
+-    &mac_method_hmac_sha1,
+-    &mac_method_hmac_sha1_etm,
+-    &mac_method_hmac_sha1_96,
+ #if LIBSSH2_MD5
+     &mac_method_hmac_md5,
+     &mac_method_hmac_md5_96,

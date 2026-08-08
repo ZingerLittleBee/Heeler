@@ -42,6 +42,10 @@ final class TerminalInputController {
     /// they agreed to is the framing that was true when they were shown it.
     private var pendingPasteIsBracketed = false
 
+    var canConfirmPaste: Bool {
+        !isPaused && writer != nil && pendingPasteText != nil
+    }
+
     @discardableResult
     func beginSession(
         writer: @escaping (Data) -> Void,
@@ -55,12 +59,23 @@ final class TerminalInputController {
         return generation
     }
 
-    func endSession(_ generation: SessionGeneration) {
+    func endSession(_ generation: SessionGeneration, preservingPendingPaste: Bool = false) {
         guard generation == liveGeneration else { return }
         liveGeneration = nil
         writer = nil
         scroller = nil
-        cancelPaste()
+        if !preservingPendingPaste {
+            cancelPaste()
+        }
+    }
+
+    /// Synchronously removes the predecessor Attach's input capabilities when
+    /// replacement is scheduled. A reviewed Paste belongs to the surrounding
+    /// interaction, so it remains pending for the replacement session.
+    func detachSessionForReplacement() {
+        liveGeneration = nil
+        writer = nil
+        scroller = nil
     }
 
     func pause() {
@@ -153,14 +168,11 @@ final class TerminalInputController {
 
     @discardableResult
     func confirmPaste() -> Bool {
-        guard !isPaused, writer != nil, let text = pendingPasteText else {
-            cancelPaste()
-            return false
-        }
+        guard canConfirmPaste, let writer, let text = pendingPasteText else { return false }
         // Reviewed text is still multiline text: without framing its newlines
         // reach the pane as separate key events, which is the very thing the
         // review sheet leaves the user unable to prevent.
-        writer?(TerminalBracketedPaste.encode(text, bracketed: pendingPasteIsBracketed))
+        writer(TerminalBracketedPaste.encode(text, bracketed: pendingPasteIsBracketed))
         cancelPaste()
         return true
     }

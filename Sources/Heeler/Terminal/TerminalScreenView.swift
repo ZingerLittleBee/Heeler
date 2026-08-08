@@ -38,6 +38,11 @@ final class TerminalKeyboardControl {
 /// session, while its write and resize callbacks flow back to Attach.
 struct TerminalScreenView: UIViewRepresentable {
     let feed: TerminalByteFeed
+    #if DEBUG
+    /// Reports creation and feed attachment of the concrete UIKit surface.
+    /// It does not claim that Ghostty presented a frame.
+    var onSurfaceAttached: (() -> Void)?
+    #endif
     var onSizeChanged: ((_ cols: Int, _ rows: Int) -> Void)?
     var onViewportTextChanged: ((String) -> Void)?
     var onSend: ((Data) -> Void)?
@@ -82,9 +87,12 @@ struct TerminalScreenView: UIViewRepresentable {
         view.raisesKeyboardWhenReady = claimsKeyboard?() ?? false
         keyboardControl?.terminal = view
         context.coordinator.terminalView = view
-        feed.attach { [weak view] data in
-            view?.receive(data)
-        }
+        // The feed holds the surface weakly so a replaced UIKit view cannot be
+        // kept alive by an obsolete terminal pipeline.
+        feed.attach(view)
+        #if DEBUG
+        onSurfaceAttached?()
+        #endif
         return view
     }
 
@@ -283,7 +291,7 @@ private final class TerminalInputTextRange: UITextRange {
 
 /// The app-owned seam around libghostty-spm. It keeps keyboard policy and the
 /// host-managed session lifecycle out of the SwiftUI screen.
-final class HeelerTerminalView: UITerminalView {
+final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private let callbackBridge: TerminalSessionCallbackBridge
     private let terminalController: TerminalController
     let terminalSession: InMemoryTerminalSession

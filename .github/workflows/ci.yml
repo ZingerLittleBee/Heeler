@@ -11,12 +11,12 @@
 # - The committed Heeler.xcodeproj (project + shared Heeler scheme)
 #   is the source of truth for CI. project.yml/xcodegen is a local convenience
 #   only; CI never regenerates the project.
-# - The sshd-dependent e2e suites gate on LocalSSHTestEnvironment.isAvailable
-#   (Tests/HeelerTests/Support/LocalSSHTestEnvironment.swift): they probe
-#   for a local sshd, a socat binary, and a seeded Ed25519 key, and each test
-#   is annotated `.enabled(if: LocalSSHTestEnvironment.isAvailable)`. On a bare
-#   runner none of that exists, so those tests skip cleanly. We deliberately do
-#   NOT provision sshd here; the pure suite still runs.
+# - The real-SSH suites are mandatory in CI. The test script provisions
+#   disposable high-port sshd instances that run unprivileged as the runner
+#   account, plus a Unix-socket fake herdr server, and asserts both the executed
+#   test count and the named test behind every mandatory behaviour. Only the
+#   real-password fixture needs sudo, because macOS cannot verify an account
+#   password without root.
 # - Wire-type codegen drift is checked against a committed schema snapshot
 #   (scripts/herdr-schema.json), captured from herdr 0.7.4 via
 #   `herdr api schema --json`. CI has no herdr binary, so `--schema` feeds the
@@ -82,21 +82,31 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
 
       - name: Test VPS SSH access scripts
         run: scripts/test-vps-ssh-access-scripts.sh
+
+      # Binary supply-chain gate: artifact checksums, device and Simulator
+      # slices, and the algorithm policy (no OpenSSL legacy provider, no
+      # obsolete SSH methods) that ADR 0011 commits to.
+      - name: Verify HeelerSSH native artifacts
+        run: make verify-ssh-artifacts
 
       - name: Show Xcode and simulator versions
         run: |
           xcodebuild -version
           xcrun simctl list runtimes
 
-      # OS=latest targets whatever iOS runtime the image currently ships, so a
-      # runtime-version bump on the runner image does not break the build. The
-      # app deployment target is iOS 26, matching the runtimes macos-26 ships.
+      # The script selects one available iPhone 17 UDID, boots it, injects the
+      # fixture environment there, and targets that same device for every test
+      # action. The app deployment target is iOS 26.
       - name: Build and test
-        run: |
-          xcodebuild test \
-            -project Heeler.xcodeproj \
-            -scheme Heeler \
-            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
+        # The fixture runs unprivileged; HEELER_CI_MANDATORY makes the one
+        # privileged part (the real-password sshd) a hard requirement here
+        # rather than something merge CI may quietly run without.
+        env:
+          HEELER_CI_MANDATORY: "1"
+        run: scripts/run-ci-ios-tests.sh

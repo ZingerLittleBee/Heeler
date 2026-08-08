@@ -3,9 +3,9 @@ import Testing
 
 @testable import Heeler
 
-// The probe command's shape and output parsing, pinned without sshd (the
-// SocatDiscoveryTests precedent): CI provisions no SSH server, so the
-// command's wire shape and the parser are what unit tests can hold still.
+// The probe command's shape and output parsing, pinned without sshd: the
+// unit lane provisions no SSH server, so the command's wire shape and the
+// parser are what these tests can hold still.
 @Suite("skills probe")
 struct SkillProbeTests {
     private let projectSource = SkillProbe.ResolvedSource(

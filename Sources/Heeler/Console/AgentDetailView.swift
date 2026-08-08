@@ -57,7 +57,8 @@ struct AgentDetailView: View {
         keyboardInset: TerminalKeyboardInset,
         isOnStage: @escaping () -> Bool,
         onSwitch: @escaping (ConsoleAgent.ID) -> Void,
-        onClosed: @escaping () -> Void
+        onClosed: @escaping () -> Void,
+        attachStore: AgentAttachStore? = nil
     ) {
         self.agent = agent
         self.console = console
@@ -69,7 +70,7 @@ struct AgentDetailView: View {
         self.onSwitch = onSwitch
         self.onClosed = onClosed
         _attach = State(
-            initialValue: AgentAttachStore(
+            initialValue: attachStore ?? AgentAttachStore(
                 target: agent.agent.paneID,
                 paneTitle: Self.displayTitle(for: agent),
                 transportGeneration: console.hostConnectionGenerations[agent.hostID],
@@ -269,12 +270,17 @@ struct AgentDetailView: View {
         // is exactly the work worth finishing while the app is briefly out of
         // sight, and it is cancelled only once the app really suspends.
         .onChange(of: activity.phase) { _, phase in
-            switch phase {
-            case .active:
-                attach.didBecomeActive()
-            case .suspended:
-                attach.didEnterBackground()
-            }
+            guard phase == .suspended else { return }
+            attach.didEnterBackground()
+        }
+        // Not the phase: a background→foreground round trip the grace period
+        // absorbs never leaves `.active`, so the return that has to prove the
+        // attach channel is exactly the one an `onChange` on the phase cannot
+        // see (#141).
+        // `initial` lets a replacement screen claim an activation that landed
+        // after its predecessor disappeared but before this observer existed.
+        .onChange(of: activity.activationCount, initial: true) { _, _ in
+            handleActivation()
         }
         .onChange(of: console.hostConnectionGenerations[agent.hostID]) { _, generation in
             attach.transportGenerationDidChange(generation)
@@ -338,6 +344,11 @@ struct AgentDetailView: View {
             for: .navigationBar)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func handleActivation() {
+        let afterPossibleSuspension = activity.lastAbsenceMayHaveSuspended
+        attach.didBecomeActive(afterPossibleSuspension: afterPossibleSuspension)
     }
 
     @ToolbarContentBuilder
@@ -444,27 +455,31 @@ struct AgentDetailView: View {
 
     @ViewBuilder
     private var statusOverlay: some View {
-        switch attach.terminalStatus {
-        case .waitingForSize, .connecting:
-            // No dim: a reattach would otherwise flash the whole screen dark.
-            TerminalStatusDialog(
-                glyph: .progress,
-                title: "Connecting…",
-                palette: themePalette,
-                dimsBackground: false)
-        case .ended(let message):
-            TerminalStatusDialog(
-                glyph: .symbol("cable.connector.slash"),
-                title: "Session Ended",
-                message: message,
-                palette: themePalette
-            ) {
-                Button("Reattach") { attach.retryTerminal() }
-                    .buttonStyle(.borderedProminent)
+        if let presentation = TerminalStatusPresentation(status: attach.terminalStatus) {
+            switch presentation.kind {
+            case .connecting:
+                // No dim: a reattach would otherwise flash the whole screen dark.
+                TerminalStatusDialog(
+                    glyph: .progress,
+                    title: presentation.title,
+                    message: presentation.message,
+                    palette: themePalette,
+                    dimsBackground: presentation.dimsBackground)
+            case .ended:
+                TerminalStatusDialog(
+                    glyph: .symbol("cable.connector.slash"),
+                    title: presentation.title,
+                    message: presentation.message,
+                    palette: themePalette,
+                    dimsBackground: presentation.dimsBackground
+                ) {
+                    Button("Reattach") { attach.retryTerminal() }
+                        .buttonStyle(.borderedProminent)
+                }
             }
-        // .live needs nothing, and .stopped only reaches the view while the
-        // screen is on its way off stage (see `AgentAttachStore.terminalStatus`).
-        case .live, .stopped:
+        } else {
+            // .live needs nothing, and .stopped only reaches the view while the
+            // screen is on its way off stage (see `AgentAttachStore.terminalStatus`).
             EmptyView()
         }
     }
@@ -546,6 +561,7 @@ struct AgentDetailView: View {
                     }
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Paste") { attach.confirmPaste() }
+                            .disabled(!attach.canConfirmPaste)
                     }
                 }
             }

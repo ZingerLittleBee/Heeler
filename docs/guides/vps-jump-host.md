@@ -127,8 +127,8 @@ turning either account into a general-purpose VPS login.
 - macOS Remote Login enabled for the intended Mac user.
 - A public-key login path that has been tested before password authentication
   is disabled anywhere.
-- `socat` and herdr installed on the Mac as described by the main transport
-  documentation.
+- herdr installed on the Mac, with its SSH server permitting stream-local
+  forwarding, as described by the main transport documentation.
 
 The examples use:
 
@@ -650,5 +650,5 @@ private key or another Mac credential.
 - [OpenSSH `sshd_config`](https://man.openbsd.org/sshd_config)
 - [OpenSSH `authorized_keys` options](https://man.openbsd.org/sshd#AUTHORIZED_KEYS_FILE_FORMAT)
 - [Apple: Allow a remote computer to access your Mac](https://support.apple.com/guide/mac-help/mchlp1066/mac)
-- [Transport ADR](../adr/0002-ssh-exec-socat-transport.md)
+- [Transport ADR](../adr/0011-libssh2-direct-streamlocal-transport.md)
 - [Pairing ADR](../adr/0007-pairing-via-herdr-plugin.md)

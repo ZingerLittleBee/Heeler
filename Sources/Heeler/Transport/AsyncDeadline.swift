@@ -57,7 +57,8 @@ enum AsyncDeadline {
 ///
 /// The operation and timer are deliberately unstructured: structured task
 /// groups cannot leave scope until a child finishes, which turns a deadline
-/// back into an unbounded wait when a bridged NIO future ignores cancellation.
+/// back into an unbounded wait when a stalled SSH operation does not return
+/// promptly on cancellation.
 private actor AsyncDeadlineResolution<Value: Sendable> {
     private var result: Result<Value, any Error>?
     private var waiter: CheckedContinuation<Value, any Error>?

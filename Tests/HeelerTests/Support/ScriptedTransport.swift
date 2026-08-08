@@ -40,6 +40,13 @@ final actor ScriptedTransport: Transport {
     /// and resizes interleaved exactly as the store issued them.
     private(set) var attachInputs: [TerminalAttachInput] = []
 
+    /// Every `ping` received, in order of arrival; the keepalive tests assert
+    /// on how many the idle loop generated.
+    private(set) var pingCount = 0
+    private var pingFailures: [Int: TransportError] = [:]
+    private var pingGate: ScriptedTransportCallGate?
+    private var closeGate: ScriptedTransportCallGate?
+
     private var serverInfo: ServerInfo
     private var snapshot: SessionSnapshot
     private var snapshotFailure: TransportError?
@@ -55,6 +62,7 @@ final actor ScriptedTransport: Transport {
     private var liveAttachID: UInt64?
     private var attachContinuation: AsyncThrowingStream<Data, any Error>.Continuation?
     private var attachInputTask: Task<Void, Never>?
+    private var nextAttachEndGate: ScriptedTransportCallGate?
     private(set) var stageRequests: [PreparedImage] = []
     private var stageOutcomes: [Result<StagedImage, ImageStagingError>] = []
     private var stageGate: ScriptedTransportCallGate?
@@ -152,6 +160,10 @@ final actor ScriptedTransport: Transport {
         stageGate = gate
     }
 
+    func gateNextAttachEnd(on gate: ScriptedTransportCallGate) {
+        nextAttachEndGate = gate
+    }
+
     /// Pushes one event onto the live stream; false if none is live.
     @discardableResult
     func emit(_ event: HerdrEvent) -> Bool {
@@ -218,6 +230,26 @@ final actor ScriptedTransport: Transport {
         notificationConfig = data
     }
 
+    /// Makes the `ordinal`-th `ping` on this transport throw `failure`. A real
+    /// Transport turns a request the connection never answers into
+    /// `.timedOut` at its deadline, so scripting that outcome exercises the
+    /// same seam the session sees without putting a test on the clock.
+    func failPing(atCall ordinal: Int, with failure: TransportError) {
+        pingFailures[ordinal] = failure
+    }
+
+    /// Parks the next `ping` on `gate`, after counting it, so a test can hold
+    /// one Host's liveness proof in flight while inspecting another's.
+    func gateNextPing(using gate: ScriptedTransportCallGate) {
+        pingGate = gate
+    }
+
+    /// Parks the next `close()` on `gate` — which records the entry before
+    /// waiting — so a test can pin a session teardown mid-flight.
+    func gateNextClose(using gate: ScriptedTransportCallGate) {
+        closeGate = gate
+    }
+
     /// Scripts panes that no longer exist on the Host. herdr fails an entire
     /// `events.subscribe` when one pane-scoped entry names a pane that has
     /// exited (verified against a live 0.7.5 server), so the fake rejects the
@@ -229,7 +261,13 @@ final actor ScriptedTransport: Transport {
     // MARK: Transport
 
     func ping() async throws -> ServerInfo {
-        serverInfo
+        pingCount += 1
+        let failure = pingFailures[pingCount]
+        let gate = pingGate
+        pingGate = nil
+        await gate?.waitUntilOpen()
+        if let failure { throw failure }
+        return serverInfo
     }
 
     func listAgents() async throws -> [Agent] {
@@ -336,6 +374,8 @@ final actor ScriptedTransport: Transport {
         let attachID = nextAttachID
         let (output, outputContinuation) = AsyncThrowingStream<Data, any Error>.makeStream()
         let input = TerminalAttachInputQueue()
+        let endGate = nextAttachEndGate
+        nextAttachEndGate = nil
         liveAttachID = attachID
         attachContinuation = outputContinuation
         attachInputTask = Task {
@@ -344,6 +384,7 @@ final actor ScriptedTransport: Transport {
             }
         }
         return TerminalAttachSession(output: output, input: input) {
+            await endGate?.waitUntilOpen()
             await self.endAttach(id: attachID)
         }
     }
@@ -398,6 +439,9 @@ final actor ScriptedTransport: Transport {
     }
 
     func close() async throws {
+        let gate = closeGate
+        closeGate = nil
+        await gate?.waitUntilOpen()
         isClosed = true
         eventContinuation?.finish()
         eventContinuation = nil
@@ -444,6 +488,25 @@ private extension Sequence<EventSubscription> {
             return paneID
         }
         return nil
+    }
+}
+
+/// Hands scripted transports to an `EventsSession`'s `connect` closure in
+/// order, one per dial, and counts the dials. The last entry repeats if the
+/// session reconnects more often than the test scripted.
+actor SequencedTransportConnector {
+    private let transports: [ScriptedTransport]
+    private(set) var connectCount = 0
+
+    init(_ transports: [ScriptedTransport]) {
+        precondition(!transports.isEmpty)
+        self.transports = transports
+    }
+
+    func connect() async throws -> any Transport {
+        let transport = transports[min(connectCount, transports.count - 1)]
+        connectCount += 1
+        return transport
     }
 }
 

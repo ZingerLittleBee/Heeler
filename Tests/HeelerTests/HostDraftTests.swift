@@ -8,8 +8,7 @@ struct HostDraftTests {
     @Test func prefillsFromAnExistingHostAndRoundTripsWithItsID() throws {
         let host = Host(
             id: UUID(), name: "Workbox", address: "box.example", port: 2222,
-            username: "dev", authMethod: .password, sessionName: "work",
-            socatPath: "/opt/homebrew/bin/socat")
+            username: "dev", authMethod: .password, sessionName: "work")
 
         let draft = HostDraft(host: host)
         let rebuilt = try #require(draft.makeHost(id: host.id))
@@ -20,7 +19,7 @@ struct HostDraftTests {
     @Test func prefillsAndRoundTripsAJumpHost() throws {
         let host = Host(
             id: UUID(), name: "Behind NAT", address: "127.0.0.1", port: 12_222,
-            username: "dev", sessionName: "work", socatPath: "/usr/bin/socat",
+            username: "dev", sessionName: "work",
             jumpAddress: "jump.example", jumpPort: 2022, jumpUsername: "tunnel")
 
         let draft = HostDraft(host: host)
@@ -105,16 +104,6 @@ struct HostDraftTests {
         #expect(!draft.isValid)
     }
 
-    @Test func requiresAnAbsoluteSocatPath() {
-        var draft = HostDraft()
-        draft.address = "box.example"
-        draft.username = "dev"
-        draft.socatPath = "socat"
-        #expect(!draft.isValid)
-        draft.socatPath = "/usr/bin/socat"
-        #expect(draft.isValid)
-    }
-
     @Test func rejectsSessionNamesHerdrWouldReject() {
         let invalidNames = [
             "work session", "../prod", ".", "..", "work/session", String(repeating: "a", count: 65),
@@ -137,17 +126,6 @@ struct HostDraftTests {
         draft.sessionName = String(repeating: "a", count: 60) + "._-9"
 
         #expect(draft.isValid)
-    }
-
-    @Test func rejectsSocatPathsThatCannotBeQuotedForTheRemoteShell() {
-        for path in ["/tmp/socat'bad", "/tmp/socat\\bad", "/tmp/socat\nbad"] {
-            var draft = HostDraft()
-            draft.address = "host.example"
-            draft.username = "dev"
-            draft.socatPath = path
-
-            #expect(!draft.isValid, "unexpectedly accepted socat path: \(path)")
-        }
     }
 
     @Test func passwordUpdateOnlyForPasswordAuthWithAnEntry() {

@@ -1,0 +1,39 @@
+import Foundation
+import Testing
+
+@testable import HeelerSSH
+
+@Test("public session values preserve their data")
+func publicSessionValuesPreserveTheirData() {
+    let endpoint = SSHEndpoint(host: "example.com", port: 2222)
+    let hostKey = SSHHostKey(algorithm: "ssh-ed25519", key: Data([1, 2, 3]))
+    let result = SSHExecResult(
+        stdout: Data("out".utf8),
+        stderr: Data("err".utf8),
+        exitStatus: 7,
+        reachedEOF: true)
+
+    #expect(endpoint.host == "example.com")
+    #expect(endpoint.port == 2222)
+    #expect(hostKey.algorithm == "ssh-ed25519")
+    #expect(hostKey.key == Data([1, 2, 3]))
+    #expect(result.stdout == Data("out".utf8))
+    #expect(result.stderr == Data("err".utf8))
+    #expect(result.exitStatus == 7)
+    #expect(result.reachedEOF)
+}
+
+/// Frozen order, not a preference to tune: an existing algorithm-aware TOFU
+/// record must keep matching, so reordering these would present a stored Host
+/// as a key change (ADR 0011).
+@Test("Host Key algorithms preserve the migrated prefix before modern RSA fallback")
+func hostKeyAlgorithmsPreserveMigratedOrder() {
+    #expect(SessionDriver.hostKeyAlgorithms == [
+        "ssh-ed25519",
+        "ecdsa-sha2-nistp384",
+        "ecdsa-sha2-nistp256",
+        "ecdsa-sha2-nistp521",
+        "rsa-sha2-512",
+        "rsa-sha2-256",
+    ])
+}

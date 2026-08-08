@@ -9,8 +9,6 @@ enum PreflightCheck: CaseIterable, Sendable {
     case connection
     /// The login shell exposes a usable absolute home directory.
     case remoteEnvironment
-    /// A socat executable was found on the Host.
-    case socat
     /// The herdr socket path exists on the Host.
     case herdrInstalled
     /// The socket accepts connections (a wake attempt already ran).
@@ -22,7 +20,6 @@ enum PreflightCheck: CaseIterable, Sendable {
         switch self {
         case .connection: "SSH connection"
         case .remoteEnvironment: "remote environment"
-        case .socat: "socat installed"
         case .herdrInstalled: "herdr installed"
         case .serverRunning: "herdr server running"
         case .protocolCompatible: "protocol compatible"
@@ -89,13 +86,6 @@ struct PreflightReport: Equatable, Sendable {
                 "Host key changed: trusted \(known.displayString), the Host presented "
                 + "\(presented.displayString). This can be a reinstalled server or an attack — "
                 + "verify with the Host's owner before trusting it."
-        case .socatMissing(let path):
-            check = .socat
-            hint =
-                "No socat on the Host: not at \(path), and not on the Host's PATH. "
-                + "Install it (apt install socat / brew install socat), or enter its "
-                + "absolute path in this Host's settings. Homebrew puts it at "
-                + "/opt/homebrew/bin/socat (Apple Silicon) or /usr/local/bin/socat (Intel)."
         case .socketNotFound(let path):
             check = .herdrInstalled
             hint =
@@ -106,16 +96,23 @@ struct PreflightReport: Equatable, Sendable {
             hint =
                 "Could not resolve the remote home directory, so the herdr socket "
                 + "path is unknown. (\(detail))"
-        case .serverNotRunning(let path):
+        case .streamLocalOpenFailed(let path):
             check = .serverRunning
             hint =
-                "The socket at \(path) exists but nothing answers: the herdr server "
-                + "is not running. Start herdr on the Host and run the checks again."
+                "Could not open the herdr socket at \(path). Start herdr on the Host, "
+                + "or enable SSH stream-local forwarding and run the checks again."
+        case .tcpForwardingUnavailable:
+            check = .connection
+            hint =
+                "The Jump Host refused TCP forwarding. Enable AllowTcpForwarding "
+                + "in its SSH server configuration and try again."
         case .protocolVersionMismatch(let server, let supported):
             check = .protocolCompatible
+            // Only reachable below the floor now: a newer Host connects and
+            // carries an advisory notice instead of failing here.
             hint =
-                "The Host speaks herdr protocol \(server); this app supports "
-                + "\(supported). Update herdr on the Host or update the app."
+                "The Host speaks herdr protocol \(server); this app needs at least "
+                + "\(supported). Update herdr on the Host."
         case .malformedResponse(let detail):
             check = .protocolCompatible
             hint = "The server's reply did not parse as herdr protocol. (\(detail))"

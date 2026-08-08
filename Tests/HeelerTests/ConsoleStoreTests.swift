@@ -1109,6 +1109,45 @@ struct ConsoleStoreTests {
         #expect(store.hostLatencies.isEmpty)
     }
 
+    @Test func resumedHostStaysLoadingUntilItsReplacementSnapshotLands() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .working)]))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the initial Agent should arrive") {
+            store.agents.map(\.agent.paneID) == ["w1:p1"]
+        }
+        #expect(!store.hostsAwaitingSnapshot.contains(host.id))
+
+        await store.suspend()
+        try await waitUntil("suspension should invalidate the old snapshot") {
+            store.hostStatuses[host.id] == .suspended && store.agents.isEmpty
+        }
+        #expect(store.hostsAwaitingSnapshot.contains(host.id))
+
+        let snapshotGate = ScriptedTransportCallGate()
+        await transport.gateNextSnapshot(using: snapshotGate)
+        await store.resume()
+        try await waitUntil("the replacement snapshot should be in flight") {
+            let snapshotEntered = await snapshotGate.entryCount == 1
+            return store.hostStatuses[host.id] == .connected && snapshotEntered
+        }
+
+        #expect(store.agents.isEmpty)
+        #expect(store.hostsAwaitingSnapshot.contains(host.id))
+
+        await snapshotGate.open()
+        try await waitUntil("the replacement snapshot should restore the Agent") {
+            store.agents.map(\.agent.paneID) == ["w1:p1"]
+                && !store.hostsAwaitingSnapshot.contains(host.id)
+        }
+
+        store.setHosts([])
+    }
+
     @Test func retryHostReconnectsOnlyTheRequestedFailedHost() async throws {
         let hostA = Host.fixture(name: "alpha", address: "a.example")
         let hostB = Host.fixture(name: "beta", address: "b.example")

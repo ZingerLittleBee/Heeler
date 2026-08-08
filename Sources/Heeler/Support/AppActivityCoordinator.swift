@@ -9,10 +9,31 @@ import UIKit
 /// at another app, pulling down the notification shade, or answering a
 /// message costs nothing on return. Only when the grace period elapses — or
 /// the system reclaims its time — does the app consider itself suspended and
-/// tear the connections down (the deliberate teardown of ADR 0002; iOS
+/// tear the connections down (the deliberate teardown of ADR 0011; iOS
 /// freezes the sockets anyway once the process is suspended).
 enum AppActivityPhase: Sendable, Equatable {
     case active
+    case suspended
+}
+
+/// What the coordinator hands whoever drives the Host connections.
+///
+/// Deliberately a stream of events rather than an observation of `phase`.
+/// The suspension is produced by a timer *while the app is in the background
+/// and drawing nothing*, and the foreground return that follows can land in
+/// the same update cycle, so a consumer that only compares the value it last
+/// saw can miss the round trip entirely — and with it both the teardown and
+/// the resume. That is #142: the app came back holding a connection nothing
+/// had torn down and nothing had asked whether it was still alive, so a
+/// session whose link died while the app was away kept rendering as
+/// connected — no reconnect, no error — until the keepalive got round to
+/// noticing, up to its interval plus a request timeout later.
+///
+/// `activated` is reported on *every* return to the foreground, not only
+/// after a suspension: a connection frozen along with the process may have
+/// died in the meantime without anything having asked it.
+enum AppActivityEvent: Sendable, Equatable {
+    case activated
     case suspended
 }
 
@@ -77,17 +98,63 @@ final class AppActivityCoordinator {
 
     private(set) var phase: AppActivityPhase = .active
 
+    /// Increments on every foreground return, whether or not the grace period
+    /// ever reached `.suspended`.
+    ///
+    /// `phase` cannot carry that signal. A background→foreground round trip
+    /// the grace period absorbs never leaves `.active`, so a SwiftUI
+    /// `onChange` on the phase observes nothing and the return goes unnoticed
+    /// — the same coalescing `events` exists to defeat. `events` has a single
+    /// consumer by construction; screens that come and go need a value they
+    /// can observe instead, and a monotonic counter is one no `onChange` can
+    /// miss.
+    private(set) var activationCount: UInt64 = 0
+
+    /// Whether the most recent absence crossed a boundary where iOS could have
+    /// suspended the process. This does not claim that suspension occurred or
+    /// that any particular layer failed; it identifies when foreground-only
+    /// resources can no longer be assumed to have survived (#141).
+    ///
+    /// An observed `.suspended` transition is conclusive for this policy. The
+    /// duration is the fallback for the other real path: iOS freezes the
+    /// process before the grace task runs, then the monotonic clock shows on
+    /// return that the Background Grace Period elapsed while no Swift task ran.
+    private(set) var lastAbsenceMayHaveSuspended = false
+
+    #if DEBUG
+    /// Retained only for the on-device recovery diagnostic. Release behavior
+    /// consumes `lastAbsenceMayHaveSuspended`, not this presentation detail.
+    private(set) var lastAbsenceDuration: Duration?
+    #endif
+
+    /// Every transition, in order and exactly once each. Buffered rather than
+    /// latest-value: a background→foreground round trip that completes before
+    /// the consumer gets to run must still produce both the teardown and the
+    /// activation.
+    @ObservationIgnored nonisolated let events: AsyncStream<AppActivityEvent>
+    @ObservationIgnored
+    private nonisolated let eventsContinuation: AsyncStream<AppActivityEvent>.Continuation
     @ObservationIgnored private let gracePeriod: Duration
     @ObservationIgnored private let granter: any BackgroundExecutionGranting
+    /// Injected so a test can state an absence instead of sleeping one.
+    /// `ContinuousClock` on purpose: it keeps counting while the process is
+    /// suspended, which `SuspendingClock` does not.
+    @ObservationIgnored private let now: @MainActor () -> ContinuousClock.Instant
     @ObservationIgnored private var token: BackgroundExecutionToken?
     @ObservationIgnored private var graceTask: Task<Void, Never>?
+    @ObservationIgnored private var leftForegroundAt: ContinuousClock.Instant?
+    @ObservationIgnored private var observedSuspensionDuringAbsence = false
 
     init(
         gracePeriod: Duration = AppActivityCoordinator.defaultGracePeriod,
-        granter: any BackgroundExecutionGranting = UIKitBackgroundExecutionGranter()
+        granter: any BackgroundExecutionGranting = UIKitBackgroundExecutionGranter(),
+        now: @escaping @MainActor () -> ContinuousClock.Instant = { ContinuousClock.now }
     ) {
         self.gracePeriod = gracePeriod
         self.granter = granter
+        self.now = now
+        (events, eventsContinuation) = AsyncStream.makeStream(
+            of: AppActivityEvent.self, bufferingPolicy: .unbounded)
     }
 
     func didBecomeActive() {
@@ -95,10 +162,22 @@ final class AppActivityCoordinator {
         graceTask = nil
         releaseBackgroundExecution()
         phase = .active
+        // Reported before `activationCount`, which is what observers key off.
+        let absenceDuration = leftForegroundAt.map { now() - $0 }
+        lastAbsenceMayHaveSuspended = observedSuspensionDuringAbsence
+            || absenceDuration.map { $0 >= gracePeriod } == true
+        #if DEBUG
+        lastAbsenceDuration = absenceDuration
+        #endif
+        leftForegroundAt = nil
+        observedSuspensionDuringAbsence = false
+        activationCount &+= 1
+        eventsContinuation.yield(.activated)
     }
 
     func didEnterBackground() {
         guard phase == .active, graceTask == nil else { return }
+        leftForegroundAt = now()
         token = granter.begin { [weak self] in self?.backgroundTimeDidExpire() }
         guard token != nil else {
             // Without background time the process is about to freeze, so a
@@ -129,7 +208,9 @@ final class AppActivityCoordinator {
     private func suspend() {
         graceTask = nil
         guard phase != .suspended else { return }
+        observedSuspensionDuringAbsence = true
         phase = .suspended
+        eventsContinuation.yield(.suspended)
     }
 
     private func backgroundTimeDidExpire() {

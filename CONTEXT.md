@@ -128,6 +128,40 @@ _Avoid_: subscribe, enable push
 The app-side abstraction that executes herdr API requests and delivers event streams over SSH. UI code talks to Transport, never to SSH primitives.
 _Avoid_: client, bridge, tunnel
 
+**Connection Guidance**:
+The text a `TransportError` carries for the user, `connectionGuidance`, as
+against the shorter phrase the Console composes for the same error in
+`summary(for:)`. Only two statuses carry a `TransportError` at all,
+`.reconnecting` and `.failed`, and they partition the error set: the session
+emits `.failed` only where `isRetryable` is false and `.reconnecting` only
+where it is true. On `.failed` the text names an action the user can take in
+10 of the 12 cases `isRetryable` rejects outright; on `.reconnecting` it does
+so in none of the 5 it accepts, restating what happened and appending the
+transport's raw detail in three of them (`jumpHostFailed` prefixes and
+inherits whichever it wraps). So what the guidance adds over the Console's
+phrase during a reconnect is raw detail or nothing, never an instruction, and
+the name promises more than the strings deliver; #163 owns whether the strings
+gain actions or the term is renamed.
+Four surfaces turn those two statuses into text. The Console list shows the
+short phrase on `.reconnecting` and the guidance on `.failed`. The Agent
+detail screen (`MissingAgentPresentation`) shows a fixed "nothing to do"
+message on `.reconnecting` and the guidance on `.failed`. The Host detail
+screen (`HostOnboardingView.connectionErrorMessage`) shows the guidance on
+both, and is the only surface that shows it while a retry is in flight. The
+Hosts sheet rows (`HostConnectionPresentation`) show a status chip,
+"Reconnecting…" or "Unavailable", and never the guidance at all: a chip is not
+guidance, so those rows sit outside this term.
+Two exceptions the description keeps rather than tidies away. The Host detail
+footer is gated on no manual Reconnect being in flight, so pressing Reconnect
+suppresses the guidance entirely for the length of the retry call plus 1.2 s —
+on `.failed` as much as on `.reconnecting` (#160). And that screen is reached
+four ways: a Host row, the add form, a finished Pairing scan, and a deep link,
+which is what the Console's own issue buttons use to push the user onto it.
+Only the two surfaces with a presentation type of their own are tested; the
+Console list and the Host detail footer live inside `View` bodies and have no
+coverage.
+_Avoid_: error message, connection error, retry hint
+
 **Background Grace Period**:
 The window after backgrounding during which the app keeps running under an iOS background-execution assertion and holds its Host connections, so a short trip out of the app costs nothing on return. Only when it elapses does the app suspend and tear the connections down. Bounded by what iOS grants (tens of seconds); staying reachable for longer is what Agent Notifications are for.
 _Avoid_: background mode, keep alive (that's the events session's ping)

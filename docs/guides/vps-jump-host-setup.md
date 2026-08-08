@@ -18,7 +18,7 @@ runbook, see [VPS Jump Host and Reverse-Tunnel Deployment](vps-jump-host.md).
 You need:
 
 - an iPhone with Heeler installed;
-- a Mac with herdr and `socat` installed;
+- a Mac with herdr installed;
 - administrator access to a maintained Debian or Ubuntu VPS;
 - the VPS public IP address;
 - the VPS SSH service port, normally `22`;
@@ -674,7 +674,6 @@ Successful preflight must verify:
 
 - Jump Host authentication;
 - Mac authentication;
-- `socat` discovery;
 - herdr socket reachability;
 - protocol compatibility.
 
@@ -765,7 +764,7 @@ restarting Remote Login.
 | Mac asks for a password | VPS -> Mac | Device Key missing from the Mac or wrong Mac user |
 | Mac host key changed | Inner SSH trust | Verify the Mac host key locally before accepting |
 | VPS host key changed | Outer SSH trust | Verify through the provider console before accepting |
-| App reaches Mac but not herdr | Mac application layer | herdr status, socket path, and `socat` |
+| App reaches Mac but not herdr | Mac application layer | herdr status, socket path, and `AllowStreamLocalForwarding` |
 
 ## Adding Another VPS
 

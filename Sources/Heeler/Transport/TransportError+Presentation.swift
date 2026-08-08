@@ -5,6 +5,8 @@ extension TransportError {
             "SSH unavailable: \(detail)"
         case .jumpHostFailed(let underlying):
             "Jump Host: \(underlying.connectionGuidance)"
+        case .tcpForwardingUnavailable:
+            "SSH TCP forwarding is disabled. Enable it on the Jump Host."
         case .authenticationFailed:
             "Authentication failed. Update this Host's credentials or authorized key."
         case .deviceKeyCorrupt:
@@ -15,10 +17,8 @@ extension TransportError {
             "The host key changed. Verify the machine before updating trust."
         case .socketNotFound:
             "The herdr socket was not found. Check this Host's session."
-        case .serverNotRunning:
-            "herdr is not answering on this Host."
-        case .socatMissing:
-            "socat was not found. Install it or update this Host's socat path."
+        case .streamLocalOpenFailed:
+            "herdr is not running on this Host. If it is running, check SSH stream-local forwarding."
         case .protocolVersionMismatch(let server, let supported):
             "herdr protocol \(server) is incompatible with app protocol \(supported)."
         case .homeDirectoryUnresolvable:

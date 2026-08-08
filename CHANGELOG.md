@@ -22,6 +22,23 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- A Host whose SSH server has stream-local forwarding turned off now says so
+  even when herdr isn't on the SSH session's `PATH`. Heeler tries to start
+  herdr once before giving up; when that attempt itself failed, the checks
+  used to report "the herdr server is not running" and drop the forwarding
+  half of the diagnosis. Since a typical macOS Host keeps herdr at
+  `~/.local/bin` or `/opt/homebrew/bin` — neither on the default `PATH` of an
+  SSH command — that hit exactly the Hosts most likely to need the forwarding
+  advice. (#125)
+
+- Hosts no longer need `socat`. Heeler now reaches herdr's socket over an SSH
+  stream-local forward instead of launching a remote helper per request, so
+  SSH access and a running herdr server are the whole prerequisite. The socat
+  path field is gone from Add/Edit Host, the onboarding checklist has dropped
+  its "socat installed" row, and existing Hosts carry over untouched — nothing
+  to reconfigure. If a Host's SSH server has stream-local forwarding turned
+  off (it is on by default), the checks now say so. (#122)
+
 - The app is now named **Heeler**: the home-screen name, the microphone and
   camera permission prompts, and the notification extension's display name
   all say Heeler instead of Herdr. herdr remains the name of the server it
@@ -36,6 +53,96 @@ Entries reference the issue that motivated them.
   `authorized_keys` keeps working.
 
 ### Fixed
+
+- Attach again withholds generic remote startup and SSH rc chatter until the
+  attach command begins. The attach exec prints a short handshake marker
+  immediately before `herdr agent attach`, and the client drops everything
+  before it. A channel that dies before the handshake still emits the withheld
+  text once as the diagnosis. (#166)
+
+- An open Agent terminal no longer stays blank after the app may have suspended.
+  Returning at or beyond the Background Grace Period, or after an observed
+  suspension, now shows Connecting while the old PTY stops, then opens a new PTY
+  Attach with a new terminal surface while preserving links, image actions, and
+  pending Paste review. While the Host's replacement snapshot is still loading,
+  the session screen also stays on Connecting instead of briefly claiming the
+  Agent is gone. Brief trips out of the app keep the existing Attach and do not
+  show Connecting. (#141)
+
+- A Host that is reconnecting no longer tells you its Agent has gone. The
+  session screen said "This Agent's pane is no longer reported" whenever the
+  Agent list emptied, which a dropped connection does exactly as a closed
+  pane does — so the app reported a permanent loss at the moment it was
+  successfully recovering. It now says the connection dropped and is being
+  re-established, and that there is nothing for you to do, which is the
+  truth: nothing here needs you. A Host that failed for a reason only you
+  can fix still shows what to do about it, and a pane that really did close
+  still says so. (#154)
+
+- The app no longer quits outright if two parts of the terminal screen read
+  one Attach session at the same time — a stale view left behind by a screen
+  transition was enough. The live terminal now keeps running untouched, and
+  the duplicate reader is turned away with "Another terminal is already open
+  on this Host." and a Reattach button, so the worst case is one surface that
+  has to be reopened rather than the whole app disappearing. (#137)
+
+- A Host that fails while you have one of its Agents open now says why on the
+  session screen. It used to read "This Agent's pane is no longer reported" —
+  blaming the Agent for the Host's problem, and pointing you at the wrong
+  thing to fix — because a failed Host empties the Agent list in exactly the
+  way a closed pane does. The screen now carries the same connection guidance
+  the Host list shows, so a stopped herdr reads as "herdr is not running on
+  this Host…" where you are actually looking. A pane that really did close on
+  a healthy Host still says so. (#146)
+
+- Cancelling an image upload on a slow connection no longer kills the Host.
+  The cleanup that follows a cancelled or failed upload ran on fixed
+  two-second budgets, and running out of one was treated as evidence that the
+  SSH connection was broken — so on a weak mobile link, cancelling an upload
+  silently tore down Events, Attach, and everything else sharing that
+  connection, and reported it as "The SSH connection is no longer reusable."
+  on whatever you did next. Running out of time is no longer read as a broken
+  connection, and the cleanup no longer opens a second connection it may not
+  have time to finish. A connection that genuinely dies is still reported as
+  dead. (#136)
+
+- A Host that stopped with "herdr is not running on this Host" now recovers on
+  its own once you fix it, however long you were away: restart herdr, come
+  back to the app, and the Host reconnects without you doing anything else.
+  Until now this depended on the length of the trip. Leaving the app for more
+  than about twenty seconds tore the connection down, and coming back rebuilt
+  it, so that route already worked; a quicker trip — or one where iOS froze
+  the app before that teardown could run — did not, and the Host stayed failed
+  with no way back but the Retry button. Every return now asks it once. A Host
+  that is still broken simply says so again, with the same guidance and
+  without flickering through a moment that looks like it reconnected. (#147)
+
+- Coming back to a session after leaving the app no longer shows a connection
+  that is already gone. Returning to the foreground now re-proves each Host,
+  so one whose link died while you were away starts reconnecting — and says
+  so — the moment you look at it, instead of appearing connected for up to
+  another half a minute until the keepalive notices. (#142)
+
+- A Host that drops off the network mid-request now reconnects on its own
+  instead of stopping with the wrong advice. A severed link failed the same
+  way a refused forward does, so Heeler blamed the Host's setup — "herdr is
+  not running on this Host. If it is running, check SSH stream-local
+  forwarding." — and treated it as something only the user could fix, which
+  stops automatic reconnection. A dropped link now reports itself as an
+  unavailable connection and retries, while a genuinely disabled forward or a
+  stopped herdr still gets the setup advice. (#138)
+
+- Hosts running herdr 0.8.0 connect again. The protocol check demanded the
+  exact version this build was generated against, so herdr 0.8.0 (protocol
+  19) failed preflight outright even though every method Heeler calls is
+  unchanged. Heeler now requires a minimum protocol and accepts anything at
+  or above it; a Host newer than this build still connects and simply notes,
+  under the checklist, that features added after it may be unavailable. (#140)
+
+- Host event updates now use herdr's socket directly over SSH, remain live
+  while ordinary requests run, and recover cleanly when only the Events
+  channel drops. Connection failures now lead with "herdr is not running"
+  instead of exposing remote socket implementation language. (#117)
 
 - Switching Agents — from the switcher strip, a notification, or right after
   starting a new one — no longer strands the terminal on "Connecting…"

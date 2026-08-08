@@ -15,6 +15,10 @@ final class HostConsoleProjection {
     private(set) var latency: Duration?
     private(set) var syncError: String?
     private(set) var transportGeneration: UInt64 = 0
+    /// Whether the Host's current connection generation has produced a
+    /// snapshot. `.connected` arrives before that request completes, so an
+    /// empty projection in this window means "unknown", not "no Agents".
+    private(set) var isAwaitingSnapshot = true
 
     private let snapshotRetryDelay: Duration
     private let onChange: @MainActor @Sendable () -> Void
@@ -70,6 +74,43 @@ final class HostConsoleProjection {
 
     func resume() async {
         await session.resume()
+    }
+
+    /// Re-proves this Host on a foreground return, by whatever means its
+    /// current state calls for.
+    ///
+    /// A session that was never told to suspend — the app froze before its
+    /// teardown ran, or the trip out was short enough that the grace period
+    /// absorbed it — comes back believing it is still connected. `resume()`
+    /// is a no-op on such a session, so without this nothing asks it until
+    /// the keepalive's next turn (#142). That case is a ping.
+    ///
+    /// A session already stopped on a non-retryable failure is restarted
+    /// instead (#147). Its reconnect loop returned while the phase stayed
+    /// `.active`, so `resume()` no-ops and no live channel remains to ping.
+    /// The gap that leaves is the same one #142 covers for connected Hosts,
+    /// and it is exactly that narrow: an absence longer than
+    /// `AppActivityCoordinator.defaultGracePeriod` does run `suspend()` — the
+    /// phase is still `.active`, so `deactivate()` proceeds — and the return's
+    /// `resume()` then restarts the run loop on its own. What was left
+    /// stranded is a return *inside* the grace period, or one where the
+    /// process froze before its teardown could run. Inside that window a user
+    /// who went and restarted herdr came back to the same failure until they
+    /// found the Retry button.
+    ///
+    /// This is deliberately not a retry cadence. The classification that
+    /// stopped the loop stands — retrying a stopped herdr on reconnect timing
+    /// would be a hot loop against a server that is not there, and would bury
+    /// the guidance the user needs. It is one attempt on an explicit user
+    /// action, and coming back to the app is one. A Host that is still broken
+    /// lands straight back on `.failed` carrying the same guidance, having
+    /// emitted nothing in between that could read as recovery.
+    func revalidate() async {
+        if case .failed = status {
+            await session.retry()
+        } else {
+            await session.revalidate()
+        }
     }
 
     func suspend() async {
@@ -289,6 +330,7 @@ final class HostConsoleProjection {
 
     private func invalidateSnapshot() {
         snapshotEpoch &+= 1
+        isAwaitingSnapshot = true
         resyncPending = false
         resyncRetryTask?.cancel()
         resyncRetryTask = nil
@@ -325,6 +367,7 @@ final class HostConsoleProjection {
             nextAgents[paneID] = row
         }
         latestStatusChanges.removeAll(keepingCapacity: true)
+        isAwaitingSnapshot = false
         agentsByPane = nextAgents
         workspaces = snapshot.workspaces
             .map { ConsoleWorkspace(id: $0.workspaceID, label: $0.label) }

@@ -127,7 +127,7 @@ struct HostOnboardingStoreTests {
     @Test func pingFailureFailsItsCheckAndStillClosesTheTransport() async throws {
         let (store, connector) = try makeStore(
             outcome: .connects(
-                pingResult: .failure(.protocolVersionMismatch(server: 18, supported: 17))))
+                pingResult: .failure(.protocolVersionMismatch(server: 16, supported: 17))))
 
         await store.runChecks()
 
@@ -231,7 +231,6 @@ struct HostOnboardingStoreTests {
         var host = Host.fixture(address: "box.example", username: "dev", authMethod: .password)
         host.port = 2222
         host.sessionName = " work "
-        host.socatPath = "/opt/homebrew/bin/socat"
         let (store, connector) = try makeStore(host: host, password: "hunter2")
 
         await store.runChecks()
@@ -241,7 +240,6 @@ struct HostOnboardingStoreTests {
         #expect(settings.port == 2222)
         #expect(settings.username == "dev")
         #expect(settings.socket == .namedSession("work"))
-        #expect(settings.socatPath == "/opt/homebrew/bin/socat")
         guard case .password("hunter2") = settings.credentials else {
             Issue.record("credentials should be the stored password")
             return

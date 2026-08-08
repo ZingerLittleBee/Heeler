@@ -383,18 +383,47 @@ struct TerminalAgentSwitcherTests {
         #expect(!claimed.isFirstResponder)
     }
 
+    /// A grid Ghostty measured a surface against, as the Host is told about it.
+    private struct TerminalGrid: Hashable, CustomStringConvertible {
+        let columns: Int
+        let rows: Int
+
+        var description: String { "\(columns)x\(rows)" }
+    }
+
+    /// Ghostty answers one layout with several viewport reports, arriving on
+    /// the main actor a beat behind the layout that provoked them, so a grid
+    /// only means anything once they have stopped coming.
+    @MainActor
+    private static func waitForGridReportsToStop(
+        _ reportedGrids: () -> [TerminalGrid]
+    ) async throws {
+        var stablePolls = 0
+        var previousCount = reportedGrids().count
+        while stablePolls < 20 {
+            try await Task.sleep(for: .milliseconds(10))
+            if reportedGrids().count == previousCount {
+                stablePolls += 1
+            } else {
+                previousCount = reportedGrids().count
+                stablePolls = 0
+            }
+        }
+    }
+
     /// Ghostty's first viewport report on a fresh surface carries a zero cell
     /// size. Measuring the surface against that half-built grid — which is
     /// what happens when the view shrinks for the keyboard right after the
     /// handoff — leaves it drawing a band shorter than the view, showing as an
     /// unpainted strip above the toolbar. So the grid stays frozen until the
-    /// keyboard has settled, then fits once.
+    /// keyboard has settled, and the only grid that reaches the Host is the
+    /// settled one.
     @MainActor
     @Test func aClaimedHandoffFreezesTheGridUntilTheKeyboardSettles() async throws {
-        var reportedGrids: [(columns: Int, rows: Int)] = []
+        var reportedGrids: [TerminalGrid] = []
         let terminal = TerminalScreenView.makeConfiguredTerminal(
             onSizeChanged: { columns, rows in
-                reportedGrids.append((columns, rows))
+                reportedGrids.append(TerminalGrid(columns: columns, rows: rows))
             })
         let host = UIViewController()
         let window = try await makeTestWindow(
@@ -424,19 +453,31 @@ struct TerminalAgentSwitcherTests {
         // did-show, so its end frame is what thaws the grid.
         NotificationCenter.default.post(
             name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
-        var stablePolls = 0
-        var previousCount = reportedGrids.count
-        while stablePolls < 20 {
-            try await Task.sleep(for: .milliseconds(10))
-            if reportedGrids.count == previousCount {
-                stablePolls += 1
-            } else {
-                previousCount = reportedGrids.count
-                stablePolls = 0
-            }
-        }
+        try await Self.waitForGridReportsToStop { reportedGrids }
+        let escaped = reportedGrids
+        #expect(!escaped.isEmpty, "the settled grid never made it past the freeze")
 
-        #expect(reportedGrids.count == 1, "only the settled grid may escape")
+        // Ghostty reports one settled layout more than once, and the thaw only
+        // coalesces the reports that land inside its window, so how many escape
+        // is a matter of how busy the machine is. What must hold whatever the
+        // schedule is that every one of them carries the settled grid and none
+        // of the taller or half-built ones the freeze held back. So measure the
+        // settled bounds again here, through the ordinary unfrozen path, and
+        // hold what escaped against it.
+        reportedGrids = []
+        for height: CGFloat in [600, 360] {
+            terminal.frame.size.height = height
+            terminal.setNeedsLayout()
+            terminal.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(30))
+        }
+        try await Self.waitForGridReportsToStop { reportedGrids }
+        let settled = try #require(
+            reportedGrids.last, "the terminal never measured its settled bounds")
+
+        #expect(
+            Set(escaped) == [settled],
+            "the freeze let a grid other than the settled \(settled) out: \(escaped)")
     }
 
     /// Both terminals' accessories ride the keyboard while it changes hands,
@@ -458,12 +499,18 @@ struct TerminalAgentSwitcherTests {
         inherited.raisesKeyboardWhenReady = true
         inherited.frame = CGRect(x: 0, y: 0, width: 390, height: 400)
         host.view.addSubview(inherited)
-        let rebuildsBeforeHandoffEnds = inherited.inputViewRebuildCount
+        // Every terminal in the process listens for the keyboard's frame, so
+        // any keyboard settling anywhere can be what ends this handoff. This
+        // call is then as likely to find the handoff already over as to be what
+        // ends it — but either way it is over once the call returns. Counting
+        // the rebuilds around the call would only catch the republish in the
+        // second case, which is scheduling rather than behaviour.
         inherited.finishKeyboardTransitionLayout()
-        #expect(inherited.inputViewRebuildCount > rebuildsBeforeHandoffEnds)
 
         // A terminal that raised its own keyboard has no outgoing accessory to
-        // account for, so the same call must leave its input views alone.
+        // account for, so the same call must leave its input views alone. That
+        // makes it the yardstick as well: same surface, same window, same
+        // keyboard, differing only in having no handoff to pay for.
         let dismissing = TerminalScreenView.makeConfiguredTerminal()
         dismissing.frame = CGRect(x: 0, y: 0, width: 390, height: 400)
         host.view.addSubview(dismissing)
@@ -471,5 +518,12 @@ struct TerminalAgentSwitcherTests {
         let rebuildsBeforeDismissalEnds = dismissing.inputViewRebuildCount
         dismissing.finishKeyboardTransitionLayout()
         #expect(dismissing.inputViewRebuildCount == rebuildsBeforeDismissalEnds)
+
+        #expect(
+            inherited.inputViewRebuildCount > dismissing.inputViewRebuildCount,
+            """
+            the handoff rebuilt the input views \(inherited.inputViewRebuildCount) times, \
+            the dismissal \(dismissing.inputViewRebuildCount)
+            """)
     }
 }

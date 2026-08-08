@@ -12,6 +12,10 @@ final class ConsoleStore {
     private(set) var hostLatencies: [Host.ID: Duration] = [:]
     private(set) var hostSyncErrors: [Host.ID: String] = [:]
     private(set) var hostConnectionGenerations: [Host.ID: UInt64] = [:]
+    /// Hosts whose current connection has not produced its first snapshot.
+    /// Their empty Agent projection is loading state, not proof that a pane
+    /// disappeared.
+    private(set) var hostsAwaitingSnapshot: Set<Host.ID> = []
     /// Latest snapshot workspaces by Host. This is observable state rather
     /// than a projection lookup so an open New Agent picker refreshes when a
     /// snapshot arrives or a workspace membership event resyncs the Host.
@@ -58,10 +62,49 @@ final class ConsoleStore {
     }
 
     func resume() async {
+        await activate(revalidating: false)
+    }
+
+    /// Foreground activation: activates whatever is suspended, and re-proves
+    /// whatever is not. A session the app was still holding when it went away
+    /// comes back believing it is connected even when its link died in the
+    /// meantime, and `resume()` has nothing to re-activate on it — so without
+    /// the second half the Console shows a connection that is already gone
+    /// until the keepalive gets round to noticing, up to its interval plus a
+    /// request timeout later (#142). A Host already stopped on a
+    /// non-retryable failure is asked once more here too: `resume()` no-ops on
+    /// it as well, so on a return that no suspension preceded, nothing else
+    /// would ask it again (#147).
+    func reactivate() async {
+        await activate(revalidating: true)
+    }
+
+    private func activate(revalidating: Bool) async {
         await enqueueLifecycleTransition { [self] in
             isActive = true
-            for projection in projections.values {
+            let projections = Array(self.projections.values)
+            for projection in projections {
                 await projection.resume()
+            }
+            guard revalidating else { return }
+            // Every Host, not only one the user has navigated to: recovery
+            // that depends on navigation just trades the Retry button for
+            // another hidden step, and the Console is a single list across
+            // all Hosts anyway, so it has no notion of one being on screen.
+            // The population this costs anything for is the Hosts currently
+            // *failed*, which is normally none (#147).
+            //
+            // All at once: re-proving is one bounded round trip per Host, but
+            // its only bound is the Transport's request timeout, and a Host
+            // frozen with the app is exactly the case that runs it out.
+            // Serially that is N timeouts holding the lifecycle chain, and
+            // behind that chain sits any suspend() the user triggers by
+            // leaving again — including the didFinishSuspending() that
+            // releases the background assertion.
+            await withTaskGroup(of: Void.self) { group in
+                for projection in projections {
+                    group.addTask { await projection.revalidate() }
+                }
             }
         }
     }
@@ -280,6 +323,8 @@ final class ConsoleStore {
             uniqueKeysWithValues: current.map {
                 ($0.host.id, $0.transportGeneration)
             })
+        hostsAwaitingSnapshot = Set(
+            current.lazy.filter(\.isAwaitingSnapshot).map(\.host.id))
         let nextWorkspacesByHost = Dictionary(
             uniqueKeysWithValues: current.map {
                 ($0.host.id, $0.workspaces)

@@ -91,18 +91,28 @@ struct EventsSessionBufferingTests {
         await session.end()
     }
 
+    /// A backlog the session's run loop cannot possibly drain before
+    /// `suspend()` lands. Teardown cancels that loop but deliberately does
+    /// not await it, and a channel closed with events still buffered delivers
+    /// them before finishing — so the loop keeps yielding while the terminal
+    /// status is being emitted. Ten events left the outcome to the scheduler;
+    /// this makes the interleaving certain in both directions.
+    private static let undrainableBacklog = 5000
+
     @Test func suspendedStatusSurvivesAnOverflowingBuffer() async throws {
         // Lifecycle statuses are yielded last on their transitions, and
         // bufferingNewest keeps the newest: an overflow must never eat the
-        // `.suspended` the consumer's state machine depends on.
+        // `.suspended` the consumer's state machine depends on — not even
+        // when the torn-down run loop still has events in hand.
         let transport = ScriptedTransport()
         let session = makeSession(transport: transport, bufferLimit: 2)
+        var updates = session.updates.makeAsyncIterator()
         await session.resume()
         try await waitUntil("the events channel should come up") {
             await transport.capturedSubscriptions.count == 1
         }
 
-        for index in 1...10 {
+        for index in 1...Self.undrainableBacklog {
             await transport.emit(workingEvent(index))
         }
         try await waitUntil("the bounded buffer should shed updates") {
@@ -110,20 +120,15 @@ struct EventsSessionBufferingTests {
         }
         await session.suspend()
 
-        let collector = UpdateCollector()
-        let consumeTask = Task {
-            for await update in session.updates {
-                await collector.append(update)
-            }
-        }
-        try await waitUntil("the suspended status and the drop marker should be delivered") {
-            let sawSuspended = await collector.contains(.status(.suspended))
-            let sawMarker = await collector.contains(.event(.eventsDropped))
-            return sawSuspended && sawMarker
-        }
+        // `suspend()` returns only once `.suspended` has been yielded, and a
+        // shed update always re-arms the marker behind it, so the two slots
+        // now hold exactly this pair. Asserting on them directly — rather
+        // than polling a collector — makes a lost `.suspended` fail on the
+        // spot instead of on a deadline.
+        #expect(await updates.next() == .status(.suspended))
+        #expect(await updates.next() == .event(.eventsDropped))
 
         await session.end()
-        await consumeTask.value
     }
 }
 
@@ -139,3 +144,4 @@ private actor UpdateCollector {
         updates.contains(update)
     }
 }
+
