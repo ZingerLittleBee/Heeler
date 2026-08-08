@@ -71,6 +71,74 @@ struct AgentComposerStoreTests {
         continuation.finish()
     }
 
+    @Test func queuedMessageWaitsForItsOwnWorkingPhaseBeforeDone() async {
+        let transport = ScriptedTransport()
+        let store = AgentComposerStore(target: "w1:p1") { params in
+            try await transport.promptAgent(params)
+        }
+        store.replaceDraft(with: "First message")
+        await store.send()
+        store.agentStatusDidChange(.working)
+
+        store.replaceDraft(with: "Queued message")
+        await store.send()
+
+        #expect(
+            store.messages.map(\.state)
+                == [.delivered(.working), .delivered(.agentBusy)])
+
+        store.agentStatusDidChange(.done)
+        #expect(
+            store.messages.map(\.state)
+                == [.delivered(.done), .delivered(.agentBusy)])
+
+        store.agentStatusDidChange(.working)
+        #expect(
+            store.messages.map(\.state)
+                == [.delivered(.done), .delivered(.working)])
+
+        store.agentStatusDidChange(.done)
+        #expect(
+            store.messages.map(\.state)
+                == [.delivered(.done), .delivered(.done)])
+        #expect(await transport.agentPromptParams.count == 2)
+    }
+
+    @Test func queuedMessageStaysBusyWhenPriorWorkFinishesBeforeAcknowledgment() async throws {
+        let transport = ScriptedTransport()
+        let promptGate = ScriptedTransportCallGate()
+        let store = AgentComposerStore(target: "w1:p1", initialStatus: .working) { params in
+            try await transport.promptAgent(params)
+        }
+        await transport.gateNextAgentPrompt(using: promptGate)
+        store.replaceDraft(with: "Queued message")
+        let send = Task { await store.send() }
+        try await waitUntil("the queued prompt should be in flight") {
+            await promptGate.entryCount == 1
+        }
+
+        store.agentStatusDidChange(.done)
+        await promptGate.open()
+        await send.value
+
+        #expect(store.messages.map(\.state) == [.delivered(.agentBusy)])
+    }
+
+    @Test func idleEndsAWorkingMessage() async {
+        let transport = ScriptedTransport()
+        let store = AgentComposerStore(target: "w1:p1") { params in
+            try await transport.promptAgent(params)
+        }
+        store.replaceDraft(with: "Interrupt this")
+        await store.send()
+        store.agentStatusDidChange(.working)
+
+        store.agentStatusDidChange(.idle)
+
+        #expect(store.messages.map(\.state) == [.delivered(.done)])
+        #expect(await transport.agentPromptParams.count == 1)
+    }
+
     @Test func sendingWhileWorkingAcknowledgesThatTheAgentIsBusy() async {
         let transport = ScriptedTransport()
         let store = AgentComposerStore(target: "w1:p1", initialStatus: .working) { params in

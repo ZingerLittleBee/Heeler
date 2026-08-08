@@ -19,6 +19,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         let text: String
         fileprivate var agentWasWorkingAtSend: Bool
         fileprivate var statusRevisionAtSend: UInt64
+        fileprivate var observedWorkingAfterSend: Bool
         fileprivate(set) var state: DeliveryState
     }
 
@@ -96,6 +97,7 @@ final class AgentComposerStore: ComposerDraftOperations {
             id: UUID(), text: draft,
             agentWasWorkingAtSend: agentStatus == .working,
             statusRevisionAtSend: statusRevision,
+            observedWorkingAfterSend: false,
             state: .sending)
         draft = ""
         messages.append(message)
@@ -107,6 +109,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         guard case .failed = messages[index].state else { return }
         messages[index].agentWasWorkingAtSend = agentStatus == .working
         messages[index].statusRevisionAtSend = statusRevision
+        messages[index].observedWorkingAfterSend = false
         messages[index].state = .sending
         await deliver(id)
     }
@@ -125,11 +128,21 @@ final class AgentComposerStore: ComposerDraftOperations {
         agentStatus = status
         statusRevision &+= 1
         for index in messages.indices {
+            if status == .working,
+                messages[index].statusRevisionAtSend != statusRevision
+            {
+                messages[index].observedWorkingAfterSend = true
+            }
             guard case .delivered(let progress) = messages[index].state else { continue }
             switch status {
-            case .working where progress != .done:
+            case .working
+                where progress != .done && messages[index].observedWorkingAfterSend:
                 messages[index].state = .delivered(.working)
-            case .done:
+            case .done
+                where messages[index].observedWorkingAfterSend
+                    || !messages[index].agentWasWorkingAtSend:
+                messages[index].state = .delivered(.done)
+            case .idle where messages[index].observedWorkingAfterSend:
                 messages[index].state = .delivered(.done)
             default:
                 break
@@ -154,17 +167,24 @@ final class AgentComposerStore: ComposerDraftOperations {
     }
 
     private func progressAfterAcknowledgment(for message: Message) -> AgentProgress {
-        guard message.statusRevisionAtSend != statusRevision else {
-            return message.agentWasWorkingAtSend ? .agentBusy : .acknowledged
-        }
-        switch agentStatus {
-        case .working:
-            return .working
-        case .done:
+        if message.observedWorkingAfterSend {
+            switch agentStatus {
+            case .working:
+                return .working
+            case .done, .idle:
+                return .done
+            default:
+                break
+            }
+        } else if !message.agentWasWorkingAtSend,
+            message.statusRevisionAtSend != statusRevision,
+            agentStatus == .done
+        {
+            // The status stream keeps only the newest event. A fast
+            // working-to-done pair can therefore arrive as Done alone.
             return .done
-        default:
-            return .acknowledged
         }
+        return message.agentWasWorkingAtSend ? .agentBusy : .acknowledged
     }
 
     private static func message(for error: any Error) -> String {
