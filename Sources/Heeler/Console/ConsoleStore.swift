@@ -7,6 +7,11 @@ import Observation
 @MainActor
 @Observable
 final class ConsoleStore {
+    struct AgentStatusUpdate: Sendable, Equatable {
+        let status: AgentStatus?
+        let liveUpdatesAvailable: Bool
+    }
+
     private(set) var agents: [ConsoleAgent] = []
     private(set) var hostStatuses: [Host.ID: EventsSessionStatus] = [:]
     private(set) var hostLatencies: [Host.ID: Duration] = [:]
@@ -28,6 +33,12 @@ final class ConsoleStore {
     /// so a reconnect naturally invalidates, and evicted per Host on insert
     /// so stale generations cannot accumulate.
     @ObservationIgnored private var skillsCache: [SkillsCacheKey: [AgentSkill]] = [:]
+    /// Status events already converge through each Host's one pane-scoped
+    /// subscription. Screens consume this fan-out instead of opening a
+    /// second events channel that could outlive the connection snapshot.
+    @ObservationIgnored private var agentStatusObservers: [
+        ConsoleAgent.ID: [UUID: AsyncStream<AgentStatusUpdate>.Continuation]
+    ] = [:]
     @ObservationIgnored private let makeSession:
         @Sendable (Host, [EventSubscription]) -> EventsSession
     @ObservationIgnored private let snapshotRetryDelay: Duration
@@ -249,6 +260,23 @@ final class ConsoleStore {
         }
     }
 
+    /// A latest-value view of the existing `pane.agent_status_changed`
+    /// subscription for one Agent. Monitor uses it for adaptive polling;
+    /// Composer (#182) can reuse the same seam for delivery transitions.
+    func agentStatusUpdates(for id: ConsoleAgent.ID) -> AsyncStream<AgentStatusUpdate> {
+        let observerID = UUID()
+        let (stream, continuation) = AsyncStream.makeStream(
+            of: AgentStatusUpdate.self, bufferingPolicy: .bufferingNewest(1))
+        agentStatusObservers[id, default: [:]][observerID] = continuation
+        continuation.yield(agentStatusUpdate(for: id))
+        continuation.onTermination = { [weak self] _ in
+            Task { @MainActor in
+                self?.removeAgentStatusObserver(observerID, for: id)
+            }
+        }
+        return stream
+    }
+
     @discardableResult
     func startAgent(
         _ request: AgentLaunchRequest,
@@ -341,6 +369,32 @@ final class ConsoleStore {
             })
         if workspacesByHost != nextWorkspacesByHost {
             workspacesByHost = nextWorkspacesByHost
+        }
+        publishAgentStatuses()
+    }
+
+    private func publishAgentStatuses() {
+        for (id, observers) in agentStatusObservers {
+            let update = agentStatusUpdate(for: id)
+            for continuation in observers.values {
+                continuation.yield(update)
+            }
+        }
+    }
+
+    private func agentStatusUpdate(for id: ConsoleAgent.ID) -> AgentStatusUpdate {
+        let status = agents.first(where: { $0.id == id })?.agent.status
+        return AgentStatusUpdate(
+            status: status,
+            liveUpdatesAvailable: status != nil
+                && hostStatuses[id.hostID] == .connected
+                && !hostsAwaitingSnapshot.contains(id.hostID))
+    }
+
+    private func removeAgentStatusObserver(_ observerID: UUID, for id: ConsoleAgent.ID) {
+        agentStatusObservers[id]?[observerID] = nil
+        if agentStatusObservers[id]?.isEmpty == true {
+            agentStatusObservers[id] = nil
         }
     }
 }

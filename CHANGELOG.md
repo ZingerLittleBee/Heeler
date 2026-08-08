@@ -15,6 +15,12 @@ Entries reference the issue that motivated them.
   live terminal and refreshes Monitor once. Agent Notification taps land on
   Monitor as well. (#179)
 
+- Monitor now follows a Working Agent on a two-second foreground cadence and
+  stops polling as soon as the Agent becomes Idle, Done, or Blocked. Status
+  pushes and pull-to-refresh still update the snapshot; pinned output follows
+  automatically, while scrolling up holds position behind a New Output jump.
+  (#180)
+
 - Settings > About now has Acknowledgements: every redistributed third-party
   component ships with its exact upstream licence notice, including libssh2
   and its secondary sources, OpenSSL, Ghostty and its stack, the monospaced
