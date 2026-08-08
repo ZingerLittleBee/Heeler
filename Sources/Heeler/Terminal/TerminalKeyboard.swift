@@ -520,11 +520,11 @@ extension HeelerTerminalView {
     /// notifications there, and there is no per-window center to move to.
     /// What keeps one window's keyboard from ending another window's handoff
     /// is the receiving end — a terminal heeds a transition event only for
-    /// its own keyboard (see `keyboardTransitionDidFinish` and
-    /// `textKeyboardFrameDidChange`) — because on iPad two of the app's
-    /// windows can each hold a live terminal (#157). Tests pass a center of
-    /// their own, the same seam `TerminalKeyboardInset` takes, so a keyboard
-    /// settling in a neighbouring test cannot reach this terminal at all.
+    /// its own keyboard (see `textKeyboardFrameDidChange`) — because on iPad
+    /// two of the app's windows can each hold a live terminal (#157). Tests
+    /// pass a center of their own, the same seam `TerminalKeyboardInset`
+    /// takes, so a keyboard settling in a neighbouring test cannot reach this
+    /// terminal at all.
     /// There is nothing to balance: the center drops an observer that
     /// deallocates.
     func installKeyboardSwitcher(notificationCenter: NotificationCenter = .default) {
@@ -540,14 +540,6 @@ extension HeelerTerminalView {
         notificationCenter.addObserver(
             self, selector: #selector(keyboardPresentationWillBegin(_:)),
             name: UIResponder.keyboardWillShowNotification, object: nil)
-        notificationCenter.addObserver(
-            self, selector: #selector(keyboardTransitionDidFinish(_:)),
-            name: UIResponder.keyboardDidHideNotification, object: nil)
-        // The other end of a transition: a terminal that inherited the
-        // keyboard keeps its grid frozen until the keyboard has settled.
-        notificationCenter.addObserver(
-            self, selector: #selector(keyboardTransitionDidFinish(_:)),
-            name: UIResponder.keyboardDidShowNotification, object: nil)
     }
 
     func setKeyboardMode(_ mode: TerminalKeyboardMode) {
@@ -643,14 +635,13 @@ extension HeelerTerminalView {
     /// responder, and only when the reported end frame leaves the keyboard
     /// covering this terminal's window. A frame on its way out belongs to a
     /// different transition — the other window's, say — and must not end
-    /// this terminal's handoff. A post carrying no frame cannot be judged
-    /// and is let through: UIKit always sends one, so only a test posts
-    /// without.
+    /// this terminal's handoff. A post carrying no frame cannot establish
+    /// ownership and is ignored.
     private func notificationSettlesOwnKeyboard(_ notification: Notification) -> Bool {
         guard isFirstResponder, let window else { return false }
         guard let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]
             as? CGRect
-        else { return true }
+        else { return false }
         let frameInWindow = window.convert(endFrame, from: window.screen.coordinateSpace)
         return window.bounds.intersection(frameInWindow).height > 0
     }

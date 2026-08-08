@@ -980,20 +980,13 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         }
     }
 
-    @objc func keyboardTransitionDidFinish(_: Notification) {
-        // Keyboard notifications are process-wide, and on iPad a second
-        // window of the app can hold a live terminal of its own (#157): a
-        // did-show or did-hide is this terminal's own transition only while
-        // this terminal owns a keyboard at all — is first responder.
-        guard isFirstResponder else { return }
-        finishKeyboardTransitionLayout()
-    }
-
     /// The keyboard reached its end frame. An inherited keyboard never leaves,
     /// so this is the only settled signal it gets — there is no did-show to
-    /// wait for. Whose keyboard it is, the caller answers: frame events are
-    /// process-wide, and only one that leaves the keyboard covering this
-    /// terminal's own window may thaw the freeze (#157).
+    /// wait for. Show/hide notifications are process-wide and carry no scene
+    /// ownership, so they cannot safely end a handoff. Whose keyboard it is,
+    /// the caller answers from the end frame: only one that leaves the
+    /// keyboard covering this terminal's own window may thaw the freeze
+    /// (#157).
     func keyboardFrameDidSettle() {
         guard keyboardTransitionEndsOnFrameChange else { return }
         finishKeyboardTransitionLayout()

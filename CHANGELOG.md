@@ -66,7 +66,8 @@ Entries reference the issue that motivated them.
   could unfreeze the other terminal's grid before the keyboard had settled
   for it. A terminal now heeds a transition only for its own keyboard: it
   must be first responder, and a frame event must leave the keyboard
-  covering its own window. (#157)
+  covering its own window. Process-wide show/hide broadcasts no longer end a
+  handoff. (#157)
 
 - Attach again withholds generic remote startup and SSH rc chatter until the
   attach command begins. The attach exec prints a short handshake marker
