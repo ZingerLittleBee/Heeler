@@ -285,6 +285,10 @@ class Server:
                 source=source,
                 output_format=output_format,
             )
+        if method == "agent.send_keys":
+            # Thin ok-envelope RPC; key-spelling contract is asserted in unit
+            # tests against the spellings Monitor ships (enter/esc/ctrl+c/…).
+            return {"type": "ok"}
         if method == "pane.close":
             return {"type": "ok"}
         if method == "tab.create":

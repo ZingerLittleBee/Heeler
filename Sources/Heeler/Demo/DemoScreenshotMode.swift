@@ -376,6 +376,8 @@
                 workspaceID: agent?.workspaceID ?? "demo")
         }
 
+        func sendAgentKeys(_ params: AgentSendKeysParams) async throws {}
+
         func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
             guard let first = profile.snapshot.agents.first else {
                 throw TransportError.malformedResponse("Demo profile has no Agents.")

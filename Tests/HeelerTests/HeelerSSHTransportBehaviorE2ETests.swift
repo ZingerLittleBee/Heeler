@@ -551,6 +551,8 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(agentRead.text == "\u{1B}[31mfixture agent output\u{1B}[0m")
         #expect(agentRead.source == .visible)
         #expect(agentRead.format == .ansi)
+        try await transport.sendAgentKeys(
+            AgentSendKeysParams(keys: ["ctrl+c", "enter"], target: "pane-1"))
         try await transport.closePane(PaneTarget(paneID: "pane-1"))
         try await transport.renameAgent(AgentRenameParams(target: "pane-1", name: "fixture"))
         try await transport.renameWorkspace(

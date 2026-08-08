@@ -1,9 +1,11 @@
 import Foundation
 import Observation
 
-/// Owns the first Monitor cut: one ANSI snapshot on open and one refresh
-/// after an Attach round trip. It deliberately has no event subscription or
-/// polling; later Monitor packages add those behaviors from ADR 0012.
+/// Owns the first Monitor cut: one ANSI snapshot on open, one refresh after
+/// an Attach round trip, and control-key delivery with a one-shot refresh
+/// after each successful send (#183). It deliberately has no event
+/// subscription or polling; later Monitor packages add those behaviors from
+/// ADR 0012.
 @MainActor
 @Observable
 final class AgentMonitorStore {
@@ -17,10 +19,16 @@ final class AgentMonitorStore {
     private(set) var state: State = .idle
     private(set) var snapshot: AttributedString?
     private(set) var capturedAt: Date?
+    /// User-facing message from the last failed control-key send; cleared on
+    /// the next successful send. Independent of snapshot `state` so a key
+    /// failure never pretends the screen is missing.
+    private(set) var sendError: String?
+    private(set) var isSendingKey = false
 
     private let target: String
     private let now: @Sendable () -> Date
     private let read: @Sendable (AgentReadParams) async throws -> PaneReadResult
+    private let sendKeys: @Sendable (AgentSendKeysParams) async throws -> Void
     @ObservationIgnored private var hasOpened = false
     @ObservationIgnored private var needsRefreshAfterAttach = false
     @ObservationIgnored private var isFetching = false
@@ -29,11 +37,13 @@ final class AgentMonitorStore {
     init(
         target: String,
         now: @escaping @Sendable () -> Date = { Date() },
-        read: @escaping @Sendable (AgentReadParams) async throws -> PaneReadResult
+        read: @escaping @Sendable (AgentReadParams) async throws -> PaneReadResult,
+        sendKeys: @escaping @Sendable (AgentSendKeysParams) async throws -> Void = { _ in }
     ) {
         self.target = target
         self.now = now
         self.read = read
+        self.sendKeys = sendKeys
     }
 
     /// Fetches exactly once for this Monitor instance. SwiftUI may re-run its
@@ -59,6 +69,27 @@ final class AgentMonitorStore {
     }
 
     func retry() async {
+        await waitForCurrentFetch()
+        await fetch()
+    }
+
+    /// Delivers one control-key sequence via `agent.send_keys`, then refreshes
+    /// the snapshot so the strip's effect is visible without Attach (#183).
+    /// Concurrent taps are ignored while a send is in flight.
+    func send(_ key: MonitorControlKey) async {
+        guard !isSendingKey else { return }
+        isSendingKey = true
+        defer { isSendingKey = false }
+
+        do {
+            try await sendKeys(
+                AgentSendKeysParams(keys: key.keys, target: target))
+            sendError = nil
+        } catch {
+            sendError = Self.sendMessage(for: error)
+            return
+        }
+
         await waitForCurrentFetch()
         await fetch()
     }
@@ -121,6 +152,21 @@ final class AgentMonitorStore {
             error.connectionGuidance
         default:
             "Loading the latest screen failed: \(error)"
+        }
+    }
+
+    private static func sendMessage(for error: any Error) -> String {
+        switch error {
+        case TransportError.sshUnreachable:
+            "The Host is not connected."
+        case TransportError.timedOut:
+            "The Host did not answer in time."
+        case let error as HerdrAPIError:
+            "herdr rejected the key: \(error.message)"
+        case let error as TransportError:
+            error.connectionGuidance
+        default:
+            "Sending the key failed: \(error)"
         }
     }
 }

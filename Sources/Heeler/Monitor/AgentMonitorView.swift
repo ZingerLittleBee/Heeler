@@ -43,10 +43,15 @@ struct AgentDetailView: View {
         self.onSwitch = onSwitch
         self.onClosed = onClosed
         _monitor = State(
-            initialValue: monitorStore ?? AgentMonitorStore(target: agent.agent.paneID) {
-                [console, agent] params in
-                try await console.readAgent(params, on: agent.hostID)
-            })
+            initialValue: monitorStore
+                ?? AgentMonitorStore(
+                    target: agent.agent.paneID,
+                    read: { [console, agent] params in
+                        try await console.readAgent(params, on: agent.hostID)
+                    },
+                    sendKeys: { [console, agent] params in
+                        try await console.sendAgentKeys(params, on: agent.hostID)
+                    }))
         _attach = State(
             initialValue: attachStore ?? AgentAttachStore(
                 target: agent.agent.paneID,
@@ -114,6 +119,19 @@ struct AgentDetailView: View {
                             .frame(maxWidth: .infinity, alignment: .topLeading)
                             .padding()
                     }
+                }
+                if let sendError = monitor.sendError {
+                    Text(sendError)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                }
+                // Additive attachment for #183; keep minimal so parallel
+                // Monitor packages (#180) can rebase cleanly.
+                MonitorControlKeyStrip(isEnabled: !monitor.isSendingKey) { key in
+                    Task { await monitor.send(key) }
                 }
             }
         } else {
