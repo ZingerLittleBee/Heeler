@@ -21,7 +21,12 @@ struct AgentMonitorHistoryTests {
 
         // Scrolled by one: the four-line overlap extends the tail.
         #expect(history.applyVisible("l2\nl3\nl4\nl5\nl6") == .extended)
-        #expect(history.newestLines == ["l1", "l2", "l3", "l4", "l5", "l6"])
+        #expect(history.newestLines == ["l2", "l3", "l4", "l5", "l6"])
+        #expect(
+            history.segments == [
+                .lines(["l1"]),
+                .lines(["l2", "l3", "l4", "l5", "l6"]),
+            ])
 
         // Repaint: no overlap, a new live run is installed.
         #expect(history.applyVisible("n1\nn2\nn3\nn4\nn5") == .replaced)
@@ -177,5 +182,70 @@ struct AgentMonitorHistoryTests {
                 .gap,
                 .lines([]),
             ])
+    }
+
+    @Test func nearDuplicateRuleIsConservativeAndByteExact() {
+        let original = (1...10).map { "line \($0)" }
+        var oneChangedLine = original
+        oneChangedLine[4] = "spinner frame 2"
+        var twoChangedLines = oneChangedLine
+        twoChangedLines[7] = "elapsed 00:02"
+        var threeChangedLines = twoChangedLines
+        threeChangedLines[9] = "tokens 42"
+
+        #expect(AgentMonitorHistory.isNearDuplicate(original, oneChangedLine))
+        #expect(AgentMonitorHistory.isNearDuplicate(original, twoChangedLines))
+        #expect(!AgentMonitorHistory.isNearDuplicate(original, threeChangedLines))
+        #expect(!AgentMonitorHistory.isNearDuplicate(original, Array(original.dropLast())))
+        #expect(
+            !AgentMonitorHistory.isNearDuplicate(
+                ["one", "two", "three", "four"],
+                ["one", "two", "changed", "four"]))
+
+        // Swift String equality treats these canonically equivalent forms
+        // as equal. Repaint dedupe deliberately compares their UTF-8 bytes.
+        let composed = ["header", "café", "three", "four", "five"]
+        let decomposed = ["changed", "cafe\u{301}", "three", "four", "five"]
+        #expect(!AgentMonitorHistory.isNearDuplicate(composed, decomposed))
+    }
+
+    @Test func nearDuplicateRepaintReplacesTheLiveRunInPlace() {
+        var history = AgentMonitorHistory()
+        let first = (1...10).map { "line \($0)" }
+        var repaint = first
+        repaint[5] = "spinner frame 2"
+
+        history.applyVisible(first.joined(separator: "\n"))
+        #expect(history.applyVisible(repaint.joined(separator: "\n")) == .replaced)
+        #expect(history.segments == [.lines(repaint)])
+    }
+
+    @Test func sealedLiveGenerationsAreCappedWithoutDroppingProvenHistory() {
+        var history = AgentMonitorHistory()
+        history.applyVisible("l0\nl1\nl2\nl3\nl4")
+        #expect(history.applyVisible("l1\nl2\nl3\nl4\nl5") == .extended)
+        history.stitchBackfill("h1\nh2\nl0\nl1\nl2\nl3\nl4\nl5")
+
+        let replacementCount = AgentMonitorHistory.maximumSealedLiveGenerations + 3
+        for generation in 1...replacementCount {
+            let screen = (1...5).map { "generation \(generation), line \($0)" }
+            #expect(history.applyVisible(screen.joined(separator: "\n")) == .replaced)
+        }
+
+        var expected: [AgentMonitorHistory.Segment] = [
+            .lines(["h1", "h2", "l0"]),
+            .gap,
+        ]
+        let firstRetainedGeneration =
+            replacementCount - AgentMonitorHistory.maximumSealedLiveGenerations
+        for generation in firstRetainedGeneration..<replacementCount {
+            expected.append(
+                .lines((1...5).map { "generation \(generation), line \($0)" }))
+            expected.append(.gap)
+        }
+        expected.append(
+            .lines((1...5).map { "generation \(replacementCount), line \($0)" }))
+
+        #expect(history.segments == expected)
     }
 }

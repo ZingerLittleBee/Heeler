@@ -1,8 +1,9 @@
 import Foundation
 
 /// Monitor's local scrollback cache: captured line runs and explicit gap
-/// markers, ordered oldest first. The final line run is always the live
-/// screen, kept separate from backfilled or sealed history. In-memory only.
+/// markers, ordered oldest first. The final line run is always exactly the
+/// live screen, kept separate from backfilled, proven-stitched, or sealed
+/// history. In-memory only.
 ///
 /// herdr exposes no history cursor (`agent.read` takes a source and a line
 /// count, capped at 1000 lines), so every reconciliation is an
@@ -28,10 +29,23 @@ struct AgentMonitorHistory: Equatable, Sendable {
     /// whole-screen match is correct by construction there.
     static let minimumOverlap = 3
 
+    /// Truly distinct live screens remain useful context, but they cannot
+    /// grow without bound during a long-running alternate-screen session.
+    /// Backfilled and overlap-proven history does not count against this cap.
+    static let maximumSealedLiveGenerations = 8
+
+    private static let minimumNearDuplicateLineCount = 5
+    private static let maximumNearDuplicateLineDifferences = 2
+
     /// The final `.lines` segment is always the live screen. Backfilled and
     /// sealed live runs remain separate from it, including when they are
     /// known to be contiguous; only a `.gap` claims unknown continuity.
     private(set) var segments: [Segment] = []
+
+    /// Indices of live screens retained only because a later non-overlapping
+    /// read replaced them. Their adjacent generation gaps are tracked by
+    /// position. Other line segments are proven history and never capped.
+    private var sealedLiveGenerationIndices: [Int] = []
 
     /// The range reconciled by the most recent backfill. It normally spans
     /// the current history suffix and live run. After an unstitched read it
@@ -52,18 +66,19 @@ struct AgentMonitorHistory: Equatable, Sendable {
     enum VisibleOutcome: Equatable, Sendable {
         /// The read carried no new content.
         case unchanged
-        /// The read's top overlapped the live screen's bottom; newly scrolled
-        /// lines were appended to the live run.
+        /// The read's top overlapped the live screen's bottom; rows proven to
+        /// have scrolled off were preserved above the new exact live screen.
         case extended
-        /// No usable overlap (an alternate-screen repaint, or a reconnect
-        /// that scrolled a full screen): a new live run was installed.
+        /// The live screen changed without a scroll overlap. Near-duplicate
+        /// repaints replace it in place; distinct screens start a generation.
         case replaced
     }
 
     /// Reconciles one `visible` read with the live tail. The visible screen
     /// is a sliding window: when its top lines match the live run's bottom,
-    /// only fresh lines are appended. Otherwise the old live run is sealed
-    /// as history and the repaint becomes a new live run below a gap.
+    /// scrolled-off rows become proven history. Otherwise a near-duplicate
+    /// repaint replaces the live run in place, while a distinct screen seals
+    /// the old live run and starts a new generation below a gap.
     @discardableResult
     mutating func applyVisible(_ text: String) -> VisibleOutcome {
         let read = Self.splitLines(text)
@@ -75,20 +90,33 @@ struct AgentMonitorHistory: Equatable, Sendable {
             backfillRange = 0..<1
             return .replaced
         }
-        guard read != newest else { return .unchanged }
-        // A read fully contained at the tail (a shorter screen, or the same
-        // screen while the live run accumulated scrolling) changes nothing.
+        guard !Self.areByteIdentical(read, newest) else { return .unchanged }
+        // A read fully contained at the tail (a shorter version of the same
+        // screen) changes nothing.
         // The empty read is excluded: a cleared screen is a replacement.
-        if !read.isEmpty, read.count <= newest.count, newest.suffix(read.count) == read {
+        if !read.isEmpty,
+            read.count <= newest.count,
+            Self.areByteIdentical(newest.suffix(read.count), read)
+        {
             return .unchanged
         }
+        // Alternate-screen repaint ticks usually preserve the screen shape
+        // and change only a spinner, timer, or status row. They are the same
+        // live generation, so replace it in place rather than retaining a
+        // near-identical sealed screen on every poll.
+        if Self.isNearDuplicate(newest, read) {
+            segments[segments.count - 1] = .lines(read)
+            backfillRange = contiguousTailRange
+            return .replaced
+        }
+
         let floor = min(Self.minimumOverlap, read.count, newest.count)
         if floor >= 1,
             let overlap = Self.largestOverlap(suffixOf: newest, prefixOf: read, floor: floor)
         {
-            let fresh = read.suffix(read.count - overlap)
-            guard !fresh.isEmpty else { return .unchanged }
-            segments[segments.count - 1] = .lines(newest + fresh)
+            guard overlap < read.count else { return .unchanged }
+            let scrolledOff = Array(newest.prefix(newest.count - overlap))
+            installExtendedLiveScreen(read, preserving: scrolledOff)
             return .extended
         }
 
@@ -98,10 +126,12 @@ struct AgentMonitorHistory: Equatable, Sendable {
         if newest.isEmpty {
             segments[segments.count - 1] = .lines(read)
         } else {
+            sealedLiveGenerationIndices.append(segments.count - 1)
             segments.append(.gap)
             segments.append(.lines(read))
         }
         backfillRange = (segments.count - 1)..<segments.count
+        trimSealedLiveGenerations()
         return .replaced
     }
 
@@ -175,11 +205,55 @@ struct AgentMonitorHistory: Equatable, Sendable {
         return lines
     }
 
+    /// A conservative repaint heuristic. Both screens must have the same
+    /// shape and at least five lines, and at least 80% of corresponding lines
+    /// must be byte-identical. Even on large screens, no more than two lines
+    /// may differ. This catches spinner/status repaint ticks without folding
+    /// genuinely distinct screens into one generation.
+    static func isNearDuplicate(_ first: [String], _ second: [String]) -> Bool {
+        guard
+            first.count == second.count,
+            first.count >= minimumNearDuplicateLineCount
+        else { return false }
+
+        let allowedDifferences = min(
+            maximumNearDuplicateLineDifferences,
+            first.count / minimumNearDuplicateLineCount)
+        var differences = 0
+        for (firstLine, secondLine) in zip(first, second)
+        where !firstLine.utf8.elementsEqual(secondLine.utf8) {
+            differences += 1
+            if differences > allowedDifferences {
+                return false
+            }
+        }
+        return true
+    }
+
+    private static func areByteIdentical<First: Collection, Second: Collection>(
+        _ first: First,
+        _ second: Second
+    ) -> Bool where First.Element == String, Second.Element == String {
+        guard first.count == second.count else { return false }
+        return zip(first, second).allSatisfy { firstLine, secondLine in
+            firstLine.utf8.elementsEqual(secondLine.utf8)
+        }
+    }
+
     /// `nil` only when the cache is empty; the invariant keeps a trailing
     /// `.lines` run otherwise, even if it holds zero lines.
     private var newestLinesIfPresent: [String]? {
         guard case .lines(let lines) = segments.last else { return nil }
         return lines
+    }
+
+    private var contiguousTailRange: Range<Int> {
+        var lowerBound = segments.count - 1
+        while lowerBound > segments.startIndex {
+            guard case .lines = segments[lowerBound - 1] else { break }
+            lowerBound -= 1
+        }
+        return lowerBound..<segments.endIndex
     }
 
     private var validBackfillRange: Range<Int>? {
@@ -203,6 +277,60 @@ struct AgentMonitorHistory: Equatable, Sendable {
             result.append(contentsOf: lines)
         }
         return result
+    }
+
+    /// Keeps overlap-proven output outside the replace-generation cap. The
+    /// live segment stays an exact screen, while rows that demonstrably
+    /// scrolled off are folded into the contiguous protected history above.
+    private mutating func installExtendedLiveScreen(
+        _ read: [String],
+        preserving scrolledOff: [String]
+    ) {
+        let liveIndex = segments.count - 1
+        segments[liveIndex] = .lines(read)
+        if !scrolledOff.isEmpty {
+            if liveIndex > segments.startIndex,
+                case .lines(let provenHistory) = segments[liveIndex - 1]
+            {
+                segments[liveIndex - 1] = .lines(provenHistory + scrolledOff)
+            } else {
+                segments.insert(.lines(scrolledOff), at: liveIndex)
+            }
+        }
+        backfillRange = contiguousTailRange
+    }
+
+    private mutating func trimSealedLiveGenerations() {
+        while sealedLiveGenerationIndices.count > Self.maximumSealedLiveGenerations {
+            let sealedIndex = sealedLiveGenerationIndices.removeFirst()
+            guard
+                sealedIndex >= segments.startIndex,
+                sealedIndex < segments.endIndex,
+                case .lines = segments[sealedIndex]
+            else { continue }
+
+            // Later generations were introduced by a gap immediately above
+            // them, so discard that gap with the sealed screen. The original
+            // live screen has no preceding gap; removing it leaves its
+            // following gap as the honest boundary between protected history
+            // and the oldest retained generation.
+            let removalLowerBound =
+                sealedIndex > segments.startIndex && segments[sealedIndex - 1] == .gap
+                ? sealedIndex - 1 : sealedIndex
+            let removedRange = removalLowerBound..<(sealedIndex + 1)
+            segments.removeSubrange(removedRange)
+            sealedLiveGenerationIndices = sealedLiveGenerationIndices.map { index in
+                index >= removedRange.upperBound ? index - removedRange.count : index
+            }
+            if let range = backfillRange {
+                if range.lowerBound >= removedRange.upperBound {
+                    let offset = removedRange.count
+                    backfillRange = (range.lowerBound - offset)..<(range.upperBound - offset)
+                } else if range.overlaps(removedRange) {
+                    backfillRange = nil
+                }
+            }
+        }
     }
 
     private mutating func prepend(_ older: [String], to range: Range<Int>) {
@@ -267,7 +395,7 @@ struct AgentMonitorHistory: Equatable, Sendable {
     ) -> Int? {
         var candidate = min(first.count, second.count)
         while candidate >= floor {
-            if first.suffix(candidate) == second.prefix(candidate) {
+            if Self.areByteIdentical(first.suffix(candidate), second.prefix(candidate)) {
                 return candidate
             }
             candidate -= 1
@@ -282,7 +410,7 @@ struct AgentMonitorHistory: Equatable, Sendable {
     ) -> Int? {
         var candidate = min(first.count, second.count)
         while candidate >= floor {
-            if first.suffix(candidate) == second.suffix(candidate) {
+            if Self.areByteIdentical(first.suffix(candidate), second.suffix(candidate)) {
                 return candidate
             }
             candidate -= 1
@@ -298,7 +426,7 @@ struct AgentMonitorHistory: Equatable, Sendable {
         guard needle.count <= haystack.count else { return nil }
         var start = haystack.count - needle.count
         while start >= 0 {
-            if haystack[start..<(start + needle.count)].elementsEqual(needle) {
+            if Self.areByteIdentical(haystack[start..<(start + needle.count)], needle) {
                 return start
             }
             start -= 1
