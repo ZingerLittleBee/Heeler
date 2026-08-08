@@ -665,13 +665,7 @@ struct AgentSurfaceReplacementTests {
             isOnStage: { true },
             runTerminal: { request, handler in
                 let session = try await transport.attachTerminal(request)
-                do {
-                    try await handler.run(session)
-                    await session.end()
-                } catch {
-                    await session.end()
-                    throw error
-                }
+                try await handler.runEndingSession(session)
             },
             stageImage: { _, _ in throw TransportError.cancelled },
             closePane: {})
