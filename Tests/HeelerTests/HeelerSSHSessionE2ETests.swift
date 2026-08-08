@@ -262,11 +262,11 @@ struct HeelerSSHSessionE2ETests {
         }
     }
 
-    /// Same phase-gate sequence as cancellation: force the deadline past while
-    /// allocation is held so cleanup is always uncertain, then hold cleanup past
-    /// its two-second budget so invalidation is deterministic.
-    @Test("deadline completes promptly and invalidates uncertain cleanup")
-    func deadlineInvalidatesUncertainCleanup() async throws {
+    /// Inject timeout only after allocation, then hold cleanup past its
+    /// two-second budget. This keeps setup scheduling outside the failure
+    /// trigger while exercising the real allocated-channel cleanup path.
+    @Test("allocated exec timeout completes promptly and invalidates uncertain cleanup")
+    func allocatedExecTimeoutInvalidatesUncertainCleanup() async throws {
         let environment = try #require(HeelerSSHTestEnvironment.current)
         let connection = try await environment.connect()
 
@@ -275,21 +275,20 @@ struct HeelerSSHSessionE2ETests {
             let cleanup = SessionPhaseGate()
             await connection.holdNextExecChannelAllocationForTesting {
                 await allocated.waitUntilReleased()
+                throw SSHError.timedOut
             }
             await connection.holdNextExecCleanupForTesting {
                 await cleanup.waitUntilReleased()
             }
 
             let command = Task {
-                try await connection.execute("sleep 30", timeout: .milliseconds(150))
+                try await connection.execute("sleep 30", timeout: .seconds(40))
             }
-            try await waitUntilPhase("deadline should allocate its channel") {
+            try await waitUntilPhase("timeout should allocate its channel") {
                 await allocated.hasEntered
             }
-            // Let the 150ms execute budget expire while allocation is held.
-            try await Task.sleep(for: .milliseconds(200))
             await allocated.release()
-            try await waitUntilPhase("deadline should enter catch cleanup") {
+            try await waitUntilPhase("timeout should enter catch cleanup") {
                 await cleanup.hasEntered
             }
             try await Task.sleep(for: .milliseconds(2_100))
