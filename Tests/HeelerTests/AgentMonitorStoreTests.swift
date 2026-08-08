@@ -193,8 +193,15 @@ struct AgentMonitorStoreTests {
             #expect(!key.keys.isEmpty)
             #expect(key.keys.allSatisfy { !$0.isEmpty })
             #expect(key.label != nil || key.systemImage != nil)
-            // Never ship the rejected near-miss form.
-            #expect(!key.keys.contains("ctrl-c"))
+            // Negative contract: herdr rejects hyphenated `ctrl-…` spellings
+            // with `invalid_key` (verified live on 0.8.0); only `ctrl+c` /
+            // `C-c` are accepted. Pin the whole prefix so a future key
+            // (⌃D, ⌃Z, …) cannot regress into the trap.
+            for spelling in key.keys {
+                #expect(
+                    !spelling.lowercased().hasPrefix("ctrl-"),
+                    "\(key.rawValue) must not use hyphenated ctrl- form \(spelling)")
+            }
         }
     }
 
