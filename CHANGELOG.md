@@ -60,6 +60,14 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- On iPad, one window's keyboard no longer ends another window's keyboard
+  handoff. Keyboard notifications are process-wide and each window can hold
+  a live terminal, so a frame event from one window's keyboard transition
+  could unfreeze the other terminal's grid before the keyboard had settled
+  for it. A terminal now heeds a transition only for its own keyboard: it
+  must be first responder, and a frame event must leave the keyboard
+  covering its own window. (#157)
+
 - Attach again withholds generic remote startup and SSH rc chatter until the
   attach command begins. The attach exec prints a short handshake marker
   immediately before `herdr agent attach`, and the client drops everything
