@@ -124,10 +124,18 @@ final class HeelerSSHAttachOutputGate: Sendable {
         gate: HeelerSSHAttachOutputGate
     ) {
         let gate = HeelerSSHAttachOutputGate()
-        let output = AsyncThrowingStream<Data, any Error> {
-            try await gate.next()
-        }
-        return (output, gate)
+        return (gate.makeOutput(), gate)
+    }
+
+    /// One stream view over this gate. The gate owns all buffering and the
+    /// consumer claim, so views are stateless and interchangeable for the
+    /// claimant — but they are not shareable across readers: an unfolding
+    /// stream instance keeps one produce storage for all its iterators, and
+    /// the standard library clears it from a cancellation handler that runs
+    /// before `next()` is ever invoked when the reading task is already
+    /// cancelled. Hand each potential reader its own view (#164).
+    func makeOutput() -> AsyncThrowingStream<Data, any Error> {
+        AsyncThrowingStream { try await self.next() }
     }
 
     func beginExplicitEnd() {
@@ -220,12 +228,22 @@ final class HeelerSSHAttachOutputGate: Sendable {
                 }
             }
         } onCancel: {
-            cancelConsumer()
+            cancelConsumer(reader)
         }
     }
 
-    private func cancelConsumer() {
+    /// Ends delivery because a consumer's task was cancelled.
+    ///
+    /// The cancellation handler is installed by every reader before the
+    /// claim check in `next()` can refuse it, and it can fire at any point
+    /// after installation. Without the ownership guard, a refused second
+    /// consumer whose task is cancelled around its read would clear the
+    /// buffer and resume the claimant's waiter with nil — silently ending a
+    /// terminal it never owned (#164). Only the claimant, or a first reader
+    /// still racing its own claim, may cancel delivery.
+    private func cancelConsumer(_ reader: TaskIdentity) {
         state.withLock { state in
+            guard state.consumer == nil || state.consumer == reader else { return }
             guard !state.isConsumerCancelled else { return }
             state.isConsumerCancelled = true
             state.buffered.removeAll(keepingCapacity: false)
@@ -1874,7 +1892,7 @@ actor HeelerSSHTransport: Transport {
                 throw await mapOperationError(error)
             }
 
-            let outputSource = HeelerSSHAttachOutputGate.makeStream()
+            let outputGate = HeelerSSHAttachOutputGate()
             let input = TerminalAttachInputQueue()
             nextTerminalReaderID &+= 1
             let readerID = nextTerminalReaderID
@@ -1885,12 +1903,12 @@ actor HeelerSSHTransport: Transport {
                     channel: channel,
                     admissionLease: lease,
                     input: input,
-                    output: outputSource.gate)
+                    output: outputGate)
             }
             return TerminalAttachSession(
-                output: outputSource.output,
+                output: outputGate.makeOutput,
                 input: input,
-                onEndStarted: outputSource.gate.beginExplicitEnd
+                onEndStarted: outputGate.beginExplicitEnd
             ) {
                 input.finish()
                 readerTask.cancel()

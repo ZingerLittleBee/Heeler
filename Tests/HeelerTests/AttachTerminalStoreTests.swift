@@ -21,13 +21,7 @@ struct AttachTerminalStoreTests {
                 throw TransportError.sshUnreachable(detail: "The Host is not connected.")
             }
             let session = try await transport.attachTerminal(request)
-            do {
-                try await handler.run(session)
-                await session.end()
-            } catch {
-                await session.end()
-                throw error
-            }
+            try await handler.runEndingSession(session)
         }
         let captured = Captured()
         store.feed.attach(captured)
@@ -330,6 +324,61 @@ struct AttachTerminalStoreTests {
         try await waitUntil("the store should surface the missing transport") {
             store.status == .ended("The Host is not connected.")
         }
+    }
+
+    /// #151: when a store is the refused second consumer, the refusal must
+    /// end only that store's run. The transport's gate leaves the legitimate
+    /// consumer running; an unconditional `end()` in the runner's catch
+    /// would reach through the shared session and tear down the very
+    /// terminal the gate just protected — so the runner's owned teardown
+    /// (`runEndingSession`, which `HostConsoleProjection.terminalRunner`
+    /// uses) skips exactly that error, and the refusal stays visible on the
+    /// offending store. Both consumers are real stores: the proof is the
+    /// first app terminal staying live and its screen still receiving.
+    @Test(.timeLimit(.minutes(1)))
+    func aRefusedSecondConsumerStoreLeavesTheFirstTerminalRunning() async throws {
+        let gate = HeelerSSHAttachOutputGate()
+        let shared = TerminalAttachSession(
+            output: gate.makeOutput,
+            input: TerminalAttachInputQueue(),
+            onEndStarted: gate.beginExplicitEnd
+        ) {}
+        let runSharedSession: TerminalSessionRunner = { _, handler in
+            try await handler.runEndingSession(shared)
+        }
+
+        let first = AttachTerminalStore(target: "w1:p1", runTerminal: runSharedSession)
+        let firstScreen = Captured()
+        first.feed.attach(firstScreen)
+        first.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the first store should claim the gate") {
+            gate.hasParkedConsumerForTesting
+        }
+        gate.yield(Self.firstPaint)
+        try await waitUntil("the first store should go live") { first.status == .live }
+
+        let second = AttachTerminalStore(target: "w1:p1", runTerminal: runSharedSession)
+        second.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the refusal should surface on the offending store") {
+            second.status == .ended("Another terminal is already open on this Host.")
+        }
+
+        // The refused store must not have ended the shared session: the
+        // first terminal is still live, still registered on the gate, and
+        // its screen still receives output. Two chunks, so silent early
+        // termination cannot pass for survival.
+        #expect(first.status == .live, "the refusal ended the first store's session")
+        try await waitUntil("the first store should stay parked on the gate") {
+            gate.hasParkedConsumerForTesting
+        }
+        gate.yield(Data("after-the-refusal".utf8))
+        gate.yield(Data("still-flowing".utf8))
+        try await waitUntil("the first terminal should keep receiving output") {
+            firstScreen.text == "\u{1B}[2J" + "after-the-refusal" + "still-flowing"
+        }
+        #expect(first.status == .live, "later output must reach a still-live first terminal")
+
+        await first.stop()
     }
 
     @Test func stopEndsTheSessionAndIsTerminal() async throws {
@@ -2119,13 +2168,7 @@ struct AgentAttachStoreTests {
             isOnStage: isOnStage,
             runTerminal: runTerminal ?? { request, handler in
                 let session = try await transport.attachTerminal(request)
-                do {
-                    try await handler.run(session)
-                    await session.end()
-                } catch {
-                    await session.end()
-                    throw error
-                }
+                try await handler.runEndingSession(session)
             },
             stageImage: stageImage ?? { _, _ in throw ImageStagingError.transferFailed },
             closePane: close)
@@ -2195,13 +2238,7 @@ struct AgentAttachStoreTests {
             try await permit.acquire()
             do {
                 let session = try await transport.attachTerminal(request)
-                do {
-                    try await handler.run(session)
-                    await session.end()
-                } catch {
-                    await session.end()
-                    throw error
-                }
+                try await handler.runEndingSession(session)
             } catch {
                 await permit.release()
                 throw error
@@ -2384,13 +2421,7 @@ struct AgentAttachStoreForegroundTests {
             isOnStage: isOnStage,
             runTerminal: { request, handler in
                 let session = try await transport.attachTerminal(request)
-                do {
-                    try await handler.run(session)
-                    await session.end()
-                } catch {
-                    await session.end()
-                    throw error
-                }
+                try await handler.runEndingSession(session)
             },
             stageImage: { _, _ in throw TransportError.cancelled },
             closePane: {})

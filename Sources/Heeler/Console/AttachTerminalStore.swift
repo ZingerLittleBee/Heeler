@@ -17,6 +17,26 @@ struct TerminalSessionHandler: Sendable {
     func run(_ session: TerminalAttachSession) async throws {
         try await operation(session)
     }
+
+    /// One complete session lifetime with owned teardown: runs the handler,
+    /// then ends the channel — on success and on every failure except a
+    /// `terminalChannelAlreadyOpen` refusal. That refusal means this
+    /// consumer never owned the session: another consumer holds the output,
+    /// the transport has already refused only this reader, and `end()` here
+    /// would reach through the shared channel and tear down the legitimate
+    /// consumer's live terminal (#151). The refusal itself still propagates,
+    /// so the offending surface shows it rather than swallowing it (#141).
+    func runEndingSession(_ session: TerminalAttachSession) async throws {
+        do {
+            try await run(session)
+        } catch TransportError.terminalChannelAlreadyOpen {
+            throw TransportError.terminalChannelAlreadyOpen
+        } catch {
+            await session.end()
+            throw error
+        }
+        await session.end()
+    }
 }
 
 /// The identity of one terminal pipeline, and so of the SwiftUI surface built

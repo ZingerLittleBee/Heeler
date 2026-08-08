@@ -383,7 +383,7 @@ final actor ScriptedTransport: Transport {
                 self.recordAttachInput(item)
             }
         }
-        return TerminalAttachSession(output: output, input: input) {
+        return TerminalAttachSession(output: { output }, input: input) {
             await endGate?.waitUntilOpen()
             await self.endAttach(id: attachID)
         }

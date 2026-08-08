@@ -92,6 +92,15 @@ Entries reference the issue that motivated them.
   on this Host." and a Reattach button, so the worst case is one surface that
   has to be reopened rather than the whole app disappearing. (#137)
 
+- A turned-away duplicate terminal reader can no longer take the live
+  terminal down with it. When the refused reader was a terminal screen, its
+  cleanup ended the very session the refusal had just protected, so the
+  working terminal went down anyway; and a duplicate reader whose task was
+  already cancelled ended the working terminal's output silently, with no
+  dialog at all. In both cases the live terminal now keeps running, and the
+  refused surface alone shows "Another terminal is already open on this
+  Host." with Reattach. (#151, #164; PR #174)
+
 - A Host that fails while you have one of its Agents open now says why on the
   session screen. It used to read "This Agent's pane is no longer reported" —
   blaming the Agent for the Host's problem, and pointing you at the wrong

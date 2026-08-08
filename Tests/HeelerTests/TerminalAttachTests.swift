@@ -248,6 +248,108 @@ struct TerminalAttachTests {
             """)
     }
 
+    /// A second consumer whose task is already cancelled reaches for the
+    /// stream through cancellation handlers that run before any claim check
+    /// can refuse it (#164): the unfolding stream's own handler clears the
+    /// produce storage its iterators share, and the gate's handler is
+    /// installed by every reader ahead of `next()`'s body. Neither door may
+    /// end the legitimate consumer: sessions hand each reader its own
+    /// stream, and the gate only honours a cancellation from its claimant.
+    @Test(.timeLimit(.minutes(1)))
+    func anAlreadyCancelledSecondConsumerCannotEndTheFirst() async throws {
+        let gate = HeelerSSHAttachOutputGate()
+        let session = TerminalAttachSession(
+            output: gate.makeOutput,
+            input: TerminalAttachInputQueue()
+        ) {}
+
+        let first = Task { () -> AttachConsumerOutcome in
+            var seen: [Data] = []
+            do {
+                for try await bytes in session.output { seen.append(bytes) }
+                return .drained(seen)
+            } catch {
+                return .failed(String(describing: error))
+            }
+        }
+        let parked = await Self.waitForParkedConsumer(gate)
+        #expect(parked, "the first consumer never parked on the gate")
+
+        let second = Task { () -> AttachConsumerOutcome in
+            // Reads only once its own task is already cancelled, so every
+            // cancellation handler fires ahead of the read instead of
+            // racing it.
+            while !Task.isCancelled { await Task.yield() }
+            var iterator = session.output.makeAsyncIterator()
+            do {
+                guard let bytes = try await iterator.next() else { return .drained([]) }
+                return .drained([bytes])
+            } catch {
+                return .failed(String(describing: error))
+            }
+        }
+        second.cancel()
+        let refusal = await Self.outcome(of: second)
+        #expect(
+            refusal == .drained([]),
+            """
+            an already-cancelled extra consumer must end quietly with nil, \
+            never with output: \(String(describing: refusal))
+            """)
+
+        // Its cancellation must not have reached the first consumer: the
+        // waiter is still parked, and later output still arrives. Two
+        // chunks, deliberately: a poisoned shared stream still hands over
+        // the one read already in flight and only then ends, so a single
+        // chunk cannot tell survival from silent early termination.
+        #expect(
+            gate.hasParkedConsumerForTesting,
+            "the cancelled extra consumer cleared the first consumer's waiter")
+        let afterCancellation = Data("after-the-cancellation".utf8)
+        let stillFlowing = Data("still-flowing".utf8)
+        gate.yield(afterCancellation)
+        gate.yield(stillFlowing)
+        gate.finish()
+        let served = await Self.outcome(of: first)
+        #expect(
+            served == .drained([afterCancellation, stillFlowing]),
+            """
+            the first consumer must keep receiving output unaffected: \
+            \(String(describing: served))
+            """)
+    }
+
+    /// The ownership guard on the gate's cancellation path must not cost the
+    /// claimant its own cancellation: cancelling the task that reads the
+    /// stream still ends its iteration promptly.
+    @Test(.timeLimit(.minutes(1)))
+    func cancellingTheClaimantsTaskStillEndsItsIteration() async throws {
+        let source = HeelerSSHAttachOutputGate.makeStream()
+        let gate = source.gate
+        let stream = source.output
+
+        let claimant = Task { () -> AttachConsumerOutcome in
+            var seen: [Data] = []
+            do {
+                for try await bytes in stream { seen.append(bytes) }
+                return .drained(seen)
+            } catch {
+                return .failed(String(describing: error))
+            }
+        }
+        let parked = await Self.waitForParkedConsumer(gate)
+        #expect(parked, "the claimant never parked on the gate")
+
+        claimant.cancel()
+        let ending = await Self.outcome(of: claimant)
+        #expect(
+            ending == .drained([]),
+            """
+            cancelling the claimant must end its own iteration without \
+            error: \(String(describing: ending))
+            """)
+    }
+
     /// Polls until a consumer is registered on the gate, so the test enters
     /// the double-consumer window deterministically rather than by sleeping.
     private static func waitForParkedConsumer(
@@ -302,7 +404,7 @@ struct TerminalAttachTests {
         let (output, outputContinuation) = AsyncThrowingStream<Data, any Error>.makeStream()
         let input = TerminalAttachInputQueue()
         let session = TerminalAttachSession(
-            output: output,
+            output: { output },
             input: input,
             ender: { outputContinuation.finish() })
         let inputController = TerminalInputController()

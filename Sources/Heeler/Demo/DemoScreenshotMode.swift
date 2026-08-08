@@ -404,7 +404,7 @@
                     (profile.terminalOutputs[request.target] ?? DemoScreenshotFixture.terminalOutput)
                         .utf8)
             )
-            return TerminalAttachSession(output: output, input: input) {
+            return TerminalAttachSession(output: { output }, input: input) {
                 await self.endTerminal()
             }
         }
