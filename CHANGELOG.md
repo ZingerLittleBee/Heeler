@@ -99,7 +99,7 @@ Entries reference the issue that motivated them.
   already cancelled ended the working terminal's output silently, with no
   dialog at all. In both cases the live terminal now keeps running, and the
   refused surface alone shows "Another terminal is already open on this
-  Host." with Reattach. (#151, #164)
+  Host." with Reattach. (#151, #164; PR #174)
 
 - A Host that fails while you have one of its Agents open now says why on the
   session screen. It used to read "This Agent's pane is no longer reported" —
