@@ -197,10 +197,12 @@ struct AgentMonitorHistory: Equatable, Sendable {
     }
 
     private func lines(in range: Range<Int>) -> [String] {
-        range.flatMap { index in
-            guard case .lines(let lines) = segments[index] else { return [] }
-            return lines
+        var result: [String] = []
+        for index in range {
+            guard case .lines(let lines) = segments[index] else { continue }
+            result.append(contentsOf: lines)
         }
+        return result
     }
 
     private mutating func prepend(_ older: [String], to range: Range<Int>) {
