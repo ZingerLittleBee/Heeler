@@ -21,6 +21,14 @@ Entries reference the issue that motivated them.
   automatically, while scrolling up holds position behind a New Output jump.
   (#180)
 
+- Monitor keeps a local scrollback. Scrolling up through what the Agent did
+  is served from the on-device cache; reaching the top while the Agent is
+  idle backfills up to herdr's 1,000-line capture window, the one loading
+  indicator in the surface. While the Agent works, the top of the cache says
+  history is unavailable instead of spinning. Reads that cannot be
+  reconciled with the cache leave an explicit gap marker, and the oldest
+  capturable line is marked as the beginning of the captured history. (#181)
+
 - Settings > About now has Acknowledgements: every redistributed third-party
   component ships with its exact upstream licence notice, including libssh2
   and its secondary sources, OpenSSL, Ghostty and its stack, the monospaced
