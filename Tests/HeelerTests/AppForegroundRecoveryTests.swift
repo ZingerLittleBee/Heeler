@@ -605,9 +605,20 @@ struct AppForegroundRecoveryTests {
     /// `retry()` → `restart()` instead, which winds the fresh activation down
     /// — cancelling the run task over its own dial — and dials again. The
     /// statuses hide it: the Host still ends up `.connected`, and the widening
-    /// measured green on the full lane. What shows it is the dial count, so
-    /// that is what is counted: one dial to come up, none for the suspension,
-    /// and exactly one more for the return.
+    /// measured green on the full lane. What shows it is the dial count.
+    ///
+    /// The count only discriminates when the resumed dial is *in flight* as
+    /// the revalidation runs. `resume()` merely spawns the run task, and a
+    /// restart that cancelled it before its connect had entered would make
+    /// one replacement dial of its own — two in all, the mutation passing
+    /// for the wrong reason. So the return is driven as two store calls with
+    /// the dial held between them: `resume()` activates, its run task's
+    /// connect-path ping parks on the gate below, the test observes the dial
+    /// entered, and only then does `reactivate()` run the revalidation leg —
+    /// against exactly the state the issue describes, a `.suspended`
+    /// projection whose session is mid-dial. The coordinator's `.activated`
+    /// cannot be the trigger here: the driver runs resume and revalidate as
+    /// one cascade, with no observation point between them.
     @Test func aReturnFromSuspensionCostsExactlyTheDialsResumeNeeds() async throws {
         let host = Host.fixture()
         let first = ScriptedTransport(snapshot: .fixture())
@@ -638,14 +649,29 @@ struct AppForegroundRecoveryTests {
         // Tearing down is not a dial.
         #expect(await connector.connectCount == 1)
 
-        activity.didBecomeActive()
+        // The resumed dial, observed in flight: resume() activates the
+        // session and its run task parks on the connect-path ping's gate,
+        // its connect already counted and `.connected` not yet published.
+        let resumePing = ScriptedTransportCallGate()
+        await second.gateNextPing(using: resumePing)
+        await store.resume()
+        try await waitUntil("the resumed dial should be in flight") {
+            await second.pingCount == 1
+        }
+        #expect(await connector.connectCount == 2)
+
+        // The production revalidation now meets exactly the state the issue
+        // describes: a `.suspended` projection whose session is mid-dial.
+        await store.reactivate()
+        await resumePing.open()
+
         try await waitUntil("the return should bring the Host back") {
             store.hostStatuses[host.id] == .connected
         }
-        // A restart's extra dial belongs to the mutation, not to anything the
-        // wait above had to observe; give it room to happen before counting.
-        await settle()
-
+        // Final once `.connected` arrives — a restart's replacement dial
+        // precedes its own `.connected`, so no settle follows: two dials is
+        // the initial connect plus the one resume() needed, and a third is
+        // the widened guard's restart.
         #expect(await connector.connectCount == 2)
         store.setHosts([])
     }
