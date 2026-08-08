@@ -54,6 +54,14 @@ import Testing
 /// still pins that a stopped herdr fails rather than retries, and the cases
 /// below pin that a still-broken Host lands straight back on `.failed` and
 /// that a Host merely *reconnecting* is left alone entirely.
+///
+/// The remaining status a return can meet is `.suspended` — the ordinary case
+/// once the grace period elapses, which the trips above deliberately stay
+/// inside. There `resume()` is already dialling, and the re-prove must leave
+/// that dial alone: widening the guard to `.failed, .suspended` restarts the
+/// session over its own in-flight dial, and the return costs two dials
+/// instead of one (#158). The statuses hide it — the Host still ends up
+/// `.connected` — so the case below counts dials instead.
 @MainActor
 @Suite("App foreground recovery")
 struct AppForegroundRecoveryTests {
@@ -581,6 +589,64 @@ struct AppForegroundRecoveryTests {
         // been dragged out of it by a foreground bounce.
         #expect(await connector.connectCount == 2)
         #expect(store.hostStatuses[host.id] == backoff)
+        store.setHosts([])
+    }
+
+    /// The `.suspended` half of the revalidation guard's dimension (#158); the
+    /// `.reconnecting` half is pinned above. A return past the grace period is
+    /// the ordinary case, and there `resume()` is already dialling: it
+    /// activates the session and returns once the run task is spawned, before
+    /// `.connected` is published, so the projection's status is still
+    /// `.suspended` when `revalidate()` looks at it. The guard must leave that
+    /// session to the dial it already has in flight — `session.revalidate()`
+    /// no-ops on it, having no live channel to ping.
+    ///
+    /// Widening the guard to `.failed, .suspended` sends this return through
+    /// `retry()` → `restart()` instead, which winds the fresh activation down
+    /// — cancelling the run task over its own dial — and dials again. The
+    /// statuses hide it: the Host still ends up `.connected`, and the widening
+    /// measured green on the full lane. What shows it is the dial count, so
+    /// that is what is counted: one dial to come up, none for the suspension,
+    /// and exactly one more for the return.
+    @Test func aReturnFromSuspensionCostsExactlyTheDialsResumeNeeds() async throws {
+        let host = Host.fixture()
+        let first = ScriptedTransport(snapshot: .fixture())
+        let second = ScriptedTransport(snapshot: .fixture())
+        let connector = SequencedTransportConnector([first, second])
+        let store = makeStore(connector: connector)
+        // Short enough that the absence below really suspends: what the
+        // return's revalidation then meets is a `.suspended` status, not a
+        // connection the grace period kept.
+        let activity = AppActivityCoordinator(
+            gracePeriod: .milliseconds(100), granter: GrantingBackgroundExecutionGranter())
+        let driver = Task {
+            await ConsoleActivityDriver(activity: activity, console: store).run()
+        }
+        defer { driver.cancel() }
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Host should come up connected") {
+            store.hostStatuses[host.id] == .connected
+        }
+        #expect(await connector.connectCount == 1)
+
+        activity.didEnterBackground()
+        try await waitUntil("the absence should suspend the Host") {
+            store.hostStatuses[host.id] == .suspended
+        }
+        // Tearing down is not a dial.
+        #expect(await connector.connectCount == 1)
+
+        activity.didBecomeActive()
+        try await waitUntil("the return should bring the Host back") {
+            store.hostStatuses[host.id] == .connected
+        }
+        // A restart's extra dial belongs to the mutation, not to anything the
+        // wait above had to observe; give it room to happen before counting.
+        await settle()
+
+        #expect(await connector.connectCount == 2)
         store.setHosts([])
     }
 
