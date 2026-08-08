@@ -118,37 +118,58 @@ struct LicenseNoticeInventoryTests {
         }
     }
 
-    @Test func packageResolvedPinsAreCoveredByInventory() throws {
-        // Adding a SwiftPM pin without inventory coverage must fail here: the
-        // switch is exhaustive over known identities and records an Issue for
-        // any new one. Filename discovery cannot do this.
-        let inventoryIDs = Set(try LicenseNoticeCatalog.loadInventory().components.map(\.id))
-        let pins = try loadPackageResolvedIdentities()
+    @Test func everyDiscoveredDependencyDeclarationIsCoveredByInventory() throws {
+        // Completeness is two-way and declaration-driven (#161 review finding 2):
+        // discover Package.resolved pins, HeelerSSH binary targets, Heeler app
+        // package links, and bundled font families from the repo, then require
+        // each key to appear in inventory.dependencyCoverage with component ids
+        // that exist. A new binary target / pin / package / font family without
+        // a coverage entry fails here — fixed ID lists alone cannot do this.
+        let inventory = try LicenseNoticeCatalog.loadInventory()
+        let coverage = inventory.dependencyCoverage
+        let inventoryIDs = Set(inventory.components.map(\.id))
 
-        #expect(!pins.isEmpty)
-        for identity in pins {
-            switch identity {
-            case "libghostty-spm":
-                #expect(
-                    inventoryIDs.isSuperset(of: ["libghostty-spm", "Ghostty", "GhosttyTheme"]))
-            case "msdisplaylink":
-                #expect(inventoryIDs.contains("MSDisplayLink"))
-            default:
-                Issue.record(
-                    "Package.resolved pin '\(identity)' has no inventory coverage mapping — add a notice entry and a case here")
-            }
+        try assertCoverage(
+            discovered: Set(try loadPackageResolvedIdentities()),
+            mapped: coverage.packageResolved,
+            inventoryIDs: inventoryIDs,
+            source: "Package.resolved pin")
+
+        try assertCoverage(
+            discovered: Set(try loadHeelerSSHBinaryTargetNames()),
+            mapped: coverage.heelerSSHBinaryTargets,
+            inventoryIDs: inventoryIDs,
+            source: "HeelerSSH binaryTarget")
+
+        try assertCoverage(
+            discovered: Set(try loadHeelerAppProjectPackageNames()),
+            mapped: coverage.projectPackages,
+            inventoryIDs: inventoryIDs,
+            source: "project.yml Heeler package dependency")
+
+        try assertCoverage(
+            discovered: Set(try loadBundledFontFamilyStems()),
+            mapped: coverage.bundledFontFamilies,
+            inventoryIDs: inventoryIDs,
+            source: "bundled font family")
+
+        // Binary-target paths must also resolve to on-disk XCFrameworks so a
+        // renamed artifact cannot leave the inventory mapping orphaned.
+        let binaryTargets = try loadHeelerSSHBinaryTargets()
+        #expect(!binaryTargets.isEmpty)
+        for target in binaryTargets {
+            let url = repositoryRoot
+                .appendingPathComponent("Packages/HeelerSSH")
+                .appendingPathComponent(target.path)
+            var isDirectory: ObjCBool = false
+            #expect(
+                FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+                    && isDirectory.boolValue,
+                "binaryTarget \(target.name) path missing: \(target.path)")
+            #expect(
+                coverage.heelerSSHBinaryTargets[target.name] != nil,
+                "binaryTarget \(target.name) has no dependencyCoverage entry")
         }
-
-        // Local native artifacts are not Package.resolved pins but are still
-        // redistributed; pin them explicitly so they cannot be dropped quietly.
-        #expect(
-            inventoryIDs.isSuperset(of: [
-                "libssh2",
-                "libssh2-bcrypt_pbkdf",
-                "libssh2-cipher-chachapoly",
-                "OpenSSL",
-            ]))
-        #expect(inventoryIDs.isSuperset(of: ["IBMPlexMono", "JetBrainsMono"]))
     }
 
     @Test func missingNoticeResourceFailsLoudly() throws {
@@ -264,6 +285,13 @@ struct LicenseNoticeInventoryTests {
 
     // MARK: - Helpers
 
+    private var repositoryRoot: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()  // HeelerTests
+            .deletingLastPathComponent()  // Tests
+            .deletingLastPathComponent()  // repo root
+    }
+
     private func makeTemporaryBundleDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("notices-\(UUID().uuidString)", isDirectory: true)
@@ -272,54 +300,203 @@ struct LicenseNoticeInventoryTests {
     }
 
     private func assertMatchesArtifactNotice(named fileName: String, text: String) throws {
-        let url = try artifactNoticeURL(named: fileName)
+        let url = artifactNoticeURL(named: fileName)
         let artifact = try String(contentsOf: url, encoding: .utf8)
         #expect(artifact == text)
     }
 
-    private func artifactNoticeURL(named fileName: String) throws -> URL {
-        var directory = URL(fileURLWithPath: #filePath)
-        for _ in 0..<3 {
-            directory.deleteLastPathComponent()
-        }
-        return directory
+    private func artifactNoticeURL(named fileName: String) -> URL {
+        repositoryRoot
             .appendingPathComponent("Packages/HeelerSSH/Artifacts/Notices", isDirectory: true)
             .appendingPathComponent(fileName)
     }
 
-    private func loadPackageResolvedIdentities() throws -> [String] {
-        var directory = URL(fileURLWithPath: #filePath)
-        for _ in 0..<3 {
-            directory.deleteLastPathComponent()
+    /// Discovered keys must equal coverage map keys; every mapped id must
+    /// exist in the inventory. Extra coverage keys (stale after a removal)
+    /// also fail so the join stays two-way.
+    private func assertCoverage(
+        discovered: Set<String>,
+        mapped: [String: [String]],
+        inventoryIDs: Set<String>,
+        source: String
+    ) throws {
+        #expect(!discovered.isEmpty, "\(source): discovery returned nothing")
+        let mappedKeys = Set(mapped.keys)
+
+        let missing = discovered.subtracting(mappedKeys).sorted()
+        #expect(
+            missing.isEmpty,
+            "\(source) without dependencyCoverage entry: \(missing.joined(separator: ", "))")
+
+        let stale = mappedKeys.subtracting(discovered).sorted()
+        #expect(
+            stale.isEmpty,
+            "\(source) coverage keys no longer declared in the repo: \(stale.joined(separator: ", "))")
+
+        for key in discovered.sorted() {
+            let ids = try #require(mapped[key])
+            #expect(!ids.isEmpty, "\(source) '\(key)' maps to zero inventory ids")
+            let unknown = Set(ids).subtracting(inventoryIDs).sorted()
+            #expect(
+                unknown.isEmpty,
+                "\(source) '\(key)' references unknown inventory ids: \(unknown.joined(separator: ", "))")
         }
-        let url = directory
+    }
+
+    private func loadPackageResolvedIdentities() throws -> [String] {
+        let url = repositoryRoot
             .appendingPathComponent("Heeler.xcodeproj/project.xcworkspace/xcshareddata/swiftpm")
             .appendingPathComponent("Package.resolved")
         let data = try Data(contentsOf: url)
         let resolved = try JSONDecoder().decode(PackageResolved.self, from: data)
         return resolved.pins.map(\.identity).sorted()
     }
+
+    private struct BinaryTarget: Equatable {
+        let name: String
+        let path: String
+    }
+
+    private func loadHeelerSSHBinaryTargetNames() throws -> [String] {
+        try loadHeelerSSHBinaryTargets().map(\.name).sorted()
+    }
+
+    private func loadHeelerSSHBinaryTargets() throws -> [BinaryTarget] {
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Packages/HeelerSSH/Package.swift"),
+            encoding: .utf8)
+        // Match SPM `.binaryTarget(name:path:)` declarations. Path packages
+        // never appear in Package.resolved; this is the declaration source
+        // for vendored XCFrameworks.
+        let pattern = #/\.binaryTarget\(\s*name:\s*"([^"]+)"\s*,\s*path:\s*"([^"]+)"/#
+        return source.matches(of: pattern).map { match in
+            BinaryTarget(name: String(match.1), path: String(match.2))
+        }
+    }
+
+    /// Package names linked from the Heeler *application* target in
+    /// `project.yml` (not the test or extension targets).
+    private func loadHeelerAppProjectPackageNames() throws -> [String] {
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("project.yml"),
+            encoding: .utf8)
+        let lines = source.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+
+        // Locate `targets:` → `Heeler:` → its `dependencies:` list; stop at the
+        // next top-level target (`HeelerNotificationService:`) or `schemes:`.
+        guard let targetsIndex = lines.firstIndex(where: { $0 == "targets:" }) else {
+            throw DiscoveryError.projectYML("missing targets:")
+        }
+        guard
+            let heelerIndex = lines[targetsIndex...].firstIndex(where: { $0 == "  Heeler:" })
+        else {
+            throw DiscoveryError.projectYML("missing Heeler application target")
+        }
+        guard
+            let depsIndex = lines[heelerIndex...].firstIndex(where: { $0 == "    dependencies:" })
+        else {
+            throw DiscoveryError.projectYML("Heeler target has no dependencies:")
+        }
+
+        var names = Set<String>()
+        for line in lines[(depsIndex + 1)...] {
+            if line.hasPrefix("  ") && !line.hasPrefix("    ") {
+                break  // next target at two-space indent
+            }
+            if line.hasPrefix("schemes:") {
+                break
+            }
+            // `- package: Name` under the Heeler dependencies list.
+            if let match = line.firstMatch(of: #/^\s+-\s+package:\s+(\S+)\s*$/#) {
+                names.insert(String(match.1))
+            }
+        }
+        return names.sorted()
+    }
+
+    private func loadBundledFontFamilyStems() throws -> [String] {
+        let fonts = repositoryRoot
+            .appendingPathComponent("Sources/Heeler/Resources/Fonts", isDirectory: true)
+        let files = try FileManager.default.contentsOfDirectory(
+            at: fonts,
+            includingPropertiesForKeys: nil)
+        let weightSuffixes = ["Regular", "Bold", "Medium", "Light", "SemiBold", "Thin", "Black"]
+        var stems = Set<String>()
+        for file in files where file.pathExtension.lowercased() == "ttf" {
+            var stem = file.deletingPathExtension().lastPathComponent
+            for weight in weightSuffixes {
+                let suffix = "-\(weight)"
+                if stem.hasSuffix(suffix) {
+                    stem = String(stem.dropLast(suffix.count))
+                    break
+                }
+            }
+            #expect(!stem.isEmpty, "font face produced an empty family stem: \(file.lastPathComponent)")
+            stems.insert(stem)
+        }
+        return stems.sorted()
+    }
+
+    private enum DiscoveryError: Error, CustomStringConvertible {
+        case projectYML(String)
+
+        var description: String {
+            switch self {
+            case .projectYML(let detail):
+                "project.yml discovery failed: \(detail)"
+            }
+        }
+    }
 }
 
-/// Settings → About → Acknowledgements is a real route, asserted by identity.
+/// Settings → About → Acknowledgements is a real route: identity, destination
+/// type, and source wiring must all agree.
 ///
-/// A row-count guard is decorative: deleting the NavigationLink and adding a
-/// decoy `LabeledContent` keeps the count green while the app has no path to
-/// the notices. The About section is driven by `SettingsView.aboutRows`, and
-/// the Acknowledgements case carries `acknowledgementsRouteID` (#161).
+/// A row-count or enum-only guard is decorative: deleting the `NavigationLink`
+/// and rendering a decoy `LabeledContent` while keeping `.acknowledgements` in
+/// `aboutRows` left every prior test green (#161 review finding 1 / #135).
 @Suite("Acknowledgements route identity")
 struct AcknowledgementsRouteIdentityTests {
+    private var repositoryRoot: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+    }
+
     @Test func aboutSectionOffersAcknowledgementsByIdentity() {
         #expect(SettingsView.aboutRows.contains(.acknowledgements))
         #expect(
             SettingsView.AboutRow.acknowledgements.id
                 == SettingsView.acknowledgementsRouteID)
         #expect(SettingsView.acknowledgementsRouteID == "settings.about.acknowledgements")
+        #expect(
+            SettingsView.acknowledgementsRouteID
+                == SettingsAboutDestination.acknowledgements.rawValue)
+    }
+
+    @Test func acknowledgementsIdentityMapsToAcknowledgementsView() throws {
+        // The row identity must resolve to a pushed destination whose concrete
+        // view type is AcknowledgementsView — not "some screen", not a label.
+        let destination = try #require(
+            SettingsView.aboutDestination(for: .acknowledgements))
+        #expect(destination == .acknowledgements)
+        #expect(destination.rawValue == SettingsView.acknowledgementsRouteID)
+        #expect(
+            destination.destinationTypeName
+                == String(reflecting: AcknowledgementsView.self))
+
+        // Sibling About rows do not push a SettingsAboutDestination; a decoy
+        // version/repository/privacy row cannot satisfy the mapping.
+        for row in SettingsView.aboutRows where row != .acknowledgements {
+            #expect(SettingsView.aboutDestination(for: row) == nil)
+        }
+        #expect(SettingsView.aboutDestination(for: .version) == nil)
+        #expect(SettingsView.aboutDestination(for: .repository) == nil)
+        #expect(SettingsView.aboutDestination(for: .privacyPolicy) == nil)
     }
 
     @Test func acknowledgementsIdentityIsNotSatisfiedByADecoyLabel() {
-        // A decoy row would be some other AboutRow case (or an unrelated
-        // string). Only `.acknowledgements` matches the route id.
         let decoyIDs = SettingsView.aboutRows
             .filter { $0 != .acknowledgements }
             .map(\.id)
@@ -330,13 +507,65 @@ struct AcknowledgementsRouteIdentityTests {
         #expect(SettingsView.AboutRow.privacyPolicy.id != SettingsView.acknowledgementsRouteID)
     }
 
+    @Test func settingsViewWiresAcknowledgementsThroughSharedDestination() throws {
+        // Static mapping alone is still decorative if aboutRow ignores it.
+        // Require the SettingsView source to push via aboutDestination and
+        // destinationView, and to still name AcknowledgementsView as the
+        // destination type. Replacing the NavigationLink with a decoy
+        // LabeledContent (the 230c0e5 / review-round-1 failure) fails here.
+        let source = try String(
+            contentsOf: repositoryRoot
+                .appendingPathComponent("Sources/Heeler/Settings/SettingsView.swift"),
+            encoding: .utf8)
+
+        #expect(source.contains("case .acknowledgements:"))
+        #expect(source.contains("aboutDestination(for:"))
+        #expect(source.contains("destination.destinationView"))
+        #expect(source.contains("NavigationLink"))
+        #expect(source.contains("AcknowledgementsView.self"))
+        #expect(source.contains("AcknowledgementsView()"))
+
+        // The acknowledgements case body must not be a bare LabeledContent stand-in.
+        let caseBody = try acknowledgementsCaseBody(in: source)
+        #expect(caseBody.contains("NavigationLink"))
+        #expect(caseBody.contains("aboutDestination(for:"))
+        #expect(caseBody.contains("destination.destinationView"))
+        #expect(!caseBody.contains("LabeledContent("))
+    }
+
     @Test func aboutRowsKeepAcknowledgementsWhenSiblingLinksVary() {
-        // Version + Acknowledgements are unconditional; repository/privacy
-        // depend on URL availability. Acknowledgements must not be gated.
         #expect(SettingsView.aboutRows.first == .version)
         #expect(SettingsView.aboutRows.contains(.acknowledgements))
         #expect(SettingsView.aboutRows.contains(.repository))
         #expect(SettingsView.aboutRows.contains(.privacyPolicy))
+    }
+
+    /// Slice of the `aboutRow` switch's `.acknowledgements` case. Scoped to
+    /// that function so enum/`id`/`aboutDestination` cases with the same label
+    /// are not mistaken for the NavigationLink body.
+    private func acknowledgementsCaseBody(in source: String) throws -> String {
+        guard let funcRange = source.range(of: "private func aboutRow") else {
+            throw WiringError.missingAboutRowFunction
+        }
+        let fromFunc = source[funcRange.lowerBound...]
+        let marker = "case .acknowledgements:"
+        guard let start = fromFunc.range(of: marker) else {
+            throw WiringError.missingAcknowledgementsCase
+        }
+        let after = fromFunc[start.upperBound...]
+        let endMarkers = ["case .repository:", "case .privacyPolicy:", "case .version:"]
+        var endOffset = after.endIndex
+        for endMarker in endMarkers {
+            if let range = after.range(of: endMarker), range.lowerBound < endOffset {
+                endOffset = range.lowerBound
+            }
+        }
+        return String(after[..<endOffset])
+    }
+
+    private enum WiringError: Error {
+        case missingAboutRowFunction
+        case missingAcknowledgementsCase
     }
 }
 

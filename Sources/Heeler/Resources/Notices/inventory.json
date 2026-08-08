@@ -1,5 +1,23 @@
 {
   "schemaVersion": 1,
+  "dependencyCoverage": {
+    "packageResolved": {
+      "libghostty-spm": ["libghostty-spm", "Ghostty", "GhosttyTheme"],
+      "msdisplaylink": ["MSDisplayLink"]
+    },
+    "heelerSSHBinaryTargets": {
+      "CLibSSH2": ["libssh2", "libssh2-bcrypt_pbkdf", "libssh2-cipher-chachapoly"],
+      "COpenSSL": ["OpenSSL"]
+    },
+    "projectPackages": {
+      "GhosttyTerminal": ["libghostty-spm", "Ghostty", "GhosttyTheme"],
+      "HeelerSSH": ["libssh2", "libssh2-bcrypt_pbkdf", "libssh2-cipher-chachapoly", "OpenSSL"]
+    },
+    "bundledFontFamilies": {
+      "IBMPlexMono": ["IBMPlexMono"],
+      "JetBrainsMono": ["JetBrainsMono"]
+    }
+  },
   "components": [
     {
       "id": "Ghostty",

@@ -24,6 +24,12 @@ struct LicenseNotice: Identifiable, Equatable, Sendable {
 /// dependency without a notice produces no signal (#161). The inventory is the
 /// audited list; each entry must resolve to a bundled UTF-8 notice or loading
 /// fails loudly.
+///
+/// `dependencyCoverage` is the two-way join between repository dependency
+/// *declarations* (Package.resolved pins, local binary targets, project
+/// package links, bundled font families) and inventory component ids. Completeness
+/// tests discover the declarations from the repo and require every one to be
+/// named here with inventory ids that exist in `components`.
 struct LicenseInventory: Equatable, Sendable {
     struct Entry: Identifiable, Equatable, Sendable {
         let id: String
@@ -35,8 +41,24 @@ struct LicenseInventory: Equatable, Sendable {
         let notice: String
     }
 
+    /// Maps each machine-discovered dependency declaration key to the inventory
+    /// component ids that cover it. Keys must match discovery exactly.
+    struct DependencyCoverage: Equatable, Sendable {
+        /// `Package.resolved` pin `identity` → component ids.
+        let packageResolved: [String: [String]]
+        /// `Packages/HeelerSSH/Package.swift` `.binaryTarget` `name` → component ids.
+        let heelerSSHBinaryTargets: [String: [String]]
+        /// `project.yml` `packages:` entry name linked from the Heeler app
+        /// target → component ids.
+        let projectPackages: [String: [String]]
+        /// Bundled font family stem under `Resources/Fonts` (e.g. `IBMPlexMono`)
+        /// → component ids.
+        let bundledFontFamilies: [String: [String]]
+    }
+
     let schemaVersion: Int
     let components: [Entry]
+    let dependencyCoverage: DependencyCoverage
 }
 
 enum LicenseNoticeCatalogError: Error, Equatable, LocalizedError {
@@ -161,6 +183,7 @@ enum LicenseNoticeCatalog {
     private struct InventoryDTO: Decodable {
         let schemaVersion: Int
         let components: [ComponentDTO]
+        let dependencyCoverage: DependencyCoverageDTO
     }
 
     private struct ComponentDTO: Decodable {
@@ -170,6 +193,13 @@ enum LicenseNoticeCatalog {
         let source: String?
         let spdx: String
         let notice: String
+    }
+
+    private struct DependencyCoverageDTO: Decodable {
+        let packageResolved: [String: [String]]
+        let heelerSSHBinaryTargets: [String: [String]]
+        let projectPackages: [String: [String]]
+        let bundledFontFamilies: [String: [String]]
     }
 
     private static func decodeInventory(from data: Data) throws -> LicenseInventory {
@@ -213,6 +243,65 @@ enum LicenseNoticeCatalog {
                     notice: notice))
         }
 
-        return LicenseInventory(schemaVersion: dto.schemaVersion, components: entries)
+        let coverage = try decodeCoverage(dto.dependencyCoverage, knownIDs: seen)
+        return LicenseInventory(
+            schemaVersion: dto.schemaVersion,
+            components: entries,
+            dependencyCoverage: coverage)
+    }
+
+    private static func decodeCoverage(
+        _ dto: DependencyCoverageDTO,
+        knownIDs: Set<String>
+    ) throws -> LicenseInventory.DependencyCoverage {
+        func normalize(
+            _ map: [String: [String]],
+            label: String
+        ) throws -> [String: [String]] {
+            var result: [String: [String]] = [:]
+            for (rawKey, rawIDs) in map {
+                let key = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !key.isEmpty else {
+                    throw LicenseNoticeCatalogError.inventoryMalformed(
+                        "dependencyCoverage.\(label) has an empty key")
+                }
+                guard !rawIDs.isEmpty else {
+                    throw LicenseNoticeCatalogError.inventoryMalformed(
+                        "dependencyCoverage.\(label)[\(key)] is empty")
+                }
+                var ids: [String] = []
+                var seenIDs = Set<String>()
+                for rawID in rawIDs {
+                    let id = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !id.isEmpty else {
+                        throw LicenseNoticeCatalogError.inventoryMalformed(
+                            "dependencyCoverage.\(label)[\(key)] has an empty id")
+                    }
+                    guard knownIDs.contains(id) else {
+                        throw LicenseNoticeCatalogError.inventoryMalformed(
+                            "dependencyCoverage.\(label)[\(key)] references unknown component \(id)")
+                    }
+                    guard seenIDs.insert(id).inserted else {
+                        throw LicenseNoticeCatalogError.inventoryMalformed(
+                            "dependencyCoverage.\(label)[\(key)] duplicates component \(id)")
+                    }
+                    ids.append(id)
+                }
+                guard result[key] == nil else {
+                    throw LicenseNoticeCatalogError.inventoryMalformed(
+                        "dependencyCoverage.\(label) has duplicate key \(key)")
+                }
+                result[key] = ids
+            }
+            return result
+        }
+
+        return LicenseInventory.DependencyCoverage(
+            packageResolved: try normalize(dto.packageResolved, label: "packageResolved"),
+            heelerSSHBinaryTargets: try normalize(
+                dto.heelerSSHBinaryTargets, label: "heelerSSHBinaryTargets"),
+            projectPackages: try normalize(dto.projectPackages, label: "projectPackages"),
+            bundledFontFamilies: try normalize(
+                dto.bundledFontFamilies, label: "bundledFontFamilies"))
     }
 }

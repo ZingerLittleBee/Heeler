@@ -1,5 +1,32 @@
 import SwiftUI
 
+/// Pushed destinations under Settings › About.
+///
+/// Each case is the route identity *and* the concrete view type the
+/// `NavigationLink` constructs. Tests bind the identity to
+/// `destinationTypeName` so a decoy `LabeledContent` (or any other view) cannot
+/// keep the route green while unlinking `AcknowledgementsView` (#161 / #135).
+enum SettingsAboutDestination: String, Equatable, CaseIterable, Sendable {
+    case acknowledgements = "settings.about.acknowledgements"
+
+    /// Metatype of the view this route constructs. The only allowed
+    /// destination for `.acknowledgements` is `AcknowledgementsView`.
+    var destinationTypeName: String {
+        switch self {
+        case .acknowledgements:
+            String(reflecting: AcknowledgementsView.self)
+        }
+    }
+
+    @ViewBuilder
+    var destinationView: some View {
+        switch self {
+        case .acknowledgements:
+            AcknowledgementsView()
+        }
+    }
+}
+
 /// The settings sheet root: a shallow menu into the two settings domains.
 /// Keeping it a menu means the per-Host notification rows can grow without
 /// pushing the appearance controls out of reach, and vice versa.
@@ -15,9 +42,10 @@ struct SettingsView: View {
 
     /// Semantic identity of the About → Acknowledgements route.
     ///
-    /// Tests assert this id rather than a row count so a decoy `LabeledContent`
-    /// cannot stand in for the real destination (#161, same lesson as #135).
-    static let acknowledgementsRouteID = "settings.about.acknowledgements"
+    /// Equals `SettingsAboutDestination.acknowledgements.rawValue`. Tests assert
+    /// the id, the destination mapping, and the source wiring together so a
+    /// decoy row cannot stand in for the real screen (#161, same lesson as #135).
+    static let acknowledgementsRouteID = SettingsAboutDestination.acknowledgements.rawValue
 
     /// Rows in the About section, in display order. The body iterates this
     /// list; the Acknowledgements entry is a navigation destination, not a
@@ -48,6 +76,18 @@ struct SettingsView: View {
             case .repository: "settings.about.repository"
             case .privacyPolicy: "settings.about.privacyPolicy"
             }
+        }
+    }
+
+    /// Maps an About row to a pushed destination, or `nil` for rows that do
+    /// not navigate (version, external links). The Acknowledgements
+    /// `NavigationLink` is built only through this mapping.
+    static func aboutDestination(for row: AboutRow) -> SettingsAboutDestination? {
+        switch row {
+        case .acknowledgements:
+            .acknowledgements
+        case .version, .repository, .privacyPolicy:
+            nil
         }
     }
 
@@ -95,12 +135,16 @@ struct SettingsView: View {
         case .version:
             LabeledContent("Version", value: Self.versionString)
         case .acknowledgements:
-            NavigationLink {
-                AcknowledgementsView()
-            } label: {
-                Label("Acknowledgements", systemImage: "doc.text")
+            // Destination comes only from `aboutDestination(for:)` so the
+            // route identity and `AcknowledgementsView` cannot drift apart.
+            if let destination = Self.aboutDestination(for: row) {
+                NavigationLink {
+                    destination.destinationView
+                } label: {
+                    Label("Acknowledgements", systemImage: "doc.text")
+                }
+                .accessibilityIdentifier(destination.rawValue)
             }
-            .accessibilityIdentifier(Self.acknowledgementsRouteID)
         case .repository:
             if let repositoryURL = Self.repositoryURL {
                 Link(destination: repositoryURL) {
