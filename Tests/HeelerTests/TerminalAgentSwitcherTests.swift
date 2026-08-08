@@ -359,18 +359,21 @@ struct TerminalAgentSwitcherTests {
     /// takes first responder in the same pass it reaches the window.
     @MainActor
     @Test func aClaimedHandoffTakesTheKeyboardOverWithoutLettingItDrop() async throws {
+        let center = NotificationCenter()
         let host = UIViewController()
         let window = try await makeTestWindow(
             frame: CGRect(x: 0, y: 0, width: 390, height: 700),
             rootViewController: host)
         defer { window.isHidden = true }
 
-        let plain = TerminalScreenView.makeConfiguredTerminal()
+        let plain = TerminalScreenView.makeConfiguredTerminal(
+            notificationCenter: center)
         plain.frame = CGRect(x: 0, y: 0, width: 390, height: 400)
         host.view.addSubview(plain)
         #expect(!plain.isFirstResponder)
 
-        let claimed = TerminalScreenView.makeConfiguredTerminal()
+        let claimed = TerminalScreenView.makeConfiguredTerminal(
+            notificationCenter: center)
         claimed.raisesKeyboardWhenReady = true
         claimed.frame = CGRect(x: 0, y: 0, width: 390, height: 400)
         host.view.addSubview(claimed)
@@ -421,10 +424,15 @@ struct TerminalAgentSwitcherTests {
     @MainActor
     @Test func aClaimedHandoffFreezesTheGridUntilTheKeyboardSettles() async throws {
         var reportedGrids: [TerminalGrid] = []
+        // The terminal's own center, so a keyboard settling anywhere else in
+        // the process — another test's terminal, say — cannot end this
+        // handoff (#157).
+        let center = NotificationCenter()
         let terminal = TerminalScreenView.makeConfiguredTerminal(
             onSizeChanged: { columns, rows in
                 reportedGrids.append(TerminalGrid(columns: columns, rows: rows))
-            })
+            },
+            notificationCenter: center)
         let host = UIViewController()
         let window = try await makeTestWindow(
             frame: CGRect(x: 0, y: 0, width: 390, height: 700),
@@ -439,6 +447,13 @@ struct TerminalAgentSwitcherTests {
         host.view.addSubview(terminal)
         window.layoutIfNeeded()
 
+        // A foreign settle, posted to the process-wide center inside the
+        // handoff window. Before the isolation above, exactly this thawed the
+        // freeze early — that was #145's second failure — so the window below
+        // doubles as the proof that it no longer can.
+        NotificationCenter.default.post(
+            name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
+
         // The keyboard is arriving: every bounds UIKit animates through here
         // is a half-built grid Ghostty must not be measured against.
         for height: CGFloat in [520, 440, 360] {
@@ -450,9 +465,12 @@ struct TerminalAgentSwitcherTests {
         #expect(reportedGrids.isEmpty)
 
         // The keyboard settled. A keyboard that never left reports no
-        // did-show, so its end frame is what thaws the grid.
-        NotificationCenter.default.post(
-            name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
+        // did-show, so its end frame is what thaws the grid — delivered on
+        // the terminal's own center, the only one it observes.
+        center.post(
+            name: UIResponder.keyboardDidChangeFrameNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 400, width: 390, height: 300)])
         try await Self.waitForGridReportsToStop { reportedGrids }
         let escaped = reportedGrids
         #expect(!escaped.isEmpty, "the settled grid never made it past the freeze")
@@ -495,23 +513,31 @@ struct TerminalAgentSwitcherTests {
             rootViewController: host)
         defer { window.isHidden = true }
 
-        let inherited = TerminalScreenView.makeConfiguredTerminal()
+        // Both terminals observe the test's own center: with every terminal
+        // in the process on the shared one, any keyboard settling anywhere
+        // could end the handoff before the explicit call below (#157).
+        let center = NotificationCenter()
+        let inherited = TerminalScreenView.makeConfiguredTerminal(
+            notificationCenter: center)
         inherited.raisesKeyboardWhenReady = true
         inherited.frame = CGRect(x: 0, y: 0, width: 390, height: 400)
         host.view.addSubview(inherited)
-        // Every terminal in the process listens for the keyboard's frame, so
-        // any keyboard settling anywhere can be what ends this handoff. This
-        // call is then as likely to find the handoff already over as to be what
-        // ends it — but either way it is over once the call returns. Counting
-        // the rebuilds around the call would only catch the republish in the
-        // second case, which is scheduling rather than behaviour.
+        // A foreign settle inside the handoff window must leave the handoff
+        // standing, so the call below is necessarily what ends it — and the
+        // republish lands exactly there, not whenever a neighbour's keyboard
+        // happened to settle.
+        NotificationCenter.default.post(
+            name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
+        let rebuildsBeforeHandoffEnds = inherited.inputViewRebuildCount
         inherited.finishKeyboardTransitionLayout()
+        #expect(inherited.inputViewRebuildCount > rebuildsBeforeHandoffEnds)
 
         // A terminal that raised its own keyboard has no outgoing accessory to
         // account for, so the same call must leave its input views alone. That
         // makes it the yardstick as well: same surface, same window, same
         // keyboard, differing only in having no handoff to pay for.
-        let dismissing = TerminalScreenView.makeConfiguredTerminal()
+        let dismissing = TerminalScreenView.makeConfiguredTerminal(
+            notificationCenter: center)
         dismissing.frame = CGRect(x: 0, y: 0, width: 390, height: 400)
         host.view.addSubview(dismissing)
         dismissing.requestKeyboard()
@@ -525,5 +551,88 @@ struct TerminalAgentSwitcherTests {
             the handoff rebuilt the input views \(inherited.inputViewRebuildCount) times, \
             the dismissal \(dismissing.inputViewRebuildCount)
             """)
+    }
+
+    /// Keyboard notifications are process-wide, and on iPad two of the app's
+    /// windows can each hold a live terminal (#157). Both of these terminals
+    /// observe the default center exactly as production builds them. Generic
+    /// show/hide events, a frame without ownership evidence, and a frame
+    /// leaving the other window must all leave this terminal's handoff alone.
+    /// Only a frame that leaves the keyboard covering this terminal's own
+    /// window may thaw it.
+    @MainActor
+    @Test func anotherWindowsKeyboardEventsDoNotEndTheHandoff() async throws {
+        var reportedGrids: [TerminalGrid] = []
+        let foreign = TerminalScreenView.makeConfiguredTerminal()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSizeChanged: { columns, rows in
+                reportedGrids.append(TerminalGrid(columns: columns, rows: rows))
+            })
+        let foreignHost = UIViewController()
+        let foreignWindow = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 700),
+            rootViewController: foreignHost)
+        let host = UIViewController()
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 700),
+            rootViewController: host)
+        defer {
+            terminal.removeFromSuperview()
+            foreign.removeFromSuperview()
+            window.isHidden = true
+            foreignWindow.isHidden = true
+        }
+
+        foreign.frame = CGRect(x: 0, y: 0, width: 390, height: 400)
+        foreignHost.view.addSubview(foreign)
+
+        // The handoff itself: the terminal claims the keyboard as it reaches
+        // its window and freezes its grid until that keyboard settles.
+        terminal.raisesKeyboardWhenReady = true
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 600)
+        host.view.addSubview(terminal)
+        window.layoutIfNeeded()
+        #expect(terminal.isFirstResponder)
+
+        // The other window's keyboard notifications provide no usable scene
+        // identity. Its end frame leaves nothing covering this terminal's
+        // window. A thaw rebuilds the input views on the spot, so an unchanged
+        // rebuild count proves the freeze survived synchronously.
+        let rebuildsBeforeForeignEvent = terminal.inputViewRebuildCount
+        NotificationCenter.default.post(
+            name: UIResponder.keyboardDidShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 400, width: 390, height: 300)])
+        NotificationCenter.default.post(
+            name: UIResponder.keyboardDidHideNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 700, width: 390, height: 300)])
+        NotificationCenter.default.post(
+            name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
+        NotificationCenter.default.post(
+            name: UIResponder.keyboardDidChangeFrameNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 700, width: 390, height: 300)])
+        #expect(terminal.inputViewRebuildCount == rebuildsBeforeForeignEvent)
+
+        for height: CGFloat in [520, 440, 360] {
+            terminal.frame.size.height = height
+            terminal.setNeedsLayout()
+            terminal.layoutIfNeeded()
+        }
+        #expect(terminal.inputViewRebuildCount == rebuildsBeforeForeignEvent)
+        #expect(reportedGrids.isEmpty)
+
+        // This terminal's own settle: the keyboard ends its move covering
+        // the terminal's window, and the freeze thaws.
+        NotificationCenter.default.post(
+            name: UIResponder.keyboardDidChangeFrameNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 400, width: 390, height: 300)])
+        #expect(terminal.inputViewRebuildCount > rebuildsBeforeForeignEvent)
+        try await Self.waitForGridReportsToStop { reportedGrids }
+        #expect(
+            !reportedGrids.isEmpty,
+            "the terminal's own settle never made it past the freeze")
     }
 }

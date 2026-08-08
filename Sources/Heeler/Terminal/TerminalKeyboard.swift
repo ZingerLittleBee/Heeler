@@ -513,27 +513,33 @@ extension HeelerTerminalView {
         inputView as? TerminalKeysKeyboardView
     }
 
-    func installKeyboardSwitcher() {
+    /// Hooks the terminal into the keyboard's lifecycle, observed through
+    /// `notificationCenter`.
+    ///
+    /// Production observes the process-wide default: UIKit posts keyboard
+    /// notifications there, and there is no per-window center to move to.
+    /// What keeps one window's keyboard from ending another window's handoff
+    /// is the receiving end — a terminal heeds a transition event only for
+    /// its own keyboard (see `textKeyboardFrameDidChange`) — because on iPad
+    /// two of the app's windows can each hold a live terminal (#157). Tests
+    /// pass a center of their own, the same seam `TerminalKeyboardInset`
+    /// takes, so a keyboard settling in a neighbouring test cannot reach this
+    /// terminal at all.
+    /// There is nothing to balance: the center drops an observer that
+    /// deallocates.
+    func installKeyboardSwitcher(notificationCenter: NotificationCenter = .default) {
         inputAssistantItem.leadingBarButtonGroups = []
         inputAssistantItem.trailingBarButtonGroups = []
         _ = inputAccessoryView
-        NotificationCenter.default.addObserver(
+        notificationCenter.addObserver(
             self, selector: #selector(textKeyboardFrameDidChange(_:)),
             name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
-        NotificationCenter.default.addObserver(
+        notificationCenter.addObserver(
             self, selector: #selector(keyboardDismissalWillBegin(_:)),
             name: UIResponder.keyboardWillHideNotification, object: nil)
-        NotificationCenter.default.addObserver(
+        notificationCenter.addObserver(
             self, selector: #selector(keyboardPresentationWillBegin(_:)),
             name: UIResponder.keyboardWillShowNotification, object: nil)
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(keyboardTransitionDidFinish(_:)),
-            name: UIResponder.keyboardDidHideNotification, object: nil)
-        // The other end of a transition: a terminal that inherited the
-        // keyboard keeps its grid frozen until the keyboard has settled.
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(keyboardTransitionDidFinish(_:)),
-            name: UIResponder.keyboardDidShowNotification, object: nil)
     }
 
     func setKeyboardMode(_ mode: TerminalKeyboardMode) {
@@ -605,7 +611,9 @@ extension HeelerTerminalView {
     }
 
     @objc private func textKeyboardFrameDidChange(_ notification: Notification) {
-        keyboardFrameDidSettle()
+        if notificationSettlesOwnKeyboard(notification) {
+            keyboardFrameDidSettle()
+        }
         guard keyboardMode == .text, isFirstResponder, let window,
               let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]
                 as? CGRect
@@ -618,5 +626,23 @@ extension HeelerTerminalView {
             TerminalKeyboardAccessory.preferredHeight)
         recordTextKeyboardHeight(
             totalHeight: totalHeight, accessoryHeight: accessoryHeight)
+    }
+
+    /// Whether a keyboard frame event is this terminal's own settle signal.
+    /// Keyboard notifications are process-wide, and on iPad a second window
+    /// of the app can hold a live terminal of its own (#157): the event
+    /// belongs to this terminal's keyboard only while this terminal is first
+    /// responder, and only when the reported end frame leaves the keyboard
+    /// covering this terminal's window. A frame on its way out belongs to a
+    /// different transition — the other window's, say — and must not end
+    /// this terminal's handoff. A post carrying no frame cannot establish
+    /// ownership and is ignored.
+    private func notificationSettlesOwnKeyboard(_ notification: Notification) -> Bool {
+        guard isFirstResponder, let window else { return false }
+        guard let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]
+            as? CGRect
+        else { return false }
+        let frameInWindow = window.convert(endFrame, from: window.screen.coordinateSpace)
+        return window.bounds.intersection(frameInWindow).height > 0
     }
 }

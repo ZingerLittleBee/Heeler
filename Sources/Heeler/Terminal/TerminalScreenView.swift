@@ -107,7 +107,11 @@ struct TerminalScreenView: UIViewRepresentable {
         keysContext: TerminalKeysContext? = nil,
         theme: TerminalTheme = .default,
         fontSize: Float = TerminalZoomSettings.defaultFontSize,
-        fontFamily: String? = nil
+        fontFamily: String? = nil,
+        /// The center the terminal observes the keyboard through. Tests pass
+        /// their own so one test's keyboard cannot end another test's
+        /// handoff (#157); production keeps the default.
+        notificationCenter: NotificationCenter = .default
     ) -> HeelerTerminalView {
         let view = HeelerTerminalView(
             frame: .zero,
@@ -121,7 +125,7 @@ struct TerminalScreenView: UIViewRepresentable {
             theme: theme,
             fontSize: fontSize,
             fontFamily: fontFamily)
-        view.installKeyboardSwitcher()
+        view.installKeyboardSwitcher(notificationCenter: notificationCenter)
         return view
     }
 
@@ -976,13 +980,13 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         }
     }
 
-    @objc func keyboardTransitionDidFinish(_: Notification) {
-        finishKeyboardTransitionLayout()
-    }
-
     /// The keyboard reached its end frame. An inherited keyboard never leaves,
     /// so this is the only settled signal it gets — there is no did-show to
-    /// wait for.
+    /// wait for. Show/hide notifications are process-wide and carry no scene
+    /// ownership, so they cannot safely end a handoff. Whose keyboard it is,
+    /// the caller answers from the end frame: only one that leaves the
+    /// keyboard covering this terminal's own window may thaw the freeze
+    /// (#157).
     func keyboardFrameDidSettle() {
         guard keyboardTransitionEndsOnFrameChange else { return }
         finishKeyboardTransitionLayout()
