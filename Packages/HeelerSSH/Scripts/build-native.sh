@@ -219,6 +219,40 @@ xcodebuild -create-xcframework \
 
 cp "${LIBSSH2_SOURCE}/COPYING" "${GENERATED_ARTIFACTS}/Notices/libssh2-BSD-3-Clause.txt"
 cp "${OPENSSL_SOURCE}/LICENSE.txt" "${GENERATED_ARTIFACTS}/Notices/OpenSSL-Apache-2.0.txt"
+# Separately licensed objects inside libssh2 1.11.1 (see REUSE SPDX tags in
+# the source headers). The app inventory bundles these next to COPYING (#161).
+extract_c_header_notice() {
+    local source_file="$1"
+    local destination="$2"
+    # Prefer the comment block that carries SPDX-License-Identifier so a
+    # leading one-line RCS banner (bcrypt_pbkdf.c) is not captured alone.
+    awk '
+        /^\/\*/ {
+            in_block = 1
+            block = $0 ORS
+            if ($0 ~ /\*\//) {
+                if (block ~ /SPDX-License-Identifier/) { printf "%s", block; exit }
+                in_block = 0
+                block = ""
+            }
+            next
+        }
+        in_block {
+            block = block $0 ORS
+            if ($0 ~ /\*\//) {
+                if (block ~ /SPDX-License-Identifier/) { printf "%s", block; exit }
+                in_block = 0
+                block = ""
+            }
+        }
+    ' "${source_file}" > "${destination}"
+}
+extract_c_header_notice \
+    "${LIBSSH2_SOURCE}/src/bcrypt_pbkdf.c" \
+    "${GENERATED_ARTIFACTS}/Notices/libssh2-bcrypt_pbkdf-MIT.txt"
+extract_c_header_notice \
+    "${LIBSSH2_SOURCE}/src/cipher-chachapoly.c" \
+    "${GENERATED_ARTIFACTS}/Notices/libssh2-cipher-chachapoly-BSD-2-Clause.txt"
 
 XCODE_VERSION="$(xcodebuild -version | paste -sd ';' -)"
 CLANG_VERSION="$(xcrun clang --version | sed -n '1p')"

@@ -30,10 +30,19 @@ targets:
     type: application
     platform: iOS
     sources:
-      - Sources/Heeler
+      - path: Sources/Heeler
+        excludes:
+          # Bundled as a folder reference below so notice files stay under
+          # Notices/ in the app bundle rather than flattening to the root.
+          - Resources/Notices
       # Notification code shared with the service extension: envelope
       # decryption, Notification Key store, alert renderer (ADR 0008).
       - Sources/HeelerNotificationCore
+      # Audited third-party notices + inventory.json (#161). Folder reference
+      # preserves the Notices/ subdirectory the catalogue resolves against.
+      - path: Sources/Heeler/Resources/Notices
+        type: folder
+        buildPhase: resources
     entitlements:
       path: Sources/Heeler/Heeler.entitlements
       properties:
