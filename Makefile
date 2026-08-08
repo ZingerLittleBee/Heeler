@@ -32,9 +32,10 @@ build: generate ## Build Debug for a physical device without installing
 		-destination 'generic/platform=iOS' -derivedDataPath $(DERIVED) \
 		-allowProvisioningUpdates build
 
-test: generate ## Run the unit test suite on a simulator
+test: generate ## Run the app and HeelerSSH unit test suites on a simulator
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) \
 		-destination 'platform=iOS Simulator,name=iPhone 17' test
+	scripts/run-heelerssh-package-tests.sh 'platform=iOS Simulator,name=iPhone 17'
 
 check-device:
 	@test -n "$(DEVICE)" || { echo "No physical device found; pass DEVICE=<devicectl uuid>"; exit 1; }
