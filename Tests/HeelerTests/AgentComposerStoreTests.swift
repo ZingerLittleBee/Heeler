@@ -148,7 +148,8 @@ struct AgentComposerStoreTests {
 
     @Test func withdrawingFailurePreservesTheFailedTextAndNewDraft() async throws {
         let transport = ScriptedTransport()
-        await transport.setAgentPromptFailure(TransportError.sshUnreachable)
+        await transport.setAgentPromptFailure(
+            TransportError.sshUnreachable(detail: "connection dropped"))
         let store = AgentComposerStore(target: "w1:p1") { params in
             try await transport.promptAgent(params)
         }
