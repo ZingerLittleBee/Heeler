@@ -71,9 +71,29 @@ _Avoid_: sandbox, branch copy, checkout folder
 The native dashboard surface: the flat, status-sorted list of Agents across Hosts, plus the Agent detail screen.
 _Avoid_: dashboard, home
 
+**Monitor**:
+The default Agent detail surface: a non-realtime view of the Agent's pane
+showing the latest screen snapshot plus whatever history herdr could capture
+while the Agent was idle, with a Composer for replying. Content is honestly
+stale — freshness is signaled, never implied — and history beyond what was
+captured is unavailable, not loading. Reached from the Console list; Attach is
+its realtime escape hatch.
+_Avoid_: observe, preview, read-only terminal (replying is first-class), chat view
+
+**Composer**:
+The local input control inside Monitor: a native draft field that composes a
+message entirely on device and delivers it in one piece, with a control-key
+strip for keys that cannot be typed. A draft insertion (Snippet, Skill, image
+path) edits the draft and nothing more; delivery is a separate, explicit act.
+Delivered means the Host accepted the text into the pane — whether the Agent
+queues or acts on it is the Agent's business, and the Composer never claims
+otherwise.
+_Avoid_: reply bar, compose bar (the shelved predecessors), input box, message box
+
 **Attach**:
-The Agent detail surface: full interactive terminal control of the pane through
-the embedded terminal. The normal terminal buffer uses native local scrollback.
+The realtime Agent surface, entered from Monitor as its escape hatch: full
+interactive terminal control of the pane through the embedded terminal, one
+keystroke per round trip. The normal terminal buffer uses native local scrollback.
 Alternate-screen TUIs map vertical touch drags and momentum to terminal wheel rows.
 Only a tap near the input area opens the software keyboard, so a touch anywhere
 else is never answered with a keyboard-driven viewport resize. In the normal
@@ -109,7 +129,7 @@ A user-invoked insertion of plain text from the iOS clipboard into Attach. Singl
 _Avoid_: Control V, image paste
 
 **Agent Notification**:
-A notification telling the user an Agent crossed a notify-worthy status boundary (Blocked, Done): an APNs push while backgrounded or killed, an in-app banner off the live event stream while foregrounded. Deep-links to the Agent's Attach surface.
+A notification telling the user an Agent crossed a notify-worthy status boundary (Blocked, Done): an APNs push while backgrounded or killed, an in-app banner off the live event stream while foregrounded. Deep-links to the Agent's detail surface.
 _Avoid_: alert, push message, task notification
 
 **Push Relay**:
