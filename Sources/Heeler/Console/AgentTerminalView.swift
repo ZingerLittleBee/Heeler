@@ -52,6 +52,15 @@ struct AgentTerminalView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.openURL) private var openURL
 
+    private var statusBarInset: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .filter { $0.activationState == .foregroundActive }
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)?
+            .safeAreaInsets.top ?? 0
+    }
+
     init(
         agent: ConsoleAgent,
         console: ConsoleStore,
@@ -426,23 +435,16 @@ struct AgentTerminalView: View {
                 .accessibilityHidden(composerKeyboardPresentation != .tools)
             }
         }
-        // background(_:ignoresSafeAreaEdges:) defaults to .all: the theme
-        // colour reaches into the status-bar and home-indicator areas without
-        // moving the terminal grid or touching keyboard resize. Must stay
-        // outside the safeAreaInset above.
+        // Pull the surface under the transparent navigation bar, but keep its
+        // first row below the system status bar. Padding remains inside the
+        // fixed full-screen proposal, so the Composer stays bottom-aligned.
+        .padding(.top, statusBarInset)
         .background(
             terminal.themes.selection(for: colorScheme)
                 .surfaceBackground(for: colorScheme))
         // Let terminal output occupy the navigation bar region while keeping
         // native Back navigation and its interactive edge gesture.
         .ignoresSafeArea(.container, edges: .top)
-        .overlay(alignment: .top) {
-            AgentStatusBarBackground(
-                color: terminal.themes.selection(for: colorScheme)
-                    .surfaceBackground(for: colorScheme))
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-        }
         // Keep an icon-only native back bar in its own layout region. Hiding
         // the bar also disables interactive pop in a collapsed split view;
         // keeping it visible preserves both the button and the edge gesture
@@ -703,62 +705,6 @@ struct AgentTerminalView: View {
 
     static func displayTitle(for agent: ConsoleAgent) -> String {
         agent.agent.title.isEmpty ? agent.agent.displayName : agent.agent.title
-    }
-}
-
-/// Covers only the window's status-bar safe area. SwiftUI reports a zero top
-/// inset after `ignoresSafeArea`, so the real window inset is required here.
-private struct AgentStatusBarBackground: UIViewRepresentable {
-    let color: Color
-
-    func makeUIView(context: Context) -> StatusBarShieldView {
-        StatusBarShieldView(color: UIColor(color))
-    }
-
-    func updateUIView(_ uiView: StatusBarShieldView, context: Context) {
-        uiView.shieldColor = UIColor(color)
-    }
-
-    @MainActor
-    final class StatusBarShieldView: UIView {
-        var shieldColor: UIColor {
-            didSet { shield.backgroundColor = shieldColor }
-        }
-
-        private let shield = UIView()
-
-        init(color: UIColor) {
-            shieldColor = color
-            super.init(frame: .zero)
-            backgroundColor = .clear
-            isUserInteractionEnabled = false
-            shield.backgroundColor = color
-            addSubview(shield)
-        }
-
-        @available(*, unavailable)
-        required init?(coder: NSCoder) {
-            fatalError("init(coder:) has not been implemented")
-        }
-
-        override func didMoveToWindow() {
-            super.didMoveToWindow()
-            setNeedsLayout()
-        }
-
-        override func safeAreaInsetsDidChange() {
-            super.safeAreaInsetsDidChange()
-            setNeedsLayout()
-        }
-
-        override func layoutSubviews() {
-            super.layoutSubviews()
-            shield.frame = CGRect(
-                x: 0,
-                y: 0,
-                width: bounds.width,
-                height: window?.safeAreaInsets.top ?? 0)
-        }
     }
 }
 
