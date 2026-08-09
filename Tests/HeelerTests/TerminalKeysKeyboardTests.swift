@@ -31,6 +31,44 @@ struct TerminalKeysKeyboardTests {
         return (defaults, { defaults.removePersistentDomain(forName: suiteName) })
     }
 
+    @Test func composerReplacesTheFirstRespondersInputViewInPlace() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let textView = AgentComposerUITextView()
+        let store = AgentComposerStore(target: "w1:p1") { _ in
+            throw CancellationError()
+        }
+        let context = makeContext(defaults: defaults)
+
+        textView.updateKeyboard(
+            presentation: .system,
+            height: 335,
+            store: store,
+            context: context,
+            quickKeysEnabled: true,
+            sendQuickKey: { _ in })
+        #expect(textView.inputView == nil)
+
+        textView.updateKeyboard(
+            presentation: .tools,
+            height: 335,
+            store: store,
+            context: context,
+            quickKeysEnabled: true,
+            sendQuickKey: { _ in })
+        let tools = try #require(textView.inputView as? AgentToolsInputView)
+        #expect(tools.intrinsicContentSize.height == 335)
+
+        textView.updateKeyboard(
+            presentation: .system,
+            height: 335,
+            store: store,
+            context: context,
+            quickKeysEnabled: true,
+            sendQuickKey: { _ in })
+        #expect(textView.inputView == nil)
+    }
+
     @Test func controlKeysAreTheDefaultTab() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }

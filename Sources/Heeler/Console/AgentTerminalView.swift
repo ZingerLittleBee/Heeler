@@ -140,6 +140,12 @@ struct AgentTerminalView: View {
 
     var body: some View {
         lifecycleSurface
+            // Keyboard avoidance is owned by `TerminalKeyboardInset`. This
+            // must sit at the detail root: applying it only inside
+            // `terminalSurface` lets an ancestor accept UIKit's keyboard safe
+            // area first, translating the entire terminal and Composer even
+            // when their explicit inset stays byte-for-byte unchanged.
+            .ignoresSafeArea(.keyboard)
             .task { composer?.open() }
     }
 
@@ -350,13 +356,7 @@ struct AgentTerminalView: View {
                     keyboardHeight: composerKeyboardLayout.availableToolsHeight,
                     keyboardPresentation: $composerKeyboardPresentation,
                     quickKeysEnabled: attach.isLocalInputEnabled,
-                    sendQuickKey: keyboardControl.sendQuickKey,
-                    beginKeyboardTypeSwitch: { expectsSystemKeyboard in
-                        keyboardControl.beginKeyboardTypeSwitch()
-                        keyboardInset.beginKeyboardTypeSwitch(
-                            expectsSystemKeyboard: expectsSystemKeyboard,
-                            onSettled: keyboardControl.finishKeyboardTypeSwitch)
-                    })
+                    sendQuickKey: keyboardControl.sendQuickKey)
             } else {
                 TerminalAgentSwitcherRow(
                     switcher: agentSwitcher,
@@ -372,16 +372,6 @@ struct AgentTerminalView: View {
         .modifier(
             AgentTerminalKeyboardInsetModifier(
                 height: composerKeyboardLayout.contentInset))
-        .overlay(alignment: .bottom) {
-            if let composer, composerKeyboardPresentation == .tools {
-                AgentToolsKeyboard(
-                    store: composer,
-                    context: terminalKeysContext,
-                    height: composerKeyboardLayout.toolsHeight,
-                    quickKeysEnabled: attach.isLocalInputEnabled,
-                    sendQuickKey: keyboardControl.sendQuickKey)
-            }
-        }
         // background(_:ignoresSafeAreaEdges:) defaults to .all: the theme
         // colour reaches under the transparent navigation bar and into the
         // home-indicator area without moving the terminal grid or touching
@@ -728,6 +718,5 @@ private struct AgentTerminalKeyboardInsetModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(.bottom, height)
-            .ignoresSafeArea(.keyboard)
     }
 }

@@ -23,9 +23,10 @@ Entries reference the issue that motivated them.
   visible, a neighbouring control switches between the iOS keyboard and a
   tabbed tools keyboard. Its Agent controls send Esc, Tab, Shift-Tab, arrows,
   Enter, and Backspace directly to the Agent without changing the draft. The
-  two keyboards share the same full height, so switching does not move the
-  Composer, resize or stretch the terminal, or ask Ghostty to lay out its grid
-  again, including while candidate and paste rows change during replacement.
+  Composer replaces them in place inside UIKit's keyboard window, and the two
+  keyboards share the same full height including the Home Indicator area, so
+  switching does not move the Composer or resize, stretch, or relayout the
+  terminal.
   (#182)
 
 - Settings > About now has Acknowledgements: every redistributed third-party

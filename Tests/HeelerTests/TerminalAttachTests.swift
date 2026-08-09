@@ -1206,49 +1206,6 @@ struct TerminalAttachTests {
         #expect(inset.lastPresentedHeight == 402)
     }
 
-    /// Candidate and paste rows may publish a different height while UIKit is
-    /// replacing keyboard implementations. Neither direction may let those
-    /// transient measurements change the terminal footprint.
-    @MainActor
-    @Test func aKeyboardTypeSwitchPinsTheMeasuredFootprintUntilSettlement() async throws {
-        let center = NotificationCenter()
-        var settledCount = 0
-        let inset = TerminalKeyboardInset(notificationCenter: center) { frame in
-            frame.height == 436 ? 402 : 365
-        }
-        let frame = CGRect(x: 0, y: 554, width: 440, height: 436)
-        let transientFrame = CGRect(x: 0, y: 591, width: 440, height: 399)
-
-        center.post(
-            name: UIResponder.keyboardWillShowNotification, object: nil,
-            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: frame])
-        try await Task.sleep(for: .milliseconds(120))
-
-        inset.beginKeyboardTypeSwitch(expectsSystemKeyboard: false) {
-            settledCount += 1
-        }
-        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
-        #expect(inset.height == 402)
-        #expect(inset.lastPresentedHeight == 402)
-        center.post(name: UIResponder.keyboardDidHideNotification, object: nil)
-        #expect(inset.height == 0)
-        #expect(inset.lastPresentedHeight == 402)
-
-        inset.beginKeyboardTypeSwitch(expectsSystemKeyboard: true) {
-            settledCount += 1
-        }
-        center.post(
-            name: UIResponder.keyboardWillChangeFrameNotification, object: nil,
-            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: transientFrame])
-        try await Task.sleep(for: .milliseconds(120))
-        #expect(inset.height == 0)
-        #expect(inset.lastPresentedHeight == 402)
-        center.post(name: UIResponder.keyboardDidShowNotification, object: nil)
-        #expect(inset.height == 402)
-        #expect(inset.lastPresentedHeight == 402)
-        #expect(settledCount == 2)
-    }
-
     @Test func agentKeyboardReplacementKeepsTheTerminalInsetStable() {
         let system = AgentComposerKeyboardLayout(
             currentHeight: 402, lastPresentedHeight: 402,
@@ -1267,102 +1224,12 @@ struct TerminalAttachTests {
             currentHeight: 402, lastPresentedHeight: 402,
             presentation: .hidden))
         #expect(toolsBeforeUIKitHides.contentInset == 402)
-        #expect(toolsAfterUIKitHides.toolsHeight == 402)
         #expect(system.availableToolsHeight == 402)
         #expect(systemBeforeUIKitShows.contentInset == 402)
         #expect([
             system, toolsBeforeUIKitHides, toolsAfterUIKitHides,
             systemBeforeUIKitShows,
         ].map(\.contentInset) == [402, 402, 402, 402])
-    }
-
-    /// The two keyboard modes occupy the same outer footprint, but inserting
-    /// the tools overlay still invalidates the surrounding SwiftUI tree. That
-    /// presentation-only update must not cross into Ghostty as another layout
-    /// pass: Ghostty synchronizes and redraws its grid from every one.
-    @MainActor
-    @Test func aKeyboardTypeSwitchDoesNotLayGhosttyOutAgain() async throws {
-        struct Harness: View {
-            let feed: TerminalByteFeed
-            let keyboardControl: TerminalKeyboardControl
-            let presentation: AgentComposerKeyboardPresentation
-
-            var body: some View {
-                TerminalScreenView(feed: feed, keyboardControl: keyboardControl)
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        Color.clear.frame(height: 160)
-                    }
-                    .padding(.bottom, 402)
-                    .ignoresSafeArea(.keyboard)
-                    .overlay(alignment: .bottom) {
-                        if presentation == .tools {
-                            Color.clear.frame(height: 402)
-                        }
-                    }
-            }
-        }
-
-        let feed = TerminalByteFeed()
-        let keyboardControl = TerminalKeyboardControl()
-        let controller = UIHostingController(
-            rootView: Harness(
-                feed: feed, keyboardControl: keyboardControl,
-                presentation: .system))
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
-            rootViewController: controller)
-        defer { window.isHidden = true }
-        controller.view.layoutIfNeeded()
-        let terminal = try #require(keyboardControl.terminal)
-        let frame = terminal.convert(terminal.bounds, to: window)
-        let layoutPassCount = terminal.ghosttyLayoutPassCount
-
-        keyboardControl.beginKeyboardTypeSwitch()
-        controller.rootView = Harness(
-            feed: feed, keyboardControl: keyboardControl,
-            presentation: .tools)
-        // UIKit invalidates the terminal while it removes the system keyboard,
-        // even though the reserved terminal frame does not change.
-        terminal.setNeedsLayout()
-        controller.view.layoutIfNeeded()
-        await Task.yield()
-        controller.view.layoutIfNeeded()
-        keyboardControl.finishKeyboardTypeSwitch()
-        controller.view.layoutIfNeeded()
-
-        #expect(keyboardControl.terminal === terminal)
-        #expect(terminal.convert(terminal.bounds, to: window) == frame)
-        #expect(
-            terminal.ghosttyLayoutPassCount == layoutPassCount,
-            "switching keyboard type laid Ghostty out again")
-    }
-
-    /// A real geometry change that happens during the presentation freeze is
-    /// deferred, not lost. Ghostty receives the settled size exactly once.
-    @MainActor
-    @Test func aRealResizeDuringKeyboardTypeSwitchLaysGhosttyOutOnce() async throws {
-        let terminal = TerminalScreenView.makeConfiguredTerminal(
-            notificationCenter: NotificationCenter())
-        terminal.frame = CGRect(x: 0, y: 0, width: 402, height: 472)
-        terminal.setNeedsLayout()
-        terminal.layoutIfNeeded()
-        let layoutPassCount = terminal.ghosttyLayoutPassCount
-        let layerFrame = terminal.layer.frame
-
-        terminal.beginKeyboardTypeSwitch()
-        terminal.frame.size.height = 512
-        terminal.setNeedsLayout()
-        terminal.layoutIfNeeded()
-
-        #expect(terminal.bounds.height == 472)
-        #expect(terminal.layer.bounds.height == 472)
-        #expect(terminal.layer.frame == layerFrame)
-        #expect(terminal.ghosttyLayoutPassCount == layoutPassCount)
-
-        terminal.finishKeyboardTypeSwitch()
-
-        #expect(terminal.layer.bounds.height == 512)
-        #expect(terminal.ghosttyLayoutPassCount == layoutPassCount + 1)
     }
 
     /// Backgrounding hides the keyboard — animating the accessory out — but
