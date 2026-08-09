@@ -126,11 +126,11 @@ struct AgentDetailView: View {
 
     @ViewBuilder
     private var monitorSurface: some View {
-        if let snapshot = monitor.snapshot {
-            if snapshot.characters.isEmpty {
+        if monitor.hasSnapshot {
+            if monitor.isSnapshotEmpty {
                 emptyConversation
             } else {
-                snapshotScrollView(snapshot)
+                snapshotScrollView()
             }
         } else {
             switch monitor.state {
@@ -149,13 +149,13 @@ struct AgentDetailView: View {
         }
     }
 
-    private func snapshotScrollView(_ snapshot: AttributedString) -> some View {
+    private func snapshotScrollView() -> some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     monitorNotices
                     historyTopMarker
-                    agentTurn(snapshot)
+                    agentTurn
 
                     AgentSentMessagesView(store: composer)
 
@@ -241,9 +241,20 @@ struct AgentDetailView: View {
         .refreshable { await monitor.refresh() }
     }
 
-    private func agentTurn(_ snapshot: AttributedString) -> some View {
+    private var agentTurn: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(snapshot)
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(monitor.snapshotSegments) { segment in
+                    if let accessibilityLabel = segment.accessibilityLabel {
+                        Text(segment.text)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(accessibilityLabel)
+                    } else {
+                        Text(segment.text)
+                            .accessibilityElement(children: .combine)
+                    }
+                }
+            }
                 .font(snapshotFont)
                 .lineSpacing(horizontalSizeClass == .compact ? 2 : 3)
                 .foregroundStyle(.white)
