@@ -47,7 +47,9 @@ enum AgentQuickKey: CaseIterable, Hashable {
         case .escape: "Esc"
         case .tab: "Tab"
         case .shiftTab: "⇧Tab"
-        case .left, .up, .down, .right, .enter, .backspace: nil
+        case .enter: "Enter"
+        case .backspace: "Backspace"
+        case .left, .up, .down, .right: nil
         }
     }
 
@@ -57,9 +59,7 @@ enum AgentQuickKey: CaseIterable, Hashable {
         case .up: "arrow.up"
         case .down: "arrow.down"
         case .right: "arrow.right"
-        case .enter: "return"
-        case .backspace: "delete.left"
-        case .escape, .tab, .shiftTab: nil
+        case .escape, .tab, .shiftTab, .enter, .backspace: nil
         }
     }
 

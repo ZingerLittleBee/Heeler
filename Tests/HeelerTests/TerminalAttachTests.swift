@@ -1422,6 +1422,10 @@ struct TerminalAttachTests {
         #expect(AgentQuickKey.right.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x43])
         #expect(AgentQuickKey.enter.bytes(applicationCursor: false) == [0x0D])
         #expect(AgentQuickKey.backspace.bytes(applicationCursor: false) == [0x7F])
+        #expect(AgentQuickKey.enter.title == "Enter")
+        #expect(AgentQuickKey.backspace.title == "Backspace")
+        #expect(AgentQuickKey.enter.systemImageName == nil)
+        #expect(AgentQuickKey.backspace.systemImageName == nil)
     }
 
     @MainActor
