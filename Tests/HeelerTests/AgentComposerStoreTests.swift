@@ -291,6 +291,57 @@ struct AgentComposerStoreTests {
         #expect(partition.pending.map(\.state) == [.delivered(.acknowledged)])
     }
 
+    /// Empty snapshots still receive a `capturedAt` stamp in the monitor store,
+    /// but the empty-output UI path must pass `nil` so delivered echoes stay
+    /// full bubbles rather than "N earlier messages" with nothing on screen.
+    @Test func partitionKeepsDeliveredPendingWhenEmptySnapshotSuppressesCapture() async throws {
+        let transport = ScriptedTransport()
+        let sentAt = Date(timeIntervalSince1970: 1_700_000_100)
+        // A successful empty read would stamp a later capture; the empty branch
+        // deliberately ignores it.
+        let emptyReadCapturedAt = Date(timeIntervalSince1970: 1_700_000_300)
+        let store = AgentComposerStore(target: "w1:p1", now: { sentAt }) { params in
+            try await transport.promptAgent(params)
+        }
+        store.replaceDraft(with: "Never shown in empty output")
+        await store.send()
+
+        let message = try #require(store.messages.first)
+        #expect(AgentComposerStore.isReflected(message, capturedAt: emptyReadCapturedAt))
+        let emptyBranchPartition = store.partitionMessages(capturedAt: nil)
+        #expect(emptyBranchPartition.reflected.isEmpty)
+        #expect(emptyBranchPartition.pending.map(\.text) == ["Never shown in empty output"])
+    }
+
+    @Test func retryRefreshesSentAtSoMessageDoesNotCollapseAgainstPriorCapture() async throws {
+        let transport = ScriptedTransport()
+        await transport.setAgentPromptFailure(TransportError.timedOut)
+        let clock = MutableDateClock(Date(timeIntervalSince1970: 1_700_000_050))
+        let store = AgentComposerStore(target: "w1:p1", now: { clock.now }) { params in
+            try await transport.promptAgent(params)
+        }
+        store.replaceDraft(with: "Retry me")
+        await store.send()
+        let failed = try #require(store.messages.first)
+        #expect(failed.sentAt == Date(timeIntervalSince1970: 1_700_000_050))
+        #expect(
+            failed.state
+                == .failed("The Host did not answer. Check the connection and retry."))
+
+        let captureBetweenAttempts = Date(timeIntervalSince1970: 1_700_000_100)
+        await transport.setAgentPromptFailure(nil)
+        clock.advance(by: 100)
+        await store.retry(failed.id)
+
+        let retried = try #require(store.messages.first)
+        #expect(retried.sentAt == Date(timeIntervalSince1970: 1_700_000_150))
+        #expect(retried.state == .delivered(.acknowledged))
+        // Without refreshing sentAt, the original 050 would collapse under 100.
+        let partition = store.partitionMessages(capturedAt: captureBetweenAttempts)
+        #expect(partition.reflected.isEmpty)
+        #expect(partition.pending.map(\.text) == ["Retry me"])
+    }
+
     @Test func partitionReflectsDeliveredMessagesOlderThanSnapshot() async {
         let transport = ScriptedTransport()
         let sentAt = Date(timeIntervalSince1970: 1_700_000_100)

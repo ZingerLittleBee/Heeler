@@ -85,6 +85,8 @@ struct AgentSentMessagesView: View {
                         Text(Self.reflectedSummaryLabel(count: partition.reflected.count))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
                     }
                 }
 

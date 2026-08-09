@@ -134,7 +134,9 @@ struct AgentDetailView: View {
                                 .buttonStyle(.bordered)
                             }
 
-                            AgentSentMessagesView(store: composer, capturedAt: monitor.capturedAt)
+                            // Empty snapshots still stamp capturedAt, but nothing is
+                            // on screen — do not collapse delivered echoes as "earlier".
+                            AgentSentMessagesView(store: composer, capturedAt: nil)
                         }
                         .padding()
                         .frame(maxWidth: .infinity, minHeight: 360)

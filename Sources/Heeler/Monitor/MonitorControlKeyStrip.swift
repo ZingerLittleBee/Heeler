@@ -1,12 +1,12 @@
 import SwiftUI
 
-/// Monitor's compact control-key row (#183). The three prompt actions stay
-/// one tap away; directional keys live behind an explicit menu so narrow
-/// layouts never hide controls offscreen. Spellings live on
+/// Monitor's compact control-key row (#183). Enter, Esc, and Ctrl+C stay one
+/// tap away; arrows live behind a menu. Spellings live on
 /// ``MonitorControlKey``; this view only presents the buttons.
 ///
-/// Scales with Dynamic Type: a single HStack when width allows, otherwise a
-/// horizontally scrollable strip so every target stays ≥44pt.
+/// Layout prefers a single HStack. When Dynamic Type or a narrow width does
+/// not fit, a horizontally scrollable strip (with indicators) keeps every
+/// target ≥44pt without clipping keys offscreen.
 struct MonitorControlKeyStrip: View {
     let isEnabled: Bool
     let onTap: (MonitorControlKey) -> Void
@@ -19,7 +19,7 @@ struct MonitorControlKeyStrip: View {
                 directionalMenu
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal, showsIndicators: true) {
                 HStack(spacing: 8) {
                     quickKeyButtons
                     directionalMenu
