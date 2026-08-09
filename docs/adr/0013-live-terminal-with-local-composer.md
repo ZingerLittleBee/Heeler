@@ -7,9 +7,10 @@ status: accepted
 Agent detail displays the live Attach PTY through libghostty and keeps the
 native Composer introduced by ADR 0012. The terminal is a display surface:
 incoming PTY bytes, scrollback, links, theme, font settings, and grid resize
-remain active, but keyboard, paste, snippet, mouse-reporting, and other local
-terminal input do not reach the PTY. Send delivers the complete Composer draft
-through one `agent.prompt` request.
+remain active. Touch scrolling continues to send semantic wheel input when an
+alternate-screen TUI requests it, but keyboard, paste, snippet, pointer-click,
+and other authored input do not reach the PTY. Send delivers the complete
+Composer draft through one `agent.prompt` request.
 
 This supersedes ADR 0012's non-realtime Monitor and separate interactive
 Attach destination. The snapshot renderer, polling cadence, and locally

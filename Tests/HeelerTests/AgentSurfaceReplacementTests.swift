@@ -22,7 +22,7 @@ import UIKit
 @Suite("Agent surface replacement")
 struct AgentSurfaceReplacementTests {
     /// The production detail combines a live Ghostty renderer with Composer.
-    /// Ghostty must still own the PTY grid, but none of its local input may
+    /// Ghostty must still own the PTY grid, but none of its authored input may
     /// bypass the one-shot `agent.prompt` path.
     @Test func composerDetailRendersAttachButSendsOnlyThroughPrompt() async throws {
         let transport = ScriptedTransport()
@@ -41,6 +41,12 @@ struct AgentSurfaceReplacementTests {
             rootViewController: controller)
         defer { window.isHidden = true }
         controller.view.layoutIfNeeded()
+        try #require(await Self.eventually {
+            controller.view.layoutIfNeeded()
+            return await transport.attachRequests.count == 1
+        })
+        #expect(await transport.emitAttachOutput(Data("live-frame".utf8)))
+        try #require(await Self.eventually { owner.terminalStatus == .live })
 
         let terminal = try #require(Self.terminals(in: controller.view).first)
         #expect(!terminal.isLocalInputEnabled)
@@ -51,6 +57,13 @@ struct AgentSurfaceReplacementTests {
         #expect(
             await transport.attachInputs.allSatisfy {
                 if case .keystrokes = $0 { false } else { true }
+            })
+
+        terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))
+        #expect(terminal.scrollTouch(translationY: 32) != 0)
+        #expect(
+            await transport.attachInputs.contains {
+                if case .scroll = $0 { true } else { false }
             })
 
         composer.replaceDraft(with: "Continue from the current output")

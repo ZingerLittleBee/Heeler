@@ -11,7 +11,8 @@ Entries reference the issue that motivated them.
 
 - Agent detail now combines the complete live libghostty terminal with a local
   Composer. The terminal preserves TUI rendering, scrollback, and PTY resize,
-  but no longer accepts direct keyboard, paste, or mouse-reporting input.
+  including touch scrolling in alternate-screen TUIs, but no longer accepts
+  direct keyboard, paste, or pointer-click input.
   Drafting makes no network requests;
   Send delivers the complete message once and shows delivery, Agent work, and
   Done states from acknowledgments and status pushes. Failed messages can be
