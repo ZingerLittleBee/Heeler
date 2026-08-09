@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Testing
+import UIKit
 
 @testable import Heeler
 
@@ -15,9 +16,9 @@ struct ANSISnapshotRendererTests {
 
     private struct ExpectedRun: Sendable {
         let text: String
-        var foreground: RGB?
+        var foreground: ExpectedColor?
         var foregroundOpacity = 1.0
-        var background: RGB?
+        var background: ExpectedColor?
         var bold = false
         var italic = false
         var underline = false
@@ -33,13 +34,54 @@ struct ANSISnapshotRendererTests {
             self.green = green
             self.blue = blue
         }
+    }
 
-        var color: Color {
-            Color(
-                red: Double(red) / 255,
-                green: Double(green) / 255,
-                blue: Double(blue) / 255)
+    /// How a run's color should resolve in one appearance: an exact 8-bit
+    /// value, or a clamped value that only has to satisfy the contrast
+    /// contract against the snapshot surface.
+    private enum ColorExpectation: Sendable {
+        case exact(RGB)
+        case clamped
+    }
+
+    private struct ExpectedColor: Sendable {
+        let light: ColorExpectation
+        let dark: ColorExpectation
+
+        static func exact(_ light: RGB, _ dark: RGB) -> ExpectedColor {
+            ExpectedColor(light: .exact(light), dark: .exact(dark))
         }
+
+        static func adaptive(light: ColorExpectation, dark: ColorExpectation) -> ExpectedColor {
+            ExpectedColor(light: light, dark: dark)
+        }
+    }
+
+    // Mirrors the renderer's base palette; every value clears WCAG 4.5:1 on
+    // `secondarySystemGroupedBackground` in its appearance, so the renderer's
+    // clamp must leave them untouched.
+    private static let palette: [(light: RGB, dark: RGB)] = [
+        (RGB(0x1C, 0x1C, 0x1E), RGB(0x8C, 0x8C, 0x8C)),
+        (RGB(0xA3, 0x15, 0x15), RGB(0xF9, 0x75, 0x83)),
+        (RGB(0x0A, 0x6E, 0x0A), RGB(0x56, 0xD3, 0x64)),
+        (RGB(0x6D, 0x6D, 0x00), RGB(0xE5, 0xE5, 0x10)),
+        (RGB(0x04, 0x51, 0xA5), RGB(0x57, 0x9B, 0xD5)),
+        (RGB(0x8A, 0x0A, 0x8A), RGB(0xD6, 0x70, 0xD6)),
+        (RGB(0x00, 0x76, 0x76), RGB(0x39, 0xC5, 0xCF)),
+        (RGB(0x59, 0x59, 0x59), RGB(0xC0, 0xC0, 0xC0)),
+        (RGB(0x6E, 0x6E, 0x6E), RGB(0xA0, 0xA0, 0xA0)),
+        (RGB(0xD7, 0x00, 0x00), RGB(0xFF, 0x7B, 0x72)),
+        (RGB(0x00, 0x7A, 0x00), RGB(0x7C, 0xE3, 0x8B)),
+        (RGB(0x71, 0x71, 0x00), RGB(0xF2, 0xF9, 0x7C)),
+        (RGB(0x10, 0x59, 0xD0), RGB(0x6C, 0xB6, 0xFF)),
+        (RGB(0xBC, 0x05, 0xBC), RGB(0xF9, 0x82, 0xF9)),
+        (RGB(0x00, 0x7A, 0x7A), RGB(0x66, 0xE0, 0xE0)),
+        (RGB(0x00, 0x00, 0x00), RGB(0xFF, 0xFF, 0xFF)),
+    ]
+
+    private func paletteColor(_ index: Int) -> ExpectedColor {
+        let slot = Self.palette[index]
+        return .exact(slot.light, slot.dark)
     }
 
     @Test func rendersSixteenColorAndTextAttributeFixtures() {
@@ -52,8 +94,8 @@ struct ANSISnapshotRendererTests {
                     ExpectedRun(text: "plain "),
                     ExpectedRun(
                         text: "red on blue",
-                        foreground: RGB(0x80, 0x00, 0x00),
-                        background: RGB(0x00, 0x00, 0x80)),
+                        foreground: paletteColor(1),
+                        background: paletteColor(4)),
                     ExpectedRun(text: " plain"),
                 ]),
             Fixture(
@@ -63,8 +105,8 @@ struct ANSISnapshotRendererTests {
                 runs: [
                     ExpectedRun(
                         text: "bright",
-                        foreground: RGB(0x00, 0xFF, 0xFF),
-                        background: RGB(0xFF, 0x00, 0x00)),
+                        foreground: paletteColor(14),
+                        background: paletteColor(9)),
                     ExpectedRun(text: "reset"),
                 ]),
             Fixture(
@@ -74,7 +116,7 @@ struct ANSISnapshotRendererTests {
                 runs: [
                     ExpectedRun(
                         text: "styled",
-                        foreground: RGB(0x00, 0x80, 0x00),
+                        foreground: paletteColor(2),
                         foregroundOpacity: 0.5,
                         bold: true,
                         italic: true,
@@ -95,17 +137,6 @@ struct ANSISnapshotRendererTests {
     }
 
     @Test func rendersEverySixteenColorSlot() {
-        let expected = [
-            RGB(0x00, 0x00, 0x00), RGB(0x80, 0x00, 0x00),
-            RGB(0x00, 0x80, 0x00), RGB(0x80, 0x80, 0x00),
-            RGB(0x00, 0x00, 0x80), RGB(0x80, 0x00, 0x80),
-            RGB(0x00, 0x80, 0x80), RGB(0xC0, 0xC0, 0xC0),
-            RGB(0x80, 0x80, 0x80), RGB(0xFF, 0x00, 0x00),
-            RGB(0x00, 0xFF, 0x00), RGB(0xFF, 0xFF, 0x00),
-            RGB(0x00, 0x00, 0xFF), RGB(0xFF, 0x00, 0xFF),
-            RGB(0x00, 0xFF, 0xFF), RGB(0xFF, 0xFF, 0xFF),
-        ]
-
         for index in 0..<16 {
             let foregroundCode = index < 8 ? 30 + index : 90 + index - 8
             let backgroundCode = index < 8 ? 40 + index : 100 + index - 8
@@ -116,8 +147,8 @@ struct ANSISnapshotRendererTests {
                     text: "X",
                     runs: [
                         ExpectedRun(
-                            text: "X", foreground: expected[index],
-                            background: expected[index])
+                            text: "X", foreground: paletteColor(index),
+                            background: paletteColor(index))
                     ]))
         }
     }
@@ -131,8 +162,8 @@ struct ANSISnapshotRendererTests {
                 runs: [
                     ExpectedRun(
                         text: "ansi",
-                        foreground: RGB(0x80, 0x00, 0x00),
-                        background: RGB(0x00, 0xFF, 0xFF))
+                        foreground: paletteColor(1),
+                        background: paletteColor(14))
                 ]),
             Fixture(
                 name: "256-color cube",
@@ -141,8 +172,10 @@ struct ANSISnapshotRendererTests {
                 runs: [
                     ExpectedRun(
                         text: "cube",
-                        foreground: RGB(0x00, 0x00, 0xFF),
-                        background: RGB(0xFF, 0x87, 0x00))
+                        foreground: .adaptive(
+                            light: .exact(RGB(0x00, 0x00, 0xFF)), dark: .clamped),
+                        background: .adaptive(
+                            light: .clamped, dark: .exact(RGB(0xFF, 0x87, 0x00))))
                 ]),
             Fixture(
                 name: "256-color grayscale",
@@ -151,8 +184,10 @@ struct ANSISnapshotRendererTests {
                 runs: [
                     ExpectedRun(
                         text: "gray",
-                        foreground: RGB(0x08, 0x08, 0x08),
-                        background: RGB(0xEE, 0xEE, 0xEE))
+                        foreground: .adaptive(
+                            light: .exact(RGB(0x08, 0x08, 0x08)), dark: .clamped),
+                        background: .adaptive(
+                            light: .clamped, dark: .exact(RGB(0xEE, 0xEE, 0xEE))))
                 ]),
         ]
 
@@ -167,11 +202,116 @@ struct ANSISnapshotRendererTests {
             runs: [
                 ExpectedRun(
                     text: "rgb",
-                    foreground: RGB(12, 34, 56),
-                    background: RGB(210, 180, 140))
+                    foreground: .adaptive(
+                        light: .exact(RGB(12, 34, 56)), dark: .clamped),
+                    background: .adaptive(
+                        light: .clamped, dark: .exact(RGB(210, 180, 140))))
             ])
 
         assertFixture(fixture)
+    }
+
+    @Test func everyBaseSlotForegroundMeetsContrastContractInBothAppearances() {
+        for index in 0..<16 {
+            let foregroundCode = index < 8 ? 30 + index : 90 + index - 8
+            let rendered = ANSISnapshotRenderer.render("\u{1B}[\(foregroundCode)mX")
+            let foreground = rendered.runs.first?.foregroundColor
+            #expect(foreground != nil, "slot \(index): expected a foreground")
+            assertContrast(
+                resolve(foreground, style: .light), style: .light,
+                label: "slot \(index) foreground")
+            assertContrast(
+                resolve(foreground, style: .dark), style: .dark,
+                label: "slot \(index) foreground")
+        }
+    }
+
+    @Test func extendedColorForegroundsMeetContrastContractInBothAppearances() {
+        let samples = [
+            "cube blue": "\u{1B}[38;5;21mX",
+            "cube orange": "\u{1B}[38;5;208mX",
+            "cube yellow": "\u{1B}[38;5;226mX",
+            "dark gray": "\u{1B}[38;5;232mX",
+            "light gray": "\u{1B}[38;5;255mX",
+            "truecolor green": "\u{1B}[38;2;0;255;0mX",
+            "truecolor dark blue": "\u{1B}[38;2;12;34;56mX",
+        ]
+        for (name, sample) in samples {
+            let rendered = ANSISnapshotRenderer.render(sample)
+            let foreground = rendered.runs.first?.foregroundColor
+            #expect(foreground != nil, "\(name): expected a foreground")
+            assertContrast(
+                resolve(foreground, style: .light), style: .light,
+                label: "\(name) foreground")
+            assertContrast(
+                resolve(foreground, style: .dark), style: .dark,
+                label: "\(name) foreground")
+        }
+    }
+
+    @Test func contrastRatioMatchesWCAGReferenceValues() {
+        let black = ANSISnapshotRenderer.RGB(red: 0, green: 0, blue: 0)
+        let white = ANSISnapshotRenderer.RGB(red: 255, green: 255, blue: 255)
+        let gray = ANSISnapshotRenderer.RGB(red: 0x76, green: 0x76, blue: 0x76)
+
+        #expect(abs(ANSISnapshotRenderer.Contrast.ratio(of: black, to: white) - 21) < 0.001)
+        #expect(abs(ANSISnapshotRenderer.Contrast.ratio(of: gray, to: gray) - 1) < 0.001)
+        // #767676 is the canonical lightest gray passing 4.5:1 on white.
+        #expect(abs(ANSISnapshotRenderer.Contrast.ratio(of: gray, to: white) - 4.542) < 0.01)
+        #expect(abs(ANSISnapshotRenderer.Contrast.relativeLuminance(of: white) - 1) < 0.001)
+        #expect(abs(ANSISnapshotRenderer.Contrast.relativeLuminance(of: black)) < 0.001)
+    }
+
+    @Test func legibleClampLeavesContrastingColorsUntouched() {
+        let white = ANSISnapshotRenderer.RGB(red: 255, green: 255, blue: 255)
+        let darkSurface = ANSISnapshotRenderer.RGB(red: 28, green: 28, blue: 30)
+        let maroon = ANSISnapshotRenderer.RGB(red: 0x80, green: 0, blue: 0)
+        let silver = ANSISnapshotRenderer.RGB(red: 0xC0, green: 0xC0, blue: 0xC0)
+
+        #expect(
+            ANSISnapshotRenderer.Contrast.legible(maroon, on: white, appearance: .light)
+                == maroon)
+        #expect(
+            ANSISnapshotRenderer.Contrast.legible(silver, on: darkSurface, appearance: .dark)
+                == silver)
+    }
+
+    @Test func legibleClampDarkensOnLightSurfacePreservingHue() {
+        let white = ANSISnapshotRenderer.RGB(red: 255, green: 255, blue: 255)
+        let yellow = ANSISnapshotRenderer.RGB(red: 255, green: 255, blue: 0)
+
+        let clamped = ANSISnapshotRenderer.Contrast.legible(
+            yellow, on: white, appearance: .light)
+
+        #expect(ANSISnapshotRenderer.Contrast.ratio(of: clamped, to: white) >= 4.5)
+        #expect(clamped.red < yellow.red)
+        #expect(clamped.red >= clamped.blue)
+        #expect(clamped.green >= clamped.blue)
+    }
+
+    @Test func legibleClampLightensOnDarkSurfacePreservingHue() {
+        let darkSurface = ANSISnapshotRenderer.RGB(red: 28, green: 28, blue: 30)
+        let navy = ANSISnapshotRenderer.RGB(red: 0, green: 0, blue: 0x80)
+
+        let clamped = ANSISnapshotRenderer.Contrast.legible(
+            navy, on: darkSurface, appearance: .dark)
+
+        #expect(ANSISnapshotRenderer.Contrast.ratio(of: clamped, to: darkSurface) >= 4.5)
+        #expect(clamped.blue > navy.blue)
+        #expect(clamped.blue > clamped.red)
+        #expect(clamped.blue > clamped.green)
+    }
+
+    @Test func legibleClampKeepsGrayscaleNeutral() {
+        let darkSurface = ANSISnapshotRenderer.RGB(red: 28, green: 28, blue: 30)
+        let darkGray = ANSISnapshotRenderer.RGB(red: 8, green: 8, blue: 8)
+
+        let clamped = ANSISnapshotRenderer.Contrast.legible(
+            darkGray, on: darkSurface, appearance: .dark)
+
+        #expect(ANSISnapshotRenderer.Contrast.ratio(of: clamped, to: darkSurface) >= 4.5)
+        #expect(clamped.red == clamped.green)
+        #expect(clamped.green == clamped.blue)
     }
 
     @Test func stripsUnsupportedMalformedAndTruncatedSequences() {
@@ -259,7 +399,7 @@ struct ANSISnapshotRendererTests {
             text: "│你🐝│",
             runs: [
                 ExpectedRun(text: "│"),
-                ExpectedRun(text: "你🐝", foreground: RGB(0x00, 0x80, 0x00)),
+                ExpectedRun(text: "你🐝", foreground: paletteColor(2)),
                 ExpectedRun(text: "│"),
             ])
 
@@ -305,9 +445,12 @@ struct ANSISnapshotRendererTests {
         #expect(runs[0].text == "    ")
         #expect(runs[0].background == nil)
         #expect(runs[1].text == "message")
-        #expect(
-            runs[1].background
-                == Color(red: 8.0 / 255.0, green: 8.0 / 255.0, blue: 8.0 / 255.0))
+        // RGB(8, 8, 8) contrasts with the light surface, so it survives
+        // unclamped there.
+        let lightBackground = resolve(runs[1].background, style: .light)
+        #expect(lightBackground?.red == 8)
+        #expect(lightBackground?.green == 8)
+        #expect(lightBackground?.blue == 8)
         #expect(runs[2].text == "    ")
         #expect(runs[2].background == nil)
     }
@@ -329,15 +472,16 @@ struct ANSISnapshotRendererTests {
 
         for (actual, expected) in zip(actualRuns, fixture.runs) {
             #expect(actual.text == expected.text, "\(fixture.name): run text")
-            let expectedForeground = expected.foreground.map {
-                expected.foregroundOpacity < 1 ? $0.color.opacity(0.5) : $0.color
-            } ?? (expected.foregroundOpacity < 1 ? Color.primary.opacity(0.5) : nil)
-            #expect(
-                actual.foreground == expectedForeground,
-                "\(fixture.name): \(expected.text) foreground")
-            #expect(
-                actual.background == expected.background?.color,
-                "\(fixture.name): \(expected.text) background")
+            assertColor(
+                actual.foreground,
+                matches: expected.foreground,
+                opacity: expected.foregroundOpacity,
+                label: "\(fixture.name): \(expected.text) foreground")
+            assertColor(
+                actual.background,
+                matches: expected.background,
+                opacity: 1,
+                label: "\(fixture.name): \(expected.text) background")
 
             var expectedEmphasis: InlinePresentationIntent = []
             if expected.bold {
@@ -353,6 +497,84 @@ struct ANSISnapshotRendererTests {
                 actual.underline == (expected.underline ? .single : nil),
                 "\(fixture.name): \(expected.text) underline")
         }
+    }
+
+    private func assertColor(
+        _ actual: Color?,
+        matches expected: ExpectedColor?,
+        opacity: Double,
+        label: String
+    ) {
+        for style in [UIUserInterfaceStyle.light, UIUserInterfaceStyle.dark] {
+            let resolved = resolve(actual, style: style)
+            let appearance = style == .dark ? "dark" : "light"
+
+            guard let expected else {
+                if opacity < 1 {
+                    // Dim default foreground: Color.primary at half opacity.
+                    let channel = style == .dark ? 255 : 0
+                    #expect(
+                        resolved?.red == channel && resolved?.green == channel
+                            && resolved?.blue == channel
+                            && abs((resolved?.alpha ?? 0) - opacity) < 0.01,
+                        "\(label): dim default in \(appearance)")
+                } else {
+                    #expect(resolved == nil, "\(label): expected no color in \(appearance)")
+                }
+                continue
+            }
+
+            switch style == .dark ? expected.dark : expected.light {
+            case .exact(let rgb):
+                #expect(
+                    resolved?.red == rgb.red && resolved?.green == rgb.green
+                        && resolved?.blue == rgb.blue
+                        && abs((resolved?.alpha ?? 0) - opacity) < 0.01,
+                    "\(label): expected \(rgb) in \(appearance), got \(String(describing: resolved))")
+            case .clamped:
+                assertContrast(resolved, style: style, label: label)
+            }
+        }
+    }
+
+    private func assertContrast(
+        _ resolved: (red: Int, green: Int, blue: Int, alpha: Double)?,
+        style: UIUserInterfaceStyle,
+        label: String
+    ) {
+        guard let resolved else {
+            Issue.record("\(label): expected a resolved color")
+            return
+        }
+        let surface = ANSISnapshotRenderer.surfaceColor(
+            for: style == .dark ? .dark : .light)
+        let ratio = ANSISnapshotRenderer.Contrast.ratio(
+            of: ANSISnapshotRenderer.RGB(
+                red: resolved.red, green: resolved.green, blue: resolved.blue),
+            to: surface)
+        #expect(
+            ratio >= ANSISnapshotRenderer.Contrast.minimumForegroundRatio,
+            "\(label): contrast \(ratio) below 4.5 in \(style == .dark ? "dark" : "light")")
+    }
+
+    private func resolve(
+        _ color: Color?,
+        style: UIUserInterfaceStyle
+    ) -> (red: Int, green: Int, blue: Int, alpha: Double)? {
+        guard let color else { return nil }
+        let resolved = UIColor(color).resolvedColor(
+            with: UITraitCollection(userInterfaceStyle: style))
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        resolved.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        return (
+            Int((red * 255).rounded()),
+            Int((green * 255).rounded()),
+            Int((blue * 255).rounded()),
+            Double(alpha)
+        )
     }
 
     private func bytes(_ string: String) -> [UInt8] {
