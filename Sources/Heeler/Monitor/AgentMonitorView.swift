@@ -134,7 +134,7 @@ struct AgentDetailView: View {
                                 .buttonStyle(.bordered)
                             }
 
-                            AgentSentMessagesView(store: composer)
+                            AgentSentMessagesView(store: composer, capturedAt: monitor.capturedAt)
                         }
                         .padding()
                         .frame(maxWidth: .infinity, minHeight: 360)
@@ -161,7 +161,7 @@ struct AgentDetailView: View {
                                 .buttonStyle(.borderedProminent)
                             }
 
-                            AgentSentMessagesView(store: composer)
+                            AgentSentMessagesView(store: composer, capturedAt: monitor.capturedAt)
                         }
                         .padding()
                         .frame(maxWidth: .infinity, minHeight: 360)
@@ -191,18 +191,12 @@ struct AgentDetailView: View {
                     Text(snapshot)
                         .font(.system(.callout, design: .monospaced))
                         .lineSpacing(3)
-                        .foregroundStyle(.white)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                         .padding(16)
                         .background(
-                            Color.black.opacity(0.94),
+                            Color(uiColor: .secondarySystemGroupedBackground),
                             in: RoundedRectangle(cornerRadius: 16))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(.white.opacity(0.12), lineWidth: 1)
-                        }
-                        .environment(\.colorScheme, .dark)
 
                     if let sendError = monitor.sendError {
                         Label(sendError, systemImage: "exclamationmark.triangle")
@@ -215,7 +209,7 @@ struct AgentDetailView: View {
                                 in: RoundedRectangle(cornerRadius: 12))
                     }
 
-                    AgentSentMessagesView(store: composer)
+                    AgentSentMessagesView(store: composer, capturedAt: monitor.capturedAt)
 
                     Color.clear
                         .frame(height: 1)
