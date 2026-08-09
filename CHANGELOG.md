@@ -26,6 +26,13 @@ Entries reference the issue that motivated them.
   automatically, while scrolling up holds position behind a New Output jump.
   (#180)
 
+- Monitor keeps a local scrollback. Scrolling up through what the Agent did
+  is served from the on-device cache; reaching the top while the Agent is
+  idle backfills up to herdr's 1,000-line capture window, the one loading
+  indicator in the surface. While the Agent works, the top of the cache says
+  history is unavailable instead of spinning. Reads that cannot be
+  reconciled with the cache leave an explicit gap marker, and the oldest
+  capturable line is marked as the beginning of the captured history. (#181)
 - Monitor now includes a local Composer. Drafting makes no network requests;
   Send delivers the complete message once and shows delivery, Agent work, and
   Done states from acknowledgments and status pushes. Failed messages can be

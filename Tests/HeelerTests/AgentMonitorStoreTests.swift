@@ -22,15 +22,18 @@ struct AgentMonitorStoreTests {
         }
         await transport.setAgentText("second", target: "w1:p1")
         #expect(await clock.advance() == .seconds(2))
+        let expected = [
+            "first", AgentMonitorStore.gapMarkerText, "second",
+        ].joined(separator: "\n")
         try await waitUntil("one clock tick should perform one refresh") {
-            guard store.snapshot.map({ String($0.characters) }) == "second" else {
+            guard store.snapshot.map({ String($0.characters) }) == expected else {
                 return false
             }
             return await transport.agentReadParams.count == 2
         }
 
         #expect(store.agentStatus == .working)
-        #expect(String(try #require(store.snapshot).characters) == "second")
+        #expect(String(try #require(store.snapshot).characters) == expected)
     }
 
     @Test func idleAndBackgroundStatesDoNotPoll() async throws {
@@ -42,7 +45,9 @@ struct AgentMonitorStoreTests {
         await idleStore.open()
 
         #expect(await idleClock.pendingSleepCount == 0)
-        #expect(await idleTransport.agentReadParams.count == 1)
+        // One visible snapshot plus the one idle backfill on open (#181).
+        #expect(await agentReads(idleTransport, source: .visible).count == 1)
+        #expect(await agentReads(idleTransport, source: .recent).count == 1)
 
         let workingTransport = ScriptedTransport()
         let workingClock = ManualAgentMonitorClock()
@@ -60,6 +65,7 @@ struct AgentMonitorStoreTests {
             await workingClock.pendingSleepCount == 0
         }
 
+        // A Working Agent never backfills, so its only read is the snapshot.
         #expect(await workingTransport.agentReadParams.count == 1)
     }
 
@@ -101,32 +107,44 @@ struct AgentMonitorStoreTests {
 
         await transport.setAgentText("working", target: "w1:p1")
         #expect(await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .working)))
+        let workingSnapshot = [
+            "idle", AgentMonitorStore.gapMarkerText, "working",
+        ].joined(separator: "\n")
         try await waitUntil("Working should surface and refresh") {
             guard
                 store.agentStatus == .working,
-                store.snapshot.map({ String($0.characters) }) == "working"
+                store.snapshot.map({ String($0.characters) }) == workingSnapshot
             else { return false }
-            return await transport.agentReadParams.count == 2
+            return await agentReads(transport, source: .visible).count == 2
         }
 
         await transport.setAgentText("done", target: "w1:p1")
         #expect(await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .done)))
+        let doneSnapshot = [
+            "idle", AgentMonitorStore.gapMarkerText, "working",
+            AgentMonitorStore.gapMarkerText, "done",
+        ].joined(separator: "\n")
         try await waitUntil("Done should surface and refresh") {
             guard
                 store.agentStatus == .done,
-                store.snapshot.map({ String($0.characters) }) == "done"
+                store.snapshot.map({ String($0.characters) }) == doneSnapshot
             else { return false }
-            return await transport.agentReadParams.count == 3
+            return await agentReads(transport, source: .visible).count == 3
         }
 
         await transport.setAgentText("blocked", target: "w1:p1")
         #expect(await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .blocked)))
+        let blockedSnapshot = [
+            "idle", AgentMonitorStore.gapMarkerText, "working",
+            AgentMonitorStore.gapMarkerText, "done",
+            AgentMonitorStore.gapMarkerText, "blocked",
+        ].joined(separator: "\n")
         try await waitUntil("Blocked should surface and refresh") {
             guard
                 store.agentStatus == .blocked,
-                store.snapshot.map({ String($0.characters) }) == "blocked"
+                store.snapshot.map({ String($0.characters) }) == blockedSnapshot
             else { return false }
-            return await transport.agentReadParams.count == 4
+            return await agentReads(transport, source: .visible).count == 4
         }
         try await waitUntil("Blocked should cancel the cadence") {
             await clock.pendingSleepCount == 0
@@ -284,13 +302,25 @@ struct AgentMonitorStoreTests {
         let snapshot = try #require(store.snapshot)
         #expect(String(snapshot.characters) == "plain red")
         #expect(
-            await transport.agentReadParams == [
+            await agentReads(transport, source: .visible) == [
                 AgentReadParams(
                     source: .visible,
                     target: "w1:p1",
                     format: .ansi,
                     stripANSI: false)
             ])
+        // The idle open also backfills once (#181); the scripted window
+        // equals the screen, so nothing new lands and history is exhausted.
+        #expect(
+            await agentReads(transport, source: .recent) == [
+                AgentReadParams(
+                    source: .recent,
+                    target: "w1:p1",
+                    format: .ansi,
+                    lines: AgentMonitorStore.historyLineCount,
+                    stripANSI: false)
+            ])
+        #expect(store.historyState == .exhausted)
     }
 
     @Test func returningFromAttachRefreshesExactlyOnce() async throws {
@@ -307,13 +337,23 @@ struct AgentMonitorStoreTests {
         await store.refreshOnReturn()
 
         let snapshot = try #require(store.snapshot)
-        #expect(String(snapshot.characters) == "after")
-        #expect(await transport.agentReadParams.count == 2)
+        #expect(
+            String(snapshot.characters)
+                == ["before", AgentMonitorStore.gapMarkerText, "after"]
+                .joined(separator: "\n"))
+        #expect(await agentReads(transport, source: .visible).count == 2)
     }
 
     @Test func returningWhileOpenIsLoadingStillPerformsTheRefresh() async throws {
         let transport = ScriptedTransport()
         await transport.setAgentText("opening", target: "w1:p1")
+        // The open also backfills (#181), and the gated visible read lets
+        // the scripted screen move on before that backfill executes. Pin
+        // the history window to the pre-Attach screen so it stitches to
+        // nothing; the return refresh alone then decides the final screen.
+        // (A window disjoint from the stale tail would honestly record a
+        // gap — correct store behavior, but not what this test is about.)
+        await transport.setAgentHistoryText("opening", target: "w1:p1")
         let gate = ScriptedTransportCallGate()
         await transport.gateNextAgentRead(using: gate)
         let store = AgentMonitorStore(target: "w1:p1") { params in
@@ -333,8 +373,11 @@ struct AgentMonitorStoreTests {
         await returning.value
 
         let snapshot = try #require(store.snapshot)
-        #expect(String(snapshot.characters) == "after Attach")
-        #expect(await transport.agentReadParams.count == 2)
+        #expect(
+            String(snapshot.characters)
+                == ["opening", AgentMonitorStore.gapMarkerText, "after Attach"]
+                .joined(separator: "\n"))
+        #expect(await agentReads(transport, source: .visible).count == 2)
     }
 
     @Test func failedOpenSurfacesTheServerErrorAndRetryRecovers() async throws {
@@ -357,7 +400,7 @@ struct AgentMonitorStoreTests {
         #expect(store.state == .loaded)
         let snapshot = try #require(store.snapshot)
         #expect(String(snapshot.characters) == "recovered")
-        #expect(await transport.agentReadParams.count == 2)
+        #expect(await agentReads(transport, source: .visible).count == 2)
     }
 
     @Test func failedReturnKeepsTheLastSnapshotAndItsFreshness() async throws {
@@ -379,6 +422,308 @@ struct AgentMonitorStoreTests {
         #expect(String(snapshot.characters) == "known screen")
     }
 
+    // MARK: History backfill (#181)
+
+    @Test func openWhileIdleBackfillsHistoryAboveTheScreen() async throws {
+        let transport = ScriptedTransport()
+        await transport.setAgentText("screen 1\nscreen 2\nscreen 3", target: "w1:p1")
+        await transport.setAgentHistoryText(
+            "older 1\nolder 2\nscreen 1\nscreen 2\nscreen 3", target: "w1:p1")
+        let store = AgentMonitorStore(target: "w1:p1") { params in
+            try await transport.readAgent(params)
+        }
+
+        await store.open()
+        await store.open()
+
+        // The window overlaps the screen by its three lines, so only the
+        // older prefix is prepended; a short read ends history immediately.
+        let snapshot = try #require(store.snapshot)
+        #expect(
+            String(snapshot.characters) == "older 1\nolder 2\nscreen 1\nscreen 2\nscreen 3")
+        #expect(store.historyState == .exhausted)
+        #expect(await agentReads(transport, source: .visible).count == 1)
+        #expect(await agentReads(transport, source: .recent).count == 1)
+    }
+
+    @Test func openWhileWorkingSkipsBackfillAndTopEdgeStaysHonest() async throws {
+        let transport = ScriptedTransport()
+        await transport.setAgentText("live screen", target: "w1:p1")
+        let store = AgentMonitorStore(
+            target: "w1:p1", initialStatus: .working
+        ) { params in
+            try await transport.readAgent(params)
+        }
+
+        await store.open()
+
+        #expect(store.historyState == .unavailable)
+        #expect(await transport.agentReadParams.count == 1)
+
+        store.topEdgeReached()
+
+        // Working never spins and never reads: the notice is the answer.
+        #expect(store.historyState == .unavailable)
+        #expect(await transport.agentReadParams.count == 1)
+    }
+
+    @Test func topEdgeWhileIdleShowsLoadingThenStitchesOlderLines() async throws {
+        let transport = ScriptedTransport()
+        await transport.setAgentText("screen 1\nscreen 2\nscreen 3", target: "w1:p1")
+        let store = AgentMonitorStore(
+            target: "w1:p1", initialStatus: .working
+        ) { params in
+            try await transport.readAgent(params)
+        }
+        await store.open()
+        #expect(store.historyState == .unavailable)
+
+        // Going idle refreshes the screen but does not backfill on its own.
+        await store.agentStatusDidChange(.idle)
+        #expect(store.historyState == .idle)
+
+        await transport.setAgentHistoryText(
+            "older 1\nolder 2\nscreen 1\nscreen 2\nscreen 3", target: "w1:p1")
+        let gate = ScriptedTransportCallGate()
+        await transport.gateNextAgentRead(using: gate)
+        store.topEdgeReached()
+        #expect(store.historyState == .loading)
+        try await waitUntil("the backfill read should be in flight") {
+            await gate.entryCount == 1
+        }
+
+        await gate.open()
+        try await waitUntil("the backfill should land") {
+            store.historyState == .exhausted
+        }
+
+        let snapshot = try #require(store.snapshot)
+        #expect(
+            String(snapshot.characters) == "older 1\nolder 2\nscreen 1\nscreen 2\nscreen 3")
+        #expect(await agentReads(transport, source: .recent).count == 1)
+    }
+
+    @Test func repeatBackfillAtTheCaptureLimitEndsHistory() async throws {
+        let transport = ScriptedTransport()
+        let screen = (998...1000).map { "line \($0)" }.joined(separator: "\n")
+        let window = (1...1000).map { "line \($0)" }.joined(separator: "\n")
+        await transport.setAgentText(screen, target: "w1:p1")
+        await transport.setAgentHistoryText(window, target: "w1:p1")
+        let store = AgentMonitorStore(target: "w1:p1") { params in
+            try await transport.readAgent(params)
+        }
+
+        await store.open()
+
+        // A full-window read that added lines might have more behind it.
+        #expect(store.historyState == .idle)
+        #expect(String(try #require(store.snapshot).characters) == window)
+
+        // The same window comes back: nothing new, so the limit is honest.
+        store.topEdgeReached()
+        try await waitUntil("the confirming read should declare the limit") {
+            store.historyState == .exhausted
+        }
+        #expect(String(try #require(store.snapshot).characters) == window)
+        #expect(await agentReads(transport, source: .recent).count == 2)
+    }
+
+    @Test func unstitchableReadInsertsAnExplicitGapMarker() async throws {
+        let transport = ScriptedTransport()
+        await transport.setAgentText("stale a\nstale b\nstale c", target: "w1:p1")
+        // The server's buffer shares not one line with the cache (restarted
+        // pane, cleared scrollback): no overlap, no guessing.
+        await transport.setAgentHistoryText("fresh 1\nfresh 2\nfresh 3", target: "w1:p1")
+        let store = AgentMonitorStore(target: "w1:p1") { params in
+            try await transport.readAgent(params)
+        }
+
+        await store.open()
+
+        let expected = [
+            "fresh 1", "fresh 2", "fresh 3",
+            AgentMonitorStore.gapMarkerText,
+            "stale a", "stale b", "stale c",
+        ].joined(separator: "\n")
+        #expect(String(try #require(store.snapshot).characters) == expected)
+        #expect(store.historyState == .exhausted)
+    }
+
+    @Test func agentNotIdleSurfacesAsUnavailableNeverAnError() async throws {
+        let transport = ScriptedTransport()
+        await transport.setAgentText("live screen", target: "w1:p1")
+        await transport.setAgentHistoryReadFailure(
+            HerdrAPIError(code: "agent_not_idle", message: "agent is working"))
+        let store = AgentMonitorStore(target: "w1:p1") { params in
+            try await transport.readAgent(params)
+        }
+
+        await store.open()
+
+        // The screen loaded; only history is unavailable, and honestly so.
+        #expect(store.state == .loaded)
+        #expect(store.historyState == .unavailable)
+        #expect(String(try #require(store.snapshot).characters) == "live screen")
+
+        // A later top-edge hit retries the read and lands the same way.
+        store.topEdgeReached()
+        try await waitUntil("the retried read should settle as unavailable") {
+            store.historyState == .unavailable
+        }
+        #expect(store.state == .loaded)
+        #expect(await agentReads(transport, source: .recent).count == 2)
+    }
+
+    @Test func failedBackfillSurfacesARetryableError() async throws {
+        let transport = ScriptedTransport()
+        await transport.setAgentText("screen 1\nscreen 2\nscreen 3", target: "w1:p1")
+        await transport.setAgentHistoryReadFailure(TransportError.timedOut)
+        let store = AgentMonitorStore(target: "w1:p1") { params in
+            try await transport.readAgent(params)
+        }
+
+        await store.open()
+
+        #expect(store.state == .loaded)
+        #expect(store.historyState == .failed("The Host did not answer in time."))
+
+        await transport.setAgentHistoryReadFailure(nil)
+        await transport.setAgentHistoryText(
+            "older 1\nolder 2\nscreen 1\nscreen 2\nscreen 3", target: "w1:p1")
+        await store.loadEarlierHistory()
+
+        #expect(store.historyState == .exhausted)
+        #expect(
+            String(try #require(store.snapshot).characters)
+                == "older 1\nolder 2\nscreen 1\nscreen 2\nscreen 3")
+    }
+
+    @Test func openingOnAnEmptyScreenPaintsTheEmptyState() async throws {
+        let transport = ScriptedTransport()
+        // No scripted text: the visible read answers "". The first install
+        // must still render, or the view loads forever.
+        let store = AgentMonitorStore(target: "w1:p1") { params in
+            try await transport.readAgent(params)
+        }
+
+        await store.open()
+
+        #expect(store.state == .loaded)
+        let snapshot = try #require(store.snapshot)
+        #expect(snapshot.characters.isEmpty)
+        #expect(store.historyState == .exhausted)
+    }
+
+    @Test func backfillWaitsForAnInFlightVisibleRead() async throws {
+        let transport = ScriptedTransport()
+        let screen = (998...1000).map { "line \($0)" }.joined(separator: "\n")
+        let window = (1...1000).map { "line \($0)" }.joined(separator: "\n")
+        await transport.setAgentText(screen, target: "w1:p1")
+        await transport.setAgentHistoryText(window, target: "w1:p1")
+        let store = AgentMonitorStore(target: "w1:p1") { params in
+            try await transport.readAgent(params)
+        }
+        await store.open()
+        #expect(store.historyState == .idle)
+
+        // A visible read in flight (a cadence poll or pull-to-refresh) holds
+        // the shared flight; the top-edge backfill must queue behind it
+        // rather than interleave and risk a spurious gap.
+        let gate = ScriptedTransportCallGate()
+        await transport.gateNextAgentRead(using: gate)
+        let refreshing = Task { await store.refresh() }
+        try await waitUntil("the visible read should be in flight") {
+            await gate.entryCount == 1
+        }
+        store.topEdgeReached()
+        #expect(store.historyState == .loading)
+        #expect(await agentReads(transport, source: .recent).count == 1)
+
+        await gate.open()
+        await refreshing.value
+        try await waitUntil("the queued backfill should run and exhaust") {
+            store.historyState == .exhausted
+        }
+
+        #expect(await agentReads(transport, source: .recent).count == 2)
+        let snapshot = try #require(store.snapshot)
+        #expect(String(snapshot.characters) == window)
+        #expect(!String(snapshot.characters).contains(AgentMonitorStore.gapMarkerText))
+    }
+
+    @Test func visibleReadsExtendTheLiveTailWhileWorking() async throws {
+        let transport = ScriptedTransport()
+        await transport.setAgentText("l1\nl2\nl3\nl4\nl5", target: "w1:p1")
+        let store = AgentMonitorStore(
+            target: "w1:p1", initialStatus: .working
+        ) { params in
+            try await transport.readAgent(params)
+        }
+        await store.open()
+
+        // A scrolled screen overlaps the cached tail: only fresh lines land.
+        await transport.setAgentText("l2\nl3\nl4\nl5\nl6", target: "w1:p1")
+        await store.refresh()
+        #expect(
+            String(try #require(store.snapshot).characters) == "l1\nl2\nl3\nl4\nl5\nl6")
+
+        // A repaint shares no overlap: a new live run is installed.
+        await transport.setAgentText("n1\nn2\nn3\nn4\nn5", target: "w1:p1")
+        await store.refresh()
+        #expect(
+            String(try #require(store.snapshot).characters)
+                == [
+                    "l1", "l2", "l3", "l4", "l5", "l6",
+                    AgentMonitorStore.gapMarkerText,
+                    "n1", "n2", "n3", "n4", "n5",
+                ].joined(separator: "\n"))
+    }
+
+    @Test func liveReplacementResetsExhaustionAndAllowsAnotherBackfill() async throws {
+        let transport = ScriptedTransport()
+        await transport.setAgentText("s1\ns2\ns3\ns4", target: "w1:p1")
+        await transport.setAgentHistoryText(
+            "h1\nh2\nh3\nh4\nh5\nh6\ns1\ns2\ns3\ns4", target: "w1:p1")
+        let store = AgentMonitorStore(target: "w1:p1") { params in
+            try await transport.readAgent(params)
+        }
+        await store.open()
+        #expect(store.historyState == .exhausted)
+
+        await transport.setAgentText("r1\nr2\nr3\nr4", target: "w1:p1")
+        await store.refresh()
+
+        #expect(store.historyState == .idle)
+        let preserved = [
+            "h1", "h2", "h3", "h4", "h5", "h6", "s1", "s2", "s3", "s4",
+            AgentMonitorStore.gapMarkerText, "r1", "r2", "r3", "r4",
+        ].joined(separator: "\n")
+        #expect(String(try #require(store.snapshot).characters) == preserved)
+
+        await transport.setAgentHistoryText(
+            "new older 1\nnew older 2\nr1\nr2\nr3\nr4", target: "w1:p1")
+        store.topEdgeReached()
+        try await waitUntil("the replacement should allow a new backfill") {
+            store.historyState == .exhausted
+        }
+
+        #expect(await agentReads(transport, source: .recent).count == 2)
+        #expect(
+            String(try #require(store.snapshot).characters)
+                == [
+                    "h1", "h2", "h3", "h4", "h5", "h6", "s1", "s2", "s3", "s4",
+                    AgentMonitorStore.gapMarkerText, "new older 1", "new older 2", "r1",
+                    "r2", "r3", "r4",
+                ].joined(separator: "\n"))
+    }
+
+    private func agentReads(
+        _ transport: ScriptedTransport,
+        source: ReadSource
+    ) async -> [AgentReadParams] {
+        await transport.agentReadParams.filter { $0.source == source }
+    }
+
     @Test func sendDeliversControlKeysAndRefreshesTheSnapshot() async throws {
         let transport = ScriptedTransport()
         await transport.setAgentText("before", target: "w1:p1")
@@ -390,13 +735,19 @@ struct AgentMonitorStoreTests {
 
         #expect(store.sendError == nil)
         #expect(store.isSendingKey == false)
+        // The refreshed screen shares nothing with the old one, so the
+        // scrollback seals the pre-send screen above a gap (#181) rather
+        // than discarding it.
         let snapshot = try #require(store.snapshot)
-        #expect(String(snapshot.characters) == "after ctrl+c")
+        #expect(
+            String(snapshot.characters)
+                == ["before", AgentMonitorStore.gapMarkerText, "after ctrl+c"]
+                .joined(separator: "\n"))
         #expect(
             await transport.agentSendKeysParams == [
                 AgentSendKeysParams(keys: ["ctrl+c"], target: "w1:p1")
             ])
-        #expect(await transport.agentReadParams.count == 2)
+        #expect(await agentReads(transport, source: .visible).count == 2)
     }
 
     @Test func sendFailureSurfacesWithoutRefreshing() async throws {
@@ -413,7 +764,7 @@ struct AgentMonitorStoreTests {
         let snapshot = try #require(store.snapshot)
         #expect(String(snapshot.characters) == "known screen")
         #expect(await transport.agentSendKeysParams.isEmpty)
-        #expect(await transport.agentReadParams.count == 1)
+        #expect(await agentReads(transport, source: .visible).count == 1)
     }
 
     @Test func successfulSendClearsAPriorSendError() async throws {
@@ -431,8 +782,13 @@ struct AgentMonitorStoreTests {
         await store.send(.escape)
 
         #expect(store.sendError == nil)
+        // As above: the unrelated refreshed screen lands below a gap while
+        // the pre-send screen stays in the scrollback (#181).
         let snapshot = try #require(store.snapshot)
-        #expect(String(snapshot.characters) == "dismissed")
+        #expect(
+            String(snapshot.characters)
+                == ["screen", AgentMonitorStore.gapMarkerText, "dismissed"]
+                .joined(separator: "\n"))
         #expect(
             await transport.agentSendKeysParams == [
                 AgentSendKeysParams(keys: ["esc"], target: "w1:p1")

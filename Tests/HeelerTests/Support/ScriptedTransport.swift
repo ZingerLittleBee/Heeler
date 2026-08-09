@@ -63,6 +63,11 @@ final actor ScriptedTransport: Transport {
     private var agentTexts: [String: String] = [:]
     private var agentReadFailure: (any Error)?
     private var nextAgentReadGate: ScriptedTransportCallGate?
+    /// History-source (`recent`/`recent_unwrapped`) read scripting, separate
+    /// from the visible screen: Monitor's backfill tests script a wider
+    /// window than the live tail without disturbing visible-read tests.
+    private var agentHistoryTexts: [String: String] = [:]
+    private var agentHistoryReadFailure: (any Error)?
     private var agentPromptFailure: (any Error)?
     private var nextAgentPromptGate: ScriptedTransportCallGate?
     private var missingPaneIDs: Set<String> = []
@@ -143,6 +148,21 @@ final actor ScriptedTransport: Transport {
     /// Makes every subsequent `readAgent` throw `failure`.
     func setAgentReadFailure(_ failure: (any Error)?) {
         agentReadFailure = failure
+    }
+
+    /// Scripts the text `readAgent` returns for history sources (`recent`,
+    /// `recent_unwrapped`) on `target`; unscripted targets fall back to the
+    /// `setAgentText` value, as a server whose window equals its screen
+    /// would answer.
+    func setAgentHistoryText(_ text: String, target: String) {
+        agentHistoryTexts[target] = text
+    }
+
+    /// Makes every subsequent history-source `readAgent` throw `failure`
+    /// while leaving visible reads untouched — the `agent_not_idle` race
+    /// between the screen and a backfill.
+    func setAgentHistoryReadFailure(_ failure: (any Error)?) {
+        agentHistoryReadFailure = failure
     }
 
     /// Pauses the next Agent read after capturing its response.
@@ -354,8 +374,12 @@ final actor ScriptedTransport: Transport {
 
     func readAgent(_ params: AgentReadParams) async throws -> PaneReadResult {
         agentReadParams.append(params)
-        let responseText = agentTexts[params.target] ?? ""
-        let failure = agentReadFailure
+        let isHistoryRead = params.source != .visible
+        let responseText =
+            isHistoryRead
+            ? (agentHistoryTexts[params.target] ?? agentTexts[params.target] ?? "")
+            : (agentTexts[params.target] ?? "")
+        let failure = isHistoryRead ? (agentHistoryReadFailure ?? agentReadFailure) : agentReadFailure
         let gate = nextAgentReadGate
         nextAgentReadGate = nil
         await gate?.waitUntilOpen()

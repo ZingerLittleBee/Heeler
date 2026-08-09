@@ -174,6 +174,7 @@ struct AgentDetailView: View {
         ScrollViewReader { proxy in
             ScrollView([.horizontal, .vertical]) {
                 VStack(alignment: .leading, spacing: 0) {
+                    historyTopMarker
                     Text(snapshot)
                         .font(.system(.body, design: .monospaced))
                         .textSelection(.enabled)
@@ -190,6 +191,12 @@ struct AgentDetailView: View {
                 geometry.visibleRect.maxY >= geometry.contentSize.height - 24
             } action: { _, isPinned in
                 monitor.setBottomPinned(isPinned)
+            }
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.visibleRect.minY <= 24
+            } action: { _, isAtTop in
+                guard isAtTop else { return }
+                monitor.topEdgeReached()
             }
             .onChange(of: monitor.contentChangeCount) {
                 guard monitor.isBottomPinned else { return }
@@ -210,6 +217,61 @@ struct AgentDetailView: View {
                 }
             }
         }
+    }
+
+    /// The only place history states are visible: a thin marker above the
+    /// cached content. While the Agent works the notice replaces any
+    /// spinner outright — history is unavailable, never "loading".
+    @ViewBuilder
+    private var historyTopMarker: some View {
+        if monitor.agentStatus == .working, monitor.historyState != .exhausted {
+            historyMarkerLabel(
+                "History unavailable while the Agent works",
+                systemImage: "clock.badge.exclamationmark")
+        } else {
+            switch monitor.historyState {
+            case .loading:
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Loading earlier history…")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+            case .unavailable:
+                historyMarkerLabel(
+                    "History unavailable while the Agent works",
+                    systemImage: "clock.badge.exclamationmark")
+            case .exhausted:
+                historyMarkerLabel(
+                    "Beginning of captured history",
+                    systemImage: "arrow.up.to.line")
+            case .failed(let message):
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Label(message, systemImage: "exclamationmark.triangle")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    Button("Retry") { Task { await monitor.loadEarlierHistory() } }
+                        .font(.footnote)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal)
+                .padding(.vertical, 10)
+            case .idle:
+                EmptyView()
+            }
+        }
+    }
+
+    private func historyMarkerLabel(_ text: String, systemImage: String) -> some View {
+        Label(text, systemImage: systemImage)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
     }
 
     private var statusHeader: some View {
