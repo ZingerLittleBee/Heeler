@@ -23,11 +23,15 @@ import UIKit
 final class TerminalKeyboardInset {
     /// How much of the terminal's bottom edge the keyboard stack covers.
     private(set) var height: CGFloat = 0
+    /// The last complete keyboard footprint. It survives dismissal so an
+    /// in-app keyboard can replace UIKit's keyboard without changing layout.
+    private(set) var lastPresentedHeight: CGFloat = 0
     /// Long enough to fold a presentation's follow-up frame into the first,
     /// short enough to stay inside the keyboard's own animation.
     private static let coalesceDelay = Duration.milliseconds(60)
     @ObservationIgnored private var coalesceTask: Task<Void, Never>?
     @ObservationIgnored private let measure: @MainActor (CGRect) -> CGFloat?
+    @ObservationIgnored private var capturesPresentedHeight = true
 
     init(
         notificationCenter: NotificationCenter = .default,
@@ -61,6 +65,7 @@ final class TerminalKeyboardInset {
     }
 
     private func keyboardWillPresent(endFrame: CGRect?) {
+        guard capturesPresentedHeight else { return }
         guard let endFrame, let height = measure(endFrame), height > 0 else { return }
         coalesceTask?.cancel()
         coalesceTask = Task { [weak self] in
@@ -76,8 +81,25 @@ final class TerminalKeyboardInset {
         apply(0)
     }
 
+    /// Candidate bars publish smaller positive frames while UIKit removes the
+    /// system keyboard. Tools mode keeps the last complete measurement and
+    /// ignores those transition-only frames; an actual hide still clears the
+    /// current overlap through `keyboardWillDismiss()`.
+    func pauseHeightCapture() {
+        capturesPresentedHeight = false
+        coalesceTask?.cancel()
+        coalesceTask = nil
+    }
+
+    func resumeHeightCapture() {
+        capturesPresentedHeight = true
+    }
+
     private func apply(_ height: CGFloat) {
         coalesceTask = nil
+        if height > 0 {
+            lastPresentedHeight = height
+        }
         guard height != self.height else { return }
         self.height = height
     }

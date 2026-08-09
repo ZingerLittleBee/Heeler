@@ -110,7 +110,8 @@ struct TerminalAgentSwitcherTests {
                 selectedID: agents[9].id,
                 onSelect: { _ in }),
             isKeyboardUp: true,
-            toggleKeyboard: {})
+            toggleKeyboard: {},
+            switchKeyboard: {})
         let controller = UIHostingController(rootView: row)
         let width: CGFloat = 402
         let window = try makeWindow(width: width, rootViewController: controller)
@@ -128,8 +129,8 @@ struct TerminalAgentSwitcherTests {
         let stripFrame = strip.convert(strip.bounds, to: controller.view)
         #expect(stripFrame.width > 0)
         #expect(
-            stripFrame.maxX <= width - 44,
-            "the strip claimed \(stripFrame.maxX) of \(width), leaving no room for the toggle")
+            stripFrame.maxX <= width - 88,
+            "the strip claimed \(stripFrame.maxX) of \(width), leaving no room for both toggles")
     }
 
     @MainActor

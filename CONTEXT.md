@@ -71,42 +71,30 @@ _Avoid_: sandbox, branch copy, checkout folder
 The native dashboard surface: the flat, status-sorted list of Agents across Hosts, plus the Agent detail screen.
 _Avoid_: dashboard, home
 
-**Monitor**:
-The default Agent detail surface: a non-realtime view of the Agent's pane
-showing the latest screen snapshot plus whatever history herdr could capture
-while the Agent was idle, with a Composer for replying. Content is honestly
-stale — freshness is signaled, never implied — and history beyond what was
-captured is unavailable, not loading. Reached from the Console list; Attach is
-its realtime escape hatch.
-_Avoid_: observe, preview, read-only terminal (replying is first-class), chat view
-
 **Composer**:
-The local input control inside Monitor: a native draft field that composes a
-message entirely on device and delivers it in one piece, with a control-key
-strip for keys that cannot be typed. A draft insertion (Snippet, Skill, image
-path) edits the draft and nothing more; delivery is a separate, explicit act.
+The local input control below the Agent's live terminal: a native draft field
+that composes a message entirely on device and delivers it in one piece. Its
+tools keyboard sends explicit terminal controls directly to the Agent without
+editing the draft, while its Snippet and Skill tools insert into that draft. A
+draft insertion edits the draft and nothing more; delivery is a separate,
+explicit act.
 Delivered means the Host accepted the text into the pane — whether the Agent
 queues or acts on it is the Agent's business, and the Composer never claims
 otherwise.
 _Avoid_: reply bar, compose bar (the shelved predecessors), input box, message box
 
 **Attach**:
-The realtime Agent surface, entered from Monitor as its escape hatch: full
-interactive terminal control of the pane through the embedded terminal, one
-keystroke per round trip. The normal terminal buffer uses native local scrollback.
-Alternate-screen TUIs map vertical touch drags and momentum to terminal wheel rows.
-Only a tap near the input area opens the software keyboard, so a touch anywhere
-else is never answered with a keyboard-driven viewport resize. In the normal
-buffer that area is the caret's row; on the alternate screen the caret band
-grows (agent TUIs park the caret below the visible prompt) and the bottom
-quarter always answers, because chat-style TUIs pin their input box there. The
-tap that halts a flick is spent on the halt alone.
+The realtime PTY stream behind Agent detail. libghostty renders the complete
+TUI, owns local scrollback, and reports its grid size so the remote PTY resizes
+with the view. The surface is display-only: authored input belongs to Composer
+and reaches the Agent through one `agent.prompt` request. Only Composer's
+explicit tools-keyboard controls send terminal control sequences.
 _Avoid_: takeover (that's herdr's flag, not our surface), connect
 
 **Attach Link**:
-An ordinary web URL observed in the terminal during one Attach. It remains
+An ordinary web URL observed in the terminal during one Agent detail session. It remains
 available after scrolling or reconnecting, but is forgotten when the user
-leaves Attach; a later Attach discovers whatever its terminal shows anew.
+leaves the detail; a later session discovers whatever its terminal shows anew.
 _Avoid_: recent link, visible link, link history
 
 **Terminal Keyboard**:

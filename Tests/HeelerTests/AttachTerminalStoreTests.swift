@@ -482,6 +482,19 @@ struct AttachTerminalStoreTests {
 @MainActor
 @Suite("Agent Attach store")
 struct AgentAttachStoreTests {
+    @Test func productionAttachTakesOverAnExistingRemoteClient() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("attach should open") {
+            await transport.attachRequests.count == 1
+        }
+
+        #expect(await transport.attachRequests.first?.takeover == true)
+        await store.leave().value
+    }
+
     @Test func plainWebURLsBecomeAttachLinksInMostRecentOrder() async throws {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)

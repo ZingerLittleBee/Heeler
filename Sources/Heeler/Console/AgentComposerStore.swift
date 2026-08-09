@@ -9,8 +9,8 @@ protocol ComposerDraftOperations: AnyObject {
     func insertIntoDraft(_ text: String)
 }
 
-/// Owns Monitor's local draft and optimistic delivery echoes. Draft edits do
-/// not touch Transport; only an explicit send emits one `agent.prompt` RPC.
+/// Owns Agent detail's local draft and delivery state. Draft edits do not
+/// touch Transport; only an explicit send emits one `agent.prompt` RPC.
 @MainActor
 @Observable
 final class AgentComposerStore: ComposerDraftOperations {

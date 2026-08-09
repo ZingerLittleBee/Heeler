@@ -4,6 +4,7 @@ private enum TerminalEscapeSequences {
     static let newLine: [UInt8] = [0x0A]
     static let escape: [UInt8] = [0x1B]
     static let tab: [UInt8] = [0x09]
+    static let shiftTab: [UInt8] = [0x1B, 0x5B, 0x5A]
     static let homeNormal: [UInt8] = [0x1B, 0x5B, 0x48]
     static let homeApplication: [UInt8] = [0x1B, 0x4F, 0x48]
     static let pageUp: [UInt8] = [0x1B, 0x5B, 0x35, 0x7E]
@@ -25,6 +26,71 @@ private enum TerminalEscapeSequences {
 enum TerminalKeyboardMode: Int {
     case text
     case controls
+}
+
+/// The small set of terminal controls exposed by Composer's tools keyboard.
+/// These are explicit actions rather than authored text, so they bypass the
+/// draft while the Ghostty surface itself remains display-only.
+enum AgentQuickKey: CaseIterable, Hashable {
+    case escape
+    case tab
+    case shiftTab
+    case left
+    case up
+    case down
+    case right
+    case enter
+    case backspace
+
+    var title: String? {
+        switch self {
+        case .escape: "Esc"
+        case .tab: "Tab"
+        case .shiftTab: "⇧Tab"
+        case .enter: "Enter"
+        case .backspace: "Backspace"
+        case .left, .up, .down, .right: nil
+        }
+    }
+
+    var systemImageName: String? {
+        switch self {
+        case .left: "arrow.left"
+        case .up: "arrow.up"
+        case .down: "arrow.down"
+        case .right: "arrow.right"
+        case .escape, .tab, .shiftTab, .enter, .backspace: nil
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .escape: "Escape"
+        case .tab: "Tab"
+        case .shiftTab: "Shift Tab"
+        case .left: "Left Arrow"
+        case .up: "Up Arrow"
+        case .down: "Down Arrow"
+        case .right: "Right Arrow"
+        case .enter: "Enter"
+        case .backspace: "Backspace"
+        }
+    }
+
+    func bytes(applicationCursor: Bool) -> [UInt8] {
+        switch self {
+        case .escape: TerminalControlKey.escape.bytes(applicationCursor: applicationCursor)
+        case .tab: TerminalControlKey.tab.bytes(applicationCursor: applicationCursor)
+        case .shiftTab: TerminalEscapeSequences.shiftTab
+        case .left: TerminalControlKey.left.bytes(applicationCursor: applicationCursor)
+        case .up: TerminalControlKey.up.bytes(applicationCursor: applicationCursor)
+        case .down: TerminalControlKey.down.bytes(applicationCursor: applicationCursor)
+        case .right: TerminalControlKey.right.bytes(applicationCursor: applicationCursor)
+        case .enter: TerminalControlKey.enter.bytes(applicationCursor: applicationCursor)
+        case .backspace:
+            TerminalControlKey.backspace.bytes(applicationCursor: applicationCursor)
+        }
+    }
 }
 
 enum TerminalControlKey: Equatable, CaseIterable {
@@ -566,6 +632,13 @@ extension HeelerTerminalView {
 
     func sendControlKey(_ key: TerminalControlKey) {
         guard isLocalInputEnabled else { return }
+        terminalSession.sendInput(
+            Data(key.bytes(applicationCursor: usesApplicationCursorKeys)))
+    }
+
+    /// Composer quick keys are explicit terminal actions. They remain usable
+    /// while ordinary local terminal input is disabled.
+    func sendQuickKey(_ key: AgentQuickKey) {
         terminalSession.sendInput(
             Data(key.bytes(applicationCursor: usesApplicationCursorKeys)))
     }

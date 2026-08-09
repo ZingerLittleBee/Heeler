@@ -349,6 +349,8 @@ struct TerminalAgentSwitcherRow: View {
     let switcher: TerminalAgentSwitcher
     let isKeyboardUp: Bool
     let toggleKeyboard: () -> Void
+    var isToolsKeyboardPresented = false
+    var switchKeyboard: (() -> Void)?
     /// Matches `UIPasteControl`'s fixed glyph size in the row below, or the
     /// two read as icons borrowed from different sets.
     private static let glyphPointSize: CGFloat = 12
@@ -364,6 +366,20 @@ struct TerminalAgentSwitcherRow: View {
             Rectangle()
                 .fill(Color(uiColor: .separator))
                 .frame(width: hairline, height: 20)
+            if isKeyboardUp, let switchKeyboard {
+                Button(action: switchKeyboard) {
+                    Image(
+                        systemName: isToolsKeyboardPresented
+                            ? "keyboard" : "wrench.and.screwdriver"
+                    )
+                        .font(.system(size: Self.glyphPointSize))
+                        .foregroundStyle(Color(uiColor: .label))
+                        .frame(width: 44, height: TerminalAgentSwitcherBar.preferredHeight)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .accessibilityLabel(
+                    isToolsKeyboardPresented ? "Show iOS keyboard" : "Show tools keyboard")
+            }
             Button(action: toggleKeyboard) {
                 Image(
                     systemName: isKeyboardUp

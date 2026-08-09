@@ -11,7 +11,6 @@ final actor ScriptedTransport: Transport {
     /// resubscribe-on-membership-change behavior asserts on this.
     private(set) var capturedSubscriptions: [[EventSubscription]] = []
     private(set) var paneReadParams: [PaneReadParams] = []
-    private(set) var agentReadParams: [AgentReadParams] = []
     private(set) var agentPromptParams: [AgentPromptParams] = []
     /// Every `agent.start` received, in order; the new-agent flow (#12)
     /// asserts on the params it forwarded.
@@ -56,14 +55,6 @@ final actor ScriptedTransport: Transport {
     private var paneTexts: [String: String] = [:]
     private var paneReadFailure: TransportError?
     private var nextPaneReadGate: ScriptedTransportCallGate?
-    private var agentTexts: [String: String] = [:]
-    private var agentReadFailure: (any Error)?
-    private var nextAgentReadGate: ScriptedTransportCallGate?
-    /// History-source (`recent`/`recent_unwrapped`) read scripting, separate
-    /// from the visible screen: Monitor's backfill tests script a wider
-    /// window than the live tail without disturbing visible-read tests.
-    private var agentHistoryTexts: [String: String] = [:]
-    private var agentHistoryReadFailure: (any Error)?
     private var agentPromptFailure: (any Error)?
     private var nextAgentPromptGate: ScriptedTransportCallGate?
     private var missingPaneIDs: Set<String> = []
@@ -134,36 +125,6 @@ final actor ScriptedTransport: Transport {
     /// Pauses the next pane read after capturing its response.
     func gateNextPaneRead(using gate: ScriptedTransportCallGate) {
         nextPaneReadGate = gate
-    }
-
-    /// Scripts the text `readAgent` returns for `target`.
-    func setAgentText(_ text: String, target: String) {
-        agentTexts[target] = text
-    }
-
-    /// Makes every subsequent `readAgent` throw `failure`.
-    func setAgentReadFailure(_ failure: (any Error)?) {
-        agentReadFailure = failure
-    }
-
-    /// Scripts the text `readAgent` returns for history sources (`recent`,
-    /// `recent_unwrapped`) on `target`; unscripted targets fall back to the
-    /// `setAgentText` value, as a server whose window equals its screen
-    /// would answer.
-    func setAgentHistoryText(_ text: String, target: String) {
-        agentHistoryTexts[target] = text
-    }
-
-    /// Makes every subsequent history-source `readAgent` throw `failure`
-    /// while leaving visible reads untouched — the `agent_not_idle` race
-    /// between the screen and a backfill.
-    func setAgentHistoryReadFailure(_ failure: (any Error)?) {
-        agentHistoryReadFailure = failure
-    }
-
-    /// Pauses the next Agent read after capturing its response.
-    func gateNextAgentRead(using gate: ScriptedTransportCallGate) {
-        nextAgentReadGate = gate
     }
 
     /// Makes every subsequent `promptAgent` throw `failure`.
@@ -364,20 +325,9 @@ final actor ScriptedTransport: Transport {
     }
 
     func readAgent(_ params: AgentReadParams) async throws -> PaneReadResult {
-        agentReadParams.append(params)
-        let isHistoryRead = params.source != .visible
-        let responseText =
-            isHistoryRead
-            ? (agentHistoryTexts[params.target] ?? agentTexts[params.target] ?? "")
-            : (agentTexts[params.target] ?? "")
-        let failure = isHistoryRead ? (agentHistoryReadFailure ?? agentReadFailure) : agentReadFailure
-        let gate = nextAgentReadGate
-        nextAgentReadGate = nil
-        await gate?.waitUntilOpen()
-        if let failure { throw failure }
         return PaneReadResult(
             format: params.format ?? .text, paneID: params.target, revision: 0,
-            source: params.source, tabID: "t", text: responseText,
+            source: params.source, tabID: "t", text: "",
             truncated: false, workspaceID: "w")
     }
 

@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 /// Owns the Console's navigation path and lands Agent Notification taps on
-/// the right Monitor surface (#74, #179). A tap can arrive before the tapped
+/// the right Agent detail (#74, #179). A tap can arrive before the tapped
 /// pane is known — a killed-state launch routes only once the Host's first sync
 /// delivers the pane — so an unresolved target waits as pending until the
 /// pane appears, the user navigates somewhere themselves, or a grace window
@@ -28,7 +28,7 @@ final class AgentNotificationRouter {
         self.pendingGrace = pendingGrace
     }
 
-    /// Routes a tapped notification. A known pane opens its Monitor at once;
+    /// Routes a tapped notification. A known pane opens its detail at once;
     /// an unknown one parks the user on the Console and follows up if the
     /// pane arrives within the grace window (killed-state launches); no
     /// target at all (unknown key id, undecryptable envelope) is the Console

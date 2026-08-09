@@ -1199,9 +1199,76 @@ struct TerminalAttachTests {
                 x: 0, y: 554, width: 440, height: 436)])
         try await Task.sleep(for: .milliseconds(120))
         #expect(inset.height == 402)
+        #expect(inset.lastPresentedHeight == 402)
 
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
         #expect(inset.height == 0)
+        #expect(inset.lastPresentedHeight == 402)
+    }
+
+    /// Removing the Chinese candidate row publishes a shorter positive frame
+    /// before the system keyboard finishes hiding. The app-owned Tools dock
+    /// must retain the complete measurement instead of adopting that transient
+    /// height and exposing a gap.
+    @MainActor
+    @Test func toolsModeIgnoresCandidateRowTransitionFrames() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { frame in
+            frame.height == 436 ? 402 : 365
+        }
+        let completeFrame = CGRect(x: 0, y: 554, width: 440, height: 436)
+        let withoutCandidateRow = CGRect(x: 0, y: 591, width: 440, height: 399)
+
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: completeFrame])
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(inset.height == 402)
+
+        inset.pauseHeightCapture()
+        center.post(
+            name: UIResponder.keyboardWillChangeFrameNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: withoutCandidateRow])
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(inset.height == 402)
+        #expect(inset.lastPresentedHeight == 402)
+
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        #expect(inset.height == 0)
+        #expect(inset.lastPresentedHeight == 402)
+
+        inset.resumeHeightCapture()
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: completeFrame])
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(inset.height == 402)
+    }
+
+    @Test func agentKeyboardReplacementKeepsTheTerminalInsetStable() {
+        let system = AgentComposerKeyboardLayout(
+            currentHeight: 402, lastPresentedHeight: 402,
+            presentation: .system)
+        let toolsBeforeUIKitHides = AgentComposerKeyboardLayout(
+            currentHeight: 402, lastPresentedHeight: 402,
+            presentation: .tools)
+        let toolsAfterUIKitHides = AgentComposerKeyboardLayout(
+            currentHeight: 0, lastPresentedHeight: 402,
+            presentation: .tools)
+        let systemBeforeUIKitShows = AgentComposerKeyboardLayout(
+            currentHeight: 0, lastPresentedHeight: 402,
+            presentation: .system)
+
+        #expect(system == AgentComposerKeyboardLayout(
+            currentHeight: 402, lastPresentedHeight: 402,
+            presentation: .hidden))
+        #expect(toolsBeforeUIKitHides.contentInset == 402)
+        #expect(system.availableToolsHeight == 402)
+        #expect(systemBeforeUIKitShows.contentInset == 402)
+        #expect([
+            system, toolsBeforeUIKitHides, toolsAfterUIKitHides,
+            systemBeforeUIKitShows,
+        ].map(\.contentInset) == [402, 402, 402, 402])
     }
 
     /// Backgrounding hides the keyboard — animating the accessory out — but
@@ -1338,6 +1405,43 @@ struct TerminalAttachTests {
             TerminalControlKey.pageUp.bytes(applicationCursor: false) == [
                 0x1B, 0x5B, 0x35, 0x7E,
             ])
+    }
+
+    @Test func agentQuickKeysEncodeExpectedBytes() {
+        #expect(
+            AgentQuickKey.allCases == [
+                .escape, .tab, .shiftTab, .left, .up, .down, .right, .enter,
+                .backspace,
+            ])
+        #expect(AgentQuickKey.escape.bytes(applicationCursor: false) == [0x1B])
+        #expect(AgentQuickKey.tab.bytes(applicationCursor: false) == [0x09])
+        #expect(AgentQuickKey.shiftTab.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x5A])
+        #expect(AgentQuickKey.left.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x44])
+        #expect(AgentQuickKey.up.bytes(applicationCursor: true) == [0x1B, 0x4F, 0x41])
+        #expect(AgentQuickKey.down.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x42])
+        #expect(AgentQuickKey.right.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x43])
+        #expect(AgentQuickKey.enter.bytes(applicationCursor: false) == [0x0D])
+        #expect(AgentQuickKey.backspace.bytes(applicationCursor: false) == [0x7F])
+        #expect(AgentQuickKey.enter.title == "Enter")
+        #expect(AgentQuickKey.backspace.title == "Backspace")
+        #expect(AgentQuickKey.enter.systemImageName == nil)
+        #expect(AgentQuickKey.backspace.systemImageName == nil)
+    }
+
+    @MainActor
+    @Test func agentQuickKeysBypassDisplayOnlyInputWithoutEnablingTyping() async {
+        var sent = Data()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSend: { sent.append($0) })
+        terminal.setLocalInputEnabled(false)
+
+        terminal.sendControlKey(.enter)
+        terminal.sendQuickKey(.shiftTab)
+        terminal.receive(Data("\u{1B}[?1h".utf8))
+        terminal.sendQuickKey(.up)
+        await Task.yield()
+
+        #expect(sent == Data([0x1B, 0x5B, 0x5A, 0x1B, 0x4F, 0x41]))
     }
 
     @MainActor

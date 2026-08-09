@@ -34,7 +34,7 @@ final class ConsoleStore {
     /// so stale generations cannot accumulate.
     @ObservationIgnored private var skillsCache: [SkillsCacheKey: [AgentSkill]] = [:]
     /// Status events already converge through each Host's one pane-scoped
-    /// subscription. Screens consume this fan-out instead of opening a
+    /// subscription. Composers consume this fan-out instead of opening a
     /// second events channel that could outlive the connection snapshot.
     @ObservationIgnored private var agentStatusObservers: [
         ConsoleAgent.ID: [UUID: AsyncStream<AgentStatusUpdate>.Continuation]
@@ -256,19 +256,9 @@ final class ConsoleStore {
         }
     }
 
-    /// Monitor's one-shot snapshot source. It borrows the Host's live Console
-    /// transport so opening a detail screen never dials a parallel connection.
-    func readAgent(_ params: AgentReadParams, on hostID: Host.ID) async throws
-        -> PaneReadResult
-    {
-        try await projection(for: hostID).session.withTransport { transport in
-            try await transport.readAgent(params)
-        }
-    }
-
-    /// Composer's one-shot delivery source. Like Monitor reads, prompts
-    /// borrow the Host's current Console connection rather than dialing a
-    /// parallel connection or holding an RPC open for Agent completion.
+    /// Composer's one-shot delivery source. Prompts borrow the Host's current
+    /// Console connection rather than dialing a parallel connection or holding
+    /// an RPC open for Agent completion.
     func promptAgent(_ params: AgentPromptParams, on hostID: Host.ID) async throws -> Agent {
         try await projection(for: hostID).session.withTransport { transport in
             try await transport.promptAgent(params)
@@ -294,8 +284,8 @@ final class ConsoleStore {
     }
 
     /// A latest-value view of the existing `pane.agent_status_changed`
-    /// subscription for one Agent. Monitor uses it for adaptive polling;
-    /// Composer (#182) can reuse the same seam for delivery transitions.
+    /// subscription for one Agent. Composer consumes it for delivery
+    /// transitions without opening another event channel.
     func agentStatusUpdates(for id: ConsoleAgent.ID) -> AsyncStream<AgentStatusUpdate> {
         let observerID = UUID()
         let (stream, continuation) = AsyncStream.makeStream(

@@ -33,8 +33,7 @@ protocol Transport: Sendable {
     /// Reads an Agent's terminal output. Unlike `pane.read`, this preserves
     /// history semantics for alternate-screen Agents: history-capable sources
     /// fail honestly while the Agent is working instead of silently degrading
-    /// to the visible screen. Monitor uses `.visible` for its always-available
-    /// snapshot and requests ANSI output for local rendering (ADR 0012).
+    /// to the visible screen.
     func readAgent(_ params: AgentReadParams) async throws -> PaneReadResult
 
     /// Delivers one complete local draft through `agent.prompt`. The request

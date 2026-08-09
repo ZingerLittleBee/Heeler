@@ -20,7 +20,7 @@ enum TerminalStatusGlyph {
     case progress
 }
 
-/// The status overlay `AgentAttachView` presents for one terminal state.
+/// The status overlay Agent detail presents for one terminal state.
 /// Keeping this mapping as a value lets hosted lifecycle tests observe the
 /// actual presentation choice without snapshotting Ghostty's live Metal tree.
 struct TerminalStatusPresentation: Equatable {
