@@ -1347,6 +1347,7 @@ struct TerminalAttachTests {
         terminal.setNeedsLayout()
         terminal.layoutIfNeeded()
         let layoutPassCount = terminal.ghosttyLayoutPassCount
+        let layerFrame = terminal.layer.frame
 
         terminal.beginKeyboardTypeSwitch()
         terminal.frame.size.height = 512
@@ -1354,10 +1355,13 @@ struct TerminalAttachTests {
         terminal.layoutIfNeeded()
 
         #expect(terminal.bounds.height == 472)
+        #expect(terminal.layer.bounds.height == 472)
+        #expect(terminal.layer.frame == layerFrame)
         #expect(terminal.ghosttyLayoutPassCount == layoutPassCount)
 
         terminal.finishKeyboardTypeSwitch()
 
+        #expect(terminal.layer.bounds.height == 512)
         #expect(terminal.ghosttyLayoutPassCount == layoutPassCount + 1)
     }
 

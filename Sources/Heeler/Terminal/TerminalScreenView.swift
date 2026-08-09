@@ -309,6 +309,12 @@ private final class TerminalInputTextRange: UITextRange {
 /// The app-owned seam around libghostty-spm. It keeps keyboard policy and the
 /// host-managed session lifecycle out of the SwiftUI screen.
 final class HeelerTerminalView: UITerminalView, TerminalByteSink {
+    private enum DeferredKeyboardTypeSwitchGeometry {
+        case frame(CGRect)
+        case bounds(CGRect)
+        case center(CGPoint)
+    }
+
     private let callbackBridge: TerminalSessionCallbackBridge
     private let terminalController: TerminalController
     let terminalSession: InMemoryTerminalSession
@@ -344,6 +350,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// grid from every `layoutSubviews` call, so keep that presentation-only
     /// transaction out of its layout path.
     private var keyboardTypeSwitchBounds: CGRect?
+    private var deferredKeyboardTypeSwitchGeometry: [DeferredKeyboardTypeSwitchGeometry] = []
     private var keyboardTypeSwitchOwnsSizeReportDeferral = false
     private var defersLayoutForKeyboardTransition = false
     /// What ends the current freeze. A dismissal waits for `keyboardDidHide`;
@@ -918,13 +925,43 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         reloadInputViewsAfterWindowResize()
     }
 
-    /// Ghostty's display link reads `bounds` after every render and adjusts
-    /// its Metal/IOSurface sublayers even when `layoutSubviews` is skipped.
-    /// Return the settled geometry throughout a keyboard implementation swap
-    /// so an old drawable is never stretched into a transient UIKit frame.
+    /// Ghostty's display link reads the view and backing-layer geometry after
+    /// every render. Merely returning a frozen `bounds` value is insufficient:
+    /// UIKit has already written the transient size into the backing layer by
+    /// then, so its Metal/IOSurface contents visibly stretch. Keep the actual
+    /// UIView geometry unchanged and replay the proposed writes in order only
+    /// after the keyboard implementation swap settles.
+    override var frame: CGRect {
+        get { super.frame }
+        set {
+            guard keyboardTypeSwitchBounds == nil else {
+                deferredKeyboardTypeSwitchGeometry.append(.frame(newValue))
+                return
+            }
+            super.frame = newValue
+        }
+    }
+
     override var bounds: CGRect {
-        get { keyboardTypeSwitchBounds ?? super.bounds }
-        set { super.bounds = newValue }
+        get { super.bounds }
+        set {
+            guard keyboardTypeSwitchBounds == nil else {
+                deferredKeyboardTypeSwitchGeometry.append(.bounds(newValue))
+                return
+            }
+            super.bounds = newValue
+        }
+    }
+
+    override var center: CGPoint {
+        get { super.center }
+        set {
+            guard keyboardTypeSwitchBounds == nil else {
+                deferredKeyboardTypeSwitchGeometry.append(.center(newValue))
+                return
+            }
+            super.center = newValue
+        }
     }
 
     override func didMoveToWindow() {
@@ -1003,6 +1040,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     func beginKeyboardTypeSwitch() {
         if keyboardTypeSwitchBounds == nil {
             keyboardTypeSwitchBounds = super.bounds
+            deferredKeyboardTypeSwitchGeometry.removeAll(keepingCapacity: true)
             if !defersLayoutForKeyboardTransition {
                 callbackBridge.beginSizeReportDeferral()
                 keyboardTypeSwitchOwnsSizeReportDeferral = true
@@ -1012,7 +1050,21 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
 
     func finishKeyboardTypeSwitch() {
         guard let previousBounds = keyboardTypeSwitchBounds else { return }
+        let deferredGeometry = deferredKeyboardTypeSwitchGeometry
         keyboardTypeSwitchBounds = nil
+        deferredKeyboardTypeSwitchGeometry.removeAll(keepingCapacity: true)
+        UIView.performWithoutAnimation {
+            for geometry in deferredGeometry {
+                switch geometry {
+                case .frame(let frame):
+                    super.frame = frame
+                case .bounds(let bounds):
+                    super.bounds = bounds
+                case .center(let center):
+                    super.center = center
+                }
+            }
+        }
         let shouldLayOut = super.bounds != previousBounds
         if shouldLayOut {
             setNeedsLayout()
@@ -1026,6 +1078,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
 
     private func cancelKeyboardTypeSwitch() {
         keyboardTypeSwitchBounds = nil
+        deferredKeyboardTypeSwitchGeometry.removeAll(keepingCapacity: true)
         if keyboardTypeSwitchOwnsSizeReportDeferral {
             keyboardTypeSwitchOwnsSizeReportDeferral = false
             callbackBridge.cancelSizeReportDeferral()
