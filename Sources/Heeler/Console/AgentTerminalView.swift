@@ -50,16 +50,8 @@ struct AgentTerminalView: View {
     @State private var isShowingAttachLinks = false
     @State private var closeErrorMessage: String?
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
-
-    private var statusBarInset: CGFloat {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .filter { $0.activationState == .foregroundActive }
-            .flatMap(\.windows)
-            .first(where: \.isKeyWindow)?
-            .safeAreaInsets.top ?? 0
-    }
 
     init(
         agent: ConsoleAgent,
@@ -435,30 +427,13 @@ struct AgentTerminalView: View {
                 .accessibilityHidden(composerKeyboardPresentation != .tools)
             }
         }
-        // Pull the surface under the transparent navigation bar, but keep its
-        // first row below the system status bar. Padding remains inside the
-        // fixed full-screen proposal, so the Composer stays bottom-aligned.
-        .padding(.top, statusBarInset)
         .background(
             terminal.themes.selection(for: colorScheme)
                 .surfaceBackground(for: colorScheme))
-        // Let terminal output occupy the navigation bar region while keeping
-        // native Back navigation and its interactive edge gesture.
-        .ignoresSafeArea(.container, edges: .top)
-        // Keep an icon-only native back bar in its own layout region. Hiding
-        // the bar also disables interactive pop in a collapsed split view;
-        // keeping it visible preserves both the button and the edge gesture
-        // without overlaying either one on the terminal grid.
-        .toolbarColorScheme(
-            terminal.themes.selection(for: colorScheme)
-                .chromeColorScheme(for: colorScheme),
-            for: .navigationBar)
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarRole(.editor)
-        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
-        .toolbar(.visible, for: .navigationBar)
+        .overlay(alignment: .leading) {
+            AgentEdgeBackGesture { dismiss() }
+        }
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     private func prepareComposerKeyboardPresentation(
@@ -706,6 +681,29 @@ struct AgentTerminalView: View {
 
     static func displayTitle(for agent: ConsoleAgent) -> String {
         agent.agent.title.isEmpty ? agent.agent.displayName : agent.agent.title
+    }
+}
+
+/// Preserve edge-swipe navigation after the title bar is removed.
+private struct AgentEdgeBackGesture: View {
+    let dismiss: @MainActor () -> Void
+
+    var body: some View {
+        Color.clear
+            .frame(width: 24)
+            .frame(maxHeight: .infinity)
+            .contentShape(.rect)
+            .gesture(
+                DragGesture(minimumDistance: 12, coordinateSpace: .global)
+                    .onEnded { value in
+                        let horizontal = value.translation.width
+                        guard value.startLocation.x <= 24,
+                              horizontal >= 72,
+                              abs(value.translation.height) <= horizontal * 0.75
+                        else { return }
+                        dismiss()
+                    })
+            .accessibilityHidden(true)
     }
 }
 

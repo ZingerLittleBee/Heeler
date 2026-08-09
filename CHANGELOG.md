@@ -14,9 +14,8 @@ Entries reference the issue that motivated them.
   on the Host over SFTP, and inserts the resulting path into the local draft
   without submitting it. Discovered Links appear beside the plus menu, while
   the former title-bar Agent actions live inside it. Agent detail keeps only an
-  icon-only system Back control over a translucent navigation bar, preserving
-  edge-swipe navigation while terminal output remains subtly visible beneath
-  it and stays below the system status bar. (#182)
+  omits Agent detail's title bar so terminal output uses the full area below
+  the system status bar, while preserving edge-swipe navigation. (#182)
 
 - Agent detail now combines the complete live libghostty terminal with a local
   Composer. The terminal preserves TUI rendering, scrollback, and PTY resize,
