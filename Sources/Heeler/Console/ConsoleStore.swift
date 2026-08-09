@@ -39,6 +39,11 @@ final class ConsoleStore {
     @ObservationIgnored private var agentStatusObservers: [
         ConsoleAgent.ID: [UUID: AsyncStream<AgentStatusUpdate>.Continuation]
     ] = [:]
+    /// Composer ownership sits above the detail branch so a transient
+    /// missing-Agent placeholder during reconnect cannot destroy a draft.
+    @ObservationIgnored private var composerStores: [
+        ConsoleAgent.ID: AgentComposerStore
+    ] = [:]
     @ObservationIgnored private let makeSession:
         @Sendable (Host, [EventSubscription]) -> EventsSession
     @ObservationIgnored private let snapshotRetryDelay: Duration
@@ -62,6 +67,7 @@ final class ConsoleStore {
     /// projection because its connection coordinates may have changed.
     func setHosts(_ hosts: [Host]) {
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
+        composerStores = composerStores.filter { incoming[$0.key.hostID] != nil }
         for (id, projection) in projections where incoming[id] != projection.host {
             projection.end()
             projections[id] = nil
@@ -258,6 +264,33 @@ final class ConsoleStore {
         try await projection(for: hostID).session.withTransport { transport in
             try await transport.readAgent(params)
         }
+    }
+
+    /// Composer's one-shot delivery source. Like Monitor reads, prompts
+    /// borrow the Host's current Console connection rather than dialing a
+    /// parallel connection or holding an RPC open for Agent completion.
+    func promptAgent(_ params: AgentPromptParams, on hostID: Host.ID) async throws -> Agent {
+        try await projection(for: hostID).session.withTransport { transport in
+            try await transport.promptAgent(params)
+        }
+    }
+
+    /// One Composer per selected Agent for the lifetime of its Host catalog
+    /// entry. The Console detail may be replaced by a reconnect placeholder;
+    /// retaining the store here keeps its entirely local draft intact.
+    func composerStore(for agent: ConsoleAgent) -> AgentComposerStore {
+        if let existing = composerStores[agent.id] { return existing }
+        let hostID = agent.hostID
+        let store = AgentComposerStore(
+            target: agent.agent.paneID,
+            initialStatus: agent.agent.status,
+            statusUpdates: agentStatusUpdates(for: agent.id)
+        ) { [weak self] params in
+            guard let self else { throw TransportError.cancelled }
+            return try await self.promptAgent(params, on: hostID)
+        }
+        composerStores[agent.id] = store
+        return store
     }
 
     /// A latest-value view of the existing `pane.agent_status_changed`

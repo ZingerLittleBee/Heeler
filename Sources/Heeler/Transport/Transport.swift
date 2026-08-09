@@ -37,6 +37,11 @@ protocol Transport: Sendable {
     /// snapshot and requests ANSI output for local rendering (ADR 0012).
     func readAgent(_ params: AgentReadParams) async throws -> PaneReadResult
 
+    /// Delivers one complete local draft through `agent.prompt`. The request
+    /// deliberately omits `wait`: the response acknowledges delivery into
+    /// the Agent's pane, while Agent Status events report subsequent work.
+    func promptAgent(_ params: AgentPromptParams) async throws -> Agent
+
     /// Starts a new Agent: the new-agent flow (#12, User Story 8 — dispatch
     /// work from the road). Creates a fresh herdr tab in the chosen workspace,
     /// starts the requested agent in its root pane, and returns the Agent once

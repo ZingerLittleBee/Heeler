@@ -12,6 +12,7 @@ final actor ScriptedTransport: Transport {
     private(set) var capturedSubscriptions: [[EventSubscription]] = []
     private(set) var paneReadParams: [PaneReadParams] = []
     private(set) var agentReadParams: [AgentReadParams] = []
+    private(set) var agentPromptParams: [AgentPromptParams] = []
     /// Every `agent.start` received, in order; the new-agent flow (#12)
     /// asserts on the params it forwarded.
     private(set) var agentStarts: [AgentLaunchRequest] = []
@@ -58,6 +59,8 @@ final actor ScriptedTransport: Transport {
     private var agentTexts: [String: String] = [:]
     private var agentReadFailure: (any Error)?
     private var nextAgentReadGate: ScriptedTransportCallGate?
+    private var agentPromptFailure: (any Error)?
+    private var nextAgentPromptGate: ScriptedTransportCallGate?
     private var missingPaneIDs: Set<String> = []
     private var nextStreamID: UInt64 = 0
     private var liveStreamID: UInt64?
@@ -141,6 +144,16 @@ final actor ScriptedTransport: Transport {
     /// Pauses the next Agent read after capturing its response.
     func gateNextAgentRead(using gate: ScriptedTransportCallGate) {
         nextAgentReadGate = gate
+    }
+
+    /// Makes every subsequent `promptAgent` throw `failure`.
+    func setAgentPromptFailure(_ failure: (any Error)?) {
+        agentPromptFailure = failure
+    }
+
+    /// Pauses the next Agent prompt after recording its params.
+    func gateNextAgentPrompt(using gate: ScriptedTransportCallGate) {
+        nextAgentPromptGate = gate
     }
 
     /// Scripts the `AgentInfo` `startAgent` returns; without it the fake
@@ -342,6 +355,16 @@ final actor ScriptedTransport: Transport {
             format: params.format ?? .text, paneID: params.target, revision: 0,
             source: params.source, tabID: "t", text: responseText,
             truncated: false, workspaceID: "w")
+    }
+
+    func promptAgent(_ params: AgentPromptParams) async throws -> Agent {
+        agentPromptParams.append(params)
+        let failure = agentPromptFailure
+        let gate = nextAgentPromptGate
+        nextAgentPromptGate = nil
+        await gate?.waitUntilOpen()
+        if let failure { throw failure }
+        return Agent(.fixture(paneID: params.target, status: .working))
     }
 
     func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
