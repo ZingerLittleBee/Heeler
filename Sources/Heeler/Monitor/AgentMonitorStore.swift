@@ -476,16 +476,24 @@ final class AgentMonitorStore {
             let combined = ANSISnapshotRenderer.render(
                 contiguousParts.joined(separator: "\n"))
             var cursor = combined.startIndex
+            var hasKeptLines = false
+            var emittedPart = false
 
-            for (index, part) in contiguousParts.enumerated() {
+            for part in contiguousParts {
+                let renderedPart = ANSISnapshotRenderer.render(part)
+                let keptLineCount = Self.keptRenderedLineCount(
+                    in: part,
+                    renderedPart: renderedPart)
+                guard keptLineCount > 0 else { continue }
+
                 var contentStart = cursor
-                if index > 0,
+                if hasKeptLines,
                     contentStart < combined.endIndex,
                     combined.characters[contentStart] == "\n"
                 {
                     contentStart = combined.characters.index(after: contentStart)
                 }
-                let characterCount = ANSISnapshotRenderer.render(part).characters.count
+                let characterCount = renderedPart.characters.count
                 let boundary = combined.characters.index(
                     contentStart,
                     offsetBy: characterCount,
@@ -493,6 +501,13 @@ final class AgentMonitorStore {
                 rendered.append(
                     (.content, AttributedString(combined[contentStart..<boundary])))
                 cursor = boundary
+                hasKeptLines = true
+                emittedPart = true
+            }
+            if !emittedPart {
+                // An all-decoration capture still represents a loaded, empty
+                // snapshot rather than returning to the loading state.
+                rendered.append((.content, combined))
             }
             contiguousParts.removeAll(keepingCapacity: true)
         }
@@ -554,6 +569,34 @@ final class AgentMonitorStore {
             start = end
         }
         return parts
+    }
+
+    /// Appending a printable sentinel turns the renderer's retained logical
+    /// lines into separators we can count, including a retained blank line
+    /// whose independently rendered attributed string is empty. Decoration-
+    /// only lines contribute no separator and therefore cannot shift the next
+    /// accessibility slice.
+    private static func keptRenderedLineCount(
+        in part: String,
+        renderedPart: AttributedString
+    ) -> Int {
+        let sentinel: Character = "\u{E000}"
+        let probe = ANSISnapshotRenderer.render(part + "\n" + String(sentinel))
+        guard probe.characters.last == sentinel else {
+            guard !renderedPart.characters.isEmpty else {
+                return part.isEmpty ? 1 : 0
+            }
+            return renderedPart.characters.reduce(into: 1) { count, character in
+                if character == "\n" {
+                    count += 1
+                }
+            }
+        }
+        return probe.characters.dropLast().reduce(into: 0) { count, character in
+            if character == "\n" {
+                count += 1
+            }
+        }
     }
 
     private func waitForCurrentFetch() async {

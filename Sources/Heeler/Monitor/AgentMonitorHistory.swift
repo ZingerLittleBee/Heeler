@@ -182,11 +182,8 @@ struct AgentMonitorHistory: Equatable, Sendable {
             unwrappedSuffixOf: read, cachedSuffixOf: anchor)
         {
             let older = Array(read.prefix(read.count - match.logicalLineCount))
-            if match.usedPartialBoundary {
-                replaceBackfillRange(
-                    range,
-                    with: read,
-                    liveLogicalLineCount: match.logicalLineCount)
+            if let partialPrefix = match.partialPrefix {
+                prepend(older + [partialPrefix], to: range)
                 return BackfillOutcome(
                     newLines: older.count + 1,
                     insertedGap: false)
@@ -197,16 +194,23 @@ struct AgentMonitorHistory: Equatable, Sendable {
             prepend(older, to: range)
             return BackfillOutcome(newLines: older.count, insertedGap: false)
         }
-        if let containment = Self.reflowedContainment(of: anchor, in: read) {
-            replaceBackfillRange(
-                range,
-                with: read,
-                liveLogicalLineCount: containment.logicalRange.count)
+        if anchor.count >= Self.minimumOverlap,
+            let containment = Self.reflowedContainment(of: anchor, in: read)
+        {
+            // The suffix after the contained screen raced ahead of the last
+            // visible read. It cannot be ordered below that exact live screen,
+            // so defer it until the next visible refresh and retain only the
+            // proven older prefix here.
+            var older = Array(read.prefix(containment.logicalRange.lowerBound))
+            if let partialPrefix = containment.partialPrefix {
+                older.append(partialPrefix)
+            }
+            guard !older.isEmpty else {
+                return BackfillOutcome(newLines: 0, insertedGap: false)
+            }
+            prepend(older, to: range)
             return BackfillOutcome(
-                newLines: max(
-                    0,
-                    read.count - containment.logicalRange.count
-                        + (containment.usedPartialBoundary ? 1 : 0)),
+                newLines: older.count,
                 insertedGap: false)
         }
         insertUnstitchedBackfill(read)
@@ -365,33 +369,6 @@ struct AgentMonitorHistory: Equatable, Sendable {
         }
     }
 
-    private mutating func replaceBackfillRange(
-        _ range: Range<Int>,
-        with read: [String],
-        liveLogicalLineCount: Int
-    ) {
-        guard range.upperBound == segments.endIndex else {
-            segments.replaceSubrange(range, with: [.lines(read)])
-            backfillRange = range.lowerBound..<(range.lowerBound + 1)
-            return
-        }
-
-        // A racing `recent_unwrapped` read can contain the previous screen
-        // before its newest lines. The reflow match supplies the screen's
-        // logical-line span; physical visible-row counts are not comparable.
-        let liveCount = min(liveLogicalLineCount, read.count)
-        let history = Array(read.dropLast(liveCount))
-        let live = Array(read.suffix(liveCount))
-        let replacement: [Segment]
-        if history.isEmpty {
-            replacement = [.lines(live)]
-        } else {
-            replacement = [.lines(history), .lines(live)]
-        }
-        segments.replaceSubrange(range, with: replacement)
-        backfillRange = range.lowerBound..<(range.lowerBound + replacement.count)
-    }
-
     private mutating func insertUnstitchedBackfill(_ read: [String]) {
         let liveIndex = segments.count - 1
         var insertion: [Segment] = []
@@ -442,13 +419,13 @@ struct AgentMonitorHistory: Equatable, Sendable {
 
     private struct ReflowedMatch {
         let logicalLineCount: Int
-        let usedPartialBoundary: Bool
+        let partialPrefix: String?
         let coversWholeCache: Bool
     }
 
     private struct ReflowedContainment {
         let logicalRange: Range<Int>
-        let usedPartialBoundary: Bool
+        let partialPrefix: String?
     }
 
     /// Returns the logical `recent_unwrapped` suffix proven to share the
@@ -456,7 +433,8 @@ struct AgentMonitorHistory: Equatable, Sendable {
     /// rows, so differing terminal widths do not manufacture gaps. A cached
     /// first row may also be the trailing portion of a logical line that
     /// began above the visible screen; that partial boundary is reported so
-    /// the caller can replace rather than duplicate it.
+    /// the caller can preserve its missing prefix as history without changing
+    /// the live screen's physical-row geometry.
     ///
     /// A match is accepted when it covers either whole boundary, or when at
     /// least `minimumOverlap` logical lines agree. This preserves the former
@@ -478,7 +456,7 @@ struct AgentMonitorHistory: Equatable, Sendable {
         else { return nil }
 
         let coversWholeRead = match.logicalLineCount == read.count
-        guard !match.usedPartialBoundary || match.coversWholeCache else {
+        guard match.partialPrefix == nil || match.coversWholeCache else {
             return nil
         }
         guard
@@ -501,7 +479,7 @@ struct AgentMonitorHistory: Equatable, Sendable {
         var cachedEnd = cachedRows.endIndex
         var logicalIndex = logicalEnd
         var matchedCount = 0
-        var usedPartialBoundary = false
+        var partialPrefix: String?
 
         while logicalIndex > logicalLines.startIndex, cachedEnd > cachedRows.startIndex {
             logicalIndex -= 1
@@ -516,21 +494,24 @@ struct AgentMonitorHistory: Equatable, Sendable {
                 continue
             }
             guard
-                !usedPartialBoundary,
-                let start = suffixMatchingStart(
+                partialPrefix == nil,
+                let partialMatch = suffixMatchingStart(
                     of: logicalLine,
                     in: cachedRows,
                     endingAt: cachedEnd)
             else { break }
+            // A continuation can only begin at the top of the cached range;
+            // accepting an interior suffix would discard older unmatched rows.
+            guard partialMatch.start == cachedRows.startIndex else { break }
             matchedCount += 1
-            cachedEnd = start
-            usedPartialBoundary = true
+            cachedEnd = partialMatch.start
+            partialPrefix = partialMatch.missingPrefix
         }
 
         guard matchedCount > 0 else { return nil }
         return ReflowedMatch(
             logicalLineCount: matchedCount,
-            usedPartialBoundary: usedPartialBoundary,
+            partialPrefix: partialPrefix,
             coversWholeCache: cachedEnd == cachedRows.startIndex)
     }
 
@@ -586,15 +567,20 @@ struct AgentMonitorHistory: Equatable, Sendable {
     /// Matches cached continuation rows against the suffix of one logical
     /// line. The longest suffix wins so every continuation row is absorbed
     /// before matching proceeds to the preceding logical line.
+    private struct PartialSuffixMatch {
+        let start: Int
+        let missingPrefix: String
+    }
+
     private static func suffixMatchingStart(
         of logicalLine: ReconciliationLine,
         in cachedRows: [ReconciliationLine],
         endingAt cachedEnd: Int
-    ) -> Int? {
+    ) -> PartialSuffixMatch? {
         guard cachedEnd > cachedRows.startIndex else { return nil }
         var combinedRaw: [UInt8] = []
         var combinedTrimmed: [UInt8] = []
-        var earliestMatch: Int?
+        var earliestMatch: PartialSuffixMatch?
         var start = cachedEnd
 
         while start > cachedRows.startIndex {
@@ -611,8 +597,18 @@ struct AgentMonitorHistory: Equatable, Sendable {
             let trimmedMatches = trimmedCanMatch && !combinedTrimmed.isEmpty
                 && logicalLine.trimmed.suffix(combinedTrimmed.count)
                     .elementsEqual(combinedTrimmed)
-            if rawMatches || trimmedMatches {
-                earliestMatch = start
+            if rawMatches {
+                earliestMatch = PartialSuffixMatch(
+                    start: start,
+                    missingPrefix: String(
+                        decoding: logicalLine.raw.dropLast(combinedRaw.count),
+                        as: UTF8.self))
+            } else if trimmedMatches {
+                earliestMatch = PartialSuffixMatch(
+                    start: start,
+                    missingPrefix: String(
+                        decoding: logicalLine.trimmed.dropLast(combinedTrimmed.count),
+                        as: UTF8.self))
             }
         }
         return earliestMatch
@@ -639,7 +635,7 @@ struct AgentMonitorHistory: Equatable, Sendable {
                 let lowerBound = logicalEnd - match.logicalLineCount
                 return ReflowedContainment(
                     logicalRange: lowerBound..<logicalEnd,
-                    usedPartialBoundary: match.usedPartialBoundary)
+                    partialPrefix: match.partialPrefix)
             }
             logicalEnd -= 1
         }

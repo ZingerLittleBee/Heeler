@@ -619,6 +619,33 @@ struct AgentMonitorStoreTests {
                 == Color(red: 128.0 / 255.0, green: 0, blue: 0))
     }
 
+    @Test func decorationOnlyAccessibilityChunkDoesNotShiftFollowingSlices() async throws {
+        let transport = ScriptedTransport()
+        let visibleLines = ["screen 1", "screen 2", "screen 3"]
+        let olderLines = (1...40).map { "older \($0)" }
+        await transport.setAgentText(
+            visibleLines.joined(separator: "\n"), target: "w1:p1")
+        await transport.setAgentHistoryText(
+            (["────"] + olderLines + visibleLines).joined(separator: "\n"),
+            target: "w1:p1")
+        let store = AgentMonitorStore(target: "w1:p1") { params in
+            try await transport.readAgent(params)
+        }
+
+        await store.open()
+
+        #expect(store.snapshotSegments.map(\.kind) == [.content, .content])
+        #expect(
+            store.snapshotSegments.map { String($0.text.characters) }
+                == [
+                    olderLines.joined(separator: "\n"),
+                    visibleLines.joined(separator: "\n"),
+                ])
+        #expect(
+            String(try #require(store.snapshot).characters)
+                == (olderLines + visibleLines).joined(separator: "\n"))
+    }
+
     @Test func largeHistoryUsesBoundedAccessibilitySegments() async throws {
         let transport = ScriptedTransport()
         let allLines = (1...85).map { "line \($0)" }

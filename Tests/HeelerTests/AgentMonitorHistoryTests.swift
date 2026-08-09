@@ -124,18 +124,19 @@ struct AgentMonitorHistoryTests {
             ])
     }
 
-    @Test func backfillSupersedesTheTailWhenTheWindowContainsIt() {
+    @Test func backfillContainmentPreservesExactLiveTail() {
         var history = AgentMonitorHistory()
         history.applyVisible("s1\ns2\ns3\ns4")
 
-        // Output raced the read: the tail sits mid-window, not at its end.
-        // The read is the better truth for the whole region.
+        // Output raced the read: the cached screen sits mid-window. Only the
+        // older prefix can be placed without replacing exact live geometry;
+        // a subsequent visible read will reconcile the newer tail.
         let outcome = history.stitchBackfill("o1\ns1\ns2\ns3\ns4\nn1\nn2")
-        #expect(outcome == .init(newLines: 3, insertedGap: false))
+        #expect(outcome == .init(newLines: 1, insertedGap: false))
         #expect(
             history.segments == [
-                .lines(["o1", "s1", "s2"]),
-                .lines(["s3", "s4", "n1", "n2"]),
+                .lines(["o1"]),
+                .lines(["s1", "s2", "s3", "s4"]),
             ])
     }
 
@@ -154,11 +155,16 @@ struct AgentMonitorHistoryTests {
                 "newer two",
             ].joined(separator: "\n"))
 
-        #expect(outcome == .init(newLines: 3, insertedGap: false))
+        #expect(outcome == .init(newLines: 1, insertedGap: false))
         #expect(
             history.segments == [
-                .lines(["older", "screen one wraps across rows", "screen two"]),
-                .lines(["screen three", "newer one", "newer two"]),
+                .lines(["older"]),
+                .lines([
+                    "screen one wra",
+                    "ps across rows",
+                    "screen two",
+                    "screen three",
+                ]),
             ])
     }
 
@@ -177,13 +183,17 @@ struct AgentMonitorHistoryTests {
         #expect(outcome == .init(newLines: 2, insertedGap: false))
         #expect(
             history.segments == [
-                .lines(["older"]),
+                .lines(["older", "full logical line "]),
                 .lines([
-                    "full logical line continuation",
+                    "continuation",
                     "second logical line",
                     "third logical line",
                 ]),
             ])
+        #expect(
+            history.applyVisible("continuation\nsecond logical line\nthird logical line")
+                == .unchanged)
+        #expect(!history.segments.contains(.gap))
     }
 
     @Test func tinyContinuationScreenDoesNotCreateAGap() {
@@ -193,7 +203,50 @@ struct AgentMonitorHistoryTests {
         let outcome = history.stitchBackfill("full logical line continuation")
 
         #expect(outcome == .init(newLines: 1, insertedGap: false))
-        #expect(history.segments == [.lines(["full logical line continuation"])])
+        #expect(
+            history.segments == [
+                .lines(["full logical line "]),
+                .lines(["continuation"]),
+            ])
+    }
+
+    @Test func largeWrappedScreenRemainsStableAfterPartialBoundaryStitch() {
+        var history = AgentMonitorHistory()
+        let visible = [
+            "continuation", "second logical line", "third logical line",
+            "fourth logical line", "fifth logical line",
+        ].joined(separator: "\n")
+        history.applyVisible(visible)
+
+        let outcome = history.stitchBackfill(
+            [
+                "older",
+                "full logical line continuation",
+                "second logical line",
+                "third logical line",
+                "fourth logical line",
+                "fifth logical line",
+            ].joined(separator: "\n"))
+
+        #expect(outcome == .init(newLines: 2, insertedGap: false))
+        #expect(history.applyVisible(visible) == .unchanged)
+        #expect(!history.segments.contains(.gap))
+        #expect(history.newestLines == AgentMonitorHistory.splitLines(visible))
+    }
+
+    @Test func shortBlankContainmentDoesNotResplitTheLiveScreen() {
+        var history = AgentMonitorHistory()
+        history.applyVisible("\n\n")
+
+        let outcome = history.stitchBackfill("older\n\n\nnewer")
+
+        #expect(outcome == .init(newLines: 4, insertedGap: true))
+        #expect(
+            history.segments == [
+                .lines(["older", "", "", "newer"]),
+                .gap,
+                .lines(["", ""]),
+            ])
     }
 
     @Test func backfillWithoutSharedContentRecordsAGap() {
