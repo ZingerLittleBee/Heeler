@@ -433,6 +433,9 @@ struct AgentTerminalView: View {
         .background(
             terminal.themes.selection(for: colorScheme)
                 .surfaceBackground(for: colorScheme))
+        // Let terminal output occupy the navigation bar region while keeping
+        // native Back navigation and its interactive edge gesture.
+        .ignoresSafeArea(.container, edges: .top)
         // Keep an icon-only native back bar in its own layout region. Hiding
         // the bar also disables interactive pop in a collapsed split view;
         // keeping it visible preserves both the button and the edge gesture
@@ -444,6 +447,7 @@ struct AgentTerminalView: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarRole(.editor)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.visible, for: .navigationBar)
     }
 
