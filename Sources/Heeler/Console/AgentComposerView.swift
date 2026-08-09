@@ -9,12 +9,14 @@ enum AgentComposerKeyboardPresentation: Equatable {
 struct AgentComposerKeyboardLayout: Equatable {
     let contentInset: CGFloat
     let toolsHeight: CGFloat
+    let availableToolsHeight: CGFloat
 
     init(
         currentHeight: CGFloat,
         lastPresentedHeight: CGFloat,
         presentation: AgentComposerKeyboardPresentation
     ) {
+        availableToolsHeight = lastPresentedHeight
         switch presentation {
         case .hidden:
             contentInset = currentHeight

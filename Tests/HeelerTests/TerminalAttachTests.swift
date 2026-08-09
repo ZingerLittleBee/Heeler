@@ -1221,10 +1221,11 @@ struct TerminalAttachTests {
             presentation: .system)
 
         #expect(system == AgentComposerKeyboardLayout(
-            currentHeight: 402, lastPresentedHeight: 0,
+            currentHeight: 402, lastPresentedHeight: 402,
             presentation: .hidden))
         #expect(toolsBeforeUIKitHides.contentInset == 0)
         #expect(toolsAfterUIKitHides.toolsHeight == 402)
+        #expect(system.availableToolsHeight == 402)
         #expect(systemBeforeUIKitShows.contentInset == 402)
         #expect([
             system, toolsBeforeUIKitHides, toolsAfterUIKitHides,

@@ -347,7 +347,7 @@ struct AgentTerminalView: View {
                     switcher: agentSwitcher,
                     keyboardHandoff: keyboardHandoff,
                     keysContext: terminalKeysContext,
-                    keyboardHeight: composerKeyboardLayout.toolsHeight,
+                    keyboardHeight: composerKeyboardLayout.availableToolsHeight,
                     keyboardPresentation: $composerKeyboardPresentation,
                     quickKeysEnabled: attach.isLocalInputEnabled,
                     sendQuickKey: keyboardControl.sendQuickKey)
