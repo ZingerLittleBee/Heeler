@@ -161,9 +161,6 @@ struct AgentTerminalView: View {
 
     private var presentedSurface: some View {
         terminalSurface
-        .toolbar {
-            toolbarContent
-        }
         .photosPicker(
             isPresented: $isSelectingPhoto,
             selection: $selectedPhoto,
@@ -430,18 +427,15 @@ struct AgentTerminalView: View {
             }
         }
         // background(_:ignoresSafeAreaEdges:) defaults to .all: the theme
-        // colour reaches under the transparent navigation bar and into the
-        // home-indicator area without moving the terminal grid or touching
-        // keyboard resize. Must stay outside the safeAreaInset above.
+        // colour reaches into the status-bar and home-indicator areas without
+        // moving the terminal grid or touching keyboard resize. Must stay
+        // outside the safeAreaInset above.
         .background(
             terminal.themes.selection(for: colorScheme)
                 .surfaceBackground(for: colorScheme))
-        .toolbarColorScheme(
-            terminal.themes.selection(for: colorScheme)
-                .chromeColorScheme(for: colorScheme),
-            for: .navigationBar)
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
+        // Keep the native navigation container, and therefore its interactive
+        // edge-swipe pop gesture, while removing all visible top chrome.
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     private func prepareComposerKeyboardPresentation(
@@ -458,55 +452,6 @@ struct AgentTerminalView: View {
     private func handleActivation() {
         let afterPossibleSuspension = activity.lastAbsenceMayHaveSuspended
         attach.didBecomeActive(afterPossibleSuspension: afterPossibleSuspension)
-    }
-
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        if composer == nil {
-            if !attach.attachLinks.isEmpty {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        isShowingAttachLinks = true
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "link")
-                            Text("\(attach.attachLinks.count)")
-                                .monospacedDigit()
-                        }
-                    }
-                    .accessibilityLabel("Attach Links")
-                    .accessibilityValue(attachLinkCountDescription)
-                }
-            }
-            ToolbarItem(placement: .primaryAction) {
-                PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                    Label("Attach Image", systemImage: "photo.badge.plus")
-                }
-                .disabled(!attach.canSelectImage)
-                .accessibilityLabel("Attach Image")
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button("New Agent", systemImage: "plus") {
-                        isStartingAgent = true
-                    }
-                    Button("Snippets", systemImage: "quote.bubble") {
-                        isManagingSnippets = true
-                    }
-                    Button("Rename Agent", systemImage: "pencil") {
-                        isRenamingAgent = true
-                    }
-                    Button("Rename Workspace", systemImage: "pencil.line") {
-                        isRenamingWorkspace = true
-                    }
-                    Button("Close Agent", systemImage: "trash", role: .destructive) {
-                        isConfirmingClose = true
-                    }
-                } label: {
-                    Label("More", systemImage: "ellipsis.circle")
-                }
-            }
-        }
     }
 
     private func openAttachLink(_ link: AttachLink) {
@@ -734,11 +679,6 @@ struct AgentTerminalView: View {
 
     private var title: String {
         Self.displayTitle(for: agent)
-    }
-
-    private var attachLinkCountDescription: String {
-        let count = attach.attachLinks.count
-        return count == 1 ? "1 distinct link" : "\(count) distinct links"
     }
 
     static func displayTitle(for agent: ConsoleAgent) -> String {
