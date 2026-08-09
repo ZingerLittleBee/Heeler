@@ -376,6 +376,16 @@
                 workspaceID: agent?.workspaceID ?? "demo")
         }
 
+        func promptAgent(_ params: AgentPromptParams) async throws -> Agent {
+            guard let agent = profile.snapshot.agents.first(where: { $0.paneID == params.target })
+            else {
+                throw TransportError.malformedResponse("Demo profile has no matching Agent.")
+            }
+            return Agent(agent)
+        }
+
+        func sendAgentKeys(_ params: AgentSendKeysParams) async throws {}
+
         func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
             guard let first = profile.snapshot.agents.first else {
                 throw TransportError.malformedResponse("Demo profile has no Agents.")

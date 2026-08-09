@@ -9,6 +9,11 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Monitor has a control-key strip (Enter, Esc, Ctrl+C, arrows) so a Blocked
+  Agent's confirmation prompt can be answered — and work interrupted —
+  without entering Attach. Each tap is delivered through agent-level
+  `send_keys` and refreshes the snapshot once the Host accepts it. (#183)
+
 - Opening an Agent now lands on Monitor: a color-preserving snapshot of its
   latest screen with an honest capture time. Attach remains available as a
   full-screen toolbar action for realtime interaction; leaving it closes the
@@ -28,6 +33,11 @@ Entries reference the issue that motivated them.
   history is unavailable instead of spinning. Reads that cannot be
   reconciled with the cache leave an explicit gap marker, and the oldest
   capturable line is marked as the beginning of the captured history. (#181)
+- Monitor now includes a local Composer. Drafting makes no network requests;
+  Send delivers the complete message once and shows delivery, Agent work, and
+  Done states from acknowledgments and status pushes. Failed messages can be
+  retried or returned to the draft without losing text, and drafts survive
+  Attach, backgrounding, and Host reconnects. (#182)
 
 - Settings > About now has Acknowledgements: every redistributed third-party
   component ships with its exact upstream licence notice, including libssh2

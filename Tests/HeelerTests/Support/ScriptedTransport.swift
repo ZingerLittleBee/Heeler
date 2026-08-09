@@ -12,6 +12,11 @@ final actor ScriptedTransport: Transport {
     private(set) var capturedSubscriptions: [[EventSubscription]] = []
     private(set) var paneReadParams: [PaneReadParams] = []
     private(set) var agentReadParams: [AgentReadParams] = []
+    private(set) var agentPromptParams: [AgentPromptParams] = []
+    /// Every `agent.send_keys` received, in order; Monitor's control-key
+    /// strip (#183) asserts on the spellings and target it forwarded.
+    private(set) var agentSendKeysParams: [AgentSendKeysParams] = []
+    private var agentSendKeysFailure: (any Error)?
     /// Every `agent.start` received, in order; the new-agent flow (#12)
     /// asserts on the params it forwarded.
     private(set) var agentStarts: [AgentLaunchRequest] = []
@@ -63,6 +68,8 @@ final actor ScriptedTransport: Transport {
     /// window than the live tail without disturbing visible-read tests.
     private var agentHistoryTexts: [String: String] = [:]
     private var agentHistoryReadFailure: (any Error)?
+    private var agentPromptFailure: (any Error)?
+    private var nextAgentPromptGate: ScriptedTransportCallGate?
     private var missingPaneIDs: Set<String> = []
     private var nextStreamID: UInt64 = 0
     private var liveStreamID: UInt64?
@@ -161,6 +168,21 @@ final actor ScriptedTransport: Transport {
     /// Pauses the next Agent read after capturing its response.
     func gateNextAgentRead(using gate: ScriptedTransportCallGate) {
         nextAgentReadGate = gate
+    }
+
+    /// Makes every subsequent `promptAgent` throw `failure`.
+    func setAgentPromptFailure(_ failure: (any Error)?) {
+        agentPromptFailure = failure
+    }
+
+    /// Pauses the next Agent prompt after recording its params.
+    func gateNextAgentPrompt(using gate: ScriptedTransportCallGate) {
+        nextAgentPromptGate = gate
+    }
+
+    /// Makes every subsequent `sendAgentKeys` throw `failure`.
+    func setAgentSendKeysFailure(_ failure: (any Error)?) {
+        agentSendKeysFailure = failure
     }
 
     /// Scripts the `AgentInfo` `startAgent` returns; without it the fake
@@ -366,6 +388,21 @@ final actor ScriptedTransport: Transport {
             format: params.format ?? .text, paneID: params.target, revision: 0,
             source: params.source, tabID: "t", text: responseText,
             truncated: false, workspaceID: "w")
+    }
+
+    func promptAgent(_ params: AgentPromptParams) async throws -> Agent {
+        agentPromptParams.append(params)
+        let failure = agentPromptFailure
+        let gate = nextAgentPromptGate
+        nextAgentPromptGate = nil
+        await gate?.waitUntilOpen()
+        if let failure { throw failure }
+        return Agent(.fixture(paneID: params.target, status: .working))
+    }
+
+    func sendAgentKeys(_ params: AgentSendKeysParams) async throws {
+        if let agentSendKeysFailure { throw agentSendKeysFailure }
+        agentSendKeysParams.append(params)
     }
 
     func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
