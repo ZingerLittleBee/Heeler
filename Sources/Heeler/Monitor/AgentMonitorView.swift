@@ -119,8 +119,8 @@ struct AgentDetailView: View {
     private var monitorSurface: some View {
         VStack(spacing: 0) {
             monitorHeader
-            if let snapshot = monitor.snapshot {
-                if snapshot.characters.isEmpty {
+            if monitor.hasSnapshot {
+                if monitor.isSnapshotEmpty {
                     ScrollView(.vertical) {
                         VStack(spacing: 16) {
                             ContentUnavailableView {
@@ -143,7 +143,7 @@ struct AgentDetailView: View {
                     }
                     .refreshable { await monitor.refresh() }
                 } else {
-                    snapshotScrollView(snapshot)
+                    snapshotScrollView()
                 }
             } else {
                 switch monitor.state {
@@ -182,7 +182,7 @@ struct AgentDetailView: View {
         .background(Color(uiColor: .systemGroupedBackground))
     }
 
-    private func snapshotScrollView(_ snapshot: AttributedString) -> some View {
+    private func snapshotScrollView() -> some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 12) {
@@ -190,7 +190,18 @@ struct AgentDetailView: View {
                     Text("Agent output")
                         .font(.subheadline.weight(.semibold))
                         .accessibilityAddTraits(.isHeader)
-                    Text(snapshot)
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(monitor.snapshotSegments) { segment in
+                            if let accessibilityLabel = segment.accessibilityLabel {
+                                Text(segment.text)
+                                    .accessibilityElement(children: .ignore)
+                                    .accessibilityLabel(accessibilityLabel)
+                            } else {
+                                Text(segment.text)
+                                    .accessibilityElement(children: .combine)
+                            }
+                        }
+                    }
                         .font(.system(.callout, design: .monospaced))
                         .lineSpacing(3)
                         .textSelection(.enabled)
@@ -330,7 +341,7 @@ struct AgentDetailView: View {
             if !monitor.liveUpdatesAvailable {
                 liveUpdatesUnavailableLabel
             }
-            if monitor.snapshot != nil, case .failed(let message) = monitor.state {
+            if monitor.hasSnapshot, case .failed(let message) = monitor.state {
                 HStack(alignment: .center, spacing: 8) {
                     Label(
                         "Refresh failed. Showing the last snapshot. \(message)",
