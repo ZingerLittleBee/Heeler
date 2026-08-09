@@ -10,7 +10,139 @@ enum ANSISnapshotRenderer {
     /// Converts one complete terminal snapshot into display-ready attributed text.
     static func render(_ snapshot: String) -> AttributedString {
         var parser = Parser(snapshot)
-        return parser.render()
+        return cleanTerminalChrome(from: parser.render())
+    }
+
+    private static func cleanTerminalChrome(from rendered: AttributedString) -> AttributedString {
+        var cleaned = rendered
+        let whitespaceBackgroundRanges = cleaned.runs.flatMap { run in
+            backgroundPaddingRanges(in: run.range, characters: cleaned.characters)
+        }
+        for range in whitespaceBackgroundRanges {
+            cleaned[range].backgroundColor = nil
+        }
+        return removingDecorationOnlyLines(from: cleaned)
+    }
+
+    private static func backgroundPaddingRanges(
+        in range: Range<AttributedString.Index>,
+        characters: AttributedString.CharacterView
+    ) -> [Range<AttributedString.Index>] {
+        var start = range.lowerBound
+        while start < range.upperBound, characters[start].isWhitespace {
+            start = characters.index(after: start)
+        }
+
+        guard start < range.upperBound else { return [range] }
+
+        var end = range.upperBound
+        while end > start {
+            let previous = characters.index(before: end)
+            guard characters[previous].isWhitespace else { break }
+            end = previous
+        }
+
+        var ranges: [Range<AttributedString.Index>] = []
+        if range.lowerBound < start {
+            ranges.append(range.lowerBound..<start)
+        }
+        if end < range.upperBound {
+            ranges.append(end..<range.upperBound)
+        }
+        return ranges
+    }
+
+    private static func removingDecorationOnlyLines(
+        from source: AttributedString
+    ) -> AttributedString {
+        var keptLines: [AttributedString] = []
+        var lineStart = source.startIndex
+        var cursor = lineStart
+
+        while cursor < source.endIndex {
+            if source.characters[cursor] == "\n" {
+                appendLine(source[lineStart..<cursor], to: &keptLines)
+                cursor = source.characters.index(after: cursor)
+                lineStart = cursor
+            } else {
+                cursor = source.characters.index(after: cursor)
+            }
+        }
+        appendLine(source[lineStart..<source.endIndex], to: &keptLines)
+
+        var result = AttributedString()
+        for (index, line) in keptLines.enumerated() {
+            if index > 0 {
+                result.append(AttributedString("\n"))
+            }
+            result.append(line)
+        }
+        return result
+    }
+
+    private static func appendLine(
+        _ line: AttributedSubstring,
+        to lines: inout [AttributedString]
+    ) {
+        let visibleCharacters = line.characters.filter { !$0.isWhitespace }
+        let isDecorationOnly = visibleCharacters.count >= 3
+            && visibleCharacters.allSatisfy(isBoxDrawing)
+        guard !isDecorationOnly else { return }
+        lines.append(trimmingDecorativeEdges(from: line))
+    }
+
+    private static func trimmingDecorativeEdges(
+        from line: AttributedSubstring
+    ) -> AttributedString {
+        var start = line.startIndex
+        var end = line.endIndex
+
+        var cursor = end
+        var trailingDecorationCount = 0
+        while cursor > start {
+            let previous = line.characters.index(before: cursor)
+            let character = line.characters[previous]
+            guard character.isWhitespace || isBoxDrawing(character) else { break }
+            if isBoxDrawing(character) {
+                trailingDecorationCount += 1
+            }
+            cursor = previous
+        }
+        if trailingDecorationCount >= 3,
+            containsContent(in: line.characters[start..<cursor])
+        {
+            end = cursor
+        }
+
+        cursor = start
+        var leadingDecorationCount = 0
+        while cursor < end {
+            let character = line.characters[cursor]
+            guard character.isWhitespace || isBoxDrawing(character) else { break }
+            if isBoxDrawing(character) {
+                leadingDecorationCount += 1
+            }
+            cursor = line.characters.index(after: cursor)
+        }
+        if leadingDecorationCount >= 3,
+            containsContent(in: line.characters[cursor..<end])
+        {
+            start = cursor
+        }
+
+        return AttributedString(line[start..<end])
+    }
+
+    private static func containsContent(
+        in characters: AttributedString.CharacterView.SubSequence
+    ) -> Bool {
+        characters.contains { !$0.isWhitespace && !isBoxDrawing($0) }
+    }
+
+    private static func isBoxDrawing(_ character: Character) -> Bool {
+        character.unicodeScalars.allSatisfy { scalar in
+            (0x2500...0x257F).contains(scalar.value)
+        }
     }
 }
 
@@ -48,7 +180,7 @@ extension ANSISnapshotRenderer {
                     appendText(from: textStart, to: index)
                     consumeControlString(after: scalars.index(after: index), bellTerminates: false)
                     textStart = index
-                case 0x00...0x08, 0x0B, 0x0C, 0x0E...0x1F, 0x7F...0x9F:
+                case 0x00...0x08, 0x0B...0x1F, 0x7F...0x9F:
                     appendText(from: textStart, to: index)
                     index = scalars.index(after: index)
                     textStart = index

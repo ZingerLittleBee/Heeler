@@ -246,7 +246,7 @@ struct ANSISnapshotRendererTests {
         fixtures.forEach(assertFixture)
     }
 
-    @Test func preservesBoxDrawingMultibyteTextAndLineStructure() {
+    @Test func filtersDecorativeBoxLinesAndPreservesMultibyteContent() {
         let fixture = Fixture(
             name: "box drawing CJK emoji and newlines",
             bytes: [
@@ -256,14 +256,60 @@ struct ANSISnapshotRendererTests {
                 0x1B, 0x5B, 0x30, 0x6D, 0xE2, 0x94, 0x82, 0x0A,
                 0xE2, 0x94, 0x94, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x98,
             ],
-            text: "┌─┐\n│你🐝│\n└─┘",
+            text: "│你🐝│",
             runs: [
-                ExpectedRun(text: "┌─┐\n│"),
+                ExpectedRun(text: "│"),
                 ExpectedRun(text: "你🐝", foreground: RGB(0x00, 0x80, 0x00)),
-                ExpectedRun(text: "│\n└─┘"),
+                ExpectedRun(text: "│"),
             ])
 
         assertFixture(fixture)
+    }
+
+    @Test func removesDecorationOnlyBoxDrawingLines() {
+        let rendered = ANSISnapshotRenderer.render(
+            "before\r\n────────────────\r\n│ useful content │\r\n└──────────────┘\r\nafter")
+
+        #expect(String(rendered.characters) == "before\n│ useful content │\nafter")
+    }
+
+    @Test func trimsLongDecorativeEdgesFromContentLines() {
+        let rendered = ANSISnapshotRenderer.render(
+            "──── heading\r\n─ Worked for 1m 33s ─────────────\r\n│ useful content │")
+
+        #expect(
+            String(rendered.characters)
+                == "heading\n─ Worked for 1m 33s\n│ useful content │")
+    }
+
+    @Test func removesBackgroundColorFromWhitespaceOnlyRuns() {
+        let rendered = ANSISnapshotRenderer.render(
+            "\u{1B}[48;5;232m        \u{1B}[0m\nmessage")
+
+        #expect(String(rendered.characters) == "        \nmessage")
+        #expect(rendered.runs.first?.backgroundColor == nil)
+    }
+
+    @Test func removesBackgroundColorFromRunPadding() {
+        let rendered = ANSISnapshotRenderer.render(
+            "\u{1B}[48;5;232m    message    \u{1B}[0m")
+        let runs = rendered.runs.map { run in
+            (
+                text: String(rendered.characters[run.range]),
+                background: run.backgroundColor
+            )
+        }
+
+        #expect(String(rendered.characters) == "    message    ")
+        #expect(runs.count == 3)
+        #expect(runs[0].text == "    ")
+        #expect(runs[0].background == nil)
+        #expect(runs[1].text == "message")
+        #expect(
+            runs[1].background
+                == Color(red: 8.0 / 255.0, green: 8.0 / 255.0, blue: 8.0 / 255.0))
+        #expect(runs[2].text == "    ")
+        #expect(runs[2].background == nil)
     }
 
     private func assertFixture(_ fixture: Fixture) {

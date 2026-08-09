@@ -21,6 +21,28 @@ struct ContinuousAgentMonitorClock: AgentMonitorClock {
 @MainActor
 @Observable
 final class AgentMonitorStore {
+    struct RenderedSegment: Identifiable, Equatable {
+        enum Kind: Hashable, Sendable {
+            case content
+            case gap
+        }
+
+        struct ID: Hashable, Sendable {
+            let kind: Kind
+            /// Counted from the live tail so prepending older history does
+            /// not change the identity of existing rendered regions.
+            let offsetFromNewest: Int
+        }
+
+        let id: ID
+        let kind: Kind
+        let text: AttributedString
+
+        var accessibilityLabel: String? {
+            kind == .gap ? "Content not captured" : nil
+        }
+    }
+
     enum State: Equatable {
         case idle
         case loading
@@ -29,8 +51,9 @@ final class AgentMonitorStore {
     }
 
     /// Where the scrollback stands relative to herdr's capture limit. herdr
-    /// has no history cursor, so "more history" is only ever one `recent`
-    /// read away; the states exist to make that read honest.
+    /// has no history cursor, so "more history" is only ever one
+    /// `recent_unwrapped` read away; the states exist to make that read
+    /// honest.
     enum HistoryState: Equatable {
         /// No load in flight; reaching the top of the cache may fetch more.
         case idle
@@ -49,12 +72,33 @@ final class AgentMonitorStore {
     static let refreshCadence: Duration = .seconds(2)
     /// herdr caps every read at 1000 lines; ask for the whole window.
     static let historyLineCount = 1000
+    /// Bounds one VoiceOver utterance while keeping enough terminal context
+    /// in each independently navigable content element.
+    static let maximumAccessibleSegmentLines = 40
     /// The in-content marker for a region that could not be captured or
     /// reconciled. Tests assert on this copy.
     static let gapMarkerText = "— gap: content not captured —"
 
     private(set) var state: State = .idle
-    private(set) var snapshot: AttributedString?
+    private(set) var snapshotSegments: [RenderedSegment] = []
+    var hasSnapshot: Bool { !snapshotSegments.isEmpty }
+    var isSnapshotEmpty: Bool {
+        hasSnapshot && snapshotSegments.allSatisfy { $0.text.characters.isEmpty }
+    }
+    /// Joined compatibility view for tests and diagnostics. Production state
+    /// and view paths use `hasSnapshot`, `isSnapshotEmpty`, and the segments
+    /// directly so they never rebuild this value during body evaluation.
+    var snapshot: AttributedString? {
+        guard !snapshotSegments.isEmpty else { return nil }
+        var joined = AttributedString()
+        for (index, segment) in snapshotSegments.enumerated() {
+            if index > 0 {
+                joined.append(AttributedString("\n"))
+            }
+            joined.append(segment.text)
+        }
+        return joined
+    }
     private(set) var capturedAt: Date?
     private(set) var agentStatus: AgentStatus
     private(set) var liveUpdatesAvailable = true
@@ -216,7 +260,7 @@ final class AgentMonitorStore {
     }
 
     /// One backfill read. herdr exposes no history cursor, so this reads
-    /// the server's newest lines (capped at `historyLineCount`) and
+    /// the server's newest logical lines (capped at `historyLineCount`) and
     /// overlap-stitches them onto the cache; a stitch that finds no shared
     /// content records an explicit gap instead of guessing. Also the retry
     /// path for a failed backfill.
@@ -242,7 +286,7 @@ final class AgentMonitorStore {
         do {
             let result = try await read(
                 AgentReadParams(
-                    source: .recent,
+                    source: .recentUnwrapped,
                     target: target,
                     format: .ansi,
                     lines: Self.historyLineCount,
@@ -253,9 +297,10 @@ final class AgentMonitorStore {
                 contentChangeCount &+= 1
             }
             capturedAt = now()
-            // The capture limit is reached when the server had fewer lines
-            // than the cap (that was everything) or when the read added
-            // nothing (the window is already fully cached).
+            // We assume the `recent_unwrapped` response line count uses the
+            // same unit as the request cap; this has not been verified live.
+            // Independently, adding nothing proves this returned window is
+            // already fully cached.
             let returnedLines = AgentMonitorHistory.splitLines(result.text).count
             historyState =
                 returnedLines < Self.historyLineCount || outcome.newLines == 0
@@ -367,7 +412,7 @@ final class AgentMonitorStore {
     private func fetch() async {
         guard !isFetching else { return }
         isFetching = true
-        if snapshot == nil {
+        if !hasSnapshot {
             state = .loading
         }
         defer { finishFetch() }
@@ -386,8 +431,8 @@ final class AgentMonitorStore {
             capturedAt = now()
             state = .loaded
         } catch is CancellationError {
-            state = snapshot == nil ? .idle : .loaded
-            if snapshot == nil {
+            state = hasSnapshot ? .loaded : .idle
+            if !hasSnapshot {
                 hasOpened = false
             }
         } catch {
@@ -418,42 +463,140 @@ final class AgentMonitorStore {
 
     /// Renders the whole cache, with history above the live screen and gap
     /// markers between unreconciled regions. Storage keeps history and live
-    /// runs separate, but adjacent line segments render together so ANSI
-    /// state still flows across every byte-proven boundary. It resets only
-    /// at a gap, which is the honest boundary anyway.
+    /// runs as separate accessibility segments, but adjacent line runs first
+    /// render together and are sliced afterward so ANSI state still flows
+    /// across every byte-proven boundary. It resets only at a gap, which is
+    /// the honest boundary anyway.
     private func renderSnapshot() {
-        var renderedSegments: [AttributedString] = []
+        var rendered: [(kind: RenderedSegment.Kind, text: AttributedString)] = []
         var contiguousParts: [String] = []
 
         func flushContiguousLines() {
             guard !contiguousParts.isEmpty else { return }
-            renderedSegments.append(
-                ANSISnapshotRenderer.render(contiguousParts.joined(separator: "\n")))
+            let combined = ANSISnapshotRenderer.render(
+                contiguousParts.joined(separator: "\n"))
+            var cursor = combined.startIndex
+            var hasKeptLines = false
+            var emittedPart = false
+
+            for part in contiguousParts {
+                let renderedPart = ANSISnapshotRenderer.render(part)
+                let keptLineCount = Self.keptRenderedLineCount(
+                    in: part,
+                    renderedPart: renderedPart)
+                guard keptLineCount > 0 else { continue }
+
+                var contentStart = cursor
+                if hasKeptLines,
+                    contentStart < combined.endIndex,
+                    combined.characters[contentStart] == "\n"
+                {
+                    contentStart = combined.characters.index(after: contentStart)
+                }
+                let characterCount = renderedPart.characters.count
+                let boundary = combined.characters.index(
+                    contentStart,
+                    offsetBy: characterCount,
+                    limitedBy: combined.endIndex) ?? combined.endIndex
+                rendered.append(
+                    (.content, AttributedString(combined[contentStart..<boundary])))
+                cursor = boundary
+                hasKeptLines = true
+                emittedPart = true
+            }
+            if !emittedPart {
+                // An all-decoration capture still represents a loaded, empty
+                // snapshot rather than returning to the loading state.
+                rendered.append((.content, combined))
+            }
             contiguousParts.removeAll(keepingCapacity: true)
         }
 
         for segment in history.segments {
             switch segment {
             case .lines(let lines):
-                contiguousParts.append(lines.joined(separator: "\n"))
+                contiguousParts.append(contentsOf: Self.accessibleParts(for: lines))
             case .gap:
                 flushContiguousLines()
                 var marker = AttributedString(Self.gapMarkerText)
                 marker.foregroundColor = Color.secondary
                 marker.inlinePresentationIntent = .emphasized
-                renderedSegments.append(marker)
+                rendered.append((.gap, marker))
             }
         }
         flushContiguousLines()
 
-        var rendered = AttributedString()
-        for (index, segment) in renderedSegments.enumerated() {
-            if index > 0 {
-                rendered.append(AttributedString("\n"))
+        var contentOffset = 0
+        var gapOffset = 0
+        var identified: [RenderedSegment] = []
+        identified.reserveCapacity(rendered.count)
+        for segment in rendered.reversed() {
+            let offset: Int
+            switch segment.kind {
+            case .content:
+                offset = contentOffset
+                contentOffset += 1
+            case .gap:
+                offset = gapOffset
+                gapOffset += 1
             }
-            rendered.append(segment)
+            identified.append(
+                RenderedSegment(
+                    id: .init(kind: segment.kind, offsetFromNewest: offset),
+                    kind: segment.kind,
+                    text: segment.text))
         }
-        snapshot = rendered
+        snapshotSegments = Array(identified.reversed())
+    }
+
+    /// Chunks from the newest end. Prepending older history then changes only
+    /// the oldest chunk, while the IDs of all existing tail chunks remain
+    /// stable because rendered IDs are also counted from newest.
+    private static func accessibleParts(for lines: [String]) -> [String] {
+        guard !lines.isEmpty else { return [""] }
+        let firstChunkCount = lines.count % maximumAccessibleSegmentLines
+        var start = lines.startIndex
+        var parts: [String] = []
+
+        if firstChunkCount > 0 {
+            let end = start + firstChunkCount
+            parts.append(lines[start..<end].joined(separator: "\n"))
+            start = end
+        }
+        while start < lines.endIndex {
+            let end = min(start + maximumAccessibleSegmentLines, lines.endIndex)
+            parts.append(lines[start..<end].joined(separator: "\n"))
+            start = end
+        }
+        return parts
+    }
+
+    /// Appending a printable sentinel turns the renderer's retained logical
+    /// lines into separators we can count, including a retained blank line
+    /// whose independently rendered attributed string is empty. Decoration-
+    /// only lines contribute no separator and therefore cannot shift the next
+    /// accessibility slice.
+    private static func keptRenderedLineCount(
+        in part: String,
+        renderedPart: AttributedString
+    ) -> Int {
+        let sentinel: Character = "\u{E000}"
+        let probe = ANSISnapshotRenderer.render(part + "\n" + String(sentinel))
+        guard probe.characters.last == sentinel else {
+            guard !renderedPart.characters.isEmpty else {
+                return part.isEmpty ? 1 : 0
+            }
+            return renderedPart.characters.reduce(into: 1) { count, character in
+                if character == "\n" {
+                    count += 1
+                }
+            }
+        }
+        return probe.characters.dropLast().reduce(into: 0) { count, character in
+            if character == "\n" {
+                count += 1
+            }
+        }
     }
 
     private func waitForCurrentFetch() async {

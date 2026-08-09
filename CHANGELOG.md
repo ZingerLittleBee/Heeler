@@ -90,6 +90,16 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Monitor snapshots no longer scroll horizontally. Their text now stays
+  constrained to the available screen width while captured history remains
+  vertically scrollable. (#179)
+
+- Monitor now presents a stable status summary, a high-contrast snapshot
+  canvas, one scrollable activity surface for Agent output and locally sent
+  messages, a compact Composer, and an explicit path into Attach. Decorative
+  terminal borders and hidden horizontal controls no longer compete with the
+  content. (#179; #182)
+
 - Malformed herdr API error responses that carry an empty id now fail the
   originating request immediately with the server's error instead of hanging
   until the request deadline. herdr answers unparseable requests with
