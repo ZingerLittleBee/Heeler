@@ -81,9 +81,13 @@ final class AgentMonitorStore {
 
     private(set) var state: State = .idle
     private(set) var snapshotSegments: [RenderedSegment] = []
-    /// Compatibility view used by state checks and non-UI callers. The
-    /// Monitor view renders `snapshotSegments` so each region is a separate
-    /// accessibility element.
+    var hasSnapshot: Bool { !snapshotSegments.isEmpty }
+    var isSnapshotEmpty: Bool {
+        hasSnapshot && snapshotSegments.allSatisfy { $0.text.characters.isEmpty }
+    }
+    /// Joined compatibility view for tests and diagnostics. Production state
+    /// and view paths use `hasSnapshot`, `isSnapshotEmpty`, and the segments
+    /// directly so they never rebuild this value during body evaluation.
     var snapshot: AttributedString? {
         guard !snapshotSegments.isEmpty else { return nil }
         var joined = AttributedString()
@@ -293,10 +297,10 @@ final class AgentMonitorStore {
                 contentChangeCount &+= 1
             }
             capturedAt = now()
-            // `recent_unwrapped` counts logical lines. The capture limit is
-            // reached when the server had fewer logical lines than the cap
-            // (that was everything) or when the read added nothing (the
-            // logical-line window is already fully cached).
+            // We assume the `recent_unwrapped` response line count uses the
+            // same unit as the request cap; this has not been verified live.
+            // Independently, adding nothing proves this returned window is
+            // already fully cached.
             let returnedLines = AgentMonitorHistory.splitLines(result.text).count
             historyState =
                 returnedLines < Self.historyLineCount || outcome.newLines == 0
@@ -408,7 +412,7 @@ final class AgentMonitorStore {
     private func fetch() async {
         guard !isFetching else { return }
         isFetching = true
-        if snapshot == nil {
+        if !hasSnapshot {
             state = .loading
         }
         defer { finishFetch() }
@@ -427,8 +431,8 @@ final class AgentMonitorStore {
             capturedAt = now()
             state = .loaded
         } catch is CancellationError {
-            state = snapshot == nil ? .idle : .loaded
-            if snapshot == nil {
+            state = hasSnapshot ? .loaded : .idle
+            if !hasSnapshot {
                 hasOpened = false
             }
         } catch {
@@ -471,24 +475,24 @@ final class AgentMonitorStore {
             guard !contiguousParts.isEmpty else { return }
             let combined = ANSISnapshotRenderer.render(
                 contiguousParts.joined(separator: "\n"))
-            var renderedPrefixParts: [String] = []
-            var previousBoundary = combined.startIndex
+            var cursor = combined.startIndex
 
-            for part in contiguousParts {
-                renderedPrefixParts.append(part)
-                let prefixCharacterCount = ANSISnapshotRenderer.render(
-                    renderedPrefixParts.joined(separator: "\n")
-                ).characters.count
-                let boundedCount = min(prefixCharacterCount, combined.characters.count)
-                let boundary = combined.characters.index(
-                    combined.startIndex, offsetBy: boundedCount)
-                var contentStart = previousBoundary
-                if contentStart < boundary, combined.characters[contentStart] == "\n" {
+            for (index, part) in contiguousParts.enumerated() {
+                var contentStart = cursor
+                if index > 0,
+                    contentStart < combined.endIndex,
+                    combined.characters[contentStart] == "\n"
+                {
                     contentStart = combined.characters.index(after: contentStart)
                 }
+                let characterCount = ANSISnapshotRenderer.render(part).characters.count
+                let boundary = combined.characters.index(
+                    contentStart,
+                    offsetBy: characterCount,
+                    limitedBy: combined.endIndex) ?? combined.endIndex
                 rendered.append(
                     (.content, AttributedString(combined[contentStart..<boundary])))
-                previousBoundary = boundary
+                cursor = boundary
             }
             contiguousParts.removeAll(keepingCapacity: true)
         }

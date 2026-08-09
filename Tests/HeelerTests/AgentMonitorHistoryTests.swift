@@ -139,6 +139,63 @@ struct AgentMonitorHistoryTests {
             ])
     }
 
+    @Test func wrappedBackfillContainmentReflowsMidWindow() {
+        var history = AgentMonitorHistory()
+        history.applyVisible(
+            "screen one wra\nps across rows\nscreen two\nscreen three")
+
+        let outcome = history.stitchBackfill(
+            [
+                "older",
+                "screen one wraps across rows",
+                "screen two",
+                "screen three",
+                "newer one",
+                "newer two",
+            ].joined(separator: "\n"))
+
+        #expect(outcome == .init(newLines: 3, insertedGap: false))
+        #expect(
+            history.segments == [
+                .lines(["older", "screen one wraps across rows", "screen two"]),
+                .lines(["screen three", "newer one", "newer two"]),
+            ])
+    }
+
+    @Test func visibleTopContinuationIsAbsorbedWithoutDuplication() {
+        var history = AgentMonitorHistory()
+        history.applyVisible("continuation\nsecond logical line\nthird logical line")
+
+        let outcome = history.stitchBackfill(
+            [
+                "older",
+                "full logical line continuation",
+                "second logical line",
+                "third logical line",
+            ].joined(separator: "\n"))
+
+        #expect(outcome == .init(newLines: 2, insertedGap: false))
+        #expect(
+            history.segments == [
+                .lines(["older"]),
+                .lines([
+                    "full logical line continuation",
+                    "second logical line",
+                    "third logical line",
+                ]),
+            ])
+    }
+
+    @Test func tinyContinuationScreenDoesNotCreateAGap() {
+        var history = AgentMonitorHistory()
+        history.applyVisible("continuation")
+
+        let outcome = history.stitchBackfill("full logical line continuation")
+
+        #expect(outcome == .init(newLines: 1, insertedGap: false))
+        #expect(history.segments == [.lines(["full logical line continuation"])])
+    }
+
     @Test func backfillWithoutSharedContentRecordsAGap() {
         var history = AgentMonitorHistory()
         history.applyVisible("stale a\nstale b\nstale c")

@@ -300,6 +300,8 @@ struct AgentMonitorStoreTests {
 
         #expect(store.state == .loaded)
         #expect(store.capturedAt == capturedAt)
+        #expect(store.hasSnapshot)
+        #expect(!store.isSnapshotEmpty)
         let snapshot = try #require(store.snapshot)
         #expect(String(snapshot.characters) == "plain red")
         #expect(
@@ -392,6 +394,7 @@ struct AgentMonitorStoreTests {
         await store.open()
 
         #expect(store.state == .failed("herdr rejected the snapshot: agent is working"))
+        #expect(!store.hasSnapshot)
         #expect(store.snapshot == nil)
 
         await transport.setAgentReadFailure(nil)
@@ -399,6 +402,8 @@ struct AgentMonitorStoreTests {
         await store.retry()
 
         #expect(store.state == .loaded)
+        #expect(store.hasSnapshot)
+        #expect(!store.isSnapshotEmpty)
         let snapshot = try #require(store.snapshot)
         #expect(String(snapshot.characters) == "recovered")
         #expect(await agentReads(transport, source: .visible).count == 2)
@@ -572,7 +577,7 @@ struct AgentMonitorStoreTests {
         #expect(gap.accessibilityLabel == "Content not captured")
     }
 
-    @Test func renderedSegmentIDsSurviveHistoryPrepending() async throws {
+    @Test func renderedTailSegmentIDSurvivesHistoryPrepending() async throws {
         let transport = ScriptedTransport()
         await transport.setAgentText("screen 1\nscreen 2\nscreen 3", target: "w1:p1")
         let store = AgentMonitorStore(
@@ -697,6 +702,8 @@ struct AgentMonitorStoreTests {
         await store.open()
 
         #expect(store.state == .loaded)
+        #expect(store.hasSnapshot)
+        #expect(store.isSnapshotEmpty)
         let snapshot = try #require(store.snapshot)
         #expect(snapshot.characters.isEmpty)
         #expect(store.historyState == .exhausted)
