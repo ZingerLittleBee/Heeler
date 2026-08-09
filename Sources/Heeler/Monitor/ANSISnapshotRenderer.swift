@@ -418,13 +418,26 @@ extension ANSISnapshotRenderer {
             guard start < end else { return }
             var run = AttributedString(String(scalars[start..<end]))
 
-            if let foreground = style.foreground?.color {
+            var foreground = style.foreground?.color
+            var background = style.background?.color
+            if style.reversed {
+                // Reverse video swaps the effective colors. An unset side falls
+                // back to the default label-on-surface pair, so a bare SGR 7
+                // still reads as a visible highlight in both appearances.
+                let swappedForeground = background
+                    ?? Color(uiColor: .secondarySystemGroupedBackground)
+                let swappedBackground = foreground ?? Color(uiColor: .label)
+                foreground = swappedForeground
+                background = swappedBackground
+            }
+
+            if let foreground {
                 run.foregroundColor = style.dim
                     ? foreground.opacity(0.5) : foreground
             } else if style.dim {
                 run.foregroundColor = Color.primary.opacity(0.5)
             }
-            if let background = style.background?.color {
+            if let background {
                 run.backgroundColor = background
             }
 
@@ -582,6 +595,8 @@ extension ANSISnapshotRenderer {
                     style.italic = true
                 case 4:
                     style.underline = true
+                case 7:
+                    style.reversed = true
                 case 22:
                     style.bold = false
                     style.dim = false
@@ -589,6 +604,8 @@ extension ANSISnapshotRenderer {
                     style.italic = false
                 case 24:
                     style.underline = false
+                case 27:
+                    style.reversed = false
                 case 30...37:
                     style.foreground = Self.ansiColors[parameter - 30]
                 case 38:
@@ -730,5 +747,6 @@ extension ANSISnapshotRenderer {
         var dim = false
         var italic = false
         var underline = false
+        var reversed = false
     }
 }

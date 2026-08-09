@@ -314,6 +314,89 @@ struct ANSISnapshotRendererTests {
         #expect(clamped.green == clamped.blue)
     }
 
+    @Test func reverseVideoSwapsExplicitForegroundAndBackground() {
+        assertFixture(
+            Fixture(
+                name: "reverse video with explicit colors",
+                bytes: bytes("\u{1B}[31;44;7mX"),
+                text: "X",
+                runs: [
+                    ExpectedRun(
+                        text: "X",
+                        foreground: paletteColor(4),
+                        background: paletteColor(1))
+                ]))
+    }
+
+    @Test func reverseVideoWithoutColorsUsesLegibleHighlightPair() {
+        let rendered = ANSISnapshotRenderer.render("\u{1B}[7mX")
+        let run = rendered.runs.first
+
+        #expect(run?.backgroundColor != nil)
+        #expect(run?.foregroundColor != nil)
+        for style in [UIUserInterfaceStyle.light, UIUserInterfaceStyle.dark] {
+            let foreground = resolve(run?.foregroundColor, style: style)
+            let background = resolve(run?.backgroundColor, style: style)
+            guard let foreground, let background else {
+                Issue.record("reverse video: expected both colors to resolve")
+                return
+            }
+            let ratio = ANSISnapshotRenderer.Contrast.ratio(
+                of: ANSISnapshotRenderer.RGB(
+                    red: foreground.red, green: foreground.green, blue: foreground.blue),
+                to: ANSISnapshotRenderer.RGB(
+                    red: background.red, green: background.green, blue: background.blue))
+            #expect(
+                ratio >= ANSISnapshotRenderer.Contrast.minimumForegroundRatio,
+                "reverse video highlight contrast \(ratio) below 4.5")
+        }
+    }
+
+    @Test func reverseVideoWithForegroundOnlyFillsSurfaceText() {
+        let rendered = ANSISnapshotRenderer.render("\u{1B}[31;7mX")
+        let run = rendered.runs.first
+
+        assertColor(
+            run?.backgroundColor,
+            matches: paletteColor(1),
+            opacity: 1,
+            label: "reverse video background")
+        // The text takes the surface color so it stays legible on the fill.
+        let lightForeground = resolve(run?.foregroundColor, style: .light)
+        #expect(lightForeground?.red == 255)
+        #expect(lightForeground?.green == 255)
+        #expect(lightForeground?.blue == 255)
+        let darkForeground = resolve(run?.foregroundColor, style: .dark)
+        #expect(darkForeground?.red == 28)
+        #expect(darkForeground?.green == 28)
+        #expect(darkForeground?.blue == 30)
+    }
+
+    @Test func reverseVideoOffAndResetClearReversal() {
+        let rendered = ANSISnapshotRenderer.render(
+            "\u{1B}[7mA\u{1B}[27mB\u{1B}[7mC\u{1B}[0mD")
+        let runs = rendered.runs.map { run in
+            (
+                text: String(rendered.characters[run.range]),
+                foreground: run.foregroundColor,
+                background: run.backgroundColor
+            )
+        }
+
+        #expect(String(rendered.characters) == "ABCD")
+        #expect(runs.count == 4)
+        #expect(runs[0].text == "A")
+        #expect(runs[0].background != nil)
+        #expect(runs[1].text == "B")
+        #expect(runs[1].background == nil)
+        #expect(runs[1].foreground == nil)
+        #expect(runs[2].text == "C")
+        #expect(runs[2].background != nil)
+        #expect(runs[3].text == "D")
+        #expect(runs[3].background == nil)
+        #expect(runs[3].foreground == nil)
+    }
+
     @Test func stripsUnsupportedMalformedAndTruncatedSequences() {
         let fixtures = [
             Fixture(
