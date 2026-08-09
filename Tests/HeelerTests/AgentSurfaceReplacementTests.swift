@@ -7,7 +7,7 @@ import UIKit
 /// What happens when SwiftUI replaces a terminal surface (#152).
 ///
 /// Whole-screen replacement is the one path #143 could not disprove:
-/// `AgentAttachView` holds `@State private var attach`, so an Agent switch
+/// `AgentTerminalView` holds `@State private var attach`, so an Agent switch
 /// releases one store and constructs another, in an order that is SwiftUI's
 /// and unspecified. These tests drive that replacement through the real view
 /// and observe what the feed does across it.
@@ -16,11 +16,54 @@ import UIKit
 /// `NavigationSplitView` builds its columns, separators and navigation bar but
 /// never the SwiftUI content inside them, so nothing below it can be observed
 /// (measured: 72 views, all chrome, identical with and without a selection).
-/// `AgentAttachView` is not subject to that — it is a plain view and its
+/// `AgentTerminalView` is not subject to that — it is a plain view and its
 /// terminal surface really is built.
 @MainActor
 @Suite("Agent surface replacement")
 struct AgentSurfaceReplacementTests {
+    /// The production detail combines a live Ghostty renderer with Composer.
+    /// Ghostty must still own the PTY grid, but none of its local input may
+    /// bypass the one-shot `agent.prompt` path.
+    @Test func composerDetailRendersAttachButSendsOnlyThroughPrompt() async throws {
+        let transport = ScriptedTransport()
+        let owner = Self.makeAttachStore(transport: transport)
+        let composer = AgentComposerStore(target: "w1:p1") { params in
+            try await transport.promptAgent(params)
+        }
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                agent: Self.makeAgent(pane: "w1:p1"),
+                activity: AppActivityCoordinator(),
+                attachStore: owner,
+                composer: composer))
+        let window = Self.makeLocalTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+
+        let terminal = try #require(Self.terminals(in: controller.view).first)
+        #expect(!terminal.isLocalInputEnabled)
+        terminal.requestKeyboard()
+        terminal.sendControlKey(.enter)
+        await Task.yield()
+        #expect(!terminal.isFirstResponder)
+        #expect(
+            await transport.attachInputs.allSatisfy {
+                if case .keystrokes = $0 { false } else { true }
+            })
+
+        composer.replaceDraft(with: "Continue from the current output")
+        await composer.send()
+        #expect(
+            await transport.agentPromptParams == [
+                AgentPromptParams(
+                    target: "w1:p1", text: "Continue from the current output")
+            ])
+
+        await owner.leave().value
+    }
+
     /// A replacement surface must take over the feed, or output goes to a view
     /// the user cannot see.
     ///
@@ -41,7 +84,7 @@ struct AgentSurfaceReplacementTests {
         let controller = UIHostingController(rootView: Harness(feed: feed, surface: 1))
         // This seam needs a UIKit hierarchy, not a connected app scene. A
         // scene is absent in some headless test-host launches, which made the
-        // otherwise deterministic loop fail before it reached AgentAttachView.
+        // otherwise deterministic loop fail before it reached AgentTerminalView.
         let window = Self.makeLocalTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)
@@ -102,7 +145,7 @@ struct AgentSurfaceReplacementTests {
     func anAgentSwitchBuildsASurfaceForTheNewStore() async throws {
         struct Harness: View {
             let agent: ConsoleAgent
-            let make: (ConsoleAgent) -> AgentAttachView
+            let make: (ConsoleAgent) -> AgentTerminalView
 
             var body: some View {
                 // Mirrors what `ConsoleView` puts on its detail column: the
@@ -358,7 +401,7 @@ struct AgentSurfaceReplacementTests {
         async throws
     {
         struct Harness: View {
-            let detail: AgentAttachView
+            let detail: AgentTerminalView
             let mounts: [Int]
 
             var body: some View {
@@ -589,7 +632,7 @@ struct AgentSurfaceReplacementTests {
     ///
     /// The stores are built once and shared across switches because that is
     /// what the Console does — only the Agent changes.
-    static func detailViewFactory() -> (ConsoleAgent) -> AgentAttachView {
+    static func detailViewFactory() -> (ConsoleAgent) -> AgentTerminalView {
         let defaults = UserDefaults(suiteName: "agent-surface-\(UUID())") ?? .standard
         let console = ConsoleStore(snapshotRetryDelay: .seconds(30)) { _, subscriptions in
             EventsSession(
@@ -611,7 +654,7 @@ struct AgentSurfaceReplacementTests {
         let inset = TerminalKeyboardInset()
         let activity = AppActivityCoordinator()
         return { agent in
-            AgentAttachView(
+            AgentTerminalView(
                 agent: agent,
                 console: console,
                 terminal: terminal,
@@ -628,8 +671,9 @@ struct AgentSurfaceReplacementTests {
     private static func makeDetailView(
         agent: ConsoleAgent,
         activity: AppActivityCoordinator,
-        attachStore: AgentAttachStore
-    ) -> AgentAttachView {
+        attachStore: AgentAttachStore,
+        composer: AgentComposerStore? = nil
+    ) -> AgentTerminalView {
         let defaults = UserDefaults(suiteName: "attach-recovery-\(UUID())") ?? .standard
         let console = ConsoleStore(snapshotRetryDelay: .seconds(30)) { _, subscriptions in
             EventsSession(
@@ -643,7 +687,7 @@ struct AgentSurfaceReplacementTests {
             zoom: TerminalZoomSettings(defaults: defaults),
             fonts: TerminalFontSettings(defaults: defaults),
             snippets: SnippetStore(defaults: defaults))
-        return AgentAttachView(
+        return AgentTerminalView(
             agent: agent,
             console: console,
             terminal: terminal,
@@ -654,6 +698,7 @@ struct AgentSurfaceReplacementTests {
             isOnStage: { true },
             onSwitch: { _ in },
             onClosed: {},
+            composer: composer,
             attachStore: attachStore)
     }
 

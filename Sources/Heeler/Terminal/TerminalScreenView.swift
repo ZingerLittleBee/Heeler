@@ -87,6 +87,7 @@ struct TerminalScreenView: UIViewRepresentable {
         view.raisesKeyboardWhenReady = claimsKeyboard?() ?? false
         keyboardControl?.terminal = view
         context.coordinator.terminalView = view
+        view.setLocalInputEnabled(isLocalInputEnabled)
         // The feed holds the surface weakly so a replaced UIKit view cannot be
         // kept alive by an obsolete terminal pipeline.
         feed.attach(view)
@@ -505,7 +506,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// intent armed would raise the keyboard from taps the input-row policy
     /// never approved.
     override var canBecomeFirstResponder: Bool {
-        responderGate.mayBecomeFirstResponder
+        isLocalInputEnabled && responderGate.mayBecomeFirstResponder
     }
 
     /// UIKit skips the `canBecomeFirstResponder` check when the view already
@@ -713,6 +714,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
 
     /// Raises the keyboard, and records that the user wants it up.
     func requestKeyboard() {
+        guard isLocalInputEnabled else { return }
         finishKeyboardTransitionLayout()
         raiseKeyboard()
     }
@@ -737,6 +739,9 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     func setLocalInputEnabled(_ isEnabled: Bool) {
         guard isLocalInputEnabled != isEnabled else { return }
         isLocalInputEnabled = isEnabled
+        if !isEnabled, isFirstResponder {
+            _ = dismissKeyboard()
+        }
         terminalKeyboardAccessory.setInputEnabled(isEnabled)
         if let keysKeyboard {
             keysKeyboard.localInputEnabledDidChange()

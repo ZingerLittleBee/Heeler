@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR 0013
 ---
 
 # Monitor: a non-realtime default Agent surface with a local Composer

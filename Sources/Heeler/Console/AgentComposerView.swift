@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// Monitor's native, local-first input surface. Optimistic delivery echoes
-/// render in ``AgentSentMessagesView`` beside the snapshot, while this view
-/// keeps the draft and send action reachable in stable bottom chrome.
+/// The native, local-first input surface beneath the live terminal. Drafting
+/// stays on device; only Send emits one `agent.prompt` request.
 struct AgentComposerView: View {
     let store: AgentComposerStore
     let status: AgentStatus
@@ -29,6 +28,26 @@ struct AgentComposerView: View {
                     .frame(minHeight: 36, alignment: .topLeading)
                     .focused($isInputFocused)
                     .accessibilityLabel("Message the Agent")
+
+                    if let failure = latestFailure {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label(failure.detail, systemImage: "exclamationmark.triangle")
+                                .font(.footnote)
+                                .foregroundStyle(.red)
+                                .lineLimit(2)
+                            HStack(spacing: 8) {
+                                Button("Retry") {
+                                    Task { await store.retry(failure.id) }
+                                }
+                                Button("Edit Draft") {
+                                    store.withdrawToDraft(failure.id)
+                                    isInputFocused = true
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                    }
 
                     HStack(spacing: 0) {
                         Spacer(minLength: 0)
@@ -85,6 +104,13 @@ struct AgentComposerView: View {
         }
     }
 
+    private var latestFailure: (id: AgentComposerStore.Message.ID, detail: String)? {
+        guard let message = store.messages.last,
+              case .failed(let detail) = message.state
+        else { return nil }
+        return (message.id, detail)
+    }
+
     private var statusLabel: some View {
         HStack(spacing: 4) {
             if status == .working {
@@ -103,91 +129,5 @@ struct AgentComposerView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Agent status")
         .accessibilityValue(status.rawValue.capitalized)
-    }
-}
-
-struct AgentSentMessagesView: View {
-    let store: AgentComposerStore
-    @Environment(\.colorScheme) private var colorScheme
-
-    @ViewBuilder
-    var body: some View {
-        if !store.messages.isEmpty {
-            VStack(alignment: .trailing, spacing: 12) {
-                ForEach(store.messages) { message in
-                    messageRow(message)
-                        .id(message.id)
-                }
-            }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Messages sent from this device")
-        }
-    }
-
-    private func messageRow(_ message: AgentComposerStore.Message) -> some View {
-        HStack {
-            Spacer(minLength: 48)
-            VStack(alignment: .trailing, spacing: 5) {
-                Text(message.text)
-                    .textSelection(.enabled)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(
-                        promptBackground,
-                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-                statusLabel(for: message.state)
-                    .font(.caption)
-
-                if case .failed(let detail) = message.state {
-                    Text(detail)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.trailing)
-                    HStack(spacing: 8) {
-                        Button("Retry", systemImage: "arrow.clockwise") {
-                            Task { await store.retry(message.id) }
-                        }
-                        .buttonStyle(.borderedProminent)
-
-                        Button("Edit Draft", systemImage: "pencil") {
-                            store.withdrawToDraft(message.id)
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                    .controlSize(.small)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .trailing)
-    }
-
-    private var promptBackground: Color {
-        colorScheme == .dark ? Color.white.opacity(0.14) : Color.black.opacity(0.94)
-    }
-
-    @ViewBuilder
-    private func statusLabel(for state: AgentComposerStore.DeliveryState) -> some View {
-        switch state {
-        case .sending:
-            Label("Sending…", systemImage: "arrow.up.circle")
-                .foregroundStyle(.secondary)
-        case .delivered(.acknowledged):
-            Label("Delivered", systemImage: "checkmark.circle")
-                .foregroundStyle(.secondary)
-        case .delivered(.agentBusy):
-            Label("Delivered, Agent busy", systemImage: "clock")
-                .foregroundStyle(.secondary)
-        case .delivered(.working):
-            Label("Agent working", systemImage: "gearshape.2")
-                .foregroundStyle(.secondary)
-        case .delivered(.done):
-            Label("Done", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(.secondary)
-        case .failed:
-            Label("Couldn't send", systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.red)
-        }
     }
 }

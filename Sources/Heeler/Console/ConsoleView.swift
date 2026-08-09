@@ -114,7 +114,7 @@ struct ConsoleView: View {
             detail
         }
         // Above the NavigationStack so a banner also shows over a pushed
-        // Attach screen; a tap deep-links exactly like a push tap would.
+        // Agent detail; a tap deep-links exactly like a push tap would.
         .overlay(alignment: .top) {
             if let banner = bannerStore.banner {
                 AgentNotificationBannerView(banner: banner) {
@@ -125,7 +125,7 @@ struct ConsoleView: View {
             }
         }
         .animation(.snappy, value: bannerStore.banner)
-        // A notification deep link must land on Monitor even when one of
+        // A notification deep link must land on Agent detail even when one of
         // the Console's sheets covers it. The only other push a sheet can
         // cause is the new-agent flow's, which dismisses itself first, so
         // clearing here is a no-op for it.
@@ -178,9 +178,9 @@ struct ConsoleView: View {
                     onSwitch: { notificationRouter.path = [$0] },
                     onClosed: { notificationRouter.path = [] }
                 )
-                // Selecting another Agent must tear down the previous Monitor
-                // and build fresh snapshot state; without the explicit identity
-                // the detail column would reuse the old view's state.
+                // Selecting another Agent must tear down the previous terminal
+                // pipeline; without the explicit identity the detail column
+                // would reuse the old view's state.
                 .id(id)
             } else {
                 // The Agent is gone from the list, but not necessarily
@@ -197,7 +197,7 @@ struct ConsoleView: View {
         } else {
             ContentUnavailableView(
                 "No Agent Selected", systemImage: "rectangle.on.rectangle",
-                description: Text("Choose an Agent to monitor its latest screen."))
+                description: Text("Choose an Agent to view its live terminal."))
         }
     }
 
