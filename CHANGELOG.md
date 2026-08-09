@@ -24,7 +24,8 @@ Entries reference the issue that motivated them.
   tabbed tools keyboard. Its Agent controls send Esc, Tab, Shift-Tab, arrows,
   Enter, and Backspace directly to the Agent without changing the draft. The
   Composer replaces them in place inside UIKit's keyboard window, and the two
-  keyboards share the same full height including the iOS paste row and Home
+  keyboards share the same full height, including the native iOS candidate and
+  paste area and the Home
   Indicator area, so switching does not move the Composer or resize, stretch,
   or relayout the terminal.
   (#182)

@@ -326,7 +326,6 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
 final class AgentComposerUITextView: UITextView {
     private var toolsInputView: AgentToolsInputView?
     private var keyboardPresentation: AgentComposerKeyboardPresentation = .hidden
-    private lazy var systemKeyboardAccessory = AgentComposerKeyboardAccessory(target: self)
 
     func updateKeyboard(
         presentation: AgentComposerKeyboardPresentation,
@@ -356,75 +355,14 @@ final class AgentComposerUITextView: UITextView {
                 sendQuickKey: sendQuickKey)
             self.toolsInputView = toolsInputView
             inputView = toolsInputView
-            inputAccessoryView = nil
         case .hidden, .system:
             toolsInputView = nil
             inputView = nil
-            inputAccessoryView = systemKeyboardAccessory
         }
         guard isFirstResponder else { return }
         UIView.performWithoutAnimation {
             reloadInputViews()
         }
-    }
-}
-
-/// Keeps the iOS keyboard at its complete paste-row height even when the
-/// pasteboard has no compatible item. The tools keyboard replaces this row as
-/// part of its single full-height input view, so the two heights do not stack.
-final class AgentComposerKeyboardAccessory: UIInputView {
-    static let preferredHeight: CGFloat = 48
-    private static let surface = UIColor.secondarySystemBackground
-    private weak var target: AgentComposerUITextView?
-    private(set) lazy var pasteControl: UIPasteControl = {
-        var configuration = UIPasteControl.Configuration()
-        configuration.displayMode = .iconOnly
-        configuration.cornerStyle = .capsule
-        configuration.baseBackgroundColor = Self.surface
-        configuration.baseForegroundColor = .label
-        let control = UIPasteControl(configuration: configuration)
-        control.target = target
-        control.accessibilityLabel = "Paste"
-        return control
-    }()
-
-    init(target: AgentComposerUITextView) {
-        self.target = target
-        super.init(
-            frame: CGRect(x: 0, y: 0, width: 0, height: Self.preferredHeight),
-            inputViewStyle: .keyboard)
-        allowsSelfSizing = true
-        autoresizingMask = [.flexibleWidth]
-        backgroundColor = Self.surface
-
-        let separator = UIView()
-        separator.backgroundColor = .separator
-        separator.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(separator)
-
-        pasteControl.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(pasteControl)
-
-        NSLayoutConstraint.activate([
-            separator.leadingAnchor.constraint(equalTo: leadingAnchor),
-            separator.trailingAnchor.constraint(equalTo: trailingAnchor),
-            separator.topAnchor.constraint(equalTo: topAnchor),
-            separator.heightAnchor.constraint(
-                equalToConstant: 1 / max(traitCollection.displayScale, 1)),
-            pasteControl.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            pasteControl.centerYAnchor.constraint(equalTo: centerYAnchor),
-            pasteControl.widthAnchor.constraint(equalToConstant: 44),
-            pasteControl.heightAnchor.constraint(equalToConstant: 44),
-        ])
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is unavailable")
-    }
-
-    override var intrinsicContentSize: CGSize {
-        CGSize(width: UIView.noIntrinsicMetric, height: Self.preferredHeight)
     }
 }
 

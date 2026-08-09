@@ -48,13 +48,9 @@ struct TerminalKeysKeyboardTests {
             quickKeysEnabled: true,
             sendQuickKey: { _ in })
         #expect(textView.inputView == nil)
-        let systemAccessory = try #require(
-            textView.inputAccessoryView as? AgentComposerKeyboardAccessory)
-        #expect(
-            systemAccessory.intrinsicContentSize.height
-                == AgentComposerKeyboardAccessory.preferredHeight)
-        #expect(systemAccessory.pasteControl.target === textView)
-        #expect(systemAccessory.pasteControl.accessibilityLabel == "Paste")
+        // UIKit owns its candidate and paste area. Adding an accessory here
+        // changes the keyboard stack's frame during an in-place replacement.
+        #expect(textView.inputAccessoryView == nil)
 
         textView.updateKeyboard(
             presentation: .tools,
@@ -75,7 +71,7 @@ struct TerminalKeysKeyboardTests {
             quickKeysEnabled: true,
             sendQuickKey: { _ in })
         #expect(textView.inputView == nil)
-        #expect(textView.inputAccessoryView === systemAccessory)
+        #expect(textView.inputAccessoryView == nil)
     }
 
     @Test func controlKeysAreTheDefaultTab() throws {

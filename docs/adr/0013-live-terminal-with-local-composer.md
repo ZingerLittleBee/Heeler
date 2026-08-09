@@ -13,9 +13,9 @@ and other authored input do not reach the PTY. While an input surface is
 visible, Composer can switch between the iOS keyboard and a tabbed tools
 keyboard. Its explicit Agent controls send Esc, Tab, Shift-Tab, arrows, Enter,
 and Backspace directly to the PTY; its Snippet and Skill panes edit the local
-draft. The iOS keyboard always includes Composer's 48-point system paste row,
-even when no compatible pasteboard item is available. The tools keyboard
-reuses that complete measured footprint, including the Home Indicator area.
+draft. The iOS keyboard remains entirely system-owned, including its native
+candidate and paste area. The tools keyboard reuses that complete measured
+footprint, including the Home Indicator area.
 Both modes are the Composer text view's UIKit input views: `reloadInputViews()`
 replaces them while the same text view remains first responder. Neither mode
 therefore dismisses the keyboard, moves Composer, or asks Ghostty to resize its
