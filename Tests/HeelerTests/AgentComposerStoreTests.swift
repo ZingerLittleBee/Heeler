@@ -485,7 +485,8 @@ struct AgentComposerStoreTests {
 
         store.stageAndInsertImage(DataImageSelection(data: Data([0x01])))
         try await waitUntil("staging should be in progress") {
-            store.isStagingFile && await stageGate.entryCount == 1
+            let entryCount = await stageGate.entryCount
+            return store.isStagingFile && entryCount == 1
         }
         #expect(!store.canStageFile)
         #expect(store.draft.isEmpty)
