@@ -4,7 +4,25 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PROJECT_DIR="$(cd "${PACKAGE_DIR}/../.." && pwd)"
 ARTIFACT_DIR="${PACKAGE_DIR}/Artifacts"
+EXPECTED_TARGET="$(awk -F'"' '/^[[:space:]]*iOS: / { print $2; exit }' "${PROJECT_DIR}/project.yml")"
+EXPECTED_MAJOR="${EXPECTED_TARGET%%.*}"
+
+[[ -n "${EXPECTED_TARGET}" ]] || {
+    echo "error: could not read the iOS deployment target from project.yml" >&2
+    exit 1
+}
+
+grep -Fq ".iOS(.v${EXPECTED_MAJOR})" "${PACKAGE_DIR}/Package.swift" || {
+    echo "error: HeelerSSH Package.swift does not target iOS ${EXPECTED_MAJOR}" >&2
+    exit 1
+}
+
+grep -Fq "DEPLOYMENT_TARGET=\"${EXPECTED_TARGET}\"" "${SCRIPT_DIR}/build-native.sh" || {
+    echo "error: native build target does not match iOS ${EXPECTED_TARGET}" >&2
+    exit 1
+}
 
 cd "${PACKAGE_DIR}"
 checksum_output="$(shasum -a 256 -c Artifacts/SHA256SUMS 2>&1)" || {
@@ -29,6 +47,28 @@ for framework in COpenSSL CLibSSH2; do
             echo "error: ${framework} has no Simulator slice" >&2
             exit 1
         }
+
+    for platform_info in "${ARTIFACT_DIR}/${framework}.xcframework"/*/*.framework/Info.plist; do
+        minimum_version="$(plutil -extract MinimumOSVersion raw -o - "${platform_info}")"
+        [[ "${minimum_version}" == "${EXPECTED_TARGET}" ]] || {
+            echo "error: ${platform_info} targets iOS ${minimum_version}, expected ${EXPECTED_TARGET}" >&2
+            exit 1
+        }
+    done
+done
+
+for library in \
+    "${ARTIFACT_DIR}/COpenSSL.xcframework"/*/COpenSSL.framework/COpenSSL \
+    "${ARTIFACT_DIR}/CLibSSH2.xcframework"/*/CLibSSH2.framework/CLibSSH2; do
+    binary_targets="$(
+        xcrun otool -l "${library}" \
+            | awk '$1 == "minos" { print $2 }' \
+            | LC_ALL=C sort -u
+    )"
+    [[ "${binary_targets}" == "${EXPECTED_TARGET}" ]] || {
+        echo "error: ${library} contains deployment targets '${binary_targets}', expected ${EXPECTED_TARGET}" >&2
+        exit 1
+    }
 done
 
 for framework in "${ARTIFACT_DIR}/COpenSSL.xcframework"/*/COpenSSL.framework; do
@@ -66,5 +106,6 @@ done
 
 grep -q 'OpenSSL features:.*legacy provider' Artifacts/PROVENANCE.md
 grep -q 'libssh2 crypto backend: OpenSSL' Artifacts/PROVENANCE.md
+grep -Fq "Deployment target: iOS ${EXPECTED_TARGET}" Artifacts/PROVENANCE.md
 
 echo "HeelerSSH artifact checksums, slices, provenance, and algorithm policy are valid."

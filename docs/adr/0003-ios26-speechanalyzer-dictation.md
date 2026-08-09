@@ -1,8 +1,16 @@
 # Raise deployment target to iOS 26 for SpeechAnalyzer Dictation
 
 Status: Superseded. The custom reply bar and Dictation feature were removed in
-favor of direct terminal input through the standard iOS keyboard. The iOS 26
-deployment target remains unchanged.
+favor of direct terminal input through the standard iOS keyboard. With the
+iOS 26-only implementation gone, the app has returned to ADR 0001's iOS 18
+baseline.
+
+## Current Outcome
+
+Heeler supports iOS 18 and later. `Synchronization.Mutex` is the remaining
+source-level floor; the app, HeelerSSH package, and bundled OpenSSL/libssh2
+artifacts all declare the same iOS 18 minimum. The iOS 27 status-bar treatment
+is availability-gated and has an older-system fallback.
 
 Dictation (hold-to-talk voice input on the Agent reply box, see CONTEXT.md) transcribes speech on device. We adopt the iOS 26 Speech framework's `SpeechAnalyzer` / `SpeechTranscriber` and raise the app's minimum deployment target from iOS 18 to iOS 26, giving the whole app a single code path with no `#available` branches. This drops support for devices that cannot run iOS 26, which we accept: the app is early, has no installed base to protect, and the modern speech stack is the reason Dictation is worth building at all.
 
@@ -12,7 +20,7 @@ Dictation (hold-to-talk voice input on the Agent reply box, see CONTEXT.md) tran
 - **`SFSpeechRecognizer`, keep target at iOS 18** — rejected. The legacy recognizer defaults to server-side recognition (on-device is best-effort and lower quality), which violates the "nothing I say to my Agents ever leaves the phone" requirement. Its API predates structured partial/final streaming and has no first-class model-download management. Keeping it would also not lower the real floor much for the quality we need.
 - **Gate the modern stack behind `#available(iOS 26, *)` and keep an iOS 18 fallback** — rejected. Two engines doubles the surface that must be tested and reasoned about, and the fallback path (`SFSpeechRecognizer`) is the option we already rejected on privacy grounds. Availability branches would also leak the Speech framework's version shape into stores and UI, against the single-seam discipline (`DictationEngine`, mirroring Transport vs Citadel).
 
-## Consequences
+## Consequences at Adoption
 
 - Devices that cannot run iOS 26 are unsupported. Acceptable now; revisit only if a real user base on older OSes emerges.
 - No `#available` guards for the speech stack anywhere; the app compiles against iOS 26 APIs unconditionally.

@@ -6,7 +6,7 @@
 - Compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
 - iPhoneOS SDK: 26.5
 - iPhone Simulator SDK: 26.5
-- Deployment target: iOS 26.0
+- Deployment target: iOS 18.0
 - Configuration: Release, static libraries, arm64 device and arm64 Simulator
 - OpenSSL features: no shared library, module, legacy provider, deprecated API, DSA, RC2, RC4, DES, CAST, Blowfish, IDEA, SEED, Camellia, ARIA, SM2, SM3, SM4, Whirlpool, or RIPEMD-160
 - libssh2 crypto backend: OpenSSL, with DSA, SHA-1 RSA signatures, SHA-1 MACs, MD5, RIPEMD, CBC, Blowfish, RC4, CAST, and 3DES negotiation disabled

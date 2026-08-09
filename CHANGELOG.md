@@ -48,6 +48,10 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- Heeler once again supports iOS 18 and later. The removed Dictation feature no
+  longer holds the app at iOS 26, and the bundled OpenSSL/libssh2 artifacts now
+  share the restored iOS 18 deployment target. (#35)
+
 - Notification setup now distinguishes device registration from per-Host
   configuration, accurately describes relay-visible metadata and Notification
   Key custody, warns when a custom relay uses cleartext HTTP, and uses

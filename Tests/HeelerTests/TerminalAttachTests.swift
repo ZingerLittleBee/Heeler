@@ -1747,5 +1747,6 @@ private final class TextInputDelegateRecorder: NSObject, UITextInputDelegate {
         record("textDidChange")
     }
 
+    @available(iOS 18.4, *)
     func conversationContext(_: UIConversationContext?, didChange _: (any UITextInput)?) {}
 }

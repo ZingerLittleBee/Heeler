@@ -2,7 +2,7 @@ name: Heeler
 options:
   bundleIdPrefix: dev.bybee
   deploymentTarget:
-    iOS: "26.0"
+    iOS: "18.0"
   createIntermediateGroups: true
   minimumXcodeGenVersion: "2.42.0"
 
@@ -62,10 +62,6 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: Heeler
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "5"
-        # Dictation captures the microphone to transcribe on device (#36). No
-        # speech-recognition usage key is set: the iOS 26 SpeechAnalyzer stack
-        # is on-device and needs no legacy SFSpeechRecognizer authorization.
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Heeler uses the microphone to transcribe your spoken reply into the message box. Audio is processed on device and never leaves your phone."
         # Scan to Pair (#62) reads the Pairing Code QR from the computer screen.
         INFOPLIST_KEY_NSCameraUsageDescription: "Heeler uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything."
         # Only exempt encryption is used (standard SSH algorithms via the

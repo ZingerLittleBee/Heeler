@@ -414,6 +414,7 @@ private struct ConsoleStatusBarModifier: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
+        #if compiler(>=6.4)
         if #available(iOS 27.0, *) {
             content
                 .toolbarVisibility(.visible, for: .statusBar)
@@ -422,6 +423,10 @@ private struct ConsoleStatusBarModifier: ViewModifier {
             content
                 .toolbarColorScheme(scheme, for: .navigationBar)
         }
+        #else
+        content
+            .toolbarColorScheme(scheme, for: .navigationBar)
+        #endif
     }
 }
 

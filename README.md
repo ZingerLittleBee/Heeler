@@ -85,7 +85,7 @@ notification (see [PRIVACY.md](PRIVACY.md)).
 
 ## Stack
 
-- SwiftUI, iOS 26+, iPhone + iPad
+- SwiftUI, iOS 18+, iPhone + iPad
 - The repository-local `Packages/HeelerSSH` (libssh2 + OpenSSL) for SSH
 - [libghostty-spm](https://github.com/lakr233/libghostty-spm) for terminal emulation and Metal rendering
 
