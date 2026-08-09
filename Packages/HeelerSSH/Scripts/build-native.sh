@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SOURCE_LOCK="${HEELER_SSH_SOURCE_LOCK:-${PACKAGE_DIR}/Sources.lock}"
-DEPLOYMENT_TARGET="26.0"
+DEPLOYMENT_TARGET="18.0"
 FIXED_PREFIX="/usr/local/heeler-ssh/openssl-3.6.3"
 JOBS="${HEELER_SSH_JOBS:-4}"
 
