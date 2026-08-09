@@ -437,8 +437,8 @@ struct AgentTerminalView: View {
             }
         }
         // The navigation bar remains present only as the owner of the status
-        // bar appearance. Its content and background stay hidden, while this
-        // inset keeps terminal output below the system clock.
+        // bar appearance. Its content stays hidden, while this inset keeps
+        // terminal output below the system clock.
         .padding(.top, statusBarInset)
         .background(
             terminal.themes.selection(for: colorScheme)
@@ -454,7 +454,11 @@ struct AgentTerminalView: View {
         .navigationBarBackButtonHidden(true)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
+        // `toolbarColorScheme` takes effect only while the bar background is
+        // visible. A clear visible background keeps the bar visually absent
+        // and the terminal unobscured while still applying status-bar contrast.
+        .toolbarBackground(Color.clear, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .toolbar(.visible, for: .navigationBar)
     }
 
