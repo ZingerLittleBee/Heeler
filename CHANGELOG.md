@@ -13,10 +13,10 @@ Entries reference the issue that motivated them.
   from Photos or a file up to 64 MiB from Files, stages the selection privately
   on the Host over SFTP, and inserts the resulting path into the local draft
   without submitting it. Discovered Links appear beside the plus menu, while
-  the former title-bar Agent actions live inside it. Agent detail keeps only an
-  omits Agent detail's title bar so terminal output uses the full area below
-  the system status bar, while preserving edge-swipe navigation and matching
-  status-bar contrast to the terminal theme. (#182)
+  the former title-bar Agent actions live inside it. Agent detail omits the
+  visible title bar so terminal output uses the full area below the system
+  status bar, while preserving edge-swipe navigation and matching status-bar
+  contrast to the terminal theme. (#182)
 
 - Agent detail now combines the complete live libghostty terminal with a local
   Composer. The terminal preserves TUI rendering, scrollback, and PTY resize,

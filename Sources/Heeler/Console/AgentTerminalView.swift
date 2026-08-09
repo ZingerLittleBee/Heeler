@@ -53,6 +53,15 @@ struct AgentTerminalView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
 
+    private var statusBarInset: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .filter { $0.activationState == .foregroundActive }
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)?
+            .safeAreaInsets.top ?? 0
+    }
+
     init(
         agent: ConsoleAgent,
         console: ConsoleStore,
@@ -427,9 +436,14 @@ struct AgentTerminalView: View {
                 .accessibilityHidden(composerKeyboardPresentation != .tools)
             }
         }
+        // The navigation bar remains present only as the owner of the status
+        // bar appearance. Its content and background stay hidden, while this
+        // inset keeps terminal output below the system clock.
+        .padding(.top, statusBarInset)
         .background(
             terminal.themes.selection(for: colorScheme)
                 .surfaceBackground(for: colorScheme))
+        .ignoresSafeArea(.container, edges: .top)
         .overlay(alignment: .leading) {
             AgentEdgeBackGesture { dismiss() }
         }
@@ -437,7 +451,11 @@ struct AgentTerminalView: View {
             terminal.themes.selection(for: colorScheme)
                 .chromeColorScheme(for: colorScheme),
             for: .navigationBar)
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationBarBackButtonHidden(true)
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar(.visible, for: .navigationBar)
     }
 
     private func prepareComposerKeyboardPresentation(
