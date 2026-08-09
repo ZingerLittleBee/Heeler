@@ -274,6 +274,172 @@ struct AgentComposerStoreTests {
         #expect(replacementStore.draft == "Keep this local draft")
     }
 
+    // MARK: - Draft insertion (Paste / Files / future accessories)
+
+    @Test func insertIntoDraftSeparatesFromNonWhitespaceTail() {
+        let store = AgentComposerStore(target: "w1:p1") { _ in
+            throw TransportError.cancelled
+        }
+        store.replaceDraft(with: "hello")
+        store.insertIntoDraft("world")
+        #expect(store.draft == "hello world")
+    }
+
+    @Test func insertIntoDraftDoesNotDoubleWhitespace() {
+        let store = AgentComposerStore(target: "w1:p1") { _ in
+            throw TransportError.cancelled
+        }
+        store.replaceDraft(with: "hello ")
+        store.insertIntoDraft("world")
+        #expect(store.draft == "hello world")
+
+        store.replaceDraft(with: "line\n")
+        store.insertIntoDraft("next")
+        #expect(store.draft == "line\nnext")
+    }
+
+    @Test func insertIntoDraftEmptyTextIsNoOp() {
+        let store = AgentComposerStore(target: "w1:p1") { _ in
+            throw TransportError.cancelled
+        }
+        store.replaceDraft(with: "keep")
+        store.insertIntoDraft("")
+        #expect(store.draft == "keep")
+    }
+
+    @Test func insertIntoDraftPopulatesEmptyDraftWithoutLeadingSpace() {
+        let store = AgentComposerStore(target: "w1:p1") { _ in
+            throw TransportError.cancelled
+        }
+        store.insertIntoDraft("pasted")
+        #expect(store.draft == "pasted")
+    }
+
+    // MARK: - Files stage → insert (scripted stager seam)
+
+    @Test func stageAndInsertImageAppendsRemotePathWithoutSubmitting() async throws {
+        let transport = ScriptedTransport()
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("composer-stage-\(UUID().uuidString).jpg")
+        try Data(repeating: 0x41, count: 64).write(to: fileURL)
+        let prepared = PreparedImage(
+            fileURL: fileURL,
+            format: .jpeg,
+            pixelWidth: 16,
+            pixelHeight: 16,
+            byteCount: 64)
+        await transport.configureImageStaging(outcomes: [
+            .success(try StagedImage(path: "/tmp/staged/composer.jpg"))
+        ])
+        let store = AgentComposerStore(
+            target: "w1:p1",
+            preparer: ScriptedComposerImagePreparer(prepared: prepared),
+            stageImage: { image, reporter in
+                try await transport.stageImage(image) { progress in
+                    await reporter.report(progress)
+                }
+            }
+        ) { _ in
+            throw TransportError.cancelled
+        }
+        store.replaceDraft(with: "See")
+
+        store.stageAndInsertImage(DataImageSelection(data: Data([0x01])))
+        try await waitUntil("staging should complete") {
+            store.fileStageState == .idle && store.draft.contains("/tmp/staged/composer.jpg")
+        }
+
+        #expect(store.draft == "See /tmp/staged/composer.jpg ")
+        #expect(store.messages.isEmpty)
+        #expect(await transport.agentPromptParams.isEmpty)
+        #expect(await transport.stageRequests.count == 1)
+        #expect(!FileManager.default.fileExists(atPath: fileURL.path))
+    }
+
+    @Test func stageFailureKeepsDraftAndSurfacesRecoveryCopy() async throws {
+        let transport = ScriptedTransport()
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("composer-fail-\(UUID().uuidString).jpg")
+        try Data(repeating: 0x42, count: 64).write(to: fileURL)
+        let prepared = PreparedImage(
+            fileURL: fileURL,
+            format: .jpeg,
+            pixelWidth: 16,
+            pixelHeight: 16,
+            byteCount: 64)
+        await transport.configureImageStaging(outcomes: [
+            .failure(ImageStagingError.transferFailed)
+        ])
+        let store = AgentComposerStore(
+            target: "w1:p1",
+            preparer: ScriptedComposerImagePreparer(prepared: prepared),
+            stageImage: { image, reporter in
+                try await transport.stageImage(image) { progress in
+                    await reporter.report(progress)
+                }
+            }
+        ) { _ in
+            throw TransportError.cancelled
+        }
+        store.replaceDraft(with: "Do not lose me")
+
+        store.stageAndInsertImage(DataImageSelection(data: Data([0x01])))
+        try await waitUntil("staging should fail") {
+            if case .failed = store.fileStageState { true } else { false }
+        }
+
+        #expect(store.draft == "Do not lose me")
+        #expect(store.messages.isEmpty)
+        #expect(await transport.agentPromptParams.isEmpty)
+        #expect(
+            store.fileStageFailureMessage
+                == "Image upload failed. Choose the image again to retry.")
+        store.dismissFileStageFailure()
+        #expect(store.fileStageState == .idle)
+    }
+
+    @Test func stagingExposesInProgressStateWhileGateIsHeld() async throws {
+        let transport = ScriptedTransport()
+        let stageGate = ScriptedTransportCallGate()
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("composer-gate-\(UUID().uuidString).jpg")
+        try Data(repeating: 0x43, count: 64).write(to: fileURL)
+        let prepared = PreparedImage(
+            fileURL: fileURL,
+            format: .jpeg,
+            pixelWidth: 16,
+            pixelHeight: 16,
+            byteCount: 64)
+        await transport.configureImageStaging(
+            outcomes: [.success(try StagedImage(path: "/tmp/staged/gated.jpg"))],
+            gate: stageGate)
+        let store = AgentComposerStore(
+            target: "w1:p1",
+            preparer: ScriptedComposerImagePreparer(prepared: prepared),
+            stageImage: { image, reporter in
+                try await transport.stageImage(image) { progress in
+                    await reporter.report(progress)
+                }
+            }
+        ) { _ in
+            throw TransportError.cancelled
+        }
+
+        store.stageAndInsertImage(DataImageSelection(data: Data([0x01])))
+        try await waitUntil("staging should be in progress") {
+            store.isStagingFile && await stageGate.entryCount == 1
+        }
+        #expect(!store.canStageFile)
+        #expect(store.draft.isEmpty)
+
+        await stageGate.open()
+        try await waitUntil("staging should finish") {
+            store.fileStageState == .idle
+        }
+        #expect(store.draft == "/tmp/staged/gated.jpg ")
+        #expect(store.canStageFile)
+    }
+
     // MARK: - Capture-anchored message partition
 
     @Test func partitionKeepsAllMessagesPendingWhenCapturedAtIsNil() async {
@@ -467,5 +633,18 @@ struct AgentComposerStoreTests {
                 status: status, workspaceID: "w1", tabID: "w1:t1", paneID: "w1:p1",
                 cwd: "/work", revision: 1),
             workspaceLabel: "Project", repoName: "Project")
+    }
+}
+
+/// Scripted preparer for Composer Files tests; skips Photos decoding.
+private actor ScriptedComposerImagePreparer: ImagePreparing {
+    let prepared: PreparedImage
+
+    init(prepared: PreparedImage) {
+        self.prepared = prepared
+    }
+
+    func prepare(_ selection: any ImageSelection) async throws -> PreparedImage {
+        prepared
     }
 }

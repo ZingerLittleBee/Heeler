@@ -11,8 +11,26 @@ struct AgentComposerView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             MonitorControlKeyStrip(
-                isEnabled: isControlKeyEnabled,
-                onTap: onControlKey)
+                isControlKeyEnabled: isControlKeyEnabled,
+                isFileStaging: store.isStagingFile,
+                canStageFile: store.canStageFile,
+                onControlKey: onControlKey,
+                onPaste: { store.insertIntoDraft($0) },
+                onImageSelected: { store.stageAndInsertImage($0) })
+
+            if let failure = store.fileStageFailureMessage {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Label(failure, systemImage: "exclamationmark.triangle")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button("Dismiss") {
+                        store.dismissFileStageFailure()
+                    }
+                    .font(.footnote)
+                }
+                .accessibilityElement(children: .combine)
+            }
 
             Text("Message the Agent")
                 .font(.caption.weight(.semibold))

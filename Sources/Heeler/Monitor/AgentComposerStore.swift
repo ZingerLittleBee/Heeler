@@ -46,46 +46,113 @@ final class AgentComposerStore: ComposerDraftOperations {
         let pending: [Message]
     }
 
+    /// Image file staging for the Composer Files control. Staging never
+    /// submits; success only inserts the remote path into the local draft.
+    enum FileStageState: Equatable {
+        case idle
+        case staging
+        case failed(String)
+    }
+
     private(set) var messages: [Message] = []
     private(set) var draft = ""
+    private(set) var fileStageState: FileStageState = .idle
 
     private let target: String
     private var agentStatus: AgentStatus
     private var statusRevision: UInt64 = 0
     private let now: @Sendable () -> Date
     private let statusUpdates: AsyncStream<ConsoleStore.AgentStatusUpdate>?
+    private let preparer: any ImagePreparing
+    private let stageImage: ImageStager?
     private let prompt: @Sendable (AgentPromptParams) async throws -> Agent
     @ObservationIgnored private var hasOpened = false
     @ObservationIgnored private var statusTask: Task<Void, Never>?
+    @ObservationIgnored private var stageTask: Task<Void, Never>?
+    @ObservationIgnored private var stageOperationID: UInt64 = 0
+    @ObservationIgnored private var preparedImage: PreparedImage?
 
     init(
         target: String,
         initialStatus: AgentStatus = .idle,
         now: @escaping @Sendable () -> Date = { Date() },
         statusUpdates: AsyncStream<ConsoleStore.AgentStatusUpdate>? = nil,
+        preparer: any ImagePreparing = ImagePreparer(),
+        stageImage: ImageStager? = nil,
         prompt: @escaping @Sendable (AgentPromptParams) async throws -> Agent
     ) {
         self.target = target
         agentStatus = initialStatus
         self.now = now
         self.statusUpdates = statusUpdates
+        self.preparer = preparer
+        self.stageImage = stageImage
         self.prompt = prompt
     }
 
     deinit {
         statusTask?.cancel()
+        stageTask?.cancel()
     }
 
     var canSend: Bool {
         draft.contains(where: { !$0.isWhitespace })
     }
 
+    var isStagingFile: Bool {
+        if case .staging = fileStageState { true } else { false }
+    }
+
+    var fileStageFailureMessage: String? {
+        if case .failed(let message) = fileStageState { message } else { nil }
+    }
+
+    /// Files is available when a Host stager is wired and no stage is running.
+    /// Draft edits do not depend on agent status, so this is independent of
+    /// control-key enablement.
+    var canStageFile: Bool {
+        stageImage != nil && !isStagingFile
+    }
+
     func replaceDraft(with text: String) {
         draft = text
     }
 
+    /// Inserts `text` into the local draft without submitting.
+    ///
+    /// Separator rule: empty `text` is a no-op. When the draft is non-empty
+    /// and does not already end in whitespace, a single space is inserted
+    /// before `text` so paste, snippet, and staged-path insertions do not
+    /// glue onto the preceding token. Callers that want a trailing separator
+    /// (staged paths) include it in `text`.
     func insertIntoDraft(_ text: String) {
-        draft.append(text)
+        guard !text.isEmpty else { return }
+        if draft.isEmpty || draft.last?.isWhitespace == true {
+            draft.append(text)
+        } else {
+            draft.append(" ")
+            draft.append(text)
+        }
+    }
+
+    /// Prepares and stages one image over the Host SFTP seam, then inserts
+    /// the remote path into the draft (with a trailing space) without
+    /// submitting. Failures keep the draft intact and surface recovery copy.
+    func stageAndInsertImage(_ selection: any ImageSelection) {
+        guard let stageImage, stageTask == nil else { return }
+        discardPreparedImage()
+        stageOperationID &+= 1
+        let operationID = stageOperationID
+        fileStageState = .staging
+        stageTask = Task {
+            await self.runStageAndInsert(
+                selection, stageImage: stageImage, operationID: operationID)
+        }
+    }
+
+    func dismissFileStageFailure() {
+        guard case .failed = fileStageState else { return }
+        fileStageState = .idle
     }
 
     /// Starts consuming Console's existing per-Agent status fan-out. This
@@ -238,6 +305,85 @@ final class AgentComposerStore: ComposerDraftOperations {
             error.connectionGuidance
         default:
             "The message could not be sent. Check the connection and retry."
+        }
+    }
+
+    private func runStageAndInsert(
+        _ selection: any ImageSelection,
+        stageImage: @escaping ImageStager,
+        operationID: UInt64
+    ) async {
+        var unclaimedImage: PreparedImage?
+        do {
+            let image = try await preparer.prepare(selection)
+            unclaimedImage = image
+            try Task.checkCancellation()
+            guard operationID == stageOperationID else {
+                try? image.remove()
+                return
+            }
+            preparedImage = image
+            unclaimedImage = nil
+
+            let staged = try await stageImage(
+                image,
+                ImageStageProgressReporter { _ in })
+            try Task.checkCancellation()
+            guard operationID == stageOperationID else { return }
+
+            stageTask = nil
+            discardPreparedImage()
+            fileStageState = .idle
+            // Trailing space matches Attach path insertion so the user can
+            // keep typing after the path without gluing tokens together.
+            insertIntoDraft(staged.path + " ")
+        } catch {
+            try? unclaimedImage?.remove()
+            finishStage(error: error, operationID: operationID)
+        }
+    }
+
+    private func finishStage(error: any Error, operationID: UInt64) {
+        guard operationID == stageOperationID else { return }
+        stageTask = nil
+        if Self.isCancellation(error) {
+            discardPreparedImage()
+            fileStageState = .idle
+            return
+        }
+        discardPreparedImage()
+        fileStageState = .failed(Self.fileStageMessage(for: error))
+    }
+
+    private func discardPreparedImage() {
+        try? preparedImage?.remove()
+        preparedImage = nil
+    }
+
+    private static func isCancellation(_ error: any Error) -> Bool {
+        error is CancellationError || (error as? ImageStagingError) == .cancelled
+    }
+
+    private static func fileStageMessage(for error: any Error) -> String {
+        switch error {
+        case TransportError.sshUnreachable:
+            "The Host is not connected. Reconnect, then choose the image again."
+        case ImageStagingError.sftpUnavailable:
+            "SFTP is unavailable on this Host. Enable its SSH SFTP subsystem, then try again."
+        case let staging as ImageStagingError where staging.isRetryable:
+            "Image upload failed. Choose the image again to retry."
+        case ImagePreparationError.selectionUnavailable:
+            "The selected photo is no longer available. Choose another image."
+        case ImagePreparationError.sourceTooLarge:
+            "The selected image is too large to decode safely. Choose a smaller image."
+        case ImagePreparationError.invalidImage:
+            "The selected item is not a readable image. Choose a different file."
+        case ImagePreparationError.unableToProduceBoundedOutput:
+            "The image could not be reduced below the 16 MiB upload limit. Choose a smaller image."
+        case ImagePreparationError.localStorageFailed:
+            "herdr could not prepare the image in protected local storage. Try again."
+        default:
+            "Image upload failed. Choose the image again to retry."
         }
     }
 }

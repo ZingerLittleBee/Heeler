@@ -284,7 +284,9 @@ final class ConsoleStore {
         let store = AgentComposerStore(
             target: agent.agent.paneID,
             initialStatus: agent.agent.status,
-            statusUpdates: agentStatusUpdates(for: agent.id)
+            statusUpdates: agentStatusUpdates(for: agent.id),
+            // Late-bound Host stager (same seam Attach uses; ADR 0006).
+            stageImage: imageStager(for: hostID)
         ) { [weak self] params in
             guard let self else { throw TransportError.cancelled }
             return try await self.promptAgent(params, on: hostID)
