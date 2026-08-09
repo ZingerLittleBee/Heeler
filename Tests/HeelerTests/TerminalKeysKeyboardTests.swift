@@ -48,6 +48,13 @@ struct TerminalKeysKeyboardTests {
             quickKeysEnabled: true,
             sendQuickKey: { _ in })
         #expect(textView.inputView == nil)
+        let systemAccessory = try #require(
+            textView.inputAccessoryView as? AgentComposerKeyboardAccessory)
+        #expect(
+            systemAccessory.intrinsicContentSize.height
+                == AgentComposerKeyboardAccessory.preferredHeight)
+        #expect(systemAccessory.pasteControl.target === textView)
+        #expect(systemAccessory.pasteControl.accessibilityLabel == "Paste")
 
         textView.updateKeyboard(
             presentation: .tools,
@@ -58,6 +65,7 @@ struct TerminalKeysKeyboardTests {
             sendQuickKey: { _ in })
         let tools = try #require(textView.inputView as? AgentToolsInputView)
         #expect(tools.intrinsicContentSize.height == 335)
+        #expect(textView.inputAccessoryView == nil)
 
         textView.updateKeyboard(
             presentation: .system,
@@ -67,6 +75,7 @@ struct TerminalKeysKeyboardTests {
             quickKeysEnabled: true,
             sendQuickKey: { _ in })
         #expect(textView.inputView == nil)
+        #expect(textView.inputAccessoryView === systemAccessory)
     }
 
     @Test func controlKeysAreTheDefaultTab() throws {

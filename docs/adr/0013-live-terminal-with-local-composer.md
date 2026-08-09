@@ -13,18 +13,14 @@ and other authored input do not reach the PTY. While an input surface is
 visible, Composer can switch between the iOS keyboard and a tabbed tools
 keyboard. Its explicit Agent controls send Esc, Tab, Shift-Tab, arrows, Enter,
 and Backspace directly to the PTY; its Snippet and Skill panes edit the local
-draft. The tools keyboard reuses the complete measured iOS keyboard footprint,
-including its auxiliary rows. The terminal reserves that footprint in both
-modes, and tools render as an overlay inside it rather than joining Composer's
-safe-area inset, so neither Composer nor the terminal grid moves. The measured
-keyboard footprint and the terminal view's actual frame, bounds, center, and
-backing-layer geometry are frozen while UIKit replaces the keyboard
-implementation, then released by the settled keyboard notification. Candidate
-and paste rows therefore cannot stretch the existing Metal surface or emit an
-intermediate PTY resize. Deferred geometry writes are replayed without
-animation, and genuinely different final bounds receive one settled layout
-after the replacement. Send still delivers the complete draft through one
-`agent.prompt` request.
+draft. The iOS keyboard always includes Composer's 48-point system paste row,
+even when no compatible pasteboard item is available. The tools keyboard
+reuses that complete measured footprint, including the Home Indicator area.
+Both modes are the Composer text view's UIKit input views: `reloadInputViews()`
+replaces them while the same text view remains first responder. Neither mode
+therefore dismisses the keyboard, moves Composer, or asks Ghostty to resize its
+grid. Send still delivers the complete draft through one `agent.prompt`
+request.
 
 This supersedes ADR 0012's non-realtime Monitor and separate interactive
 Attach destination. The snapshot renderer, polling cadence, and locally
