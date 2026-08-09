@@ -36,6 +36,10 @@ final class TerminalKeyboardControl {
     func sendQuickKey(_ key: AgentQuickKey) {
         terminal?.sendQuickKey(key)
     }
+
+    func beginKeyboardTypeSwitch() {
+        terminal?.beginKeyboardTypeSwitch()
+    }
 }
 
 /// The interactive Ghostty surface. PTY bytes flow into an in-memory Ghostty
@@ -307,6 +311,12 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private(set) var appliedTheme: TerminalTheme
     private(set) var appliedFontSize: Float
     private(set) var appliedFontFamily: String?
+    #if DEBUG
+    /// Counts layout passes forwarded into Ghostty's concrete surface. Keyboard-type
+    /// replacement is presentation-only and uses this to prove it does not
+    /// ask the terminal to lay out again.
+    private(set) var ghosttyLayoutPassCount = 0
+    #endif
     var onFontSizeChanged: ((Float) -> Void)?
     /// Rebuilt into the Keys keyboard the next time it is raised; a live
     /// keyboard keeps the context it was built with.
@@ -325,6 +335,12 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private var terminalInputView: UIView?
     private var modeTracker = TerminalModeTracker()
     private var lastInputWindowSize: CGSize?
+    /// UIKit invalidates descendants while replacing one keyboard with
+    /// another even when their frames are identical. Ghostty synchronizes its
+    /// grid from every `layoutSubviews` call, so keep that presentation-only
+    /// transaction out of its layout path.
+    private var keyboardTypeSwitchBounds: CGRect?
+    private var keyboardTypeSwitchTask: Task<Void, Never>?
     private var defersLayoutForKeyboardTransition = false
     /// What ends the current freeze. A dismissal waits for `keyboardDidHide`;
     /// an inherited keyboard never leaves, so its settled signal is the frame
@@ -887,6 +903,13 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
 
     override func layoutSubviews() {
         guard !defersLayoutForKeyboardTransition else { return }
+        if keyboardTypeSwitchBounds != nil {
+            reloadInputViewsAfterWindowResize()
+            return
+        }
+        #if DEBUG
+        ghosttyLayoutPassCount += 1
+        #endif
         super.layoutSubviews()
         reloadInputViewsAfterWindowResize()
     }
@@ -897,6 +920,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
             stopTouchScrollMomentum()
             responderGate.invalidateTouches()
             cancelKeyboardTransitionLayoutDeferral()
+            cancelKeyboardTypeSwitch()
         } else {
             inheritKeyboard()
         }
@@ -955,6 +979,40 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
                 self.reloadInputViews()
             }
         }
+    }
+
+    /// Freezes Ghostty's already-rendered geometry while Composer replaces
+    /// the iOS keyboard with its tools overlay, or vice versa. The surrounding
+    /// UIKit hierarchy still receives several layout invalidations as the
+    /// system input view leaves or arrives; none of them describe a terminal
+    /// resize. If the terminal really has a different final size, the fallback
+    /// lays it out once after the keyboard transaction settles.
+    func beginKeyboardTypeSwitch() {
+        if keyboardTypeSwitchBounds == nil {
+            keyboardTypeSwitchBounds = bounds
+        }
+        keyboardTypeSwitchTask?.cancel()
+        keyboardTypeSwitchTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            self?.finishKeyboardTypeSwitch()
+        }
+    }
+
+    private func finishKeyboardTypeSwitch() {
+        guard let previousBounds = keyboardTypeSwitchBounds else { return }
+        keyboardTypeSwitchBounds = nil
+        keyboardTypeSwitchTask?.cancel()
+        keyboardTypeSwitchTask = nil
+        guard bounds != previousBounds else { return }
+        setNeedsLayout()
+        layoutIfNeeded()
+    }
+
+    private func cancelKeyboardTypeSwitch() {
+        keyboardTypeSwitchBounds = nil
+        keyboardTypeSwitchTask?.cancel()
+        keyboardTypeSwitchTask = nil
     }
 
     /// Ghostty synchronizes its grid and reports a PTY resize from every

@@ -1233,6 +1233,91 @@ struct TerminalAttachTests {
         ].map(\.contentInset) == [402, 402, 402, 402])
     }
 
+    /// The two keyboard modes occupy the same outer footprint, but inserting
+    /// the tools overlay still invalidates the surrounding SwiftUI tree. That
+    /// presentation-only update must not cross into Ghostty as another layout
+    /// pass: Ghostty synchronizes and redraws its grid from every one.
+    @MainActor
+    @Test func aKeyboardTypeSwitchDoesNotLayGhosttyOutAgain() async throws {
+        struct Harness: View {
+            let feed: TerminalByteFeed
+            let keyboardControl: TerminalKeyboardControl
+            let presentation: AgentComposerKeyboardPresentation
+
+            var body: some View {
+                TerminalScreenView(feed: feed, keyboardControl: keyboardControl)
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        Color.clear.frame(height: 160)
+                    }
+                    .padding(.bottom, 402)
+                    .ignoresSafeArea(.keyboard)
+                    .overlay(alignment: .bottom) {
+                        if presentation == .tools {
+                            Color.clear.frame(height: 402)
+                        }
+                    }
+            }
+        }
+
+        let feed = TerminalByteFeed()
+        let keyboardControl = TerminalKeyboardControl()
+        let controller = UIHostingController(
+            rootView: Harness(
+                feed: feed, keyboardControl: keyboardControl,
+                presentation: .system))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        let terminal = try #require(keyboardControl.terminal)
+        let frame = terminal.convert(terminal.bounds, to: window)
+        let layoutPassCount = terminal.ghosttyLayoutPassCount
+
+        keyboardControl.beginKeyboardTypeSwitch()
+        controller.rootView = Harness(
+            feed: feed, keyboardControl: keyboardControl,
+            presentation: .tools)
+        // UIKit invalidates the terminal while it removes the system keyboard,
+        // even though the reserved terminal frame does not change.
+        terminal.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+        await Task.yield()
+        controller.view.layoutIfNeeded()
+
+        try await Task.sleep(for: .milliseconds(550))
+        controller.view.layoutIfNeeded()
+
+        #expect(keyboardControl.terminal === terminal)
+        #expect(terminal.convert(terminal.bounds, to: window) == frame)
+        #expect(
+            terminal.ghosttyLayoutPassCount == layoutPassCount,
+            "switching keyboard type laid Ghostty out again")
+    }
+
+    /// A real geometry change that happens during the presentation freeze is
+    /// deferred, not lost. Ghostty receives the settled size exactly once.
+    @MainActor
+    @Test func aRealResizeDuringKeyboardTypeSwitchLaysGhosttyOutOnce() async throws {
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            notificationCenter: NotificationCenter())
+        terminal.frame = CGRect(x: 0, y: 0, width: 402, height: 472)
+        terminal.setNeedsLayout()
+        terminal.layoutIfNeeded()
+        let layoutPassCount = terminal.ghosttyLayoutPassCount
+
+        terminal.beginKeyboardTypeSwitch()
+        terminal.frame.size.height = 512
+        terminal.setNeedsLayout()
+        terminal.layoutIfNeeded()
+
+        #expect(terminal.ghosttyLayoutPassCount == layoutPassCount)
+
+        try await Task.sleep(for: .milliseconds(550))
+
+        #expect(terminal.ghosttyLayoutPassCount == layoutPassCount + 1)
+    }
+
     /// Backgrounding hides the keyboard — animating the accessory out — but
     /// leaves the first responder in place, so the re-presentation on return
     /// never passes through `becomeFirstResponder`. The keyboard came back

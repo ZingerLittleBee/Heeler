@@ -350,7 +350,8 @@ struct AgentTerminalView: View {
                     keyboardHeight: composerKeyboardLayout.availableToolsHeight,
                     keyboardPresentation: $composerKeyboardPresentation,
                     quickKeysEnabled: attach.isLocalInputEnabled,
-                    sendQuickKey: keyboardControl.sendQuickKey)
+                    sendQuickKey: keyboardControl.sendQuickKey,
+                    beginKeyboardTypeSwitch: keyboardControl.beginKeyboardTypeSwitch)
             } else {
                 TerminalAgentSwitcherRow(
                     switcher: agentSwitcher,

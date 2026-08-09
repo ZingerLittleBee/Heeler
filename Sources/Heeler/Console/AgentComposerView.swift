@@ -44,6 +44,7 @@ struct AgentComposerView: View {
     @Binding var keyboardPresentation: AgentComposerKeyboardPresentation
     let quickKeysEnabled: Bool
     let sendQuickKey: (AgentQuickKey) -> Void
+    let beginKeyboardTypeSwitch: () -> Void
     @FocusState private var isInputFocused: Bool
 
     private var isToolsKeyboardPresented: Bool {
@@ -164,6 +165,7 @@ struct AgentComposerView: View {
     }
 
     private func switchKeyboard() {
+        beginKeyboardTypeSwitch()
         if isToolsKeyboardPresented {
             keyboardPresentation = .system
             isInputFocused = true

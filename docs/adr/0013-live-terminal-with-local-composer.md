@@ -16,8 +16,11 @@ and Backspace directly to the PTY; its Snippet and Skill panes edit the local
 draft. The tools keyboard reuses the complete measured iOS keyboard footprint,
 including its auxiliary rows. The terminal reserves that footprint in both
 modes, and tools render as an overlay inside it rather than joining Composer's
-safe-area inset, so neither Composer nor the terminal grid moves. Send still
-delivers the complete draft through one `agent.prompt` request.
+safe-area inset, so neither Composer nor the terminal grid moves. Ghostty's
+layout is frozen while UIKit replaces the keyboard implementation; if the
+terminal has genuinely different final bounds, it receives one settled layout
+after the replacement. Send still delivers the complete draft through one
+`agent.prompt` request.
 
 This supersedes ADR 0012's non-realtime Monitor and separate interactive
 Attach destination. The snapshot renderer, polling cadence, and locally
