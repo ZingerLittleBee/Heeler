@@ -9,18 +9,18 @@ struct TerminalAgentSwitcherItem: Equatable, Sendable {
     let status: AgentStatus
 }
 
-/// What the terminal screen hands its keyboard accessory: the Agents to
-/// offer, the one currently on screen, and where a tap goes.
+/// What an Agent surface hands its switcher: the Agents to offer, the one
+/// currently on screen, and where a tap goes.
 struct TerminalAgentSwitcher {
     var items: [TerminalAgentSwitcherItem]
     var selectedID: ConsoleAgent.ID?
     var onSelect: @MainActor (ConsoleAgent.ID) -> Void
 }
 
-/// Carries the user's "I am still typing" intent across the terminal teardown
-/// an Agent switch forces. Deliberately not observable: arming it must not
+/// Carries the user's "I am still typing" intent across the Agent surface
+/// teardown a switch forces. Deliberately not observable: arming it must not
 /// invalidate the SwiftUI view that is about to be replaced anyway, and the
-/// new terminal has to read the intent before its first layout.
+/// new surface has to read the intent before its first layout.
 @MainActor
 final class TerminalKeyboardHandoff {
     private var armedID: ConsoleAgent.ID?
@@ -286,7 +286,7 @@ final class TerminalAgentChip: UIControl {
         accessibilityLabel = item.title
         accessibilityValue = item.status.rawValue.capitalized
         accessibilityTraits = selected ? [.button, .selected] : .button
-        accessibilityHint = selected ? nil : "Switches this terminal to that Agent"
+        accessibilityHint = selected ? nil : "Switches to that Agent"
     }
 
     private func configureContent() {
@@ -342,10 +342,9 @@ final class TerminalAgentChip: UIControl {
     }
 }
 
-/// The resident Agent strip, as the terminal screen mounts it: the chips over
-/// the keyboard's own fill, with the keyboard toggle pinned at the trailing
-/// edge — outside the scroll view, so the one control that summons the
-/// keyboard back can never scroll out of reach.
+/// The resident Agent strip: the chips over their own fill, with the keyboard
+/// toggle pinned at the trailing edge — outside the scroll view, so the one
+/// control that summons the keyboard back can never scroll out of reach.
 struct TerminalAgentSwitcherRow: View {
     let switcher: TerminalAgentSwitcher
     let isKeyboardUp: Bool

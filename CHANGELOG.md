@@ -32,7 +32,9 @@ Entries reference the issue that motivated them.
   Send delivers the complete message once and shows delivery, Agent work, and
   Done states from acknowledgments and status pushes. Failed messages can be
   retried or returned to the draft without losing text, and drafts survive
-  Attach, backgrounding, and Host reconnects. (#182)
+  Attach, backgrounding, and Host reconnects. The existing Agent switcher now
+  sits at the bottom of the Composer, keeping session changes and the keyboard
+  toggle within reach without reopening the Console. (#182)
 
 - Settings > About now has Acknowledgements: every redistributed third-party
   component ships with its exact upstream licence notice, including libssh2

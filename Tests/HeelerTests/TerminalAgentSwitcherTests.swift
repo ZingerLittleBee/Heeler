@@ -159,7 +159,7 @@ struct TerminalAgentSwitcherTests {
         #expect(bar.chips.map(\.isSelected) == [false, true])
         let blocked = try #require(bar.chips.first)
         #expect(blocked.accessibilityValue == "Blocked")
-        #expect(blocked.accessibilityHint == "Switches this terminal to that Agent")
+        #expect(blocked.accessibilityHint == "Switches to that Agent")
         #expect(bar.chips[1].accessibilityHint == nil)
     }
 

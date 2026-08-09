@@ -94,5 +94,8 @@ Delivered, and subsequent status events carry the working→done story.
   edits in the Composer; ADR 0009's insert-without-submit semantics hold
   trivially there. The accessory surfaces migrate after the plain-text first
   shipping cut.
+- The existing Agent switcher is shared by Monitor and Attach. Monitor keeps it
+  at the bottom of the Composer so switching Agents does not require opening a
+  PTY or returning to the Console.
 - Deep links and Console navigation target Monitor; Attach is reached only
   through it.

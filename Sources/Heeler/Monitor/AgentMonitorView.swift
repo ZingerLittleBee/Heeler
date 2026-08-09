@@ -75,7 +75,11 @@ struct AgentDetailView: View {
         VStack(spacing: 0) {
             monitorSurface
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            AgentComposerView(store: composer, status: monitor.agentStatus)
+            AgentComposerView(
+                store: composer,
+                status: monitor.agentStatus,
+                switcher: agentSwitcher,
+                keyboardHandoff: keyboardHandoff)
         }
         .background(Color(uiColor: .systemBackground))
         .navigationTitle(title)
@@ -349,6 +353,21 @@ struct AgentDetailView: View {
             isShowingAttach = true
         }
         .accessibilityHint("Opens the live terminal")
+    }
+
+    private var agentSwitcher: TerminalAgentSwitcher {
+        TerminalAgentSwitcher(
+            items: console.agents.map {
+                TerminalAgentSwitcherItem(
+                    id: $0.id, title: $0.switcherLabel, status: $0.agent.status)
+            },
+            selectedID: agent.id,
+            onSelect: switchToAgent)
+    }
+
+    private func switchToAgent(_ id: ConsoleAgent.ID) {
+        guard id != agent.id else { return }
+        onSwitch(id)
     }
 
     private var title: String {
