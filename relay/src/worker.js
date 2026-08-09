@@ -35,7 +35,7 @@ const DEFAULT_TOKEN_LIMIT_PER_MIN = 60;
 
 // The extension rewrites title and body after decrypting; this generic text
 // is what iOS shows if that fails, so it must never look alarming.
-const FALLBACK_ALERT = { title: "herdr", body: "Agent update" };
+const FALLBACK_ALERT = { title: "Heeler", body: "Agent update" };
 
 const encoder = new TextEncoder();
 

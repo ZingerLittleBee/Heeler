@@ -191,7 +191,7 @@ struct AgentNotificationRendererTests {
     /// The fallback copy mirrors the relay's generic wrap, so an intercepted
     /// or forged push never renders attacker-chosen text.
     @Test func fallbackCopyIsGeneric() {
-        #expect(AgentNotificationRenderer.fallback.title == "herdr")
+        #expect(AgentNotificationRenderer.fallback.title == "Heeler")
         #expect(AgentNotificationRenderer.fallback.body == "Agent update")
     }
 }

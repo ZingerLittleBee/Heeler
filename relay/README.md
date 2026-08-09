@@ -6,14 +6,19 @@ per-host Notification Key and POSTs it here; the relay signs the APNs
 provider JWT with the deploy-time `.p8`, forwards the ciphertext verbatim to
 Apple, and relays Apple's verdict back. It is a dumb pipe on purpose:
 
-- **No state**: no accounts, no database, no queue, no retries (the plugin
-  retries). Compromising the relay yields device tokens and ciphertext,
-  never content.
+- **No message state**: no accounts, database, queue, message history, or
+  retries (the plugin retries). A relay compromise can expose the APNs
+  credential and in-flight device tokens, source IPs, APNs environment,
+  collapse identifiers, request metadata, and ciphertext. It still cannot
+  decrypt notification content because it never receives Notification Keys.
 - **Production origin**: the official app and plugin default to
   `https://heeler-apns.bybee.dev`. Both still accept a custom relay base URL
-  for self-built apps because APNs keys are bound to the bundle id.
-- **What crosses it**: device token, ciphertext, source IP. Nothing else;
-  the relay never parses the envelope.
+  for self-built apps whose APNs credentials are authorized for their bundle
+  ID.
+- **What crosses it**: the request carries the device token, APNs environment,
+  ciphertext, and an opaque collapse identifier. The relay also observes the
+  source IP, request timing, frequency, and size. It never decrypts the
+  envelope.
 
 Runs as a Cloudflare Worker-style fetch handler with zero runtime
 dependencies (WebCrypto + fetch), which is also why the tests run under

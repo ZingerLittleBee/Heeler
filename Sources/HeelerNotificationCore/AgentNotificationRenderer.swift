@@ -16,7 +16,7 @@ struct AgentNotificationAlert: Sendable, Equatable {
 /// attacker-chosen text (spec #68, user story 20).
 enum AgentNotificationRenderer {
     /// Mirrors the relay's generic wrap copy; deliberately unalarming.
-    static let fallback = AgentNotificationAlert(title: "herdr", body: "Agent update")
+    static let fallback = AgentNotificationAlert(title: "Heeler", body: "Agent update")
 
     /// Terminal titles are whole task descriptions ("排查修复 split 按钮 UI
     /// 结构问题") and can run to a full line of prose. iOS truncates the banner

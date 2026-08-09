@@ -210,13 +210,16 @@ final class NotificationPreferencesStore {
     private static func message(for error: any Error) -> String {
         switch error {
         case NotificationRegistrationError.pluginNotInstalled:
-            "The Heeler plugin is not installed on this Host."
+            "Install the Heeler plugin on this Host, then check again."
         case NotificationRegistrationError.pluginProbeFailed:
-            "The Host's herdr plugin could not be checked."
+            "Could not check the Heeler plugin on this Host. "
+                + "Check the connection and try again."
         case NotificationRegistrationError.readFailed:
-            "The Host's notification registration could not be read."
+            "Could not read notification settings from this Host. "
+                + "Check the connection and try again."
         case NotificationRegistrationError.writeFailed:
-            "The Host's notification registration could not be updated."
+            "Could not update notification settings on this Host. "
+                + "Check the connection and try again."
         case NotificationRegistrationError.unsupportedFileVersion:
             "This Host was registered by a newer app version. Update the app."
         case TransportError.sshUnreachable:
@@ -226,7 +229,7 @@ final class NotificationPreferencesStore {
         case is TransportError:
             "The connection to the Host failed."
         default:
-            "Updating notification preferences failed: \(error)"
+            "Could not update notification settings. Try again."
         }
     }
 }

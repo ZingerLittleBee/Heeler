@@ -3,7 +3,8 @@
 Heeler is a native iOS console for [herdr](https://herdr.dev). It talks
 to your own machines ("Hosts") over SSH. It has no analytics or account system.
 Your SSH credentials and live agent sessions do not pass through a service we
-operate. Agent Notifications use the narrow Push Relay documented below.
+operate. Agent Notifications use the limited-purpose Push Relay documented
+below.
 
 ## Where data is stored
 
@@ -26,9 +27,10 @@ operate. Agent Notifications use the narrow Push Relay documented below.
 Agent Notifications let you know when an agent becomes blocked (waiting on you)
 or finishes while the app is backgrounded or closed. Delivering a push to an
 iOS app requires Apple's push service (APNs), and reaching APNs requires an
-Apple push key bound to this app's bundle id. To avoid asking every user to
-provision Apple credentials, notifications flow through a **push relay**: a
-small, stateless, open-source forwarder the developer hosts at
+APNs credential authorized to send notifications for this app's bundle ID. To
+avoid asking every user to provision Apple credentials, notifications flow
+through a **push relay**: a small, stateless, open-source forwarder the
+developer hosts at
 `https://heeler-apns.bybee.dev`.
 
 It is a stateless push relay, not an account or message-storage service: it
@@ -69,7 +71,7 @@ can run your own relay instead of the developer-hosted one. The relay's source
 is public precisely so its behavior is verifiable rather than promised.
 
 A custom relay **only works with an app you build and sign yourself**. It must
-use APNs credentials authorized for that app's bundle id. Only the
+use APNs credentials authorized for that app's bundle ID. Only the
 developer-hosted relay is configured to deliver notifications to this App Store
 or TestFlight build. Setting a custom URL in a build you did not sign will point
 your Hosts at a relay that Apple will not allow to deliver to this app.

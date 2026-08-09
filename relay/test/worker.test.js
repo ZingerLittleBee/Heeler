@@ -109,8 +109,8 @@ suite("forwarding to APNs", () => {
 
     const payload = JSON.parse(call.init.body);
     assert.equal(payload.aps["mutable-content"], 1);
-    assert.equal(typeof payload.aps.alert.title, "string");
-    assert.equal(typeof payload.aps.alert.body, "string");
+    assert.equal(payload.aps.alert.title, "Heeler");
+    assert.equal(payload.aps.alert.body, "Agent update");
     assert.equal(payload.envelope, goodBody.envelope);
   });
 

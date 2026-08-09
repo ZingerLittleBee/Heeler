@@ -4,10 +4,10 @@ import Foundation
 /// by the pre-permission explainer and the persistent settings privacy section
 /// so both surfaces tell exactly the same story. Kept as data — not buried in a
 /// View — so a test can pin the load-bearing claims: it is a *push relay*
-/// (never a "server"), it sees the device token, ciphertext, and source IP, and
-/// it cannot see the encrypted content (project, task, agent type, status,
-/// pane id, timestamp); a custom relay only helps a self-built app. All copy
-/// is English by project convention.
+/// (never a "server"), it sees the device token, ciphertext, source IP, and
+/// request timing, and it cannot see the encrypted content (project, task,
+/// agent type, status, pane id, timestamp); a custom relay only helps a
+/// self-built app. All copy is English by project convention.
 enum NotificationPrivacyCopy {
     /// The explainer's lead line before the iOS permission prompt.
     static let explainerTitle = "Before you turn on notifications"
