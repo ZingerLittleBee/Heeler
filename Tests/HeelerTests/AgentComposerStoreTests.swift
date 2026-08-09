@@ -274,6 +274,126 @@ struct AgentComposerStoreTests {
         #expect(replacementStore.draft == "Keep this local draft")
     }
 
+    // MARK: - Capture-anchored message partition
+
+    @Test func partitionKeepsAllMessagesPendingWhenCapturedAtIsNil() async {
+        let transport = ScriptedTransport()
+        let sentAt = Date(timeIntervalSince1970: 1_700_000_100)
+        let store = AgentComposerStore(target: "w1:p1", now: { sentAt }) { params in
+            try await transport.promptAgent(params)
+        }
+        store.replaceDraft(with: "Hello")
+        await store.send()
+
+        let partition = store.partitionMessages(capturedAt: nil)
+        #expect(partition.reflected.isEmpty)
+        #expect(partition.pending.map(\.text) == ["Hello"])
+        #expect(partition.pending.map(\.state) == [.delivered(.acknowledged)])
+    }
+
+    @Test func partitionReflectsDeliveredMessagesOlderThanSnapshot() async {
+        let transport = ScriptedTransport()
+        let sentAt = Date(timeIntervalSince1970: 1_700_000_100)
+        let store = AgentComposerStore(target: "w1:p1", now: { sentAt }) { params in
+            try await transport.promptAgent(params)
+        }
+        store.replaceDraft(with: "Already on screen")
+        await store.send()
+
+        let capturedAt = Date(timeIntervalSince1970: 1_700_000_200)
+        let partition = store.partitionMessages(capturedAt: capturedAt)
+        #expect(partition.reflected.map(\.text) == ["Already on screen"])
+        #expect(partition.pending.isEmpty)
+    }
+
+    @Test func partitionKeepsExactlyEqualTimestampsPending() async {
+        let transport = ScriptedTransport()
+        let boundary = Date(timeIntervalSince1970: 1_700_000_150)
+        let store = AgentComposerStore(target: "w1:p1", now: { boundary }) { params in
+            try await transport.promptAgent(params)
+        }
+        store.replaceDraft(with: "Same instant")
+        await store.send()
+
+        let partition = store.partitionMessages(capturedAt: boundary)
+        #expect(partition.reflected.isEmpty)
+        #expect(partition.pending.map(\.text) == ["Same instant"])
+    }
+
+    @Test func partitionNeverCollapsesFailedOrSendingMessages() async throws {
+        let transport = ScriptedTransport()
+        await transport.setAgentPromptFailure(TransportError.timedOut)
+        let oldSend = Date(timeIntervalSince1970: 1_700_000_050)
+        let store = AgentComposerStore(target: "w1:p1", now: { oldSend }) { params in
+            try await transport.promptAgent(params)
+        }
+        store.replaceDraft(with: "Will fail")
+        await store.send()
+        #expect(store.messages.first?.state == .failed(
+            "The Host did not answer. Check the connection and retry."))
+
+        let capturedAt = Date(timeIntervalSince1970: 1_700_000_200)
+        let failedPartition = store.partitionMessages(capturedAt: capturedAt)
+        #expect(failedPartition.reflected.isEmpty)
+        #expect(failedPartition.pending.map(\.text) == ["Will fail"])
+
+        // In-flight send also stays pending even when older than capture.
+        await transport.setAgentPromptFailure(nil)
+        let promptGate = ScriptedTransportCallGate()
+        await transport.gateNextAgentPrompt(using: promptGate)
+        store.replaceDraft(with: "In flight")
+        let send = Task { await store.send() }
+        try await waitUntil("second send should be in flight") {
+            await promptGate.entryCount == 1
+        }
+        #expect(store.messages.map(\.state).contains(.sending))
+
+        let midPartition = store.partitionMessages(capturedAt: capturedAt)
+        #expect(midPartition.reflected.isEmpty)
+        #expect(midPartition.pending.map(\.text) == ["Will fail", "In flight"])
+
+        await promptGate.open()
+        await send.value
+    }
+
+    @Test func partitionSplitsMixedMessagesAroundCaptureBoundary() async throws {
+        let transport = ScriptedTransport()
+        let clock = MutableDateClock(Date(timeIntervalSince1970: 1_700_000_100))
+        let store = AgentComposerStore(target: "w1:p1", now: { clock.now }) { params in
+            try await transport.promptAgent(params)
+        }
+
+        store.replaceDraft(with: "Older delivered")
+        await store.send()
+
+        clock.advance(by: 50)
+        store.replaceDraft(with: "Newer delivered")
+        await store.send()
+
+        // Capture sits strictly after the first send only.
+        let capturedAt = Date(timeIntervalSince1970: 1_700_000_120)
+        let partition = store.partitionMessages(capturedAt: capturedAt)
+        #expect(partition.reflected.map(\.text) == ["Older delivered"])
+        #expect(partition.pending.map(\.text) == ["Newer delivered"])
+        let older = try #require(store.messages.first)
+        let newer = try #require(store.messages.last)
+        #expect(AgentComposerStore.isReflected(older, capturedAt: capturedAt))
+        #expect(!AgentComposerStore.isReflected(newer, capturedAt: capturedAt))
+    }
+
+    /// Mutable wall clock for scripting `now` across multiple sends in one test.
+    private final class MutableDateClock: @unchecked Sendable {
+        private(set) var now: Date
+
+        init(_ now: Date) {
+            self.now = now
+        }
+
+        func advance(by seconds: TimeInterval) {
+            now = now.addingTimeInterval(seconds)
+        }
+    }
+
     private func waitUntil(
         _ comment: Comment,
         timeout: Duration = .seconds(2),

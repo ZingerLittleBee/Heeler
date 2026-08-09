@@ -57,9 +57,13 @@ struct AgentComposerView: View {
 
 struct AgentSentMessagesView: View {
     let store: AgentComposerStore
+    /// Snapshot capture time from the monitor store; anchors the reflected /
+    /// pending split so delivered-and-older echoes do not double-print.
+    let capturedAt: Date?
 
     @ViewBuilder
     var body: some View {
+        let partition = store.partitionMessages(capturedAt: capturedAt)
         if !store.messages.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -71,7 +75,20 @@ struct AgentSentMessagesView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                ForEach(store.messages) { message in
+                if !partition.reflected.isEmpty {
+                    DisclosureGroup {
+                        ForEach(partition.reflected) { message in
+                            messageRow(message)
+                                .id(message.id)
+                        }
+                    } label: {
+                        Text(Self.reflectedSummaryLabel(count: partition.reflected.count))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                ForEach(partition.pending) { message in
                     messageRow(message)
                         .id(message.id)
                 }
@@ -79,6 +96,12 @@ struct AgentSentMessagesView: View {
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Messages sent from this device")
         }
+    }
+
+    private static func reflectedSummaryLabel(count: Int) -> String {
+        count == 1
+            ? "1 earlier message"
+            : "\(count) earlier messages"
     }
 
     private func messageRow(_ message: AgentComposerStore.Message) -> some View {

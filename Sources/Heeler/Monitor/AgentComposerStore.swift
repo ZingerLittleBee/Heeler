@@ -17,6 +17,9 @@ final class AgentComposerStore: ComposerDraftOperations {
     struct Message: Identifiable, Equatable {
         let id: UUID
         let text: String
+        /// Wall-clock time this message was (last) submitted. Used to decide
+        /// whether the snapshot already reflects it (capture-anchored timeline).
+        fileprivate(set) var sentAt: Date
         fileprivate var agentWasWorkingAtSend: Bool
         fileprivate var statusRevisionAtSend: UInt64
         fileprivate var observedWorkingAfterSend: Bool
@@ -36,12 +39,20 @@ final class AgentComposerStore: ComposerDraftOperations {
         case done
     }
 
+    /// Capture-anchored split of local echoes: reflected messages already
+    /// appear inside the agent snapshot; pending ones still need bubbles.
+    struct MessagePartition: Equatable {
+        let reflected: [Message]
+        let pending: [Message]
+    }
+
     private(set) var messages: [Message] = []
     private(set) var draft = ""
 
     private let target: String
     private var agentStatus: AgentStatus
     private var statusRevision: UInt64 = 0
+    private let now: @Sendable () -> Date
     private let statusUpdates: AsyncStream<ConsoleStore.AgentStatusUpdate>?
     private let prompt: @Sendable (AgentPromptParams) async throws -> Agent
     @ObservationIgnored private var hasOpened = false
@@ -50,11 +61,13 @@ final class AgentComposerStore: ComposerDraftOperations {
     init(
         target: String,
         initialStatus: AgentStatus = .idle,
+        now: @escaping @Sendable () -> Date = { Date() },
         statusUpdates: AsyncStream<ConsoleStore.AgentStatusUpdate>? = nil,
         prompt: @escaping @Sendable (AgentPromptParams) async throws -> Agent
     ) {
         self.target = target
         agentStatus = initialStatus
+        self.now = now
         self.statusUpdates = statusUpdates
         self.prompt = prompt
     }
@@ -94,7 +107,9 @@ final class AgentComposerStore: ComposerDraftOperations {
     func send() async {
         guard canSend else { return }
         let message = Message(
-            id: UUID(), text: draft,
+            id: UUID(),
+            text: draft,
+            sentAt: now(),
             agentWasWorkingAtSend: agentStatus == .working,
             statusRevisionAtSend: statusRevision,
             observedWorkingAfterSend: false,
@@ -107,11 +122,35 @@ final class AgentComposerStore: ComposerDraftOperations {
     func retry(_ id: Message.ID) async {
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
         guard case .failed = messages[index].state else { return }
+        messages[index].sentAt = now()
         messages[index].agentWasWorkingAtSend = agentStatus == .working
         messages[index].statusRevisionAtSend = statusRevision
         messages[index].observedWorkingAfterSend = false
         messages[index].state = .sending
         await deliver(id)
+    }
+
+    /// Splits local echoes relative to the current snapshot capture time.
+    /// A delivered message is **reflected** when `sentAt < capturedAt` (already
+    /// visible in agent output); everything else stays **pending**.
+    func partitionMessages(capturedAt: Date?) -> MessagePartition {
+        var reflected: [Message] = []
+        var pending: [Message] = []
+        for message in messages {
+            if Self.isReflected(message, capturedAt: capturedAt) {
+                reflected.append(message)
+            } else {
+                pending.append(message)
+            }
+        }
+        return MessagePartition(reflected: reflected, pending: pending)
+    }
+
+    /// Pure helper for tests and ``partitionMessages(capturedAt:)``.
+    static func isReflected(_ message: Message, capturedAt: Date?) -> Bool {
+        guard case .delivered = message.state else { return false }
+        guard let capturedAt else { return false }
+        return message.sentAt < capturedAt
     }
 
     /// Removes a failed echo and restores all of its text to the draft. If
