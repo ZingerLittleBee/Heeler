@@ -310,15 +310,6 @@ final class ConsoleStore {
         return stream
     }
 
-    /// Monitor's control-key strip delivery path (`agent.send_keys`). Same
-    /// live Console transport as `readAgent` so a key tap never dials a
-    /// parallel connection.
-    func sendAgentKeys(_ params: AgentSendKeysParams, on hostID: Host.ID) async throws {
-        try await projection(for: hostID).session.withTransport { transport in
-            try await transport.sendAgentKeys(params)
-        }
-    }
-
     @discardableResult
     func startAgent(
         _ request: AgentLaunchRequest,

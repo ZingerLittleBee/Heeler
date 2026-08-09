@@ -96,10 +96,10 @@ Entries reference the issue that motivated them.
 
 - Monitor now presents a stable status summary and high-contrast snapshot as an
   Agent response inside one conversation-style flow with locally sent messages,
-  a compact Composer, and a toolbar path into the live terminal. Mobile chrome
-  uses small visible glyphs while preserving full-size touch targets, so status
-  cards and oversized empty-state icons no longer crowd the conversation.
-  (#179; #182)
+  a compact floating Composer, and a toolbar path into the live terminal.
+  Status cards, terminal shortcut controls, and oversized empty-state icons no
+  longer crowd the conversation.
+  (#179; #182; #183)
 
 - Malformed herdr API error responses that carry an empty id now fail the
   originating request immediately with the server's error instead of hanging

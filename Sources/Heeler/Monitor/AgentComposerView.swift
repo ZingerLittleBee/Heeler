@@ -2,11 +2,9 @@ import SwiftUI
 
 /// Monitor's native, local-first input surface. Optimistic delivery echoes
 /// render in ``AgentSentMessagesView`` beside the snapshot, while this view
-/// keeps the draft and terminal controls reachable in stable bottom chrome.
+/// keeps the draft and send action reachable in stable bottom chrome.
 struct AgentComposerView: View {
     let store: AgentComposerStore
-    let isControlKeyEnabled: Bool
-    let onControlKey: (MonitorControlKey) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -23,10 +21,7 @@ struct AgentComposerView: View {
             .accessibilityLabel("Message the Agent")
 
             HStack(spacing: 0) {
-                MonitorControlKeyStrip(
-                    isEnabled: isControlKeyEnabled,
-                    onTap: onControlKey)
-                Spacer(minLength: 8)
+                Spacer(minLength: 0)
                 Button("Send", systemImage: "arrow.up") {
                     Task { await store.send() }
                 }
