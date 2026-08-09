@@ -39,6 +39,11 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- Opening an Agent now gives Heeler priority over an existing terminal client.
+  Attach and Reattach use herdr's takeover mode, so a stale mobile connection
+  or a desktop client can no longer prevent the Agent detail terminal from
+  opening. The displaced client is disconnected.
+
 - A Host whose SSH server has stream-local forwarding turned off now says so
   even when herdr isn't on the SSH session's `PATH`. Heeler tries to start
   herdr once before giving up; when that attempt itself failed, the checks

@@ -501,6 +501,7 @@ final class AgentAttachStore {
     ) -> AttachTerminalStore {
         AttachTerminalStore(
             target: target,
+            takeover: true,
             input: input,
             observeOutput: { data in linkIndex.receive(data) },
             finishOutput: { linkIndex.finishOutput() },
