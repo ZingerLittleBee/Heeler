@@ -1,6 +1,7 @@
 import PhotosUI
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// The live Ghostty surface used by Agent detail. When a Composer is present,
 /// the terminal is display-only: it still renders, scrolls, opens links, and
@@ -36,6 +37,8 @@ struct AgentTerminalView: View {
     @State private var keyboardControl = TerminalKeyboardControl()
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
     @State private var selectedPhoto: PhotosPickerItem?
+    @State private var isSelectingPhoto = false
+    @State private var isSelectingFile = false
     @State private var isConfirmingClose = false
     @State private var isStartingAgent = false
     @State private var isManagingSnippets = false
@@ -47,7 +50,17 @@ struct AgentTerminalView: View {
     @State private var isShowingAttachLinks = false
     @State private var closeErrorMessage: String?
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+
+    private var statusBarInset: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .filter { $0.activationState == .foregroundActive }
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)?
+            .safeAreaInsets.top ?? 0
+    }
 
     init(
         agent: ConsoleAgent,
@@ -80,7 +93,9 @@ struct AgentTerminalView: View {
                 transportGeneration: console.hostConnectionGenerations[agent.hostID],
                 isOnStage: isOnStage,
                 runTerminal: console.terminalRunner(for: agent.hostID),
-                stageImage: console.imageStager(for: agent.hostID)
+                stageImage: console.imageStager(for: agent.hostID),
+                stageFile: composer == nil ? nil : console.fileStager(for: agent.hostID),
+                composer: composer
             ) {
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
             })
@@ -156,8 +171,23 @@ struct AgentTerminalView: View {
 
     private var presentedSurface: some View {
         terminalSurface
-        .toolbar {
-            toolbarContent
+        .photosPicker(
+            isPresented: $isSelectingPhoto,
+            selection: $selectedPhoto,
+            matching: .images)
+        .fileImporter(
+            isPresented: $isSelectingFile,
+            allowedContentTypes: [.data]
+        ) { result in
+            guard case .success(let url) = result else { return }
+            attach.selectFile(url)
+        }
+        .popover(isPresented: $isShowingAttachLinks) {
+            AttachLinksView(
+                links: attach.attachLinks,
+                open: { link in openAttachLink(link) },
+                copy: { link in UIPasteboard.general.string = link.target })
+            .presentationCompactAdaptation(.sheet)
         }
         .sheet(isPresented: $isStartingAgent) {
             // StartAgentView brings its own NavigationStack.
@@ -337,14 +367,27 @@ struct AgentTerminalView: View {
             presentation: composer == nil ? .hidden : composerKeyboardPresentation)
     }
 
+    private var composerActions: AgentComposerActions {
+        AgentComposerActions(
+            canAddImage: attach.canSelectImage,
+            canAddFile: attach.canSelectFile,
+            attachLinkCount: attach.attachLinks.count,
+            addImage: { isSelectingPhoto = true },
+            addFile: { isSelectingFile = true },
+            showAttachLinks: { isShowingAttachLinks = true },
+            startAgent: { isStartingAgent = true },
+            manageSnippets: { isManagingSnippets = true },
+            renameAgent: { isRenamingAgent = true },
+            renameWorkspace: { isRenamingWorkspace = true },
+            closeAgent: { isConfirmingClose = true })
+    }
+
     private var terminalSurface: some View {
         terminalScreen
             .id(attach.terminalID)
         .overlay { statusOverlay }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if composer == nil {
-                imageAttachStatus
-            }
+            attachmentStatus
         }
         // Below the keyboard's own inset, so the strip rides above the
         // keyboard while it is up and rests on the screen's edge once it is
@@ -358,6 +401,7 @@ struct AgentTerminalView: View {
                     switcher: agentSwitcher,
                     keyboardHandoff: keyboardHandoff,
                     keyboardHeight: composerKeyboardLayout.availableToolsHeight,
+                    actions: composerActions,
                     keyboardPresentation: $composerKeyboardPresentation,
                     prepareKeyboardPresentation: prepareComposerKeyboardPresentation)
             } else {
@@ -392,19 +436,30 @@ struct AgentTerminalView: View {
                 .accessibilityHidden(composerKeyboardPresentation != .tools)
             }
         }
-        // background(_:ignoresSafeAreaEdges:) defaults to .all: the theme
-        // colour reaches under the transparent navigation bar and into the
-        // home-indicator area without moving the terminal grid or touching
-        // keyboard resize. Must stay outside the safeAreaInset above.
+        // The navigation bar remains present only as the owner of the status
+        // bar appearance. Its content stays hidden, while this inset keeps
+        // terminal output below the system clock.
+        .padding(.top, statusBarInset)
         .background(
             terminal.themes.selection(for: colorScheme)
                 .surfaceBackground(for: colorScheme))
+        .ignoresSafeArea(.container, edges: .top)
+        .overlay(alignment: .leading) {
+            AgentEdgeBackGesture { dismiss() }
+        }
         .toolbarColorScheme(
             terminal.themes.selection(for: colorScheme)
                 .chromeColorScheme(for: colorScheme),
             for: .navigationBar)
-        .navigationTitle(title)
+        .navigationBarBackButtonHidden(true)
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        // `toolbarColorScheme` takes effect only while the bar background is
+        // visible. A clear visible background keeps the bar visually absent
+        // and the terminal unobscured while still applying status-bar contrast.
+        .toolbarBackground(Color.clear, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar(.visible, for: .navigationBar)
     }
 
     private func prepareComposerKeyboardPresentation(
@@ -421,64 +476,6 @@ struct AgentTerminalView: View {
     private func handleActivation() {
         let afterPossibleSuspension = activity.lastAbsenceMayHaveSuspended
         attach.didBecomeActive(afterPossibleSuspension: afterPossibleSuspension)
-    }
-
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        if !attach.attachLinks.isEmpty {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    isShowingAttachLinks = true
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "link")
-                        Text("\(attach.attachLinks.count)")
-                            .monospacedDigit()
-                    }
-                }
-                .accessibilityLabel("Attach Links")
-                .accessibilityValue(attachLinkCountDescription)
-                .popover(isPresented: $isShowingAttachLinks) {
-                    AttachLinksView(
-                        links: attach.attachLinks,
-                        open: { link in openAttachLink(link) },
-                        copy: { link in UIPasteboard.general.string = link.target })
-                    .presentationCompactAdaptation(.sheet)
-                }
-            }
-        }
-        if composer == nil {
-            ToolbarItem(placement: .primaryAction) {
-                PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                    Label("Attach Image", systemImage: "photo.badge.plus")
-                }
-                .disabled(!attach.canSelectImage)
-                .accessibilityLabel("Attach Image")
-            }
-        }
-        ToolbarItem(placement: .primaryAction) {
-            Menu {
-                Button("New Agent", systemImage: "plus") {
-                    isStartingAgent = true
-                }
-                if composer == nil {
-                    Button("Snippets", systemImage: "quote.bubble") {
-                        isManagingSnippets = true
-                    }
-                }
-                Button("Rename Agent", systemImage: "pencil") {
-                    isRenamingAgent = true
-                }
-                Button("Rename Workspace", systemImage: "pencil.line") {
-                    isRenamingWorkspace = true
-                }
-                Button("Close Agent", systemImage: "trash", role: .destructive) {
-                    isConfirmingClose = true
-                }
-            } label: {
-                Label("More", systemImage: "ellipsis.circle")
-            }
-        }
     }
 
     private func openAttachLink(_ link: AttachLink) {
@@ -561,8 +558,17 @@ struct AgentTerminalView: View {
     }
 
     @ViewBuilder
-    private var imageAttachStatus: some View {
-        switch attach.imageState {
+    private var attachmentStatus: some View {
+        if let fileState = attach.fileState, fileState != .idle {
+            fileAttachStatus(fileState)
+        } else {
+            imageAttachStatus(attach.imageState)
+        }
+    }
+
+    @ViewBuilder
+    private func imageAttachStatus(_ state: ImageAttachState) -> some View {
+        switch state {
         case .idle:
             EmptyView()
         case .preparing:
@@ -611,6 +617,56 @@ struct AgentTerminalView: View {
     }
 
     @ViewBuilder
+    private func fileAttachStatus(_ state: FileAttachState) -> some View {
+        switch state {
+        case .idle:
+            EmptyView()
+        case .preparing:
+            ImageAttachStatusBar(
+                icon: "doc",
+                title: "Preparing File…",
+                accessibilityLabel: "Preparing File"
+            ) {
+                Button("Cancel", role: .cancel) { attach.cancelFile() }
+            }
+        case .uploading(let progress):
+            ImageAttachStatusBar(
+                icon: "arrow.up.circle",
+                title: "Uploading File… \(Int(progress.fractionCompleted * 100))%",
+                accessibilityLabel:
+                    "Uploading File, \(Int(progress.fractionCompleted * 100)) percent"
+            ) {
+                Button("Cancel", role: .cancel) { attach.cancelFile() }
+            }
+        case .failed(let failure), .backgroundInterrupted(let failure):
+            ImageAttachStatusBar(
+                icon: "exclamationmark.triangle",
+                title: failure.message,
+                accessibilityLabel: failure.message
+            ) {
+                if failure.isRetryable {
+                    Button("Retry") { attach.retryFile() }
+                }
+                Button("Dismiss", role: .cancel) { attach.dismissFileResult() }
+            }
+        case .completed(let result):
+            ImageAttachStatusBar(
+                icon: result.copied && result.inserted ? "checkmark.circle" : "info.circle",
+                title: result.message,
+                accessibilityLabel: result.message
+            ) {
+                if !result.copied {
+                    Button("Copy Path") { attach.copyFilePath() }
+                }
+                if !result.inserted {
+                    Button("Insert Path") { attach.insertFilePath() }
+                }
+                Button("Done", role: .cancel) { attach.dismissFileResult() }
+            }
+        }
+    }
+
+    @ViewBuilder
     private var pasteReviewSheet: some View {
         if let review = attach.pendingPaste {
             NavigationStack {
@@ -649,13 +705,31 @@ struct AgentTerminalView: View {
         Self.displayTitle(for: agent)
     }
 
-    private var attachLinkCountDescription: String {
-        let count = attach.attachLinks.count
-        return count == 1 ? "1 distinct link" : "\(count) distinct links"
-    }
-
     static func displayTitle(for agent: ConsoleAgent) -> String {
         agent.agent.title.isEmpty ? agent.agent.displayName : agent.agent.title
+    }
+}
+
+/// Preserve edge-swipe navigation after the title bar is removed.
+private struct AgentEdgeBackGesture: View {
+    let dismiss: @MainActor () -> Void
+
+    var body: some View {
+        Color.clear
+            .frame(width: 24)
+            .frame(maxHeight: .infinity)
+            .contentShape(.rect)
+            .gesture(
+                DragGesture(minimumDistance: 12, coordinateSpace: .global)
+                    .onEnded { value in
+                        let horizontal = value.translation.width
+                        guard value.startLocation.x <= 24,
+                              horizontal >= 72,
+                              abs(value.translation.height) <= horizontal * 0.75
+                        else { return }
+                        dismiss()
+                    })
+            .accessibilityHidden(true)
     }
 }
 

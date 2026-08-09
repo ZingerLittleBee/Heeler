@@ -40,6 +40,7 @@ final class AgentAttachStore {
     private(set) var terminal: AttachTerminalStore
     let input: TerminalInputController
     let image: ImageAttachStore
+    let file: FileAttachStore?
     let close: ClosePaneStore
     private(set) var attachLinkOpenFailure: AttachLinkOpenFailure?
 
@@ -71,6 +72,8 @@ final class AgentAttachStore {
         isOnStage: @escaping () -> Bool,
         runTerminal: @escaping TerminalSessionRunner,
         stageImage: @escaping ImageStager,
+        stageFile: FileStager? = nil,
+        composer: (any ComposerDraftOperations)? = nil,
         closePane: @escaping () async throws -> Void
     ) {
         let input = TerminalInputController()
@@ -83,7 +86,17 @@ final class AgentAttachStore {
         self.linkIndex = linkIndex
         terminal = Self.makeTerminal(
             target: target, input: input, runTerminal: runTerminal, linkIndex: linkIndex)
-        image = ImageAttachStore(stageImage: stageImage, input: input)
+        image = ImageAttachStore(
+            stageImage: stageImage,
+            input: input,
+            composer: composer)
+        if let stageFile, let composer {
+            file = FileAttachStore(
+                stageFile: stageFile,
+                composer: composer)
+        } else {
+            file = nil
+        }
         close = ClosePaneStore(paneTitle: paneTitle, close: closePane)
     }
 
@@ -121,8 +134,16 @@ final class AgentAttachStore {
         image.state
     }
 
+    var fileState: FileAttachState? {
+        file?.state
+    }
+
     var canSelectImage: Bool {
-        terminal.status == .live && image.canSelectImage
+        image.canSelectImage && file?.state.isBusy != true
+    }
+
+    var canSelectFile: Bool {
+        file?.canSelectFile == true && !image.state.isBusy
     }
 
     var isLocalInputEnabled: Bool {
@@ -220,7 +241,15 @@ final class AgentAttachStore {
     }
 
     func selectImage(_ selection: any ImageSelection) {
+        guard canSelectImage else { return }
+        file?.dismissResult()
         image.select(selection)
+    }
+
+    func selectFile(_ url: URL) {
+        guard canSelectFile else { return }
+        image.dismissResult()
+        file?.select(url)
     }
 
     func cancelImage() {
@@ -241,6 +270,26 @@ final class AgentAttachStore {
 
     func insertImagePath() {
         image.insertPath()
+    }
+
+    func cancelFile() {
+        file?.cancel()
+    }
+
+    func retryFile() {
+        file?.retry()
+    }
+
+    func dismissFileResult() {
+        file?.dismissResult()
+    }
+
+    func copyFilePath() {
+        file?.copyPath()
+    }
+
+    func insertFilePath() {
+        file?.insertPath()
     }
 
     /// A short foreground bounce keeps the current PTY and asks it to repaint.
@@ -264,6 +313,7 @@ final class AgentAttachStore {
 
     func didEnterBackground() {
         image.didEnterBackground()
+        file?.didEnterBackground()
     }
 
     /// A new Transport requires a new terminal pipeline. The replacement is
@@ -462,6 +512,7 @@ final class AgentAttachStore {
         // self-breaking: the task releases the store when the teardown ends.
         return enqueueLifecycleTransition { [self] in
             await image.leaveAttach()
+            await file?.leave()
             await terminal.stop()
             linkIndex.clear()
         }

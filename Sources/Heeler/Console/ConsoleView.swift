@@ -113,6 +113,11 @@ struct ConsoleView: View {
         } detail: {
             detail
         }
+        .modifier(
+            ConsoleStatusBarModifier(
+                scheme: terminalStatusBarColorScheme
+            )
+        )
         // Above the NavigationStack so a banner also shows over a pushed
         // Agent detail; a tap deep-links exactly like a push tap would.
         .overlay(alignment: .top) {
@@ -151,6 +156,19 @@ struct ConsoleView: View {
         Binding(
             get: { notificationRouter.path.last },
             set: { notificationRouter.path = $0.map { [$0] } ?? [] })
+    }
+
+    /// The split view owns the window's status-bar appearance on iPhone. A
+    /// pushed terminal cannot reliably override it from the detail subtree.
+    private var terminalStatusBarColorScheme: ColorScheme? {
+        guard let id = notificationRouter.path.last else { return nil }
+        let showsTerminalSurface = console.agents.contains(where: { $0.id == id })
+        let showsTerminalSyncSurface = !showsTerminalSurface
+            && MissingAgentPresentation(agentID: id, console: console, hosts: hosts).cause
+                == .hostSyncing
+        guard showsTerminalSurface || showsTerminalSyncSurface else { return nil }
+        return terminal.themes.selection(for: colorScheme)
+            .chromeColorScheme(for: colorScheme)
     }
 
     /// The detail column. Not keyed off the live Agent list alone: the
@@ -388,6 +406,22 @@ struct ConsoleView: View {
         await console.retryHost(id)
         try? await Task.sleep(for: .milliseconds(1_200))
         reconnectingHostIDs.remove(id)
+    }
+}
+
+private struct ConsoleStatusBarModifier: ViewModifier {
+    let scheme: ColorScheme?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 27.0, *) {
+            content
+                .toolbarVisibility(.visible, for: .statusBar)
+                .toolbarColorScheme(scheme, for: .statusBar)
+        } else {
+            content
+                .toolbarColorScheme(scheme, for: .navigationBar)
+        }
     }
 }
 

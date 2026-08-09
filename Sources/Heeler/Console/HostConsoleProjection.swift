@@ -157,6 +157,17 @@ final class HostConsoleProjection {
         }
     }
 
+    func fileStager() -> FileStager {
+        let session = session
+        return { file, reporter in
+            try await session.withTransport { transport in
+                try await transport.stageFile(file) { progress in
+                    await reporter.report(progress)
+                }
+            }
+        }
+    }
+
     @discardableResult
     func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
         let agent = try await session.withTransport { transport in

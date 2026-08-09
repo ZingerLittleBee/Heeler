@@ -23,7 +23,7 @@ struct StagedImage: Sendable, Equatable {
     let path: String
 
     init(path: String) throws {
-        guard Self.isValidAbsoluteHostPath(path) else {
+        guard StagedHostPath.isValid(path) else {
             throw ImageStagingError.invalidRemotePath
         }
         self.path = path
@@ -35,7 +35,25 @@ struct StagedImage: Sendable, Equatable {
         URL(fileURLWithPath: path)
     }
 
-    private static func isValidAbsoluteHostPath(_ path: String) -> Bool {
+}
+
+struct StagedFile: Sendable, Equatable {
+    let path: String
+
+    init(path: String) throws {
+        guard StagedHostPath.isValid(path) else {
+            throw ImageStagingError.invalidRemotePath
+        }
+        self.path = path
+    }
+
+    var fileURL: URL {
+        URL(fileURLWithPath: path)
+    }
+}
+
+private enum StagedHostPath {
+    static func isValid(_ path: String) -> Bool {
         guard path.hasPrefix("/"), path != "/" else { return false }
         return path.unicodeScalars.allSatisfy { scalar in
             scalar.value >= 0x20 && scalar.value != 0x7F

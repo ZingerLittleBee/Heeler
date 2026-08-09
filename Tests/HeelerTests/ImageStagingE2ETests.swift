@@ -21,6 +21,32 @@ struct ImageStagingE2ETests {
         try await exercisePrivateAtomicStage(settings: environment.jumpSettings())
     }
 
+    @Test func directFileStagingPreservesSafeExtensionAndPrivatePermissions() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let bytes = Data("Composer file attachment\n".utf8)
+        let localURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("file-stage-\(UUID().uuidString).md")
+        try bytes.write(to: localURL)
+        defer { try? FileManager.default.removeItem(at: localURL) }
+        let file = PreparedFile(
+            fileURL: localURL,
+            fileExtension: "md",
+            byteCount: Int64(bytes.count))
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+
+        let staged = try await transport.stageFile(file) { _ in }
+        let stageDirectory = staged.fileURL.deletingLastPathComponent()
+        let parentDirectory = stageDirectory.deletingLastPathComponent()
+        defer { try? FileManager.default.removeItem(at: parentDirectory) }
+
+        #expect(staged.fileURL.lastPathComponent == "file.md")
+        #expect(try Data(contentsOf: staged.fileURL) == bytes)
+        let fileAttributes = try FileManager.default.attributesOfItem(atPath: staged.path)
+        #expect((fileAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+        try await transport.close()
+    }
+
     @Test func cancellationRemovesOnlyTheCurrentIncompletePart() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
         let identifier = UUID().uuidString.lowercased()
