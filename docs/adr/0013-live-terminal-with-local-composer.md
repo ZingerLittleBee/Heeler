@@ -16,11 +16,17 @@ and Backspace directly to the PTY; its Snippet and Skill panes edit the local
 draft. The iOS keyboard remains entirely system-owned, including its native
 candidate and paste area. The tools keyboard reuses that complete measured
 footprint, including the Home Indicator area.
-Both modes are the Composer text view's UIKit input views: `reloadInputViews()`
-replaces them while the same text view remains first responder. Neither mode
-therefore dismisses the keyboard, moves Composer, or asks Ghostty to resize its
-grid. Send still delivers the complete draft through one `agent.prompt`
-request.
+The tools surface is an app-owned dock that remains in that fixed footprint,
+transparent behind the iOS keyboard until selected. Tools mode gives the same
+first-responder text view a zero-height `inputView`; when UIKit removes its
+keyboard and candidate row, the already-positioned dock is revealed instead
+of an intermediate gap. Candidate-row transition frames cannot replace the
+last complete height measurement. Neither mode therefore moves Composer or
+asks Ghostty to resize its grid. A keyboard-safe-area-ignoring geometry root
+holds the terminal proposal fixed while UIKit swaps input views; placing the
+ignore only outside the detail hierarchy still lets SwiftUI briefly propose a
+different Ghostty height. Send still delivers the complete draft through one
+`agent.prompt` request.
 
 This supersedes ADR 0012's non-realtime Monitor and separate interactive
 Attach destination. The snapshot renderer, polling cadence, and locally

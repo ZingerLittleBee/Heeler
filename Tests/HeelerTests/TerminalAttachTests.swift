@@ -1206,6 +1206,45 @@ struct TerminalAttachTests {
         #expect(inset.lastPresentedHeight == 402)
     }
 
+    /// Removing the Chinese candidate row publishes a shorter positive frame
+    /// before the system keyboard finishes hiding. The app-owned Tools dock
+    /// must retain the complete measurement instead of adopting that transient
+    /// height and exposing a gap.
+    @MainActor
+    @Test func toolsModeIgnoresCandidateRowTransitionFrames() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { frame in
+            frame.height == 436 ? 402 : 365
+        }
+        let completeFrame = CGRect(x: 0, y: 554, width: 440, height: 436)
+        let withoutCandidateRow = CGRect(x: 0, y: 591, width: 440, height: 399)
+
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: completeFrame])
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(inset.height == 402)
+
+        inset.pauseHeightCapture()
+        center.post(
+            name: UIResponder.keyboardWillChangeFrameNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: withoutCandidateRow])
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(inset.height == 402)
+        #expect(inset.lastPresentedHeight == 402)
+
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        #expect(inset.height == 0)
+        #expect(inset.lastPresentedHeight == 402)
+
+        inset.resumeHeightCapture()
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: completeFrame])
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(inset.height == 402)
+    }
+
     @Test func agentKeyboardReplacementKeepsTheTerminalInsetStable() {
         let system = AgentComposerKeyboardLayout(
             currentHeight: 402, lastPresentedHeight: 402,

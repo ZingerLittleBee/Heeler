@@ -139,14 +139,19 @@ struct AgentTerminalView: View {
     }
 
     var body: some View {
-        lifecycleSurface
-            // Keyboard avoidance is owned by `TerminalKeyboardInset`. This
-            // must sit at the detail root: applying it only inside
-            // `terminalSurface` lets an ancestor accept UIKit's keyboard safe
-            // area first, translating the entire terminal and Composer even
-            // when their explicit inset stays byte-for-byte unchanged.
-            .ignoresSafeArea(.keyboard)
-            .task { composer?.open() }
+        GeometryReader { proxy in
+            lifecycleSurface
+                .frame(
+                    width: proxy.size.width,
+                    height: proxy.size.height,
+                    alignment: .top)
+        }
+        // Keyboard avoidance is owned by `TerminalKeyboardInset`. The fixed
+        // geometry reader must ignore UIKit's keyboard safe area itself;
+        // otherwise replacing the system keyboard changes the proposal that
+        // reaches Ghostty even when our explicit inset is unchanged.
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+        .task { composer?.open() }
     }
 
     private var presentedSurface: some View {
@@ -352,11 +357,9 @@ struct AgentTerminalView: View {
                     status: agent.agent.status,
                     switcher: agentSwitcher,
                     keyboardHandoff: keyboardHandoff,
-                    keysContext: terminalKeysContext,
                     keyboardHeight: composerKeyboardLayout.availableToolsHeight,
                     keyboardPresentation: $composerKeyboardPresentation,
-                    quickKeysEnabled: attach.isLocalInputEnabled,
-                    sendQuickKey: keyboardControl.sendQuickKey)
+                    prepareKeyboardPresentation: prepareComposerKeyboardPresentation)
             } else {
                 TerminalAgentSwitcherRow(
                     switcher: agentSwitcher,
@@ -372,6 +375,23 @@ struct AgentTerminalView: View {
         .modifier(
             AgentTerminalKeyboardInsetModifier(
                 height: composerKeyboardLayout.contentInset))
+        // This dock is always present at the system keyboard's last complete
+        // height. In iOS mode it is transparent behind the system keyboard;
+        // in Tools mode it is already in place when UIKit removes its native
+        // candidate row, so no intermediate gap is ever exposed.
+        .overlay(alignment: .bottom) {
+            if let composer {
+                AgentToolsKeyboard(
+                    store: composer,
+                    context: terminalKeysContext,
+                    height: composerKeyboardLayout.availableToolsHeight,
+                    quickKeysEnabled: attach.isLocalInputEnabled,
+                    sendQuickKey: keyboardControl.sendQuickKey)
+                .opacity(composerKeyboardPresentation == .tools ? 1 : 0)
+                .allowsHitTesting(composerKeyboardPresentation == .tools)
+                .accessibilityHidden(composerKeyboardPresentation != .tools)
+            }
+        }
         // background(_:ignoresSafeAreaEdges:) defaults to .all: the theme
         // colour reaches under the transparent navigation bar and into the
         // home-indicator area without moving the terminal grid or touching
@@ -385,6 +405,17 @@ struct AgentTerminalView: View {
             for: .navigationBar)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func prepareComposerKeyboardPresentation(
+        _ presentation: AgentComposerKeyboardPresentation
+    ) {
+        switch presentation {
+        case .tools:
+            keyboardInset.pauseHeightCapture()
+        case .hidden, .system:
+            keyboardInset.resumeHeightCapture()
+        }
     }
 
     private func handleActivation() {

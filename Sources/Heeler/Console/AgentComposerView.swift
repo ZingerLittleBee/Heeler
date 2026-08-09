@@ -36,11 +36,9 @@ struct AgentComposerView: View {
     let status: AgentStatus
     let switcher: TerminalAgentSwitcher
     let keyboardHandoff: TerminalKeyboardHandoff
-    let keysContext: TerminalKeysContext
     let keyboardHeight: CGFloat
     @Binding var keyboardPresentation: AgentComposerKeyboardPresentation
-    let quickKeysEnabled: Bool
-    let sendQuickKey: (AgentQuickKey) -> Void
+    let prepareKeyboardPresentation: (AgentComposerKeyboardPresentation) -> Void
     @State private var isInputFocused = false
 
     private var isToolsKeyboardPresented: Bool {
@@ -61,12 +59,7 @@ struct AgentComposerView: View {
                                     get: { store.draft },
                                     set: { store.replaceDraft(with: $0) }),
                                 isFocused: $isInputFocused,
-                                keyboardPresentation: keyboardPresentation,
-                                keyboardHeight: keyboardHeight,
-                                store: store,
-                                context: keysContext,
-                                quickKeysEnabled: quickKeysEnabled,
-                                sendQuickKey: sendQuickKey)
+                                keyboardPresentation: keyboardPresentation)
                             if store.draft.isEmpty {
                                 Text("Message Agent")
                                     .foregroundStyle(.tertiary)
@@ -140,16 +133,16 @@ struct AgentComposerView: View {
             guard let selectedID = switcher.selectedID,
                   keyboardHandoff.consume(selectedID)
             else { return }
-            keyboardPresentation = .system
+            setKeyboardPresentation(.system)
             isInputFocused = true
         }
         .onChange(of: isInputFocused) { _, isFocused in
             if isFocused {
                 if keyboardPresentation != .tools {
-                    keyboardPresentation = .system
+                    setKeyboardPresentation(.system)
                 }
             } else {
-                keyboardPresentation = .hidden
+                setKeyboardPresentation(.hidden)
             }
         }
     }
@@ -165,10 +158,16 @@ struct AgentComposerView: View {
 
     private func dismissOrPresentKeyboard() {
         if isToolsKeyboardPresented {
-            keyboardPresentation = .hidden
+            setKeyboardPresentation(.hidden)
             isInputFocused = false
         } else {
-            isInputFocused.toggle()
+            if isInputFocused {
+                setKeyboardPresentation(.hidden)
+                isInputFocused = false
+            } else {
+                setKeyboardPresentation(.system)
+                isInputFocused = true
+            }
         }
     }
 
@@ -177,13 +176,15 @@ struct AgentComposerView: View {
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
-            if expectsSystemKeyboard {
-                keyboardPresentation = .system
-            } else {
-                keyboardPresentation = .tools
-            }
+            setKeyboardPresentation(expectsSystemKeyboard ? .system : .tools)
             isInputFocused = true
         }
+    }
+
+    private func setKeyboardPresentation(_ presentation: AgentComposerKeyboardPresentation) {
+        guard presentation != keyboardPresentation else { return }
+        prepareKeyboardPresentation(presentation)
+        keyboardPresentation = presentation
     }
 
     private var focusPreservingSwitcher: TerminalAgentSwitcher {
@@ -230,11 +231,6 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
     @Binding var text: String
     @Binding var isFocused: Bool
     let keyboardPresentation: AgentComposerKeyboardPresentation
-    let keyboardHeight: CGFloat
-    let store: AgentComposerStore
-    let context: TerminalKeysContext
-    let quickKeysEnabled: Bool
-    let sendQuickKey: (AgentQuickKey) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(text: $text, isFocused: $isFocused)
@@ -256,16 +252,7 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
         if textView.text != text {
             textView.text = text
         }
-        textView.updateKeyboard(
-            presentation: keyboardPresentation,
-            // `TerminalKeyboardInset` excludes the Home Indicator from its
-            // overlap. A custom input view owns that safe area too, so add it
-            // back to match UIKit's complete keyboard window footprint.
-            height: keyboardHeight + (textView.window?.safeAreaInsets.bottom ?? 0),
-            store: store,
-            context: self.context,
-            quickKeysEnabled: quickKeysEnabled,
-            sendQuickKey: sendQuickKey)
+        textView.updateKeyboard(presentation: keyboardPresentation)
         let shouldFocus = isFocused
         guard shouldFocus != textView.isFirstResponder else { return }
         DispatchQueue.main.async { [weak textView] in
@@ -320,116 +307,35 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
     }
 }
 
-/// Owns both keyboard implementations. `reloadInputViews()` replaces them in
-/// UIKit's keyboard window without resigning first responder, so neither the
-/// Composer nor Ghostty participates in a keyboard hide/show layout cycle.
+/// Keeps the Composer first-responder while switching between the system
+/// keyboard and an app-owned tools dock. Tools mode suppresses UIKit's soft
+/// keyboard with a zero-height input view; the dock already occupies the
+/// measured keyboard footprint behind it, so removing the candidate row never
+/// exposes an intermediate gap.
 final class AgentComposerUITextView: UITextView {
-    private var toolsInputView: AgentToolsInputView?
+    private lazy var suppressedSoftKeyboard = AgentSuppressedSoftKeyboardView()
     private var keyboardPresentation: AgentComposerKeyboardPresentation = .hidden
 
-    func updateKeyboard(
-        presentation: AgentComposerKeyboardPresentation,
-        height: CGFloat,
-        store: AgentComposerStore,
-        context: TerminalKeysContext,
-        quickKeysEnabled: Bool,
-        sendQuickKey: @escaping (AgentQuickKey) -> Void
-    ) {
-        guard presentation != keyboardPresentation else {
-            toolsInputView?.update(
-                height: height,
-                store: store,
-                context: context,
-                quickKeysEnabled: quickKeysEnabled,
-                sendQuickKey: sendQuickKey)
-            return
-        }
+    func updateKeyboard(presentation: AgentComposerKeyboardPresentation) {
+        guard presentation != keyboardPresentation else { return }
         keyboardPresentation = presentation
+        let previousInputView = inputView
         switch presentation {
-        case .tools:
-            let toolsInputView = AgentToolsInputView(
-                height: height,
-                store: store,
-                context: context,
-                quickKeysEnabled: quickKeysEnabled,
-                sendQuickKey: sendQuickKey)
-            self.toolsInputView = toolsInputView
-            inputView = toolsInputView
-        case .hidden, .system:
-            toolsInputView = nil
+        case .hidden, .tools:
+            inputView = suppressedSoftKeyboard
+        case .system:
             inputView = nil
         }
-        guard isFirstResponder else { return }
+        guard isFirstResponder, inputView !== previousInputView else { return }
         UIView.performWithoutAnimation {
             reloadInputViews()
         }
     }
 }
 
-/// The tools surface presented as the Composer's custom keyboard.
-final class AgentToolsInputView: UIInputView {
-    private var keyboardHeight: CGFloat
-    private let host: UIHostingController<AgentToolsKeyboard>
-
-    init(
-        height: CGFloat,
-        store: AgentComposerStore,
-        context: TerminalKeysContext,
-        quickKeysEnabled: Bool,
-        sendQuickKey: @escaping (AgentQuickKey) -> Void
-    ) {
-        keyboardHeight = height
-        host = UIHostingController(
-            rootView: AgentToolsKeyboard(
-                store: store,
-                context: context,
-                height: height,
-                quickKeysEnabled: quickKeysEnabled,
-                sendQuickKey: sendQuickKey))
-        super.init(
-            frame: CGRect(x: 0, y: 0, width: 0, height: height),
-            inputViewStyle: .keyboard)
-        allowsSelfSizing = true
-        autoresizingMask = [.flexibleWidth]
-        backgroundColor = .systemBackground
-        host.view.backgroundColor = .clear
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(host.view)
-        NSLayoutConstraint.activate([
-            host.view.leadingAnchor.constraint(equalTo: leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: trailingAnchor),
-            host.view.topAnchor.constraint(equalTo: topAnchor),
-            host.view.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is unavailable")
-    }
-
+final class AgentSuppressedSoftKeyboardView: UIView {
     override var intrinsicContentSize: CGSize {
-        CGSize(width: UIView.noIntrinsicMetric, height: keyboardHeight)
-    }
-
-    func update(
-        height: CGFloat,
-        store: AgentComposerStore,
-        context: TerminalKeysContext,
-        quickKeysEnabled: Bool,
-        sendQuickKey: @escaping (AgentQuickKey) -> Void
-    ) {
-        let heightChanged = height != keyboardHeight
-        keyboardHeight = height
-        host.rootView = AgentToolsKeyboard(
-            store: store,
-            context: context,
-            height: height,
-            quickKeysEnabled: quickKeysEnabled,
-            sendQuickKey: sendQuickKey)
-        if heightChanged {
-            invalidateIntrinsicContentSize()
-        }
+        CGSize(width: UIView.noIntrinsicMetric, height: 0)
     }
 }
 

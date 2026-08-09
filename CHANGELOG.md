@@ -23,11 +23,12 @@ Entries reference the issue that motivated them.
   visible, a neighbouring control switches between the iOS keyboard and a
   tabbed tools keyboard. Its Agent controls send Esc, Tab, Shift-Tab, arrows,
   Enter, and Backspace directly to the Agent without changing the draft. The
-  Composer replaces them in place inside UIKit's keyboard window, and the two
-  keyboards share the same full height, including the native iOS candidate and
-  paste area and the Home
-  Indicator area, so switching does not move the Composer or resize, stretch,
-  or relayout the terminal.
+  The tools dock stays positioned behind the system keyboard and replaces it
+  without exposing the disappearing native candidate row as an empty frame.
+  Both modes share the same complete measured height, including the native iOS
+  candidate and paste area and the Home Indicator area, so switching does not
+  move the Composer or change the terminal's root geometry, grid size, or
+  rendered frame.
   (#182)
 
 - Settings > About now has Acknowledgements: every redistributed third-party
