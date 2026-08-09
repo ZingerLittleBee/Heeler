@@ -54,7 +54,6 @@ watch-ios-device: ## Watch iOS code and install to a connected iPhone/iPad
 		--watch Packages/HeelerSSH/NativeSupport \
 		--watch Packages/HeelerSSH/Package.swift \
 		--watch project.yml \
-		--watch Heeler.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved \
 		--exts swift,h,modulemap,yml,plist,entitlements,resolved,json,png,ttf \
 		--debounce "$(IOS_WATCH_DEBOUNCE)" \
 		--on-busy-update queue \
