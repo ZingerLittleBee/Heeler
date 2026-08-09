@@ -188,12 +188,26 @@ final class ConsoleStore {
         }
     }
 
+    func fileStager(for hostID: Host.ID) -> FileStager {
+        { [weak self] file, reporter in
+            guard let stager = await self?.liveFileStager(for: hostID) else {
+                throw TransportError.sshUnreachable(
+                    detail: "The Host is not connected.")
+            }
+            return try await stager(file, reporter)
+        }
+    }
+
     private func liveTerminalRunner(for hostID: Host.ID) -> TerminalSessionRunner? {
         projections[hostID]?.terminalRunner()
     }
 
     private func liveImageStager(for hostID: Host.ID) -> ImageStager? {
         projections[hostID]?.imageStager()
+    }
+
+    private func liveFileStager(for hostID: Host.ID) -> FileStager? {
+        projections[hostID]?.fileStager()
     }
 
     func workspaces(for hostID: Host.ID) -> [ConsoleWorkspace] {

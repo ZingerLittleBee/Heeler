@@ -11,6 +11,7 @@ struct HeelerApp: App {
 
     init() {
         try? ImagePreparer.cleanupRemnants()
+        try? FilePreparer.cleanupRemnants()
     }
 
     var body: some Scene {

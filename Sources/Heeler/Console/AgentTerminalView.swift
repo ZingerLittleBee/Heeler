@@ -1,6 +1,7 @@
 import PhotosUI
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// The live Ghostty surface used by Agent detail. When a Composer is present,
 /// the terminal is display-only: it still renders, scrolls, opens links, and
@@ -36,6 +37,8 @@ struct AgentTerminalView: View {
     @State private var keyboardControl = TerminalKeyboardControl()
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
     @State private var selectedPhoto: PhotosPickerItem?
+    @State private var isSelectingPhoto = false
+    @State private var isSelectingFile = false
     @State private var isConfirmingClose = false
     @State private var isStartingAgent = false
     @State private var isManagingSnippets = false
@@ -80,7 +83,9 @@ struct AgentTerminalView: View {
                 transportGeneration: console.hostConnectionGenerations[agent.hostID],
                 isOnStage: isOnStage,
                 runTerminal: console.terminalRunner(for: agent.hostID),
-                stageImage: console.imageStager(for: agent.hostID)
+                stageImage: console.imageStager(for: agent.hostID),
+                stageFile: composer == nil ? nil : console.fileStager(for: agent.hostID),
+                composer: composer
             ) {
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
             })
@@ -158,6 +163,24 @@ struct AgentTerminalView: View {
         terminalSurface
         .toolbar {
             toolbarContent
+        }
+        .photosPicker(
+            isPresented: $isSelectingPhoto,
+            selection: $selectedPhoto,
+            matching: .images)
+        .fileImporter(
+            isPresented: $isSelectingFile,
+            allowedContentTypes: [.data]
+        ) { result in
+            guard case .success(let url) = result else { return }
+            attach.selectFile(url)
+        }
+        .popover(isPresented: $isShowingAttachLinks) {
+            AttachLinksView(
+                links: attach.attachLinks,
+                open: { link in openAttachLink(link) },
+                copy: { link in UIPasteboard.general.string = link.target })
+            .presentationCompactAdaptation(.sheet)
         }
         .sheet(isPresented: $isStartingAgent) {
             // StartAgentView brings its own NavigationStack.
@@ -337,14 +360,27 @@ struct AgentTerminalView: View {
             presentation: composer == nil ? .hidden : composerKeyboardPresentation)
     }
 
+    private var composerActions: AgentComposerActions {
+        AgentComposerActions(
+            canAddImage: attach.canSelectImage,
+            canAddFile: attach.canSelectFile,
+            attachLinkCount: attach.attachLinks.count,
+            addImage: { isSelectingPhoto = true },
+            addFile: { isSelectingFile = true },
+            showAttachLinks: { isShowingAttachLinks = true },
+            startAgent: { isStartingAgent = true },
+            manageSnippets: { isManagingSnippets = true },
+            renameAgent: { isRenamingAgent = true },
+            renameWorkspace: { isRenamingWorkspace = true },
+            closeAgent: { isConfirmingClose = true })
+    }
+
     private var terminalSurface: some View {
         terminalScreen
             .id(attach.terminalID)
         .overlay { statusOverlay }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if composer == nil {
-                imageAttachStatus
-            }
+            attachmentStatus
         }
         // Below the keyboard's own inset, so the strip rides above the
         // keyboard while it is up and rests on the screen's edge once it is
@@ -358,6 +394,7 @@ struct AgentTerminalView: View {
                     switcher: agentSwitcher,
                     keyboardHandoff: keyboardHandoff,
                     keyboardHeight: composerKeyboardLayout.availableToolsHeight,
+                    actions: composerActions,
                     keyboardPresentation: $composerKeyboardPresentation,
                     prepareKeyboardPresentation: prepareComposerKeyboardPresentation)
             } else {
@@ -425,29 +462,22 @@ struct AgentTerminalView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        if !attach.attachLinks.isEmpty {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    isShowingAttachLinks = true
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "link")
-                        Text("\(attach.attachLinks.count)")
-                            .monospacedDigit()
+        if composer == nil {
+            if !attach.attachLinks.isEmpty {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        isShowingAttachLinks = true
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "link")
+                            Text("\(attach.attachLinks.count)")
+                                .monospacedDigit()
+                        }
                     }
-                }
-                .accessibilityLabel("Attach Links")
-                .accessibilityValue(attachLinkCountDescription)
-                .popover(isPresented: $isShowingAttachLinks) {
-                    AttachLinksView(
-                        links: attach.attachLinks,
-                        open: { link in openAttachLink(link) },
-                        copy: { link in UIPasteboard.general.string = link.target })
-                    .presentationCompactAdaptation(.sheet)
+                    .accessibilityLabel("Attach Links")
+                    .accessibilityValue(attachLinkCountDescription)
                 }
             }
-        }
-        if composer == nil {
             ToolbarItem(placement: .primaryAction) {
                 PhotosPicker(selection: $selectedPhoto, matching: .images) {
                     Label("Attach Image", systemImage: "photo.badge.plus")
@@ -455,28 +485,26 @@ struct AgentTerminalView: View {
                 .disabled(!attach.canSelectImage)
                 .accessibilityLabel("Attach Image")
             }
-        }
-        ToolbarItem(placement: .primaryAction) {
-            Menu {
-                Button("New Agent", systemImage: "plus") {
-                    isStartingAgent = true
-                }
-                if composer == nil {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button("New Agent", systemImage: "plus") {
+                        isStartingAgent = true
+                    }
                     Button("Snippets", systemImage: "quote.bubble") {
                         isManagingSnippets = true
                     }
+                    Button("Rename Agent", systemImage: "pencil") {
+                        isRenamingAgent = true
+                    }
+                    Button("Rename Workspace", systemImage: "pencil.line") {
+                        isRenamingWorkspace = true
+                    }
+                    Button("Close Agent", systemImage: "trash", role: .destructive) {
+                        isConfirmingClose = true
+                    }
+                } label: {
+                    Label("More", systemImage: "ellipsis.circle")
                 }
-                Button("Rename Agent", systemImage: "pencil") {
-                    isRenamingAgent = true
-                }
-                Button("Rename Workspace", systemImage: "pencil.line") {
-                    isRenamingWorkspace = true
-                }
-                Button("Close Agent", systemImage: "trash", role: .destructive) {
-                    isConfirmingClose = true
-                }
-            } label: {
-                Label("More", systemImage: "ellipsis.circle")
             }
         }
     }
@@ -561,8 +589,17 @@ struct AgentTerminalView: View {
     }
 
     @ViewBuilder
-    private var imageAttachStatus: some View {
-        switch attach.imageState {
+    private var attachmentStatus: some View {
+        if let fileState = attach.fileState, fileState != .idle {
+            fileAttachStatus(fileState)
+        } else {
+            imageAttachStatus(attach.imageState)
+        }
+    }
+
+    @ViewBuilder
+    private func imageAttachStatus(_ state: ImageAttachState) -> some View {
+        switch state {
         case .idle:
             EmptyView()
         case .preparing:
@@ -606,6 +643,56 @@ struct AgentTerminalView: View {
                     Button("Insert Path") { attach.insertImagePath() }
                 }
                 Button("Done", role: .cancel) { attach.dismissImageResult() }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func fileAttachStatus(_ state: FileAttachState) -> some View {
+        switch state {
+        case .idle:
+            EmptyView()
+        case .preparing:
+            ImageAttachStatusBar(
+                icon: "doc",
+                title: "Preparing File…",
+                accessibilityLabel: "Preparing File"
+            ) {
+                Button("Cancel", role: .cancel) { attach.cancelFile() }
+            }
+        case .uploading(let progress):
+            ImageAttachStatusBar(
+                icon: "arrow.up.circle",
+                title: "Uploading File… \(Int(progress.fractionCompleted * 100))%",
+                accessibilityLabel:
+                    "Uploading File, \(Int(progress.fractionCompleted * 100)) percent"
+            ) {
+                Button("Cancel", role: .cancel) { attach.cancelFile() }
+            }
+        case .failed(let failure), .backgroundInterrupted(let failure):
+            ImageAttachStatusBar(
+                icon: "exclamationmark.triangle",
+                title: failure.message,
+                accessibilityLabel: failure.message
+            ) {
+                if failure.isRetryable {
+                    Button("Retry") { attach.retryFile() }
+                }
+                Button("Dismiss", role: .cancel) { attach.dismissFileResult() }
+            }
+        case .completed(let result):
+            ImageAttachStatusBar(
+                icon: result.copied && result.inserted ? "checkmark.circle" : "info.circle",
+                title: result.message,
+                accessibilityLabel: result.message
+            ) {
+                if !result.copied {
+                    Button("Copy Path") { attach.copyFilePath() }
+                }
+                if !result.inserted {
+                    Button("Insert Path") { attach.insertFilePath() }
+                }
+                Button("Done", role: .cancel) { attach.dismissFileResult() }
             }
         }
     }

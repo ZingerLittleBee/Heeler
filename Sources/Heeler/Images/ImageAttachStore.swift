@@ -101,11 +101,17 @@ enum ImageAttachState: Sendable, Equatable {
 }
 
 /// Coordinates one selected image from Photos decoding through Host staging
-/// and terminal insertion. It owns only the app-local prepared file; completed
-/// Host files intentionally outlive this screen (ADR 0005).
+/// and insertion into either the Composer draft or a legacy Attach input. It
+/// owns only the app-local prepared file; completed Host files intentionally
+/// outlive this screen (ADR 0005).
 @MainActor
 @Observable
 final class ImageAttachStore {
+    private enum InsertionDestination {
+        case composer
+        case terminal(TerminalInputController.SessionGeneration)
+    }
+
     private enum CancellationDisposition {
         case user
         case background
@@ -118,6 +124,7 @@ final class ImageAttachStore {
     private let stageImage: ImageStager
     private let clipboard: any ImageClipboard
     private let input: TerminalInputController
+    private weak var composer: (any ComposerDraftOperations)?
 
     private var preparedImage: PreparedImage?
     private var operationTask: Task<Void, Never>?
@@ -128,43 +135,51 @@ final class ImageAttachStore {
         preparer: any ImagePreparing = ImagePreparer(),
         stageImage: @escaping ImageStager,
         clipboard: any ImageClipboard = SystemImageClipboard(),
-        input: TerminalInputController
+        input: TerminalInputController,
+        composer: (any ComposerDraftOperations)? = nil
     ) {
         self.preparer = preparer
         self.stageImage = stageImage
         self.clipboard = clipboard
         self.input = input
+        self.composer = composer
     }
 
     var canSelectImage: Bool {
-        !state.isBusy && input.liveGeneration != nil
+        !state.isBusy && insertionDestination != nil
     }
 
     func select(_ selection: any ImageSelection) {
-        guard operationTask == nil, let generation = input.liveGeneration else { return }
+        guard operationTask == nil, let destination = insertionDestination else { return }
         discardRetainedPreparedImage()
         cancellationDisposition = nil
         operationID &+= 1
         let currentID = operationID
         state = .preparing
-        input.pause()
+        pauseInput(for: destination)
         operationTask = Task {
-            await runSelection(selection, generation: generation, operationID: currentID)
+            await runSelection(
+                selection,
+                destination: destination,
+                operationID: currentID)
         }
     }
 
     func retry() {
         guard operationTask == nil, let preparedImage,
-            let generation = input.liveGeneration
+            let destination = insertionDestination
         else { return }
         cancellationDisposition = nil
         operationID &+= 1
         let currentID = operationID
         state = .uploading(
             ImageStageProgress(transferredBytes: 0, totalBytes: preparedImage.byteCount))
-        input.pause()
+        pauseInput(for: destination)
         operationTask = Task {
-            await runUpload(preparedImage, generation: generation, operationID: currentID)
+            await runUpload(
+                preparedImage,
+                destination: destination,
+                operationID: currentID)
         }
     }
 
@@ -201,7 +216,12 @@ final class ImageAttachStore {
 
     func insertPath() {
         guard case .completed(var result) = state, !result.inserted else { return }
-        result.inserted = input.insertPathIntoCurrentSession(result.stagedImage.path)
+        if let composer {
+            composer.insertIntoDraft("\(result.stagedImage.path) ")
+            result.inserted = true
+        } else {
+            result.inserted = input.insertPathIntoCurrentSession(result.stagedImage.path)
+        }
         state = .completed(result)
     }
 
@@ -224,7 +244,7 @@ final class ImageAttachStore {
 
     private func runSelection(
         _ selection: any ImageSelection,
-        generation: TerminalInputController.SessionGeneration,
+        destination: InsertionDestination,
         operationID: UInt64
     ) async {
         var unclaimedImage: PreparedImage?
@@ -240,7 +260,10 @@ final class ImageAttachStore {
             unclaimedImage = nil
             state = .uploading(
                 ImageStageProgress(transferredBytes: 0, totalBytes: image.byteCount))
-            await runUploadBody(image, generation: generation, operationID: operationID)
+            await runUploadBody(
+                image,
+                destination: destination,
+                operationID: operationID)
         } catch {
             try? unclaimedImage?.remove()
             finish(error: error, operationID: operationID)
@@ -249,15 +272,18 @@ final class ImageAttachStore {
 
     private func runUpload(
         _ image: PreparedImage,
-        generation: TerminalInputController.SessionGeneration,
+        destination: InsertionDestination,
         operationID: UInt64
     ) async {
-        await runUploadBody(image, generation: generation, operationID: operationID)
+        await runUploadBody(
+            image,
+            destination: destination,
+            operationID: operationID)
     }
 
     private func runUploadBody(
         _ image: PreparedImage,
-        generation: TerminalInputController.SessionGeneration,
+        destination: InsertionDestination,
         operationID: UInt64
     ) async {
         do {
@@ -267,7 +293,10 @@ final class ImageAttachStore {
                     await self?.receive(progress: progress, operationID: operationID)
                 })
             try Task.checkCancellation()
-            finishSuccess(staged, generation: generation, operationID: operationID)
+            finishSuccess(
+                staged,
+                destination: destination,
+                operationID: operationID)
         } catch {
             finish(error: error, operationID: operationID)
         }
@@ -280,21 +309,32 @@ final class ImageAttachStore {
 
     private func finishSuccess(
         _ stagedImage: StagedImage,
-        generation: TerminalInputController.SessionGeneration,
+        destination: InsertionDestination,
         operationID: UInt64
     ) {
         guard operationID == self.operationID else { return }
         operationTask = nil
         cancellationDisposition = nil
         discardRetainedPreparedImage()
-        input.resume()
+        resumeInput(for: destination)
 
         var copied = false
         do {
             try clipboard.copy(stagedImage.path)
             copied = true
         } catch {}
-        let inserted = input.insertPath(stagedImage.path, matching: generation)
+        let inserted: Bool
+        switch destination {
+        case .composer:
+            if let composer {
+                composer.insertIntoDraft("\(stagedImage.path) ")
+                inserted = true
+            } else {
+                inserted = false
+            }
+        case .terminal(let generation):
+            inserted = input.insertPath(stagedImage.path, matching: generation)
+        }
         state = .completed(
             ImageAttachResult(
                 stagedImage: stagedImage,
@@ -332,6 +372,24 @@ final class ImageAttachStore {
     private func discardRetainedPreparedImage() {
         try? preparedImage?.remove()
         preparedImage = nil
+    }
+
+    private var insertionDestination: InsertionDestination? {
+        if composer != nil {
+            return .composer
+        }
+        guard let generation = input.liveGeneration else { return nil }
+        return .terminal(generation)
+    }
+
+    private func pauseInput(for destination: InsertionDestination) {
+        guard case .terminal = destination else { return }
+        input.pause()
+    }
+
+    private func resumeInput(for destination: InsertionDestination) {
+        guard case .terminal = destination else { return }
+        input.resume()
     }
 
     private static func isCancellation(_ error: any Error) -> Bool {

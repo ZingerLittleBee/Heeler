@@ -41,7 +41,8 @@ struct AgentDetailView: View {
         self.isOnStage = isOnStage
         self.onSwitch = onSwitch
         self.onClosed = onClosed
-        _composer = State(initialValue: composerStore ?? console.composerStore(for: agent))
+        let composer = composerStore ?? console.composerStore(for: agent)
+        _composer = State(initialValue: composer)
         _attach = State(
             initialValue: attachStore
                 ?? AgentAttachStore(
@@ -50,7 +51,9 @@ struct AgentDetailView: View {
                     transportGeneration: console.hostConnectionGenerations[agent.hostID],
                     isOnStage: isOnStage,
                     runTerminal: console.terminalRunner(for: agent.hostID),
-                    stageImage: console.imageStager(for: agent.hostID)
+                    stageImage: console.imageStager(for: agent.hostID),
+                    stageFile: console.fileStager(for: agent.hostID),
+                    composer: composer
                 ) {
                     try await console.closePane(agent.agent.paneID, on: agent.hostID)
                 })

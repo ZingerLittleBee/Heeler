@@ -123,6 +123,13 @@ protocol Transport: Sendable {
         progress: @escaping @Sendable (ImageStageProgress) async -> Void
     ) async throws -> StagedImage
 
+    /// Stages one app-owned file in private Host temporary storage. The file
+    /// follows the same SFTP, permission, and atomic-completion policy as images.
+    func stageFile(
+        _ file: PreparedFile,
+        progress: @escaping @Sendable (ImageStageProgress) async -> Void
+    ) async throws -> StagedFile
+
     /// Reads the Notification Registration file (v1, `plugin/README.md`)
     /// from the Heeler plugin's config dir on this Host; nil when no
     /// device has registered yet. Throws
@@ -194,6 +201,13 @@ extension Transport {
         _ image: PreparedImage,
         progress: @escaping @Sendable (ImageStageProgress) async -> Void
     ) async throws -> StagedImage {
+        throw ImageStagingError.sftpUnavailable
+    }
+
+    func stageFile(
+        _ file: PreparedFile,
+        progress: @escaping @Sendable (ImageStageProgress) async -> Void
+    ) async throws -> StagedFile {
         throw ImageStagingError.sftpUnavailable
     }
 

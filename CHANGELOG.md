@@ -9,6 +9,12 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Agent detail now places a plus menu to the left of Send. It can add an image
+  from Photos or a file up to 64 MiB from Files, stages the selection privately
+  on the Host over SFTP, and inserts the resulting path into the local draft
+  without submitting it. Links and the former title-bar Agent actions now live
+  in the same menu, leaving the navigation title uncluttered. (#182)
+
 - Agent detail now combines the complete live libghostty terminal with a local
   Composer. The terminal preserves TUI rendering, scrollback, and PTY resize,
   including touch scrolling in alternate-screen TUIs, but no longer accepts
