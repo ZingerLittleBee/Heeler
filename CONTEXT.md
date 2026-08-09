@@ -73,7 +73,9 @@ _Avoid_: dashboard, home
 
 **Composer**:
 The local input control below the Agent's live terminal: a native draft field
-that composes a message entirely on device and delivers it in one piece. A
+that composes a message entirely on device and delivers it in one piece. Its
+tools keyboard sends explicit terminal controls directly to the Agent without
+editing the draft, while its Snippet and Skill tools insert into that draft. A
 draft insertion edits the draft and nothing more; delivery is a separate,
 explicit act.
 Delivered means the Host accepted the text into the pane — whether the Agent
@@ -85,8 +87,8 @@ _Avoid_: reply bar, compose bar (the shelved predecessors), input box, message b
 The realtime PTY stream behind Agent detail. libghostty renders the complete
 TUI, owns local scrollback, and reports its grid size so the remote PTY resizes
 with the view. The surface is display-only: authored input belongs to Composer
-and reaches the Agent through one `agent.prompt` request, never as terminal
-keystrokes.
+and reaches the Agent through one `agent.prompt` request. Only Composer's
+explicit tools-keyboard controls send terminal control sequences.
 _Avoid_: takeover (that's herdr's flag, not our surface), connect
 
 **Attach Link**:

@@ -114,29 +114,20 @@ struct AgentTerminalView: View {
         screen.onViewportTextChanged = { text in
             attach.viewportTextDidChange(text)
         }
+        screen.onSend = { keystrokes in attach.send(keystrokes) }
         screen.onScroll = { sequence, rows in
             attach.scroll(sequence, rows: rows)
         }
+        screen.keyboardControl = keyboardControl
         if composer == nil {
-            screen.onSend = { keystrokes in attach.send(keystrokes) }
             screen.onPaste = { text, bracketed in
                 attach.requestPaste(text, bracketedPaste: bracketed)
             }
             screen.onSnippet = { text, bracketed in
                 attach.insertSnippet(text, bracketedPaste: bracketed)
             }
-            screen.keysContext = TerminalKeysContext(
-                settings: terminal,
-                skills: skills.map { store in
-                    TerminalSkillsContext(store: store) { skill in
-                        viewingSkill = skill
-                    }
-                }
-            ) {
-                isManagingSnippets = true
-            }
+            screen.keysContext = terminalKeysContext
             screen.claimsKeyboard = { keyboardHandoff.consume(agent.id) }
-            screen.keyboardControl = keyboardControl
         }
         screen.isLocalInputEnabled = composer == nil && attach.isLocalInputEnabled
         screen.theme = terminal.themes.theme
@@ -314,6 +305,19 @@ struct AgentTerminalView: View {
             onSelect: switchToAgent)
     }
 
+    private var terminalKeysContext: TerminalKeysContext {
+        TerminalKeysContext(
+            settings: terminal,
+            skills: skills.map { store in
+                TerminalSkillsContext(store: store) { skill in
+                    viewingSkill = skill
+                }
+            }
+        ) {
+            isManagingSnippets = true
+        }
+    }
+
     private var terminalSurface: some View {
         terminalScreen
             .id(attach.terminalID)
@@ -333,7 +337,10 @@ struct AgentTerminalView: View {
                     store: composer,
                     status: agent.agent.status,
                     switcher: agentSwitcher,
-                    keyboardHandoff: keyboardHandoff)
+                    keyboardHandoff: keyboardHandoff,
+                    keysContext: terminalKeysContext,
+                    quickKeysEnabled: attach.isLocalInputEnabled,
+                    sendQuickKey: keyboardControl.sendQuickKey)
             } else {
                 TerminalAgentSwitcherRow(
                     switcher: agentSwitcher,

@@ -1340,6 +1340,39 @@ struct TerminalAttachTests {
             ])
     }
 
+    @Test func agentQuickKeysEncodeExpectedBytes() {
+        #expect(
+            AgentQuickKey.allCases == [
+                .escape, .tab, .shiftTab, .left, .up, .down, .right, .enter,
+                .backspace,
+            ])
+        #expect(AgentQuickKey.escape.bytes(applicationCursor: false) == [0x1B])
+        #expect(AgentQuickKey.tab.bytes(applicationCursor: false) == [0x09])
+        #expect(AgentQuickKey.shiftTab.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x5A])
+        #expect(AgentQuickKey.left.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x44])
+        #expect(AgentQuickKey.up.bytes(applicationCursor: true) == [0x1B, 0x4F, 0x41])
+        #expect(AgentQuickKey.down.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x42])
+        #expect(AgentQuickKey.right.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x43])
+        #expect(AgentQuickKey.enter.bytes(applicationCursor: false) == [0x0D])
+        #expect(AgentQuickKey.backspace.bytes(applicationCursor: false) == [0x7F])
+    }
+
+    @MainActor
+    @Test func agentQuickKeysBypassDisplayOnlyInputWithoutEnablingTyping() async {
+        var sent = Data()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSend: { sent.append($0) })
+        terminal.setLocalInputEnabled(false)
+
+        terminal.sendControlKey(.enter)
+        terminal.sendQuickKey(.shiftTab)
+        terminal.receive(Data("\u{1B}[?1h".utf8))
+        terminal.sendQuickKey(.up)
+        await Task.yield()
+
+        #expect(sent == Data([0x1B, 0x5B, 0x5A, 0x1B, 0x4F, 0x41]))
+    }
+
     @MainActor
     @Test func terminalControlKeysFlowThroughTheGhosttySession() async {
         var sent = Data()

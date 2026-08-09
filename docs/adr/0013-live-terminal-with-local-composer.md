@@ -9,8 +9,11 @@ native Composer introduced by ADR 0012. The terminal is a display surface:
 incoming PTY bytes, scrollback, links, theme, font settings, and grid resize
 remain active. Touch scrolling continues to send semantic wheel input when an
 alternate-screen TUI requests it, but keyboard, paste, snippet, pointer-click,
-and other authored input do not reach the PTY. Send delivers the complete
-Composer draft through one `agent.prompt` request.
+and other authored input do not reach the PTY. While an input surface is
+visible, Composer can switch between the iOS keyboard and a tabbed tools
+keyboard. Its explicit Agent controls send Esc, Tab, Shift-Tab, arrows, Enter,
+and Backspace directly to the PTY; its Snippet and Skill panes edit the local
+draft. Send still delivers the complete draft through one `agent.prompt` request.
 
 This supersedes ADR 0012's non-realtime Monitor and separate interactive
 Attach destination. The snapshot renderer, polling cadence, and locally

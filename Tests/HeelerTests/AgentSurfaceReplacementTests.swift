@@ -66,6 +66,11 @@ struct AgentSurfaceReplacementTests {
                 if case .scroll = $0 { true } else { false }
             })
 
+        terminal.sendQuickKey(.enter)
+        try #require(await Self.eventually {
+            await transport.attachInputs.contains(.keystrokes(Data([0x0D])))
+        })
+
         composer.replaceDraft(with: "Continue from the current output")
         await composer.send()
         #expect(

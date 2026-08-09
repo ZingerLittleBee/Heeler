@@ -1,13 +1,18 @@
 import SwiftUI
 
 /// The native, local-first input surface beneath the live terminal. Drafting
-/// stays on device; only Send emits one `agent.prompt` request.
+/// stays on device; Send emits one `agent.prompt` request, while explicit
+/// tool-keyboard controls send terminal sequences through Attach.
 struct AgentComposerView: View {
     let store: AgentComposerStore
     let status: AgentStatus
     let switcher: TerminalAgentSwitcher
     let keyboardHandoff: TerminalKeyboardHandoff
+    let keysContext: TerminalKeysContext
+    let quickKeysEnabled: Bool
+    let sendQuickKey: (AgentQuickKey) -> Void
     @FocusState private var isInputFocused: Bool
+    @State private var isToolsKeyboardPresented = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -69,8 +74,10 @@ struct AgentComposerView: View {
 
                 TerminalAgentSwitcherRow(
                     switcher: focusPreservingSwitcher,
-                    isKeyboardUp: isInputFocused,
-                    toggleKeyboard: { isInputFocused.toggle() })
+                    isKeyboardUp: isKeyboardPresented,
+                    toggleKeyboard: dismissOrPresentKeyboard,
+                    isToolsKeyboardPresented: isToolsKeyboardPresented,
+                    switchKeyboard: switchKeyboard)
             }
             .background(
                 .regularMaterial,
@@ -82,13 +89,49 @@ struct AgentComposerView: View {
                     .stroke(.secondary.opacity(0.16), lineWidth: 1)
             }
             .padding(.horizontal, 12)
+
+            if isToolsKeyboardPresented {
+                AgentToolsKeyboard(
+                    store: store,
+                    context: keysContext,
+                    quickKeysEnabled: quickKeysEnabled,
+                    sendQuickKey: sendQuickKey)
+            }
         }
-        .padding(.vertical, 8)
+        .padding(.top, 8)
+        .padding(.bottom, isToolsKeyboardPresented ? 0 : 8)
         .onAppear {
             guard let selectedID = switcher.selectedID,
                   keyboardHandoff.consume(selectedID)
             else { return }
             isInputFocused = true
+        }
+        .onChange(of: isInputFocused) { _, isFocused in
+            if isFocused {
+                isToolsKeyboardPresented = false
+            }
+        }
+    }
+
+    private var isKeyboardPresented: Bool {
+        isInputFocused || isToolsKeyboardPresented
+    }
+
+    private func dismissOrPresentKeyboard() {
+        if isToolsKeyboardPresented {
+            isToolsKeyboardPresented = false
+        } else {
+            isInputFocused.toggle()
+        }
+    }
+
+    private func switchKeyboard() {
+        if isToolsKeyboardPresented {
+            isToolsKeyboardPresented = false
+            isInputFocused = true
+        } else {
+            isInputFocused = false
+            isToolsKeyboardPresented = true
         }
     }
 
@@ -129,5 +172,135 @@ struct AgentComposerView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Agent status")
         .accessibilityValue(status.rawValue.capitalized)
+    }
+}
+
+private struct AgentToolsKeyboard: View {
+    let store: AgentComposerStore
+    let context: TerminalKeysContext
+    let quickKeysEnabled: Bool
+    let sendQuickKey: (AgentQuickKey) -> Void
+    @State private var selectedTab: TerminalKeysTab = .controls
+
+    private var tabs: [TerminalKeysTab] {
+        TerminalKeysTab.allCases.filter {
+            $0 != .skills || context.skills != nil
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Group {
+                switch selectedTab {
+                case .controls:
+                    AgentQuickKeyPad(
+                        isEnabled: quickKeysEnabled,
+                        send: sendQuickKey)
+                case .skills:
+                    if let skills = context.skills {
+                        SkillsKeyboardPane(
+                            store: skills.store,
+                            onInsert: { skill in
+                                store.insertIntoDraft(skill.insertionText)
+                                selectedTab = .controls
+                            },
+                            onViewContent: skills.viewContent)
+                    }
+                case .snippets:
+                    SnippetsKeyboardPane(
+                        store: context.settings.snippets,
+                        onSend: { snippet in
+                            store.insertIntoDraft(snippet.body)
+                            selectedTab = .controls
+                        },
+                        onManage: context.manageSnippets)
+                case .appearance:
+                    TerminalAppearancePane(
+                        themes: context.settings.themes,
+                        zoom: context.settings.zoom,
+                        fonts: context.settings.fonts)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Divider()
+            HStack(spacing: 4) {
+                ForEach(tabs) { tab in
+                    Button {
+                        selectedTab = tab
+                    } label: {
+                        Image(systemName: tab.systemImageName)
+                            .font(.body)
+                            .foregroundStyle(selectedTab == tab ? Color.accentColor : .secondary)
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                            .background(
+                                selectedTab == tab ? Color(uiColor: .secondarySystemFill) : .clear,
+                                in: .rect(cornerRadius: 8))
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(tab.accessibilityLabel)
+                    .accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 2)
+        }
+        .frame(height: TerminalKeysKeyboardView.defaultHeight)
+        .background(Color(uiColor: .systemBackground))
+        .onChange(of: selectedTab) { _, tab in
+            guard tab == .skills, let skills = context.skills else { return }
+            Task { await skills.store.loadIfNeeded() }
+        }
+    }
+}
+
+private struct AgentQuickKeyPad: View {
+    let isEnabled: Bool
+    let send: (AgentQuickKey) -> Void
+
+    private static let rows: [[AgentQuickKey]] = [
+        [.escape, .tab, .shiftTab],
+        [.left, .up, .right],
+        [.backspace, .down, .enter],
+    ]
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ForEach(Self.rows.indices, id: \.self) { rowIndex in
+                HStack(spacing: 8) {
+                    ForEach(Self.rows[rowIndex], id: \.self) { key in
+                        Button {
+                            send(key)
+                        } label: {
+                            keyLabel(for: key)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .background(
+                            Color(uiColor: .secondarySystemFill),
+                            in: .rect(cornerRadius: 8))
+                        .disabled(!isEnabled)
+                        .opacity(isEnabled ? 1 : 0.45)
+                        .accessibilityLabel(key.accessibilityLabel)
+                        .accessibilityHint("Sends this key directly to the Agent")
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private func keyLabel(for key: AgentQuickKey) -> some View {
+        if let systemImageName = key.systemImageName {
+            Image(systemName: systemImageName)
+                .font(.system(size: 13, weight: .medium))
+        } else if let title = key.title {
+            Text(title)
+                .font(.caption.weight(.medium))
+        }
     }
 }

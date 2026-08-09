@@ -19,7 +19,10 @@ Entries reference the issue that motivated them.
   retried or returned to the draft without losing text, and drafts survive
   terminal recovery, backgrounding, and Host reconnects. The Agent switcher
   sits at the bottom of the Composer, keeping session changes and the keyboard
-  toggle within reach without reopening the Console. (#182)
+  toggle within reach without reopening the Console. While the keyboard is
+  visible, a neighbouring control switches between the iOS keyboard and a
+  tabbed tools keyboard. Its Agent controls send Esc, Tab, Shift-Tab, arrows,
+  Enter, and Backspace directly to the Agent without changing the draft. (#182)
 
 - Settings > About now has Acknowledgements: every redistributed third-party
   component ships with its exact upstream licence notice, including libssh2

@@ -14,10 +14,10 @@ enum TerminalLinkPolicy {
     }
 }
 
-/// A handle on the live terminal's keyboard, for chrome that sits outside the
-/// terminal — the Agent strip's toggle. The reference is weak and set by the
-/// surface itself, so an Agent switch rebuilding the terminal cannot leave the
-/// toggle driving a dead one.
+/// A handle on the live terminal for chrome that sits outside it. The reference
+/// is weak and set by the surface itself, so an Agent switch rebuilding the
+/// terminal cannot leave the keyboard toggle or Composer quick keys driving a
+/// dead one.
 @MainActor
 final class TerminalKeyboardControl {
     weak var terminal: HeelerTerminalView?
@@ -31,6 +31,10 @@ final class TerminalKeyboardControl {
         } else {
             terminal.requestKeyboard()
         }
+    }
+
+    func sendQuickKey(_ key: AgentQuickKey) {
+        terminal?.sendQuickKey(key)
     }
 }
 
