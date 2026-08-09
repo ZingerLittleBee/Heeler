@@ -592,11 +592,11 @@ struct ANSISnapshotRendererTests {
                 0x1B, 0x5B, 0x30, 0x6D, 0xE2, 0x94, 0x82, 0x0A,
                 0xE2, 0x94, 0x94, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x98,
             ],
-            text: "┌──┐\n│你🐝│\n└──┘",
+            text: "┌─┐\n│你🐝│\n└─┘",
             runs: [
-                ExpectedRun(text: "┌──┐\n│"),
+                ExpectedRun(text: "┌─┐\n│"),
                 ExpectedRun(text: "你🐝", foreground: paletteColor(2)),
-                ExpectedRun(text: "│\n└──┘"),
+                ExpectedRun(text: "│\n└─┘"),
             ])
 
         assertFixture(fixture)
