@@ -469,7 +469,7 @@ struct ANSISnapshotRendererTests {
         fixtures.forEach(assertFixture)
     }
 
-    @Test func filtersDecorativeBoxLinesAndPreservesMultibyteContent() {
+    @Test func preservesFramedMultibyteContent() {
         let fixture = Fixture(
             name: "box drawing CJK emoji and newlines",
             bytes: [
@@ -479,30 +479,100 @@ struct ANSISnapshotRendererTests {
                 0x1B, 0x5B, 0x30, 0x6D, 0xE2, 0x94, 0x82, 0x0A,
                 0xE2, 0x94, 0x94, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x98,
             ],
-            text: "│你🐝│",
+            text: "┌──┐\n│你🐝│\n└──┘",
             runs: [
-                ExpectedRun(text: "│"),
+                ExpectedRun(text: "┌──┐\n│"),
                 ExpectedRun(text: "你🐝", foreground: paletteColor(2)),
-                ExpectedRun(text: "│"),
+                ExpectedRun(text: "│\n└──┘"),
             ])
 
         assertFixture(fixture)
     }
 
-    @Test func removesDecorationOnlyBoxDrawingLines() {
+    @Test func preservesSeparatorAndFrameLinesAroundContent() {
         let rendered = ANSISnapshotRenderer.render(
             "before\r\n────────────────\r\n│ useful content │\r\n└──────────────┘\r\nafter")
 
-        #expect(String(rendered.characters) == "before\n│ useful content │\nafter")
+        #expect(
+            String(rendered.characters)
+                == "before\n────────────────\n│ useful content │\n└──────────────┘\nafter")
     }
 
-    @Test func trimsLongDecorativeEdgesFromContentLines() {
+    @Test func preservesDecorativeEdgesOnContentLines() {
         let rendered = ANSISnapshotRenderer.render(
             "──── heading\r\n─ Worked for 1m 33s ─────────────\r\n│ useful content │")
 
         #expect(
             String(rendered.characters)
-                == "heading\n─ Worked for 1m 33s\n│ useful content │")
+                == "──── heading\n─ Worked for 1m 33s ─────────────\n│ useful content │")
+    }
+
+    @Test func preservesMarkdownTableIncludingSeparatorRow() {
+        // The table ends the snapshot on a bottom border, exactly like a
+        // chrome frame would; its content rows must protect it.
+        let snapshot = """
+            Results:
+            │ name        │ score     │
+            ├─────────────┼───────────┤
+            │ bee         │ 10        │
+            └─────────────┴───────────┘
+            """
+
+        let rendered = ANSISnapshotRenderer.render(snapshot)
+
+        #expect(String(rendered.characters) == snapshot)
+    }
+
+    @Test func removesTrailingEmptyInputBoxFrameAndHintLine() {
+        let rendered = ANSISnapshotRenderer.render(
+            """
+            ⏺ Worked for 1m 33s
+            ╭──────────────────────────╮
+            │ >                        │
+            ╰──────────────────────────╯
+              ⏵⏵ accept edits on (shift+tab to cycle)
+
+            """)
+
+        #expect(String(rendered.characters) == "⏺ Worked for 1m 33s")
+    }
+
+    @Test func removesTrailingInputBoxFrameWithoutHintLine() {
+        let rendered = ANSISnapshotRenderer.render(
+            """
+            ⏺ Worked for 1m 33s
+            ╭──────────────────────────╮
+            │ >                        │
+            ╰──────────────────────────╯
+            """)
+
+        #expect(String(rendered.characters) == "⏺ Worked for 1m 33s")
+    }
+
+    @Test func preservesEmptyFrameFollowedByMoreContent() {
+        let snapshot = """
+            ╭──────────────────────────╮
+            │                          │
+            ╰──────────────────────────╯
+            still working
+            """
+
+        let rendered = ANSISnapshotRenderer.render(snapshot)
+
+        #expect(String(rendered.characters) == snapshot)
+    }
+
+    @Test func preservesTrailingFrameWithRealContentInside() {
+        let snapshot = """
+            Here you go:
+            ╭──────────────────────────╮
+            │ remember to buy milk     │
+            ╰──────────────────────────╯
+            """
+
+        let rendered = ANSISnapshotRenderer.render(snapshot)
+
+        #expect(String(rendered.characters) == snapshot)
     }
 
     @Test func removesBackgroundColorFromWhitespaceOnlyRuns() {

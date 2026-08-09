@@ -27,7 +27,7 @@ enum ANSISnapshotRenderer {
         for range in whitespaceBackgroundRanges {
             cleaned[range].backgroundColor = nil
         }
-        return removingDecorationOnlyLines(from: cleaned)
+        return removingTrailingChromeBlock(from: cleaned)
     }
 
     private static func backgroundPaddingRanges(
@@ -58,26 +58,37 @@ enum ANSISnapshotRenderer {
         return ranges
     }
 
-    private static func removingDecorationOnlyLines(
+    /// Removes only the trailing chrome block of the snapshot: the agent
+    /// TUI's own input-box frame (a wide box-drawing frame at the very end
+    /// whose interior is empty or a bare prompt) plus one immediately
+    /// following status/hint line. Monitor renders its own Composer directly
+    /// below the snapshot, so a dead input box on top of it is the single
+    /// worst "fake terminal" artifact. Interior box-drawing content — tables,
+    /// framed boxes mid-snapshot — is always kept: losing chrome is cosmetic,
+    /// losing content is a correctness bug, so whenever detection is unsure
+    /// this returns the snapshot untouched.
+    private static func removingTrailingChromeBlock(
         from source: AttributedString
     ) -> AttributedString {
-        var keptLines: [AttributedString] = []
+        var lines: [AttributedString] = []
         var lineStart = source.startIndex
         var cursor = lineStart
 
         while cursor < source.endIndex {
             if source.characters[cursor] == "\n" {
-                appendLine(source[lineStart..<cursor], to: &keptLines)
+                lines.append(AttributedString(source[lineStart..<cursor]))
                 cursor = source.characters.index(after: cursor)
                 lineStart = cursor
             } else {
                 cursor = source.characters.index(after: cursor)
             }
         }
-        appendLine(source[lineStart..<source.endIndex], to: &keptLines)
+        lines.append(AttributedString(source[lineStart..<source.endIndex]))
+
+        guard let chromeStart = trailingChromeStartIndex(in: lines) else { return source }
 
         var result = AttributedString()
-        for (index, line) in keptLines.enumerated() {
+        for (index, line) in lines[..<chromeStart].enumerated() {
             if index > 0 {
                 result.append(AttributedString("\n"))
             }
@@ -86,63 +97,93 @@ enum ANSISnapshotRenderer {
         return result
     }
 
-    private static func appendLine(
-        _ line: AttributedSubstring,
-        to lines: inout [AttributedString]
-    ) {
-        let visibleCharacters = line.characters.filter { !$0.isWhitespace }
-        let isDecorationOnly = visibleCharacters.count >= 3
-            && visibleCharacters.allSatisfy(isBoxDrawing)
-        guard !isDecorationOnly else { return }
-        lines.append(trimmingDecorativeEdges(from: line))
+    /// The smallest box width considered chrome. Agent input boxes span the
+    /// pane; narrower decorations are treated as content.
+    private static let minimumFrameWidth = 20
+
+    private static let topBorderCorners: Set<Character> = ["╭", "┌", "┏"]
+    private static let bottomBorderCorners: Set<Character> = ["╰", "└", "┗"]
+    private static let barePrompts: Set<String> = [">", "❯"]
+
+    private static func trailingChromeStartIndex(in lines: [AttributedString]) -> Int? {
+        var end = lines.count
+        while end > 0, isBlank(lines[end - 1]) {
+            end -= 1
+        }
+        guard end >= 3 else { return nil }
+
+        // The TUI draws at most one status/hint line below the input box.
+        var bottom = end - 1
+        if !isBorderLine(lines[bottom], openedBy: bottomBorderCorners) {
+            guard isHintLine(lines[bottom]),
+                isBorderLine(lines[bottom - 1], openedBy: bottomBorderCorners)
+            else { return nil }
+            bottom -= 1
+        }
+
+        var interiorStart = bottom - 1
+        while interiorStart >= 0, isFrameInteriorLine(lines[interiorStart]) {
+            // A frame holding real content is content, not chrome.
+            guard frameInteriorIsBarePrompt(lines[interiorStart]) else { return nil }
+            interiorStart -= 1
+        }
+        // Require at least one interior line and a matching top border.
+        guard interiorStart < bottom - 1,
+            interiorStart >= 0,
+            isBorderLine(lines[interiorStart], openedBy: topBorderCorners)
+        else { return nil }
+        return interiorStart
     }
 
-    private static func trimmingDecorativeEdges(
-        from line: AttributedSubstring
-    ) -> AttributedString {
-        var start = line.startIndex
-        var end = line.endIndex
-
-        var cursor = end
-        var trailingDecorationCount = 0
-        while cursor > start {
-            let previous = line.characters.index(before: cursor)
-            let character = line.characters[previous]
-            guard character.isWhitespace || isBoxDrawing(character) else { break }
-            if isBoxDrawing(character) {
-                trailingDecorationCount += 1
-            }
-            cursor = previous
-        }
-        if trailingDecorationCount >= 3,
-            containsContent(in: line.characters[start..<cursor])
-        {
-            end = cursor
-        }
-
-        cursor = start
-        var leadingDecorationCount = 0
-        while cursor < end {
-            let character = line.characters[cursor]
-            guard character.isWhitespace || isBoxDrawing(character) else { break }
-            if isBoxDrawing(character) {
-                leadingDecorationCount += 1
-            }
-            cursor = line.characters.index(after: cursor)
-        }
-        if leadingDecorationCount >= 3,
-            containsContent(in: line.characters[cursor..<end])
-        {
-            start = cursor
-        }
-
-        return AttributedString(line[start..<end])
-    }
-
-    private static func containsContent(
-        in characters: AttributedString.CharacterView.SubSequence
+    private static func isBorderLine(
+        _ line: AttributedString,
+        openedBy corners: Set<Character>
     ) -> Bool {
-        characters.contains { !$0.isWhitespace && !isBoxDrawing($0) }
+        let trimmed = String(line.characters).trimmingCharacters(in: .whitespaces)
+        guard trimmed.count >= minimumFrameWidth,
+            let first = trimmed.first,
+            corners.contains(first)
+        else { return false }
+        return trimmed.allSatisfy(isBoxDrawing)
+    }
+
+    private static func isFrameInteriorLine(_ line: AttributedString) -> Bool {
+        let trimmed = String(line.characters).trimmingCharacters(in: .whitespaces)
+        guard let first = trimmed.first,
+            let last = trimmed.last,
+            isVerticalBorder(first),
+            isVerticalBorder(last)
+        else { return false }
+        return true
+    }
+
+    private static func frameInteriorIsBarePrompt(_ line: AttributedString) -> Bool {
+        var content = String(line.characters).trimmingCharacters(in: .whitespaces)
+        // The vertical borders were verified by `isFrameInteriorLine`.
+        guard content.count >= 2 else { return false }
+        content.removeFirst()
+        content.removeLast()
+        let trimmed = content.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty || barePrompts.contains(trimmed)
+    }
+
+    /// The status/hint line a TUI draws under its input box: indented, never
+    /// starting at column 0 like real content.
+    private static func isHintLine(_ line: AttributedString) -> Bool {
+        let text = String(line.characters)
+        guard let first = text.first, first.isWhitespace else { return false }
+        return text.contains { !$0.isWhitespace }
+    }
+
+    private static func isBlank(_ line: AttributedString) -> Bool {
+        line.characters.allSatisfy { $0.isWhitespace }
+    }
+
+    private static func isVerticalBorder(_ character: Character) -> Bool {
+        guard character.unicodeScalars.count == 1,
+            let scalar = character.unicodeScalars.first
+        else { return false }
+        return [0x2502, 0x2503, 0x2506, 0x2507, 0x250A, 0x250B].contains(scalar.value)
     }
 
     private static func isBoxDrawing(_ character: Character) -> Bool {
