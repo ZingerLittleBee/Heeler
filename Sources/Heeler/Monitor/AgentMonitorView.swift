@@ -252,38 +252,35 @@ struct AgentDetailView: View {
     }
 
     private func agentTurn(_ snapshot: AttributedString) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            agentAvatar
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(agent.agent.displayName)
-                        .font(.caption.weight(.semibold))
-                        .lineLimit(1)
-                    agentStatus
-                }
-
-                Text(snapshot)
-                    .font(snapshotFont)
-                    .lineSpacing(horizontalSizeClass == .compact ? 2 : 3)
-                    .foregroundStyle(.white)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .padding(horizontalSizeClass == .compact ? 12 : 16)
-                    .background(
-                        Color.black.opacity(0.94),
-                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    )
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(.white.opacity(0.12), lineWidth: 1)
-                    }
-                    .environment(\.colorScheme, .dark)
-
-                snapshotFreshness
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 8) {
+                agentAvatar
+                Text(agent.agent.displayName)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                agentStatus
             }
+
+            Text(snapshot)
+                .font(snapshotFont)
+                .lineSpacing(horizontalSizeClass == .compact ? 2 : 3)
+                .foregroundStyle(.white)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding(horizontalSizeClass == .compact ? 12 : 16)
+                .background(
+                    Color.black.opacity(0.94),
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(.white.opacity(0.12), lineWidth: 1)
+                }
+                .environment(\.colorScheme, .dark)
+
+            snapshotFreshness
         }
-        .frame(maxWidth: 720, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Agent response")
     }
