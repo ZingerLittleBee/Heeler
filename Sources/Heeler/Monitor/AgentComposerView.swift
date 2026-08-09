@@ -5,48 +5,74 @@ import SwiftUI
 /// keeps the draft and send action reachable in stable bottom chrome.
 struct AgentComposerView: View {
     let store: AgentComposerStore
+    let status: AgentStatus
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            TextField(
-                "Message Agent",
-                text: Binding(
-                    get: { store.draft },
-                    set: { store.replaceDraft(with: $0) }),
-                axis: .vertical
-            )
-            .lineLimit(1...5)
-            .textFieldStyle(.plain)
-            .frame(minHeight: 36, alignment: .topLeading)
-            .accessibilityLabel("Message the Agent")
+        VStack(alignment: .leading, spacing: 6) {
+            statusLabel
+                .padding(.horizontal, 16)
 
-            HStack(spacing: 0) {
-                Spacer(minLength: 0)
-                Button("Send", systemImage: "arrow.up") {
-                    Task { await store.send() }
+            VStack(alignment: .leading, spacing: 8) {
+                TextField(
+                    "Message Agent",
+                    text: Binding(
+                        get: { store.draft },
+                        set: { store.replaceDraft(with: $0) }),
+                    axis: .vertical
+                )
+                .lineLimit(1...5)
+                .textFieldStyle(.plain)
+                .frame(minHeight: 36, alignment: .topLeading)
+                .accessibilityLabel("Message the Agent")
+
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    Button("Send", systemImage: "arrow.up") {
+                        Task { await store.send() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.circle)
+                    .labelStyle(.iconOnly)
+                    .font(.footnote.weight(.semibold))
+                    .frame(minWidth: 44, minHeight: 44)
+                    .disabled(!store.canSend)
+                    .accessibilityHint("Delivers the complete draft to the Agent")
                 }
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.circle)
-                .labelStyle(.iconOnly)
-                .font(.footnote.weight(.semibold))
-                .frame(minWidth: 44, minHeight: 44)
-                .disabled(!store.canSend)
-                .accessibilityHint("Delivers the complete draft to the Agent")
             }
+            .padding(.horizontal, 12)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+            .background(
+                .regularMaterial,
+                in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(.secondary.opacity(0.16), lineWidth: 1)
+            }
+            .padding(.horizontal, 12)
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
-        .background(
-            .regularMaterial,
-            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(.secondary.opacity(0.16), lineWidth: 1)
-        }
-        .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    private var statusLabel: some View {
+        HStack(spacing: 4) {
+            if status == .working {
+                SolvingOrbView(size: 10)
+                    .accessibilityHidden(true)
+            } else {
+                Circle()
+                    .fill(Color(status.inkUIColor))
+                    .frame(width: 7, height: 7)
+                    .accessibilityHidden(true)
+            }
+            Text(status.rawValue.capitalized)
+        }
+        .font(.caption2.weight(.medium))
+        .foregroundStyle(Color(status.inkUIColor))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Agent status")
+        .accessibilityValue(status.rawValue.capitalized)
     }
 }
 

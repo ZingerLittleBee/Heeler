@@ -9,11 +9,6 @@ Entries reference the issue that motivated them.
 
 ### Added
 
-- Monitor has a control-key strip (Enter, Esc, Ctrl+C, arrows) so a Blocked
-  Agent's confirmation prompt can be answered — and work interrupted —
-  without entering Attach. Each tap is delivered through agent-level
-  `send_keys` and refreshes the snapshot once the Host accepts it. (#183)
-
 - Opening an Agent now lands on Monitor: a color-preserving snapshot of its
   latest screen with an honest capture time. Attach remains available as a
   full-screen toolbar action for realtime interaction; leaving it closes the
@@ -97,9 +92,10 @@ Entries reference the issue that motivated them.
 - Monitor now presents a stable status summary and high-contrast snapshot as an
   Agent response inside one conversation-style flow with locally sent messages,
   a compact floating Composer, and a toolbar path into the live terminal.
+  Agent status now sits directly above the Composer, and the trailing input
+  region from the Agent TUI no longer duplicates the native message field.
   Status cards, terminal shortcut controls, and oversized empty-state icons no
-  longer crowd the conversation.
-  (#179; #182; #183)
+  longer crowd the conversation. (#179; #182)
 
 - Malformed herdr API error responses that carry an empty id now fail the
   originating request immediately with the server's error instead of hanging

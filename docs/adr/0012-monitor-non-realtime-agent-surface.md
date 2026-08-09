@@ -32,9 +32,10 @@ This is the third run at local composition, and the first as its own surface:
    keyboard down — a composer must ride the surface, not the keyboard.
 
 Both predecessors layered a second input box onto a live terminal that already
-renders the agent's own input box. Monitor removes that collision: the
-non-realtime surface has exactly one input control, the Composer, and the live
-TUI is only ever seen inside Attach.
+renders the agent's own input box. Monitor removes that collision: its
+presentation strips the trailing TUI input region from the snapshot, the
+non-realtime surface has exactly one input control (the Composer), and the full
+live TUI is only ever seen inside Attach.
 
 ## API reality this design is shaped by (verified live on herdr 0.8.0)
 
@@ -86,9 +87,12 @@ Delivered, and subsequent status events carry the working→done story.
   which is indistinguishable from "this is everything".
 - Cross-reconnect cache reconciliation is overlap-stitching, not incremental
   fetch; where snapshots do not overlap, Monitor shows an honest gap marker.
+- Monitor recognizes only the trailing `›` / `❯` input region shared by the
+  supported Agent TUIs. It does not infer conversation or message boundaries;
+  the raw snapshot remains the source of truth for history reconciliation.
 - Draft insertions (Snippets, Skills, image paths) become plain local text
   edits in the Composer; ADR 0009's insert-without-submit semantics hold
-  trivially there. First shipping cut is plain text plus the control-key
-  strip; the accessory surfaces migrate after.
+  trivially there. The accessory surfaces migrate after the plain-text first
+  shipping cut.
 - Deep links and Console navigation target Monitor; Attach is reached only
   through it.

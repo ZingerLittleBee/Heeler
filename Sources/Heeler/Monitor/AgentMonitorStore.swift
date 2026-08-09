@@ -16,8 +16,6 @@ struct ContinuousAgentMonitorClock: AgentMonitorClock {
 /// pushes trigger one refresh; only a Working Agent in a foreground view
 /// also receives cadence refreshes. History is served from the in-memory
 /// cache and backfilled through `agent.read` only while the Agent is idle.
-/// Also delivers control keys (#183) with a one-shot refresh after each
-/// successful send.
 @MainActor
 @Observable
 final class AgentMonitorStore {

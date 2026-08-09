@@ -75,20 +75,16 @@ struct AgentDetailView: View {
         VStack(spacing: 0) {
             monitorSurface
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            AgentComposerView(store: composer)
+            AgentComposerView(store: composer, status: monitor.agentStatus)
         }
         .background(Color(uiColor: .systemBackground))
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                VStack(spacing: 0) {
-                    Text(title)
-                        .font(.headline)
-                        .lineLimit(1)
-                    agentStatus
-                }
-                .accessibilityElement(children: .combine)
+                Text(title)
+                    .font(.headline)
+                    .lineLimit(1)
             }
             ToolbarItem(placement: .primaryAction) {
                 attachButton
@@ -265,26 +261,6 @@ struct AgentDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Agent response")
-    }
-
-    private var agentStatus: some View {
-        HStack(spacing: 4) {
-            if monitor.agentStatus == .working {
-                SolvingOrbView(size: 10)
-                    .accessibilityHidden(true)
-            } else {
-                Circle()
-                    .fill(Color(monitor.agentStatus.inkUIColor))
-                    .frame(width: 7, height: 7)
-                    .accessibilityHidden(true)
-            }
-            Text(monitor.agentStatus.rawValue.capitalized)
-        }
-        .font(.caption2.weight(.medium))
-        .foregroundStyle(Color(monitor.agentStatus.inkUIColor))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Agent status")
-        .accessibilityValue(monitor.agentStatus.rawValue.capitalized)
     }
 
     private var snapshotFont: Font {

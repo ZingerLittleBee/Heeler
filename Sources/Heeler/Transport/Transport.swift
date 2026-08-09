@@ -42,12 +42,8 @@ protocol Transport: Sendable {
     /// the Agent's pane, while Agent Status events report subsequent work.
     func promptAgent(_ params: AgentPromptParams) async throws -> Agent
 
-    /// Sends control keys to an Agent (`agent.send_keys`): Monitor's
-    /// control-key strip (#183). Key names are herdr's own spellings —
-    /// verified live against herdr 0.8.0 and shared with `pane.send_keys` /
-    /// `pane.send_input`: `enter`, `esc`, `ctrl+c` / `C-c` accepted
-    /// case-insensitively; `ctrl-c` is rejected with `invalid_key`. Arrows
-    /// are `up`/`down`/`left`/`right`.
+    /// Sends control keys to an Agent (`agent.send_keys`). Key names are
+    /// herdr's own spellings, shared with `pane.send_keys` / `pane.send_input`.
     func sendAgentKeys(_ params: AgentSendKeysParams) async throws
 
     /// Starts a new Agent: the new-agent flow (#12, User Story 8 — dispatch

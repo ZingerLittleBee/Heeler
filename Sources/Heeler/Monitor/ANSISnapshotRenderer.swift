@@ -21,7 +21,82 @@ enum ANSISnapshotRenderer {
         for range in whitespaceBackgroundRanges {
             cleaned[range].backgroundColor = nil
         }
-        return removingDecorationOnlyLines(from: cleaned)
+        return removingDecorationOnlyLines(
+            from: removingTrailingInputRegion(from: cleaned))
+    }
+
+    /// Monitor owns the only visible Composer. Agent TUIs place their own
+    /// prompt at the bottom of the visible screen, commonly with model/path
+    /// chrome below it. Remove that trailing region without parsing message
+    /// boundaries or changing the raw snapshot used by history stitching.
+    private static func removingTrailingInputRegion(
+        from source: AttributedString
+    ) -> AttributedString {
+        let lines = attributedLines(in: source)
+        let searchStart = max(0, lines.count - 8)
+        guard let inputLineIndex = (searchStart..<lines.count).reversed().first(where: { index in
+            guard isInputPromptLine(lines[index].text) else { return false }
+            let hasTrailingChrome = lines[(index + 1)...].contains {
+                !$0.text.allSatisfy(\.isWhitespace)
+            }
+            let leadingStart = max(0, index - 2)
+            let hasLeadingDivider = lines[leadingStart..<index].contains {
+                isDecorationOnlyLine($0.text)
+            }
+            let isBorderedPrompt = lines[index].text.trimmingCharacters(in: .whitespaces)
+                .first.map { "│┃║".contains($0) } ?? false
+            return hasTrailingChrome || hasLeadingDivider || isBorderedPrompt
+        }) else {
+            return source
+        }
+
+        var lastContentLine = inputLineIndex - 1
+        while lastContentLine >= 0,
+            lines[lastContentLine].text.allSatisfy(\.isWhitespace)
+        {
+            lastContentLine -= 1
+        }
+        guard lastContentLine >= 0 else { return AttributedString() }
+        return AttributedString(source[source.startIndex..<lines[lastContentLine].end])
+    }
+
+    private struct AttributedLine {
+        let text: String
+        let end: AttributedString.Index
+    }
+
+    private static func attributedLines(in source: AttributedString) -> [AttributedLine] {
+        var lines: [AttributedLine] = []
+        var start = source.startIndex
+        var cursor = start
+
+        while cursor < source.endIndex {
+            if source.characters[cursor] == "\n" {
+                lines.append(
+                    AttributedLine(
+                        text: String(source.characters[start..<cursor]),
+                        end: cursor))
+                cursor = source.characters.index(after: cursor)
+                start = cursor
+            } else {
+                cursor = source.characters.index(after: cursor)
+            }
+        }
+        lines.append(
+            AttributedLine(
+                text: String(source.characters[start..<source.endIndex]),
+                end: source.endIndex))
+        return lines
+    }
+
+    private static func isInputPromptLine(_ line: String) -> Bool {
+        var visible = line.trimmingCharacters(in: .whitespaces)
+        while let first = visible.first, "│┃║".contains(first) {
+            visible.removeFirst()
+            visible = visible.trimmingCharacters(in: .whitespaces)
+        }
+        guard let marker = visible.first else { return false }
+        return marker == "›" || marker == "❯"
     }
 
     private static func backgroundPaddingRanges(
@@ -84,10 +159,7 @@ enum ANSISnapshotRenderer {
         _ line: AttributedSubstring,
         to lines: inout [AttributedString]
     ) {
-        let visibleCharacters = line.characters.filter { !$0.isWhitespace }
-        let isDecorationOnly = visibleCharacters.count >= 3
-            && visibleCharacters.allSatisfy(isBoxDrawing)
-        guard !isDecorationOnly else { return }
+        guard !isDecorationOnlyLine(String(line.characters)) else { return }
         lines.append(trimmingDecorativeEdges(from: line))
     }
 
@@ -143,6 +215,12 @@ enum ANSISnapshotRenderer {
         character.unicodeScalars.allSatisfy { scalar in
             (0x2500...0x257F).contains(scalar.value)
         }
+    }
+
+    private static func isDecorationOnlyLine(_ line: String) -> Bool {
+        let visibleCharacters = line.filter { !$0.isWhitespace }
+        return visibleCharacters.count >= 3
+            && visibleCharacters.allSatisfy(isBoxDrawing)
     }
 }
 

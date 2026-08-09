@@ -282,6 +282,37 @@ struct ANSISnapshotRendererTests {
                 == "heading\n─ Worked for 1m 33s\n│ useful content │")
     }
 
+    @Test func removesTrailingCodexInputRegion() {
+        let rendered = ANSISnapshotRenderer.render(
+            "answer\n\n• Working\n\n› Find and fix a bug\n\n~/Heeler · model · main")
+
+        #expect(String(rendered.characters) == "answer\n\n• Working")
+    }
+
+    @Test func removesTrailingBorderedAgentInputRegion() {
+        let rendered = ANSISnapshotRenderer.render(
+            "answer\n╭────────╮\n│ ❯ draft │\n╰────────╯\nShift+Tab: mode")
+
+        #expect(String(rendered.characters) == "answer")
+    }
+
+    @Test func keepsPromptMarkersOutsideTheTrailingInputWindow() {
+        let rendered = ANSISnapshotRenderer.render(
+            (["› quoted output"] + (1...8).map { "line \($0)" })
+                .joined(separator: "\n"))
+
+        #expect(
+            String(rendered.characters)
+                == (["› quoted output"] + (1...8).map { "line \($0)" })
+                .joined(separator: "\n"))
+    }
+
+    @Test func keepsAnUnframedPromptMarkerAsAgentOutput() {
+        let rendered = ANSISnapshotRenderer.render("answer\n› quoted output")
+
+        #expect(String(rendered.characters) == "answer\n› quoted output")
+    }
+
     @Test func removesBackgroundColorFromWhitespaceOnlyRuns() {
         let rendered = ANSISnapshotRenderer.render(
             "\u{1B}[48;5;232m        \u{1B}[0m\nmessage")
