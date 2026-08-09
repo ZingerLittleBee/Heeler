@@ -321,11 +321,12 @@ final class AgentComposerStore: ComposerDraftOperations {
             let image = try await preparer.prepare(selection)
             unclaimedImage = image
             try Task.checkCancellation()
+            // Stale paths leave `stageTask` alone: it holds the newer
+            // operation's handle. Any future cancellation entry point must
+            // reset `stageTask` itself; nilling here would abandon the live
+            // task and allow concurrent double-staging.
             guard operationID == stageOperationID else {
                 try? image.remove()
-                // Drop the busy claim so a future cancel/invalidate path
-                // cannot leave Files permanently disabled.
-                stageTask = nil
                 return
             }
             preparedImage = image
@@ -335,10 +336,7 @@ final class AgentComposerStore: ComposerDraftOperations {
                 image,
                 ImageStageProgressReporter { _ in })
             try Task.checkCancellation()
-            guard operationID == stageOperationID else {
-                stageTask = nil
-                return
-            }
+            guard operationID == stageOperationID else { return }
 
             stageTask = nil
             discardPreparedImage()
@@ -353,10 +351,8 @@ final class AgentComposerStore: ComposerDraftOperations {
     }
 
     private func finishStage(error: any Error, operationID: UInt64) {
-        guard operationID == stageOperationID else {
-            stageTask = nil
-            return
-        }
+        // Stale: do not touch `stageTask` (see runStageAndInsert contract).
+        guard operationID == stageOperationID else { return }
         stageTask = nil
         if Self.isCancellation(error) {
             discardPreparedImage()
