@@ -433,9 +433,18 @@ struct AgentTerminalView: View {
         .background(
             terminal.themes.selection(for: colorScheme)
                 .surfaceBackground(for: colorScheme))
-        // Keep the native navigation container, and therefore its interactive
-        // edge-swipe pop gesture, while removing all visible top chrome.
-        .toolbar(.hidden, for: .navigationBar)
+        // Keep an icon-only native back bar in its own layout region. Hiding
+        // the bar also disables interactive pop in a collapsed split view;
+        // keeping it visible preserves both the button and the edge gesture
+        // without overlaying either one on the terminal grid.
+        .toolbarColorScheme(
+            terminal.themes.selection(for: colorScheme)
+                .chromeColorScheme(for: colorScheme),
+            for: .navigationBar)
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarRole(.editor)
+        .toolbar(.visible, for: .navigationBar)
     }
 
     private func prepareComposerKeyboardPresentation(
