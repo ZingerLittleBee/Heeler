@@ -7,6 +7,11 @@ import Observation
 @MainActor
 @Observable
 final class ConsoleStore {
+    struct AgentStatusUpdate: Sendable, Equatable {
+        let status: AgentStatus?
+        let liveUpdatesAvailable: Bool
+    }
+
     private(set) var agents: [ConsoleAgent] = []
     private(set) var hostStatuses: [Host.ID: EventsSessionStatus] = [:]
     private(set) var hostLatencies: [Host.ID: Duration] = [:]
@@ -28,6 +33,17 @@ final class ConsoleStore {
     /// so a reconnect naturally invalidates, and evicted per Host on insert
     /// so stale generations cannot accumulate.
     @ObservationIgnored private var skillsCache: [SkillsCacheKey: [AgentSkill]] = [:]
+    /// Status events already converge through each Host's one pane-scoped
+    /// subscription. Screens consume this fan-out instead of opening a
+    /// second events channel that could outlive the connection snapshot.
+    @ObservationIgnored private var agentStatusObservers: [
+        ConsoleAgent.ID: [UUID: AsyncStream<AgentStatusUpdate>.Continuation]
+    ] = [:]
+    /// Composer ownership sits above the detail branch so a transient
+    /// missing-Agent placeholder during reconnect cannot destroy a draft.
+    @ObservationIgnored private var composerStores: [
+        ConsoleAgent.ID: AgentComposerStore
+    ] = [:]
     @ObservationIgnored private let makeSession:
         @Sendable (Host, [EventSubscription]) -> EventsSession
     @ObservationIgnored private let snapshotRetryDelay: Duration
@@ -51,6 +67,7 @@ final class ConsoleStore {
     /// projection because its connection coordinates may have changed.
     func setHosts(_ hosts: [Host]) {
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
+        composerStores = composerStores.filter { incoming[$0.key.hostID] != nil }
         for (id, projection) in projections where incoming[id] != projection.host {
             projection.end()
             projections[id] = nil
@@ -249,6 +266,50 @@ final class ConsoleStore {
         }
     }
 
+    /// Composer's one-shot delivery source. Like Monitor reads, prompts
+    /// borrow the Host's current Console connection rather than dialing a
+    /// parallel connection or holding an RPC open for Agent completion.
+    func promptAgent(_ params: AgentPromptParams, on hostID: Host.ID) async throws -> Agent {
+        try await projection(for: hostID).session.withTransport { transport in
+            try await transport.promptAgent(params)
+        }
+    }
+
+    /// One Composer per selected Agent for the lifetime of its Host catalog
+    /// entry. The Console detail may be replaced by a reconnect placeholder;
+    /// retaining the store here keeps its entirely local draft intact.
+    func composerStore(for agent: ConsoleAgent) -> AgentComposerStore {
+        if let existing = composerStores[agent.id] { return existing }
+        let hostID = agent.hostID
+        let store = AgentComposerStore(
+            target: agent.agent.paneID,
+            initialStatus: agent.agent.status,
+            statusUpdates: agentStatusUpdates(for: agent.id)
+        ) { [weak self] params in
+            guard let self else { throw TransportError.cancelled }
+            return try await self.promptAgent(params, on: hostID)
+        }
+        composerStores[agent.id] = store
+        return store
+    }
+
+    /// A latest-value view of the existing `pane.agent_status_changed`
+    /// subscription for one Agent. Monitor uses it for adaptive polling;
+    /// Composer (#182) can reuse the same seam for delivery transitions.
+    func agentStatusUpdates(for id: ConsoleAgent.ID) -> AsyncStream<AgentStatusUpdate> {
+        let observerID = UUID()
+        let (stream, continuation) = AsyncStream.makeStream(
+            of: AgentStatusUpdate.self, bufferingPolicy: .bufferingNewest(1))
+        agentStatusObservers[id, default: [:]][observerID] = continuation
+        continuation.yield(agentStatusUpdate(for: id))
+        continuation.onTermination = { [weak self] _ in
+            Task { @MainActor in
+                self?.removeAgentStatusObserver(observerID, for: id)
+            }
+        }
+        return stream
+    }
+
     /// Monitor's control-key strip delivery path (`agent.send_keys`). Same
     /// live Console transport as `readAgent` so a key tap never dials a
     /// parallel connection.
@@ -350,6 +411,32 @@ final class ConsoleStore {
             })
         if workspacesByHost != nextWorkspacesByHost {
             workspacesByHost = nextWorkspacesByHost
+        }
+        publishAgentStatuses()
+    }
+
+    private func publishAgentStatuses() {
+        for (id, observers) in agentStatusObservers {
+            let update = agentStatusUpdate(for: id)
+            for continuation in observers.values {
+                continuation.yield(update)
+            }
+        }
+    }
+
+    private func agentStatusUpdate(for id: ConsoleAgent.ID) -> AgentStatusUpdate {
+        let status = agents.first(where: { $0.id == id })?.agent.status
+        return AgentStatusUpdate(
+            status: status,
+            liveUpdatesAvailable: status != nil
+                && hostStatuses[id.hostID] == .connected
+                && !hostsAwaitingSnapshot.contains(id.hostID))
+    }
+
+    private func removeAgentStatusObserver(_ observerID: UUID, for id: ConsoleAgent.ID) {
+        agentStatusObservers[id]?[observerID] = nil
+        if agentStatusObservers[id]?.isEmpty == true {
+            agentStatusObservers[id] = nil
         }
     }
 }

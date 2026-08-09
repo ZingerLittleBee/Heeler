@@ -71,6 +71,15 @@ import Testing
         #expect(response.agent.paneID == "w3:pB")
     }
 
+    @Test func agentPromptedResponseRoundTripsLiveCapture() throws {
+        let json = #"{"type":"agent_prompted","agent":{"terminal_id":"term_656c59f7b902d1e","agent":"codex","terminal_title":"GoDrop","terminal_title_stripped":"GoDrop","agent_status":"working","workspace_id":"w3","tab_id":"w3:t2","pane_id":"w3:pB","focused":false,"cwd":"/Users/u/GoDrop","foreground_cwd":"/Users/u/GoDrop","revision":6}}"#
+
+        let response = try roundTrip(AgentPromptedResponse.self, json)
+
+        #expect(response.agent.agentStatus == .working)
+        #expect(response.agent.paneID == "w3:pB")
+    }
+
     @Test func sessionSnapshotResponseRoundTripsLiveCapture() throws {
         // Trimmed to one workspace/tab/pane/layout/agent; the layout keeps a
         // real split so PaneLayoutSplit is exercised.
@@ -226,6 +235,18 @@ import Testing
         let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let fields = try #require(object)
         #expect(fields.keys.sorted() == ["args", "kind", "name", "pane_id", "timeout_ms"])
+    }
+
+    @Test func agentPromptParamsOmitWait() throws {
+        let params = AgentPromptParams(target: "w1:p1", text: "Continue")
+
+        let data = try JSONEncoder().encode(params)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let fields = try #require(object)
+
+        #expect(fields.keys.sorted() == ["target", "text"])
+        #expect(fields["target"] as? String == "w1:p1")
+        #expect(fields["text"] as? String == "Continue")
     }
 
     @Test func tabCreateParamsEncodeProtocolSeventeenFields() throws {

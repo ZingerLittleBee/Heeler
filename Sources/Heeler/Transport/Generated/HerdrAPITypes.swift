@@ -137,6 +137,44 @@ struct AgentListResponse: Codable, Equatable, Sendable {
     }
 }
 
+/// herdr schema `$defs/AgentPromptParams`.
+struct AgentPromptParams: Codable, Equatable, Sendable {
+    let target: String
+    let text: String
+    let wait: AgentPromptWaitOptions?
+
+    init(target: String, text: String, wait: AgentPromptWaitOptions? = nil) {
+        self.target = target
+        self.text = text
+        self.wait = wait
+    }
+}
+
+/// herdr schema `$defs/AgentPromptWaitOptions`.
+struct AgentPromptWaitOptions: Codable, Equatable, Sendable {
+    let timeoutMs: Int?
+    let until: [AgentStatus]?
+
+    init(timeoutMs: Int? = nil, until: [AgentStatus]? = nil) {
+        self.timeoutMs = timeoutMs
+        self.until = until
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case timeoutMs = "timeout_ms"
+        case until
+    }
+}
+
+/// The `"type":"agent_prompted"` result payload of herdr's success_response schema.
+struct AgentPromptedResponse: Codable, Equatable, Sendable {
+    let agent: AgentInfo
+
+    init(agent: AgentInfo) {
+        self.agent = agent
+    }
+}
+
 /// herdr schema `$defs/AgentReadParams`.
 struct AgentReadParams: Codable, Equatable, Sendable {
     let format: ReadFormat?

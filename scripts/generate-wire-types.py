@@ -51,6 +51,7 @@ METHODS = [
     "agent.focus",
     "agent.get",
     "agent.list",
+    "agent.prompt",
     "agent.read",
     "agent.rename",
     "agent.send_keys",
@@ -83,6 +84,7 @@ RESULT_TAGS = [
     "pong",  # ping
     "agent_explain",  # agent.explain
     "agent_info",  # agent.get, agent.focus, agent.rename
+    "agent_prompted",  # agent.prompt
     "agent_started",  # agent.start
     "agent_list",  # agent.list
     "pane_read",  # pane.read, agent.read

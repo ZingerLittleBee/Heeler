@@ -285,6 +285,18 @@ class Server:
                 source=source,
                 output_format=output_format,
             )
+        if method == "agent.prompt":
+            request = params if isinstance(params, dict) else {}
+            is_expected_prompt = (
+                request.get("target") == "pane-1"
+                and request.get("text") == "fixture prompt"
+                and "wait" not in request
+            )
+            pane_id = "pane-1" if is_expected_prompt else "fixture:invalid-prompt"
+            return {
+                "type": "agent_prompted",
+                "agent": self._agent(pane_id, "workspace-1", status="working"),
+            }
         if method == "agent.send_keys":
             # Thin ok-envelope RPC; key-spelling contract is asserted in unit
             # tests against the spellings Monitor ships (enter/esc/ctrl+c/…).
@@ -353,13 +365,18 @@ class Server:
             },
         }
 
-    def _agent(self, pane_id: str = "pane-1", workspace_id: str = "workspace-1") -> object:
+    def _agent(
+        self,
+        pane_id: str = "pane-1",
+        workspace_id: str = "workspace-1",
+        status: str = "idle",
+    ) -> object:
         return {
             "terminal_id": "terminal-1",
             "agent": "codex",
             "terminal_title": "fixture",
             "terminal_title_stripped": "fixture",
-            "agent_status": "idle",
+            "agent_status": status,
             "workspace_id": workspace_id,
             "tab_id": "tab-worktree" if workspace_id == "workspace-worktree" else "tab-new",
             "pane_id": pane_id,

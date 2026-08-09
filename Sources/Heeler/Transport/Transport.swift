@@ -37,6 +37,11 @@ protocol Transport: Sendable {
     /// snapshot and requests ANSI output for local rendering (ADR 0012).
     func readAgent(_ params: AgentReadParams) async throws -> PaneReadResult
 
+    /// Delivers one complete local draft through `agent.prompt`. The request
+    /// deliberately omits `wait`: the response acknowledges delivery into
+    /// the Agent's pane, while Agent Status events report subsequent work.
+    func promptAgent(_ params: AgentPromptParams) async throws -> Agent
+
     /// Sends control keys to an Agent (`agent.send_keys`): Monitor's
     /// control-key strip (#183). Key names are herdr's own spellings —
     /// verified live against herdr 0.8.0 and shared with `pane.send_keys` /

@@ -1,0 +1,251 @@
+import Foundation
+import Testing
+
+@testable import Heeler
+
+@MainActor
+@Suite("Agent Monitor history")
+struct AgentMonitorHistoryTests {
+    @Test func splitLinesDropsOnlyTheTrailingNewlineFragment() {
+        #expect(AgentMonitorHistory.splitLines("") == [])
+        #expect(AgentMonitorHistory.splitLines("a") == ["a"])
+        #expect(AgentMonitorHistory.splitLines("a\n") == ["a"])
+        #expect(AgentMonitorHistory.splitLines("a\n\nb") == ["a", "", "b"])
+        #expect(AgentMonitorHistory.splitLines("\n") == [""])
+    }
+
+    @Test func visibleReadsExtendReplaceAndSettle() {
+        var history = AgentMonitorHistory()
+        #expect(history.applyVisible("l1\nl2\nl3\nl4\nl5") == .replaced)
+        #expect(history.applyVisible("l1\nl2\nl3\nl4\nl5") == .unchanged)
+
+        // Scrolled by one: the four-line overlap extends the tail.
+        #expect(history.applyVisible("l2\nl3\nl4\nl5\nl6") == .extended)
+        #expect(history.newestLines == ["l2", "l3", "l4", "l5", "l6"])
+        #expect(
+            history.segments == [
+                .lines(["l1"]),
+                .lines(["l2", "l3", "l4", "l5", "l6"]),
+            ])
+
+        // Repaint: no overlap, a new live run is installed.
+        #expect(history.applyVisible("n1\nn2\nn3\nn4\nn5") == .replaced)
+        #expect(history.newestLines == ["n1", "n2", "n3", "n4", "n5"])
+
+        // A cleared screen replaces; re-reading it changes nothing.
+        #expect(history.applyVisible("") == .replaced)
+        #expect(history.newestLines == [])
+        #expect(history.applyVisible("") == .unchanged)
+    }
+
+    @Test func backfillStitchesBySharedSuffix() {
+        var history = AgentMonitorHistory()
+        history.applyVisible("s1\ns2\ns3\ns4")
+
+        let first = history.stitchBackfill("o1\no2\ns1\ns2\ns3\ns4")
+        #expect(first == .init(newLines: 2, insertedGap: false))
+        #expect(
+            history.segments == [
+                .lines(["o1", "o2"]),
+                .lines(["s1", "s2", "s3", "s4"]),
+            ])
+
+        // The same window again: fully captured, nothing new.
+        let repeatRead = history.stitchBackfill("o1\no2\ns1\ns2\ns3\ns4")
+        #expect(repeatRead == .init(newLines: 0, insertedGap: false))
+
+        // A window contained inside a deeper cache adds nothing either.
+        let contained = history.stitchBackfill("s1\ns2\ns3\ns4")
+        #expect(contained == .init(newLines: 0, insertedGap: false))
+        #expect(history.newestLines == ["s1", "s2", "s3", "s4"])
+    }
+
+    @Test func backfillSupersedesTheTailWhenTheWindowContainsIt() {
+        var history = AgentMonitorHistory()
+        history.applyVisible("s1\ns2\ns3\ns4")
+
+        // Output raced the read: the tail sits mid-window, not at its end.
+        // The read is the better truth for the whole region.
+        let outcome = history.stitchBackfill("o1\ns1\ns2\ns3\ns4\nn1\nn2")
+        #expect(outcome == .init(newLines: 3, insertedGap: false))
+        #expect(
+            history.segments == [
+                .lines(["o1", "s1", "s2"]),
+                .lines(["s3", "s4", "n1", "n2"]),
+            ])
+    }
+
+    @Test func backfillWithoutSharedContentRecordsAGap() {
+        var history = AgentMonitorHistory()
+        history.applyVisible("stale a\nstale b\nstale c")
+
+        let outcome = history.stitchBackfill("fresh 1\nfresh 2\nfresh 3")
+        #expect(outcome == .init(newLines: 3, insertedGap: true))
+        #expect(
+            history.segments == [
+                .lines(["fresh 1", "fresh 2", "fresh 3"]),
+                .gap,
+                .lines(["stale a", "stale b", "stale c"]),
+            ])
+
+        // The next read extends the backfill run above the live screen.
+        let second = history.stitchBackfill("older\nfresh 1\nfresh 2\nfresh 3")
+        #expect(second == .init(newLines: 1, insertedGap: false))
+        #expect(
+            history.segments == [
+                .lines(["older", "fresh 1", "fresh 2", "fresh 3"]),
+                .gap,
+                .lines(["stale a", "stale b", "stale c"]),
+            ])
+    }
+
+    @Test func tinyScreensMatchOnTheirWholeLength() {
+        var history = AgentMonitorHistory()
+        history.applyVisible("only line")
+
+        // Below the minimum overlap the floor drops to the screen's length:
+        // a whole-screen match is correct by construction.
+        let outcome = history.stitchBackfill("older 1\nolder 2\nonly line")
+        #expect(outcome == .init(newLines: 2, insertedGap: false))
+        #expect(
+            history.segments == [
+                .lines(["older 1", "older 2"]),
+                .lines(["only line"]),
+            ])
+    }
+
+    @Test func emptyFirstReadStillInstalls() {
+        var history = AgentMonitorHistory()
+        // The first install must report a change even for empty content, or
+        // the store never renders and the view loads forever.
+        #expect(history.applyVisible("") == .replaced)
+        #expect(history.newestLines == [])
+        #expect(history.applyVisible("") == .unchanged)
+    }
+
+    @Test func coincidentalShortOverlapsDoNotStitch() {
+        var history = AgentMonitorHistory()
+        history.applyVisible("a\nb\nc\nd")
+
+        // Two shared lines at the end are below the minimum overlap: the
+        // read is treated as unrelated content, never stitched history.
+        let short = history.stitchBackfill("x\ny\nc\nd")
+        #expect(short.insertedGap)
+        #expect(
+            history.segments == [
+                .lines(["x", "y", "c", "d"]),
+                .gap,
+                .lines(["a", "b", "c", "d"]),
+            ])
+
+        // The live tail holds the same line: a two-line overlap is a
+        // repaint, not an extension.
+        var visible = AgentMonitorHistory()
+        visible.applyVisible("a\nb\nc\nd")
+        #expect(visible.applyVisible("c\nd\ne") == .replaced)
+        #expect(visible.newestLines == ["c", "d", "e"])
+    }
+
+    @Test func emptyBackfillAddsNothing() {
+        var history = AgentMonitorHistory()
+        history.applyVisible("s1\ns2\ns3")
+
+        #expect(history.stitchBackfill("") == .init(newLines: 0, insertedGap: false))
+        #expect(history.newestLines == ["s1", "s2", "s3"])
+    }
+
+    @Test func nonoverlappingRepaintPreservesBackfilledHistory() {
+        var history = AgentMonitorHistory()
+        history.applyVisible("s1\ns2\ns3\ns4")
+        history.stitchBackfill("h1\nh2\nh3\nh4\nh5\nh6\ns1\ns2\ns3\ns4")
+
+        #expect(history.applyVisible("r1\nr2\nr3\nr4") == .replaced)
+        #expect(
+            history.segments == [
+                .lines(["h1", "h2", "h3", "h4", "h5", "h6"]),
+                .lines(["s1", "s2", "s3", "s4"]),
+                .gap,
+                .lines(["r1", "r2", "r3", "r4"]),
+            ])
+    }
+
+    @Test func emptyVisibleReadPreservesCapturedHistory() {
+        var history = AgentMonitorHistory()
+        history.applyVisible("s1\ns2\ns3\ns4")
+        history.stitchBackfill("h1\nh2\nh3\ns1\ns2\ns3\ns4")
+
+        #expect(history.applyVisible("") == .replaced)
+        #expect(
+            history.segments == [
+                .lines(["h1", "h2", "h3"]),
+                .lines(["s1", "s2", "s3", "s4"]),
+                .gap,
+                .lines([]),
+            ])
+    }
+
+    @Test func nearDuplicateRuleIsConservativeAndByteExact() {
+        let original = (1...10).map { "line \($0)" }
+        var oneChangedLine = original
+        oneChangedLine[4] = "spinner frame 2"
+        var twoChangedLines = oneChangedLine
+        twoChangedLines[7] = "elapsed 00:02"
+        var threeChangedLines = twoChangedLines
+        threeChangedLines[9] = "tokens 42"
+
+        #expect(AgentMonitorHistory.isNearDuplicate(original, oneChangedLine))
+        #expect(AgentMonitorHistory.isNearDuplicate(original, twoChangedLines))
+        #expect(!AgentMonitorHistory.isNearDuplicate(original, threeChangedLines))
+        #expect(!AgentMonitorHistory.isNearDuplicate(original, Array(original.dropLast())))
+        #expect(
+            !AgentMonitorHistory.isNearDuplicate(
+                ["one", "two", "three", "four"],
+                ["one", "two", "changed", "four"]))
+
+        // Swift String equality treats these canonically equivalent forms
+        // as equal. Repaint dedupe deliberately compares their UTF-8 bytes.
+        let composed = ["header", "café", "three", "four", "five"]
+        let decomposed = ["changed", "cafe\u{301}", "three", "four", "five"]
+        #expect(!AgentMonitorHistory.isNearDuplicate(composed, decomposed))
+    }
+
+    @Test func nearDuplicateRepaintReplacesTheLiveRunInPlace() {
+        var history = AgentMonitorHistory()
+        let first = (1...10).map { "line \($0)" }
+        var repaint = first
+        repaint[5] = "spinner frame 2"
+
+        history.applyVisible(first.joined(separator: "\n"))
+        #expect(history.applyVisible(repaint.joined(separator: "\n")) == .replaced)
+        #expect(history.segments == [.lines(repaint)])
+    }
+
+    @Test func sealedLiveGenerationsAreCappedWithoutDroppingProvenHistory() {
+        var history = AgentMonitorHistory()
+        history.applyVisible("l0\nl1\nl2\nl3\nl4")
+        #expect(history.applyVisible("l1\nl2\nl3\nl4\nl5") == .extended)
+        history.stitchBackfill("h1\nh2\nl0\nl1\nl2\nl3\nl4\nl5")
+
+        let replacementCount = AgentMonitorHistory.maximumSealedLiveGenerations + 3
+        for generation in 1...replacementCount {
+            let screen = (1...5).map { "generation \(generation), line \($0)" }
+            #expect(history.applyVisible(screen.joined(separator: "\n")) == .replaced)
+        }
+
+        var expected: [AgentMonitorHistory.Segment] = [
+            .lines(["h1", "h2", "l0"]),
+            .gap,
+        ]
+        let firstRetainedGeneration =
+            replacementCount - AgentMonitorHistory.maximumSealedLiveGenerations
+        for generation in firstRetainedGeneration..<replacementCount {
+            expected.append(
+                .lines((1...5).map { "generation \(generation), line \($0)" }))
+            expected.append(.gap)
+        }
+        expected.append(
+            .lines((1...5).map { "generation \(replacementCount), line \($0)" }))
+
+        #expect(history.segments == expected)
+    }
+}
