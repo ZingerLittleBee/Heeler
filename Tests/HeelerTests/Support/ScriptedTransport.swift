@@ -11,6 +11,12 @@ final actor ScriptedTransport: Transport {
     /// resubscribe-on-membership-change behavior asserts on this.
     private(set) var capturedSubscriptions: [[EventSubscription]] = []
     private(set) var paneReadParams: [PaneReadParams] = []
+    private(set) var agentReadParams: [AgentReadParams] = []
+    private(set) var agentPromptParams: [AgentPromptParams] = []
+    /// Every `agent.send_keys` received, in order; Monitor's control-key
+    /// strip (#183) asserts on the spellings and target it forwarded.
+    private(set) var agentSendKeysParams: [AgentSendKeysParams] = []
+    private var agentSendKeysFailure: (any Error)?
     /// Every `agent.start` received, in order; the new-agent flow (#12)
     /// asserts on the params it forwarded.
     private(set) var agentStarts: [AgentLaunchRequest] = []
@@ -54,10 +60,21 @@ final actor ScriptedTransport: Transport {
     private var paneTexts: [String: String] = [:]
     private var paneReadFailure: TransportError?
     private var nextPaneReadGate: ScriptedTransportCallGate?
+    private var agentTexts: [String: String] = [:]
+    private var agentReadFailure: (any Error)?
+    private var nextAgentReadGate: ScriptedTransportCallGate?
+    /// History-source (`recent`/`recent_unwrapped`) read scripting, separate
+    /// from the visible screen: Monitor's backfill tests script a wider
+    /// window than the live tail without disturbing visible-read tests.
+    private var agentHistoryTexts: [String: String] = [:]
+    private var agentHistoryReadFailure: (any Error)?
+    private var agentPromptFailure: (any Error)?
+    private var nextAgentPromptGate: ScriptedTransportCallGate?
     private var missingPaneIDs: Set<String> = []
     private var nextStreamID: UInt64 = 0
     private var liveStreamID: UInt64?
     private var eventContinuation: AsyncThrowingStream<HerdrEvent, any Error>.Continuation?
+    private var nextSubscriptionGate: ScriptedTransportCallGate?
     private var nextAttachID: UInt64 = 0
     private var liveAttachID: UInt64?
     private var attachContinuation: AsyncThrowingStream<Data, any Error>.Continuation?
@@ -123,6 +140,51 @@ final actor ScriptedTransport: Transport {
         nextPaneReadGate = gate
     }
 
+    /// Scripts the text `readAgent` returns for `target`.
+    func setAgentText(_ text: String, target: String) {
+        agentTexts[target] = text
+    }
+
+    /// Makes every subsequent `readAgent` throw `failure`.
+    func setAgentReadFailure(_ failure: (any Error)?) {
+        agentReadFailure = failure
+    }
+
+    /// Scripts the text `readAgent` returns for history sources (`recent`,
+    /// `recent_unwrapped`) on `target`; unscripted targets fall back to the
+    /// `setAgentText` value, as a server whose window equals its screen
+    /// would answer.
+    func setAgentHistoryText(_ text: String, target: String) {
+        agentHistoryTexts[target] = text
+    }
+
+    /// Makes every subsequent history-source `readAgent` throw `failure`
+    /// while leaving visible reads untouched — the `agent_not_idle` race
+    /// between the screen and a backfill.
+    func setAgentHistoryReadFailure(_ failure: (any Error)?) {
+        agentHistoryReadFailure = failure
+    }
+
+    /// Pauses the next Agent read after capturing its response.
+    func gateNextAgentRead(using gate: ScriptedTransportCallGate) {
+        nextAgentReadGate = gate
+    }
+
+    /// Makes every subsequent `promptAgent` throw `failure`.
+    func setAgentPromptFailure(_ failure: (any Error)?) {
+        agentPromptFailure = failure
+    }
+
+    /// Pauses the next Agent prompt after recording its params.
+    func gateNextAgentPrompt(using gate: ScriptedTransportCallGate) {
+        nextAgentPromptGate = gate
+    }
+
+    /// Makes every subsequent `sendAgentKeys` throw `failure`.
+    func setAgentSendKeysFailure(_ failure: (any Error)?) {
+        agentSendKeysFailure = failure
+    }
+
     /// Scripts the `AgentInfo` `startAgent` returns; without it the fake
     /// synthesizes a Working agent from the start params.
     func setStartedAgent(_ agent: AgentInfo) {
@@ -162,6 +224,11 @@ final actor ScriptedTransport: Transport {
 
     func gateNextAttachEnd(on gate: ScriptedTransportCallGate) {
         nextAttachEndGate = gate
+    }
+
+    /// Pauses the next events subscription after recording its requested set.
+    func gateNextSubscription(using gate: ScriptedTransportCallGate) {
+        nextSubscriptionGate = gate
     }
 
     /// Pushes one event onto the live stream; false if none is live.
@@ -305,6 +372,39 @@ final actor ScriptedTransport: Transport {
             truncated: false, workspaceID: "w")
     }
 
+    func readAgent(_ params: AgentReadParams) async throws -> PaneReadResult {
+        agentReadParams.append(params)
+        let isHistoryRead = params.source != .visible
+        let responseText =
+            isHistoryRead
+            ? (agentHistoryTexts[params.target] ?? agentTexts[params.target] ?? "")
+            : (agentTexts[params.target] ?? "")
+        let failure = isHistoryRead ? (agentHistoryReadFailure ?? agentReadFailure) : agentReadFailure
+        let gate = nextAgentReadGate
+        nextAgentReadGate = nil
+        await gate?.waitUntilOpen()
+        if let failure { throw failure }
+        return PaneReadResult(
+            format: params.format ?? .text, paneID: params.target, revision: 0,
+            source: params.source, tabID: "t", text: responseText,
+            truncated: false, workspaceID: "w")
+    }
+
+    func promptAgent(_ params: AgentPromptParams) async throws -> Agent {
+        agentPromptParams.append(params)
+        let failure = agentPromptFailure
+        let gate = nextAgentPromptGate
+        nextAgentPromptGate = nil
+        await gate?.waitUntilOpen()
+        if let failure { throw failure }
+        return Agent(.fixture(paneID: params.target, status: .working))
+    }
+
+    func sendAgentKeys(_ params: AgentSendKeysParams) async throws {
+        if let agentSendKeysFailure { throw agentSendKeysFailure }
+        agentSendKeysParams.append(params)
+    }
+
     func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
         agentStarts.append(request)
         if let startFailure { throw startFailure }
@@ -352,6 +452,9 @@ final actor ScriptedTransport: Transport {
             throw TransportError.eventsChannelAlreadyOpen
         }
         capturedSubscriptions.append(subscriptions)
+        let gate = nextSubscriptionGate
+        nextSubscriptionGate = nil
+        await gate?.waitUntilOpen()
         if let missing = subscriptions.firstMissingPane(in: missingPaneIDs) {
             throw HerdrAPIError(code: "pane_not_found", message: "pane \(missing) not found")
         }

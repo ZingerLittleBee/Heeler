@@ -9,6 +9,36 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Monitor has a control-key strip (Enter, Esc, Ctrl+C, arrows) so a Blocked
+  Agent's confirmation prompt can be answered — and work interrupted —
+  without entering Attach. Each tap is delivered through agent-level
+  `send_keys` and refreshes the snapshot once the Host accepts it. (#183)
+
+- Opening an Agent now lands on Monitor: a color-preserving snapshot of its
+  latest screen with an honest capture time. Attach remains available as a
+  full-screen toolbar action for realtime interaction; leaving it closes the
+  live terminal and refreshes Monitor once. Agent Notification taps land on
+  Monitor as well. (#179)
+
+- Monitor now follows a Working Agent on a two-second foreground cadence and
+  stops polling as soon as the Agent becomes Idle, Done, or Blocked. Status
+  pushes and pull-to-refresh still update the snapshot; pinned output follows
+  automatically, while scrolling up holds position behind a New Output jump.
+  (#180)
+
+- Monitor keeps a local scrollback. Scrolling up through what the Agent did
+  is served from the on-device cache; reaching the top while the Agent is
+  idle backfills up to herdr's 1,000-line capture window, the one loading
+  indicator in the surface. While the Agent works, the top of the cache says
+  history is unavailable instead of spinning. Reads that cannot be
+  reconciled with the cache leave an explicit gap marker, and the oldest
+  capturable line is marked as the beginning of the captured history. (#181)
+- Monitor now includes a local Composer. Drafting makes no network requests;
+  Send delivers the complete message once and shows delivery, Agent work, and
+  Done states from acknowledgments and status pushes. Failed messages can be
+  retried or returned to the draft without losing text, and drafts survive
+  Attach, backgrounding, and Host reconnects. (#182)
+
 - Settings > About now has Acknowledgements: every redistributed third-party
   component ships with its exact upstream licence notice, including libssh2
   and its secondary sources, OpenSSL, Ghostty and its stack, the monospaced

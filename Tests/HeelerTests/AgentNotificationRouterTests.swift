@@ -3,7 +3,7 @@ import Testing
 
 @testable import Heeler
 
-/// The navigation half of #74: taps land on the right Agent Attach through
+/// The navigation half of #74: taps land on the right Agent Monitor through
 /// the Console's navigation path, a killed-state tap waits for the pane to
 /// arrive with the Host's first sync, and stale or unresolvable pushes fall
 /// back to the Console with no alarming copy.
@@ -30,7 +30,7 @@ struct AgentNotificationRouterTests {
         #expect(condition(), comment)
     }
 
-    @Test func tapOnAKnownAgentOpensItsAttach() {
+    @Test func tapOnAKnownAgentOpensItsMonitor() {
         let router = AgentNotificationRouter()
         let hostID = UUID()
         router.agentsDidChange([consoleAgent(hostID: hostID, paneID: "%5")])

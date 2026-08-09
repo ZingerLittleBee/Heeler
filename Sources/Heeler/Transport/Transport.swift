@@ -30,6 +30,26 @@ protocol Transport: Sendable {
     /// Reads a Pane's recent terminal output for the Console card snippet.
     func readPane(_ params: PaneReadParams) async throws -> PaneReadResult
 
+    /// Reads an Agent's terminal output. Unlike `pane.read`, this preserves
+    /// history semantics for alternate-screen Agents: history-capable sources
+    /// fail honestly while the Agent is working instead of silently degrading
+    /// to the visible screen. Monitor uses `.visible` for its always-available
+    /// snapshot and requests ANSI output for local rendering (ADR 0012).
+    func readAgent(_ params: AgentReadParams) async throws -> PaneReadResult
+
+    /// Delivers one complete local draft through `agent.prompt`. The request
+    /// deliberately omits `wait`: the response acknowledges delivery into
+    /// the Agent's pane, while Agent Status events report subsequent work.
+    func promptAgent(_ params: AgentPromptParams) async throws -> Agent
+
+    /// Sends control keys to an Agent (`agent.send_keys`): Monitor's
+    /// control-key strip (#183). Key names are herdr's own spellings —
+    /// verified live against herdr 0.8.0 and shared with `pane.send_keys` /
+    /// `pane.send_input`: `enter`, `esc`, `ctrl+c` / `C-c` accepted
+    /// case-insensitively; `ctrl-c` is rejected with `invalid_key`. Arrows
+    /// are `up`/`down`/`left`/`right`.
+    func sendAgentKeys(_ params: AgentSendKeysParams) async throws
+
     /// Starts a new Agent: the new-agent flow (#12, User Story 8 — dispatch
     /// work from the road). Creates a fresh herdr tab in the chosen workspace,
     /// starts the requested agent in its root pane, and returns the Agent once

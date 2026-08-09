@@ -271,6 +271,36 @@ class Server:
         if method == "pane.read":
             pane_id = params.get("pane_id", "pane-1") if isinstance(params, dict) else "pane-1"
             return self._pane_read_result(pane_id, "fixture output")
+        if method == "agent.read":
+            request = params if isinstance(params, dict) else {}
+            target = request.get("target", "pane-1")
+            source = request.get("source", "recent")
+            output_format = request.get("format", "text")
+            text = "fixture agent output"
+            if output_format == "ansi" and request.get("strip_ansi") is False:
+                text = "\x1b[31mfixture agent output\x1b[0m"
+            return self._pane_read_result(
+                target,
+                text,
+                source=source,
+                output_format=output_format,
+            )
+        if method == "agent.prompt":
+            request = params if isinstance(params, dict) else {}
+            is_expected_prompt = (
+                request.get("target") == "pane-1"
+                and request.get("text") == "fixture prompt"
+                and "wait" not in request
+            )
+            pane_id = "pane-1" if is_expected_prompt else "fixture:invalid-prompt"
+            return {
+                "type": "agent_prompted",
+                "agent": self._agent(pane_id, "workspace-1", status="working"),
+            }
+        if method == "agent.send_keys":
+            # Thin ok-envelope RPC; key-spelling contract is asserted in unit
+            # tests against the spellings Monitor ships (enter/esc/ctrl+c/…).
+            return {"type": "ok"}
         if method == "pane.close":
             return {"type": "ok"}
         if method == "tab.create":
@@ -315,28 +345,38 @@ class Server:
         return {"type": "ok"}
 
     @staticmethod
-    def _pane_read_result(pane_id: str, text: str) -> object:
+    def _pane_read_result(
+        pane_id: str,
+        text: str,
+        source: str = "recent",
+        output_format: str = "text",
+    ) -> object:
         return {
             "type": "pane_read",
             "read": {
                 "pane_id": pane_id,
                 "workspace_id": "workspace-1",
                 "tab_id": "tab-1",
-                "source": "recent",
-                "format": "text",
+                "source": source,
+                "format": output_format,
                 "text": text,
                 "revision": 1,
                 "truncated": False,
             },
         }
 
-    def _agent(self, pane_id: str = "pane-1", workspace_id: str = "workspace-1") -> object:
+    def _agent(
+        self,
+        pane_id: str = "pane-1",
+        workspace_id: str = "workspace-1",
+        status: str = "idle",
+    ) -> object:
         return {
             "terminal_id": "terminal-1",
             "agent": "codex",
             "terminal_title": "fixture",
             "terminal_title_stripped": "fixture",
-            "agent_status": "idle",
+            "agent_status": status,
             "workspace_id": workspace_id,
             "tab_id": "tab-worktree" if workspace_id == "workspace-worktree" else "tab-new",
             "pane_id": pane_id,
