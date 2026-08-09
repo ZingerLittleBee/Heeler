@@ -217,6 +217,17 @@ struct AgentRenameParams: Codable, Equatable, Sendable {
     }
 }
 
+/// herdr schema `$defs/AgentSendKeysParams`.
+struct AgentSendKeysParams: Codable, Equatable, Sendable {
+    let keys: [String]
+    let target: String
+
+    init(keys: [String], target: String) {
+        self.keys = keys
+        self.target = target
+    }
+}
+
 /// herdr schema `$defs/AgentSessionInfo`.
 struct AgentSessionInfo: Codable, Equatable, Sendable {
     let agent: String

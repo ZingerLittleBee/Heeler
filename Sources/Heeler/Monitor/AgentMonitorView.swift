@@ -49,10 +49,13 @@ struct AgentDetailView: View {
             initialValue: monitorStore ?? AgentMonitorStore(
                 target: agent.agent.paneID,
                 initialStatus: agent.agent.status,
-                statusUpdates: console.agentStatusUpdates(for: agent.id)
-            ) { [console, agent] params in
-                try await console.readAgent(params, on: agent.hostID)
-            })
+                statusUpdates: console.agentStatusUpdates(for: agent.id),
+                read: { [console, agent] params in
+                    try await console.readAgent(params, on: agent.hostID)
+                },
+                sendKeys: { [console, agent] params in
+                    try await console.sendAgentKeys(params, on: agent.hostID)
+                }))
         _composer = State(
             initialValue: composerStore ?? console.composerStore(for: agent))
         _attach = State(
@@ -131,6 +134,17 @@ struct AgentDetailView: View {
                     .refreshable { await monitor.refresh() }
                 } else {
                     snapshotScrollView(snapshot)
+                }
+                if let sendError = monitor.sendError {
+                    Text(sendError)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                }
+                MonitorControlKeyStrip(isEnabled: !monitor.isSendingKey) { key in
+                    Task { await monitor.send(key) }
                 }
             }
         } else {

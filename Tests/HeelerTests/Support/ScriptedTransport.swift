@@ -13,6 +13,10 @@ final actor ScriptedTransport: Transport {
     private(set) var paneReadParams: [PaneReadParams] = []
     private(set) var agentReadParams: [AgentReadParams] = []
     private(set) var agentPromptParams: [AgentPromptParams] = []
+    /// Every `agent.send_keys` received, in order; Monitor's control-key
+    /// strip (#183) asserts on the spellings and target it forwarded.
+    private(set) var agentSendKeysParams: [AgentSendKeysParams] = []
+    private var agentSendKeysFailure: (any Error)?
     /// Every `agent.start` received, in order; the new-agent flow (#12)
     /// asserts on the params it forwarded.
     private(set) var agentStarts: [AgentLaunchRequest] = []
@@ -154,6 +158,11 @@ final actor ScriptedTransport: Transport {
     /// Pauses the next Agent prompt after recording its params.
     func gateNextAgentPrompt(using gate: ScriptedTransportCallGate) {
         nextAgentPromptGate = gate
+    }
+
+    /// Makes every subsequent `sendAgentKeys` throw `failure`.
+    func setAgentSendKeysFailure(_ failure: (any Error)?) {
+        agentSendKeysFailure = failure
     }
 
     /// Scripts the `AgentInfo` `startAgent` returns; without it the fake
@@ -365,6 +374,11 @@ final actor ScriptedTransport: Transport {
         await gate?.waitUntilOpen()
         if let failure { throw failure }
         return Agent(.fixture(paneID: params.target, status: .working))
+    }
+
+    func sendAgentKeys(_ params: AgentSendKeysParams) async throws {
+        if let agentSendKeysFailure { throw agentSendKeysFailure }
+        agentSendKeysParams.append(params)
     }
 
     func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {

@@ -297,6 +297,10 @@ class Server:
                 "type": "agent_prompted",
                 "agent": self._agent(pane_id, "workspace-1", status="working"),
             }
+        if method == "agent.send_keys":
+            # Thin ok-envelope RPC; key-spelling contract is asserted in unit
+            # tests against the spellings Monitor ships (enter/esc/ctrl+c/…).
+            return {"type": "ok"}
         if method == "pane.close":
             return {"type": "ok"}
         if method == "tab.create":

@@ -209,6 +209,20 @@ import Testing
         #expect(fields["source"] as? String == "visible")
     }
 
+    @Test func agentSendKeysParamsRoundTrip() throws {
+        let params = AgentSendKeysParams(keys: ["ctrl+c", "enter"], target: "w1:p1")
+
+        let data = try JSONEncoder().encode(params)
+        let decoded = try JSONDecoder().decode(AgentSendKeysParams.self, from: data)
+
+        #expect(decoded == params)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let fields = try #require(object)
+        #expect(fields.keys.sorted() == ["keys", "target"])
+        #expect(fields["target"] as? String == "w1:p1")
+        #expect(fields["keys"] as? [String] == ["ctrl+c", "enter"])
+    }
+
     @Test func agentStartParamsRoundTrip() throws {
         let params = AgentStartParams(
             kind: "claude", name: "reviewer", paneID: "w1:p1",

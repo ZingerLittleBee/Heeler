@@ -555,6 +555,8 @@ struct HeelerSSHTransportBehaviorE2ETests {
             AgentPromptParams(target: "pane-1", text: "fixture prompt"))
         #expect(prompted.paneID == "pane-1")
         #expect(prompted.status == .working)
+        try await transport.sendAgentKeys(
+            AgentSendKeysParams(keys: ["ctrl+c", "enter"], target: "pane-1"))
         try await transport.closePane(PaneTarget(paneID: "pane-1"))
         try await transport.renameAgent(AgentRenameParams(target: "pane-1", name: "fixture"))
         try await transport.renameWorkspace(

@@ -623,6 +623,13 @@ actor HeelerSSHTransport: Transport {
         return Agent(response.agent)
     }
 
+    func sendAgentKeys(_ params: AgentSendKeysParams) async throws {
+        _ = try await request(
+            method: "agent.send_keys",
+            params: params,
+            decoding: OkResponse.self)
+    }
+
     func startAgent(_ launch: AgentLaunchRequest) async throws -> Agent {
         let created = try await request(
             method: "tab.create",
