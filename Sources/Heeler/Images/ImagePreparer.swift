@@ -49,6 +49,26 @@ struct DataImageSelection: ImageSelection {
     }
 }
 
+/// Image pick from the system document browser (Files). Holds a security-scoped
+/// URL long enough to read bytes, then the existing preparer owns the copy.
+struct FileURLImageSelection: ImageSelection {
+    let url: URL
+
+    func loadData() async throws -> Data {
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessing {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        do {
+            return try Data(contentsOf: url)
+        } catch {
+            throw ImagePreparationError.selectionUnavailable
+        }
+    }
+}
+
 protocol ImagePreparing: Sendable {
     func prepare(_ selection: any ImageSelection) async throws -> PreparedImage
 }

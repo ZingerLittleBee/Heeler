@@ -1,5 +1,5 @@
-import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Monitor's compact control-key row (#183) plus pinned draft accessories.
 /// Enter, Esc, and Ctrl+C stay one tap away; arrows live behind a menu.
@@ -18,7 +18,7 @@ struct MonitorControlKeyStrip: View {
     let onPaste: (String) -> Void
     let onImageSelected: (any ImageSelection) -> Void
 
-    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var isPresentingFileImporter = false
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -43,10 +43,15 @@ struct MonitorControlKeyStrip: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Control keys")
-        .onChange(of: selectedPhoto) { _, item in
-            guard let item else { return }
-            selectedPhoto = nil
-            onImageSelected(PhotosPickerImageSelection(item: item))
+        .fileImporter(
+            isPresented: $isPresentingFileImporter,
+            allowedContentTypes: [.image],
+            allowsMultipleSelection: false
+        ) { result in
+            guard case .success(let urls) = result, let url = urls.first else {
+                return
+            }
+            onImageSelected(FileURLImageSelection(url: url))
         }
     }
 
@@ -57,7 +62,9 @@ struct MonitorControlKeyStrip: View {
     }
 
     private var filesButton: some View {
-        PhotosPicker(selection: $selectedPhoto, matching: .images) {
+        Button {
+            isPresentingFileImporter = true
+        } label: {
             Group {
                 if isFileStaging {
                     ProgressView()

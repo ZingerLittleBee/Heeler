@@ -29,7 +29,7 @@ struct AgentComposerView: View {
                     }
                     .font(.footnote)
                 }
-                .accessibilityElement(children: .combine)
+                .accessibilityElement(children: .contain)
             }
 
             Text("Message the Agent")

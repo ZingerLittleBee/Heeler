@@ -120,18 +120,21 @@ final class AgentComposerStore: ComposerDraftOperations {
 
     /// Inserts `text` into the local draft without submitting.
     ///
-    /// Separator rule: empty `text` is a no-op. When the draft is non-empty
-    /// and does not already end in whitespace, a single space is inserted
-    /// before `text` so paste, snippet, and staged-path insertions do not
-    /// glue onto the preceding token. Callers that want a trailing separator
-    /// (staged paths) include it in `text`.
+    /// Separator rule: leading whitespace on `text` is stripped so clipboard
+    /// paste cannot double-separate against the draft tail. Empty / pure-
+    /// whitespace `text` is a no-op. When the draft is non-empty and does not
+    /// already end in whitespace, a single space is inserted before the
+    /// remainder so paste, snippet, and staged-path insertions do not glue
+    /// onto the preceding token. Callers that want a trailing separator
+    /// (staged paths) include it in `text` (trailing whitespace is kept).
     func insertIntoDraft(_ text: String) {
-        guard !text.isEmpty else { return }
+        let insertion = text.drop(while: \.isWhitespace)
+        guard !insertion.isEmpty else { return }
         if draft.isEmpty || draft.last?.isWhitespace == true {
-            draft.append(text)
+            draft.append(contentsOf: insertion)
         } else {
             draft.append(" ")
-            draft.append(text)
+            draft.append(contentsOf: insertion)
         }
     }
 
@@ -144,8 +147,8 @@ final class AgentComposerStore: ComposerDraftOperations {
         stageOperationID &+= 1
         let operationID = stageOperationID
         fileStageState = .staging
-        stageTask = Task {
-            await self.runStageAndInsert(
+        stageTask = Task { [weak self] in
+            await self?.runStageAndInsert(
                 selection, stageImage: stageImage, operationID: operationID)
         }
     }
@@ -320,6 +323,9 @@ final class AgentComposerStore: ComposerDraftOperations {
             try Task.checkCancellation()
             guard operationID == stageOperationID else {
                 try? image.remove()
+                // Drop the busy claim so a future cancel/invalidate path
+                // cannot leave Files permanently disabled.
+                stageTask = nil
                 return
             }
             preparedImage = image
@@ -329,7 +335,10 @@ final class AgentComposerStore: ComposerDraftOperations {
                 image,
                 ImageStageProgressReporter { _ in })
             try Task.checkCancellation()
-            guard operationID == stageOperationID else { return }
+            guard operationID == stageOperationID else {
+                stageTask = nil
+                return
+            }
 
             stageTask = nil
             discardPreparedImage()
@@ -344,7 +353,10 @@ final class AgentComposerStore: ComposerDraftOperations {
     }
 
     private func finishStage(error: any Error, operationID: UInt64) {
-        guard operationID == stageOperationID else { return }
+        guard operationID == stageOperationID else {
+            stageTask = nil
+            return
+        }
         stageTask = nil
         if Self.isCancellation(error) {
             discardPreparedImage()
@@ -372,8 +384,10 @@ final class AgentComposerStore: ComposerDraftOperations {
             "SFTP is unavailable on this Host. Enable its SSH SFTP subsystem, then try again."
         case let staging as ImageStagingError where staging.isRetryable:
             "Image upload failed. Choose the image again to retry."
+        case is ImageStagingError:
+            "Couldn't attach this image. Try a different image."
         case ImagePreparationError.selectionUnavailable:
-            "The selected photo is no longer available. Choose another image."
+            "The selected file is no longer available. Choose another image."
         case ImagePreparationError.sourceTooLarge:
             "The selected image is too large to decode safely. Choose a smaller image."
         case ImagePreparationError.invalidImage:
@@ -383,7 +397,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         case ImagePreparationError.localStorageFailed:
             "herdr could not prepare the image in protected local storage. Try again."
         default:
-            "Image upload failed. Choose the image again to retry."
+            "Couldn't attach this image. Try a different image."
         }
     }
 }

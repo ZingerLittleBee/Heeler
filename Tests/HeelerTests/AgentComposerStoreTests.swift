@@ -315,6 +315,25 @@ struct AgentComposerStoreTests {
         #expect(store.draft == "pasted")
     }
 
+    @Test func insertIntoDraftStripsLeadingWhitespaceFromInsertion() {
+        let store = AgentComposerStore(target: "w1:p1") { _ in
+            throw TransportError.cancelled
+        }
+        // Clipboard often carries a leading space or newline; do not double
+        // separate against a draft that already ends in whitespace.
+        store.replaceDraft(with: "hello ")
+        store.insertIntoDraft("  world")
+        #expect(store.draft == "hello world")
+
+        store.replaceDraft(with: "hello")
+        store.insertIntoDraft("\nworld")
+        #expect(store.draft == "hello world")
+
+        store.replaceDraft(with: "keep")
+        store.insertIntoDraft("   \n\t")
+        #expect(store.draft == "keep")
+    }
+
     // MARK: - Files stage → insert (scripted stager seam)
 
     @Test func stageAndInsertImageAppendsRemotePathWithoutSubmitting() async throws {
@@ -396,6 +415,45 @@ struct AgentComposerStoreTests {
                 == "Image upload failed. Choose the image again to retry.")
         store.dismissFileStageFailure()
         #expect(store.fileStageState == .idle)
+    }
+
+    @Test func nonRetryableStageFailureDoesNotInviteRetry() async throws {
+        let transport = ScriptedTransport()
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("composer-nonretry-\(UUID().uuidString).jpg")
+        try Data(repeating: 0x44, count: 64).write(to: fileURL)
+        let prepared = PreparedImage(
+            fileURL: fileURL,
+            format: .jpeg,
+            pixelWidth: 16,
+            pixelHeight: 16,
+            byteCount: 64)
+        await transport.configureImageStaging(outcomes: [
+            .failure(ImageStagingError.invalidRemotePath)
+        ])
+        let store = AgentComposerStore(
+            target: "w1:p1",
+            preparer: ScriptedComposerImagePreparer(prepared: prepared),
+            stageImage: { image, reporter in
+                try await transport.stageImage(image) { progress in
+                    await reporter.report(progress)
+                }
+            }
+        ) { _ in
+            throw TransportError.cancelled
+        }
+        store.replaceDraft(with: "Keep me")
+
+        store.stageAndInsertImage(DataImageSelection(data: Data([0x01])))
+        try await waitUntil("non-retryable staging should fail") {
+            if case .failed = store.fileStageState { true } else { false }
+        }
+
+        #expect(store.draft == "Keep me")
+        #expect(
+            store.fileStageFailureMessage
+                == "Couldn't attach this image. Try a different image.")
+        #expect(store.fileStageFailureMessage?.localizedCaseInsensitiveContains("retry") != true)
     }
 
     @Test func stagingExposesInProgressStateWhileGateIsHeld() async throws {
