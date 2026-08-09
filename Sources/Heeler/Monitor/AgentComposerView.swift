@@ -11,7 +11,7 @@ struct AgentComposerView: View {
             if !store.messages.isEmpty {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(spacing: 8) {
+                        LazyVStack(spacing: 10) {
                             ForEach(store.messages) { message in
                                 messageRow(message)
                                     .id(message.id)
@@ -61,34 +61,44 @@ struct AgentComposerView: View {
     }
 
     private func messageRow(_ message: AgentComposerStore.Message) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(message.text)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .textSelection(.enabled)
-
-            statusLabel(for: message.state)
-                .font(.footnote)
-
-            if case .failed(let detail) = message.state {
-                Text(detail)
-                    .font(.footnote)
+        HStack {
+            Spacer(minLength: 44)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("You")
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                HStack(spacing: 8) {
-                    Button("Retry", systemImage: "arrow.clockwise") {
-                        Task { await store.retry(message.id) }
-                    }
-                    .buttonStyle(.borderedProminent)
 
-                    Button("Edit Draft", systemImage: "pencil") {
-                        store.withdrawToDraft(message.id)
+                Text(message.text)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+
+                statusLabel(for: message.state)
+                    .font(.footnote)
+
+                if case .failed(let detail) = message.state {
+                    Text(detail)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        Button("Retry", systemImage: "arrow.clockwise") {
+                            Task { await store.retry(message.id) }
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        Button("Edit Draft", systemImage: "pencil") {
+                            store.withdrawToDraft(message.id)
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
-                .controlSize(.small)
             }
+            .padding(12)
+            .background(
+                Color.accentColor.opacity(0.12),
+                in: RoundedRectangle(cornerRadius: 14))
         }
-        .padding(10)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
     @ViewBuilder

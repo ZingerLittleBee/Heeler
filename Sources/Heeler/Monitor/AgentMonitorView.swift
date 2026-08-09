@@ -176,7 +176,8 @@ struct AgentDetailView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     historyTopMarker
                     Text(snapshot)
-                        .font(.system(.body, design: .monospaced))
+                        .font(.system(.callout, design: .monospaced))
+                        .lineSpacing(3)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                         .padding()
@@ -276,7 +277,9 @@ struct AgentDetailView: View {
 
     private var statusHeader: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
+            HStack(spacing: 8) {
+                Text("Agent output")
+                    .font(.subheadline.weight(.semibold))
                 AgentStatusBadge(status: monitor.agentStatus)
                 Spacer(minLength: 8)
                 if let capturedAt = monitor.capturedAt {
