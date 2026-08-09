@@ -1199,9 +1199,37 @@ struct TerminalAttachTests {
                 x: 0, y: 554, width: 440, height: 436)])
         try await Task.sleep(for: .milliseconds(120))
         #expect(inset.height == 402)
+        #expect(inset.lastPresentedHeight == 402)
 
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
         #expect(inset.height == 0)
+        #expect(inset.lastPresentedHeight == 402)
+    }
+
+    @Test func agentKeyboardReplacementKeepsTheTotalFootprintStable() {
+        let system = AgentComposerKeyboardLayout(
+            currentHeight: 402, lastPresentedHeight: 402,
+            presentation: .system)
+        let toolsBeforeUIKitHides = AgentComposerKeyboardLayout(
+            currentHeight: 402, lastPresentedHeight: 402,
+            presentation: .tools)
+        let toolsAfterUIKitHides = AgentComposerKeyboardLayout(
+            currentHeight: 0, lastPresentedHeight: 402,
+            presentation: .tools)
+        let systemBeforeUIKitShows = AgentComposerKeyboardLayout(
+            currentHeight: 0, lastPresentedHeight: 402,
+            presentation: .system)
+
+        #expect(system == AgentComposerKeyboardLayout(
+            currentHeight: 402, lastPresentedHeight: 0,
+            presentation: .hidden))
+        #expect(toolsBeforeUIKitHides.contentInset == 0)
+        #expect(toolsAfterUIKitHides.toolsHeight == 402)
+        #expect(systemBeforeUIKitShows.contentInset == 402)
+        #expect([
+            system, toolsBeforeUIKitHides, toolsAfterUIKitHides,
+            systemBeforeUIKitShows,
+        ].map(\.totalHeight) == [402, 402, 402, 402])
     }
 
     /// Backgrounding hides the keyboard — animating the accessory out — but

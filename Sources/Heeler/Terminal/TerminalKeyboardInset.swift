@@ -23,6 +23,9 @@ import UIKit
 final class TerminalKeyboardInset {
     /// How much of the terminal's bottom edge the keyboard stack covers.
     private(set) var height: CGFloat = 0
+    /// The last complete keyboard footprint. It survives dismissal so an
+    /// in-app keyboard can replace UIKit's keyboard without changing layout.
+    private(set) var lastPresentedHeight: CGFloat = 0
     /// Long enough to fold a presentation's follow-up frame into the first,
     /// short enough to stay inside the keyboard's own animation.
     private static let coalesceDelay = Duration.milliseconds(60)
@@ -78,6 +81,9 @@ final class TerminalKeyboardInset {
 
     private func apply(_ height: CGFloat) {
         coalesceTask = nil
+        if height > 0 {
+            lastPresentedHeight = height
+        }
         guard height != self.height else { return }
         self.height = height
     }

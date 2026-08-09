@@ -34,6 +34,7 @@ struct AgentTerminalView: View {
     /// keyboard hides the Skills tab in that case.
     @State private var skills: SkillsPaneStore?
     @State private var keyboardControl = TerminalKeyboardControl()
+    @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isConfirmingClose = false
     @State private var isStartingAgent = false
@@ -318,6 +319,13 @@ struct AgentTerminalView: View {
         }
     }
 
+    private var composerKeyboardLayout: AgentComposerKeyboardLayout {
+        AgentComposerKeyboardLayout(
+            currentHeight: keyboardInset.height,
+            lastPresentedHeight: keyboardInset.lastPresentedHeight,
+            presentation: composer == nil ? .hidden : composerKeyboardPresentation)
+    }
+
     private var terminalSurface: some View {
         terminalScreen
             .id(attach.terminalID)
@@ -339,6 +347,8 @@ struct AgentTerminalView: View {
                     switcher: agentSwitcher,
                     keyboardHandoff: keyboardHandoff,
                     keysContext: terminalKeysContext,
+                    keyboardHeight: composerKeyboardLayout.toolsHeight,
+                    keyboardPresentation: $composerKeyboardPresentation,
                     quickKeysEnabled: attach.isLocalInputEnabled,
                     sendQuickKey: keyboardControl.sendQuickKey)
             } else {
@@ -355,8 +365,7 @@ struct AgentTerminalView: View {
         // terminal would resize twice per dismissal. See TerminalKeyboardInset.
         .modifier(
             AgentTerminalKeyboardInsetModifier(
-                inset: keyboardInset,
-                isEnabled: composer == nil))
+                height: composerKeyboardLayout.contentInset))
         // background(_:ignoresSafeAreaEdges:) defaults to .all: the theme
         // colour reaches under the transparent navigation bar and into the
         // home-indicator area without moving the terminal grid or touching
@@ -698,15 +707,11 @@ private struct ImageAttachStatusBar<Actions: View>: View {
 }
 
 private struct AgentTerminalKeyboardInsetModifier: ViewModifier {
-    let inset: TerminalKeyboardInset
-    let isEnabled: Bool
+    let height: CGFloat
 
-    @ViewBuilder
     func body(content: Content) -> some View {
-        if isEnabled {
-            content.terminalKeyboardInset(inset)
-        } else {
-            content
-        }
+        content
+            .padding(.bottom, height)
+            .ignoresSafeArea(.keyboard)
     }
 }

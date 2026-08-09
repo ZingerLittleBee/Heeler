@@ -1,5 +1,36 @@
 import SwiftUI
 
+enum AgentComposerKeyboardPresentation: Equatable {
+    case hidden
+    case system
+    case tools
+}
+
+struct AgentComposerKeyboardLayout: Equatable {
+    let contentInset: CGFloat
+    let toolsHeight: CGFloat
+
+    init(
+        currentHeight: CGFloat,
+        lastPresentedHeight: CGFloat,
+        presentation: AgentComposerKeyboardPresentation
+    ) {
+        switch presentation {
+        case .hidden:
+            contentInset = currentHeight
+            toolsHeight = 0
+        case .system:
+            contentInset = max(currentHeight, lastPresentedHeight)
+            toolsHeight = 0
+        case .tools:
+            contentInset = 0
+            toolsHeight = lastPresentedHeight
+        }
+    }
+
+    var totalHeight: CGFloat { contentInset + toolsHeight }
+}
+
 /// The native, local-first input surface beneath the live terminal. Drafting
 /// stays on device; Send emits one `agent.prompt` request, while explicit
 /// tool-keyboard controls send terminal sequences through Attach.
@@ -9,106 +40,116 @@ struct AgentComposerView: View {
     let switcher: TerminalAgentSwitcher
     let keyboardHandoff: TerminalKeyboardHandoff
     let keysContext: TerminalKeysContext
+    let keyboardHeight: CGFloat
+    @Binding var keyboardPresentation: AgentComposerKeyboardPresentation
     let quickKeysEnabled: Bool
     let sendQuickKey: (AgentQuickKey) -> Void
     @FocusState private var isInputFocused: Bool
-    @State private var isToolsKeyboardPresented = false
+
+    private var isToolsKeyboardPresented: Bool {
+        keyboardPresentation == .tools
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            statusLabel
-                .padding(.horizontal, 16)
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+                statusLabel
+                    .padding(.horizontal, 16)
 
-            VStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 8) {
-                    TextField(
-                        "Message Agent",
-                        text: Binding(
-                            get: { store.draft },
-                            set: { store.replaceDraft(with: $0) }),
-                        axis: .vertical
-                    )
-                    .lineLimit(1...5)
-                    .textFieldStyle(.plain)
-                    .frame(minHeight: 36, alignment: .topLeading)
-                    .focused($isInputFocused)
-                    .accessibilityLabel("Message the Agent")
+                VStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        TextField(
+                            "Message Agent",
+                            text: Binding(
+                                get: { store.draft },
+                                set: { store.replaceDraft(with: $0) }),
+                            axis: .vertical
+                        )
+                        .lineLimit(1...5)
+                        .textFieldStyle(.plain)
+                        .frame(minHeight: 36, alignment: .topLeading)
+                        .focused($isInputFocused)
+                        .accessibilityLabel("Message the Agent")
 
-                    if let failure = latestFailure {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Label(failure.detail, systemImage: "exclamationmark.triangle")
-                                .font(.footnote)
-                                .foregroundStyle(.red)
-                                .lineLimit(2)
-                            HStack(spacing: 8) {
-                                Button("Retry") {
-                                    Task { await store.retry(failure.id) }
+                        if let failure = latestFailure {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Label(failure.detail, systemImage: "exclamationmark.triangle")
+                                    .font(.footnote)
+                                    .foregroundStyle(.red)
+                                    .lineLimit(2)
+                                HStack(spacing: 8) {
+                                    Button("Retry") {
+                                        Task { await store.retry(failure.id) }
+                                    }
+                                    Button("Edit Draft") {
+                                        store.withdrawToDraft(failure.id)
+                                        isInputFocused = true
+                                    }
                                 }
-                                Button("Edit Draft") {
-                                    store.withdrawToDraft(failure.id)
-                                    isInputFocused = true
-                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
                             }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
                         }
-                    }
 
-                    HStack(spacing: 0) {
-                        Spacer(minLength: 0)
-                        Button("Send", systemImage: "arrow.up") {
-                            Task { await store.send() }
+                        HStack(spacing: 0) {
+                            Spacer(minLength: 0)
+                            Button("Send", systemImage: "arrow.up") {
+                                Task { await store.send() }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .buttonBorderShape(.circle)
+                            .labelStyle(.iconOnly)
+                            .font(.footnote.weight(.semibold))
+                            .frame(minWidth: 44, minHeight: 44)
+                            .disabled(!store.canSend)
+                            .accessibilityHint("Delivers the complete draft to the Agent")
                         }
-                        .buttonStyle(.borderedProminent)
-                        .buttonBorderShape(.circle)
-                        .labelStyle(.iconOnly)
-                        .font(.footnote.weight(.semibold))
-                        .frame(minWidth: 44, minHeight: 44)
-                        .disabled(!store.canSend)
-                        .accessibilityHint("Delivers the complete draft to the Agent")
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 12)
+                    .padding(.bottom, 8)
+
+                    TerminalAgentSwitcherRow(
+                        switcher: focusPreservingSwitcher,
+                        isKeyboardUp: isKeyboardPresented,
+                        toggleKeyboard: dismissOrPresentKeyboard,
+                        isToolsKeyboardPresented: isToolsKeyboardPresented,
+                        switchKeyboard: keyboardSwitchAction)
+                }
+                .background(
+                    .regularMaterial,
+                    in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(.secondary.opacity(0.16), lineWidth: 1)
                 }
                 .padding(.horizontal, 12)
-                .padding(.top, 12)
-                .padding(.bottom, 8)
-
-                TerminalAgentSwitcherRow(
-                    switcher: focusPreservingSwitcher,
-                    isKeyboardUp: isKeyboardPresented,
-                    toggleKeyboard: dismissOrPresentKeyboard,
-                    isToolsKeyboardPresented: isToolsKeyboardPresented,
-                    switchKeyboard: switchKeyboard)
             }
-            .background(
-                .regularMaterial,
-                in: RoundedRectangle(cornerRadius: 24, style: .continuous)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .stroke(.secondary.opacity(0.16), lineWidth: 1)
-            }
-            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
 
             if isToolsKeyboardPresented {
                 AgentToolsKeyboard(
                     store: store,
                     context: keysContext,
+                    height: keyboardHeight,
                     quickKeysEnabled: quickKeysEnabled,
                     sendQuickKey: sendQuickKey)
             }
         }
-        .padding(.top, 8)
-        .padding(.bottom, isToolsKeyboardPresented ? 0 : 8)
         .onAppear {
             guard let selectedID = switcher.selectedID,
                   keyboardHandoff.consume(selectedID)
             else { return }
+            keyboardPresentation = .system
             isInputFocused = true
         }
         .onChange(of: isInputFocused) { _, isFocused in
             if isFocused {
-                isToolsKeyboardPresented = false
+                keyboardPresentation = .system
+            } else if keyboardPresentation != .tools {
+                keyboardPresentation = .hidden
             }
         }
     }
@@ -117,9 +158,14 @@ struct AgentComposerView: View {
         isInputFocused || isToolsKeyboardPresented
     }
 
+    private var keyboardSwitchAction: (() -> Void)? {
+        guard keyboardHeight > 0 else { return nil }
+        return { switchKeyboard() }
+    }
+
     private func dismissOrPresentKeyboard() {
         if isToolsKeyboardPresented {
-            isToolsKeyboardPresented = false
+            keyboardPresentation = .hidden
         } else {
             isInputFocused.toggle()
         }
@@ -127,11 +173,11 @@ struct AgentComposerView: View {
 
     private func switchKeyboard() {
         if isToolsKeyboardPresented {
-            isToolsKeyboardPresented = false
+            keyboardPresentation = .system
             isInputFocused = true
         } else {
+            keyboardPresentation = .tools
             isInputFocused = false
-            isToolsKeyboardPresented = true
         }
     }
 
@@ -178,6 +224,7 @@ struct AgentComposerView: View {
 private struct AgentToolsKeyboard: View {
     let store: AgentComposerStore
     let context: TerminalKeysContext
+    let height: CGFloat
     let quickKeysEnabled: Bool
     let sendQuickKey: (AgentQuickKey) -> Void
     @State private var selectedTab: TerminalKeysTab = .controls
@@ -246,7 +293,7 @@ private struct AgentToolsKeyboard: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 2)
         }
-        .frame(height: TerminalKeysKeyboardView.defaultHeight)
+        .frame(height: height)
         .background(Color(uiColor: .systemBackground))
         .onChange(of: selectedTab) { _, tab in
             guard tab == .skills, let skills = context.skills else { return }

@@ -61,10 +61,11 @@ struct AgentSurfaceReplacementTests {
 
         terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))
         #expect(terminal.scrollTouch(translationY: 32) != 0)
-        #expect(
+        try #require(await Self.eventually {
             await transport.attachInputs.contains {
                 if case .scroll = $0 { true } else { false }
-            })
+            }
+        })
 
         terminal.sendQuickKey(.enter)
         try #require(await Self.eventually {
