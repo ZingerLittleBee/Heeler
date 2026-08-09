@@ -42,6 +42,19 @@ struct AgentComposerActions {
     let closeAgent: () -> Void
 }
 
+struct AgentComposerLinkPresentation: Equatable {
+    let count: Int
+
+    init?(count: Int) {
+        guard count > 0 else { return nil }
+        self.count = count
+    }
+
+    var accessibilityValue: String {
+        count == 1 ? "1 distinct link" : "\(count) distinct links"
+    }
+}
+
 /// The native, local-first input surface beneath the live terminal. Drafting
 /// stays on device; Send emits one `agent.prompt` request, while explicit
 /// tool-keyboard controls send terminal sequences through Attach.
@@ -117,16 +130,6 @@ struct AgentComposerView: View {
                                     }
                                     .disabled(!actions.canAddFile)
                                 }
-                                if actions.attachLinkCount > 0 {
-                                    Section {
-                                        Button(
-                                            "Attach Links (\(actions.attachLinkCount))",
-                                            systemImage: "link"
-                                        ) {
-                                            actions.showAttachLinks()
-                                        }
-                                    }
-                                }
                                 Section {
                                     Button("New Agent", systemImage: "plus") {
                                         actions.startAgent()
@@ -159,6 +162,24 @@ struct AgentComposerView: View {
                             .font(.footnote.weight(.semibold))
                             .frame(minWidth: 44, minHeight: 44)
                             .accessibilityHint("Adds an attachment or opens Agent actions")
+
+                            if let links = linkPresentation {
+                                Button {
+                                    actions.showAttachLinks()
+                                } label: {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "link")
+                                        Text("\(links.count)")
+                                            .monospacedDigit()
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .buttonBorderShape(.capsule)
+                                .font(.footnote.weight(.semibold))
+                                .frame(minHeight: 44)
+                                .accessibilityLabel("Attach Links")
+                                .accessibilityValue(links.accessibilityValue)
+                            }
 
                             Spacer(minLength: 0)
                             Button("Send", systemImage: "arrow.up") {
@@ -273,6 +294,10 @@ struct AgentComposerView: View {
               case .failed(let detail) = message.state
         else { return nil }
         return (message.id, detail)
+    }
+
+    private var linkPresentation: AgentComposerLinkPresentation? {
+        AgentComposerLinkPresentation(count: actions.attachLinkCount)
     }
 
     private var statusLabel: some View {
