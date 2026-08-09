@@ -15,6 +15,7 @@ struct AgentDetailView: View {
     private let onSwitch: (ConsoleAgent.ID) -> Void
     private let onClosed: () -> Void
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var monitor: AgentMonitorStore
     @State private var composer: AgentComposerStore
     @State private var attach: AgentAttachStore
@@ -46,29 +47,31 @@ struct AgentDetailView: View {
         self.onSwitch = onSwitch
         self.onClosed = onClosed
         _monitor = State(
-            initialValue: monitorStore ?? AgentMonitorStore(
-                target: agent.agent.paneID,
-                initialStatus: agent.agent.status,
-                statusUpdates: console.agentStatusUpdates(for: agent.id),
-                read: { [console, agent] params in
-                    try await console.readAgent(params, on: agent.hostID)
-                },
-                sendKeys: { [console, agent] params in
-                    try await console.sendAgentKeys(params, on: agent.hostID)
-                }))
+            initialValue: monitorStore
+                ?? AgentMonitorStore(
+                    target: agent.agent.paneID,
+                    initialStatus: agent.agent.status,
+                    statusUpdates: console.agentStatusUpdates(for: agent.id),
+                    read: { [console, agent] params in
+                        try await console.readAgent(params, on: agent.hostID)
+                    },
+                    sendKeys: { [console, agent] params in
+                        try await console.sendAgentKeys(params, on: agent.hostID)
+                    }))
         _composer = State(
             initialValue: composerStore ?? console.composerStore(for: agent))
         _attach = State(
-            initialValue: attachStore ?? AgentAttachStore(
-                target: agent.agent.paneID,
-                paneTitle: AgentAttachView.displayTitle(for: agent),
-                transportGeneration: console.hostConnectionGenerations[agent.hostID],
-                isOnStage: isOnStage,
-                runTerminal: console.terminalRunner(for: agent.hostID),
-                stageImage: console.imageStager(for: agent.hostID)
-            ) {
-                try await console.closePane(agent.agent.paneID, on: agent.hostID)
-            })
+            initialValue: attachStore
+                ?? AgentAttachStore(
+                    target: agent.agent.paneID,
+                    paneTitle: AgentAttachView.displayTitle(for: agent),
+                    transportGeneration: console.hostConnectionGenerations[agent.hostID],
+                    isOnStage: isOnStage,
+                    runTerminal: console.terminalRunner(for: agent.hostID),
+                    stageImage: console.imageStager(for: agent.hostID)
+                ) {
+                    try await console.closePane(agent.agent.paneID, on: agent.hostID)
+                })
     }
 
     var body: some View {
@@ -85,6 +88,11 @@ struct AgentDetailView: View {
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                attachButton
+            }
+        }
         .navigationDestination(isPresented: $isShowingAttach) {
             AgentAttachView(
                 agent: agent,
@@ -117,92 +125,36 @@ struct AgentDetailView: View {
 
     @ViewBuilder
     private var monitorSurface: some View {
-        VStack(spacing: 0) {
-            monitorHeader
-            if let snapshot = monitor.snapshot {
-                if snapshot.characters.isEmpty {
-                    ScrollView(.vertical) {
-                        VStack(spacing: 16) {
-                            ContentUnavailableView {
-                                Label("No Agent output", systemImage: "rectangle.dashed")
-                            } description: {
-                                Text("The latest snapshot is empty. Refresh to check again.")
-                            } actions: {
-                                Button("Refresh", systemImage: "arrow.clockwise") {
-                                    Task { await monitor.refresh() }
-                                }
-                                .buttonStyle(.bordered)
-                            }
-
-                            AgentSentMessagesView(store: composer)
-                        }
-                        .padding()
-                        .frame(maxWidth: .infinity, minHeight: 360)
-                    }
-                    .refreshable { await monitor.refresh() }
-                } else {
-                    snapshotScrollView(snapshot)
-                }
+        if let snapshot = monitor.snapshot {
+            if snapshot.characters.isEmpty {
+                emptyConversation
             } else {
-                switch monitor.state {
-                case .failed(let message):
-                    ScrollView(.vertical) {
-                        VStack(spacing: 16) {
-                            ContentUnavailableView {
-                                Label(
-                                    "Unable to load Agent output",
-                                    systemImage: "exclamationmark.triangle")
-                            } description: {
-                                Text(message)
-                            } actions: {
-                                Button("Try again", systemImage: "arrow.clockwise") {
-                                    Task { await monitor.retry() }
-                                }
-                                .buttonStyle(.borderedProminent)
-                            }
-
-                            AgentSentMessagesView(store: composer)
-                        }
-                        .padding()
-                        .frame(maxWidth: .infinity, minHeight: 360)
-                    }
-                case .idle, .loading, .loaded:
-                    VStack(spacing: 12) {
-                        ProgressView()
-                        Text("Loading Agent output…")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                snapshotScrollView(snapshot)
+            }
+        } else {
+            switch monitor.state {
+            case .failed(let message):
+                failedConversation(message)
+            case .idle, .loading, .loaded:
+                VStack(spacing: 10) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Loading Agent response…")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(Color(uiColor: .systemGroupedBackground))
     }
 
     private func snapshotScrollView(_ snapshot: AttributedString) -> some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 12) {
+                LazyVStack(alignment: .leading, spacing: 16) {
+                    monitorNotices
                     historyTopMarker
-                    Text("Agent output")
-                        .font(.subheadline.weight(.semibold))
-                        .accessibilityAddTraits(.isHeader)
-                    Text(snapshot)
-                        .font(.system(.callout, design: .monospaced))
-                        .lineSpacing(3)
-                        .foregroundStyle(.white)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                        .padding(16)
-                        .background(
-                            Color.black.opacity(0.94),
-                            in: RoundedRectangle(cornerRadius: 16))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(.white.opacity(0.12), lineWidth: 1)
-                        }
-                        .environment(\.colorScheme, .dark)
+                    agentTurn(snapshot)
 
                     if let sendError = monitor.sendError {
                         Label(sendError, systemImage: "exclamationmark.triangle")
@@ -222,7 +174,7 @@ struct AgentDetailView: View {
                         .id(Self.outputBottomID)
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.vertical, 16)
             }
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .refreshable { await monitor.refresh() }
@@ -259,6 +211,119 @@ struct AgentDetailView: View {
         }
     }
 
+    private var emptyConversation: some View {
+        ScrollView(.vertical) {
+            LazyVStack(alignment: .leading, spacing: 16) {
+                monitorNotices
+                AgentConversationStateView(
+                    systemImage: "rectangle.dashed",
+                    title: "No Agent response yet",
+                    message: "The latest snapshot is empty. Refresh to check again.",
+                    actionTitle: "Refresh"
+                ) {
+                    Task { await monitor.refresh() }
+                }
+                AgentSentMessagesView(store: composer)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: 240, alignment: .topLeading)
+        }
+        .refreshable { await monitor.refresh() }
+    }
+
+    private func failedConversation(_ message: String) -> some View {
+        ScrollView(.vertical) {
+            LazyVStack(alignment: .leading, spacing: 16) {
+                monitorNotices
+                AgentConversationStateView(
+                    systemImage: "exclamationmark.triangle",
+                    title: "Unable to load the Agent response",
+                    message: message,
+                    actionTitle: "Try again"
+                ) {
+                    Task { await monitor.retry() }
+                }
+                AgentSentMessagesView(store: composer)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: 240, alignment: .topLeading)
+        }
+        .refreshable { await monitor.refresh() }
+    }
+
+    private func agentTurn(_ snapshot: AttributedString) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            agentAvatar
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(agent.agent.displayName)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                    agentStatus
+                }
+
+                Text(snapshot)
+                    .font(snapshotFont)
+                    .lineSpacing(horizontalSizeClass == .compact ? 2 : 3)
+                    .foregroundStyle(.white)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .padding(horizontalSizeClass == .compact ? 12 : 16)
+                    .background(
+                        Color.black.opacity(0.94),
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(.white.opacity(0.12), lineWidth: 1)
+                    }
+                    .environment(\.colorScheme, .dark)
+
+                snapshotFreshness
+            }
+        }
+        .frame(maxWidth: 720, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Agent response")
+    }
+
+    private var agentAvatar: some View {
+        let size: CGFloat = horizontalSizeClass == .compact ? 24 : 32
+        return Image(systemName: "ellipsis.message")
+            .font(.system(size: horizontalSizeClass == .compact ? 10 : 13, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: size, height: size)
+            .background(.quaternary, in: Circle())
+            .accessibilityHidden(true)
+    }
+
+    private var agentStatus: some View {
+        HStack(spacing: 4) {
+            if monitor.agentStatus == .working {
+                SolvingOrbView(size: 10)
+                    .accessibilityHidden(true)
+            } else {
+                Circle()
+                    .fill(Color(monitor.agentStatus.inkUIColor))
+                    .frame(width: 7, height: 7)
+                    .accessibilityHidden(true)
+            }
+            Text(monitor.agentStatus.rawValue.capitalized)
+        }
+        .font(.caption2.weight(.medium))
+        .foregroundStyle(Color(monitor.agentStatus.inkUIColor))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Agent status")
+        .accessibilityValue(monitor.agentStatus.rawValue.capitalized)
+    }
+
+    private var snapshotFont: Font {
+        horizontalSizeClass == .compact
+            ? .system(.footnote, design: .monospaced)
+            : .system(.callout, design: .monospaced)
+    }
+
     /// The only place history states are visible: a thin marker above the
     /// cached content. While the Agent works the notice replaces any
     /// spinner outright — history is unavailable, never "loading".
@@ -279,8 +344,9 @@ struct AgentDetailView: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
             case .unavailable:
                 historyMarkerLabel(
                     "History unavailable while the Agent works",
@@ -299,8 +365,9 @@ struct AgentDetailView: View {
                         .font(.footnote)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(12)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
             case .idle:
                 EmptyView()
             }
@@ -312,94 +379,30 @@ struct AgentDetailView: View {
             .font(.footnote)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
-    }
-
-    private var monitorHeader: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .center, spacing: 12) {
-                    monitorIdentity
-                    Spacer(minLength: 12)
-                    attachButton
-                }
-
-                VStack(alignment: .leading, spacing: 12) {
-                    monitorIdentity
-                    attachButton
-                }
-            }
-
-            if !monitor.liveUpdatesAvailable {
-                liveUpdatesUnavailableLabel
-            }
-            if monitor.snapshot != nil, case .failed(let message) = monitor.state {
-                HStack(alignment: .center, spacing: 8) {
-                    Label(
-                        "Refresh failed. Showing the last snapshot. \(message)",
-                        systemImage: "exclamationmark.triangle")
-                        .font(.footnote)
-                    Spacer(minLength: 8)
-                    Button("Try again") { Task { await monitor.retry() } }
-                        .font(.footnote)
-                }
-                .padding(12)
-                .background(
-                    Color.orange.opacity(0.12),
-                    in: RoundedRectangle(cornerRadius: 12))
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-    }
-
-    private var monitorIdentity: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Monitor")
-                .font(.headline)
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) {
-                    AgentStatusBadge(status: monitor.agentStatus)
-                    snapshotFreshness
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    AgentStatusBadge(status: monitor.agentStatus)
-                    snapshotFreshness
-                }
-            }
-        }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
     }
 
     @ViewBuilder
     private var snapshotFreshness: some View {
         if let capturedAt = monitor.capturedAt {
-            Label(
-                "Updated \(capturedAt.formatted(date: .omitted, time: .shortened))",
-                systemImage: "clock")
-                .font(.caption)
+            Text("Updated \(capturedAt.formatted(date: .omitted, time: .shortened))")
+                .font(.caption2)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
         } else {
             Text("Waiting for the first snapshot")
-                .font(.caption)
+                .font(.caption2)
                 .foregroundStyle(.secondary)
         }
     }
 
     private var attachButton: some View {
-        Button("Attach", systemImage: "terminal") {
+        Button("Terminal", systemImage: "terminal") {
             monitor.attachDidOpen()
             isShowingAttach = true
         }
-        .buttonStyle(.bordered)
-        .controlSize(.regular)
-        .frame(minHeight: 44)
         .accessibilityHint("Opens the live terminal")
     }
 
@@ -407,15 +410,72 @@ struct AgentDetailView: View {
         AgentAttachView.displayTitle(for: agent)
     }
 
-    private var liveUpdatesUnavailableLabel: some View {
-        Label(
-            "Updates are paused. Pull down to refresh.",
-            systemImage: "wifi.slash")
+    @ViewBuilder
+    private var monitorNotices: some View {
+        if !monitor.liveUpdatesAvailable {
+            conversationNotice(
+                "Updates are paused. Pull down to refresh.",
+                systemImage: "wifi.slash")
+        }
+        if monitor.snapshot != nil, case .failed(let message) = monitor.state {
+            HStack(alignment: .center, spacing: 8) {
+                Label(
+                    "Refresh failed. Showing the last response. \(message)",
+                    systemImage: "exclamationmark.triangle"
+                )
+                .font(.footnote)
+                Spacer(minLength: 8)
+                Button("Try again") { Task { await monitor.retry() } }
+                    .font(.footnote)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                Color.orange.opacity(0.12),
+                in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    private func conversationNotice(_ text: String, systemImage: String) -> some View {
+        Label(text, systemImage: systemImage)
             .font(.footnote)
-            .padding(12)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
     }
 
     private static let outputBottomID = "agent-monitor-output-bottom"
+}
+
+private struct AgentConversationStateView: View {
+    let systemImage: String
+    let title: String
+    let message: String
+    let actionTitle: String
+    let action: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 24, height: 24)
+                .background(.quaternary, in: Circle())
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text(message)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Button(actionTitle, action: action)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+        }
+        .frame(maxWidth: 560, alignment: .leading)
+    }
 }

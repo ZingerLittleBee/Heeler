@@ -9,13 +9,16 @@ struct AgentComposerView: View {
     let onControlKey: (MonitorControlKey) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            MonitorControlKeyStrip(
-                isEnabled: isControlKeyEnabled,
-                onTap: onControlKey)
-
-            Text("Message the Agent")
-                .font(.caption.weight(.semibold))
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("Message")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                MonitorControlKeyStrip(
+                    isEnabled: isControlKeyEnabled,
+                    onTap: onControlKey)
+            }
 
             HStack(alignment: .bottom, spacing: 10) {
                 TextField(
@@ -27,12 +30,14 @@ struct AgentComposerView: View {
                 )
                 .lineLimit(1...5)
                 .textFieldStyle(.plain)
-                .padding(12)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
                 .background(
                     Color(uiColor: .secondarySystemBackground),
-                    in: RoundedRectangle(cornerRadius: 14))
+                    in: RoundedRectangle(cornerRadius: 12)
+                )
                 .overlay {
-                    RoundedRectangle(cornerRadius: 14)
+                    RoundedRectangle(cornerRadius: 12)
                         .stroke(.secondary.opacity(0.18), lineWidth: 1)
                 }
                 .accessibilityLabel("Message the Agent")
@@ -43,13 +48,14 @@ struct AgentComposerView: View {
                 .buttonStyle(.borderedProminent)
                 .buttonBorderShape(.circle)
                 .labelStyle(.iconOnly)
+                .font(.footnote.weight(.semibold))
                 .frame(minWidth: 44, minHeight: 44)
                 .disabled(!store.canSend)
                 .accessibilityHint("Delivers the complete draft to the Agent")
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.vertical, 8)
         .background(.regularMaterial)
         .overlay(alignment: .top) { Divider() }
     }
@@ -61,16 +67,7 @@ struct AgentSentMessagesView: View {
     @ViewBuilder
     var body: some View {
         if !store.messages.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Label("Sent from this device", systemImage: "iphone")
-                        .font(.subheadline.weight(.semibold))
-                        .accessibilityAddTraits(.isHeader)
-                    Text("Delivery means the Host accepted the message.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
+            VStack(alignment: .trailing, spacing: 12) {
                 ForEach(store.messages) { message in
                     messageRow(message)
                         .id(message.id)
@@ -84,14 +81,18 @@ struct AgentSentMessagesView: View {
     private func messageRow(_ message: AgentComposerStore.Message) -> some View {
         HStack {
             Spacer(minLength: 48)
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .trailing, spacing: 5) {
                 Text("You")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
                 Text(message.text)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(
+                        Color.accentColor.opacity(0.16),
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                 statusLabel(for: message.state)
                     .font(.caption)
@@ -100,6 +101,7 @@ struct AgentSentMessagesView: View {
                     Text(detail)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
                     HStack(spacing: 8) {
                         Button("Retry", systemImage: "arrow.clockwise") {
                             Task { await store.retry(message.id) }
@@ -114,10 +116,6 @@ struct AgentSentMessagesView: View {
                     .controlSize(.small)
                 }
             }
-            .padding(12)
-            .background(
-                Color.accentColor.opacity(0.16),
-                in: RoundedRectangle(cornerRadius: 16))
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
     }

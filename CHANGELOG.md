@@ -94,11 +94,12 @@ Entries reference the issue that motivated them.
   constrained to the available screen width while captured history remains
   vertically scrollable. (#179)
 
-- Monitor now presents a stable status summary, a high-contrast snapshot
-  canvas, one scrollable activity surface for Agent output and locally sent
-  messages, a compact Composer, and an explicit path into Attach. Decorative
-  terminal borders and hidden horizontal controls no longer compete with the
-  content. (#179; #182)
+- Monitor now presents a stable status summary and high-contrast snapshot as an
+  Agent response inside one conversation-style flow with locally sent messages,
+  a compact Composer, and a toolbar path into the live terminal. Mobile chrome
+  uses small visible glyphs while preserving full-size touch targets, so status
+  cards and oversized empty-state icons no longer crowd the conversation.
+  (#179; #182)
 
 - Malformed herdr API error responses that carry an empty id now fail the
   originating request immediately with the server's error instead of hanging

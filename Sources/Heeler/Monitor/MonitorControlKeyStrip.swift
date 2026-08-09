@@ -7,24 +7,24 @@ import SwiftUI
 struct MonitorControlKeyStrip: View {
     let isEnabled: Bool
     let onTap: (MonitorControlKey) -> Void
+    private static let glyphPointSize: CGFloat = 12
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 2) {
             ForEach(Self.quickKeys) { key in
                 Button {
                     onTap(key)
                 } label: {
                     keyLabel(key)
-                        .font(.callout.weight(.medium))
-                        .frame(minWidth: 44, minHeight: 44)
-                        .padding(.horizontal, 4)
+                        .frame(width: 38, height: 30)
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.plain)
                 .disabled(!isEnabled)
                 .accessibilityLabel(key.accessibilityLabel)
             }
-
-            Spacer(minLength: 0)
 
             Menu {
                 ForEach(Self.arrowKeys) { key in
@@ -37,10 +37,13 @@ struct MonitorControlKeyStrip: View {
                 }
             } label: {
                 Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
-                    .font(.callout.weight(.medium))
-                    .frame(minWidth: 44, minHeight: 44)
+                    .font(.system(size: Self.glyphPointSize, weight: .medium))
+                    .frame(width: 38, height: 30)
+                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.plain)
             .disabled(!isEnabled)
             .accessibilityLabel("Directional keys")
             .accessibilityHint("Shows directional keys")
@@ -54,8 +57,10 @@ struct MonitorControlKeyStrip: View {
     private func keyLabel(_ key: MonitorControlKey) -> some View {
         if let systemImage = key.systemImage {
             Image(systemName: systemImage)
+                .font(.system(size: Self.glyphPointSize, weight: .medium))
         } else if let label = key.label {
             Text(label)
+                .font(.system(size: 11, weight: .medium))
         }
     }
 
