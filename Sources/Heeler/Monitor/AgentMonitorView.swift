@@ -172,7 +172,7 @@ struct AgentDetailView: View {
 
     private func snapshotScrollView(_ snapshot: AttributedString) -> some View {
         ScrollViewReader { proxy in
-            ScrollView([.horizontal, .vertical]) {
+            ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 0) {
                     historyTopMarker
                     Text(snapshot)

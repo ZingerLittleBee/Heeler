@@ -90,6 +90,10 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Monitor snapshots no longer scroll horizontally. Their text now stays
+  constrained to the available screen width while captured history remains
+  vertically scrollable. (#179)
+
 - Malformed herdr API error responses that carry an empty id now fail the
   originating request immediately with the server's error instead of hanging
   until the request deadline. herdr answers unparseable requests with
