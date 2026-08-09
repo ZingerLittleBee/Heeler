@@ -25,12 +25,10 @@ struct AgentComposerKeyboardLayout: Equatable {
             contentInset = max(currentHeight, lastPresentedHeight)
             toolsHeight = 0
         case .tools:
-            contentInset = 0
+            contentInset = lastPresentedHeight
             toolsHeight = lastPresentedHeight
         }
     }
-
-    var totalHeight: CGFloat { contentInset + toolsHeight }
 }
 
 /// The native, local-first input surface beneath the live terminal. Drafting
@@ -131,14 +129,6 @@ struct AgentComposerView: View {
             }
             .padding(.vertical, 8)
 
-            if isToolsKeyboardPresented {
-                AgentToolsKeyboard(
-                    store: store,
-                    context: keysContext,
-                    height: keyboardHeight,
-                    quickKeysEnabled: quickKeysEnabled,
-                    sendQuickKey: sendQuickKey)
-            }
         }
         .onAppear {
             guard let selectedID = switcher.selectedID,
@@ -223,7 +213,7 @@ struct AgentComposerView: View {
     }
 }
 
-private struct AgentToolsKeyboard: View {
+struct AgentToolsKeyboard: View {
     let store: AgentComposerStore
     let context: TerminalKeysContext
     let height: CGFloat

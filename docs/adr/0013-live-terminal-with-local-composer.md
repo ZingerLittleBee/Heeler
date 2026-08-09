@@ -14,8 +14,9 @@ visible, Composer can switch between the iOS keyboard and a tabbed tools
 keyboard. Its explicit Agent controls send Esc, Tab, Shift-Tab, arrows, Enter,
 and Backspace directly to the PTY; its Snippet and Skill panes edit the local
 draft. The tools keyboard reuses the complete measured iOS keyboard footprint,
-including its auxiliary rows, and the two modes exchange that single reserved
-space atomically so neither Composer nor the terminal grid moves. Send still
+including its auxiliary rows. The terminal reserves that footprint in both
+modes, and tools render as an overlay inside it rather than joining Composer's
+safe-area inset, so neither Composer nor the terminal grid moves. Send still
 delivers the complete draft through one `agent.prompt` request.
 
 This supersedes ADR 0012's non-realtime Monitor and separate interactive

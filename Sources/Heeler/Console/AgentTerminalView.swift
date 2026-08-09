@@ -366,6 +366,16 @@ struct AgentTerminalView: View {
         .modifier(
             AgentTerminalKeyboardInsetModifier(
                 height: composerKeyboardLayout.contentInset))
+        .overlay(alignment: .bottom) {
+            if let composer, composerKeyboardPresentation == .tools {
+                AgentToolsKeyboard(
+                    store: composer,
+                    context: terminalKeysContext,
+                    height: composerKeyboardLayout.toolsHeight,
+                    quickKeysEnabled: attach.isLocalInputEnabled,
+                    sendQuickKey: keyboardControl.sendQuickKey)
+            }
+        }
         // background(_:ignoresSafeAreaEdges:) defaults to .all: the theme
         // colour reaches under the transparent navigation bar and into the
         // home-indicator area without moving the terminal grid or touching

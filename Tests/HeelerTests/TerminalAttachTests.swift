@@ -1206,7 +1206,7 @@ struct TerminalAttachTests {
         #expect(inset.lastPresentedHeight == 402)
     }
 
-    @Test func agentKeyboardReplacementKeepsTheTotalFootprintStable() {
+    @Test func agentKeyboardReplacementKeepsTheTerminalInsetStable() {
         let system = AgentComposerKeyboardLayout(
             currentHeight: 402, lastPresentedHeight: 402,
             presentation: .system)
@@ -1223,14 +1223,14 @@ struct TerminalAttachTests {
         #expect(system == AgentComposerKeyboardLayout(
             currentHeight: 402, lastPresentedHeight: 402,
             presentation: .hidden))
-        #expect(toolsBeforeUIKitHides.contentInset == 0)
+        #expect(toolsBeforeUIKitHides.contentInset == 402)
         #expect(toolsAfterUIKitHides.toolsHeight == 402)
         #expect(system.availableToolsHeight == 402)
         #expect(systemBeforeUIKitShows.contentInset == 402)
         #expect([
             system, toolsBeforeUIKitHides, toolsAfterUIKitHides,
             systemBeforeUIKitShows,
-        ].map(\.totalHeight) == [402, 402, 402, 402])
+        ].map(\.contentInset) == [402, 402, 402, 402])
     }
 
     /// Backgrounding hides the keyboard — animating the accessory out — but
