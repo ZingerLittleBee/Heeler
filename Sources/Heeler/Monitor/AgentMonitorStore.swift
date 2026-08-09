@@ -495,7 +495,7 @@ final class AgentMonitorStore {
         case TransportError.timedOut:
             "The Host did not answer in time."
         case let error as HerdrAPIError:
-            "herdr rejected the snapshot: \(error.message)"
+            "Couldn't refresh the screen. \(error.message)"
         case let error as TransportError:
             error.connectionGuidance
         default:
@@ -510,7 +510,7 @@ final class AgentMonitorStore {
         case TransportError.timedOut:
             "The Host did not answer in time."
         case let error as HerdrAPIError:
-            "herdr rejected the key: \(error.message)"
+            "Couldn't send the key. \(error.message)"
         case let error as TransportError:
             error.connectionGuidance
         default:

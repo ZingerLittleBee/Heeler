@@ -390,7 +390,7 @@ struct AgentMonitorStoreTests {
 
         await store.open()
 
-        #expect(store.state == .failed("herdr rejected the snapshot: agent is working"))
+        #expect(store.state == .failed("Couldn't refresh the screen. agent is working"))
         #expect(store.snapshot == nil)
 
         await transport.setAgentReadFailure(nil)
@@ -760,7 +760,7 @@ struct AgentMonitorStoreTests {
             HerdrAPIError(code: "invalid_key", message: "unsupported key foo"))
         await store.send(.enter)
 
-        #expect(store.sendError == "herdr rejected the key: unsupported key foo")
+        #expect(store.sendError == "Couldn't send the key. unsupported key foo")
         let snapshot = try #require(store.snapshot)
         #expect(String(snapshot.characters) == "known screen")
         #expect(await transport.agentSendKeysParams.isEmpty)
