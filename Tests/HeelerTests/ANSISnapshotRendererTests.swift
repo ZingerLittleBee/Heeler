@@ -290,6 +290,28 @@ struct ANSISnapshotRendererTests {
         #expect(rendered.runs.first?.backgroundColor == nil)
     }
 
+    @Test func removesBackgroundColorFromRunPadding() {
+        let rendered = ANSISnapshotRenderer.render(
+            "\u{1B}[48;5;232m    message    \u{1B}[0m")
+        let runs = rendered.runs.map { run in
+            (
+                text: String(rendered.characters[run.range]),
+                background: run.backgroundColor
+            )
+        }
+
+        #expect(String(rendered.characters) == "    message    ")
+        #expect(runs.count == 3)
+        #expect(runs[0].text == "    ")
+        #expect(runs[0].background == nil)
+        #expect(runs[1].text == "message")
+        #expect(
+            runs[1].background
+                == Color(red: 8.0 / 255.0, green: 8.0 / 255.0, blue: 8.0 / 255.0))
+        #expect(runs[2].text == "    ")
+        #expect(runs[2].background == nil)
+    }
+
     private func assertFixture(_ fixture: Fixture) {
         let rendered = ANSISnapshotRenderer.render(String(decoding: fixture.bytes, as: UTF8.self))
         #expect(String(rendered.characters) == fixture.text, "\(fixture.name): text")

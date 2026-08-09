@@ -1,35 +1,51 @@
 import SwiftUI
 
-/// Monitor's horizontal control-key strip (#183): Enter, Esc, Ctrl+C, and
-/// the four arrows. Self-contained so package #180 can attach elsewhere
-/// without reshaping the rest of the Monitor surface. Spellings live on
+/// Monitor's compact control-key row (#183). The three prompt actions stay
+/// one tap away; directional keys live behind an explicit menu so narrow
+/// layouts never hide controls offscreen. Spellings live on
 /// ``MonitorControlKey``; this view only presents the buttons.
 struct MonitorControlKeyStrip: View {
     let isEnabled: Bool
     let onTap: (MonitorControlKey) -> Void
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(MonitorControlKey.allCases) { key in
+        HStack(spacing: 8) {
+            ForEach(Self.quickKeys) { key in
+                Button {
+                    onTap(key)
+                } label: {
+                    keyLabel(key)
+                        .font(.callout.weight(.medium))
+                        .frame(minWidth: 44, minHeight: 44)
+                        .padding(.horizontal, 4)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!isEnabled)
+                .accessibilityLabel(key.accessibilityLabel)
+            }
+
+            Spacer(minLength: 0)
+
+            Menu {
+                ForEach(Self.arrowKeys) { key in
                     Button {
                         onTap(key)
                     } label: {
-                        keyLabel(key)
-                            .font(.callout.weight(.medium))
-                            .frame(minWidth: 44, minHeight: 36)
-                            .padding(.horizontal, 4)
+                        Label(key.accessibilityLabel, systemImage: key.systemImage ?? "arrow.up")
                     }
-                    .buttonStyle(.bordered)
                     .disabled(!isEnabled)
-                    .accessibilityLabel(key.accessibilityLabel)
                 }
+            } label: {
+                Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                    .font(.callout.weight(.medium))
+                    .frame(minWidth: 44, minHeight: 44)
             }
-            .padding(.horizontal, 1)
+            .buttonStyle(.bordered)
+            .disabled(!isEnabled)
+            .accessibilityLabel("Directional keys")
+            .accessibilityHint("Shows directional keys")
         }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(.bar)
+        .dynamicTypeSize(...DynamicTypeSize.large)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Control keys")
     }
@@ -42,4 +58,12 @@ struct MonitorControlKeyStrip: View {
             Text(label)
         }
     }
+
+    private static let quickKeys: [MonitorControlKey] = [
+        .enter, .escape, .interrupt,
+    ]
+
+    private static let arrowKeys: [MonitorControlKey] = [
+        .up, .down, .left, .right,
+    ]
 }

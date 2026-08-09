@@ -75,116 +75,154 @@ struct AgentDetailView: View {
         VStack(spacing: 0) {
             monitorSurface
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            Divider()
-            AgentComposerView(store: composer)
+            AgentComposerView(
+                store: composer,
+                isControlKeyEnabled: !monitor.isSendingKey
+            ) { key in
+                Task { await monitor.send(key) }
+            }
         }
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Attach", systemImage: "terminal") {
-                        monitor.attachDidOpen()
-                        isShowingAttach = true
-                    }
-                }
+        .background(Color(uiColor: .systemGroupedBackground))
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(isPresented: $isShowingAttach) {
+            AgentAttachView(
+                agent: agent,
+                console: console,
+                terminal: terminal,
+                hosts: hosts,
+                activity: activity,
+                keyboardHandoff: keyboardHandoff,
+                keyboardInset: keyboardInset,
+                isOnStage: isOnStage,
+                onSwitch: onSwitch,
+                onClosed: onClosed,
+                attachStore: attach)
+        }
+        .onChange(of: isShowingAttach) { wasShowing, isShowing in
+            guard wasShowing, !isShowing else { return }
+            Task {
+                await attach.leave().value
+                await monitor.refreshOnReturn()
             }
-            .navigationDestination(isPresented: $isShowingAttach) {
-                AgentAttachView(
-                    agent: agent,
-                    console: console,
-                    terminal: terminal,
-                    hosts: hosts,
-                    activity: activity,
-                    keyboardHandoff: keyboardHandoff,
-                    keyboardInset: keyboardInset,
-                    isOnStage: isOnStage,
-                    onSwitch: onSwitch,
-                    onClosed: onClosed,
-                    attachStore: attach)
-            }
-            .onChange(of: isShowingAttach) { wasShowing, isShowing in
-                guard wasShowing, !isShowing else { return }
-                Task {
-                    await attach.leave().value
-                    await monitor.refreshOnReturn()
-                }
-            }
-            .task {
-                composer.open()
-                await monitor.open()
-            }
-            .onChange(of: scenePhase, initial: true) { _, phase in
-                monitor.setForeground(phase == .active)
-            }
+        }
+        .task {
+            composer.open()
+            await monitor.open()
+        }
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            monitor.setForeground(phase == .active)
+        }
     }
 
     @ViewBuilder
     private var monitorSurface: some View {
-        if let snapshot = monitor.snapshot {
-            VStack(spacing: 0) {
-                statusHeader
-                Divider()
+        VStack(spacing: 0) {
+            monitorHeader
+            if let snapshot = monitor.snapshot {
                 if snapshot.characters.isEmpty {
-                    ScrollView {
-                        ContentUnavailableView(
-                            "No Output", systemImage: "rectangle.dashed",
-                            description: Text("The Agent's latest screen is empty."))
-                            .frame(maxWidth: .infinity, minHeight: 360)
+                    ScrollView(.vertical) {
+                        VStack(spacing: 16) {
+                            ContentUnavailableView {
+                                Label("No Agent output", systemImage: "rectangle.dashed")
+                            } description: {
+                                Text("The latest snapshot is empty. Refresh to check again.")
+                            } actions: {
+                                Button("Refresh", systemImage: "arrow.clockwise") {
+                                    Task { await monitor.refresh() }
+                                }
+                                .buttonStyle(.bordered)
+                            }
+
+                            AgentSentMessagesView(store: composer)
+                        }
+                        .padding()
+                        .frame(maxWidth: .infinity, minHeight: 360)
                     }
                     .refreshable { await monitor.refresh() }
                 } else {
                     snapshotScrollView(snapshot)
                 }
-                if let sendError = monitor.sendError {
-                    Text(sendError)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal)
-                        .padding(.top, 8)
-                }
-                MonitorControlKeyStrip(isEnabled: !monitor.isSendingKey) { key in
-                    Task { await monitor.send(key) }
-                }
-            }
-        } else {
-            switch monitor.state {
-            case .failed(let message):
-                ContentUnavailableView {
-                    Label("Couldn't Load Screen", systemImage: "exclamationmark.triangle")
-                } description: {
-                    VStack(spacing: 8) {
-                        Text(message)
-                        if !monitor.liveUpdatesAvailable {
-                            liveUpdatesUnavailableLabel
+            } else {
+                switch monitor.state {
+                case .failed(let message):
+                    ScrollView(.vertical) {
+                        VStack(spacing: 16) {
+                            ContentUnavailableView {
+                                Label(
+                                    "Unable to load Agent output",
+                                    systemImage: "exclamationmark.triangle")
+                            } description: {
+                                Text(message)
+                            } actions: {
+                                Button("Try again", systemImage: "arrow.clockwise") {
+                                    Task { await monitor.retry() }
+                                }
+                                .buttonStyle(.borderedProminent)
+                            }
+
+                            AgentSentMessagesView(store: composer)
                         }
+                        .padding()
+                        .frame(maxWidth: .infinity, minHeight: 360)
                     }
-                } actions: {
-                    Button("Retry") { Task { await monitor.retry() } }
-                        .buttonStyle(.borderedProminent)
-                }
-            case .idle, .loading, .loaded:
-                ProgressView("Loading latest screen…")
+                case .idle, .loading, .loaded:
+                    VStack(spacing: 12) {
+                        ProgressView()
+                        Text("Loading Agent output…")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
         }
+        .background(Color(uiColor: .systemGroupedBackground))
     }
 
     private func snapshotScrollView(_ snapshot: AttributedString) -> some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 12) {
                     historyTopMarker
+                    Text("Agent output")
+                        .font(.subheadline.weight(.semibold))
+                        .accessibilityAddTraits(.isHeader)
                     Text(snapshot)
                         .font(.system(.callout, design: .monospaced))
                         .lineSpacing(3)
+                        .foregroundStyle(.white)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
-                        .padding()
+                        .padding(16)
+                        .background(
+                            Color.black.opacity(0.94),
+                            in: RoundedRectangle(cornerRadius: 16))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(.white.opacity(0.12), lineWidth: 1)
+                        }
+                        .environment(\.colorScheme, .dark)
+
+                    if let sendError = monitor.sendError {
+                        Label(sendError, systemImage: "exclamationmark.triangle")
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(
+                                Color.red.opacity(0.08),
+                                in: RoundedRectangle(cornerRadius: 12))
+                    }
+
+                    AgentSentMessagesView(store: composer)
+
                     Color.clear
                         .frame(height: 1)
                         .id(Self.outputBottomID)
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
             }
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .refreshable { await monitor.refresh() }
@@ -203,18 +241,19 @@ struct AgentDetailView: View {
                 guard monitor.isBottomPinned else { return }
                 proxy.scrollTo(Self.outputBottomID, anchor: .bottom)
             }
+            .onChange(of: composer.messages.count) {
+                guard monitor.isBottomPinned else { return }
+                proxy.scrollTo(Self.outputBottomID, anchor: .bottom)
+            }
             .overlay(alignment: .bottomTrailing) {
                 if monitor.hasNewOutput {
-                    Button("New Output", systemImage: "arrow.down") {
+                    Button("Jump to latest", systemImage: "arrow.down") {
                         monitor.jumpToLatestOutput()
-                        withAnimation(.snappy) {
-                            proxy.scrollTo(Self.outputBottomID, anchor: .bottom)
-                        }
+                        proxy.scrollTo(Self.outputBottomID, anchor: .bottom)
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
-                    .padding()
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(20)
                 }
             }
         }
@@ -239,8 +278,9 @@ struct AgentDetailView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
             case .unavailable:
                 historyMarkerLabel(
                     "History unavailable while the Agent works",
@@ -259,8 +299,8 @@ struct AgentDetailView: View {
                         .font(.footnote)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.horizontal)
-                .padding(.vertical, 10)
+                .padding(12)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
             case .idle:
                 EmptyView()
             }
@@ -271,42 +311,96 @@ struct AgentDetailView: View {
         Label(text, systemImage: systemImage)
             .font(.footnote)
             .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private var statusHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Text("Agent output")
-                    .font(.subheadline.weight(.semibold))
-                AgentStatusBadge(status: monitor.agentStatus)
-                Spacer(minLength: 8)
-                if let capturedAt = monitor.capturedAt {
-                    Label(
-                        "Updated \(capturedAt.formatted(date: .omitted, time: .standard))",
-                        systemImage: "clock")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+    private var monitorHeader: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 12) {
+                    monitorIdentity
+                    Spacer(minLength: 12)
+                    attachButton
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    monitorIdentity
+                    attachButton
                 }
             }
+
             if !monitor.liveUpdatesAvailable {
                 liveUpdatesUnavailableLabel
             }
-            if case .failed(let message) = monitor.state {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Label(message, systemImage: "exclamationmark.triangle")
+            if monitor.snapshot != nil, case .failed(let message) = monitor.state {
+                HStack(alignment: .center, spacing: 8) {
+                    Label(
+                        "Refresh failed. Showing the last snapshot. \(message)",
+                        systemImage: "exclamationmark.triangle")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
                     Spacer(minLength: 8)
-                    Button("Retry") { Task { await monitor.retry() } }
+                    Button("Try again") { Task { await monitor.retry() } }
                         .font(.footnote)
                 }
+                .padding(12)
+                .background(
+                    Color.orange.opacity(0.12),
+                    in: RoundedRectangle(cornerRadius: 12))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal)
-        .padding(.vertical, 10)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+    }
+
+    private var monitorIdentity: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Monitor")
+                .font(.headline)
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    AgentStatusBadge(status: monitor.agentStatus)
+                    snapshotFreshness
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    AgentStatusBadge(status: monitor.agentStatus)
+                    snapshotFreshness
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var snapshotFreshness: some View {
+        if let capturedAt = monitor.capturedAt {
+            Label(
+                "Updated \(capturedAt.formatted(date: .omitted, time: .shortened))",
+                systemImage: "clock")
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+        } else {
+            Text("Waiting for the first snapshot")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var attachButton: some View {
+        Button("Attach", systemImage: "terminal") {
+            monitor.attachDidOpen()
+            isShowingAttach = true
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.regular)
+        .frame(minHeight: 44)
+        .accessibilityHint("Opens the live terminal")
     }
 
     private var title: String {
@@ -315,10 +409,12 @@ struct AgentDetailView: View {
 
     private var liveUpdatesUnavailableLabel: some View {
         Label(
-            "Live updates unavailable. Pull to refresh.",
+            "Updates are paused. Pull down to refresh.",
             systemImage: "wifi.slash")
             .font(.footnote)
-            .foregroundStyle(.secondary)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
     }
 
     private static let outputBottomID = "agent-monitor-output-bottom"

@@ -94,9 +94,11 @@ Entries reference the issue that motivated them.
   constrained to the available screen width while captured history remains
   vertically scrollable. (#179)
 
-- Monitor suppresses decoration-only terminal borders and empty background
-  bars from snapshot output, uses a denser readable text treatment, and shows
-  locally sent Composer messages as distinct You cards. (#179; #182)
+- Monitor now presents a stable status summary, a high-contrast snapshot
+  canvas, one scrollable activity surface for Agent output and locally sent
+  messages, a compact Composer, and an explicit path into Attach. Decorative
+  terminal borders and hidden horizontal controls no longer compete with the
+  content. (#179; #182)
 
 - Malformed herdr API error responses that carry an empty id now fail the
   originating request immediately with the server's error instead of hanging

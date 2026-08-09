@@ -15,13 +15,41 @@ enum ANSISnapshotRenderer {
 
     private static func cleanTerminalChrome(from rendered: AttributedString) -> AttributedString {
         var cleaned = rendered
-        let whitespaceBackgroundRanges = cleaned.runs.compactMap { run in
-            cleaned.characters[run.range].allSatisfy(\.isWhitespace) ? run.range : nil
+        let whitespaceBackgroundRanges = cleaned.runs.flatMap { run in
+            backgroundPaddingRanges(in: run.range, characters: cleaned.characters)
         }
         for range in whitespaceBackgroundRanges {
             cleaned[range].backgroundColor = nil
         }
         return removingDecorationOnlyLines(from: cleaned)
+    }
+
+    private static func backgroundPaddingRanges(
+        in range: Range<AttributedString.Index>,
+        characters: AttributedString.CharacterView
+    ) -> [Range<AttributedString.Index>] {
+        var start = range.lowerBound
+        while start < range.upperBound, characters[start].isWhitespace {
+            start = characters.index(after: start)
+        }
+
+        guard start < range.upperBound else { return [range] }
+
+        var end = range.upperBound
+        while end > start {
+            let previous = characters.index(before: end)
+            guard characters[previous].isWhitespace else { break }
+            end = previous
+        }
+
+        var ranges: [Range<AttributedString.Index>] = []
+        if range.lowerBound < start {
+            ranges.append(range.lowerBound..<start)
+        }
+        if end < range.upperBound {
+            ranges.append(end..<range.upperBound)
+        }
+        return ranges
     }
 
     private static func removingDecorationOnlyLines(
