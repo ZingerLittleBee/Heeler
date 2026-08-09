@@ -79,7 +79,7 @@ struct NotificationSettingsView: View {
             }
         case .registered(let token):
             HStack {
-                Text("Notifications enabled")
+                Text("Ready for Host notifications")
                 Spacer()
                 if token.environment == .sandbox {
                     Text("Sandbox")
@@ -92,7 +92,7 @@ struct NotificationSettingsView: View {
             }
         case .denied:
             VStack(alignment: .leading, spacing: 6) {
-                Text("Notifications are turned off for herdr.")
+                Text("Notifications are turned off for Heeler.")
                 Button("Open Settings") {
                     if let url = URL(string: UIApplication.openSettingsURLString) {
                         openURL(url)
