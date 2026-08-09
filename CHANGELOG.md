@@ -39,6 +39,11 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- Notification setup now distinguishes device registration from per-Host
+  configuration, accurately describes relay-visible metadata and Notification
+  Key custody, warns when a custom relay uses cleartext HTTP, and uses
+  Heeler-branded generic fallback alerts. (PR #195)
+
 - Opening an Agent now gives Heeler priority over an existing terminal client.
   Attach and Reattach use herdr's takeover mode, so a stale mobile connection
   or a desktop client can no longer prevent the Agent detail terminal from
