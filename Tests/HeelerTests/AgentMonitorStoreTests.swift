@@ -735,13 +735,19 @@ struct AgentMonitorStoreTests {
 
         #expect(store.sendError == nil)
         #expect(store.isSendingKey == false)
+        // The refreshed screen shares nothing with the old one, so the
+        // scrollback seals the pre-send screen above a gap (#181) rather
+        // than discarding it.
         let snapshot = try #require(store.snapshot)
-        #expect(String(snapshot.characters) == "after ctrl+c")
+        #expect(
+            String(snapshot.characters)
+                == ["before", AgentMonitorStore.gapMarkerText, "after ctrl+c"]
+                .joined(separator: "\n"))
         #expect(
             await transport.agentSendKeysParams == [
                 AgentSendKeysParams(keys: ["ctrl+c"], target: "w1:p1")
             ])
-        #expect(await transport.agentReadParams.count == 2)
+        #expect(await agentReads(transport, source: .visible).count == 2)
     }
 
     @Test func sendFailureSurfacesWithoutRefreshing() async throws {
@@ -758,7 +764,7 @@ struct AgentMonitorStoreTests {
         let snapshot = try #require(store.snapshot)
         #expect(String(snapshot.characters) == "known screen")
         #expect(await transport.agentSendKeysParams.isEmpty)
-        #expect(await transport.agentReadParams.count == 1)
+        #expect(await agentReads(transport, source: .visible).count == 1)
     }
 
     @Test func successfulSendClearsAPriorSendError() async throws {
@@ -776,8 +782,13 @@ struct AgentMonitorStoreTests {
         await store.send(.escape)
 
         #expect(store.sendError == nil)
+        // As above: the unrelated refreshed screen lands below a gap while
+        // the pre-send screen stays in the scrollback (#181).
         let snapshot = try #require(store.snapshot)
-        #expect(String(snapshot.characters) == "dismissed")
+        #expect(
+            String(snapshot.characters)
+                == ["screen", AgentMonitorStore.gapMarkerText, "dismissed"]
+                .joined(separator: "\n"))
         #expect(
             await transport.agentSendKeysParams == [
                 AgentSendKeysParams(keys: ["esc"], target: "w1:p1")
