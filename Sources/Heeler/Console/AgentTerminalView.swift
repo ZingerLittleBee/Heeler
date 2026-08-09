@@ -433,6 +433,10 @@ struct AgentTerminalView: View {
         .overlay(alignment: .leading) {
             AgentEdgeBackGesture { dismiss() }
         }
+        .toolbarColorScheme(
+            terminal.themes.selection(for: colorScheme)
+                .chromeColorScheme(for: colorScheme),
+            for: .navigationBar)
         .toolbar(.hidden, for: .navigationBar)
     }
 
