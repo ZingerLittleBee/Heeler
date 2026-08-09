@@ -85,10 +85,19 @@ struct AgentDetailView: View {
                 Task { await monitor.send(key) }
             }
         }
-        .background(Color(uiColor: .systemGroupedBackground))
+        .background(Color(uiColor: .systemBackground))
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 0) {
+                    Text(title)
+                        .font(.headline)
+                        .lineLimit(1)
+                    agentStatus
+                }
+                .accessibilityElement(children: .combine)
+            }
             ToolbarItem(placement: .primaryAction) {
                 attachButton
             }
@@ -253,14 +262,6 @@ struct AgentDetailView: View {
 
     private func agentTurn(_ snapshot: AttributedString) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .center, spacing: 8) {
-                agentAvatar
-                Text(agent.agent.displayName)
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-                agentStatus
-            }
-
             Text(snapshot)
                 .font(snapshotFont)
                 .lineSpacing(horizontalSizeClass == .compact ? 2 : 3)
@@ -283,16 +284,6 @@ struct AgentDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Agent response")
-    }
-
-    private var agentAvatar: some View {
-        let size: CGFloat = horizontalSizeClass == .compact ? 24 : 32
-        return Image(systemName: "ellipsis.message")
-            .font(.system(size: horizontalSizeClass == .compact ? 10 : 13, weight: .semibold))
-            .foregroundStyle(.secondary)
-            .frame(width: size, height: size)
-            .background(.quaternary, in: Circle())
-            .accessibilityHidden(true)
     }
 
     private var agentStatus: some View {

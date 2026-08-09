@@ -16,8 +16,8 @@ struct MonitorControlKeyStrip: View {
                     onTap(key)
                 } label: {
                     keyLabel(key)
-                        .frame(width: 38, height: 30)
-                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 36, height: 28)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
@@ -38,8 +38,8 @@ struct MonitorControlKeyStrip: View {
             } label: {
                 Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
                     .font(.system(size: Self.glyphPointSize, weight: .medium))
-                    .frame(width: 38, height: 30)
-                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 36, height: 28)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }

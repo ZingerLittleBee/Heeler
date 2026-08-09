@@ -10,38 +10,23 @@ struct AgentComposerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Text("Message")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
+            TextField(
+                "Message Agent",
+                text: Binding(
+                    get: { store.draft },
+                    set: { store.replaceDraft(with: $0) }),
+                axis: .vertical
+            )
+            .lineLimit(1...5)
+            .textFieldStyle(.plain)
+            .frame(minHeight: 36, alignment: .topLeading)
+            .accessibilityLabel("Message the Agent")
+
+            HStack(spacing: 0) {
                 MonitorControlKeyStrip(
                     isEnabled: isControlKeyEnabled,
                     onTap: onControlKey)
-            }
-
-            HStack(alignment: .bottom, spacing: 10) {
-                TextField(
-                    "Type a message",
-                    text: Binding(
-                        get: { store.draft },
-                        set: { store.replaceDraft(with: $0) }),
-                    axis: .vertical
-                )
-                .lineLimit(1...5)
-                .textFieldStyle(.plain)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(
-                    Color(uiColor: .secondarySystemBackground),
-                    in: RoundedRectangle(cornerRadius: 12)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(.secondary.opacity(0.18), lineWidth: 1)
-                }
-                .accessibilityLabel("Message the Agent")
-
+                Spacer(minLength: 8)
                 Button("Send", systemImage: "arrow.up") {
                     Task { await store.send() }
                 }
@@ -54,15 +39,25 @@ struct AgentComposerView: View {
                 .accessibilityHint("Delivers the complete draft to the Agent")
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 12)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+        .background(
+            .regularMaterial,
+            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(.secondary.opacity(0.16), lineWidth: 1)
+        }
+        .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(.regularMaterial)
-        .overlay(alignment: .top) { Divider() }
     }
 }
 
 struct AgentSentMessagesView: View {
     let store: AgentComposerStore
+    @Environment(\.colorScheme) private var colorScheme
 
     @ViewBuilder
     var body: some View {
@@ -82,16 +77,13 @@ struct AgentSentMessagesView: View {
         HStack {
             Spacer(minLength: 48)
             VStack(alignment: .trailing, spacing: 5) {
-                Text("You")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-
                 Text(message.text)
                     .textSelection(.enabled)
+                    .foregroundStyle(.white)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
                     .background(
-                        Color.accentColor.opacity(0.16),
+                        promptBackground,
                         in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                 statusLabel(for: message.state)
@@ -118,6 +110,10 @@ struct AgentSentMessagesView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+
+    private var promptBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.14) : Color.black.opacity(0.94)
     }
 
     @ViewBuilder
