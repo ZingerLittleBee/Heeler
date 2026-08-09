@@ -29,6 +29,15 @@ struct NotificationRelaySettingsTests {
         settings.rawValue = "https://relay.example.com"
         #expect(settings.relayURL?.absoluteString == "https://relay.example.com")
         #expect(!settings.hasInvalidEntry)
+        #expect(!settings.hasInsecureHTTPEntry)
+    }
+
+    @Test func acceptsButFlagsAnHTTPBaseURLAsInsecure() {
+        let settings = NotificationRelaySettings(defaults: makeDefaults())
+        settings.rawValue = "http://relay.example.com"
+        #expect(settings.relayURL?.absoluteString == "http://relay.example.com")
+        #expect(!settings.hasInvalidEntry)
+        #expect(settings.hasInsecureHTTPEntry)
     }
 
     @Test func acceptsAPathPrefixAndTrimsSurroundingWhitespace() {
@@ -50,6 +59,7 @@ struct NotificationRelaySettingsTests {
         settings.rawValue = "relay.example.com"
         #expect(settings.relayURL == nil)
         #expect(settings.hasInvalidEntry)
+        #expect(!settings.hasInsecureHTTPEntry)
     }
 
     @Test func persistsAndReloadsTheRawValue() {

@@ -9,11 +9,12 @@ ARCHIVE := build/Heeler.xcarchive
 DERIVED := build/DerivedData
 APP_ID  := dev.bybee.heeler
 SIM     ?= iPhone 17
+IOS_WATCH_DEBOUNCE ?= 1s
 
 # First physical device paired with devicectl; override with `make install DEVICE=<uuid>`.
 DEVICE ?= $(shell xcrun devicectl list devices 2>/dev/null | awk '/physical[a-z]* *$$/ { for (i = 1; i <= NF; i++) if ($$i ~ /^[0-9A-Fa-f-]{36}$$/) { print $$i; exit } }')
 
-.PHONY: help generate build test install sim archive upload testflight bump publish clean check-device ssh-artifacts verify-ssh-artifacts
+.PHONY: help generate build test install watch-ios-device sim archive upload testflight bump publish clean check-device ssh-artifacts verify-ssh-artifacts
 
 help: ## Show available targets
 	@awk -F':.*## ' '/^[a-z-]+:.*## / { printf "  make %-20s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -44,6 +45,19 @@ install: check-device build ## Build Debug, install on the iPhone, and relaunch 
 	xcrun devicectl device install app --device $(DEVICE) \
 		$(DERIVED)/Build/Products/Debug-iphoneos/Heeler.app
 	xcrun devicectl device process launch --terminate-existing --device $(DEVICE) $(APP_ID)
+
+watch-ios-device: ## Watch iOS code and install to a connected iPhone/iPad
+	@command -v watchexec >/dev/null || { echo "watchexec not found. Install with: brew install watchexec"; exit 1; }
+	watchexec \
+		--watch Sources \
+		--watch Packages/HeelerSSH/Sources \
+		--watch Packages/HeelerSSH/NativeSupport \
+		--watch Packages/HeelerSSH/Package.swift \
+		--watch project.yml \
+		--exts swift,h,modulemap,yml,plist,entitlements,resolved,json,png,ttf \
+		--debounce "$(IOS_WATCH_DEBOUNCE)" \
+		--on-busy-update queue \
+		-- make install DEVICE="$(DEVICE)"
 
 sim: generate ## Build Debug and run it on the simulator (override with SIM=<name>)
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \

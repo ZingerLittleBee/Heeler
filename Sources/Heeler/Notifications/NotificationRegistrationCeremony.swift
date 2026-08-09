@@ -4,8 +4,8 @@ import Foundation
 /// reuse the Host's Notification Key, then write this device's entry into
 /// the registration file the Host's notify hook reads. The Transport owns
 /// where that file lives and how it is replaced atomically; this type owns
-/// the read-merge-write and the key custody split (key in the device
-/// Keychain, token on the Host).
+/// the read-merge-write and the custody split (key in the device Keychain and
+/// Host registration file, token only in the Host registration file).
 ///
 /// Every failure is surfaced: a thrown `NotificationRegistrationError` or
 /// `TransportError` means notifications are not armed, never silently broken.

@@ -32,20 +32,27 @@ struct NotificationPrivacyCopyTests {
         #expect(sees.localizedCaseInsensitiveContains("push token"))
         #expect(sees.localizedCaseInsensitiveContains("ciphertext"))
         #expect(sees.localizedCaseInsensitiveContains("IP"))
+        #expect(sees.localizedCaseInsensitiveContains("how often"))
     }
 
     @Test func statesWhatTheRelayCannotSee() {
         let cannot = NotificationPrivacyCopy.relayCannotSee.joined(separator: "\n")
         // The exact plaintext fields, so the claim is concrete, not hand-wavy.
-        #expect(cannot.localizedCaseInsensitiveContains("agent names"))
-        #expect(cannot.localizedCaseInsensitiveContains("statuses"))
-        #expect(cannot.localizedCaseInsensitiveContains("pane ids"))
+        #expect(cannot.localizedCaseInsensitiveContains("project name"))
+        #expect(cannot.localizedCaseInsensitiveContains("task title"))
+        #expect(cannot.localizedCaseInsensitiveContains("agent type"))
+        #expect(cannot.localizedCaseInsensitiveContains("status"))
+        #expect(cannot.localizedCaseInsensitiveContains("pane ID"))
+        #expect(cannot.localizedCaseInsensitiveContains("timestamp"))
+        #expect(cannot.localizedCaseInsensitiveContains("Notification Key"))
     }
 
     @Test func statesTheSelfBuiltAppCaveat() {
         let caveat = NotificationPrivacyCopy.customRelayCaveat
-        #expect(caveat.localizedCaseInsensitiveContains("build the app yourself"))
+        #expect(caveat.localizedCaseInsensitiveContains("build and sign yourself"))
         #expect(caveat.localizedCaseInsensitiveContains("bundle id"))
+        #expect(caveat.localizedCaseInsensitiveContains("APNs credentials"))
+        #expect(caveat.localizedCaseInsensitiveContains("App Store"))
     }
 
     @Test func linksToThePrivacyPolicy() throws {

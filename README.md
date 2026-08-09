@@ -36,8 +36,9 @@ Agent Console and Attach together on iPad:
   herdr plugin; Ed25519 keys are generated on device and never leave the
   Keychain, and the code pins the host key fingerprint.
 - **Agent Notifications** — end-to-end encrypted APNs pushes when an Agent
-  goes Blocked or Done, deep-linking into its terminal; the relay sees only
-  ciphertext.
+  goes Blocked or Done, deep-linking into its terminal; the relay sees the
+  device token, source IP, request timing, and ciphertext, but cannot read the
+  notification.
 - **Worktrees** — start an Agent on a clean checkout of a workspace's repo
   with a toggle on the New Agent form.
 - **Appearance** — 30 curated terminal themes with independent Light and Dark
@@ -78,8 +79,9 @@ The `pair` action opens a popup with a Pairing Code QR; scan it with the app
 and the machine is added as a Host — addresses, host key fingerprint, and SSH
 key enrollment are all handled by the code, nothing to type. The same plugin
 pushes encrypted Blocked/Done notifications to the app once you enable Agent
-Notifications for the Host in the app's settings; the relay only ever sees
-ciphertext (see [PRIVACY.md](PRIVACY.md)).
+Notifications for the Host in the app's settings; the relay sees the device
+token, source IP, request timing, and ciphertext, but cannot read the
+notification (see [PRIVACY.md](PRIVACY.md)).
 
 ## Stack
 

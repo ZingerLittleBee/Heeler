@@ -54,6 +54,13 @@ final class NotificationRelaySettings {
         !rawValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && relayURL == nil
     }
 
+    /// HTTP remains available for a relay running on the developer's machine,
+    /// but the settings screen must warn before the Host sends a device token
+    /// and notification metadata over a cleartext network connection.
+    var hasInsecureHTTPEntry: Bool {
+        relayURL?.scheme?.lowercased() == "http"
+    }
+
     /// Parses a custom relay base URL: an absolute http(s) URL with a host and
     /// no query or fragment. A path prefix is allowed (the relay may be
     /// deployed under a subpath); the plugin appends `/push` to whatever base

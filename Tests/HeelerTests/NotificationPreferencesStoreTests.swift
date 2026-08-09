@@ -136,7 +136,7 @@ struct NotificationPreferencesStoreTests {
             Issue.record("expected .unavailable, got \(String(describing: store.states[host.id]))")
             return
         }
-        #expect(message.localizedCaseInsensitiveContains("plugin"))
+        #expect(message == "Install the Heeler plugin on this Host, then check again.")
     }
 
     @Test func removingAHostFromTheCatalogDropsItsState() async throws {
@@ -195,10 +195,14 @@ struct NotificationPreferencesStoreTests {
 
         await store.setNotificationsEnabled(true, for: host)
 
-        guard case .failed(_, let settings) = store.states[host.id] else {
+        guard case .failed(let message, let settings) = store.states[host.id] else {
             Issue.record("expected .failed, got \(String(describing: store.states[host.id]))")
             return
         }
+        #expect(
+            message
+                == "Could not update notification settings on this Host. "
+                + "Check the connection and try again.")
         #expect(!settings.isRegistered)
     }
 

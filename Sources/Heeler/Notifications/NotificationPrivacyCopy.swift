@@ -4,10 +4,10 @@ import Foundation
 /// by the pre-permission explainer and the persistent settings privacy section
 /// so both surfaces tell exactly the same story. Kept as data — not buried in a
 /// View — so a test can pin the load-bearing claims: it is a *push relay*
-/// (never a "server"), it sees the device token, ciphertext, and source IP, and
-/// it cannot see the decrypted content (agent names, statuses, pane ids); a
-/// custom relay only helps a self-built app. All copy is English by project
-/// convention.
+/// (never a "server"), it sees the device token, ciphertext, source IP, and
+/// request timing, and it cannot see the encrypted content (project, task,
+/// agent type, status, pane id, timestamp); a custom relay only helps a
+/// self-built app. All copy is English by project convention.
 enum NotificationPrivacyCopy {
     /// The explainer's lead line before the iOS permission prompt.
     static let explainerTitle = "Before you turn on notifications"
@@ -24,21 +24,23 @@ enum NotificationPrivacyCopy {
         "Your device's Apple push token, so Apple knows which device to notify.",
         "The encrypted notification (ciphertext), which it forwards without decrypting.",
         "Your Host's source IP address, as with any network request.",
+        "When and how often your Host sends notification requests.",
     ]
 
     /// What the relay cannot see — the encrypted content it never holds a key
     /// for. Names the exact plaintext fields so the claim is concrete.
     static let relayCannotSeeTitle = "What it cannot see"
     static let relayCannotSee: [String] = [
-        "The decrypted notification content: agent names, statuses, and pane ids.",
-        "Anything about what your agents are doing — it never holds your Notification Key.",
+        "The notification content: project name, task title, agent type, status, pane ID, "
+            + "and timestamp.",
+        "The relay cannot decrypt this content because it never receives your Notification Key.",
     ]
 
     /// The self-built-app caveat for the custom relay setting.
     static let customRelayCaveat =
-        "A custom relay only helps if you build the app yourself with your own bundle id "
-        + "and Apple push key: push keys are bound to the app's bundle id, so this build can "
-        + "only reach the developer-hosted relay."
+        "A custom relay only works with an app you build and sign yourself. It must use APNs "
+        + "credentials authorized for that app's bundle ID. Only the developer-hosted relay "
+        + "is configured to deliver notifications to this App Store or TestFlight build."
 
     /// The primary action label on the explainer sheet, right before the iOS
     /// permission prompt appears.

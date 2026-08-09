@@ -43,7 +43,7 @@ Rediscovering these is expensive. Each fact names the herdr version it was verif
 - CI (`.github/workflows/ci.yml`) builds the committed `Heeler.xcodeproj` and never runs xcodegen, so commit the regenerated project alongside any `project.yml` change (every `make` build target regenerates it). `scripts/run-ci-ios-tests.sh` provisions disposable sshd instances and asserts executed test counts for the mandatory real-SSH suites; the remaining locally-gated suites skip cleanly on machines without a local sshd and seeded key.
 
 - Swift 6 strict concurrency. No force unwraps or `try!` outside tests.
-- Secrets never leave the Keychain; private keys are generated on device (CryptoKit Ed25519) where possible. Host key policy is TOFU with fingerprint confirmation.
+- Private keys never leave the Keychain and are generated on device (CryptoKit Ed25519) where possible. Per-Host Notification Keys are symmetric keys: the app retains each one in the shared Keychain and copies it over SSH to that Host so the plugin can encrypt notifications. Host key policy is TOFU with fingerprint confirmation.
 - Pin libssh2 and OpenSSL exactly in `Packages/HeelerSSH` and review both the source hashes and the committed XCFramework checksums before updating; normal builds consume the checked-in artifacts.
 - Pin libghostty-spm exactly and review both its Swift sources and prebuilt XCFramework checksum before updating.
 - Tracker is GitHub issues in this repo (`gh issue ...`). Reference issues from commits with `refs #<n>`.

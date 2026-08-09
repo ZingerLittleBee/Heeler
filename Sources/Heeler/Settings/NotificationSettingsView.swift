@@ -79,7 +79,7 @@ struct NotificationSettingsView: View {
             }
         case .registered(let token):
             HStack {
-                Text("Notifications enabled")
+                Text("Ready to configure Host notifications")
                 Spacer()
                 if token.environment == .sandbox {
                     Text("Sandbox")
@@ -92,8 +92,8 @@ struct NotificationSettingsView: View {
             }
         case .denied:
             VStack(alignment: .leading, spacing: 6) {
-                Text("Notifications are turned off for herdr.")
-                Button("Open Settings") {
+                Text("Notifications are turned off for Heeler.")
+                Button("Open Heeler Settings") {
                     if let url = URL(string: UIApplication.openSettingsURLString) {
                         openURL(url)
                     }
@@ -101,7 +101,7 @@ struct NotificationSettingsView: View {
             }
         case .failed(let message):
             VStack(alignment: .leading, spacing: 6) {
-                Text("Push registration failed: \(message)")
+                Text("Could not register for push notifications. \(message)")
                     .foregroundStyle(.secondary)
                 Button("Try Again") {
                     Task { await pushRegistration.enable() }
@@ -204,9 +204,16 @@ struct NotificationSettingsView: View {
                 .keyboardType(.URL)
                 .textContentType(.URL)
             if relaySettings.hasInvalidEntry {
-                Text("Enter a valid http or https URL.")
+                Text("Enter a valid HTTP or HTTPS URL.")
                     .font(.caption)
                     .foregroundStyle(.red)
+            } else if relaySettings.hasInsecureHTTPEntry {
+                Text(
+                    "HTTP exposes the device token and notification metadata. "
+                        + "Use HTTPS except for local development."
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
             }
         } header: {
             Text("Custom Push Relay")
