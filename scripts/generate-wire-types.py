@@ -53,6 +53,7 @@ METHODS = [
     "agent.list",
     "agent.read",
     "agent.rename",
+    "agent.send_keys",
     "agent.start",
     "events.subscribe",
     "tab.create",

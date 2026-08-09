@@ -11,6 +11,11 @@ final actor ScriptedTransport: Transport {
     /// resubscribe-on-membership-change behavior asserts on this.
     private(set) var capturedSubscriptions: [[EventSubscription]] = []
     private(set) var paneReadParams: [PaneReadParams] = []
+    private(set) var agentReadParams: [AgentReadParams] = []
+    /// Every `agent.send_keys` received, in order; Monitor's control-key
+    /// strip (#183) asserts on the spellings and target it forwarded.
+    private(set) var agentSendKeysParams: [AgentSendKeysParams] = []
+    private var agentSendKeysFailure: (any Error)?
     /// Every `agent.start` received, in order; the new-agent flow (#12)
     /// asserts on the params it forwarded.
     private(set) var agentStarts: [AgentLaunchRequest] = []
@@ -54,6 +59,9 @@ final actor ScriptedTransport: Transport {
     private var paneTexts: [String: String] = [:]
     private var paneReadFailure: TransportError?
     private var nextPaneReadGate: ScriptedTransportCallGate?
+    private var agentTexts: [String: String] = [:]
+    private var agentReadFailure: (any Error)?
+    private var nextAgentReadGate: ScriptedTransportCallGate?
     private var missingPaneIDs: Set<String> = []
     private var nextStreamID: UInt64 = 0
     private var liveStreamID: UInt64?
@@ -121,6 +129,26 @@ final actor ScriptedTransport: Transport {
     /// Pauses the next pane read after capturing its response.
     func gateNextPaneRead(using gate: ScriptedTransportCallGate) {
         nextPaneReadGate = gate
+    }
+
+    /// Scripts the text `readAgent` returns for `target`.
+    func setAgentText(_ text: String, target: String) {
+        agentTexts[target] = text
+    }
+
+    /// Makes every subsequent `readAgent` throw `failure`.
+    func setAgentReadFailure(_ failure: (any Error)?) {
+        agentReadFailure = failure
+    }
+
+    /// Pauses the next Agent read after capturing its response.
+    func gateNextAgentRead(using gate: ScriptedTransportCallGate) {
+        nextAgentReadGate = gate
+    }
+
+    /// Makes every subsequent `sendAgentKeys` throw `failure`.
+    func setAgentSendKeysFailure(_ failure: (any Error)?) {
+        agentSendKeysFailure = failure
     }
 
     /// Scripts the `AgentInfo` `startAgent` returns; without it the fake
@@ -303,6 +331,25 @@ final actor ScriptedTransport: Transport {
             format: .text, paneID: params.paneID, revision: 0,
             source: params.source, tabID: "t", text: responseText,
             truncated: false, workspaceID: "w")
+    }
+
+    func readAgent(_ params: AgentReadParams) async throws -> PaneReadResult {
+        agentReadParams.append(params)
+        let responseText = agentTexts[params.target] ?? ""
+        let failure = agentReadFailure
+        let gate = nextAgentReadGate
+        nextAgentReadGate = nil
+        await gate?.waitUntilOpen()
+        if let failure { throw failure }
+        return PaneReadResult(
+            format: params.format ?? .text, paneID: params.target, revision: 0,
+            source: params.source, tabID: "t", text: responseText,
+            truncated: false, workspaceID: "w")
+    }
+
+    func sendAgentKeys(_ params: AgentSendKeysParams) async throws {
+        if let agentSendKeysFailure { throw agentSendKeysFailure }
+        agentSendKeysParams.append(params)
     }
 
     func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {

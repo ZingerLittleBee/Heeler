@@ -35,6 +35,14 @@ final actor FakeTransport: Transport {
         throw TransportError.channelFailed(detail: "FakeTransport does not script pane reads")
     }
 
+    func readAgent(_ params: AgentReadParams) async throws -> PaneReadResult {
+        throw TransportError.channelFailed(detail: "FakeTransport does not script Agent reads")
+    }
+
+    func sendAgentKeys(_ params: AgentSendKeysParams) async throws {
+        throw TransportError.channelFailed(detail: "FakeTransport does not script Agent send-keys")
+    }
+
     func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream {
         throw TransportError.channelFailed(detail: "FakeTransport does not script events")
     }

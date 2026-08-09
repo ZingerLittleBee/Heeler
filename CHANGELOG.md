@@ -9,6 +9,17 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Monitor has a control-key strip (Enter, Esc, Ctrl+C, arrows) so a Blocked
+  Agent's confirmation prompt can be answered — and work interrupted —
+  without entering Attach. Each tap is delivered through agent-level
+  `send_keys` and refreshes the snapshot once the Host accepts it. (#183)
+
+- Opening an Agent now lands on Monitor: a color-preserving snapshot of its
+  latest screen with an honest capture time. Attach remains available as a
+  full-screen toolbar action for realtime interaction; leaving it closes the
+  live terminal and refreshes Monitor once. Agent Notification taps land on
+  Monitor as well. (#179)
+
 - Settings > About now has Acknowledgements: every redistributed third-party
   component ships with its exact upstream licence notice, including libssh2
   and its secondary sources, OpenSSL, Ghostty and its stack, the monospaced
