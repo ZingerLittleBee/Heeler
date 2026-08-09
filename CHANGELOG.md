@@ -60,6 +60,12 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Malformed herdr API error responses that carry an empty id now fail the
+  originating request immediately with the server's error instead of hanging
+  until the request deadline. herdr answers unparseable requests with
+  `id: ""`; because each API connection serves one request, that empty id is
+  attributable to the sole in-flight request on the connection. (#177)
+
 - On iPad, one window's keyboard no longer ends another window's keyboard
   handoff. Keyboard notifications are process-wide and each window can hold
   a live terminal, so a frame event from one window's keyboard transition
