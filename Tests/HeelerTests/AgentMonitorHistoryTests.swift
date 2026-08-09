@@ -60,6 +60,70 @@ struct AgentMonitorHistoryTests {
         #expect(history.newestLines == ["s1", "s2", "s3", "s4"])
     }
 
+    @Test func unwrappedBackfillStitchesToWrappedVisibleRows() {
+        var history = AgentMonitorHistory()
+        history.applyVisible(
+            [
+                "first logical line wra   ",
+                "ps across rows",
+                "second logical line",
+                "third logical line",
+            ].joined(separator: "\n"))
+
+        let outcome = history.stitchBackfill(
+            [
+                "older logical line",
+                "first logical line wraps across rows",
+                "second logical line",
+                "third logical line",
+            ].joined(separator: "\n"))
+
+        #expect(outcome == .init(newLines: 1, insertedGap: false))
+        #expect(
+            history.segments == [
+                .lines(["older logical line"]),
+                .lines([
+                    "first logical line wra   ",
+                    "ps across rows",
+                    "second logical line",
+                    "third logical line",
+                ]),
+            ])
+    }
+
+    @Test func wrapWidthDifferenceDeduplicatesTheWholeBoundary() {
+        var history = AgentMonitorHistory()
+        history.applyVisible("abcdefgh\nijklmnop\nqrstuvwx")
+
+        let outcome = history.stitchBackfill("abcdefghijklmnop\nqrstuvwx")
+
+        #expect(outcome == .init(newLines: 0, insertedGap: false))
+        #expect(
+            history.segments == [
+                .lines(["abcdefgh", "ijklmnop", "qrstuvwx"])
+            ])
+    }
+
+    @Test func disjointUnwrappedBackfillStillRecordsAGap() {
+        var history = AgentMonitorHistory()
+        history.applyVisible("cached line wraps\nhere\nand ends")
+
+        let outcome = history.stitchBackfill(
+            "different logical line\nanother logical line\nnewest logical line")
+
+        #expect(outcome == .init(newLines: 3, insertedGap: true))
+        #expect(
+            history.segments == [
+                .lines([
+                    "different logical line",
+                    "another logical line",
+                    "newest logical line",
+                ]),
+                .gap,
+                .lines(["cached line wraps", "here", "and ends"]),
+            ])
+    }
+
     @Test func backfillSupersedesTheTailWhenTheWindowContainsIt() {
         var history = AgentMonitorHistory()
         history.applyVisible("s1\ns2\ns3\ns4")

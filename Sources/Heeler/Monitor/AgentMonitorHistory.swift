@@ -7,7 +7,12 @@ import Foundation
 ///
 /// herdr exposes no history cursor (`agent.read` takes a source and a line
 /// count, capped at 1000 lines), so every reconciliation is an
-/// overlap-stitch against what the cache already holds. This type is the
+/// overlap-stitch against what the cache already holds. Backfill uses
+/// `recent_unwrapped`, while the live screen remains a terminal grid; the
+/// stitcher therefore permits one logical backfill line to match multiple
+/// trailing grid rows after trimming terminal padding. It never rewrites the
+/// captured bytes, and it still records a gap unless a whole boundary or at
+/// least `minimumOverlap` logical lines prove continuity. This type is the
 /// pure line algebra behind that: it performs no I/O, keeps no presentation
 /// state, and is deliberately separate from `AgentMonitorStore` so the
 /// stitching rules are testable on their own.
@@ -136,20 +141,23 @@ struct AgentMonitorHistory: Equatable, Sendable {
     }
 
     struct BackfillOutcome: Equatable, Sendable {
-        /// Lines the read added that the cache did not already hold. Zero
-        /// means the read was fully captured: the capture limit is reached.
+        /// Logical lines the read added that the cache did not already hold.
+        /// Zero means the read was fully captured: the capture limit is
+        /// reached.
         var newLines: Int
         /// Whether an explicit gap marker was inserted because the read
         /// could not be overlap-stitched onto the cache.
         var insertedGap: Bool
     }
 
-    /// Reconciles one `recent` read (the server's newest lines, up to its
-    /// cap) with the range covered by the preceding backfill. The largest
-    /// shared suffix proves the read's remaining prefix is older content,
-    /// which is kept in a segment above the live screen. With no shared
-    /// content, the read is likewise placed above the live run with explicit
-    /// gaps rather than displacing the live screen or pretending continuity.
+    /// Reconciles one `recent_unwrapped` read (the server's newest logical
+    /// lines, up to its cap) with the range covered by the preceding backfill.
+    /// Its largest logical suffix is matched against the cached physical-line
+    /// suffix, allowing several wrapped grid rows to equal one logical line.
+    /// The read's remaining prefix is older content and stays byte-exact in a
+    /// segment above the live screen. With no proven boundary, the read is
+    /// likewise placed above the live run with explicit gaps rather than
+    /// displacing the live screen or pretending continuity.
     @discardableResult
     mutating func stitchBackfill(_ text: String) -> BackfillOutcome {
         let read = Self.splitLines(text)
@@ -170,9 +178,8 @@ struct AgentMonitorHistory: Equatable, Sendable {
 
         let range = validBackfillRange ?? ((segments.count - 1)..<segments.count)
         let anchor = lines(in: range)
-        let floor = min(Self.minimumOverlap, read.count, anchor.count)
-        if floor >= 1,
-            let overlap = Self.largestOverlap(suffixOf: read, suffixOf: anchor, floor: floor)
+        if let overlap = Self.largestReflowedOverlap(
+            unwrappedSuffixOf: read, cachedSuffixOf: anchor)
         {
             let older = Array(read.prefix(read.count - overlap))
             guard !older.isEmpty else {
@@ -418,10 +425,101 @@ struct AgentMonitorHistory: Equatable, Sendable {
         return nil
     }
 
+    /// Returns the number of logical `recent_unwrapped` lines proven to be
+    /// the same boundary as a suffix of the cached grid. Each logical line
+    /// consumes one or more cached rows, so differing terminal widths do not
+    /// manufacture gaps. Trailing spaces and tabs are ignored only for this
+    /// comparison because a visible grid may pad its final row; stored and
+    /// rendered strings remain byte-exact.
+    ///
+    /// A match is accepted when it covers either whole boundary, or when at
+    /// least `minimumOverlap` logical lines agree. This preserves the former
+    /// small-screen behavior without letting one coincidental prompt line
+    /// stitch two otherwise unrelated captures.
+    private static func largestReflowedOverlap(
+        unwrappedSuffixOf read: [String],
+        cachedSuffixOf cached: [String]
+    ) -> Int? {
+        guard !read.isEmpty, !cached.isEmpty else { return nil }
+
+        let logicalLines = read.map(ReconciliationLine.init)
+        let cachedRows = cached.map(ReconciliationLine.init)
+        var cachedEnd = cachedRows.endIndex
+        var overlap = 0
+
+        for logicalLine in logicalLines.reversed() {
+            guard
+                let start = matchingStart(
+                    of: logicalLine,
+                    in: cachedRows,
+                    endingAt: cachedEnd)
+            else { break }
+            overlap += 1
+            cachedEnd = start
+        }
+
+        guard overlap > 0 else { return nil }
+        let coversWholeRead = overlap == read.count
+        let coversWholeCache = cachedEnd == cachedRows.startIndex
+        guard overlap >= minimumOverlap || coversWholeRead || coversWholeCache else {
+            return nil
+        }
+        return overlap
+    }
+
+    private struct ReconciliationLine {
+        let raw: [UInt8]
+        let trimmed: [UInt8]
+
+        init(_ line: String) {
+            raw = Array(line.utf8)
+            var trimmed = raw
+            while let last = trimmed.last, last == 0x20 || last == 0x09 {
+                trimmed.removeLast()
+            }
+            self.trimmed = trimmed
+        }
+    }
+
+    /// Finds the nearest cached row boundary whose concatenated bytes equal one
+    /// unwrapped logical line. Searching backward makes the required suffix
+    /// boundary explicit and keeps older unrelated rows out of the proof.
+    private static func matchingStart(
+        of logicalLine: ReconciliationLine,
+        in cachedRows: [ReconciliationLine],
+        endingAt cachedEnd: Int
+    ) -> Int? {
+        guard cachedEnd > cachedRows.startIndex else { return nil }
+        var combinedRaw: [UInt8] = []
+        var combinedTrimmed: [UInt8] = []
+        var start = cachedEnd
+
+        while start > cachedRows.startIndex {
+            start -= 1
+            combinedRaw.insert(contentsOf: cachedRows[start].raw, at: combinedRaw.startIndex)
+            combinedTrimmed.insert(
+                contentsOf: cachedRows[start].trimmed,
+                at: combinedTrimmed.startIndex)
+            let rawCanMatch = combinedRaw.count <= logicalLine.raw.count
+            let trimmedCanMatch = combinedTrimmed.count <= logicalLine.trimmed.count
+            guard rawCanMatch || trimmedCanMatch else { break }
+            if (rawCanMatch && combinedRaw.elementsEqual(logicalLine.raw))
+                || (trimmedCanMatch
+                    && combinedTrimmed.elementsEqual(logicalLine.trimmed))
+            {
+                // Empty padded rows can yield many equivalent partitions;
+                // the nearest boundary preserves the most evidence for the
+                // preceding logical line and is the conservative choice.
+                return start
+            }
+        }
+        return nil
+    }
+
     /// The rightmost position at which `needle` appears in `haystack` as a
     /// contiguous run, if any. Rightmost because the newest run sits at the
-    /// end of a `recent` read when content is stable; an earlier duplicate
-    /// of the same lines is history, not the tail.
+    /// end of a `recent_unwrapped` read when content is stable; an earlier
+    /// duplicate of the same lines is history, not the tail.
     private static func containment(of needle: [String], in haystack: [String]) -> Int? {
         guard needle.count <= haystack.count else { return nil }
         var start = haystack.count - needle.count

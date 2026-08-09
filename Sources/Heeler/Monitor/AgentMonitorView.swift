@@ -180,7 +180,7 @@ struct AgentDetailView: View {
         .background(Color(uiColor: .systemGroupedBackground))
     }
 
-    private func snapshotScrollView(_ snapshot: AttributedString) -> some View {
+    private func snapshotScrollView(_: AttributedString) -> some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 12) {
@@ -188,7 +188,18 @@ struct AgentDetailView: View {
                     Text("Agent output")
                         .font(.subheadline.weight(.semibold))
                         .accessibilityAddTraits(.isHeader)
-                    Text(snapshot)
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(monitor.snapshotSegments) { segment in
+                            if let accessibilityLabel = segment.accessibilityLabel {
+                                Text(segment.text)
+                                    .accessibilityElement(children: .ignore)
+                                    .accessibilityLabel(accessibilityLabel)
+                            } else {
+                                Text(segment.text)
+                                    .accessibilityElement(children: .combine)
+                            }
+                        }
+                    }
                         .font(.system(.callout, design: .monospaced))
                         .lineSpacing(3)
                         .foregroundStyle(.white)

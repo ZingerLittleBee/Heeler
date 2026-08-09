@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import Heeler
@@ -47,7 +48,7 @@ struct AgentMonitorStoreTests {
         #expect(await idleClock.pendingSleepCount == 0)
         // One visible snapshot plus the one idle backfill on open (#181).
         #expect(await agentReads(idleTransport, source: .visible).count == 1)
-        #expect(await agentReads(idleTransport, source: .recent).count == 1)
+        #expect(await agentReads(idleTransport, source: .recentUnwrapped).count == 1)
 
         let workingTransport = ScriptedTransport()
         let workingClock = ManualAgentMonitorClock()
@@ -312,9 +313,9 @@ struct AgentMonitorStoreTests {
         // The idle open also backfills once (#181); the scripted window
         // equals the screen, so nothing new lands and history is exhausted.
         #expect(
-            await agentReads(transport, source: .recent) == [
+            await agentReads(transport, source: .recentUnwrapped) == [
                 AgentReadParams(
-                    source: .recent,
+                    source: .recentUnwrapped,
                     target: "w1:p1",
                     format: .ansi,
                     lines: AgentMonitorStore.historyLineCount,
@@ -443,7 +444,7 @@ struct AgentMonitorStoreTests {
             String(snapshot.characters) == "older 1\nolder 2\nscreen 1\nscreen 2\nscreen 3")
         #expect(store.historyState == .exhausted)
         #expect(await agentReads(transport, source: .visible).count == 1)
-        #expect(await agentReads(transport, source: .recent).count == 1)
+        #expect(await agentReads(transport, source: .recentUnwrapped).count == 1)
     }
 
     @Test func openWhileWorkingSkipsBackfillAndTopEdgeStaysHonest() async throws {
@@ -500,7 +501,7 @@ struct AgentMonitorStoreTests {
         let snapshot = try #require(store.snapshot)
         #expect(
             String(snapshot.characters) == "older 1\nolder 2\nscreen 1\nscreen 2\nscreen 3")
-        #expect(await agentReads(transport, source: .recent).count == 1)
+        #expect(await agentReads(transport, source: .recentUnwrapped).count == 1)
     }
 
     @Test func repeatBackfillAtTheCaptureLimitEndsHistory() async throws {
@@ -525,7 +526,7 @@ struct AgentMonitorStoreTests {
             store.historyState == .exhausted
         }
         #expect(String(try #require(store.snapshot).characters) == window)
-        #expect(await agentReads(transport, source: .recent).count == 2)
+        #expect(await agentReads(transport, source: .recentUnwrapped).count == 2)
     }
 
     @Test func unstitchableReadInsertsAnExplicitGapMarker() async throws {
@@ -547,6 +548,93 @@ struct AgentMonitorStoreTests {
         ].joined(separator: "\n")
         #expect(String(try #require(store.snapshot).characters) == expected)
         #expect(store.historyState == .exhausted)
+    }
+
+    @Test func renderedSnapshotSeparatesContentAndGapAccessibility() async throws {
+        let transport = ScriptedTransport()
+        await transport.setAgentText("older screen", target: "w1:p1")
+        let store = AgentMonitorStore(
+            target: "w1:p1", initialStatus: .working
+        ) { params in
+            try await transport.readAgent(params)
+        }
+        await store.open()
+
+        await transport.setAgentText("live screen", target: "w1:p1")
+        await store.refresh()
+
+        #expect(store.snapshotSegments.map(\.kind) == [.content, .gap, .content])
+        #expect(
+            store.snapshotSegments.map { String($0.text.characters) }
+                == ["older screen", AgentMonitorStore.gapMarkerText, "live screen"])
+        let gap = try #require(store.snapshotSegments.first { $0.kind == .gap })
+        #expect(String(gap.text.characters) == AgentMonitorStore.gapMarkerText)
+        #expect(gap.accessibilityLabel == "Content not captured")
+    }
+
+    @Test func renderedSegmentIDsSurviveHistoryPrepending() async throws {
+        let transport = ScriptedTransport()
+        await transport.setAgentText("screen 1\nscreen 2\nscreen 3", target: "w1:p1")
+        let store = AgentMonitorStore(
+            target: "w1:p1", initialStatus: .working
+        ) { params in
+            try await transport.readAgent(params)
+        }
+        await store.open()
+        let initialIDs = store.snapshotSegments.map(\.id)
+
+        await store.agentStatusDidChange(.idle)
+        await transport.setAgentHistoryText(
+            "older 1\nolder 2\nscreen 1\nscreen 2\nscreen 3", target: "w1:p1")
+        await store.loadEarlierHistory()
+
+        #expect(store.snapshotSegments.map(\.kind) == [.content, .content])
+        #expect(store.snapshotSegments.last?.id == initialIDs.first)
+        #expect(
+            store.snapshotSegments.map { String($0.text.characters) }
+                == ["older 1\nolder 2", "screen 1\nscreen 2\nscreen 3"])
+    }
+
+    @Test func contiguousHistoryAndLiveShareANSIState() async throws {
+        let transport = ScriptedTransport()
+        await transport.setAgentText("screen 1\nscreen 2\nscreen 3", target: "w1:p1")
+        await transport.setAgentHistoryText(
+            "\u{1B}[31molder\nscreen 1\nscreen 2\nscreen 3", target: "w1:p1")
+        let store = AgentMonitorStore(target: "w1:p1") { params in
+            try await transport.readAgent(params)
+        }
+
+        await store.open()
+
+        let content = try #require(store.snapshotSegments.last)
+        #expect(store.snapshotSegments.count == 2)
+        #expect(content.kind == .content)
+        #expect(
+            content.text.runs.last?.foregroundColor
+                == Color(red: 128.0 / 255.0, green: 0, blue: 0))
+    }
+
+    @Test func largeHistoryUsesBoundedAccessibilitySegments() async throws {
+        let transport = ScriptedTransport()
+        let allLines = (1...85).map { "line \($0)" }
+        await transport.setAgentText(
+            allLines.suffix(3).joined(separator: "\n"), target: "w1:p1")
+        await transport.setAgentHistoryText(
+            allLines.joined(separator: "\n"), target: "w1:p1")
+        let store = AgentMonitorStore(target: "w1:p1") { params in
+            try await transport.readAgent(params)
+        }
+
+        await store.open()
+
+        #expect(store.snapshotSegments.count == 4)
+        #expect(store.snapshotSegments.allSatisfy { $0.kind == .content })
+        for segment in store.snapshotSegments {
+            let lineCount = String(segment.text.characters).split(
+                separator: "\n", omittingEmptySubsequences: false
+            ).count
+            #expect(lineCount <= AgentMonitorStore.maximumAccessibleSegmentLines)
+        }
     }
 
     @Test func agentNotIdleSurfacesAsUnavailableNeverAnError() async throws {
@@ -571,7 +659,7 @@ struct AgentMonitorStoreTests {
             store.historyState == .unavailable
         }
         #expect(store.state == .loaded)
-        #expect(await agentReads(transport, source: .recent).count == 2)
+        #expect(await agentReads(transport, source: .recentUnwrapped).count == 2)
     }
 
     @Test func failedBackfillSurfacesARetryableError() async throws {
@@ -637,7 +725,7 @@ struct AgentMonitorStoreTests {
         }
         store.topEdgeReached()
         #expect(store.historyState == .loading)
-        #expect(await agentReads(transport, source: .recent).count == 1)
+        #expect(await agentReads(transport, source: .recentUnwrapped).count == 1)
 
         await gate.open()
         await refreshing.value
@@ -645,7 +733,7 @@ struct AgentMonitorStoreTests {
             store.historyState == .exhausted
         }
 
-        #expect(await agentReads(transport, source: .recent).count == 2)
+        #expect(await agentReads(transport, source: .recentUnwrapped).count == 2)
         let snapshot = try #require(store.snapshot)
         #expect(String(snapshot.characters) == window)
         #expect(!String(snapshot.characters).contains(AgentMonitorStore.gapMarkerText))
@@ -707,7 +795,7 @@ struct AgentMonitorStoreTests {
             store.historyState == .exhausted
         }
 
-        #expect(await agentReads(transport, source: .recent).count == 2)
+        #expect(await agentReads(transport, source: .recentUnwrapped).count == 2)
         #expect(
             String(try #require(store.snapshot).characters)
                 == [
