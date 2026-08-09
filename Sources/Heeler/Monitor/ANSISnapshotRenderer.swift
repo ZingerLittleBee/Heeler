@@ -9,9 +9,11 @@ import UIKit
 /// sequence. It has no I/O or terminal state beyond the supplied snapshot.
 ///
 /// Monitor shows snapshots on the grouped list surface in both light and dark
-/// appearance, so emitted colors adapt: every foreground is guaranteed to
-/// reach WCAG 4.5:1 against `UIColor.secondarySystemGroupedBackground`
-/// resolved in the matching appearance.
+/// appearance, so emitted colors adapt. Every foreground reaches WCAG 4.5:1
+/// against its effective background — the run's own background when one is
+/// set, else the snapshot surface — and every background reaches 4.5:1
+/// against the appearance's label color, so ambient text on colored
+/// backgrounds (diff hunks, selection bars) stays legible.
 enum ANSISnapshotRenderer {
     /// Converts one complete terminal snapshot into display-ready attributed text.
     static func render(_ snapshot: String) -> AttributedString {
@@ -214,23 +216,19 @@ extension ANSISnapshotRenderer {
             self.blue = min(0xFF, max(0, blue))
         }
 
-        init(_ uiColor: UIColor) {
+        /// Fails when the color cannot be converted to sRGB; callers must
+        /// substitute a documented fallback rather than render silent black.
+        init?(_ uiColor: UIColor) {
             var red: CGFloat = 0
             var green: CGFloat = 0
             var blue: CGFloat = 0
             var alpha: CGFloat = 0
-            uiColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+            guard uiColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+            else { return nil }
             self.init(
                 red: Int((red * 255).rounded()),
                 green: Int((green * 255).rounded()),
                 blue: Int((blue * 255).rounded()))
-        }
-
-        var color: Color {
-            Color(
-                red: Double(red) / 255,
-                green: Double(green) / 255,
-                blue: Double(blue) / 255)
         }
 
         var uiColor: UIColor {
@@ -245,8 +243,7 @@ extension ANSISnapshotRenderer {
     /// WCAG contrast math and the legibility clamp, expressed as pure
     /// functions so tests can assert the contrast contract directly.
     enum Contrast {
-        /// The WCAG AA ratio every emitted foreground must reach against the
-        /// snapshot surface.
+        /// The WCAG AA ratio every emitted color pair must reach.
         static let minimumForegroundRatio = 4.5
 
         /// The ratio the clamp searches for. The small margin absorbs 8-bit
@@ -275,41 +272,59 @@ extension ANSISnapshotRenderer {
             return (lighter + 0.05) / (darker + 0.05)
         }
 
-        /// Returns `color` unchanged when it already contrasts with `surface`;
-        /// otherwise adjusts its lightness — hue and saturation preserved —
-        /// until it does. Light surfaces push colors darker, dark surfaces
-        /// push them lighter.
-        static func legible(_ color: RGB, on surface: RGB, appearance: Appearance) -> RGB {
-            guard ratio(of: color, to: surface) < minimumForegroundRatio else { return color }
+        /// Returns `color` unchanged when it already contrasts with
+        /// `reference`; otherwise adjusts its lightness — hue and saturation
+        /// preserved — until it does, moving away from the reference's
+        /// lightness to stay as close to the source as possible.
+        ///
+        /// The guarantee rests on one fact: against any reference, at least
+        /// one lightness extreme (0.0 or 1.0) reaches 4.5:1 — the worst case
+        /// is a mid-luminance reference, where black or white still passes.
+        /// The references used here (label colors, the snapshot surface, and
+        /// already-clamped backgrounds) all satisfy it. If the direction away
+        /// from the reference cannot reach the minimum — possible with a
+        /// mid-luminance reference — the other direction is used.
+        static func legible(_ color: RGB, on reference: RGB) -> RGB {
+            guard ratio(of: color, to: reference) < minimumForegroundRatio else { return color }
 
             let hsl = HSL(color)
-            // Contrast against a fixed surface is monotonic in lightness, so a
-            // binary search finds the value closest to the original that passes.
-            var passing = appearance == .light ? 0.0 : 1.0
+            let darken = relativeLuminance(of: color) < relativeLuminance(of: reference)
+            let primary = clamped(hsl, on: reference, darken: darken)
+            guard ratio(of: primary, to: reference) < minimumForegroundRatio else {
+                return primary
+            }
+            return clamped(hsl, on: reference, darken: !darken)
+        }
+
+        /// Binary-searches the lightness value closest to the original that
+        /// reaches `clampTargetRatio` against `reference`. Contrast against a
+        /// fixed reference is monotonic in lightness, so the search
+        /// converges; if even the endpoint misses the target it is returned
+        /// as the best effort.
+        private static func clamped(_ hsl: HSL, on reference: RGB, darken: Bool) -> RGB {
+            var passing = darken ? 0.0 : 1.0
             var failing = hsl.lightness
             for _ in 0..<32 {
                 let middle = (passing + failing) / 2
-                if ratio(of: hsl.withLightness(middle).rgb, to: surface) >= clampTargetRatio {
+                if ratio(of: hsl.withLightness(middle).rgb, to: reference) >= clampTargetRatio {
                     passing = middle
                 } else {
                     failing = middle
                 }
             }
-
-            var result = hsl.withLightness(passing).rgb
-            var attempts = 0
-            while ratio(of: result, to: surface) < minimumForegroundRatio, attempts < 8 {
-                passing += appearance == .light ? -0.004 : 0.004
-                result = hsl.withLightness(min(1, max(0, passing))).rgb
-                attempts += 1
-            }
-            return result
+            return hsl.withLightness(passing).rgb
         }
 
         private struct HSL {
             var hue: Double
             var saturation: Double
             var lightness: Double
+
+            init(hue: Double, saturation: Double, lightness: Double) {
+                self.hue = hue
+                self.saturation = saturation
+                self.lightness = lightness
+            }
 
             init(_ rgb: RGB) {
                 let red = Double(rgb.red) / 255
@@ -319,14 +334,14 @@ extension ANSISnapshotRenderer {
                 let minimum = min(red, green, blue)
                 let delta = maximum - minimum
 
-                lightness = (maximum + minimum) / 2
+                let lightness = (maximum + minimum) / 2
                 guard delta > 0 else {
-                    hue = 0
-                    saturation = 0
+                    self.init(hue: 0, saturation: 0, lightness: lightness)
                     return
                 }
 
-                saturation = delta / (1 - abs(2 * lightness - 1))
+                let saturation = delta / (1 - abs(2 * lightness - 1))
+                let hue: Double
                 switch maximum {
                 case red:
                     hue = 60 * ((green - blue) / delta).truncatingRemainder(dividingBy: 6)
@@ -335,9 +350,10 @@ extension ANSISnapshotRenderer {
                 default:
                     hue = 60 * ((red - green) / delta + 4)
                 }
-                if hue < 0 {
-                    hue += 360
-                }
+                self.init(
+                    hue: hue < 0 ? hue + 360 : hue,
+                    saturation: saturation,
+                    lightness: lightness)
             }
 
             func withLightness(_ lightness: Double) -> HSL {
@@ -367,42 +383,88 @@ extension ANSISnapshotRenderer {
         }
     }
 
-    /// The surface Monitor renders snapshots on, resolved per appearance. It
-    /// is the reference every emitted foreground is clamped against.
+    /// The surface Monitor renders snapshots on, resolved once per
+    /// appearance. It is the reference for foregrounds with no explicit
+    /// background.
     static func surfaceColor(for appearance: Appearance) -> RGB {
-        let style: UIUserInterfaceStyle = appearance == .dark ? .dark : .light
-        let resolved = UIColor.secondarySystemGroupedBackground.resolvedColor(
-            with: UITraitCollection(userInterfaceStyle: style))
-        return RGB(resolved)
+        resolvedSurface.resolve(appearance)
     }
 
-    /// A color with one value per appearance, each pre-clamped for legibility
-    /// on the matching surface, bridged into a single dynamic `Color`.
-    private struct AdaptiveColor {
+    /// The appearance's default text color, resolved once per appearance.
+    /// Backgrounds are clamped against it so ambient label-colored text on
+    /// colored backgrounds (diff hunks, selection bars) stays legible.
+    static func labelColor(for appearance: Appearance) -> RGB {
+        resolvedLabel.resolve(appearance)
+    }
+
+    private static let resolvedSurface = DynamicColor(
+        light: resolveSystemColor(
+            UIColor.secondarySystemGroupedBackground, for: .light,
+            fallback: RGB(red: 0xFF, green: 0xFF, blue: 0xFF)),
+        dark: resolveSystemColor(
+            UIColor.secondarySystemGroupedBackground, for: .dark,
+            fallback: RGB(red: 0x1C, green: 0x1C, blue: 0x1E)))
+    private static let resolvedLabel = DynamicColor(
+        light: resolveSystemColor(
+            UIColor.label, for: .light,
+            fallback: RGB(red: 0x00, green: 0x00, blue: 0x00)),
+        dark: resolveSystemColor(
+            UIColor.label, for: .dark,
+            fallback: RGB(red: 0xFF, green: 0xFF, blue: 0xFF)))
+
+    /// Resolves a system color in one appearance. The fallback is the value
+    /// iOS documents for that color in that appearance, used only when the
+    /// color cannot be converted to sRGB.
+    private static func resolveSystemColor(
+        _ uiColor: UIColor,
+        for appearance: Appearance,
+        fallback: RGB
+    ) -> RGB {
+        let style: UIUserInterfaceStyle = appearance == .dark ? .dark : .light
+        let resolved = uiColor.resolvedColor(with: UITraitCollection(userInterfaceStyle: style))
+        return RGB(resolved) ?? fallback
+    }
+
+    /// A pair of per-appearance sRGB values with a dynamic `Color` bridge.
+    private struct DynamicColor {
         let light: RGB
         let dark: RGB
 
-        init(light: RGB, dark: RGB) {
-            self.light = Contrast.legible(
-                light,
-                on: ANSISnapshotRenderer.surfaceColor(for: .light),
-                appearance: .light)
-            self.dark = Contrast.legible(
-                dark,
-                on: ANSISnapshotRenderer.surfaceColor(for: .dark),
-                appearance: .dark)
-        }
-
-        /// A single source color (256-color cube, grayscale ramp, truecolor),
-        /// clamped per appearance.
-        init(source color: RGB) {
-            self.init(light: color, dark: color)
+        func resolve(_ appearance: Appearance) -> RGB {
+            appearance == .dark ? dark : light
         }
 
         var color: Color {
             Color(uiColor: UIColor { traits in
-                (traits.userInterfaceStyle == .dark ? dark : light).uiColor
+                resolve(traits.userInterfaceStyle == .dark ? .dark : .light).uiColor
             })
+        }
+    }
+
+    /// A terminal-requested color: per-appearance source values plus the two
+    /// precomputed clamp results for the two roles it can play.
+    private struct ANSIColor {
+        /// The requested color, per appearance.
+        let source: DynamicColor
+        /// Foreground role with no explicit background: clamped against the
+        /// snapshot surface.
+        let onSurface: DynamicColor
+        /// Background role: clamped so the appearance's label text stays
+        /// legible on it.
+        let asBackground: DynamicColor
+
+        init(source: DynamicColor) {
+            self.source = source
+            onSurface = DynamicColor(
+                light: Contrast.legible(
+                    source.light, on: ANSISnapshotRenderer.resolvedSurface.light),
+                dark: Contrast.legible(
+                    source.dark, on: ANSISnapshotRenderer.resolvedSurface.dark))
+            asBackground = DynamicColor(
+                light: Contrast.legible(
+                    source.light, on: ANSISnapshotRenderer.resolvedLabel.light),
+                dark: Contrast.legible(
+                    source.dark, on: ANSISnapshotRenderer.resolvedLabel.dark))
         }
     }
 
@@ -459,27 +521,58 @@ extension ANSISnapshotRenderer {
             guard start < end else { return }
             var run = AttributedString(String(scalars[start..<end]))
 
-            var foreground = style.foreground?.color
-            var background = style.background?.color
-            if style.reversed {
-                // Reverse video swaps the effective colors. An unset side falls
-                // back to the default label-on-surface pair, so a bare SGR 7
-                // still reads as a visible highlight in both appearances.
-                let swappedForeground = background
-                    ?? Color(uiColor: .secondarySystemGroupedBackground)
-                let swappedBackground = foreground ?? Color(uiColor: .label)
-                foreground = swappedForeground
-                background = swappedBackground
+            // Reverse video swaps the effective colors first; the usual
+            // foreground/background rules then apply to the swapped pair.
+            // Unset sides fall back to the default label-on-surface pair, so
+            // a bare SGR 7 still reads as a visible highlight.
+            let foregroundSource = style.reversed ? style.background : style.foreground
+            let backgroundSource = style.reversed ? style.foreground : style.background
+
+            // A background is clamped so the appearance's label text stays
+            // legible on it; the system fallback (label fill for reverse
+            // video) needs no clamp.
+            let background: DynamicColor? = backgroundSource?.asBackground
+                ?? (style.reversed ? ANSISnapshotRenderer.resolvedLabel : nil)
+
+            let foreground: DynamicColor?
+            if let foregroundSource {
+                if let background, backgroundSource != nil {
+                    // Explicit foreground on an explicit background: clamped
+                    // against it here, once per appearance, so the dynamic
+                    // provider stays trivial. Every other pairing uses a
+                    // precomputed variant.
+                    foreground = DynamicColor(
+                        light: Contrast.legible(
+                            foregroundSource.source.light, on: background.light),
+                        dark: Contrast.legible(
+                            foregroundSource.source.dark, on: background.dark))
+                } else if background != nil {
+                    // Reversed with no explicit background: the fill is the
+                    // label color, which this variant is clamped against.
+                    foreground = foregroundSource.asBackground
+                } else {
+                    foreground = foregroundSource.onSurface
+                }
+            } else if style.reversed, let background {
+                // Reversed with no explicit foreground: surface-colored text
+                // on the fill.
+                foreground = DynamicColor(
+                    light: Contrast.legible(
+                        ANSISnapshotRenderer.resolvedSurface.light, on: background.light),
+                    dark: Contrast.legible(
+                        ANSISnapshotRenderer.resolvedSurface.dark, on: background.dark))
+            } else {
+                foreground = nil
             }
 
             if let foreground {
                 run.foregroundColor = style.dim
-                    ? foreground.opacity(0.5) : foreground
+                    ? foreground.color.opacity(0.5) : foreground.color
             } else if style.dim {
                 run.foregroundColor = Color.primary.opacity(0.5)
             }
             if let background {
-                run.backgroundColor = background
+                run.backgroundColor = background.color
             }
 
             var emphasis: InlinePresentationIntent = []
@@ -675,7 +768,7 @@ extension ANSISnapshotRenderer {
         private mutating func applyExtendedColor(
             _ parameters: [Int],
             at introducerIndex: Int,
-            to keyPath: WritableKeyPath<SGRState, AdaptiveColor?>
+            to keyPath: WritableKeyPath<SGRState, ANSIColor?>
         ) -> Int {
             let modeIndex = introducerIndex + 1
             guard modeIndex < parameters.count else { return parameters.count }
@@ -693,11 +786,12 @@ extension ANSISnapshotRenderer {
                 guard blueIndex < parameters.count else { return parameters.count }
                 let components = parameters[(modeIndex + 1)...blueIndex]
                 if components.allSatisfy({ (0...255).contains($0) }) {
-                    style[keyPath: keyPath] = AdaptiveColor(
-                        source: RGB(
-                            red: components[components.startIndex],
-                            green: components[components.index(after: components.startIndex)],
-                            blue: components[blueIndex]))
+                    let rgb = RGB(
+                        red: components[components.startIndex],
+                        green: components[components.index(after: components.startIndex)],
+                        blue: components[blueIndex])
+                    style[keyPath: keyPath] = ANSIColor(
+                        source: DynamicColor(light: rgb, dark: rgb))
                 }
                 return blueIndex
             default:
@@ -705,85 +799,99 @@ extension ANSISnapshotRenderer {
             }
         }
 
-        private static func color256(_ index: Int) -> AdaptiveColor? {
+        private static func color256(_ index: Int) -> ANSIColor? {
             guard (0...255).contains(index) else { return nil }
-            if index < ansiColors.count {
-                return ansiColors[index]
-            }
-            if index < 232 {
-                let cubeIndex = index - 16
-                return AdaptiveColor(
-                    source: RGB(
-                        red: cubeComponent(cubeIndex / 36),
-                        green: cubeComponent((cubeIndex / 6) % 6),
-                        blue: cubeComponent(cubeIndex % 6)))
-            }
-            let gray = 8 + (index - 232) * 10
-            return AdaptiveColor(source: RGB(red: gray, green: gray, blue: gray))
+            return ansiColors[index]
         }
 
         private static func cubeComponent(_ index: Int) -> Int {
             index == 0 ? 0 : 55 + index * 40
         }
 
-        // Per-appearance values chosen for legibility on
-        // `secondarySystemGroupedBackground`; `AdaptiveColor` still clamps
-        // them, so the WCAG floor holds even if a value is edited later.
-        private static let ansiColors: [AdaptiveColor] = [
-            AdaptiveColor(
+        private static func sourceColor(for index: Int) -> DynamicColor {
+            if index < basePalette.count {
+                return basePalette[index]
+            }
+            let rgb: RGB
+            if index < 232 {
+                let cubeIndex = index - 16
+                rgb = RGB(
+                    red: cubeComponent(cubeIndex / 36),
+                    green: cubeComponent((cubeIndex / 6) % 6),
+                    blue: cubeComponent(cubeIndex % 6))
+            } else {
+                let gray = 8 + (index - 232) * 10
+                rgb = RGB(red: gray, green: gray, blue: gray)
+            }
+            return DynamicColor(light: rgb, dark: rgb)
+        }
+
+        // All 256 xterm entries with their precomputed clamp results, built
+        // once: the base 16 carry hand-picked per-appearance sources, the
+        // cube/grayscale entries share one source across appearances.
+        private static let ansiColors: [ANSIColor] = (0...255).map { index in
+            ANSIColor(source: sourceColor(for: index))
+        }
+
+        // Per-appearance sources chosen for legibility of the foreground role
+        // on `secondarySystemGroupedBackground`; the background role is
+        // derived by the `ANSIColor` clamp, so the WCAG floor holds even if a
+        // value is edited later.
+        private static let basePalette: [DynamicColor] = [
+            DynamicColor(
                 light: RGB(red: 0x1C, green: 0x1C, blue: 0x1E),
                 dark: RGB(red: 0x8C, green: 0x8C, blue: 0x8C)),
-            AdaptiveColor(
+            DynamicColor(
                 light: RGB(red: 0xA3, green: 0x15, blue: 0x15),
                 dark: RGB(red: 0xF9, green: 0x75, blue: 0x83)),
-            AdaptiveColor(
+            DynamicColor(
                 light: RGB(red: 0x0A, green: 0x6E, blue: 0x0A),
                 dark: RGB(red: 0x56, green: 0xD3, blue: 0x64)),
-            AdaptiveColor(
+            DynamicColor(
                 light: RGB(red: 0x6D, green: 0x6D, blue: 0x00),
                 dark: RGB(red: 0xE5, green: 0xE5, blue: 0x10)),
-            AdaptiveColor(
+            DynamicColor(
                 light: RGB(red: 0x04, green: 0x51, blue: 0xA5),
                 dark: RGB(red: 0x57, green: 0x9B, blue: 0xD5)),
-            AdaptiveColor(
+            DynamicColor(
                 light: RGB(red: 0x8A, green: 0x0A, blue: 0x8A),
                 dark: RGB(red: 0xD6, green: 0x70, blue: 0xD6)),
-            AdaptiveColor(
+            DynamicColor(
                 light: RGB(red: 0x00, green: 0x76, blue: 0x76),
                 dark: RGB(red: 0x39, green: 0xC5, blue: 0xCF)),
-            AdaptiveColor(
+            DynamicColor(
                 light: RGB(red: 0x59, green: 0x59, blue: 0x59),
                 dark: RGB(red: 0xC0, green: 0xC0, blue: 0xC0)),
-            AdaptiveColor(
+            DynamicColor(
                 light: RGB(red: 0x6E, green: 0x6E, blue: 0x6E),
                 dark: RGB(red: 0xA0, green: 0xA0, blue: 0xA0)),
-            AdaptiveColor(
+            DynamicColor(
                 light: RGB(red: 0xD7, green: 0x00, blue: 0x00),
                 dark: RGB(red: 0xFF, green: 0x7B, blue: 0x72)),
-            AdaptiveColor(
+            DynamicColor(
                 light: RGB(red: 0x00, green: 0x7A, blue: 0x00),
                 dark: RGB(red: 0x7C, green: 0xE3, blue: 0x8B)),
-            AdaptiveColor(
+            DynamicColor(
                 light: RGB(red: 0x71, green: 0x71, blue: 0x00),
                 dark: RGB(red: 0xF2, green: 0xF9, blue: 0x7C)),
-            AdaptiveColor(
+            DynamicColor(
                 light: RGB(red: 0x10, green: 0x59, blue: 0xD0),
                 dark: RGB(red: 0x6C, green: 0xB6, blue: 0xFF)),
-            AdaptiveColor(
+            DynamicColor(
                 light: RGB(red: 0xBC, green: 0x05, blue: 0xBC),
                 dark: RGB(red: 0xF9, green: 0x82, blue: 0xF9)),
-            AdaptiveColor(
+            DynamicColor(
                 light: RGB(red: 0x00, green: 0x7A, blue: 0x7A),
                 dark: RGB(red: 0x66, green: 0xE0, blue: 0xE0)),
-            AdaptiveColor(
+            DynamicColor(
                 light: RGB(red: 0x00, green: 0x00, blue: 0x00),
                 dark: RGB(red: 0xFF, green: 0xFF, blue: 0xFF)),
         ]
     }
 
     private struct SGRState {
-        var foreground: AdaptiveColor?
-        var background: AdaptiveColor?
+        var foreground: ANSIColor?
+        var background: ANSIColor?
         var bold = false
         var dim = false
         var italic = false

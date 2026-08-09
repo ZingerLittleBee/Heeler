@@ -36,12 +36,20 @@ struct ANSISnapshotRendererTests {
         }
     }
 
-    /// How a run's color should resolve in one appearance: an exact 8-bit
-    /// value, or a clamped value that only has to satisfy the contrast
-    /// contract against the snapshot surface.
+    private typealias Resolved = (red: Int, green: Int, blue: Int, alpha: Double)
+
+    /// How a run's color should resolve in one appearance.
     private enum ColorExpectation: Sendable {
+        /// An exact 8-bit value.
         case exact(RGB)
-        case clamped
+        /// Clamped for legibility against the snapshot surface (a foreground
+        /// with no explicit background).
+        case clampedOnSurface
+        /// Clamped for legibility against the run's own resolved background.
+        case onExplicitBackground
+        /// Clamped so the appearance's label text stays legible on it (a
+        /// background).
+        case underLabelText
     }
 
     private struct ExpectedColor: Sendable {
@@ -55,11 +63,16 @@ struct ANSISnapshotRendererTests {
         static func adaptive(light: ColorExpectation, dark: ColorExpectation) -> ExpectedColor {
             ExpectedColor(light: light, dark: dark)
         }
+
+        static let onExplicitBackground = ExpectedColor(
+            light: .onExplicitBackground, dark: .onExplicitBackground)
+        static let underLabelText = ExpectedColor(
+            light: .underLabelText, dark: .underLabelText)
     }
 
-    // Mirrors the renderer's base palette; every value clears WCAG 4.5:1 on
-    // `secondarySystemGroupedBackground` in its appearance, so the renderer's
-    // clamp must leave them untouched.
+    // Mirrors the renderer's base palette sources; every value clears WCAG
+    // 4.5:1 on `secondarySystemGroupedBackground` in its appearance, so a
+    // foreground with no explicit background resolves to exactly these.
     private static let palette: [(light: RGB, dark: RGB)] = [
         (RGB(0x1C, 0x1C, 0x1E), RGB(0x8C, 0x8C, 0x8C)),
         (RGB(0xA3, 0x15, 0x15), RGB(0xF9, 0x75, 0x83)),
@@ -94,8 +107,8 @@ struct ANSISnapshotRendererTests {
                     ExpectedRun(text: "plain "),
                     ExpectedRun(
                         text: "red on blue",
-                        foreground: paletteColor(1),
-                        background: paletteColor(4)),
+                        foreground: .onExplicitBackground,
+                        background: .underLabelText),
                     ExpectedRun(text: " plain"),
                 ]),
             Fixture(
@@ -105,8 +118,8 @@ struct ANSISnapshotRendererTests {
                 runs: [
                     ExpectedRun(
                         text: "bright",
-                        foreground: paletteColor(14),
-                        background: paletteColor(9)),
+                        foreground: .onExplicitBackground,
+                        background: .underLabelText),
                     ExpectedRun(text: "reset"),
                 ]),
             Fixture(
@@ -147,9 +160,52 @@ struct ANSISnapshotRendererTests {
                     text: "X",
                     runs: [
                         ExpectedRun(
-                            text: "X", foreground: paletteColor(index),
-                            background: paletteColor(index))
+                            text: "X", foreground: .onExplicitBackground,
+                            background: .underLabelText)
                     ]))
+        }
+    }
+
+    @Test func everyBaseSlotForegroundResolvesToPaletteAndMeetsContract() {
+        for index in 0..<16 {
+            let foregroundCode = index < 8 ? 30 + index : 90 + index - 8
+            let rendered = ANSISnapshotRenderer.render("\u{1B}[\(foregroundCode)mX")
+            let foreground = rendered.runs.first?.foregroundColor
+            let slot = Self.palette[index]
+
+            let light = resolve(foreground, style: .light)
+            #expect(
+                light?.red == slot.light.red && light?.green == slot.light.green
+                    && light?.blue == slot.light.blue,
+                "slot \(index): light foreground")
+            let dark = resolve(foreground, style: .dark)
+            #expect(
+                dark?.red == slot.dark.red && dark?.green == slot.dark.green
+                    && dark?.blue == slot.dark.blue,
+                "slot \(index): dark foreground")
+            assertRatio(
+                light, reference: ANSISnapshotRenderer.surfaceColor(for: .light),
+                label: "slot \(index) light foreground")
+            assertRatio(
+                dark, reference: ANSISnapshotRenderer.surfaceColor(for: .dark),
+                label: "slot \(index) dark foreground")
+        }
+    }
+
+    @Test func everyBaseSlotBackgroundKeepsLabelTextLegibleInBothAppearances() {
+        for index in 0..<16 {
+            let backgroundCode = index < 8 ? 40 + index : 100 + index - 8
+            let rendered = ANSISnapshotRenderer.render("\u{1B}[\(backgroundCode)mX")
+            let background = rendered.runs.first?.backgroundColor
+
+            assertRatio(
+                resolve(background, style: .light),
+                reference: ANSISnapshotRenderer.labelColor(for: .light),
+                label: "slot \(index) light background")
+            assertRatio(
+                resolve(background, style: .dark),
+                reference: ANSISnapshotRenderer.labelColor(for: .dark),
+                label: "slot \(index) dark background")
         }
     }
 
@@ -162,8 +218,8 @@ struct ANSISnapshotRendererTests {
                 runs: [
                     ExpectedRun(
                         text: "ansi",
-                        foreground: paletteColor(1),
-                        background: paletteColor(14))
+                        foreground: .onExplicitBackground,
+                        background: .underLabelText)
                 ]),
             Fixture(
                 name: "256-color cube",
@@ -172,10 +228,8 @@ struct ANSISnapshotRendererTests {
                 runs: [
                     ExpectedRun(
                         text: "cube",
-                        foreground: .adaptive(
-                            light: .exact(RGB(0x00, 0x00, 0xFF)), dark: .clamped),
-                        background: .adaptive(
-                            light: .clamped, dark: .exact(RGB(0xFF, 0x87, 0x00))))
+                        foreground: .onExplicitBackground,
+                        background: .underLabelText)
                 ]),
             Fixture(
                 name: "256-color grayscale",
@@ -184,68 +238,106 @@ struct ANSISnapshotRendererTests {
                 runs: [
                     ExpectedRun(
                         text: "gray",
-                        foreground: .adaptive(
-                            light: .exact(RGB(0x08, 0x08, 0x08)), dark: .clamped),
-                        background: .adaptive(
-                            light: .clamped, dark: .exact(RGB(0xEE, 0xEE, 0xEE))))
+                        foreground: .onExplicitBackground,
+                        background: .underLabelText)
                 ]),
         ]
 
         fixtures.forEach(assertFixture)
     }
 
-    @Test func rendersTruecolorFixtures() {
-        let fixture = Fixture(
-            name: "truecolor foreground and background",
-            bytes: bytes("\u{1B}[38;2;12;34;56;48;2;210;180;140mrgb"),
-            text: "rgb",
-            runs: [
-                ExpectedRun(
-                    text: "rgb",
-                    foreground: .adaptive(
-                        light: .exact(RGB(12, 34, 56)), dark: .clamped),
-                    background: .adaptive(
-                        light: .clamped, dark: .exact(RGB(210, 180, 140))))
-            ])
+    @Test func extendedColorForegroundWithoutBackgroundKeepsSourceWhenLegible() {
+        let fixtures = [
+            Fixture(
+                name: "cube blue",
+                bytes: bytes("\u{1B}[38;5;21mX"),
+                text: "X",
+                runs: [
+                    ExpectedRun(
+                        text: "X",
+                        foreground: .adaptive(
+                            light: .exact(RGB(0x00, 0x00, 0xFF)),
+                            dark: .clampedOnSurface))
+                ]),
+            Fixture(
+                name: "cube orange",
+                bytes: bytes("\u{1B}[38;5;208mX"),
+                text: "X",
+                runs: [
+                    ExpectedRun(
+                        text: "X",
+                        foreground: .adaptive(
+                            light: .clampedOnSurface,
+                            dark: .exact(RGB(0xFF, 0x87, 0x00))))
+                ]),
+            Fixture(
+                name: "dark gray",
+                bytes: bytes("\u{1B}[38;5;232mX"),
+                text: "X",
+                runs: [
+                    ExpectedRun(
+                        text: "X",
+                        foreground: .adaptive(
+                            light: .exact(RGB(0x08, 0x08, 0x08)),
+                            dark: .clampedOnSurface))
+                ]),
+            Fixture(
+                name: "light gray",
+                bytes: bytes("\u{1B}[38;5;255mX"),
+                text: "X",
+                runs: [
+                    ExpectedRun(
+                        text: "X",
+                        foreground: .adaptive(
+                            light: .clampedOnSurface,
+                            dark: .exact(RGB(0xEE, 0xEE, 0xEE))))
+                ]),
+            Fixture(
+                name: "truecolor dark blue",
+                bytes: bytes("\u{1B}[38;2;12;34;56mX"),
+                text: "X",
+                runs: [
+                    ExpectedRun(
+                        text: "X",
+                        foreground: .adaptive(
+                            light: .exact(RGB(12, 34, 56)),
+                            dark: .clampedOnSurface))
+                ]),
+            Fixture(
+                name: "truecolor tan",
+                bytes: bytes("\u{1B}[38;2;210;180;140mX"),
+                text: "X",
+                runs: [
+                    ExpectedRun(
+                        text: "X",
+                        foreground: .adaptive(
+                            light: .clampedOnSurface,
+                            dark: .exact(RGB(210, 180, 140))))
+                ]),
+        ]
 
-        assertFixture(fixture)
+        fixtures.forEach(assertFixture)
     }
 
-    @Test func everyBaseSlotForegroundMeetsContrastContractInBothAppearances() {
-        for index in 0..<16 {
-            let foregroundCode = index < 8 ? 30 + index : 90 + index - 8
-            let rendered = ANSISnapshotRenderer.render("\u{1B}[\(foregroundCode)mX")
-            let foreground = rendered.runs.first?.foregroundColor
-            #expect(foreground != nil, "slot \(index): expected a foreground")
-            assertContrast(
-                resolve(foreground, style: .light), style: .light,
-                label: "slot \(index) foreground")
-            assertContrast(
-                resolve(foreground, style: .dark), style: .dark,
-                label: "slot \(index) foreground")
-        }
-    }
-
-    @Test func extendedColorForegroundsMeetContrastContractInBothAppearances() {
+    @Test func explicitForegroundOnExplicitBackgroundMeetsContrastContract() {
         let samples = [
-            "cube blue": "\u{1B}[38;5;21mX",
-            "cube orange": "\u{1B}[38;5;208mX",
-            "cube yellow": "\u{1B}[38;5;226mX",
-            "dark gray": "\u{1B}[38;5;232mX",
-            "light gray": "\u{1B}[38;5;255mX",
-            "truecolor green": "\u{1B}[38;2;0;255;0mX",
-            "truecolor dark blue": "\u{1B}[38;2;12;34;56mX",
+            "red on blue": "\u{1B}[31;44mX",
+            "bright cyan on bright red": "\u{1B}[96;101mX",
+            "cube blue on cube orange": "\u{1B}[38;5;21;48;5;208mX",
+            "gray on gray": "\u{1B}[38;5;232;48;5;255mX",
+            "truecolor on truecolor": "\u{1B}[38;2;12;34;56;48;2;210;180;140mX",
         ]
         for (name, sample) in samples {
             let rendered = ANSISnapshotRenderer.render(sample)
-            let foreground = rendered.runs.first?.foregroundColor
-            #expect(foreground != nil, "\(name): expected a foreground")
-            assertContrast(
-                resolve(foreground, style: .light), style: .light,
-                label: "\(name) foreground")
-            assertContrast(
-                resolve(foreground, style: .dark), style: .dark,
-                label: "\(name) foreground")
+            let run = rendered.runs.first
+            assertPairRatio(
+                resolve(run?.foregroundColor, style: .light),
+                resolve(run?.backgroundColor, style: .light),
+                label: "\(name) light")
+            assertPairRatio(
+                resolve(run?.foregroundColor, style: .dark),
+                resolve(run?.backgroundColor, style: .dark),
+                label: "\(name) dark")
         }
     }
 
@@ -268,20 +360,15 @@ struct ANSISnapshotRendererTests {
         let maroon = ANSISnapshotRenderer.RGB(red: 0x80, green: 0, blue: 0)
         let silver = ANSISnapshotRenderer.RGB(red: 0xC0, green: 0xC0, blue: 0xC0)
 
-        #expect(
-            ANSISnapshotRenderer.Contrast.legible(maroon, on: white, appearance: .light)
-                == maroon)
-        #expect(
-            ANSISnapshotRenderer.Contrast.legible(silver, on: darkSurface, appearance: .dark)
-                == silver)
+        #expect(ANSISnapshotRenderer.Contrast.legible(maroon, on: white) == maroon)
+        #expect(ANSISnapshotRenderer.Contrast.legible(silver, on: darkSurface) == silver)
     }
 
     @Test func legibleClampDarkensOnLightSurfacePreservingHue() {
         let white = ANSISnapshotRenderer.RGB(red: 255, green: 255, blue: 255)
         let yellow = ANSISnapshotRenderer.RGB(red: 255, green: 255, blue: 0)
 
-        let clamped = ANSISnapshotRenderer.Contrast.legible(
-            yellow, on: white, appearance: .light)
+        let clamped = ANSISnapshotRenderer.Contrast.legible(yellow, on: white)
 
         #expect(ANSISnapshotRenderer.Contrast.ratio(of: clamped, to: white) >= 4.5)
         #expect(clamped.red < yellow.red)
@@ -293,8 +380,7 @@ struct ANSISnapshotRendererTests {
         let darkSurface = ANSISnapshotRenderer.RGB(red: 28, green: 28, blue: 30)
         let navy = ANSISnapshotRenderer.RGB(red: 0, green: 0, blue: 0x80)
 
-        let clamped = ANSISnapshotRenderer.Contrast.legible(
-            navy, on: darkSurface, appearance: .dark)
+        let clamped = ANSISnapshotRenderer.Contrast.legible(navy, on: darkSurface)
 
         #expect(ANSISnapshotRenderer.Contrast.ratio(of: clamped, to: darkSurface) >= 4.5)
         #expect(clamped.blue > navy.blue)
@@ -306,26 +392,49 @@ struct ANSISnapshotRendererTests {
         let darkSurface = ANSISnapshotRenderer.RGB(red: 28, green: 28, blue: 30)
         let darkGray = ANSISnapshotRenderer.RGB(red: 8, green: 8, blue: 8)
 
-        let clamped = ANSISnapshotRenderer.Contrast.legible(
-            darkGray, on: darkSurface, appearance: .dark)
+        let clamped = ANSISnapshotRenderer.Contrast.legible(darkGray, on: darkSurface)
 
         #expect(ANSISnapshotRenderer.Contrast.ratio(of: clamped, to: darkSurface) >= 4.5)
         #expect(clamped.red == clamped.green)
         #expect(clamped.green == clamped.blue)
     }
 
+    @Test func legibleClampHandlesMidLuminanceReference() {
+        let reference = ANSISnapshotRenderer.RGB(red: 0x77, green: 0x77, blue: 0x77)
+        // Slightly lighter than the reference: the primary direction (away
+        // from the reference) cannot reach 4.5:1 here, so the clamp must
+        // fall back to the other direction.
+        let color = ANSISnapshotRenderer.RGB(red: 0x80, green: 0x80, blue: 0x80)
+
+        let clamped = ANSISnapshotRenderer.Contrast.legible(color, on: reference)
+
+        #expect(ANSISnapshotRenderer.Contrast.ratio(of: clamped, to: reference) >= 4.5)
+    }
+
     @Test func reverseVideoSwapsExplicitForegroundAndBackground() {
-        assertFixture(
-            Fixture(
-                name: "reverse video with explicit colors",
-                bytes: bytes("\u{1B}[31;44;7mX"),
-                text: "X",
-                runs: [
-                    ExpectedRun(
-                        text: "X",
-                        foreground: paletteColor(4),
-                        background: paletteColor(1))
-                ]))
+        let rendered = ANSISnapshotRenderer.render("\u{1B}[31;44;7mX")
+        let run = rendered.runs.first
+
+        #expect(run?.foregroundColor != nil)
+        #expect(run?.backgroundColor != nil)
+        // The swapped pair must stay legible in both appearances, and the
+        // fill must keep label text legible.
+        assertPairRatio(
+            resolve(run?.foregroundColor, style: .light),
+            resolve(run?.backgroundColor, style: .light),
+            label: "reverse video light pair")
+        assertPairRatio(
+            resolve(run?.foregroundColor, style: .dark),
+            resolve(run?.backgroundColor, style: .dark),
+            label: "reverse video dark pair")
+        assertRatio(
+            resolve(run?.backgroundColor, style: .light),
+            reference: ANSISnapshotRenderer.labelColor(for: .light),
+            label: "reverse video light fill")
+        assertRatio(
+            resolve(run?.backgroundColor, style: .dark),
+            reference: ANSISnapshotRenderer.labelColor(for: .dark),
+            label: "reverse video dark fill")
     }
 
     @Test func reverseVideoWithoutColorsUsesLegibleHighlightPair() {
@@ -334,42 +443,46 @@ struct ANSISnapshotRendererTests {
 
         #expect(run?.backgroundColor != nil)
         #expect(run?.foregroundColor != nil)
-        for style in [UIUserInterfaceStyle.light, UIUserInterfaceStyle.dark] {
-            let foreground = resolve(run?.foregroundColor, style: style)
-            let background = resolve(run?.backgroundColor, style: style)
-            guard let foreground, let background else {
-                Issue.record("reverse video: expected both colors to resolve")
-                return
-            }
-            let ratio = ANSISnapshotRenderer.Contrast.ratio(
-                of: ANSISnapshotRenderer.RGB(
-                    red: foreground.red, green: foreground.green, blue: foreground.blue),
-                to: ANSISnapshotRenderer.RGB(
-                    red: background.red, green: background.green, blue: background.blue))
-            #expect(
-                ratio >= ANSISnapshotRenderer.Contrast.minimumForegroundRatio,
-                "reverse video highlight contrast \(ratio) below 4.5")
-        }
+        assertPairRatio(
+            resolve(run?.foregroundColor, style: .light),
+            resolve(run?.backgroundColor, style: .light),
+            label: "reverse video light pair")
+        assertPairRatio(
+            resolve(run?.foregroundColor, style: .dark),
+            resolve(run?.backgroundColor, style: .dark),
+            label: "reverse video dark pair")
     }
 
     @Test func reverseVideoWithForegroundOnlyFillsSurfaceText() {
         let rendered = ANSISnapshotRenderer.render("\u{1B}[31;7mX")
         let run = rendered.runs.first
 
-        assertColor(
-            run?.backgroundColor,
-            matches: paletteColor(1),
-            opacity: 1,
-            label: "reverse video background")
-        // The text takes the surface color so it stays legible on the fill.
+        // The text takes the surface color, clamped against the fill: exactly
+        // white on the light fill, exactly black on the dark one.
         let lightForeground = resolve(run?.foregroundColor, style: .light)
         #expect(lightForeground?.red == 255)
         #expect(lightForeground?.green == 255)
         #expect(lightForeground?.blue == 255)
         let darkForeground = resolve(run?.foregroundColor, style: .dark)
-        #expect(darkForeground?.red == 28)
-        #expect(darkForeground?.green == 28)
-        #expect(darkForeground?.blue == 30)
+        #expect(darkForeground?.red == 0)
+        #expect(darkForeground?.green == 0)
+        #expect(darkForeground?.blue == 0)
+        assertPairRatio(
+            lightForeground,
+            resolve(run?.backgroundColor, style: .light),
+            label: "reverse video light pair")
+        assertPairRatio(
+            darkForeground,
+            resolve(run?.backgroundColor, style: .dark),
+            label: "reverse video dark pair")
+        assertRatio(
+            resolve(run?.backgroundColor, style: .light),
+            reference: ANSISnapshotRenderer.labelColor(for: .light),
+            label: "reverse video light fill")
+        assertRatio(
+            resolve(run?.backgroundColor, style: .dark),
+            reference: ANSISnapshotRenderer.labelColor(for: .dark),
+            label: "reverse video dark fill")
     }
 
     @Test func reverseVideoOffAndResetClearReversal() {
@@ -598,12 +711,15 @@ struct ANSISnapshotRendererTests {
         #expect(runs[0].text == "    ")
         #expect(runs[0].background == nil)
         #expect(runs[1].text == "message")
-        // RGB(8, 8, 8) contrasts with the light surface, so it survives
-        // unclamped there.
-        let lightBackground = resolve(runs[1].background, style: .light)
-        #expect(lightBackground?.red == 8)
-        #expect(lightBackground?.green == 8)
-        #expect(lightBackground?.blue == 8)
+        // The surviving background is clamped so label text stays legible.
+        assertRatio(
+            resolve(runs[1].background, style: .light),
+            reference: ANSISnapshotRenderer.labelColor(for: .light),
+            label: "message background light")
+        assertRatio(
+            resolve(runs[1].background, style: .dark),
+            reference: ANSISnapshotRenderer.labelColor(for: .dark),
+            label: "message background dark")
         #expect(runs[2].text == "    ")
         #expect(runs[2].background == nil)
     }
@@ -625,16 +741,24 @@ struct ANSISnapshotRendererTests {
 
         for (actual, expected) in zip(actualRuns, fixture.runs) {
             #expect(actual.text == expected.text, "\(fixture.name): run text")
-            assertColor(
-                actual.foreground,
-                matches: expected.foreground,
-                opacity: expected.foregroundOpacity,
-                label: "\(fixture.name): \(expected.text) foreground")
-            assertColor(
-                actual.background,
-                matches: expected.background,
-                opacity: 1,
-                label: "\(fixture.name): \(expected.text) background")
+            for style in [UIUserInterfaceStyle.light, UIUserInterfaceStyle.dark] {
+                let foreground = resolve(actual.foreground, style: style)
+                let background = resolve(actual.background, style: style)
+                assertResolved(
+                    foreground,
+                    matches: expected.foreground,
+                    opacity: expected.foregroundOpacity,
+                    partner: background,
+                    style: style,
+                    label: "\(fixture.name): \(expected.text) foreground")
+                assertResolved(
+                    background,
+                    matches: expected.background,
+                    opacity: 1,
+                    partner: foreground,
+                    style: style,
+                    label: "\(fixture.name): \(expected.text) background")
+            }
 
             var expectedEmphasis: InlinePresentationIntent = []
             if expected.bold {
@@ -652,68 +776,98 @@ struct ANSISnapshotRendererTests {
         }
     }
 
-    private func assertColor(
-        _ actual: Color?,
+    private func assertResolved(
+        _ resolved: Resolved?,
         matches expected: ExpectedColor?,
         opacity: Double,
+        partner: Resolved?,
+        style: UIUserInterfaceStyle,
         label: String
     ) {
-        for style in [UIUserInterfaceStyle.light, UIUserInterfaceStyle.dark] {
-            let resolved = resolve(actual, style: style)
-            let appearance = style == .dark ? "dark" : "light"
-
-            guard let expected else {
-                if opacity < 1 {
-                    // Dim default foreground: Color.primary at half opacity.
-                    let channel = style == .dark ? 255 : 0
-                    #expect(
-                        resolved?.red == channel && resolved?.green == channel
-                            && resolved?.blue == channel
-                            && abs((resolved?.alpha ?? 0) - opacity) < 0.01,
-                        "\(label): dim default in \(appearance)")
-                } else {
-                    #expect(resolved == nil, "\(label): expected no color in \(appearance)")
-                }
-                continue
-            }
-
-            switch style == .dark ? expected.dark : expected.light {
-            case .exact(let rgb):
+        let appearance = style == .dark ? "dark" : "light"
+        guard let expected else {
+            if opacity < 1 {
+                // Dim default foreground: Color.primary at half opacity.
+                let channel = style == .dark ? 255 : 0
                 #expect(
-                    resolved?.red == rgb.red && resolved?.green == rgb.green
-                        && resolved?.blue == rgb.blue
+                    resolved?.red == channel && resolved?.green == channel
+                        && resolved?.blue == channel
                         && abs((resolved?.alpha ?? 0) - opacity) < 0.01,
-                    "\(label): expected \(rgb) in \(appearance), got \(String(describing: resolved))")
-            case .clamped:
-                assertContrast(resolved, style: style, label: label)
+                    "\(label): dim default in \(appearance)")
+            } else {
+                #expect(resolved == nil, "\(label): expected no color in \(appearance)")
             }
+            return
+        }
+
+        switch style == .dark ? expected.dark : expected.light {
+        case .exact(let rgb):
+            #expect(
+                resolved?.red == rgb.red && resolved?.green == rgb.green
+                    && resolved?.blue == rgb.blue
+                    && abs((resolved?.alpha ?? 0) - opacity) < 0.01,
+                "\(label): expected \(rgb) in \(appearance), got \(String(describing: resolved))")
+        case .clampedOnSurface:
+            assertRatio(
+                resolved,
+                reference: ANSISnapshotRenderer.surfaceColor(
+                    for: style == .dark ? .dark : .light),
+                label: label)
+        case .onExplicitBackground:
+            guard let partner else {
+                Issue.record("\(label): expected a resolved background partner")
+                return
+            }
+            assertPairRatio(resolved, partner, label: label)
+        case .underLabelText:
+            assertRatio(
+                resolved,
+                reference: ANSISnapshotRenderer.labelColor(
+                    for: style == .dark ? .dark : .light),
+                label: label)
         }
     }
 
-    private func assertContrast(
-        _ resolved: (red: Int, green: Int, blue: Int, alpha: Double)?,
-        style: UIUserInterfaceStyle,
+    private func assertRatio(
+        _ resolved: Resolved?,
+        reference: ANSISnapshotRenderer.RGB,
         label: String
     ) {
         guard let resolved else {
             Issue.record("\(label): expected a resolved color")
             return
         }
-        let surface = ANSISnapshotRenderer.surfaceColor(
-            for: style == .dark ? .dark : .light)
-        let ratio = ANSISnapshotRenderer.Contrast.ratio(
-            of: ANSISnapshotRenderer.RGB(
-                red: resolved.red, green: resolved.green, blue: resolved.blue),
-            to: surface)
+        let ratio = ANSISnapshotRenderer.Contrast.ratio(of: rgb(resolved), to: reference)
         #expect(
             ratio >= ANSISnapshotRenderer.Contrast.minimumForegroundRatio,
-            "\(label): contrast \(ratio) below 4.5 in \(style == .dark ? "dark" : "light")")
+            "\(label): contrast \(ratio) below 4.5")
+    }
+
+    private func assertPairRatio(
+        _ foreground: Resolved?,
+        _ background: Resolved?,
+        label: String
+    ) {
+        guard let foreground, let background else {
+            Issue.record("\(label): expected both colors to resolve")
+            return
+        }
+        let ratio = ANSISnapshotRenderer.Contrast.ratio(
+            of: rgb(foreground), to: rgb(background))
+        #expect(
+            ratio >= ANSISnapshotRenderer.Contrast.minimumForegroundRatio,
+            "\(label): contrast \(ratio) below 4.5")
+    }
+
+    private func rgb(_ resolved: Resolved) -> ANSISnapshotRenderer.RGB {
+        ANSISnapshotRenderer.RGB(
+            red: resolved.red, green: resolved.green, blue: resolved.blue)
     }
 
     private func resolve(
         _ color: Color?,
         style: UIUserInterfaceStyle
-    ) -> (red: Int, green: Int, blue: Int, alpha: Double)? {
+    ) -> Resolved? {
         guard let color else { return nil }
         let resolved = UIColor(color).resolvedColor(
             with: UITraitCollection(userInterfaceStyle: style))
