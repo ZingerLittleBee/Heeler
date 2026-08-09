@@ -40,6 +40,10 @@ final class TerminalKeyboardControl {
     func beginKeyboardTypeSwitch() {
         terminal?.beginKeyboardTypeSwitch()
     }
+
+    func finishKeyboardTypeSwitch() {
+        terminal?.finishKeyboardTypeSwitch()
+    }
 }
 
 /// The interactive Ghostty surface. PTY bytes flow into an in-memory Ghostty
@@ -340,7 +344,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// grid from every `layoutSubviews` call, so keep that presentation-only
     /// transaction out of its layout path.
     private var keyboardTypeSwitchBounds: CGRect?
-    private var keyboardTypeSwitchTask: Task<Void, Never>?
+    private var keyboardTypeSwitchOwnsSizeReportDeferral = false
     private var defersLayoutForKeyboardTransition = false
     /// What ends the current freeze. A dismissal waits for `keyboardDidHide`;
     /// an inherited keyboard never leaves, so its settled signal is the frame
@@ -914,6 +918,15 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         reloadInputViewsAfterWindowResize()
     }
 
+    /// Ghostty's display link reads `bounds` after every render and adjusts
+    /// its Metal/IOSurface sublayers even when `layoutSubviews` is skipped.
+    /// Return the settled geometry throughout a keyboard implementation swap
+    /// so an old drawable is never stretched into a transient UIKit frame.
+    override var bounds: CGRect {
+        get { keyboardTypeSwitchBounds ?? super.bounds }
+        set { super.bounds = newValue }
+    }
+
     override func didMoveToWindow() {
         super.didMoveToWindow()
         if window == nil {
@@ -985,34 +998,38 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// the iOS keyboard with its tools overlay, or vice versa. The surrounding
     /// UIKit hierarchy still receives several layout invalidations as the
     /// system input view leaves or arrives; none of them describe a terminal
-    /// resize. If the terminal really has a different final size, the fallback
-    /// lays it out once after the keyboard transaction settles.
+    /// resize. The keyboard's settled signal ends the freeze; if the terminal
+    /// really has a different final size, it is laid out once at that point.
     func beginKeyboardTypeSwitch() {
         if keyboardTypeSwitchBounds == nil {
-            keyboardTypeSwitchBounds = bounds
-        }
-        keyboardTypeSwitchTask?.cancel()
-        keyboardTypeSwitchTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(500))
-            guard !Task.isCancelled else { return }
-            self?.finishKeyboardTypeSwitch()
+            keyboardTypeSwitchBounds = super.bounds
+            if !defersLayoutForKeyboardTransition {
+                callbackBridge.beginSizeReportDeferral()
+                keyboardTypeSwitchOwnsSizeReportDeferral = true
+            }
         }
     }
 
-    private func finishKeyboardTypeSwitch() {
+    func finishKeyboardTypeSwitch() {
         guard let previousBounds = keyboardTypeSwitchBounds else { return }
         keyboardTypeSwitchBounds = nil
-        keyboardTypeSwitchTask?.cancel()
-        keyboardTypeSwitchTask = nil
-        guard bounds != previousBounds else { return }
-        setNeedsLayout()
-        layoutIfNeeded()
+        let shouldLayOut = super.bounds != previousBounds
+        if shouldLayOut {
+            setNeedsLayout()
+            layoutIfNeeded()
+        }
+        if keyboardTypeSwitchOwnsSizeReportDeferral {
+            keyboardTypeSwitchOwnsSizeReportDeferral = false
+            scheduleGridReport(after: Self.gridSettleDelay)
+        }
     }
 
     private func cancelKeyboardTypeSwitch() {
         keyboardTypeSwitchBounds = nil
-        keyboardTypeSwitchTask?.cancel()
-        keyboardTypeSwitchTask = nil
+        if keyboardTypeSwitchOwnsSizeReportDeferral {
+            keyboardTypeSwitchOwnsSizeReportDeferral = false
+            callbackBridge.cancelSizeReportDeferral()
+        }
     }
 
     /// Ghostty synchronizes its grid and reports a PTY resize from every

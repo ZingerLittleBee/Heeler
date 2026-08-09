@@ -351,7 +351,12 @@ struct AgentTerminalView: View {
                     keyboardPresentation: $composerKeyboardPresentation,
                     quickKeysEnabled: attach.isLocalInputEnabled,
                     sendQuickKey: keyboardControl.sendQuickKey,
-                    beginKeyboardTypeSwitch: keyboardControl.beginKeyboardTypeSwitch)
+                    beginKeyboardTypeSwitch: { expectsSystemKeyboard in
+                        keyboardControl.beginKeyboardTypeSwitch()
+                        keyboardInset.beginKeyboardTypeSwitch(
+                            expectsSystemKeyboard: expectsSystemKeyboard,
+                            onSettled: keyboardControl.finishKeyboardTypeSwitch)
+                    })
             } else {
                 TerminalAgentSwitcherRow(
                     switcher: agentSwitcher,

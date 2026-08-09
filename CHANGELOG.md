@@ -24,7 +24,8 @@ Entries reference the issue that motivated them.
   tabbed tools keyboard. Its Agent controls send Esc, Tab, Shift-Tab, arrows,
   Enter, and Backspace directly to the Agent without changing the draft. The
   two keyboards share the same full height, so switching does not move the
-  Composer, resize the terminal, or ask Ghostty to lay out its grid again.
+  Composer, resize or stretch the terminal, or ask Ghostty to lay out its grid
+  again, including while candidate and paste rows change during replacement.
   (#182)
 
 - Settings > About now has Acknowledgements: every redistributed third-party

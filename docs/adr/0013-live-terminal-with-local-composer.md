@@ -16,8 +16,11 @@ and Backspace directly to the PTY; its Snippet and Skill panes edit the local
 draft. The tools keyboard reuses the complete measured iOS keyboard footprint,
 including its auxiliary rows. The terminal reserves that footprint in both
 modes, and tools render as an overlay inside it rather than joining Composer's
-safe-area inset, so neither Composer nor the terminal grid moves. Ghostty's
-layout is frozen while UIKit replaces the keyboard implementation; if the
+safe-area inset, so neither Composer nor the terminal grid moves. The measured
+keyboard footprint and the bounds visible to Ghostty's display link are both
+frozen while UIKit replaces the keyboard implementation, then released by the
+settled keyboard notification. Candidate and paste rows therefore cannot
+stretch the existing Metal surface or emit an intermediate PTY resize. If the
 terminal has genuinely different final bounds, it receives one settled layout
 after the replacement. Send still delivers the complete draft through one
 `agent.prompt` request.

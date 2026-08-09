@@ -1206,6 +1206,49 @@ struct TerminalAttachTests {
         #expect(inset.lastPresentedHeight == 402)
     }
 
+    /// Candidate and paste rows may publish a different height while UIKit is
+    /// replacing keyboard implementations. Neither direction may let those
+    /// transient measurements change the terminal footprint.
+    @MainActor
+    @Test func aKeyboardTypeSwitchPinsTheMeasuredFootprintUntilSettlement() async throws {
+        let center = NotificationCenter()
+        var settledCount = 0
+        let inset = TerminalKeyboardInset(notificationCenter: center) { frame in
+            frame.height == 436 ? 402 : 365
+        }
+        let frame = CGRect(x: 0, y: 554, width: 440, height: 436)
+        let transientFrame = CGRect(x: 0, y: 591, width: 440, height: 399)
+
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: frame])
+        try await Task.sleep(for: .milliseconds(120))
+
+        inset.beginKeyboardTypeSwitch(expectsSystemKeyboard: false) {
+            settledCount += 1
+        }
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        #expect(inset.height == 402)
+        #expect(inset.lastPresentedHeight == 402)
+        center.post(name: UIResponder.keyboardDidHideNotification, object: nil)
+        #expect(inset.height == 0)
+        #expect(inset.lastPresentedHeight == 402)
+
+        inset.beginKeyboardTypeSwitch(expectsSystemKeyboard: true) {
+            settledCount += 1
+        }
+        center.post(
+            name: UIResponder.keyboardWillChangeFrameNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: transientFrame])
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(inset.height == 0)
+        #expect(inset.lastPresentedHeight == 402)
+        center.post(name: UIResponder.keyboardDidShowNotification, object: nil)
+        #expect(inset.height == 402)
+        #expect(inset.lastPresentedHeight == 402)
+        #expect(settledCount == 2)
+    }
+
     @Test func agentKeyboardReplacementKeepsTheTerminalInsetStable() {
         let system = AgentComposerKeyboardLayout(
             currentHeight: 402, lastPresentedHeight: 402,
@@ -1284,8 +1327,7 @@ struct TerminalAttachTests {
         controller.view.layoutIfNeeded()
         await Task.yield()
         controller.view.layoutIfNeeded()
-
-        try await Task.sleep(for: .milliseconds(550))
+        keyboardControl.finishKeyboardTypeSwitch()
         controller.view.layoutIfNeeded()
 
         #expect(keyboardControl.terminal === terminal)
@@ -1311,9 +1353,10 @@ struct TerminalAttachTests {
         terminal.setNeedsLayout()
         terminal.layoutIfNeeded()
 
+        #expect(terminal.bounds.height == 472)
         #expect(terminal.ghosttyLayoutPassCount == layoutPassCount)
 
-        try await Task.sleep(for: .milliseconds(550))
+        terminal.finishKeyboardTypeSwitch()
 
         #expect(terminal.ghosttyLayoutPassCount == layoutPassCount + 1)
     }

@@ -44,7 +44,7 @@ struct AgentComposerView: View {
     @Binding var keyboardPresentation: AgentComposerKeyboardPresentation
     let quickKeysEnabled: Bool
     let sendQuickKey: (AgentQuickKey) -> Void
-    let beginKeyboardTypeSwitch: () -> Void
+    let beginKeyboardTypeSwitch: (_ expectsSystemKeyboard: Bool) -> Void
     @FocusState private var isInputFocused: Bool
 
     private var isToolsKeyboardPresented: Bool {
@@ -140,6 +140,9 @@ struct AgentComposerView: View {
         }
         .onChange(of: isInputFocused) { _, isFocused in
             if isFocused {
+                if keyboardPresentation == .tools {
+                    beginKeyboardTypeSwitch(true)
+                }
                 keyboardPresentation = .system
             } else if keyboardPresentation != .tools {
                 keyboardPresentation = .hidden
@@ -165,13 +168,18 @@ struct AgentComposerView: View {
     }
 
     private func switchKeyboard() {
-        beginKeyboardTypeSwitch()
-        if isToolsKeyboardPresented {
-            keyboardPresentation = .system
-            isInputFocused = true
-        } else {
-            keyboardPresentation = .tools
-            isInputFocused = false
+        let expectsSystemKeyboard = isToolsKeyboardPresented
+        beginKeyboardTypeSwitch(expectsSystemKeyboard)
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            if expectsSystemKeyboard {
+                keyboardPresentation = .system
+                isInputFocused = true
+            } else {
+                keyboardPresentation = .tools
+                isInputFocused = false
+            }
         }
     }
 

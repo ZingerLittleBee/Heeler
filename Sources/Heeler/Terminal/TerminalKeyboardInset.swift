@@ -21,6 +21,17 @@ import UIKit
 @MainActor
 @Observable
 final class TerminalKeyboardInset {
+    private enum KeyboardTypeSwitchTarget {
+        case system
+        case tools
+    }
+
+    private struct KeyboardTypeSwitch {
+        let target: KeyboardTypeSwitchTarget
+        let frozenHeight: CGFloat
+        let onSettled: @MainActor () -> Void
+    }
+
     /// How much of the terminal's bottom edge the keyboard stack covers.
     private(set) var height: CGFloat = 0
     /// The last complete keyboard footprint. It survives dismissal so an
@@ -30,6 +41,8 @@ final class TerminalKeyboardInset {
     /// short enough to stay inside the keyboard's own animation.
     private static let coalesceDelay = Duration.milliseconds(60)
     @ObservationIgnored private var coalesceTask: Task<Void, Never>?
+    @ObservationIgnored private var keyboardTypeSwitch: KeyboardTypeSwitch?
+    @ObservationIgnored private var keyboardTypeSwitchFallbackTask: Task<Void, Never>?
     @ObservationIgnored private let measure: @MainActor (CGRect) -> CGFloat?
 
     init(
@@ -61,10 +74,29 @@ final class TerminalKeyboardInset {
                 self?.keyboardWillDismiss()
             }
         }
+        notificationCenter.addObserver(
+            forName: UIResponder.keyboardDidShowNotification, object: nil, queue: .main
+        ) { [weak self] notification in
+            let isLocal = (notification.userInfo?[UIResponder.keyboardIsLocalUserInfoKey]
+                as? NSNumber)?.boolValue ?? true
+            MainActor.assumeIsolated {
+                self?.keyboardDidSettle(isLocal: isLocal, target: .system)
+            }
+        }
+        notificationCenter.addObserver(
+            forName: UIResponder.keyboardDidHideNotification, object: nil, queue: .main
+        ) { [weak self] notification in
+            let isLocal = (notification.userInfo?[UIResponder.keyboardIsLocalUserInfoKey]
+                as? NSNumber)?.boolValue ?? true
+            MainActor.assumeIsolated {
+                self?.keyboardDidSettle(isLocal: isLocal, target: .tools)
+            }
+        }
     }
 
     private func keyboardWillPresent(endFrame: CGRect?) {
         guard let endFrame, let height = measure(endFrame), height > 0 else { return }
+        guard keyboardTypeSwitch == nil else { return }
         coalesceTask?.cancel()
         coalesceTask = Task { [weak self] in
             try? await Task.sleep(for: Self.coalesceDelay)
@@ -76,7 +108,55 @@ final class TerminalKeyboardInset {
     private func keyboardWillDismiss() {
         coalesceTask?.cancel()
         coalesceTask = nil
+        guard keyboardTypeSwitch == nil else { return }
         apply(0)
+    }
+
+    /// Pins the complete keyboard footprint while UIKit replaces the system
+    /// keyboard with the app tools keyboard, or vice versa. Keyboard frame
+    /// notifications can temporarily add or remove candidate and paste rows;
+    /// those measurements must not resize the terminal during a type switch.
+    /// The corresponding did-show or did-hide notification settles the swap;
+    /// the timeout is only a fallback for interrupted keyboard transactions.
+    func beginKeyboardTypeSwitch(
+        expectsSystemKeyboard: Bool,
+        onSettled: @escaping @MainActor () -> Void
+    ) {
+        coalesceTask?.cancel()
+        coalesceTask = nil
+        keyboardTypeSwitchFallbackTask?.cancel()
+        keyboardTypeSwitch = KeyboardTypeSwitch(
+            target: expectsSystemKeyboard ? .system : .tools,
+            frozenHeight: lastPresentedHeight,
+            onSettled: onSettled)
+        keyboardTypeSwitchFallbackTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            self?.finishKeyboardTypeSwitch()
+        }
+    }
+
+    private func keyboardDidSettle(
+        isLocal: Bool,
+        target: KeyboardTypeSwitchTarget
+    ) {
+        guard isLocal else { return }
+        guard keyboardTypeSwitch?.target == target else { return }
+        finishKeyboardTypeSwitch()
+    }
+
+    private func finishKeyboardTypeSwitch() {
+        guard let keyboardTypeSwitch else { return }
+        self.keyboardTypeSwitch = nil
+        keyboardTypeSwitchFallbackTask?.cancel()
+        keyboardTypeSwitchFallbackTask = nil
+        switch keyboardTypeSwitch.target {
+        case .system:
+            apply(keyboardTypeSwitch.frozenHeight)
+        case .tools:
+            apply(0)
+        }
+        keyboardTypeSwitch.onSettled()
     }
 
     private func apply(_ height: CGFloat) {
