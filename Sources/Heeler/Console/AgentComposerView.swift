@@ -355,12 +355,13 @@ private struct AgentComposerSendButtonStyle: ButtonStyle {
         configuration.label
             .foregroundStyle(
                 Color(uiColor: isEnabled ? .systemBackground : .secondaryLabel))
-            .frame(width: 44, height: 44)
+            .frame(width: 32, height: 32)
             .background(
                 isEnabled
                     ? Color(uiColor: .label)
                     : Color(uiColor: .label).opacity(0.12),
                 in: Circle())
+            .frame(width: 44, height: 44)
             .opacity(configuration.isPressed && isEnabled ? 0.72 : 1)
             .contentShape(.circle)
     }

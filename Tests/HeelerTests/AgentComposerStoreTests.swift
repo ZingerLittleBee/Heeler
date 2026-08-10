@@ -305,6 +305,17 @@ struct AgentComposerStoreTests {
 @Suite("Agent Composer send button")
 struct AgentComposerSendButtonTests {
     @Test
+    func buttonKeepsOriginalVisualDiameter() async throws {
+        let image = try await Self.render(isEnabled: true, colorScheme: .dark)
+        let bounds = try #require(Self.visibleContentBounds(in: image))
+        let width = bounds.width / image.scale
+
+        #expect(
+            (30...34).contains(width),
+            "Send visual diameter should remain about 32pt; rendered width was \(width)")
+    }
+
+    @Test
     func buttonKeepsItsArrowVisibleAcrossStatesAndAppearances() async throws {
         for isEnabled in [false, true] {
             for colorScheme in [ColorScheme.light, .dark] {
@@ -325,21 +336,15 @@ struct AgentComposerSendButtonTests {
 
     private static func render(isEnabled: Bool, colorScheme: ColorScheme) async throws -> UIImage {
         let bounds = CGRect(x: 0, y: 0, width: 64, height: 64)
-        let controller = UIHostingController(
-            rootView: ZStack {
+        let renderer = ImageRenderer(
+            content: ZStack {
                 Color(uiColor: .secondarySystemBackground)
                 AgentComposerSendButton(isEnabled: isEnabled) {}
             }
             .environment(\.colorScheme, colorScheme))
-        controller.view.frame = bounds
-
-        let window = try await makeTestWindow(frame: bounds, rootViewController: controller)
-        defer { window.isHidden = true }
-        controller.view.layoutIfNeeded()
-
-        return UIGraphicsImageRenderer(bounds: bounds).image { _ in
-            window.drawHierarchy(in: bounds, afterScreenUpdates: true)
-        }
+        renderer.proposedSize = ProposedViewSize(width: bounds.width, height: bounds.height)
+        renderer.scale = 1
+        return try #require(renderer.uiImage)
     }
 
     private static func luminanceRange(in image: UIImage, unitRect: CGRect) -> Double? {
@@ -372,5 +377,41 @@ struct AgentComposerSendButtonTests {
             }
         }
         return maximum - minimum
+    }
+
+    private static func visibleContentBounds(in image: UIImage) -> CGRect? {
+        guard let cgImage = image.cgImage else { return nil }
+        let width = cgImage.width, height = cgImage.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        guard
+            let context = CGContext(
+                data: &pixels, width: width, height: height, bitsPerComponent: 8,
+                bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        let background = Self.luminance(at: 0, in: pixels)
+        var minX = width, minY = height, maxX = -1, maxY = -1
+        for y in 0..<height {
+            for x in 0..<width {
+                let offset = (y * width + x) * 4
+                guard abs(Self.luminance(at: offset, in: pixels) - background) > 0.25 else {
+                    continue
+                }
+                minX = min(minX, x)
+                minY = min(minY, y)
+                maxX = max(maxX, x)
+                maxY = max(maxY, y)
+            }
+        }
+        guard maxX >= minX, maxY >= minY else { return nil }
+        return CGRect(x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1)
+    }
+
+    private static func luminance(at offset: Int, in pixels: [UInt8]) -> Double {
+        (0.2126 * Double(pixels[offset])
+            + 0.7152 * Double(pixels[offset + 1])
+            + 0.0722 * Double(pixels[offset + 2])) / 255
     }
 }
