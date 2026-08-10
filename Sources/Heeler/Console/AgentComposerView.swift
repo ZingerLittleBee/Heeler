@@ -188,6 +188,7 @@ struct AgentComposerView: View {
                                 }
                                 .buttonStyle(.bordered)
                                 .buttonBorderShape(.capsule)
+                                .tint(secondaryActionTint)
                                 .font(.footnote.weight(.semibold))
                                 .frame(minHeight: 44)
                                 .accessibilityLabel("Attach Links")
