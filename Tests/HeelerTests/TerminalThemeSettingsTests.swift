@@ -14,16 +14,14 @@ struct TerminalThemeSettingsTests {
         return (defaults, { defaults.removePersistentDomain(forName: suiteName) })
     }
 
-    @Test func defaultsToFollowingTheSystem() throws {
+    @Test func defaultsBothAppearancesToVesper() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
         let settings = TerminalThemeSettings(defaults: defaults)
 
-        #expect(settings.lightSelection == .followSystem)
-        #expect(settings.darkSelection == .followSystem)
-        // Both slots on the default must render exactly what pre-slot
-        // installs rendered: libghostty's built-in pair.
-        #expect(settings.theme == .default)
+        #expect(settings.lightSelection == .vesper)
+        #expect(settings.darkSelection == .vesper)
+        #expect(settings.theme == TerminalThemeOption.vesper.terminalTheme)
     }
 
     /// Pre-slot releases persisted one selection; it must seed both slots so
@@ -107,10 +105,10 @@ struct TerminalThemeSettingsTests {
 
         let reloaded = TerminalThemeSettings(defaults: defaults)
         #expect(reloaded.darkSelection == .dracula)
-        #expect(reloaded.lightSelection == .followSystem)
+        #expect(reloaded.lightSelection == .vesper)
     }
 
-    @Test func unknownPersistedSelectionFallsBackToTheSystem() throws {
+    @Test func unknownPersistedSelectionFallsBackToVesper() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
         defaults.set("removed-theme", forKey: "terminal-theme")
@@ -118,8 +116,8 @@ struct TerminalThemeSettingsTests {
         defaults.set("removed-theme", forKey: "terminal-theme-dark")
         let settings = TerminalThemeSettings(defaults: defaults)
 
-        #expect(settings.lightSelection == .followSystem)
-        #expect(settings.darkSelection == .followSystem)
+        #expect(settings.lightSelection == .vesper)
+        #expect(settings.darkSelection == .vesper)
     }
 
     @Test func curatedCatalogEntriesExistInThePinnedPackage() {

@@ -211,10 +211,10 @@ final class TerminalThemeSettings {
             .flatMap(TerminalThemeOption.init(rawValue:))
         lightSelection =
             defaults.string(forKey: Self.lightDefaultsKey)
-            .flatMap(TerminalThemeOption.init(rawValue:)) ?? legacy ?? .followSystem
+            .flatMap(TerminalThemeOption.init(rawValue:)) ?? legacy ?? .vesper
         darkSelection =
             defaults.string(forKey: Self.darkDefaultsKey)
-            .flatMap(TerminalThemeOption.init(rawValue:)) ?? legacy ?? .followSystem
+            .flatMap(TerminalThemeOption.init(rawValue:)) ?? legacy ?? .vesper
     }
 
     var theme: TerminalTheme {
