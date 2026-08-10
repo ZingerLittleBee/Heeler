@@ -200,6 +200,7 @@ struct AgentComposerView: View {
                             } label: {
                                 Image(systemName: "arrow.up")
                                     .font(.system(size: 15, weight: .bold))
+                                    .foregroundStyle(Color(uiColor: .systemBackground))
                                     .frame(width: 18, height: 18)
                             }
                             .buttonStyle(.borderedProminent)
