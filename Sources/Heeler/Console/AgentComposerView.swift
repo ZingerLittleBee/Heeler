@@ -129,12 +129,14 @@ struct AgentComposerView: View {
                                 }
                                 .disabled(!actions.canAddFile)
                             } label: {
-                                Label("Add", systemImage: "plus")
+                                Image(systemName: "plus")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .frame(width: 18, height: 18)
+                                    .accessibilityLabel("Add")
                             }
                             .buttonStyle(.bordered)
                             .buttonBorderShape(.circle)
-                            .labelStyle(.iconOnly)
-                            .font(.footnote.weight(.semibold))
+                            .tint(secondaryActionTint)
                             .frame(minWidth: 44, minHeight: 44)
                             .accessibilityHint("Adds an image or file to the draft")
 
@@ -163,12 +165,14 @@ struct AgentComposerView: View {
                                     }
                                 }
                             } label: {
-                                Label("More", systemImage: "ellipsis")
+                                Image(systemName: "ellipsis")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .frame(width: 18, height: 18)
+                                    .accessibilityLabel("More")
                             }
                             .buttonStyle(.bordered)
                             .buttonBorderShape(.circle)
-                            .labelStyle(.iconOnly)
-                            .font(.footnote.weight(.semibold))
+                            .tint(secondaryActionTint)
                             .frame(minWidth: 44, minHeight: 44)
                             .accessibilityHint("Opens Agent actions")
 
@@ -191,15 +195,19 @@ struct AgentComposerView: View {
                             }
 
                             Spacer(minLength: 0)
-                            Button("Send", systemImage: "arrow.up") {
+                            Button {
                                 Task { await store.send() }
+                            } label: {
+                                Image(systemName: "arrow.up")
+                                    .font(.system(size: 15, weight: .bold))
+                                    .frame(width: 18, height: 18)
                             }
                             .buttonStyle(.borderedProminent)
                             .buttonBorderShape(.circle)
-                            .labelStyle(.iconOnly)
-                            .font(.footnote.weight(.semibold))
+                            .tint(primaryActionTint)
                             .frame(minWidth: 44, minHeight: 44)
                             .disabled(!store.canSend)
+                            .accessibilityLabel("Send")
                             .accessibilityHint("Delivers the complete draft to the Agent")
                         }
                     }
@@ -307,6 +315,14 @@ struct AgentComposerView: View {
 
     private var linkPresentation: AgentComposerLinkPresentation? {
         AgentComposerLinkPresentation(count: actions.attachLinkCount)
+    }
+
+    private var secondaryActionTint: Color {
+        Color(uiColor: .label).opacity(0.72)
+    }
+
+    private var primaryActionTint: Color {
+        Color(uiColor: .label)
     }
 
     private var statusLabel: some View {
