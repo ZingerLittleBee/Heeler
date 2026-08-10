@@ -195,21 +195,9 @@ struct AgentComposerView: View {
                             }
 
                             Spacer(minLength: 0)
-                            Button {
+                            AgentComposerSendButton(isEnabled: store.canSend) {
                                 Task { await store.send() }
-                            } label: {
-                                Image(systemName: "arrow.up")
-                                    .font(.system(size: 15, weight: .bold))
-                                    .foregroundStyle(Color(uiColor: .systemBackground))
-                                    .frame(width: 18, height: 18)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .buttonBorderShape(.circle)
-                            .tint(primaryActionTint)
-                            .frame(minWidth: 44, minHeight: 44)
-                            .disabled(!store.canSend)
-                            .accessibilityLabel("Send")
-                            .accessibilityHint("Delivers the complete draft to the Agent")
                         }
                     }
                     .padding(.horizontal, 12)
@@ -322,10 +310,6 @@ struct AgentComposerView: View {
         Color(uiColor: .label).opacity(0.72)
     }
 
-    private var primaryActionTint: Color {
-        Color(uiColor: .label)
-    }
-
     private var statusLabel: some View {
         HStack(spacing: 4) {
             if status == .working {
@@ -344,6 +328,41 @@ struct AgentComposerView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Agent status")
         .accessibilityValue(status.rawValue.capitalized)
+    }
+}
+
+struct AgentComposerSendButton: View {
+    let isEnabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "arrow.up")
+                .font(.system(size: 15, weight: .bold))
+                .frame(width: 18, height: 18)
+        }
+        .buttonStyle(AgentComposerSendButtonStyle())
+        .disabled(!isEnabled)
+        .accessibilityLabel("Send")
+        .accessibilityHint("Delivers the complete draft to the Agent")
+    }
+}
+
+private struct AgentComposerSendButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(
+                Color(uiColor: isEnabled ? .systemBackground : .secondaryLabel))
+            .frame(width: 44, height: 44)
+            .background(
+                isEnabled
+                    ? Color(uiColor: .label)
+                    : Color(uiColor: .label).opacity(0.12),
+                in: Circle())
+            .opacity(configuration.isPressed && isEnabled ? 0.72 : 1)
+            .contentShape(.circle)
     }
 }
 

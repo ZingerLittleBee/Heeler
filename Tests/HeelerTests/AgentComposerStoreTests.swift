@@ -1,5 +1,7 @@
 import Foundation
+import SwiftUI
 import Testing
+import UIKit
 
 @testable import Heeler
 
@@ -296,5 +298,79 @@ struct AgentComposerStoreTests {
                 status: status, workspaceID: "w1", tabID: "w1:t1", paneID: "w1:p1",
                 cwd: "/work", revision: 1),
             workspaceLabel: "Project", repoName: "Project")
+    }
+}
+
+@MainActor
+@Suite("Agent Composer send button")
+struct AgentComposerSendButtonTests {
+    @Test
+    func buttonKeepsItsArrowVisibleAcrossStatesAndAppearances() async throws {
+        for isEnabled in [false, true] {
+            for colorScheme in [ColorScheme.light, .dark] {
+                let image = try await Self.render(
+                    isEnabled: isEnabled,
+                    colorScheme: colorScheme)
+                let range = try #require(
+                    Self.luminanceRange(
+                        in: image,
+                        unitRect: CGRect(x: 0.35, y: 0.35, width: 0.3, height: 0.3)))
+
+                #expect(
+                    range > 0.12,
+                    "Send center has no visible arrow when isEnabled=\(isEnabled), colorScheme=\(colorScheme); luminance range was \(range)")
+            }
+        }
+    }
+
+    private static func render(isEnabled: Bool, colorScheme: ColorScheme) async throws -> UIImage {
+        let bounds = CGRect(x: 0, y: 0, width: 64, height: 64)
+        let controller = UIHostingController(
+            rootView: ZStack {
+                Color(uiColor: .secondarySystemBackground)
+                AgentComposerSendButton(isEnabled: isEnabled) {}
+            }
+            .environment(\.colorScheme, colorScheme))
+        controller.view.frame = bounds
+
+        let window = try await makeTestWindow(frame: bounds, rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+
+        return UIGraphicsImageRenderer(bounds: bounds).image { _ in
+            window.drawHierarchy(in: bounds, afterScreenUpdates: true)
+        }
+    }
+
+    private static func luminanceRange(in image: UIImage, unitRect: CGRect) -> Double? {
+        guard let cgImage = image.cgImage else { return nil }
+        let width = cgImage.width, height = cgImage.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        guard
+            let context = CGContext(
+                data: &pixels, width: width, height: height, bitsPerComponent: 8,
+                bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        let minX = max(0, Int(unitRect.minX * CGFloat(width)))
+        let maxX = min(width, Int(unitRect.maxX * CGFloat(width)))
+        let minY = max(0, Int(unitRect.minY * CGFloat(height)))
+        let maxY = min(height, Int(unitRect.maxY * CGFloat(height)))
+        var minimum = Double.greatestFiniteMagnitude
+        var maximum = -Double.greatestFiniteMagnitude
+        for y in minY..<maxY {
+            for x in minX..<maxX {
+                let offset = (y * width + x) * 4
+                let luminance =
+                    (0.2126 * Double(pixels[offset])
+                        + 0.7152 * Double(pixels[offset + 1])
+                        + 0.0722 * Double(pixels[offset + 2])) / 255
+                minimum = min(minimum, luminance)
+                maximum = max(maximum, luminance)
+            }
+        }
+        return maximum - minimum
     }
 }
