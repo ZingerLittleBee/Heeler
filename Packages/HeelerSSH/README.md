@@ -17,14 +17,17 @@ extracting or compiling them. A mismatch is fatal.
 Run the complete rebuild from the repository root:
 
 ```sh
-make ssh-artifacts
+HEELER_SSH_XCFRAMEWORK_SIGNING_IDENTITY="Apple Development: Your Name (TEAMID)" \
+    make ssh-artifacts
 ```
 
 The command builds Release arm64 slices for iPhoneOS and iPhone Simulator,
 creates both XCFrameworks, refreshes licenses and provenance, writes file-level
-SHA-256 checksums, and verifies the result. Exact byte-for-byte output requires
-the Xcode, SDK, compiler, and configuration recorded in
-`Artifacts/PROVENANCE.md`.
+SHA-256 checksums, signs the OpenSSL XCFramework, and verifies the result. Use
+an Apple Development or Apple Distribution identity belonging to team
+`9VM4RM39R3`. Exact byte-for-byte output requires the Xcode, SDK, compiler, and
+configuration recorded in `Artifacts/PROVENANCE.md`; the signature and its
+checksum also change when the signing timestamp changes.
 
 To verify the committed artifacts without downloading or compiling sources:
 

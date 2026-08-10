@@ -202,6 +202,7 @@
 		C9E8028C15EC02F3F36B2B26 /* NotificationRegistrationFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67AAFD0BF81441DB59EEF7AA /* NotificationRegistrationFile.swift */; };
 		C9F1C6CFE1F09E58CD9B3948 /* LocalSSHTestEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F172C9E024F73AD2DD96288 /* LocalSSHTestEnvironment.swift */; };
 		CADB1AE0B86B4046A331C0D7 /* ImageAttachStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A77E8F2009C150A3A07AA7C /* ImageAttachStore.swift */; };
+		CAEA10BC9AF3498E5FD73478 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 915C9462A4A8AA91C0B91498 /* PrivacyInfo.xcprivacy */; };
 		CBAEF7D1E91053F0B15E2F31 /* PairingCeremonyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F0763484EE05424146492C1 /* PairingCeremonyTests.swift */; };
 		D08663BD250210835FE7ED49 /* PhotosPickerImageSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A3BD235B5209892137FCAF9 /* PhotosPickerImageSelection.swift */; };
 		D20C025851965986547FAAB5 /* ClosePaneStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D46328CE795C513FE11AD04 /* ClosePaneStore.swift */; };
@@ -419,6 +420,7 @@
 		8D6490F9D4A3ECF0F9899D1A /* TerminalMouseReportingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalMouseReportingTests.swift; sourceTree = "<group>"; };
 		8F1676B4E6BAB1C28E5596A7 /* AgentNotificationRouterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationRouterTests.swift; sourceTree = "<group>"; };
 		90A97F1827BC65B4A271F28C /* NotificationRelaySettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRelaySettings.swift; sourceTree = "<group>"; };
+		915C9462A4A8AA91C0B91498 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		921CA559141776BD0F02FDA7 /* TerminalThemeSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalThemeSettingsTests.swift; sourceTree = "<group>"; };
 		93417EFE29FA2DC3DD3FAF9F /* AsyncDeadlineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsyncDeadlineTests.swift; sourceTree = "<group>"; };
 		9394E039D63A2FEE9BAB1D25 /* HeelerNotificationService.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HeelerNotificationService.entitlements; sourceTree = "<group>"; };
@@ -741,6 +743,7 @@
 				C34D3B8FB6A7196FC48562D4 /* ContentView.swift */,
 				95EEB8A9845A6DE36DD3D9D1 /* Heeler.entitlements */,
 				4F710C63524E24B79F95A898 /* HeelerApp.swift */,
+				915C9462A4A8AA91C0B91498 /* PrivacyInfo.xcprivacy */,
 				5880878B95ED812C768FF824 /* Console */,
 				19B18CBCC288113F74374B8D /* Demo */,
 				FEC0B219712E060EDE656B53 /* Files */,
@@ -1142,6 +1145,7 @@
 				4E5147154F498E9F9F6806E6 /* JetBrainsMono-Bold.ttf in Resources */,
 				4136535F331E7D2987F54559 /* JetBrainsMono-Regular.ttf in Resources */,
 				0B67978E4183023EF40B256B /* Notices in Resources */,
+				CAEA10BC9AF3498E5FD73478 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

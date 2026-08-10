@@ -73,8 +73,32 @@ done
 
 for framework in "${ARTIFACT_DIR}/COpenSSL.xcframework"/*/COpenSSL.framework; do
     configuration="${framework}/Headers/openssl/configuration.h"
+    privacy_manifest="${framework}/PrivacyInfo.xcprivacy"
     [[ -f "${configuration}" ]] || {
         echo "error: missing OpenSSL configuration header in ${framework}" >&2
+        exit 1
+    }
+    [[ -f "${privacy_manifest}" ]] || {
+        echo "error: missing OpenSSL privacy manifest in ${framework}" >&2
+        exit 1
+    }
+    plutil -lint "${privacy_manifest}" >/dev/null
+    privacy_json="$(plutil -convert json -o - "${privacy_manifest}")"
+    grep -q '"NSPrivacyTracking":false' <<<"${privacy_json}" || {
+        echo "error: OpenSSL privacy manifest must disable tracking" >&2
+        exit 1
+    }
+    grep -q '"NSPrivacyCollectedDataTypes":\[\]' <<<"${privacy_json}" || {
+        echo "error: OpenSSL privacy manifest must not declare collected data" >&2
+        exit 1
+    }
+    grep -q '"NSPrivacyAccessedAPIType":"NSPrivacyAccessedAPICategoryFileTimestamp"' \
+        <<<"${privacy_json}" || {
+            echo "error: OpenSSL privacy manifest is missing the file timestamp category" >&2
+            exit 1
+        }
+    grep -q '"NSPrivacyAccessedAPITypeReasons":\["C617.1"\]' <<<"${privacy_json}" || {
+        echo "error: OpenSSL privacy manifest is missing reason C617.1" >&2
         exit 1
     }
 
@@ -95,6 +119,18 @@ for framework in "${ARTIFACT_DIR}/COpenSSL.xcframework"/*/COpenSSL.framework; do
     fi
 done
 
+codesign --verify --strict "${ARTIFACT_DIR}/COpenSSL.xcframework" || {
+    echo "error: COpenSSL XCFramework signature is invalid" >&2
+    exit 1
+}
+openssl_team="$({ codesign -dv --verbose=4 \
+    "${ARTIFACT_DIR}/COpenSSL.xcframework" 2>&1 || true; } \
+    | awk -F= '$1 == "TeamIdentifier" { print $2; exit }')"
+[[ "${openssl_team}" == "9VM4RM39R3" ]] || {
+    echo "error: COpenSSL XCFramework is signed by unexpected team '${openssl_team}'" >&2
+    exit 1
+}
+
 for library in "${ARTIFACT_DIR}/CLibSSH2.xcframework"/*/CLibSSH2.framework/CLibSSH2; do
     forbidden="$({ strings "${library}" || true; } | grep -E '^(ssh-dss|diffie-hellman-group1-sha1|diffie-hellman-group14-sha1|diffie-hellman-group-exchange-sha1|hmac-sha1|hmac-sha1-96|aes(128|192|256)-cbc|3des-cbc|blowfish-cbc|arcfour|cast128-cbc)$' || true)"
     if [[ -n "${forbidden}" ]]; then
@@ -105,7 +141,8 @@ for library in "${ARTIFACT_DIR}/CLibSSH2.xcframework"/*/CLibSSH2.framework/CLibS
 done
 
 grep -q 'OpenSSL features:.*legacy provider' Artifacts/PROVENANCE.md
+grep -q 'OpenSSL privacy manifest: upstream' Artifacts/PROVENANCE.md
 grep -q 'libssh2 crypto backend: OpenSSL' Artifacts/PROVENANCE.md
 grep -Fq "Deployment target: iOS ${EXPECTED_TARGET}" Artifacts/PROVENANCE.md
 
-echo "HeelerSSH artifact checksums, slices, provenance, and algorithm policy are valid."
+echo "HeelerSSH artifact checksums, slices, privacy manifest, signature, provenance, and algorithm policy are valid."

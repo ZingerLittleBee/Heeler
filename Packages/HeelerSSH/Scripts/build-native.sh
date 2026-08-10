@@ -8,11 +8,12 @@ SOURCE_LOCK="${HEELER_SSH_SOURCE_LOCK:-${PACKAGE_DIR}/Sources.lock}"
 DEPLOYMENT_TARGET="18.0"
 FIXED_PREFIX="/usr/local/heeler-ssh/openssl-3.6.3"
 JOBS="${HEELER_SSH_JOBS:-4}"
+XCFRAMEWORK_SIGNING_IDENTITY="${HEELER_SSH_XCFRAMEWORK_SIGNING_IDENTITY:-}"
 
 # shellcheck source=../Sources.lock
 source "${SOURCE_LOCK}"
 
-for command in curl shasum tar patch perl make cmake xcodebuild xcrun; do
+for command in curl shasum tar patch perl make cmake xcodebuild xcrun codesign; do
     command -v "${command}" >/dev/null || {
         echo "error: required command not found: ${command}" >&2
         exit 1
@@ -28,7 +29,9 @@ download_and_verify() {
     local expected_sha256="$3"
     local archive="${WORK_DIR}/${name}.tar.gz"
 
-    curl --fail --location --proto '=https' --tlsv1.2 "${url}" --output "${archive}"
+    curl --fail --location --proto '=https' --tlsv1.2 \
+        --retry 3 --retry-delay 1 --retry-all-errors \
+        "${url}" --output "${archive}"
 
     local actual_sha256
     actual_sha256="$(shasum -a 256 "${archive}" | awk '{print $1}')"
@@ -49,6 +52,12 @@ if [[ "${1:-}" == "--verify-sources-only" ]]; then
     echo "Verified libssh2 ${LIBSSH2_VERSION} and OpenSSL ${OPENSSL_VERSION} source archives."
     exit 0
 fi
+
+[[ -n "${XCFRAMEWORK_SIGNING_IDENTITY}" ]] || {
+    echo "error: HEELER_SSH_XCFRAMEWORK_SIGNING_IDENTITY is required" >&2
+    echo "Set it to an Apple Development or Apple Distribution identity." >&2
+    exit 1
+}
 
 LIBSSH2_SOURCE="${WORK_DIR}/libssh2-${LIBSSH2_VERSION}"
 OPENSSL_SOURCE="${WORK_DIR}/openssl-${OPENSSL_VERSION}"
@@ -206,6 +215,16 @@ create_static_framework CLibSSH2 "${LIBSSH2_SIMULATOR}/lib/libssh2.a" \
     "${LIBSSH2_SIMULATOR_HEADERS}" "${PACKAGE_DIR}/NativeSupport/CLibSSH2.modulemap" \
     iPhoneSimulator "${FRAMEWORKS}/simulator/CLibSSH2.framework"
 
+OPENSSL_PRIVACY_MANIFEST="${OPENSSL_SOURCE}/os-dep/Apple/PrivacyInfo.xcprivacy"
+[[ -f "${OPENSSL_PRIVACY_MANIFEST}" ]] || {
+    echo "error: OpenSSL ${OPENSSL_VERSION} privacy manifest is missing" >&2
+    exit 1
+}
+cp "${OPENSSL_PRIVACY_MANIFEST}" \
+    "${FRAMEWORKS}/device/COpenSSL.framework/PrivacyInfo.xcprivacy"
+cp "${OPENSSL_PRIVACY_MANIFEST}" \
+    "${FRAMEWORKS}/simulator/COpenSSL.framework/PrivacyInfo.xcprivacy"
+
 GENERATED_ARTIFACTS="${WORK_DIR}/Artifacts"
 mkdir -p "${GENERATED_ARTIFACTS}/Notices"
 xcodebuild -create-xcframework \
@@ -216,6 +235,8 @@ xcodebuild -create-xcframework \
     -framework "${FRAMEWORKS}/device/CLibSSH2.framework" \
     -framework "${FRAMEWORKS}/simulator/CLibSSH2.framework" \
     -output "${GENERATED_ARTIFACTS}/CLibSSH2.xcframework"
+codesign --timestamp --sign "${XCFRAMEWORK_SIGNING_IDENTITY}" \
+    "${GENERATED_ARTIFACTS}/COpenSSL.xcframework"
 
 cp "${LIBSSH2_SOURCE}/COPYING" "${GENERATED_ARTIFACTS}/Notices/libssh2-BSD-3-Clause.txt"
 cp "${OPENSSL_SOURCE}/LICENSE.txt" "${GENERATED_ARTIFACTS}/Notices/OpenSSL-Apache-2.0.txt"
@@ -270,6 +291,7 @@ cat > "${GENERATED_ARTIFACTS}/PROVENANCE.md" <<EOF
 - Deployment target: iOS ${DEPLOYMENT_TARGET}
 - Configuration: Release, static libraries, arm64 device and arm64 Simulator
 - OpenSSL features: no shared library, module, legacy provider, deprecated API, DSA, RC2, RC4, DES, CAST, Blowfish, IDEA, SEED, Camellia, ARIA, SM2, SM3, SM4, Whirlpool, or RIPEMD-160
+- OpenSSL privacy manifest: upstream os-dep/Apple/PrivacyInfo.xcprivacy
 - libssh2 crypto backend: OpenSSL, with DSA, SHA-1 RSA signatures, SHA-1 MACs, MD5, RIPEMD, CBC, Blowfish, RC4, CAST, and 3DES negotiation disabled
 - libssh2 patch: Patches/libssh2-modern-algorithms.patch removes SHA-1 key exchange and MAC methods from negotiation
 - Build command: make ssh-artifacts
