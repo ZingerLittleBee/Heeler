@@ -120,16 +120,25 @@ struct AgentComposerView: View {
 
                         HStack(spacing: 8) {
                             Menu {
-                                Section {
-                                    Button("Add Image", systemImage: "photo") {
-                                        actions.addImage()
-                                    }
-                                    .disabled(!actions.canAddImage)
-                                    Button("Add File", systemImage: "doc") {
-                                        actions.addFile()
-                                    }
-                                    .disabled(!actions.canAddFile)
+                                Button("Add Image", systemImage: "photo") {
+                                    actions.addImage()
                                 }
+                                .disabled(!actions.canAddImage)
+                                Button("Add File", systemImage: "doc") {
+                                    actions.addFile()
+                                }
+                                .disabled(!actions.canAddFile)
+                            } label: {
+                                Label("Add", systemImage: "plus")
+                            }
+                            .buttonStyle(.bordered)
+                            .buttonBorderShape(.circle)
+                            .labelStyle(.iconOnly)
+                            .font(.footnote.weight(.semibold))
+                            .frame(minWidth: 44, minHeight: 44)
+                            .accessibilityHint("Adds an image or file to the draft")
+
+                            Menu {
                                 Section {
                                     Button("New Agent", systemImage: "plus") {
                                         actions.startAgent()
@@ -154,14 +163,14 @@ struct AgentComposerView: View {
                                     }
                                 }
                             } label: {
-                                Label("Add and More", systemImage: "plus")
+                                Label("More", systemImage: "ellipsis")
                             }
                             .buttonStyle(.bordered)
                             .buttonBorderShape(.circle)
                             .labelStyle(.iconOnly)
                             .font(.footnote.weight(.semibold))
                             .frame(minWidth: 44, minHeight: 44)
-                            .accessibilityHint("Adds an attachment or opens Agent actions")
+                            .accessibilityHint("Opens Agent actions")
 
                             if let links = linkPresentation {
                                 Button {
