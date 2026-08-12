@@ -98,23 +98,20 @@ leaves the detail; a later session discovers whatever its terminal shows anew.
 _Avoid_: recent link, visible link, link history
 
 **Terminal Keyboard**:
-The two input modes used within Attach. Text keeps the standard iOS input method
-for composition, autocorrection, dictation, and language switching. The Keys mode
-replaces it with a tabbed pad of terminal-side surfaces: control keys for
-navigation and common control signals, Snippets, and terminal appearance.
-Input from either mode goes directly to the Agent's pane.
-_Avoid_: desktop keyboard, reply keyboard
+The two keyboard modes below Composer, swapped in place at one shared measured
+height. The standard iOS keyboard edits the draft with composition,
+autocorrection, dictation, and language switching. The tools keyboard replaces
+it with a tabbed pad: Agent controls send key sequences directly to the pane,
+while Skills, Snippets, and terminal appearance edit the draft or the terminal
+and never touch the pane.
+_Avoid_: desktop keyboard, reply keyboard, Keys mode (the direct-input predecessor)
 
 **Snippet**:
 A phrase the user writes once and reuses, kept in one global set independent of
-any Host or Agent. Tapping one inserts its text into the Agent's pane and
-nothing more; the user still submits it. A Snippet may carry a Title: a short
+any Host or Agent. Tapping one inserts its text into the Composer draft and
+nothing more; the user still delivers it. A Snippet may carry a Title: a short
 name the user gives it, shown above its text wherever Snippets are listed.
 _Avoid_: macro, template, shortcut, quick reply, tip
-
-**Terminal Paste**:
-A user-invoked insertion of plain text from the iOS clipboard into Attach. Single-line text proceeds directly; potentially executable multiline or control content requires review.
-_Avoid_: Control V, image paste
 
 **Agent Notification**:
 A notification telling the user an Agent crossed a notify-worthy status boundary (Blocked, Done): an APNs push while backgrounded or killed, an in-app banner off the live event stream while foregrounded. Deep-links to the Agent's detail surface.
