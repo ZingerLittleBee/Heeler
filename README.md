@@ -1,6 +1,21 @@
+<div align="center">
+
+<img src="docs/images/logo.png" width="96" alt="Heeler logo" />
+
 # Heeler
 
-A native iOS companion app for [herdr](https://herdr.dev) — an agent-first terminal runtime.
+**A native iOS companion app for [herdr](https://herdr.dev) — an agent-first terminal runtime.**
+
+[![CI](https://github.com/ZingerLittleBee/Heeler/actions/workflows/ci.yml/badge.svg)](https://github.com/ZingerLittleBee/Heeler/actions/workflows/ci.yml)
+[![GitHub stars](https://img.shields.io/github/stars/ZingerLittleBee/Heeler?style=flat)](https://github.com/ZingerLittleBee/Heeler/stargazers)
+[![Swift](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)](https://www.swift.org)
+[![iOS](https://img.shields.io/badge/iOS-18%2B-000000?logo=apple&logoColor=white)](https://developer.apple.com/ios/)
+
+English | [简体中文](./README-zh.md)
+
+</div>
+
+---
 
 Heeler is an **agent console**: a native dashboard of every coding agent running on your machines, sorted by who needs you. Open an Agent to read and steer its live terminal while drafting locally with the full standard iOS keyboard in a native Composer. Send delivers the complete message once; direct control keys, native scrollback, and continuous touch scrolling keep full-screen TUIs usable, all over plain SSH.
 
