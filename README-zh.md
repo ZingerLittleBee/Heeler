@@ -91,7 +91,7 @@ herdr plugin action invoke heeler.pairing.pair
 
 ## 技术栈
 
-- SwiftUI，iOS 18+，仅支持 iPhone
+- SwiftUI，iOS 18+，当前仅支持 iPhone；iPad 支持计划在后续版本提供
 - 仓库内 `Packages/HeelerSSH`（libssh2 + OpenSSL）负责 SSH
 - [libghostty-spm](https://github.com/lakr233/libghostty-spm) 负责终端仿真与 Metal 渲染
 
