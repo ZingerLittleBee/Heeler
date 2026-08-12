@@ -1,0 +1,2 @@
+# Keep checked-in native dependencies out of GitHub language statistics.
+Packages/HeelerSSH/Artifacts/** linguist-vendored
