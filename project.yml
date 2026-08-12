@@ -61,7 +61,7 @@ targets:
         # Home-screen name; the App Store listing is "Heeler for herdr".
         INFOPLIST_KEY_CFBundleDisplayName: Heeler
         MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: "6"
+        CURRENT_PROJECT_VERSION: "7"
         # Scan to Pair (#62) reads the Pairing Code QR from the computer screen.
         INFOPLIST_KEY_NSCameraUsageDescription: "Heeler uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything."
         # Only exempt encryption is used (standard SSH algorithms via the
@@ -122,7 +122,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.NotificationService
         MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: "6"
+        CURRENT_PROJECT_VERSION: "7"
 
   HeelerTests:
     type: bundle.unit-test
