@@ -761,6 +761,138 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(elapsed < .seconds(5.5))
     }
 
+    /// A custom Agent name is a write against real Host state, so the response
+    /// alone is not evidence that the requested value reached herdr. Record the
+    /// request at the Unix-socket fixture boundary and pin the exact JSON params.
+    @Test("agent rename sends its custom name and target exactly")
+    func agentRenameSendsItsCustomNameAndTargetExactly() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("wire")
+        try await transport.renameAgent(AgentRenameParams(target: token, name: "reviewer"))
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        #expect(recorded == [#"agent.rename {"name":"reviewer","target":"\#(token)"}"#])
+    }
+
+    /// Omission clears a custom name in herdr 0.7.5. JSON null is not the wire
+    /// contract: this assertion distinguishes an absent key from a present null.
+    @Test("agent rename omits name when clearing a custom name")
+    func agentRenameOmitsNameWhenClearingACustomName() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("wire")
+        try await transport.renameAgent(AgentRenameParams(target: token))
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        #expect(recorded == [#"agent.rename {"target":"\#(token)"}"#])
+    }
+
+    /// Workspace labels accept a wider grammar than Agent names. Pin both the
+    /// label and snake-cased workspace id at the real Transport boundary.
+    @Test("workspace rename sends its label and workspace id exactly")
+    func workspaceRenameSendsItsLabelAndWorkspaceIDExactly() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("wire")
+        try await transport.renameWorkspace(
+            WorkspaceRenameParams(label: "Review workspace", workspaceID: token))
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        #expect(
+            recorded
+                == [
+                    #"workspace.rename {"label":"Review workspace","workspace_id":"\#(token)"}"#
+                ])
+    }
+
+    /// `pane.read` has no cursor and the options choose what herdr samples.
+    /// Assert both directions: exact params into herdr, typed result back out.
+    @Test("pane read sends exact params and round trips the result")
+    func paneReadSendsExactParamsAndRoundTripsTheResult() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("wire")
+        let read = try await transport.readPane(
+            PaneReadParams(
+                paneID: token,
+                source: .recentUnwrapped,
+                format: .ansi,
+                lines: 5,
+                stripANSI: false))
+
+        #expect(read.paneID == token)
+        #expect(read.source == .recentUnwrapped)
+        #expect(read.format == .ansi)
+        #expect(read.text == "fixture output")
+        #expect(read.revision == 1)
+        #expect(!read.truncated)
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        #expect(
+            recorded
+                == [
+                    #"pane.read {"format":"ansi","lines":5,"pane_id":"\#(token)","source":"recent_unwrapped","strip_ansi":false}"#
+                ])
+    }
+
+    /// A syntactically valid herdr error envelope is not a channel failure.
+    /// Numeric codes normalize to strings in the Transport's domain error.
+    @Test("a herdr error envelope surfaces as a typed API rejection")
+    func herdrErrorEnvelopeSurfacesAsATypedAPIRejection() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        await #expect(throws: HerdrAPIError(code: "500", message: "scripted failure")) {
+            try await transport.renameAgent(
+                AgentRenameParams(target: "api-error", name: "reviewer"))
+        }
+    }
+
+    /// The session boundary converts the Transport's typed herdr rejection to
+    /// the public failure taxonomy that drives reconnect and user guidance.
+    @Test("the session maps a herdr rejection to apiRejected")
+    func eventsSessionMapsAHerdrRejectionToAPIRejected() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let settings = environment.directSettings()
+        let session = EventsSession(
+            subscriptions: [.pane(.agentStatusChanged, paneID: "fixture:reject")],
+            connect: { try await HeelerSSHTransport.connect(settings: settings) },
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .seconds(30), multiplier: 1, maxDelay: .seconds(30)),
+            keepalive: nil)
+        var updates = session.updates.makeAsyncIterator()
+
+        await session.resume()
+        let update = try #require(await updates.next())
+        guard case .status(
+            .reconnecting(
+                attempt: 1,
+                delay: .seconds(30),
+                failure: .apiRejected(
+                    code: "fixture_rejected",
+                    message: "scripted rejection"))) = update
+        else {
+            Issue.record("Expected apiRejected reconnect status, got \(update)")
+            await session.end()
+            return
+        }
+        await session.end()
+    }
+
     /// What the `startfails` script answers `agent.start` with. Any code but
     /// `agent_pane_busy` takes the compensating path, so the fixture uses one
     /// of its own rather than guessing at herdr's — 0.7.5's refusal of an
@@ -846,7 +978,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
                 .workspaceID == "workspace-worktree")
         await #expect(
             throws: HerdrAPIError(
-                code: "fixture_error",
+                code: "500",
                 message: "scripted failure")
         ) {
             try await transport.renameAgent(
