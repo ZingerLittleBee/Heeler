@@ -1538,7 +1538,7 @@ fi
 run_suite HeelerSSHPTYE2ETests 3 1
 run_suite HeelerSSHDirectStreamLocalE2ETests 12 1
 run_suite HeelerSSHJumpHostGateE2ETests 9 1
-run_suite HeelerSSHTransportBehaviorE2ETests 40 1
+run_suite HeelerSSHTransportBehaviorE2ETests 46 1
 run_suite ImageStagingE2ETests 8 1
 run_suite WeakNetworkE2ETests 8 1
 run_suite PairingCeremonyE2ETests 11 1
@@ -1566,6 +1566,20 @@ assert_behavior "PTY" HeelerSSHPTYE2ETests \
     '"PTY exec preserves raw IO, merged output, geometry, and exit status"'
 assert_behavior "resize" HeelerSSHTransportBehaviorE2ETests \
     '"direct Host Attach preserves PTY IO, resize, end, and reuse"'
+# These writes can return healthy response envelopes even when a serializer
+# silently drops a field. Keep every distinct wire contract named (#165).
+assert_behavior "agent rename params" HeelerSSHTransportBehaviorE2ETests \
+    '"agent rename sends its custom name and target exactly"'
+assert_behavior "agent rename clear omission" HeelerSSHTransportBehaviorE2ETests \
+    '"agent rename omits name when clearing a custom name"'
+assert_behavior "workspace rename params" HeelerSSHTransportBehaviorE2ETests \
+    '"workspace rename sends its label and workspace id exactly"'
+assert_behavior "pane read params and result" HeelerSSHTransportBehaviorE2ETests \
+    '"pane read sends exact params and round trips the result"'
+assert_behavior "herdr API rejection" HeelerSSHTransportBehaviorE2ETests \
+    '"a herdr error envelope surfaces as a typed API rejection"'
+assert_behavior "session API rejection mapping" HeelerSSHTransportBehaviorE2ETests \
+    '"the session maps a herdr rejection to apiRejected"'
 # herdr 0.7.5's `agent_pane_busy` window, which 0.8.0 no longer opens: nothing
 # live exercises this any more, so a named assertion is the only thing standing
 # between a refactor and silently dropping a documented server behaviour (#128).

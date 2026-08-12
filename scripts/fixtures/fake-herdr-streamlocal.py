@@ -188,7 +188,7 @@ class Server:
                 elif method == "agent.rename" and params.get("target") == "api-error":
                     response = {
                         "id": envelope.get("id"),
-                        "error": {"code": "fixture_error", "message": "scripted failure"},
+                        "error": {"code": 500, "message": "scripted failure"},
                     }
                 else:
                     response = {
@@ -373,8 +373,16 @@ class Server:
                 },
             }
         if method == "pane.read":
-            pane_id = params.get("pane_id", "pane-1") if isinstance(params, dict) else "pane-1"
-            return self._pane_read_result(pane_id, "fixture output")
+            request = params if isinstance(params, dict) else {}
+            pane_id = request.get("pane_id", "pane-1")
+            source = request.get("source", "recent")
+            output_format = request.get("format", "text")
+            return self._pane_read_result(
+                pane_id,
+                "fixture output",
+                source=source,
+                output_format=output_format,
+            )
         if method == "agent.read":
             request = params if isinstance(params, dict) else {}
             target = request.get("target", "pane-1")
