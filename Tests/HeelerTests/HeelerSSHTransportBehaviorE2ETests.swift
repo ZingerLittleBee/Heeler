@@ -519,6 +519,274 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(after - before == 12)
     }
 
+    /// CLAUDE.md's load-bearing herdr 0.7.5 fact: `agent.start` on a pane whose
+    /// shell has not reached its prompt is refused with `agent_pane_busy`, and
+    /// the Transport waits the shell out rather than surfacing it. herdr 0.8.0
+    /// answers asynchronously instead, so nothing live exercises this any more
+    /// — only the fixture can hold the older server's behavior still.
+    @Test("agent start waits out a fresh pane's booting shell")
+    func agentStartRetriesWhileTheFreshPaneShellBoots() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("busy2")
+        let agent = try await transport.startAgent(
+            AgentLaunchRequest(
+                kind: "codex",
+                name: "fixture",
+                workspaceID: "workspace-1",
+                cwd: "/fixture/\(token)"))
+
+        #expect(agent.paneID == "pane:\(token)")
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        #expect(recorded.filter { $0.hasPrefix("agent.start ") }.count == 3)
+        #expect(!recorded.contains { $0.hasPrefix("pane.close ") })
+    }
+
+    /// The other end of the same retry: a pane that never becomes an available
+    /// shell must surface herdr's refusal rather than retry forever, and the
+    /// wait before it does so must be long enough to cover a real shell's boot.
+    @Test("a shell that never boots exhausts the retry budget and surfaces herdr's refusal")
+    func agentStartStopsRetryingWhenTheShellNeverBoots() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("busyforever")
+        let started = ContinuousClock.now
+        await #expect(
+            throws: HerdrAPIError(
+                code: "agent_pane_busy",
+                message: "pane is not an available shell")
+        ) {
+            _ = try await transport.startAgent(
+                AgentLaunchRequest(
+                    kind: "codex",
+                    name: "fixture",
+                    workspaceID: "workspace-1",
+                    cwd: "/fixture/\(token)"))
+        }
+        // A band, not a point: the budget is private to the Transport. The
+        // lower bound is load-safe because the wait is a deadline rather than
+        // work — a slow machine cannot finish it early. The upper bound stays
+        // generous because load pushes only that way.
+        let elapsed = started.duration(to: .now)
+        #expect(elapsed > .seconds(8))
+        #expect(elapsed < .seconds(30))
+
+        let attempts = try await Self.recordedRequests(from: transport, token: token)
+            .filter { $0.hasPrefix("agent.start ") }
+            .count
+        #expect(attempts >= 10)
+    }
+
+    /// The tab is created before the agent, so a refused launch would otherwise
+    /// strand an empty pane on the Host. Only the failing launch may clean it
+    /// up — nothing later knows the pane was ever meant to hold an agent.
+    @Test("a refused agent start closes the pane it created")
+    func refusedAgentStartClosesTheFreshPane() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("startfails")
+        await #expect(throws: Self.refusedStart) {
+            _ = try await transport.startAgent(
+                AgentLaunchRequest(
+                    kind: "codex",
+                    name: "fixture",
+                    workspaceID: "workspace-1",
+                    cwd: "/fixture/\(token)"))
+        }
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        try #require(recorded.count == 3)
+        #expect(recorded[0].hasPrefix("tab.create "))
+        #expect(recorded[1].hasPrefix("agent.start "))
+        #expect(recorded[2] == #"pane.close {"pane_id":"pane:\#(token)"}"#)
+    }
+
+    /// The worktree half of the same compensation, and the only caller of
+    /// `removeWorktree`. A refused launch here would otherwise leave a checkout
+    /// and a workspace behind, which is worse than a stranded pane.
+    @Test("a refused worktree agent start removes the worktree it created")
+    func refusedWorktreeAgentStartRemovesTheWorktree() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("startfails")
+        await #expect(throws: Self.refusedStart) {
+            _ = try await transport.startAgentInNewWorktree(
+                AgentLaunchRequest(
+                    kind: "codex",
+                    name: "fixture",
+                    workspaceID: "workspace-1"),
+                worktree: WorktreeSpec(branch: "task/\(token)", base: "main"))
+        }
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        try #require(recorded.count == 3)
+        #expect(recorded[0].hasPrefix("worktree.create "))
+        #expect(recorded[1].hasPrefix("agent.start "))
+        #expect(recorded[2] == #"worktree.remove {"workspace_id":"workspace:\#(token)"}"#)
+    }
+
+    /// A launch started from another agent's screen carries that agent's
+    /// directory. Dropping the cwd is invisible in the reply — herdr answers
+    /// with a healthy tab either way — so only the request proves it went.
+    @Test("agent start places the fresh tab in the requested directory")
+    func agentStartPlacesTheFreshTabInTheRequestedDirectory() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("ok")
+        _ = try await transport.startAgent(
+            AgentLaunchRequest(
+                kind: "codex",
+                name: "fixture",
+                workspaceID: "workspace-1",
+                cwd: "/fixture/\(token)"))
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        #expect(
+            recorded.first
+                == #"tab.create {"cwd":"/fixture/\#(token)","focus":false,"workspace_id":"workspace-1"}"#
+        )
+    }
+
+    /// A named session becomes a directory component of the remote socket path,
+    /// so discovery output is not trusted to stay inside herdr's grammar. One
+    /// bad name fails the whole list rather than being dropped from it: a
+    /// partial list would silently hide a session the Host really has.
+    @Test("session discovery refuses a name outside herdr's grammar")
+    func sessionDiscoveryRefusesNamesOutsideTheGrammar() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        var settings = environment.directSettings()
+        settings.sessionListCommand =
+            "printf '%s\\n' '{\"sessions\":["
+            + "{\"name\":\"fixture\",\"default\":true,\"running\":true},"
+            + "{\"name\":\"../escape\",\"default\":false,\"running\":false}]}'"
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        defer { Task { try? await transport.close() } }
+
+        await #expect(
+            throws: TransportError.malformedResponse(
+                "herdr session list returned an invalid session name")
+        ) {
+            _ = try await transport.listSessions()
+        }
+    }
+
+    /// The probe runs through the Host's login shell, so its stdout carries
+    /// whatever that shell prints. Only marker-prefixed lines count, only kinds
+    /// this build knows survive, and the answer is a stable ordered set — a
+    /// banner that merely says "gemini" must not install an agent.
+    @Test("agent discovery ignores login noise, unknown kinds, and duplicates")
+    func agentDiscoveryIgnoresLoginNoiseUnknownKindsAndDuplicates() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        var settings = environment.directSettings()
+        settings.agentDiscoveryCommand =
+            "printf '%s\\n' 'Welcome to the Host' 'gemini' "
+            + "'__HEELER_AGENT_KIND__=codex' "
+            + "'__HEELER_AGENT_KIND__=notarealagent' "
+            + "'__HEELER_AGENT_KIND__=codex' "
+            + "'__HEELER_AGENT_KIND__=claude' "
+            + "'last login: never'"
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        defer { Task { try? await transport.close() } }
+
+        #expect(try await transport.availableAgentKinds() == [.claude, .codex])
+    }
+
+    /// The home probe also runs through the login shell, and its answer becomes
+    /// a directory component of the socket path every later request opens. A
+    /// banner, a trailing login line, and a stale marker printed by a sourced
+    /// profile must all leave the resolved home exact — the last marker wins.
+    @Test("home resolution ignores login-shell stdout around its marker")
+    func homeResolutionIgnoresLoginShellNoise() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let quotedHome = try #require(RemoteShellPath.quotedAbsolute(environment.homePath))
+        var settings = environment.directSettings(socket: .defaultSession)
+        settings.homeCommand =
+            "/bin/sh -c 'printf \"Welcome to the Host\\n"
+            + "__HEELER_HOME__=/wrong/home\\n"
+            + "__HEELER_HOME__=%s\\n"
+            + "last login: never\\n\" \"$1\"' home \(quotedHome)"
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        defer { Task { try? await transport.close() } }
+
+        // The home-relative socket only resolves onto the fixture if both the
+        // banner and the stale earlier marker were discarded.
+        #expect(try await transport.ping().protocolVersion == 17)
+        let skills = try await transport.listSkills(SkillListQuery(kind: .codex))
+        let skill = try #require(skills.first { $0.name == "fixture" })
+        #expect(skill.path == "\(environment.homePath)/.codex/skills/fixture/SKILL.md")
+    }
+
+    /// The first request against a home-relative socket pays for the home probe
+    /// as well as the exchange. Both must come out of one budget: giving each
+    /// its own would let a Host that is slow in both halves overrun the deadline
+    /// the caller was promised, silently, and only on the first request.
+    @Test("the first home-relative request spends one deadline, not two")
+    func firstHomeRelativeRequestSpendsOneTotalDeadline() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let quotedHome = try #require(RemoteShellPath.quotedAbsolute(environment.homePath))
+        var settings = environment.directSettings(socket: .defaultSession)
+        settings.requestTimeout = .seconds(4)
+        // Three quarters of the budget spent resolving the home, then a pane
+        // read the fixture never answers. One deadline expires at four seconds;
+        // two stacked budgets would run to seven.
+        settings.homeCommand =
+            "/bin/sh -c 'sleep 3; printf \"__HEELER_HOME__=%s\\n\" \"$1\"' home \(quotedHome)"
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        defer { Task { try? await transport.close() } }
+
+        let started = ContinuousClock.now
+        await #expect(throws: TransportError.timedOut) {
+            _ = try await transport.readPane(
+                PaneReadParams(paneID: "hang", source: .recent))
+        }
+        // Bounded on both sides: overrunning is the stacked-budget bug, and
+        // expiring early would mean the probe never came out of this budget.
+        let elapsed = started.duration(to: .now)
+        #expect(elapsed > .seconds(3))
+        #expect(elapsed < .seconds(5.5))
+    }
+
+    /// What the `startfails` script answers `agent.start` with. Any code but
+    /// `agent_pane_busy` takes the compensating path, so the fixture uses one
+    /// of its own rather than guessing at herdr's — 0.7.5's refusal of an
+    /// unsupported kind is recorded by its message alone.
+    private static let refusedStart = HerdrAPIError(
+        code: "fixture_agent_start_refused",
+        message: "scripted non-retryable agent.start failure")
+
+    /// One scripted run of the fixture, keyed so its recorded requests cannot
+    /// be confused with another test's. The behavior word steers the fixture;
+    /// see `scripts/fixtures/fake-herdr-streamlocal.py`.
+    private static func scriptToken(_ behavior: String) -> String {
+        "fixture:\(behavior):\(UUID().uuidString.lowercased())"
+    }
+
+    /// Every request the fixture served under `token`, in order, as
+    /// `<method> <compact-json-params>`.
+    private static func recordedRequests(
+        from transport: HeelerSSHTransport,
+        token: String
+    ) async throws -> [String] {
+        let read = try await transport.readPane(
+            PaneReadParams(paneID: "record:\(token)", source: .recent))
+        return read.text.split(separator: "\n").map(String.init)
+    }
+
     private func exerciseProductionConnector(host: Host) async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
         let settings = SSHTransportSettings(

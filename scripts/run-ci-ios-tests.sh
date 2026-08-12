@@ -1163,7 +1163,7 @@ fi
 run_suite HeelerSSHPTYE2ETests 3 1
 run_suite HeelerSSHDirectStreamLocalE2ETests 12 1
 run_suite HeelerSSHJumpHostGateE2ETests 9 1
-run_suite HeelerSSHTransportBehaviorE2ETests 31 1
+run_suite HeelerSSHTransportBehaviorE2ETests 40 1
 run_suite ImageStagingE2ETests 8 1
 run_suite WeakNetworkE2ETests 8 1
 run_suite PairingCeremonyE2ETests 11 1
@@ -1191,6 +1191,18 @@ assert_behavior "PTY" HeelerSSHPTYE2ETests \
     '"PTY exec preserves raw IO, merged output, geometry, and exit status"'
 assert_behavior "resize" HeelerSSHTransportBehaviorE2ETests \
     '"direct Host Attach preserves PTY IO, resize, end, and reuse"'
+# herdr 0.7.5's `agent_pane_busy` window, which 0.8.0 no longer opens: nothing
+# live exercises this any more, so a named assertion is the only thing standing
+# between a refactor and silently dropping a documented server behaviour (#128).
+assert_behavior "agent_pane_busy retry" HeelerSSHTransportBehaviorE2ETests \
+    '"agent start waits out a fresh pane'"'"'s booting shell"'
+# Both compensations, named separately: they clean up different Host state and
+# a count alone cannot tell which of the two a change removed.
+assert_behavior "failed launch closes its pane" HeelerSSHTransportBehaviorE2ETests \
+    '"a refused agent start closes the pane it created"'
+assert_behavior "failed launch removes its worktree" \
+    HeelerSSHTransportBehaviorE2ETests \
+    '"a refused worktree agent start removes the worktree it created"'
 assert_behavior "SFTP" ImageStagingE2ETests \
     'directStagingStreamsPrivateFileAndAtomicallyRenamesThePart()'
 assert_behavior "forwarding denial" HeelerSSHDirectStreamLocalE2ETests \
@@ -1311,9 +1323,12 @@ xcodebuild test \
     -collect-test-diagnostics never \
     2>&1 | tee "$full_lane_log"
 
-# The floor is the executed count this lane reached when the assertion was
-# written: 864 in the run summary less the 95 tests the eight fixture-backed
-# suites skip. Every one of those 95 executes in a lane above.
+# 769 is a floor, not the current count: it is what the lane executed the day it
+# was written, deliberately left below what the lane reaches now so that adding
+# tests never requires editing this script. Adding tests to a fixture-backed
+# suite cannot move it at all — the full lane runs with no fixture, so those
+# tests skip here and execute in a lane run_suite pins. The floor is not what
+# proves the coverage; the skip-versus-pinned-lane comparison above it is.
 assert_full_lane_coverage "$full_lane_log" 769
 
 # The three groups that run only here, and so had no assertion of any kind
