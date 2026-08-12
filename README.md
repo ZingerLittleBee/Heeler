@@ -2,7 +2,7 @@
 
 A native iOS companion app for [herdr](https://herdr.dev) — an agent-first terminal runtime.
 
-Heeler is an **agent console**: a native dashboard of every coding agent running on your machines, sorted by who needs you. Open an Agent to enter its real terminal with the standard iOS input method, a compact terminal control keyboard, native scrollback, and continuous touch scrolling for full-screen TUIs, all over plain SSH.
+Heeler is an **agent console**: a native dashboard of every coding agent running on your machines, sorted by who needs you. Open an Agent to read and steer its live terminal while drafting locally with the full standard iOS keyboard in a native Composer. Send delivers the complete message once; direct control keys, native scrollback, and continuous touch scrolling keep full-screen TUIs usable, all over plain SSH.
 
 ## Screenshots
 
@@ -23,26 +23,34 @@ Agent Console and Attach together on iPad:
 - **Console** — every Agent across your machines in one status-sorted list
   (who's Blocked comes first), filterable by Host, updating live off herdr's
   event stream.
-- **Attach** — a real terminal (libghostty, Metal-rendered) with native
-  scrollback, momentum touch scrolling that also drives full-screen TUIs,
-  long-press selection, and IME input.
+- **Attach** — read and steer the Agent's real live terminal through
+  libghostty, with Metal rendering, native scrollback, momentum touch
+  scrolling that also drives full-screen TUIs, and long-press selection. Text
+  is composed locally below the terminal, while the tools keyboard's Agent
+  controls steer the live TUI directly. Attach and Reattach use herdr takeover
+  mode, disconnecting the previous terminal owner when necessary.
 - **Attach Links** — silently collect web links to open or copy later.
-- **Terminal keyboard** — a Keys pad with control keys, reusable Snippets, and
-  appearance controls next to the standard iOS keyboard; multiline or control
-  pastes go through review before they hit the shell; on-device dictation.
-- **Image staging** — pick a photo, stage it onto the Host over SFTP, and hand
-  its path to the Agent's prompt.
+- **Composer** — draft locally with the full standard iOS keyboard, including
+  autocorrect, IME, and system dictation, then Send the complete message once.
+  Switch to the tabbed tools keyboard for direct Agent controls, available
+  Agent Skills, reusable Snippets that insert into the draft, and terminal
+  appearance.
+- **Attachment staging** — add a photo from Photos or a file up to 64 MiB from
+  Files, stage it onto the Host over SFTP, and insert its path into the local
+  draft without submitting it.
 - **QR pairing** — add a machine by scanning a Pairing Code from the bundled
-  herdr plugin; Ed25519 keys are generated on device and never leave the
-  Keychain, and the code pins the host key fingerprint.
+  herdr plugin; an Ed25519 Device Key is generated on device, its private key
+  stays in the Keychain, and the code pins the host key fingerprint.
 - **Agent Notifications** — end-to-end encrypted APNs pushes when an Agent
   goes Blocked or Done, deep-linking into its terminal; the relay sees the
   device token, source IP, request timing, and ciphertext, but cannot read the
   notification.
 - **Worktrees** — start an Agent on a clean checkout of a workspace's repo
   with a toggle on the New Agent form.
-- **Appearance** — 30 curated terminal themes with independent Light and Dark
-  Mode slots, bundled monospace fonts, and pinch-to-zoom text size.
+- **Appearance** — System, Light, or Dark app appearance; 30 curated terminal
+  themes with independent Light and Dark Mode slots; bundled JetBrains Mono
+  and IBM Plex Mono alongside the system monospace; and pinch-to-zoom text
+  size.
 - **Jump Host** — reach machines that are not directly routable through an
   SSH jump, with keys verified independently at both hops.
 
@@ -51,7 +59,7 @@ Agent Console and Attach together on iPad:
 The app speaks herdr's JSON API (newline-delimited JSON over a Unix socket) through SSH:
 
 - **RPC + events**: an OpenSSH direct-streamlocal channel straight onto `herdr.sock` per request, plus one long-lived channel for `events.subscribe`.
-- **Interactive terminal**: the Agent detail screen requests an SSH PTY and execs `herdr agent attach <pane>` on it, then renders it through a host-managed libghostty-spm session with Metal output, persistent appearance-aware themes, input-row keyboard activation, IME input, long-press text selection, and app-routed touch scrolling for both local scrollback and remote TUIs.
+- **Interactive terminal + Composer**: the Agent detail screen requests an SSH PTY and execs `herdr agent attach <pane> --takeover` on it, then renders the live terminal through a host-managed libghostty-spm session with Metal output, persistent appearance-aware themes, long-press text selection, and app-routed touch scrolling for both local scrollback and remote TUIs. Drafting stays local in the Composer until Send issues one `agent.prompt` RPC; only the tools keyboard's explicit Agent controls go directly through the PTY.
 
 No herdr server changes and no extra packages required: SSH access plus a running herdr server is the whole prerequisite. The Host's SSH server does have to permit stream-local forwarding, which is the OpenSSH default; onboarding says so when it is turned off.
 
