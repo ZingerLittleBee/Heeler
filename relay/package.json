@@ -2,6 +2,7 @@
   "name": "herdr-push-relay",
   "version": "0.1.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "description": "Stateless Push Relay forwarding encrypted Agent Notifications to APNs (ADR 0008)",
   "type": "module",
   "engines": {

@@ -2,6 +2,7 @@
   "name": "heeler-pairing",
   "version": "0.3.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "description": "herdr plugin that renders a Pairing Code QR for Heeler device onboarding",
   "type": "module",
   "engines": {
