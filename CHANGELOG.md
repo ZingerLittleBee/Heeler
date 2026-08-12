@@ -48,6 +48,10 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- App Store builds now target iPhone only. The notification service uses the
+  same device family, so App Store Connect no longer treats iPad screenshots as
+  part of the release requirements.
+
 - Heeler once again supports iOS 18 and later. The removed Dictation feature no
   longer holds the app at iOS 26, and the bundled OpenSSL/libssh2 artifacts now
   share the restored iOS 18 deployment target. (#35)

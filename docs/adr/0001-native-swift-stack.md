@@ -4,6 +4,10 @@ Status: Partially superseded by ADR 0004 and ADR 0011. The native Swift choice
 remains active; libghostty-spm replaced SwiftTerm as the terminal engine, and
 the repository-local HeelerSSH package (libssh2) replaced Citadel for SSH.
 
+Distribution update (2026-08-13): current App Store builds target iPhone only.
+The original native-stack decision below included iPad, and the adaptive layout
+code remains available if iPad distribution is restored later.
+
 We build natively in Swift for iOS 18+ (iPhone + iPad) with Citadel for SSH and SwiftTerm for terminal rendering, and accept dropping Android. The embedded terminal is a core UX surface, and SwiftTerm is the most mature mobile terminal component in any ecosystem, while the alternatives' terminal stories are structurally weaker.
 
 ## Considered Options
