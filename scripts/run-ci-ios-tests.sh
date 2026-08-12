@@ -27,25 +27,47 @@ set -euo pipefail
 # stops it being written in the first place.
 export PYTHONDONTWRITEBYTECODE=1
 
-modern_port=55222
-legacy_port=55223
-restricted_port=55224
-stall_port=55225
-streamlocal_global_policy_port=55226
-streamlocal_key_policy_port=55227
-jump_target_port=55228
-jump_forwarding_denied_port=55229
-pairing_port=55230
-password_port=55231
-# The unprivileged impairment proxy: a degraded route to the modern sshd, plus
-# the control port the weak-network suite steers it through.
-weak_network_port=55232
-weak_network_control_port=55233
+# Fixture ports are a contiguous block that a run claims at startup rather than
+# twelve fixed numbers every run shares. Fixed numbers made this script a
+# machine-wide mutex: whichever run started second failed its port preflight and
+# could only wait for the first to finish.
+#
+# assign_port_block below is the one place the ports are named; sshd configs,
+# the impairment proxy's arguments and the JSON handed to the tests all read the
+# variables it sets, so moving the base moves the whole fixture.
+
+# Must equal the number of ports assign_port_block sets; assign_port_block
+# asserts that itself rather than trusting this comment.
+port_block_size=12
+# The historical block. A run that finds the machine idle still lands exactly
+# here, so the common case is unchanged.
+port_block_base_default=55222
+# How many disjoint blocks the machine hands out before it refuses to guess.
+port_block_count=8
+# Pin a block explicitly, for a caller that would rather not negotiate.
+port_block_base_override="${HEELER_CI_PORT_BASE:-}"
+
+# Cross-run coordination lives here: one owned lock per port block, Simulator,
+# or account-allocation critical section. A short-lived atomic claim guard
+# serializes owner publication, stale reclamation, and token-checked release.
+# Ports still decide whether a block is usable; these locks only let a run say
+# what it holds, and let the next run tell "someone is working" apart from
+# "something crashed".
+lock_root=/tmp/heeler-ci-locks
+run_lock_dir=""
+device_lock_dir=""
+account_lock_dir=""
+active_claim_guard=""
+active_resource_lock=""
+lock_owner_token="$$-$(uuidgen)"
+lock_owner_start="$(ps -o lstart= -p "$$" | sed 's/^ *//; s/ *$//')"
 
 # AF_UNIX paths cap at 104 bytes on macOS and the fixture nests herdr sockets
 # several directories deep, so anchor at /tmp: the per-user TMPDIR alone is
 # already 69 characters and overflows the limit.
 fixture_dir="$(mktemp -d /tmp/heeler-ci.XXXXXX)"
+app_derived_data_path="$fixture_dir/AppDerivedData"
+package_derived_data_path="$fixture_dir/PackageDerivedData"
 fixture_username="$(id -un)"
 fixture_home="$fixture_dir/home"
 modern_pid=""
@@ -83,6 +105,119 @@ case "${HEELER_CI_MANDATORY:-${CI:-}}" in
 esac
 
 unprivileged_sshd_pids=()
+
+write_lock_owner() {
+    local lock=$1
+
+    printf '%s' "$lock_owner_token" > "$lock/token"
+    printf '%s' "$$" > "$lock/pid"
+    printf '%s' "$lock_owner_start" > "$lock/start"
+}
+
+lock_is_stale() {
+    local lock=$1
+    local owner
+    local expected_start
+    local actual_start
+
+    owner=$(cat "$lock/pid" 2>/dev/null)
+    expected_start=$(cat "$lock/start" 2>/dev/null)
+    if [[ -z "$owner" || -z "$expected_start" ]]; then
+        return 0
+    fi
+    actual_start=$(ps -o lstart= -p "$owner" 2>/dev/null \
+        | sed 's/^ *//; s/ *$//')
+    [[ -n "$actual_start" && "$actual_start" == "$expected_start" ]] \
+        && return 1
+    return 0
+}
+
+# Serializes inspection and replacement of one resource lock. The guard is
+# never reclaimed automatically: if a gate is killed inside this tiny critical
+# section, a later run reports it and asks the operator to remove it. That is
+# safer than one run deleting a guard another run has just acquired.
+acquire_claim_guard() {
+    local lock=$1
+    local description=$2
+    local guard="$lock.claiming"
+    local attempt
+
+    for ((attempt = 0; attempt < 100; attempt += 1)); do
+        if mkdir "$guard" 2>/dev/null; then
+            active_claim_guard="$guard"
+            printf '%s' "$lock_owner_token" > "$guard/token"
+            return 0
+        fi
+        sleep 0.05
+    done
+    printf 'Cannot claim %s: another run is changing its lock.\n' \
+        "$description" >&2
+    printf 'If no gate is starting, report and remove orphaned guard %s manually.\n' \
+        "$guard" >&2
+    return 1
+}
+
+release_claim_guard() {
+    local guard=$1
+    local token
+
+    token=$(cat "$guard/token" 2>/dev/null)
+    if [[ "$token" == "$lock_owner_token" \
+        || "$active_claim_guard" == "$guard" ]]; then
+        rm -f -- "$guard/token"
+        rmdir "$guard"
+    fi
+    if [[ "$active_claim_guard" == "$guard" ]]; then
+        active_claim_guard=""
+    fi
+}
+
+claim_resource_lock() {
+    local lock=$1
+    local description=$2
+    local owner
+    local claim_status=1
+
+    active_resource_lock="$lock"
+    if ! acquire_claim_guard "$lock" "$description"; then
+        active_resource_lock=""
+        return 1
+    fi
+    if [[ ! -d "$lock" ]]; then
+        if mkdir "$lock"; then
+            write_lock_owner "$lock"
+            claim_status=0
+        fi
+    elif lock_is_stale "$lock"; then
+        owner=$(cat "$lock/pid" 2>/dev/null)
+        printf 'Reclaiming the stale lock on %s (owner pid %s is gone)\n' \
+            "$description" "${owner:-unknown}" >&2
+        rm -rf -- "$lock"
+        if mkdir "$lock"; then
+            write_lock_owner "$lock"
+            claim_status=0
+        fi
+    fi
+    release_claim_guard "$active_claim_guard"
+    active_resource_lock=""
+    return "$claim_status"
+}
+
+release_resource_lock() {
+    local lock=$1
+    local description=$2
+    local token
+
+    [[ -n "$lock" && -d "$lock" ]] || return 0
+    if ! acquire_claim_guard "$lock" "$description"; then
+        return 1
+    fi
+    token=$(cat "$lock/token" 2>/dev/null)
+    if [[ "$token" == "$lock_owner_token" ]]; then
+        rm -rf -- "$lock"
+    fi
+    release_claim_guard "$active_claim_guard"
+}
 
 cleanup() {
     local status=$?
@@ -154,6 +289,22 @@ cleanup() {
     if [[ "$preserve_password_fixture" != "1" && -d "$fixture_dir" ]]; then
         rm -rf -- "$fixture_dir"
     fi
+    # Released last: while these stand, a concurrent run treats our block and
+    # our device as taken. Dropping them after the fixtures are already down,
+    # and after the simulator environment has been cleared, is the safe
+    # ordering -- the device must not look free while it still holds our
+    # HEELER_SSH_E2E_* variables.
+    if [[ -n "$active_claim_guard" ]]; then
+        if [[ -n "$active_resource_lock" && -d "$active_resource_lock" ]] \
+            && [[ "$(cat "$active_resource_lock/token" 2>/dev/null)" \
+                == "$lock_owner_token" ]]; then
+            rm -rf -- "$active_resource_lock"
+        fi
+        release_claim_guard "$active_claim_guard"
+    fi
+    release_resource_lock "$account_lock_dir" "password account allocation" || true
+    release_resource_lock "$run_lock_dir" "fixture port block" || true
+    release_resource_lock "$device_lock_dir" "simulator" || true
 
     exit "$status"
 }
@@ -428,28 +579,166 @@ start_unprivileged_sshd() {
     unprivileged_sshd_pids+=("$started_sshd_pid")
 }
 
-for port in \
-    "$modern_port" \
-    "$legacy_port" \
-    "$restricted_port" \
-    "$stall_port" \
-    "$streamlocal_global_policy_port" \
-    "$streamlocal_key_policy_port" \
-    "$jump_target_port" \
-    "$jump_forwarding_denied_port" \
-    "$pairing_port" \
-    "$password_port" \
-    "$weak_network_port" \
-    "$weak_network_control_port"; do
-    if nc -z 127.0.0.1 "$port" >/dev/null 2>&1; then
-        echo "TCP port $port is already in use" >&2
+# The single place fixture ports are named. Every other reference in this
+# script, and every port the tests are handed, comes from these twelve
+# variables, so moving the base moves the whole fixture.
+assign_port_block() {
+    local base=$1
+    local highest
+
+    modern_port=$((base + 0))
+    legacy_port=$((base + 1))
+    restricted_port=$((base + 2))
+    stall_port=$((base + 3))
+    streamlocal_global_policy_port=$((base + 4))
+    streamlocal_key_policy_port=$((base + 5))
+    jump_target_port=$((base + 6))
+    jump_forwarding_denied_port=$((base + 7))
+    pairing_port=$((base + 8))
+    password_port=$((base + 9))
+    # The unprivileged impairment proxy: a degraded route to the modern sshd,
+    # plus the control port the weak-network suite steers it through.
+    weak_network_port=$((base + 10))
+    weak_network_control_port=$((base + 11))
+
+    # Adding a port above without widening port_block_size would overlap the
+    # next block, which no test could distinguish from a flaky fixture.
+    highest=$weak_network_control_port
+    if [[ "$highest" -ne "$((base + port_block_size - 1))" ]]; then
+        echo "assign_port_block assigns past port_block_size=$port_block_size" >&2
         exit 1
     fi
-done
-if nc -z ::1 "$pairing_port" >/dev/null 2>&1; then
-    echo "TCP endpoint [::1]:$pairing_port is already in use" >&2
+}
+
+# The pairing fixture is reached over both loopback families, so a listener on
+# either one is a genuine conflict. Checking both for every port costs nothing
+# and can only ever reject a block, never wave a busy one through.
+port_is_busy() {
+    local port=$1
+
+    nc -z 127.0.0.1 "$port" >/dev/null 2>&1 && return 0
+    nc -z ::1 "$port" >/dev/null 2>&1 && return 0
+    return 1
+}
+
+# Names who holds a port, so a refusal can say more than "already in use".
+# A listener whose parent is init was reparented when its run died: that is an
+# orphan from a crashed gate, not a colleague mid-run. It is reported and never
+# killed -- guessing wrong about ownership costs someone else their run.
+describe_port_holder() {
+    local port=$1
+    local only_orphans=${2:-0}
+    local pid
+    local parent
+    local command
+    local described=1
+
+    for pid in $(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | sort -u); do
+        parent=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+        command=$(ps -o command= -p "$pid" 2>/dev/null)
+        if [[ -z "$command" ]]; then
+            continue
+        fi
+        if [[ "$parent" == "1" ]]; then
+            described=0
+            printf '      port %s: ORPHAN pid %s (reparented to init) %s\n' \
+                "$port" "$pid" "$command" >&2
+        elif [[ "$only_orphans" != "1" ]]; then
+            described=0
+            printf '      port %s: pid %s (parent %s) %s\n' \
+                "$port" "$pid" "${parent:-unknown}" "$command" >&2
+        fi
+    done
+    return "$described"
+}
+
+mkdir -p "$lock_root"
+
+# Blocks are tried in order and the first wholly free one wins, so an idle
+# machine is deterministic. Every rejection is recorded rather than fatal:
+# if nothing is free the operator gets the whole picture at once instead of
+# the first port that happened to be taken.
+claim_port_block() {
+    local -a bases=()
+    local base
+    local slot
+    local busy
+    local port
+    local offset
+    local lock
+    local owner
+    local -a rejections=()
+
+    if [[ -n "$port_block_base_override" ]]; then
+        bases=("$port_block_base_override")
+    else
+        for ((slot = 0; slot < port_block_count; slot += 1)); do
+            bases+=("$((port_block_base_default + slot * port_block_size))")
+        done
+    fi
+
+    for base in "${bases[@]}"; do
+        lock="$lock_root/block-$base"
+        busy=""
+        for ((offset = 0; offset < port_block_size; offset += 1)); do
+            port=$((base + offset))
+            if port_is_busy "$port"; then
+                busy+=" $port"
+                # A run may move to the next free block, but an orphan from a
+                # crashed gate still needs to be visible to the operator. It
+                # is reported here and deliberately left untouched.
+                describe_port_holder "$port" 1 || true
+            fi
+        done
+
+        # Recorded as "<base> <kind> <detail...>". The kind is explicit because
+        # the two rejections carry different trailing numbers -- ports for one,
+        # a pid for the other -- and only ports may be looked up as ports.
+        if [[ -n "$busy" ]]; then
+            rejections+=("$base ports$busy")
+            continue
+        fi
+
+        if claim_resource_lock "$lock" "port block $base"; then
+            run_lock_dir="$lock"
+            assign_port_block "$base"
+            return 0
+        fi
+
+        owner=$(cat "$lock/pid" 2>/dev/null)
+        rejections+=("$base lock ${owner:-unknown}")
+    done
+
+    echo "Every fixture port block on this machine is taken." >&2
+    echo "The merge gate needs $port_block_size consecutive free ports." >&2
+    local -a fields=()
+    local rejection
+    for rejection in "${rejections[@]}"; do
+        read -r -a fields <<<"$rejection"
+        if [[ "${fields[1]}" == "ports" ]]; then
+            printf '  block %s: ports in use:%s\n' \
+                "${fields[0]}" "${rejection#"${fields[0]} ports"}" >&2
+            for port in "${fields[@]:2}"; do
+                describe_port_holder "$port" || true
+            done
+        else
+            printf '  block %s: claimed by live run pid %s\n' \
+                "${fields[0]}" "${fields[2]}" >&2
+        fi
+    done
+    echo >&2
+    echo "What to do:" >&2
+    echo "  - a block held by a live run: wait for it, or widen" >&2
+    echo "    port_block_count in this script." >&2
+    echo "  - an ORPHAN above outlived its run. Confirm it is yours, then" >&2
+    echo "    kill it by pid. This script never kills what it did not start." >&2
+    echo "  - to pin a block yourself: HEELER_CI_PORT_BASE=<base>" >&2
     exit 1
-fi
+}
+
+claim_port_block
+printf 'Claimed fixture port block %s-%s\n' \
+    "$modern_port" "$((modern_port + port_block_size - 1))" >&2
 
 sftp_server=""
 for candidate in /usr/libexec/sftp-server /usr/lib/openssh/sftp-server; do
@@ -751,6 +1040,11 @@ if sudo -n true >/dev/null 2>&1; then
     password_username="heelerssh${RANDOM}"
     password_secret="$(uuidgen)-$(uuidgen)"
     password_home="$fixture_dir/password-home"
+    account_lock_dir="$lock_root/password-account-allocation"
+    if ! claim_resource_lock "$account_lock_dir" "password account allocation"; then
+        echo "Another gate is allocating its temporary password account; retry shortly." >&2
+        exit 1
+    fi
     while dscl . -search /Users UniqueID "$password_uid" | grep -q .; do
         password_uid=$((password_uid + 1))
     done
@@ -759,6 +1053,8 @@ if sudo -n true >/dev/null 2>&1; then
     # record, so declare cleanup intent before starting that side effect.
     password_user_cleanup_needed=1
     create_password_user
+    release_resource_lock "$account_lock_dir" "password account allocation"
+    account_lock_dir=""
     sudo -n dscl . -create "/Users/$password_username" IsHidden 1
     sudo -n chown "$password_uid":20 "$password_home"
     if dscl . -read /Groups/com.apple.access_ssh >/dev/null 2>&1; then
@@ -971,8 +1267,20 @@ pairing_fixture_configuration=$(printf \
     "$pairing_state_root")
 pairing_fixture_configuration_base64=$(printf \
     '%s' "$pairing_fixture_configuration" | base64)
-simulator_udid=$(xcrun simctl list devices available | awk '
+# A disjoint port block is necessary for two runs to coexist but not
+# sufficient: the fixture reaches the tests through `simctl launchctl setenv`,
+# which is per-device state. Two runs sharing one device overwrite each other's
+# HEELER_SSH_E2E_* and one of them tests the other's fixture -- silently, unlike
+# a port clash. So the device is claimed alongside the block.
+#
+# Candidates come back last-first, preserving the previous choice of the last
+# matching device for a run that finds the machine idle.
+simulator_candidates=()
+while IFS= read -r candidate; do
+    [[ -n "$candidate" ]] && simulator_candidates+=("$candidate")
+done < <(xcrun simctl list devices available | awk '
     /iPhone 17 \(/ {
+        candidate = ""
         for (field = 1; field <= NF; field += 1) {
             value = $field
             gsub(/[()]/, "", value)
@@ -980,13 +1288,78 @@ simulator_udid=$(xcrun simctl list devices available | awk '
                 candidate = value
             }
         }
+        if (candidate != "") {
+            list[++count] = candidate
+        }
     }
-    END { print candidate }
+    END { for (index_ = count; index_ >= 1; index_ -= 1) print list[index_] }
 ')
-if [[ -z "$simulator_udid" ]]; then
+if [[ "${#simulator_candidates[@]}" -eq 0 ]]; then
     echo "No available iPhone 17 Simulator was found" >&2
     exit 1
 fi
+
+# Reports the live pid holding this device, nothing if it is free.
+simulator_held_by() {
+    local udid=$1
+    local owner
+
+    owner=$(cat "$lock_root/device-$udid/pid" 2>/dev/null)
+    if [[ -n "$owner" ]] && kill -0 "$owner" 2>/dev/null; then
+        printf '%s' "$owner"
+        return 0
+    fi
+    return 1
+}
+
+# The device uses the same token-checked resource claim as a port block. A
+# separate device claim is necessary because its launchctl environment is
+# shared even when the fixture ports are not.
+claim_simulator() {
+    local udid=$1
+    local lock="$lock_root/device-$udid"
+
+    if claim_resource_lock "$lock" "simulator $udid"; then
+        device_lock_dir="$lock"
+        return 0
+    fi
+    return 1
+}
+
+requested_simulator_udid="${HEELER_CI_SIMULATOR_UDID:-}"
+simulator_udid=""
+if [[ -n "$requested_simulator_udid" ]]; then
+    if claim_simulator "$requested_simulator_udid"; then
+        simulator_udid="$requested_simulator_udid"
+    else
+        printf 'Requested simulator %s is claimed by live run pid %s.\n' \
+            "$requested_simulator_udid" \
+            "$(simulator_held_by "$requested_simulator_udid" || printf 'unknown')" >&2
+        echo "Choose a different HEELER_CI_SIMULATOR_UDID or wait for that run." >&2
+        exit 1
+    fi
+else
+    for candidate in "${simulator_candidates[@]}"; do
+        if claim_simulator "$candidate"; then
+            simulator_udid="$candidate"
+            break
+        fi
+    done
+fi
+if [[ -z "$simulator_udid" ]]; then
+    echo "Every available iPhone 17 Simulator is claimed by a live run." >&2
+    for candidate in "${simulator_candidates[@]}"; do
+        printf '  %s: held by pid %s\n' \
+            "$candidate" "$(simulator_held_by "$candidate")" >&2
+    done
+    echo >&2
+    echo "A run needs a device of its own: the fixture is delivered through" >&2
+    echo "per-device launchctl environment, which two runs would overwrite." >&2
+    echo "Create another iPhone 17 with 'xcrun simctl create', or pin one" >&2
+    echo "explicitly with HEELER_CI_SIMULATOR_UDID=<udid>." >&2
+    exit 1
+fi
+printf 'Claimed simulator %s\n' "$simulator_udid" >&2
 simulator_destination="platform=iOS Simulator,id=$simulator_udid"
 xcrun simctl boot "$simulator_udid" >/dev/null 2>&1 || true
 xcrun simctl bootstatus "$simulator_udid" -b
@@ -1025,6 +1398,7 @@ run_suite() {
     xcodebuild "$action" \
         -project Heeler.xcodeproj \
         -scheme Heeler \
+        -derivedDataPath "$app_derived_data_path" \
         -destination "$simulator_destination" \
         -collect-test-diagnostics never \
         "-only-testing:HeelerTests/$suite" \
@@ -1148,6 +1522,7 @@ if [[ "$password_fixture_available" == "1" ]]; then
     xcodebuild build-for-testing \
         -project Heeler.xcodeproj \
         -scheme Heeler \
+        -derivedDataPath "$app_derived_data_path" \
         -destination "$simulator_destination" \
         -collect-test-diagnostics never
     start_password_sshd || exit 1
@@ -1259,6 +1634,7 @@ package_e2e_log="$fixture_dir/package-e2e.log"
     cd Packages/HeelerSSH
     xcodebuild test \
         -scheme HeelerSSH \
+        -derivedDataPath "$package_derived_data_path" \
         -destination "$simulator_destination" \
         -collect-test-diagnostics never
 ) 2>&1 | tee "$package_e2e_log"
@@ -1319,6 +1695,7 @@ full_lane_log="$fixture_dir/full-lane.log"
 xcodebuild test \
     -project Heeler.xcodeproj \
     -scheme Heeler \
+    -derivedDataPath "$app_derived_data_path" \
     -destination "$simulator_destination" \
     -collect-test-diagnostics never \
     2>&1 | tee "$full_lane_log"
