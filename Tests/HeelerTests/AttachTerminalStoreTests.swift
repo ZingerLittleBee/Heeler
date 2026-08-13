@@ -2172,7 +2172,9 @@ struct AgentAttachStoreTests {
         stageImage: ImageStager? = nil,
         close: @escaping () async throws -> Void = {}
     ) -> AgentAttachStore {
-        let composer = AgentComposerStore(target: target) { _ in }
+        let composer = AgentComposerStore(target: target) { _ in
+            Agent(.fixture(paneID: target))
+        }
         return AgentAttachStore(
             target: target,
             paneTitle: "Agent",
@@ -2432,7 +2434,9 @@ struct AgentAttachStoreForegroundTests {
     private func makeStore(
         transport: ScriptedTransport, isOnStage: @escaping () -> Bool = { true }
     ) -> AgentAttachStore {
-        let composer = AgentComposerStore(target: "w1:p1") { _ in }
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
         return AgentAttachStore(
             target: "w1:p1",
             paneTitle: "pane",
