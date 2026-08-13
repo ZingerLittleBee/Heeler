@@ -1,0 +1,81 @@
+---
+const guarantees = [
+  {
+    title: 'Device Key in the Keychain',
+    body: 'An Ed25519 Device Key is generated on device during QR pairing; the private key stays in the Keychain, and the Pairing Code pins the host key fingerprint.',
+  },
+  {
+    title: 'End-to-end encrypted notifications',
+    body: 'APNs pushes fire when an Agent goes Blocked or Done and deep-link into its terminal. The relay sees the device token, source IP, request timing, and ciphertext — but cannot read the notification.',
+  },
+  {
+    title: 'Verified at both hops',
+    body: `Behind a Jump Host, host keys are verified independently at each hop. The recommended deployment keeps the reverse-forwarded port on the VPS loopback interface instead of publishing the Mac's SSH port.`,
+  },
+  {
+    title: 'No new surface area',
+    body: `No herdr server changes and no extra packages. The Host's SSH server must permit stream-local forwarding, which is the OpenSSH default; onboarding says so when it is turned off.`,
+  },
+];
+---
+
+<section id="security" class="section">
+  <div class="container">
+    <div class="eyebrow">Security</div>
+    <h2 class="section-title title">Keys stay on device. The relay reads nothing.</h2>
+    <ul class="grid">
+      {
+        guarantees.map((item) => (
+          <li class="card">
+            <h3 class="card-title">{item.title}</h3>
+            <p class="card-body">{item.body}</p>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</section>
+
+<style>
+  .title {
+    max-width: 760px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--sp-6);
+    margin: 56px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .card {
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-card);
+    background: var(--surface-card);
+    padding: var(--sp-8);
+  }
+
+  .card-title {
+    font: var(--type-h4);
+  }
+
+  .card-body {
+    font: var(--type-body-sm);
+    color: var(--text-secondary);
+    margin-top: var(--sp-2-5);
+  }
+
+  @media (max-width: 760px) {
+    .grid {
+      grid-template-columns: 1fr;
+      gap: var(--sp-4);
+      margin-top: 40px;
+    }
+
+    .card {
+      padding: var(--sp-6);
+    }
+  }
+</style>

@@ -1,0 +1,14 @@
+/* Substrate — shadows. Dark UI separates with hairlines first; shadows only for true overlays. */
+:root{
+--shadow-none:none;
+--shadow-xs:0 1px 2px rgba(0,0,0,.5);
+--shadow-sm:0 2px 6px rgba(0,0,0,.5);
+--shadow-md:0 8px 24px rgba(0,0,0,.55);
+--shadow-lg:0 24px 64px rgba(0,0,0,.65);
+--shadow-overlay:0 24px 64px rgba(0,0,0,.7),0 0 0 1px var(--border-hairline);
+--shadow-popover:0 12px 32px rgba(0,0,0,.6),0 0 0 1px var(--border-hairline);
+--shadow-focus-ring:0 0 0 1px var(--surface-canvas),0 0 0 3px var(--n-700);
+--inset-top-sheen:inset 0 1px 0 rgba(255,255,255,.07);
+--inset-hairline:inset 0 0 0 1px var(--border-hairline);
+--glow-white:0 0 0 1px var(--n-999),0 0 24px rgba(255,255,255,.12);
+}

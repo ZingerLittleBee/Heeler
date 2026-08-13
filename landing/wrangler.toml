@@ -1,0 +1,18 @@
+# Cloudflare Workers deployment for the Heeler landing page.
+#
+# Assets-only Worker: there is no `main` handler, Cloudflare just serves the
+# static build output. Deploy with `npm run build && npm run deploy` (or let
+# .github/workflows/landing.yml do it on a push to main).
+
+name = "heeler-landing"
+compatibility_date = "2026-07-01"
+workers_dev = false
+
+[assets]
+directory = "./dist"
+# `dist/404.html` answers unmatched paths (astro build format = "file").
+not_found_handling = "404-page"
+
+[[routes]]
+pattern = "heeler.bybee.dev"
+custom_domain = true

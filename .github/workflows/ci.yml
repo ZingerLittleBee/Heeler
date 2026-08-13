@@ -25,10 +25,18 @@
 
 name: CI
 
+# `landing/**` is the marketing site (Astro, deployed to Cloudflare); it shares
+# nothing with the app, the plugin, or the relay, so it has its own workflow
+# (landing.yml) and is excluded here. A change touching both still runs this
+# workflow: paths-ignore only skips a run when every changed path matches.
 on:
   pull_request:
+    paths-ignore:
+      - landing/**
   push:
     branches: [main]
+    paths-ignore:
+      - landing/**
 
 # One in-flight run per ref; a new push cancels the previous run.
 concurrency:

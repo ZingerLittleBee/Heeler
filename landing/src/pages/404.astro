@@ -1,0 +1,26 @@
+---
+import Button from '../components/Button.astro';
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout
+  title="Not found — Heeler"
+  description="That page does not exist on heeler.bybee.dev."
+>
+  <section class="section">
+    <div class="container">
+      <div class="eyebrow">404</div>
+      <h1 class="section-title">Nothing attached at this path.</h1>
+      <p class="section-lede">The page you asked for does not exist. The landing page has everything.</p>
+      <div class="actions">
+        <Button href="/">Back to the start</Button>
+      </div>
+    </div>
+  </section>
+</Layout>
+
+<style>
+  .actions {
+    margin-top: var(--sp-8);
+  }
+</style>

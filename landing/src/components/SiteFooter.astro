@@ -1,0 +1,70 @@
+---
+import { Image } from 'astro:assets';
+import logo from '../assets/logo.png';
+
+const links = [
+  { href: 'https://github.com/ZingerLittleBee/Heeler', label: 'GitHub' },
+  { href: 'https://herdr.dev', label: 'herdr' },
+  { href: 'https://github.com/ZingerLittleBee/Heeler/blob/main/PRIVACY.md', label: 'Privacy' },
+];
+---
+
+<footer class="footer">
+  <div class="container layout">
+    <div class="brand">
+      <Image class="mark" src={logo} alt="" width={18} height={18} densities={[2, 3]} loading="eager" />
+      <span class="tagline">Heeler — an agent console for herdr</span>
+    </div>
+    <div class="links">
+      {links.map((link) => <a class="link" href={link.href}>{link.label}</a>)}
+      <span class="license">AGPL-3.0</span>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    padding: var(--sp-12) 0 var(--sp-16);
+  }
+
+  .layout {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-8);
+    flex-wrap: wrap;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2-5);
+  }
+
+  .mark {
+    border-radius: var(--r-sm);
+  }
+
+  .tagline,
+  .link {
+    font: var(--type-body-sm);
+    color: var(--text-secondary);
+  }
+
+  .links {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-6);
+    flex-wrap: wrap;
+  }
+
+  .link:hover {
+    color: var(--text-primary);
+  }
+
+  .license {
+    font: var(--type-mono-sm);
+    letter-spacing: var(--tr-mono);
+    color: var(--text-muted);
+  }
+</style>

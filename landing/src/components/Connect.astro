@@ -1,0 +1,232 @@
+---
+const facts = [
+  {
+    title: 'RPC + events',
+    body: 'An OpenSSH direct-streamlocal channel straight onto <span class="mono">herdr.sock</span> per request, plus one long-lived channel for <span class="mono">events.subscribe</span>.',
+  },
+  {
+    title: 'Interactive terminal',
+    body: 'The Agent detail screen requests an SSH PTY and execs <span class="mono">herdr agent attach &lt;pane&gt; --takeover</span>, rendered through a host-managed libghostty session with Metal output.',
+  },
+  {
+    title: 'Jump Host',
+    body: 'Reach machines that are not directly routable through an SSH jump, with keys verified independently at both hops.',
+  },
+];
+
+const path = [
+  { node: 'Heeler.app', note: 'iPhone' },
+  { node: 'jump host', note: 'optional · VPS loopback' },
+  { node: 'sshd', note: 'stream-local forwarding' },
+  { node: 'herdr.sock', note: 'ndjson rpc + events' },
+  { node: 'agent pane', note: 'pty · takeover' },
+];
+
+// Written as markup so the pre keeps its exact line breaks and token colours.
+const pairingCommands = [
+  '<span class="tk-comment"># on the machine running herdr</span>',
+  '<span class="tk-fn">herdr</span> plugin install ZingerLittleBee/Heeler/plugin <span class="tk-string">--ref main --yes</span>',
+  '<span class="tk-fn">herdr</span> plugin action invoke heeler.pairing.pair',
+].join('\n');
+---
+
+<section id="connect" class="section">
+  <div class="container layout">
+    <div>
+      <div class="eyebrow">How it connects</div>
+      <h2 class="section-title">Plain SSH. No server changes.</h2>
+      <p class="section-lede">The app speaks herdr's JSON API — newline-delimited JSON over a Unix socket — through SSH. SSH access plus a running herdr server is the whole prerequisite.</p>
+      <ul class="facts">
+        {
+          facts.map((fact) => (
+            <li class="fact">
+              <div class="fact-title">{fact.title}</div>
+              <p class="fact-body" set:html={fact.body} />
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+
+    <div class="aside">
+      <div class="card">
+        <div class="card-bar">
+          <span class="eyebrow">Path</span>
+          <span class="card-lang">ssh</span>
+        </div>
+        <ol class="hops">
+          {
+            path.map((hop, index) => (
+              <li class="hop">
+                <span class="hop-index">{String(index + 1).padStart(2, '0')}</span>
+                <span class="hop-node">{hop.node}</span>
+                <span class="hop-note">{hop.note}</span>
+              </li>
+            ))
+          }
+        </ol>
+      </div>
+
+      <div class="code">
+        <div class="card-bar">
+          <span class="eyebrow">Add a machine</span>
+          <span class="card-lang">bash</span>
+        </div>
+        <pre set:html={pairingCommands}></pre>
+      </div>
+
+      <p class="aside-note">The <span class="mono">pair</span> action opens a Pairing Code QR. Scan it and the machine is added as a Host — addresses, host key fingerprint, and SSH key enrollment all handled by the code. Nothing to type.</p>
+    </div>
+  </div>
+</section>
+
+<style>
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 520px;
+    gap: 80px;
+    align-items: start;
+  }
+
+  .facts {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-5);
+    margin: 36px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .fact {
+    border-left: 1px solid var(--border-hairline);
+    padding-left: var(--sp-5);
+  }
+
+  .fact-title {
+    font: var(--type-h5);
+  }
+
+  .fact-body {
+    font: var(--type-body-sm);
+    color: var(--text-secondary);
+    margin-top: var(--sp-1-5);
+  }
+
+  .aside {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-6);
+    min-width: 0;
+  }
+
+  .card,
+  .code {
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-card);
+    overflow: hidden;
+  }
+
+  .card {
+    background: var(--surface-card);
+  }
+
+  .code {
+    background: var(--surface-code);
+  }
+
+  .card-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 44px;
+    padding: 0 var(--sp-4);
+    border-bottom: 1px solid var(--border-hairline);
+  }
+
+  .code .card-bar {
+    height: 40px;
+  }
+
+  .card-lang {
+    font: var(--type-mono-sm);
+    letter-spacing: var(--tr-mono);
+    color: var(--text-muted);
+  }
+
+  .hops {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .hop {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-4);
+    padding: 18px var(--sp-5);
+  }
+
+  .hop + .hop {
+    border-top: 1px solid var(--border-hairline);
+  }
+
+  .hop-index {
+    flex: none;
+    width: 28px;
+    font: var(--type-mono-sm);
+    letter-spacing: var(--tr-mono);
+    color: var(--text-muted);
+  }
+
+  .hop-node {
+    font: var(--type-mono);
+    letter-spacing: var(--tr-mono);
+    color: var(--text-primary);
+  }
+
+  .hop-note {
+    margin-left: auto;
+    font: var(--type-body-sm);
+    color: var(--text-muted);
+    text-align: right;
+  }
+
+  pre {
+    margin: 0;
+    padding: var(--sp-5);
+    font: var(--type-mono);
+    letter-spacing: var(--tr-mono);
+    color: var(--syn-plain);
+    overflow-x: auto;
+  }
+
+  .aside-note {
+    font: var(--type-body-sm);
+    color: var(--text-secondary);
+  }
+
+  @media (max-width: 1060px) {
+    .layout {
+      grid-template-columns: 1fr;
+      gap: 56px;
+    }
+  }
+
+  @media (max-width: 560px) {
+    .hop {
+      flex-wrap: wrap;
+      row-gap: var(--sp-1);
+    }
+
+    .hop-note {
+      width: 100%;
+      margin-left: calc(28px + var(--sp-4));
+      text-align: left;
+    }
+
+    pre {
+      padding: var(--sp-4);
+      font-size: var(--fs-label);
+    }
+  }
+</style>

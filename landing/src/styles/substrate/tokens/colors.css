@@ -1,0 +1,103 @@
+/* Substrate — colors. Dark-first. Monochrome neutral ramp + reserved semantic hues. */
+:root{
+/* ---- neutral ramp: 000 = void, 999 = max light ---- */
+--n-000:#000000;
+--n-050:#0a0a0a;
+--n-100:#101010;
+--n-150:#161616;
+--n-200:#1c1c1c;
+--n-250:#212121;
+--n-300:#282828;
+--n-400:#303030;
+--n-450:#3a3a3a;
+--n-500:#454545;
+--n-600:#6f6f6f;
+--n-700:#8f8f8f;
+--n-800:#b4b4b4;
+--n-900:#ededed;
+--n-999:#ffffff;
+
+/* ---- semantic hues (reserved: status only, never decoration) ---- */
+--blue-400:#3291ff;
+--blue-500:#0072f5;
+--blue-fill:#0e1c2e;
+--blue-line:#193d63;
+--green-400:#45d483;
+--green-500:#12a150;
+--green-fill:#0b2317;
+--green-line:#13492c;
+--amber-400:#f5b544;
+--amber-500:#d98b00;
+--amber-fill:#291d06;
+--amber-line:#54390b;
+--red-400:#ff5f56;
+--red-500:#e5484d;
+--red-fill:#2a0f11;
+--red-line:#5c1d20;
+
+/* ---- surfaces ---- */
+--surface-void:var(--n-000);
+--surface-canvas:var(--n-050);
+--surface-raised:var(--n-100);
+--surface-card:var(--n-150);
+--surface-inset:var(--n-000);
+--surface-input:var(--n-100);
+--surface-code:#0c0c0c;
+--surface-hover:var(--n-200);
+--surface-active:var(--n-250);
+--surface-selected:var(--n-250);
+--surface-overlay:rgba(0,0,0,.72);
+--surface-glass:rgba(10,10,10,.72);
+
+/* ---- text ---- */
+--text-primary:var(--n-900);
+--text-secondary:var(--n-700);
+--text-muted:var(--n-600);
+--text-disabled:var(--n-500);
+--text-inverse:var(--n-000);
+--text-link:var(--n-900);
+--text-accent:var(--blue-400);
+
+/* ---- borders ---- */
+--border-hairline:var(--n-300);
+--border-default:var(--n-400);
+--border-strong:var(--n-450);
+--border-focus:var(--n-999);
+--border-input:var(--n-400);
+
+/* ---- control fills ---- */
+--control-primary-bg:var(--n-999);
+--control-primary-fg:var(--n-000);
+--control-primary-bg-hover:var(--n-800);
+--control-secondary-bg:var(--n-150);
+--control-secondary-fg:var(--n-900);
+--control-secondary-bg-hover:var(--n-250);
+--control-ghost-fg:var(--n-700);
+--control-danger-bg:var(--red-500);
+--control-danger-fg:var(--n-999);
+--control-disabled-bg:var(--n-150);
+--control-disabled-fg:var(--n-500);
+
+/* ---- status aliases ---- */
+--status-info:var(--blue-400);
+--status-success:var(--green-400);
+--status-warning:var(--amber-400);
+--status-error:var(--red-400);
+
+/* ---- syntax (used by CodeBlock) ---- */
+--syn-plain:var(--n-800);
+--syn-comment:var(--n-600);
+--syn-keyword:#ff7ab6;
+--syn-string:var(--green-400);
+--syn-fn:var(--blue-400);
+--syn-num:var(--amber-400);
+--syn-type:#7cd4e0;
+--syn-punct:var(--n-600);
+
+/* ---- decorative gradients: fades to canvas only, never hue-to-hue ---- */
+--fade-bottom:linear-gradient(to bottom,transparent,var(--surface-canvas));
+--fade-top:linear-gradient(to top,transparent,var(--surface-canvas));
+--fade-right:linear-gradient(to right,transparent,var(--surface-canvas));
+--sheen-hairline:linear-gradient(to right,transparent,var(--n-450),transparent);
+--grid-line:rgba(255,255,255,.045);
+}

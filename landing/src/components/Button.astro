@@ -1,0 +1,14 @@
+---
+// Substrate Button, restricted to the link-shaped variants this page uses.
+interface Props {
+  href: string;
+  variant?: 'primary' | 'secondary';
+  size?: 'sm' | 'lg';
+}
+
+const { href, variant = 'primary', size = 'lg' } = Astro.props;
+---
+
+<a class:list={['sb-btn', `sb-btn--${variant}`, `sb-btn--${size}`]} href={href}>
+  <slot />
+</a>

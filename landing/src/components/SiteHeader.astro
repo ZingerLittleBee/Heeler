@@ -1,0 +1,97 @@
+---
+import { Image } from 'astro:assets';
+import logo from '../assets/logo.png';
+import Button from './Button.astro';
+
+const links = [
+  { href: '#features', label: 'Features' },
+  { href: '#connect', label: 'How it connects' },
+  { href: '#security', label: 'Security' },
+  { href: '#faq', label: 'FAQ' },
+];
+---
+
+<header class="header">
+  <div class="bar">
+    <a class="brand" href="#top">
+      <Image class="mark" src={logo} alt="" width={22} height={22} densities={[2, 3]} loading="eager" />
+      <span class="wordmark">Heeler</span>
+    </a>
+    <nav class="nav" aria-label="Sections">
+      {links.map((link) => <a class="nav-link" href={link.href}>{link.label}</a>)}
+    </nav>
+    <div class="spacer"></div>
+    <span class="eyebrow stage">Pre-alpha</span>
+    <Button href="https://github.com/ZingerLittleBee/Heeler" size="sm">Star on GitHub</Button>
+  </div>
+</header>
+
+<style>
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-header);
+    background: var(--surface-glass);
+    backdrop-filter: var(--blur-glass);
+    border-bottom: 1px solid var(--border-hairline);
+  }
+
+  .bar {
+    max-width: var(--w-container);
+    margin: 0 auto;
+    height: var(--h-header);
+    padding: 0 var(--gutter-x);
+    display: flex;
+    align-items: center;
+    gap: var(--sp-8);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2-5);
+    color: var(--text-primary);
+  }
+
+  .mark {
+    border-radius: 5px;
+  }
+
+  .wordmark {
+    font: var(--fw-medium) 17px/1 var(--font-sans);
+    letter-spacing: var(--tr-heading);
+  }
+
+  .nav {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-6);
+    margin-left: var(--sp-2);
+  }
+
+  .nav-link {
+    font: var(--type-label);
+    color: var(--text-secondary);
+  }
+
+  .nav-link:hover {
+    color: var(--text-primary);
+  }
+
+  .spacer {
+    flex: 1;
+  }
+
+  /* Below the point where the four section links stop fitting, the header
+   * keeps the brand and the one action that matters. */
+  @media (max-width: 900px) {
+    .nav,
+    .stage {
+      display: none;
+    }
+
+    .bar {
+      gap: var(--sp-4);
+    }
+  }
+</style>

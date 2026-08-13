@@ -1,0 +1,220 @@
+---
+import { Picture } from 'astro:assets';
+import agentShot from '../assets/screens/agent-iphone.png';
+import composerShot from '../assets/screens/composer-iphone.png';
+import consoleShot from '../assets/screens/console-iphone.png';
+import Badge from './Badge.astro';
+import Button from './Button.astro';
+
+const screens = [
+  {
+    image: consoleShot,
+    alt: 'Agent Console on iPhone',
+    label: 'Console',
+    caption: 'Every Host in one priority-sorted view',
+  },
+  {
+    image: agentShot,
+    alt: 'Agent terminal with the tools keyboard on iPhone',
+    label: 'Tools keyboard',
+    caption: 'Agent controls under the live terminal',
+  },
+  {
+    image: composerShot,
+    alt: 'Live terminal above the Composer on iPhone',
+    label: 'Composer',
+    caption: 'The session rendered above the draft',
+  },
+];
+---
+
+<section id="top" class="hero substrate-grid">
+  <div class="fade" aria-hidden="true"></div>
+  <div class="inner">
+    <div class="badges">
+      <Badge>iOS 18+</Badge>
+      <Badge>Swift 6</Badge>
+      <Badge>AGPL-3.0</Badge>
+    </div>
+    <h1 class="headline">Every coding agent on your machines, sorted by who needs you.</h1>
+    <p class="lede">Heeler is a native iOS companion for <a class="text-link" href="https://herdr.dev">herdr</a>, the agent-first terminal runtime. Read and steer a live terminal, draft with the full iOS keyboard, send the message once — all over plain SSH.</p>
+    <div class="actions">
+      <Button href="https://github.com/ZingerLittleBee/Heeler">Star on GitHub</Button>
+      <Button
+        href="https://github.com/ZingerLittleBee/Heeler#adding-a-machine-install-the-plugin-scan-the-code"
+        variant="secondary">Read the setup</Button
+      >
+    </div>
+    <p class="stack">SwiftUI &nbsp;·&nbsp; libghostty-spm &nbsp;·&nbsp; libssh2 &nbsp;·&nbsp; herdr &gt;= 0.7.5</p>
+
+    <ul class="screens">
+      {
+        screens.map((screen, index) => (
+          <li class="screen">
+            <div class="frame">
+              <Picture
+                src={screen.image}
+                alt={screen.alt}
+                formats={['avif', 'webp']}
+                widths={[284, 568]}
+                sizes="284px"
+                loading={index === 0 ? 'eager' : 'lazy'}
+                fetchpriority={index === 0 ? 'high' : 'auto'}
+              />
+            </div>
+            <div class="screen-text">
+              <div class="eyebrow">{screen.label}</div>
+              <div class="screen-caption">{screen.caption}</div>
+            </div>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</section>
+
+<style>
+  .hero {
+    position: relative;
+    padding: 120px var(--gutter-x) 96px;
+    border-bottom: 1px solid var(--border-hairline);
+  }
+
+  .fade {
+    position: absolute;
+    inset: 0;
+    background: var(--fade-bottom);
+    pointer-events: none;
+  }
+
+  .inner {
+    position: relative;
+    max-width: 1360px;
+    margin: 0 auto;
+    text-align: center;
+  }
+
+  .badges {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-2-5);
+    margin-bottom: 28px;
+  }
+
+  .headline {
+    font: var(--fw-medium) var(--fs-display-1) / var(--lh-display) var(--font-sans);
+    /* The design sets 72px; hold that on desktop and scale down to a phone. */
+    font-size: clamp(34px, 6.6vw, var(--fs-display-1));
+    letter-spacing: var(--tr-display);
+  }
+
+  .lede {
+    font: var(--type-body-lg);
+    color: var(--text-secondary);
+    max-width: 720px;
+    margin: var(--sp-6) auto 0;
+  }
+
+  .actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-3);
+    margin-top: 36px;
+  }
+
+  .stack {
+    font: var(--type-mono-sm);
+    letter-spacing: var(--tr-mono);
+    color: var(--text-muted);
+    margin-top: var(--sp-5);
+  }
+
+  .screens {
+    display: grid;
+    grid-template-columns: repeat(3, 300px);
+    justify-content: center;
+    gap: 56px;
+    margin: 88px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-4);
+  }
+
+  .frame {
+    width: 300px;
+    padding: var(--sp-2);
+    border: 1px solid var(--border-default);
+    border-radius: 44px;
+    background: var(--n-000);
+  }
+
+  .frame :global(img) {
+    width: 100%;
+    height: auto;
+    border-radius: 36px;
+  }
+
+  .screen-caption {
+    font: var(--type-body-sm);
+    color: var(--text-secondary);
+    margin-top: var(--sp-1-5);
+  }
+
+  /* Three 300px frames need ~1012px. Below that the row becomes a swipeable
+   * rail rather than three stacked full-height phones. */
+  @media (max-width: 1060px) {
+    .screens {
+      display: flex;
+      grid-template-columns: none;
+      justify-content: flex-start;
+      gap: var(--sp-6);
+      margin-inline: calc(var(--gutter-x) * -1);
+      padding-inline: var(--gutter-x);
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      scrollbar-width: none;
+    }
+
+    .screens::-webkit-scrollbar {
+      display: none;
+    }
+
+    .screen {
+      flex: none;
+      scroll-snap-align: center;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .hero {
+      padding-top: 72px;
+      padding-bottom: 64px;
+    }
+
+    .screens {
+      margin-top: 56px;
+    }
+
+    .frame {
+      width: 246px;
+      border-radius: 38px;
+    }
+
+    .frame :global(img) {
+      border-radius: 30px;
+    }
+
+    .actions {
+      flex-direction: column;
+      align-items: stretch;
+    }
+  }
+</style>

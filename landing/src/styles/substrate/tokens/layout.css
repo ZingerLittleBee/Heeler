@@ -1,0 +1,22 @@
+/* Substrate — layout. Fixed max widths, a 24px gutter, and named control heights. */
+:root{
+--w-prose:680px;
+--w-content:960px;
+--w-container:1200px;
+--w-wide:1400px;
+
+--h-header:64px;
+--h-subheader:48px;
+--h-row:40px;
+--h-control-xs:24px;
+--h-control-sm:32px;
+--h-control-md:36px;
+--h-control-lg:44px;
+
+--z-base:0;
+--z-sticky:10;
+--z-header:100;
+
+--blur-glass:blur(12px) saturate(160%);
+--blur-scrim:blur(2px);
+}

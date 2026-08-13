@@ -1,0 +1,86 @@
+---
+const questions = [
+  {
+    q: 'What do I need on the machine?',
+    a: 'Node &gt;= 20, herdr &gt;= 0.7.5, and an OpenSSH server enabled. On macOS that is System Settings &gt; General &gt; Sharing &gt; Remote Login.',
+  },
+  {
+    q: 'Does it work on iPad?',
+    a: 'iPhone today. iPad support is planned for a later release.',
+  },
+  {
+    q: 'What happens to the terminal I already had open?',
+    a: 'Attach and Reattach use herdr takeover mode, disconnecting the previous terminal owner when necessary.',
+  },
+  {
+    q: 'Is it affiliated with herdr?',
+    a: 'No. Heeler is pre-alpha, personal-use first, and not affiliated with the herdr project.',
+  },
+  {
+    q: 'Where can I read the design decisions?',
+    a: 'In <span class="mono">docs/adr/</span> — the transport story in particular is not obvious.',
+  },
+];
+---
+
+<section id="faq" class="section">
+  <div class="container layout">
+    <div>
+      <div class="eyebrow">FAQ</div>
+      <h2 class="heading">Before you install</h2>
+    </div>
+    <dl class="list">
+      {
+        questions.map((item) => (
+          <div class="row">
+            <dt class="question">{item.q}</dt>
+            <dd class="answer" set:html={item.a} />
+          </div>
+        ))
+      }
+    </dl>
+  </div>
+</section>
+
+<style>
+  .layout {
+    display: grid;
+    grid-template-columns: 320px minmax(0, 1fr);
+    gap: 80px;
+    align-items: start;
+  }
+
+  .heading {
+    font: var(--type-h2);
+    font-size: clamp(24px, 4.4vw, var(--fs-h2));
+    letter-spacing: var(--tr-heading);
+    margin-top: var(--sp-4);
+  }
+
+  .list {
+    margin: 0;
+    border-top: 1px solid var(--border-hairline);
+  }
+
+  .row {
+    padding: 28px 0;
+    border-bottom: 1px solid var(--border-hairline);
+  }
+
+  .question {
+    font: var(--type-h5);
+  }
+
+  .answer {
+    font: var(--type-body-sm);
+    color: var(--text-secondary);
+    margin: var(--sp-2) 0 0;
+  }
+
+  @media (max-width: 900px) {
+    .layout {
+      grid-template-columns: 1fr;
+      gap: 40px;
+    }
+  }
+</style>
