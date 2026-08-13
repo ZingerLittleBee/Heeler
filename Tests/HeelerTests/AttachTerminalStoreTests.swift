@@ -183,7 +183,7 @@ struct AttachTerminalStoreTests {
             ])
     }
 
-    @Test func inputControllerOwnsTheLiveWriterAndPauseGate() async throws {
+    @Test func inputControllerOwnsTheLiveWriter() async throws {
         let transport = ScriptedTransport()
         let input = TerminalInputController()
         let (store, _) = makeStore(transport: transport, input: input)
@@ -192,40 +192,11 @@ struct AttachTerminalStoreTests {
         #expect(input.liveGeneration != nil)
 
         store.send(Data("before".utf8))
-        input.pause()
-        store.send(Data("blocked".utf8))
-        input.resume()
+        await store.stop()
         store.send(Data("after".utf8))
-        await store.stop()
 
-        #expect(
-            await transport.attachInputs == [
-                .keystrokes(Data("before".utf8)),
-                .keystrokes(Data("after".utf8)),
-            ])
+        #expect(await transport.attachInputs == [.keystrokes(Data("before".utf8))])
         #expect(input.liveGeneration == nil)
-    }
-
-    @Test func remoteOutputContinuesWhileLocalInputIsPaused() async throws {
-        let transport = ScriptedTransport()
-        let input = TerminalInputController()
-        let (store, captured) = makeStore(transport: transport, input: input)
-
-        try await goLive(store, transport)
-
-        input.pause()
-        store.send(Data("blocked".utf8))
-        await transport.emitAttachOutput(Data("still rendering".utf8))
-        try await waitUntil("remote output should keep reaching the terminal feed") {
-            captured.text == "\u{1B}[2Jstill rendering"
-        }
-
-        #expect(input.isPaused)
-        #expect(await transport.attachInputs.isEmpty)
-        #expect(captured.text == "\u{1B}[2Jstill rendering")
-
-        input.resume()
-        await store.stop()
     }
 
     @Test func reattachAdvancesTheInputSessionGeneration() async throws {
@@ -1267,7 +1238,7 @@ struct AgentAttachStoreTests {
         // Keep the later real leave suspended after the stale recovery gets
         // its publication opportunity. This exposes the exact pipeline that a
         // render pass could resize before the latest rejoin replaces it.
-        store.selectImage(DataImageSelection(data: try tinyJPEGData()))
+        store.staging.begin(.photo(DataImageSelection(data: try tinyJPEGData())))
         try await waitUntil("image staging should be pending") {
             await imageStager.preparedFileURL != nil
         }
@@ -1331,7 +1302,7 @@ struct AgentAttachStoreTests {
         // The terminal input session remains live until teardown completes, so
         // this real image operation can hold the newer leave immediately after
         // the stale rejoin's publication point.
-        store.selectImage(DataImageSelection(data: try tinyJPEGData()))
+        store.staging.begin(.photo(DataImageSelection(data: try tinyJPEGData())))
         try await waitUntil("image staging should be pending") {
             await imageStager.preparedFileURL != nil
         }
@@ -1362,9 +1333,9 @@ struct AgentAttachStoreTests {
         await store.leave().value
     }
 
-    @Test func transportReplacementPreservesImageAttachState() async throws {
+    @Test func transportReplacementPreservesComposerStagingState() async throws {
         // A reconnect replaces the terminal pipeline but must not touch the
-        // image interaction: its stager resolves the live Transport per
+        // staging interaction: its stager resolves the live Transport per
         // call, so surfaced failures and results stay actionable.
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
@@ -1372,11 +1343,11 @@ struct AgentAttachStoreTests {
         try await goLive(store, transport)
 
         // One byte of garbage: preparation fails and the failure surfaces.
-        store.selectImage(DataImageSelection(data: Data([0x01])))
-        try await waitUntil("the failed image attach should surface") {
-            store.imageState.isFailed
+        store.staging.begin(.photo(DataImageSelection(data: Data([0x01]))))
+        try await waitUntil("the failed staging operation should surface") {
+            if case .failed = store.staging.state { true } else { false }
         }
-        let surfacedFailure = store.imageState
+        let surfacedFailure = store.staging.state
         let initialID = store.terminalID
 
         store.transportGenerationDidChange(1)
@@ -1384,10 +1355,10 @@ struct AgentAttachStoreTests {
             store.terminalID != initialID
         }
 
-        #expect(store.imageState == surfacedFailure)
+        #expect(store.staging.state == surfacedFailure)
 
         await store.leave().value
-        #expect(store.imageState == .idle)
+        #expect(store.staging.state == .idle)
     }
 
     @Test func leaveDuringQueuedReplacementDoesNotResurrectTheTerminal() async throws {
@@ -1730,7 +1701,7 @@ struct AgentAttachStoreTests {
         // A recovery that stopped its predecessor can abort off stage before
         // SwiftUI delivers the real onDisappear. The abort must make rejoin
         // possible without pretending leave cleanup already ran: that delayed
-        // leave still owns links, image preparation and the input pause.
+        // leave still owns links and staging preparation.
         let transport = ScriptedTransport()
         let terminalEndGate = ScriptedTransportCallGate()
         await transport.gateNextAttachEnd(on: terminalEndGate)
@@ -1756,13 +1727,12 @@ struct AgentAttachStoreTests {
             opener.pendingTarget == link.target
         }
 
-        store.selectImage(DataImageSelection(data: try tinyJPEGData()))
+        store.staging.begin(.photo(DataImageSelection(data: try tinyJPEGData())))
         try await waitUntil("image staging should retain its prepared file") {
             await imageStager.preparedFileURL != nil
         }
         let preparedFileURL = try #require(await imageStager.preparedFileURL)
         #expect(FileManager.default.fileExists(atPath: preparedFileURL.path))
-        #expect(!store.isLocalInputEnabled)
 
         let predecessorID = store.terminalID
         store.didBecomeActive(afterPossibleSuspension: true)
@@ -1786,12 +1756,11 @@ struct AgentAttachStoreTests {
 
         await imageGate.open()
         await leaveTask.value
-        try await waitUntil("image leave cleanup should settle") {
-            !store.imageState.isBusy
+        try await waitUntil("staging leave cleanup should settle") {
+            store.staging.state == .idle
         }
 
-        #expect(store.imageState == .idle)
-        #expect(store.isLocalInputEnabled)
+        #expect(store.staging.state == .idle)
         #expect(!FileManager.default.fileExists(atPath: preparedFileURL.path))
         #expect(await imageStager.cancellationCount == 1)
 
@@ -1802,7 +1771,7 @@ struct AgentAttachStoreTests {
         #expect(await imageStager.cancellationCount == 1)
 
         opener.resolvePending(accepted: false)
-        store.cancelImage()
+        store.staging.perform(.cancel)
     }
 
     @Test func delayedRealLeaveAfterRecoveryAbortCancelsReviewedPaste() async throws {
@@ -2174,7 +2143,10 @@ struct AgentAttachStoreTests {
         stageImage: ImageStager? = nil,
         close: @escaping () async throws -> Void = {}
     ) -> AgentAttachStore {
-        AgentAttachStore(
+        let composer = AgentComposerStore(target: target) { _ in
+            Agent(.fixture(paneID: target))
+        }
+        return AgentAttachStore(
             target: target,
             paneTitle: "Agent",
             transportGeneration: generation,
@@ -2183,7 +2155,13 @@ struct AgentAttachStoreTests {
                 let session = try await transport.attachTerminal(request)
                 try await handler.runEndingSession(session)
             },
-            stageImage: stageImage ?? { _, _ in throw ImageStagingError.transferFailed },
+            stageImage: stageImage ?? { _, _ in
+                throw AttachmentStagingError.transferFailed
+            },
+            stageFile: { _, _ in
+                throw AttachmentStagingError.transferFailed
+            },
+            composer: composer,
             closePane: close)
     }
 
@@ -2395,11 +2373,11 @@ private actor GatedAttachImageStager {
 
     func stage(
         _ image: PreparedImage,
-        _ reporter: ImageStageProgressReporter
+        _ reporter: AttachmentStageProgressReporter
     ) async throws -> StagedImage {
         preparedFileURL = image.fileURL
         await reporter.report(
-            ImageStageProgress(transferredBytes: 0, totalBytes: image.byteCount))
+            AttachmentStageProgress(transferredBytes: 0, totalBytes: image.byteCount))
         await withTaskCancellationHandler {
             await gate.waitUntilOpen()
         } onCancel: {
@@ -2411,7 +2389,7 @@ private actor GatedAttachImageStager {
             cancellationCount += 1
             throw error
         }
-        throw ImageStagingError.transferFailed
+        throw AttachmentStagingError.transferFailed
     }
 
     private func recordCancellationRequest() {
@@ -2427,7 +2405,10 @@ struct AgentAttachStoreForegroundTests {
     private func makeStore(
         transport: ScriptedTransport, isOnStage: @escaping () -> Bool = { true }
     ) -> AgentAttachStore {
-        AgentAttachStore(
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
+        return AgentAttachStore(
             target: "w1:p1",
             paneTitle: "pane",
             transportGeneration: 1,
@@ -2437,6 +2418,8 @@ struct AgentAttachStoreForegroundTests {
                 try await handler.runEndingSession(session)
             },
             stageImage: { _, _ in throw TransportError.cancelled },
+            stageFile: { _, _ in throw TransportError.cancelled },
+            composer: composer,
             closePane: {})
     }
 

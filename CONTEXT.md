@@ -43,13 +43,20 @@ _Avoid_: bot, task, session
 A user-selected image that exists on a Host at a remote path, whether or not the Agent has accepted it into a prompt.
 _Avoid_: attachment, uploaded image
 
+**Staged File**:
+A user-selected file that exists on a Host at a remote path, whether or not the Agent has used it from a prompt.
+_Avoid_: attachment, uploaded file
+
 **Image Attachment**:
 A Staged Image that the Agent has accepted into its current prompt as image input.
 _Avoid_: staged image, image path
 
-**Attach Image**:
-The Attach action that prepares one selected image, creates a Staged Image, and offers its path to the current terminal. The label expresses user intent; it does not assert that the Agent accepted an Image Attachment.
-_Avoid_: send image, upload image
+**Add**:
+The Composer action that prepares one selected image or file, creates a Staged
+Image or Staged File, and inserts its Host path into the local draft without
+submitting it. The action does not assert that the Agent accepted an Image
+Attachment or used a Staged File.
+_Avoid_: attach image, send image, upload image
 
 **Agent Status**:
 herdr's detected state of an Agent: Idle, Working, Blocked, Done, or Unknown. Blocked means the agent is waiting for human input and drives sort order and (later) notifications.

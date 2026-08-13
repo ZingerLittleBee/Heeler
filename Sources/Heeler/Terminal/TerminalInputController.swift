@@ -2,8 +2,8 @@ import Foundation
 import Observation
 
 /// The only application-level writer for Attach input. Keyboard input, terminal
-/// controls, reviewed Paste, and Staged Image paths all cross this boundary so
-/// pausing and session-generation checks apply consistently.
+/// controls, reviewed Paste, and Snippets all cross this boundary so session
+/// ownership applies consistently.
 @MainActor
 @Observable
 final class TerminalInputController {
@@ -29,7 +29,6 @@ final class TerminalInputController {
     }
 
     private(set) var liveGeneration: SessionGeneration?
-    private(set) var isPaused = false
     private(set) var pendingPaste: PasteReview?
     private(set) var pasteErrorMessage: String?
 
@@ -43,7 +42,7 @@ final class TerminalInputController {
     private var pendingPasteIsBracketed = false
 
     var canConfirmPaste: Bool {
-        !isPaused && writer != nil && pendingPasteText != nil
+        writer != nil && pendingPasteText != nil
     }
 
     @discardableResult
@@ -78,48 +77,18 @@ final class TerminalInputController {
         scroller = nil
     }
 
-    func pause() {
-        isPaused = true
-        cancelPaste()
-    }
-
-    func resume() {
-        isPaused = false
-    }
-
-    /// Sends ordinary terminal bytes if a live, unpaused Attach session exists.
+    /// Sends ordinary terminal bytes if a live Attach session exists.
     func send(_ data: Data) {
-        guard !data.isEmpty, !isPaused else { return }
+        guard !data.isEmpty else { return }
         writer?(data)
     }
 
     /// Touch scrolling is deliberately separate from reliable terminal input.
     /// The live session can coalesce and shed stale momentum without changing
-    /// keyboard, Paste, Snippet, or staged-path delivery semantics.
+    /// keyboard, Paste, or Snippet delivery semantics.
     func scroll(_ sequence: Data, rows: Int) {
-        guard !sequence.isEmpty, rows > 0, !isPaused else { return }
+        guard !sequence.isEmpty, rows > 0 else { return }
         scroller?(sequence, rows)
-    }
-
-    /// Inserts a staged path only into the session captured by an image
-    /// operation. Path and separator remain distinct writes and no submit byte
-    /// is ever synthesized.
-    @discardableResult
-    func insertPath(_ path: String, matching generation: SessionGeneration) -> Bool {
-        guard generation == liveGeneration else { return false }
-        return insertPathIntoCurrentSession(path)
-    }
-
-    /// Recovery action chosen by the user. It intentionally targets whichever
-    /// Attach session is live now, rather than the operation's old generation.
-    @discardableResult
-    func insertPathIntoCurrentSession(_ path: String) -> Bool {
-        guard !isPaused, writer != nil, Self.isValidAbsoluteHostPath(path) else {
-            return false
-        }
-        writer?(Data(path.utf8))
-        writer?(Data(" ".utf8))
-        return true
     }
 
     /// Sends a Snippet's text. It never carries a submit byte of its own — a
@@ -131,7 +100,7 @@ final class TerminalInputController {
     /// it, and can see it on the button they just tapped.
     @discardableResult
     func insertSnippet(_ text: String, bracketedPaste: Bool) -> Bool {
-        guard !isPaused, writer != nil, !text.isEmpty,
+        guard writer != nil, !text.isEmpty,
             TerminalTextSafety.containsOnlySafeScalars(text)
         else { return false }
         writer?(
@@ -143,7 +112,7 @@ final class TerminalInputController {
     @discardableResult
     func requestPaste(_ text: String, bracketedPaste: Bool = false) -> PasteRequestResult {
         pasteErrorMessage = nil
-        guard !isPaused, writer != nil else { return .blocked }
+        guard writer != nil else { return .blocked }
         guard TerminalTextSafety.containsOnlySafeScalars(text) else {
             cancelPaste()
             pasteErrorMessage = "The clipboard contains unsafe terminal control characters."
@@ -185,13 +154,6 @@ final class TerminalInputController {
 
     func clearPasteError() {
         pasteErrorMessage = nil
-    }
-
-    private static func isValidAbsoluteHostPath(_ path: String) -> Bool {
-        path.hasPrefix("/") && path.unicodeScalars.allSatisfy { scalar in
-            scalar.value >= 0x20 && scalar.value != 0x7F
-                && scalar.properties.generalCategory != .control
-        }
     }
 
     private static func lineCount(_ text: String) -> Int {

@@ -128,7 +128,9 @@ struct WeakNetworkE2ETests {
         // waiting on the link instead of abandoning it.
         let cancelledAt = ContinuousClock.now
         staging.cancel()
-        await #expect(throws: ImageStagingError.cancelled) { _ = try await staging.value }
+        await #expect(throws: AttachmentStagingError.cancelled) {
+            _ = try await staging.value
+        }
         #expect(cancelledAt.duration(to: .now) < .seconds(10))
 
         try await fixture.control.apply(.degraded)

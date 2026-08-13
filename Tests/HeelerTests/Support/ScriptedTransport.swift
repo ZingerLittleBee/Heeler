@@ -68,8 +68,11 @@ final actor ScriptedTransport: Transport {
     private var attachInputTask: Task<Void, Never>?
     private var nextAttachEndGate: ScriptedTransportCallGate?
     private(set) var stageRequests: [PreparedImage] = []
-    private var stageOutcomes: [Result<StagedImage, ImageStagingError>] = []
+    private var stageOutcomes: [Result<StagedImage, AttachmentStagingError>] = []
     private var stageGate: ScriptedTransportCallGate?
+    private(set) var fileStageRequests: [PreparedFile] = []
+    private var fileStageOutcomes: [Result<StagedFile, AttachmentStagingError>] = []
+    private var fileStageGate: ScriptedTransportCallGate?
     /// The Host's current Notification Registration file bytes; nil scripts
     /// "no device registered yet".
     private(set) var notificationRegistration: Data?
@@ -167,11 +170,19 @@ final actor ScriptedTransport: Transport {
     }
 
     func configureImageStaging(
-        outcomes: [Result<StagedImage, ImageStagingError>],
+        outcomes: [Result<StagedImage, AttachmentStagingError>],
         gate: ScriptedTransportCallGate? = nil
     ) {
         stageOutcomes = outcomes
         stageGate = gate
+    }
+
+    func configureFileStaging(
+        outcomes: [Result<StagedFile, AttachmentStagingError>],
+        gate: ScriptedTransportCallGate? = nil
+    ) {
+        fileStageOutcomes = outcomes
+        fileStageGate = gate
     }
 
     func gateNextAttachEnd(on gate: ScriptedTransportCallGate) {
@@ -432,23 +443,44 @@ final actor ScriptedTransport: Transport {
 
     func stageImage(
         _ image: PreparedImage,
-        progress: @escaping @Sendable (ImageStageProgress) async -> Void
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
     ) async throws -> StagedImage {
         stageRequests.append(image)
         await progress(
-            ImageStageProgress(transferredBytes: 0, totalBytes: image.byteCount))
+            AttachmentStageProgress(transferredBytes: 0, totalBytes: image.byteCount))
         let gate = stageGate
         stageGate = nil
         await gate?.waitUntilOpen()
         try Task.checkCancellation()
         await progress(
-            ImageStageProgress(
+            AttachmentStageProgress(
                 transferredBytes: image.byteCount,
                 totalBytes: image.byteCount))
         guard !stageOutcomes.isEmpty else {
-            throw ImageStagingError.transferFailed
+            throw AttachmentStagingError.transferFailed
         }
         return try stageOutcomes.removeFirst().get()
+    }
+
+    func stageFile(
+        _ file: PreparedFile,
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
+    ) async throws -> StagedFile {
+        fileStageRequests.append(file)
+        await progress(
+            AttachmentStageProgress(transferredBytes: 0, totalBytes: file.byteCount))
+        let gate = fileStageGate
+        fileStageGate = nil
+        await gate?.waitUntilOpen()
+        try Task.checkCancellation()
+        await progress(
+            AttachmentStageProgress(
+                transferredBytes: file.byteCount,
+                totalBytes: file.byteCount))
+        guard !fileStageOutcomes.isEmpty else {
+            throw AttachmentStagingError.transferFailed
+        }
+        return try fileStageOutcomes.removeFirst().get()
     }
 
     func readNotificationRegistration() async throws -> Data? {

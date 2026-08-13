@@ -1,5 +1,44 @@
 import Foundation
 import Observation
+import UIKit
+import UniformTypeIdentifiers
+
+typealias AttachmentStageProgressHandler = @Sendable (AttachmentStageProgress) async -> Void
+typealias ImageStager =
+    @Sendable (PreparedImage, AttachmentStageProgressReporter) async throws -> StagedImage
+typealias FileStager =
+    @Sendable (PreparedFile, AttachmentStageProgressReporter) async throws -> StagedFile
+
+struct AttachmentStageProgressReporter: Sendable {
+    private let handler: AttachmentStageProgressHandler
+
+    init(_ handler: @escaping AttachmentStageProgressHandler) {
+        self.handler = handler
+    }
+
+    func report(_ progress: AttachmentStageProgress) async {
+        await handler(progress)
+    }
+}
+
+@MainActor
+protocol AttachmentClipboard {
+    func copy(_ path: String) throws
+}
+
+@MainActor
+struct SystemAttachmentClipboard: AttachmentClipboard {
+    static let lifetime: TimeInterval = 24 * 60 * 60
+
+    func copy(_ path: String) throws {
+        UIPasteboard.general.setItems(
+            [[UTType.plainText.identifier: path]],
+            options: [
+                .localOnly: true,
+                .expirationDate: Date().addingTimeInterval(Self.lifetime),
+            ])
+    }
+}
 
 typealias AttachLinkOpener = @MainActor @Sendable (URL) async -> Bool
 
@@ -12,9 +51,9 @@ struct AttachLinkOpenFailure: Identifiable, Equatable {
     }
 }
 
-/// Owns the complete Agent Attach interaction: terminal lifetime, input
-/// generation and pause state, image staging, reconnect replacement, close,
-/// and deterministic leave ordering. The view only forwards UI events.
+/// Owns the complete Agent Attach interaction: terminal lifetime, Composer
+/// staging, reconnect replacement, close, and deterministic leave ordering.
+/// The view only forwards UI events.
 @MainActor
 @Observable
 final class AgentAttachStore {
@@ -39,8 +78,7 @@ final class AgentAttachStore {
 
     private(set) var terminal: AttachTerminalStore
     let input: TerminalInputController
-    let image: ImageAttachStore
-    let file: FileAttachStore?
+    let staging: ComposerStagingStore
     let close: ClosePaneStore
     private(set) var attachLinkOpenFailure: AttachLinkOpenFailure?
 
@@ -72,8 +110,8 @@ final class AgentAttachStore {
         isOnStage: @escaping () -> Bool,
         runTerminal: @escaping TerminalSessionRunner,
         stageImage: @escaping ImageStager,
-        stageFile: FileStager? = nil,
-        composer: (any ComposerDraftOperations)? = nil,
+        stageFile: @escaping FileStager,
+        composer: any ComposerDraftOperations,
         closePane: @escaping () async throws -> Void
     ) {
         let input = TerminalInputController()
@@ -86,17 +124,10 @@ final class AgentAttachStore {
         self.linkIndex = linkIndex
         terminal = Self.makeTerminal(
             target: target, input: input, runTerminal: runTerminal, linkIndex: linkIndex)
-        image = ImageAttachStore(
+        staging = ComposerStagingStore(
             stageImage: stageImage,
-            input: input,
+            stageFile: stageFile,
             composer: composer)
-        if let stageFile, let composer {
-            file = FileAttachStore(
-                stageFile: stageFile,
-                composer: composer)
-        } else {
-            file = nil
-        }
         close = ClosePaneStore(paneTitle: paneTitle, close: closePane)
     }
 
@@ -128,26 +159,6 @@ final class AgentAttachStore {
 
     var attachLinks: [AttachLink] {
         linkIndex.links
-    }
-
-    var imageState: ImageAttachState {
-        image.state
-    }
-
-    var fileState: FileAttachState? {
-        file?.state
-    }
-
-    var canSelectImage: Bool {
-        image.canSelectImage && file?.state.isBusy != true
-    }
-
-    var canSelectFile: Bool {
-        file?.canSelectFile == true && !image.state.isBusy
-    }
-
-    var isLocalInputEnabled: Bool {
-        !input.isPaused
     }
 
     var pendingPaste: TerminalInputController.PasteReview? {
@@ -240,65 +251,12 @@ final class AgentAttachStore {
         input.clearPasteError()
     }
 
-    func selectImage(_ selection: any ImageSelection) {
-        guard canSelectImage else { return }
-        file?.dismissResult()
-        image.select(selection)
-    }
-
-    func selectFile(_ url: URL) {
-        guard canSelectFile else { return }
-        image.dismissResult()
-        file?.select(url)
-    }
-
-    func cancelImage() {
-        image.cancel()
-    }
-
-    func retryImage() {
-        image.retry()
-    }
-
-    func dismissImageResult() {
-        image.dismissResult()
-    }
-
-    func copyImagePath() {
-        image.copyPath()
-    }
-
-    func insertImagePath() {
-        image.insertPath()
-    }
-
-    func cancelFile() {
-        file?.cancel()
-    }
-
-    func retryFile() {
-        file?.retry()
-    }
-
-    func dismissFileResult() {
-        file?.dismissResult()
-    }
-
-    func copyFilePath() {
-        file?.copyPath()
-    }
-
-    func insertFilePath() {
-        file?.insertPath()
-    }
-
     /// A short foreground bounce keeps the current PTY and asks it to repaint.
     /// Once the app may have suspended, replace the complete terminal pipeline
     /// immediately: PTY Attach, input session ownership, byte feed and surface
     /// identity. The surrounding Attach interaction remains the same owner, so
-    /// links, image actions and a reviewed Paste survive the recovery.
+    /// links, staging state and a reviewed Paste survive the recovery.
     func didBecomeActive(afterPossibleSuspension: Bool = false) {
-        image.didBecomeActive()
         guard lifecycleState == .active, isOnStage() else { return }
         guard !afterPossibleSuspension else {
             input.detachSessionForReplacement()
@@ -311,14 +269,9 @@ final class AgentAttachStore {
         terminal.didBecomeActive()
     }
 
-    func didEnterBackground() {
-        image.didEnterBackground()
-        file?.didEnterBackground()
-    }
-
     /// A new Transport requires a new terminal pipeline. The replacement is
     /// serialized behind any earlier transition and starts only after the
-    /// old terminal has finished. Image state deliberately survives: the
+    /// old terminal has finished. Staging deliberately survives: the
     /// stager resolves the live Transport per call, so a retryable or
     /// completed upload stays actionable across the reconnect.
     func transportGenerationDidChange(_ generation: UInt64?) {
@@ -511,8 +464,7 @@ final class AgentAttachStore {
         // behind it on "Connecting…". The retain is temporary and
         // self-breaking: the task releases the store when the teardown ends.
         return enqueueLifecycleTransition { [self] in
-            await image.leaveAttach()
-            await file?.leave()
+            await staging.leave()
             await terminal.stop()
             linkIndex.clear()
         }

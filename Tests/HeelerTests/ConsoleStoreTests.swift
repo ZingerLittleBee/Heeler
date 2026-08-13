@@ -1391,7 +1391,7 @@ struct ConsoleStoreTests {
             format: .jpeg, pixelWidth: 16, pixelHeight: 16, byteCount: 128)
         await second.configureImageStaging(
             outcomes: [.success(try StagedImage(path: "/tmp/staged/attach-test.jpg"))])
-        let staged = try await stager(prepared, ImageStageProgressReporter { _ in })
+        let staged = try await stager(prepared, AttachmentStageProgressReporter { _ in })
         #expect(staged.path == "/tmp/staged/attach-test.jpg")
         #expect(await second.stageRequests.count == 1)
         #expect(await first.stageRequests.isEmpty)
