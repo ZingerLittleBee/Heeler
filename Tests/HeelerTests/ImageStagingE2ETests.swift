@@ -81,7 +81,7 @@ struct ImageStagingE2ETests {
         task.cancel()
         await holdProgress.open()
 
-        await #expect(throws: ImageStagingError.cancelled) {
+        await #expect(throws: AttachmentStagingError.cancelled) {
             _ = try await task.value
         }
         let parent = try #require(
@@ -111,7 +111,7 @@ struct ImageStagingE2ETests {
         do {
             _ = try await transport.stageImage(prepared.image) { _ in }
             Issue.record("A disconnected transport unexpectedly staged an image.")
-        } catch let error as ImageStagingError {
+        } catch let error as AttachmentStagingError {
             #expect(error == .transferFailed)
             #expect(error.isRetryable)
         }
@@ -134,7 +134,7 @@ struct ImageStagingE2ETests {
         do {
             _ = try await transport.stageImage(prepared.image) { _ in }
             Issue.record("An inaccessible staging parent unexpectedly succeeded.")
-        } catch let error as ImageStagingError {
+        } catch let error as AttachmentStagingError {
             #expect(error == .transferFailed)
             #expect(error.isRetryable)
             #expect(!String(describing: error).contains(privatePath))
@@ -181,10 +181,10 @@ struct ImageStagingE2ETests {
             try FileManager.default.contentsOfDirectory(atPath: stageDirectory.path)
                 == [staged.fileURL.lastPathComponent])
         let values = await progress.values
-        #expect(values.first == ImageStageProgress(
+        #expect(values.first == AttachmentStageProgress(
             transferredBytes: 0,
             totalBytes: prepared.bytes.count))
-        #expect(values.last == ImageStageProgress(
+        #expect(values.last == AttachmentStageProgress(
             transferredBytes: prepared.bytes.count,
             totalBytes: prepared.bytes.count))
         #expect(values.map(\.transferredBytes) == values.map(\.transferredBytes).sorted())
@@ -288,9 +288,9 @@ struct ImageStagingE2ETests {
     }
 
     private actor ProgressRecorder {
-        private(set) var values: [ImageStageProgress] = []
+        private(set) var values: [AttachmentStageProgress] = []
 
-        func record(_ progress: ImageStageProgress) {
+        func record(_ progress: AttachmentStageProgress) {
             values.append(progress)
         }
     }

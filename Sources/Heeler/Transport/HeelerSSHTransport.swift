@@ -1119,7 +1119,7 @@ actor HeelerSSHTransport: Transport {
 
     func stageImage(
         _ image: PreparedImage,
-        progress: @escaping @Sendable (ImageStageProgress) async -> Void
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
     ) async throws -> StagedImage {
         guard
             image.byteCount > 0,
@@ -1128,7 +1128,7 @@ actor HeelerSSHTransport: Transport {
                 atPath: image.fileURL.path)[.size] as? NSNumber,
             localSize.int64Value == image.byteCount
         else {
-            throw ImageStagingError.invalidPreparedImage
+            throw AttachmentStagingError.invalidPreparedSource
         }
         let path = try await stage(
             StagingSource(
@@ -1141,7 +1141,7 @@ actor HeelerSSHTransport: Transport {
 
     func stageFile(
         _ file: PreparedFile,
-        progress: @escaping @Sendable (ImageStageProgress) async -> Void
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
     ) async throws -> StagedFile {
         guard
             file.byteCount > 0,
@@ -1150,7 +1150,7 @@ actor HeelerSSHTransport: Transport {
                 atPath: file.fileURL.path)[.size] as? NSNumber,
             localSize.int64Value == file.byteCount
         else {
-            throw ImageStagingError.invalidPreparedImage
+            throw AttachmentStagingError.invalidPreparedSource
         }
         let path = try await stage(
             StagingSource(
@@ -1163,13 +1163,14 @@ actor HeelerSSHTransport: Transport {
 
     private func stage(
         _ source: StagingSource,
-        progress: @escaping @Sendable (ImageStageProgress) async -> Void
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
     ) async throws -> String {
         guard connected, await connection.isConnected else {
-            throw ImageStagingError.transferFailed
+            throw AttachmentStagingError.transferFailed
         }
 
-        await progress(ImageStageProgress(transferredBytes: 0, totalBytes: source.byteCount))
+        await progress(
+            AttachmentStageProgress(transferredBytes: 0, totalBytes: source.byteCount))
         let parentDirectory = try await createStageParentDirectory()
         let operationID = UUID()
 
@@ -1189,13 +1190,13 @@ actor HeelerSSHTransport: Transport {
                     operationID: operationID,
                     progress: progress)
             }
-        } catch let error as ImageStagingError {
+        } catch let error as AttachmentStagingError {
             throw error
         } catch is CancellationError {
-            throw ImageStagingError.cancelled
+            throw AttachmentStagingError.cancelled
         } catch {
             throw Task.isCancelled
-                ? ImageStagingError.cancelled : ImageStagingError.transferFailed
+                ? AttachmentStagingError.cancelled : AttachmentStagingError.transferFailed
         }
     }
 
@@ -1209,20 +1210,20 @@ actor HeelerSSHTransport: Transport {
                     in: result.stdout,
                     prefix: Self.stageDirectoryOutputPrefix)
             else {
-                throw ImageStagingError.remoteTemporaryDirectoryFailed
+                throw AttachmentStagingError.remoteTemporaryDirectoryFailed
             }
             return try StagedImage(path: "\(directory)/placeholder").fileURL
                 .deletingLastPathComponent().path
-        } catch let error as ImageStagingError {
+        } catch let error as AttachmentStagingError {
             throw error
         } catch TransportError.cancelled {
-            throw ImageStagingError.cancelled
+            throw AttachmentStagingError.cancelled
         } catch {
             let connectionIsConnected = await connection.isConnected
             if !connected || !connectionIsConnected {
-                throw ImageStagingError.transferFailed
+                throw AttachmentStagingError.transferFailed
             }
-            throw ImageStagingError.remoteTemporaryDirectoryFailed
+            throw AttachmentStagingError.remoteTemporaryDirectoryFailed
         }
     }
 
@@ -1230,16 +1231,16 @@ actor HeelerSSHTransport: Transport {
         _ source: StagingSource,
         parentDirectory: String,
         operationID: UUID,
-        progress: @escaping @Sendable (ImageStageProgress) async -> Void
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
     ) async throws -> String {
         let sftp: SSHSFTPClient
         do {
             sftp = try await connection.openSFTP(timeout: requestTimeout)
         } catch SSHError.sftpUnavailable {
-            throw ImageStagingError.sftpUnavailable
+            throw AttachmentStagingError.sftpUnavailable
         } catch {
-            if Task.isCancelled { throw ImageStagingError.cancelled }
-            throw ImageStagingError.transferFailed
+            if Task.isCancelled { throw AttachmentStagingError.cancelled }
+            throw AttachmentStagingError.transferFailed
         }
         imageStageClients[operationID] = sftp
 
@@ -1257,7 +1258,7 @@ actor HeelerSSHTransport: Transport {
             try await enforcePermissions(0o700, at: remoteDirectory, over: sftp)
 
             guard let currentPartPath = partPath else {
-                throw ImageStagingError.transferFailed
+                throw AttachmentStagingError.transferFailed
             }
             try await streamFile(
                 at: source.fileURL,
@@ -1271,10 +1272,10 @@ actor HeelerSSHTransport: Transport {
                 at: currentPartPath,
                 timeout: requestTimeout)
             guard uploadedAttributes.size == UInt64(source.byteCount) else {
-                throw ImageStagingError.byteCountMismatch
+                throw AttachmentStagingError.byteCountMismatch
             }
             guard uploadedAttributes.permissions == 0o600 else {
-                throw ImageStagingError.permissionEnforcementFailed
+                throw AttachmentStagingError.permissionEnforcementFailed
             }
             try await sftp.renameFileAtomically(
                 from: currentPartPath,
@@ -1286,10 +1287,10 @@ actor HeelerSSHTransport: Transport {
                 at: finalPath,
                 timeout: requestTimeout)
             guard finalAttributes.size == UInt64(source.byteCount) else {
-                throw ImageStagingError.byteCountMismatch
+                throw AttachmentStagingError.byteCountMismatch
             }
             guard finalAttributes.permissions == 0o600 else {
-                throw ImageStagingError.permissionEnforcementFailed
+                throw AttachmentStagingError.permissionEnforcementFailed
             }
             imageStageClients[operationID] = nil
             try await sftp.close(timeout: requestTimeout)
@@ -1300,14 +1301,14 @@ actor HeelerSSHTransport: Transport {
                 await bestEffortRemoveRemoteFile(at: partPath, over: sftp)
             }
             try? await sftp.close(timeout: .seconds(2))
-            if Task.isCancelled { throw ImageStagingError.cancelled }
-            if let stagingError = error as? ImageStagingError {
+            if Task.isCancelled { throw AttachmentStagingError.cancelled }
+            if let stagingError = error as? AttachmentStagingError {
                 throw stagingError
             }
             if error as? SSHError == .sftpUnavailable {
-                throw ImageStagingError.sftpUnavailable
+                throw AttachmentStagingError.sftpUnavailable
             }
-            throw ImageStagingError.transferFailed
+            throw AttachmentStagingError.transferFailed
         }
     }
 
@@ -1319,7 +1320,7 @@ actor HeelerSSHTransport: Transport {
         try await sftp.setPermissions(permissions, at: path, timeout: requestTimeout)
         let attributes = try await sftp.attributes(at: path, timeout: requestTimeout)
         guard attributes.permissions == permissions else {
-            throw ImageStagingError.permissionEnforcementFailed
+            throw AttachmentStagingError.permissionEnforcementFailed
         }
     }
 
@@ -1328,13 +1329,13 @@ actor HeelerSSHTransport: Transport {
         byteCount: Int64,
         to remotePath: String,
         over sftp: SSHSFTPClient,
-        progress: @escaping @Sendable (ImageStageProgress) async -> Void
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
     ) async throws {
         let localFile: FileHandle
         do {
             localFile = try FileHandle(forReadingFrom: localURL)
         } catch {
-            throw ImageStagingError.localReadFailed
+            throw AttachmentStagingError.localReadFailed
         }
         defer { try? localFile.close() }
 
@@ -1354,16 +1355,16 @@ actor HeelerSSHTransport: Transport {
                     let data = try localFile.read(upToCount: requested),
                     !data.isEmpty
                 else {
-                    throw ImageStagingError.byteCountMismatch
+                    throw AttachmentStagingError.byteCountMismatch
                 }
                 try await remoteFile.write(data, timeout: requestTimeout)
                 transferred += Int64(data.count)
-                await progress(ImageStageProgress(
+                await progress(AttachmentStageProgress(
                     transferredBytes: transferred,
                     totalBytes: byteCount))
             }
             guard try localFile.read(upToCount: 1)?.isEmpty != false else {
-                throw ImageStagingError.byteCountMismatch
+                throw AttachmentStagingError.byteCountMismatch
             }
             try await remoteFile.close(timeout: requestTimeout)
         } catch {

@@ -2183,7 +2183,9 @@ struct AgentAttachStoreTests {
                 let session = try await transport.attachTerminal(request)
                 try await handler.runEndingSession(session)
             },
-            stageImage: stageImage ?? { _, _ in throw ImageStagingError.transferFailed },
+            stageImage: stageImage ?? { _, _ in
+                throw AttachmentStagingError.transferFailed
+            },
             closePane: close)
     }
 
@@ -2395,11 +2397,11 @@ private actor GatedAttachImageStager {
 
     func stage(
         _ image: PreparedImage,
-        _ reporter: ImageStageProgressReporter
+        _ reporter: AttachmentStageProgressReporter
     ) async throws -> StagedImage {
         preparedFileURL = image.fileURL
         await reporter.report(
-            ImageStageProgress(transferredBytes: 0, totalBytes: image.byteCount))
+            AttachmentStageProgress(transferredBytes: 0, totalBytes: image.byteCount))
         await withTaskCancellationHandler {
             await gate.waitUntilOpen()
         } onCancel: {
@@ -2411,7 +2413,7 @@ private actor GatedAttachImageStager {
             cancellationCount += 1
             throw error
         }
-        throw ImageStagingError.transferFailed
+        throw AttachmentStagingError.transferFailed
     }
 
     private func recordCancellationRequest() {

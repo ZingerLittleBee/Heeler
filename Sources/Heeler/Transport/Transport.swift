@@ -120,14 +120,14 @@ protocol Transport: Sendable {
     /// permissions, partial-file handling, and atomic completion (ADR 0006).
     func stageImage(
         _ image: PreparedImage,
-        progress: @escaping @Sendable (ImageStageProgress) async -> Void
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
     ) async throws -> StagedImage
 
     /// Stages one app-owned file in private Host temporary storage. The file
     /// follows the same SFTP, permission, and atomic-completion policy as images.
     func stageFile(
         _ file: PreparedFile,
-        progress: @escaping @Sendable (ImageStageProgress) async -> Void
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
     ) async throws -> StagedFile
 
     /// Reads the Notification Registration file (v1, `plugin/README.md`)
@@ -199,16 +199,16 @@ extension Transport {
     /// unavailable without importing or emulating an SSH library.
     func stageImage(
         _ image: PreparedImage,
-        progress: @escaping @Sendable (ImageStageProgress) async -> Void
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
     ) async throws -> StagedImage {
-        throw ImageStagingError.sftpUnavailable
+        throw AttachmentStagingError.sftpUnavailable
     }
 
     func stageFile(
         _ file: PreparedFile,
-        progress: @escaping @Sendable (ImageStageProgress) async -> Void
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
     ) async throws -> StagedFile {
-        throw ImageStagingError.sftpUnavailable
+        throw AttachmentStagingError.sftpUnavailable
     }
 
     /// Test doubles and alternative transports without a Host-side plugin

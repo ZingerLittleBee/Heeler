@@ -83,7 +83,7 @@ struct ImageAttachStoreTests {
 
     @Test func transientFailureRetainsPreparedImageAndRetryUsesCurrentSession() async throws {
         let fixture = try await makeFixture(stageOutcomes: [
-            .failure(ImageStagingError.transferFailed),
+            .failure(AttachmentStagingError.transferFailed),
             .success(try StagedImage(path: "/tmp/staged/retried.jpg")),
         ])
 
@@ -104,7 +104,7 @@ struct ImageAttachStoreTests {
 
     @Test func dismissingARetryableFailureAbandonsItsPreparedImage() async throws {
         let fixture = try await makeFixture(stageOutcomes: [
-            .failure(ImageStagingError.transferFailed)
+            .failure(AttachmentStagingError.transferFailed)
         ])
 
         fixture.store.select(DataImageSelection(data: Data([0x01])))
@@ -181,7 +181,7 @@ struct ImageAttachStoreTests {
 
     @Test func unavailableSFTPSurfacesActionableNonRetryableFailure() async throws {
         let fixture = try await makeFixture(stageOutcomes: [
-            .failure(ImageStagingError.sftpUnavailable)
+            .failure(AttachmentStagingError.sftpUnavailable)
         ])
 
         fixture.store.select(DataImageSelection(data: Data([0x01])))
@@ -195,7 +195,7 @@ struct ImageAttachStoreTests {
 
     @Test func recoveryActionsRetryOnlyTheirMissingSideEffect() async throws {
         let fixture = try await makeFixture()
-        fixture.clipboard.error = ImageClipboardTestError.failed
+        fixture.clipboard.error = AttachmentClipboardTestError.failed
 
         fixture.store.select(DataImageSelection(data: Data([0x01])))
         try await waitUntil("image attach should complete") {
@@ -248,7 +248,7 @@ struct ImageAttachStoreTests {
     @Test func failureOfBothPostStageActionsKeepsRecoverableResult() async throws {
         let stageGate = ScriptedTransportCallGate()
         let fixture = try await makeFixture(stageGate: stageGate)
-        fixture.clipboard.error = ImageClipboardTestError.failed
+        fixture.clipboard.error = AttachmentClipboardTestError.failed
 
         fixture.store.select(DataImageSelection(data: Data([0x01])))
         try await waitUntil("upload should reach the gate") {
@@ -317,7 +317,7 @@ struct ImageAttachStoreTests {
     }
 
     private func makeFixture(
-        stageOutcomes: [Result<StagedImage, ImageStagingError>] = [
+        stageOutcomes: [Result<StagedImage, AttachmentStagingError>] = [
             .success(try! StagedImage(path: "/tmp/staged/image.jpg"))
         ],
         stageGate: ScriptedTransportCallGate? = nil,
@@ -390,7 +390,7 @@ private actor ScriptedImagePreparer: ImagePreparing {
 }
 
 @MainActor
-private final class RecordingImageClipboard: ImageClipboard {
+private final class RecordingImageClipboard: AttachmentClipboard {
     var copiedPaths: [String] = []
     var error: (any Error)?
     var onCopy: ((String) -> Void)?
@@ -402,7 +402,7 @@ private final class RecordingImageClipboard: ImageClipboard {
     }
 }
 
-private enum ImageClipboardTestError: Error {
+private enum AttachmentClipboardTestError: Error {
     case failed
 }
 

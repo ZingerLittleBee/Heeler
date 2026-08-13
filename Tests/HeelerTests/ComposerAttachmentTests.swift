@@ -26,7 +26,7 @@ struct ComposerAttachmentTests {
             preparer: StaticImagePreparer(prepared: prepared),
             stageImage: { _, reporter in
                 await reporter.report(
-                    ImageStageProgress(transferredBytes: 32, totalBytes: 32))
+                    AttachmentStageProgress(transferredBytes: 32, totalBytes: 32))
                 return try StagedImage(path: "/tmp/staged/image.jpg")
             },
             clipboard: RecordingAttachmentClipboard(),
@@ -49,7 +49,7 @@ struct ComposerAttachmentTests {
             preparer: StaticFilePreparer(prepared: prepared),
             stageFile: { _, reporter in
                 await reporter.report(
-                    ImageStageProgress(transferredBytes: 64, totalBytes: 64))
+                    AttachmentStageProgress(transferredBytes: 64, totalBytes: 64))
                 return try StagedFile(path: "/tmp/staged/file.txt")
             },
             clipboard: clipboard,
@@ -140,7 +140,7 @@ private final class RecordingComposerDraft: ComposerDraftOperations {
 }
 
 @MainActor
-private final class RecordingAttachmentClipboard: ImageClipboard {
+private final class RecordingAttachmentClipboard: AttachmentClipboard {
     private(set) var copiedPaths: [String] = []
 
     func copy(_ path: String) throws {
