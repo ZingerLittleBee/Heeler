@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 typealias FileStager =
-    @Sendable (PreparedFile, ImageStageProgressReporter) async throws -> StagedFile
+    @Sendable (PreparedFile, AttachmentStageProgressReporter) async throws -> StagedFile
 
 struct FileAttachFailure: Sendable, Equatable {
     let message: String
@@ -31,7 +31,7 @@ struct FileAttachResult: Sendable, Equatable {
 enum FileAttachState: Sendable, Equatable {
     case idle
     case preparing
-    case uploading(ImageStageProgress)
+    case uploading(AttachmentStageProgress)
     case failed(FileAttachFailure)
     case backgroundInterrupted(FileAttachFailure)
     case completed(FileAttachResult)
@@ -61,7 +61,7 @@ final class FileAttachStore {
 
     private let preparer: any FilePreparing
     private let stageFile: FileStager
-    private let clipboard: any ImageClipboard
+    private let clipboard: any AttachmentClipboard
     private weak var composer: (any ComposerDraftOperations)?
 
     private var preparedFile: PreparedFile?
@@ -72,7 +72,7 @@ final class FileAttachStore {
     init(
         preparer: any FilePreparing = FilePreparer(),
         stageFile: @escaping FileStager,
-        clipboard: any ImageClipboard = SystemImageClipboard(),
+        clipboard: any AttachmentClipboard = SystemImageClipboard(),
         composer: any ComposerDraftOperations
     ) {
         self.preparer = preparer
@@ -103,7 +103,7 @@ final class FileAttachStore {
         operationID &+= 1
         let currentID = operationID
         state = .uploading(
-            ImageStageProgress(transferredBytes: 0, totalBytes: preparedFile.byteCount))
+            AttachmentStageProgress(transferredBytes: 0, totalBytes: preparedFile.byteCount))
         operationTask = Task {
             await runUpload(preparedFile, operationID: currentID)
         }
@@ -172,7 +172,7 @@ final class FileAttachStore {
             preparedFile = file
             unclaimedFile = nil
             state = .uploading(
-                ImageStageProgress(transferredBytes: 0, totalBytes: file.byteCount))
+                AttachmentStageProgress(transferredBytes: 0, totalBytes: file.byteCount))
             await runUploadBody(file, operationID: operationID)
         } catch {
             try? unclaimedFile?.remove()
@@ -188,7 +188,7 @@ final class FileAttachStore {
         do {
             let staged = try await stageFile(
                 file,
-                ImageStageProgressReporter { [weak self] progress in
+                AttachmentStageProgressReporter { [weak self] progress in
                     await self?.receive(progress: progress, operationID: operationID)
                 })
             try Task.checkCancellation()
@@ -198,7 +198,7 @@ final class FileAttachStore {
         }
     }
 
-    private func receive(progress: ImageStageProgress, operationID: UInt64) {
+    private func receive(progress: AttachmentStageProgress, operationID: UInt64) {
         guard operationID == self.operationID, operationTask != nil else { return }
         state = .uploading(progress)
     }
@@ -227,7 +227,7 @@ final class FileAttachStore {
         guard operationID == self.operationID else { return }
         operationTask = nil
 
-        if error is CancellationError || (error as? ImageStagingError) == .cancelled
+        if error is CancellationError || (error as? AttachmentStagingError) == .cancelled
             || cancellationDisposition != nil
         {
             switch cancellationDisposition {
@@ -262,11 +262,11 @@ final class FileAttachStore {
             FileAttachFailure(
                 message: "The Host is not connected. Reconnect, then retry the upload.",
                 isRetryable: true)
-        case ImageStagingError.sftpUnavailable:
+        case AttachmentStagingError.sftpUnavailable:
             FileAttachFailure(
                 message: "SFTP is unavailable on this Host. Enable its SSH SFTP subsystem.",
                 isRetryable: false)
-        case let staging as ImageStagingError:
+        case let staging as AttachmentStagingError:
             FileAttachFailure(
                 message: "File upload failed.",
                 isRetryable: staging.isRetryable)

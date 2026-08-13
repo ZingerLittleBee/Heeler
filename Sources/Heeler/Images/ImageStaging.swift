@@ -1,6 +1,6 @@
 import Foundation
 
-struct ImageStageProgress: Sendable, Equatable {
+struct AttachmentStageProgress: Sendable, Equatable {
     let transferredBytes: Int64
     let totalBytes: Int64
 
@@ -24,7 +24,7 @@ struct StagedImage: Sendable, Equatable {
 
     init(path: String) throws {
         guard StagedHostPath.isValid(path) else {
-            throw ImageStagingError.invalidRemotePath
+            throw AttachmentStagingError.invalidRemotePath
         }
         self.path = path
     }
@@ -42,7 +42,7 @@ struct StagedFile: Sendable, Equatable {
 
     init(path: String) throws {
         guard StagedHostPath.isValid(path) else {
-            throw ImageStagingError.invalidRemotePath
+            throw AttachmentStagingError.invalidRemotePath
         }
         self.path = path
     }
@@ -62,9 +62,9 @@ private enum StagedHostPath {
     }
 }
 
-enum ImageStagingError: Error, Sendable, Equatable {
+enum AttachmentStagingError: Error, Sendable, Equatable {
     case invalidRemotePath
-    case invalidPreparedImage
+    case invalidPreparedSource
     case localReadFailed
     case remoteTemporaryDirectoryFailed
     case sftpUnavailable
@@ -77,7 +77,7 @@ enum ImageStagingError: Error, Sendable, Equatable {
         switch self {
         case .transferFailed, .cancelled:
             true
-        case .invalidRemotePath, .invalidPreparedImage, .localReadFailed,
+        case .invalidRemotePath, .invalidPreparedSource, .localReadFailed,
             .remoteTemporaryDirectoryFailed, .sftpUnavailable,
             .permissionEnforcementFailed, .byteCountMismatch:
             false

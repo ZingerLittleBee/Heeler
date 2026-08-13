@@ -3,29 +3,29 @@ import Observation
 import UniformTypeIdentifiers
 import UIKit
 
-typealias ImageStageProgressHandler = @Sendable (ImageStageProgress) async -> Void
+typealias ImageStageProgressHandler = @Sendable (AttachmentStageProgress) async -> Void
 typealias ImageStager =
-    @Sendable (PreparedImage, ImageStageProgressReporter) async throws -> StagedImage
+    @Sendable (PreparedImage, AttachmentStageProgressReporter) async throws -> StagedImage
 
-struct ImageStageProgressReporter: Sendable {
+struct AttachmentStageProgressReporter: Sendable {
     private let handler: ImageStageProgressHandler
 
     init(_ handler: @escaping ImageStageProgressHandler) {
         self.handler = handler
     }
 
-    func report(_ progress: ImageStageProgress) async {
+    func report(_ progress: AttachmentStageProgress) async {
         await handler(progress)
     }
 }
 
 @MainActor
-protocol ImageClipboard {
+protocol AttachmentClipboard {
     func copy(_ path: String) throws
 }
 
 @MainActor
-struct SystemImageClipboard: ImageClipboard {
+struct SystemImageClipboard: AttachmentClipboard {
     static let lifetime: TimeInterval = 24 * 60 * 60
 
     func copy(_ path: String) throws {
@@ -65,7 +65,7 @@ struct ImageAttachResult: Sendable, Equatable {
 enum ImageAttachState: Sendable, Equatable {
     case idle
     case preparing
-    case uploading(ImageStageProgress)
+    case uploading(AttachmentStageProgress)
     case failed(ImageAttachFailure)
     case backgroundInterrupted(ImageAttachFailure)
     case completed(ImageAttachResult)
@@ -122,7 +122,7 @@ final class ImageAttachStore {
 
     private let preparer: any ImagePreparing
     private let stageImage: ImageStager
-    private let clipboard: any ImageClipboard
+    private let clipboard: any AttachmentClipboard
     private let input: TerminalInputController
     private weak var composer: (any ComposerDraftOperations)?
 
@@ -134,7 +134,7 @@ final class ImageAttachStore {
     init(
         preparer: any ImagePreparing = ImagePreparer(),
         stageImage: @escaping ImageStager,
-        clipboard: any ImageClipboard = SystemImageClipboard(),
+        clipboard: any AttachmentClipboard = SystemImageClipboard(),
         input: TerminalInputController,
         composer: (any ComposerDraftOperations)? = nil
     ) {
@@ -173,7 +173,9 @@ final class ImageAttachStore {
         operationID &+= 1
         let currentID = operationID
         state = .uploading(
-            ImageStageProgress(transferredBytes: 0, totalBytes: preparedImage.byteCount))
+            AttachmentStageProgress(
+                transferredBytes: 0,
+                totalBytes: preparedImage.byteCount))
         pauseInput(for: destination)
         operationTask = Task {
             await runUpload(
@@ -259,7 +261,7 @@ final class ImageAttachStore {
             preparedImage = image
             unclaimedImage = nil
             state = .uploading(
-                ImageStageProgress(transferredBytes: 0, totalBytes: image.byteCount))
+                AttachmentStageProgress(transferredBytes: 0, totalBytes: image.byteCount))
             await runUploadBody(
                 image,
                 destination: destination,
@@ -289,7 +291,7 @@ final class ImageAttachStore {
         do {
             let staged = try await stageImage(
                 image,
-                ImageStageProgressReporter { [weak self] progress in
+                AttachmentStageProgressReporter { [weak self] progress in
                     await self?.receive(progress: progress, operationID: operationID)
                 })
             try Task.checkCancellation()
@@ -302,7 +304,7 @@ final class ImageAttachStore {
         }
     }
 
-    private func receive(progress: ImageStageProgress, operationID: UInt64) {
+    private func receive(progress: AttachmentStageProgress, operationID: UInt64) {
         guard operationID == self.operationID, operationTask != nil else { return }
         state = .uploading(progress)
     }
@@ -393,7 +395,7 @@ final class ImageAttachStore {
     }
 
     private static func isCancellation(_ error: any Error) -> Bool {
-        error is CancellationError || (error as? ImageStagingError) == .cancelled
+        error is CancellationError || (error as? AttachmentStagingError) == .cancelled
     }
 
     private static func failure(for error: any Error) -> ImageAttachFailure {
@@ -402,11 +404,11 @@ final class ImageAttachStore {
             ImageAttachFailure(
                 message: "The Host is not connected. Reconnect, then retry the upload.",
                 isRetryable: true)
-        case ImageStagingError.sftpUnavailable:
+        case AttachmentStagingError.sftpUnavailable:
             ImageAttachFailure(
                 message: "SFTP is unavailable on this Host. Enable its SSH SFTP subsystem.",
                 isRetryable: false)
-        case let staging as ImageStagingError:
+        case let staging as AttachmentStagingError:
             ImageAttachFailure(
                 message: "Image upload failed.",
                 isRetryable: staging.isRetryable)
