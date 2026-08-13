@@ -17,7 +17,7 @@ struct PairingFailure: Equatable, Sendable {
     let canRetry: Bool
 }
 
-/// Drives Scan to Pair (#62, #66): turns strings recognized by the QR
+/// Drives Scan to Pair (#62, #66): turns codes recognized by the QR
 /// scanner into a parsed Pairing Code, runs the ceremony through the
 /// injected `PairingConnector`, and persists the Host only after the
 /// verified reconnect, with its fingerprint pinned so preflight never
@@ -74,10 +74,17 @@ final class PairingScanStore {
         self.now = now
     }
 
+    /// Test-only convenience: the pipeline's historical shape, a bare
+    /// decoded string with no descriptor bytes, as v1 QR codes deliver. The
+    /// scan view submits a full `ScannedQRCode`.
     func submit(scannedCode: String) {
+        submit(scanned: ScannedQRCode(string: scannedCode, bytes: nil))
+    }
+
+    func submit(scanned: ScannedQRCode) {
         guard pairingCode == nil else { return }
         do {
-            let code = try PairingCode.decode(scannedCode)
+            let code = try PairingCode.decodeScanned(scanned)
             pairingCode = code
             attemptCode = code
             enrolledViaBootstrap = false

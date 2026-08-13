@@ -1,5 +1,7 @@
 import AVFoundation
+import CoreImage
 import SwiftUI
+import Vision
 import VisionKit
 
 /// Scan to Pair (#62, #66): the camera entry for Pairing Codes, with the
@@ -99,7 +101,7 @@ struct PairingScanView: View {
     }
 
     private var scannerViewport: some View {
-        PairingCodeScanner { store.submit(scannedCode: $0) }
+        PairingCodeScanner { store.submit(scanned: $0) }
             .ignoresSafeArea(edges: .bottom)
             .overlay(alignment: .bottom) {
                 Text(store.scanFailureMessage ?? "Point the camera at the Pairing Code shown by herdr.")
@@ -248,9 +250,10 @@ private struct PairingCeremonyView: View {
 }
 
 /// The system scanner (VisionKit), narrowed to QR codes. Reports every newly
-/// recognized payload string; filtering and parsing belong to the store.
+/// recognized code — the decoded string plus the exact bytes recovered from
+/// the symbol descriptor; filtering and parsing belong to the store.
 private struct PairingCodeScanner: UIViewControllerRepresentable {
-    let onScan: (String) -> Void
+    let onScan: (ScannedQRCode) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onScan: onScan)
@@ -274,21 +277,38 @@ private struct PairingCodeScanner: UIViewControllerRepresentable {
 
     @MainActor
     final class Coordinator: NSObject, DataScannerViewControllerDelegate {
-        private let onScan: (String) -> Void
+        private let onScan: (ScannedQRCode) -> Void
 
-        init(onScan: @escaping (String) -> Void) {
+        init(onScan: @escaping (ScannedQRCode) -> Void) {
             self.onScan = onScan
         }
 
+        // What a byte-mode QR actually delivers here, measured against Vision
+        // on this OS generation (macOS 26.5 probe; Vision is shared code with
+        // iOS): `payloadStringValue` is nil when the payload is not valid
+        // UTF-8 and truncated at the first NUL when it is — there is no
+        // Latin-1 byte-per-scalar fallback, so a binary v2 envelope cannot
+        // ride the string. `observation.payloadData` is byte-identical to
+        // `CIQRCodeDescriptor.errorCorrectedPayload`: the raw codeword stream
+        // including segment headers and padding, not the payload itself.
+        // Recovering the exact bytes therefore goes through the descriptor
+        // plus `QRCodeContent.segmentBytes`. Both surfaces are reported; the
+        // store's dispatch decides which to trust.
         func dataScanner(
             _ dataScanner: DataScannerViewController,
             didAdd addedItems: [RecognizedItem],
             allItems: [RecognizedItem]
         ) {
             for case .barcode(let barcode) in addedItems {
-                if let payload = barcode.payloadStringValue {
-                    onScan(payload)
+                let descriptor = barcode.observation.barcodeDescriptor as? CIQRCodeDescriptor
+                let bytes = descriptor.flatMap {
+                    QRCodeContent.segmentBytes(
+                        errorCorrectedPayload: $0.errorCorrectedPayload,
+                        symbolVersion: $0.symbolVersion)
                 }
+                let scanned = ScannedQRCode(string: barcode.payloadStringValue, bytes: bytes)
+                guard scanned.string != nil || scanned.bytes != nil else { continue }
+                onScan(scanned)
             }
         }
     }
