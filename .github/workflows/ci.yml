@@ -105,6 +105,7 @@ jobs:
     # macos-26 ships Xcode 26.x and the iOS 26 simulator runtimes. Pinned
     # rather than macos-latest for reproducibility.
     runs-on: macos-26
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -125,13 +126,26 @@ jobs:
           xcodebuild -version
           xcrun simctl list runtimes
 
+      - name: Test CI watchdog
+        run: scripts/test-run-with-timeout.sh
+
       # The script selects one available iPhone 17 UDID, boots it, injects the
       # fixture environment there, and targets that same device for every test
       # action. The app deployment target is iOS 26.
       - name: Build and test
+        timeout-minutes: 32
         # The fixture runs unprivileged; HEELER_CI_MANDATORY makes the one
         # privileged part (the real-password sshd) a hard requirement here
         # rather than something merge CI may quietly run without.
         env:
           HEELER_CI_MANDATORY: "1"
         run: scripts/run-ci-ios-tests.sh
+
+      - name: Upload iOS timeout diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ci-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/heeler-ci-diagnostics-*
+          if-no-files-found: ignore
+          retention-days: 7

@@ -21,6 +21,8 @@
 
 set -euo pipefail
 
+repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+
 # The gate must leave the worktree byte-identical: this workflow treats a clean
 # worktree as a verification precondition, so a stray `__pycache__` beside the
 # Python fixtures is a standing false signal. `.gitignore` covers it too; this
@@ -68,6 +70,11 @@ lock_owner_start="$(ps -o lstart= -p "$$" | sed 's/^ *//; s/ *$//')"
 fixture_dir="$(mktemp -d /tmp/heeler-ci.XXXXXX)"
 app_derived_data_path="$fixture_dir/AppDerivedData"
 package_derived_data_path="$fixture_dir/PackageDerivedData"
+diagnostic_run_id="${GITHUB_RUN_ID:-local-$$}"
+diagnostic_attempt="${GITHUB_RUN_ATTEMPT:-1}"
+diagnostic_root="${RUNNER_TEMP:-/tmp}/heeler-ci-diagnostics-$diagnostic_run_id-$diagnostic_attempt"
+xcodebuild_build_timeout_seconds="${HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS:-900}"
+xcodebuild_test_timeout_seconds="${HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS:-600}"
 fixture_username="$(id -un)"
 fixture_home="$fixture_dir/home"
 modern_pid=""
@@ -105,6 +112,33 @@ case "${HEELER_CI_MANDATORY:-${CI:-}}" in
 esac
 
 unprivileged_sshd_pids=()
+
+run_xcodebuild() {
+    local label=$1
+    local timeout_seconds=$2
+    local safe_label
+    local status
+    local started_at=$SECONDS
+    shift 2
+
+    safe_label=$(printf '%s' "$label" | tr -cs 'A-Za-z0-9._-' '-')
+    echo "::group::$label"
+    if "$repo_root/scripts/run-with-timeout.py" \
+        --timeout-seconds "$timeout_seconds" \
+        --label "$label" \
+        --diagnostics-dir "$diagnostic_root/$safe_label" \
+        --artifact-path "$app_derived_data_path/Logs/Test" \
+        --artifact-path "$package_derived_data_path/Logs/Test" \
+        --artifact-glob "$fixture_dir/*.log" \
+        -- xcodebuild "$@"; then
+        status=0
+    else
+        status=$?
+    fi
+    echo "::endgroup::"
+    echo "==> $label: $((SECONDS - started_at))s (status $status)"
+    return "$status"
+}
 
 write_lock_owner() {
     local lock=$1
@@ -316,6 +350,8 @@ trap cleanup EXIT INT TERM
 # fixture-backed suites fail instead of skipping once the fixture is gone.
 clear_simulator_environment() {
     local variable
+    local pid
+    local unsetenv_pids=()
     for variable in \
         HEELER_SSH_E2E_REQUIRED \
         HEELER_SSH_E2E_HOST \
@@ -331,10 +367,38 @@ clear_simulator_environment() {
         HEELER_SSH_E2E_CONFIG \
         HEELER_SSH_JUMP_E2E_CONFIG \
         HEELER_PAIRING_E2E_CONFIG; do
+        # launchctl takes one variable per call and each `simctl spawn` costs
+        # seconds; run the round trips concurrently and collect them below.
         if [[ -n "$simulator_udid" ]]; then
-            xcrun simctl spawn "$simulator_udid" launchctl unsetenv "$variable" >/dev/null 2>&1
+            xcrun simctl spawn "$simulator_udid" launchctl unsetenv "$variable" \
+                >/dev/null 2>&1 &
+            unsetenv_pids+=("$!")
         fi
         unset "$variable"
+    done
+    for pid in "${unsetenv_pids[@]:-}"; do
+        if [[ -n "$pid" ]]; then
+            wait "$pid" 2>/dev/null
+        fi
+    done
+}
+
+# The setenv half of the same trade: a dozen serial `simctl spawn` round trips
+# put most of a minute on the critical path. Values are read through variable
+# indirection, so callers assign first and pass names. Every push is still
+# checked -- under `set -e` a failed wait aborts the gate, exactly as the
+# serial calls did.
+push_simulator_environment() {
+    local variable
+    local pid
+    local setenv_pids=()
+    for variable in "$@"; do
+        xcrun simctl spawn "$simulator_udid" launchctl setenv \
+            "$variable" "${!variable}" &
+        setenv_pids+=("$!")
+    done
+    for pid in "${setenv_pids[@]}"; do
+        wait "$pid"
     done
 }
 
@@ -1361,17 +1425,10 @@ if [[ -z "$simulator_udid" ]]; then
 fi
 printf 'Claimed simulator %s\n' "$simulator_udid" >&2
 simulator_destination="platform=iOS Simulator,id=$simulator_udid"
+# Kick the boot off now and wait for it only after build-for-testing below:
+# compilation needs the destination to exist, not to be booted, so the minute
+# of boot happens under the minutes of build instead of in front of them.
 xcrun simctl boot "$simulator_udid" >/dev/null 2>&1 || true
-xcrun simctl bootstatus "$simulator_udid" -b
-xcrun simctl spawn "$simulator_udid" launchctl setenv \
-    HEELER_SSH_E2E_CONFIG \
-    "$fixture_configuration_base64"
-xcrun simctl spawn "$simulator_udid" launchctl setenv \
-    HEELER_SSH_JUMP_E2E_CONFIG \
-    "$jump_fixture_configuration_base64"
-xcrun simctl spawn "$simulator_udid" launchctl setenv \
-    HEELER_PAIRING_E2E_CONFIG \
-    "$pairing_fixture_configuration_base64"
 
 # Every lane whose executed count and skip budget this script pins exactly. The
 # full lane's provenance assertion draws its evidence from these, so a lane that
@@ -1387,7 +1444,6 @@ run_suite() {
     local expected_tests=$2
     local expected_suites=$3
     local expected_skips=${4:-0}
-    local action=${5:-test}
     local log="$fixture_dir/$suite.log"
     local noun="suite"
     local skips
@@ -1395,7 +1451,8 @@ run_suite() {
     if [[ "$expected_suites" != "1" ]]; then
         noun="suites"
     fi
-    xcodebuild "$action" \
+    run_xcodebuild "$suite" "$xcodebuild_test_timeout_seconds" \
+        test-without-building \
         -project Heeler.xcodeproj \
         -scheme Heeler \
         -derivedDataPath "$app_derived_data_path" \
@@ -1512,22 +1569,43 @@ assert_full_lane_coverage() {
 # Swift Testing counts a skipped test in the run total, so only the permitted
 # skip count changes when the privileged password fixture is absent.
 session_skip_count=0
-session_action="test"
 if [[ "$password_fixture_available" != "1" ]]; then
     session_skip_count=2
 fi
+echo "==> Fixture provisioning finished at t+${SECONDS}s"
+# One compilation for every app lane. Building up front keeps it outside the
+# short-lived privileged fixture window, and every suite below plus the full
+# lane then runs test-without-building against these products instead of
+# paying a package-resolution and incremental-build check per session --
+# measured at roughly half a minute per xcodebuild invocation on CI.
+run_xcodebuild "Build for testing" "$xcodebuild_build_timeout_seconds" \
+    build-for-testing \
+    -project Heeler.xcodeproj \
+    -scheme Heeler \
+    -derivedDataPath "$app_derived_data_path" \
+    -destination "$simulator_destination" \
+    -collect-test-diagnostics never
+# The simulator has been booting since before the build started; whatever
+# remains of its boot is all this wait costs.
+boot_wait_started=$SECONDS
+xcrun simctl bootstatus "$simulator_udid" -b
+echo "==> Simulator boot wait after the build overlap: $((SECONDS - boot_wait_started))s"
+# Read through variable indirection by push_simulator_environment, which
+# static analysis cannot follow; unset again by clear_simulator_environment.
+# shellcheck disable=SC2034
+{
+    HEELER_SSH_E2E_CONFIG="$fixture_configuration_base64"
+    HEELER_SSH_JUMP_E2E_CONFIG="$jump_fixture_configuration_base64"
+    HEELER_PAIRING_E2E_CONFIG="$pairing_fixture_configuration_base64"
+}
+push_simulator_environment \
+    HEELER_SSH_E2E_CONFIG \
+    HEELER_SSH_JUMP_E2E_CONFIG \
+    HEELER_PAIRING_E2E_CONFIG
 if [[ "$password_fixture_available" == "1" ]]; then
-    session_action="test-without-building"
-    # Keep compilation outside the short-lived privileged fixture window.
-    xcodebuild build-for-testing \
-        -project Heeler.xcodeproj \
-        -scheme Heeler \
-        -derivedDataPath "$app_derived_data_path" \
-        -destination "$simulator_destination" \
-        -collect-test-diagnostics never
     start_password_sshd || exit 1
 fi
-run_suite HeelerSSHSessionE2ETests 14 1 "$session_skip_count" "$session_action"
+run_suite HeelerSSHSessionE2ETests 14 1 "$session_skip_count"
 if [[ "$password_fixture_available" == "1" ]]; then
     if stop_privileged_sshd "$password_pid" "$password_pid_file"; then
         password_pid=""
@@ -1631,7 +1709,7 @@ assert_behavior "weak-network descriptor reclamation" WeakNetworkE2ETests \
 assert_behavior "disconnect is reported" WeakNetworkE2ETests \
     '"a severed link makes the transport report itself disconnected"'
 
-for variable in \
+push_simulator_environment \
     HEELER_SSH_E2E_REQUIRED \
     HEELER_SSH_E2E_HOST \
     HEELER_SSH_E2E_PORT \
@@ -1639,14 +1717,12 @@ for variable in \
     HEELER_SSH_E2E_DEVICE_KEY_SEED \
     HEELER_SSH_E2E_WEAK_PORT \
     HEELER_SSH_E2E_WEAK_CONTROL_PORT \
-    HEELER_SSH_E2E_STREAMLOCAL_SOCKET; do
-    xcrun simctl spawn "$simulator_udid" launchctl setenv "$variable" "${!variable}"
-done
+    HEELER_SSH_E2E_STREAMLOCAL_SOCKET
 
 package_e2e_log="$fixture_dir/package-e2e.log"
 (
     cd Packages/HeelerSSH
-    xcodebuild test \
+    run_xcodebuild "HeelerSSH package E2E" "$xcodebuild_test_timeout_seconds" test \
         -scheme HeelerSSH \
         -derivedDataPath "$package_derived_data_path" \
         -destination "$simulator_destination" \
@@ -1706,7 +1782,8 @@ export HEELER_SSH_E2E_REQUIRED=0
 xcrun simctl spawn "$simulator_udid" launchctl setenv HEELER_SSH_E2E_REQUIRED 0
 
 full_lane_log="$fixture_dir/full-lane.log"
-xcodebuild test \
+run_xcodebuild "Full app test lane" "$xcodebuild_test_timeout_seconds" \
+    test-without-building \
     -project Heeler.xcodeproj \
     -scheme Heeler \
     -derivedDataPath "$app_derived_data_path" \

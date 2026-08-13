@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+runner="$repo_root/scripts/run-with-timeout.py"
+gate_script="$repo_root/scripts/run-ci-ios-tests.sh"
+workflow="$repo_root/.github/workflows/ci.yml"
+work="$(mktemp -d "${TMPDIR:-/tmp}/heeler-timeout-test.XXXXXX")"
+trap 'rm -rf "$work"' EXIT
+
+[[ -x "$runner" ]] || {
+    echo "watchdog runner is missing or not executable: $runner" >&2
+    exit 1
+}
+
+"$runner" \
+    --timeout-seconds 2 \
+    --label success \
+    --diagnostics-dir "$work/success" \
+    -- /bin/sh -c 'printf "success\n"'
+
+set +e
+mkdir -p "$work/evidence"
+printf 'partial xcresult' > "$work/evidence/result.txt"
+# One full second of deadline: the child only needs to write its pid file
+# before the watchdog fires, and 0.1s lost that race on loaded machines.
+# The `$$`/`$1` below belong to the child shell, deliberately unexpanded.
+# shellcheck disable=SC2016
+HEELER_TIMEOUT_DISABLE_SAMPLE=1 "$runner" \
+    --timeout-seconds 1 \
+    --label stalled-test \
+    --diagnostics-dir "$work/timeout" \
+    --artifact-path "$work/evidence" \
+    -- /bin/sh -c 'printf "%s" "$$" > "$1"; sleep 30' sh "$work/stalled.pid"
+timeout_status=$?
+set -e
+
+[[ "$timeout_status" == 124 ]] || {
+    echo "watchdog returned $timeout_status instead of 124" >&2
+    exit 1
+}
+[[ -s "$work/stalled.pid" ]] || {
+    echo "the stalled child never wrote its pid; cannot assert termination" >&2
+    exit 1
+}
+[[ -s "$work/timeout/processes.txt" ]] || {
+    echo "watchdog did not capture the process table" >&2
+    exit 1
+}
+[[ -s "$work/timeout/artifacts/01-evidence/result.txt" ]] || {
+    echo "watchdog did not preserve the requested diagnostic artifact" >&2
+    exit 1
+}
+stalled_pid="$(cat "$work/stalled.pid")"
+if kill -0 "$stalled_pid" 2>/dev/null; then
+    echo "watchdog left the stalled process group alive" >&2
+    exit 1
+fi
+
+if grep -qE '^[[:space:]]*xcodebuild ' "$gate_script"; then
+    echo "run-ci-ios-tests.sh contains an xcodebuild call outside the watchdog" >&2
+    exit 1
+fi
+wrapped_calls=$(grep -cE '^[[:space:]]*run_xcodebuild "' "$gate_script")
+[[ "$wrapped_calls" == 4 ]] || {
+    echo "expected 4 watchdog-wrapped xcodebuild call sites, found $wrapped_calls" >&2
+    exit 1
+}
+[[ "$(grep -c 'timeout-minutes: 35' "$workflow")" == 1 ]] || {
+    echo "the iOS job must retain its 35-minute deadline" >&2
+    exit 1
+}
+[[ "$(grep -c 'timeout-minutes: 32' "$workflow")" == 1 ]] || {
+    echo "the Build and test step must retain its 32-minute deadline" >&2
+    exit 1
+}
+
+set +e
+"$runner" \
+    --timeout-seconds 2 \
+    --label failure \
+    --diagnostics-dir "$work/failure" \
+    -- /bin/sh -c 'exit 23'
+failure_status=$?
+set -e
+
+[[ "$failure_status" == 23 ]] || {
+    echo "watchdog changed child exit 23 to $failure_status" >&2
+    exit 1
+}
+
+# The `$$`/`$1` below belong to the child shell, deliberately unexpanded.
+# shellcheck disable=SC2016
+"$runner" \
+    --timeout-seconds 30 \
+    --label cancellation \
+    --diagnostics-dir "$work/cancellation" \
+    -- /bin/sh -c 'printf "%s" "$$" > "$1"; sleep 30' sh "$work/cancelled.pid" &
+runner_pid=$!
+for _ in $(seq 1 100); do
+    [[ -s "$work/cancelled.pid" ]] && break
+    sleep 0.05
+done
+[[ -s "$work/cancelled.pid" ]] || {
+    echo "watchdog child did not start for the cancellation probe" >&2
+    exit 1
+}
+kill -TERM "$runner_pid"
+set +e
+wait "$runner_pid"
+cancellation_status=$?
+set -e
+[[ "$cancellation_status" == 143 ]] || {
+    echo "watchdog returned $cancellation_status instead of 143 on SIGTERM" >&2
+    exit 1
+}
+cancelled_pid="$(cat "$work/cancelled.pid")"
+if kill -0 "$cancelled_pid" 2>/dev/null; then
+    echo "watchdog left its child alive after SIGTERM" >&2
+    exit 1
+fi
+
+echo "run-with-timeout behavior passed"
