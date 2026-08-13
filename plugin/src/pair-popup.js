@@ -10,7 +10,7 @@ import os from "node:os";
 import { emitKeypressEvents } from "node:readline";
 import { candidateAddresses } from "./addresses.js";
 import { readHostKeyFingerprint } from "./host-key.js";
-import { encodePairingCode } from "./envelope.js";
+import { encodePairingCodeV2 } from "./envelope.js";
 import { commentOf, removeKeyLine, sweepExpiredBootstrapLines } from "./authorized-keys.js";
 import {
   beginPairing,
@@ -72,7 +72,7 @@ function renderChecklist(state, warning) {
 }
 
 async function renderPairingCode(payload) {
-  const code = encodePairingCode(payload);
+  const code = encodePairingCodeV2(payload);
   const qr = renderTerminalQr(code);
   const expires = new Date(payload.expiresAt * 1000).toLocaleTimeString();
   const lines = [
