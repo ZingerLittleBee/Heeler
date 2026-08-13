@@ -25,18 +25,33 @@
 
 name: CI
 
-# `landing/**` is the marketing site (Astro, deployed to Cloudflare); it shares
-# nothing with the app, the plugin, or the relay, so it has its own workflow
-# (landing.yml) and is excluded here. A change touching both still runs this
-# workflow: paths-ignore only skips a run when every changed path matches.
+# Ignored paths build nothing this workflow can verify:
+#
+# - `landing/**` and its workflow are the marketing site (Astro on Cloudflare),
+#   which shares no code with the app, the plugin, or the relay. It has its own
+#   workflow, landing.yml.
+# - `CLAUDE.md` and `docs/**` are prose. No test or script reads their contents
+#   — the suites that name them only quote them in comments — so a docs-only
+#   change has nothing here to pass or fail.
+#
+# paths-ignore only skips a run when *every* changed path matches, so a commit
+# touching prose alongside Swift still runs the full suite. A change to this
+# file also always runs: the old triggers decide the run that introduces the
+# new ones.
 on:
   pull_request:
     paths-ignore:
       - landing/**
+      - .github/workflows/landing.yml
+      - CLAUDE.md
+      - docs/**
   push:
     branches: [main]
     paths-ignore:
       - landing/**
+      - .github/workflows/landing.yml
+      - CLAUDE.md
+      - docs/**
 
 # One in-flight run per ref; a new push cancels the previous run.
 concurrency:
