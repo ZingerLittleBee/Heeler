@@ -104,6 +104,15 @@ Entries reference the issue that motivated them.
   terminal to render in. The QR itself is unchanged, so every released app
   version keeps scanning it.
 
+- The pair popup's address checklist now pre-selects a single default address
+  instead of every likely one: the address on the platform's primary interface
+  (`en0` on macOS, `eth0` on Linux), falling back to the best-ranked private
+  LAN, Tailscale, or ULA candidate when that interface is absent.
+
+- The pair popup's QR screen now renders the code starting at the top row and
+  trims trailing text to the pane height, so the QR can no longer be clipped
+  into scrollback on short terminals.
+
 ### Fixed
 
 - Malformed herdr API error responses that carry an empty id now fail the
