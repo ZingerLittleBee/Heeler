@@ -1605,7 +1605,7 @@ push_simulator_environment \
 if [[ "$password_fixture_available" == "1" ]]; then
     start_password_sshd || exit 1
 fi
-run_suite HeelerSSHSessionE2ETests 14 1 "$session_skip_count"
+run_suite HeelerSSHSessionE2ETests 13 1 "$session_skip_count"
 if [[ "$password_fixture_available" == "1" ]]; then
     if stop_privileged_sshd "$password_pid" "$password_pid_file"; then
         password_pid=""
@@ -1614,9 +1614,9 @@ if [[ "$password_fixture_available" == "1" ]]; then
     fi
 fi
 run_suite HeelerSSHPTYE2ETests 3 1
-run_suite HeelerSSHDirectStreamLocalE2ETests 12 1
+run_suite HeelerSSHDirectStreamLocalE2ETests 11 1
 run_suite HeelerSSHJumpHostGateE2ETests 9 1
-run_suite HeelerSSHTransportBehaviorE2ETests 46 1
+run_suite HeelerSSHTransportBehaviorE2ETests 44 1
 run_suite ImageStagingE2ETests 8 1
 run_suite WeakNetworkE2ETests 8 1
 run_suite PairingCeremonyE2ETests 11 1

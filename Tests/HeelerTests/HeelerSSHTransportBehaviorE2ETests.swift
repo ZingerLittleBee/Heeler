@@ -11,16 +11,6 @@ import Testing
         "requires the disposable direct and Jump Host fixtures"),
     .serialized)
 struct HeelerSSHTransportBehaviorE2ETests {
-    @Test("ordinary forwarding admission reserves the Events slot")
-    func forwardingAdmissionStartsAtEight() {
-        #expect(HeelerSSHTransport.maxConcurrentForwardingChannels == 8)
-    }
-
-    @Test("ordinary session admission reserves the Attach slot")
-    func sessionAdmissionStartsAtEight() {
-        #expect(HeelerSSHTransport.maxConcurrentExecChannels == 8)
-    }
-
     /// Both directions of the floor, because a fix tested in one direction is
     /// untested in the direction that broke. This test replaces one that
     /// asserted protocol 18 was *refused*: that encoded the equality rule

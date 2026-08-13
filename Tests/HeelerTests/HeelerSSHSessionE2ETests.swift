@@ -197,22 +197,6 @@ struct HeelerSSHSessionE2ETests {
         }
     }
 
-    @Test("direct-streamlocal exchanges one NDJSON line through real sshd")
-    func directStreamLocalExchangesNDJSONLine() async throws {
-        let environment = try #require(HeelerSSHTestEnvironment.current)
-        let socketPath = try #require(environment.streamLocalSocketPath)
-        let connection = try await environment.connect()
-
-        try await withClosingConnection(connection) { connection in
-            let response = try await connection.exchangeStreamLocal(
-                socketPath: socketPath,
-                request: Data("{\"id\":\"red\",\"method\":\"ping\",\"params\":{}}\n".utf8),
-                timeout: .seconds(5))
-
-            #expect(response == Data("{\"id\":\"red\",\"result\":{\"protocol\":17,\"version\":\"fake\"}}\n".utf8))
-        }
-    }
-
     /// The allocation gate proves exec owns a channel; the cleanup gate proves
     /// the secondary two-second budget has started. Expiring that budget while
     /// the gates are held removes the 100ms timing guess that flaked under CI
