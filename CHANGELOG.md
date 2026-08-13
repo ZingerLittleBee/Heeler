@@ -100,6 +100,10 @@ Entries reference the issue that motivated them.
   The plugin id remains `heeler.pairing`, so already-linked Hosts do not need
   to reinstall.
 
+- The pair popup now opens full-screen so the Pairing Code QR has the whole
+  terminal to render in. The QR itself is unchanged, so every released app
+  version keeps scanning it.
+
 ### Fixed
 
 - Malformed herdr API error responses that carry an empty id now fail the
