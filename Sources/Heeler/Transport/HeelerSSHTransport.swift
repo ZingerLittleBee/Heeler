@@ -999,8 +999,11 @@ actor HeelerSSHTransport: Transport {
 
     private func resolveNotificationConfigDirectory() async throws -> String {
         let listOutput = try await runNotificationPluginProbe(command: pluginListCommand)
-        try requireNotificationPlugin(in: listOutput)
-        let output = try await runNotificationPluginProbe(command: notificationConfigDirCommand)
+        let pluginID = try installedNotificationPluginID(in: listOutput)
+        let configDirCommand = notificationConfigDirCommand.replacingOccurrences(
+            of: SSHTransportSettings.notificationPluginIDToken,
+            with: pluginID)
+        let output = try await runNotificationPluginProbe(command: configDirCommand)
         guard
             let directory = Self.markerValue(
                 in: output,
@@ -1013,7 +1016,10 @@ actor HeelerSSHTransport: Transport {
         return directory
     }
 
-    private func requireNotificationPlugin(in listOutput: Data) throws {
+    /// The id the Host's Heeler plugin is enabled under: the current id when
+    /// present, else the newest legacy id. Registration targets that plugin's
+    /// own config dir, so a Host still on an old plugin build keeps working.
+    private func installedNotificationPluginID(in listOutput: Data) throws -> String {
         let list: NotificationPluginListEnvelope
         do {
             list = try JSONDecoder().decode(NotificationPluginListEnvelope.self, from: listOutput)
@@ -1021,13 +1027,15 @@ actor HeelerSSHTransport: Transport {
             throw NotificationRegistrationError.pluginProbeFailed(
                 detail: "The plugin list response was invalid.")
         }
-        let installed = list.result.plugins.contains { plugin in
-            plugin.pluginID == SSHTransportSettings.notificationPluginID
-                && plugin.enabled != false
+        let enabledIDs = list.result.plugins.compactMap { plugin in
+            plugin.enabled != false ? plugin.pluginID : nil
         }
-        guard installed else {
+        let knownIDs = [SSHTransportSettings.notificationPluginID]
+            + SSHTransportSettings.legacyNotificationPluginIDs
+        guard let pluginID = knownIDs.first(where: enabledIDs.contains) else {
             throw NotificationRegistrationError.pluginNotInstalled
         }
+        return pluginID
     }
 
     private func runNotificationPluginProbe(command: String) async throws -> Data {

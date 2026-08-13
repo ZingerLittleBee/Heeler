@@ -16,10 +16,21 @@ struct SSHTransportSettings: Sendable {
     /// The Heeler plugin (ADR 0007/0008) whose config dir holds the
     /// Notification Registration file.
     static let notificationPluginID = "heeler"
+    /// Ids the plugin shipped under before, newest first. A Host still running
+    /// one keeps accepting Notification Registration: the matched id decides
+    /// which config dir the registration file lands in, so it is the directory
+    /// that Host's plugin actually reads. Only these fixed literals are ever
+    /// substituted into the probe command; ids reported by the Host are not.
+    /// (`heeler.pairing` existed only inside one unreleased cycle — no Host
+    /// ever installed it, so it is deliberately absent.)
+    static let legacyNotificationPluginIDs = ["herdr-mobile.pairing"]
+    /// Replaced with the matched plugin id before the config-dir probe runs.
+    /// A command injected without the token is used verbatim.
+    static let notificationPluginIDToken = "__HEELER_PLUGIN_ID__"
 
     static let defaultNotificationConfigDirCommand =
         "/bin/sh -c 'printf \"__HEELER_PLUGIN_CONFIG_DIR__=%s\\n\" "
-        + "\"$(herdr plugin config-dir \(notificationPluginID))\"'"
+        + "\"$(herdr plugin config-dir \(notificationPluginIDToken))\"'"
 
     /// The default of ``requestTimeout``, named so budgets derived from it
     /// cannot drift out of step with it.
@@ -84,7 +95,9 @@ struct SSHTransportSettings: Sendable {
     /// Prints the marker-delimited config dir of the Heeler plugin;
     /// herdr creates the directory if missing. Runs under POSIX sh because
     /// login shells do not share substitution syntax; the marker makes
-    /// login-shell noise harmless.
+    /// login-shell noise harmless. Any ``notificationPluginIDToken`` in the
+    /// command is replaced with the plugin id matched from the Host's plugin
+    /// list before the probe runs.
     var notificationConfigDirCommand: String = Self.defaultNotificationConfigDirCommand
     /// Per-request deadline covering the queue wait and the channel exchange;
     /// on expiry the request fails with `.timedOut` and its channel is

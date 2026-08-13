@@ -90,12 +90,14 @@ Entries reference the issue that motivated them.
   repository moved to ZingerLittleBee/Heeler and the in-app repository and
   privacy-policy links follow (the old URLs redirect).
 - The pairing plugin's id and display name are now both `heeler` (the id was
-  `herdr-mobile.pairing`, the display name `Heeler Pairing`). The id
-  determines the plugin's config directory, so a Host running the old plugin
-  needs it reinstalled — `herdr plugin install ZingerLittleBee/Heeler/plugin
-  --ref main --yes` — and Notification Registration redone from the app.
-  Pairing and SSH access are unaffected: the Device Key already in the Host's
-  `authorized_keys` keeps working.
+  `herdr-mobile.pairing`, the display name `Heeler Pairing`). Hosts still
+  running the plugin under an old id keep working: Notification Registration
+  matches the installed id — current first, then legacy — and writes into
+  that plugin's own config directory, so updating the plugin
+  (`herdr plugin install ZingerLittleBee/Heeler/plugin --ref main --yes`) can
+  happen whenever convenient. After updating it, redo Notification
+  Registration from the app once; pairing and SSH access are unaffected
+  throughout.
 
 - The pair popup now opens full-screen so the Pairing Code QR has the whole
   terminal to render in. The QR itself is unchanged, so every released app
