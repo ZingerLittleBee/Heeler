@@ -242,25 +242,43 @@ struct ComposerStagingStoreTests {
     func leaveIsIdempotentAndDiscardsOnlyLocalPreparation(
         _ medium: StagingTestMedium
     ) async throws {
-        let stageGate = ScriptedTransportCallGate()
+        let stager = NonCooperativeStager(path: remotePath(for: medium))
         let fixture = try await makeFixture(
             medium,
-            gates: stageGates(stageGate, for: medium))
+            nonCooperativeStager: stager)
         defer { fixture.cleanup() }
 
         fixture.begin(medium)
-        try await waitUntil("upload should reach the gate") {
-            await stageGate.entryCount == 1
+        try await waitUntil("upload should reach the non-cooperative stager") {
+            await stager.entryCount == 1
         }
         let leave = Task { await fixture.store.leave() }
-        await stageGate.open()
+        try await waitUntil("leave should cancel the in-flight operation") {
+            await stager.hasObservedCancellation()
+        }
+
+        await stager.releaseLateProgress()
+        try await waitUntil("the stale operation should report late progress") {
+            await stager.lateProgressCount == 1
+        }
+        #expect(
+            fixture.store.state
+                == .uploading(
+                    medium.storeMedium,
+                    AttachmentStageProgress(
+                        transferredBytes: 0,
+                        totalBytes: fixture.preparedByteCount(for: medium))))
+        #expect(fixture.composer.draft.isEmpty)
+        #expect(fixture.clipboard.copiedPaths.isEmpty)
+
+        await stager.releaseLateSuccess()
         await leave.value
 
+        #expect(await stager.successCount == 1)
         #expect(fixture.store.state == .idle)
         #expect(!fixture.preparedFileExists(for: medium))
         #expect(fixture.composer.draft.isEmpty)
         #expect(fixture.clipboard.copiedPaths.isEmpty)
-        #expect(await fixture.stageRequestCount(for: medium) == 1)
 
         await fixture.store.leave()
         #expect(fixture.store.state == .idle)
@@ -289,23 +307,27 @@ struct ComposerStagingStoreTests {
         }
     }
 
-    @Test func newBeginClearsPriorPresentedResult() async throws {
+    @Test func newBeginClearsPriorRetryableFailureAndPreparation() async throws {
         let filePreparationGate = ScriptedTransportCallGate()
         let fixture = try await makeFixture(
             .image,
+            stagePlans: [.failure(.transferFailed)],
             gates: StagingGates(filePreparation: filePreparationGate))
         defer { fixture.cleanup() }
 
         fixture.begin(.image)
-        try await waitUntil("image staging should complete") {
-            fixture.store.state.isCompleted
+        try await waitUntil("image staging should fail retryably") {
+            fixture.store.state.isFailed
         }
-        #expect(fixture.store.state.outcome?.medium == .image)
+        #expect(fixture.store.state.failure?.isRetryable == true)
+        #expect(fixture.preparedFileExists(for: .image))
+        #expect(fixture.store.presentation?.commands == [.retry, .dismiss])
 
         fixture.begin(.file)
 
         #expect(fixture.store.state == .preparing(.file))
-        #expect(fixture.store.state.outcome == nil)
+        #expect(fixture.store.state.failure == nil)
+        #expect(!fixture.preparedFileExists(for: .image))
         #expect(
             fixture.store.presentation
                 == ComposerStagingStore.Presentation(
@@ -324,7 +346,8 @@ struct ComposerStagingStoreTests {
     private func makeFixture(
         _ selectedMedium: StagingTestMedium,
         stagePlans: [StagingPlan]? = nil,
-        gates: StagingGates = StagingGates()
+        gates: StagingGates = StagingGates(),
+        nonCooperativeStager: NonCooperativeStager? = nil
     ) async throws -> StagingFixture {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("composer-staging-\(UUID().uuidString)", isDirectory: true)
@@ -367,12 +390,22 @@ struct ComposerStagingStoreTests {
                 prepared: file,
                 gate: gates.filePreparation),
             stageImage: { image, reporter in
-                try await transport.stageImage(image) { progress in
+                if selectedMedium == .image, let nonCooperativeStager {
+                    return try await nonCooperativeStager.stageImage(
+                        image,
+                        reporter: reporter)
+                }
+                return try await transport.stageImage(image) { progress in
                     await reporter.report(progress)
                 }
             },
             stageFile: { file, reporter in
-                try await transport.stageFile(file) { progress in
+                if selectedMedium == .file, let nonCooperativeStager {
+                    return try await nonCooperativeStager.stageFile(
+                        file,
+                        reporter: reporter)
+                }
+                return try await transport.stageFile(file) { progress in
                     await reporter.report(progress)
                 }
             },
@@ -519,6 +552,10 @@ private struct StagingFixture {
         return FileManager.default.fileExists(atPath: url.path)
     }
 
+    func preparedByteCount(for medium: StagingTestMedium) -> Int64 {
+        medium == .image ? preparedImage.byteCount : preparedFile.byteCount
+    }
+
     func stageRequestCount(for medium: StagingTestMedium) async -> Int {
         switch medium {
         case .image: await transport.stageRequests.count
@@ -558,6 +595,81 @@ private actor ScriptedStagingFilePreparer: FilePreparing {
     func prepare(_ sourceURL: URL) async throws -> PreparedFile {
         await gate?.waitUntilOpen()
         return prepared
+    }
+}
+
+private actor NonCooperativeStager {
+    private let path: String
+    private let cancellation = StagingCancellationRecorder()
+    private let lateProgressGate = ScriptedTransportCallGate()
+    private let lateSuccessGate = ScriptedTransportCallGate()
+    private(set) var entryCount = 0
+    private(set) var lateProgressCount = 0
+    private(set) var successCount = 0
+
+    init(path: String) {
+        self.path = path
+    }
+
+    func stageImage(
+        _ image: PreparedImage,
+        reporter: AttachmentStageProgressReporter
+    ) async throws -> StagedImage {
+        try await stage(
+            byteCount: image.byteCount,
+            reporter: reporter,
+            makeResult: { try StagedImage(path: $0) })
+    }
+
+    func stageFile(
+        _ file: PreparedFile,
+        reporter: AttachmentStageProgressReporter
+    ) async throws -> StagedFile {
+        try await stage(
+            byteCount: file.byteCount,
+            reporter: reporter,
+            makeResult: { try StagedFile(path: $0) })
+    }
+
+    func hasObservedCancellation() async -> Bool {
+        await cancellation.observed
+    }
+
+    func releaseLateProgress() async {
+        await lateProgressGate.open()
+    }
+
+    func releaseLateSuccess() async {
+        await lateSuccessGate.open()
+    }
+
+    private func stage<Result: Sendable>(
+        byteCount: Int64,
+        reporter: AttachmentStageProgressReporter,
+        makeResult: (String) throws -> Result
+    ) async throws -> Result {
+        entryCount += 1
+        await withTaskCancellationHandler {
+            await lateProgressGate.waitUntilOpen()
+        } onCancel: { [cancellation] in
+            Task { await cancellation.record() }
+        }
+        await reporter.report(
+            AttachmentStageProgress(
+                transferredBytes: byteCount,
+                totalBytes: byteCount))
+        lateProgressCount += 1
+        await lateSuccessGate.waitUntilOpen()
+        successCount += 1
+        return try makeResult(path)
+    }
+}
+
+private actor StagingCancellationRecorder {
+    private(set) var observed = false
+
+    func record() {
+        observed = true
     }
 }
 
