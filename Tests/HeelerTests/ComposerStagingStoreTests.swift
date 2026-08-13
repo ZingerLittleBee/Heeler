@@ -307,39 +307,70 @@ struct ComposerStagingStoreTests {
         }
     }
 
-    @Test func newBeginClearsPriorRetryableFailureAndPreparation() async throws {
-        let filePreparationGate = ScriptedTransportCallGate()
-        let fixture = try await makeFixture(
+    @Test func newBeginReplacesCompletedAndRetryableFailureStates() async throws {
+        let completedFilePreparationGate = ScriptedTransportCallGate()
+        let completedFixture = try await makeFixture(
             .image,
-            stagePlans: [.failure(.transferFailed)],
-            gates: StagingGates(filePreparation: filePreparationGate))
-        defer { fixture.cleanup() }
+            gates: StagingGates(filePreparation: completedFilePreparationGate))
+        defer { completedFixture.cleanup() }
 
-        fixture.begin(.image)
-        try await waitUntil("image staging should fail retryably") {
-            fixture.store.state.isFailed
+        completedFixture.begin(.image)
+        try await waitUntil("image staging should complete") {
+            completedFixture.store.state.isCompleted
         }
-        #expect(fixture.store.state.failure?.isRetryable == true)
-        #expect(fixture.preparedFileExists(for: .image))
-        #expect(fixture.store.presentation?.commands == [.retry, .dismiss])
+        #expect(completedFixture.store.state.outcome?.medium == .image)
+        #expect(completedFixture.store.presentation?.commands == [.dismiss])
 
-        fixture.begin(.file)
+        completedFixture.begin(.file)
 
-        #expect(fixture.store.state == .preparing(.file))
-        #expect(fixture.store.state.failure == nil)
-        #expect(!fixture.preparedFileExists(for: .image))
+        #expect(completedFixture.store.state == .preparing(.file))
+        #expect(completedFixture.store.state.outcome == nil)
         #expect(
-            fixture.store.presentation
+            completedFixture.store.presentation
                 == ComposerStagingStore.Presentation(
                     icon: "doc",
                     title: "Preparing File…",
                     accessibilityLabel: "Preparing File",
                     commands: [.cancel]))
 
-        fixture.store.perform(.cancel)
-        await filePreparationGate.open()
-        try await waitUntil("file cancellation should return to idle") {
-            fixture.store.state == .idle
+        completedFixture.store.perform(.cancel)
+        await completedFilePreparationGate.open()
+        try await waitUntil("file cancellation should clear the completed fixture") {
+            completedFixture.store.state == .idle
+        }
+
+        let failedFilePreparationGate = ScriptedTransportCallGate()
+        let failedFixture = try await makeFixture(
+            .image,
+            stagePlans: [.failure(.transferFailed)],
+            gates: StagingGates(filePreparation: failedFilePreparationGate))
+        defer { failedFixture.cleanup() }
+
+        failedFixture.begin(.image)
+        try await waitUntil("image staging should fail retryably") {
+            failedFixture.store.state.isFailed
+        }
+        #expect(failedFixture.store.state.failure?.isRetryable == true)
+        #expect(failedFixture.preparedFileExists(for: .image))
+        #expect(failedFixture.store.presentation?.commands == [.retry, .dismiss])
+
+        failedFixture.begin(.file)
+
+        #expect(failedFixture.store.state == .preparing(.file))
+        #expect(failedFixture.store.state.failure == nil)
+        #expect(!failedFixture.preparedFileExists(for: .image))
+        #expect(
+            failedFixture.store.presentation
+                == ComposerStagingStore.Presentation(
+                    icon: "doc",
+                    title: "Preparing File…",
+                    accessibilityLabel: "Preparing File",
+                    commands: [.cancel]))
+
+        failedFixture.store.perform(.cancel)
+        await failedFilePreparationGate.open()
+        try await waitUntil("file cancellation should clear the failed fixture") {
+            failedFixture.store.state == .idle
         }
     }
 
