@@ -1,15 +1,17 @@
 import Foundation
 
 /// A parsed Pairing Code: the versioned payload the pairing plugin renders as
-/// a QR image (ADR 0007). Wire format:
+/// a QR image (ADR 0007). This file decodes the v1 wire format:
 ///
 ///     HERDR-PAIR:<version>:<base64url(JSON, no padding)>
 ///
-/// The schema and error taxonomy live in `plugin/README.md`; the shared test
-/// vectors in `plugin/test-vectors/pairing-code-v1.json` are the single
-/// source of truth for both this decoder and the plugin's encoder. Unknown
-/// payload fields are ignored (additive v1 metadata); breaking changes bump
-/// the version, which both implementations must honor together.
+/// The compact binary v2 envelope is decoded in `PairingCodeV2.swift`, which
+/// also owns the scan-entry dispatch between the two. The schema and error
+/// taxonomy live in `plugin/README.md`; the shared test vectors in
+/// `plugin/test-vectors/pairing-code-v1.json` are the single source of truth
+/// for both this decoder and the plugin's encoder. Unknown payload fields are
+/// ignored (additive v1 metadata); breaking changes bump the version, which
+/// both implementations must honor together.
 struct PairingCode: Sendable, Equatable {
     static let prefix = "HERDR-PAIR"
     static let version = 1
@@ -136,7 +138,9 @@ struct PairingCode: Sendable, Equatable {
         return HostKeyFingerprint(digest: digest)
     }
 
-    private static func containsWhitespace(_ text: String) -> Bool {
+    // Internal for the v2 decoder in PairingCodeV2.swift, which enforces the
+    // same field rules.
+    static func containsWhitespace(_ text: String) -> Bool {
         text.unicodeScalars.contains { CharacterSet.whitespacesAndNewlines.contains($0) }
     }
 }

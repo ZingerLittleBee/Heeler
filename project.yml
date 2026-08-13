@@ -134,6 +134,11 @@ targets:
       # tests consume, bundled so the Swift tests cannot drift from it.
       - path: plugin/test-vectors/pairing-code-v1.json
         buildPhase: resources
+      # The v2 vectors are produced by the plugin side; optional so this
+      # project generates before they land, bundled automatically after.
+      - path: plugin/test-vectors/pairing-code-v2.json
+        buildPhase: resources
+        optional: true
       # Shared notification envelope vectors (ADR 0008), same arrangement.
       - path: plugin/test-vectors/notification-payload-v1.json
         buildPhase: resources
