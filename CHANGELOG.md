@@ -89,12 +89,28 @@ Entries reference the issue that motivated them.
   connects to; the App Store listing will be "Heeler for herdr". The GitHub
   repository moved to ZingerLittleBee/Heeler and the in-app repository and
   privacy-policy links follow (the old URLs redirect).
-- The pairing plugin's id is now `heeler.pairing` (was `herdr-mobile.pairing`).
-  Its id determines its config directory, so a Host running the old plugin
-  needs it reinstalled — `herdr plugin install ZingerLittleBee/Heeler/plugin
-  --ref main --yes` — and Notification Registration redone from the app.
-  Pairing and SSH access are unaffected: the Device Key already in the Host's
-  `authorized_keys` keeps working.
+- The pairing plugin's id and display name are now both `heeler` (the id was
+  `herdr-mobile.pairing`, the display name `Heeler Pairing`). Hosts still
+  running the plugin under an old id keep working: Notification Registration
+  matches the installed id — current first, then legacy — and writes into
+  that plugin's own config directory, so updating the plugin
+  (`herdr plugin install ZingerLittleBee/Heeler/plugin --ref main --yes`) can
+  happen whenever convenient. After updating it, redo Notification
+  Registration from the app once; pairing and SSH access are unaffected
+  throughout.
+
+- The pair popup now opens full-screen so the Pairing Code QR has the whole
+  terminal to render in. The QR itself is unchanged, so every released app
+  version keeps scanning it.
+
+- The pair popup's address checklist now pre-selects a single default address
+  instead of every likely one: the address on the platform's primary interface
+  (`en0` on macOS, `eth0` on Linux), falling back to the best-ranked private
+  LAN, Tailscale, or ULA candidate when that interface is absent.
+
+- The pair popup's QR screen now renders the code starting at the top row and
+  trims trailing text to the pane height, so the QR can no longer be clipped
+  into scrollback on short terminals.
 
 ### Fixed
 

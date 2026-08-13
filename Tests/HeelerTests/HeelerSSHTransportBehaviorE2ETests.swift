@@ -122,7 +122,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
         var disabled = environment.directSettings()
         disabled.pluginListCommand =
             "printf '%s' '{\"id\":\"cli:plugin\",\"result\":{\"plugins\":["
-            + "{\"plugin_id\":\"heeler.pairing\",\"enabled\":false}]}}'"
+            + "{\"plugin_id\":\"heeler\",\"enabled\":false}]}}'"
         #expect(
             try await notificationRegistrationFailure(settings: disabled)
                 == .pluginNotInstalled)
@@ -147,6 +147,51 @@ struct HeelerSSHTransportBehaviorE2ETests {
         unmarkedDirectory.notificationConfigDirCommand = "printf 'no marker here\\n'"
         try await expectPluginProbeFailure(
             settings: unmarkedDirectory, "a config directory probe without its marker")
+    }
+
+    /// A Host still running the plugin under an earlier id keeps accepting
+    /// Notification Registration: the matched id is substituted into the
+    /// config-dir probe, so the file lands in the directory that plugin
+    /// actually reads — and the current id wins when both are installed.
+    @Test("a legacy plugin id routes registration into that plugin's config dir")
+    func legacyNotificationPluginIDKeepsRegistrationWorking() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let baseDirectory =
+            "\(environment.homePath)/.heeler-ci/notify-legacy-\(UUID().uuidString.lowercased())"
+        let tokenConfigDirCommand =
+            "/bin/sh -c 'umask 077; mkdir -p \"$1\" || exit 1; "
+            + "printf \"__HEELER_PLUGIN_CONFIG_DIR__=%s\\n\" \"$1\"' notify "
+            + (try #require(RemoteShellPath.quotedAbsolute(
+                "\(baseDirectory)/\(SSHTransportSettings.notificationPluginIDToken)")))
+        let registration = Data(#"{"v":1,"devices":[]}"#.utf8)
+
+        var legacyOnly = environment.directSettings()
+        legacyOnly.pluginListCommand =
+            "printf '%s' '{\"id\":\"cli:plugin\",\"result\":{\"plugins\":["
+            + "{\"plugin_id\":\"herdr-mobile.pairing\",\"enabled\":true}]}}'"
+        legacyOnly.notificationConfigDirCommand = tokenConfigDirCommand
+        let legacyTransport = try await HeelerSSHTransport.connect(settings: legacyOnly)
+        try await legacyTransport.replaceNotificationRegistration(registration)
+        #expect(
+            try await legacyTransport.readRemoteFileForTesting(
+                at: "\(baseDirectory)/herdr-mobile.pairing/notifications.json")
+                == registration)
+        try await legacyTransport.close()
+
+        // Legacy listed first must not outrank the current id.
+        var bothInstalled = environment.directSettings()
+        bothInstalled.pluginListCommand =
+            "printf '%s' '{\"id\":\"cli:plugin\",\"result\":{\"plugins\":["
+            + "{\"plugin_id\":\"herdr-mobile.pairing\",\"enabled\":true},"
+            + "{\"plugin_id\":\"heeler\",\"enabled\":true}]}}'"
+        bothInstalled.notificationConfigDirCommand = tokenConfigDirCommand
+        let preferredTransport = try await HeelerSSHTransport.connect(settings: bothInstalled)
+        try await preferredTransport.replaceNotificationRegistration(registration)
+        #expect(
+            try await preferredTransport.readRemoteFileForTesting(
+                at: "\(baseDirectory)/heeler/notifications.json")
+                == registration)
+        try await preferredTransport.close()
     }
 
     @Test("direct Host Events preserve framing, concurrency, and slot reuse")
@@ -997,7 +1042,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
         var settings = baseSettings
         settings.pluginListCommand =
             "printf '%s' '{\"id\":\"cli:plugin\",\"result\":{\"plugins\":["
-            + "{\"plugin_id\":\"heeler.pairing\",\"enabled\":true}]}}'"
+            + "{\"plugin_id\":\"heeler\",\"enabled\":true}]}}'"
         settings.notificationConfigDirCommand =
             "/bin/sh -c 'umask 077; mkdir -p \"$1\" || exit 1; "
             + "printf \"__HEELER_PLUGIN_CONFIG_DIR__=%s\\n\" \"$1\"' notify "
@@ -1249,7 +1294,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
 
     private static let installedPluginListCommand =
         "printf '%s' '{\"id\":\"cli:plugin\",\"result\":{\"plugins\":["
-        + "{\"plugin_id\":\"heeler.pairing\",\"enabled\":true}]}}'"
+        + "{\"plugin_id\":\"heeler\",\"enabled\":true}]}}'"
 
     /// The `NotificationRegistrationError` a registration read raises on a
     /// Host connected with `settings`, or nil if the read succeeded.

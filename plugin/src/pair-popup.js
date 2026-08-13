@@ -37,7 +37,10 @@ const DEFAULT_SSH_PORT = 22;
 // scale.
 const ENROLL_POLL_MS = 400;
 
-const CLEAR = "\u001b[2J\u001b[H";
+// 2J clears the visible screen only; a QR taller than the viewport pushes
+// rows into scrollback, which would resurface above later screens. 3J drops
+// the scrollback too.
+const CLEAR = "\u001b[2J\u001b[3J\u001b[H";
 const HIDE_CURSOR = "\u001b[?25l";
 const SHOW_CURSOR = "\u001b[?25h";
 const BOLD = "\u001b[1m";
@@ -76,19 +79,21 @@ async function renderPairingCode(payload) {
   const code = encodePairingCode(payload);
   const qr = await QRCode.toString(code, { type: "terminal", small: true });
   const expires = new Date(payload.expiresAt * 1000).toLocaleTimeString();
+  // QR first, starting at row 1. Writing more lines than the pane has rows
+  // scrolls the earliest ones off the top, and with a header above the QR
+  // that meant the QR's top edge vanished into scrollback. Clamp to the
+  // viewport instead, so any overflow costs trailing text, never the QR.
   const lines = [
-    `${BOLD}Scan with Heeler${RESET}`,
-    "",
-    qr.trimEnd(),
-    "",
+    ...qr.trimEnd().split("\n"),
+    `${BOLD}Scan with Heeler${RESET} ${DIM}-- press any key to close${RESET}`,
     `${BOLD}${payload.username}${RESET} on port ${BOLD}${payload.port}${RESET}`,
     `Host key ${payload.hostKeyFingerprint}`,
     `Addresses: ${payload.addresses.join(", ")}`,
     `Code valid until ${BOLD}${expires}${RESET}, single use`,
-    "",
-    `${DIM}Press any key to close.${RESET}`,
   ];
-  process.stdout.write(CLEAR + lines.join("\n") + "\n");
+  const rows = process.stdout.rows;
+  const visible = Number.isInteger(rows) && rows > 0 ? lines.slice(0, rows) : lines;
+  process.stdout.write(CLEAR + visible.join("\n"));
 }
 
 function renderExpired() {

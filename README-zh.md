@@ -80,7 +80,7 @@ VPS 的回环接口上，而不是公开 Mac 的 SSH 端口。
 
 ```bash
 herdr plugin install ZingerLittleBee/Heeler/plugin --ref main --yes
-herdr plugin action invoke heeler.pairing.pair
+herdr plugin action invoke heeler.pair
 ```
 
 `pair` 动作会弹出 Pairing Code 二维码；用应用扫描后机器即添加为 Host ——

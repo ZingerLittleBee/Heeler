@@ -1,5 +1,5 @@
-id = "heeler.pairing"
-name = "Heeler Pairing"
+id = "heeler"
+name = "heeler"
 version = "0.3.0"
 min_herdr_version = "0.7.5"
 description = "Pair a Heeler device by scanning a QR Pairing Code"
@@ -19,6 +19,8 @@ command = ["node", "src/pair-action.js"]
 id = "pair"
 title = "Pair device"
 placement = "popup"
+width = "100%"
+height = "100%"
 command = ["node", "src/pair-popup.js"]
 
 [[events]]
