@@ -1,5 +1,5 @@
 id = "heeler.pairing"
-name = "Heeler Pairing"
+name = "heeler"
 version = "0.3.0"
 min_herdr_version = "0.7.5"
 description = "Pair a Heeler device by scanning a QR Pairing Code"

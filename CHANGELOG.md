@@ -96,6 +96,10 @@ Entries reference the issue that motivated them.
   Pairing and SSH access are unaffected: the Device Key already in the Host's
   `authorized_keys` keeps working.
 
+- The pairing plugin's display name is now `heeler` (was `Heeler Pairing`).
+  The plugin id remains `heeler.pairing`, so already-linked Hosts do not need
+  to reinstall.
+
 ### Fixed
 
 - Malformed herdr API error responses that carry an empty id now fail the

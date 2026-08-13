@@ -1,4 +1,4 @@
-# Heeler Pairing plugin
+# heeler
 
 A [herdr plugin](https://herdr.dev/docs/plugins/) that renders a **Pairing Code**
 QR so the Heeler app can add this machine as a Host by scanning it
