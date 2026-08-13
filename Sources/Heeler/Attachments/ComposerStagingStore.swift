@@ -186,7 +186,7 @@ final class ComposerStagingStore {
         filePreparer: any FilePreparing = FilePreparer(),
         stageImage: @escaping ImageStager,
         stageFile: @escaping FileStager,
-        clipboard: any AttachmentClipboard = SystemImageClipboard(),
+        clipboard: any AttachmentClipboard = SystemAttachmentClipboard(),
         composer: any ComposerDraftOperations
     ) {
         imageAdapter = ImageAdapter(preparer: imagePreparer, stage: stageImage)

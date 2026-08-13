@@ -3,16 +3,16 @@ import Observation
 import UIKit
 import UniformTypeIdentifiers
 
-typealias ImageStageProgressHandler = @Sendable (AttachmentStageProgress) async -> Void
+typealias AttachmentStageProgressHandler = @Sendable (AttachmentStageProgress) async -> Void
 typealias ImageStager =
     @Sendable (PreparedImage, AttachmentStageProgressReporter) async throws -> StagedImage
 typealias FileStager =
     @Sendable (PreparedFile, AttachmentStageProgressReporter) async throws -> StagedFile
 
 struct AttachmentStageProgressReporter: Sendable {
-    private let handler: ImageStageProgressHandler
+    private let handler: AttachmentStageProgressHandler
 
-    init(_ handler: @escaping ImageStageProgressHandler) {
+    init(_ handler: @escaping AttachmentStageProgressHandler) {
         self.handler = handler
     }
 
@@ -27,7 +27,7 @@ protocol AttachmentClipboard {
 }
 
 @MainActor
-struct SystemImageClipboard: AttachmentClipboard {
+struct SystemAttachmentClipboard: AttachmentClipboard {
     static let lifetime: TimeInterval = 24 * 60 * 60
 
     func copy(_ path: String) throws {
