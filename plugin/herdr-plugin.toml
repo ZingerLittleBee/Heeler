@@ -19,6 +19,8 @@ command = ["node", "src/pair-action.js"]
 id = "pair"
 title = "Pair device"
 placement = "popup"
+width = "80%"
+height = "90%"
 command = ["node", "src/pair-popup.js"]
 
 [[events]]

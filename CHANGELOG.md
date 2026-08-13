@@ -100,6 +100,11 @@ Entries reference the issue that motivated them.
   The plugin id remains `heeler.pairing`, so already-linked Hosts do not need
   to reinstall.
 
+- The pairing popup QR is drawn with octant block characters (2×4 modules
+  per cell), so it stays square and solid at half the previous width and
+  height. The pair popup is 80%×90% so the QR and the connection details fit
+  together.
+
 ### Fixed
 
 - Malformed herdr API error responses that carry an empty id now fail the

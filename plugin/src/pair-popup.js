@@ -8,8 +8,6 @@
 
 import os from "node:os";
 import { emitKeypressEvents } from "node:readline";
-import QRCode from "qrcode";
-
 import { candidateAddresses } from "./addresses.js";
 import { readHostKeyFingerprint } from "./host-key.js";
 import { encodePairingCode } from "./envelope.js";
@@ -29,6 +27,7 @@ import {
   toggleAll,
   selectedAddresses,
 } from "./select-list.js";
+import { renderTerminalQr } from "./terminal-qr.js";
 
 const DEFAULT_SSH_PORT = 22;
 // How often the QR screen checks whether Enrollment has completed. The pending
@@ -74,7 +73,7 @@ function renderChecklist(state, warning) {
 
 async function renderPairingCode(payload) {
   const code = encodePairingCode(payload);
-  const qr = await QRCode.toString(code, { type: "terminal", small: true });
+  const qr = renderTerminalQr(code);
   const expires = new Date(payload.expiresAt * 1000).toLocaleTimeString();
   const lines = [
     `${BOLD}Scan with Heeler${RESET}`,
