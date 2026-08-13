@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreImage
 import SwiftUI
+import Vision
 import VisionKit
 
 /// Scan to Pair (#62, #66): the camera entry for Pairing Codes, with the

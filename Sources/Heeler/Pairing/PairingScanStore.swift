@@ -74,8 +74,9 @@ final class PairingScanStore {
         self.now = now
     }
 
-    /// Convenience for the pipeline's historical shape: a bare decoded
-    /// string, as v1 QR codes always deliver.
+    /// Test-only convenience: the pipeline's historical shape, a bare
+    /// decoded string with no descriptor bytes, as v1 QR codes deliver. The
+    /// scan view submits a full `ScannedQRCode`.
     func submit(scannedCode: String) {
         submit(scanned: ScannedQRCode(string: scannedCode, bytes: nil))
     }

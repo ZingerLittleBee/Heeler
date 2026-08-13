@@ -132,6 +132,9 @@ extension PairingCode {
         if flags & 0x01 != 0 {
             let seed = Data(try reader.take(32))
             let expiresAt = try reader.uint32()
+            guard expiresAt > 0 else {
+                throw .badPayload(reason: "expiresAt must be a positive unix-seconds integer")
+            }
             bootstrap = Bootstrap(
                 seed: seed, expiresAt: Date(timeIntervalSince1970: TimeInterval(expiresAt)))
         } else {

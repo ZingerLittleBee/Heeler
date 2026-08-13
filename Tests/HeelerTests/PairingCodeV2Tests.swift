@@ -60,6 +60,11 @@ struct PairingCodeV2Tests {
             [0x20, 0x01, 0x0D, 0xB8, 0, 1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6] as [UInt8],
             "2001:db8:1:2:3:4:5:6"
         ),
+        // RFC 5952 §4.2.2: an isolated zero group must not become "::".
+        (
+            [0x20, 0x01, 0x0D, 0xB8, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1] as [UInt8],
+            "2001:db8:0:1:1:1:1:1"
+        ),
     ])
     func canonicalizesIPv6(raw: [UInt8], expected: String) throws {
         var envelope = Envelope()
@@ -121,6 +126,10 @@ struct PairingCodeV2Tests {
         add("reserved flag bit alongside bootstrap", "bad_payload") { envelope in
             envelope.flags = 0x81
             envelope.bootstrap = (seed: Array(repeating: 0, count: 32), expiresAt: 1)
+        }
+        add("bootstrap expiry zero", "bad_payload") { envelope in
+            envelope.flags = 0x01
+            envelope.bootstrap = (seed: (0...31).map { UInt8($0) }, expiresAt: 0)
         }
         add("port zero", "bad_payload") { $0.port = 0 }
         add("username length zero", "bad_payload") { envelope in
