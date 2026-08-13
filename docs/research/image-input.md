@@ -2,6 +2,12 @@
 
 Date: 2026-07-23
 
+> **Superseded in part, 2026-08-13.** ADR 0013 made Attach display-only and
+> moved authored input into the local Composer. The production action is now
+> **Add**, and staged paths are inserted into the Composer draft rather than the
+> live Attach input stream. The older action name and insertion route below are
+> retained as the historical design record.
+
 > **Superseded in part, 2026-08-04.** The SSH backend named throughout this
 > review no longer exists. ADR 0011 replaced Citadel, NIOSSH, and SwiftNIO with
 > the repository-local `HeelerSSH` package (libssh2 + OpenSSL), and image
