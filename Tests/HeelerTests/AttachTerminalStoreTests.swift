@@ -183,7 +183,7 @@ struct AttachTerminalStoreTests {
             ])
     }
 
-    @Test func inputControllerOwnsTheLiveWriterAndPauseGate() async throws {
+    @Test func inputControllerOwnsTheLiveWriter() async throws {
         let transport = ScriptedTransport()
         let input = TerminalInputController()
         let (store, _) = makeStore(transport: transport, input: input)
@@ -192,40 +192,11 @@ struct AttachTerminalStoreTests {
         #expect(input.liveGeneration != nil)
 
         store.send(Data("before".utf8))
-        input.pause()
-        store.send(Data("blocked".utf8))
-        input.resume()
+        await store.stop()
         store.send(Data("after".utf8))
-        await store.stop()
 
-        #expect(
-            await transport.attachInputs == [
-                .keystrokes(Data("before".utf8)),
-                .keystrokes(Data("after".utf8)),
-            ])
+        #expect(await transport.attachInputs == [.keystrokes(Data("before".utf8))])
         #expect(input.liveGeneration == nil)
-    }
-
-    @Test func remoteOutputContinuesWhileLocalInputIsPaused() async throws {
-        let transport = ScriptedTransport()
-        let input = TerminalInputController()
-        let (store, captured) = makeStore(transport: transport, input: input)
-
-        try await goLive(store, transport)
-
-        input.pause()
-        store.send(Data("blocked".utf8))
-        await transport.emitAttachOutput(Data("still rendering".utf8))
-        try await waitUntil("remote output should keep reaching the terminal feed") {
-            captured.text == "\u{1B}[2Jstill rendering"
-        }
-
-        #expect(input.isPaused)
-        #expect(await transport.attachInputs.isEmpty)
-        #expect(captured.text == "\u{1B}[2Jstill rendering")
-
-        input.resume()
-        await store.stop()
     }
 
     @Test func reattachAdvancesTheInputSessionGeneration() async throws {
