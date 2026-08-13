@@ -29,8 +29,7 @@ struct AgentComposerKeyboardLayout: Equatable {
 }
 
 struct AgentComposerActions {
-    let canAddImage: Bool
-    let canAddFile: Bool
+    let canBegin: Bool
     let attachLinkCount: Int
     let addImage: () -> Void
     let addFile: () -> Void
@@ -123,11 +122,11 @@ struct AgentComposerView: View {
                                 Button("Add Image", systemImage: "photo") {
                                     actions.addImage()
                                 }
-                                .disabled(!actions.canAddImage)
+                                .disabled(!actions.canBegin)
                                 Button("Add File", systemImage: "doc") {
                                     actions.addFile()
                                 }
-                                .disabled(!actions.canAddFile)
+                                .disabled(!actions.canBegin)
                             } label: {
                                 Image(systemName: "plus")
                                     .font(.system(size: 15, weight: .semibold))

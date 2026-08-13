@@ -3,9 +3,9 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// The live Ghostty surface used by Agent detail. When a Composer is present,
-/// the terminal is display-only: it still renders, scrolls, opens links, and
-/// reports resize, while all authored input goes through `agent.prompt`.
+/// The live Ghostty surface used by Agent detail. The terminal is display-only:
+/// it still renders, scrolls, opens links, and reports resize, while all
+/// authored input goes through Composer or its explicit terminal controls.
 struct AgentTerminalView: View {
     let agent: ConsoleAgent
     private let console: ConsoleStore
@@ -29,7 +29,7 @@ struct AgentTerminalView: View {
     /// dismiss — the owner clears the sidebar selection instead, which also
     /// pops the collapsed stack on iPhone.
     private let onClosed: () -> Void
-    private let composer: AgentComposerStore?
+    private let composer: AgentComposerStore
     @State private var attach: AgentAttachStore
     /// Nil for agent kinds without a skills source catalog; the Keys
     /// keyboard hides the Skills tab in that case.
@@ -73,7 +73,7 @@ struct AgentTerminalView: View {
         isOnStage: @escaping () -> Bool,
         onSwitch: @escaping (ConsoleAgent.ID) -> Void,
         onClosed: @escaping () -> Void,
-        composer: AgentComposerStore? = nil,
+        composer: AgentComposerStore,
         attachStore: AgentAttachStore? = nil
     ) {
         self.agent = agent
@@ -94,7 +94,7 @@ struct AgentTerminalView: View {
                 isOnStage: isOnStage,
                 runTerminal: console.terminalRunner(for: agent.hostID),
                 stageImage: console.imageStager(for: agent.hostID),
-                stageFile: composer == nil ? nil : console.fileStager(for: agent.hostID),
+                stageFile: console.fileStager(for: agent.hostID),
                 composer: composer
             ) {
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
@@ -135,17 +135,7 @@ struct AgentTerminalView: View {
             attach.scroll(sequence, rows: rows)
         }
         screen.keyboardControl = keyboardControl
-        if composer == nil {
-            screen.onPaste = { text, bracketed in
-                attach.requestPaste(text, bracketedPaste: bracketed)
-            }
-            screen.onSnippet = { text, bracketed in
-                attach.insertSnippet(text, bracketedPaste: bracketed)
-            }
-            screen.keysContext = terminalKeysContext
-            screen.claimsKeyboard = { keyboardHandoff.consume(agent.id) }
-        }
-        screen.isLocalInputEnabled = composer == nil && attach.isLocalInputEnabled
+        screen.isLocalInputEnabled = false
         screen.theme = terminal.themes.theme
         screen.fontSize = terminal.zoom.fontSize
         screen.fontFamily = terminal.fonts.familyName
@@ -166,7 +156,7 @@ struct AgentTerminalView: View {
         // otherwise replacing the system keyboard changes the proposal that
         // reaches Ghostty even when our explicit inset is unchanged.
         .ignoresSafeArea(.keyboard, edges: .bottom)
-        .task { composer?.open() }
+        .task { composer.open() }
     }
 
     private var presentedSurface: some View {
@@ -180,7 +170,7 @@ struct AgentTerminalView: View {
             allowedContentTypes: [.data]
         ) { result in
             guard case .success(let url) = result else { return }
-            attach.selectFile(url)
+            attach.staging.begin(.file(url))
         }
         .popover(isPresented: $isShowingAttachLinks) {
             AttachLinksView(
@@ -303,14 +293,14 @@ struct AgentTerminalView: View {
         .onChange(of: selectedPhoto) { _, item in
             guard let item else { return }
             selectedPhoto = nil
-            attach.selectImage(PhotosPickerImageSelection(item: item))
+            attach.staging.begin(.photo(PhotosPickerImageSelection(item: item)))
         }
-        // Follows the grace period, not the raw scene phase: an image upload
+        // Follows the grace period, not the raw scene phase: a staging operation
         // is exactly the work worth finishing while the app is briefly out of
         // sight, and it is cancelled only once the app really suspends.
         .onChange(of: activity.phase) { _, phase in
             guard phase == .suspended else { return }
-            attach.didEnterBackground()
+            attach.staging.didEnterBackground()
         }
         // Not the phase: a background→foreground round trip the grace period
         // absorbs never leaves `.active`, so the return that has to prove the
@@ -364,13 +354,12 @@ struct AgentTerminalView: View {
         AgentComposerKeyboardLayout(
             currentHeight: keyboardInset.height,
             lastPresentedHeight: keyboardInset.lastPresentedHeight,
-            presentation: composer == nil ? .hidden : composerKeyboardPresentation)
+            presentation: composerKeyboardPresentation)
     }
 
     private var composerActions: AgentComposerActions {
         AgentComposerActions(
-            canAddImage: attach.canSelectImage,
-            canAddFile: attach.canSelectFile,
+            canBegin: attach.staging.canBegin,
             attachLinkCount: attach.attachLinks.count,
             addImage: { isSelectingPhoto = true },
             addFile: { isSelectingFile = true },
@@ -394,25 +383,15 @@ struct AgentTerminalView: View {
         // down. It outlives the keyboard on purpose: an Agent is worth
         // switching to whether or not the user is typing.
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if let composer {
-                AgentComposerView(
-                    store: composer,
-                    status: agent.agent.status,
-                    switcher: agentSwitcher,
-                    keyboardHandoff: keyboardHandoff,
-                    keyboardHeight: composerKeyboardLayout.availableToolsHeight,
-                    actions: composerActions,
-                    keyboardPresentation: $composerKeyboardPresentation,
-                    prepareKeyboardPresentation: prepareComposerKeyboardPresentation)
-            } else {
-                TerminalAgentSwitcherRow(
-                    switcher: agentSwitcher,
-                    // The strip's own toggle: the inset is what the terminal has
-                    // already been resized for, so it is what the icon must agree
-                    // with.
-                    isKeyboardUp: keyboardInset.height > 0,
-                    toggleKeyboard: keyboardControl.toggleKeyboard)
-            }
+            AgentComposerView(
+                store: composer,
+                status: agent.agent.status,
+                switcher: agentSwitcher,
+                keyboardHandoff: keyboardHandoff,
+                keyboardHeight: composerKeyboardLayout.availableToolsHeight,
+                actions: composerActions,
+                keyboardPresentation: $composerKeyboardPresentation,
+                prepareKeyboardPresentation: prepareComposerKeyboardPresentation)
         }
         // Not SwiftUI's keyboard avoidance: it retracts in two stages and the
         // terminal would resize twice per dismissal. See TerminalKeyboardInset.
@@ -424,17 +403,15 @@ struct AgentTerminalView: View {
         // in Tools mode it is already in place when UIKit removes its native
         // candidate row, so no intermediate gap is ever exposed.
         .overlay(alignment: .bottom) {
-            if let composer {
-                AgentToolsKeyboard(
-                    store: composer,
-                    context: terminalKeysContext,
-                    height: composerKeyboardLayout.availableToolsHeight,
-                    quickKeysEnabled: attach.isLocalInputEnabled,
-                    sendQuickKey: keyboardControl.sendQuickKey)
-                .opacity(composerKeyboardPresentation == .tools ? 1 : 0)
-                .allowsHitTesting(composerKeyboardPresentation == .tools)
-                .accessibilityHidden(composerKeyboardPresentation != .tools)
-            }
+            AgentToolsKeyboard(
+                store: composer,
+                context: terminalKeysContext,
+                height: composerKeyboardLayout.availableToolsHeight,
+                quickKeysEnabled: true,
+                sendQuickKey: keyboardControl.sendQuickKey)
+            .opacity(composerKeyboardPresentation == .tools ? 1 : 0)
+            .allowsHitTesting(composerKeyboardPresentation == .tools)
+            .accessibilityHidden(composerKeyboardPresentation != .tools)
         }
         // The navigation bar remains present only as the owner of the status
         // bar appearance. Its content stays hidden, while this inset keeps
@@ -559,110 +536,30 @@ struct AgentTerminalView: View {
 
     @ViewBuilder
     private var attachmentStatus: some View {
-        if let fileState = attach.fileState, fileState != .idle {
-            fileAttachStatus(fileState)
-        } else {
-            imageAttachStatus(attach.imageState)
-        }
-    }
-
-    @ViewBuilder
-    private func imageAttachStatus(_ state: ImageAttachState) -> some View {
-        switch state {
-        case .idle:
-            EmptyView()
-        case .preparing:
-            ImageAttachStatusBar(
-                icon: "photo",
-                title: "Preparing Image…",
-                accessibilityLabel: "Preparing Image"
+        if let presentation = attach.staging.presentation {
+            AttachmentStatusBar(
+                icon: presentation.icon,
+                title: presentation.title,
+                accessibilityLabel: presentation.accessibilityLabel
             ) {
-                Button("Cancel", role: .cancel) { attach.cancelImage() }
-            }
-        case .uploading(let progress):
-            ImageAttachStatusBar(
-                icon: "arrow.up.circle",
-                title: "Uploading Image… \(Int(progress.fractionCompleted * 100))%",
-                accessibilityLabel:
-                    "Uploading Image, \(Int(progress.fractionCompleted * 100)) percent"
-            ) {
-                Button("Cancel", role: .cancel) { attach.cancelImage() }
-            }
-        case .failed(let failure), .backgroundInterrupted(let failure):
-            ImageAttachStatusBar(
-                icon: "exclamationmark.triangle",
-                title: failure.message,
-                accessibilityLabel: failure.message
-            ) {
-                if failure.isRetryable {
-                    Button("Retry") { attach.retryImage() }
+                ForEach(presentation.commands, id: \.self) { command in
+                    stagingCommandButton(command)
                 }
-                Button("Dismiss", role: .cancel) { attach.dismissImageResult() }
-            }
-        case .completed(let result):
-            ImageAttachStatusBar(
-                icon: result.copied && result.inserted ? "checkmark.circle" : "info.circle",
-                title: result.message,
-                accessibilityLabel: result.message
-            ) {
-                if !result.copied {
-                    Button("Copy Path") { attach.copyImagePath() }
-                }
-                if !result.inserted {
-                    Button("Insert Path") { attach.insertImagePath() }
-                }
-                Button("Done", role: .cancel) { attach.dismissImageResult() }
             }
         }
     }
 
     @ViewBuilder
-    private func fileAttachStatus(_ state: FileAttachState) -> some View {
-        switch state {
-        case .idle:
-            EmptyView()
-        case .preparing:
-            ImageAttachStatusBar(
-                icon: "doc",
-                title: "Preparing File…",
-                accessibilityLabel: "Preparing File"
-            ) {
-                Button("Cancel", role: .cancel) { attach.cancelFile() }
-            }
-        case .uploading(let progress):
-            ImageAttachStatusBar(
-                icon: "arrow.up.circle",
-                title: "Uploading File… \(Int(progress.fractionCompleted * 100))%",
-                accessibilityLabel:
-                    "Uploading File, \(Int(progress.fractionCompleted * 100)) percent"
-            ) {
-                Button("Cancel", role: .cancel) { attach.cancelFile() }
-            }
-        case .failed(let failure), .backgroundInterrupted(let failure):
-            ImageAttachStatusBar(
-                icon: "exclamationmark.triangle",
-                title: failure.message,
-                accessibilityLabel: failure.message
-            ) {
-                if failure.isRetryable {
-                    Button("Retry") { attach.retryFile() }
-                }
-                Button("Dismiss", role: .cancel) { attach.dismissFileResult() }
-            }
-        case .completed(let result):
-            ImageAttachStatusBar(
-                icon: result.copied && result.inserted ? "checkmark.circle" : "info.circle",
-                title: result.message,
-                accessibilityLabel: result.message
-            ) {
-                if !result.copied {
-                    Button("Copy Path") { attach.copyFilePath() }
-                }
-                if !result.inserted {
-                    Button("Insert Path") { attach.insertFilePath() }
-                }
-                Button("Done", role: .cancel) { attach.dismissFileResult() }
-            }
+    private func stagingCommandButton(_ command: ComposerStagingStore.Command) -> some View {
+        switch command {
+        case .cancel:
+            Button("Cancel", role: .cancel) { attach.staging.perform(command) }
+        case .retry:
+            Button("Retry") { attach.staging.perform(command) }
+        case .copyPath:
+            Button("Copy Path") { attach.staging.perform(command) }
+        case .dismiss:
+            Button("Dismiss", role: .cancel) { attach.staging.perform(command) }
         }
     }
 
@@ -777,7 +674,7 @@ private struct AttachLinksView: View {
     }
 }
 
-private struct ImageAttachStatusBar<Actions: View>: View {
+private struct AttachmentStatusBar<Actions: View>: View {
     let icon: String
     let title: String
     let accessibilityLabel: String
