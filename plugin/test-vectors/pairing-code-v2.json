@@ -32,6 +32,26 @@
         "username": "用户",
         "hostKeyFingerprint": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg"
       }
+    },
+    {
+      "name": "IPv6 equal zero runs compress the first run",
+      "envelopeHex": "48500200001603616461ebe8e770d7626ec1b672abdfa0b0291ab3bc0af230004333b01f888a53acf2d8010600010000000000020000000000030004",
+      "payload": {
+        "addresses": ["1::2:0:0:3:4"],
+        "port": 22,
+        "username": "ada",
+        "hostKeyFingerprint": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg"
+      }
+    },
+    {
+      "name": "IPv6 edge compression preserves an isolated zero group",
+      "envelopeHex": "48500200001603616461ebe8e770d7626ec1b672abdfa0b0291ab3bc0af230004333b01f888a53acf2d803060000000000000000000000000000000106200100000000000000000000000000000620010db8000000010001000100010001",
+      "payload": {
+        "addresses": ["::1", "2001::", "2001:db8:0:1:1:1:1:1"],
+        "port": 22,
+        "username": "ada",
+        "hostKeyFingerprint": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg"
+      }
     }
   ],
   "invalid": [

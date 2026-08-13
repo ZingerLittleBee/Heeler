@@ -36,7 +36,7 @@ function fromVectorShape(payload) {
 
 suite("Pairing Code v2 shared vectors", () => {
   test("vector file covers the contract", () => {
-    assert.equal(vectors.valid.length, 3);
+    assert.equal(vectors.valid.length, 5);
     assert.ok(vectors.invalid.length >= 13);
   });
 
