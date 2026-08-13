@@ -15,7 +15,7 @@ struct SSHTransportSettings: Sendable {
 
     /// The Heeler plugin (ADR 0007/0008) whose config dir holds the
     /// Notification Registration file.
-    static let notificationPluginID = "heeler.pairing"
+    static let notificationPluginID = "heeler"
 
     static let defaultNotificationConfigDirCommand =
         "/bin/sh -c 'printf \"__HEELER_PLUGIN_CONFIG_DIR__=%s\\n\" "

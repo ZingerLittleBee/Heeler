@@ -90,7 +90,7 @@ that is **System Settings > General > Sharing > Remote Login**):
 
 ```bash
 herdr plugin install ZingerLittleBee/Heeler/plugin --ref main --yes
-herdr plugin action invoke heeler.pairing.pair
+herdr plugin action invoke heeler.pair
 ```
 
 The `pair` action opens a popup with a Pairing Code QR; scan it with the app

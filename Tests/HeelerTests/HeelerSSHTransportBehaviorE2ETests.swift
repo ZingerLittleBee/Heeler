@@ -122,7 +122,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
         var disabled = environment.directSettings()
         disabled.pluginListCommand =
             "printf '%s' '{\"id\":\"cli:plugin\",\"result\":{\"plugins\":["
-            + "{\"plugin_id\":\"heeler.pairing\",\"enabled\":false}]}}'"
+            + "{\"plugin_id\":\"heeler\",\"enabled\":false}]}}'"
         #expect(
             try await notificationRegistrationFailure(settings: disabled)
                 == .pluginNotInstalled)
@@ -997,7 +997,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
         var settings = baseSettings
         settings.pluginListCommand =
             "printf '%s' '{\"id\":\"cli:plugin\",\"result\":{\"plugins\":["
-            + "{\"plugin_id\":\"heeler.pairing\",\"enabled\":true}]}}'"
+            + "{\"plugin_id\":\"heeler\",\"enabled\":true}]}}'"
         settings.notificationConfigDirCommand =
             "/bin/sh -c 'umask 077; mkdir -p \"$1\" || exit 1; "
             + "printf \"__HEELER_PLUGIN_CONFIG_DIR__=%s\\n\" \"$1\"' notify "
@@ -1249,7 +1249,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
 
     private static let installedPluginListCommand =
         "printf '%s' '{\"id\":\"cli:plugin\",\"result\":{\"plugins\":["
-        + "{\"plugin_id\":\"heeler.pairing\",\"enabled\":true}]}}'"
+        + "{\"plugin_id\":\"heeler\",\"enabled\":true}]}}'"
 
     /// The `NotificationRegistrationError` a registration read raises on a
     /// Host connected with `settings`, or nil if the read succeeded.

@@ -42,14 +42,14 @@ Herdr stores the plugin in its managed checkout and runs the manifest's
 enabled:
 
 ```bash
-herdr plugin list --plugin heeler.pairing
-herdr plugin config-dir heeler.pairing
+herdr plugin list --plugin heeler
+herdr plugin config-dir heeler
 ```
 
 Open the Pairing Code popup:
 
 ```bash
-herdr plugin action invoke heeler.pairing.pair
+herdr plugin action invoke heeler.pair
 ```
 
 Scan the code in Heeler to add this machine as a Host. Then open the
@@ -62,7 +62,7 @@ To update an installed GitHub-managed plugin, run the same `plugin install`
 command again. To inspect notification or pairing failures:
 
 ```bash
-herdr plugin log list --plugin heeler.pairing --limit 20
+herdr plugin log list --plugin heeler --limit 20
 ```
 
 For local development, link the working tree instead. Build it first because
@@ -71,7 +71,7 @@ For local development, link the working tree instead. Build it first because
 ```bash
 cd plugin && npm ci
 herdr plugin link "$(pwd)"
-herdr plugin action invoke heeler.pairing.pair
+herdr plugin action invoke heeler.pair
 ```
 
 The popup checklist: arrows or `j`/`k` move, space toggles, `a` toggles all,
