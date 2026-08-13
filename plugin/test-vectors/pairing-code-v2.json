@@ -1,0 +1,124 @@
+{
+  "description": "Shared Pairing Code v2 test vectors. Single source of truth for the compact binary envelope, consumed by both the Node plugin tests and the Swift app tests (ADR 0014). envelopeHex is the exact QR byte-mode payload. IPv6 payload strings use lowercase hexadecimal without leading zeroes and compress the longest, first-on-tie run of at least two zero groups.",
+  "valid": [
+    {
+      "name": "minimal config-only single IPv4",
+      "envelopeHex": "48500200001603616461ebe8e770d7626ec1b672abdfa0b0291ab3bc0af230004333b01f888a53acf2d80104c0a8012a",
+      "payload": {
+        "addresses": ["192.168.1.42"],
+        "port": 22,
+        "username": "ada",
+        "hostKeyFingerprint": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg"
+      }
+    },
+    {
+      "name": "full IPv4 IPv6 hostname and bootstrap credential",
+      "envelopeHex": "4850020108ae056772616365ebe8e770d7626ec1b672abdfa0b0291ab3bc0af230004333b01f888a53acf2d8000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f6881520003040a00000706fd7a115ca1e000000000000000000001000e6865656c65722e6578616d706c65",
+      "payload": {
+        "addresses": ["10.0.0.7", "fd7a:115c:a1e0::1", "heeler.example"],
+        "port": 2222,
+        "username": "grace",
+        "hostKeyFingerprint": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg",
+        "bootstrapSeed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+        "expiresAt": 1753305600
+      }
+    },
+    {
+      "name": "multibyte UTF-8 username and hostname",
+      "envelopeHex": "48500200ffff06e794a8e688b7ebe8e770d7626ec1b672abdfa0b0291ab3bc0af230004333b01f888a53acf2d801000ee4b8bbe69cba2e6578616d706c65",
+      "payload": {
+        "addresses": ["主机.example"],
+        "port": 65535,
+        "username": "用户",
+        "hostKeyFingerprint": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg"
+      }
+    },
+    {
+      "name": "IPv6 equal zero runs compress the first run",
+      "envelopeHex": "48500200001603616461ebe8e770d7626ec1b672abdfa0b0291ab3bc0af230004333b01f888a53acf2d8010600010000000000020000000000030004",
+      "payload": {
+        "addresses": ["1::2:0:0:3:4"],
+        "port": 22,
+        "username": "ada",
+        "hostKeyFingerprint": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg"
+      }
+    },
+    {
+      "name": "IPv6 edge compression preserves an isolated zero group",
+      "envelopeHex": "48500200001603616461ebe8e770d7626ec1b672abdfa0b0291ab3bc0af230004333b01f888a53acf2d803060000000000000000000000000000000106200100000000000000000000000000000620010db8000000010001000100010001",
+      "payload": {
+        "addresses": ["::1", "2001::", "2001:db8:0:1:1:1:1:1"],
+        "port": 22,
+        "username": "ada",
+        "hostKeyFingerprint": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "wrong magic",
+      "envelopeHex": "00500200001603616461ebe8e770d7626ec1b672abdfa0b0291ab3bc0af230004333b01f888a53acf2d80104c0a8012a",
+      "error": "bad_prefix"
+    },
+    {
+      "name": "unsupported version",
+      "envelopeHex": "48500300001603616461ebe8e770d7626ec1b672abdfa0b0291ab3bc0af230004333b01f888a53acf2d80104c0a8012a",
+      "error": "unsupported_version"
+    },
+    {
+      "name": "reserved flag bit set",
+      "envelopeHex": "48500280001603616461ebe8e770d7626ec1b672abdfa0b0291ab3bc0af230004333b01f888a53acf2d80104c0a8012a",
+      "error": "bad_encoding"
+    },
+    {
+      "name": "truncated IPv4 address",
+      "envelopeHex": "48500200001603616461ebe8e770d7626ec1b672abdfa0b0291ab3bc0af230004333b01f888a53acf2d80104c0a801",
+      "error": "bad_encoding"
+    },
+    {
+      "name": "trailing byte",
+      "envelopeHex": "48500200001603616461ebe8e770d7626ec1b672abdfa0b0291ab3bc0af230004333b01f888a53acf2d80104c0a8012a00",
+      "error": "bad_encoding"
+    },
+    {
+      "name": "port zero",
+      "envelopeHex": "48500200000003616461ebe8e770d7626ec1b672abdfa0b0291ab3bc0af230004333b01f888a53acf2d80104c0a8012a",
+      "error": "bad_payload"
+    },
+    {
+      "name": "username length zero",
+      "envelopeHex": "48500200001600616461ebe8e770d7626ec1b672abdfa0b0291ab3bc0af230004333b01f888a53acf2d80104c0a8012a",
+      "error": "bad_payload"
+    },
+    {
+      "name": "address count zero",
+      "envelopeHex": "48500200001603616461ebe8e770d7626ec1b672abdfa0b0291ab3bc0af230004333b01f888a53acf2d80004c0a8012a",
+      "error": "bad_payload"
+    },
+    {
+      "name": "malformed username UTF-8",
+      "envelopeHex": "48500200001603c0af61ebe8e770d7626ec1b672abdfa0b0291ab3bc0af230004333b01f888a53acf2d80104c0a8012a",
+      "error": "bad_encoding"
+    },
+    {
+      "name": "unknown address type",
+      "envelopeHex": "48500200001603616461ebe8e770d7626ec1b672abdfa0b0291ab3bc0af230004333b01f888a53acf2d801ffc0a8012a",
+      "error": "bad_encoding"
+    },
+    {
+      "name": "hostname length zero",
+      "envelopeHex": "48500200001603616461ebe8e770d7626ec1b672abdfa0b0291ab3bc0af230004333b01f888a53acf2d8010000",
+      "error": "bad_payload"
+    },
+    {
+      "name": "malformed hostname UTF-8",
+      "envelopeHex": "48500200001603616461ebe8e770d7626ec1b672abdfa0b0291ab3bc0af230004333b01f888a53acf2d8010002c0af",
+      "error": "bad_encoding"
+    },
+    {
+      "name": "bootstrap expiry zero",
+      "envelopeHex": "4850020108ae056772616365ebe8e770d7626ec1b672abdfa0b0291ab3bc0af230004333b01f888a53acf2d8000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f0000000003040a00000706fd7a115ca1e000000000000000000001000e6865656c65722e6578616d706c65",
+      "error": "bad_payload"
+    }
+  ]
+}
