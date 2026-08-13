@@ -30,10 +30,11 @@ name: CI
 # - `landing/**` and its workflow are the marketing site (Astro on Cloudflare),
 #   which shares no code with the app, the plugin, or the relay. It has its own
 #   workflow, landing.yml.
-# - `AGENTS.md`, `CLAUDE.md`, `CONTEXT.md`, and `docs/**` are prose. No test or
-#   script reads their contents — the suites that name them only quote them in
-#   comments — so a docs-only change has nothing here to pass or fail.
-#   `CHANGELOG.md` is deliberately absent: scripts/publish.sh consumes it.
+# - Markdown anywhere, and `docs/**` for the images beside it, is prose. No job
+#   here reads a repository `.md` file: the suites that name one either quote it
+#   in a comment or assert an in-app URL string, and the `SKILL.md` paths belong
+#   to remote fixtures. `CHANGELOG.md` is included too — scripts/publish.sh
+#   consumes it, but that runs from `make publish`, never from CI.
 #
 # paths-ignore only skips a run when *every* changed path matches, so a commit
 # touching prose alongside Swift still runs the full suite. A change to this
@@ -44,18 +45,14 @@ on:
     paths-ignore:
       - landing/**
       - .github/workflows/landing.yml
-      - AGENTS.md
-      - CLAUDE.md
-      - CONTEXT.md
+      - '**.md'
       - docs/**
   push:
     branches: [main]
     paths-ignore:
       - landing/**
       - .github/workflows/landing.yml
-      - AGENTS.md
-      - CLAUDE.md
-      - CONTEXT.md
+      - '**.md'
       - docs/**
 
 # One in-flight run per ref; a new push cancels the previous run.
