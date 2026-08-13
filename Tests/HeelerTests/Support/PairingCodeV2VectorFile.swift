@@ -7,9 +7,9 @@ import Foundation
 /// until integration lands the file.
 ///
 /// Expected schema, mirroring v1 with the envelope carried as bytes:
-/// `valid` entries have `name`, `codeHex` (the binary envelope as hex), and
+/// `valid` entries have `name`, `envelopeHex` (the binary envelope as hex), and
 /// `payload` (same shape as v1); `invalid` entries have `name`, `error`, and
-/// either `codeHex` or `code` (a scanned-string form, for cases only
+/// either `envelopeHex` or `code` (a scanned-string form, for cases only
 /// expressible as text, such as scalars above U+00FF).
 struct PairingCodeV2VectorFile: Decodable, Sendable {
     let valid: [Valid]
@@ -17,14 +17,14 @@ struct PairingCodeV2VectorFile: Decodable, Sendable {
 
     struct Valid: Decodable, Sendable, CustomStringConvertible {
         let name: String
-        let codeHex: String
+        let envelopeHex: String
         let payload: PairingCodeVectorFile.Payload
         var description: String { name }
     }
 
     struct Invalid: Decodable, Sendable, CustomStringConvertible {
         let name: String
-        let codeHex: String?
+        let envelopeHex: String?
         let code: String?
         /// The expected error identifier, e.g. "bad_prefix".
         let error: String

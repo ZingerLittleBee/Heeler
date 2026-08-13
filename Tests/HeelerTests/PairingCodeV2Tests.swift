@@ -122,8 +122,8 @@ struct PairingCodeV2Tests {
         add("wrong magic", "bad_prefix") { $0.magic = [0x51, 0x52] }
         add("version 1", "unsupported_version") { $0.version = 0x01 }
         add("version 3", "unsupported_version") { $0.version = 0x03 }
-        add("reserved flag bit", "bad_payload") { $0.flags = 0x02 }
-        add("reserved flag bit alongside bootstrap", "bad_payload") { envelope in
+        add("reserved flag bit", "bad_encoding") { $0.flags = 0x02 }
+        add("reserved flag bit alongside bootstrap", "bad_encoding") { envelope in
             envelope.flags = 0x81
             envelope.bootstrap = (seed: Array(repeating: 0, count: 32), expiresAt: 1)
         }
@@ -136,7 +136,7 @@ struct PairingCodeV2Tests {
             envelope.username = []
             envelope.usernameLength = 0
         }
-        add("username is not UTF-8", "bad_payload") { $0.username = [0xC3, 0x28, 0x41] }
+        add("username is not UTF-8", "bad_encoding") { $0.username = [0xC3, 0x28, 0x41] }
         add("username contains whitespace", "bad_payload") { $0.username = [0x61, 0x20, 0x62] }
         add("declared username length overruns the envelope", "bad_encoding") {
             $0.usernameLength = 200
@@ -146,9 +146,9 @@ struct PairingCodeV2Tests {
             envelope.addressCount = 0
         }
         add("address count overruns the envelope", "bad_encoding") { $0.addressCount = 3 }
-        add("unknown address type", "bad_payload") { $0.addresses = [[0x07, 1, 2, 3, 4]] }
+        add("unknown address type", "bad_encoding") { $0.addresses = [[0x07, 1, 2, 3, 4]] }
         add("hostname length zero", "bad_payload") { $0.addresses = [[0x00, 0x00]] }
-        add("hostname is not UTF-8", "bad_payload") { $0.addresses = [[0x00, 2, 0xC3, 0x28]] }
+        add("hostname is not UTF-8", "bad_encoding") { $0.addresses = [[0x00, 2, 0xC3, 0x28]] }
         add("hostname contains whitespace", "bad_payload") {
             $0.addresses = [[0x00, 3] + Array("a b".utf8)]
         }
@@ -399,7 +399,7 @@ struct PairingCodeV2VectorTests {
 
     @Test(arguments: vectors?.valid ?? [])
     func decodesValidVector(vector: PairingCodeV2VectorFile.Valid) throws {
-        let data = try #require(Data(hexEncoded: vector.codeHex), "codeHex must be hex")
+        let data = try #require(Data(hexEncoded: vector.envelopeHex), "envelopeHex must be hex")
 
         let code = try PairingCode.decodeV2(data)
 
@@ -425,8 +425,8 @@ struct PairingCodeV2VectorTests {
     @Test(arguments: vectors?.invalid ?? [])
     func rejectsInvalidVector(vector: PairingCodeV2VectorFile.Invalid) throws {
         do {
-            if let codeHex = vector.codeHex {
-                let data = try #require(Data(hexEncoded: codeHex), "codeHex must be hex")
+            if let envelopeHex = vector.envelopeHex {
+                let data = try #require(Data(hexEncoded: envelopeHex), "envelopeHex must be hex")
                 _ = try PairingCode.decodeV2(data)
             } else {
                 let code = try #require(vector.code, "invalid vector carries neither form")

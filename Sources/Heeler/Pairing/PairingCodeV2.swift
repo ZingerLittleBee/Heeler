@@ -31,10 +31,13 @@ struct ScannedQRCode: Sendable, Equatable {
 ///     then per address: type 0x04 (4 raw IPv4 bytes), 0x06 (16 raw IPv6
 ///     bytes, no zone), or 0x00 (u8 hostname length 1...255 + UTF-8)
 ///
-/// Errors map onto the v1 taxonomy: wrong magic → `badPrefix`, wrong version
-/// → `unsupportedVersion`, truncated input / trailing bytes / a scanned
-/// string that cannot be byte-recovered → `badEncoding`, every field-level
-/// violation → `badPayload`.
+/// Errors map onto the v1 taxonomy, aligned with the shared v2 vectors:
+/// wrong magic → `badPrefix`; wrong version → `unsupportedVersion`;
+/// structural damage → `badEncoding` (truncated input, trailing bytes, a
+/// scanned string that cannot be byte-recovered, reserved flag bits, an
+/// unknown address type, malformed UTF-8 — v1 likewise treats undecodable
+/// bytes as `badEncoding`); out-of-range field values → `badPayload` (port 0,
+/// usernameLen 0, addressCount 0, hostname length 0, expiry 0, whitespace).
 extension PairingCode {
     static let v2Magic: [UInt8] = [0x48, 0x50]  // "HP"
     static let v2Version: UInt8 = 0x02
@@ -110,7 +113,7 @@ extension PairingCode {
         }
         let flags = try reader.byte()
         guard flags & ~0x01 == 0 else {
-            throw .badPayload(reason: "reserved flag bits set (flags \(flags))")
+            throw .badEncoding
         }
         let port = try reader.uint16()
         guard port > 0 else {
@@ -120,7 +123,7 @@ extension PairingCode {
         guard usernameLength > 0 else {
             throw .badPayload(reason: "usernameLen must be in 1..255")
         }
-        let username = try utf8String(reader.take(Int(usernameLength)), field: "username")
+        let username = try utf8String(reader.take(Int(usernameLength)))
         guard !containsWhitespace(username) else {
             throw .badPayload(reason: "username must not contain whitespace")
         }
@@ -173,21 +176,21 @@ extension PairingCode {
             guard length > 0 else {
                 throw .badPayload(reason: "hostname length must be in 1..255")
             }
-            let hostname = try utf8String(reader.take(Int(length)), field: "hostname")
+            let hostname = try utf8String(reader.take(Int(length)))
             guard !containsWhitespace(hostname) else {
                 throw .badPayload(reason: "hostname must not contain whitespace")
             }
             return hostname
-        case let type:
-            throw .badPayload(reason: "unknown address type \(type)")
+        default:
+            throw .badEncoding
         }
     }
 
-    private static func utf8String(
-        _ bytes: [UInt8], field: String
-    ) throws(PairingCodeError) -> String {
+    // Malformed UTF-8 is badEncoding, matching v1's treatment of an
+    // undecodable body and the shared vectors.
+    private static func utf8String(_ bytes: [UInt8]) throws(PairingCodeError) -> String {
         guard let text = String(bytes: bytes, encoding: .utf8) else {
-            throw .badPayload(reason: "\(field) is not valid UTF-8")
+            throw .badEncoding
         }
         return text
     }
