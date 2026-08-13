@@ -96,6 +96,20 @@ extract_shipped_function run_suite
 extract_shipped_function cleanup
 extract_shipped_function clear_simulator_environment
 extract_shipped_function stop_privileged_sshd
+extract_shipped_function release_resource_lock
+
+# cleanup reads these ownership slots even when a case never claimed a
+# resource. The real gate initializes them before installing its trap; the
+# extracted function needs the same empty starting state. Only the extracted
+# functions read them, which static analysis cannot follow.
+# shellcheck disable=SC2034
+{
+    active_claim_guard=""
+    active_resource_lock=""
+    account_lock_dir=""
+    run_lock_dir=""
+    device_lock_dir=""
+}
 
 # The floor is read out of the gate's own call site rather than restated here.
 # Restating it made the two literals drift silently, and the drift that matters
@@ -493,11 +507,18 @@ run_suite_case() {
         fixture_dir="$case_dir"
         # shellcheck disable=SC2034
         simulator_destination="stub"
+        # shellcheck disable=SC2034
+        app_derived_data_path="$case_dir/AppDerivedData"
+        # shellcheck disable=SC2034
+        xcodebuild_test_timeout_seconds=1
         pinned_lane_logs=()
         # run_suite pipes xcodebuild through tee, so replaying the lane here
         # exercises the real capture, count guard, skip guard and append.
         # shellcheck disable=SC2329
-        xcodebuild() { cat "$case_dir/replay.log"; }
+        run_xcodebuild() {
+            shift 2
+            cat "$case_dir/replay.log"
+        }
         run_suite "$@" >/dev/null
         printf 'PINNED_COUNT=%s\n' "${#pinned_lane_logs[@]}"
         printf 'PINNED_LAST=%s\n' "${pinned_lane_logs[*]-}"

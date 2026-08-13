@@ -211,36 +211,6 @@ struct HeelerSSHDirectStreamLocalE2ETests {
         }
         try await transport.close()
     }
-
-    /// Historical spike measurement (spec #110, ADR 0011, recorded in
-    /// `Packages/HeelerSSH/README.md`): 22.368 ms per exchange through
-    /// `exec` + `socat` against 0.514 ms through direct-streamlocal on the
-    /// same authenticated loopback session. Printed for comparison only —
-    /// absolute loopback timing is scheduler-dependent across CI runs and is
-    /// not a merge gate. Accidental remote-process fallback is guarded by the
-    /// socat-free Host PATH in `scripts/run-ci-ios-tests.sh` and by the rest
-    /// of this suite's functional direct-streamlocal coverage.
-    static let recordedSocatBaselinePerExchange = Duration.microseconds(22_368)
-
-    @Test("repeatable loopback measurement prints comparison telemetry")
-    func loopbackMeasurementPrintsComparisonTelemetry() async throws {
-        let environment = try #require(DirectStreamLocalTestEnvironment.current)
-        let connection = try await environment.deviceKeyConnection(to: environment.endpoint)
-        try await withClosingDirectConnection(connection) { connection in
-            let iterations = 25
-            let started = ContinuousClock.now
-            for _ in 0..<iterations {
-                try await expectPing(connection, socketPath: environment.socketPath)
-            }
-            let elapsed = ContinuousClock.now - started
-            let perExchange = elapsed / iterations
-            print(
-                "direct-streamlocal loopback telemetry: \(iterations) fresh channel exchanges "
-                    + "completed in \(elapsed), \(perExchange) each, against a recorded "
-                    + "exec-plus-socat baseline of \(Self.recordedSocatBaselinePerExchange) "
-                    + "each; telemetry only, not a merge gate or WAN latency promise")
-        }
-    }
 }
 
 private struct DirectStreamLocalTestEnvironment: Decodable, Sendable {

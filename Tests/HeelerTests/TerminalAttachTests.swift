@@ -581,14 +581,21 @@ struct TerminalAttachTests {
     }
 
     @MainActor
-    @Test func systemKeyboardPasteSynchronizesTheTextInputContext() {
+    @Test func keyboardPasteSynchronizesTheTextInputContext() {
         var events: [String] = []
+        let clipboard = TerminalClipboard(
+            string: { "keyboard suggestion" },
+            hasStrings: { true })
         let terminal = TerminalScreenView.makeConfiguredTerminal(
-            onPaste: { text, _ in events.append("paste:\(text)") })
+            onPaste: { text, _ in events.append("paste:\(text)") },
+            clipboard: clipboard)
         let inputDelegate = TextInputDelegateRecorder(events: { events.append($0) })
         terminal.inputDelegate = inputDelegate
-        UIPasteboard.general.string = "keyboard suggestion"
-        defer { UIPasteboard.general.items = [] }
+
+        #expect(
+            terminal.canPerformAction(
+                #selector(UIResponderStandardEditActions.paste(_:)),
+                withSender: nil))
 
         terminal.paste(nil)
 

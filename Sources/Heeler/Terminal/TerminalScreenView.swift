@@ -14,6 +14,19 @@ enum TerminalLinkPolicy {
     }
 }
 
+/// The standard keyboard asks the terminal for clipboard state synchronously.
+/// Keep that system IPC behind a seam so unit tests never depend on the
+/// Simulator pasteboard service being responsive.
+@MainActor
+struct TerminalClipboard {
+    let string: () -> String?
+    let hasStrings: () -> Bool
+
+    static let system = TerminalClipboard(
+        string: { UIPasteboard.general.string },
+        hasStrings: { UIPasteboard.general.hasStrings })
+}
+
 /// A handle on the live terminal for chrome that sits outside it. The reference
 /// is weak and set by the surface itself, so an Agent switch rebuilding the
 /// terminal cannot leave the keyboard toggle or Composer quick keys driving a
@@ -116,7 +129,8 @@ struct TerminalScreenView: UIViewRepresentable {
         /// The center the terminal observes the keyboard through. Tests pass
         /// their own so one test's keyboard cannot end another test's
         /// handoff (#157); production keeps the default.
-        notificationCenter: NotificationCenter = .default
+        notificationCenter: NotificationCenter = .default,
+        clipboard: TerminalClipboard = .system
     ) -> HeelerTerminalView {
         let view = HeelerTerminalView(
             frame: .zero,
@@ -129,7 +143,8 @@ struct TerminalScreenView: UIViewRepresentable {
             keysContext: keysContext,
             theme: theme,
             fontSize: fontSize,
-            fontFamily: fontFamily)
+            fontFamily: fontFamily,
+            clipboard: clipboard)
         view.installKeyboardSwitcher(notificationCenter: notificationCenter)
         return view
     }
@@ -303,6 +318,7 @@ private final class TerminalInputTextRange: UITextRange {
 final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private let callbackBridge: TerminalSessionCallbackBridge
     private let terminalController: TerminalController
+    private let clipboard: TerminalClipboard
     let terminalSession: InMemoryTerminalSession
     private(set) var appliedTheme: TerminalTheme
     private(set) var appliedFontSize: Float
@@ -551,9 +567,11 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         keysContext: TerminalKeysContext?,
         theme: TerminalTheme,
         fontSize: Float,
-        fontFamily: String?
+        fontFamily: String?,
+        clipboard: TerminalClipboard
     ) {
         self.keysContext = keysContext
+        self.clipboard = clipboard
         let callbackBridge = TerminalSessionCallbackBridge(
             onSizeChanged: onSizeChanged,
             onViewportTextChanged: onViewportTextChanged,
@@ -842,7 +860,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     }
 
     override func paste(_ sender: Any?) {
-        guard isLocalInputEnabled, let text = UIPasteboard.general.string else { return }
+        guard isLocalInputEnabled, let text = clipboard.string() else { return }
 
         // The keyboard's clipboard suggestion invokes this standard action
         // directly, bypassing Ghostty's text-input handler. Tell UIKit about
@@ -875,7 +893,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         if action == #selector(paste(_:)) {
-            return isLocalInputEnabled && UIPasteboard.general.hasStrings
+            return isLocalInputEnabled && clipboard.hasStrings()
         }
         return super.canPerformAction(action, withSender: sender)
     }

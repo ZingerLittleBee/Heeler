@@ -97,6 +97,7 @@ struct AppForegroundRecoveryTests {
             store.hostStatuses[host.id] == .connected
         }
         try await waitUntil("its Agent should arrive") { store.agents.count == 1 }
+        try await waitUntilPaneResubscribeSettles(on: stale)
 
         // The app is out of the picture and the link dies. Nothing errors:
         // as far as this process knows the events stream is still open, and
@@ -220,6 +221,7 @@ struct AppForegroundRecoveryTests {
             store.hostStatuses[host.id] == .connected
         }
         let generation = try #require(store.hostConnectionGenerations[host.id])
+        try await waitUntilPaneResubscribeSettles(on: stale)
 
         await stale.failPing(
             atCall: 2, with: .sshUnreachable(detail: "the Host is unreachable"))
@@ -262,6 +264,7 @@ struct AppForegroundRecoveryTests {
         try await waitUntil("the Host should come up connected") {
             store.hostStatuses[host.id] == .connected
         }
+        try await waitUntilPaneResubscribeSettles(on: stale)
 
         await stale.failPing(atCall: 2, with: .streamLocalOpenFailed(path: socketPath))
         activity.didEnterBackground()
@@ -371,6 +374,8 @@ struct AppForegroundRecoveryTests {
             store.hostStatuses[host.id] == .connected
         }
 
+        try await waitUntilPaneResubscribeSettles(on: stopped)
+
         // herdr stops while the app is away. The return's ping opens a
         // stream-local channel onto a socket nothing is serving, which is
         // configuration-class and correctly stops the reconnect loop.
@@ -424,6 +429,7 @@ struct AppForegroundRecoveryTests {
             store.hostStatuses[host.id] == .connected
         }
         let generation = try #require(store.hostConnectionGenerations[host.id])
+        try await waitUntilPaneResubscribeSettles(on: stopped)
 
         await stopped.failPing(atCall: 2, with: failure)
         activity.didEnterBackground()
@@ -837,6 +843,23 @@ struct AppForegroundRecoveryTests {
     /// loop would overshoot this many times over.
     private func settle() async {
         try? await Task.sleep(for: .milliseconds(50))
+    }
+
+    /// Waits until `transport`'s events stream has settled after the initial
+    /// snapshot. The projection reinstalls pane-scoped subscriptions right
+    /// after that snapshot, which ends and re-opens the events stream, and
+    /// `EventsSession.revalidate()` deliberately no-ops while no stream is
+    /// live — the in-flight resubscribe is already re-proving the link. A
+    /// foreground return raced into that window therefore skips the ping
+    /// these tests script and assert on. The second snapshot fetch is
+    /// ordered strictly after the re-opened stream went live, so its
+    /// arrival pins the settled state.
+    private func waitUntilPaneResubscribeSettles(
+        on transport: ScriptedTransport
+    ) async throws {
+        try await waitUntil("the pane resubscribe should settle") {
+            await transport.snapshotFetchCount >= 2
+        }
     }
 
     /// Polls until `condition` holds, yielding so the store's tasks progress.
