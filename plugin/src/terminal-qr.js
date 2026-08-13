@@ -1,11 +1,14 @@
-// Square terminal QR via octants (2x4 modules per cell, Unicode 16).
-// A cell is about twice as tall as it is wide, so two modules per column and
-// four per row keep the module square -- the same aspect as half-blocks at a
-// quarter of the area, which is what lets a version-11 Pairing Code fit a
-// popup. Unlike braille (same geometry), octant blocks fill the cell, so dark
-// regions are solid ink and finder patterns stay camera-readable. Requires a
-// terminal that renders Symbols for Legacy Computing Supplement (Ghostty,
-// Kitty, and other terminals with built-in block glyph synthesis do).
+// Compact terminal QR via sextants (2x3 modules per cell, Unicode 13).
+// Sextants render on Ghostty/kitty/WezTerm/foot plus iTerm2, VS Code, and
+// Alacritty; octants (Unicode 16) miss those last three. The trade-off is a
+// ~1.33-1.47 vertical stretch (2H/3W at typical 1:2-1:2.2 cells): inside
+// Apple's detector tolerance, at the edge of ZXing's ±40% finder-pattern
+// budget. See docs/research/terminal-qr-rendering.md (§Glyph availability,
+// §Aspect ratio). Unlike braille (same 2x3 geometry), sextant blocks fill
+// the cell, so dark regions are solid ink and finder patterns stay
+// camera-readable. Keep the white-background wrapper: unwrapped block
+// glyphs inherit the terminal theme and become a photographic negative
+// on light-on-dark (research note §Polarity).
 
 import QRCode from "qrcode";
 
@@ -13,33 +16,27 @@ const RESET = "\u001b[0m";
 const WHITE_BG_BLACK_FG = "\u001b[47m\u001b[30m";
 
 const CELL_WIDTH = 2;
-const CELL_HEIGHT = 4;
-const QUIET_ZONE_MODULES = 2;
+const CELL_HEIGHT = 3;
+const QUIET_ZONE_MODULES = 4;
+const ERROR_CORRECTION_LEVEL = "M";
 
-// The octant block U+1CD00..U+1CDE5 encodes every 2x4 pattern in increasing
-// bit order (bit n = octant position n+1, positions row-major top-left to
-// bottom-right), skipping the 26 patterns that reuse older characters:
-// space, full/half/quarter blocks, quadrants, and the Unicode 16 single-cell
-// and middle-column fills. Verified against UnicodeData.txt 16.0.
-const OCTANT_EXCEPTIONS = new Map([
-  [0x00, 0x20], [0x01, 0x1cea8], [0x02, 0x1ceab], [0x03, 0x1fb82],
-  [0x05, 0x2598], [0x0a, 0x259d], [0x0f, 0x2580], [0x14, 0x1fbe6],
-  [0x28, 0x1fbe7], [0x3f, 0x1fb85], [0x40, 0x1cea3], [0x50, 0x2596],
-  [0x55, 0x258c], [0x5a, 0x259e], [0x5f, 0x259b], [0x80, 0x1cea0],
-  [0xa0, 0x2597], [0xa5, 0x259a], [0xaa, 0x2590], [0xaf, 0x259c],
-  [0xc0, 0x2582], [0xf0, 0x2584], [0xf5, 0x2599], [0xfa, 0x259f],
-  [0xfc, 0x2586], [0xff, 0x2588],
-]);
+// The sextant block U+1FB00..U+1FB3B encodes 60 of the 64 2x3 patterns.
+// Bit n (0..5) is the dot at column n%2, row n/2 (row-major, top-left).
+// Four patterns reuse older block characters. Verified against
+// UnicodeData.txt 16.0.
+function sextantChar(value) {
+  if (value === 0) return " ";
+  if (value === 21) return "\u258C";
+  if (value === 42) return "\u2590";
+  if (value === 63) return "\u2588";
+  return String.fromCodePoint(
+    0x1fb00 + (value - 1 - (value > 21 ? 1 : 0) - (value > 42 ? 1 : 0)),
+  );
+}
 
-export const OCTANT_TABLE = (() => {
-  const table = [];
-  let next = 0x1cd00;
-  for (let bits = 0; bits < 256; bits++) {
-    const codePoint = OCTANT_EXCEPTIONS.get(bits) ?? next++;
-    table.push(String.fromCodePoint(codePoint));
-  }
-  return table;
-})();
+export const SEXTANT_TABLE = Array.from({ length: 64 }, (_, value) =>
+  sextantChar(value),
+);
 
 function isDark(modules, x, y) {
   if (x < 0 || y < 0 || x >= modules.size || y >= modules.size) {
@@ -57,17 +54,25 @@ function packCell(modules, originX, originY) {
       }
     }
   }
-  return OCTANT_TABLE[bits];
+  return SEXTANT_TABLE[bits];
+}
+
+function createQr(payload) {
+  const options = { errorCorrectionLevel: ERROR_CORRECTION_LEVEL };
+  if (payload instanceof Uint8Array) {
+    return QRCode.create([{ data: payload, mode: "byte" }], options);
+  }
+  return QRCode.create(payload, options);
 }
 
 /**
- * Render `text` as a compact inverted terminal QR (black modules on white).
+ * Render `payload` as a compact inverted terminal QR (black modules on white).
  *
- * @param {string} text
+ * @param {string | Uint8Array} payload
  * @returns {string}
  */
-export function renderTerminalQr(text) {
-  const qr = QRCode.create(text, { errorCorrectionLevel: "L" });
+export function renderTerminalQr(payload) {
+  const qr = createQr(payload);
   const { modules } = qr;
   const total = modules.size + QUIET_ZONE_MODULES * 2;
   const columns = Math.ceil(total / CELL_WIDTH);
@@ -88,8 +93,8 @@ export function renderTerminalQr(text) {
   return lines.join("\n");
 }
 
-export function measureTerminalQr(text) {
-  const rendered = renderTerminalQr(text);
+export function measureTerminalQr(payload) {
+  const rendered = renderTerminalQr(payload);
   const stripped = rendered.replace(/\u001b\[[0-9;]*m/g, "");
   const rows = stripped.split("\n");
   return {
