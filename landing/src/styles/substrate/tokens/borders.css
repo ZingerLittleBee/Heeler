@@ -1,0 +1,11 @@
+/* Substrate — borders. The hairline is the primary structural device; 1px, never 2px. */
+:root{
+--bw-hairline:1px;
+--bw-focus:2px;
+--hairline:1px solid var(--border-hairline);
+--hairline-strong:1px solid var(--border-default);
+--hairline-dashed:1px dashed var(--border-default);
+--divider:1px solid var(--border-hairline);
+--outline-focus:2px solid var(--border-focus);
+--outline-offset:2px;
+}

@@ -1,0 +1,22 @@
+/* Substrate — corner radii. Tight and mechanical; nothing is pill-shaped except tokens/avatars. */
+:root{
+--r-0:0px;
+--r-xs:3px;
+--r-sm:4px;
+--r-md:6px;
+--r-lg:8px;
+--r-xl:12px;
+--r-2xl:16px;
+--r-3xl:24px;
+--r-full:9999px;
+
+--r-control:6px;
+--r-input:6px;
+--r-card:12px;
+--r-panel:12px;
+--r-code:8px;
+--r-dialog:12px;
+--r-badge:4px;
+--r-tag:var(--r-full);
+--r-avatar:var(--r-full);
+}

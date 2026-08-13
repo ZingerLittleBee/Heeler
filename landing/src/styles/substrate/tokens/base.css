@@ -1,0 +1,23 @@
+/* Substrate — base element styles. Minimal reset + the two brand background textures. */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--surface-canvas);color:var(--text-primary);font:var(--type-body);letter-spacing:var(--tr-body);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;font-variant-numeric:tabular-nums}
+::selection{background:var(--n-900);color:var(--n-000)}
+a{color:var(--text-link);text-decoration:none;border-bottom:1px solid var(--n-500);transition:var(--transition-control)}
+a:hover{border-bottom-color:var(--n-900)}
+a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,[tabindex]:focus-visible{outline:var(--outline-focus);outline-offset:var(--outline-offset);border-radius:var(--r-xs)}
+h1,h2,h3,h4,h5,h6{margin:0;font-weight:var(--fw-semibold);letter-spacing:var(--tr-heading);text-wrap:balance}
+p{margin:0;text-wrap:pretty}
+code,kbd,pre,samp{font-family:var(--font-mono);letter-spacing:var(--tr-mono)}
+hr{height:0;margin:0;border:0;border-top:var(--hairline)}
+button{font:inherit;letter-spacing:inherit}
+img,svg{display:block;max-width:100%}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--n-300);border-radius:var(--r-full);border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:var(--n-450);background-clip:padding-box}
+
+/* Brand texture 1: the 1px technical grid. Use behind heroes and empty states. */
+.substrate-grid{background-image:linear-gradient(to right,var(--grid-line) 1px,transparent 1px),linear-gradient(to bottom,var(--grid-line) 1px,transparent 1px);background-size:32px 32px}
+/* Brand texture 2: the hairline crosshair rule. Use as a section divider. */
+.substrate-rule{height:1px;background:var(--sheen-hairline)}

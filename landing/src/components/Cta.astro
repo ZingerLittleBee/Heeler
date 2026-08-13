@@ -1,0 +1,55 @@
+---
+import Button from './Button.astro';
+---
+
+<section class="section">
+  <div class="container layout">
+    <div>
+      <h2 class="section-title heading">Pre-alpha. Testers welcome.</h2>
+      <p class="section-lede lede">Clone it, build it, open an issue. Early reports on transport and terminal behaviour are the most useful thing right now.</p>
+    </div>
+    <div class="actions">
+      <Button href="https://github.com/ZingerLittleBee/Heeler">Star on GitHub</Button>
+      <Button href="https://github.com/ZingerLittleBee/Heeler/issues" variant="secondary">Open an issue</Button>
+    </div>
+  </div>
+</section>
+
+<style>
+  .layout {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-12);
+  }
+
+  .heading {
+    margin-top: 0;
+  }
+
+  .lede {
+    margin-top: var(--sp-4);
+    max-width: 520px;
+  }
+
+  .actions {
+    display: flex;
+    gap: var(--sp-3);
+    flex: none;
+  }
+
+  @media (max-width: 900px) {
+    .layout {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: var(--sp-8);
+    }
+  }
+
+  @media (max-width: 560px) {
+    .actions {
+      flex-direction: column;
+      align-self: stretch;
+    }
+  }
+</style>

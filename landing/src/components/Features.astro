@@ -1,0 +1,105 @@
+---
+const features = [
+  {
+    title: 'Console',
+    body: `Every Agent across your machines in one status-sorted list — Blocked comes first — filterable by Host, updating live off herdr's event stream.`,
+  },
+  {
+    title: 'Attach',
+    body: `Read and steer the Agent's real live terminal through libghostty, with Metal rendering, native scrollback, momentum touch scrolling that drives full-screen TUIs, and long-press selection.`,
+  },
+  {
+    title: 'Composer',
+    body: 'Draft locally with the full standard iOS keyboard — autocorrect, IME, dictation — then Send the complete message once as a single <span class="mono">agent.prompt</span> RPC.',
+  },
+  {
+    title: 'Attachment staging',
+    body: 'Add a photo or a file up to <span class="mono">64 MiB</span>, stage it onto the Host over SFTP, and insert its path into the local draft without submitting it.',
+  },
+  {
+    title: 'Worktrees',
+    body: `Start an Agent on a clean checkout of a workspace's repo with a toggle on the New Agent form. Attach Links silently collect web links to open or copy later.`,
+  },
+  {
+    title: 'Appearance',
+    body: 'System, Light, or Dark app appearance. 30 curated terminal themes with independent Light and Dark slots, bundled JetBrains Mono and IBM Plex Mono, and pinch-to-zoom text size.',
+  },
+];
+---
+
+<section id="features" class="section">
+  <div class="container">
+    <div class="eyebrow">Agent stack</div>
+    <h2 class="section-title title">An agent console, not a terminal app.</h2>
+    <ul class="grid">
+      {
+        features.map((feature, index) => (
+          <li class="cell">
+            <div class="index">[{String(index + 1).padStart(2, '0')}]</div>
+            <h3 class="cell-title">{feature.title}</h3>
+            <p class="cell-body" set:html={feature.body} />
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</section>
+
+<style>
+  .title {
+    max-width: 720px;
+  }
+
+  /* One hairline between cells: a 1px gap over a hairline-coloured backdrop. */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border-hairline);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-card);
+    overflow: hidden;
+    margin: 56px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .cell {
+    background: var(--surface-card);
+    padding: var(--sp-8);
+  }
+
+  .index {
+    font: var(--type-mono-sm);
+    letter-spacing: var(--tr-mono);
+    color: var(--text-muted);
+  }
+
+  .cell-title {
+    font: var(--type-h4);
+    margin-top: var(--sp-5);
+  }
+
+  .cell-body {
+    font: var(--type-body-sm);
+    color: var(--text-secondary);
+    margin-top: var(--sp-2-5);
+  }
+
+  @media (max-width: 1000px) {
+    .grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: 680px) {
+    .grid {
+      grid-template-columns: 1fr;
+      margin-top: 40px;
+    }
+
+    .cell {
+      padding: var(--sp-6);
+    }
+  }
+</style>

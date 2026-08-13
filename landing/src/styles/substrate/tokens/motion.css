@@ -1,0 +1,32 @@
+/* Substrate — motion. Short, linear-feeling, no bounce. Nothing overshoots. */
+:root{
+--dur-instant:80ms;
+--dur-fast:120ms;
+--dur-base:180ms;
+--dur-slow:280ms;
+--dur-slower:420ms;
+
+--ease-out:cubic-bezier(.16,1,.3,1);
+--ease-in-out:cubic-bezier(.45,0,.15,1);
+--ease-standard:cubic-bezier(.4,0,.2,1);
+--ease-linear:linear;
+
+--transition-control:background-color var(--dur-fast) var(--ease-standard),border-color var(--dur-fast) var(--ease-standard),color var(--dur-fast) var(--ease-standard),opacity var(--dur-fast) var(--ease-standard);
+--transition-surface:background-color var(--dur-base) var(--ease-standard),border-color var(--dur-base) var(--ease-standard);
+--transition-enter:opacity var(--dur-base) var(--ease-out),transform var(--dur-base) var(--ease-out);
+
+--press-scale:0.985;
+--hover-opacity:0.7;
+}
+@keyframes substrate-fade-in{from{opacity:0}to{opacity:1}}
+@keyframes substrate-rise-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@keyframes substrate-spin{to{transform:rotate(360deg)}}
+@keyframes substrate-pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@media (prefers-reduced-motion:reduce){:root{
+--dur-instant:0ms;
+--dur-fast:0ms;
+--dur-base:0ms;
+--dur-slow:0ms;
+--dur-slower:0ms;
+--press-scale:1;
+}}

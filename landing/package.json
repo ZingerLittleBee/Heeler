@@ -1,0 +1,24 @@
+{
+  "name": "heeler-landing",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "description": "Marketing site for Heeler (heeler.bybee.dev), built with Astro and deployed to Cloudflare Workers",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.5",
+    "astro": "^7.2.1",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.122.0"
+  }
+}

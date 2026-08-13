@@ -1,0 +1,8 @@
+# Astro build output and caches
+dist/
+.astro/
+node_modules/
+
+# Wrangler local state
+.wrangler/
+.dev.vars

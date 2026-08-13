@@ -1,0 +1,17 @@
+/* Substrate design system — the subset this site uses.
+ *
+ * Vendored verbatim from the Claude Design system
+ * `substrate-design-system-4f544429-9771-4068-8ef1-7d18a69e56c0`; only the
+ * tokens and the two core controls the landing page renders (Button, Badge)
+ * are copied. Re-sync from the design project rather than editing by hand. */
+@import url("tokens/fonts.css");
+@import url("tokens/colors.css");
+@import url("tokens/typography.css");
+@import url("tokens/spacing.css");
+@import url("tokens/radii.css");
+@import url("tokens/borders.css");
+@import url("tokens/shadows.css");
+@import url("tokens/motion.css");
+@import url("tokens/layout.css");
+@import url("tokens/base.css");
+@import url("components/core/core.css");

@@ -1,0 +1,112 @@
+/* Page-level structure shared by every section.
+ *
+ * Substrate tokens carry all the visual decisions; this file only owns the
+ * page skeleton (gutters, section rhythm, the two repeated text roles) and the
+ * breakpoints, which the static design did not specify. */
+
+:root {
+  --gutter-x: 32px;
+}
+
+@media (max-width: 720px) {
+  :root {
+    --gutter-x: 20px;
+  }
+}
+
+/* The design system underlines every link; on a marketing page the underline
+ * is opt-in (see `.text-link`) rather than the default. */
+a {
+  border-bottom: none;
+}
+
+body {
+  background: var(--surface-canvas);
+}
+
+.container {
+  width: 100%;
+  max-width: var(--w-container);
+  margin: 0 auto;
+  padding: 0 var(--gutter-x);
+}
+
+.section {
+  padding: var(--section-y) 0;
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+@media (max-width: 720px) {
+  .section {
+    padding: 64px 0;
+  }
+}
+
+.eyebrow {
+  font: var(--type-eyebrow);
+  letter-spacing: var(--tr-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Section headings track the display scale but must not overflow a phone. */
+.section-title {
+  font: var(--type-h1);
+  font-size: clamp(28px, 5.4vw, var(--fs-h1));
+  letter-spacing: var(--tr-display);
+  margin-top: var(--sp-4);
+}
+
+.section-lede {
+  font: var(--type-body-lg);
+  color: var(--text-secondary);
+  margin-top: var(--sp-6);
+}
+
+/* Inline machine vocabulary: paths, methods, key names. */
+.mono {
+  font: var(--type-mono-sm);
+  color: var(--text-primary);
+}
+
+/* Syntax token colours, the three the pairing snippet needs. Named after the
+ * design system's code component so a later switch to the full `sb-code`
+ * markup keeps working. */
+.tk-comment {
+  color: var(--syn-comment);
+}
+
+.tk-fn {
+  color: var(--syn-fn);
+}
+
+.tk-string {
+  color: var(--syn-string);
+}
+
+.text-link {
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--n-500);
+}
+
+.text-link:hover {
+  border-bottom-color: var(--n-900);
+}
+
+.skip-link {
+  position: absolute;
+  left: var(--sp-4);
+  top: var(--sp-4);
+  z-index: var(--z-tooltip, 500);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-control);
+  background: var(--n-999);
+  color: var(--n-000);
+  font: var(--type-label);
+  transform: translateY(-200%);
+  transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.skip-link:focus-visible {
+  transform: none;
+}

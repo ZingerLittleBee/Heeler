@@ -25,10 +25,35 @@
 
 name: CI
 
+# Ignored paths build nothing this workflow can verify:
+#
+# - `landing/**` and its workflow are the marketing site (Astro on Cloudflare),
+#   which shares no code with the app, the plugin, or the relay. It has its own
+#   workflow, landing.yml.
+# - Markdown anywhere, and `docs/**` for the images beside it, is prose. No job
+#   here reads a repository `.md` file: the suites that name one either quote it
+#   in a comment or assert an in-app URL string, and the `SKILL.md` paths belong
+#   to remote fixtures. `CHANGELOG.md` is included too — scripts/publish.sh
+#   consumes it, but that runs from `make publish`, never from CI.
+#
+# paths-ignore only skips a run when *every* changed path matches, so a commit
+# touching prose alongside Swift still runs the full suite. A change to this
+# file also always runs: the old triggers decide the run that introduces the
+# new ones.
 on:
   pull_request:
+    paths-ignore:
+      - landing/**
+      - .github/workflows/landing.yml
+      - '**.md'
+      - docs/**
   push:
     branches: [main]
+    paths-ignore:
+      - landing/**
+      - .github/workflows/landing.yml
+      - '**.md'
+      - docs/**
 
 # One in-flight run per ref; a new push cancels the previous run.
 concurrency:

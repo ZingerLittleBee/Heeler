@@ -1,0 +1,11 @@
+/* Substrate — core controls */
+.sb-btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--sp-1-5);position:relative;height:var(--h-control-md);padding:0 var(--sp-3);border:1px solid transparent;border-radius:var(--r-control);font:var(--type-label);letter-spacing:var(--tr-body);white-space:nowrap;cursor:pointer;user-select:none;text-decoration:none;transition:var(--transition-control),transform var(--dur-instant) var(--ease-standard)}
+.sb-btn:active:not(:disabled){transform:scale(var(--press-scale))}
+.sb-btn--sm{height:var(--h-control-sm);padding:0 var(--sp-2-5);font-size:var(--fs-label)}
+.sb-btn--lg{height:var(--h-control-lg);padding:0 var(--sp-5);font-size:var(--fs-body)}
+.sb-btn--primary{background:var(--control-primary-bg);color:var(--control-primary-fg);font-weight:var(--fw-medium)}
+.sb-btn--primary:hover:not(:disabled){background:var(--control-primary-bg-hover)}
+.sb-btn--secondary{background:var(--control-secondary-bg);color:var(--control-secondary-fg);border-color:var(--border-default)}
+.sb-btn--secondary:hover:not(:disabled){background:var(--control-secondary-bg-hover);border-color:var(--border-strong)}
+
+.sb-badge{display:inline-flex;align-items:center;gap:var(--sp-1);height:20px;padding:0 var(--sp-1-5);border:1px solid var(--border-hairline);border-radius:var(--r-badge);background:var(--surface-raised);color:var(--text-secondary);font:var(--type-eyebrow);text-transform:uppercase;letter-spacing:var(--tr-caps)}

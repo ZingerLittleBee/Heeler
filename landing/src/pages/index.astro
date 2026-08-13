@@ -1,0 +1,21 @@
+---
+import Connect from '../components/Connect.astro';
+import Cta from '../components/Cta.astro';
+import Faq from '../components/Faq.astro';
+import Features from '../components/Features.astro';
+import Hero from '../components/Hero.astro';
+import Security from '../components/Security.astro';
+import Layout from '../layouts/Layout.astro';
+
+const description =
+  'Heeler is a native iOS companion for herdr: every coding agent on your machines in one status-sorted console, steered over plain SSH.';
+---
+
+<Layout title="Heeler — an agent console for herdr" description={description}>
+  <Hero />
+  <Features />
+  <Connect />
+  <Security />
+  <Faq />
+  <Cta />
+</Layout>

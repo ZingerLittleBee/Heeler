@@ -1,0 +1,64 @@
+/* Substrate — typography. Geist for everything human, Geist Mono for everything machine. */
+:root{
+--font-sans:"Geist",ui-sans-serif,system-ui,-apple-system,"Helvetica Neue",sans-serif;
+--font-mono:"Geist Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+
+--fw-light:300;
+--fw-regular:400;
+--fw-medium:500;
+--fw-semibold:600;
+--fw-bold:700;
+
+/* sizes */
+--fs-micro:11px;
+--fs-caption:12px;
+--fs-label:13px;
+--fs-body-sm:14px;
+--fs-body:15px;
+--fs-body-lg:18px;
+--fs-h5:16px;
+--fs-h4:20px;
+--fs-h3:24px;
+--fs-h2:32px;
+--fs-h1:40px;
+--fs-display-2:56px;
+--fs-display-1:72px;
+--fs-display-hero:96px;
+
+/* line heights */
+--lh-tight:1.0;
+--lh-display:1.06;
+--lh-heading:1.18;
+--lh-snug:1.35;
+--lh-body:1.6;
+--lh-loose:1.75;
+
+/* tracking — Geist needs negative tracking as it scales up */
+--tr-hero:-0.045em;
+--tr-display:-0.035em;
+--tr-heading:-0.025em;
+--tr-subhead:-0.015em;
+--tr-body:-0.005em;
+--tr-none:0em;
+--tr-mono:-0.02em;
+--tr-eyebrow:0.08em;
+--tr-caps:0.06em;
+
+/* composed roles */
+--type-hero:var(--fw-medium) var(--fs-display-hero)/var(--lh-tight) var(--font-sans);
+--type-display:var(--fw-medium) var(--fs-display-1)/var(--lh-display) var(--font-sans);
+--type-display-2:var(--fw-medium) var(--fs-display-2)/var(--lh-display) var(--font-sans);
+--type-h1:var(--fw-semibold) var(--fs-h1)/var(--lh-heading) var(--font-sans);
+--type-h2:var(--fw-semibold) var(--fs-h2)/var(--lh-heading) var(--font-sans);
+--type-h3:var(--fw-semibold) var(--fs-h3)/var(--lh-snug) var(--font-sans);
+--type-h4:var(--fw-medium) var(--fs-h4)/var(--lh-snug) var(--font-sans);
+--type-h5:var(--fw-medium) var(--fs-h5)/var(--lh-snug) var(--font-sans);
+--type-body-lg:var(--fw-regular) var(--fs-body-lg)/var(--lh-body) var(--font-sans);
+--type-body:var(--fw-regular) var(--fs-body)/var(--lh-body) var(--font-sans);
+--type-body-sm:var(--fw-regular) var(--fs-body-sm)/var(--lh-body) var(--font-sans);
+--type-label:var(--fw-medium) var(--fs-label)/var(--lh-snug) var(--font-sans);
+--type-caption:var(--fw-regular) var(--fs-caption)/var(--lh-snug) var(--font-sans);
+--type-mono:var(--fw-regular) var(--fs-body-sm)/var(--lh-body) var(--font-mono);
+--type-mono-sm:var(--fw-regular) var(--fs-label)/var(--lh-snug) var(--font-mono);
+--type-eyebrow:var(--fw-medium) var(--fs-micro)/var(--lh-snug) var(--font-mono);
+}
