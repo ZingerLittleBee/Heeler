@@ -37,7 +37,10 @@ const DEFAULT_SSH_PORT = 22;
 // scale.
 const ENROLL_POLL_MS = 400;
 
-const CLEAR = "\u001b[2J\u001b[H";
+// 2J clears the visible screen only; a QR taller than the viewport pushes
+// rows into scrollback, which would resurface above later screens. 3J drops
+// the scrollback too.
+const CLEAR = "\u001b[2J\u001b[3J\u001b[H";
 const HIDE_CURSOR = "\u001b[?25l";
 const SHOW_CURSOR = "\u001b[?25h";
 const BOLD = "\u001b[1m";
