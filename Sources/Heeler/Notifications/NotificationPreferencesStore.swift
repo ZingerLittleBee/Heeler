@@ -222,6 +222,8 @@ final class NotificationPreferencesStore {
                 + "Check the connection and try again."
         case NotificationRegistrationError.unsupportedFileVersion:
             "This Host was registered by a newer app version. Update the app."
+        case NotificationRegistrationError.deviceNotRegistered:
+            "Register this device for notifications on this Host first."
         case TransportError.sshUnreachable:
             "The Host is not connected."
         case TransportError.timedOut:

@@ -234,4 +234,52 @@ struct NotificationRegistrationCeremonyTests {
         // Still registered on the Host, so the key must survive for pushes.
         #expect(try keys.record(forHost: hostID) != nil)
     }
+
+    @Test func setLiveActivityTokenWritesTheFieldOnARegisteredDevice() async throws {
+        let transport = ScriptedTransport()
+        try await ceremony.register(
+            hostID: hostID, hostName: "mac-studio", deviceToken: token, over: transport)
+        let started = Date(timeIntervalSince1970: 1_700_000_000)
+
+        try await ceremony.setLiveActivityToken(
+            tokenHex: "deadbeef", startedAt: started, deviceToken: token, over: transport)
+
+        let file = try NotificationRegistrationFile.decode(
+            await transport.notificationRegistration)
+        let live = try #require(file.liveActivity(forDeviceToken: token.hex))
+        #expect(live.token == "deadbeef")
+        #expect(live.startedAt == "2023-11-14T22:13:20Z")
+        #expect(file.containsDevice(token: token.hex))
+    }
+
+    @Test func setLiveActivityTokenFailsClosedWhenTheDeviceIsNotRegistered() async throws {
+        let transport = ScriptedTransport()
+
+        await #expect(throws: NotificationRegistrationError.deviceNotRegistered) {
+            try await ceremony.setLiveActivityToken(
+                tokenHex: "deadbeef",
+                startedAt: Date(timeIntervalSince1970: 1_700_000_000),
+                deviceToken: token, over: transport)
+        }
+
+        #expect(await transport.replacedNotificationRegistrations.isEmpty)
+    }
+
+    @Test func clearLiveActivityTokenDropsOnlyThatField() async throws {
+        let transport = ScriptedTransport()
+        try await ceremony.register(
+            hostID: hostID, hostName: "mac-studio", deviceToken: token, over: transport)
+        try await ceremony.setLiveActivityToken(
+            tokenHex: "deadbeef",
+            startedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            deviceToken: token, over: transport)
+
+        try await ceremony.clearLiveActivityToken(deviceToken: token, over: transport)
+
+        let file = try NotificationRegistrationFile.decode(
+            await transport.notificationRegistration)
+        #expect(file.liveActivity(forDeviceToken: token.hex) == nil)
+        #expect(file.containsDevice(token: token.hex))
+        #expect(file.preferences(token: token.hex) != nil)
+    }
 }

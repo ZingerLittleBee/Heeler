@@ -79,6 +79,41 @@ struct NotificationRegistrationCeremony: Sendable {
         try keys.removeRecord(forHost: hostID)
     }
 
+    /// Writes this device's Live Activity push token into the matching
+    /// registration entry. The device must already be registered — there is
+    /// no entry to hang the token on otherwise, and inventing one would
+    /// omit the Notification Key the plugin still needs for alerts.
+    func setLiveActivityToken(
+        tokenHex: String,
+        startedAt: Date,
+        deviceToken: APNSDeviceToken,
+        over transport: any Transport
+    ) async throws {
+        let file = try NotificationRegistrationFile.decode(
+            try await transport.readNotificationRegistration())
+        guard file.containsDevice(token: deviceToken.hex) else {
+            throw NotificationRegistrationError.deviceNotRegistered
+        }
+        try await transport.replaceNotificationRegistration(
+            try file.settingLiveActivity(
+                token: tokenHex, startedAt: startedAt, forDeviceToken: deviceToken.hex
+            ).encoded())
+    }
+
+    /// Drops `live_activity` from this device's entry, leaving the rest of
+    /// the object (alert token, key, notify flags, unknown fields) intact.
+    /// An unregistered device is a no-op, matching `remove`.
+    func clearLiveActivityToken(
+        deviceToken: APNSDeviceToken,
+        over transport: any Transport
+    ) async throws {
+        guard let data = try await transport.readNotificationRegistration() else { return }
+        let file = try NotificationRegistrationFile.decode(data)
+        let updated = file.clearingLiveActivity(forDeviceToken: deviceToken.hex)
+        guard updated != file else { return }
+        try await transport.replaceNotificationRegistration(try updated.encoded())
+    }
+
     /// The Host's key record: the existing key when one is stored (the
     /// service extension must keep decrypting with the key the Host already
     /// holds), refreshed with the current display name; a fresh key

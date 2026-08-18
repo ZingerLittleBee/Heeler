@@ -38,6 +38,8 @@ targets:
       # Notification code shared with the service extension: envelope
       # decryption, Notification Key store, alert renderer (ADR 0008).
       - Sources/HeelerNotificationCore
+      # Live Activity attributes + details envelope (shared with a later widget).
+      - Sources/HeelerActivityCore
       # Audited third-party notices + inventory.json (#161). Folder reference
       # preserves the Notices/ subdirectory the catalogue resolves against.
       - path: Sources/Heeler/Resources/Notices
@@ -136,6 +138,9 @@ targets:
         buildPhase: resources
       # Shared notification envelope vectors (ADR 0008), same arrangement.
       - path: plugin/test-vectors/notification-payload-v1.json
+        buildPhase: resources
+      # Shared Live Activity details envelope vectors, same arrangement.
+      - path: plugin/test-vectors/live-activity-content-v1.json
         buildPhase: resources
     settings:
       base:
