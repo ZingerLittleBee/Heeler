@@ -2,19 +2,24 @@ import ActivityKit
 import SwiftUI
 import WidgetKit
 
-/// Live Activity for one Host. Lock-screen banner is an aggregate (header,
-/// at most two rows, overflow), not a list — ~160pt budget.
+/// Live Activity for one Host. Lock-screen banner is an aggregate (headline,
+/// at most one more row, overflow), not a list — ~160pt budget. The headline
+/// is the most urgent agent's task title; Host identity is never rendered.
+/// Every agent row is a deep link into that agent's detail; taps outside a
+/// row land on the Console.
 struct AgentLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: AgentActivityAttributes.self) { context in
             AgentActivityLockScreenView(
-                presentation: AgentActivityDecryptor.presentation(for: context.state)
+                presentation: AgentActivityDecryptor.presentation(for: context.state),
+                hostID: context.attributes.hostID
             )
             .activityBackgroundTint(AgentActivityChrome.backgroundTint)
             .activitySystemActionForegroundColor(AgentActivityChrome.systemAction)
         } dynamicIsland: { context in
             AgentActivityIsland.make(
-                presentation: AgentActivityDecryptor.presentation(for: context.state))
+                presentation: AgentActivityDecryptor.presentation(for: context.state),
+                hostID: context.attributes.hostID)
         }
     }
 }
@@ -23,16 +28,13 @@ struct AgentLiveActivityWidget: Widget {
 
 struct AgentActivityLockScreenView: View {
     let presentation: AgentActivityPresentation
+    let hostID: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             header
-            if !presentation.visibleAgents.isEmpty {
-                VStack(alignment: .leading, spacing: 5) {
-                    ForEach(presentation.visibleAgents, id: \.paneID) { agent in
-                        AgentActivityRowView(agent: agent)
-                    }
-                }
+            ForEach(presentation.secondaryAgents, id: \.paneID) { agent in
+                AgentActivityLinkedRow(hostID: hostID, agent: agent)
             }
             if presentation.overflowCount > 0 {
                 Text("+\(presentation.overflowCount) more")
@@ -42,27 +44,26 @@ struct AgentActivityLockScreenView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+        .widgetURL(AgentActivityLink.consoleURL(hostID: hostID))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(lockScreenAccessibilityLabel)
     }
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            headerTitle
+            headline
             Spacer(minLength: 8)
             AgentActivityCountChips(counts: presentation.counts)
         }
     }
 
     @ViewBuilder
-    private var headerTitle: some View {
-        switch presentation {
-        case .detailed:
-            Text(presentation.headerTitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        case .countsOnly:
+    private var headline: some View {
+        if let primary = presentation.primaryAgent {
+            AgentActivityLinked(hostID: hostID, paneID: primary.paneID) {
+                AgentActivityHeadlineView(agent: primary)
+            }
+        } else {
             Text(presentation.headerTitle)
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
@@ -72,7 +73,7 @@ struct AgentActivityLockScreenView: View {
     private var lockScreenAccessibilityLabel: String {
         var parts = [presentation.headerTitle]
         parts.append(contentsOf: presentation.counts.chipItems.map { "\($0.count) \($0.status)" })
-        for agent in presentation.visibleAgents {
+        for agent in presentation.secondaryAgents {
             var row = "\(agent.kind), \(agent.status)"
             if let title = agent.title {
                 row += ", \(title)"
@@ -89,20 +90,24 @@ struct AgentActivityLockScreenView: View {
 // MARK: - Dynamic Island
 
 enum AgentActivityIsland {
-    static func make(presentation: AgentActivityPresentation) -> DynamicIsland {
+    static func make(presentation: AgentActivityPresentation, hostID: String) -> DynamicIsland {
         DynamicIsland {
-            DynamicIslandExpandedRegion(.leading) {
-                expandedHeader(presentation)
-            }
             DynamicIslandExpandedRegion(.center) {
-                if let first = presentation.visibleAgents.first {
-                    AgentActivityRowView(agent: first)
+                if let primary = presentation.primaryAgent {
+                    AgentActivityLinked(hostID: hostID, paneID: primary.paneID) {
+                        AgentActivityHeadlineView(agent: primary)
+                    }
+                } else {
+                    Text(presentation.headerTitle)
+                        .font(.headline)
+                        .minimumScaleFactor(0.7)
+                        .lineLimit(1)
                 }
             }
             DynamicIslandExpandedRegion(.bottom) {
                 VStack(alignment: .leading, spacing: 4) {
-                    if let second = presentation.visibleAgents.dropFirst().first {
-                        AgentActivityRowView(agent: second)
+                    ForEach(presentation.secondaryAgents, id: \.paneID) { agent in
+                        AgentActivityLinkedRow(hostID: hostID, agent: agent)
                     }
                     if presentation.overflowCount > 0 {
                         Text("+\(presentation.overflowCount) more")
@@ -113,40 +118,29 @@ enum AgentActivityIsland {
                 }
             }
         } compactLeading: {
-            AgentActivityCompactLeading(counts: presentation.counts)
+            AgentActivityConsoleLinked(hostID: hostID) {
+                AgentActivityCompactLeading(counts: presentation.counts)
+            }
         } compactTrailing: {
-            Text("\(presentation.counts.total)")
-                .font(.body.weight(.semibold).monospacedDigit())
-                .accessibilityLabel("\(presentation.counts.total) agents")
+            AgentActivityConsoleLinked(hostID: hostID) {
+                Text("\(presentation.counts.total)")
+                    .font(.body.weight(.semibold).monospacedDigit())
+                    .accessibilityLabel("\(presentation.counts.total) agents")
+            }
         } minimal: {
-            Text("\(presentation.counts.total)")
-                .font(
-                    .body.weight(presentation.counts.blocked > 0 ? .bold : .semibold)
-                        .monospacedDigit()
-                )
-                .foregroundStyle(
-                    presentation.counts.blocked > 0
-                        ? AgentActivityStatusStyle.ink(for: "blocked")
-                        : Color.primary
-                )
-                .accessibilityLabel("\(presentation.counts.total) agents")
-        }
-    }
-
-    @ViewBuilder
-    private static func expandedHeader(_ presentation: AgentActivityPresentation) -> some View {
-        switch presentation {
-        case .detailed:
-            Text(presentation.headerTitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .minimumScaleFactor(0.7)
-                .lineLimit(1)
-        case .countsOnly:
-            Text(presentation.headerTitle)
-                .font(.headline)
-                .minimumScaleFactor(0.7)
-                .lineLimit(1)
+            AgentActivityConsoleLinked(hostID: hostID) {
+                Text("\(presentation.counts.total)")
+                    .font(
+                        .body.weight(presentation.counts.blocked > 0 ? .bold : .semibold)
+                            .monospacedDigit()
+                    )
+                    .foregroundStyle(
+                        presentation.counts.blocked > 0
+                            ? AgentActivityStatusStyle.ink(for: "blocked")
+                            : Color.primary
+                    )
+                    .accessibilityLabel("\(presentation.counts.total) agents")
+            }
         }
     }
 }
@@ -176,6 +170,44 @@ private struct AgentActivityCompactLeading: View {
 
 // MARK: - Shared pieces
 
+/// Applies the Console deep link inside a `body` so the MainActor-isolated
+/// `widgetURL` is reachable from the nonisolated DynamicIsland builders.
+private struct AgentActivityConsoleLinked<Content: View>: View {
+    let hostID: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        content.widgetURL(AgentActivityLink.consoleURL(hostID: hostID))
+    }
+}
+
+/// Wraps row content in a deep link to that agent's detail; falls back to
+/// plain content when the URL cannot be built (never expected).
+private struct AgentActivityLinked<Content: View>: View {
+    let hostID: String
+    let paneID: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        if let url = AgentActivityLink.agentURL(hostID: hostID, paneID: paneID) {
+            Link(destination: url) { content }
+        } else {
+            content
+        }
+    }
+}
+
+private struct AgentActivityLinkedRow: View {
+    let hostID: String
+    let agent: AgentActivityDetails.AgentDetail
+
+    var body: some View {
+        AgentActivityLinked(hostID: hostID, paneID: agent.paneID) {
+            AgentActivityRowView(agent: agent)
+        }
+    }
+}
+
 private struct AgentActivityCountChips: View {
     let counts: AgentActivityAttributes.ContentState.Counts
 
@@ -195,6 +227,28 @@ private struct AgentActivityCountChips: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             counts.chipItems.map { "\($0.count) \($0.status)" }.joined(separator: ", "))
+    }
+}
+
+/// The headline: status dot plus the most urgent agent's task title, its
+/// kind standing in when the title is missing.
+private struct AgentActivityHeadlineView: View {
+    let agent: AgentActivityDetails.AgentDetail
+
+    private var ink: Color { AgentActivityStatusStyle.ink(for: agent.status) }
+    private var isBlocked: Bool { agent.status == "blocked" }
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Circle()
+                .fill(ink)
+                .frame(width: 8, height: 8)
+                .accessibilityHidden(true)
+            Text(agent.title ?? agent.kind)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(isBlocked ? ink : Color.primary)
+                .lineLimit(1)
+        }
     }
 }
 

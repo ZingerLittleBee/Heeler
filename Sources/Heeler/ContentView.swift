@@ -124,6 +124,15 @@ struct ContentView: View {
             bannerStore.agentsDidChange(console.agents)
             liveActivities.agentsDidChange(console.agents)
         }
+        // Live Activity taps: an agent row deep-links to that agent's
+        // detail through the same router notification taps use; a tap
+        // outside any row (compact island, banner chrome) lands on the
+        // Console.
+        .onOpenURL { url in
+            guard let link = AgentActivityLink.target(from: url) else { return }
+            notificationRouter.open(
+                link.paneID.map { AgentNotificationTarget(hostID: link.hostID, paneID: $0) })
+        }
         // The banner's preference gate fails closed on unknown flags (#77),
         // so re-read each Host's registration file as its connection comes up
         // (and once the push token lands) instead of waiting for a Settings

@@ -55,10 +55,11 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
-- Lock-screen Live Activities now title each Host with the name captured
-  at Notification Registration, shown as a secondary caption rather than
-  the dominant headline. A reconnect no longer treats a transient empty
-  Agent list as "all idle" and dismisses the activity.
+- Lock-screen Live Activities now headline the most urgent agent's task
+  title and show no Host identity. Each agent row is a tap target that
+  opens that agent's detail in the app; a tap outside the rows opens the
+  Console. A reconnect no longer treats a transient empty Agent list as
+  "all idle" and dismisses the activity.
 
 - App Store builds now target iPhone only. The notification service uses the
   same device family, so App Store Connect no longer treats iPad screenshots as

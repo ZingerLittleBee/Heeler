@@ -13,13 +13,14 @@ enum AgentActivityPresentation: Equatable, Sendable {
         }
     }
 
-    /// Registered Host name (envelope host only as fallback), or the
-    /// generic app name when details are unavailable. Never a Host or
-    /// agent name in `countsOnly`.
+    /// Headline: the most urgent agent's task title (its kind when the
+    /// title is missing), or the generic app name when details are
+    /// unavailable. Host identity is never rendered.
     var headerTitle: String {
         switch self {
-        case .detailed(let details, _):
-            return details.hostName
+        case .detailed:
+            guard let primary = primaryAgent else { return AgentActivityCopy.genericAppName }
+            return primary.title ?? primary.kind
         case .countsOnly:
             return AgentActivityCopy.genericAppName
         }
@@ -34,16 +35,23 @@ enum AgentActivityPresentation: Equatable, Sendable {
         }
     }
 
-    /// Rows the lock screen and expanded island actually draw.
-    var visibleAgents: [AgentActivityDetails.AgentDetail] {
-        Array(agents.prefix(AgentActivityCopy.rowLimit))
+    /// The agent whose task title is the headline: rows arrive pre-sorted
+    /// blocked > done > working, so this is the most urgent one.
+    var primaryAgent: AgentActivityDetails.AgentDetail? {
+        agents.first
     }
 
-    /// Remaining eligible agents beyond the drawn rows, using the full
-    /// inventory in `counts` (the envelope list is capped at 5). Zero in
-    /// counts-only: there are no rows to overflow from.
+    /// Rows drawn below the headline (the headline consumes the first
+    /// agent).
+    var secondaryAgents: [AgentActivityDetails.AgentDetail] {
+        Array(agents.dropFirst().prefix(AgentActivityCopy.rowLimit - 1))
+    }
+
+    /// Remaining eligible agents beyond the headline and drawn rows, using
+    /// the full inventory in `counts` (the envelope list is capped at 5).
+    /// Zero in counts-only: there is nothing to overflow from.
     var overflowCount: Int {
-        let shown = visibleAgents.count
+        let shown = (primaryAgent == nil ? 0 : 1) + secondaryAgents.count
         guard shown > 0 else { return 0 }
         return max(0, counts.total - shown)
     }
@@ -77,10 +85,7 @@ enum AgentActivityDecryptor {
             return .countsOnly(counts: state.counts)
         }
 
-        var details = opened
-        details.hostName = AgentActivityHostTitle.resolved(
-            registeredName: record.hostName, envelopeName: opened.hostName)
-        return .detailed(details: details, counts: state.counts)
+        return .detailed(details: opened, counts: state.counts)
     }
 }
 
