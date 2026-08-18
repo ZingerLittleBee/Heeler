@@ -7,6 +7,15 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Fixed
+
+- Opening an Agent no longer dies with `exec: herdr: not found` (exit 127) on a
+  Host that installed herdr via Homebrew or linuxbrew. The API socket never
+  needed `herdr` on `PATH`, so the Console could already list Agents; Attach
+  and the other CLI execs now append the usual install prefixes after the
+  session `PATH` (`~/.local/bin`, `/opt/homebrew/bin`,
+  `/home/linuxbrew/.linuxbrew/bin`). (#206)
+
 ### Added
 
 - Agent detail now places a plus menu to the left of Send. It can add an image
