@@ -191,8 +191,9 @@ these map to the "parse" step of the pairing failure taxonomy).
 ## Notification envelope (v1)
 
 The encrypted Agent Notification payload (ADR 0008): the notify hook
-encrypts it on the Host, the Push Relay and APNs carry it opaquely, and the
-app's service extension decrypts it. One compact JSON object:
+encrypts it on the Host, and the Push Relay carries it opaquely through either
+APNs or FCM. The envelope is provider-neutral; neither relay nor provider can
+decrypt it, and the app decrypts it with that Host's Notification Key.
 
 ```json
 {"v": 1, "kid": "<key id>", "n": "<nonce>", "ct": "<ciphertext>"}
@@ -271,6 +272,12 @@ revokes that device.
       "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
       "env": "production",
       "notify": { "blocked": true, "done": true }
+    },
+    {
+      "provider": "fcm",
+      "token": "fcm-registration-token-is-opaque",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "notify": { "blocked": true, "done": true }
     }
   ]
 }
@@ -280,9 +287,10 @@ revokes that device.
 | ---------------- | ------- | ------- |
 | `v`              | integer | File format version. This document specifies version `1`; a reader finding any other value must treat the file as absent (send nothing) rather than guess. |
 | `devices`        | array   | One entry per registered device. Empty means no notifications. |
-| `token`          | string  | The device's APNs device token, lowercase hex. Unique within the file. |
+| `provider`       | string  | Optional provider: `apns` or `fcm`. Absent means `apns`, preserving v1 registrations. |
+| `token`          | string  | APNs: lowercase hexadecimal device token, unique within the file. FCM: opaque non-empty FCM registration token; it has no hexadecimal format constraint. |
 | `key`            | string  | Raw 32-byte Notification Key, unpadded base64url. Generated on the device, per Host. |
-| `env`            | string  | `production` or `sandbox`: which APNs environment the token belongs to, following the app build that registered it. |
+| `env`            | string  | Required for APNs: `production` or `sandbox`, following the app build that registered it. FCM entries must omit this field. |
 | `notify.blocked` | boolean | Send a push when an Agent becomes Blocked. |
 | `notify.done`    | boolean | Send a push when an Agent reaches Done. A missing flag means do not send (fail closed). |
 
@@ -305,14 +313,16 @@ Anti-noise, in order:
    `HERDR_PLUGIN_STATE_DIR/notify/`; a same-status repeat sends nothing. A
    *different* status that survives its own debounce re-arms the pane.
 
-Each eligible device gets one `POST https://heeler-apns.bybee.dev/push` by
-default (see `relay/README.md`), carrying the encrypted envelope and an opaque
-per-pane `collapse` key (derived from the device's Notification Key and the
-pane id, so the relay cannot guess the pane while newer statuses still replace
-older notifications). Transient failures (network errors, 429, 5xx) are
-retried up to 3 attempts; a `410 Unregistered` verdict prunes that token from
-`notifications.json` (preserving any fields this plugin does not understand);
-other 4xx verdicts are final.
+Each eligible APNs device gets the v1 `POST
+https://heeler-apns.bybee.dev/push` body with `token`, `env`, encrypted
+`envelope`, and opaque per-pane `collapse` key (derived from the device's
+Notification Key and pane id, so the relay cannot guess the pane while newer
+statuses still replace older notifications). Each eligible FCM device gets the
+same envelope and collapse value as `provider: "fcm"` with no `env`; the relay
+forwards it as an FCM data message. Transient failures (network errors, 429,
+5xx) are retried up to 3 attempts; a `410 Unregistered` verdict from either
+provider prunes that token from `notifications.json` (preserving every field
+this plugin does not understand); other 4xx verdicts are final.
 
 Plugin-side settings live in `notify.json` next to the registration file in
 the plugin config dir:

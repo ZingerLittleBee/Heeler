@@ -43,6 +43,7 @@ const SEND_ATTEMPTS = 3;
 const REQUEST_TIMEOUT_MS = 10_000;
 const KEY_BYTES = 32;
 const APNS_ENVIRONMENTS = new Set(["production", "sandbox"]);
+const APNS_TOKEN_PATTERN = /^[0-9a-f]{16,200}$/;
 // Agent terminal titles are whole task descriptions and run long. The app
 // trims to the same length for display; trimming here keeps the encrypted
 // payload small on the wire too.
@@ -104,13 +105,26 @@ function readEligibleDevices(configDir, status) {
   if (file?.v !== 1 || !Array.isArray(file.devices)) return [];
   const devices = [];
   for (const entry of file.devices) {
+    const provider = entry?.provider === undefined ? "apns" : entry.provider;
     if (typeof entry?.token !== "string" || entry.token.length === 0) continue;
-    if (!APNS_ENVIRONMENTS.has(entry.env)) continue;
+    if (provider === "apns") {
+      if (!APNS_TOKEN_PATTERN.test(entry.token) || !APNS_ENVIRONMENTS.has(entry.env)) continue;
+    } else if (provider === "fcm") {
+      // FCM registration tokens are opaque and must not carry an APNs env.
+      if (entry.env !== undefined) continue;
+    } else {
+      continue;
+    }
     // Per the v1 contract a missing notify flag means do not send (fail closed).
     if (entry.notify?.[flag] !== true) continue;
     const key = typeof entry.key === "string" ? Buffer.from(entry.key, "base64url") : null;
     if (key?.length !== KEY_BYTES) continue;
-    devices.push({ token: entry.token, env: entry.env, key });
+    if (provider === "apns") {
+      // Preserve the v1 device shape through to postPush.
+      devices.push({ token: entry.token, env: entry.env, key });
+    } else {
+      devices.push({ provider, token: entry.token, key });
+    }
   }
   return devices;
 }
@@ -232,10 +246,11 @@ async function workspaceLabel(binPath, workspaceId) {
 }
 
 /**
- * The `apns-collapse-id` passed through the relay so a newer status replaces
- * an older notification for the same pane. Keyed by the device's Notification
- * Key so it stays opaque: the relay can neither read nor dictionary-guess the
- * pane id behind it. 16 bytes -> 22 chars, well under APNs' 64-byte cap.
+ * The provider collapse key passed through the relay so a newer status
+ * replaces an older notification for the same pane. Keyed by the device's
+ * Notification Key so it stays opaque: the relay can neither read nor
+ * dictionary-guess the pane id behind it. 16 bytes -> 22 chars, within APNs'
+ * 64-byte cap and suitable as FCM's `android.collapse_key`.
  */
 function collapseKeyFor(key, paneId) {
   return createHash("sha256")
@@ -248,13 +263,18 @@ function collapseKeyFor(key, paneId) {
 }
 
 /**
- * POST one push, retrying transient failures (network errors, 429, 5xx) up
- * to SEND_ATTEMPTS. The relay itself never retries by design (ADR 0008).
- * Returns "ok", "pruned" (APNs 410 Unregistered: the token is dead), or a
- * thrown Error for a delivery that conclusively failed.
+ * POST one provider-specific push, retrying transient failures (network
+ * errors, 429, 5xx) up to SEND_ATTEMPTS. The relay itself never retries by
+ * design (ADR 0008). Returns "ok", "pruned" (a provider-mapped 410: the
+ * token is dead), or a thrown Error for a delivery that conclusively failed.
  */
 async function postPush(relayUrl, device, envelope, collapse, retryDelayMs) {
-  const body = JSON.stringify({ token: device.token, env: device.env, envelope, collapse });
+  // APNs remains byte-for-byte the v1 body: provider is absent and `env`
+  // stays in the same order. FCM gets an opaque registration token and no env.
+  const body =
+    device.provider === "fcm"
+      ? JSON.stringify({ provider: "fcm", token: device.token, envelope, collapse })
+      : JSON.stringify({ token: device.token, env: device.env, envelope, collapse });
   let lastFailure = "";
   for (let attempt = 1; attempt <= SEND_ATTEMPTS; attempt += 1) {
     if (attempt > 1) await sleep(retryDelayMs);
@@ -350,7 +370,9 @@ async function main() {
     }
   }
   if (pruned.size > 0) pruneTokens(configDir, pruned);
-  if (delivered) writeLastNotified(stateDir, event.paneId, event.status);
+  // A pane marker would suppress a same-status retry, so only record after
+  // every remaining eligible device accepted its push.
+  if (delivered && failures.length === 0) writeLastNotified(stateDir, event.paneId, event.status);
   if (failures.length > 0) throw new Error(failures.join("; "));
 }
 

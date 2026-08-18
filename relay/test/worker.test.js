@@ -14,6 +14,8 @@ const nowMs = 1_753_305_600_000;
 let baseEnv;
 /** @type {CryptoKey} */
 let publicKey;
+/** @type {{FCM_PROJECT_ID: string, FCM_SA_CLIENT_EMAIL: string, FCM_SA_PRIVATE_KEY_PKCS8: string}} */
+let fcmBaseEnv;
 
 before(async () => {
   const pair = await crypto.subtle.generateKey(
@@ -30,6 +32,23 @@ before(async () => {
     APNS_TOPIC: "dev.bybee.heeler",
     APNS_KEY_P8: `-----BEGIN PRIVATE KEY-----\n${b64.match(/.{1,64}/g).join("\n")}\n-----END PRIVATE KEY-----\n`,
   };
+  const fcmPair = await crypto.subtle.generateKey(
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["sign", "verify"],
+  );
+  const fcmDer = await crypto.subtle.exportKey("pkcs8", fcmPair.privateKey);
+  const fcmB64 = Buffer.from(fcmDer).toString("base64");
+  fcmBaseEnv = {
+    FCM_PROJECT_ID: "heeler-notifications",
+    FCM_SA_CLIENT_EMAIL: "relay@heeler-notifications.iam.gserviceaccount.com",
+    FCM_SA_PRIVATE_KEY_PKCS8: `-----BEGIN PRIVATE KEY-----\n${fcmB64.match(/.{1,64}/g).join("\n")}\n-----END PRIVATE KEY-----\n`,
+  };
 });
 
 const goodBody = {
@@ -37,6 +56,13 @@ const goodBody = {
   env: "production",
   envelope: '{"v":1,"kid":"5-CJJlt5uLU","n":"AAECAwQFBgcICQoL","ct":"opaque"}',
   collapse: "%5",
+};
+
+const goodFcmBody = {
+  provider: "fcm",
+  token: "fcm-registration:opaque/token-value",
+  envelope: goodBody.envelope,
+  collapse: goodBody.collapse,
 };
 
 function pushRequest(body, { ip = "203.0.113.7", method = "POST", path = "/push", origin = "https://relay.example" } = {}) {
@@ -114,6 +140,19 @@ suite("forwarding to APNs", () => {
     assert.equal(payload.envelope, goodBody.envelope);
   });
 
+  test("preserves the v1 APNs response and outbound bytes when provider is omitted", async (t) => {
+    const calls = stubApns(t);
+    freezeTime(t);
+    const relay = createRelay();
+    const res = await relay.fetch(pushRequest(goodBody), baseEnv);
+
+    assert.equal(await res.text(), '{"apnsId":"0BAD0C6E-0000-0000-0000-000000000000"}');
+    assert.equal(
+      calls[0].init.body,
+      `{"aps":{"alert":{"title":"Heeler","body":"Agent update"},"mutable-content":1},"envelope":${JSON.stringify(goodBody.envelope)}}`,
+    );
+  });
+
   test("signs the APNs JWT with ES256 and Apple's claims", async (t) => {
     const calls = stubApns(t);
     freezeTime(t);
@@ -179,6 +218,97 @@ suite("forwarding to APNs", () => {
       baseEnv,
     );
     assert.equal(res.status, 200);
+  });
+});
+
+suite("forwarding to FCM", () => {
+  test("exchanges a service-account JWT and forwards the provider-neutral envelope as high-priority data", async (t) => {
+    const calls = [];
+    t.mock.method(globalThis, "fetch", async (url, init) => {
+      calls.push({ url: String(url), init, headers: new Headers(init.headers) });
+      if (url === "https://oauth2.googleapis.com/token") {
+        return new Response(
+          JSON.stringify({ access_token: "fcm-oauth-token", expires_in: 3600, token_type: "Bearer" }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ name: "projects/heeler-notifications/messages/fcm-message-id" }), {
+        status: 200,
+      });
+    });
+    freezeTime(t);
+    const relay = createRelay();
+    const res = await relay.fetch(pushRequest(goodFcmBody), fcmBaseEnv);
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { fcmName: "projects/heeler-notifications/messages/fcm-message-id" });
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].url, "https://oauth2.googleapis.com/token");
+    assert.equal(calls[1].url, "https://fcm.googleapis.com/v1/projects/heeler-notifications/messages:send");
+    assert.equal(calls[1].init.method, "POST");
+    assert.equal(calls[1].headers.get("authorization"), "Bearer fcm-oauth-token");
+    assert.equal(calls[1].headers.get("content-type"), "application/json");
+    assert.deepEqual(JSON.parse(calls[1].init.body), {
+      message: {
+        token: goodFcmBody.token,
+        data: { envelope: goodFcmBody.envelope },
+        android: { priority: "high", collapse_key: goodFcmBody.collapse },
+      },
+    });
+  });
+
+  test("maps FCM's 404 UNREGISTERED verdict to a prunable 410", async (t) => {
+    let requestCount = 0;
+    t.mock.method(globalThis, "fetch", async () => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        return new Response(
+          JSON.stringify({ access_token: "fcm-oauth-token", expires_in: 3600, token_type: "Bearer" }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: 404,
+            status: "NOT_FOUND",
+            details: [
+              {
+                "@type": "type.googleapis.com/google.firebase.fcm.v1.FcmError",
+                errorCode: "UNREGISTERED",
+              },
+            ],
+          },
+        }),
+        { status: 404 },
+      );
+    });
+    const relay = createRelay();
+    const res = await relay.fetch(pushRequest(goodFcmBody), fcmBaseEnv);
+
+    assert.equal(res.status, 410);
+    assert.deepEqual(await res.json(), { reason: "Unregistered" });
+  });
+
+  test("does not prune a token for an unrelated FCM 404", async (t) => {
+    let requestCount = 0;
+    t.mock.method(globalThis, "fetch", async () => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        return new Response(
+          JSON.stringify({ access_token: "fcm-oauth-token", expires_in: 3600, token_type: "Bearer" }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: { code: 404, status: "NOT_FOUND" } }), {
+        status: 404,
+      });
+    });
+    const relay = createRelay();
+    const res = await relay.fetch(pushRequest(goodFcmBody), fcmBaseEnv);
+
+    assert.equal(res.status, 404);
+    assert.deepEqual(await res.json(), { reason: "NOT_FOUND" });
   });
 });
 
@@ -283,6 +413,58 @@ suite("request validation", () => {
     assert.deepEqual(await res.json(), { error: "relay_misconfigured" });
     assert.equal(calls.length, 0);
   });
+
+  test("rejects an FCM request carrying an APNs environment", async (t) => {
+    const calls = [];
+    t.mock.method(globalThis, "fetch", async (...args) => {
+      calls.push(args);
+      throw new Error("must not contact FCM");
+    });
+    const relay = createRelay();
+    const res = await relay.fetch(pushRequest({ ...goodFcmBody, env: "sandbox" }), fcmBaseEnv);
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { error: "bad_env" });
+    assert.equal(calls.length, 0);
+  });
+
+  test("rejects an unknown provider before forwarding", async (t) => {
+    const calls = stubApns(t);
+    const relay = createRelay();
+    const res = await relay.fetch(pushRequest({ ...goodBody, provider: "webpush" }), baseEnv);
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { error: "bad_provider" });
+    assert.equal(calls.length, 0);
+  });
+
+  test("missing FCM config is 500 relay_misconfigured", async (t) => {
+    const calls = [];
+    t.mock.method(globalThis, "fetch", async (...args) => {
+      calls.push(args);
+      throw new Error("must not contact FCM");
+    });
+    const relay = createRelay();
+    const res = await relay.fetch(pushRequest(goodFcmBody), {});
+
+    assert.equal(res.status, 500);
+    assert.deepEqual(await res.json(), { error: "relay_misconfigured" });
+    assert.equal(calls.length, 0);
+  });
+
+  test("a requested FCM provider reports missing configuration before validation", async (t) => {
+    const calls = [];
+    t.mock.method(globalThis, "fetch", async (...args) => {
+      calls.push(args);
+      throw new Error("must not contact FCM");
+    });
+    const relay = createRelay();
+    const res = await relay.fetch(pushRequest({ ...goodFcmBody, env: "sandbox" }), {});
+
+    assert.equal(res.status, 500);
+    assert.deepEqual(await res.json(), { error: "relay_misconfigured" });
+    assert.equal(calls.length, 0);
+  });
 });
 
 suite("payload caps", () => {
@@ -293,6 +475,23 @@ suite("payload caps", () => {
       pushRequest({ ...goodBody, envelope: "x".repeat(4100) }),
       baseEnv,
     );
+    assert.equal(res.status, 413);
+    assert.deepEqual(await res.json(), { error: "payload_too_large" });
+    assert.equal(calls.length, 0);
+  });
+
+  test("rejects an FCM data payload over 4 KB without contacting Google", async (t) => {
+    const calls = [];
+    t.mock.method(globalThis, "fetch", async (...args) => {
+      calls.push(args);
+      throw new Error("must not contact FCM");
+    });
+    const relay = createRelay();
+    const res = await relay.fetch(
+      pushRequest({ ...goodFcmBody, envelope: "x".repeat(4096) }),
+      fcmBaseEnv,
+    );
+
     assert.equal(res.status, 413);
     assert.deepEqual(await res.json(), { error: "payload_too_large" });
     assert.equal(calls.length, 0);

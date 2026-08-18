@@ -31,6 +31,8 @@ const KEY_A = Buffer.from(Array.from({ length: 32 }, (_, i) => i));
 const KEY_B = Buffer.from(Array.from({ length: 32 }, (_, i) => 255 - i));
 const TOKEN_A = "a".repeat(64);
 const TOKEN_B = "b".repeat(64);
+const FCM_TOKEN_A = "fcm:opaque-registration/token-a";
+const FCM_TOKEN_B = "fcm:opaque-registration/token-b";
 
 const PANE_ID = "w1:p2";
 
@@ -201,6 +203,16 @@ function device({ token = TOKEN_A, key = KEY_A, env = "sandbox", notify, ...extr
   };
 }
 
+function fcmDevice({ token = FCM_TOKEN_A, key = KEY_A, notify, ...extra } = {}) {
+  return {
+    provider: "fcm",
+    token,
+    key: key.toString("base64url"),
+    notify: notify === undefined ? { blocked: true, done: true } : notify,
+    ...extra,
+  };
+}
+
 function writeRegistration(devices, extra = {}) {
   writeFileSync(
     join(configDir, "notifications.json"),
@@ -289,6 +301,27 @@ suite("notify-hook: sending", () => {
       assert.ok(payload.ts >= before && payload.ts <= Math.floor(Date.now() / 1000) + 1);
     }
     assert.notEqual(a.kid, b.kid);
+  });
+
+  test("a confirmed Blocked transition posts an FCM device's opaque token without an APNs environment", async () => {
+    await startFakeRelay(() => ({ status: 200, body: { fcmName: "projects/heeler/messages/x" } }));
+    writeConfig();
+    writeRegistration([device(), fcmDevice({ token: FCM_TOKEN_B, key: KEY_B })]);
+    writeHerdrStub({ status: "blocked" });
+
+    const result = await runHook(statusEvent("blocked"));
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(relay.requests.length, 2);
+    const byToken = new Map(relay.requests.map((request) => [request.body.token, request.body]));
+    const apns = byToken.get(TOKEN_A);
+    const fcm = byToken.get(FCM_TOKEN_B);
+    assert.equal("provider" in apns, false);
+    assert.equal(apns.env, "sandbox");
+    assert.equal(fcm.provider, "fcm");
+    assert.equal("env" in fcm, false);
+    assert.equal(fcm.collapse.length > 0, true);
+    assert.equal(decryptEnvelope(fcm.envelope, KEY_B).payload.status, "blocked");
   });
 
   test("the collapse key is opaque, per pane, and stable across sends", async () => {
@@ -607,6 +640,32 @@ suite("notify-hook: relay failures", () => {
     );
   });
 
+  test("a 410 from FCM prunes only that FCM registration and preserves its provider metadata", async () => {
+    await startFakeRelay((request) =>
+      request.body.token === FCM_TOKEN_A
+        ? { status: 410, body: { reason: "Unregistered" } }
+        : { status: 200, body: { fcmName: "projects/heeler/messages/x" } },
+    );
+    writeConfig();
+    writeRegistration(
+      [
+        fcmDevice({ future_entry_field: "remove-me" }),
+        fcmDevice({ token: FCM_TOKEN_B, key: KEY_B, future_entry_field: "kept" }),
+      ],
+      { future_top_field: "kept" },
+    );
+    writeHerdrStub({ status: "blocked" });
+
+    const result = await runHook(statusEvent("blocked"));
+
+    assert.equal(result.status, 0, result.stderr);
+    const file = readRegistration();
+    assert.equal(file.future_top_field, "kept");
+    assert.deepEqual(file.devices, [
+      fcmDevice({ token: FCM_TOKEN_B, key: KEY_B, future_entry_field: "kept" }),
+    ]);
+  });
+
   test("a transient 5xx is retried until it succeeds", async () => {
     await startFakeRelay((_request, index) =>
       index === 0
@@ -644,6 +703,29 @@ suite("notify-hook: relay failures", () => {
     const retry = await runHook(statusEvent("blocked"));
     assert.equal(retry.status, 0, retry.stderr);
     assert.equal(relay.requests.length, 1);
+  });
+
+  test("a partial delivery does not suppress a later same-status retry", async () => {
+    await startFakeRelay((request) =>
+      request.body.token === TOKEN_B
+        ? { status: 400, body: { error: "bad_token" } }
+        : { status: 200, body: { apnsId: "x" } },
+    );
+    writeConfig();
+    writeRegistration([device(), device({ token: TOKEN_B, key: KEY_B })]);
+    writeHerdrStub({ status: "blocked" });
+
+    const initial = await runHook(statusEvent("blocked"));
+
+    assert.equal(initial.status, 1);
+    assert.equal(relay.requests.length, 2);
+
+    await startFakeRelay();
+    writeConfig();
+    const retry = await runHook(statusEvent("blocked"));
+
+    assert.equal(retry.status, 0, retry.stderr);
+    assert.equal(relay.requests.length, 2);
   });
 
   test("a permanent 4xx is not retried", async () => {
@@ -714,6 +796,32 @@ suite("notify-hook: configuration and registration file", () => {
     assert.deepEqual(
       relay.requests.map((r) => r.body.token),
       ["c".repeat(64)],
+    );
+  });
+
+  test("an opaque FCM token is accepted while FCM entries with env or malformed providers are skipped", async () => {
+    await startFakeRelay();
+    writeConfig();
+    writeRegistration([
+      fcmDevice(),
+      fcmDevice({ token: FCM_TOKEN_B, env: "sandbox" }),
+      { provider: "webpush", token: "opaque", key: KEY_A.toString("base64url"), notify: { blocked: true } },
+      {
+        provider: null,
+        token: "d".repeat(64),
+        key: KEY_A.toString("base64url"),
+        env: "sandbox",
+        notify: { blocked: true },
+      },
+    ]);
+    writeHerdrStub({ status: "blocked" });
+
+    const result = await runHook(statusEvent("blocked"));
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(
+      relay.requests.map((request) => request.body.token),
+      [FCM_TOKEN_A],
     );
   });
 
