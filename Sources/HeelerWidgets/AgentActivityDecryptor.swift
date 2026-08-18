@@ -55,6 +55,19 @@ enum AgentActivityPresentation: Equatable, Sendable {
         guard shown > 0 else { return 0 }
         return max(0, counts.total - shown)
     }
+
+    /// Lock-screen rows, uniform type. Four two-line rows are the ~160pt
+    /// budget's ceiling; when the inventory is larger, three rows leave
+    /// height for the "+N more" line.
+    var lockScreenAgents: [AgentActivityDetails.AgentDetail] {
+        Array(agents.prefix(counts.total <= 4 ? 4 : 3))
+    }
+
+    /// Inventory beyond the drawn lock-screen rows. Zero in counts-only.
+    var lockScreenOverflowCount: Int {
+        guard !lockScreenAgents.isEmpty else { return 0 }
+        return max(0, counts.total - lockScreenAgents.count)
+    }
 }
 
 /// Synchronous render-time helper. Failures degrade to counts-only so a
@@ -131,7 +144,9 @@ enum AgentActivityDecryptor {
 
 enum AgentActivityCopy {
     static let genericAppName = "Heeler"
-    static let rowLimit = 2
+    // Governs the Dynamic Island expanded rows (headline + rowLimit - 1);
+    // the lock screen sizes itself via `lockScreenAgents` instead.
+    static let rowLimit = 3
 }
 
 extension AgentActivityAttributes.ContentState.Counts {

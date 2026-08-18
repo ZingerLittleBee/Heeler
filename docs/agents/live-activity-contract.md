@@ -71,8 +71,10 @@ The widget renders no Host identity: an agent renders as two lines
 mirroring the herdr sidebar's hierarchy — the task `title` on top with
 the identity (`name`, falling back to `kind` when unnamed, exactly like
 the TUI) indented beneath; a missing title promotes the identity to the
-top line alone. The headline is the most urgent agent's block. The `host`
-field stays in the wire for producers but is not displayed.
+top line alone. The lock screen draws a uniform list, most urgent first:
+all four rows when the inventory fits, otherwise three rows plus
+"+N more" (the ~160pt banner budget). The `host` field stays in the wire
+for producers but is not displayed.
 
 ## Relay request (plugin → relay)
 

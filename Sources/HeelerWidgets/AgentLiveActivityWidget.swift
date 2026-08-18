@@ -2,11 +2,11 @@ import ActivityKit
 import SwiftUI
 import WidgetKit
 
-/// Live Activity for one Host. Lock-screen banner is an aggregate (headline,
-/// at most one more row, overflow), not a list — ~160pt budget. The headline
-/// is the most urgent agent's task title; Host identity is never rendered.
-/// Every agent row is a deep link into that agent's detail; taps outside a
-/// row land on the Console.
+/// Live Activity for one Host. Lock-screen banner is a uniform agent list
+/// under a ~160pt budget: four rows when everything fits, three plus
+/// "+N more" otherwise. Rows arrive pre-sorted most-urgent first; Host
+/// identity is never rendered. Every agent row is a deep link into that
+/// agent's detail; taps outside a row land on the Console.
 struct AgentLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: AgentActivityAttributes.self) { context in
@@ -33,11 +33,11 @@ struct AgentActivityLockScreenView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             header
-            ForEach(presentation.secondaryAgents, id: \.paneID) { agent in
+            ForEach(presentation.lockScreenAgents.dropFirst(), id: \.paneID) { agent in
                 AgentActivityLinkedRow(hostID: hostID, agent: agent)
             }
-            if presentation.overflowCount > 0 {
-                Text("+\(presentation.overflowCount) more")
+            if presentation.lockScreenOverflowCount > 0 {
+                Text("+\(presentation.lockScreenOverflowCount) more")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -67,10 +67,8 @@ struct AgentActivityLockScreenView: View {
 
     @ViewBuilder
     private var headline: some View {
-        if let primary = presentation.primaryAgent {
-            AgentActivityLinked(hostID: hostID, paneID: primary.paneID) {
-                AgentActivityHeadlineView(agent: primary)
-            }
+        if let first = presentation.lockScreenAgents.first {
+            AgentActivityLinkedRow(hostID: hostID, agent: first)
         } else {
             Text(presentation.headerTitle)
                 .font(.subheadline.weight(.semibold))
@@ -80,14 +78,15 @@ struct AgentActivityLockScreenView: View {
 
     private var lockScreenAccessibilityLabel: String {
         var parts = [
-            presentation.primaryAgent.map(Self.narration(for:)) ?? presentation.headerTitle
+            presentation.lockScreenAgents.first.map(Self.narration(for:))
+                ?? presentation.headerTitle
         ]
         parts.append(contentsOf: presentation.counts.chipItems.map { "\($0.count) \($0.status)" })
-        for agent in presentation.secondaryAgents {
+        for agent in presentation.lockScreenAgents.dropFirst() {
             parts.append(Self.narration(for: agent))
         }
-        if presentation.overflowCount > 0 {
-            parts.append("\(presentation.overflowCount) more")
+        if presentation.lockScreenOverflowCount > 0 {
+            parts.append("\(presentation.lockScreenOverflowCount) more")
         }
         return parts.joined(separator: ", ")
     }
@@ -408,6 +407,28 @@ enum AgentActivityChrome {
                             title: "Write the landing copy"),
                     ]),
                 counts: .init(working: 2, blocked: 0, done: 0)))
+    }
+
+    #Preview("Four rows, all fit") {
+        previewBanner(
+            .detailed(
+                details: AgentActivityDetails(
+                    hostName: "mbp",
+                    agents: [
+                        previewAgent(
+                            "blocked", kind: "claude", name: "reviewer", pane: "w1:p1",
+                            title: "Approve the transport refactor plan"),
+                        previewAgent(
+                            "working", kind: "claude", pane: "w1:p2",
+                            title: "Refactor the transport queue"),
+                        previewAgent(
+                            "working", kind: "grok", name: "la-demo", pane: "w1:p3",
+                            title: "Write the landing copy"),
+                        previewAgent(
+                            "working", kind: "codex", name: "fixer", pane: "w1:p4",
+                            title: "Chase the flaky pairing test"),
+                    ]),
+                counts: .init(working: 3, blocked: 1, done: 0)))
     }
 
     #Preview("Counts only (undecryptable)") {
