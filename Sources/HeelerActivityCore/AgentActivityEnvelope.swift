@@ -17,6 +17,14 @@ struct AgentActivityDetails: Sendable, Equatable {
 
         /// The identity a row leads with: the herdr name, else the kind.
         var displayName: String { name ?? kind }
+
+        /// The title as rendered: leading agent status glyphs stripped
+        /// (the wire keeps them); nil when nothing remains.
+        var displayTitle: String? {
+            guard let title else { return nil }
+            let stripped = TerminalTitleGlyphs.strip(title)
+            return stripped.isEmpty ? nil : stripped
+        }
     }
 }
 

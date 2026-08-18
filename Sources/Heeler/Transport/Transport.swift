@@ -484,7 +484,8 @@ struct Agent: Sendable, Equatable {
         self.init(
             terminalID: info.terminalID,
             kind: info.agent ?? "unknown",
-            title: info.terminalTitleStripped ?? info.terminalTitle ?? "",
+            title: TerminalTitleGlyphs.strip(
+                info.terminalTitleStripped ?? info.terminalTitle ?? ""),
             status: info.agentStatus,
             workspaceID: info.workspaceID,
             tabID: info.tabID,

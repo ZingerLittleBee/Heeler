@@ -94,7 +94,7 @@ struct AgentActivityLockScreenView: View {
 
     private static func narration(for agent: AgentActivityDetails.AgentDetail) -> String {
         var row = "\(agent.displayName), \(agent.status)"
-        if let title = agent.title {
+        if let title = agent.displayTitle {
             row += ", \(title)"
         }
         return row
@@ -261,12 +261,12 @@ private struct AgentActivityHeadlineView: View {
                     .fill(ink)
                     .frame(width: 8, height: 8)
                     .accessibilityHidden(true)
-                Text(agent.title ?? agent.displayName)
+                Text(agent.displayTitle ?? agent.displayName)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(isBlocked ? ink : Color.primary)
                     .lineLimit(1)
             }
-            if agent.title != nil {
+            if agent.displayTitle != nil {
                 Text(agent.displayName)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -294,13 +294,13 @@ private struct AgentActivityRowView: View {
                     .fill(ink)
                     .frame(width: 7, height: 7)
                     .accessibilityHidden(true)
-                Text(agent.title ?? agent.displayName)
+                Text(agent.displayTitle ?? agent.displayName)
                     .font(.caption.weight(isBlocked ? .semibold : .regular))
                     .foregroundStyle(isBlocked ? ink : .primary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
-            if agent.title != nil {
+            if agent.displayTitle != nil {
                 Text(agent.displayName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
