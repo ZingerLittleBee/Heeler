@@ -11,8 +11,9 @@ entrypoint appends that key to `authorized_keys` automatically. See
 [Bootstrap Key lifecycle](#bootstrap-key-lifecycle).
 
 The plugin also delivers **Agent Notifications** (ADR 0008) and per-Host
-**Live Activity** updates: two independent event hooks on
-`pane.agent_status_changed`. The notify hook pushes encrypted Blocked/Done
+**Live Activity** updates: two independent `[[events]]` entries on
+`pane.agent_status_changed`. herdr runs every matching hook for the same
+event (verified on 0.8.0). The notify hook pushes encrypted Blocked/Done
 alerts; the activity hook pushes the Host's eligible-agent snapshot to any
 device that has registered a Live Activity token. See
 [Notify hook](#notify-hook) and [Activity hook](#activity-hook).
@@ -351,8 +352,10 @@ everything it does not recognize.
 ## Activity hook
 
 The second manifest `[[events]]` hook on `pane.agent_status_changed` runs
-`src/activity-hook.js` as its own short-lived process. It is independent of
-the alert notify hook: `notify` flags do not gate it, and a Host with no
+`src/activity-hook.js` as its own short-lived process. herdr invokes both
+this command and `src/notify-hook.js` for the same event (verified on
+0.8.0); there is no in-plugin dispatcher. It is independent of the alert
+notify hook: `notify` flags do not gate it, and a Host with no
 `live_activity` registration sends nothing.
 
 The hook lists the Host's agents through `HERDR_BIN_PATH` (`herdr agent list`)
