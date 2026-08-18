@@ -34,6 +34,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { encryptNotificationEnvelope } from "./notification-envelope.js";
 import { readNotificationConfig } from "./notification-config.js";
+import { forDisplay, optionalText } from "./display-text.js";
 
 // Statuses that notify (ADR 0008: Working/Idle transitions never do), keyed
 // by the registration file's per-device `notify` preference flag they gate on.
@@ -43,24 +44,6 @@ const SEND_ATTEMPTS = 3;
 const REQUEST_TIMEOUT_MS = 10_000;
 const KEY_BYTES = 32;
 const APNS_ENVIRONMENTS = new Set(["production", "sandbox"]);
-// Agent terminal titles are whole task descriptions and run long. The app
-// trims to the same length for display; trimming here keeps the encrypted
-// payload small on the wire too.
-const DISPLAY_LIMIT = 80;
-
-/** A non-empty string or null; the display fields are all best-effort. */
-function optionalText(value) {
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
-/** Trim a display string to DISPLAY_LIMIT graphemes, ellipsis included. */
-function forDisplay(value) {
-  const text = optionalText(value);
-  if (text === null) return null;
-  const graphemes = [...text];
-  if (graphemes.length <= DISPLAY_LIMIT) return text;
-  return `${graphemes.slice(0, DISPLAY_LIMIT - 1).join("").trimEnd()}…`;
-}
 
 /** Parse HERDR_PLUGIN_EVENT_JSON leniently: require pane id and status only. */
 function parseStatusEvent(raw) {

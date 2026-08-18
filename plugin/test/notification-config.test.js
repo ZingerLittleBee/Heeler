@@ -52,7 +52,14 @@ suite("notification config", () => {
     assert.deepEqual(readNotificationConfig(configDir), {
       relayUrl: DEFAULT_RELAY_URL,
       debounceMs: 5000,
+      activityDebounceMs: 1500,
       retryDelayMs: 1000,
     });
+  });
+
+  test("preserves an explicit activity debounce override", () => {
+    writeConfig({ activity_debounce_ms: 250 });
+
+    assert.equal(readNotificationConfig(configDir).activityDebounceMs, 250);
   });
 });
