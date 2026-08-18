@@ -46,6 +46,11 @@ The notification is encrypted on your Host with your per-Host Notification Key
   without decrypting.
 - Your Host's **source IP address**, as with any network request.
 - **When and how often** your Host sends notification requests.
+- For lock-screen Live Activity updates only: the **status counts** (how many
+  agents are working, blocked, or done) and the update/end signal. Apple
+  renders these counts directly, so they cannot be encrypted; everything
+  identifying — agent kind, task title, host name — stays inside the
+  ciphertext and is decrypted on your device at render time.
 
 ### What the push relay cannot see
 
