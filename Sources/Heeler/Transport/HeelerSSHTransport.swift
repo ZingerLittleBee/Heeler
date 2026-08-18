@@ -9,6 +9,9 @@ private struct HeelerSSHSessionListResponse: Decodable {
 private enum HeelerSSHAttachPumpError: Error, Sendable {
     case input(String)
     case output(String)
+    /// Remote process exited nonzero. Distinct from a channel I/O failure so
+    /// Attach can map a bare-`herdr` exit 127 onto the PATH problem (#206).
+    case remoteExit(Int32)
 }
 
 /// The live PTY operations used by the Attach pumps. `SSHPTYChannel` is the
@@ -1040,7 +1043,13 @@ actor HeelerSSHTransport: Transport {
 
     private func runNotificationPluginProbe(command: String) async throws -> Data {
         do {
-            let result = try await runExec(Self.cLocaleCommand(command))
+            let result = try await runExec(
+                Self.cLocaleCommand(HerdrHostPath.wrappingBareHerdr(command)))
+            if let missing = HerdrHostPath.missingBinaryError(
+                exitStatus: result.exitStatus, command: command)
+            {
+                throw missing
+            }
             guard result.exitStatus == 0, result.reachedEOF else {
                 throw NotificationRegistrationError.pluginProbeFailed(
                     detail: "The Host plugin probe failed.")
@@ -1050,6 +1059,8 @@ actor HeelerSSHTransport: Transport {
             throw TransportError.cancelled
         } catch TransportError.timedOut {
             throw TransportError.timedOut
+        } catch TransportError.herdrBinaryNotFound {
+            throw TransportError.herdrBinaryNotFound
         } catch let error as NotificationRegistrationError {
             throw error
         } catch {
@@ -1577,7 +1588,13 @@ actor HeelerSSHTransport: Transport {
 
     private func runHostCommand(_ command: String) async throws -> Data {
         try await withRequestDeadline {
-            let result = try await self.runExec(Self.cLocaleCommand(command))
+            let result = try await self.runExec(
+                Self.cLocaleCommand(HerdrHostPath.wrappingBareHerdr(command)))
+            if let missing = HerdrHostPath.missingBinaryError(
+                exitStatus: result.exitStatus, command: command)
+            {
+                throw missing
+            }
             guard result.reachedEOF else {
                 throw TransportError.channelFailed(
                     detail: "Host command closed before EOF")
@@ -1726,11 +1743,13 @@ actor HeelerSSHTransport: Transport {
                 throw TransportError.channelFailed(
                     detail: "The herdr session name is invalid.")
             }
-            command = "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
+            command = "/bin/sh -c '\(HerdrHostPath.pathExport); "
+                + "export HERDR_SOCKET_PATH=\"$1\"; "
                 + "export HERDR_SESSION=\"$2\"; \(wakeCommand) < /dev/null' wake "
                 + "\(quotedSocketPath) \(sessionName)"
         case .defaultSession, .absolutePath:
-            command = "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
+            command = "/bin/sh -c '\(HerdrHostPath.pathExport); "
+                + "export HERDR_SOCKET_PATH=\"$1\"; "
                 + "\(wakeCommand) < /dev/null' wake \(quotedSocketPath)"
         }
         return cLocaleCommand(command)
@@ -1972,7 +1991,8 @@ actor HeelerSSHTransport: Transport {
                     channel: channel,
                     admissionLease: lease,
                     input: input,
-                    output: outputGate)
+                    output: outputGate,
+                    attachCommand: attachCommand)
             }
             return TerminalAttachSession(
                 output: outputGate.makeOutput,
@@ -2023,10 +2043,21 @@ actor HeelerSSHTransport: Transport {
         let takeover = request.takeover ? " --takeover" : ""
         // The marker goes out last thing before the exec, so earlier startup
         // chatter can be dropped.
-        return "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
+        return "/bin/sh -c '\(HerdrHostPath.pathExport); "
+            + "export HERDR_SOCKET_PATH=\"$2\"; "
             + "printf \"\(AttachBootstrapHandshake.markerPrintfFormat)\"; "
             + "exec \(attachCommand) \"$1\"\(takeover)' attach "
             + "'\(request.target)' \(quotedSocketPath)"
+    }
+
+    /// Maps a remote attach exit onto the Transport taxonomy. Exit 127 is
+    /// `herdrBinaryNotFound` only when the exec'd command is still a bare
+    /// `herdr` word; injectable scripts keep the generic channel failure.
+    static func attachChannelFailure(
+        exitStatus: Int32, attachCommand: String
+    ) -> TransportError {
+        HerdrHostPath.missingBinaryError(exitStatus: exitStatus, command: attachCommand)
+            ?? .channelFailed(detail: "attach channel: remote exit status \(exitStatus)")
     }
 
     private func runAttachChannel(
@@ -2034,7 +2065,8 @@ actor HeelerSSHTransport: Transport {
         channel: SSHPTYChannel,
         admissionLease: SSHChannelAdmissionLease,
         input: TerminalAttachInputQueue,
-        output: HeelerSSHAttachOutputGate
+        output: HeelerSSHAttachOutputGate,
+        attachCommand: String
     ) async {
         var failure: TransportError?
         var sawCleanEnd = false
@@ -2063,6 +2095,9 @@ actor HeelerSSHTransport: Transport {
                     failure = .channelFailed(detail: "attach input: \(detail)")
                 case .output(let detail):
                     failure = .channelFailed(detail: "attach channel: \(detail)")
+                case .remoteExit(let status):
+                    failure = Self.attachChannelFailure(
+                        exitStatus: status, attachCommand: attachCommand)
                 case nil:
                     failure = .channelFailed(detail: "attach channel: \(error)")
                 }
@@ -2143,8 +2178,7 @@ actor HeelerSSHTransport: Transport {
                             let status = try await channel.exitStatus(timeout: requestTimeout)
                             guard status == 0 else {
                                 yieldAdmitted(gate.flush())
-                                throw HeelerSSHAttachPumpError.output(
-                                    "remote exit status \(status)")
+                                throw HeelerSSHAttachPumpError.remoteExit(status)
                             }
                             yieldAdmitted(gate.flush())
                             return true

@@ -289,6 +289,8 @@ final class AttachTerminalStore {
             "Another terminal is already open on this Host."
         case TransportError.timedOut:
             "The Host did not answer in time."
+        case TransportError.herdrBinaryNotFound:
+            TransportError.herdrBinaryNotFound.connectionGuidance
         default:
             "The session failed: \(error)"
         }

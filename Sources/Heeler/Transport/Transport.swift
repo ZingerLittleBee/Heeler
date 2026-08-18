@@ -559,6 +559,10 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// The herdr API socket path does not exist on the Host: herdr is not
     /// installed there, or the socket path is wrong.
     case socketNotFound(path: String)
+    /// The herdr CLI is not on the SSH session's PATH and was not found in
+    /// the well-known install prefixes. The API socket can still work — that
+    /// is why the Console may list Agents while Attach fails (#206).
+    case herdrBinaryNotFound
     /// libssh2 cannot distinguish a listening Unix socket rejected by SSH
     /// policy from a stale socket file. The Host needs either herdr started or
     /// stream-local forwarding enabled; presenting a narrower cause would be
@@ -607,7 +611,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
             true
         case .authenticationFailed, .tcpForwardingUnavailable,
             .deviceKeyCorrupt, .hostKeyRejected, .hostKeyMismatch,
-            .socketNotFound, .protocolVersionMismatch,
+            .socketNotFound, .herdrBinaryNotFound, .protocolVersionMismatch,
             .streamLocalOpenFailed,
             .homeDirectoryUnresolvable, .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse:

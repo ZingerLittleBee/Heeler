@@ -1546,7 +1546,8 @@ struct TerminalAttachTests {
             request: TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24),
             socketPath: "/tmp/fake.sock")
         #expect(
-            command == "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
+            command == "/bin/sh -c '\(HerdrHostPath.pathExport); "
+                + "export HERDR_SOCKET_PATH=\"$2\"; "
                 + "printf \"\(AttachBootstrapHandshake.markerPrintfFormat)\"; "
                 + "exec /bin/sh /tmp/fake-attach.sh \"$1\"' attach "
                 + "'w1:p1' '/tmp/fake.sock'")
@@ -1563,7 +1564,8 @@ struct TerminalAttachTests {
             socketPath: "/home/u/.config/herdr/sessions/dev/herdr.sock")
 
         #expect(
-            command == "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
+            command == "/bin/sh -c '\(HerdrHostPath.pathExport); "
+                + "export HERDR_SOCKET_PATH=\"$2\"; "
                 + "printf \"\(AttachBootstrapHandshake.markerPrintfFormat)\"; "
                 + "exec herdr agent attach \"$1\" --takeover' attach "
                 + "'w1:p1' '/home/u/.config/herdr/sessions/dev/herdr.sock'")
@@ -1608,6 +1610,52 @@ struct TerminalAttachTests {
         let printfRange = try #require(command.range(of: markerPrintf))
         let execRange = try #require(command.range(of: "exec herdr agent attach"))
         #expect(printfRange.upperBound <= execRange.lowerBound)
+    }
+
+    @Test func attachExit127OnBareHerdrIsAMissingBinary() {
+        #expect(
+            HeelerSSHTransport.attachChannelFailure(
+                exitStatus: 127, attachCommand: "herdr agent attach")
+                == .herdrBinaryNotFound)
+    }
+
+    @Test func attachExit127OnAnInjectableCommandStaysAChannelFailure() {
+        #expect(
+            HeelerSSHTransport.attachChannelFailure(
+                exitStatus: 127, attachCommand: "/bin/sh /tmp/fake-attach.sh")
+                == .channelFailed(detail: "attach channel: remote exit status 127"))
+    }
+
+    @Test func attachExit127OnAnAbsoluteHerdrStaysAChannelFailure() {
+        #expect(
+            HeelerSSHTransport.attachChannelFailure(
+                exitStatus: 127,
+                attachCommand: "/nonexistent/herdr agent attach")
+                == .channelFailed(detail: "attach channel: remote exit status 127"))
+    }
+
+    @Test func attachNonzeroExitBesides127StaysAChannelFailure() {
+        #expect(
+            HeelerSSHTransport.attachChannelFailure(
+                exitStatus: 23, attachCommand: "herdr agent attach")
+                == .channelFailed(detail: "attach channel: remote exit status 23"))
+    }
+
+    @Test func attachPumpsReportARemoteExitStatus() async throws {
+        let channel = FakeAttachPTYChannel(reads: [nil], remoteExitStatus: 127)
+        let input = TerminalAttachInputQueue()
+        let source = HeelerSSHAttachOutputGate.makeStream()
+
+        do {
+            _ = try await HeelerSSHTransport.runAttachPumps(
+                channel: channel,
+                input: input,
+                output: source.gate,
+                requestTimeout: .seconds(1))
+            Issue.record("exit 127 should fail the attach pumps")
+        } catch {
+            #expect(String(describing: error) == "remoteExit(127)")
+        }
     }
 
     @Test func gateWithholdsStartupChatterUntilTheHandshake() {
@@ -1684,17 +1732,20 @@ private actor FakeAttachPTYChannel: HeelerSSHAttachChannel {
     private var reads: [Data?]
     private let writeError: (any Error & Sendable)?
     private let blockAfterReads: Bool
+    private let remoteExitStatus: Int32
     private var didReadFirst = false
     private var firstReadWaiters: [CheckedContinuation<Void, Never>] = []
 
     init(
         reads: [Data?],
         writeError: (any Error & Sendable)? = nil,
-        blockAfterReads: Bool = false
+        blockAfterReads: Bool = false,
+        remoteExitStatus: Int32 = 0
     ) {
         self.reads = reads
         self.writeError = writeError
         self.blockAfterReads = blockAfterReads
+        self.remoteExitStatus = remoteExitStatus
     }
 
     func write(_: Data, timeout _: Duration) async throws {
@@ -1720,7 +1771,7 @@ private actor FakeAttachPTYChannel: HeelerSSHAttachChannel {
 
     func resize(columns _: Int, rows _: Int, timeout _: Duration) async throws {}
 
-    func exitStatus(timeout _: Duration) async throws -> Int32 { 0 }
+    func exitStatus(timeout _: Duration) async throws -> Int32 { remoteExitStatus }
 
     func waitUntilFirstRead() async {
         guard !didReadFirst else { return }

@@ -133,6 +133,11 @@ struct PreflightReport: Equatable, Sendable {
             // taxonomy total anyway.
             check = .connection
             hint = "The connection is busy. Try again."
+        case .herdrBinaryNotFound:
+            // Preflight is one connect + ping and never execs herdr, so this
+            // case cannot fire here. Keep the closed taxonomy total anyway.
+            check = .connection
+            hint = "The herdr CLI was not found on the Host."
         case .jumpHostFailed(let underlying):
             // The first hop broke, so the Host itself was never contacted and
             // nothing about it has been disproved. Name the Jump Host as the

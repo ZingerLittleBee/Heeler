@@ -22,6 +22,13 @@ struct TransportErrorPresentationTests {
         #expect(TransportError.tcpForwardingUnavailable.isRetryable == false)
     }
 
+    @Test func missingHerdrBinaryNamesTheHomebrewPATH() {
+        let guidance = TransportError.herdrBinaryNotFound.connectionGuidance
+        #expect(guidance.contains("/opt/homebrew/bin"))
+        #expect(guidance.contains("/home/linuxbrew/.linuxbrew/bin"))
+        #expect(TransportError.herdrBinaryNotFound.isRetryable == false)
+    }
+
     @Test func channelFailureIncludesItsDiagnosticDetail() {
         #expect(
             TransportError.channelFailed(detail: "connection reset").connectionGuidance
