@@ -9,6 +9,17 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- A native Android companion app now lives in `android/`: Kotlin/Jetpack
+  Compose console with pairing, Host onboarding and TOFU trust, the live
+  ghostty-vt terminal Attach, local Composer with the tools keyboard, SFTP
+  staging, Snippets, Skills, terminal appearance settings, and FCM Agent
+  Notifications decrypting the same end-to-end envelope. The Push Relay and
+  the Heeler plugin gained a first-class `fcm` device provider (opaque token,
+  no APNs environment) while keeping the existing APNs contract byte-stable;
+  the notification envelope is provider-neutral and unchanged. See ADR 0014
+  for the stack decision (ghostty-vt and libssh2 behind a repository-owned
+  Zig JNI bridge, pinned by content hash).
+
 - Agent detail now places a plus menu to the left of Send. It can add an image
   from Photos or a file up to 64 MiB from Files, stages the selection privately
   on the Host over SFTP, and inserts the resulting path into the local draft

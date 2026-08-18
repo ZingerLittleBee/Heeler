@@ -35,3 +35,13 @@ __pycache__/
 
 # Agent workspace (research reports, scratch)
 .claude/
+
+# Android
+android/.gradle/
+android/local.properties
+android/**/build/
+android/app/src/main/jniLibs/
+android/native/.zig-cache/
+android/native/zig-out/
+android/app/google-services.json
+android/keystore.properties

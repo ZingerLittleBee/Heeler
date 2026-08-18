@@ -1,0 +1,2 @@
+-keep class dev.bybee.heeler.core.ssh.NativeSsh { *; }
+-keep class dev.bybee.heeler.core.terminal.NativeTerminal { *; }

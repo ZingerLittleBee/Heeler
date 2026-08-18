@@ -1,0 +1,109 @@
+name: Android
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "android/**"
+      - "scripts/generate-wire-types.py"
+      - "scripts/herdr-schema.json"
+      - "plugin/test-vectors/**"
+      - ".github/workflows/android.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - "scripts/generate-wire-types.py"
+      - "scripts/herdr-schema.json"
+      - "plugin/test-vectors/**"
+      - ".github/workflows/android.yml"
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NDK_VERSION: 28.2.13676358
+  ZIG_VERSION: 0.15.2
+
+jobs:
+  wire-types:
+    name: Wire-type drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check generated wire types match the schema snapshot
+        run: python3 scripts/generate-wire-types.py --schema scripts/herdr-schema.json --check
+
+  native:
+    name: Native library (${{ matrix.abi }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - abi: arm64-v8a
+            target: aarch64-linux-android
+          - abi: armeabi-v7a
+            target: arm-linux-androideabi
+          - abi: x86_64
+            target: x86_64-linux-android
+          - abi: x86
+            target: x86-linux-android
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install NDK
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" >/dev/null
+      - name: Cache zig
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/heeler-zig
+          key: zig-${{ env.ZIG_VERSION }}-linux-x86_64
+      - name: Cache zig packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/zig
+          key: zig-pkg-${{ hashFiles('android/native/build.zig.zon', 'android/native/src/vendor/libssh2/build.zig.zon') }}
+      - name: Build
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
+        run: android/native/build-native.sh jni -Dtarget=${{ matrix.target }} -Doptimize=ReleaseSmall
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jniLibs-${{ matrix.abi }}
+          path: android/app/src/main/jniLibs/${{ matrix.abi }}/libheeler_jni.so
+          if-no-files-found: error
+
+  gradle:
+    name: Build and unit tests
+    runs-on: ubuntu-latest
+    needs: native
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: jniLibs-*
+          path: android/app/src/main/jniLibs
+          merge-multiple: false
+      - name: Flatten jniLibs artifact layout
+        run: |
+          cd android/app/src/main/jniLibs
+          for d in jniLibs-*; do
+            abi="${d#jniLibs-}"
+            mkdir -p "$abi"
+            mv "$d"/libheeler_jni.so "$abi/" 2>/dev/null || mv "$d"/*/libheeler_jni.so "$abi/"
+            rm -r "$d"
+          done
+          ls -R .
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Unit tests
+        run: cd android && ./gradlew --no-daemon :core:testDebugUnitTest :app:testDebugUnitTest
+      - name: Assemble
+        run: cd android && ./gradlew --no-daemon assembleDebug
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/main'
+        with:
+          name: heeler-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk

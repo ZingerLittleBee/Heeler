@@ -1,0 +1,27 @@
+.{
+    .name = .heeler,
+    .version = "0.0.0",
+    .dependencies = .{
+        .ghostty = .{
+            .url = "git+https://github.com/ghostty-org/ghostty#a746d0f7281954eb251915f4cd9fcea4924ad999",
+            .hash = "ghostty-1.3.2-dev-5UdBC4aaEQVBspo81eyoKCFIEVCHBbbZxLh7jzc1kOum",
+        },
+        .zigimg = .{
+            .url = "git+https://github.com/zigimg/zigimg?ref=zig-0.15#7b98e82621fe302a9edc147df1191f4d1b7ff7a5",
+            .hash = "zigimg-0.1.0-8_eo2qWHFwA-S24SH7x7NplPii0EbIQiUfDrimgA6rzN",
+        },
+        .libssh2 = .{
+            .path = "src/vendor/libssh2",
+        },
+        .openssl = .{
+            .url = "git+https://github.com/jossephus/openssl-zig#bc228fc66b51610129b65a6f4590e26b409048cb",
+            .hash = "openssl-3.6.0-wZcA76Qb8gHOC9xYtu7mOgCh_5Fdf-ysBWyDaR9vvwgL",
+        },
+    },
+    .fingerprint = 0xef036e2e9b1c3d91,
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
