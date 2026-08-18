@@ -43,7 +43,7 @@ opened as an activity envelope, and vice versa.
 Decrypted plaintext (canonical form):
 
 ```json
-{"agents": [{"kind": "claude", "pane": "wV:p1", "status": "blocked", "title": "..."}],
+{"agents": [{"kind": "claude", "name": "reviewer", "pane": "wV:p1", "status": "blocked", "title": "..."}],
  "host": "mbp", "v": 1}
 ```
 
@@ -56,6 +56,9 @@ Decrypted plaintext (canonical form):
 - `title` is `terminal_title_stripped ?? terminal_title`, trimmed to ≤80
   graphemes; omitted (not empty) when unavailable. `kind` falls back to
   `"unknown"`.
+- `name` is the herdr agent name (`display_agent ?? name`), trimmed to ≤80
+  graphemes; omitted (not empty) when the agent is unnamed. Agent entry key
+  order stays alphabetical: `kind` < `name` < `pane` < `status` < `title`.
 - `host` is the Host machine's short hostname (first DNS label), ≤80
   graphemes.
 - Unknown fields in plaintext or envelope frame are ignored (additive v1
@@ -64,10 +67,12 @@ Decrypted plaintext (canonical form):
   APNs payload stays under 4096. Producers degrade in order: drop all
   `title` fields, then send `agents: []`; counts always fit.
 
-The widget renders no Host identity: the lock-screen headline is the
-most urgent agent's task `title` (its `kind` when the title is absent).
-The `host` field stays in the wire for producers but is not displayed;
-the wire shape is unchanged.
+The widget renders no Host identity: an agent line leads with the herdr
+agent `name` followed by the task `title`; when `name` is absent (older
+producers, unnamed agents) the line is the `title` alone, its `kind`
+standing in when the title is also missing. The headline is the most
+urgent agent's line. The `host` field stays in the wire for producers but
+is not displayed.
 
 ## Relay request (plugin → relay)
 

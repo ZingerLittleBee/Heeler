@@ -83,11 +83,13 @@ export function buildActivityState({ agents, hostName }) {
     const title = forDisplay(
       optionalText(entry.agent.terminal_title_stripped) ?? optionalText(entry.agent.terminal_title),
     );
-    const wire = {
-      kind: optionalText(entry.agent.agent) ?? "unknown",
-      pane: entry.pane,
-      status: entry.status,
-    };
+    const name = forDisplay(
+      optionalText(entry.agent.display_agent) ?? optionalText(entry.agent.name),
+    );
+    const wire = { kind: optionalText(entry.agent.agent) ?? "unknown" };
+    if (name !== null) wire.name = name;
+    wire.pane = entry.pane;
+    wire.status = entry.status;
     if (title !== null) wire.title = title;
     return wire;
   });

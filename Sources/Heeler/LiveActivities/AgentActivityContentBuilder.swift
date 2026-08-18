@@ -104,9 +104,11 @@ enum AgentActivityContentBuilder {
     private static func detail(from agent: ConsoleAgent) -> AgentActivityDetails.AgentDetail {
         let kind = agent.agent.kind.isEmpty ? "unknown" : agent.agent.kind
         let trimmed = prefixGraphemes(agent.agent.title, max: maxTitleGraphemes)
+        let name = agent.agent.name.map { prefixGraphemes($0, max: maxTitleGraphemes) }
         return AgentActivityDetails.AgentDetail(
             paneID: agent.agent.paneID,
             kind: kind,
+            name: name?.isEmpty == false ? name : nil,
             status: agent.agent.status.rawValue,
             title: trimmed.isEmpty ? nil : trimmed)
     }

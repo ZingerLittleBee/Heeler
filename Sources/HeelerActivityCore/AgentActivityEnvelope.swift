@@ -10,8 +10,13 @@ struct AgentActivityDetails: Sendable, Equatable {
     struct AgentDetail: Sendable, Equatable {
         var paneID: String
         var kind: String
+        /// The herdr agent name (`display_agent ?? name`); nil when unnamed.
+        var name: String? = nil
         var status: String
         var title: String?
+
+        /// The identity a row leads with: the herdr name, else the kind.
+        var displayName: String { name ?? kind }
     }
 }
 
@@ -127,7 +132,8 @@ enum AgentActivityEnvelope {
             }
             agents.append(
                 AgentActivityDetails.AgentDetail(
-                    paneID: pane, kind: kind, status: status, title: nonEmpty(item.title)))
+                    paneID: pane, kind: kind, name: nonEmpty(item.name), status: status,
+                    title: nonEmpty(item.title)))
         }
         return AgentActivityDetails(hostName: host, agents: agents)
     }
@@ -138,8 +144,8 @@ enum AgentActivityEnvelope {
     private static func encodePlaintext(_ details: AgentActivityDetails) throws -> Data {
         let agents = Array(sorted(details.agents).prefix(5)).map { agent in
             OutgoingAgent(
-                kind: agent.kind, pane: agent.paneID, status: agent.status,
-                title: nonEmpty(agent.title))
+                kind: agent.kind, name: nonEmpty(agent.name), pane: agent.paneID,
+                status: agent.status, title: nonEmpty(agent.title))
         }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
@@ -183,6 +189,7 @@ enum AgentActivityEnvelope {
     private struct WireAgent: Decodable {
         var pane: String?
         var kind: String?
+        var name: String?
         var status: String?
         var title: String?
     }
@@ -195,6 +202,7 @@ enum AgentActivityEnvelope {
 
     private struct OutgoingAgent: Encodable {
         var kind: String
+        var name: String?
         var pane: String
         var status: String
         var title: String?

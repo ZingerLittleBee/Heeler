@@ -82,6 +82,22 @@ suite("buildActivityState", () => {
     assert.equal("title" in byPane["w1:p3"], false);
   });
 
+  test("carries the herdr agent name, preferring display_agent, omitting it when unnamed", () => {
+    const { plaintextObject } = buildActivityState({
+      agents: [
+        agent("w1:p1", "working", { agent: "grok", name: "la-demo" }),
+        agent("w1:p2", "blocked", { agent: "codex", name: "reviewer", display_agent: "rev" }),
+        agent("w1:p3", "done", { agent: "claude", name: "" }),
+      ],
+      hostName: "mbp",
+    });
+    const byPane = Object.fromEntries(plaintextObject.agents.map((entry) => [entry.pane, entry]));
+    assert.equal(byPane["w1:p1"].name, "la-demo");
+    assert.equal(byPane["w1:p2"].name, "rev");
+    assert.equal("name" in byPane["w1:p3"], false);
+    assert.deepEqual(Object.keys(byPane["w1:p1"]), ["kind", "name", "pane", "status"]);
+  });
+
   test("prefers the stripped title, falls kind back to unknown, and trims host", () => {
     const longHost = "h".repeat(DISPLAY_LIMIT + 5);
     const { plaintextObject } = buildActivityState({

@@ -33,6 +33,7 @@ struct AgentActivityEnvelopeTests {
         for (got, expected) in zip(details.agents, vector.payload.agents) {
             #expect(got.paneID == expected.pane)
             #expect(got.kind == expected.kind)
+            #expect(got.name == expected.name)
             #expect(got.status == expected.status)
             #expect(got.title == expected.title)
         }
@@ -52,7 +53,8 @@ struct AgentActivityEnvelopeTests {
             hostName: vector.payload.host,
             agents: vector.payload.agents.map {
                 AgentActivityDetails.AgentDetail(
-                    paneID: $0.pane, kind: $0.kind, status: $0.status, title: $0.title)
+                    paneID: $0.pane, kind: $0.kind, name: $0.name, status: $0.status,
+                    title: $0.title)
             })
 
         let sealed = try AgentActivityEnvelope.seal(details, using: key, nonce: nonce)

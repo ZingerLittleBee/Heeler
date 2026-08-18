@@ -50,11 +50,12 @@ export function canonicalActivityPlaintext(plaintext) {
   const agents = Array.isArray(plaintext?.agents) ? plaintext.agents : [];
   return JSON.stringify({
     agents: agents.map((agent) => {
-      const entry = {
-        kind: agent.kind,
-        pane: agent.pane,
-        status: agent.status,
-      };
+      const entry = { kind: agent.kind };
+      if (typeof agent.name === "string" && agent.name.length > 0) {
+        entry.name = agent.name;
+      }
+      entry.pane = agent.pane;
+      entry.status = agent.status;
       if (typeof agent.title === "string" && agent.title.length > 0) {
         entry.title = agent.title;
       }

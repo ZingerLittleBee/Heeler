@@ -108,6 +108,20 @@ struct AgentActivityContentBuilderTests {
         #expect(AgentActivityContentBuilder.make(agents: [], hostName: "mbp", key: key) == nil)
     }
 
+    @Test func carriesTheHerdrAgentNameAndOmitsItWhenUnnamed() throws {
+        let agents = [
+            agent("w:p1", .working, name: "la-demo"),
+            agent("w:p2", .blocked),
+        ]
+
+        let desire = try #require(
+            AgentActivityContentBuilder.desire(from: agents, hostName: "mbp"))
+
+        let byPane = Dictionary(uniqueKeysWithValues: desire.agents.map { ($0.paneID, $0) })
+        #expect(byPane["w:p1"]?.name == "la-demo")
+        #expect(byPane["w:p2"]?.name == nil)
+    }
+
     @Test func omitsEmptyTitlesAndFallsBackToUnknownKind() throws {
         let blankKind = Agent(
             terminalID: "t", kind: "", title: "", status: .done,
@@ -170,11 +184,12 @@ struct AgentActivityContentBuilderTests {
 
     private func agent(
         _ paneID: String, _ status: AgentStatus,
-        kind: String = "claude", title: String = "Task"
+        kind: String = "claude", title: String = "Task", name: String? = nil
     ) -> ConsoleAgent {
         ConsoleAgent(
             hostID: hostID, hostName: "mbp",
-            agent: Agent(.fixture(paneID: paneID, status: status, kind: kind, title: title)),
+            agent: Agent(
+                .fixture(paneID: paneID, status: status, kind: kind, title: title, name: name)),
             workspaceLabel: nil, repoName: nil)
     }
 }

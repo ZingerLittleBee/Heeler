@@ -41,6 +41,7 @@ struct LiveActivityVectorFile: Decodable, Sendable {
     struct Agent: Decodable, Sendable {
         let pane: String
         let kind: String
+        let name: String?
         let status: String
         let title: String?
     }

@@ -1,5 +1,5 @@
 {
-  "description": "Shared Live Activity content envelope v1 test vectors (docs/agents/live-activity-contract.md). Single source of truth for the encrypted per-Host agent details carried inside a Live Activity content-state, consumed by both the Node plugin tests (seal direction) and the Swift app tests (open direction, plus seal for app-local updates). Envelopes were generated with raw AES-256-GCM calls, independent of all implementations. AAD is HERDR-ACTIVITY:1 (domain-separated from HERDR-NOTIFY:1; see the cross-AAD invalid vector). Canonical plaintext encoding: compact JSON, object keys in ascending alphabetical order at every level; agents sorted blocked > done > working with ties by pane ascending, capped at 5 entries; title omitted when absent, <=80 graphemes otherwise. Producers keep the base64url ct <= ~2800 bytes by dropping titles first, then sending empty agents. `key` is the 32-byte Notification Key and `keyId` its derived id, both unpadded base64url. Non-`decodeOnly` valid vectors must be reproduced byte-for-byte by the seal side; `decodeOnly: true` envelopes must open to `payload` but are not canonical encodings. Invalid vectors must fail with the given typed error.",
+  "description": "Shared Live Activity content envelope v1 test vectors (docs/agents/live-activity-contract.md). Single source of truth for the encrypted per-Host agent details carried inside a Live Activity content-state, consumed by both the Node plugin tests (seal direction) and the Swift app tests (open direction, plus seal for app-local updates). Envelopes were generated with raw AES-256-GCM calls, independent of all implementations. AAD is HERDR-ACTIVITY:1 (domain-separated from HERDR-NOTIFY:1; see the cross-AAD invalid vector). Canonical plaintext encoding: compact JSON, object keys in ascending alphabetical order at every level; agents sorted blocked > done > working with ties by pane ascending, capped at 5 entries; name (the herdr agent name) and title are each omitted when absent, <=80 graphemes otherwise; agent entry key order kind < name < pane < status < title. Producers keep the base64url ct <= ~2800 bytes by dropping titles first, then sending empty agents. `key` is the 32-byte Notification Key and `keyId` its derived id, both unpadded base64url. Non-`decodeOnly` valid vectors must be reproduced byte-for-byte by the seal side; `decodeOnly: true` envelopes must open to `payload` but are not canonical encodings. Invalid vectors must fail with the given typed error.",
   "valid": [
     {
       "name": "single working agent",
@@ -23,11 +23,12 @@
       "name": "five agents in canonical sort order at the cap",
       "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
       "keyId": "Yw3NKWbEM2Y",
-      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"EBESExQVFhcYGRob\",\"ct\":\"Btz5cSynTsDoT1NmLRIAPbNydCx4rjbEg5zAS3wkNbU1y20hgpdUn0wUvnP57HJvZs9lScHpNZ3fdV9V0buGH2yMU0ZrhClGCPZcm6_hnNZYmf_EAe8zTumfTj-e6IJ7XnpizZDBEv8KK-tRDxK29y3oxASY3pealMT5lE6IiCK_7-ZVAoO1lgSVvPHepSscxEYMfyv1sMLFvSTprs_PT7a45ims1LPRmhx0masaFnDTG4eBxwLHEJ_Xw2nRr8kvUbI4bdfV65vGbtwEaDBn-ubAZjYQji3LGnH4kRasjfTUwyseJwffCwQbwsEi-o5QG8yZyX0mLqXKJ9WoIC-x5xdfC5rLVVc_O9Bx2HBO1o2QNuRVP69X-pDkCQR2yejxdDC2tBCc3ofM8zPFWe4lYg_OexSb22vtXb3zpTEWWespmDfsZEBYXXfj5STm8VuMH2vEkE0hw_vD8PsyVXPVxiqAY8hWUmUMpgpIaKCPs_Thzp2M34iJX9ZM-rCH18KmTKQDF_e3I2h0daCXai65vzT3_F3nyH_etJDMRfrx445nJ1ZKE92kWHiTT8brKj0-IDihgwqn5x9j\"}",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"EBESExQVFhcYGRob\",\"ct\":\"Btz5cSynTsDoT1NmLRIAPbNydCx4rjbEg5zAS3w6NbY1y20hh8MYhhtB9yOotDFrctIiUdmpLsOGbggT37XXH2SMSlBrhClWAe9Wlb2lypIfzfvZCvhwAKKCRWmH4ZQ1CG8rlt_DHOMPfbgcAl2i_jSkylvExNuU35C_wUWQm3T5prwEWsCxghnSpOmevnVF3xpKcXSqv4HaoTmvttePR6u05Cjq2uyNgFB60v9cQ3jLD8TMgkSWSNzT13SWt9FpSe5nP8rVs9DBdthSJ2EpoarAYDYSjGKGHmGsmBfnw_TFjj5YJQDWT0VOkNtu_p9dCszIx3ZlK6mGedXlM3att0AXTMuTFlMrJpdpwCVWldyJaaFbMf5X8pD9HwR2ye37YDq8rhjM0tHK-ynaTKNtNF3aaBCNyibiUbKjrzYLTaZhznDvfk4PFHfuqDGhuAjADHrEwh5xgLKSqLgoQW2S3jLVYNsQX24G6wRGPrmasfThzp2JicGcCoYDsOOy1cK6Se9NTMuxJSN_bqPSI3i-9D3GtV21hX7P5c-PRO3sp6ZrcRMeDIvnImxjG7s6bcFkaJahBHLZJZ8GQm_Ty-DSlSBPGrhtqLU2xKTJIRDDEQCgl_88M0zKMOAVC1c\"}",
       "payload": {
         "agents": [
           {
             "kind": "claude",
+            "name": "reviewer",
             "pane": "w1:p2",
             "status": "blocked",
             "title": "review the migration plan"
@@ -51,6 +52,7 @@
           },
           {
             "kind": "grok",
+            "name": "la-demo",
             "pane": "w3:p4",
             "status": "working",
             "title": "research ActivityKit budgets"

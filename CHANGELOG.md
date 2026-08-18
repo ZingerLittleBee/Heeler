@@ -61,6 +61,10 @@ Entries reference the issue that motivated them.
   Console. A reconnect no longer treats a transient empty Agent list as
   "all idle" and dismisses the activity.
 
+- Live Activity agent lines now lead with the herdr agent name (e.g.
+  `reviewer`) ahead of the task title. Unnamed agents and updates from
+  older plugins render exactly as before.
+
 - App Store builds now target iPhone only. The notification service uses the
   same device family, so App Store Connect no longer treats iPad screenshots as
   part of the release requirements.
