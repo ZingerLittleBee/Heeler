@@ -67,12 +67,11 @@ Decrypted plaintext (canonical form):
   APNs payload stays under 4096. Producers degrade in order: drop all
   `title` fields, then send `agents: []`; counts always fit.
 
-The widget renders no Host identity: an agent line leads with the herdr
-agent `name` followed by the task `title`; when `name` is absent (older
-producers, unnamed agents) the line is the `title` alone, its `kind`
-standing in when the title is also missing. The headline is the most
-urgent agent's line. The `host` field stays in the wire for producers but
-is not displayed.
+The widget renders no Host identity: an agent renders as two lines
+mirroring the herdr sidebar — its identity (`name`, falling back to
+`kind` when unnamed, exactly like the TUI) with the task `title` indented
+beneath when present. The headline is the most urgent agent's block. The
+`host` field stays in the wire for producers but is not displayed.
 
 ## Relay request (plugin → relay)
 

@@ -244,11 +244,9 @@ private struct AgentActivityCountChips: View {
     }
 }
 
-/// The headline: a named agent renders as two lines — status dot plus the
-/// herdr name, then the task title indented beneath it. An envelope
-/// without a name (older producers, unnamed agents) renders as before:
-/// one line with the title, its kind standing in when the title is also
-/// missing.
+/// The headline: two lines mirroring the herdr sidebar — status dot plus
+/// the agent's identity (its herdr name, kind when unnamed, exactly like
+/// the TUI), then the task title indented beneath when there is one.
 private struct AgentActivityHeadlineView: View {
     let agent: AgentActivityDetails.AgentDetail
 
@@ -262,12 +260,12 @@ private struct AgentActivityHeadlineView: View {
                     .fill(ink)
                     .frame(width: 8, height: 8)
                     .accessibilityHidden(true)
-                Text(agent.name ?? agent.title ?? agent.kind)
+                Text(agent.displayName)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(isBlocked ? ink : Color.primary)
                     .lineLimit(1)
             }
-            if agent.name != nil, let title = agent.title {
+            if let title = agent.title {
                 Text(title)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -278,9 +276,8 @@ private struct AgentActivityHeadlineView: View {
     }
 }
 
-/// One agent row: the same two-line rule as the headline, smaller type — a
-/// named agent shows its name with the title indented beneath, a nameless
-/// entry falls back to one line of title (kind when that is also missing).
+/// One agent row: the same two-line rule as the headline, smaller type —
+/// identity (name, kind when unnamed) with the title indented beneath.
 /// Status is painted, not narrated as an event — a done row is the current
 /// state, not "just finished".
 private struct AgentActivityRowView: View {
@@ -296,13 +293,13 @@ private struct AgentActivityRowView: View {
                     .fill(ink)
                     .frame(width: 7, height: 7)
                     .accessibilityHidden(true)
-                Text(agent.name ?? agent.title ?? agent.kind)
+                Text(agent.displayName)
                     .font(.caption.weight(isBlocked ? .semibold : .regular))
                     .foregroundStyle(isBlocked ? ink : .primary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
-            if agent.name != nil, let title = agent.title {
+            if let title = agent.title {
                 Text(title)
                     .font(.caption)
                     .foregroundStyle(.secondary)
