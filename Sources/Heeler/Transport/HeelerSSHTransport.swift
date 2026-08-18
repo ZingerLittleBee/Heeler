@@ -1705,8 +1705,17 @@ actor HeelerSSHTransport: Transport {
         String(decoding: data.prefix(200), as: UTF8.self)
     }
 
+    /// Additional PATH entries to probe before the bare herdr command.
+    /// Covers Homebrew (Intel + Apple Silicon) and Cargo installs, which are
+    /// absent from the non-interactive /bin/sh PATH (#206).
+    private static let herdrPathPrefix = "/usr/local/bin:/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
+
     private static func cLocaleCommand(_ command: String) -> String {
         "LC_ALL=C \(command)"
+    }
+
+    private static func pathAugmentedCommand(_ command: String) -> String {
+        "PATH=\"\(herdrPathPrefix)\" LC_ALL=C \(command)"
     }
 
     /// The exec command that wakes a stopped herdr server (#6). A named
@@ -1720,6 +1729,7 @@ actor HeelerSSHTransport: Transport {
                 detail: "The remote socket path cannot be quoted safely.")
         }
         let command: String
+        let augmentedCommand = pathAugmentedCommand(wakeCommand)
         switch socketLocation {
         case .namedSession(let sessionName):
             guard HerdrSessionName.isValid(sessionName) else {
@@ -1727,11 +1737,11 @@ actor HeelerSSHTransport: Transport {
                     detail: "The herdr session name is invalid.")
             }
             command = "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
-                + "export HERDR_SESSION=\"$2\"; \(wakeCommand) < /dev/null' wake "
+                + "export HERDR_SESSION=\"$2\"; \(augmentedCommand) < /dev/null' wake "
                 + "\(quotedSocketPath) \(sessionName)"
         case .defaultSession, .absolutePath:
             command = "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
-                + "\(wakeCommand) < /dev/null' wake \(quotedSocketPath)"
+                + "\(augmentedCommand) < /dev/null' wake \(quotedSocketPath)"
         }
         return cLocaleCommand(command)
     }
@@ -2023,9 +2033,10 @@ actor HeelerSSHTransport: Transport {
         let takeover = request.takeover ? " --takeover" : ""
         // The marker goes out last thing before the exec, so earlier startup
         // chatter can be dropped.
+        let augmentedCommand = pathAugmentedCommand(attachCommand)
         return "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
             + "printf \"\(AttachBootstrapHandshake.markerPrintfFormat)\"; "
-            + "exec \(attachCommand) \"$1\"\(takeover)' attach "
+            + "exec \(augmentedCommand) \"$1\"\(takeover)' attach "
             + "'\(request.target)' \(quotedSocketPath)"
     }
 
