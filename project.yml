@@ -40,6 +40,11 @@ targets:
       - Sources/HeelerNotificationCore
       # Live Activity attributes + details envelope (shared with HeelerWidgets).
       - Sources/HeelerActivityCore
+      # Widget views double-included so Xcode can host their #Preview gallery
+      # in the app target (plain previews are unsupported inside app-extension
+      # targets); the @main WidgetBundle stays extension-only.
+      - Sources/HeelerWidgets/AgentLiveActivityWidget.swift
+      - Sources/HeelerWidgets/AgentActivityDecryptor.swift
       # Audited third-party notices + inventory.json (#161). Folder reference
       # preserves the Notices/ subdirectory the catalogue resolves against.
       - path: Sources/Heeler/Resources/Notices

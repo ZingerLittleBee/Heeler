@@ -19,6 +19,7 @@
 		0D88F7CC5BA9BD7CAF4FED62 /* Transport.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD17BB4EEFBB38DECB6765BF /* Transport.swift */; };
 		0E50946869DD6FC41373079B /* HeelerSSHHostKeyPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E70C49925D454207F859F897 /* HeelerSSHHostKeyPolicyTests.swift */; };
 		0FCA9A08E011A847F31A4B85 /* AgentNotificationCenterDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00BABBDEFEDCB3D11EF1EFA7 /* AgentNotificationCenterDelegate.swift */; };
+		0FE90B9982AF87386D6898ED /* AgentActivityDecryptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B60468938DA99734F4DCBBEC /* AgentActivityDecryptor.swift */; };
 		11F7B6617DA23C1B24E3A027 /* AgentActivityContentBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29723E2E7A65ABAF27698733 /* AgentActivityContentBuilder.swift */; };
 		12B61E17D212416E86EE63ED /* AgentCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6803A0055A861DFCA2A67217 /* AgentCardView.swift */; };
 		13D6ADF6E19529103D2522DE /* SealedEnvelopeCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BE9C95E2AC313465A7B38FD /* SealedEnvelopeCodec.swift */; };
@@ -156,6 +157,7 @@
 		84B56C16C6227F12CFBF2B1D /* InMemorySecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51B4AAB6885E0EB9D8C4A131 /* InMemorySecretStore.swift */; };
 		84C252AF6731EA693B93494A /* GitBranchName.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D6996CA1550E32EE6AC3669 /* GitBranchName.swift */; };
 		8668C3C60FB9539A7DD1A4EC /* Base64URL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32413805C1AA874DBEE37547 /* Base64URL.swift */; };
+		86EA13918F2EE2103B2DEFB3 /* AgentLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6A9489C21BDCFA7616782BF /* AgentLiveActivityWidget.swift */; };
 		88C55182255106627222F533 /* HostKeyFingerprint.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4EA32065B4A00D219B301CF /* HostKeyFingerprint.swift */; };
 		8985893366A5DA338007D1A0 /* AgentActivityEnvelope.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69EBBC2C99AA84420FDF600A /* AgentActivityEnvelope.swift */; };
 		89A6F9928DC45E4A92CBB1E2 /* AgentNotificationRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB37CBDC9DE0CE539FC476A0 /* AgentNotificationRenderer.swift */; };
@@ -1343,6 +1345,7 @@
 				693D650A778BAC6F2189F32A /* AcknowledgementsView.swift in Sources */,
 				8C7337318B1B3271FD4E85A6 /* AgentActivityAttributes.swift in Sources */,
 				11F7B6617DA23C1B24E3A027 /* AgentActivityContentBuilder.swift in Sources */,
+				0FE90B9982AF87386D6898ED /* AgentActivityDecryptor.swift in Sources */,
 				8985893366A5DA338007D1A0 /* AgentActivityEnvelope.swift in Sources */,
 				527425877FD76612AFC1DA11 /* AgentActivityLink.swift in Sources */,
 				6197AD73E1967C19E32176EB /* AgentArgumentsField.swift in Sources */,
@@ -1351,6 +1354,7 @@
 				78AB0CC85260D35A1178163A /* AgentComposerStore.swift in Sources */,
 				3BB63A16095664E8C760286C /* AgentComposerView.swift in Sources */,
 				E1C95FE0F5AC6271001DBF60 /* AgentDetailView.swift in Sources */,
+				86EA13918F2EE2103B2DEFB3 /* AgentLiveActivityWidget.swift in Sources */,
 				8EB4F2396CC905928797A622 /* AgentName.swift in Sources */,
 				72448624659DCDD94EF81DE8 /* AgentNotificationBannerStore.swift in Sources */,
 				143A46DB20266BCCDF1206F6 /* AgentNotificationBannerView.swift in Sources */,
