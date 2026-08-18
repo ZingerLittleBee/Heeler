@@ -63,29 +63,69 @@ enum AgentActivityPresentation: Equatable, Sendable {
 enum AgentActivityDecryptor {
     static func presentation(
         for state: AgentActivityAttributes.ContentState,
-        store: NotificationKeyStore = NotificationKeyStore()
+        store: NotificationKeyStore = NotificationKeyStore(),
+        mirror: NotificationKeyMirror = NotificationKeyMirror()
     ) -> AgentActivityPresentation {
+        #if DEBUG
+            lastFailureReason = nil
+        #endif
         guard let envelope = state.envelope,
             let data = try? JSONEncoder().encode(envelope),
             let kid = SealedEnvelopeCodec.peekKeyID(in: data)
         else {
+            breadcrumb("no envelope or unreadable kid")
             return .countsOnly(counts: state.counts)
         }
 
-        let records: [NotificationKeyRecord]
-        do {
-            records = try store.allRecords()
-        } catch {
-            return .countsOnly(counts: state.counts)
-        }
-
-        guard let record = records.first(where: { $0.keyID == kid }),
-            let opened = try? AgentActivityEnvelope.open(data, using: record.key)
+        // The Keychain is unreachable in the locked lock-screen rendering
+        // context (errSecNotAvailable); the app-group mirror is maintained
+        // for exactly that gap, so a kid missing from whichever Keychain
+        // records did load falls through to it as well.
+        let records = (try? store.allRecords()) ?? []
+        guard
+            let record = records.first(where: { $0.keyID == kid })
+                ?? mirror.read().first(where: { $0.keyID == kid })
         else {
+            breadcrumb("kid \(kid) not among \(records.map(\.keyID)) nor mirrored")
+            return .countsOnly(counts: state.counts)
+        }
+        let opened: AgentActivityDetails
+        do {
+            opened = try AgentActivityEnvelope.open(data, using: record.key)
+        } catch {
+            breadcrumb("open failed: \(error)")
             return .countsOnly(counts: state.counts)
         }
 
         return .detailed(details: opened, counts: state.counts)
+    }
+
+    /// Debug-only: why the last `presentation(for:)` in this process fell
+    /// back to counts-only, for on-lock-screen diagnosis of device-only
+    /// failures. Rendered by the lock-screen view in Debug builds.
+    #if DEBUG
+        nonisolated(unsafe) static var lastFailureReason: String?
+    #endif
+
+    /// Debug-only render-time trace into the shared app-group container, so
+    /// a countsOnly fallback on a physical device can name its cause
+    /// (`devicectl device copy from --domain-type appGroupDataContainer`).
+    private static func breadcrumb(_ reason: String) {
+        #if DEBUG
+            let container = FileManager.default.containerURL(
+                forSecurityApplicationGroupIdentifier: NotificationKeyStore.sharedAccessGroup)
+            lastFailureReason = "\(reason) | group: \(container == nil ? "nil" : "ok")"
+            guard let url = container else { return }
+            let line = "\(Date()) \(reason)\n"
+            let file = url.appendingPathComponent("activity-decrypt-debug.txt")
+            if let handle = try? FileHandle(forWritingTo: file) {
+                _ = try? handle.seekToEnd()
+                _ = try? handle.write(contentsOf: Data(line.utf8))
+                try? handle.close()
+            } else {
+                try? Data(line.utf8).write(to: file)
+            }
+        #endif
     }
 }
 

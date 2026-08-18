@@ -41,6 +41,14 @@ struct AgentActivityLockScreenView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
+            #if DEBUG
+                if let reason = AgentActivityDecryptor.lastFailureReason {
+                    Text(reason)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                }
+            #endif
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)

@@ -176,7 +176,12 @@ struct ContentView: View {
             await ConsoleActivityDriver(activity: activity, console: console).run()
         }
         .task { await pushRegistration.refresh() }
-        .task { liveActivities.start() }
+        .task {
+            // Existing installs' Notification Keys predate the app-group
+            // mirror; refresh it before a locked widget render needs it.
+            NotificationKeyStore().refreshMirror()
+            liveActivities.start()
+        }
     }
 }
 
