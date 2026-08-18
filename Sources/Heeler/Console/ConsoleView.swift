@@ -15,6 +15,8 @@ struct ConsoleView: View {
     @Bindable var notificationRouter: AgentNotificationRouter
     /// Announces foreground Blocked/Done transitions in-app (#77).
     let bannerStore: AgentNotificationBannerStore
+    /// Per-Host Live Activity start/update/end and the Settings toggle.
+    let liveActivities: HostLiveActivityCoordinator
     /// Scene phase widened by the background grace period; an Attach screen
     /// pauses its work on real suspensions only.
     let activity: AppActivityCoordinator
@@ -108,7 +110,8 @@ struct ConsoleView: View {
                         appearance: appearance,
                         pushRegistration: pushRegistration,
                         notificationPreferences: notificationPreferences,
-                        relaySettings: relaySettings)
+                        relaySettings: relaySettings,
+                        liveActivities: liveActivities)
                 }
         } detail: {
             detail

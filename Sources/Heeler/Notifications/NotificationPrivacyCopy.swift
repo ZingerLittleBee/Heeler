@@ -53,4 +53,14 @@ enum NotificationPrivacyCopy {
     /// depends on it simply hides if the constant ever fails to parse.
     static let privacyPolicyURL = URL(
         string: "https://github.com/ZingerLittleBee/Heeler/blob/main/PRIVACY.md")
+
+    /// Per-Host Live Activity toggle footer: counts are what the Lock Screen
+    /// renders in the clear; names and titles stay inside the envelope.
+    static let liveActivityFooter =
+        "The Lock Screen shows status counts. Agent names and titles stay end-to-end encrypted."
+
+    /// Shown under the Live Activity toggle when the system-wide permission
+    /// is off. Mirrors the Agent Notifications denied-state wording.
+    static let liveActivityDisabledHint =
+        "Live Activities are turned off for Heeler. Enable them in Settings to show this Host on the Lock Screen."
 }
