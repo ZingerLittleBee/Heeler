@@ -556,19 +556,24 @@ struct TerminalAgentSwitcherTests {
 
     /// Keyboard notifications are process-wide, and on iPad two of the app's
     /// windows can each hold a live terminal (#157). Both of these terminals
-    /// observe the default center exactly as production builds them. Generic
-    /// show/hide events, a frame without ownership evidence, and a frame
-    /// leaving the other window must all leave this terminal's handoff alone.
-    /// Only a frame that leaves the keyboard covering this terminal's own
-    /// window may thaw it.
+    /// share one center, the shape production gets from `.default`; a private
+    /// one keeps the CI simulator's real software keyboard (raised by the
+    /// first-responder claim below, with settle frames that cover this
+    /// window) from thawing the handoff before the assertions sample it.
+    /// Generic show/hide events, a frame without ownership evidence, and a
+    /// frame leaving the other window must all leave this terminal's handoff
+    /// alone. Only a frame that leaves the keyboard covering this terminal's
+    /// own window may thaw it.
     @MainActor
     @Test func anotherWindowsKeyboardEventsDoNotEndTheHandoff() async throws {
         var reportedGrids: [TerminalGrid] = []
-        let foreign = TerminalScreenView.makeConfiguredTerminal()
+        let center = NotificationCenter()
+        let foreign = TerminalScreenView.makeConfiguredTerminal(notificationCenter: center)
         let terminal = TerminalScreenView.makeConfiguredTerminal(
             onSizeChanged: { columns, rows in
                 reportedGrids.append(TerminalGrid(columns: columns, rows: rows))
-            })
+            },
+            notificationCenter: center)
         let foreignHost = UIViewController()
         let foreignWindow = try await makeTestWindow(
             frame: CGRect(x: 0, y: 0, width: 390, height: 700),
@@ -600,17 +605,17 @@ struct TerminalAgentSwitcherTests {
         // window. A thaw rebuilds the input views on the spot, so an unchanged
         // rebuild count proves the freeze survived synchronously.
         let rebuildsBeforeForeignEvent = terminal.inputViewRebuildCount
-        NotificationCenter.default.post(
+        center.post(
             name: UIResponder.keyboardDidShowNotification, object: nil,
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
                 x: 0, y: 400, width: 390, height: 300)])
-        NotificationCenter.default.post(
+        center.post(
             name: UIResponder.keyboardDidHideNotification, object: nil,
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
                 x: 0, y: 700, width: 390, height: 300)])
-        NotificationCenter.default.post(
+        center.post(
             name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
-        NotificationCenter.default.post(
+        center.post(
             name: UIResponder.keyboardDidChangeFrameNotification, object: nil,
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
                 x: 0, y: 700, width: 390, height: 300)])
@@ -626,7 +631,7 @@ struct TerminalAgentSwitcherTests {
 
         // This terminal's own settle: the keyboard ends its move covering
         // the terminal's window, and the freeze thaws.
-        NotificationCenter.default.post(
+        center.post(
             name: UIResponder.keyboardDidChangeFrameNotification, object: nil,
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
                 x: 0, y: 400, width: 390, height: 300)])
