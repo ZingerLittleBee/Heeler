@@ -244,10 +244,11 @@ private struct AgentActivityCountChips: View {
     }
 }
 
-/// The headline: status dot, then the most urgent agent's herdr name
-/// leading its task title. An envelope without a name (older producers,
-/// unnamed agents) renders exactly as before: the title alone, its kind
-/// standing in when the title is also missing.
+/// The headline: a named agent renders as two lines — status dot plus the
+/// herdr name, then the task title indented beneath it. An envelope
+/// without a name (older producers, unnamed agents) renders as before:
+/// one line with the title, its kind standing in when the title is also
+/// missing.
 private struct AgentActivityHeadlineView: View {
     let agent: AgentActivityDetails.AgentDetail
 
@@ -255,37 +256,33 @@ private struct AgentActivityHeadlineView: View {
     private var isBlocked: Bool { agent.status == "blocked" }
 
     var body: some View {
-        HStack(spacing: 7) {
-            Circle()
-                .fill(ink)
-                .frame(width: 8, height: 8)
-                .accessibilityHidden(true)
-            if let name = agent.name {
-                Text(name)
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(ink)
+                    .frame(width: 8, height: 8)
+                    .accessibilityHidden(true)
+                Text(agent.name ?? agent.title ?? agent.kind)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(isBlocked ? ink : Color.primary)
                     .lineLimit(1)
-                    .layoutPriority(1)
-                if let title = agent.title {
-                    Text(title)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            } else {
-                Text(agent.title ?? agent.kind)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(isBlocked ? ink : Color.primary)
+            }
+            if agent.name != nil, let title = agent.title {
+                Text(title)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .padding(.leading, 15)
             }
         }
     }
 }
 
-/// One agent row: the same name-then-title rule as the headline, smaller
-/// type; a nameless entry falls back to the title (kind when that is also
-/// missing). Status is painted, not narrated as an event — a done row is
-/// the current state, not "just finished".
+/// One agent row: the same two-line rule as the headline, smaller type — a
+/// named agent shows its name with the title indented beneath, a nameless
+/// entry falls back to one line of title (kind when that is also missing).
+/// Status is painted, not narrated as an event — a done row is the current
+/// state, not "just finished".
 private struct AgentActivityRowView: View {
     let agent: AgentActivityDetails.AgentDetail
 
@@ -293,30 +290,25 @@ private struct AgentActivityRowView: View {
     private var ink: Color { AgentActivityStatusStyle.ink(for: agent.status) }
 
     var body: some View {
-        HStack(spacing: 7) {
-            Circle()
-                .fill(ink)
-                .frame(width: 7, height: 7)
-                .accessibilityHidden(true)
-            if let name = agent.name {
-                Text(name)
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(ink)
+                    .frame(width: 7, height: 7)
+                    .accessibilityHidden(true)
+                Text(agent.name ?? agent.title ?? agent.kind)
                     .font(.caption.weight(isBlocked ? .semibold : .regular))
                     .foregroundStyle(isBlocked ? ink : .primary)
                     .lineLimit(1)
-                    .layoutPriority(1)
-                if let title = agent.title {
-                    Text(title)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            } else {
-                Text(agent.title ?? agent.kind)
-                    .font(.caption.weight(isBlocked ? .semibold : .regular))
-                    .foregroundStyle(isBlocked ? ink : .primary)
-                    .lineLimit(1)
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            if agent.name != nil, let title = agent.title {
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .padding(.leading, 14)
+            }
         }
         .padding(.vertical, isBlocked ? 3 : 0)
         .padding(.horizontal, isBlocked ? 6 : 0)
