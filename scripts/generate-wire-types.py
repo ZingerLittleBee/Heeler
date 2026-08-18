@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Generate Swift Codable wire types from herdr's JSON API schema (#7).
+"""Generate Swift and Kotlin wire types from herdr's JSON API schema (#7).
 
 Usage:
     scripts/generate-wire-types.py            # runs `herdr api schema --json`
     scripts/generate-wire-types.py --schema herdr-schema.json
+    scripts/generate-wire-types.py --schema herdr-schema.json --kotlin path.kt
     scripts/generate-wire-types.py --check    # fail if the committed output is stale
 
-Output: Sources/Heeler/Transport/Generated/HerdrAPITypes.swift
+Outputs:
+    Sources/Heeler/Transport/Generated/HerdrAPITypes.swift
+    android/core/src/main/java/dev/bybee/heeler/core/wire/HerdrApiTypes.kt
 
 Scope and shape are deliberate (see issue #7 and spec #20):
 
@@ -41,6 +44,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_PATH = REPO_ROOT / "Sources/Heeler/Transport/Generated/HerdrAPITypes.swift"
+KOTLIN_OUTPUT_PATH = (
+    REPO_ROOT / "android/core/src/main/java/dev/bybee/heeler/core/wire/HerdrApiTypes.kt"
+)
 
 # The v1 method surface (#7). Params types are derived from the schema's
 # request oneOf; empty params objects are skipped (the hand-written envelope
@@ -238,6 +244,24 @@ def resolve_type(node: object, context: str, needed: set[str]) -> SwiftType:
     fail(f"{context}: unhandled schema node {node!r}")
 
 
+def kotlin_type(swift_spelling: str) -> str:
+    """Translate a resolved Swift spelling to its Kotlin equivalent."""
+    if swift_spelling == "JSONValue":
+        return "JsonElement"
+    if swift_spelling.startswith("[String: ") and swift_spelling.endswith("]"):
+        value = swift_spelling[len("[String: ") : -1]
+        return f"Map<String, {kotlin_type(value)}>"
+    if swift_spelling.startswith("[") and swift_spelling.endswith("]"):
+        item = swift_spelling[1:-1]
+        return f"List<{kotlin_type(item)}>"
+    return {
+        "Bool": "Boolean",
+        "Double": "Double",
+        "Int": "Int",
+        "String": "String",
+    }.get(swift_spelling, swift_spelling)
+
+
 class Field:
     def __init__(self, wire_name: str, node: object, required: bool, context: str, needed: set[str]):
         resolved = resolve_type(node, f"{context}.{wire_name}", needed)
@@ -245,6 +269,7 @@ class Field:
         self.name = member_name(wire_name)
         self.optional = resolved.nullable or not required
         self.swift_type = resolved.spelling + ("?" if self.optional else "")
+        self.kotlin_type = kotlin_type(resolved.spelling) + ("?" if self.optional else "")
 
 
 def emit_struct(name: str, doc: str, fields: list[Field]) -> str:
@@ -308,6 +333,34 @@ def emit_string_wrapper(name: str, doc: str, values: list[str]) -> str:
     for value in values:
         lines.append(f'    static let {member_name(value)} = {name}(rawValue: "{value}")')
     lines.append("}")
+    return "\n".join(lines)
+
+
+def emit_kotlin_struct(name: str, fields: list[Field]) -> str:
+    if not fields:
+        return "\n".join(["@Serializable", f"class {name}"])
+
+    lines = ["@Serializable", f"data class {name}("]
+    for index, field in enumerate(fields):
+        if field.name != field.wire_name:
+            lines.append(f'    @SerialName("{field.wire_name}")')
+        default = " = null" if field.optional else ""
+        suffix = "," if index < len(fields) - 1 else ""
+        lines.append(f"    val {field.name}: {field.kotlin_type}{default}{suffix}")
+    lines.append(")")
+    return "\n".join(lines)
+
+
+def emit_kotlin_string_wrapper(name: str, values: list[str]) -> str:
+    lines = [
+        "@Serializable",
+        "@JvmInline",
+        f"value class {name}(val rawValue: String) {{",
+        "    companion object {",
+    ]
+    for value in values:
+        lines.append(f'        val {member_name(value)} = {name}("{value}")')
+    lines.extend(["    }", "}"])
     return "\n".join(lines)
 
 
@@ -400,9 +453,95 @@ def generate(schema: dict) -> str:
     return f"{header}\n\n{body}\n"
 
 
+def generate_kotlin(schema: dict) -> str:
+    schemas = schema["schemas"]
+    defs = flatten_defs(schemas)
+
+    method_params: dict[str, str] = {}
+    for variant in schemas["request"]["oneOf"]:
+        method_params[variant["properties"]["method"]["const"]] = ref_name(
+            variant["properties"]["params"]["$ref"]
+        )
+    missing = [m for m in METHODS if m not in method_params]
+    if missing:
+        fail(f"methods not in schema: {missing}")
+
+    result_variants: dict[str, dict] = {}
+    for variant in schemas["success_response"]["$defs"]["ResponseResult"]["oneOf"]:
+        result_variants[variant["properties"]["type"]["const"]] = variant
+    missing = [t for t in RESULT_TAGS if t not in result_variants]
+    if missing:
+        fail(f"result tags not in schema: {missing}")
+
+    needed: set[str] = set()
+    emitted: dict[str, str] = {}
+
+    for tag in RESULT_TAGS:
+        name = pascal_case(tag) + "Response"
+        fields = object_fields(result_variants[tag], name, needed, skip={"type"})
+        emitted[name] = emit_kotlin_struct(name, fields)
+
+    for method in METHODS:
+        def_name = method_params[method]
+        if def_name not in EXCLUDED_PARAMS_DEFS:
+            needed.add(def_name)
+
+    pending = set(needed)
+    while pending:
+        name = pending.pop()
+        if name in emitted:
+            continue
+        if name not in defs:
+            fail(f"$defs/{name} not found in any schema")
+        definition = defs[name]
+        if definition.get("enum") is not None:
+            if definition.get("type") != "string":
+                fail(f"$defs/{name}: only string enums are handled")
+            emitted[name] = emit_kotlin_string_wrapper(name, definition["enum"])
+            continue
+        if definition.get("type") != "object":
+            fail(f"$defs/{name}: unhandled top-level shape")
+        before = set(needed)
+        fields = object_fields(definition, name, needed)
+        emitted[name] = emit_kotlin_struct(name, fields)
+        pending |= needed - before
+
+    header = "\n".join(
+        [
+            "// Generated by scripts/generate-wire-types.py — DO NOT EDIT.",
+            f"// Source: `herdr api schema --json` "
+            f"(protocol {schema['protocol']}, schema_version {schema['schema_version']}).",
+            "//",
+            "// Stable data types only: the request/response/event envelopes, the",
+            "// method/event enums, and the events.subscribe params stay hand-written",
+            "// (HerdrWire.kt, HerdrEvents.kt). `<Tag>Response` classes are the",
+            "// tagged `result` variants of the success_response schema with the",
+            "// redundant `type` tag dropped. Decoding is lenient by construction:",
+            "// unknown fields are ignored and closed string sets are raw-string",
+            "// value classes, because herdr's API has no stability guarantee.",
+            "",
+            "package dev.bybee.heeler.core.wire",
+            "",
+            "import kotlinx.serialization.SerialName",
+            "import kotlinx.serialization.Serializable",
+            "import kotlinx.serialization.json.JsonElement",
+        ]
+    )
+    body = "\n\n".join(emitted[name] for name in sorted(emitted))
+    return f"{header}\n\n{body}\n"
+
+
+def display_path(path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--schema", help="read the schema from a file instead of running herdr")
+    parser.add_argument("--kotlin", metavar="PATH", help="also write Kotlin output to PATH")
     parser.add_argument(
         "--check",
         action="store_true",
@@ -410,16 +549,28 @@ def main() -> None:
     )
     arguments = parser.parse_args()
 
-    output = generate(load_schema(arguments.schema))
+    schema = load_schema(arguments.schema)
+    output = generate(schema)
+    kotlin_path = Path(arguments.kotlin) if arguments.kotlin else KOTLIN_OUTPUT_PATH
     if arguments.check:
         current = OUTPUT_PATH.read_text(encoding="utf-8") if OUTPUT_PATH.exists() else ""
         if current != output:
             fail(f"{OUTPUT_PATH.relative_to(REPO_ROOT)} is stale; rerun scripts/generate-wire-types.py")
+        if arguments.kotlin is not None or kotlin_path.exists():
+            kotlin_output = generate_kotlin(schema)
+            current = kotlin_path.read_text(encoding="utf-8") if kotlin_path.exists() else ""
+            if current != kotlin_output:
+                fail(f"{display_path(kotlin_path)} is stale; rerun scripts/generate-wire-types.py")
         print("up to date")
         return
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_PATH.write_text(output, encoding="utf-8")
     print(f"wrote {OUTPUT_PATH.relative_to(REPO_ROOT)}")
+    if arguments.kotlin is not None:
+        kotlin_output = generate_kotlin(schema)
+        kotlin_path.parent.mkdir(parents=True, exist_ok=True)
+        kotlin_path.write_text(kotlin_output, encoding="utf-8")
+        print(f"wrote {display_path(kotlin_path)}")
 
 
 if __name__ == "__main__":
