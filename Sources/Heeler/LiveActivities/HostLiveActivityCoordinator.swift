@@ -80,8 +80,8 @@ final class HostLiveActivityCoordinator {
 
     /// Adopts (or ends) activities that survived a previous launch, then
     /// starts reflecting the current Agent list. Unknown `hostID`s end
-    /// immediately; a still-connecting known Host keeps its activity until
-    /// the first snapshot arrives.
+    /// immediately; a still-connecting or reconnecting known Host keeps
+    /// its activity until the first post-connect snapshot arrives.
     func start() {
         guard !didStart else { return }
         didStart = true
@@ -151,18 +151,26 @@ final class HostLiveActivityCoordinator {
     }
 
     /// Connection or snapshot-hold change: retry token writes for Hosts that
-    /// are reachable again, and apply a deferred end/update once the first
-    /// snapshot lands.
+    /// are reachable again, hold live activities while the Agent list is
+    /// unknown, and apply a deferred end/update once the first snapshot lands.
     func connectionsDidChange() {
         guard didStart else { return }
         retryDirtyPipes(onlyIfConnected: true)
+        for hostID in sessions.keys {
+            holdIfUnknown(hostID)
+        }
         releaseSnapshotHolds()
     }
 
     // MARK: Desire / settle
 
     private func scheduleSettle(for hostID: Host.ID) {
-        if shouldDeferApply(for: hostID) { return }
+        holdIfUnknown(hostID)
+        if shouldDeferApply(for: hostID) {
+            settleTasks[hostID]?.cancel()
+            settleTasks[hostID] = nil
+            return
+        }
         let desired = computeDesired(for: hostID)
         if isUnchanged(hostID: hostID, desired: desired) {
             settleTasks[hostID]?.cancel()
@@ -181,6 +189,7 @@ final class HostLiveActivityCoordinator {
 
     private func apply(_ hostID: Host.ID) {
         guard didStart else { return }
+        holdIfUnknown(hostID)
         if shouldDeferApply(for: hostID) { return }
         let desired = computeDesired(for: hostID)
         if isUnchanged(hostID: hostID, desired: desired) { return }
@@ -230,15 +239,35 @@ final class HostLiveActivityCoordinator {
         }
     }
 
+    /// True while this Host's Agent list is unknown: an empty slice is
+    /// loading, not all-idle. Covers cold-launch adoption and a reconnect
+    /// that cleared `agentsByPane` before the next snapshot.
     private func shouldDeferApply(for hostID: Host.ID) -> Bool {
+        if isUnknownAgentInventory(hostID) { return true }
         if sessions[hostID]?.awaitingFirstSnapshot == true { return true }
-        if sessions[hostID] == nil && isAwaitingSnapshot(hostID) { return true }
         return false
+    }
+
+    private func isUnknownAgentInventory(_ hostID: Host.ID) -> Bool {
+        if isAwaitingSnapshot(hostID) { return true }
+        if sessions[hostID] != nil, let status = connectionStatus(hostID),
+            status != .connected
+        {
+            return true
+        }
+        return false
+    }
+
+    /// Marks a live activity so `releaseSnapshotHolds` applies once the
+    /// post-reconnect snapshot arrives — including an empty one.
+    private func holdIfUnknown(_ hostID: Host.ID) {
+        guard sessions[hostID] != nil, isUnknownAgentInventory(hostID) else { return }
+        sessions[hostID]?.awaitingFirstSnapshot = true
     }
 
     private func releaseSnapshotHolds() {
         for (hostID, session) in sessions where session.awaitingFirstSnapshot {
-            guard !isAwaitingSnapshot(hostID) else { continue }
+            guard !isUnknownAgentInventory(hostID) else { continue }
             sessions[hostID]?.awaitingFirstSnapshot = false
             scheduleSettle(for: hostID)
         }

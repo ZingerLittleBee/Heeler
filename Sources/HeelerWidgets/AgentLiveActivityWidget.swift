@@ -48,11 +48,24 @@ struct AgentActivityLockScreenView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
+            headerTitle
+            Spacer(minLength: 8)
+            AgentActivityCountChips(counts: presentation.counts)
+        }
+    }
+
+    @ViewBuilder
+    private var headerTitle: some View {
+        switch presentation {
+        case .detailed:
+            Text(presentation.headerTitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        case .countsOnly:
             Text(presentation.headerTitle)
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
-            Spacer(minLength: 8)
-            AgentActivityCountChips(counts: presentation.counts)
         }
     }
 
@@ -79,10 +92,7 @@ enum AgentActivityIsland {
     static func make(presentation: AgentActivityPresentation) -> DynamicIsland {
         DynamicIsland {
             DynamicIslandExpandedRegion(.leading) {
-                Text(presentation.headerTitle)
-                    .font(.headline)
-                    .minimumScaleFactor(0.7)
-                    .lineLimit(1)
+                expandedHeader(presentation)
             }
             DynamicIslandExpandedRegion(.center) {
                 if let first = presentation.visibleAgents.first {
@@ -120,6 +130,23 @@ enum AgentActivityIsland {
                         : Color.primary
                 )
                 .accessibilityLabel("\(presentation.counts.total) agents")
+        }
+    }
+
+    @ViewBuilder
+    private static func expandedHeader(_ presentation: AgentActivityPresentation) -> some View {
+        switch presentation {
+        case .detailed:
+            Text(presentation.headerTitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
+        case .countsOnly:
+            Text(presentation.headerTitle)
+                .font(.headline)
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
         }
     }
 }

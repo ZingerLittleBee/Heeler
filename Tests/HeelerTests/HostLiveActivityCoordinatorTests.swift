@@ -347,6 +347,62 @@ struct HostLiveActivityCoordinatorTests {
         #expect(controller.ended[0].immediate)
     }
 
+    @Test func reconnectEmptySliceDoesNotEndAnActiveActivity() async throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        try await registerDevice()
+        armWorld()
+        let coordinator = makeCoordinator(defaults: defaults)
+        coordinator.start()
+        coordinator.agentsDidChange([agent("%1", .working)])
+        try await waitUntil("the activity should start") { !controller.requested.isEmpty }
+        #expect(controller.ended.isEmpty)
+
+        // ConsoleStore.rebuild assigns `agents` before `hostsAwaitingSnapshot`,
+        // so the coordinator can see an empty slice while the hold is stale.
+        coordinator.agentsDidChange([])
+        world.awaitingSnapshot = [host.id]
+        world.statuses[host.id] = .reconnecting(
+            attempt: 1, delay: .seconds(1), failure: .sshUnreachable(detail: "down"))
+        coordinator.connectionsDidChange()
+        try await waitPastSettle()
+        #expect(controller.ended.isEmpty, "an empty slice while reconnecting is not all-idle")
+
+        world.awaitingSnapshot = []
+        world.statuses[host.id] = .connected
+        coordinator.agentsDidChange([agent("%1", .working)])
+        coordinator.connectionsDidChange()
+        try await waitPastSettle()
+        #expect(controller.ended.isEmpty)
+        #expect(controller.requested.count == 1)
+    }
+
+    @Test func emptySnapshotAfterReconnectEndsTheActivity() async throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        try await registerDevice()
+        armWorld()
+        let coordinator = makeCoordinator(defaults: defaults)
+        coordinator.start()
+        coordinator.agentsDidChange([agent("%1", .working)])
+        try await waitUntil("the activity should start") { !controller.requested.isEmpty }
+
+        coordinator.agentsDidChange([])
+        world.awaitingSnapshot = [host.id]
+        world.statuses[host.id] = .reconnecting(
+            attempt: 1, delay: .seconds(1), failure: .sshUnreachable(detail: "down"))
+        coordinator.connectionsDidChange()
+        try await waitPastSettle()
+        #expect(controller.ended.isEmpty)
+
+        world.awaitingSnapshot = []
+        world.statuses[host.id] = .connected
+        coordinator.connectionsDidChange()
+        try await waitUntil("an empty post-reconnect snapshot should end") {
+            !controller.ended.isEmpty
+        }
+    }
+
     @Test func doesNotEndAnAdoptedActivityBeforeTheFirstSnapshot() async throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }

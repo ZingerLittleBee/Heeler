@@ -13,8 +13,9 @@ enum AgentActivityPresentation: Equatable, Sendable {
         }
     }
 
-    /// Decrypted Host short name, or the generic app name when details are
-    /// unavailable. Never a Host or agent name in `countsOnly`.
+    /// Registered Host name (envelope host only as fallback), or the
+    /// generic app name when details are unavailable. Never a Host or
+    /// agent name in `countsOnly`.
     var headerTitle: String {
         switch self {
         case .detailed(let details, _):
@@ -71,11 +72,14 @@ enum AgentActivityDecryptor {
         }
 
         guard let record = records.first(where: { $0.keyID == kid }),
-            let details = try? AgentActivityEnvelope.open(data, using: record.key)
+            let opened = try? AgentActivityEnvelope.open(data, using: record.key)
         else {
             return .countsOnly(counts: state.counts)
         }
 
+        var details = opened
+        details.hostName = AgentActivityHostTitle.resolved(
+            registeredName: record.hostName, envelopeName: opened.hostName)
         return .detailed(details: details, counts: state.counts)
     }
 }

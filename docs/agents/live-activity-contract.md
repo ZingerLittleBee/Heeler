@@ -64,6 +64,11 @@ Decrypted plaintext (canonical form):
   APNs payload stays under 4096. Producers degrade in order: drop all
   `title` fields, then send `agents: []`; counts always fit.
 
+The widget renders the Host name captured at Notification Registration
+on the `NotificationKeyRecord` selected by envelope `kid` (the same
+name the alert path uses). Envelope `host` stays a producer best-effort
+fallback and is not the lock-screen title; the wire shape is unchanged.
+
 ## Relay request (plugin → relay)
 
 Extends the existing `POST /push`. Bodies without `kind` behave exactly as
