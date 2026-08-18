@@ -68,10 +68,11 @@ Decrypted plaintext (canonical form):
   `title` fields, then send `agents: []`; counts always fit.
 
 The widget renders no Host identity: an agent renders as two lines
-mirroring the herdr sidebar — its identity (`name`, falling back to
-`kind` when unnamed, exactly like the TUI) with the task `title` indented
-beneath when present. The headline is the most urgent agent's block. The
-`host` field stays in the wire for producers but is not displayed.
+mirroring the herdr sidebar's hierarchy — the task `title` on top with
+the identity (`name`, falling back to `kind` when unnamed, exactly like
+the TUI) indented beneath; a missing title promotes the identity to the
+top line alone. The headline is the most urgent agent's block. The `host`
+field stays in the wire for producers but is not displayed.
 
 ## Relay request (plugin → relay)
 

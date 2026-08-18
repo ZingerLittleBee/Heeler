@@ -244,9 +244,10 @@ private struct AgentActivityCountChips: View {
     }
 }
 
-/// The headline: two lines mirroring the herdr sidebar — status dot plus
-/// the agent's identity (its herdr name, kind when unnamed, exactly like
-/// the TUI), then the task title indented beneath when there is one.
+/// The headline: two lines mirroring the herdr sidebar's hierarchy —
+/// status dot plus the task title on top, the agent's identity (its herdr
+/// name, kind when unnamed, exactly like the TUI) indented beneath. A
+/// missing title promotes the identity to the top line alone.
 private struct AgentActivityHeadlineView: View {
     let agent: AgentActivityDetails.AgentDetail
 
@@ -260,13 +261,13 @@ private struct AgentActivityHeadlineView: View {
                     .fill(ink)
                     .frame(width: 8, height: 8)
                     .accessibilityHidden(true)
-                Text(agent.displayName)
+                Text(agent.title ?? agent.displayName)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(isBlocked ? ink : Color.primary)
                     .lineLimit(1)
             }
-            if let title = agent.title {
-                Text(title)
+            if agent.title != nil {
+                Text(agent.displayName)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -277,7 +278,7 @@ private struct AgentActivityHeadlineView: View {
 }
 
 /// One agent row: the same two-line rule as the headline, smaller type —
-/// identity (name, kind when unnamed) with the title indented beneath.
+/// task title on top, identity (name, kind when unnamed) indented beneath.
 /// Status is painted, not narrated as an event — a done row is the current
 /// state, not "just finished".
 private struct AgentActivityRowView: View {
@@ -293,14 +294,14 @@ private struct AgentActivityRowView: View {
                     .fill(ink)
                     .frame(width: 7, height: 7)
                     .accessibilityHidden(true)
-                Text(agent.displayName)
+                Text(agent.title ?? agent.displayName)
                     .font(.caption.weight(isBlocked ? .semibold : .regular))
                     .foregroundStyle(isBlocked ? ink : .primary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
-            if let title = agent.title {
-                Text(title)
+            if agent.title != nil {
+                Text(agent.displayName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
