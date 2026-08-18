@@ -20,6 +20,7 @@ struct ContentView: View {
     @State private var appearance = AppAppearanceSettings()
     @State private var relaySettings: NotificationRelaySettings
     @State private var bannerStore: AgentNotificationBannerStore
+    @State private var liveActivities: HostLiveActivityCoordinator
     @State private var activity: AppActivityCoordinator
     @Environment(\.scenePhase) private var scenePhase
 
@@ -61,6 +62,26 @@ struct ContentView: View {
                 triggers: { [weak notificationPreferences] in
                     notificationPreferences?.confirmedTriggers(for: $0)
                 }))
+        // One Live Activity per Host: the Console Agent list is the source
+        // of truth while foregrounded; the plugin takes over over APNs
+        // after the app suspends. Fail closed on a missing opt-in, key, or
+        // device token — the same gates the registration write uses.
+        _liveActivities = State(
+            initialValue: HostLiveActivityCoordinator(
+                controller: ActivityKitLiveActivityController(),
+                preferences: LiveActivityPreferences(),
+                transports: console,
+                deviceToken: { [weak pushRegistration] in pushRegistration?.deviceToken },
+                knownHostIDs: { [weak hostStore] in Set(hostStore?.hosts.map(\.id) ?? []) },
+                hostDisplayName: { [weak hostStore] id in
+                    hostStore?.hosts.first(where: { $0.id == id })?.displayName ?? ""
+                },
+                isAwaitingSnapshot: { [weak console] id in
+                    console?.hostsAwaitingSnapshot.contains(id) ?? true
+                },
+                connectionStatus: { [weak console] id in
+                    console?.hostStatuses[id]
+                }))
     }
 
     private var terminal: TerminalSettings {
@@ -78,6 +99,7 @@ struct ContentView: View {
             relaySettings: relaySettings,
             notificationRouter: notificationRouter,
             bannerStore: bannerStore,
+            liveActivities: liveActivities,
             activity: activity
         )
         // The one place the app's light/dark override is applied: it lands on
@@ -100,6 +122,7 @@ struct ContentView: View {
         .onChange(of: console.agents, initial: true) {
             notificationRouter.agentsDidChange(console.agents)
             bannerStore.agentsDidChange(console.agents)
+            liveActivities.agentsDidChange(console.agents)
         }
         // The banner's preference gate fails closed on unknown flags (#77),
         // so re-read each Host's registration file as its connection comes up
@@ -107,6 +130,13 @@ struct ContentView: View {
         // visit that may never happen.
         .onChange(of: console.hostStatuses) {
             Task { await notificationPreferences.refresh() }
+            liveActivities.connectionsDidChange()
+        }
+        .onChange(of: console.hostsAwaitingSnapshot) {
+            liveActivities.connectionsDidChange()
+        }
+        .onChange(of: activity.activationCount) {
+            liveActivities.reconcile()
         }
         .onChange(of: pushRegistration.deviceToken) {
             Task { await notificationPreferences.refresh() }
@@ -137,6 +167,7 @@ struct ContentView: View {
             await ConsoleActivityDriver(activity: activity, console: console).run()
         }
         .task { await pushRegistration.refresh() }
+        .task { liveActivities.start() }
     }
 }
 

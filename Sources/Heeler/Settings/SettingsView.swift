@@ -36,6 +36,7 @@ struct SettingsView: View {
     let pushRegistration: PushRegistrationStore
     let notificationPreferences: NotificationPreferencesStore
     let relaySettings: NotificationRelaySettings
+    let liveActivities: HostLiveActivityCoordinator
     @Environment(\.dismiss) private var dismiss
 
     static let repositoryURL = URL(string: "https://github.com/ZingerLittleBee/Heeler")
@@ -99,7 +100,8 @@ struct SettingsView: View {
                         NotificationSettingsView(
                             pushRegistration: pushRegistration,
                             notificationPreferences: notificationPreferences,
-                            relaySettings: relaySettings)
+                            relaySettings: relaySettings,
+                            liveActivities: liveActivities)
                     } label: {
                         Label("Notifications", systemImage: "bell.badge")
                     }
