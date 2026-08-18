@@ -142,19 +142,24 @@ struct SSHJumpSettings: Sendable {
 enum HerdrHostPath: Sendable {
     static let outputPrefix = "__HEELER_HERDR_BIN__="
 
-    /// Directories prepended to `PATH` on every herdr CLI exec. `$HOME`
-    /// is expanded by the remote `/bin/sh`, not by Swift.
+    /// Directories appended to `PATH` on herdr CLI execs so an existing
+    /// session binary keeps priority. `$HOME` is expanded by the remote
+    /// `/bin/sh`, not by Swift.
     static let extraPATH =
         "$HOME/.local/bin:$HOME/.linuxbrew/bin:$HOME/.cargo/bin:"
         + "/opt/homebrew/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin"
 
-    static var pathExport: String {
-        "export PATH=\"\(extraPATH):$PATH\""
+    static var pathAssignment: String {
+        "PATH=\"$PATH:\(extraPATH)\""
     }
 
-    /// Marker-delimited probe: `command -v` under the extra PATH, then the
-    /// same locations as absolute files. Login-shell noise is ignored the
-    /// same way as the home-directory probe.
+    static var pathExport: String {
+        "export \(pathAssignment)"
+    }
+
+    /// Marker-delimited probe: `command -v` under the existing PATH plus the
+    /// extra prefixes, then the same locations as absolute files. Login-shell
+    /// noise is ignored the same way as the home-directory probe.
     static var discoveryCommand: String {
         "/bin/sh -c '\(pathExport); "
             + "bin=$(command -v herdr 2>/dev/null) || true; "
@@ -174,12 +179,10 @@ enum HerdrHostPath: Sendable {
 
     /// Replaces each unpathed `herdr` command word with the absolute binary.
     /// The path is left unquoted so it can sit inside the existing
-    /// single-quoted `/bin/sh -c` wrappers; whitespace is refused because
-    /// that would split the exec word. Leaves `/opt/herdr-wake` alone.
+    /// single-quoted `/bin/sh -c` wrappers; only a conservative shell-word
+    /// alphabet is accepted. Leaves `/opt/herdr-wake` alone.
     static func substituting(_ command: String, herdrPath: String) -> String? {
-        guard RemoteShellPath.isQuotableAbsolute(herdrPath),
-            !herdrPath.contains(where: \.isWhitespace)
-        else { return nil }
+        guard isSafeUnquotedAbsolute(herdrPath) else { return nil }
         var result = command
         while let range = bareHerdrRange(in: result) {
             result.replaceSubrange(range, with: herdrPath)
@@ -187,11 +190,14 @@ enum HerdrHostPath: Sendable {
         return result
     }
 
-    /// Wraps a quote-free command so the extra PATH is visible to a bare
-    /// `herdr`. Used when discovery did not produce a path.
+    /// Makes the extra prefixes visible to a still-bare `herdr` without a
+    /// second `/bin/sh -c` wrapper, so quoted injectable commands (the
+    /// default plugin config-dir probe) keep working.
     static func prefixed(_ command: String) -> String {
-        guard !command.contains("'") else { return command }
-        return "/bin/sh -c '\(pathExport); \(command)'"
+        guard let range = bareHerdrRange(in: command) else { return command }
+        var result = command
+        result.replaceSubrange(range.lowerBound..<range.lowerBound, with: pathAssignment + " ")
+        return result
     }
 
     static func path(from output: Data) -> String? {
@@ -205,9 +211,20 @@ enum HerdrHostPath: Sendable {
                 return value
             }
             .flatMap { path in
-                RemoteShellPath.isQuotableAbsolute(path)
-                    && !path.contains(where: \.isWhitespace) ? path : nil
+                isSafeUnquotedAbsolute(path) ? path : nil
             }
+    }
+
+    /// Paths spliced unquoted into `/bin/sh -c` bodies. Letters, digits,
+    /// `.`, `_`, `-`, and `/` only — no `;|&$` or whitespace.
+    static func isSafeUnquotedAbsolute(_ path: String) -> Bool {
+        guard path.hasPrefix("/"), path.count > 1 else { return false }
+        return path.utf8.allSatisfy { byte in
+            (0x30...0x39).contains(byte)
+                || (0x41...0x5A).contains(byte)
+                || (0x61...0x7A).contains(byte)
+                || byte == 0x2E || byte == 0x5F || byte == 0x2D || byte == 0x2F
+        }
     }
 
     private static func bareHerdrRange(in command: String) -> Range<String.Index>? {
@@ -228,6 +245,6 @@ enum HerdrHostPath: Sendable {
 
     private static func isCommandWordChar(_ character: Character) -> Bool {
         character.isLetter || character.isNumber || character == "." || character == "_"
-            || character == "-" || character == "/"
+            || character == "-" || character == "/" || character == "="
     }
 }

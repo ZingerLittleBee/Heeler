@@ -527,7 +527,7 @@ actor HeelerSSHTransport: Transport {
     }
 
     func listSessions() async throws -> [HerdrSession] {
-        let output = try await runHostCommand(await resolvedHerdrCommand(sessionListCommand))
+        let output = try await runHostCommand(try await resolvedHerdrCommand(sessionListCommand))
         let sessions: [HerdrSession]
         do {
             sessions = try JSONDecoder().decode(
@@ -1003,13 +1003,13 @@ actor HeelerSSHTransport: Transport {
 
     private func resolveNotificationConfigDirectory() async throws -> String {
         let listOutput = try await runNotificationPluginProbe(
-            command: await resolvedHerdrCommand(pluginListCommand))
+            command: try await resolvedHerdrCommand(pluginListCommand))
         let pluginID = try installedNotificationPluginID(in: listOutput)
         let configDirCommand = notificationConfigDirCommand.replacingOccurrences(
             of: SSHTransportSettings.notificationPluginIDToken,
             with: pluginID)
         let output = try await runNotificationPluginProbe(
-            command: await resolvedHerdrCommand(configDirCommand))
+            command: try await resolvedHerdrCommand(configDirCommand))
         guard
             let directory = Self.markerValue(
                 in: output,
@@ -1047,6 +1047,9 @@ actor HeelerSSHTransport: Transport {
     private func runNotificationPluginProbe(command: String) async throws -> Data {
         do {
             let result = try await runExec(Self.cLocaleCommand(command))
+            if result.exitStatus == 127, HerdrHostPath.containsBareHerdr(command) {
+                throw TransportError.herdrBinaryNotFound
+            }
             guard result.exitStatus == 0, result.reachedEOF else {
                 throw NotificationRegistrationError.pluginProbeFailed(
                     detail: "The Host plugin probe failed.")
@@ -1056,6 +1059,8 @@ actor HeelerSSHTransport: Transport {
             throw TransportError.cancelled
         } catch TransportError.timedOut {
             throw TransportError.timedOut
+        } catch TransportError.herdrBinaryNotFound {
+            throw TransportError.herdrBinaryNotFound
         } catch let error as NotificationRegistrationError {
             throw error
         } catch {
@@ -1523,7 +1528,7 @@ actor HeelerSSHTransport: Transport {
         try await withRequestDeadline {
             try await self.wake.value {
                 let command = try Self.wakeExecCommand(
-                    wakeCommand: await self.resolvedHerdrCommand(
+                    wakeCommand: try await self.resolvedHerdrCommand(
                         self.wakeCommand, allowPATHPrefix: false),
                     socketPath: socketPath,
                     socketLocation: self.socketLocation)
@@ -1583,18 +1588,23 @@ actor HeelerSSHTransport: Transport {
     }
 
     /// Rewrites an unpathed `herdr …` command to the Host's absolute binary
-    /// when discovery finds one. `allowPATHPrefix` wraps a still-bare command
-    /// in an extra-PATH `/bin/sh`; it must stay false for attach and wake,
+    /// when discovery finds one. `allowPATHPrefix` augments a still-bare
+    /// command with the extra PATH; it must stay false for attach and wake,
     /// whose wrappers already export that PATH and append `"$1"` after
-    /// `exec`.
+    /// `exec`. Timeouts and cancellation propagate; only a definitive miss
+    /// falls through to the PATH fallback.
     private func resolvedHerdrCommand(
         _ command: String, allowPATHPrefix: Bool = true
-    ) async -> String {
+    ) async throws -> String {
         guard HerdrHostPath.containsBareHerdr(command) else { return command }
-        if let path = try? await herdrBinaryPath(),
-            let rewritten = HerdrHostPath.substituting(command, herdrPath: path)
-        {
-            return rewritten
+        do {
+            let path = try await herdrBinaryPath()
+            if let rewritten = HerdrHostPath.substituting(command, herdrPath: path) {
+                return rewritten
+            }
+        } catch TransportError.herdrBinaryNotFound {
+            // Fall through: the extra PATH on the command itself may still
+            // find a binary that the probe's marker parse rejected.
         }
         return allowPATHPrefix ? HerdrHostPath.prefixed(command) : command
     }
@@ -1621,6 +1631,9 @@ actor HeelerSSHTransport: Transport {
             guard result.reachedEOF else {
                 throw TransportError.channelFailed(
                     detail: "Host command closed before EOF")
+            }
+            if result.exitStatus == 127, HerdrHostPath.containsBareHerdr(command) {
+                throw TransportError.herdrBinaryNotFound
             }
             return result.stdout
         }
@@ -1988,9 +2001,10 @@ actor HeelerSSHTransport: Transport {
             let lease = try await channelAdmission.acquire(.attach)
             admissionLease = lease
             let socketPath = try await resolvedSocketPath()
+            let resolvedAttach = try await resolvedHerdrCommand(
+                attachCommand, allowPATHPrefix: false)
             let command = try Self.attachExecCommand(
-                attachCommand: await resolvedHerdrCommand(
-                    attachCommand, allowPATHPrefix: false),
+                attachCommand: resolvedAttach,
                 request: request,
                 socketPath: socketPath)
             let channel: SSHPTYChannel
@@ -2009,13 +2023,15 @@ actor HeelerSSHTransport: Transport {
             nextTerminalReaderID &+= 1
             let readerID = nextTerminalReaderID
             terminalChannelState = .streaming(readerID: readerID)
+            let classifyMissingHerdrOn127 = HerdrHostPath.containsBareHerdr(resolvedAttach)
             let readerTask = Task {
                 await self.runAttachChannel(
                     readerID: readerID,
                     channel: channel,
                     admissionLease: lease,
                     input: input,
-                    output: outputGate)
+                    output: outputGate,
+                    classifyMissingHerdrOn127: classifyMissingHerdrOn127)
             }
             return TerminalAttachSession(
                 output: outputGate.makeOutput,
@@ -2078,7 +2094,8 @@ actor HeelerSSHTransport: Transport {
         channel: SSHPTYChannel,
         admissionLease: SSHChannelAdmissionLease,
         input: TerminalAttachInputQueue,
-        output: HeelerSSHAttachOutputGate
+        output: HeelerSSHAttachOutputGate,
+        classifyMissingHerdrOn127: Bool
     ) async {
         var failure: TransportError?
         var sawCleanEnd = false
@@ -2090,7 +2107,8 @@ actor HeelerSSHTransport: Transport {
                     channel: channel,
                     input: input,
                     output: output,
-                    requestTimeout: requestTimeout)
+                    requestTimeout: requestTimeout,
+                    classifyMissingHerdrOn127: classifyMissingHerdrOn127)
             } catch let error as HeelerSSHAttachPumpError {
                 pumpFailure = error
                 throw error
@@ -2142,7 +2160,8 @@ actor HeelerSSHTransport: Transport {
         channel: any HeelerSSHAttachChannel,
         input: TerminalAttachInputQueue,
         output: HeelerSSHAttachOutputGate,
-        requestTimeout: Duration
+        requestTimeout: Duration,
+        classifyMissingHerdrOn127: Bool = false
     ) async throws -> Bool {
         let cancellation = HeelerSSHAttachPumpCancellation()
         return try await withThrowingTaskGroup(of: Bool.self) { group in
@@ -2189,7 +2208,7 @@ actor HeelerSSHTransport: Transport {
                             let status = try await channel.exitStatus(timeout: requestTimeout)
                             guard status == 0 else {
                                 yieldAdmitted(gate.flush())
-                                if status == 127 {
+                                if status == 127, classifyMissingHerdrOn127 {
                                     throw HeelerSSHAttachPumpError.herdrMissing
                                 }
                                 throw HeelerSSHAttachPumpError.output(

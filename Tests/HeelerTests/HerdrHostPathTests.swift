@@ -10,6 +10,9 @@ struct HerdrHostPathTests {
         #expect(HerdrHostPath.extraPATH.contains("/opt/homebrew/bin"))
         #expect(HerdrHostPath.extraPATH.contains("/home/linuxbrew/.linuxbrew/bin"))
         #expect(HerdrHostPath.extraPATH.contains("$HOME/.linuxbrew/bin"))
+        // Existing PATH entries keep priority over the extra prefixes.
+        #expect(HerdrHostPath.pathExport.hasPrefix("export PATH=\"$PATH:"))
+        #expect(HerdrHostPath.discoveryCommand.contains("export PATH=\"$PATH:"))
     }
 
     @Test func discoveryIgnoresLoginShellNoiseAroundItsMarker() {
@@ -27,6 +30,13 @@ struct HerdrHostPathTests {
         #expect(
             HerdrHostPath.path(
                 from: Data("__HEELER_HERDR_BIN__=/tmp/it's-herdr\n".utf8)) == nil)
+        #expect(
+            HerdrHostPath.path(
+                from: Data("__HEELER_HERDR_BIN__=/opt/homebrew/bin/herdr;notify\n".utf8))
+                == nil)
+        #expect(!HerdrHostPath.isSafeUnquotedAbsolute("/opt/homebrew/bin/herdr;x"))
+        #expect(!HerdrHostPath.isSafeUnquotedAbsolute("/tmp/foo$bar/herdr"))
+        #expect(HerdrHostPath.isSafeUnquotedAbsolute("/home/linuxbrew/.linuxbrew/bin/herdr"))
     }
 
     @Test func bareHerdrIsTheUnpathedCommandWord() {
@@ -38,6 +48,7 @@ struct HerdrHostPathTests {
         #expect(!HerdrHostPath.containsBareHerdr("/opt/herdr-wake --foreground"))
         #expect(!HerdrHostPath.containsBareHerdr("/nonexistent/herdr plugin list --json"))
         #expect(!HerdrHostPath.containsBareHerdr("/bin/sh /tmp/fake-attach.sh"))
+        #expect(!HerdrHostPath.containsBareHerdr("ENV=herdr /bin/sh -c 'true'"))
     }
 
     @Test func substitutingRewritesOnlyTheBareCommandWord() throws {
@@ -52,6 +63,10 @@ struct HerdrHostPathTests {
         #expect(
             HerdrHostPath.substituting(
                 "herdr agent attach", herdrPath: "/home/u/My herdr/bin/herdr") == nil)
+        #expect(
+            HerdrHostPath.substituting(
+                "herdr agent attach",
+                herdrPath: "/opt/homebrew/bin/herdr;notify-send") == nil)
 
         let configDir = "/bin/sh -c 'printf \"%s\" \"$(herdr plugin config-dir x)\"'"
         #expect(
@@ -64,11 +79,15 @@ struct HerdrHostPathTests {
                 == "\(linuxbrew) agent attach")
     }
 
-    @Test func prefixedWrapsAQuoteFreeCommand() {
+    @Test func prefixedAugmentsBareHerdrWithoutASecondShell() {
         let wrapped = HerdrHostPath.prefixed("herdr session list --json")
-        #expect(wrapped.contains(HerdrHostPath.pathExport))
+        #expect(wrapped.hasPrefix("\(HerdrHostPath.pathAssignment) herdr "))
         #expect(wrapped.contains("herdr session list --json"))
-        #expect(HerdrHostPath.prefixed("printf 'no wrap'") == "printf 'no wrap'")
+
+        let quoted = SSHTransportSettings.defaultNotificationConfigDirCommand
+        let prefixed = HerdrHostPath.prefixed(quoted)
+        #expect(prefixed.contains("$(\(HerdrHostPath.pathAssignment) herdr plugin config-dir"))
+        #expect(!prefixed.hasPrefix("/bin/sh -c '\(HerdrHostPath.pathExport)"))
     }
 
     @Test func attachExecExportsTheExtraPATHBeforeExec() throws {
@@ -78,6 +97,7 @@ struct HerdrHostPathTests {
             socketPath: "/tmp/fake.sock")
         #expect(command.contains(HerdrHostPath.pathExport))
         #expect(command.contains("/home/linuxbrew/.linuxbrew/bin"))
+        #expect(command.contains("export PATH=\"$PATH:"))
         #expect(command.contains("exec herdr agent attach"))
     }
 
@@ -88,5 +108,7 @@ struct HerdrHostPathTests {
             socketPath: "/tmp/fake.sock")
         #expect(
             command.contains("exec /home/linuxbrew/.linuxbrew/bin/herdr agent attach"))
+        #expect(!HerdrHostPath.containsBareHerdr(
+            "/home/linuxbrew/.linuxbrew/bin/herdr agent attach"))
     }
 }

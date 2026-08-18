@@ -1622,10 +1622,30 @@ struct TerminalAttachTests {
                 channel: channel,
                 input: input,
                 output: source.gate,
-                requestTimeout: .seconds(1))
+                requestTimeout: .seconds(1),
+                classifyMissingHerdrOn127: true)
             Issue.record("exit 127 should fail the attach pumps")
         } catch {
             #expect(String(describing: error) == "herdrMissing")
+        }
+    }
+
+    @Test func attachExit127OnAResolvedCommandStaysAChannelFailure() async throws {
+        let channel = FakeAttachPTYChannel(reads: [nil], remoteExitStatus: 127)
+        let input = TerminalAttachInputQueue()
+        let source = HeelerSSHAttachOutputGate.makeStream()
+
+        do {
+            _ = try await HeelerSSHTransport.runAttachPumps(
+                channel: channel,
+                input: input,
+                output: source.gate,
+                requestTimeout: .seconds(1),
+                classifyMissingHerdrOn127: false)
+            Issue.record("exit 127 should fail the attach pumps")
+        } catch {
+            #expect(String(describing: error).contains("remote exit status 127"))
+            #expect(String(describing: error) != "herdrMissing")
         }
     }
 

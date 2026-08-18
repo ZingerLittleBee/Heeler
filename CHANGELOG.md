@@ -12,9 +12,10 @@ Entries reference the issue that motivated them.
 - Opening an Agent no longer dies with `exec: herdr: not found` (exit 127) on a
   Host that installed herdr via Homebrew or linuxbrew. The API socket never
   needed `herdr` on `PATH`, so the Console could already list Agents; Attach
-  and the other CLI execs now prepend the usual install prefixes
-  (`~/.local/bin`, `/opt/homebrew/bin`, `/home/linuxbrew/.linuxbrew/bin`) and
-  resolve the binary to an absolute path when they can. (#206)
+  and the other CLI execs now append the usual install prefixes after the
+  session `PATH` (`~/.local/bin`, `/opt/homebrew/bin`,
+  `/home/linuxbrew/.linuxbrew/bin`) and resolve the binary to an absolute path
+  when they can. (#206)
 
 ### Added
 
