@@ -339,3 +339,78 @@ enum AgentActivityChrome {
     static let backgroundTint = Color(red: 24 / 255, green: 24 / 255, blue: 37 / 255)
     static let systemAction = Color(red: 205 / 255, green: 214 / 255, blue: 244 / 255)
 }
+
+// MARK: - Previews
+
+/// Style gallery: every lock-screen state without a device, a push, or a
+/// live agent. Open this file's canvas in Xcode to review the banner.
+#if DEBUG
+    private func previewBanner(_ presentation: AgentActivityPresentation) -> some View {
+        AgentActivityLockScreenView(
+            presentation: presentation,
+            hostID: "6D8EC348-4DAF-455C-BA8F-5FCC41799C0E"
+        )
+        .background(AgentActivityChrome.backgroundTint, in: RoundedRectangle(cornerRadius: 22))
+        .environment(\.colorScheme, .dark)
+        .padding()
+    }
+
+    private func previewAgent(
+        _ status: String, kind: String, name: String? = nil, pane: String, title: String? = nil
+    ) -> AgentActivityDetails.AgentDetail {
+        AgentActivityDetails.AgentDetail(
+            paneID: pane, kind: kind, name: name, status: status, title: title)
+    }
+
+    #Preview("Mixed statuses + overflow") {
+        previewBanner(
+            .detailed(
+                details: AgentActivityDetails(
+                    hostName: "mbp",
+                    agents: [
+                        previewAgent(
+                            "blocked", kind: "claude", name: "reviewer", pane: "w1:p1",
+                            title: "Approve the transport refactor plan"),
+                        previewAgent(
+                            "done", kind: "droid", name: "doc-writer", pane: "w1:p2",
+                            title: "API reference draft finished"),
+                        previewAgent(
+                            "working", kind: "grok", name: "la-demo", pane: "w1:p3",
+                            title: "Research ActivityKit budgets"),
+                    ]),
+                counts: .init(working: 3, blocked: 1, done: 2)))
+    }
+
+    #Preview("Single unnamed working") {
+        previewBanner(
+            .detailed(
+                details: AgentActivityDetails(
+                    hostName: "mbp",
+                    agents: [
+                        previewAgent(
+                            "working", kind: "claude", pane: "w1:p1",
+                            title: "◑ lockscreen-agent-live-activity")
+                    ]),
+                counts: .init(working: 1, blocked: 0, done: 0)))
+    }
+
+    #Preview("Two working, names") {
+        previewBanner(
+            .detailed(
+                details: AgentActivityDetails(
+                    hostName: "mbp",
+                    agents: [
+                        previewAgent(
+                            "working", kind: "claude", pane: "w1:p1",
+                            title: "Refactor the transport queue"),
+                        previewAgent(
+                            "working", kind: "grok", name: "la-demo", pane: "w1:p2",
+                            title: "Write the landing copy"),
+                    ]),
+                counts: .init(working: 2, blocked: 0, done: 0)))
+    }
+
+    #Preview("Counts only (undecryptable)") {
+        previewBanner(.countsOnly(counts: .init(working: 2, blocked: 1, done: 0)))
+    }
+#endif
