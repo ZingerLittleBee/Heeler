@@ -196,6 +196,11 @@ struct NotificationSettingsView: View {
                 if !liveActivities.areActivitiesEnabled {
                     Text(NotificationPrivacyCopy.liveActivityDisabledHint)
                 }
+                if liveActivities.isEnabled(for: host.id),
+                    let note = liveActivities.reconcileNotes[host.id]
+                {
+                    Text("Live Activity: \(note)")
+                }
             }
             // Fail loudly (#75): a toggle that could not reach the Host
             // says so and stays on the Host's confirmed value.

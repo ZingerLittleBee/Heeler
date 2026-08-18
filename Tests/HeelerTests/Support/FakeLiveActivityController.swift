@@ -53,7 +53,7 @@ final class FakeLiveActivityController: LiveActivityControlling {
         content: AgentActivityAttributes.ContentState
     ) throws -> LiveActivityHandle {
         if let requestError { throw requestError }
-        guard areEnabled else { throw LiveActivityRequestError.requestFailed }
+        guard areEnabled else { throw LiveActivityRequestError.requestFailed() }
         guard let hostID = UUID(uuidString: attributes.hostID) else {
             throw LiveActivityRequestError.invalidHostID
         }

@@ -32,6 +32,11 @@ final class HostLiveActivityCoordinator {
 
     var areActivitiesEnabled: Bool { controller.areEnabled }
 
+    /// Last reconcile verdict per Host, human-readable — the Settings
+    /// diagnostic row that turns "no banner and no idea why" into a
+    /// sentence (observable so the row updates live).
+    private(set) var reconcileNotes: [Host.ID: String] = [:]
+
     init(
         controller: any LiveActivityControlling,
         preferences: LiveActivityPreferences,
@@ -195,29 +200,56 @@ final class HostLiveActivityCoordinator {
         if isUnchanged(hostID: hostID, desired: desired) { return }
 
         guard let desired else {
+            reconcileNotes[hostID] = "idle — \(desireBlocker(for: hostID))"
             endNow(hostID)
             return
         }
         guard let key = notificationKey(for: hostID),
             let content = AgentActivityContentBuilder.content(for: desired, key: key)
-        else { return }
+        else {
+            reconcileNotes[hostID] = "sealing the update failed"
+            return
+        }
 
         if let session = sessions[hostID] {
             controller.update(id: session.id, content: content)
             applied[hostID] = desired
+            reconcileNotes[hostID] = "active — updated"
             return
         }
-        guard controller.areEnabled else { return }
+        guard controller.areEnabled else {
+            reconcileNotes[hostID] = "idle — iOS has Live Activities disabled for Heeler"
+            return
+        }
         do {
             let handle = try controller.request(
                 attributes: AgentActivityAttributes(hostID: hostID.uuidString),
                 content: content)
             beginSession(handle, awaitingFirstSnapshot: false)
             applied[hostID] = desired
+            reconcileNotes[hostID] = "active — started"
         } catch {
-            // Stay idle silently: a later change, reconnect, or foreground
-            // reconcile is the retry.
+            // Stay idle otherwise: a later change, reconnect, or foreground
+            // reconcile is the retry. The note carries ActivityKit's reason.
+            reconcileNotes[hostID] = "start failed — \(requestFailureReason(error))"
         }
+    }
+
+    /// The gate that kept `computeDesired` from producing content, in the
+    /// order the gates run — surfaced by the Settings diagnostic row.
+    private func desireBlocker(for hostID: Host.ID) -> String {
+        if !controller.areEnabled { return "iOS has Live Activities disabled for Heeler" }
+        if !preferences.isEnabled(for: hostID) { return "the per-Host toggle is off" }
+        if deviceToken() == nil { return "no push device token yet" }
+        if notificationKey(for: hostID) == nil { return "no Notification Key for this Host" }
+        return "no working, blocked, or done agents"
+    }
+
+    private func requestFailureReason(_ error: any Error) -> String {
+        if case LiveActivityRequestError.requestFailed(let reason) = error, !reason.isEmpty {
+            return reason
+        }
+        return String(describing: error)
     }
 
     private func computeDesired(for hostID: Host.ID) -> AgentActivityDesire? {

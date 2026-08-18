@@ -20,7 +20,8 @@ enum LiveActivityRunState: Sendable, Equatable {
 
 enum LiveActivityRequestError: Error, Sendable, Equatable {
     /// ActivityKit refused the request, or Live Activities are unavailable.
-    case requestFailed
+    /// Carries ActivityKit's own reason for the Settings diagnostic row.
+    case requestFailed(String = "")
     /// `AgentActivityAttributes.hostID` was not a UUID string.
     case invalidHostID
 }
@@ -80,7 +81,7 @@ final class ActivityKitLiveActivityController: LiveActivityControlling {
                 pushType: .token)
             return LiveActivityHandle(id: activity.id, hostID: hostID)
         } catch {
-            throw LiveActivityRequestError.requestFailed
+            throw LiveActivityRequestError.requestFailed(String(describing: error))
         }
     }
 
@@ -188,7 +189,7 @@ final class ActivityKitLiveActivityController: LiveActivityControlling {
         attributes: AgentActivityAttributes,
         content: AgentActivityAttributes.ContentState
     ) throws -> LiveActivityHandle {
-        throw LiveActivityRequestError.requestFailed
+        throw LiveActivityRequestError.requestFailed("ActivityKit unavailable")
     }
 
     func update(id: String, content: AgentActivityAttributes.ContentState) {}

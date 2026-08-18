@@ -212,7 +212,7 @@ struct HostLiveActivityCoordinatorTests {
         #expect(controller.requested.isEmpty)
 
         controller.areEnabled = true
-        controller.requestError = LiveActivityRequestError.requestFailed
+        controller.requestError = LiveActivityRequestError.requestFailed()
         coordinator.agentsDidChange([agent("%1", .blocked)])
         try await waitPastSettle()
         #expect(controller.requested.isEmpty)
