@@ -38,7 +38,7 @@ targets:
       # Notification code shared with the service extension: envelope
       # decryption, Notification Key store, alert renderer (ADR 0008).
       - Sources/HeelerNotificationCore
-      # Live Activity attributes + details envelope (shared with a later widget).
+      # Live Activity attributes + details envelope (shared with HeelerWidgets).
       - Sources/HeelerActivityCore
       # Audited third-party notices + inventory.json (#161). Folder reference
       # preserves the Notices/ subdirectory the catalogue resolves against.
@@ -76,12 +76,15 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        # ActivityKit starts Live Activities from the app; HeelerWidgets renders them.
+        INFOPLIST_KEY_NSSupportsLiveActivities: YES
     dependencies:
       - package: HeelerSSH
       - package: GhosttyTerminal
       - package: GhosttyTerminal
         product: GhosttyTheme
       - target: HeelerNotificationService
+      - target: HeelerWidgets
 
   # Decrypts Agent Notifications before display (ADR 0008, #71). A thin
   # shell: the logic lives in HeelerNotificationCore, tested from the app
@@ -122,6 +125,52 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.NotificationService
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "9"
+        # Match the containing app's iPhone-only device family.
+        TARGETED_DEVICE_FAMILY: "1"
+
+  # Lock-screen / Dynamic Island Live Activity (docs/agents/live-activity-contract.md).
+  # Thin WidgetKit shell: attributes, envelope open, and Notification Key
+  # selection live in HeelerActivityCore / HeelerNotificationCore, compiled
+  # in the same way as the notification service extension (the appex cannot
+  # link the app). @main is the WidgetBundle; there is no principal class.
+  HeelerWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Sources/HeelerWidgets
+      - Sources/HeelerActivityCore
+      - Sources/HeelerNotificationCore
+      - Sources/Heeler/Support/Base64URL.swift
+      - Sources/Heeler/Transport/SecretStore.swift
+      # For AgentStatus; Foundation-only by construction (JSONValue is the
+      # generated file's one in-repo dependency). NotificationEnvelope in
+      # HeelerNotificationCore needs it.
+      - Sources/Heeler/Transport/Generated/HerdrAPITypes.swift
+      - Sources/Heeler/Transport/JSONValue.swift
+    entitlements:
+      path: Sources/HeelerWidgets/HeelerWidgets.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.dev.bybee.heeler.shared
+    info:
+      path: Sources/HeelerWidgets/Info.plist
+      properties:
+        # An app extension's versions must match its containing app's, or
+        # App Store validation rejects the bundle. XcodeGen would otherwise
+        # hardcode its own 1.0/1 defaults here; point at the build settings
+        # so both bundles stay in lockstep.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # App Store validation (code 90360) requires a display name on
+        # every embedded appex. Also the counts-only lock-screen fallback.
+        CFBundleDisplayName: Heeler
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.Widgets
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "9"
         # Match the containing app's iPhone-only device family.
