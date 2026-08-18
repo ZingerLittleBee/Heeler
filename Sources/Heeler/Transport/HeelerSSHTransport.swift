@@ -9,6 +9,9 @@ private struct HeelerSSHSessionListResponse: Decodable {
 private enum HeelerSSHAttachPumpError: Error, Sendable {
     case input(String)
     case output(String)
+    /// Remote `/bin/sh` could not exec `herdr` (exit 127). Distinct from a
+    /// herdr-the-process failure so Attach can name the PATH problem (#206).
+    case herdrMissing
 }
 
 /// The live PTY operations used by the Attach pumps. `SSHPTYChannel` is the
@@ -294,6 +297,7 @@ actor HeelerSSHTransport: Transport {
     private let channelAdmission: SSHChannelAdmission
     private let homeDirectory = SharedAsyncOperation<String>(cachesSuccess: true)
     private let notificationConfigDirectory = SharedAsyncOperation<String>(cachesSuccess: true)
+    private let herdrBinary = SharedAsyncOperation<String>(cachesSuccess: true)
     private let wake = SharedAsyncOperation<Void>(cachesSuccess: false)
     private var connected = true
 
@@ -523,7 +527,7 @@ actor HeelerSSHTransport: Transport {
     }
 
     func listSessions() async throws -> [HerdrSession] {
-        let output = try await runHostCommand(sessionListCommand)
+        let output = try await runHostCommand(await resolvedHerdrCommand(sessionListCommand))
         let sessions: [HerdrSession]
         do {
             sessions = try JSONDecoder().decode(
@@ -998,12 +1002,14 @@ actor HeelerSSHTransport: Transport {
     }
 
     private func resolveNotificationConfigDirectory() async throws -> String {
-        let listOutput = try await runNotificationPluginProbe(command: pluginListCommand)
+        let listOutput = try await runNotificationPluginProbe(
+            command: await resolvedHerdrCommand(pluginListCommand))
         let pluginID = try installedNotificationPluginID(in: listOutput)
         let configDirCommand = notificationConfigDirCommand.replacingOccurrences(
             of: SSHTransportSettings.notificationPluginIDToken,
             with: pluginID)
-        let output = try await runNotificationPluginProbe(command: configDirCommand)
+        let output = try await runNotificationPluginProbe(
+            command: await resolvedHerdrCommand(configDirCommand))
         guard
             let directory = Self.markerValue(
                 in: output,
@@ -1517,7 +1523,8 @@ actor HeelerSSHTransport: Transport {
         try await withRequestDeadline {
             try await self.wake.value {
                 let command = try Self.wakeExecCommand(
-                    wakeCommand: self.wakeCommand,
+                    wakeCommand: await self.resolvedHerdrCommand(
+                        self.wakeCommand, allowPATHPrefix: false),
                     socketPath: socketPath,
                     socketLocation: self.socketLocation)
                 let result = try await self.runExec(command)
@@ -1571,6 +1578,39 @@ actor HeelerSSHTransport: Transport {
                         detail: "home command printed: \(Self.preview(result.stdout))")
                 }
                 return home
+            }
+        }
+    }
+
+    /// Rewrites an unpathed `herdr …` command to the Host's absolute binary
+    /// when discovery finds one. `allowPATHPrefix` wraps a still-bare command
+    /// in an extra-PATH `/bin/sh`; it must stay false for attach and wake,
+    /// whose wrappers already export that PATH and append `"$1"` after
+    /// `exec`.
+    private func resolvedHerdrCommand(
+        _ command: String, allowPATHPrefix: Bool = true
+    ) async -> String {
+        guard HerdrHostPath.containsBareHerdr(command) else { return command }
+        if let path = try? await herdrBinaryPath(),
+            let rewritten = HerdrHostPath.substituting(command, herdrPath: path)
+        {
+            return rewritten
+        }
+        return allowPATHPrefix ? HerdrHostPath.prefixed(command) : command
+    }
+
+    private func herdrBinaryPath() async throws -> String {
+        try await withRequestDeadline {
+            try await self.herdrBinary.value {
+                let result = try await self.runExec(
+                    Self.cLocaleCommand(HerdrHostPath.discoveryCommand))
+                guard
+                    result.exitStatus == 0,
+                    let path = HerdrHostPath.path(from: result.stdout)
+                else {
+                    throw TransportError.herdrBinaryNotFound
+                }
+                return path
             }
         }
     }
@@ -1726,11 +1766,13 @@ actor HeelerSSHTransport: Transport {
                 throw TransportError.channelFailed(
                     detail: "The herdr session name is invalid.")
             }
-            command = "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
+            command = "/bin/sh -c '\(HerdrHostPath.pathExport); "
+                + "export HERDR_SOCKET_PATH=\"$1\"; "
                 + "export HERDR_SESSION=\"$2\"; \(wakeCommand) < /dev/null' wake "
                 + "\(quotedSocketPath) \(sessionName)"
         case .defaultSession, .absolutePath:
-            command = "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
+            command = "/bin/sh -c '\(HerdrHostPath.pathExport); "
+                + "export HERDR_SOCKET_PATH=\"$1\"; "
                 + "\(wakeCommand) < /dev/null' wake \(quotedSocketPath)"
         }
         return cLocaleCommand(command)
@@ -1947,7 +1989,8 @@ actor HeelerSSHTransport: Transport {
             admissionLease = lease
             let socketPath = try await resolvedSocketPath()
             let command = try Self.attachExecCommand(
-                attachCommand: attachCommand,
+                attachCommand: await resolvedHerdrCommand(
+                    attachCommand, allowPATHPrefix: false),
                 request: request,
                 socketPath: socketPath)
             let channel: SSHPTYChannel
@@ -2023,7 +2066,8 @@ actor HeelerSSHTransport: Transport {
         let takeover = request.takeover ? " --takeover" : ""
         // The marker goes out last thing before the exec, so earlier startup
         // chatter can be dropped.
-        return "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
+        return "/bin/sh -c '\(HerdrHostPath.pathExport); "
+            + "export HERDR_SOCKET_PATH=\"$2\"; "
             + "printf \"\(AttachBootstrapHandshake.markerPrintfFormat)\"; "
             + "exec \(attachCommand) \"$1\"\(takeover)' attach "
             + "'\(request.target)' \(quotedSocketPath)"
@@ -2063,6 +2107,8 @@ actor HeelerSSHTransport: Transport {
                     failure = .channelFailed(detail: "attach input: \(detail)")
                 case .output(let detail):
                     failure = .channelFailed(detail: "attach channel: \(detail)")
+                case .herdrMissing:
+                    failure = .herdrBinaryNotFound
                 case nil:
                     failure = .channelFailed(detail: "attach channel: \(error)")
                 }
@@ -2143,6 +2189,9 @@ actor HeelerSSHTransport: Transport {
                             let status = try await channel.exitStatus(timeout: requestTimeout)
                             guard status == 0 else {
                                 yieldAdmitted(gate.flush())
+                                if status == 127 {
+                                    throw HeelerSSHAttachPumpError.herdrMissing
+                                }
                                 throw HeelerSSHAttachPumpError.output(
                                     "remote exit status \(status)")
                             }

@@ -41,6 +41,19 @@ struct PreflightReportTests {
         }
     }
 
+    @Test func missingBinaryHintNamesTheHomebrewPrefixes() {
+        let report = PreflightReport.failure(
+            .herdrBinaryNotFound, authMethod: .deviceKey)
+        guard case .failed(let hint) = report[.herdrInstalled] else {
+            Issue.record("herdr check should fail")
+            return
+        }
+        #expect(hint.contains("/opt/homebrew/bin"))
+        #expect(hint.contains("/home/linuxbrew/.linuxbrew/bin"))
+        #expect(hint.contains("~/.local/bin"))
+        #expect(report[.serverRunning] == .blocked)
+    }
+
     @Test func streamLocalFailureGuidesTowardForwardingRatherThanInstallation() {
         let report = PreflightReport.failure(
             .streamLocalOpenFailed(path: "/home/dev/.config/herdr/herdr.sock"),
@@ -67,6 +80,7 @@ struct PreflightReportTests {
         (.jumpHostFailed(.sshUnreachable(detail: "refused")), .connection),
         (.tcpForwardingUnavailable, .connection),
         (.socketNotFound(path: "/home/dev/.config/herdr/herdr.sock"), .herdrInstalled),
+        (.herdrBinaryNotFound, .herdrInstalled),
         (.homeDirectoryUnresolvable(detail: "no $HOME"), .remoteEnvironment),
         (.streamLocalOpenFailed(path: "/home/dev/.config/herdr/herdr.sock"), .serverRunning),
         // Below the floor: the only direction that still produces this error

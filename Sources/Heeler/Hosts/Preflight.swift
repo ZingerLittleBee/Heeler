@@ -91,6 +91,13 @@ struct PreflightReport: Equatable, Sendable {
             hint =
                 "No herdr socket at \(path). Install and start herdr on the Host, "
                 + "or fix the session name."
+        case .herdrBinaryNotFound:
+            check = .herdrInstalled
+            hint =
+                "herdr is installed somewhere the SSH session cannot see "
+                + "(Homebrew is often /opt/homebrew/bin or "
+                + "/home/linuxbrew/.linuxbrew/bin). Put that directory on the "
+                + "account's non-interactive PATH, or symlink herdr into ~/.local/bin."
         case .homeDirectoryUnresolvable(let detail):
             check = .remoteEnvironment
             hint =

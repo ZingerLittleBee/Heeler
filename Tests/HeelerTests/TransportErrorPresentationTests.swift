@@ -28,6 +28,13 @@ struct TransportErrorPresentationTests {
                 == "The connection failed: connection reset")
     }
 
+    @Test func missingHerdrBinaryNamesTheHomebrewPATH() {
+        let guidance = TransportError.herdrBinaryNotFound.connectionGuidance
+        #expect(guidance.contains("/opt/homebrew/bin"))
+        #expect(guidance.contains("/home/linuxbrew/.linuxbrew/bin"))
+        #expect(TransportError.herdrBinaryNotFound.isRetryable == false)
+    }
+
     @Test func streamLocalOpenFailureLeadsWithHerdrNotRunning() {
         #expect(
             TransportError.streamLocalOpenFailed(path: "/tmp/herdr.sock").connectionGuidance

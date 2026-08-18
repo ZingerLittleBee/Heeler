@@ -130,3 +130,104 @@ struct SSHJumpSettings: Sendable {
         self.credentials = credentials
     }
 }
+
+/// Where `herdr` actually lives on Hosts that install it via Homebrew,
+/// linuxbrew, cargo, or a user-local prefix.
+///
+/// SSH exec is not a login shell: sshd's default `PATH` is typically
+/// `/usr/bin:/bin`, so a Host that can run `herdr` interactively still
+/// answers `exec: herdr: not found` (exit 127) on Attach. The API socket
+/// path does not need the binary — that is why the Console can list Agents
+/// while the PTY Attach dies (#206).
+enum HerdrHostPath: Sendable {
+    static let outputPrefix = "__HEELER_HERDR_BIN__="
+
+    /// Directories prepended to `PATH` on every herdr CLI exec. `$HOME`
+    /// is expanded by the remote `/bin/sh`, not by Swift.
+    static let extraPATH =
+        "$HOME/.local/bin:$HOME/.linuxbrew/bin:$HOME/.cargo/bin:"
+        + "/opt/homebrew/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin"
+
+    static var pathExport: String {
+        "export PATH=\"\(extraPATH):$PATH\""
+    }
+
+    /// Marker-delimited probe: `command -v` under the extra PATH, then the
+    /// same locations as absolute files. Login-shell noise is ignored the
+    /// same way as the home-directory probe.
+    static var discoveryCommand: String {
+        "/bin/sh -c '\(pathExport); "
+            + "bin=$(command -v herdr 2>/dev/null) || true; "
+            + "if [ -n \"$bin\" ] && [ -x \"$bin\" ]; then "
+            + "printf \"\(outputPrefix)%s\\n\" \"$bin\"; exit 0; fi; "
+            + "for p in \"$HOME/.local/bin/herdr\" \"$HOME/.linuxbrew/bin/herdr\" "
+            + "\"$HOME/.cargo/bin/herdr\" /opt/homebrew/bin/herdr "
+            + "/usr/local/bin/herdr /home/linuxbrew/.linuxbrew/bin/herdr; do "
+            + "if [ -x \"$p\" ]; then printf \"\(outputPrefix)%s\\n\" \"$p\"; "
+            + "exit 0; fi; done; exit 1'"
+    }
+
+    /// True when `command` still invokes an unpathed `herdr` word.
+    static func containsBareHerdr(_ command: String) -> Bool {
+        bareHerdrRange(in: command) != nil
+    }
+
+    /// Replaces each unpathed `herdr` command word with the absolute binary.
+    /// The path is left unquoted so it can sit inside the existing
+    /// single-quoted `/bin/sh -c` wrappers; whitespace is refused because
+    /// that would split the exec word. Leaves `/opt/herdr-wake` alone.
+    static func substituting(_ command: String, herdrPath: String) -> String? {
+        guard RemoteShellPath.isQuotableAbsolute(herdrPath),
+            !herdrPath.contains(where: \.isWhitespace)
+        else { return nil }
+        var result = command
+        while let range = bareHerdrRange(in: result) {
+            result.replaceSubrange(range, with: herdrPath)
+        }
+        return result
+    }
+
+    /// Wraps a quote-free command so the extra PATH is visible to a bare
+    /// `herdr`. Used when discovery did not produce a path.
+    static func prefixed(_ command: String) -> String {
+        guard !command.contains("'") else { return command }
+        return "/bin/sh -c '\(pathExport); \(command)'"
+    }
+
+    static func path(from output: Data) -> String? {
+        String(decoding: output, as: UTF8.self)
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .reversed()
+            .first { $0.hasPrefix(outputPrefix) }
+            .map { line in
+                var value = String(line.dropFirst(outputPrefix.count))
+                if value.last == "\r" { value.removeLast() }
+                return value
+            }
+            .flatMap { path in
+                RemoteShellPath.isQuotableAbsolute(path)
+                    && !path.contains(where: \.isWhitespace) ? path : nil
+            }
+    }
+
+    private static func bareHerdrRange(in command: String) -> Range<String.Index>? {
+        var search = command.startIndex
+        while let found = command[search...].range(of: "herdr") {
+            let start = found.lowerBound
+            let end = found.upperBound
+            let precededByPath = start > command.startIndex
+                && isCommandWordChar(command[command.index(before: start)])
+            let followedByWord = end < command.endIndex && isCommandWordChar(command[end])
+            if !precededByPath && !followedByWord {
+                return found
+            }
+            search = end
+        }
+        return nil
+    }
+
+    private static func isCommandWordChar(_ character: Character) -> Bool {
+        character.isLetter || character.isNumber || character == "." || character == "_"
+            || character == "-" || character == "/"
+    }
+}

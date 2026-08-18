@@ -147,7 +147,7 @@ against the shorter phrase the Console composes for the same error in
 `.reconnecting` and `.failed`, and they partition the error set: the session
 emits `.failed` only where `isRetryable` is false and `.reconnecting` only
 where it is true. On `.failed` the text names an action the user can take in
-10 of the 12 cases `isRetryable` rejects outright; on `.reconnecting` it does
+11 of the 13 cases `isRetryable` rejects outright; on `.reconnecting` it does
 so in none of the 5 it accepts, restating what happened and appending the
 transport's raw detail in three of them (`jumpHostFailed` prefixes and
 inherits whichever it wraps). So what the guidance adds over the Console's
