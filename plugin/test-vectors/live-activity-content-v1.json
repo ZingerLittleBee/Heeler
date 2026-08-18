@@ -1,0 +1,180 @@
+{
+  "description": "Shared Live Activity content envelope v1 test vectors (docs/agents/live-activity-contract.md). Single source of truth for the encrypted per-Host agent details carried inside a Live Activity content-state, consumed by both the Node plugin tests (seal direction) and the Swift app tests (open direction, plus seal for app-local updates). Envelopes were generated with raw AES-256-GCM calls, independent of all implementations. AAD is HERDR-ACTIVITY:1 (domain-separated from HERDR-NOTIFY:1; see the cross-AAD invalid vector). Canonical plaintext encoding: compact JSON, object keys in ascending alphabetical order at every level; agents sorted blocked > done > working with ties by pane ascending, capped at 5 entries; title omitted when absent, <=80 graphemes otherwise. Producers keep the base64url ct <= ~2800 bytes by dropping titles first, then sending empty agents. `key` is the 32-byte Notification Key and `keyId` its derived id, both unpadded base64url. Non-`decodeOnly` valid vectors must be reproduced byte-for-byte by the seal side; `decodeOnly: true` envelopes must open to `payload` but are not canonical encodings. Invalid vectors must fail with the given typed error.",
+  "valid": [
+    {
+      "name": "single working agent",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "keyId": "Yw3NKWbEM2Y",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"AAECAwQFBgcICQoL\",\"ct\":\"PCC3fKCLtmive8zwk4IRA-f0vRaTFz4JXALHqT8ZYdxkMpTe2Jco6EWGU8_780lMmypCt3ihzKhU_kR-Os_XmplIqh_x6wSEsspN4F9mmmndO0aE7t20zEfd_6sdns2tLk_8AhndL5Ao-r4zagh8U5gPDdiX5x-4IJ0n767EGCyBY33V7DKnHtte7AAmCqPqwb7W\"}",
+      "payload": {
+        "agents": [
+          {
+            "kind": "claude",
+            "pane": "wV:p1",
+            "status": "working",
+            "title": "实现锁屏显示 agent 工作状态"
+          }
+        ],
+        "host": "mbp",
+        "v": 1
+      }
+    },
+    {
+      "name": "five agents in canonical sort order at the cap",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "keyId": "Yw3NKWbEM2Y",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"EBESExQVFhcYGRob\",\"ct\":\"Btz5cSynTsDoT1NmLRIAPbNydCx4rjbEg5zAS3wkNbU1y20hgpdUn0wUvnP57HJvZs9lScHpNZ3fdV9V0buGH2yMU0ZrhClGCPZcm6_hnNZYmf_EAe8zTumfTj-e6IJ7XnpizZDBEv8KK-tRDxK29y3oxASY3pealMT5lE6IiCK_7-ZVAoO1lgSVvPHepSscxEYMfyv1sMLFvSTprs_PT7a45ims1LPRmhx0masaFnDTG4eBxwLHEJ_Xw2nRr8kvUbI4bdfV65vGbtwEaDBn-ubAZjYQji3LGnH4kRasjfTUwyseJwffCwQbwsEi-o5QG8yZyX0mLqXKJ9WoIC-x5xdfC5rLVVc_O9Bx2HBO1o2QNuRVP69X-pDkCQR2yejxdDC2tBCc3ofM8zPFWe4lYg_OexSb22vtXb3zpTEWWespmDfsZEBYXXfj5STm8VuMH2vEkE0hw_vD8PsyVXPVxiqAY8hWUmUMpgpIaKCPs_Thzp2M34iJX9ZM-rCH18KmTKQDF_e3I2h0daCXai65vzT3_F3nyH_etJDMRfrx445nJ1ZKE92kWHiTT8brKj0-IDihgwqn5x9j\"}",
+      "payload": {
+        "agents": [
+          {
+            "kind": "claude",
+            "pane": "w1:p2",
+            "status": "blocked",
+            "title": "review the migration plan"
+          },
+          {
+            "kind": "codex",
+            "pane": "w1:p9",
+            "status": "blocked"
+          },
+          {
+            "kind": "droid",
+            "pane": "w2:p1",
+            "status": "done",
+            "title": "landing copy edit"
+          },
+          {
+            "kind": "claude",
+            "pane": "w1:p1",
+            "status": "working",
+            "title": "refactor transport queue"
+          },
+          {
+            "kind": "grok",
+            "pane": "w3:p4",
+            "status": "working",
+            "title": "research ActivityKit budgets"
+          }
+        ],
+        "host": "studio",
+        "v": 1
+      }
+    },
+    {
+      "name": "title at the 80-grapheme CJK boundary",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "keyId": "Yw3NKWbEM2Y",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"ICEiIyQlJicoKSor\",\"ct\":\"qRjHFwn2bn04Rhm143Odl7Rr1r7k7AKbCJNOPmv6P2cQrN8m-XMPqiPfQrArfX68l1nOtLhLQhOlCxF6bp4oqbFSoW60rcd_H-sMljS0reAwJrztI3pjr0CmVqv_rRE1ltXL50etCnIsLSvuN3coov94G8N0byDkxHPivnpuFqnZVfJ3r2_mAOpmNuvrjpNPQ0vOhFxxTgvVuTLGHlI0fFYcqK45QvhldTYsDSnDjypOAjNt3UIqjOQpeiUDi1xDdyKTp_tvUN6wrDpXe1JOfULMYZ8jbpx2lT7s7ci934zZpeFiCe6aTdyNTxAMRx_4Xv5XOLzjkbJbjo6cn_WdR1Vj36Bvt-L9YsPwyDEbDkAfcE3wtNViQKXCp6mrGMlcFqoeiBASQMWbYTHEJqM0wAFPjRn7OE7xngC1OLZ6P8fhgSUA7E_w_JDAMKXLcYiNK-tgy1x3p-zwZEYmyRE\"}",
+      "payload": {
+        "agents": [
+          {
+            "kind": "claude",
+            "pane": "wV:p7",
+            "status": "working",
+            "title": "锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏锁屏"
+          }
+        ],
+        "host": "mbp",
+        "v": 1
+      }
+    },
+    {
+      "name": "end state with empty agents under a second key",
+      "key": "__79_Pv6-fj39vX08_Lx8O_u7ezr6uno5-bl5OPi4eA",
+      "keyId": "GGXACDHnP34",
+      "envelope": "{\"v\":1,\"kid\":\"GGXACDHnP34\",\"n\":\"MDEyMzQ1Njc4OTo7\",\"ct\":\"Vdirt2hNbyDfovgpnfToH1WjE3i7PWviYddg3bT8VV3sY9bBqtCiZS0krChF3Yi6\"}",
+      "payload": {
+        "agents": [],
+        "host": "mbp",
+        "v": 1
+      }
+    },
+    {
+      "name": "unknown plaintext field is ignored (additive v1 metadata)",
+      "decodeOnly": true,
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "keyId": "Yw3NKWbEM2Y",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"QEFCQ0RFRkdISUpL\",\"ct\":\"mZvPRENS83Dv_kxNuQ96NR3kaH7UWW5WEyJsybVjjLX9KsmOqe_lJBDWJ03ieb6uvgKICxGwjXvqc7pjBZd17MZ1oN5xrE71MagG6fJaxkonHzykWQ9wrVv0TVBodAZvlZ4YmqosRbZqKKTG4u4pFmf5GKH37XjOwW6xtA\"}",
+      "payload": {
+        "agents": [
+          {
+            "kind": "claude",
+            "pane": "wV:p1",
+            "status": "working"
+          }
+        ],
+        "host": "mbp",
+        "v": 1
+      }
+    },
+    {
+      "name": "unknown envelope field is ignored (additive v1 metadata)",
+      "decodeOnly": true,
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "keyId": "Yw3NKWbEM2Y",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"AAECAwQFBgcICQoL\",\"ct\":\"PCC3fKCLtmive8zwk4IRA-f0vRaTFz4JXALHqT8ZYdxkMpTe2Jco6EWGU8_780lMmypCt3ihzKhU_kR-Os_XmplIqh_x6wSEsspN4F9mmmndO0aE7t20zEfd_6sdns2tLk_8AhndL5Ao-r4zagh8U5gPDdiX5x-4IJ0n767EGCyBY33V7DKnHtte7AAmCqPqwb7W\",\"future_field\":\"ignored\"}",
+      "payload": {
+        "agents": [
+          {
+            "kind": "claude",
+            "pane": "wV:p1",
+            "status": "working",
+            "title": "实现锁屏显示 agent 工作状态"
+          }
+        ],
+        "host": "mbp",
+        "v": 1
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "notification-AAD ciphertext fails as an activity envelope (domain separation)",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"UFFSU1RVVldYWVpb\",\"ct\":\"6QVXE4E-zZV-jGYe74rqu4cNx8lBHftXQOzC99Iw9Bo0zbD_HHCpxFj4ybym9pijpFhUIwhqPR_0r4pjjeUm5lkesP-ryTWUjGkDgS6v3sJiTBDhbEjhyEpbLKZ7fvgmQhP_JudgFq-hyLlzSBtTcsQ4fmezbz5xia6-X4G156X0iPvUycC1uPjHFcEh-ok_GF25\"}",
+      "error": "decrypt_failed"
+    },
+    {
+      "name": "tampered ciphertext byte",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"AAECAwQFBgcICQoL\",\"ct\":\"ACC3fKCLtmive8zwk4IRA-f0vRaTFz4JXALHqT8ZYdxkMpTe2Jco6EWGU8_780lMmypCt3ihzKhU_kR-Os_XmplIqh_x6wSEsspN4F9mmmndO0aE7t20zEfd_6sdns2tLk_8AhndL5Ao-r4zagh8U5gPDdiX5x-4IJ0n767EGCyBY33V7DKnHtte7AAmCqPqwb7W\"}",
+      "error": "decrypt_failed"
+    },
+    {
+      "name": "unsupported envelope version 2",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":2,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"AAECAwQFBgcICQoL\",\"ct\":\"PCC3fKCLtmive8zwk4IRA-f0vRaTFz4JXALHqT8ZYdxkMpTe2Jco6EWGU8_780lMmypCt3ihzKhU_kR-Os_XmplIqh_x6wSEsspN4F9mmmndO0aE7t20zEfd_6sdns2tLk_8AhndL5Ao-r4zagh8U5gPDdiX5x-4IJ0n767EGCyBY33V7DKnHtte7AAmCqPqwb7W\"}",
+      "error": "unsupported_version"
+    },
+    {
+      "name": "plaintext is not JSON",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"YGFiY2RlZmdoaWpr\",\"ct\":\"jr79PNUp9woQb9lFHfnhKVUa5wMprJoFDZ2fGaWxbQfo2Dg\"}",
+      "error": "bad_payload"
+    },
+    {
+      "name": "plaintext missing host",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"cHFyc3R1dnd4eXp7\",\"ct\":\"bKXbQNan6EdmEG2P_WLH9ZcGuLRUorC5eaq-1fie20n7TQs\"}",
+      "error": "bad_payload"
+    },
+    {
+      "name": "plaintext agents is not an array",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"gIGCg4SFhoeIiYqL\",\"ct\":\"G4cPfCR8leK8sTdeKR3PB4t83ZB5xC8wD5DiuJTQH4ILt6Vq2BXATqtfFvZBpzi_8cm6mQ\"}",
+      "error": "bad_payload"
+    },
+    {
+      "name": "agent entry with empty status",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"kJGSk5SVlpeYmZqb\",\"ct\":\"jeiUWF33ioxtxhtYSBKGMA47jy5B0v926Hxi2szCi9pNYBDeRTsaccBDu3Ikm7qNgpnjb-_mJ20RfUXpCWg7w4n89auT3jhf4WuEt2xwbVjQQfHR3a06zuWBH7Y\"}",
+      "error": "bad_payload"
+    },
+    {
+      "name": "plaintext version 2",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"oKGio6Slpqeoqaqr\",\"ct\":\"nTodSiCldsxAX9yOK1iosQPYeyqw2iAcviIE8F2RR3znWHX2VqdrlOlfuhK6aDCU\"}",
+      "error": "bad_payload"
+    }
+  ]
+}
