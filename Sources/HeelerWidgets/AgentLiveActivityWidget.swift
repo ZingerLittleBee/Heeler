@@ -252,8 +252,10 @@ private struct AgentActivityHeadlineView: View {
     }
 }
 
-/// One agent row. Status is painted, not narrated as an event — a done
-/// row is the current state, not "just finished".
+/// One agent row: status dot plus the task title, kind standing in only
+/// when the title is missing — same rule as the headline, smaller type.
+/// Status is painted, not narrated as an event — a done row is the
+/// current state, not "just finished".
 private struct AgentActivityRowView: View {
     let agent: AgentActivityDetails.AgentDetail
 
@@ -266,16 +268,10 @@ private struct AgentActivityRowView: View {
                 .fill(ink)
                 .frame(width: 7, height: 7)
                 .accessibilityHidden(true)
-            Text(agent.kind)
+            Text(agent.title ?? agent.kind)
                 .font(.caption.weight(isBlocked ? .semibold : .regular))
                 .foregroundStyle(isBlocked ? ink : .primary)
                 .lineLimit(1)
-            if let title = agent.title {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(isBlocked ? Color.primary : Color.secondary)
-                    .lineLimit(1)
-            }
             Spacer(minLength: 0)
         }
         .padding(.vertical, isBlocked ? 3 : 0)
