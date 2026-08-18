@@ -353,3 +353,272 @@ suite("rate limits", () => {
     assert.equal(other.status, 200);
   });
 });
+
+const nowSec = nowMs / 1000;
+const activityEnvelope = '{"v":1,"kid":"Yw3NKWbEM2Y","n":"AAECAwQFBgcICQoL","ct":"opaque"}';
+const goodActivity = {
+  kind: "liveactivity",
+  token: "ef".repeat(32),
+  env: "production",
+  event: "update",
+  priority: 5,
+  timestamp: nowSec,
+  counts: { working: 2, blocked: 1, done: 0 },
+  envelope: activityEnvelope,
+};
+
+suite("live activity request validation", () => {
+  const cases = [
+    ["unknown kind", { ...goodActivity, kind: "foobar" }, "bad_kind"],
+    ["kind on an alert body", { ...goodBody, kind: "alert" }, "bad_kind"],
+    ["missing token", { ...goodActivity, token: undefined }, "bad_token"],
+    ["uppercase hex token", { ...goodActivity, token: "EF".repeat(32) }, "bad_token"],
+    ["missing env", { ...goodActivity, env: undefined }, "bad_env"],
+    ["unknown env", { ...goodActivity, env: "prod" }, "bad_env"],
+    ["missing event", { ...goodActivity, event: undefined }, "bad_event"],
+    ["unknown event", { ...goodActivity, event: "start" }, "bad_event"],
+    ["missing priority", { ...goodActivity, priority: undefined }, "bad_priority"],
+    ["priority 4", { ...goodActivity, priority: 4 }, "bad_priority"],
+    ["string priority", { ...goodActivity, priority: "10" }, "bad_priority"],
+    [
+      "priority 10 with zero blocked",
+      { ...goodActivity, priority: 10, counts: { working: 1, blocked: 0, done: 0 } },
+      "bad_priority",
+    ],
+    ["missing timestamp", { ...goodActivity, timestamp: undefined }, "bad_timestamp"],
+    ["zero timestamp", { ...goodActivity, timestamp: 0 }, "bad_timestamp"],
+    ["negative timestamp", { ...goodActivity, timestamp: -1 }, "bad_timestamp"],
+    ["timestamp older than 86400s", { ...goodActivity, timestamp: nowSec - 86_401 }, "bad_timestamp"],
+    ["timestamp more than 300s ahead", { ...goodActivity, timestamp: nowSec + 301 }, "bad_timestamp"],
+    ["stale_date equal to timestamp", { ...goodActivity, stale_date: nowSec }, "bad_stale_date"],
+    ["stale_date before timestamp", { ...goodActivity, stale_date: nowSec - 1 }, "bad_stale_date"],
+    ["non-integer stale_date", { ...goodActivity, stale_date: nowSec + 0.5 }, "bad_stale_date"],
+    ["dismissal_date on update", { ...goodActivity, dismissal_date: nowSec }, "bad_dismissal_date"],
+    [
+      "non-integer dismissal_date on end",
+      { ...goodActivity, event: "end", dismissal_date: nowSec + 0.5 },
+      "bad_dismissal_date",
+    ],
+    ["missing counts", { ...goodActivity, counts: undefined }, "bad_counts"],
+    ["counts as array", { ...goodActivity, counts: [1, 2, 3] }, "bad_counts"],
+    [
+      "extra counts key",
+      { ...goodActivity, counts: { working: 1, blocked: 1, done: 0, extra: 0 } },
+      "bad_counts",
+    ],
+    ["missing counts key", { ...goodActivity, counts: { working: 1, blocked: 1 } }, "bad_counts"],
+    [
+      "counts value above 999",
+      { ...goodActivity, counts: { working: 1000, blocked: 0, done: 0 } },
+      "bad_counts",
+    ],
+    [
+      "negative counts value",
+      { ...goodActivity, counts: { working: -1, blocked: 0, done: 0 } },
+      "bad_counts",
+    ],
+    ["missing envelope", { ...goodActivity, envelope: undefined }, "bad_envelope"],
+    ["empty envelope", { ...goodActivity, envelope: "" }, "bad_envelope"],
+    ["non-string envelope", { ...goodActivity, envelope: { v: 1 } }, "bad_envelope"],
+    ["collapse present", { ...goodActivity, collapse: "x" }, "bad_collapse"],
+  ];
+
+  for (const [name, body, error] of cases) {
+    test(`rejects ${name} without calling APNs`, async (t) => {
+      const calls = stubApns(t);
+      freezeTime(t);
+      const relay = createRelay();
+      const res = await relay.fetch(pushRequest(body), baseEnv);
+      assert.equal(res.status, 400);
+      assert.deepEqual(await res.json(), { error });
+      assert.equal(calls.length, 0);
+    });
+  }
+
+  test("accepts timestamp at the inclusive window edges", async (t) => {
+    const calls = stubApns(t);
+    freezeTime(t);
+    const relay = createRelay();
+    for (const timestamp of [nowSec - 86_400, nowSec + 300]) {
+      const res = await relay.fetch(pushRequest({ ...goodActivity, timestamp }), baseEnv);
+      assert.equal(res.status, 200);
+    }
+    assert.equal(calls.length, 2);
+  });
+
+  test("accepts priority 10 when blocked is at least 1", async (t) => {
+    const calls = stubApns(t);
+    freezeTime(t);
+    const relay = createRelay();
+    const res = await relay.fetch(pushRequest({ ...goodActivity, priority: 10 }), baseEnv);
+    assert.equal(res.status, 200);
+    assert.equal(calls[0].headers.get("apns-priority"), "10");
+  });
+});
+
+suite("live activity forwarding to APNs", () => {
+  test("sends liveactivity headers, derived topic, and no collapse id", async (t) => {
+    const calls = stubApns(t);
+    freezeTime(t);
+    const relay = createRelay();
+    const res = await relay.fetch(
+      pushRequest({ ...goodActivity, stale_date: nowSec + 900 }),
+      baseEnv,
+    );
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { apnsId: "0BAD0C6E-0000-0000-0000-000000000000" });
+    assert.equal(calls.length, 1);
+    const call = calls[0];
+    assert.equal(call.url, `https://api.push.apple.com/3/device/${goodActivity.token}`);
+    assert.equal(call.init.method, "POST");
+    assert.equal(call.headers.get("apns-push-type"), "liveactivity");
+    assert.equal(call.headers.get("apns-topic"), "dev.bybee.heeler.push-type.liveactivity");
+    assert.equal(call.headers.get("apns-priority"), "5");
+    assert.equal(call.headers.get("apns-collapse-id"), null);
+    assert.equal(call.headers.get("content-type"), "application/json");
+    assert.match(call.headers.get("authorization"), /^bearer /);
+  });
+
+  test("aps body is content-state only — no alert or mutable-content", async (t) => {
+    const calls = stubApns(t);
+    freezeTime(t);
+    const relay = createRelay();
+    await relay.fetch(
+      pushRequest({ ...goodActivity, stale_date: nowSec + 900 }),
+      baseEnv,
+    );
+
+    assert.equal(
+      calls[0].init.body,
+      `{"aps":{"timestamp":${nowSec},"event":"update","content-state":{"counts":{"working":2,"blocked":1,"done":0},"envelope":${activityEnvelope}},"stale-date":${nowSec + 900}}}`,
+    );
+    const payload = JSON.parse(calls[0].init.body);
+    assert.deepEqual(Object.keys(payload), ["aps"]);
+    assert.equal("alert" in payload.aps, false);
+    assert.equal("mutable-content" in payload.aps, false);
+    assert.deepEqual(payload.aps["content-state"].counts, goodActivity.counts);
+    assert.deepEqual(payload.aps["content-state"].envelope, JSON.parse(activityEnvelope));
+    assert.equal(payload.aps.timestamp, nowSec);
+    assert.equal(payload.aps.event, "update");
+    assert.equal(payload.aps["stale-date"], nowSec + 900);
+    assert.equal("dismissal-date" in payload.aps, false);
+  });
+
+  test("omits optional dates unless the request carried them", async (t) => {
+    const calls = stubApns(t);
+    freezeTime(t);
+    const relay = createRelay();
+    await relay.fetch(pushRequest(goodActivity), baseEnv);
+    const payload = JSON.parse(calls[0].init.body);
+    assert.equal("stale-date" in payload.aps, false);
+    assert.equal("dismissal-date" in payload.aps, false);
+  });
+
+  test("end events may include dismissal-date and never an alert field", async (t) => {
+    const calls = stubApns(t);
+    freezeTime(t);
+    const relay = createRelay();
+    const res = await relay.fetch(
+      pushRequest({
+        ...goodActivity,
+        event: "end",
+        dismissal_date: nowSec,
+      }),
+      baseEnv,
+    );
+    assert.equal(res.status, 200);
+    const payload = JSON.parse(calls[0].init.body);
+    assert.equal(payload.aps.event, "end");
+    assert.equal(payload.aps["dismissal-date"], nowSec);
+    assert.equal("alert" in payload.aps, false);
+    assert.equal("mutable-content" in payload.aps, false);
+  });
+
+  test("embeds the envelope without parsing or inspecting it", async (t) => {
+    const calls = stubApns(t);
+    freezeTime(t);
+    const relay = createRelay();
+    const envelope = '{"v":1,"extra":true,"kid":"x"}';
+    await relay.fetch(pushRequest({ ...goodActivity, envelope }), baseEnv);
+    const payload = JSON.parse(calls[0].init.body);
+    assert.deepEqual(payload.aps["content-state"].envelope, { v: 1, extra: true, kid: "x" });
+  });
+
+  test("env=sandbox goes to the sandbox APNs host", async (t) => {
+    const calls = stubApns(t);
+    freezeTime(t);
+    const relay = createRelay();
+    const res = await relay.fetch(pushRequest({ ...goodActivity, env: "sandbox" }), baseEnv);
+    assert.equal(res.status, 200);
+    assert.equal(calls[0].url, `https://api.sandbox.push.apple.com/3/device/${goodActivity.token}`);
+  });
+
+  test("reuses the same cached ES256 JWT as the alert path", async (t) => {
+    const calls = stubApns(t);
+    freezeTime(t);
+    const relay = createRelay();
+    await relay.fetch(pushRequest(goodBody), baseEnv);
+    await relay.fetch(pushRequest(goodActivity), baseEnv);
+    const auths = calls.map((call) => call.headers.get("authorization"));
+    assert.equal(auths[1], auths[0]);
+  });
+});
+
+suite("live activity APNs status and caps", () => {
+  test("rejects when the APNs payload would exceed 4 KB, without calling APNs", async (t) => {
+    const calls = stubApns(t);
+    freezeTime(t);
+    const relay = createRelay();
+    const res = await relay.fetch(
+      pushRequest({ ...goodActivity, envelope: "x".repeat(4100) }),
+      baseEnv,
+    );
+    assert.equal(res.status, 413);
+    assert.deepEqual(await res.json(), { error: "payload_too_large" });
+    assert.equal(calls.length, 0);
+  });
+
+  test("410 Unregistered is relayed with its reason and timestamp", async (t) => {
+    stubApns(t, () =>
+      new Response(JSON.stringify({ reason: "Unregistered", timestamp: 1753305600000 }), {
+        status: 410,
+      }),
+    );
+    freezeTime(t);
+    const relay = createRelay();
+    const res = await relay.fetch(pushRequest(goodActivity), baseEnv);
+    assert.equal(res.status, 410);
+    assert.deepEqual(await res.json(), { reason: "Unregistered", timestamp: 1753305600000 });
+  });
+});
+
+suite("alert path compatibility", () => {
+  test("alert requests without kind produce the pre-liveactivity APNs request bytes", async (t) => {
+    const calls = stubApns(t);
+    freezeTime(t);
+    const relay = createRelay();
+    const res = await relay.fetch(pushRequest(goodBody), baseEnv);
+    assert.equal(res.status, 200);
+
+    const call = calls[0];
+    assert.equal(call.url, `https://api.push.apple.com/3/device/${goodBody.token}`);
+    assert.equal(call.init.method, "POST");
+    assert.equal(
+      call.init.body,
+      '{"aps":{"alert":{"title":"Heeler","body":"Agent update"},"mutable-content":1},"envelope":"{\\"v\\":1,\\"kid\\":\\"5-CJJlt5uLU\\",\\"n\\":\\"AAECAwQFBgcICQoL\\",\\"ct\\":\\"opaque\\"}"}',
+    );
+
+    const headers = { ...call.init.headers };
+    assert.match(headers.authorization, /^bearer /);
+    delete headers.authorization;
+    assert.deepEqual(headers, {
+      "apns-topic": "dev.bybee.heeler",
+      "apns-push-type": "alert",
+      "apns-priority": "10",
+      "content-type": "application/json",
+      "apns-collapse-id": "%5",
+    });
+  });
+});
+
