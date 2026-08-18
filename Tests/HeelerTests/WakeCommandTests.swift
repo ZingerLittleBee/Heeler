@@ -28,7 +28,7 @@ struct WakeCommandTests {
 
         #expect(
             command == "LC_ALL=C /bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
-                + "export HERDR_SESSION=\"$2\"; herdr remote-client-bridge < /dev/null' wake "
+                + "export HERDR_SESSION=\"$2\"; PATH=\"/usr/local/bin:/opt/homebrew/bin:$HOME/.cargo/bin:$PATH\" LC_ALL=C herdr remote-client-bridge < /dev/null' wake "
                 + "'/home/u/.config/herdr/sessions/testloop/herdr.sock' testloop")
     }
 
@@ -40,7 +40,7 @@ struct WakeCommandTests {
 
         #expect(
             command == "LC_ALL=C /bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
-                + "/opt/herdr-wake --foreground < /dev/null' wake "
+                + "PATH=\"/usr/local/bin:/opt/homebrew/bin:$HOME/.cargo/bin:$PATH\" LC_ALL=C /opt/herdr-wake --foreground < /dev/null' wake "
                 + "'/home/u/.config/herdr/herdr.sock'")
     }
 
@@ -52,7 +52,7 @@ struct WakeCommandTests {
 
         #expect(
             command == "LC_ALL=C /bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
-                + "/opt/herdr-wake --foreground < /dev/null' wake "
+                + "PATH=\"/usr/local/bin:/opt/homebrew/bin:$HOME/.cargo/bin:$PATH\" LC_ALL=C /opt/herdr-wake --foreground < /dev/null' wake "
                 + "'/home/u/My Config/herdr.sock'")
     }
 

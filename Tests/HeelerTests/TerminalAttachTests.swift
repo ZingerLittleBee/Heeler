@@ -1548,7 +1548,7 @@ struct TerminalAttachTests {
         #expect(
             command == "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
                 + "printf \"\(AttachBootstrapHandshake.markerPrintfFormat)\"; "
-                + "exec /bin/sh /tmp/fake-attach.sh \"$1\"' attach "
+                + "exec PATH=\"/usr/local/bin:/opt/homebrew/bin:$HOME/.cargo/bin:$PATH\" LC_ALL=C /bin/sh /tmp/fake-attach.sh \"$1\"' attach "
                 + "'w1:p1' '/tmp/fake.sock'")
     }
 
@@ -1565,7 +1565,7 @@ struct TerminalAttachTests {
         #expect(
             command == "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
                 + "printf \"\(AttachBootstrapHandshake.markerPrintfFormat)\"; "
-                + "exec herdr agent attach \"$1\" --takeover' attach "
+                + "exec PATH=\"/usr/local/bin:/opt/homebrew/bin:$HOME/.cargo/bin:$PATH\" LC_ALL=C herdr agent attach \"$1\" --takeover' attach "
                 + "'w1:p1' '/home/u/.config/herdr/sessions/dev/herdr.sock'")
         // An exec request, not a line typed into a shell: no trailing newline.
         #expect(!command.hasSuffix("\n"))
@@ -1606,7 +1606,7 @@ struct TerminalAttachTests {
         #expect(command.contains(markerPrintf))
         // Marker is the last thing before exec of attach, not after it.
         let printfRange = try #require(command.range(of: markerPrintf))
-        let execRange = try #require(command.range(of: "exec herdr agent attach"))
+        let execRange = try #require(command.range(of: "PATH=\"/usr/local/bin:/opt/homebrew/bin:$HOME/.cargo/bin:$PATH\" LC_ALL=C herdr agent attach"))
         #expect(printfRange.upperBound <= execRange.lowerBound)
     }
 
