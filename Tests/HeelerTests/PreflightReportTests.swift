@@ -64,6 +64,8 @@ struct PreflightReportTests {
         (.cancelled, .connection),
         (.channelFailed(detail: "boom"), .connection),
         (.eventsChannelAlreadyOpen, .connection),
+        // Not reachable from connect+ping (preflight never execs herdr).
+        (.herdrBinaryNotFound, .connection),
         (.jumpHostFailed(.sshUnreachable(detail: "refused")), .connection),
         (.tcpForwardingUnavailable, .connection),
         (.socketNotFound(path: "/home/dev/.config/herdr/herdr.sock"), .herdrInstalled),

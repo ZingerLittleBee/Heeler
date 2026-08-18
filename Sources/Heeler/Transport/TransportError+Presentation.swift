@@ -17,6 +17,11 @@ extension TransportError {
             "The host key changed. Verify the machine before updating trust."
         case .socketNotFound:
             "The herdr socket was not found. Check this Host's session."
+        case .herdrBinaryNotFound:
+            "herdr is not on this Host's SSH PATH. Homebrew installs are often "
+                + "at /opt/homebrew/bin or /home/linuxbrew/.linuxbrew/bin — "
+                + "put that directory on the account's non-interactive PATH, "
+                + "or symlink herdr into ~/.local/bin."
         case .streamLocalOpenFailed:
             "herdr is not running on this Host. If it is running, check SSH stream-local forwarding."
         case .protocolVersionMismatch(let server, let supported):

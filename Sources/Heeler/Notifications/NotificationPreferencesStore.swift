@@ -226,6 +226,8 @@ final class NotificationPreferencesStore {
             "The Host is not connected."
         case TransportError.timedOut:
             "The Host did not answer in time."
+        case TransportError.herdrBinaryNotFound:
+            TransportError.herdrBinaryNotFound.connectionGuidance
         case is TransportError:
             "The connection to the Host failed."
         default:

@@ -29,7 +29,8 @@ struct SSHTransportSettings: Sendable {
     static let notificationPluginIDToken = "__HEELER_PLUGIN_ID__"
 
     static let defaultNotificationConfigDirCommand =
-        "/bin/sh -c 'printf \"__HEELER_PLUGIN_CONFIG_DIR__=%s\\n\" "
+        "/bin/sh -c '\(HerdrHostPath.pathExport); "
+        + "printf \"__HEELER_PLUGIN_CONFIG_DIR__=%s\\n\" "
         + "\"$(herdr plugin config-dir \(notificationPluginIDToken))\"'"
 
     /// The default of ``requestTimeout``, named so budgets derived from it
@@ -62,8 +63,9 @@ struct SSHTransportSettings: Sendable {
     /// the strategy from spec #16: `herdr remote-client-bridge` ensures the
     /// server is running (spawn + wait for socket) before bridging, then
     /// exits on stdin EOF. Injectable so tests can substitute a script at
-    /// the environment boundary; per-Host override also covers hosts where
-    /// herdr is not on the login shell's PATH.
+    /// the environment boundary. The exec wrapper already appends the
+    /// well-known install prefixes to PATH; a per-Host override is for a
+    /// binary that lives somewhere else, or for a test fixture.
     var wakeCommand: String = Self.defaultWakeCommand
     /// Official Host-local CLI command for discovering default and named
     /// sessions. It does not depend on a running API socket.
@@ -76,8 +78,9 @@ struct SSHTransportSettings: Sendable {
     /// Command that attaches interactively to a Pane, sent as the exec request
     /// on the Host's dedicated PTY channel (#11); the attach target and
     /// takeover flag are appended. Injectable so tests can substitute a script
-    /// at the environment boundary; per-Host override also covers hosts where
-    /// herdr is not on PATH.
+    /// at the environment boundary. The exec wrapper already appends the
+    /// well-known install prefixes to PATH; a per-Host override is for a
+    /// binary that lives somewhere else, or for a test fixture.
     var attachCommand: String = Self.defaultAttachCommand
     /// Command used to print a marker-delimited remote home directory. It is
     /// injectable only at the environment boundary for real-SSH tests.
