@@ -386,8 +386,8 @@ struct TerminalAgentSwitcherTests {
     }
 
     /// Pinning restacks the strip: the same chip views must slide to the
-    /// new order. Recreating them would restart the Working pulse and is
-    /// also why a hole used to sit where the chip left.
+    /// new order, and after layout they sit flush — no gap between
+    /// neighbours, no leftover space where a chip used to be.
     @MainActor
     @Test func reorderingChipsKeepsTheSameViews() {
         let host = UUID()
@@ -408,6 +408,7 @@ struct TerminalAgentSwitcherTests {
         bar.layoutIfNeeded()
         let original = bar.chips
         #expect(original.map(\.id) == agents.map(\.id))
+        expectChipsAreContiguous(bar)
 
         // Pinning gamma sends it to the front; alpha and beta slide closed.
         let pinned = [
@@ -422,7 +423,7 @@ struct TerminalAgentSwitcherTests {
         #expect(bar.chips[0] === original[2])
         #expect(bar.chips[1] === original[0])
         #expect(bar.chips[2] === original[1])
-        expectNoLeftoverChips(bar, matching: pinned, identity: original)
+        expectStripMatches(bar, items: pinned, identity: original)
         #expect(bar.chips[0].showsPinIndicator)
         #expect(!bar.chips[1].showsPinIndicator)
         #expect(!bar.chips[2].showsPinIndicator)
@@ -433,15 +434,14 @@ struct TerminalAgentSwitcherTests {
         #expect(bar.chips[0] === original[0])
         #expect(bar.chips[1] === original[1])
         #expect(bar.chips[2] === original[2])
-        expectNoLeftoverChips(bar, matching: agents.map { Self.makeItem($0) }, identity: original)
+        expectStripMatches(bar, items: agents.map { Self.makeItem($0) }, identity: original)
         #expect(!bar.chips[2].showsPinIndicator)
     }
 
-    /// A leftover arranged slot is the ghost gap: the chip moved, the stack
-    /// still reserved its old place. Pin/unpin cycles must not accumulate
-    /// duplicates or orphans.
+    /// Pin/unpin cycles must leave the strip flush every time: no gap
+    /// between neighbours after layout, and the same chip views throughout.
     @MainActor
-    @Test func repeatedPinCyclesLeaveNoLeftoverChips() {
+    @Test func repeatedPinCyclesLeaveNoGaps() {
         let host = UUID()
         let agents = [
             Self.makeAgent(pane: "p1", workspace: "alpha", host: host),
@@ -460,6 +460,7 @@ struct TerminalAgentSwitcherTests {
         bar.update(items: unpinned, selectedID: agents[0].id)
         bar.layoutIfNeeded()
         let original = bar.chips
+        expectChipsAreContiguous(bar)
 
         for _ in 0..<3 {
             let pinGamma = [
@@ -468,10 +469,12 @@ struct TerminalAgentSwitcherTests {
                 Self.makeItem(agents[1]),
             ]
             bar.update(items: pinGamma, selectedID: agents[0].id)
-            expectNoLeftoverChips(bar, matching: pinGamma, identity: original)
+            bar.layoutIfNeeded()
+            expectStripMatches(bar, items: pinGamma, identity: original)
 
             bar.update(items: unpinned, selectedID: agents[0].id)
-            expectNoLeftoverChips(bar, matching: unpinned, identity: original)
+            bar.layoutIfNeeded()
+            expectStripMatches(bar, items: unpinned, identity: original)
 
             let pinBeta = [
                 Self.makeItem(agents[1], isPinned: true),
@@ -479,30 +482,41 @@ struct TerminalAgentSwitcherTests {
                 Self.makeItem(agents[2]),
             ]
             bar.update(items: pinBeta, selectedID: agents[0].id)
-            expectNoLeftoverChips(bar, matching: pinBeta, identity: original)
+            bar.layoutIfNeeded()
+            expectStripMatches(bar, items: pinBeta, identity: original)
 
             bar.update(items: unpinned, selectedID: agents[0].id)
-            expectNoLeftoverChips(bar, matching: unpinned, identity: original)
+            bar.layoutIfNeeded()
+            expectStripMatches(bar, items: unpinned, identity: original)
         }
     }
 
-    /// Model order, stack order, and object identity all describe one strip.
+    /// After layout, each chip starts where the previous one plus the
+    /// stack spacing ended. A leftover gap is a hole the user can see.
     @MainActor
-    private func expectNoLeftoverChips(
+    private func expectChipsAreContiguous(_ bar: TerminalAgentSwitcherBar) {
+        let chips = bar.chips
+        for index in chips.indices.dropLast() {
+            let actual = chips[index + 1].frame.minX
+            let expected = chips[index].frame.maxX + TerminalAgentChip.spacing
+            #expect(abs(actual - expected) < 0.5)
+        }
+    }
+
+    @MainActor
+    private func expectStripMatches(
         _ bar: TerminalAgentSwitcherBar,
-        matching items: [TerminalAgentSwitcherItem],
+        items: [TerminalAgentSwitcherItem],
         identity: [TerminalAgentChip]
     ) {
         #expect(bar.chips.map(\.id) == items.map(\.id))
         #expect(bar.arrangedChips.map(\.id) == items.map(\.id))
         #expect(bar.arrangedChips.elementsEqual(bar.chips, by: { $0 === $1 }))
-        #expect(
-            Set(bar.arrangedChips.map { ObjectIdentifier($0) }).count
-                == bar.arrangedChips.count)
         let byID = Dictionary(uniqueKeysWithValues: identity.map { ($0.id, $0) })
         for chip in bar.chips {
             #expect(chip === byID[chip.id])
         }
+        expectChipsAreContiguous(bar)
     }
 
     /// A switch builds a new terminal, so the strip that comes back is a new
