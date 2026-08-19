@@ -67,12 +67,22 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
 {
     /// Short on purpose: every point it takes is one the terminal loses.
     static let preferredHeight: CGFloat = 40
+    /// Critically damped slide for a pin reorder: long enough to read, short
+    /// enough that a second pin does not pile up behind it.
+    private static let reorderDuration: TimeInterval = 0.35
 
     var onSelect: (@MainActor (ConsoleAgent.ID) -> Void)?
     var onTogglePin: (@MainActor (ConsoleAgent.ID) -> Void)?
 
     /// The strip as it currently reads, in order.
     private(set) var chips: [TerminalAgentChip] = []
+
+    /// The stack's arranged chips, in layout order. `chips` is the model;
+    /// this is what the stack is actually laying out, so a leftover hole
+    /// after a reorder shows up here.
+    var arrangedChips: [TerminalAgentChip] {
+        row.arrangedSubviews.compactMap { $0 as? TerminalAgentChip }
+    }
 
     /// Gutter between the strip's ends and the first and last chip.
     private static let rowInset: CGFloat = 8
@@ -96,6 +106,9 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
     func update(items: [TerminalAgentSwitcherItem], selectedID: ConsoleAgent.ID?) {
         guard items != self.items || selectedID != self.selectedID else { return }
         let selectionChanged = selectedID != self.selectedID
+        let previousIDs = chips.map(\.id)
+        let previousPinByID = Dictionary(
+            self.items.map { ($0.id, $0.isPinned) }, uniquingKeysWith: { first, _ in first })
         self.items = items
         self.selectedID = selectedID
 
@@ -105,22 +118,83 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
         var ordered: [TerminalAgentChip] = []
         for item in items {
             let chip = reusable.removeValue(forKey: item.id) ?? makeChip(id: item.id)
-            chip.apply(item, selected: item.id == selectedID)
             ordered.append(chip)
         }
-        for stale in reusable.values {
-            row.removeArrangedSubview(stale)
-            stale.removeFromSuperview()
-        }
-        for (index, chip) in ordered.enumerated()
-        where row.arrangedSubviews.firstIndex(of: chip) != index {
-            row.insertArrangedSubview(chip, at: index)
-        }
+        let stale = Array(reusable.values)
         chips = ordered
+
+        let layoutChanged =
+            ordered.map(\.id) != previousIDs
+            || items.contains { previousPinByID[$0.id] != $0.isPinned }
+        // Same membership only: an added chip still has a zero frame, and
+        // inserting it inside the animation is the documented grow-in.
+        let shouldAnimate =
+            layoutChanged
+            && Set(ordered.map(\.id)) == Set(previousIDs)
+            && window != nil
+            && bounds.width > 0
+            && !previousIDs.isEmpty
+            && !UIAccessibility.isReduceMotionEnabled
+
+        let applyLayout = {
+            for (item, chip) in zip(items, ordered) {
+                chip.apply(item, selected: item.id == selectedID)
+            }
+            self.syncArrangedSubviews(ordered, removing: stale)
+        }
+
+        if shouldAnimate {
+            // Flush pending layout so the slide interpolates from the frames
+            // already on screen. Context-menu dismissal has a transaction
+            // open; without the flush, layout still pending from an earlier
+            // update gets swept into this animation and the slide starts from
+            // frames the user never saw.
+            UIView.performWithoutAnimation {
+                self.layoutIfNeeded()
+            }
+            UIView.animate(
+                withDuration: Self.reorderDuration,
+                delay: 0,
+                usingSpringWithDamping: 1,
+                initialSpringVelocity: 0,
+                options: [
+                    .allowUserInteraction,
+                    .beginFromCurrentState,
+                    .overrideInheritedCurve,
+                    .overrideInheritedDuration,
+                ]
+            ) {
+                applyLayout()
+                self.layoutIfNeeded()
+            }
+        } else {
+            applyLayout()
+        }
 
         if selectionChanged {
             scrollsToSelectionOnLayout = true
             setNeedsLayout()
+        }
+    }
+
+    /// `insertArrangedSubview` of an already-arranged view moves it
+    /// (UIKit's contract). Remove then reinsert is the same move, written
+    /// so the destination index is obvious. The slide still has to wrap
+    /// this in `UIView.animate`: an un-animated layout pass is what used
+    /// to land the new frames after the context menu ended.
+    private func syncArrangedSubviews(
+        _ ordered: [TerminalAgentChip], removing stale: [TerminalAgentChip]
+    ) {
+        for chip in stale {
+            row.removeArrangedSubview(chip)
+            chip.removeFromSuperview()
+        }
+        for (index, chip) in ordered.enumerated() {
+            if let current = row.arrangedSubviews.firstIndex(of: chip) {
+                if current == index { continue }
+                row.removeArrangedSubview(chip)
+            }
+            row.insertArrangedSubview(chip, at: index)
         }
     }
 
