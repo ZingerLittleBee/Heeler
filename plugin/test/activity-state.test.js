@@ -125,6 +125,117 @@ suite("buildActivityState", () => {
   });
 });
 
+const MIXED_ELIGIBLE = [
+  agent("w1:p1", "working", { agent: "claude" }),
+  agent("w1:p9", "blocked", { agent: "codex" }),
+  agent("w1:p2", "blocked", { agent: "claude" }),
+  agent("w2:p1", "done", { agent: "droid" }),
+  agent("w3:p4", "working", { agent: "grok" }),
+  agent("w9:p1", "idle", { agent: "claude" }),
+  agent("w9:p2", "unknown", { agent: "claude" }),
+];
+const STATUS_THEN_PANE_ORDER = [
+  "blocked:w1:p2",
+  "blocked:w1:p9",
+  "done:w2:p1",
+  "working:w1:p1",
+  "working:w3:p4",
+];
+
+function rankedPanes(plaintextObject) {
+  return plaintextObject.agents.map((entry) => `${entry.status}:${entry.pane}`);
+}
+
+suite("buildActivityState pin ordering", () => {
+  test("pins float first in recency order, then the existing status rank", () => {
+    const { counts, plaintextObject } = buildActivityState({
+      agents: MIXED_ELIGIBLE,
+      hostName: "studio",
+      pinnedPaneIds: ["w3:p4", "w1:p2"],
+    });
+    assert.deepEqual(counts, { working: 2, blocked: 2, done: 1 });
+    assert.deepEqual(rankedPanes(plaintextObject), [
+      "working:w3:p4",
+      "blocked:w1:p2",
+      "blocked:w1:p9",
+      "done:w2:p1",
+      "working:w1:p1",
+    ]);
+  });
+
+  test("an ineligible pinned agent is ignored", () => {
+    const { counts, plaintextObject } = buildActivityState({
+      agents: MIXED_ELIGIBLE,
+      hostName: "studio",
+      pinnedPaneIds: ["w9:p1", "w3:p4"],
+    });
+    assert.deepEqual(counts, { working: 2, blocked: 2, done: 1 });
+    assert.deepEqual(rankedPanes(plaintextObject), [
+      "working:w3:p4",
+      "blocked:w1:p2",
+      "blocked:w1:p9",
+      "done:w2:p1",
+      "working:w1:p1",
+    ]);
+  });
+
+  test("unknown pane ids in the pin set are ignored", () => {
+    const { counts, plaintextObject } = buildActivityState({
+      agents: MIXED_ELIGIBLE,
+      hostName: "studio",
+      pinnedPaneIds: ["nope", "w1:p1", "also-missing"],
+    });
+    assert.deepEqual(counts, { working: 2, blocked: 2, done: 1 });
+    assert.deepEqual(rankedPanes(plaintextObject), [
+      "working:w1:p1",
+      "blocked:w1:p2",
+      "blocked:w1:p9",
+      "done:w2:p1",
+      "working:w3:p4",
+    ]);
+  });
+
+  test("a missing or malformed pin set keeps today's ordering", () => {
+    const expected = buildActivityState({
+      agents: MIXED_ELIGIBLE,
+      hostName: "studio",
+    });
+    assert.deepEqual(rankedPanes(expected.plaintextObject), STATUS_THEN_PANE_ORDER);
+
+    for (const pinnedPaneIds of [undefined, null, [], "w1:p1", 1, { 0: "w3:p4" }, [1, "w3:p4"], ["w3:p4", null]]) {
+      const { counts, plaintextObject } = buildActivityState({
+        agents: MIXED_ELIGIBLE,
+        hostName: "studio",
+        pinnedPaneIds,
+      });
+      assert.deepEqual(counts, expected.counts, pinnedPaneIds);
+      assert.deepEqual(rankedPanes(plaintextObject), STATUS_THEN_PANE_ORDER, pinnedPaneIds);
+    }
+  });
+
+  test("the agent cap still applies when more than five agents are pinned", () => {
+    const agents = [
+      agent("w1:p1", "blocked", { agent: "a" }),
+      agent("w1:p2", "blocked", { agent: "b" }),
+      agent("w1:p3", "done", { agent: "c" }),
+      agent("w1:p4", "done", { agent: "d" }),
+      agent("w1:p5", "working", { agent: "e" }),
+      agent("w1:p6", "working", { agent: "f" }),
+    ];
+    const { counts, plaintextObject } = buildActivityState({
+      agents,
+      hostName: "mbp",
+      pinnedPaneIds: ["w1:p6", "w1:p5", "w1:p4", "w1:p3", "w1:p2", "w1:p1"],
+    });
+    assert.deepEqual(counts, { working: 2, blocked: 2, done: 2 });
+    assert.equal(plaintextObject.agents.length, 5);
+    assert.deepEqual(
+      plaintextObject.agents.map((entry) => entry.pane),
+      ["w1:p6", "w1:p5", "w1:p4", "w1:p3", "w1:p2"],
+    );
+  });
+});
+
 suite("eligible status helpers", () => {
   test("eligibleStatusMap ignores idle panes and lowercases statuses", () => {
     assert.deepEqual(

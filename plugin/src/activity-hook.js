@@ -84,7 +84,12 @@ function readActivityDevices(configDir) {
     if (!APNS_ENVIRONMENTS.has(env)) continue;
     const key = typeof entry.key === "string" ? Buffer.from(entry.key, "base64url") : null;
     if (key?.length !== KEY_BYTES) continue;
-    devices.push({ token: live.token, env, key });
+    devices.push({
+      token: live.token,
+      env,
+      key,
+      pinnedPaneIds: live.pinned_pane_ids,
+    });
   }
   return devices;
 }
@@ -370,29 +375,30 @@ async function main() {
   const pushEvent = empty ? "end" : "update";
   const priority = hasNewlyBlocked(statuses, previous) ? 10 : 5;
   const timestamp = Math.floor(Date.now() / 1000);
-  const { counts, plaintextObject } = buildActivityState({
-    agents,
-    hostName: shortHostName(),
-  });
-  const content =
-    pushEvent === "end"
-      ? {
-          counts: { working: 0, blocked: 0, done: 0 },
-          plaintextObject: { agents: [], host: plaintextObject.host, v: 1 },
-        }
-      : { counts, plaintextObject };
-
-  const request = {
-    event: pushEvent,
-    priority,
-    timestamp,
-    counts: content.counts,
-  };
+  const hostName = shortHostName();
 
   const pruned = new Set();
   const failures = [];
   let delivered = false;
   for (const device of devices) {
+    const { counts, plaintextObject } = buildActivityState({
+      agents,
+      hostName,
+      pinnedPaneIds: device.pinnedPaneIds,
+    });
+    const content =
+      pushEvent === "end"
+        ? {
+            counts: { working: 0, blocked: 0, done: 0 },
+            plaintextObject: { agents: [], host: plaintextObject.host, v: 1 },
+          }
+        : { counts, plaintextObject };
+    const request = {
+      event: pushEvent,
+      priority,
+      timestamp,
+      counts: content.counts,
+    };
     try {
       const outcome = await deliver(config, device, content.plaintextObject, request);
       if (outcome === "ok") delivered = true;
