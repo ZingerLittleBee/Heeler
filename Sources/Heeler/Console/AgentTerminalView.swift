@@ -330,11 +330,13 @@ struct AgentTerminalView: View {
     private var agentSwitcher: TerminalAgentSwitcher {
         TerminalAgentSwitcher(
             items: console.agents.map {
-                TerminalAgentSwitcherItem(
-                    id: $0.id, title: $0.switcherLabel, status: $0.agent.status)
+                TerminalAgentSwitcherItem(agent: $0, pins: console.pins)
             },
             selectedID: agent.id,
-            onSelect: switchToAgent)
+            onSelect: switchToAgent,
+            onTogglePin: { id in
+                console.togglePin(hostID: id.hostID, paneID: id.paneID)
+            })
     }
 
     private var terminalKeysContext: TerminalKeysContext {
