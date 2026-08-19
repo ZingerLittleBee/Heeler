@@ -67,12 +67,22 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
 {
     /// Short on purpose: every point it takes is one the terminal loses.
     static let preferredHeight: CGFloat = 40
+    /// Critically damped slide for a pin reorder: long enough to read, short
+    /// enough that a second pin does not pile up behind it.
+    private static let reorderDuration: TimeInterval = 0.35
 
     var onSelect: (@MainActor (ConsoleAgent.ID) -> Void)?
     var onTogglePin: (@MainActor (ConsoleAgent.ID) -> Void)?
 
     /// The strip as it currently reads, in order.
     private(set) var chips: [TerminalAgentChip] = []
+
+    /// The stack's arranged chips, in layout order. `chips` is the model;
+    /// this is what the stack is actually laying out, so a leftover hole
+    /// after a reorder shows up here.
+    var arrangedChips: [TerminalAgentChip] {
+        row.arrangedSubviews.compactMap { $0 as? TerminalAgentChip }
+    }
 
     /// Gutter between the strip's ends and the first and last chip.
     private static let rowInset: CGFloat = 8
@@ -96,6 +106,9 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
     func update(items: [TerminalAgentSwitcherItem], selectedID: ConsoleAgent.ID?) {
         guard items != self.items || selectedID != self.selectedID else { return }
         let selectionChanged = selectedID != self.selectedID
+        let previousIDs = chips.map(\.id)
+        let previousPinByID = Dictionary(
+            uniqueKeysWithValues: self.items.map { ($0.id, $0.isPinned) })
         self.items = items
         self.selectedID = selectedID
 
@@ -105,22 +118,85 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
         var ordered: [TerminalAgentChip] = []
         for item in items {
             let chip = reusable.removeValue(forKey: item.id) ?? makeChip(id: item.id)
-            chip.apply(item, selected: item.id == selectedID)
             ordered.append(chip)
         }
-        for stale in reusable.values {
-            row.removeArrangedSubview(stale)
-            stale.removeFromSuperview()
-        }
-        for (index, chip) in ordered.enumerated()
-        where row.arrangedSubviews.firstIndex(of: chip) != index {
-            row.insertArrangedSubview(chip, at: index)
-        }
+        let stale = Array(reusable.values)
         chips = ordered
+
+        let layoutChanged =
+            ordered.map(\.id) != previousIDs
+            || items.contains { previousPinByID[$0.id] != $0.isPinned }
+        let shouldAnimate =
+            layoutChanged
+            && window != nil
+            && bounds.width > 0
+            && !previousIDs.isEmpty
+            && !UIAccessibility.isReduceMotionEnabled
+
+        let applyLayout = {
+            for (item, chip) in zip(items, ordered) {
+                chip.apply(item, selected: item.id == selectedID)
+            }
+            self.syncArrangedSubviews(ordered, removing: stale)
+        }
+
+        if shouldAnimate {
+            // Commit the frames on screen so the slide interpolates from what
+            // the user sees. Context-menu dismissal has an animation
+            // transaction open; without this, the hole the stack leaves behind
+            // is not in that transaction and snaps shut when the menu ends.
+            UIView.performWithoutAnimation {
+                self.layoutIfNeeded()
+            }
+            UIView.animate(
+                withDuration: Self.reorderDuration,
+                delay: 0,
+                usingSpringWithDamping: 1,
+                initialSpringVelocity: 0,
+                options: [
+                    .allowUserInteraction,
+                    .beginFromCurrentState,
+                    .overrideInheritedCurve,
+                    .overrideInheritedDuration,
+                ]
+            ) {
+                applyLayout()
+                self.layoutIfNeeded()
+            }
+        } else {
+            applyLayout()
+        }
+
+        // Pulse is a repeating layer animation. Adding it inside the layout
+        // UIView.animate above would steal its duration and drop it when
+        // the slide finishes.
+        for chip in ordered {
+            chip.updatePulse()
+        }
 
         if selectionChanged {
             scrollsToSelectionOnLayout = true
             setNeedsLayout()
+        }
+    }
+
+    /// `insertArrangedSubview` of an already-arranged chip leaves the old
+    /// slot's spacing behind: the chip appears in the new position, a hole
+    /// sits where it left, and a later non-animated layout collapses it.
+    /// Remove then reinsert so the stack has one slot per chip.
+    private func syncArrangedSubviews(
+        _ ordered: [TerminalAgentChip], removing stale: [TerminalAgentChip]
+    ) {
+        for chip in stale {
+            row.removeArrangedSubview(chip)
+            chip.removeFromSuperview()
+        }
+        for (index, chip) in ordered.enumerated() {
+            if let current = row.arrangedSubviews.firstIndex(of: chip) {
+                if current == index { continue }
+                row.removeArrangedSubview(chip)
+            }
+            row.insertArrangedSubview(chip, at: index)
         }
     }
 
@@ -340,10 +416,13 @@ final class TerminalAgentChip: UIControl {
         label.text = item.title
         label.textColor = selected ? .label : .secondaryLabel
         pinView.isHidden = !item.isPinned
+        // The pin glyph is what changes the chip's width (117→136pt measured).
+        // The outer strip can only animate that resize if Auto Layout knows
+        // the fitting size changed inside the same layout pass.
+        invalidateIntrinsicContentSize()
         dot.backgroundColor = item.status.inkUIColor
         backgroundColor = selected ? .tertiarySystemBackground : .clear
         isWorking = item.status == .working
-        updatePulse()
 
         accessibilityLabel = item.title
         let statusValue = item.status.rawValue.capitalized
@@ -397,8 +476,9 @@ final class TerminalAgentChip: UIControl {
     }
 
     /// Working is the one status worth animating: a still dot cannot tell a
-    /// busy Agent from an idle one at a glance.
-    private func updatePulse() {
+    /// busy Agent from an idle one at a glance. The strip calls this after
+    /// any layout animation so the pulse is not owned by that transaction.
+    fileprivate func updatePulse() {
         guard isWorking, !UIAccessibility.isReduceMotionEnabled else {
             dot.layer.removeAnimation(forKey: Self.pulseKey)
             return

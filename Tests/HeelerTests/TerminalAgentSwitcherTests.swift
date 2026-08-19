@@ -385,6 +385,126 @@ struct TerminalAgentSwitcherTests {
         #expect(working.superview == nil)
     }
 
+    /// Pinning restacks the strip: the same chip views must slide to the
+    /// new order. Recreating them would restart the Working pulse and is
+    /// also why a hole used to sit where the chip left.
+    @MainActor
+    @Test func reorderingChipsKeepsTheSameViews() {
+        let host = UUID()
+        let agents = [
+            Self.makeAgent(pane: "p1", workspace: "alpha", host: host),
+            Self.makeAgent(pane: "p2", workspace: "beta", host: host),
+            Self.makeAgent(pane: "p3", workspace: "gamma", host: host),
+        ]
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        let bar = TerminalAgentSwitcherBar()
+        window.addSubview(bar)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        bar.frame = CGRect(
+            x: 0, y: 0, width: 402, height: TerminalAgentSwitcherBar.preferredHeight)
+
+        bar.update(items: agents.map { Self.makeItem($0) }, selectedID: agents[0].id)
+        bar.layoutIfNeeded()
+        let original = bar.chips
+        #expect(original.map(\.id) == agents.map(\.id))
+
+        // Pinning gamma sends it to the front; alpha and beta slide closed.
+        let pinned = [
+            Self.makeItem(agents[2], isPinned: true),
+            Self.makeItem(agents[0]),
+            Self.makeItem(agents[1]),
+        ]
+        bar.update(items: pinned, selectedID: agents[0].id)
+        bar.layoutIfNeeded()
+
+        #expect(bar.chips.map(\.id) == pinned.map(\.id))
+        #expect(bar.chips[0] === original[2])
+        #expect(bar.chips[1] === original[0])
+        #expect(bar.chips[2] === original[1])
+        expectNoLeftoverChips(bar, matching: pinned, identity: original)
+        #expect(bar.chips[0].showsPinIndicator)
+        #expect(!bar.chips[1].showsPinIndicator)
+        #expect(!bar.chips[2].showsPinIndicator)
+
+        bar.update(items: agents.map { Self.makeItem($0) }, selectedID: agents[0].id)
+        bar.layoutIfNeeded()
+        #expect(bar.chips.map(\.id) == agents.map(\.id))
+        #expect(bar.chips[0] === original[0])
+        #expect(bar.chips[1] === original[1])
+        #expect(bar.chips[2] === original[2])
+        expectNoLeftoverChips(bar, matching: agents.map { Self.makeItem($0) }, identity: original)
+        #expect(!bar.chips[2].showsPinIndicator)
+    }
+
+    /// A leftover arranged slot is the ghost gap: the chip moved, the stack
+    /// still reserved its old place. Pin/unpin cycles must not accumulate
+    /// duplicates or orphans.
+    @MainActor
+    @Test func repeatedPinCyclesLeaveNoLeftoverChips() {
+        let host = UUID()
+        let agents = [
+            Self.makeAgent(pane: "p1", workspace: "alpha", host: host),
+            Self.makeAgent(pane: "p2", workspace: "beta", host: host),
+            Self.makeAgent(pane: "p3", workspace: "gamma", host: host),
+        ]
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        let bar = TerminalAgentSwitcherBar()
+        window.addSubview(bar)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        bar.frame = CGRect(
+            x: 0, y: 0, width: 402, height: TerminalAgentSwitcherBar.preferredHeight)
+
+        let unpinned = agents.map { Self.makeItem($0) }
+        bar.update(items: unpinned, selectedID: agents[0].id)
+        bar.layoutIfNeeded()
+        let original = bar.chips
+
+        for _ in 0..<3 {
+            let pinGamma = [
+                Self.makeItem(agents[2], isPinned: true),
+                Self.makeItem(agents[0]),
+                Self.makeItem(agents[1]),
+            ]
+            bar.update(items: pinGamma, selectedID: agents[0].id)
+            expectNoLeftoverChips(bar, matching: pinGamma, identity: original)
+
+            bar.update(items: unpinned, selectedID: agents[0].id)
+            expectNoLeftoverChips(bar, matching: unpinned, identity: original)
+
+            let pinBeta = [
+                Self.makeItem(agents[1], isPinned: true),
+                Self.makeItem(agents[0]),
+                Self.makeItem(agents[2]),
+            ]
+            bar.update(items: pinBeta, selectedID: agents[0].id)
+            expectNoLeftoverChips(bar, matching: pinBeta, identity: original)
+
+            bar.update(items: unpinned, selectedID: agents[0].id)
+            expectNoLeftoverChips(bar, matching: unpinned, identity: original)
+        }
+    }
+
+    /// Model order, stack order, and object identity all describe one strip.
+    @MainActor
+    private func expectNoLeftoverChips(
+        _ bar: TerminalAgentSwitcherBar,
+        matching items: [TerminalAgentSwitcherItem],
+        identity: [TerminalAgentChip]
+    ) {
+        #expect(bar.chips.map(\.id) == items.map(\.id))
+        #expect(bar.arrangedChips.map(\.id) == items.map(\.id))
+        #expect(bar.arrangedChips.elementsEqual(bar.chips, by: { $0 === $1 }))
+        #expect(
+            Set(bar.arrangedChips.map { ObjectIdentifier($0) }).count
+                == bar.arrangedChips.count)
+        let byID = Dictionary(uniqueKeysWithValues: identity.map { ($0.id, $0) })
+        for chip in bar.chips {
+            #expect(chip === byID[chip.id])
+        }
+    }
+
     /// A switch builds a new terminal, so the strip that comes back is a new
     /// bar sitting at offset zero — and the Agent the user just picked is off
     /// screen whenever the list outruns the row. The chip on screen must be
