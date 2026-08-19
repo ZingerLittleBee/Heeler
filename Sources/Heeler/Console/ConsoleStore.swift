@@ -391,11 +391,12 @@ final class ConsoleStore {
 
     private func rebuild() {
         let current = Array(projections.values)
-        agents = current
-            .flatMap { $0.agentsByPane.values }
-            .consoleSorted { agent in
-                pins.pinRank(hostID: agent.hostID, paneID: agent.agent.paneID)
-            }
+        let unsorted = current.flatMap { $0.agentsByPane.values }
+        let pinRanks = Dictionary(uniqueKeysWithValues: unsorted.compactMap { agent in
+            pins.pinRank(hostID: agent.hostID, paneID: agent.agent.paneID)
+                .map { (agent.id, $0) }
+        })
+        agents = unsorted.consoleSorted { pinRanks[$0.id] }
         hostStatuses = Dictionary(
             uniqueKeysWithValues: current.compactMap { projection in
                 projection.status.map { (projection.host.id, $0) }

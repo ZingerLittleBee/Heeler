@@ -35,6 +35,7 @@ final class PinnedAgentsStore {
         do {
             let blob = try JSONDecoder().decode(PersistedBlob.self, from: data)
             guard blob.version == Self.blobVersion else {
+                // Pins are cheap to lose: unknown versions start empty and the next write clobbers them, unlike SnippetStore's no-write policy.
                 entries = []
                 return
             }
@@ -64,15 +65,13 @@ final class PinnedAgentsStore {
         entries.compactMap { $0.hostID == hostID ? $0.paneID : nil }
     }
 
-    /// 0 = most recently pinned. nil when not pinned.
+    /// Position in the global pin recency order (lower = more recent).
+    /// Comparable across Hosts; not an index into `pinnedPaneIDs(for:)`.
     func pinRank(hostID: Host.ID, paneID: String) -> Int? {
         entries.firstIndex { $0.hostID == hostID && $0.paneID == paneID }
     }
 
-    /// Inserts at the front after dropping any existing copy, so a re-pin
-    /// becomes most-recent without duplicating the entry.
     private func pin(hostID: Host.ID, paneID: String) {
-        entries.removeAll { $0.hostID == hostID && $0.paneID == paneID }
         entries.insert(Entry(hostID: hostID, paneID: paneID), at: 0)
     }
 
