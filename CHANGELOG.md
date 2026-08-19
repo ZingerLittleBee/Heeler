@@ -7,6 +7,8 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-08-20
+
 ### Fixed
 
 - Opening an Agent no longer dies with `exec: herdr: not found` (exit 127) on a
