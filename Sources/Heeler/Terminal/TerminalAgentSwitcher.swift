@@ -146,8 +146,9 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
         if shouldAnimate {
             // Flush pending layout so the slide interpolates from the frames
             // already on screen. Context-menu dismissal has a transaction
-            // open; without a committed from-state the restack lands in a
-            // later un-animated pass and the chips teleport.
+            // open; without the flush, layout still pending from an earlier
+            // update gets swept into this animation and the slide starts from
+            // frames the user never saw.
             UIView.performWithoutAnimation {
                 self.layoutIfNeeded()
             }
