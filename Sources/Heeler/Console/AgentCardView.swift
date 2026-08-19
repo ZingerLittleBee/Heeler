@@ -7,6 +7,7 @@ import UIKit
 /// `claude` — the workspace is what tells the rows apart.
 struct AgentCardView: View {
     let agent: ConsoleAgent
+    var isPinned: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -14,6 +15,13 @@ struct AgentCardView: View {
                 Text(headline)
                     .font(.headline)
                     .lineLimit(1)
+                if isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .layoutPriority(1)
+                        .accessibilityLabel("Pinned")
+                }
                 Spacer(minLength: 8)
                 AgentStatusBadge(status: agent.agent.status)
             }

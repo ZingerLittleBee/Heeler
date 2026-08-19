@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 /// The Console aggregate: reconciles the Host catalog and publishes one
-/// status-sorted Agent list across every Host. Each HostConsoleProjection
+/// pin-then-status-sorted Agent list across every Host. Each HostConsoleProjection
 /// owns its own convergence, retry, snippets and Host-scoped RPC behavior.
 @MainActor
 @Observable
@@ -53,14 +53,26 @@ final class ConsoleStore {
     /// suspend can finish first and leave every Host suspended with nothing
     /// left to re-activate it.
     @ObservationIgnored private var lifecycleTask: Task<Void, Never>?
+    /// Shared with the Console list: a pin toggle must re-sort `agents` in
+    /// the same turn, so the store lives here rather than only on the view.
+    let pins: PinnedAgentsStore
 
     init(
         snapshotRetryDelay: Duration = .seconds(2),
+        pins: PinnedAgentsStore = PinnedAgentsStore(),
         makeSession: @escaping @Sendable (Host, [EventSubscription]) -> EventsSession =
             ConsoleStore.sshSessionFactory()
     ) {
         self.snapshotRetryDelay = snapshotRetryDelay
+        self.pins = pins
         self.makeSession = makeSession
+    }
+
+    /// Pins or unpins the Agent and re-sorts the published list in the same
+    /// turn — a pin must not wait on a reconnect to move.
+    func togglePin(hostID: Host.ID, paneID: String) {
+        pins.togglePin(hostID: hostID, paneID: paneID)
+        rebuild()
     }
 
     /// Aligns Host projections with the catalog. Editing a Host replaces its
@@ -379,9 +391,12 @@ final class ConsoleStore {
 
     private func rebuild() {
         let current = Array(projections.values)
-        agents = current
-            .flatMap { $0.agentsByPane.values }
-            .consoleSorted()
+        let unsorted = current.flatMap { $0.agentsByPane.values }
+        let pinRanks = Dictionary(uniqueKeysWithValues: unsorted.compactMap { agent in
+            pins.pinRank(hostID: agent.hostID, paneID: agent.agent.paneID)
+                .map { (agent.id, $0) }
+        })
+        agents = unsorted.consoleSorted { pinRanks[$0.id] }
         hostStatuses = Dictionary(
             uniqueKeysWithValues: current.compactMap { projection in
                 projection.status.map { (projection.host.id, $0) }
