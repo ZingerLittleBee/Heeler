@@ -16,12 +16,21 @@ struct ConsoleStoreTests {
         initialDelay: .milliseconds(10), multiplier: 2, maxDelay: .milliseconds(50))
 
     /// A store whose session factory routes each Host to its scripted
-    /// transport; unknown Hosts fail the connect.
+    /// transport; unknown Hosts fail the connect. Pins default to an isolated
+    /// suite so leftover `UserDefaults.standard` data cannot reorder the list.
     private func makeStore(
         transports: [Host.ID: ScriptedTransport],
-        reconnectPolicy: ReconnectPolicy = Self.fastPolicy
+        reconnectPolicy: ReconnectPolicy = Self.fastPolicy,
+        pins: PinnedAgentsStore? = nil
     ) -> ConsoleStore {
-        ConsoleStore(snapshotRetryDelay: .milliseconds(10)) { host, subscriptions in
+        let resolvedPins =
+            pins
+            ?? PinnedAgentsStore(
+                defaults: UserDefaults(suiteName: "hm-console-pins-\(UUID().uuidString)")
+                    ?? .standard)
+        return ConsoleStore(
+            snapshotRetryDelay: .milliseconds(10), pins: resolvedPins
+        ) { host, subscriptions in
             EventsSession(
                 subscriptions: subscriptions,
                 connect: {
@@ -33,6 +42,27 @@ struct ConsoleStoreTests {
                 reconnectPolicy: reconnectPolicy,
                 keepalive: nil)
         }
+    }
+
+    private func consoleAgent(
+        hostID: UUID,
+        hostName: String,
+        paneID: String,
+        status: AgentStatus,
+        workspaceLabel: String? = "Proj"
+    ) -> ConsoleAgent {
+        ConsoleAgent(
+            hostID: hostID,
+            hostName: hostName,
+            agent: Agent(.fixture(paneID: paneID, status: status)),
+            workspaceLabel: workspaceLabel,
+            repoName: nil)
+    }
+
+    private func makePinDefaults() throws -> (UserDefaults, cleanup: () -> Void) {
+        let suiteName = "hm-console-pins-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        return (defaults, { defaults.removePersistentDomain(forName: suiteName) })
     }
 
     /// Polls until `condition` holds, yielding so the store's tasks progress.
@@ -58,6 +88,45 @@ struct ConsoleStoreTests {
         #expect(
             AgentStatus(rawValue: "haunted").consoleSortBucket
                 == AgentStatus.unknown.consoleSortBucket)
+    }
+
+    @Test func consoleSortedPutsPinnedAgentsFirstByRank() {
+        let hostA = UUID()
+        let hostB = UUID()
+        let idle = consoleAgent(
+            hostID: hostA, hostName: "alpha", paneID: "w1:p1", status: .idle)
+        let working = consoleAgent(
+            hostID: hostA, hostName: "alpha", paneID: "w1:p2", status: .working)
+        let blocked = consoleAgent(
+            hostID: hostB, hostName: "beta", paneID: "w2:p1", status: .blocked)
+        let done = consoleAgent(
+            hostID: hostB, hostName: "beta", paneID: "w2:p2", status: .done)
+        let agents = [idle, working, blocked, done]
+        // Unpinned order is blocked > done > working > idle.
+        #expect(agents.consoleSorted().map(\.agent.paneID) == ["w2:p1", "w2:p2", "w1:p2", "w1:p1"])
+
+        // idle pinned first (rank 1), working pinned more recently (rank 0).
+        // Unpinned blocked/done keep their relative order.
+        let ranks: [ConsoleAgent.ID: Int] = [idle.id: 1, working.id: 0]
+        #expect(
+            agents.consoleSorted { ranks[$0.id] }.map(\.agent.paneID)
+                == ["w1:p2", "w1:p1", "w2:p1", "w2:p2"])
+    }
+
+    @Test func consoleSortedLeavesUnpinnedTiebreaksUnchanged() {
+        let hostA = UUID()
+        let hostB = UUID()
+        // Same status: Host name, then host id, then workspace, then pane id.
+        let laterName = consoleAgent(
+            hostID: hostA, hostName: "zeta", paneID: "w1:p1", status: .working)
+        let earlierName = consoleAgent(
+            hostID: hostB, hostName: "alpha", paneID: "w2:p1", status: .working)
+        let unpinned = [laterName, earlierName].consoleSorted()
+        #expect(unpinned.map(\.agent.paneID) == ["w2:p1", "w1:p1"])
+
+        let ranks: [ConsoleAgent.ID: Int] = [laterName.id: 0]
+        let pinned = [laterName, earlierName].consoleSorted { ranks[$0.id] }
+        #expect(pinned.map(\.agent.paneID) == ["w1:p1", "w2:p1"])
     }
 
     @Test func snapshotsAcrossHostsFlattenIntoOneStatusSortedList() async throws {
@@ -92,6 +161,48 @@ struct ConsoleStoreTests {
         #expect(store.agents.first?.workspaceLabel == "Api")
         #expect(store.agents[1].workspaceLabel == "Api")
         #expect(store.agents.last?.repoName == "proj")
+
+        store.setHosts([])
+    }
+
+    @Test func togglePinResortsThePublishedListImmediately() async throws {
+        let (defaults, cleanup) = try makePinDefaults()
+        defer { cleanup() }
+        let pins = PinnedAgentsStore(defaults: defaults)
+        let hostA = Host.fixture(name: "alpha", address: "a.example")
+        let hostB = Host.fixture(name: "beta", address: "b.example")
+        let transports = [
+            hostA.id: ScriptedTransport(
+                snapshot: .fixture(
+                    agents: [
+                        .fixture(paneID: "w1:p1", status: .idle),
+                        .fixture(paneID: "w1:p2", status: .working),
+                    ],
+                    workspaces: [.fixture(workspaceID: "w1", label: "Proj")])),
+            hostB.id: ScriptedTransport(
+                snapshot: .fixture(
+                    agents: [
+                        .fixture(paneID: "w2:p1", status: .blocked, workspaceID: "w2"),
+                        .fixture(paneID: "w2:p2", status: .done, workspaceID: "w2"),
+                    ],
+                    workspaces: [.fixture(workspaceID: "w2", label: "Api")])),
+        ]
+        let store = makeStore(transports: transports, pins: pins)
+
+        store.setHosts([hostA, hostB])
+        await store.resume()
+        try await waitUntil("all four agents should arrive") { store.agents.count == 4 }
+        #expect(store.agents.map(\.agent.paneID) == ["w2:p1", "w2:p2", "w1:p2", "w1:p1"])
+
+        // Pin the idle agent first, then the working one: working is rank 0.
+        store.togglePin(hostID: hostA.id, paneID: "w1:p1")
+        #expect(store.agents.map(\.agent.paneID) == ["w1:p1", "w2:p1", "w2:p2", "w1:p2"])
+
+        store.togglePin(hostID: hostA.id, paneID: "w1:p2")
+        #expect(store.agents.map(\.agent.paneID) == ["w1:p2", "w1:p1", "w2:p1", "w2:p2"])
+
+        store.togglePin(hostID: hostA.id, paneID: "w1:p2")
+        #expect(store.agents.map(\.agent.paneID) == ["w1:p1", "w2:p1", "w2:p2", "w1:p2"])
 
         store.setHosts([])
     }
