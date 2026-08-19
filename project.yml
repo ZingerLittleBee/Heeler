@@ -177,7 +177,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.Widgets
         MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: "9"
+        CURRENT_PROJECT_VERSION: "11"
         # Match the containing app's iPhone-only device family.
         TARGETED_DEVICE_FAMILY: "1"
 
