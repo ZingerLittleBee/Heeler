@@ -279,7 +279,7 @@ struct TerminalAgentSwitcherTests {
     }
 
     @MainActor
-    @Test func choosingThePinMenuTogglesThatAgent() throws {
+    @Test func choosingThePinMenuTogglesThatAgent() {
         let host = UUID()
         let agents = [
             Self.makeAgent(pane: "p1", workspace: "alpha", host: host),
@@ -294,12 +294,10 @@ struct TerminalAgentSwitcherTests {
         bar.onTogglePin = { toggled.append($0) }
         bar.update(items: items, selectedID: agents[0].id)
 
-        let pin = try #require(bar.pinMenu(for: items[0]).children.first as? UIAction)
-        pin.perform(nil, with: nil)
+        bar.performPinToggle(for: items[0])
         #expect(toggled == [agents[0].id])
 
-        let unpin = try #require(bar.pinMenu(for: items[1]).children.first as? UIAction)
-        unpin.perform(nil, with: nil)
+        bar.performPinToggle(for: items[1])
         #expect(toggled == [agents[0].id, agents[1].id])
     }
 

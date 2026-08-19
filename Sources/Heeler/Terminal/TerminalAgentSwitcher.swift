@@ -207,9 +207,14 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
         let image = UIImage(systemName: item.isPinned ? "pin.slash" : "pin")
         return UIMenu(children: [
             UIAction(title: title, image: image) { [weak self] _ in
-                self?.onTogglePin?(item.id)
+                self?.performPinToggle(for: item)
             }
         ])
+    }
+
+    /// The Pin / Unpin action: same path the menu item takes.
+    func performPinToggle(for item: TerminalAgentSwitcherItem) {
+        onTogglePin?(item.id)
     }
 
     /// The item the interaction's chip currently represents. Nil when the
