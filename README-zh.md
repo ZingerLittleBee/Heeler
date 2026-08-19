@@ -103,6 +103,10 @@ herdr plugin action invoke heeler.pair
 
 选型缘由见 `docs/adr/`（传输层的故事尤其不直观）。
 
+## 参与贡献
+
+欢迎 Issue 和 PR：仓库结构、构建与测试方式、提交需要遵循的约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
 ## 状态
 
-Pre-alpha。以个人使用为先；与 herdr 项目无隶属关系。
+Beta，已上 [TestFlight](https://testflight.apple.com/join/aXSxRn4r)。以个人日常使用打磨为先，仍有粗糙之处，迭代较快。与 herdr 项目无隶属关系。

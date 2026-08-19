@@ -116,6 +116,14 @@ notification (see [PRIVACY.md](PRIVACY.md)).
 
 See `docs/adr/` for why these choices were made (the transport story in particular is not obvious).
 
+## Contributing
+
+Issues and PRs are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for how
+the repo is laid out, how to build and test, and the conventions changes are
+expected to follow.
+
 ## Status
 
-Pre-alpha. Personal-use first; not affiliated with the herdr project.
+Beta, on [TestFlight](https://testflight.apple.com/join/aXSxRn4r). Built
+personal-use first and shaped by daily driving, so expect rough edges and
+fast iteration. Not affiliated with the herdr project.
