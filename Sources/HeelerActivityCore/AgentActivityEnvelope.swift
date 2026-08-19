@@ -147,10 +147,11 @@ enum AgentActivityEnvelope {
     }
 
     /// Canonical plaintext: compact JSON, keys sorted at every level, agents
-    /// already in contract order and capped at 5. Title is omitted when
-    /// absent or empty.
+    /// in the caller-supplied contract order and capped at 5. Title is
+    /// omitted when absent or empty. This does not re-sort: pin-aware order
+    /// is established by the producer and must survive sealing.
     private static func encodePlaintext(_ details: AgentActivityDetails) throws -> Data {
-        let agents = Array(sorted(details.agents).prefix(5)).map { agent in
+        let agents = Array(details.agents.prefix(5)).map { agent in
             OutgoingAgent(
                 kind: agent.kind, name: nonEmpty(agent.name), pane: agent.paneID,
                 status: agent.status, title: nonEmpty(agent.title))
@@ -159,26 +160,6 @@ enum AgentActivityEnvelope {
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         return try encoder.encode(
             OutgoingPlaintext(agents: agents, host: details.hostName, v: version))
-    }
-
-    private static func sorted(
-        _ agents: [AgentActivityDetails.AgentDetail]
-    ) -> [AgentActivityDetails.AgentDetail] {
-        agents.sorted { lhs, rhs in
-            let left = statusRank(lhs.status)
-            let right = statusRank(rhs.status)
-            if left != right { return left < right }
-            return lhs.paneID.utf8.lexicographicallyPrecedes(rhs.paneID.utf8)
-        }
-    }
-
-    private static func statusRank(_ status: String) -> Int {
-        switch status {
-        case "blocked": 0
-        case "done": 1
-        case "working": 2
-        default: 3
-        }
     }
 
     private static func nonEmpty(_ text: String?) -> String? {

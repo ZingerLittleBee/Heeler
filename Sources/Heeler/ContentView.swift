@@ -81,6 +81,9 @@ struct ContentView: View {
                 },
                 connectionStatus: { [weak console] id in
                     console?.hostStatuses[id]
+                },
+                pinnedPaneIDs: { [weak console] id in
+                    console?.pins.pinnedPaneIDs(for: id) ?? []
                 }))
     }
 
@@ -123,6 +126,9 @@ struct ContentView: View {
             notificationRouter.agentsDidChange(console.agents)
             bannerStore.agentsDidChange(console.agents)
             liveActivities.agentsDidChange(console.agents)
+        }
+        .onChange(of: console.pins.revision) {
+            liveActivities.pinsDidChange()
         }
         // Live Activity taps: an agent row deep-links to that agent's
         // detail through the same router notification taps use; a tap

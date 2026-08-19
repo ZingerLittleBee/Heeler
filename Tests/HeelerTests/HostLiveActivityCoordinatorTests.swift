@@ -30,10 +30,12 @@ struct HostLiveActivityCoordinatorTests {
 
     private func makeCoordinator(
         defaults: UserDefaults,
-        enable: Bool = true
+        enable: Bool = true,
+        pins: PinnedAgentsStore? = nil
     ) -> HostLiveActivityCoordinator {
         let keys = NotificationKeyStore(secrets: secrets)
         let world = world
+        let pinStore = pins
         let coordinator = HostLiveActivityCoordinator(
             controller: controller,
             preferences: LiveActivityPreferences(defaults: defaults),
@@ -45,6 +47,7 @@ struct HostLiveActivityCoordinatorTests {
             hostDisplayName: { world.hostNames[$0] ?? "" },
             isAwaitingSnapshot: { world.awaitingSnapshot.contains($0) },
             connectionStatus: { world.statuses[$0] },
+            pinnedPaneIDs: { pinStore?.pinnedPaneIDs(for: $0) ?? [] },
             settleDuration: .milliseconds(20))
         if enable {
             coordinator.setEnabled(true, for: host.id)
@@ -100,6 +103,22 @@ struct HostLiveActivityCoordinatorTests {
     private func liveActivityToken() async throws -> String? {
         try NotificationRegistrationFile.decode(await transport.notificationRegistration)
             .liveActivity(forDeviceToken: token.hex)?.token
+    }
+
+    private func filePinnedPaneIDs() async throws -> [String]? {
+        try NotificationRegistrationFile.decode(await transport.notificationRegistration)
+            .liveActivity(forDeviceToken: token.hex)?.pinnedPaneIDs
+    }
+
+    private func notificationKey() throws -> Data {
+        try #require(try NotificationKeyStore(secrets: secrets).record(forHost: host.id)?.key)
+    }
+
+    private func openedPaneIDs(_ state: AgentActivityAttributes.ContentState) throws -> [String] {
+        let envelope = try #require(state.envelope)
+        let details = try AgentActivityEnvelope.open(
+            try JSONEncoder().encode(envelope), using: notificationKey())
+        return details.agents.map(\.paneID)
     }
 
     // MARK: Start / settle / flap
@@ -445,5 +464,112 @@ struct HostLiveActivityCoordinatorTests {
         }
         try await waitPastSettle()
         #expect(controller.requested.count == 1, "the same desire must not restart")
+    }
+
+    // MARK: Pins
+
+    @Test func pinToggleRebuildsOrderAndWritesPinnedPaneIDs() async throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let (pinDefaults, pinCleanup) = try makeDefaults()
+        defer { pinCleanup() }
+        try await registerDevice()
+        armWorld()
+        let pins = PinnedAgentsStore(defaults: pinDefaults)
+        let coordinator = makeCoordinator(defaults: defaults, pins: pins)
+        coordinator.start()
+        coordinator.agentsDidChange([
+            agent("w:p-work", .working),
+            agent("w:p-block", .blocked),
+        ])
+        try await waitUntil("the activity should start") { !controller.requested.isEmpty }
+        #expect(try openedPaneIDs(controller.requested[0]) == ["w:p-block", "w:p-work"])
+        #expect(controller.requested[0].counts == .init(working: 1, blocked: 1, done: 0))
+
+        let activityID = try #require(controller.requestedHandles.first?.id)
+        controller.emitToken(id: activityID, Data([0xab]))
+        try await waitUntil("the token should be written") {
+            try await liveActivityToken() == "ab"
+        }
+        #expect(try await filePinnedPaneIDs() == [])
+
+        pins.togglePin(hostID: host.id, paneID: "w:p-work")
+        coordinator.pinsDidChange()
+        try await waitUntil("a pin toggle should reorder the lock-screen rows") {
+            controller.updates.count == 1
+        }
+        #expect(try openedPaneIDs(controller.updates[0].content) == ["w:p-work", "w:p-block"])
+        #expect(controller.updates[0].content.counts == .init(working: 1, blocked: 1, done: 0))
+        try await waitUntil("the Host should receive the new pin list") {
+            try await filePinnedPaneIDs() == ["w:p-work"]
+        }
+        #expect(controller.requested.count == 1)
+        #expect(controller.ended.isEmpty)
+    }
+
+    @Test func pinningAnIneligibleAgentLeavesRowsAndUpdatesTheFile() async throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let (pinDefaults, pinCleanup) = try makeDefaults()
+        defer { pinCleanup() }
+        try await registerDevice()
+        armWorld()
+        let pins = PinnedAgentsStore(defaults: pinDefaults)
+        let coordinator = makeCoordinator(defaults: defaults, pins: pins)
+        coordinator.start()
+        coordinator.agentsDidChange([
+            agent("w:p-work", .working),
+            agent("w:p-idle", .idle),
+        ])
+        try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+        let activityID = try #require(controller.requestedHandles.first?.id)
+        controller.emitToken(id: activityID, Data([0x11]))
+        try await waitUntil("the token should be written") {
+            try await liveActivityToken() == "11"
+        }
+
+        pins.togglePin(hostID: host.id, paneID: "w:p-idle")
+        coordinator.pinsDidChange()
+        try await waitPastSettle()
+        #expect(controller.updates.isEmpty, "ineligible pins must not change LA rows")
+        try await waitUntil("the Host should still receive the pin list") {
+            try await filePinnedPaneIDs() == ["w:p-idle"]
+        }
+    }
+
+    @Test func pinToggleWhileOfflineDoesNotWriteUntilTheNextTokenWrite() async throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let (pinDefaults, pinCleanup) = try makeDefaults()
+        defer { pinCleanup() }
+        try await registerDevice()
+        armWorld()
+        let pins = PinnedAgentsStore(defaults: pinDefaults)
+        let coordinator = makeCoordinator(defaults: defaults, pins: pins)
+        coordinator.start()
+        coordinator.agentsDidChange([
+            agent("w:p-work", .working),
+            agent("w:p-block", .blocked),
+        ])
+        try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+        let activityID = try #require(controller.requestedHandles.first?.id)
+        controller.emitToken(id: activityID, Data([0xaa]))
+        try await waitUntil("the first token should be written") {
+            try await liveActivityToken() == "aa"
+        }
+
+        world.statuses[host.id] = .reconnecting(
+            attempt: 1, delay: .seconds(1), failure: .sshUnreachable(detail: "down"))
+        pins.togglePin(hostID: host.id, paneID: "w:p-work")
+        coordinator.pinsDidChange()
+        try await waitPastSettle()
+        #expect(try await filePinnedPaneIDs() == [])
+
+        world.statuses[host.id] = .connected
+        controller.emitToken(id: activityID, Data([0xbb]))
+        try await waitUntil("the next live_activity write should carry current pins") {
+            try await liveActivityToken() == "bb"
+                && (try await filePinnedPaneIDs() == ["w:p-work"])
+        }
     }
 }

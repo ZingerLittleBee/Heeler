@@ -23,6 +23,9 @@ final class PinnedAgentsStore {
     }
 
     private var entries: [Entry]
+    /// Increments on every pin toggle so observers (Live Activity) can
+    /// rebuild without waiting for the Console list to change identity.
+    private(set) var revision: UInt64 = 0
     // UserDefaults is documented thread-safe; Sendable modulo that promise.
     @ObservationIgnored private nonisolated(unsafe) let defaults: UserDefaults
 
@@ -58,6 +61,7 @@ final class PinnedAgentsStore {
             pin(hostID: hostID, paneID: paneID)
         }
         persist()
+        revision += 1
     }
 
     /// Pane ids pinned for this Host, most-recently-pinned first.

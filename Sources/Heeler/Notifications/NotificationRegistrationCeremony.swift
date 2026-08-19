@@ -87,6 +87,7 @@ struct NotificationRegistrationCeremony: Sendable {
         tokenHex: String,
         startedAt: Date,
         deviceToken: APNSDeviceToken,
+        pinnedPaneIDs: [String] = [],
         over transport: any Transport
     ) async throws {
         let file = try NotificationRegistrationFile.decode(
@@ -96,8 +97,24 @@ struct NotificationRegistrationCeremony: Sendable {
         }
         try await transport.replaceNotificationRegistration(
             try file.settingLiveActivity(
-                token: tokenHex, startedAt: startedAt, forDeviceToken: deviceToken.hex
+                token: tokenHex, startedAt: startedAt, forDeviceToken: deviceToken.hex,
+                pinnedPaneIDs: pinnedPaneIDs
             ).encoded())
+    }
+
+    /// Updates `pinned_pane_ids` on this device's existing `live_activity`
+    /// object. No-op when the device is unregistered or the field is absent.
+    func setLiveActivityPinnedPaneIDs(
+        _ pinnedPaneIDs: [String],
+        deviceToken: APNSDeviceToken,
+        over transport: any Transport
+    ) async throws {
+        guard let data = try await transport.readNotificationRegistration() else { return }
+        let file = try NotificationRegistrationFile.decode(data)
+        let updated = file.settingLiveActivityPinnedPaneIDs(
+            pinnedPaneIDs, forDeviceToken: deviceToken.hex)
+        guard updated != file else { return }
+        try await transport.replaceNotificationRegistration(try updated.encoded())
     }
 
     /// Drops `live_activity` from this device's entry, leaving the rest of

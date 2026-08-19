@@ -13,7 +13,7 @@ enum AgentActivityPresentation: Equatable, Sendable {
         }
     }
 
-    /// Headline: the most urgent agent's task title (its kind when the
+    /// Headline: the first envelope row's task title (its kind when the
     /// title is missing), or the generic app name when details are
     /// unavailable. Host identity is never rendered.
     var headerTitle: String {
@@ -35,8 +35,8 @@ enum AgentActivityPresentation: Equatable, Sendable {
         }
     }
 
-    /// The agent whose task title is the headline: rows arrive pre-sorted
-    /// blocked > done > working, so this is the most urgent one.
+    /// The agent whose task title is the headline: rows arrive in envelope
+    /// order (pinned eligible first, then status rank).
     var primaryAgent: AgentActivityDetails.AgentDetail? {
         agents.first
     }

@@ -20,6 +20,7 @@ final class HostLiveActivityCoordinator {
     @ObservationIgnored private let hostDisplayName: @MainActor (Host.ID) -> String
     @ObservationIgnored private let isAwaitingSnapshot: @MainActor (Host.ID) -> Bool
     @ObservationIgnored private let connectionStatus: @MainActor (Host.ID) -> EventsSessionStatus?
+    @ObservationIgnored private let pinnedPaneIDs: @MainActor (Host.ID) -> [String]
     @ObservationIgnored private let settleDuration: Duration
     @ObservationIgnored private let now: @MainActor () -> Date
 
@@ -48,6 +49,7 @@ final class HostLiveActivityCoordinator {
         hostDisplayName: @escaping @MainActor (Host.ID) -> String,
         isAwaitingSnapshot: @escaping @MainActor (Host.ID) -> Bool,
         connectionStatus: @escaping @MainActor (Host.ID) -> EventsSessionStatus?,
+        pinnedPaneIDs: @escaping @MainActor (Host.ID) -> [String] = { _ in [] },
         settleDuration: Duration = .seconds(3),
         now: @escaping @MainActor () -> Date = { Date() }
     ) {
@@ -61,6 +63,7 @@ final class HostLiveActivityCoordinator {
         self.hostDisplayName = hostDisplayName
         self.isAwaitingSnapshot = isAwaitingSnapshot
         self.connectionStatus = connectionStatus
+        self.pinnedPaneIDs = pinnedPaneIDs
         self.settleDuration = settleDuration
         self.now = now
     }
@@ -167,6 +170,22 @@ final class HostLiveActivityCoordinator {
         releaseSnapshotHolds()
     }
 
+    /// Pin set change: rebuild LA content through the existing settle, and
+    /// push `pinned_pane_ids` to Hosts that are connected and already
+    /// showing an activity. Offline Hosts pick up the current set on the
+    /// next live_activity write — no queue.
+    func pinsDidChange() {
+        guard didStart else { return }
+        var hosts = Set(latestAgents.keys)
+        hosts.formUnion(sessions.keys)
+        for hostID in hosts {
+            scheduleSettle(for: hostID)
+            if sessions[hostID] != nil, connectionStatus(hostID) == .connected {
+                enqueue(.setPins, for: hostID)
+            }
+        }
+    }
+
     // MARK: Desire / settle
 
     private func scheduleSettle(for hostID: Host.ID) {
@@ -259,7 +278,9 @@ final class HostLiveActivityCoordinator {
         guard notificationKey(for: hostID) != nil else { return nil }
         let agents = latestAgents[hostID] ?? []
         return AgentActivityContentBuilder.desire(
-            from: agents, hostName: resolvedHostName(hostID, agents: agents))
+            from: agents,
+            hostName: resolvedHostName(hostID, agents: agents),
+            pinnedPaneIDs: pinnedPaneIDs(hostID))
     }
 
     private func isUnchanged(hostID: Host.ID, desired: AgentActivityDesire?) -> Bool {
@@ -385,6 +406,7 @@ final class HostLiveActivityCoordinator {
 
     private enum TokenJob: Equatable {
         case set(hex: String, startedAt: Date)
+        case setPins
         case clear
     }
 
@@ -396,7 +418,14 @@ final class HostLiveActivityCoordinator {
 
     private func enqueue(_ job: TokenJob, for hostID: Host.ID) {
         var pipe = pipes[hostID] ?? TokenPipe()
-        pipe.pending = job
+        switch (pipe.pending, job) {
+        case (.some(.set), .setPins), (.some(.clear), .setPins):
+            // A pending token write already includes current pins at
+            // perform time; a pending clear drops live_activity entirely.
+            break
+        default:
+            pipe.pending = job
+        }
         pipes[hostID] = pipe
         pump(hostID)
     }
@@ -429,13 +458,18 @@ final class HostLiveActivityCoordinator {
 
     private func perform(_ job: TokenJob, hostID: Host.ID) async -> Bool {
         guard let token = deviceToken() else { return false }
+        let pins = pinnedPaneIDs(hostID)
         do {
             try await transports.withNotificationTransport(for: hostID) { [ceremony] transport in
                 switch job {
                 case .set(let hex, let startedAt):
                     try await ceremony.setLiveActivityToken(
                         tokenHex: hex, startedAt: startedAt, deviceToken: token,
+                        pinnedPaneIDs: pins,
                         over: transport)
+                case .setPins:
+                    try await ceremony.setLiveActivityPinnedPaneIDs(
+                        pins, deviceToken: token, over: transport)
                 case .clear:
                     try await ceremony.clearLiveActivityToken(
                         deviceToken: token, over: transport)
