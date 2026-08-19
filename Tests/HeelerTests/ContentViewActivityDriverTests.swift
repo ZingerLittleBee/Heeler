@@ -68,11 +68,13 @@ struct ContentViewActivityDriverTests {
         try await waitUntil("the driver should suspend the Host's connection") {
             console.hostStatuses[host.id] == .suspended
         }
-        // The driver also answers the coordinator: the teardown finished, so
-        // the background assertion goes back. Without the driver nothing
-        // releases it.
-        #expect(granter.endedTokens == granter.beginTokens)
-        #expect(granter.endedTokens.count == 1)
+        // `console.suspend()` publishes `.suspended` *before* the driver
+        // calls `didFinishSuspending()` and ends the assertion. Sampling
+        // the granter on the same turn as the status flip is a flake —
+        // wait for the second half the same way as the first.
+        try await waitUntil("the driver should release the background assertion") {
+            granter.endedTokens == granter.beginTokens && granter.endedTokens.count == 1
+        }
         console.setHosts([])
     }
 
