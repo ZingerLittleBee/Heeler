@@ -6,6 +6,7 @@ import {
   buildActivityState,
   eligibleStatusMap,
   hasNewlyBlocked,
+  parsePinnedPaneIds,
   sameStatusMap,
 } from "../src/activity-state.js";
 
@@ -233,6 +234,19 @@ suite("buildActivityState pin ordering", () => {
       plaintextObject.agents.map((entry) => entry.pane),
       ["w1:p6", "w1:p5", "w1:p4", "w1:p3", "w1:p2"],
     );
+  });
+});
+
+suite("parsePinnedPaneIds", () => {
+  test("returns a string array as-is", () => {
+    assert.deepEqual(parsePinnedPaneIds(["w3:p4", "w1:p2"]), ["w3:p4", "w1:p2"]);
+    assert.deepEqual(parsePinnedPaneIds([]), []);
+  });
+
+  test("treats missing, null, non-array, or mixed entries as empty", () => {
+    for (const value of [undefined, null, "w1:p1", 1, { 0: "w3:p4" }, [1, "w3:p4"], ["w3:p4", null]]) {
+      assert.deepEqual(parsePinnedPaneIds(value), [], value);
+    }
   });
 });
 
