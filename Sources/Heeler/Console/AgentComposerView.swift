@@ -286,13 +286,14 @@ struct AgentComposerView: View {
     private var focusPreservingSwitcher: TerminalAgentSwitcher {
         TerminalAgentSwitcher(
             items: switcher.items,
-            selectedID: switcher.selectedID
-        ) { id in
-            if isInputFocused {
-                keyboardHandoff.arm(for: id)
-            }
-            switcher.onSelect(id)
-        }
+            selectedID: switcher.selectedID,
+            onSelect: { id in
+                if isInputFocused {
+                    keyboardHandoff.arm(for: id)
+                }
+                switcher.onSelect(id)
+            },
+            onTogglePin: switcher.onTogglePin)
     }
 
     private var latestFailure: (id: AgentComposerStore.Message.ID, detail: String)? {

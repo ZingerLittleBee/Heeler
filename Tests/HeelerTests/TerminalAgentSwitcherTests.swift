@@ -30,10 +30,11 @@ struct TerminalAgentSwitcherTests {
     }
 
     private static func makeItem(
-        _ agent: ConsoleAgent, status: AgentStatus? = nil
+        _ agent: ConsoleAgent, status: AgentStatus? = nil, isPinned: Bool = false
     ) -> TerminalAgentSwitcherItem {
         TerminalAgentSwitcherItem(
-            id: agent.id, title: agent.switcherLabel, status: status ?? agent.agent.status)
+            id: agent.id, title: agent.switcherLabel,
+            status: status ?? agent.agent.status, isPinned: isPinned)
     }
 
     /// The project is what tells a console full of `claude` apart, so it
@@ -108,7 +109,8 @@ struct TerminalAgentSwitcherTests {
                 // The Agent the user switched to is at the far end of the
                 // strip, so opening it has to scroll — the case that hangs.
                 selectedID: agents[9].id,
-                onSelect: { _ in }),
+                onSelect: { _ in },
+                onTogglePin: { _ in }),
             isKeyboardUp: true,
             toggleKeyboard: {},
             switchKeyboard: {})
@@ -183,6 +185,147 @@ struct TerminalAgentSwitcherTests {
         // would tear down the terminal the user is typing into.
         bar.chips[0].sendActions(for: .touchUpInside)
         #expect(opened == [agents[1].id])
+    }
+
+    /// Switcher chips inherit pin state from the same store the Console list
+    /// uses, so a pin made on one surface shows up on the other.
+    @MainActor
+    @Test func itemsReflectThePinStore() throws {
+        let suiteName = "hm-switcher-pins-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let agent = Self.makeAgent(pane: "p1", workspace: "alpha", status: .blocked)
+        let pins = PinnedAgentsStore(defaults: defaults)
+
+        let unpinned = TerminalAgentSwitcherItem(agent: agent, pins: pins)
+        #expect(unpinned.id == agent.id)
+        #expect(unpinned.title == "alpha")
+        #expect(unpinned.status == .blocked)
+        #expect(!unpinned.isPinned)
+
+        pins.togglePin(hostID: agent.hostID, paneID: agent.agent.paneID)
+        let pinned = TerminalAgentSwitcherItem(agent: agent, pins: pins)
+        #expect(pinned.id == agent.id)
+        #expect(pinned.isPinned)
+    }
+
+    /// Long-press is Pin / Unpin, matching the Console row, so the user can
+    /// mark an Agent without leaving the terminal.
+    @MainActor
+    @Test func thePinMenuSaysPinWhenUnpinnedAndUnpinWhenPinned() throws {
+        let host = UUID()
+        let agents = [
+            Self.makeAgent(pane: "p1", workspace: "alpha", host: host),
+            Self.makeAgent(pane: "p2", workspace: "beta", host: host),
+        ]
+        let items = [
+            Self.makeItem(agents[0]),
+            Self.makeItem(agents[1], isPinned: true),
+        ]
+        let bar = TerminalAgentSwitcherBar()
+        bar.update(items: items, selectedID: agents[0].id)
+
+        for chip in bar.chips {
+            let interaction = try #require(
+                chip.interactions.compactMap { $0 as? UIContextMenuInteraction }.first)
+            #expect(interaction.delegate === bar)
+            #expect(
+                bar.contextMenuInteraction(interaction, configurationForMenuAtLocation: .zero)
+                    != nil)
+        }
+
+        let pinMenu = bar.pinMenu(for: items[0])
+        #expect(pinMenu.children.count == 1)
+        let pin = try #require(pinMenu.children.first as? UIAction)
+        #expect(pin.title == "Pin")
+
+        let unpinMenu = bar.pinMenu(for: items[1])
+        #expect(unpinMenu.children.count == 1)
+        let unpin = try #require(unpinMenu.children.first as? UIAction)
+        #expect(unpin.title == "Unpin")
+    }
+
+    @MainActor
+    @Test func choosingThePinMenuTogglesThatAgent() throws {
+        let host = UUID()
+        let agents = [
+            Self.makeAgent(pane: "p1", workspace: "alpha", host: host),
+            Self.makeAgent(pane: "p2", workspace: "beta", host: host),
+        ]
+        let items = [
+            Self.makeItem(agents[0]),
+            Self.makeItem(agents[1], isPinned: true),
+        ]
+        var toggled: [ConsoleAgent.ID] = []
+        let bar = TerminalAgentSwitcherBar()
+        bar.onTogglePin = { toggled.append($0) }
+        bar.update(items: items, selectedID: agents[0].id)
+
+        let pin = try #require(bar.pinMenu(for: items[0]).children.first as? UIAction)
+        pin.perform(withSender: nil, target: nil)
+        #expect(toggled == [agents[0].id])
+
+        let unpin = try #require(bar.pinMenu(for: items[1]).children.first as? UIAction)
+        unpin.perform(withSender: nil, target: nil)
+        #expect(toggled == [agents[0].id, agents[1].id])
+    }
+
+    /// The pin glyph is how an already-pinned chip reads before a long-press;
+    /// an unpinned chip stays a dot and a label.
+    @MainActor
+    @Test func pinnedChipsShowAPinIndicator() throws {
+        let host = UUID()
+        let agents = [
+            Self.makeAgent(pane: "p1", workspace: "alpha", status: .blocked, host: host),
+            Self.makeAgent(pane: "p2", workspace: "beta", status: .idle, host: host),
+        ]
+        let bar = TerminalAgentSwitcherBar()
+        bar.update(
+            items: [
+                Self.makeItem(agents[0]),
+                Self.makeItem(agents[1], isPinned: true),
+            ],
+            selectedID: agents[0].id)
+
+        #expect(!bar.chips[0].showsPinIndicator)
+        #expect(bar.chips[0].accessibilityValue == "Blocked")
+        #expect(bar.chips[1].showsPinIndicator)
+        #expect(bar.chips[1].accessibilityValue == "Pinned, Idle")
+
+        bar.update(
+            items: [
+                Self.makeItem(agents[0], isPinned: true),
+                Self.makeItem(agents[1]),
+            ],
+            selectedID: agents[0].id)
+        #expect(bar.chips[0].showsPinIndicator)
+        #expect(bar.chips[1].showsPinIndicator == false)
+    }
+
+    /// The context menu must not steal the tap that switches Agents.
+    @MainActor
+    @Test func tappingAChipStillSwitchesWhenTheChipHasAPinMenu() {
+        let host = UUID()
+        let agents = [
+            Self.makeAgent(pane: "p1", workspace: "alpha", host: host),
+            Self.makeAgent(pane: "p2", workspace: "beta", host: host),
+        ]
+        var opened: [ConsoleAgent.ID] = []
+        var toggled: [ConsoleAgent.ID] = []
+        let bar = TerminalAgentSwitcherBar()
+        bar.onSelect = { opened.append($0) }
+        bar.onTogglePin = { toggled.append($0) }
+        bar.update(
+            items: [
+                Self.makeItem(agents[0]),
+                Self.makeItem(agents[1], isPinned: true),
+            ],
+            selectedID: agents[0].id)
+
+        bar.chips[1].sendActions(for: .touchUpInside)
+        #expect(opened == [agents[1].id])
+        #expect(toggled.isEmpty)
     }
 
     /// Status deltas land constantly (`pane.agent_status_changed`). Rebuilding

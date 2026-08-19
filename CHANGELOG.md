@@ -19,8 +19,9 @@ Entries reference the issue that motivated them.
 ### Added
 
 - Pin agents from the Console list with a long-press toggle. Pinned agents
-  stay at the top, most recently pinned first. Lock-screen Live Activities
-  show each Host's active agents: status counts plus the top agents (pinned
+  stay at the top, most recently pinned first. Long-press a chip in the Agent
+  switcher on the detail screen to pin or unpin it there too. Lock-screen Live
+  Activities show each Host's active agents: status counts plus the top agents (pinned
   eligible first, then blocked, done, working), updating in near real time
   while the app is open and via push after it suspends, ending when every
   agent goes idle. Agent names, titles, and host names stay end-to-end
