@@ -295,11 +295,11 @@ struct TerminalAgentSwitcherTests {
         bar.update(items: items, selectedID: agents[0].id)
 
         let pin = try #require(bar.pinMenu(for: items[0]).children.first as? UIAction)
-        pin.perform(withSender: nil, target: nil)
+        pin.perform(nil, with: nil)
         #expect(toggled == [agents[0].id])
 
         let unpin = try #require(bar.pinMenu(for: items[1]).children.first as? UIAction)
-        unpin.perform(withSender: nil, target: nil)
+        unpin.perform(nil, with: nil)
         #expect(toggled == [agents[0].id, agents[1].id])
     }
 
