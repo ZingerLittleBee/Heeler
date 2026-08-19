@@ -2,7 +2,9 @@
 //
 // Pure: given a herdr `agent list` inventory and a host label, produce the
 // plaintext counts (full eligible set) and the capped, sorted agents array
-// that goes inside the encrypted envelope.
+// that goes inside the encrypted envelope. An optional `pinnedPaneIds` list
+// (most-recently-pinned first) reorders eligible agents; it never changes
+// eligibility or counts.
 
 import os from "node:os";
 
@@ -59,10 +61,27 @@ export function hasNewlyBlocked(current, previous) {
 }
 
 /**
- * @param {{agents: object[], hostName: string}} input
+ * Lenient reader for `live_activity.pinned_pane_ids`. Missing, null, a
+ * non-array, or any non-string entry becomes an empty list.
+ *
+ * @param {unknown} value
+ * @returns {string[]}
+ */
+export function parsePinnedPaneIds(value) {
+  if (!Array.isArray(value)) return [];
+  const ids = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") return [];
+    ids.push(entry);
+  }
+  return ids;
+}
+
+/**
+ * @param {{agents: object[], hostName: string, pinnedPaneIds?: unknown}} input
  * @returns {{counts: {working: number, blocked: number, done: number}, plaintextObject: object}}
  */
-export function buildActivityState({ agents, hostName }) {
+export function buildActivityState({ agents, hostName, pinnedPaneIds }) {
   const counts = { working: 0, blocked: 0, done: 0 };
   const eligible = [];
   for (const agent of Array.isArray(agents) ? agents : []) {
@@ -71,7 +90,17 @@ export function buildActivityState({ agents, hostName }) {
     counts[parsed.status] += 1;
     eligible.push(parsed);
   }
+  const pinIndex = new Map();
+  for (const [index, pane] of parsePinnedPaneIds(pinnedPaneIds).entries()) {
+    if (!pinIndex.has(pane)) pinIndex.set(pane, index);
+  }
   eligible.sort((left, right) => {
+    const leftPinned = pinIndex.has(left.pane);
+    const rightPinned = pinIndex.has(right.pane);
+    if (leftPinned && rightPinned) {
+      return pinIndex.get(left.pane) - pinIndex.get(right.pane);
+    }
+    if (leftPinned !== rightPinned) return leftPinned ? -1 : 1;
     const rank = STATUS_RANK[left.status] - STATUS_RANK[right.status];
     if (rank !== 0) return rank;
     if (left.pane < right.pane) return -1;
