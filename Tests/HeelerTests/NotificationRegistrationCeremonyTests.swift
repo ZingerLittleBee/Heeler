@@ -282,4 +282,47 @@ struct NotificationRegistrationCeremonyTests {
         #expect(file.containsDevice(token: token.hex))
         #expect(file.preferences(token: token.hex) != nil)
     }
+
+    @Test func setLiveActivityTokenWritesPinnedPaneIDs() async throws {
+        let transport = ScriptedTransport()
+        try await ceremony.register(
+            hostID: hostID, hostName: "mac-studio", deviceToken: token, over: transport)
+        let started = Date(timeIntervalSince1970: 1_700_000_000)
+
+        try await ceremony.setLiveActivityToken(
+            tokenHex: "deadbeef", startedAt: started, deviceToken: token,
+            pinnedPaneIDs: ["w1:p2", "w1:p1"], over: transport)
+
+        let file = try NotificationRegistrationFile.decode(
+            await transport.notificationRegistration)
+        #expect(file.liveActivity(forDeviceToken: token.hex)?.pinnedPaneIDs == ["w1:p2", "w1:p1"])
+    }
+
+    @Test func setLiveActivityPinnedPaneIDsUpdatesAnExistingField() async throws {
+        let transport = ScriptedTransport()
+        try await ceremony.register(
+            hostID: hostID, hostName: "mac-studio", deviceToken: token, over: transport)
+        try await ceremony.setLiveActivityToken(
+            tokenHex: "deadbeef",
+            startedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            deviceToken: token, over: transport)
+
+        try await ceremony.setLiveActivityPinnedPaneIDs(
+            ["w1:p9"], deviceToken: token, over: transport)
+
+        let file = try NotificationRegistrationFile.decode(
+            await transport.notificationRegistration)
+        let live = try #require(file.liveActivity(forDeviceToken: token.hex))
+        #expect(live.token == "deadbeef")
+        #expect(live.pinnedPaneIDs == ["w1:p9"])
+    }
+
+    @Test func setLiveActivityPinnedPaneIDsIsANoOpWhenUnregistered() async throws {
+        let transport = ScriptedTransport()
+
+        try await ceremony.setLiveActivityPinnedPaneIDs(
+            ["w1:p1"], deviceToken: token, over: transport)
+
+        #expect(await transport.replacedNotificationRegistrations.isEmpty)
+    }
 }

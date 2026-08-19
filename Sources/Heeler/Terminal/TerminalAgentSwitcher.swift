@@ -1,20 +1,35 @@
 import SwiftUI
 import UIKit
 
-/// One chip in the keyboard's Agent switcher: the label it shows and the
-/// status its dot carries.
+/// One chip in the keyboard's Agent switcher: the label it shows, the
+/// status its dot carries, and whether it is pinned.
 struct TerminalAgentSwitcherItem: Equatable, Sendable {
     let id: ConsoleAgent.ID
     let title: String
     let status: AgentStatus
+    let isPinned: Bool
+}
+
+extension TerminalAgentSwitcherItem {
+    /// Maps a Console row through the same pin store the list uses, so a pin
+    /// made on either surface shows up on the other.
+    @MainActor
+    init(agent: ConsoleAgent, pins: PinnedAgentsStore) {
+        self.init(
+            id: agent.id,
+            title: agent.switcherLabel,
+            status: agent.agent.status,
+            isPinned: pins.isPinned(hostID: agent.hostID, paneID: agent.agent.paneID))
+    }
 }
 
 /// What an Agent surface hands its switcher: the Agents to offer, the one
-/// currently on screen, and where a tap goes.
+/// currently on screen, where a tap goes, and where a Pin / Unpin goes.
 struct TerminalAgentSwitcher {
     var items: [TerminalAgentSwitcherItem]
     var selectedID: ConsoleAgent.ID?
     var onSelect: @MainActor (ConsoleAgent.ID) -> Void
+    var onTogglePin: @MainActor (ConsoleAgent.ID) -> Void
 }
 
 /// Carries the user's "I am still typing" intent across the Agent surface
@@ -47,14 +62,27 @@ final class TerminalKeyboardHandoff {
 /// on the keyboard meant UIKit tore the strip down and rebuilt it — losing its
 /// scroll position — every time the keyboard moved.
 @MainActor
-final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate {
+final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
+    UIContextMenuInteractionDelegate
+{
     /// Short on purpose: every point it takes is one the terminal loses.
     static let preferredHeight: CGFloat = 40
+    /// Critically damped slide for a pin reorder: long enough to read, short
+    /// enough that a second pin does not pile up behind it.
+    private static let reorderDuration: TimeInterval = 0.35
 
     var onSelect: (@MainActor (ConsoleAgent.ID) -> Void)?
+    var onTogglePin: (@MainActor (ConsoleAgent.ID) -> Void)?
 
     /// The strip as it currently reads, in order.
     private(set) var chips: [TerminalAgentChip] = []
+
+    /// The stack's arranged chips, in layout order. `chips` is the model;
+    /// this is what the stack is actually laying out, so a leftover hole
+    /// after a reorder shows up here.
+    var arrangedChips: [TerminalAgentChip] {
+        row.arrangedSubviews.compactMap { $0 as? TerminalAgentChip }
+    }
 
     /// Gutter between the strip's ends and the first and last chip.
     private static let rowInset: CGFloat = 8
@@ -78,6 +106,9 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate {
     func update(items: [TerminalAgentSwitcherItem], selectedID: ConsoleAgent.ID?) {
         guard items != self.items || selectedID != self.selectedID else { return }
         let selectionChanged = selectedID != self.selectedID
+        let previousIDs = chips.map(\.id)
+        let previousPinByID = Dictionary(
+            self.items.map { ($0.id, $0.isPinned) }, uniquingKeysWith: { first, _ in first })
         self.items = items
         self.selectedID = selectedID
 
@@ -87,22 +118,83 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate {
         var ordered: [TerminalAgentChip] = []
         for item in items {
             let chip = reusable.removeValue(forKey: item.id) ?? makeChip(id: item.id)
-            chip.apply(item, selected: item.id == selectedID)
             ordered.append(chip)
         }
-        for stale in reusable.values {
-            row.removeArrangedSubview(stale)
-            stale.removeFromSuperview()
-        }
-        for (index, chip) in ordered.enumerated()
-        where row.arrangedSubviews.firstIndex(of: chip) != index {
-            row.insertArrangedSubview(chip, at: index)
-        }
+        let stale = Array(reusable.values)
         chips = ordered
+
+        let layoutChanged =
+            ordered.map(\.id) != previousIDs
+            || items.contains { previousPinByID[$0.id] != $0.isPinned }
+        // Same membership only: an added chip still has a zero frame, and
+        // inserting it inside the animation is the documented grow-in.
+        let shouldAnimate =
+            layoutChanged
+            && Set(ordered.map(\.id)) == Set(previousIDs)
+            && window != nil
+            && bounds.width > 0
+            && !previousIDs.isEmpty
+            && !UIAccessibility.isReduceMotionEnabled
+
+        let applyLayout = {
+            for (item, chip) in zip(items, ordered) {
+                chip.apply(item, selected: item.id == selectedID)
+            }
+            self.syncArrangedSubviews(ordered, removing: stale)
+        }
+
+        if shouldAnimate {
+            // Flush pending layout so the slide interpolates from the frames
+            // already on screen. Context-menu dismissal has a transaction
+            // open; without the flush, layout still pending from an earlier
+            // update gets swept into this animation and the slide starts from
+            // frames the user never saw.
+            UIView.performWithoutAnimation {
+                self.layoutIfNeeded()
+            }
+            UIView.animate(
+                withDuration: Self.reorderDuration,
+                delay: 0,
+                usingSpringWithDamping: 1,
+                initialSpringVelocity: 0,
+                options: [
+                    .allowUserInteraction,
+                    .beginFromCurrentState,
+                    .overrideInheritedCurve,
+                    .overrideInheritedDuration,
+                ]
+            ) {
+                applyLayout()
+                self.layoutIfNeeded()
+            }
+        } else {
+            applyLayout()
+        }
 
         if selectionChanged {
             scrollsToSelectionOnLayout = true
             setNeedsLayout()
+        }
+    }
+
+    /// `insertArrangedSubview` of an already-arranged view moves it
+    /// (UIKit's contract). Remove then reinsert is the same move, written
+    /// so the destination index is obvious. The slide still has to wrap
+    /// this in `UIView.animate`: an un-animated layout pass is what used
+    /// to land the new frames after the context menu ended.
+    private func syncArrangedSubviews(
+        _ ordered: [TerminalAgentChip], removing stale: [TerminalAgentChip]
+    ) {
+        for chip in stale {
+            row.removeArrangedSubview(chip)
+            chip.removeFromSuperview()
+        }
+        for (index, chip) in ordered.enumerated() {
+            if let current = row.arrangedSubviews.firstIndex(of: chip) {
+                if current == index { continue }
+                row.removeArrangedSubview(chip)
+            }
+            row.insertArrangedSubview(chip, at: index)
         }
     }
 
@@ -177,7 +269,46 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate {
     private func makeChip(id: ConsoleAgent.ID) -> TerminalAgentChip {
         let chip = TerminalAgentChip(id: id)
         chip.addTarget(self, action: #selector(chipTapped), for: .touchUpInside)
+        // Context menu, not a long-press recognizer: the system menu does not
+        // delay the tap that switches Agents.
+        chip.addInteraction(UIContextMenuInteraction(delegate: self))
         return chip
+    }
+
+    /// The chip long-press: one item, Pin or Unpin, matching the Console row.
+    func pinMenu(for item: TerminalAgentSwitcherItem) -> UIMenu {
+        let title = item.isPinned ? "Unpin" : "Pin"
+        let image = UIImage(systemName: item.isPinned ? "pin.slash" : "pin")
+        return UIMenu(children: [
+            UIAction(title: title, image: image) { [weak self] _ in
+                self?.performPinToggle(for: item)
+            }
+        ])
+    }
+
+    /// The Pin / Unpin action: same path the menu item takes.
+    func performPinToggle(for item: TerminalAgentSwitcherItem) {
+        onTogglePin?(item.id)
+    }
+
+    /// The item the interaction's chip currently represents. Nil when the
+    /// view is not a chip or that Agent has left the strip.
+    func pinItem(for interaction: UIContextMenuInteraction) -> TerminalAgentSwitcherItem? {
+        guard let chip = interaction.view as? TerminalAgentChip,
+              let item = items.first(where: { $0.id == chip.id })
+        else { return nil }
+        return item
+    }
+
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        configurationForMenuAtLocation _: CGPoint
+    ) -> UIContextMenuConfiguration? {
+        guard let item = pinItem(for: interaction) else { return nil }
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) {
+            [weak self] _ in
+            self?.pinMenu(for: item)
+        }
     }
 
     @objc private func chipTapped(_ chip: TerminalAgentChip) {
@@ -233,7 +364,7 @@ private final class StripScrollView: UIScrollView {
 }
 
 /// One Agent chip: a status dot and a label in a capsule, filled when it is
-/// the Agent on screen.
+/// the Agent on screen. A pin glyph marks a pinned Agent.
 final class TerminalAgentChip: UIControl {
     static let spacing: CGFloat = 6
     private static let height: CGFloat = 28
@@ -246,9 +377,13 @@ final class TerminalAgentChip: UIControl {
     /// Whether the Working dot is animating. Reads the layer, so it also
     /// answers "did leaving the window strip the animation?".
     var isPulsing: Bool { dot.layer.animation(forKey: Self.pulseKey) != nil }
+    /// The small pin glyph on a pinned chip. Hidden when the Agent is not
+    /// pinned, so an unpinned chip stays a dot and a label.
+    var showsPinIndicator: Bool { !pinView.isHidden }
 
     private let dot = UIView()
     private let label = UILabel()
+    private let pinView = UIImageView()
     private var isWorking = false
 
     override var isHighlighted: Bool {
@@ -278,13 +413,22 @@ final class TerminalAgentChip: UIControl {
         isSelected = selected
         label.text = item.title
         label.textColor = selected ? .label : .secondaryLabel
+        // UIStackView balances arranged-subview hidden flips made inside
+        // animation blocks with an internal counter; assigning the value the
+        // view already has unbalances it, after which the opposite
+        // assignment stops taking effect and the glyph sticks. Write only
+        // real changes.
+        if pinView.isHidden != !item.isPinned {
+            pinView.isHidden = !item.isPinned
+        }
         dot.backgroundColor = item.status.inkUIColor
         backgroundColor = selected ? .tertiarySystemBackground : .clear
         isWorking = item.status == .working
         updatePulse()
 
         accessibilityLabel = item.title
-        accessibilityValue = item.status.rawValue.capitalized
+        let statusValue = item.status.rawValue.capitalized
+        accessibilityValue = item.isPinned ? "Pinned, \(statusValue)" : statusValue
         accessibilityTraits = selected ? [.button, .selected] : .button
         accessibilityHint = selected ? nil : "Switches to that Agent"
     }
@@ -303,7 +447,16 @@ final class TerminalAgentChip: UIControl {
         label.lineBreakMode = .byTruncatingTail
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        let content = UIStackView(arrangedSubviews: [dot, label])
+        pinView.translatesAutoresizingMaskIntoConstraints = false
+        pinView.image = UIImage(systemName: "pin.fill")
+        pinView.preferredSymbolConfiguration = UIImage.SymbolConfiguration(
+            font: .preferredFont(forTextStyle: .caption2))
+        pinView.tintColor = .secondaryLabel
+        pinView.isHidden = true
+        pinView.setContentHuggingPriority(.required, for: .horizontal)
+        pinView.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        let content = UIStackView(arrangedSubviews: [dot, label, pinView])
         content.translatesAutoresizingMaskIntoConstraints = false
         content.axis = .horizontal
         content.alignment = .center
@@ -426,6 +579,7 @@ struct TerminalAgentSwitcherRow: View {
 
         func updateUIView(_ bar: TerminalAgentSwitcherBar, context _: Context) {
             bar.onSelect = switcher.onSelect
+            bar.onTogglePin = switcher.onTogglePin
             bar.update(items: switcher.items, selectedID: switcher.selectedID)
         }
     }

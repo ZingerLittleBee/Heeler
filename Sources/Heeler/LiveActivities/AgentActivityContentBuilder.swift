@@ -20,7 +20,13 @@ enum AgentActivityContentBuilder {
     static let maxCiphertextBytes = 2800
 
     /// Nil when no Agent is working, blocked, or done — the end signal.
-    static func desire(from agents: [ConsoleAgent], hostName: String) -> AgentActivityDesire? {
+    /// `pinnedPaneIDs` is most-recently-pinned first; pins reorder the
+    /// eligible list and never change eligibility or counts.
+    static func desire(
+        from agents: [ConsoleAgent],
+        hostName: String,
+        pinnedPaneIDs: [String] = []
+    ) -> AgentActivityDesire? {
         let eligible = agents.filter { isEligible($0.agent.status) }
         guard !eligible.isEmpty else { return nil }
         var working = 0
@@ -34,7 +40,8 @@ enum AgentActivityContentBuilder {
             default: break
             }
         }
-        let details = Array(sorted(eligible).prefix(maxAgents)).map(detail(from:))
+        let details = Array(sorted(eligible, pinnedPaneIDs: pinnedPaneIDs).prefix(maxAgents))
+            .map(detail(from:))
         return AgentActivityDesire(
             counts: .init(working: working, blocked: blocked, done: done),
             hostName: prefixGraphemes(hostName, max: maxHostGraphemes),
@@ -82,9 +89,12 @@ enum AgentActivityContentBuilder {
         agents: [ConsoleAgent],
         hostName: String,
         key: Data,
-        nonce: Data? = nil
+        nonce: Data? = nil,
+        pinnedPaneIDs: [String] = []
     ) -> AgentActivityAttributes.ContentState? {
-        guard let desire = desire(from: agents, hostName: hostName) else { return nil }
+        guard let desire = desire(
+            from: agents, hostName: hostName, pinnedPaneIDs: pinnedPaneIDs)
+        else { return nil }
         return content(for: desire, key: key, nonce: nonce)
     }
 
@@ -92,8 +102,25 @@ enum AgentActivityContentBuilder {
         status == .working || status == .blocked || status == .done
     }
 
-    private static func sorted(_ agents: [ConsoleAgent]) -> [ConsoleAgent] {
+    /// Pinned eligible agents first, by pin-list index (most recent = 0);
+    /// the rest keep status rank then pane-id byte order. Unknown or
+    /// ineligible pin ids are simply not in `agents`.
+    private static func sorted(
+        _ agents: [ConsoleAgent], pinnedPaneIDs: [String]
+    ) -> [ConsoleAgent] {
         agents.sorted { lhs, rhs in
+            let leftPin = pinnedPaneIDs.firstIndex(of: lhs.agent.paneID)
+            let rightPin = pinnedPaneIDs.firstIndex(of: rhs.agent.paneID)
+            switch (leftPin, rightPin) {
+            case let (left?, right?):
+                if left != right { return left < right }
+            case (_?, nil):
+                return true
+            case (nil, _?):
+                return false
+            case (nil, nil):
+                break
+            }
             let left = lhs.agent.status.consoleSortBucket
             let right = rhs.agent.status.consoleSortBucket
             if left != right { return left < right }

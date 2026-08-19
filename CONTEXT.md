@@ -78,6 +78,13 @@ _Avoid_: sandbox, branch copy, checkout folder
 The native dashboard surface: the flat, status-sorted list of Agents across Hosts, plus the Agent detail screen.
 _Avoid_: dashboard, home
 
+**Pin**:
+A user-chosen Console marker on an Agent's pane slot (`hostID` + `paneID`).
+Pinned agents float to the top of the Console list and the Live Activity
+by recency. Pins persist locally and are never pruned, so a pane id that
+returns after a herdr restart stays pinned.
+_Avoid_: favorite, star, bookmark
+
 **Composer**:
 The local input control below the Agent's live terminal: a native draft field
 that composes a message entirely on device and delivers it in one piece. Its

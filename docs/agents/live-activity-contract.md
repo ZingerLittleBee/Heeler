@@ -51,8 +51,14 @@ Decrypted plaintext (canonical form):
   whitespace), object keys in **ascending alphabetical order** at every
   level (Swift: `.sortedKeys, .withoutEscapingSlashes`; Node: construct
   objects with alphabetically ordered keys, then `JSON.stringify`).
-- `agents` sorted `blocked` > `done` > `working`, ties by `pane` ascending
-  (byte order), capped at **5** entries. `counts` still covers everything.
+- `agents` ordered as: eligible agents whose pane id appears in this
+  device's `live_activity.pinned_pane_ids` first, by that array's index
+  (most recently pinned first); remaining eligible agents in the existing
+  order (`blocked` > `done` > `working`, ties by `pane` ascending byte
+  order). Cap at **5** after that sort. `counts` still covers everything.
+  Pins never change eligibility: idle/unknown stay hidden. A pinned
+  working agent may displace an unpinned blocked agent from the visible
+  rows. The widget renders rows in envelope order and does not re-sort.
 - `title` is `terminal_title_stripped ?? terminal_title`, trimmed to ≤80
   graphemes; omitted (not empty) when unavailable. `kind` falls back to
   `"unknown"`.
@@ -71,10 +77,11 @@ The widget renders no Host identity: an agent renders as two lines
 mirroring the herdr sidebar's hierarchy — the task `title` on top with
 the identity (`name`, falling back to `kind` when unnamed, exactly like
 the TUI) indented beneath; a missing title promotes the identity to the
-top line alone. The lock screen draws a uniform list, most urgent first:
-all four rows when the inventory fits, otherwise three rows plus
-"+N more" (the ~160pt banner budget). The `host` field stays in the wire
-for producers but is not displayed.
+top line alone. The lock screen draws a uniform list in envelope order
+(pinned eligible first, then status rank): all four rows when the
+inventory fits, otherwise three rows plus "+N more" (the ~160pt banner
+budget). The `host` field stays in the wire for producers but is not
+displayed.
 
 ## Relay request (plugin → relay)
 
@@ -127,7 +134,8 @@ event:
 
 ```json
 "live_activity": {"token": "<hex per-activity push token>",
-                  "started_at": "<ISO 8601>"}
+                  "started_at": "<ISO 8601>",
+                  "pinned_pane_ids": ["wV:p7X", "wV:p1"]}
 ```
 
 Missing field = send nothing (fail closed; `notify` flags do not gate this
@@ -136,11 +144,22 @@ device entry's alert `token`, `key`, `notify`, and unknown fields. A user
 dismissing the activity while the app is dead self-heals through that 410
 on the next push.
 
+`pinned_pane_ids` is this Host's pin recency list: pane-id strings,
+most-recently-pinned first. The app writes it whenever it writes
+`live_activity` and pushes an update when the pin set changes while the
+Host is connected and an activity is running. Missing, null, a
+non-array, or any non-string entry is treated as an empty list (older
+apps never write the field). Empty
+string entries are still strings and are kept. The field is additive v1
+metadata; unknown sibling keys on `live_activity` must survive a rewrite.
+
 ## Shared vectors
 
 `plugin/test-vectors/live-activity-content-v1.json`, same schema style as
 `notification-payload-v1.json`: non-`decodeOnly` `valid` vectors must be
 reproduced byte-for-byte by the seal side and opened by the open side;
 `invalid` vectors must fail with the given typed error. Includes the
-cross-AAD case proving domain separation. Consumed by both the Node suite
-and HeelerTests; regenerate only via an independent raw-crypto script.
+cross-AAD case proving domain separation. Pin-order cases also carry
+`inventory`, `pinned_pane_ids`, and `counts` so both suites pin the
+shared sort rule. Consumed by both the Node suite and HeelerTests;
+regenerate only via an independent raw-crypto script.

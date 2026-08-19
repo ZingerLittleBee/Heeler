@@ -16,10 +16,18 @@ struct LiveActivityVectorFile: Decodable, Sendable {
         let envelope: String
         let payload: Payload
         let decodeOnly: Bool
+        /// Most-recently-pinned first. Present on pin-order vectors.
+        let pinnedPaneIDs: [String]
+        /// Full eligible inventory counts when the vector pins the sort rule.
+        let counts: Counts?
+        /// Herdr `agent list` shape used to drive the shared sort rule.
+        let inventory: [InventoryAgent]
         var description: String { name }
 
         enum CodingKeys: String, CodingKey {
             case name, key, keyId, envelope, payload, decodeOnly
+            case pinnedPaneIDs = "pinned_pane_ids"
+            case counts, inventory
         }
 
         init(from decoder: any Decoder) throws {
@@ -30,6 +38,34 @@ struct LiveActivityVectorFile: Decodable, Sendable {
             envelope = try container.decode(String.self, forKey: .envelope)
             payload = try container.decode(Payload.self, forKey: .payload)
             decodeOnly = try container.decodeIfPresent(Bool.self, forKey: .decodeOnly) ?? false
+            pinnedPaneIDs = try container.decodeIfPresent([String].self, forKey: .pinnedPaneIDs) ?? []
+            counts = try container.decodeIfPresent(Counts.self, forKey: .counts)
+            inventory = try container.decodeIfPresent([InventoryAgent].self, forKey: .inventory) ?? []
+        }
+    }
+
+    struct Counts: Decodable, Sendable {
+        let working: Int
+        let blocked: Int
+        let done: Int
+    }
+
+    struct InventoryAgent: Decodable, Sendable {
+        let paneID: String
+        let agentStatus: String
+        let agent: String?
+        let name: String?
+        let displayAgent: String?
+        let terminalTitle: String?
+        let terminalTitleStripped: String?
+
+        enum CodingKeys: String, CodingKey {
+            case paneID = "pane_id"
+            case agentStatus = "agent_status"
+            case agent, name
+            case displayAgent = "display_agent"
+            case terminalTitle = "terminal_title"
+            case terminalTitleStripped = "terminal_title_stripped"
         }
     }
 

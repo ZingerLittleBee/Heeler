@@ -94,10 +94,25 @@ extension AgentStatus {
 }
 
 extension [ConsoleAgent] {
-    /// The Console order: status bucket first, then stable Host/workspace/
-    /// pane keys so rows never jitter between equal statuses.
-    func consoleSorted() -> [ConsoleAgent] {
+    /// The Console order: pinned agents first by pin rank (0 = most recently
+    /// pinned), then the unpinned remainder by status bucket and stable
+    /// Host/workspace/pane keys so rows never jitter between equal statuses.
+    func consoleSorted(
+        pinRank: (ConsoleAgent) -> Int? = { _ in nil }
+    ) -> [ConsoleAgent] {
         sorted { lhs, rhs in
+            let lhsRank = pinRank(lhs)
+            let rhsRank = pinRank(rhs)
+            switch (lhsRank, rhsRank) {
+            case (let lhsRank?, let rhsRank?):
+                if lhsRank != rhsRank { return lhsRank < rhsRank }
+            case (_?, nil):
+                return true
+            case (nil, _?):
+                return false
+            case (nil, nil):
+                break
+            }
             let lhsBucket = lhs.agent.status.consoleSortBucket
             let rhsBucket = rhs.agent.status.consoleSortBucket
             if lhsBucket != rhsBucket { return lhsBucket < rhsBucket }

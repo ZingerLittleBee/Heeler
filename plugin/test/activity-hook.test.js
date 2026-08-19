@@ -303,6 +303,48 @@ suite("activity-hook: update and end", () => {
     assert.deepEqual(stubInvocations()[0].args, ["agent", "list"]);
   });
 
+  test("pinned_pane_ids from each device reorder that device's envelope only", async () => {
+    await startFakeRelay();
+    writeConfig();
+    writeRegistration([
+      device({
+        liveActivity: {
+          token: ACTIVITY_TOKEN_A,
+          started_at: "2026-01-01T00:00:00Z",
+          pinned_pane_ids: ["w1:p2"],
+        },
+      }),
+      device({
+        token: "b".repeat(64),
+        key: KEY_B,
+        activityToken: ACTIVITY_TOKEN_B,
+        env: "production",
+      }),
+    ]);
+    writeHerdrStub([
+      listedAgent({ pane: "w1:p1", status: "blocked", title: "need input" }),
+      listedAgent({ pane: "w1:p2", status: "working", title: "coding" }),
+    ]);
+
+    const result = await runHook(statusEvent("working", { paneId: "w1:p2" }));
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(relay.requests.length, 2);
+    const byToken = new Map(relay.requests.map((request) => [request.body.token, request.body]));
+    assert.deepEqual(byToken.get(ACTIVITY_TOKEN_A).counts, { working: 1, blocked: 1, done: 0 });
+    assert.deepEqual(byToken.get(ACTIVITY_TOKEN_B).counts, { working: 1, blocked: 1, done: 0 });
+    const pinned = decryptEnvelope(byToken.get(ACTIVITY_TOKEN_A).envelope, KEY_A);
+    const unpinned = decryptEnvelope(byToken.get(ACTIVITY_TOKEN_B).envelope, KEY_B);
+    assert.deepEqual(
+      pinned.payload.agents.map((entry) => entry.pane),
+      ["w1:p2", "w1:p1"],
+    );
+    assert.deepEqual(
+      unpinned.payload.agents.map((entry) => entry.pane),
+      ["w1:p1", "w1:p2"],
+    );
+  });
+
   test("empty inventory sends end with dismissal_date and empty agents", async () => {
     await startFakeRelay();
     writeConfig();

@@ -254,6 +254,8 @@
 		DA9ABDB7E506248091ACF17E /* EventsSessionKeepaliveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 823B2239BDC425FCE456B625 /* EventsSessionKeepaliveTests.swift */; };
 		DB28307A5B8386139CA7EDEE /* TerminalKeyboardInset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CF0F9F0EDF8757DC1D275D2 /* TerminalKeyboardInset.swift */; };
 		DB3815F790623647C0050290 /* PairingScanStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45DB60007029322902FD1AFF /* PairingScanStore.swift */; };
+		DC580B52C0F6509F92BB289C /* PinnedAgentsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 768235F2FBD7790800281BC3 /* PinnedAgentsStoreTests.swift */; };
+		DDD5A27BA1126296E5AF7EAA /* PinnedAgentsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2437B1D6B97638031514C0F /* PinnedAgentsStore.swift */; };
 		DE020395E7459D508F0CC401 /* NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDC98A5038CD109556BE903F /* NotificationSettingsView.swift */; };
 		DF1D75FBECE8FABC8E3A093D /* AppForegroundRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B248F9372687FDBE3AD24A1 /* AppForegroundRecoveryTests.swift */; };
 		DF88C6F619C253A98F0EC3F6 /* NotificationDisclosureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5416AE7B7A89E2987620E65E /* NotificationDisclosureView.swift */; };
@@ -450,6 +452,7 @@
 		7461B7A0FD2A4CDF34352D45 /* PairingCodeVectorFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingCodeVectorFile.swift; sourceTree = "<group>"; };
 		7625958E48639DCE4F5A8391 /* EventsSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsSession.swift; sourceTree = "<group>"; };
 		764EB7D298185F64BA26C8B2 /* HerdrEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrEvents.swift; sourceTree = "<group>"; };
+		768235F2FBD7790800281BC3 /* PinnedAgentsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinnedAgentsStoreTests.swift; sourceTree = "<group>"; };
 		7683DF30B1A0E9FA0064AAA2 /* HeelerSSHTransportBehaviorE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeelerSSHTransportBehaviorE2ETests.swift; sourceTree = "<group>"; };
 		7780BE78D868DB0A8275E6FB /* Heeler.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Heeler.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		78F85C588963C3CE948AA9E4 /* AgentNotificationBannerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationBannerStore.swift; sourceTree = "<group>"; };
@@ -516,6 +519,7 @@
 		AB48C946E14722E93FAAA410 /* TerminalAttach.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAttach.swift; sourceTree = "<group>"; };
 		AD69BB4579A415BE96578319 /* HeelerWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HeelerWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1AEA55D1F06B12005DEEE5F /* HeelerSSHSessionE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeelerSSHSessionE2ETests.swift; sourceTree = "<group>"; };
+		B2437B1D6B97638031514C0F /* PinnedAgentsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinnedAgentsStore.swift; sourceTree = "<group>"; };
 		B24EF5EA39899292A1907226 /* StartAgentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartAgentStore.swift; sourceTree = "<group>"; };
 		B2627DBEB9BFBDC600F211A1 /* NotificationPrivacyCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPrivacyCopy.swift; sourceTree = "<group>"; };
 		B2DAE3FAB8786392318939A6 /* NotificationVectorFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationVectorFile.swift; sourceTree = "<group>"; };
@@ -711,6 +715,7 @@
 				1F0763484EE05424146492C1 /* PairingCeremonyTests.swift */,
 				D419158B027AF5F38B73AD8B /* PairingCodeTests.swift */,
 				D026719294E631141C3A59F9 /* PairingScanStoreTests.swift */,
+				768235F2FBD7790800281BC3 /* PinnedAgentsStoreTests.swift */,
 				151586845D0A1EE54968B536 /* PreflightReportTests.swift */,
 				BEE35062339F9D6B0A9E684B /* PushRegistrationStoreTests.swift */,
 				3801638051F3E5F394CF3FBD /* ReconnectPolicyTests.swift */,
@@ -884,6 +889,7 @@
 				C74A32020C9520EB5629B071 /* ConsoleView.swift */,
 				2D6996CA1550E32EE6AC3669 /* GitBranchName.swift */,
 				88E1434C9C39A6419A3A0D79 /* HostConsoleProjection.swift */,
+				B2437B1D6B97638031514C0F /* PinnedAgentsStore.swift */,
 				C7BD377C8BB7AA8205DD8AFC /* RecentWorkspaceStore.swift */,
 				C82C6169E59B0000AA3FF5CC /* RenameSheetView.swift */,
 				381B00805D3CDEEE94DAE35B /* RenameStore.swift */,
@@ -1428,6 +1434,7 @@
 				DB3815F790623647C0050290 /* PairingScanStore.swift in Sources */,
 				430EDF8111CC397CA9BD2008 /* PairingScanView.swift in Sources */,
 				D08663BD250210835FE7ED49 /* PhotosPickerImageSelection.swift in Sources */,
+				DDD5A27BA1126296E5AF7EAA /* PinnedAgentsStore.swift in Sources */,
 				2292C89F605CE42073D49B11 /* Preflight.swift in Sources */,
 				F1896998EA513073CF4EE713 /* PushRegistrationStore.swift in Sources */,
 				C1F06F7588D4713392223CC5 /* RecentWorkspaceStore.swift in Sources */,
@@ -1578,6 +1585,7 @@
 				82600FB64A99ADAD1C60D451 /* PairingCodeTests.swift in Sources */,
 				B3C490CC3562CC5B4B2EB993 /* PairingCodeVectorFile.swift in Sources */,
 				F6A1A833DFFB748716D13EA9 /* PairingScanStoreTests.swift in Sources */,
+				DC580B52C0F6509F92BB289C /* PinnedAgentsStoreTests.swift in Sources */,
 				A194C27FBF0EF6641215D33A /* PreflightReportTests.swift in Sources */,
 				630CF9C336B79F04A9477C58 /* PushRegistrationStoreTests.swift in Sources */,
 				7DE1449E409F7F06C64E5089 /* RealSSHFixture.swift in Sources */,

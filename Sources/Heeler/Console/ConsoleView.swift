@@ -304,7 +304,21 @@ struct ConsoleView: View {
                 }
                 ForEach(filteredAgents) { agent in
                     NavigationLink(value: agent.id) {
-                        AgentCardView(agent: agent)
+                        AgentCardView(
+                            agent: agent,
+                            isPinned: console.pins.isPinned(
+                                hostID: agent.hostID, paneID: agent.agent.paneID))
+                    }
+                    .contextMenu {
+                        let pinned = console.pins.isPinned(
+                            hostID: agent.hostID, paneID: agent.agent.paneID)
+                        Button(
+                            pinned ? "Unpin" : "Pin",
+                            systemImage: pinned ? "pin.slash" : "pin"
+                        ) {
+                            console.togglePin(
+                                hostID: agent.hostID, paneID: agent.agent.paneID)
+                        }
                     }
                 }
             }

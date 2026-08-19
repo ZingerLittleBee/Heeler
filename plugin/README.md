@@ -293,6 +293,7 @@ revokes that device.
 | `live_activity`  | object  | Optional per-device Live Activity registration. Present while the app is showing this Host's activity. See [Activity hook](#activity-hook). |
 | `live_activity.token` | string | The per-activity APNs push token, lowercase hex. Distinct from the alert `token`. |
 | `live_activity.started_at` | string | ISO 8601 timestamp the app wrote when it started (or rotated) the activity. Ignored by the hook; preserved on rewrite. |
+| `live_activity.pinned_pane_ids` | string[] | Optional. Pane ids the device has pinned, most-recently-pinned first. Reorders Live Activity rows; does not change eligibility or counts. Missing, null, non-array, or any non-string entry is ignored (treated as empty). |
 
 Readers ignore unknown fields (additive v1 metadata); breaking changes bump
 `v`, honored by plugin and app together.

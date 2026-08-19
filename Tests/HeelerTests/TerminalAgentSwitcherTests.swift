@@ -30,10 +30,11 @@ struct TerminalAgentSwitcherTests {
     }
 
     private static func makeItem(
-        _ agent: ConsoleAgent, status: AgentStatus? = nil
+        _ agent: ConsoleAgent, status: AgentStatus? = nil, isPinned: Bool = false
     ) -> TerminalAgentSwitcherItem {
         TerminalAgentSwitcherItem(
-            id: agent.id, title: agent.switcherLabel, status: status ?? agent.agent.status)
+            id: agent.id, title: agent.switcherLabel,
+            status: status ?? agent.agent.status, isPinned: isPinned)
     }
 
     /// The project is what tells a console full of `claude` apart, so it
@@ -108,7 +109,8 @@ struct TerminalAgentSwitcherTests {
                 // The Agent the user switched to is at the far end of the
                 // strip, so opening it has to scroll — the case that hangs.
                 selectedID: agents[9].id,
-                onSelect: { _ in }),
+                onSelect: { _ in },
+                onTogglePin: { _ in }),
             isKeyboardUp: true,
             toggleKeyboard: {},
             switchKeyboard: {})
@@ -185,6 +187,177 @@ struct TerminalAgentSwitcherTests {
         #expect(opened == [agents[1].id])
     }
 
+    /// Switcher chips inherit pin state from the same store the Console list
+    /// uses, so a pin made on one surface shows up on the other.
+    @MainActor
+    @Test func itemsReflectThePinStore() throws {
+        let suiteName = "hm-switcher-pins-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let agent = Self.makeAgent(pane: "p1", workspace: "alpha", status: .blocked)
+        let pins = PinnedAgentsStore(defaults: defaults)
+
+        let unpinned = TerminalAgentSwitcherItem(agent: agent, pins: pins)
+        #expect(unpinned.id == agent.id)
+        #expect(unpinned.title == "alpha")
+        #expect(unpinned.status == .blocked)
+        #expect(!unpinned.isPinned)
+
+        pins.togglePin(hostID: agent.hostID, paneID: agent.agent.paneID)
+        let pinned = TerminalAgentSwitcherItem(agent: agent, pins: pins)
+        #expect(pinned.id == agent.id)
+        #expect(pinned.isPinned)
+    }
+
+    /// Long-press is Pin / Unpin, matching the Console row, so the user can
+    /// mark an Agent without leaving the terminal.
+    @MainActor
+    @Test func thePinMenuSaysPinWhenUnpinnedAndUnpinWhenPinned() throws {
+        let host = UUID()
+        let agents = [
+            Self.makeAgent(pane: "p1", workspace: "alpha", host: host),
+            Self.makeAgent(pane: "p2", workspace: "beta", host: host),
+        ]
+        let items = [
+            Self.makeItem(agents[0]),
+            Self.makeItem(agents[1], isPinned: true),
+        ]
+        let bar = TerminalAgentSwitcherBar()
+        bar.update(items: items, selectedID: agents[0].id)
+
+        for chip in bar.chips {
+            let interaction = try #require(
+                chip.interactions.compactMap { $0 as? UIContextMenuInteraction }.first)
+            #expect(interaction.delegate === bar)
+            #expect(
+                bar.contextMenuInteraction(interaction, configurationForMenuAtLocation: .zero)
+                    != nil)
+        }
+
+        let pinMenu = bar.pinMenu(for: items[0])
+        #expect(pinMenu.children.count == 1)
+        let pin = try #require(pinMenu.children.first as? UIAction)
+        #expect(pin.title == "Pin")
+        #expect(pin.image == UIImage(systemName: "pin"))
+
+        let unpinMenu = bar.pinMenu(for: items[1])
+        #expect(unpinMenu.children.count == 1)
+        let unpin = try #require(unpinMenu.children.first as? UIAction)
+        #expect(unpin.title == "Unpin")
+        #expect(unpin.image == UIImage(systemName: "pin.slash"))
+    }
+
+    /// The long-press must ask the chip under the finger, not the first
+    /// Agent on the strip — otherwise every menu would show the first
+    /// chip's Pin / Unpin state.
+    @MainActor
+    @Test func eachChipResolvesItsOwnPinItem() throws {
+        let host = UUID()
+        let agents = [
+            Self.makeAgent(pane: "p1", workspace: "alpha", host: host),
+            Self.makeAgent(pane: "p2", workspace: "beta", host: host),
+        ]
+        let items = [
+            Self.makeItem(agents[0]),
+            Self.makeItem(agents[1], isPinned: true),
+        ]
+        let bar = TerminalAgentSwitcherBar()
+        bar.update(items: items, selectedID: agents[0].id)
+
+        let firstInteraction = try #require(
+            bar.chips[0].interactions.compactMap { $0 as? UIContextMenuInteraction }.first)
+        let secondInteraction = try #require(
+            bar.chips[1].interactions.compactMap { $0 as? UIContextMenuInteraction }.first)
+
+        let first = try #require(bar.pinItem(for: firstInteraction))
+        let second = try #require(bar.pinItem(for: secondInteraction))
+        #expect(first == items[0])
+        #expect(second == items[1])
+        #expect(!first.isPinned)
+        #expect(second.isPinned)
+    }
+
+    @MainActor
+    @Test func choosingThePinMenuTogglesThatAgent() {
+        let host = UUID()
+        let agents = [
+            Self.makeAgent(pane: "p1", workspace: "alpha", host: host),
+            Self.makeAgent(pane: "p2", workspace: "beta", host: host),
+        ]
+        let items = [
+            Self.makeItem(agents[0]),
+            Self.makeItem(agents[1], isPinned: true),
+        ]
+        var toggled: [ConsoleAgent.ID] = []
+        let bar = TerminalAgentSwitcherBar()
+        bar.onTogglePin = { toggled.append($0) }
+        bar.update(items: items, selectedID: agents[0].id)
+
+        bar.performPinToggle(for: items[0])
+        #expect(toggled == [agents[0].id])
+
+        bar.performPinToggle(for: items[1])
+        #expect(toggled == [agents[0].id, agents[1].id])
+    }
+
+    /// The pin glyph is how an already-pinned chip reads before a long-press;
+    /// an unpinned chip stays a dot and a label.
+    @MainActor
+    @Test func pinnedChipsShowAPinIndicator() throws {
+        let host = UUID()
+        let agents = [
+            Self.makeAgent(pane: "p1", workspace: "alpha", status: .blocked, host: host),
+            Self.makeAgent(pane: "p2", workspace: "beta", status: .idle, host: host),
+        ]
+        let bar = TerminalAgentSwitcherBar()
+        bar.update(
+            items: [
+                Self.makeItem(agents[0]),
+                Self.makeItem(agents[1], isPinned: true),
+            ],
+            selectedID: agents[0].id)
+
+        #expect(!bar.chips[0].showsPinIndicator)
+        #expect(bar.chips[0].accessibilityValue == "Blocked")
+        #expect(bar.chips[1].showsPinIndicator)
+        #expect(bar.chips[1].accessibilityValue == "Pinned, Idle")
+
+        bar.update(
+            items: [
+                Self.makeItem(agents[0], isPinned: true),
+                Self.makeItem(agents[1]),
+            ],
+            selectedID: agents[0].id)
+        #expect(bar.chips[0].showsPinIndicator)
+        #expect(bar.chips[1].showsPinIndicator == false)
+    }
+
+    /// The context menu must not steal the tap that switches Agents.
+    @MainActor
+    @Test func tappingAChipStillSwitchesWhenTheChipHasAPinMenu() {
+        let host = UUID()
+        let agents = [
+            Self.makeAgent(pane: "p1", workspace: "alpha", host: host),
+            Self.makeAgent(pane: "p2", workspace: "beta", host: host),
+        ]
+        var opened: [ConsoleAgent.ID] = []
+        var toggled: [ConsoleAgent.ID] = []
+        let bar = TerminalAgentSwitcherBar()
+        bar.onSelect = { opened.append($0) }
+        bar.onTogglePin = { toggled.append($0) }
+        bar.update(
+            items: [
+                Self.makeItem(agents[0]),
+                Self.makeItem(agents[1], isPinned: true),
+            ],
+            selectedID: agents[0].id)
+
+        bar.chips[1].sendActions(for: .touchUpInside)
+        #expect(opened == [agents[1].id])
+        #expect(toggled.isEmpty)
+    }
+
     /// Status deltas land constantly (`pane.agent_status_changed`). Rebuilding
     /// the strip on each one would restart the Working pulse and throw away
     /// the scroll offset, so chips are reused by Agent identity.
@@ -210,6 +383,194 @@ struct TerminalAgentSwitcherTests {
         bar.update(items: [Self.makeItem(agents[1])], selectedID: agents[1].id)
         #expect(bar.chips.map(\.id) == [agents[1].id])
         #expect(working.superview == nil)
+    }
+
+    /// Pinning restacks the strip: the same chip views must slide to the
+    /// new order, and after layout they sit flush — no gap between
+    /// neighbours, no leftover space where a chip used to be.
+    @MainActor
+    @Test func reorderingChipsKeepsTheSameViews() {
+        let host = UUID()
+        let agents = [
+            Self.makeAgent(pane: "p1", workspace: "alpha", host: host),
+            Self.makeAgent(pane: "p2", workspace: "beta", host: host),
+            Self.makeAgent(pane: "p3", workspace: "gamma", host: host),
+        ]
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        let bar = TerminalAgentSwitcherBar()
+        window.addSubview(bar)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        bar.frame = CGRect(
+            x: 0, y: 0, width: 402, height: TerminalAgentSwitcherBar.preferredHeight)
+
+        bar.update(items: agents.map { Self.makeItem($0) }, selectedID: agents[0].id)
+        bar.layoutIfNeeded()
+        let original = bar.chips
+        #expect(original.map(\.id) == agents.map(\.id))
+        expectChipsAreContiguous(bar)
+
+        // Pinning gamma sends it to the front; alpha and beta slide closed.
+        let pinned = [
+            Self.makeItem(agents[2], isPinned: true),
+            Self.makeItem(agents[0]),
+            Self.makeItem(agents[1]),
+        ]
+        bar.update(items: pinned, selectedID: agents[0].id)
+        bar.layoutIfNeeded()
+
+        #expect(bar.chips.map(\.id) == pinned.map(\.id))
+        #expect(bar.chips[0] === original[2])
+        #expect(bar.chips[1] === original[0])
+        #expect(bar.chips[2] === original[1])
+        expectStripMatches(bar, items: pinned, identity: original)
+        #expect(bar.chips[0].showsPinIndicator)
+        #expect(!bar.chips[1].showsPinIndicator)
+        #expect(!bar.chips[2].showsPinIndicator)
+
+        bar.update(items: agents.map { Self.makeItem($0) }, selectedID: agents[0].id)
+        bar.layoutIfNeeded()
+        #expect(bar.chips.map(\.id) == agents.map(\.id))
+        #expect(bar.chips[0] === original[0])
+        #expect(bar.chips[1] === original[1])
+        #expect(bar.chips[2] === original[2])
+        expectStripMatches(bar, items: agents.map { Self.makeItem($0) }, identity: original)
+        #expect(!bar.chips[2].showsPinIndicator)
+    }
+
+    /// Pin/unpin cycles must leave the strip flush every time: no gap
+    /// between neighbours after layout, and the same chip views throughout.
+    @MainActor
+    @Test func repeatedPinCyclesLeaveNoGaps() {
+        let host = UUID()
+        let agents = [
+            Self.makeAgent(pane: "p1", workspace: "alpha", host: host),
+            Self.makeAgent(pane: "p2", workspace: "beta", host: host),
+            Self.makeAgent(pane: "p3", workspace: "gamma", host: host),
+        ]
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        let bar = TerminalAgentSwitcherBar()
+        window.addSubview(bar)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        bar.frame = CGRect(
+            x: 0, y: 0, width: 402, height: TerminalAgentSwitcherBar.preferredHeight)
+
+        let unpinned = agents.map { Self.makeItem($0) }
+        bar.update(items: unpinned, selectedID: agents[0].id)
+        bar.layoutIfNeeded()
+        let original = bar.chips
+        expectChipsAreContiguous(bar)
+
+        for _ in 0..<3 {
+            let pinGamma = [
+                Self.makeItem(agents[2], isPinned: true),
+                Self.makeItem(agents[0]),
+                Self.makeItem(agents[1]),
+            ]
+            bar.update(items: pinGamma, selectedID: agents[0].id)
+            bar.layoutIfNeeded()
+            expectStripMatches(bar, items: pinGamma, identity: original)
+
+            bar.update(items: unpinned, selectedID: agents[0].id)
+            bar.layoutIfNeeded()
+            expectStripMatches(bar, items: unpinned, identity: original)
+
+            let pinBeta = [
+                Self.makeItem(agents[1], isPinned: true),
+                Self.makeItem(agents[0]),
+                Self.makeItem(agents[2]),
+            ]
+            bar.update(items: pinBeta, selectedID: agents[0].id)
+            bar.layoutIfNeeded()
+            expectStripMatches(bar, items: pinBeta, identity: original)
+
+            bar.update(items: unpinned, selectedID: agents[0].id)
+            bar.layoutIfNeeded()
+            expectStripMatches(bar, items: unpinned, identity: original)
+        }
+    }
+
+    /// After layout, each chip starts where the previous one plus the
+    /// stack spacing ended. A leftover gap is a hole the user can see.
+    @MainActor
+    private func expectChipsAreContiguous(_ bar: TerminalAgentSwitcherBar) {
+        let chips = bar.chips
+        for index in chips.indices.dropLast() {
+            let actual = chips[index + 1].frame.minX
+            let expected = chips[index].frame.maxX + TerminalAgentChip.spacing
+            #expect(abs(actual - expected) < 0.5)
+        }
+    }
+
+    @MainActor
+    private func expectStripMatches(
+        _ bar: TerminalAgentSwitcherBar,
+        items: [TerminalAgentSwitcherItem],
+        identity: [TerminalAgentChip]
+    ) {
+        #expect(bar.chips.map(\.id) == items.map(\.id))
+        #expect(bar.arrangedChips.map(\.id) == items.map(\.id))
+        #expect(bar.arrangedChips.elementsEqual(bar.chips, by: { $0 === $1 }))
+        let byID = Dictionary(uniqueKeysWithValues: identity.map { ($0.id, $0) })
+        for chip in bar.chips {
+            #expect(chip === byID[chip.id])
+        }
+        for (item, chip) in zip(items, bar.chips) {
+            #expect(chip.showsPinIndicator == item.isPinned)
+        }
+        expectChipsAreContiguous(bar)
+    }
+
+    /// The glyph write happens inside the reorder animation, and UIStackView
+    /// miscounts hidden flips that re-assign the value already in place. The
+    /// killer sequence is pin → another animated update that keeps the chip
+    /// pinned (the redundant write) → unpin: the glyph must still clear.
+    @MainActor
+    @Test func aPinnedChipsGlyphClearsAfterAnotherAnimatedUpdate() {
+        let host = UUID()
+        let agents = [
+            Self.makeAgent(pane: "p1", workspace: "alpha", host: host),
+            Self.makeAgent(pane: "p2", workspace: "beta", host: host),
+            Self.makeAgent(pane: "p3", workspace: "gamma", host: host),
+        ]
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        let bar = TerminalAgentSwitcherBar()
+        window.addSubview(bar)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        bar.frame = CGRect(
+            x: 0, y: 0, width: 402, height: TerminalAgentSwitcherBar.preferredHeight)
+
+        let unpinned = agents.map { Self.makeItem($0) }
+        bar.update(items: unpinned, selectedID: agents[0].id)
+        bar.layoutIfNeeded()
+
+        // Pin gamma: its glyph write is a real change, inside the animation.
+        bar.update(
+            items: [
+                Self.makeItem(agents[2], isPinned: true),
+                Self.makeItem(agents[0]),
+                Self.makeItem(agents[1]),
+            ], selectedID: agents[0].id)
+        bar.layoutIfNeeded()
+
+        // Pin beta on top: gamma stays pinned, so its glyph gets the
+        // redundant same-value write inside this second animation.
+        bar.update(
+            items: [
+                Self.makeItem(agents[1], isPinned: true),
+                Self.makeItem(agents[2], isPinned: true),
+                Self.makeItem(agents[0]),
+            ], selectedID: agents[0].id)
+        bar.layoutIfNeeded()
+
+        // Unpin everything: both glyphs must clear.
+        bar.update(items: unpinned, selectedID: agents[0].id)
+        bar.layoutIfNeeded()
+        for chip in bar.chips {
+            #expect(!chip.showsPinIndicator)
+        }
     }
 
     /// A switch builds a new terminal, so the strip that comes back is a new
