@@ -516,7 +516,61 @@ struct TerminalAgentSwitcherTests {
         for chip in bar.chips {
             #expect(chip === byID[chip.id])
         }
+        for (item, chip) in zip(items, bar.chips) {
+            #expect(chip.showsPinIndicator == item.isPinned)
+        }
         expectChipsAreContiguous(bar)
+    }
+
+    /// The glyph write happens inside the reorder animation, and UIStackView
+    /// miscounts hidden flips that re-assign the value already in place. The
+    /// killer sequence is pin → another animated update that keeps the chip
+    /// pinned (the redundant write) → unpin: the glyph must still clear.
+    @MainActor
+    @Test func aPinnedChipsGlyphClearsAfterAnotherAnimatedUpdate() {
+        let host = UUID()
+        let agents = [
+            Self.makeAgent(pane: "p1", workspace: "alpha", host: host),
+            Self.makeAgent(pane: "p2", workspace: "beta", host: host),
+            Self.makeAgent(pane: "p3", workspace: "gamma", host: host),
+        ]
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        let bar = TerminalAgentSwitcherBar()
+        window.addSubview(bar)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        bar.frame = CGRect(
+            x: 0, y: 0, width: 402, height: TerminalAgentSwitcherBar.preferredHeight)
+
+        let unpinned = agents.map { Self.makeItem($0) }
+        bar.update(items: unpinned, selectedID: agents[0].id)
+        bar.layoutIfNeeded()
+
+        // Pin gamma: its glyph write is a real change, inside the animation.
+        bar.update(
+            items: [
+                Self.makeItem(agents[2], isPinned: true),
+                Self.makeItem(agents[0]),
+                Self.makeItem(agents[1]),
+            ], selectedID: agents[0].id)
+        bar.layoutIfNeeded()
+
+        // Pin beta on top: gamma stays pinned, so its glyph gets the
+        // redundant same-value write inside this second animation.
+        bar.update(
+            items: [
+                Self.makeItem(agents[1], isPinned: true),
+                Self.makeItem(agents[2], isPinned: true),
+                Self.makeItem(agents[0]),
+            ], selectedID: agents[0].id)
+        bar.layoutIfNeeded()
+
+        // Unpin everything: both glyphs must clear.
+        bar.update(items: unpinned, selectedID: agents[0].id)
+        bar.layoutIfNeeded()
+        for chip in bar.chips {
+            #expect(!chip.showsPinIndicator)
+        }
     }
 
     /// A switch builds a new terminal, so the strip that comes back is a new

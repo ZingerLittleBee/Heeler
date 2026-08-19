@@ -413,7 +413,14 @@ final class TerminalAgentChip: UIControl {
         isSelected = selected
         label.text = item.title
         label.textColor = selected ? .label : .secondaryLabel
-        pinView.isHidden = !item.isPinned
+        // UIStackView balances arranged-subview hidden flips made inside
+        // animation blocks with an internal counter; assigning the value the
+        // view already has unbalances it, after which the opposite
+        // assignment stops taking effect and the glyph sticks. Write only
+        // real changes.
+        if pinView.isHidden != !item.isPinned {
+            pinView.isHidden = !item.isPinned
+        }
         dot.backgroundColor = item.status.inkUIColor
         backgroundColor = selected ? .tertiarySystemBackground : .clear
         isWorking = item.status == .working
