@@ -212,13 +212,20 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
         ])
     }
 
+    /// The item the interaction's chip currently represents. Nil when the
+    /// view is not a chip or that Agent has left the strip.
+    func pinItem(for interaction: UIContextMenuInteraction) -> TerminalAgentSwitcherItem? {
+        guard let chip = interaction.view as? TerminalAgentChip,
+              let item = items.first(where: { $0.id == chip.id })
+        else { return nil }
+        return item
+    }
+
     func contextMenuInteraction(
         _ interaction: UIContextMenuInteraction,
         configurationForMenuAtLocation _: CGPoint
     ) -> UIContextMenuConfiguration? {
-        guard let chip = interaction.view as? TerminalAgentChip,
-            let item = items.first(where: { $0.id == chip.id })
-        else { return nil }
+        guard let item = pinItem(for: interaction) else { return nil }
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) {
             [weak self] _ in
             self?.pinMenu(for: item)

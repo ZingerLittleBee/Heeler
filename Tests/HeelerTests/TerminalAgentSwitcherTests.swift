@@ -239,11 +239,43 @@ struct TerminalAgentSwitcherTests {
         #expect(pinMenu.children.count == 1)
         let pin = try #require(pinMenu.children.first as? UIAction)
         #expect(pin.title == "Pin")
+        #expect(pin.image == UIImage(systemName: "pin"))
 
         let unpinMenu = bar.pinMenu(for: items[1])
         #expect(unpinMenu.children.count == 1)
         let unpin = try #require(unpinMenu.children.first as? UIAction)
         #expect(unpin.title == "Unpin")
+        #expect(unpin.image == UIImage(systemName: "pin.slash"))
+    }
+
+    /// The long-press must ask the chip under the finger, not the first
+    /// Agent on the strip — otherwise every menu would show the first
+    /// chip's Pin / Unpin state.
+    @MainActor
+    @Test func eachChipResolvesItsOwnPinItem() throws {
+        let host = UUID()
+        let agents = [
+            Self.makeAgent(pane: "p1", workspace: "alpha", host: host),
+            Self.makeAgent(pane: "p2", workspace: "beta", host: host),
+        ]
+        let items = [
+            Self.makeItem(agents[0]),
+            Self.makeItem(agents[1], isPinned: true),
+        ]
+        let bar = TerminalAgentSwitcherBar()
+        bar.update(items: items, selectedID: agents[0].id)
+
+        let firstInteraction = try #require(
+            bar.chips[0].interactions.compactMap { $0 as? UIContextMenuInteraction }.first)
+        let secondInteraction = try #require(
+            bar.chips[1].interactions.compactMap { $0 as? UIContextMenuInteraction }.first)
+
+        let first = try #require(bar.pinItem(for: firstInteraction))
+        let second = try #require(bar.pinItem(for: secondInteraction))
+        #expect(first == items[0])
+        #expect(second == items[1])
+        #expect(!first.isPinned)
+        #expect(second.isPinned)
     }
 
     @MainActor
