@@ -27,7 +27,7 @@ Entries reference the issue that motivated them.
   when every agent goes idle. Agent names, titles, and host names stay
   end-to-end encrypted and are decrypted on device at render time; the relay
   sees only the counts. Opt in per Host from Notification Settings; requires
-  the updated herdr plugin.
+  the updated herdr plugin. (#212)
 
 - Agent detail now places a plus menu to the left of Send. It can add an image
   from Photos or a file up to 64 MiB from Files, stages the selection privately
