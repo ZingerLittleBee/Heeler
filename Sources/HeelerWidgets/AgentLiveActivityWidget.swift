@@ -230,6 +230,9 @@ private struct AgentActivityCountChips: View {
                 Text("\(item.count) \(item.status)")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(AgentActivityStatusStyle.ink(for: item.status))
+                    // Chips never compress or wrap; the row title truncates
+                    // instead when all three statuses are present.
+                    .fixedSize()
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(
@@ -349,6 +352,11 @@ enum AgentActivityChrome {
             presentation: presentation,
             hostID: "6D8EC348-4DAF-455C-BA8F-5FCC41799C0E"
         )
+        // The app preview host styles Links with the accent tint (and
+        // `.secondary` derives from it); the lock screen renders them
+        // chromeless. Normalize so the canvas matches the device.
+        .buttonStyle(.plain)
+        .tint(.primary)
         .background(AgentActivityChrome.backgroundTint, in: RoundedRectangle(cornerRadius: 22))
         .environment(\.colorScheme, .dark)
         .padding()
