@@ -147,8 +147,9 @@ on the next push.
 `pinned_pane_ids` is this Host's pin recency list: pane-id strings,
 most-recently-pinned first. The app writes it whenever it writes
 `live_activity` and pushes an update when the pin set changes while the
-Host is connected. Missing, null, a non-array, or any non-string entry
-is treated as an empty list (older apps never write the field). Empty
+Host is connected and an activity is running. Missing, null, a
+non-array, or any non-string entry is treated as an empty list (older
+apps never write the field). Empty
 string entries are still strings and are kept. The field is additive v1
 metadata; unknown sibling keys on `live_activity` must survive a rewrite.
 

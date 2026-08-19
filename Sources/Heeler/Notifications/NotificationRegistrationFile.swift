@@ -161,8 +161,7 @@ struct NotificationRegistrationFile: Sendable, Equatable {
         _ pinnedPaneIDs: [String], forDeviceToken deviceToken: String
     ) -> NotificationRegistrationFile {
         mutatingDevice(token: deviceToken) { entry in
-            guard entry["live_activity"] != nil else { return }
-            var live = objectValue(entry["live_activity"]) ?? .object([:])
+            guard var live = objectValue(entry["live_activity"]) else { return }
             live.setKey("pinned_pane_ids", to: .array(pinnedPaneIDs.map { .string($0) }))
             entry.setKey("live_activity", to: live)
         }
