@@ -4,8 +4,8 @@ import WidgetKit
 
 /// Live Activity for one Host. Lock-screen banner is a uniform agent list
 /// under a ~160pt budget: four rows when everything fits, three plus
-/// "+N more" otherwise. Rows arrive pre-sorted most-urgent first; Host
-/// identity is never rendered. Every agent row is a deep link into that
+/// "+N more" otherwise. Rows arrive in the sender's pin-aware order and
+/// are rendered as given; Host identity is never rendered. Every agent row is a deep link into that
 /// agent's detail; taps outside a row land on the Console.
 struct AgentLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {

@@ -1,5 +1,5 @@
 {
-  "description": "Shared Live Activity content envelope v1 test vectors (docs/agents/live-activity-contract.md). Single source of truth for the encrypted per-Host agent details carried inside a Live Activity content-state, consumed by both the Node plugin tests (seal direction) and the Swift app tests (open direction, plus seal for app-local updates). Envelopes were generated with raw AES-256-GCM calls, independent of all implementations. AAD is HERDR-ACTIVITY:1 (domain-separated from HERDR-NOTIFY:1; see the cross-AAD invalid vector). Canonical plaintext encoding: compact JSON, object keys in ascending alphabetical order at every level; agents sorted blocked > done > working with ties by pane ascending, capped at 5 entries; name (the herdr agent name) and title are each omitted when absent, <=80 graphemes otherwise; agent entry key order kind < name < pane < status < title. Producers keep the base64url ct <= ~2800 bytes by dropping titles first, then sending empty agents. `key` is the 32-byte Notification Key and `keyId` its derived id, both unpadded base64url. Non-`decodeOnly` valid vectors must be reproduced byte-for-byte by the seal side; `decodeOnly: true` envelopes must open to `payload` but are not canonical encodings. Invalid vectors must fail with the given typed error.",
+  "description": "Shared Live Activity content envelope v1 test vectors (docs/agents/live-activity-contract.md). Single source of truth for the encrypted per-Host agent details carried inside a Live Activity content-state, consumed by both the Node plugin tests (seal direction) and the Swift app tests (open direction, plus seal for app-local updates). Envelopes were generated with raw AES-256-GCM calls, independent of all implementations. AAD is HERDR-ACTIVITY:1 (domain-separated from HERDR-NOTIFY:1; see the cross-AAD invalid vector). Canonical plaintext encoding: compact JSON, object keys in ascending alphabetical order at every level; agents ordered pinned-eligible first by pinned_pane_ids index (most recently pinned first), then blocked > done > working with ties by pane ascending, capped at 5 entries after that sort; name (the herdr agent name) and title are each omitted when absent, <=80 graphemes otherwise; agent entry key order kind < name < pane < status < title. Vectors that carry `inventory` (herdr agent-list shape) and `pinned_pane_ids` pin the sort rule: producers must build `payload` from that input. Producers keep the base64url ct <= ~2800 bytes by dropping titles first, then sending empty agents. `key` is the 32-byte Notification Key and `keyId` its derived id, both unpadded base64url. Non-`decodeOnly` valid vectors must be reproduced byte-for-byte by the seal side; `decodeOnly: true` envelopes must open to `payload` but are not canonical encodings. Invalid vectors must fail with the given typed error.",
   "valid": [
     {
       "name": "single working agent",
@@ -88,6 +88,144 @@
       "payload": {
         "agents": [],
         "host": "mbp",
+        "v": 1
+      }
+    },
+    {
+      "name": "pinned working agent precedes unpinned blocked",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "keyId": "Yw3NKWbEM2Y",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"sLGys7S1tre4ubq7\",\"ct\":\"4nc7zImjzyxlwszZ7zbhrOAec_B2Qu5AOqug3X7sk3tgaRkYAavP1ME-0mgQm_LUQwg1_TlMc8o9pxtfdvAC05CbStV-yRX4I_7VMexti18hsuWQ3BEBsZDZQrJYLWbTD4AZNKe5UTQjYmH--bOu5C-MlfQfkrheHSXb-3BvQkdrl4X8Znj6SxUwfwQAPUF67dhm6ukUcifB3EGxJqKXtt7wsoheEyBC0iFh0CEriNpXNDKdvpooyDl2abui7ew7OaSEgpBxLe5fFhGEK0JF-rldpEp8W0-0cRpi4-EP2GGsp_QL4MmHMTN38WKWdsfi\"}",
+      "pinned_pane_ids": ["w1:p-work"],
+      "counts": {"working": 1, "blocked": 1, "done": 0},
+      "inventory": [
+        {
+          "pane_id": "w1:p-block",
+          "agent_status": "blocked",
+          "agent": "claude",
+          "name": "reviewer",
+          "terminal_title_stripped": "needs review"
+        },
+        {
+          "pane_id": "w1:p-work",
+          "agent_status": "working",
+          "agent": "claude",
+          "name": "builder",
+          "terminal_title_stripped": "still going"
+        }
+      ],
+      "payload": {
+        "agents": [
+          {
+            "kind": "claude",
+            "name": "builder",
+            "pane": "w1:p-work",
+            "status": "working",
+            "title": "still going"
+          },
+          {
+            "kind": "claude",
+            "name": "reviewer",
+            "pane": "w1:p-block",
+            "status": "blocked",
+            "title": "needs review"
+          }
+        ],
+        "host": "mbp",
+        "v": 1
+      }
+    },
+    {
+      "name": "pin recency first then status rank, cap after, ineligible pins ignored",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "keyId": "Yw3NKWbEM2Y",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"wMHCw8TFxsfIycrL\",\"ct\":\"e2pGABIW4i2646bZEMeBOChR2R1fjn7PTqZpJhUNHtjZtK2FBep_c-U6O2uS5kmr_hG-Dqe-giOmUkGiiY5Vei8AqUmAshDJQK86bJ05ceMhZt3AtGZM48QMyT_NbnirruVSnWRvp8l0b_ctdPBmqLQyp01VloKFYwY0E8RexToZB38iLfZp4UpQUQgCetlGjQ1Dw78iqVJv1zdUC2-ekQgxhVVDxcwbgixHcQ-Nh4t9qWwR-q9y9JD6Kc4jfVzA28pN1nLOnItpV9cl6A85t_iP9_oHJTca56lh3JpFZfFMURbQdeZdsA-LfTO6V_9lzJGiIB-22saUug0HaVs44z2BcISk8JflGrEaR2nHW0Vft_86yz50yMjT0EXg1n8xkf0ImxHnyI8rML4ZOIzBjLuQgo6w1x9BiBHbAOrvMhjeQ7-LU7QJPx8Xst6GkDWMKJu6X5fbrv01NmADnxOrCb0aL03NfC0yoUxcT67hdra-WR0RwB3hczf1hru8Awbd2W8aIs75XpKAz7nnEDo6dwXaaiuSwzT0ZL_Z3NvPGHRzdB7m54xAJG0bAdrDeXdVNyawwe2h\"}",
+      "pinned_pane_ids": ["w1:p-work", "w1:p-idle", "w1:missing", "w1:p-done"],
+      "counts": {"working": 3, "blocked": 2, "done": 2},
+      "inventory": [
+        {
+          "pane_id": "w1:p-w3",
+          "agent_status": "working",
+          "agent": "claude",
+          "terminal_title_stripped": "third working"
+        },
+        {
+          "pane_id": "w1:p-b2",
+          "agent_status": "blocked",
+          "agent": "claude",
+          "terminal_title_stripped": "second blocked"
+        },
+        {
+          "pane_id": "w1:p-idle",
+          "agent_status": "idle",
+          "agent": "claude",
+          "terminal_title_stripped": "idle pinned"
+        },
+        {
+          "pane_id": "w1:p-done",
+          "agent_status": "done",
+          "agent": "claude",
+          "terminal_title_stripped": "pinned done"
+        },
+        {
+          "pane_id": "w1:p-w2",
+          "agent_status": "working",
+          "agent": "claude",
+          "terminal_title_stripped": "second working"
+        },
+        {
+          "pane_id": "w1:p-work",
+          "agent_status": "working",
+          "agent": "claude",
+          "terminal_title_stripped": "pinned working"
+        },
+        {
+          "pane_id": "w1:p-b1",
+          "agent_status": "blocked",
+          "agent": "claude",
+          "terminal_title_stripped": "first blocked"
+        },
+        {
+          "pane_id": "w1:p-d2",
+          "agent_status": "done",
+          "agent": "claude",
+          "terminal_title_stripped": "unpinned done"
+        }
+      ],
+      "payload": {
+        "agents": [
+          {
+            "kind": "claude",
+            "pane": "w1:p-work",
+            "status": "working",
+            "title": "pinned working"
+          },
+          {
+            "kind": "claude",
+            "pane": "w1:p-done",
+            "status": "done",
+            "title": "pinned done"
+          },
+          {
+            "kind": "claude",
+            "pane": "w1:p-b1",
+            "status": "blocked",
+            "title": "first blocked"
+          },
+          {
+            "kind": "claude",
+            "pane": "w1:p-b2",
+            "status": "blocked",
+            "title": "second blocked"
+          },
+          {
+            "kind": "claude",
+            "pane": "w1:p-d2",
+            "status": "done",
+            "title": "unpinned done"
+          }
+        ],
+        "host": "studio",
         "v": 1
       }
     },

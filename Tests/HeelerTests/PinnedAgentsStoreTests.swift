@@ -20,6 +20,7 @@ struct PinnedAgentsStoreTests {
         let store = PinnedAgentsStore(defaults: defaults)
         store.togglePin(hostID: hostID, paneID: "w1:p1")
         store.togglePin(hostID: hostID, paneID: "w1:p2")
+        #expect(store.revision == 2)
 
         let reloaded = PinnedAgentsStore(defaults: defaults)
         #expect(reloaded.pinnedPaneIDs(for: hostID) == ["w1:p2", "w1:p1"])

@@ -164,6 +164,102 @@ struct AgentActivityContentBuilderTests {
         #expect(details.hostName == "mbp")
     }
 
+    @Test func pinnedEligibleAgentsLeadByPinRecencyThenStatusRank() throws {
+        let agents = [
+            agent("w:p-work", .working),
+            agent("w:p-block", .blocked),
+            agent("w:p-done", .done),
+        ]
+
+        let desire = try #require(
+            AgentActivityContentBuilder.desire(
+                from: agents, hostName: "mbp",
+                pinnedPaneIDs: ["w:p-work", "w:p-done"]))
+
+        #expect(desire.agents.map(\.paneID) == ["w:p-work", "w:p-done", "w:p-block"])
+        #expect(desire.agents.map(\.status) == ["working", "done", "blocked"])
+        #expect(desire.counts == .init(working: 1, blocked: 1, done: 1))
+    }
+
+    @Test func pinnedIneligibleAndUnknownPaneIDsAreIgnored() throws {
+        let agents = [
+            agent("w:p-idle", .idle),
+            agent("w:p-work", .working),
+            agent("w:p-block", .blocked),
+        ]
+
+        let desire = try #require(
+            AgentActivityContentBuilder.desire(
+                from: agents, hostName: "mbp",
+                pinnedPaneIDs: ["w:p-idle", "gone:pane", "w:p-work"]))
+
+        #expect(desire.counts == .init(working: 1, blocked: 1, done: 0))
+        #expect(desire.agents.map(\.paneID) == ["w:p-work", "w:p-block"])
+    }
+
+    @Test func pinOrderCapIsAppliedAfterSortAndCountsStayFull() throws {
+        var agents = [
+            agent("w:p-pin", .working),
+        ]
+        for index in 0..<6 {
+            agents.append(agent(String(format: "w:p%02d", index), .blocked))
+        }
+
+        let desire = try #require(
+            AgentActivityContentBuilder.desire(
+                from: agents, hostName: "mbp",
+                pinnedPaneIDs: ["w:p-pin"]))
+
+        #expect(desire.counts == .init(working: 1, blocked: 6, done: 0))
+        #expect(desire.agents.count == 5)
+        #expect(desire.agents.map(\.paneID) == ["w:p-pin", "w:p00", "w:p01", "w:p02", "w:p03"])
+        #expect(desire.agents.first?.status == "working")
+    }
+
+    @Test func sharedPinOrderVectorsMatchDesire() throws {
+        for vector in LiveActivityVectorFile.shared.valid where !vector.inventory.isEmpty {
+            let agents = vector.inventory.map { item in
+                ConsoleAgent(
+                    hostID: hostID, hostName: vector.payload.host,
+                    agent: Agent(
+                        terminalID: "t",
+                        kind: item.agent ?? "",
+                        title: item.terminalTitleStripped ?? item.terminalTitle ?? "",
+                        status: AgentStatus(rawValue: item.agentStatus),
+                        workspaceID: "w", tabID: "t", paneID: item.paneID,
+                        cwd: "/", revision: 1,
+                        name: nonEmpty(item.displayAgent) ?? nonEmpty(item.name)),
+                    workspaceLabel: nil, repoName: nil)
+            }
+
+            let desire = try #require(
+                AgentActivityContentBuilder.desire(
+                    from: agents, hostName: vector.payload.host,
+                    pinnedPaneIDs: vector.pinnedPaneIDs),
+                "\(vector.name)")
+
+            #expect(desire.hostName == vector.payload.host, "\(vector.name)")
+            #expect(
+                desire.agents.map(\.paneID) == vector.payload.agents.map(\.pane),
+                "\(vector.name)")
+            #expect(
+                desire.agents.map(\.status) == vector.payload.agents.map(\.status),
+                "\(vector.name)")
+            #expect(
+                desire.agents.map(\.title) == vector.payload.agents.map(\.title),
+                "\(vector.name)")
+            #expect(
+                desire.agents.map(\.name) == vector.payload.agents.map(\.name),
+                "\(vector.name)")
+            if let counts = vector.counts {
+                #expect(
+                    desire.counts
+                        == .init(working: counts.working, blocked: counts.blocked, done: counts.done),
+                    "\(vector.name)")
+            }
+        }
+    }
+
     @Test func sealedContentOpensToTheDesiredDetails() throws {
         let agents = [agent("wV:p1", .working, title: "task")]
         let state = try #require(
@@ -180,6 +276,11 @@ struct AgentActivityContentBuilderTests {
     ) throws -> AgentActivityDetails {
         let envelope = try #require(state.envelope)
         return try AgentActivityEnvelope.open(try JSONEncoder().encode(envelope), using: key)
+    }
+
+    private func nonEmpty(_ text: String?) -> String? {
+        guard let text, !text.isEmpty else { return nil }
+        return text
     }
 
     private func agent(

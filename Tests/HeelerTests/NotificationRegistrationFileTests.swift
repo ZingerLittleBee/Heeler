@@ -139,8 +139,11 @@ struct NotificationRegistrationFileTests {
             try JSONSerialization.jsonObject(with: try file.encoded()) as? [String: Any])
         let devices = try #require(object["devices"] as? [[String: Any]])
         let device = try #require(devices.first)
-        let wire = try #require(device["live_activity"] as? [String: String])
-        #expect(wire == ["token": "deadbeef", "started_at": "2023-11-14T22:13:20Z"])
+        let wire = try #require(device["live_activity"] as? [String: Any])
+        #expect(wire["token"] as? String == "deadbeef")
+        #expect(wire["started_at"] as? String == "2023-11-14T22:13:20Z")
+        #expect(wire["pinned_pane_ids"] as? [String] == [])
+        #expect(live.pinnedPaneIDs.isEmpty)
 
         let cleared = file.clearingLiveActivity(forDeviceToken: entry.token.hex)
         #expect(cleared.liveActivity(forDeviceToken: entry.token.hex) == nil)
@@ -168,6 +171,7 @@ struct NotificationRegistrationFileTests {
         #expect(device["other"]?["nested"] == .bool(true))
         #expect(device["key"]?.stringValue == "kk")
         #expect(file.liveActivity(forDeviceToken: "a1b2c3")?.token == "aabbcc")
+        #expect(file.liveActivity(forDeviceToken: "a1b2c3")?.pinnedPaneIDs == [])
 
         let cleared = file.clearingLiveActivity(forDeviceToken: "a1b2c3")
         let afterClear = try #require(cleared.devices.first)
@@ -193,5 +197,77 @@ struct NotificationRegistrationFileTests {
         #expect(device["key"]?.stringValue == key.base64URLEncodedString())
         #expect(device["notify"]?["blocked"] == .bool(true))
         #expect(device["notify"]?["done"] == .bool(false))
+    }
+
+    @Test func settingLiveActivityWritesPinnedPaneIDsMostRecentFirst() throws {
+        let started = Date(timeIntervalSince1970: 1_700_000_000)
+        let file = NotificationRegistrationFile().upserting(entry)
+            .settingLiveActivity(
+                token: "deadbeef", startedAt: started, forDeviceToken: entry.token.hex,
+                pinnedPaneIDs: ["w1:p2", "w1:p1"])
+
+        let live = try #require(file.liveActivity(forDeviceToken: entry.token.hex))
+        #expect(live.pinnedPaneIDs == ["w1:p2", "w1:p1"])
+
+        let reread = try NotificationRegistrationFile.decode(try file.encoded())
+        #expect(
+            reread.liveActivity(forDeviceToken: entry.token.hex)?.pinnedPaneIDs
+                == ["w1:p2", "w1:p1"])
+
+        let object = try #require(
+            try JSONSerialization.jsonObject(with: try file.encoded()) as? [String: Any])
+        let device = try #require((object["devices"] as? [[String: Any]])?.first)
+        let wire = try #require(device["live_activity"] as? [String: Any])
+        #expect(wire["pinned_pane_ids"] as? [String] == ["w1:p2", "w1:p1"])
+    }
+
+    @Test func settingPinnedPaneIDsMergesWithoutDroppingTokenOrUnknownFields() throws {
+        let existing = Data(
+            (#"{"v":1,"devices":[{"token":"a1b2c3","key":"kk","env":"production","#
+                + #""notify":{"blocked":true,"done":true},"future_field":"kept","#
+                + #""live_activity":{"token":"la","started_at":"2024-01-01T00:00:00Z","#
+                + #""future_la":"kept"}}]}"#).utf8)
+
+        let file = try NotificationRegistrationFile.decode(existing)
+            .settingLiveActivityPinnedPaneIDs(["w1:p9", "w1:p1"], forDeviceToken: "a1b2c3")
+        let device = try #require(file.devices.first)
+        #expect(device["future_field"]?.stringValue == "kept")
+        #expect(device["live_activity"]?["token"]?.stringValue == "la")
+        #expect(device["live_activity"]?["started_at"]?.stringValue == "2024-01-01T00:00:00Z")
+        #expect(device["live_activity"]?["future_la"]?.stringValue == "kept")
+        #expect(file.liveActivity(forDeviceToken: "a1b2c3")?.pinnedPaneIDs == ["w1:p9", "w1:p1"])
+
+        let rewritten = file.settingLiveActivity(
+            token: "aabbcc",
+            startedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            forDeviceToken: "a1b2c3",
+            pinnedPaneIDs: ["w1:p1"])
+        let after = try #require(rewritten.devices.first)
+        #expect(after["future_field"]?.stringValue == "kept")
+        #expect(after["live_activity"]?["future_la"]?.stringValue == "kept")
+        #expect(after["live_activity"]?["token"]?.stringValue == "aabbcc")
+        #expect(rewritten.liveActivity(forDeviceToken: "a1b2c3")?.pinnedPaneIDs == ["w1:p1"])
+    }
+
+    @Test func settingPinnedPaneIDsIsANoOpWithoutLiveActivity() throws {
+        let file = NotificationRegistrationFile().upserting(entry)
+        #expect(file.settingLiveActivityPinnedPaneIDs(["w1:p1"], forDeviceToken: entry.token.hex) == file)
+        #expect(file.settingLiveActivityPinnedPaneIDs(["w1:p1"], forDeviceToken: "missing") == file)
+    }
+
+    @Test(arguments: [
+        #"{"v":1,"devices":[{"token":"ffff","live_activity":{"token":"la","started_at":"t"}}]}"#,
+        #"{"v":1,"devices":[{"token":"ffff","live_activity":{"token":"la","started_at":"t","pinned_pane_ids":null}}]}"#,
+        #"{"v":1,"devices":[{"token":"ffff","live_activity":{"token":"la","started_at":"t","pinned_pane_ids":"w1:p1"}}]}"#,
+        #"{"v":1,"devices":[{"token":"ffff","live_activity":{"token":"la","started_at":"t","pinned_pane_ids":["w1:p1",1]}}]}"#,
+        #"{"v":1,"devices":[{"token":"ffff","live_activity":{"token":"la","started_at":"t","pinned_pane_ids":{"pane":"w1:p1"}}}]}"#,
+    ])
+    func malformedPinnedPaneIDsReadAsEmpty(text: String) throws {
+        let file = try NotificationRegistrationFile.decode(Data(text.utf8))
+        #expect(file.liveActivity(forDeviceToken: "ffff")?.pinnedPaneIDs == [])
+        #expect(
+            NotificationRegistrationFile.pinnedPaneIDs(
+                from: file.devices.first?["live_activity"]?["pinned_pane_ids"])
+                == [])
     }
 }

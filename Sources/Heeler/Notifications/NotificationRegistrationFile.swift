@@ -66,9 +66,12 @@ struct NotificationDeviceEntry: Sendable, Equatable {
 /// The `live_activity` field of a device entry: the per-activity push token
 /// and when the app started that activity. `startedAt` is the ISO 8601
 /// string as stored, so a rewrite can be compared without re-formatting.
+/// `pinnedPaneIDs` is most-recently-pinned first; a missing or malformed
+/// field reads as empty (docs/agents/live-activity-contract.md).
 struct LiveActivityRegistration: Sendable, Equatable {
     var token: String
     var startedAt: String
+    var pinnedPaneIDs: [String] = []
 }
 
 /// The Notification Registration file v1 (`plugin/README.md`): the whole
@@ -132,18 +135,35 @@ struct NotificationRegistrationFile: Sendable, Equatable {
     }
 
     /// Writes `live_activity` on the matching device entry and leaves every
-    /// other field on that object untouched. An unknown token is a no-op;
-    /// the ceremony refuses that case instead of inventing an entry.
+    /// other field on that object untouched. Merges into an existing
+    /// `live_activity` object so unknown fields and a prior pin list
+    /// survive. An unknown token is a no-op; the ceremony refuses that case
+    /// instead of inventing an entry.
     func settingLiveActivity(
-        token: String, startedAt: Date, forDeviceToken deviceToken: String
+        token: String,
+        startedAt: Date,
+        forDeviceToken deviceToken: String,
+        pinnedPaneIDs: [String] = []
     ) -> NotificationRegistrationFile {
         mutatingDevice(token: deviceToken) { entry in
-            entry.setKey(
-                "live_activity",
-                to: .object([
-                    "token": .string(token),
-                    "started_at": .string(Self.iso8601String(from: startedAt)),
-                ]))
+            var live = objectValue(entry["live_activity"]) ?? .object([:])
+            live.setKey("token", to: .string(token))
+            live.setKey("started_at", to: .string(Self.iso8601String(from: startedAt)))
+            live.setKey("pinned_pane_ids", to: .array(pinnedPaneIDs.map { .string($0) }))
+            entry.setKey("live_activity", to: live)
+        }
+    }
+
+    /// Writes `pinned_pane_ids` on an existing `live_activity` object and
+    /// leaves token, started_at, and unknown fields untouched. No-op when
+    /// the device is missing or has no `live_activity` yet.
+    func settingLiveActivityPinnedPaneIDs(
+        _ pinnedPaneIDs: [String], forDeviceToken deviceToken: String
+    ) -> NotificationRegistrationFile {
+        mutatingDevice(token: deviceToken) { entry in
+            guard var live = objectValue(entry["live_activity"]) else { return }
+            live.setKey("pinned_pane_ids", to: .array(pinnedPaneIDs.map { .string($0) }))
+            entry.setKey("live_activity", to: live)
         }
     }
 
@@ -162,7 +182,23 @@ struct NotificationRegistrationFile: Sendable, Equatable {
             let liveToken = entry["live_activity"]?["token"]?.stringValue, !liveToken.isEmpty,
             let startedAt = entry["live_activity"]?["started_at"]?.stringValue, !startedAt.isEmpty
         else { return nil }
-        return LiveActivityRegistration(token: liveToken, startedAt: startedAt)
+        return LiveActivityRegistration(
+            token: liveToken,
+            startedAt: startedAt,
+            pinnedPaneIDs: Self.pinnedPaneIDs(from: entry["live_activity"]?["pinned_pane_ids"]))
+    }
+
+    /// Lenient reader for `live_activity.pinned_pane_ids`. Missing, null, a
+    /// non-array, or any non-string entry yields an empty list — never a throw.
+    static func pinnedPaneIDs(from value: JSONValue?) -> [String] {
+        guard case .array(let items)? = value else { return [] }
+        var ids: [String] = []
+        ids.reserveCapacity(items.count)
+        for item in items {
+            guard case .string(let id) = item else { return [] }
+            ids.append(id)
+        }
+        return ids
     }
 
     /// The notify flags of the entry carrying `token`, nil when that device
@@ -183,6 +219,11 @@ struct NotificationRegistrationFile: Sendable, Equatable {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         return try encoder.encode(WireFile(v: Self.version, devices: devices))
+    }
+
+    private func objectValue(_ value: JSONValue?) -> JSONValue? {
+        guard let value, case .object = value else { return nil }
+        return value
     }
 
     private func mutatingDevice(

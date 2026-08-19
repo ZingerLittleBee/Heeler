@@ -62,6 +62,27 @@ struct AgentActivityEnvelopeTests {
         #expect(String(data: sealed, encoding: .utf8) == vector.envelope, "\(vector.name)")
     }
 
+    @Test func sealPreservesCallerSuppliedAgentOrder() throws {
+        let key = Data(0..<32)
+        let nonce = Data(176..<188)
+        let details = AgentActivityDetails(
+            hostName: "mbp",
+            agents: [
+                .init(
+                    paneID: "w1:p-work", kind: "claude", name: "builder",
+                    status: "working", title: "still going"),
+                .init(
+                    paneID: "w1:p-block", kind: "claude", name: "reviewer",
+                    status: "blocked", title: "needs review"),
+            ])
+
+        let sealed = try AgentActivityEnvelope.seal(details, using: key, nonce: nonce)
+        let opened = try AgentActivityEnvelope.open(sealed, using: key)
+
+        #expect(opened.agents.map(\.paneID) == ["w1:p-work", "w1:p-block"])
+        #expect(opened.agents.map(\.status) == ["working", "blocked"])
+    }
+
     @Test(arguments: vectors.invalid)
     func rejectsInvalidVector(vector: LiveActivityVectorFile.Invalid) throws {
         let key = try #require(Data(base64URLEncoded: vector.key))
