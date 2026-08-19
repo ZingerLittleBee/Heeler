@@ -21,6 +21,9 @@ enum NotificationRegistrationError: Error, Sendable, Equatable {
     /// the ceremony refuses (the v1 contract bumps `v` only on breaking
     /// changes, honored by plugin and app together).
     case unsupportedFileVersion(Int)
+    /// This device has no entry in the Host's registration file, so a Live
+    /// Activity token cannot be attached (fail closed).
+    case deviceNotRegistered
 }
 
 /// The `notify` preference flags of a registration file entry: which Agent
@@ -60,6 +63,14 @@ struct NotificationDeviceEntry: Sendable, Equatable {
     }
 }
 
+/// The `live_activity` field of a device entry: the per-activity push token
+/// and when the app started that activity. `startedAt` is the ISO 8601
+/// string as stored, so a rewrite can be compared without re-formatting.
+struct LiveActivityRegistration: Sendable, Equatable {
+    var token: String
+    var startedAt: String
+}
+
 /// The Notification Registration file v1 (`plugin/README.md`): the whole
 /// `notifications.json` a Host holds, keyed one entry per device token.
 /// Entries this device did not write are carried verbatim as JSON — a newer
@@ -96,12 +107,13 @@ struct NotificationRegistrationFile: Sendable, Equatable {
         return NotificationRegistrationFile(devices: wire.devices ?? [])
     }
 
-    /// Replaces the entry carrying `entry`'s token, or appends one: exactly
-    /// how re-registration from the same device stays idempotent.
+    /// Merges `entry`'s keys over the existing object carrying that token,
+    /// or appends one: re-registration stays idempotent and additive fields
+    /// this type does not own (`live_activity`, future metadata) survive.
     func upserting(_ entry: NotificationDeviceEntry) -> NotificationRegistrationFile {
         var updated = devices
         if let index = updated.firstIndex(where: { $0["token"]?.stringValue == entry.token.hex }) {
-            updated[index] = entry.wireValue
+            updated[index].mergeKeys(from: entry.wireValue)
         } else {
             updated.append(entry.wireValue)
         }
@@ -117,6 +129,40 @@ struct NotificationRegistrationFile: Sendable, Equatable {
 
     func containsDevice(token: String) -> Bool {
         devices.contains { $0["token"]?.stringValue == token }
+    }
+
+    /// Writes `live_activity` on the matching device entry and leaves every
+    /// other field on that object untouched. An unknown token is a no-op;
+    /// the ceremony refuses that case instead of inventing an entry.
+    func settingLiveActivity(
+        token: String, startedAt: Date, forDeviceToken deviceToken: String
+    ) -> NotificationRegistrationFile {
+        mutatingDevice(token: deviceToken) { entry in
+            entry.setKey(
+                "live_activity",
+                to: .object([
+                    "token": .string(token),
+                    "started_at": .string(Self.iso8601String(from: startedAt)),
+                ]))
+        }
+    }
+
+    /// Drops `live_activity` from the matching device entry, preserving
+    /// every other field. An unknown token is a no-op.
+    func clearingLiveActivity(forDeviceToken deviceToken: String) -> NotificationRegistrationFile {
+        mutatingDevice(token: deviceToken) { entry in
+            entry.setKey("live_activity", to: nil)
+        }
+    }
+
+    /// The `live_activity` field of the entry carrying `deviceToken`, nil
+    /// when that device is not registered or the field is missing/mistyped.
+    func liveActivity(forDeviceToken deviceToken: String) -> LiveActivityRegistration? {
+        guard let entry = devices.first(where: { $0["token"]?.stringValue == deviceToken }),
+            let liveToken = entry["live_activity"]?["token"]?.stringValue, !liveToken.isEmpty,
+            let startedAt = entry["live_activity"]?["started_at"]?.stringValue, !startedAt.isEmpty
+        else { return nil }
+        return LiveActivityRegistration(token: liveToken, startedAt: startedAt)
     }
 
     /// The notify flags of the entry carrying `token`, nil when that device
@@ -139,6 +185,24 @@ struct NotificationRegistrationFile: Sendable, Equatable {
         return try encoder.encode(WireFile(v: Self.version, devices: devices))
     }
 
+    private func mutatingDevice(
+        token: String, update: (inout JSONValue) -> Void
+    ) -> NotificationRegistrationFile {
+        var updated = devices
+        guard let index = updated.firstIndex(where: { $0["token"]?.stringValue == token }) else {
+            return self
+        }
+        update(&updated[index])
+        return NotificationRegistrationFile(devices: updated)
+    }
+
+    private static func iso8601String(from date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter.string(from: date)
+    }
+
     /// The wire shape: `v` stays an integer end to end (`JSONValue` would
     /// round-trip it through Double), devices stay schema-free.
     private struct WireFile: Codable {
@@ -149,5 +213,28 @@ struct NotificationRegistrationFile: Sendable, Equatable {
             self.v = v
             self.devices = devices
         }
+    }
+}
+
+extension JSONValue {
+    fileprivate mutating func mergeKeys(from other: JSONValue) {
+        guard case .object(var fields) = self, case .object(let incoming) = other else {
+            self = other
+            return
+        }
+        for (key, value) in incoming {
+            fields[key] = value
+        }
+        self = .object(fields)
+    }
+
+    fileprivate mutating func setKey(_ key: String, to value: JSONValue?) {
+        guard case .object(var fields) = self else { return }
+        if let value {
+            fields[key] = value
+        } else {
+            fields.removeValue(forKey: key)
+        }
+        self = .object(fields)
     }
 }

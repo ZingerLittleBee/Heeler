@@ -8,6 +8,7 @@ struct NotificationSettingsView: View {
     let pushRegistration: PushRegistrationStore
     let notificationPreferences: NotificationPreferencesStore
     @Bindable var relaySettings: NotificationRelaySettings
+    let liveActivities: HostLiveActivityCoordinator
     @Environment(\.openURL) private var openURL
     @State private var isShowingExplainer = false
 
@@ -138,12 +139,7 @@ struct NotificationSettingsView: View {
         } header: {
             Text(host.displayName)
         } footer: {
-            // Fail loudly (#75): a toggle that could not reach the Host
-            // says so and stays on the Host's confirmed value.
-            if case .failed(let message, _) = notificationPreferences.states[host.id] {
-                Text(message)
-                    .foregroundStyle(.red)
-            }
+            hostSectionFooter(host)
         }
     }
 
@@ -175,6 +171,43 @@ struct NotificationSettingsView: View {
                         }
                     }))
                 .disabled(isUpdating)
+            Toggle(
+                "Live Activity",
+                isOn: Binding(
+                    get: { liveActivities.isEnabled(for: host.id) },
+                    set: { liveActivities.setEnabled($0, for: host.id) }))
+                .disabled(isUpdating)
+        }
+    }
+
+    @ViewBuilder
+    private func hostSectionFooter(_ host: Host) -> some View {
+        let registered: Bool = {
+            switch notificationPreferences.states[host.id] {
+            case .idle(let settings), .updating(let settings), .failed(_, let settings):
+                settings.isRegistered
+            case .loading, .unavailable, nil:
+                false
+            }
+        }()
+        VStack(alignment: .leading, spacing: 6) {
+            if registered {
+                Text(NotificationPrivacyCopy.liveActivityFooter)
+                if !liveActivities.areActivitiesEnabled {
+                    Text(NotificationPrivacyCopy.liveActivityDisabledHint)
+                }
+                if liveActivities.isEnabled(for: host.id),
+                    let note = liveActivities.reconcileNotes[host.id]
+                {
+                    Text("Live Activity: \(note)")
+                }
+            }
+            // Fail loudly (#75): a toggle that could not reach the Host
+            // says so and stays on the Host's confirmed value.
+            if case .failed(let message, _) = notificationPreferences.states[host.id] {
+                Text(message)
+                    .foregroundStyle(.red)
+            }
         }
     }
 

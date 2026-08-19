@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 /// A decrypted Agent Notification payload: what a Host's notify hook tells
@@ -52,11 +51,6 @@ struct NotificationPayload: Sendable, Equatable {
 enum NotificationEnvelope {
     static let version = 1
 
-    private static let keyBytes = 32
-    private static let nonceBytes = 12
-    private static let tagBytes = 16
-    private static let keyIDBytes = 8
-
     /// Additional authenticated data binding the ciphertext to envelope v1,
     /// so a re-framed ciphertext under a different version fails to open.
     private static var additionalData: Data {
@@ -69,7 +63,7 @@ enum NotificationEnvelope {
     /// the app uses it to select the right key (and thus Host) when several
     /// Hosts are registered.
     static func keyID(for key: Data) -> String {
-        Data(SHA256.hash(data: key).prefix(keyIDBytes)).base64URLEncodedString()
+        SealedEnvelopeCodec.keyID(for: key)
     }
 
     /// Reads the cleartext key id off an envelope without decrypting it, so
@@ -77,10 +71,7 @@ enum NotificationEnvelope {
     /// registered. Nil when the framing is too broken to carry one; version
     /// and ciphertext checks stay `decrypt`'s job.
     static func peekKeyID(in envelope: Data) -> String? {
-        guard let wire = try? JSONDecoder().decode(WireEnvelope.self, from: envelope),
-            let kid = wire.kid, !kid.isEmpty
-        else { return nil }
-        return kid
+        SealedEnvelopeCodec.peekKeyID(in: envelope)
     }
 
     /// The shared front half of alert rendering (#71) and tap routing (#74):
@@ -111,51 +102,8 @@ enum NotificationEnvelope {
     static func decrypt(
         _ envelope: Data, using key: Data
     ) throws(NotificationEnvelopeError) -> NotificationPayload {
-        let wire: WireEnvelope
-        do {
-            wire = try JSONDecoder().decode(WireEnvelope.self, from: envelope)
-        } catch {
-            // Not a JSON object, or a field with the wrong JSON type
-            // (including a non-numeric "v"): the framing is broken.
-            throw .badEnvelope(reason: "envelope is not a well-formed JSON object")
-        }
-        guard let rawVersion = wire.v, let foundVersion = Int(exactly: rawVersion) else {
-            throw .badEnvelope(reason: "v must be an integer")
-        }
-        guard foundVersion == version else {
-            throw .unsupportedVersion(found: foundVersion)
-        }
-        guard let kid = wire.kid, !kid.isEmpty else {
-            throw .badEnvelope(reason: "kid must be a non-empty string")
-        }
-        guard let nonceText = wire.n, let nonce = Data(base64URLEncoded: nonceText),
-            nonce.count == nonceBytes
-        else {
-            throw .badEnvelope(reason: "n must be \(nonceBytes) bytes of base64url")
-        }
-        guard let ciphertextText = wire.ct, let sealed = Data(base64URLEncoded: ciphertextText),
-            sealed.count >= tagBytes
-        else {
-            throw .badEnvelope(reason: "ct must be base64url of ciphertext plus GCM tag")
-        }
-        guard key.count == keyBytes else {
-            // Not a v1 Notification Key, so nothing it could ever decrypt.
-            throw .decryptFailed
-        }
-
-        let plaintext: Data
-        do {
-            let box = try AES.GCM.SealedBox(
-                nonce: AES.GCM.Nonce(data: nonce),
-                ciphertext: sealed.dropLast(tagBytes),
-                tag: sealed.suffix(tagBytes))
-            plaintext = try AES.GCM.open(
-                box, using: SymmetricKey(data: key), authenticating: additionalData)
-        } catch {
-            // Tampered ciphertext, tag, or nonce, or the wrong key: GCM
-            // cannot tell these apart and neither can we.
-            throw .decryptFailed
-        }
+        let plaintext = try SealedEnvelopeCodec.open(
+            envelope, using: key, authenticating: additionalData)
         return try validated(plaintext)
     }
 
@@ -194,16 +142,6 @@ enum NotificationEnvelope {
     private static func nonEmpty(_ text: String?) -> String? {
         guard let text, !text.isEmpty else { return nil }
         return text
-    }
-
-    /// Cleartext JSON wire shape. Every field is optional and numbers are
-    /// decoded as Double so that missing keys and wrong types surface as
-    /// `badEnvelope` after decoding instead of dying inside JSONDecoder.
-    private struct WireEnvelope: Decodable {
-        var v: Double?
-        var kid: String?
-        var n: String?
-        var ct: String?
     }
 
     /// Decrypted JSON wire shape, lenient for the same reason. `project` and

@@ -10,9 +10,13 @@ it once, submits its Device Key public line, and the plugin's Enrollment
 entrypoint appends that key to `authorized_keys` automatically. See
 [Bootstrap Key lifecycle](#bootstrap-key-lifecycle).
 
-The plugin also delivers **Agent Notifications** (ADR 0008): an event hook on
-`pane.agent_status_changed` pushes encrypted Blocked/Done transitions to
-registered devices through the Push Relay. See [Notify hook](#notify-hook).
+The plugin also delivers **Agent Notifications** (ADR 0008) and per-Host
+**Live Activity** updates: two independent `[[events]]` entries on
+`pane.agent_status_changed`. herdr runs every matching hook for the same
+event (verified on 0.8.0). The notify hook pushes encrypted Blocked/Done
+alerts; the activity hook pushes the Host's eligible-agent snapshot to any
+device that has registered a Live Activity token. See
+[Notify hook](#notify-hook) and [Activity hook](#activity-hook).
 
 ## Requirements
 
@@ -270,7 +274,8 @@ revokes that device.
       "token": "a1b2c3...",
       "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
       "env": "production",
-      "notify": { "blocked": true, "done": true }
+      "notify": { "blocked": true, "done": true },
+      "live_activity": { "token": "c4d5e6...", "started_at": "2026-01-01T00:00:00Z" }
     }
   ]
 }
@@ -285,6 +290,9 @@ revokes that device.
 | `env`            | string  | `production` or `sandbox`: which APNs environment the token belongs to, following the app build that registered it. |
 | `notify.blocked` | boolean | Send a push when an Agent becomes Blocked. |
 | `notify.done`    | boolean | Send a push when an Agent reaches Done. A missing flag means do not send (fail closed). |
+| `live_activity`  | object  | Optional per-device Live Activity registration. Present while the app is showing this Host's activity. See [Activity hook](#activity-hook). |
+| `live_activity.token` | string | The per-activity APNs push token, lowercase hex. Distinct from the alert `token`. |
+| `live_activity.started_at` | string | ISO 8601 timestamp the app wrote when it started (or rotated) the activity. Ignored by the hook; preserved on rewrite. |
 
 Readers ignore unknown fields (additive v1 metadata); breaking changes bump
 `v`, honored by plugin and app together.
@@ -320,7 +328,8 @@ the plugin config dir:
 | Field            | Type    | Meaning |
 | ---------------- | ------- | ------- |
 | `relay_url`      | string  | Optional Push Relay base URL override for a self-built app. Defaults to `https://heeler-apns.bybee.dev`; the app writes the resolved value during Notification Registration. |
-| `debounce_ms`    | integer | Debounce sleep override. Default 5000. |
+| `debounce_ms`    | integer | Debounce sleep override for the alert notify hook. Default 5000. |
+| `activity_debounce_ms` | integer | Latest-wins debounce sleep for the Live Activity hook. Default 1500. |
 | `retry_delay_ms` | integer | Delay between retry attempts. Default 1000. |
 
 ### Hook event JSON (verified against herdr 0.7.5)
@@ -339,6 +348,53 @@ though the manifest subscribes to the dot name:
 optional. herdr's wire shapes carry no stability guarantee, so the hook parses
 leniently: it requires only `data.pane_id` and `data.agent_status` and ignores
 everything it does not recognize.
+
+## Activity hook
+
+The second manifest `[[events]]` hook on `pane.agent_status_changed` runs
+`src/activity-hook.js` as its own short-lived process. herdr invokes both
+this command and `src/notify-hook.js` for the same event (verified on
+0.8.0); there is no in-plugin dispatcher. It is independent of the alert
+notify hook: `notify` flags do not gate it, and a Host with no
+`live_activity` registration sends nothing.
+
+The hook lists the Host's agents through `HERDR_BIN_PATH` (`herdr agent list`)
+and drives one Live Activity per Host. Eligible statuses are **Working**,
+**Blocked**, and **Done**; idle and unknown panes are hidden. The encrypted
+details envelope uses the same Notification Key as alerts, sealed under AAD
+`HERDR-ACTIVITY:1` (see `docs/agents/live-activity-contract.md` and
+`test-vectors/live-activity-content-v1.json`).
+
+Anti-noise, in order:
+
+1. **Cheap exits**: no device has a `live_activity` object with a plausible
+   hex token, valid env, and 32-byte key; or `activity/last-state.json`
+   recorded `ended: true` and the incoming status is not working/blocked/done.
+2. **Latest-wins debounce**: the script writes `activity/claim.json` and
+   sleeps `activity_debounce_ms` (default 1500). A newer claim from an
+   overlapping invocation wins; the loser exits without sending.
+3. **Unchanged snapshot**: a `{pane_id: status}` map identical to last-state
+   sends nothing.
+
+An empty eligible set sends `event: end` (skipped if already ended) with zero
+counts, `dismissal_date` equal to the timestamp, and an envelope whose
+`agents` array is empty. Otherwise it sends `event: update` with
+`stale_date` = timestamp + 900. Priority is **10** only when some pane is
+blocked now and was not blocked in last-state (absent last-state counts as
+empty); otherwise **5**.
+
+Each eligible device gets one `POST /push` with `kind: liveactivity`, the
+activity token, and the sealed envelope. Transient failures (network errors,
+429, 5xx) are retried up to 3 attempts. A `410 Unregistered` verdict deletes
+only that entry's `live_activity` field, preserving the alert `token`, `key`,
+`notify` flags, and any field this plugin does not understand. A relay-origin
+`413` degrades the envelope once per step (drop every `title`, then send
+`agents: []`) and retries; the hook also pre-degrades when the projected
+ciphertext would exceed the Live Activity size budget.
+
+Last-state (`activity/last-state.json`: `sent_at_ms`, `statuses`, `ended`) is
+written only after at least one successful delivery. All state writes are
+temp-file + rename.
 
 ## Tests
 

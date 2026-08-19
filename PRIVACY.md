@@ -12,9 +12,11 @@ below.
   remains in the iOS Keychain, and never leaves your device. Host fingerprints
   are also stored locally.
 - **Notification Keys.** Each per-Host Notification Key is generated on your
-  device and stored in the shared Keychain. Heeler copies it over SSH to the
-  corresponding Host so the plugin can encrypt notifications. The Push Relay
-  never receives it.
+  device and stored in the shared Keychain, with a device-local mirror in the
+  app's shared container (protected until first unlock, excluded from
+  backups) so the lock screen can decrypt Live Activity updates. Heeler
+  copies it over SSH to the corresponding Host so the plugin can encrypt
+  notifications. The Push Relay never receives it.
 - **Host list and settings.** Your Hosts and app settings are stored locally.
   Per-Host notification registration and delivery flags are stored on that Host.
 - **Live agent activity.** Terminal output, prompts, and pane contents travel
@@ -46,6 +48,11 @@ The notification is encrypted on your Host with your per-Host Notification Key
   without decrypting.
 - Your Host's **source IP address**, as with any network request.
 - **When and how often** your Host sends notification requests.
+- For lock-screen Live Activity updates only: the **status counts** (how many
+  agents are working, blocked, or done) and the update/end signal. Apple
+  renders these counts directly, so they cannot be encrypted; everything
+  identifying — agent kind, task title, host name — stays inside the
+  ciphertext and is decrypted on your device at render time.
 
 ### What the push relay cannot see
 

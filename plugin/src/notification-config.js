@@ -11,6 +11,7 @@ export const LEGACY_DEFAULT_RELAY_URLS = new Set([
   "https://herdr-apns.bybee.dev",
 ]);
 const DEFAULT_DEBOUNCE_MS = 5000;
+const DEFAULT_ACTIVITY_DEBOUNCE_MS = 1500;
 const DEFAULT_RETRY_DELAY_MS = 1000;
 
 function normalizeRelayURL(value) {
@@ -38,6 +39,7 @@ export function readNotificationConfig(configDir) {
   return {
     relayUrl: normalizeRelayURL(parsed.relay_url) ?? DEFAULT_RELAY_URL,
     debounceMs: positiveInt(parsed.debounce_ms, DEFAULT_DEBOUNCE_MS),
+    activityDebounceMs: positiveInt(parsed.activity_debounce_ms, DEFAULT_ACTIVITY_DEBOUNCE_MS),
     retryDelayMs: positiveInt(parsed.retry_delay_ms, DEFAULT_RETRY_DELAY_MS),
   };
 }

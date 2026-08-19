@@ -18,6 +18,13 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Lock-screen Live Activities show each Host's active agents: status counts
+  plus the top agents (blocked first), updating in near real time while the
+  app is open and via push after it suspends, ending when every agent goes
+  idle. Agent names, titles, and host names stay end-to-end encrypted and are
+  decrypted on device at render time; the relay sees only the counts. Opt in
+  per Host from Notification Settings; requires the updated herdr plugin.
+
 - Agent detail now places a plus menu to the left of Send. It can add an image
   from Photos or a file up to 64 MiB from Files, stages the selection privately
   on the Host over SFTP, and inserts the resulting path into the local draft
@@ -56,6 +63,16 @@ Entries reference the issue that motivated them.
   when a notice is missing or malformed. (#161; PR #170)
 
 ### Changed
+
+- Lock-screen Live Activities now headline the most urgent agent's task
+  title and show no Host identity. Each agent row is a tap target that
+  opens that agent's detail in the app; a tap outside the rows opens the
+  Console. A reconnect no longer treats a transient empty Agent list as
+  "all idle" and dismisses the activity.
+
+- Live Activity agent lines now lead with the herdr agent name (e.g.
+  `reviewer`) ahead of the task title. Unnamed agents and updates from
+  older plugins render exactly as before.
 
 - App Store builds now target iPhone only. The notification service uses the
   same device family, so App Store Connect no longer treats iPad screenshots as

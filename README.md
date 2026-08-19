@@ -25,11 +25,11 @@ Heeler is an **agent console**: a native dashboard of every coding agent running
 
 ## Screenshots
 
-The Agent Console with every Host in one priority-sorted view; the tools keyboard's Agent controls under the live terminal; an Agent's session rendered above the Composer:
+The Agent Console with every Host in one priority-sorted view; the tools keyboard's Agent controls under the live terminal; an Agent's session rendered above the Composer; the lock-screen Live Activity tracking Agents in real time:
 
-| Agent Console | Composer + tools keyboard | Live terminal |
-| --- | --- | --- |
-| ![Agent Console on iPhone](docs/images/console-iphone.png) | ![Agent terminal with the tools keyboard on iPhone](docs/images/agent-iphone.png) | ![Agent's live terminal above the Composer on iPhone](docs/images/composer-iphone.png) |
+| Agent Console | Composer + tools keyboard | Live terminal | Live Activity |
+| --- | --- | --- | --- |
+| ![Agent Console on iPhone](docs/images/console-iphone.png) | ![Agent terminal with the tools keyboard on iPhone](docs/images/agent-iphone.png) | ![Agent's live terminal above the Composer on iPhone](docs/images/composer-iphone.png) | ![Lock-screen Live Activity tracking Agents on iPhone](docs/images/live-activity-iphone.png) |
 
 ## Features
 
@@ -58,6 +58,10 @@ The Agent Console with every Host in one priority-sorted view; the tools keyboar
   goes Blocked or Done, deep-linking into its terminal; the relay sees the
   device token, source IP, request timing, and ciphertext, but cannot read the
   notification.
+- **Live Activities** — a per-Host lock-screen and Dynamic Island banner
+  tracking Working, Blocked, and Done Agents in real time, updated through the
+  same end-to-end encrypted push pipeline; the relay and lock screen fall back
+  to plain status counts when details cannot be decrypted.
 - **Worktrees** — start an Agent on a clean checkout of a workspace's repo
   with a toggle on the New Agent form.
 - **Appearance** — System, Light, or Dark app appearance; 30 curated terminal

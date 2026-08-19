@@ -41,13 +41,19 @@ struct NotificationKeyStore: Sendable {
     private static let keyBytes = 32
 
     private let secrets: any SecretStore
+    /// Kept in sync on every mutation so the Live Activity widget can
+    /// decrypt while the Keychain is unreachable in its locked rendering
+    /// context (see `NotificationKeyMirror`). Nil disables mirroring.
+    private let mirror: NotificationKeyMirror?
 
     init(
         secrets: any SecretStore = KeychainSecretStore(
             service: NotificationKeyStore.service,
-            accessGroup: NotificationKeyStore.sharedAccessGroup)
+            accessGroup: NotificationKeyStore.sharedAccessGroup),
+        mirror: NotificationKeyMirror? = NotificationKeyMirror()
     ) {
         self.secrets = secrets
+        self.mirror = mirror
     }
 
     /// A fresh random Notification Key, generated on device per the contract.
@@ -64,6 +70,15 @@ struct NotificationKeyStore: Sendable {
         let stored = StoredRecord(
             v: 1, name: record.hostName, key: record.key.base64URLEncodedString())
         try secrets.write(try JSONEncoder().encode(stored), account: record.hostID.uuidString)
+        refreshMirror()
+    }
+
+    /// Rewrites the app-group mirror from the current Keychain contents.
+    /// Called after every mutation and once at app start, so installs whose
+    /// keys predate the mirror gain one without re-registering.
+    func refreshMirror() {
+        guard let mirror, let records = try? allRecords() else { return }
+        mirror.write(records)
     }
 
     func record(forHost hostID: UUID) throws -> NotificationKeyRecord? {
@@ -77,6 +92,7 @@ struct NotificationKeyStore: Sendable {
 
     func removeRecord(forHost hostID: UUID) throws {
         try secrets.removeSecret(account: hostID.uuidString)
+        refreshMirror()
     }
 
     private static func decode(account: String, data: Data) -> NotificationKeyRecord? {

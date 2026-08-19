@@ -11,17 +11,13 @@
 // Swift side proves the decrypt direction. Breaking changes bump the
 // version, which both implementations must honor together.
 
-import { createCipheriv, createHash, randomBytes } from "node:crypto";
+import { ENVELOPE_VERSION, deriveKeyId, sealEnvelope } from "./seal-envelope.js";
 
-export const NOTIFICATION_ENVELOPE_VERSION = 1;
+export const NOTIFICATION_ENVELOPE_VERSION = ENVELOPE_VERSION;
 
 // Additional authenticated data binding the ciphertext to envelope v1, so a
 // re-framed ciphertext under a different version fails authentication.
 const AAD = Buffer.from(`HERDR-NOTIFY:${NOTIFICATION_ENVELOPE_VERSION}`, "utf8");
-
-const KEY_BYTES = 32;
-const NONCE_BYTES = 12;
-const KEY_ID_BYTES = 8;
 
 export class NotificationEnvelopeError extends Error {
   /**
@@ -48,10 +44,7 @@ function fail(code, message) {
  * @returns {string}
  */
 export function notificationKeyId(key) {
-  if (!Buffer.isBuffer(key) || key.length !== KEY_BYTES) {
-    throw new TypeError(`Notification Key must be a ${KEY_BYTES}-byte Buffer`);
-  }
-  return createHash("sha256").update(key).digest().subarray(0, KEY_ID_BYTES).toString("base64url");
+  return deriveKeyId(key);
 }
 
 // Hard ceiling for the display-only strings. The notify hook trims to
@@ -111,16 +104,12 @@ function validatePayload(payload) {
  * @throws {NotificationEnvelopeError} with code `bad_payload`
  */
 export function encryptNotificationEnvelope(payload, key, { nonce } = {}) {
-  const keyId = notificationKeyId(key);
-  if (nonce === undefined) {
-    nonce = randomBytes(NONCE_BYTES);
-  } else if (!Buffer.isBuffer(nonce) || nonce.length !== NONCE_BYTES) {
-    throw new TypeError(`nonce must be a ${NONCE_BYTES}-byte Buffer`);
-  }
   validatePayload(payload);
 
   // Empty display fields are omitted rather than sent blank, so the encoding
-  // stays canonical whichever way the Host failed to resolve them.
+  // stays canonical whichever way the Host failed to resolve them. Key order
+  // is the notification contract's table order (not alphabetical) so existing
+  // vectors stay byte-identical.
   const plaintext = JSON.stringify({
     pane: payload.paneId,
     kind: payload.agentKind,
@@ -129,18 +118,5 @@ export function encryptNotificationEnvelope(payload, key, { nonce } = {}) {
     ...(payload.project ? { project: payload.project } : {}),
     ...(payload.title ? { title: payload.title } : {}),
   });
-  const cipher = createCipheriv("aes-256-gcm", key, nonce);
-  cipher.setAAD(AAD);
-  const ciphertext = Buffer.concat([
-    cipher.update(plaintext, "utf8"),
-    cipher.final(),
-    cipher.getAuthTag(),
-  ]);
-
-  return JSON.stringify({
-    v: NOTIFICATION_ENVELOPE_VERSION,
-    kid: keyId,
-    n: nonce.toString("base64url"),
-    ct: ciphertext.toString("base64url"),
-  });
+  return sealEnvelope(plaintext, key, AAD, { nonce });
 }

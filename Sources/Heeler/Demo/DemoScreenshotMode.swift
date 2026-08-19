@@ -34,6 +34,7 @@
         @State private var relaySettings: NotificationRelaySettings
         @State private var notificationRouter: AgentNotificationRouter
         @State private var bannerStore: AgentNotificationBannerStore
+        @State private var liveActivities: HostLiveActivityCoordinator
         @State private var activity: AppActivityCoordinator
 
         init() {
@@ -50,6 +51,7 @@
             _relaySettings = State(initialValue: composition.relaySettings)
             _notificationRouter = State(initialValue: composition.notificationRouter)
             _bannerStore = State(initialValue: composition.bannerStore)
+            _liveActivities = State(initialValue: composition.liveActivities)
             _activity = State(initialValue: composition.activity)
         }
 
@@ -70,6 +72,7 @@
                 relaySettings: relaySettings,
                 notificationRouter: notificationRouter,
                 bannerStore: bannerStore,
+                liveActivities: liveActivities,
                 activity: activity
             )
             .preferredColorScheme(appearance.preferredColorScheme)
@@ -95,6 +98,7 @@
         let relaySettings: NotificationRelaySettings
         let notificationRouter: AgentNotificationRouter
         let bannerStore: AgentNotificationBannerStore
+        let liveActivities: HostLiveActivityCoordinator
         let activity: AppActivityCoordinator
 
         static func make() -> DemoScreenshotComposition {
@@ -123,6 +127,18 @@
                     presentedAgent: { notificationRouter.path.last },
                     triggers: { _ in nil },
                     playSound: {}),
+                liveActivities: HostLiveActivityCoordinator(
+                    controller: ActivityKitLiveActivityController(),
+                    preferences: LiveActivityPreferences(defaults: defaults),
+                    transports: console,
+                    deviceToken: { nil },
+                    knownHostIDs: { Set(DemoScreenshotFixture.hosts.map(\.id)) },
+                    hostDisplayName: { id in
+                        DemoScreenshotFixture.hosts.first(where: { $0.id == id })?.displayName
+                            ?? ""
+                    },
+                    isAwaitingSnapshot: { _ in false },
+                    connectionStatus: { _ in .connected }),
                 activity: AppActivityCoordinator())
         }
     }

@@ -25,11 +25,11 @@ Heeler 是一个 **agent 控制台**：把所有机器上正在运行的 coding 
 
 ## 截图
 
-汇聚所有 Host、按优先级排序的 Agent Console；实时终端下方工具键盘的 Agent 控制键；渲染在 Composer 上方的 Agent 会话：
+汇聚所有 Host、按优先级排序的 Agent Console；实时终端下方工具键盘的 Agent 控制键；渲染在 Composer 上方的 Agent 会话；锁屏上实时跟踪 Agent 的实时活动：
 
-| Agent Console | Composer + 工具键盘 | 实时终端 |
-| --- | --- | --- |
-| ![iPhone 上的 Agent Console](docs/images/console-iphone.png) | ![iPhone 上带工具键盘的 Agent 终端](docs/images/agent-iphone.png) | ![iPhone 上 Composer 上方的 Agent 实时终端](docs/images/composer-iphone.png) |
+| Agent Console | Composer + 工具键盘 | 实时终端 | 实时活动 |
+| --- | --- | --- | --- |
+| ![iPhone 上的 Agent Console](docs/images/console-iphone.png) | ![iPhone 上带工具键盘的 Agent 终端](docs/images/agent-iphone.png) | ![iPhone 上 Composer 上方的 Agent 实时终端](docs/images/composer-iphone.png) | ![iPhone 锁屏上实时跟踪 Agent 的实时活动](docs/images/live-activity-iphone.png) |
 
 ## 功能
 
@@ -51,6 +51,9 @@ Heeler 是一个 **agent 控制台**：把所有机器上正在运行的 coding 
 - **Agent 通知** —— Agent 进入 Blocked 或 Done 时发出端到端加密的 APNs
   推送，深链直达其终端；中继只能看到 device token、来源 IP、请求时间和
   密文，读不到通知内容。
+- **实时活动** —— 锁屏与灵动岛上的 per-Host 横幅，实时跟踪 Working、
+  Blocked、Done 状态的 Agent，走同一条端到端加密推送管线；无法解密细节时，
+  中继与锁屏只能看到状态计数。
 - **Worktrees** —— New Agent 表单上的一个开关，让 Agent 从工作区仓库的
   干净检出上启动。
 - **外观** —— 应用外观可选跟随系统、浅色或深色；30 个精选终端主题，浅色与

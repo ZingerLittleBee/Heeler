@@ -1,10 +1,11 @@
 # herdr Push Relay
 
-The developer-hosted, stateless forwarder for Agent Notifications (ADR 0008).
-The plugin's notify hook on a Host encrypts a notification payload with the
-per-host Notification Key and POSTs it here; the relay signs the APNs
-provider JWT with the deploy-time `.p8`, forwards the ciphertext verbatim to
-Apple, and relays Apple's verdict back. It is a dumb pipe on purpose:
+The developer-hosted, stateless forwarder for Agent Notifications (ADR 0008)
+and per-Host Live Activity updates (`docs/agents/live-activity-contract.md`).
+The plugin encrypts a payload with the per-host Notification Key and POSTs it
+here; the relay signs the APNs provider JWT with the deploy-time `.p8`,
+forwards the ciphertext verbatim to Apple, and relays Apple's verdict back.
+It is a dumb pipe on purpose:
 
 - **No message state**: no accounts, database, queue, message history, or
   retries (the plugin retries). A relay compromise can expose the APNs
@@ -16,7 +17,9 @@ Apple, and relays Apple's verdict back. It is a dumb pipe on purpose:
   for self-built apps whose APNs credentials are authorized for their bundle
   ID.
 - **What crosses it**: the request carries the device token, APNs environment,
-  ciphertext, and an opaque collapse identifier. The relay also observes the
+  ciphertext, and (on the alert path) an opaque collapse identifier. Live
+  Activity requests also carry the agent **counts**, the **event**
+  (`update` / `end`), and the **priority**. The relay also observes the
   source IP, request timing, frequency, and size. It never decrypts the
   envelope.
 
@@ -28,7 +31,12 @@ plain Node.
 
 ### `POST /push`
 
-Request body (JSON, ≤ 8 KB):
+Request body (JSON, ≤ 8 KB). Bodies **without** `kind` are the original
+alert path and must remain byte-identical to the pre-Live-Activity relay.
+`kind: "liveactivity"` selects the Live Activity path. Any other `kind`
+value, or a `kind` field on an alert body, is `bad_kind`.
+
+#### Alert path (no `kind`)
 
 | Field      | Type   | Required | Meaning |
 | ---------- | ------ | -------- | ------- |
@@ -39,14 +47,37 @@ Request body (JSON, ≤ 8 KB):
 
 The relay wraps the envelope in a `mutable-content: 1` alert push with a
 generic fallback title/body (the app's service extension rewrites them after
-decrypting) and enforces Apple's 4 KB alert-payload cap before forwarding.
+decrypting) and enforces Apple's 4 KB payload cap before forwarding.
+
+#### Live Activity path (`kind: "liveactivity"`)
+
+| Field            | Type    | Required | Meaning |
+| ---------------- | ------- | -------- | ------- |
+| `kind`           | string  | yes      | Must be `liveactivity`. |
+| `token`          | string  | yes      | Per-activity APNs push token, same hex rules as the alert path. |
+| `env`            | string  | yes      | `production` or `sandbox`. |
+| `event`          | string  | yes      | `update` or `end`. |
+| `priority`       | integer | yes      | `5` or `10`. `10` additionally requires `counts.blocked >= 1`. |
+| `timestamp`      | integer | yes      | Unix seconds; must be positive and within `[now − 86400, now + 300]`. |
+| `stale_date`     | integer | no       | Must be `> timestamp` when present. Sent as APNs `stale-date`. |
+| `dismissal_date` | integer | no       | Allowed only when `event` is `end`. Sent as APNs `dismissal-date`. |
+| `counts`         | object  | yes      | Exactly `working`, `blocked`, `done`, each an integer `0..999`. |
+| `envelope`       | string  | yes      | Canonical activity-envelope JSON, forwarded without parsing. |
+| `collapse`       | —       | no       | Must be **absent**. Live Activity pushes do not set `apns-collapse-id`. |
+
+The APNs request uses `apns-push-type: liveactivity` and
+`apns-topic: ${APNS_TOPIC}.push-type.liveactivity` (suffix-derived from the
+existing topic; no extra config var). The body is `aps` only —
+`timestamp`, `event`, `content-state: {counts, envelope}`, and the optional
+dates — never `alert` or `mutable-content`. The same 4 KB payload cap
+applies.
 
 ### Responses
 
 | Status | Body | Meaning |
 | ------ | ---- | ------- |
 | 200 | `{"apnsId": "..."}` | APNs accepted the push. |
-| 400 | `{"error": "bad_json" \| "bad_token" \| "bad_env" \| "bad_envelope" \| "bad_collapse"}` | Request rejected by the relay before contacting APNs. |
+| 400 | `{"error": "bad_json" \| "bad_kind" \| "bad_token" \| "bad_env" \| "bad_event" \| "bad_priority" \| "bad_timestamp" \| "bad_stale_date" \| "bad_dismissal_date" \| "bad_counts" \| "bad_envelope" \| "bad_collapse"}` | Request rejected by the relay before contacting APNs. |
 | 404 / 405 | `{"error": ...}` | Wrong path / method (`allow: POST`). |
 | 413 | `{"error": "request_too_large" \| "payload_too_large"}` | Request body over 8 KB, or the final APNs payload would exceed 4 KB. |
 | 429 | `{"error": "rate_limited"}` + `retry-after` | Per-IP or per-token limit hit (defaults 120 and 60 per minute; overridable via vars). |
@@ -68,7 +99,7 @@ quota-burning abuse, not a billing-grade quota.
 | `APNS_TEAM_ID` | no | Apple Developer Team ID (JWT `iss`). |
 | `APNS_KEY_ID` | no | APNs auth key id (JWT `kid`). |
 | `APNS_KEY_P8` | **yes** | PEM contents of the APNs auth key. Deploy-time secret — never commit a `.p8`, never put it in `[vars]`. |
-| `APNS_TOPIC` | no | The app bundle id (`apns-topic`). |
+| `APNS_TOPIC` | no | The app bundle id (`apns-topic`). Live Activity pushes use `${APNS_TOPIC}.push-type.liveactivity` (derived by suffix; no extra var). |
 | `RATE_LIMIT_IP_PER_MIN` | no | Optional per-IP limit override. |
 | `RATE_LIMIT_TOKEN_PER_MIN` | no | Optional per-token limit override. |
 

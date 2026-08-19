@@ -102,12 +102,14 @@ import Testing
         #expect(agent.displayName == "codex")
     }
 
-    @Test func agentMappingFallsBackToUnstrippedTitle() throws {
+    @Test func agentMappingFallsBackToRawTitleAndStripsSpinnerGlyphs() throws {
         let json = #"{"terminal_id":"t","agent":"claude","terminal_title":"⠐ Fix","agent_status":"working","workspace_id":"w","tab_id":"w:t","pane_id":"w:p","focused":true,"revision":1}"#
 
         let agent = Agent(try JSONDecoder().decode(AgentInfo.self, from: Data(json.utf8)))
 
-        #expect(agent.title == "⠐ Fix")
+        // The raw terminal title still backfills a missing stripped title,
+        // but agent spinner glyphs are shaved off either way.
+        #expect(agent.title == "Fix")
     }
 
     @Test func errorEnvelopeThrowsHerdrAPIError() throws {

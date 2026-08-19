@@ -124,4 +124,74 @@ struct NotificationRegistrationFileTests {
             file.preferences(token: "ffff")
                 == NotificationTriggerPreferences(blocked: false, done: false))
     }
+
+    @Test func settingLiveActivityWritesTheContractShapeAndClearsIt() throws {
+        let started = Date(timeIntervalSince1970: 1_700_000_000)
+        let file = NotificationRegistrationFile().upserting(entry)
+            .settingLiveActivity(
+                token: "deadbeef", startedAt: started, forDeviceToken: entry.token.hex)
+
+        let live = try #require(file.liveActivity(forDeviceToken: entry.token.hex))
+        #expect(live.token == "deadbeef")
+        #expect(live.startedAt == "2023-11-14T22:13:20Z")
+
+        let object = try #require(
+            try JSONSerialization.jsonObject(with: try file.encoded()) as? [String: Any])
+        let devices = try #require(object["devices"] as? [[String: Any]])
+        let device = try #require(devices.first)
+        let wire = try #require(device["live_activity"] as? [String: String])
+        #expect(wire == ["token": "deadbeef", "started_at": "2023-11-14T22:13:20Z"])
+
+        let cleared = file.clearingLiveActivity(forDeviceToken: entry.token.hex)
+        #expect(cleared.liveActivity(forDeviceToken: entry.token.hex) == nil)
+        #expect(cleared.containsDevice(token: entry.token.hex))
+        let clearedDevice = try #require(
+            try JSONSerialization.jsonObject(with: try cleared.encoded()) as? [String: Any])
+        let clearedEntry = try #require(
+            (clearedDevice["devices"] as? [[String: Any]])?.first)
+        #expect(clearedEntry["live_activity"] == nil)
+        #expect(clearedEntry["token"] as? String == entry.token.hex)
+    }
+
+    @Test func settingLiveActivityPreservesUnknownFieldsOnTheDeviceEntry() throws {
+        let existing = Data(
+            (#"{"v":1,"devices":[{"token":"a1b2c3","key":"kk","env":"production","#
+                + #""notify":{"blocked":true,"done":true},"future_field":"kept","#
+                + #""other":{"nested":true}}]}"#).utf8)
+        let started = Date(timeIntervalSince1970: 1_700_000_000)
+
+        let file = try NotificationRegistrationFile.decode(existing)
+            .settingLiveActivity(
+                token: "aabbcc", startedAt: started, forDeviceToken: "a1b2c3")
+        let device = try #require(file.devices.first)
+        #expect(device["future_field"]?.stringValue == "kept")
+        #expect(device["other"]?["nested"] == .bool(true))
+        #expect(device["key"]?.stringValue == "kk")
+        #expect(file.liveActivity(forDeviceToken: "a1b2c3")?.token == "aabbcc")
+
+        let cleared = file.clearingLiveActivity(forDeviceToken: "a1b2c3")
+        let afterClear = try #require(cleared.devices.first)
+        #expect(afterClear["future_field"]?.stringValue == "kept")
+        #expect(afterClear["other"]?["nested"] == .bool(true))
+        #expect(cleared.liveActivity(forDeviceToken: "a1b2c3") == nil)
+    }
+
+    @Test func upsertingMergesKeysSoALiveActivityTokenSurvivesReregistration() throws {
+        let existing = Data(
+            (#"{"v":1,"devices":[{"token":"a1b2c3","key":"old-key","env":"production","#
+                + #""notify":{"blocked":true,"done":true},"future_field":"kept","#
+                + #""live_activity":{"token":"la","started_at":"2024-01-01T00:00:00Z"}}]}"#)
+                .utf8)
+
+        let file = try NotificationRegistrationFile.decode(existing).upserting(entry)
+
+        #expect(file.devices.count == 1)
+        let device = try #require(file.devices.first)
+        #expect(device["live_activity"]?["token"]?.stringValue == "la")
+        #expect(device["live_activity"]?["started_at"]?.stringValue == "2024-01-01T00:00:00Z")
+        #expect(device["future_field"]?.stringValue == "kept")
+        #expect(device["key"]?.stringValue == key.base64URLEncodedString())
+        #expect(device["notify"]?["blocked"] == .bool(true))
+        #expect(device["notify"]?["done"] == .bool(false))
+    }
 }

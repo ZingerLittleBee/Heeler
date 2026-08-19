@@ -27,7 +27,9 @@ custom_domain = true
 
 [vars]
 APNS_TEAM_ID = "9VM4RM39R3"
-APNS_KEY_ID = "74X2TF988P"
+APNS_KEY_ID = "RQQ8PA9A6G"
 APNS_TOPIC = "dev.bybee.heeler"
+# Live Activity pushes use `${APNS_TOPIC}.push-type.liveactivity`
+# (suffix-derived; no extra var).
 # RATE_LIMIT_IP_PER_MIN = "120"                  # optional override
 # RATE_LIMIT_TOKEN_PER_MIN = "60"                # optional override

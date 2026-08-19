@@ -26,3 +26,7 @@ command = ["node", "src/pair-popup.js"]
 [[events]]
 on = "pane.agent_status_changed"
 command = ["node", "src/notify-hook.js"]
+
+[[events]]
+on = "pane.agent_status_changed"
+command = ["node", "src/activity-hook.js"]

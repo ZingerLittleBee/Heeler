@@ -1,13 +1,19 @@
 // herdr Push Relay (ADR 0008): a stateless forwarder from Hosts to APNs.
 //
-// One endpoint, POST /push. The caller (the plugin's notify hook) supplies a
-// device token, the APNs environment, the encrypted notification envelope,
-// and an opaque collapse key. The relay signs the APNs provider JWT with the
-// deploy-time .p8 secret, wraps the envelope verbatim in a mutable-content
-// alert push, forwards it, and relays Apple's verdict back — 410 Unregistered
-// included, so the plugin can prune dead tokens. No accounts, no database,
-// no queue, no retries (the plugin retries).
+// One endpoint, POST /push. Bodies without `kind` are the original alert
+// path (plugin notify hook): device token, APNs environment, encrypted
+// envelope, optional collapse key. The relay signs the APNs provider JWT
+// with the deploy-time .p8 secret, wraps the envelope verbatim in a
+// mutable-content alert push, forwards it, and relays Apple's verdict
+// back — 410 Unregistered included, so the plugin can prune dead tokens.
 //
+// `kind: "liveactivity"` is the Live Activity path (see
+// docs/agents/live-activity-contract.md): same JWT and host selection, a
+// derived `${APNS_TOPIC}.push-type.liveactivity` topic, and an `aps`
+// content-state that carries plaintext counts plus the still-opaque
+// envelope. The alert path rejects any body that carries a `kind` field.
+//
+// No accounts, no database, no queue, no retries (the plugin retries).
 // The relay never parses the envelope: it sees ciphertext and a token,
 // nothing else. Nothing here may depend on the deployment origin — callers
 // can point plugin and app at any base URL.
@@ -20,8 +26,8 @@ const APNS_HOSTS = {
   sandbox: "api.sandbox.push.apple.com",
 };
 
-// APNs caps alert-push payloads at 4 KB; the request cap just bounds the
-// work spent on garbage before validation.
+// APNs caps alert-push and live-activity payloads at 4 KB; the request cap
+// just bounds the work spent on garbage before validation.
 const MAX_APNS_PAYLOAD_BYTES = 4096;
 const MAX_REQUEST_BYTES = 8192;
 // APNs caps apns-collapse-id at 64 bytes.
@@ -32,6 +38,11 @@ const TOKEN_PATTERN = /^[0-9a-f]{16,200}$/;
 
 const DEFAULT_IP_LIMIT_PER_MIN = 120;
 const DEFAULT_TOKEN_LIMIT_PER_MIN = 60;
+
+// Live Activity timestamp must land in [now − 86400, now + 300] seconds.
+const TIMESTAMP_PAST_SECONDS = 86_400;
+const TIMESTAMP_FUTURE_SECONDS = 300;
+const COUNT_MAX = 999;
 
 // The extension rewrites title and body after decrypting; this generic text
 // is what iOS shows if that fails, so it must never look alarming.
@@ -80,13 +91,17 @@ function limitPerMinute(value, fallback) {
 }
 
 /**
- * Validate the push request body.
+ * Validate an alert-path push request body. Any body that carries a `kind`
+ * field is rejected so the discriminator cannot leak onto this path.
  *
  * @returns {{error: string} | {token: string, environment: "production"|"sandbox", envelope: string, collapse: string|undefined}}
  */
 function validatePush(body) {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
     return { error: "bad_json" };
+  }
+  if ("kind" in body) {
+    return { error: "bad_kind" };
   }
   const { token, env, envelope, collapse } = body;
   if (typeof token !== "string" || !TOKEN_PATTERN.test(token)) {
@@ -108,6 +123,117 @@ function validatePush(body) {
     }
   }
   return { token, environment: env, envelope, collapse };
+}
+
+/**
+ * Validate a Live Activity push request body. Envelope is accepted as a
+ * non-empty string and never parsed; collapse must be absent.
+ *
+ * @param {unknown} body
+ * @param {number} nowSeconds
+ * @returns {{error: string} | {
+ *   token: string,
+ *   environment: "production"|"sandbox",
+ *   event: "update"|"end",
+ *   priority: 5|10,
+ *   timestamp: number,
+ *   staleDate: number|undefined,
+ *   dismissalDate: number|undefined,
+ *   counts: {working: number, blocked: number, done: number},
+ *   envelope: string,
+ * }}
+ */
+function validateActivity(body, nowSeconds) {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return { error: "bad_json" };
+  }
+  const { token, env, event, priority, timestamp, stale_date, dismissal_date, counts, envelope } =
+    body;
+  if (typeof token !== "string" || !TOKEN_PATTERN.test(token)) {
+    return { error: "bad_token" };
+  }
+  if (env !== "production" && env !== "sandbox") {
+    return { error: "bad_env" };
+  }
+  if (event !== "update" && event !== "end") {
+    return { error: "bad_event" };
+  }
+  if (!Number.isInteger(priority) || (priority !== 5 && priority !== 10)) {
+    return { error: "bad_priority" };
+  }
+  if (
+    !Number.isInteger(timestamp) ||
+    timestamp <= 0 ||
+    timestamp < nowSeconds - TIMESTAMP_PAST_SECONDS ||
+    timestamp > nowSeconds + TIMESTAMP_FUTURE_SECONDS
+  ) {
+    return { error: "bad_timestamp" };
+  }
+  if (stale_date !== undefined && (!Number.isInteger(stale_date) || stale_date <= timestamp)) {
+    return { error: "bad_stale_date" };
+  }
+  if (dismissal_date !== undefined && (event !== "end" || !Number.isInteger(dismissal_date))) {
+    return { error: "bad_dismissal_date" };
+  }
+  if (!validCounts(counts)) {
+    return { error: "bad_counts" };
+  }
+  if (priority === 10 && counts.blocked < 1) {
+    return { error: "bad_priority" };
+  }
+  if (typeof envelope !== "string" || envelope.length === 0) {
+    return { error: "bad_envelope" };
+  }
+  if ("collapse" in body) {
+    return { error: "bad_collapse" };
+  }
+  return {
+    token,
+    environment: env,
+    event,
+    priority,
+    timestamp,
+    staleDate: stale_date,
+    dismissalDate: dismissal_date,
+    counts: { working: counts.working, blocked: counts.blocked, done: counts.done },
+    envelope,
+  };
+}
+
+function validCounts(counts) {
+  if (typeof counts !== "object" || counts === null || Array.isArray(counts)) {
+    return false;
+  }
+  const keys = Object.keys(counts);
+  if (keys.length !== 3) {
+    return false;
+  }
+  for (const key of ["working", "blocked", "done"]) {
+    if (!Object.hasOwn(counts, key)) {
+      return false;
+    }
+    const value = counts[key];
+    if (!Number.isInteger(value) || value < 0 || value > COUNT_MAX) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Build the Live Activity APNs JSON body. The envelope string is embedded
+ * as a JSON value without parsing so the relay never inspects ciphertext.
+ */
+function buildLiveActivityApnsBody(activity) {
+  const countsJson = JSON.stringify(activity.counts);
+  let aps = `"timestamp":${activity.timestamp},"event":${JSON.stringify(activity.event)},"content-state":{"counts":${countsJson},"envelope":${activity.envelope}}`;
+  if (activity.staleDate !== undefined) {
+    aps += `,"stale-date":${activity.staleDate}`;
+  }
+  if (activity.dismissalDate !== undefined) {
+    aps += `,"dismissal-date":${activity.dismissalDate}`;
+  }
+  return `{"aps":{${aps}}}`;
 }
 
 function rateLimited(verdict) {
@@ -163,13 +289,56 @@ export function createRelay() {
       } catch {
         return json(400, { error: "bad_json" });
       }
-      const push = validatePush(parsed);
-      if ("error" in push) {
-        return json(400, { error: push.error });
+
+      let token;
+      let environment;
+      let apnsBody;
+      /** @type {Record<string, string>} */
+      let apnsHeaders;
+
+      if (
+        typeof parsed === "object" &&
+        parsed !== null &&
+        !Array.isArray(parsed) &&
+        parsed.kind === "liveactivity"
+      ) {
+        const activity = validateActivity(parsed, Math.floor(nowMs / 1000));
+        if ("error" in activity) {
+          return json(400, { error: activity.error });
+        }
+        token = activity.token;
+        environment = activity.environment;
+        apnsBody = buildLiveActivityApnsBody(activity);
+        apnsHeaders = {
+          "apns-topic": `${config.topic}.push-type.liveactivity`,
+          "apns-push-type": "liveactivity",
+          "apns-priority": String(activity.priority),
+          "content-type": "application/json",
+        };
+      } else {
+        const push = validatePush(parsed);
+        if ("error" in push) {
+          return json(400, { error: push.error });
+        }
+        token = push.token;
+        environment = push.environment;
+        apnsBody = JSON.stringify({
+          aps: { alert: FALLBACK_ALERT, "mutable-content": 1 },
+          envelope: push.envelope,
+        });
+        apnsHeaders = {
+          "apns-topic": config.topic,
+          "apns-push-type": "alert",
+          "apns-priority": "10",
+          "content-type": "application/json",
+        };
+        if (push.collapse !== undefined) {
+          apnsHeaders["apns-collapse-id"] = push.collapse;
+        }
       }
 
       const tokenVerdict = tokenLimiter.check(
-        push.token,
+        token,
         limitPerMinute(env.RATE_LIMIT_TOKEN_PER_MIN, DEFAULT_TOKEN_LIMIT_PER_MIN),
         nowMs,
       );
@@ -177,10 +346,6 @@ export function createRelay() {
         return rateLimited(tokenVerdict);
       }
 
-      const apnsBody = JSON.stringify({
-        aps: { alert: FALLBACK_ALERT, "mutable-content": 1 },
-        envelope: push.envelope,
-      });
       if (encoder.encode(apnsBody).byteLength > MAX_APNS_PAYLOAD_BYTES) {
         return json(413, { error: "payload_too_large" });
       }
@@ -194,18 +359,12 @@ export function createRelay() {
 
       const headers = {
         authorization: `bearer ${jwt}`,
-        "apns-topic": config.topic,
-        "apns-push-type": "alert",
-        "apns-priority": "10",
-        "content-type": "application/json",
+        ...apnsHeaders,
       };
-      if (push.collapse !== undefined) {
-        headers["apns-collapse-id"] = push.collapse;
-      }
 
       let apnsResponse;
       try {
-        apnsResponse = await fetch(`https://${APNS_HOSTS[push.environment]}/3/device/${push.token}`, {
+        apnsResponse = await fetch(`https://${APNS_HOSTS[environment]}/3/device/${token}`, {
           method: "POST",
           headers,
           body: apnsBody,
