@@ -80,6 +80,30 @@ struct PairingScanStoreTests {
         #expect(env.store.scanFailureMessage == nil)
     }
 
+    /// Paste (#204) is not a second decoder: the view feeds the clipboard
+    /// string through `submit(scannedCode:)`, including a trailing newline
+    /// that `pbcopy` / manual selection commonly add.
+    @Test func aPastedPairingCodeUsesTheSameParsePathAsAScan() throws {
+        let env = try makeEnv()
+        defer { env.cleanup() }
+
+        env.store.submit(scannedCode: Self.configOnlyCode + "\n")
+
+        let code = try #require(env.store.pairingCode)
+        #expect(code == (try PairingCode.decode(Self.configOnlyCode)))
+        #expect(env.store.scanFailureMessage == nil)
+    }
+
+    @Test func aPastedMalformedCodeShowsTheExistingParseError() throws {
+        let env = try makeEnv()
+        defer { env.cleanup() }
+
+        env.store.submit(scannedCode: "  not-a-pairing-code  ")
+
+        #expect(env.store.pairingCode == nil)
+        #expect(env.store.scanFailureMessage?.contains("not a herdr Pairing Code") == true)
+    }
+
     @Test func foreignQRCodesAskForTheHerdrPairingCode() throws {
         let env = try makeEnv()
         defer { env.cleanup() }

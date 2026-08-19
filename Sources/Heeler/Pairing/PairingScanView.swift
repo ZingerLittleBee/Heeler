@@ -1,12 +1,14 @@
 import AVFoundation
 import SwiftUI
+import UIKit
 import VisionKit
 
-/// Scan to Pair (#62, #66): the camera entry for Pairing Codes, with the
-/// permission prompt and a usable denied path. Once a code parses, the
-/// pairing ceremony runs immediately — one scan, no confirmation step — and
-/// on success the persisted Host is handed to `onPaired`, entering the same
-/// preflight a manually added Host does.
+/// Scan to Pair (#62, #66, #204): the camera entry for Pairing Codes, with
+/// a paste path for the same string, the permission prompt, and a usable
+/// denied path. Once a code parses, the pairing ceremony runs immediately —
+/// one scan or paste, no confirmation step — and on success the persisted
+/// Host is handed to `onPaired`, entering the same preflight a manually
+/// added Host does.
 struct PairingScanView: View {
     let onPaired: (Host) -> Void
     let onAddManually: () -> Void
@@ -65,12 +67,10 @@ struct PairingScanView: View {
             ContentUnavailableView {
                 Label("Camera Access Needed", systemImage: "camera")
             } description: {
-                Text(
-                    "Scanning a Pairing Code uses the camera. Allow camera access "
-                        + "in Settings, or add the Host manually instead.")
+                Text(store.scanFailureMessage ?? deniedCameraCopy)
             } actions: {
+                pastePairingCodeButton
                 Button("Open Settings") { openSettings() }
-                    .buttonStyle(.borderedProminent)
                 Button("Add Manually") { addManually() }
             }
         case .authorized:
@@ -81,11 +81,12 @@ struct PairingScanView: View {
                     Label("Scanning Unavailable", systemImage: "camera")
                 } description: {
                     Text(
-                        "This device cannot scan QR codes. "
-                            + "Add the Host manually instead.")
+                        store.scanFailureMessage
+                            ?? "This device cannot scan QR codes. "
+                            + "Paste a Pairing Code, or add the Host manually instead.")
                 } actions: {
+                    pastePairingCodeButton
                     Button("Add Manually") { addManually() }
-                        .buttonStyle(.borderedProminent)
                 }
             }
         }
@@ -102,13 +103,38 @@ struct PairingScanView: View {
         PairingCodeScanner { store.submit(scannedCode: $0) }
             .ignoresSafeArea(edges: .bottom)
             .overlay(alignment: .bottom) {
-                Text(store.scanFailureMessage ?? "Point the camera at the Pairing Code shown by herdr.")
-                    .font(.callout)
-                    .multilineTextAlignment(.center)
-                    .padding(12)
-                    .background(.regularMaterial, in: .rect(cornerRadius: 12))
-                    .padding()
+                VStack(spacing: 12) {
+                    pastePairingCodeButton
+                    Text(
+                        store.scanFailureMessage
+                            ?? "Point the camera at the Pairing Code shown by herdr.")
+                        .font(.callout)
+                        .multilineTextAlignment(.center)
+                        .padding(12)
+                        .background(.regularMaterial, in: .rect(cornerRadius: 12))
+                }
+                .padding()
             }
+    }
+
+    /// User-initiated paste so iOS can show its pasteboard prompt against a
+    /// tap, not against a background read (#204). Feeds the same `submit`
+    /// path a scan uses; empty clipboard is a no-op, not a new error.
+    private var pastePairingCodeButton: some View {
+        Button("Paste Pairing Code") { pastePairingCode() }
+            .buttonStyle(.borderedProminent)
+    }
+
+    private var deniedCameraCopy: String {
+        "Scanning a Pairing Code uses the camera. Allow camera access in Settings, "
+            + "paste a Pairing Code, or add the Host manually instead."
+    }
+
+    private func pastePairingCode() {
+        let pasted = UIPasteboard.general.string?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !pasted.isEmpty else { return }
+        store.submit(scannedCode: pasted)
     }
 
     private func resolveCameraAccess() async {
