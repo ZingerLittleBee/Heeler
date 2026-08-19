@@ -568,8 +568,9 @@ struct HostLiveActivityCoordinatorTests {
         world.statuses[host.id] = .connected
         controller.emitToken(id: activityID, Data([0xbb]))
         try await waitUntil("the next live_activity write should carry current pins") {
-            try await liveActivityToken() == "bb"
-                && (try await filePinnedPaneIDs() == ["w:p-work"])
+            let token = try await liveActivityToken()
+            let pins = try await filePinnedPaneIDs()
+            return token == "bb" && pins == ["w:p-work"]
         }
     }
 }
