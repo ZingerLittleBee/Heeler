@@ -759,11 +759,12 @@ struct HeelerSSHTransportBehaviorE2ETests {
             + "'__HEELER_AGENT_KIND__=notarealagent' "
             + "'__HEELER_AGENT_KIND__=codex' "
             + "'__HEELER_AGENT_KIND__=claude' "
+            + "'__HEELER_AGENT_KIND__=qwen' "
             + "'last login: never'"
         let transport = try await HeelerSSHTransport.connect(settings: settings)
         defer { Task { try? await transport.close() } }
 
-        #expect(try await transport.availableAgentKinds() == [.claude, .codex])
+        #expect(try await transport.availableAgentKinds() == [.claude, .codex, .qwen])
     }
 
     /// The home probe also runs through the login shell, and its answer becomes
