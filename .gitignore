@@ -45,3 +45,6 @@ android/native/.zig-cache/
 android/native/zig-out/
 android/app/google-services.json
 android/keystore.properties
+
+# Local build deliverables (sideload APKs etc.); never repo content.
+output/

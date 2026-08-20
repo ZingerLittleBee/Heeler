@@ -198,6 +198,40 @@ final class ConsoleStore {
         }
     }
 
+    /// Late-bound like the stagers: a Files pane left open across a Host
+    /// edit or reconnect must reach the new session, not a dead one.
+    func fileAccess(for hostID: Host.ID) -> RemoteFileAccess {
+        RemoteFileAccess(
+            listDirectory: { [weak self] path in
+                guard let access = await self?.liveFileAccess(for: hostID) else {
+                    throw TransportError.sshUnreachable(
+                        detail: "The Host is not connected.")
+                }
+                return try await access.listDirectory(path)
+            },
+            readFile: { [weak self] path, byteLimit in
+                guard let access = await self?.liveFileAccess(for: hostID) else {
+                    throw TransportError.sshUnreachable(
+                        detail: "The Host is not connected.")
+                }
+                return try await access.readFile(path, byteLimit)
+            },
+            writeFile: { [weak self] path, data in
+                guard let access = await self?.liveFileAccess(for: hostID) else {
+                    throw TransportError.sshUnreachable(
+                        detail: "The Host is not connected.")
+                }
+                return try await access.writeFile(path, data)
+            },
+            statFile: { [weak self] path in
+                guard let access = await self?.liveFileAccess(for: hostID) else {
+                    throw TransportError.sshUnreachable(
+                        detail: "The Host is not connected.")
+                }
+                return try await access.statFile(path)
+            })
+    }
+
     private func liveTerminalRunner(for hostID: Host.ID) -> TerminalSessionRunner? {
         projections[hostID]?.terminalRunner()
     }
@@ -208,6 +242,10 @@ final class ConsoleStore {
 
     private func liveFileStager(for hostID: Host.ID) -> FileStager? {
         projections[hostID]?.fileStager()
+    }
+
+    private func liveFileAccess(for hostID: Host.ID) -> RemoteFileAccess? {
+        projections[hostID]?.fileAccess()
     }
 
     func workspaces(for hostID: Host.ID) -> [ConsoleWorkspace] {

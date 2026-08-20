@@ -120,6 +120,19 @@ nothing more; the user still delivers it. A Snippet may carry a Title: a short
 name the user gives it, shown above its text wherever Snippets are listed.
 _Avoid_: macro, template, shortcut, quick reply, tip
 
+**Project Files**:
+The browsable directory tree and code editor for one Agent's Project Root,
+reached from the Agent's More menu. Docked beside the terminal on iPad,
+a sheet on iPhone. Listings, reads, and saves go over the app's own SFTP
+(ADR 0015); herdr is not involved.
+_Avoid_: file manager, finder, explorer, IDE
+
+**Project Root**:
+The directory an Agent's Project Files are rooted at: the workspace's
+worktree checkout when it has one, else the Agent's launch cwd — the same
+root the Skills probe uses, deliberately not the live foreground cwd.
+_Avoid_: working directory, current directory
+
 **Agent Notification**:
 A notification telling the user an Agent crossed a notify-worthy status boundary (Blocked, Done): an APNs push while backgrounded or killed, an in-app banner off the live event stream while foregrounded. Deep-links to the Agent's detail surface.
 _Avoid_: alert, push message, task notification

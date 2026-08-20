@@ -16,6 +16,12 @@ struct AgentDetailView: View {
     private let onClosed: () -> Void
     @State private var composer: AgentComposerStore
     @State private var attach: AgentAttachStore
+    /// Whether the Files surface is up. One flag serves both size classes:
+    /// regular width docks the column beside the terminal, compact width
+    /// presents a sheet over it.
+    @State private var isShowingFiles = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.colorScheme) private var colorScheme
 
     init(
         agent: ConsoleAgent,
@@ -72,6 +78,46 @@ struct AgentDetailView: View {
             onSwitch: onSwitch,
             onClosed: onClosed,
             composer: composer,
-            attachStore: attach)
+            attachStore: attach,
+            onBrowseFiles: projectRoot == nil ? nil : { isShowingFiles.toggle() })
+        // An inset, not a conditional HStack: the terminal keeps its view
+        // identity when the column appears, so Attach never tears down — the
+        // grid resize rides the existing PTY-resize path, same as rotation.
+        .safeAreaInset(edge: .trailing, spacing: 0) {
+            if isShowingFiles, horizontalSizeClass == .regular, let projectRoot {
+                filesColumn(root: projectRoot)
+                    .frame(width: 380)
+                    .background(.background)
+                    .overlay(alignment: .leading) { Divider().ignoresSafeArea() }
+                    .transition(.move(edge: .trailing))
+            }
+        }
+        .animation(.snappy, value: isShowingFiles)
+        .sheet(
+            isPresented: Binding(
+                get: { isShowingFiles && horizontalSizeClass != .regular },
+                set: { if !$0 { isShowingFiles = false } })
+        ) {
+            if let projectRoot {
+                filesColumn(root: projectRoot)
+            }
+        }
+    }
+
+    /// The directory this Agent's project lives in: the worktree checkout
+    /// when the workspace has one, else the launch cwd — the same root the
+    /// Skills probe uses, deliberately not the live foreground cwd.
+    private var projectRoot: String? {
+        agent.skillsProjectRoot
+    }
+
+    private func filesColumn(root: String) -> some View {
+        ProjectFilesColumn(
+            root: root,
+            hostName: agent.hostName,
+            access: console.fileAccess(for: agent.hostID),
+            fontFamily: terminal.fonts.familyName,
+            palette: terminal.themes.selection(for: colorScheme)
+                .palette(for: colorScheme))
     }
 }

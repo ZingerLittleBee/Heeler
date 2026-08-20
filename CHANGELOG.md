@@ -9,6 +9,20 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Project Files: every Agent now carries its project — the worktree checkout
+  or launch cwd — as a browsable directory tree with a native code editor.
+  On iPad the Files column docks beside the live terminal (the app now
+  targets iPad again); on iPhone it presents as a sheet from the Agent's
+  More menu. The browser lazily lists directories over the app's own SFTP,
+  keeps listings cached until refreshed, and hides dotfiles behind a toggle.
+  The editor highlights code with a dependency-free lexer (Swift, Kotlin,
+  Rust, Go, Python, JS/TS, JSON, YAML, TOML, shell, C-family, Zig,
+  Markdown), saves atomically with Cmd+S, and stats before every save so a
+  file an Agent rewrote mid-edit surfaces an Overwrite/Reload choice instead
+  of silently clobbering. Reads are capped at 2 MiB and binary files get an
+  honest notice. See ADR 0015 for why this rides SFTP rather than herdr and
+  why the highlighter is lexical.
+
 - A native Android companion app now lives in `android/`: Kotlin/Jetpack
   Compose console with pairing, Host onboarding and TOFU trust, the live
   ghostty-vt terminal Attach, local Composer with the tools keyboard, SFTP

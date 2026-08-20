@@ -157,6 +157,26 @@ final class HostConsoleProjection {
         }
     }
 
+    /// The Files feature's whole transport surface as one seam value, so its
+    /// stores can be unit-tested with scripted closures and never learn about
+    /// sessions or SSH types.
+    func fileAccess() -> RemoteFileAccess {
+        let session = session
+        return RemoteFileAccess(
+            listDirectory: { path in
+                try await session.withTransport { try await $0.listDirectory(at: path) }
+            },
+            readFile: { path, byteLimit in
+                try await session.withTransport { try await $0.readFile(at: path, byteLimit: byteLimit) }
+            },
+            writeFile: { path, data in
+                try await session.withTransport { try await $0.writeFile(at: path, data: data) }
+            },
+            statFile: { path in
+                try await session.withTransport { try await $0.statFile(at: path) }
+            })
+    }
+
     func fileStager() -> FileStager {
         let session = session
         return { file, reporter in

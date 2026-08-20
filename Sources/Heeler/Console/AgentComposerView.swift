@@ -39,6 +39,10 @@ struct AgentComposerActions {
     let renameAgent: () -> Void
     let renameWorkspace: () -> Void
     let closeAgent: () -> Void
+    /// Opens the Files surface for this Agent's project root; nil when the
+    /// workspace carries no directory identity (no checkout, empty cwd), in
+    /// which case the menu simply omits the entry.
+    let browseFiles: (() -> Void)?
 }
 
 struct AgentComposerLinkPresentation: Equatable {
@@ -146,6 +150,13 @@ struct AgentComposerView: View {
                                     }
                                     Button("Snippets", systemImage: "quote.bubble") {
                                         actions.manageSnippets()
+                                    }
+                                }
+                                Section {
+                                    if let browseFiles = actions.browseFiles {
+                                        Button("Project Files", systemImage: "folder") {
+                                            browseFiles()
+                                        }
                                     }
                                 }
                                 Section {

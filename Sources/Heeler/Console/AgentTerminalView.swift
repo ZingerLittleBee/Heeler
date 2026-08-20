@@ -29,6 +29,10 @@ struct AgentTerminalView: View {
     /// dismiss — the owner clears the sidebar selection instead, which also
     /// pops the collapsed stack on iPhone.
     private let onClosed: () -> Void
+    /// Raises the Files surface for this Agent's project; nil hides the menu
+    /// entry. Owned by AgentDetailView, which also owns where that surface
+    /// appears (beside the terminal on iPad, a sheet on iPhone).
+    private let onBrowseFiles: (() -> Void)?
     private let composer: AgentComposerStore
     @State private var attach: AgentAttachStore
     /// Nil for agent kinds without a skills source catalog; the Keys
@@ -74,7 +78,8 @@ struct AgentTerminalView: View {
         onSwitch: @escaping (ConsoleAgent.ID) -> Void,
         onClosed: @escaping () -> Void,
         composer: AgentComposerStore,
-        attachStore: AgentAttachStore? = nil
+        attachStore: AgentAttachStore? = nil,
+        onBrowseFiles: (() -> Void)? = nil
     ) {
         self.agent = agent
         self.console = console
@@ -85,6 +90,7 @@ struct AgentTerminalView: View {
         self.keyboardInset = keyboardInset
         self.onSwitch = onSwitch
         self.onClosed = onClosed
+        self.onBrowseFiles = onBrowseFiles
         self.composer = composer
         _attach = State(
             initialValue: attachStore ?? AgentAttachStore(
@@ -368,7 +374,8 @@ struct AgentTerminalView: View {
             manageSnippets: { isManagingSnippets = true },
             renameAgent: { isRenamingAgent = true },
             renameWorkspace: { isRenamingWorkspace = true },
-            closeAgent: { isConfirmingClose = true })
+            closeAgent: { isConfirmingClose = true },
+            browseFiles: onBrowseFiles)
     }
 
     private var terminalSurface: some View {
