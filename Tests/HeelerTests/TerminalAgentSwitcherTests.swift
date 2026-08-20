@@ -760,15 +760,22 @@ struct TerminalAgentSwitcherTests {
     /// the main actor a beat behind the layout that provoked them, so a grid
     /// only means anything once they have stopped coming.
     @MainActor
+    /// Waits until grid reports have arrived *and* gone quiet. Quiet alone
+    /// is not settlement: the report a thaw schedules rides two timers, so
+    /// on a loaded machine 200ms of silence can elapse before it lands —
+    /// counting must not start until the report the caller is about to
+    /// assert on exists (#225). The poll cap turns a report that never
+    /// comes into a loud assertion failure downstream instead of a hang.
     private static func waitForGridReportsToStop(
         _ reportedGrids: () -> [TerminalGrid]
     ) async throws {
         var stablePolls = 0
         var previousCount = reportedGrids().count
-        while stablePolls < 20 {
+        for _ in 0..<1000 {
             try await Task.sleep(for: .milliseconds(10))
-            if reportedGrids().count == previousCount {
+            if reportedGrids().count == previousCount, !reportedGrids().isEmpty {
                 stablePolls += 1
+                if stablePolls >= 20 { return }
             } else {
                 previousCount = reportedGrids().count
                 stablePolls = 0
@@ -804,6 +811,10 @@ struct TerminalAgentSwitcherTests {
             window.isHidden = true
         }
 
+        // This test thaws the freeze explicitly below, so the wall-clock
+        // fallback must stay out of it: the sleeps inside the handoff window
+        // can stretch past its 500ms on a loaded runner (#225).
+        terminal.keyboardTransitionFallbackDelay = 60
         terminal.raisesKeyboardWhenReady = true
         terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 600)
         host.view.addSubview(terminal)

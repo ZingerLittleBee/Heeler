@@ -1626,16 +1626,23 @@ struct TerminalAttachTests {
         #expect(keyboard.frame.height == 288)
     }
 
+    /// Waits until grid reports have arrived *and* gone quiet. Quiet alone
+    /// is not settlement: the report a thaw schedules rides two timers, so
+    /// on a loaded machine 200ms of silence can elapse before it lands —
+    /// counting must not start until the report the caller is about to
+    /// assert on exists (#225). The poll cap turns a report that never
+    /// comes into a loud assertion failure downstream instead of a hang.
     @MainActor
     private func waitForGridReportsToSettle(
         _ reports: inout [(columns: Int, rows: Int)]
     ) async throws {
         var stablePolls = 0
         var previousCount = reports.count
-        while stablePolls < 20 {
+        for _ in 0..<1000 {
             try await Task.sleep(for: .milliseconds(10))
-            if reports.count == previousCount {
+            if reports.count == previousCount, !reports.isEmpty {
                 stablePolls += 1
+                if stablePolls >= 20 { return }
             } else {
                 previousCount = reports.count
                 stablePolls = 0
