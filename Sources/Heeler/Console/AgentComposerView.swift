@@ -8,9 +8,9 @@ enum AgentComposerKeyboardPresentation: Equatable {
 }
 
 struct AgentComposerKeyboardLayout: Equatable {
-    /// Tools must remain usable before UIKit has measured a software
-    /// keyboard: a cold detail, hardware-keyboard drafting, or a staged
-    /// path inserted without raising the system keyboard.
+    /// Used only when `lastPresentedHeight` is still zero. Any positive
+    /// measurement is the tools footprint as-is, even when it is shorter
+    /// than this value.
     static let minimumToolsHeight: CGFloat = 260
 
     let contentInset: CGFloat
@@ -29,7 +29,12 @@ struct AgentComposerKeyboardLayout: Equatable {
             availableToolsHeight = lastPresentedHeight
             contentInset = max(currentHeight, lastPresentedHeight)
         case .tools:
-            let toolsHeight = max(lastPresentedHeight, Self.minimumToolsHeight)
+            // Only the unmeasured path may invent a height. A positive
+            // measurement, including compact landscape footprints below
+            // `minimumToolsHeight`, is the tools dock's exact size.
+            let toolsHeight =
+                lastPresentedHeight > 0
+                ? lastPresentedHeight : Self.minimumToolsHeight
             availableToolsHeight = toolsHeight
             contentInset = toolsHeight
         }

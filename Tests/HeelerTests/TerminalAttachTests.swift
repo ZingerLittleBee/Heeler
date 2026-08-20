@@ -1331,6 +1331,31 @@ struct TerminalAttachTests {
         #expect(measured.contentInset == 402)
     }
 
+    /// A real measurement below the cold fallback (landscape, 224pt controls
+    /// keyboard) must stay exact in both modes. Clamping it up to 260 would
+    /// move Composer and resize Ghostty's grid.
+    @Test func aMeasuredHeightBelowTheFallbackKeepsTheSystemFootprintInTools() {
+        let measured: CGFloat = 224
+        #expect(measured < AgentComposerKeyboardLayout.minimumToolsHeight)
+        let system = AgentComposerKeyboardLayout(
+            currentHeight: measured, lastPresentedHeight: measured,
+            presentation: .system)
+        let toolsWhileKeyboardIsUp = AgentComposerKeyboardLayout(
+            currentHeight: measured, lastPresentedHeight: measured,
+            presentation: .tools)
+        let toolsAfterUIKitHides = AgentComposerKeyboardLayout(
+            currentHeight: 0, lastPresentedHeight: measured,
+            presentation: .tools)
+
+        #expect(system.contentInset == measured)
+        #expect(toolsWhileKeyboardIsUp.contentInset == measured)
+        #expect(toolsAfterUIKitHides.contentInset == measured)
+        #expect(toolsWhileKeyboardIsUp.availableToolsHeight == measured)
+        #expect(toolsAfterUIKitHides.availableToolsHeight == measured)
+        #expect(system.contentInset == toolsWhileKeyboardIsUp.contentInset)
+        #expect(system.contentInset == toolsAfterUIKitHides.contentInset)
+    }
+
     /// The cold Blocked-Send dock is a real view, not just a layout number:
     /// Enter and Esc have to be on screen and large enough to tap.
     @MainActor
