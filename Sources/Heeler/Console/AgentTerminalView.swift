@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 /// The live Ghostty surface used by Agent detail. The terminal is display-only:
 /// it still renders, scrolls, opens links, and reports resize, while all
 /// authored input goes through Composer or its explicit terminal controls.
+/// Blocked Send is the one Composer path that types into this live PTY.
 struct AgentTerminalView: View {
     let agent: ConsoleAgent
     private let console: ConsoleStore
@@ -320,6 +321,7 @@ struct AgentTerminalView: View {
         // calls must stay synchronous, because the spurious pair can land in
         // one transaction and rejoin() can only undo a leave it can see.
         .onAppear {
+            composer.bindAttachInput(attach.input)
             attach.rejoin()
         }
         .onDisappear {

@@ -78,9 +78,13 @@ final class TerminalInputController {
     }
 
     /// Sends ordinary terminal bytes if a live Attach session exists.
-    func send(_ data: Data) {
-        guard !data.isEmpty else { return }
-        writer?(data)
+    /// Returns whether the bytes reached a live writer. Empty payloads and a
+    /// missing session are no-ops and return false.
+    @discardableResult
+    func send(_ data: Data) -> Bool {
+        guard let writer, !data.isEmpty else { return false }
+        writer(data)
+        return true
     }
 
     /// Touch scrolling is deliberately separate from reliable terminal input.
