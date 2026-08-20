@@ -385,33 +385,48 @@ struct TerminalAttachTests {
         return nil
     }
 
+    @MainActor
     private static func firstAccessibleFrame(in root: UIView, labeled label: String) -> CGRect? {
-        var found: CGRect?
-        func visit(_ view: UIView) {
-            guard found == nil else { return }
-            if view.accessibilityLabel == label, view.bounds.width > 0, view.bounds.height > 0 {
-                found = view.convert(view.bounds, to: root)
-                return
-            }
-            if let elements = view.accessibilityElements {
-                for element in elements {
-                    if let nested = element as? UIView {
-                        visit(nested)
-                    } else if let object = element as? NSObject,
-                        object.accessibilityLabel == label
-                    {
-                        let frame = object.accessibilityFrame
-                        if frame.width > 0, frame.height > 0 {
-                            found = root.convert(frame, from: nil)
-                        }
-                    }
-                    if found != nil { return }
+        // SwiftUI hosting nests accessibility containers arbitrarily deep, and
+        // which runtime wraps a control in how many containers varies by OS
+        // release — recurse through every container shape, not just UIViews.
+        func visit(_ node: NSObject) -> CGRect? {
+            if let view = node as? UIView {
+                if view.accessibilityLabel == label, view.bounds.width > 0, view.bounds.height > 0 {
+                    return view.convert(view.bounds, to: root)
+                }
+            } else if node.accessibilityLabel == label {
+                let frame = node.accessibilityFrame
+                if frame.width > 0, frame.height > 0 {
+                    return root.convert(frame, from: nil)
                 }
             }
-            for subview in view.subviews { visit(subview) }
+            if let elements = node.accessibilityElements {
+                for element in elements {
+                    if let object = element as? NSObject, let frame = visit(object) {
+                        return frame
+                    }
+                }
+            } else {
+                let count = node.accessibilityElementCount()
+                if count > 0, count != NSNotFound {
+                    for index in 0..<count {
+                        if let object = node.accessibilityElement(at: index) as? NSObject,
+                            let frame = visit(object)
+                        {
+                            return frame
+                        }
+                    }
+                }
+            }
+            if let view = node as? UIView {
+                for subview in view.subviews {
+                    if let frame = visit(subview) { return frame }
+                }
+            }
+            return nil
         }
-        visit(root)
-        return found
+        return visit(root)
     }
 
     @Test func writerPropagatesResizeFailure() async {
@@ -1397,9 +1412,23 @@ struct TerminalAttachTests {
 
         #expect(controller.view.bounds.height == height)
         #expect(height >= 44 * 3)
+        // Hosted SwiftUI materializes its accessibility tree a run-loop beat
+        // (or several, on older simulators) after layout — poll instead of
+        // requiring it on the first pass.
+        var frames: [String: CGRect] = [:]
+        for _ in 0..<40 where frames.count < 2 {
+            for label in ["Enter", "Escape"] where frames[label] == nil {
+                frames[label] = Self.firstAccessibleFrame(
+                    in: controller.view, labeled: label)
+            }
+            if frames.count < 2 {
+                try await Task.sleep(nanoseconds: 50_000_000)
+                controller.view.layoutIfNeeded()
+            }
+        }
         for label in ["Enter", "Escape"] {
             let frame = try #require(
-                Self.firstAccessibleFrame(in: controller.view, labeled: label),
+                frames[label],
                 "\(label) should be in the cold tools dock")
             let visible = controller.view.bounds.intersection(frame)
             #expect(visible.height >= 44, "\(label) frame was \(frame)")
