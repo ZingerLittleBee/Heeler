@@ -756,33 +756,6 @@ struct TerminalAgentSwitcherTests {
         var description: String { "\(columns)x\(rows)" }
     }
 
-    /// Ghostty answers one layout with several viewport reports, arriving on
-    /// the main actor a beat behind the layout that provoked them, so a grid
-    /// only means anything once they have stopped coming.
-    @MainActor
-    /// Waits until grid reports have arrived *and* gone quiet. Quiet alone
-    /// is not settlement: the report a thaw schedules rides two timers, so
-    /// on a loaded machine 200ms of silence can elapse before it lands —
-    /// counting must not start until the report the caller is about to
-    /// assert on exists (#225). The poll cap turns a report that never
-    /// comes into a loud assertion failure downstream instead of a hang.
-    private static func waitForGridReportsToStop(
-        _ reportedGrids: () -> [TerminalGrid]
-    ) async throws {
-        var stablePolls = 0
-        var previousCount = reportedGrids().count
-        for _ in 0..<1000 {
-            try await Task.sleep(for: .milliseconds(10))
-            if reportedGrids().count == previousCount, !reportedGrids().isEmpty {
-                stablePolls += 1
-                if stablePolls >= 20 { return }
-            } else {
-                previousCount = reportedGrids().count
-                stablePolls = 0
-            }
-        }
-    }
-
     /// Ghostty's first viewport report on a fresh surface carries a zero cell
     /// size. Measuring the surface against that half-built grid — which is
     /// what happens when the view shrinks for the keyboard right after the
@@ -844,7 +817,7 @@ struct TerminalAgentSwitcherTests {
             name: UIResponder.keyboardDidChangeFrameNotification, object: nil,
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
                 x: 0, y: 400, width: 390, height: 300)])
-        try await Self.waitForGridReportsToStop { reportedGrids }
+        try await waitForGridReportsToSettle { reportedGrids.count }
         let escaped = reportedGrids
         #expect(!escaped.isEmpty, "the settled grid never made it past the freeze")
 
@@ -862,7 +835,7 @@ struct TerminalAgentSwitcherTests {
             terminal.layoutIfNeeded()
             try await Task.sleep(for: .milliseconds(30))
         }
-        try await Self.waitForGridReportsToStop { reportedGrids }
+        try await waitForGridReportsToSettle { reportedGrids.count }
         let settled = try #require(
             reportedGrids.last, "the terminal never measured its settled bounds")
 
@@ -1008,7 +981,7 @@ struct TerminalAgentSwitcherTests {
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
                 x: 0, y: 400, width: 390, height: 300)])
         #expect(terminal.inputViewRebuildCount > rebuildsBeforeForeignEvent)
-        try await Self.waitForGridReportsToStop { reportedGrids }
+        try await waitForGridReportsToSettle { reportedGrids.count }
         #expect(
             !reportedGrids.isEmpty,
             "the terminal's own settle never made it past the freeze")

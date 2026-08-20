@@ -1209,7 +1209,7 @@ struct TerminalAttachTests {
         host.view.addSubview(terminal)
         window.layoutIfNeeded()
 
-        try await waitForGridReportsToSettle(&reportedGrids)
+        try await waitForGridReportsToSettle { reportedGrids.count }
         let initialRows = try #require(reportedGrids.last?.rows)
         reportedGrids.removeAll()
 
@@ -1232,7 +1232,7 @@ struct TerminalAttachTests {
 
         #expect(reportedGrids.isEmpty)
         terminal.finishKeyboardTransitionLayout()
-        try await waitForGridReportsToSettle(&reportedGrids)
+        try await waitForGridReportsToSettle { reportedGrids.count }
 
         #expect(reportedGrids.count == 1)
         #expect(reportedGrids.last?.rows ?? 0 > initialRows)
@@ -1263,7 +1263,7 @@ struct TerminalAttachTests {
         host.view.addSubview(terminal)
         window.layoutIfNeeded()
 
-        try await waitForGridReportsToSettle(&reportedGrids)
+        try await waitForGridReportsToSettle { reportedGrids.count }
         let initialRows = try #require(reportedGrids.last?.rows)
         reportedGrids.removeAll()
 
@@ -1285,7 +1285,7 @@ struct TerminalAttachTests {
 
         #expect(reportedGrids.isEmpty)
         terminal.finishKeyboardTransitionLayout()
-        try await waitForGridReportsToSettle(&reportedGrids)
+        try await waitForGridReportsToSettle { reportedGrids.count }
 
         #expect(reportedGrids.count == 1)
         #expect(reportedGrids.last?.rows ?? 0 > initialRows)
@@ -1316,7 +1316,7 @@ struct TerminalAttachTests {
         host.view.addSubview(terminal)
         window.layoutIfNeeded()
 
-        try await waitForGridReportsToSettle(&reportedGrids)
+        try await waitForGridReportsToSettle { reportedGrids.count }
         let initialRows = try #require(reportedGrids.last?.rows)
         reportedGrids.removeAll()
 
@@ -1330,7 +1330,7 @@ struct TerminalAttachTests {
         terminal.layoutIfNeeded()
 
         // No settle signal, no explicit finish — only the fallback ends this.
-        try await waitForGridReportsToSettle(&reportedGrids)
+        try await waitForGridReportsToSettle { reportedGrids.count }
 
         #expect(reportedGrids.count == 1)
         #expect(reportedGrids.last?.rows ?? 0 > initialRows)
@@ -1624,30 +1624,6 @@ struct TerminalAttachTests {
         let keyboard = try #require(terminal.inputView as? TerminalKeysKeyboardView)
         #expect(keyboard.intrinsicContentSize.height == 288)
         #expect(keyboard.frame.height == 288)
-    }
-
-    /// Waits until grid reports have arrived *and* gone quiet. Quiet alone
-    /// is not settlement: the report a thaw schedules rides two timers, so
-    /// on a loaded machine 200ms of silence can elapse before it lands —
-    /// counting must not start until the report the caller is about to
-    /// assert on exists (#225). The poll cap turns a report that never
-    /// comes into a loud assertion failure downstream instead of a hang.
-    @MainActor
-    private func waitForGridReportsToSettle(
-        _ reports: inout [(columns: Int, rows: Int)]
-    ) async throws {
-        var stablePolls = 0
-        var previousCount = reports.count
-        for _ in 0..<1000 {
-            try await Task.sleep(for: .milliseconds(10))
-            if reports.count == previousCount, !reports.isEmpty {
-                stablePolls += 1
-                if stablePolls >= 20 { return }
-            } else {
-                previousCount = reports.count
-                stablePolls = 0
-            }
-        }
     }
 
     @Test func terminalControlKeyboardContainsOnlyUsefulMobileKeys() {
