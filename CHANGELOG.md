@@ -7,6 +7,8 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-20
+
 ### Added
 
 - Qwen Code appears in Start Agent when the Host has `qwen` on PATH. (#216)
