@@ -164,7 +164,7 @@ struct StartAgentStoreTests {
         }
     }
 
-    @Test func supportedAgentCatalogMatchesProtocol17() {
+    @Test func supportedAgentCatalogListsKnownKinds() {
         #expect(SupportedAgentKind.allCases.map(\.rawValue) == [
             "pi", "claude", "codex", "gemini", "cursor", "devin", "agy",
             "cline", "omp", "mastracode", "opencode", "copilot", "kimi",

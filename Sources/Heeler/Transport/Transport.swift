@@ -230,7 +230,7 @@ extension Transport {
     }
 }
 
-/// The interactive Agent kinds supported by herdr protocol 17.
+/// Heeler's catalog of interactive Agent kinds.
 ///
 /// The raw value is the canonical `agent.start.kind`; `executable` mirrors
 /// the command herdr launches for that kind. Keeping both explicit matters
