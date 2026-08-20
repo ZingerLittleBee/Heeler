@@ -7,6 +7,12 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- Pairing Codes can be copied from the Host popup with `c` and pasted in the
+  app, so pairing no longer depends on scanning a QR that may overflow a
+  small terminal. A failed copy prints the code for manual selection. (#204)
+
 ## [0.1.0] - 2026-08-20
 
 ### Fixed

@@ -29,6 +29,7 @@ import {
   toggleAll,
   selectedAddresses,
 } from "./select-list.js";
+import { copyPairingCode, qrKeyAction } from "./copy-pairing-code.js";
 
 const DEFAULT_SSH_PORT = 22;
 // How often the QR screen checks whether Enrollment has completed. The pending
@@ -75,7 +76,7 @@ function renderChecklist(state, warning) {
   process.stdout.write(CLEAR + lines.join("\n") + "\n");
 }
 
-async function renderPairingCode(payload) {
+async function renderPairingCode(payload, { copied = false, printedCode = null } = {}) {
   const code = encodePairingCode(payload);
   const qr = await QRCode.toString(code, { type: "terminal", small: true });
   const expires = new Date(payload.expiresAt * 1000).toLocaleTimeString();
@@ -83,9 +84,12 @@ async function renderPairingCode(payload) {
   // scrolls the earliest ones off the top, and with a header above the QR
   // that meant the QR's top edge vanished into scrollback. Clamp to the
   // viewport instead, so any overflow costs trailing text, never the QR.
+  const hint = copied
+    ? `${BOLD}copied${RESET} ${DIM}-- any other key close${RESET}`
+    : `${BOLD}Scan with Heeler${RESET} ${DIM}-- c: copy pairing code, any other key close${RESET}`;
   const lines = [
     ...qr.trimEnd().split("\n"),
-    `${BOLD}Scan with Heeler${RESET} ${DIM}-- press any key to close${RESET}`,
+    hint,
     `${BOLD}${payload.username}${RESET} on port ${BOLD}${payload.port}${RESET}`,
     `Host key ${payload.hostKeyFingerprint}`,
     `Addresses: ${payload.addresses.join(", ")}`,
@@ -94,6 +98,12 @@ async function renderPairingCode(payload) {
   const rows = process.stdout.rows;
   const visible = Number.isInteger(rows) && rows > 0 ? lines.slice(0, rows) : lines;
   process.stdout.write(CLEAR + visible.join("\n"));
+  // pbcopy is macOS-only; when copy fails, print the exact envelope after the
+  // clamped QR so it can be selected by hand even if the footer was trimmed.
+  if (printedCode !== null) {
+    process.stdout.write(`\n${printedCode}`);
+  }
+  return code;
 }
 
 function renderExpired() {
@@ -195,8 +205,15 @@ async function main() {
   let enrollWatch = null;
   let enrolled = null;
   let closing = false;
+  let displayedCode = null;
+  let lastPayload = null;
+  let copiedTimer = null;
 
   async function cleanup() {
+    if (copiedTimer !== null) {
+      clearTimeout(copiedTimer);
+      copiedTimer = null;
+    }
     if (expiryTimer !== null) {
       clearTimeout(expiryTimer);
       expiryTimer = null;
@@ -314,15 +331,42 @@ async function main() {
       }
       void expireCeremony(pairingId);
     }, PAIRING_TTL_SECONDS * 1000);
-    await renderPairingCode({
+    lastPayload = {
       addresses: confirmedAddresses,
       port: DEFAULT_SSH_PORT,
       username: os.userInfo().username,
       hostKeyFingerprint: hostKey.fingerprint,
       bootstrapSeed: session.seed,
       expiresAt: session.expiresAt,
-    });
+    };
+    displayedCode = await renderPairingCode(lastPayload);
     enrollWatch = setInterval(() => onEnrollmentPoll(pairingId), ENROLL_POLL_MS);
+  }
+
+  async function copyDisplayedCode() {
+    if (displayedCode === null || lastPayload === null || closing || phase !== "qr") {
+      return;
+    }
+    const result = await copyPairingCode(displayedCode);
+    if (closing || phase !== "qr") {
+      return;
+    }
+    if (copiedTimer !== null) {
+      clearTimeout(copiedTimer);
+      copiedTimer = null;
+    }
+    if (result.copied) {
+      await renderPairingCode(lastPayload, { copied: true });
+      copiedTimer = setTimeout(() => {
+        copiedTimer = null;
+        if (closing || phase !== "qr" || lastPayload === null) {
+          return;
+        }
+        void renderPairingCode(lastPayload);
+      }, 1500);
+      return;
+    }
+    await renderPairingCode(lastPayload, { printedCode: displayedCode });
   }
 
   function startCeremonyOrDie() {
@@ -362,7 +406,11 @@ async function main() {
       return;
     }
     if (phase === "qr") {
-      void close(0);
+      if (qrKeyAction(key) === "copy") {
+        void copyDisplayedCode();
+      } else {
+        void close(0);
+      }
       return;
     }
     if (phase === "expired") {

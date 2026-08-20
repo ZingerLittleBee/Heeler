@@ -56,7 +56,9 @@ Open the Pairing Code popup:
 herdr plugin action invoke heeler.pair
 ```
 
-Scan the code in Heeler to add this machine as a Host. Then open the
+Scan the code in Heeler to add this machine as a Host, or press `c` on the
+QR screen to copy the Pairing Code and paste it in the app (macOS uses
+`pbcopy`; elsewhere the code is printed for manual selection). Then open the
 Heeler settings, enable Agent Notifications, grant the iOS notification
 permission, and enable Notifications for this Host. Leave **Custom Push
 Relay** empty to use the production endpoint at
@@ -80,7 +82,8 @@ herdr plugin action invoke heeler.pair
 
 The popup checklist: arrows or `j`/`k` move, space toggles, `a` toggles all,
 enter mints a Bootstrap Key and renders the QR, `q`/escape closes (revoking
-the key). When the code expires, enter generates a fresh one. Once a device
+the key). On the QR screen, `c` copies the Pairing Code; any other key
+closes. When the code expires, enter generates a fresh one. Once a device
 enrolls, the QR is replaced by a success screen showing the enrolled Device
 Key's fingerprint and label; press `r` there to revoke that key (removing its
 `authorized_keys` line), or any other key to close.

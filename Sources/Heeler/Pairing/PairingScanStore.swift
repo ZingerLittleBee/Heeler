@@ -17,13 +17,13 @@ struct PairingFailure: Equatable, Sendable {
     let canRetry: Bool
 }
 
-/// Drives Scan to Pair (#62, #66): turns strings recognized by the QR
-/// scanner into a parsed Pairing Code, runs the ceremony through the
-/// injected `PairingConnector`, and persists the Host only after the
-/// verified reconnect, with its fingerprint pinned so preflight never
-/// TOFU-prompts. Camera capture stays in the view layer; everything
-/// downstream of the scanned string is testable here with scripted
-/// connector fakes.
+/// Drives Scan to Pair (#62, #66, #204): turns strings recognized by the QR
+/// scanner or pasted from the clipboard into a parsed Pairing Code, runs
+/// the ceremony through the injected `PairingConnector`, and persists the
+/// Host only after the verified reconnect, with its fingerprint pinned so
+/// preflight never TOFU-prompts. Camera capture and pasteboard access stay
+/// in the view layer; everything downstream of the scanned string is
+/// testable here with scripted connector fakes.
 @MainActor
 @Observable
 final class PairingScanStore {
@@ -76,8 +76,11 @@ final class PairingScanStore {
 
     func submit(scannedCode: String) {
         guard pairingCode == nil else { return }
+        // Paste (and a trailing newline from pbcopy/manual selection) is the
+        // same parse path as a scan; trim so the two cannot disagree.
+        let scanned = scannedCode.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
-            let code = try PairingCode.decode(scannedCode)
+            let code = try PairingCode.decode(scanned)
             pairingCode = code
             attemptCode = code
             enrolledViaBootstrap = false
