@@ -275,7 +275,7 @@ actor HeelerSSHTransport: Transport {
     /// with 17 in every one of its 164 shared definitions, into an unusable
     /// Host (#140); bumping the constant would have rebuilt the same outage at
     /// protocol 20.
-    static let generatedProtocolVersion = 19
+    static let generatedProtocolVersion = 20
     static let maximumResponseBytes = 1_048_576
     static let maxConcurrentForwardingChannels =
         SSHChannelAdmission.Limits.production.ordinaryForwarding

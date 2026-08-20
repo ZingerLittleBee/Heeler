@@ -13,6 +13,12 @@ Entries reference the issue that motivated them.
   app, so pairing no longer depends on scanning a QR that may overflow a
   small terminal. A failed copy prints the code for manual selection. (#204)
 
+### Fixed
+
+- Connecting to a herdr 0.8.2 Host no longer shows the "newer than this app
+  was built against" notice. The committed schema snapshot now matches
+  protocol 20. (#218)
+
 ## [0.1.0] - 2026-08-20
 
 ### Fixed
