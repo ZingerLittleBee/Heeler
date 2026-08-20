@@ -385,6 +385,35 @@ struct TerminalAttachTests {
         return nil
     }
 
+    private static func firstAccessibleFrame(in root: UIView, labeled label: String) -> CGRect? {
+        var found: CGRect?
+        func visit(_ view: UIView) {
+            guard found == nil else { return }
+            if view.accessibilityLabel == label, view.bounds.width > 0, view.bounds.height > 0 {
+                found = view.convert(view.bounds, to: root)
+                return
+            }
+            if let elements = view.accessibilityElements {
+                for element in elements {
+                    if let nested = element as? UIView {
+                        visit(nested)
+                    } else if let object = element as? NSObject,
+                        object.accessibilityLabel == label
+                    {
+                        let frame = object.accessibilityFrame
+                        if frame.width > 0, frame.height > 0 {
+                            found = root.convert(frame, from: nil)
+                        }
+                    }
+                    if found != nil { return }
+                }
+            }
+            for subview in view.subviews { visit(subview) }
+        }
+        visit(root)
+        return found
+    }
+
     @Test func writerPropagatesResizeFailure() async {
         let input = TerminalAttachInputQueue()
         input.resize(cols: 120, rows: 40)
@@ -1276,6 +1305,81 @@ struct TerminalAttachTests {
             system, toolsBeforeUIKitHides, toolsAfterUIKitHides,
             systemBeforeUIKitShows,
         ].map(\.contentInset) == [402, 402, 402, 402])
+    }
+
+    /// Blocked Send presents tools before any software keyboard has been
+    /// measured. A zero dock would hide Enter/Esc; the layout must still
+    /// reserve a usable height and lift Composer by the same amount.
+    @Test func toolsPresentationUsesAMinimumHeightWhenTheKeyboardWasNeverMeasured() {
+        let cold = AgentComposerKeyboardLayout(
+            currentHeight: 0, lastPresentedHeight: 0,
+            presentation: .tools)
+        #expect(cold.availableToolsHeight == AgentComposerKeyboardLayout.minimumToolsHeight)
+        #expect(cold.contentInset == AgentComposerKeyboardLayout.minimumToolsHeight)
+        #expect(cold.availableToolsHeight > 0)
+
+        let hidden = AgentComposerKeyboardLayout(
+            currentHeight: 0, lastPresentedHeight: 0,
+            presentation: .hidden)
+        #expect(hidden.contentInset == 0)
+        #expect(hidden.availableToolsHeight == 0)
+
+        let measured = AgentComposerKeyboardLayout(
+            currentHeight: 0, lastPresentedHeight: 402,
+            presentation: .tools)
+        #expect(measured.availableToolsHeight == 402)
+        #expect(measured.contentInset == 402)
+    }
+
+    /// The cold Blocked-Send dock is a real view, not just a layout number:
+    /// Enter and Esc have to be on screen and large enough to tap.
+    @MainActor
+    @Test func aColdToolsDockKeepsEnterAndEscapeTappable() async throws {
+        let layout = AgentComposerKeyboardLayout(
+            currentHeight: 0, lastPresentedHeight: 0,
+            presentation: .tools)
+        let width: CGFloat = 402
+        let height = layout.availableToolsHeight
+        let suiteName = "cold-tools-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            throw TransportError.cancelled
+        }
+        let controller = UIHostingController(
+            rootView: AgentToolsKeyboard(
+                store: composer,
+                context: TerminalKeysContext(
+                    settings: TerminalSettings(
+                        themes: TerminalThemeSettings(defaults: defaults),
+                        zoom: TerminalZoomSettings(defaults: defaults),
+                        fonts: TerminalFontSettings(defaults: defaults),
+                        snippets: SnippetStore(defaults: defaults)),
+                    manageSnippets: {}),
+                height: height,
+                quickKeysEnabled: true,
+                sendQuickKey: { _ in }
+            )
+            .frame(width: width, height: height)
+            .ignoresSafeArea())
+        let bounds = CGRect(x: 0, y: 0, width: width, height: height)
+        controller.view.frame = bounds
+        let window = try await makeTestWindow(
+            frame: bounds, rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        await Task.yield()
+
+        #expect(controller.view.bounds.height == height)
+        #expect(height >= 44 * 3)
+        for label in ["Enter", "Escape"] {
+            let frame = try #require(
+                Self.firstAccessibleFrame(in: controller.view, labeled: label),
+                "\(label) should be in the cold tools dock")
+            let visible = controller.view.bounds.intersection(frame)
+            #expect(visible.height >= 44, "\(label) frame was \(frame)")
+            #expect(visible.width >= 44, "\(label) frame was \(frame)")
+        }
     }
 
     /// Backgrounding hides the keyboard — animating the accessory out — but
