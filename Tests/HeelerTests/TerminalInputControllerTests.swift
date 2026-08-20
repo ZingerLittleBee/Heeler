@@ -191,4 +191,16 @@ struct TerminalInputControllerTests {
 
         #expect(!controller.insertSnippet("continue", bracketedPaste: true))
     }
+
+    @Test func sendRequiresALiveSessionAndWritesRawBytes() {
+        let controller = TerminalInputController()
+        #expect(!controller.send(Data("n".utf8)))
+
+        var writes: [Data] = []
+        _ = controller.beginSession { writes.append($0) }
+
+        #expect(controller.send(Data("n".utf8)))
+        #expect(writes == [Data("n".utf8)])
+        #expect(!writes.contains { $0.contains(0x0D) })
+    }
 }

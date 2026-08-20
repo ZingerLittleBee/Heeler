@@ -38,6 +38,16 @@ import Testing
         _ = try roundTrip(PongResponse.self, #"{"type":"pong","version":"0.7.5","protocol":17,"capabilities":{"live_handoff":true,"detached_server_daemon":true}}"#)
     }
 
+    @Test func pongResponseRoundTripsProtocolTwentyShape() throws {
+        let pong = try roundTrip(
+            PongResponse.self,
+            #"{"type":"pong","version":"0.8.2","protocol":20,"capabilities":{"live_handoff":true,"detached_server_daemon":true}}"#)
+
+        #expect(pong.version == "0.8.2")
+        #expect(pong.protocolVersion == 20)
+        #expect(pong.protocolVersion == HeelerSSHTransport.generatedProtocolVersion)
+    }
+
     @Test func agentListResponseRoundTripsLiveCapture() throws {
         // Trimmed to one agent; unknown fields left in place.
         let line = #"{"id":"fix-1","result":{"type":"agent_list","agents":[{"terminal_id":"term_656c59f7b902d1e","agent":"codex","terminal_title":"✳ GoDrop","terminal_title_stripped":"GoDrop","agent_status":"working","workspace_id":"w3","tab_id":"w3:t2","pane_id":"w3:pB","focused":false,"cwd":"/Users/u/GoDrop","foreground_cwd":"/Users/u/GoDrop","revision":5}]}}"#

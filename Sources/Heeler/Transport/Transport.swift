@@ -230,7 +230,7 @@ extension Transport {
     }
 }
 
-/// The interactive Agent kinds supported by herdr protocol 17.
+/// Heeler's catalog of interactive Agent kinds.
 ///
 /// The raw value is the canonical `agent.start.kind`; `executable` mirrors
 /// the command herdr launches for that kind. Keeping both explicit matters
@@ -258,6 +258,7 @@ enum SupportedAgentKind: String, CaseIterable, Identifiable, Sendable, Equatable
     case kilo
     case qodercli
     case maki
+    case qwen
 
     var id: String { rawValue }
 
@@ -284,6 +285,7 @@ enum SupportedAgentKind: String, CaseIterable, Identifiable, Sendable, Equatable
         case .kilo: "Kilo Code"
         case .qodercli: "Qoder CLI"
         case .maki: "Maki"
+        case .qwen: "Qwen Code"
         }
     }
 

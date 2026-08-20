@@ -45,6 +45,22 @@ struct SSHTransportSettings: Sendable {
         return "/bin/sh -c '\(checks.joined(separator: "; ")); exit 0'"
     }
 
+    /// Kinds reported by a Host `command -v` probe. Only marker-prefixed lines
+    /// count, unknown labels are dropped, and the result is `allCases` order
+    /// so the Start Agent picker stays stable across duplicate or noisy stdout.
+    static func discoveredAgentKinds(from output: String) -> [SupportedAgentKind] {
+        let discovered = Set(
+            output.split(whereSeparator: \.isNewline)
+                .compactMap { line -> SupportedAgentKind? in
+                    guard line.hasPrefix(agentAvailabilityMarker) else {
+                        return nil
+                    }
+                    return SupportedAgentKind(
+                        rawValue: String(line.dropFirst(agentAvailabilityMarker.count)))
+                })
+        return SupportedAgentKind.allCases.filter(discovered.contains)
+    }
+
     var host: String
     var port: Int
     var username: String

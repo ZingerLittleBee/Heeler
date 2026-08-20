@@ -8,6 +8,11 @@ enum AgentComposerKeyboardPresentation: Equatable {
 }
 
 struct AgentComposerKeyboardLayout: Equatable {
+    /// Used only when `lastPresentedHeight` is still zero. Any positive
+    /// measurement is the tools footprint as-is, even when it is shorter
+    /// than this value.
+    static let minimumToolsHeight: CGFloat = 260
+
     let contentInset: CGFloat
     let availableToolsHeight: CGFloat
 
@@ -16,14 +21,22 @@ struct AgentComposerKeyboardLayout: Equatable {
         lastPresentedHeight: CGFloat,
         presentation: AgentComposerKeyboardPresentation
     ) {
-        availableToolsHeight = lastPresentedHeight
         switch presentation {
         case .hidden:
+            availableToolsHeight = lastPresentedHeight
             contentInset = currentHeight
         case .system:
+            availableToolsHeight = lastPresentedHeight
             contentInset = max(currentHeight, lastPresentedHeight)
         case .tools:
-            contentInset = lastPresentedHeight
+            // Only the unmeasured path may invent a height. A positive
+            // measurement, including compact landscape footprints below
+            // `minimumToolsHeight`, is the tools dock's exact size.
+            let toolsHeight =
+                lastPresentedHeight > 0
+                ? lastPresentedHeight : Self.minimumToolsHeight
+            availableToolsHeight = toolsHeight
+            contentInset = toolsHeight
         }
     }
 }
@@ -55,8 +68,10 @@ struct AgentComposerLinkPresentation: Equatable {
 }
 
 /// The native, local-first input surface beneath the live terminal. Drafting
-/// stays on device; Send emits one `agent.prompt` request, while explicit
-/// tool-keyboard controls send terminal sequences through Attach.
+/// stays on device; Send emits one `agent.prompt` request except when Agent
+/// Status is Blocked, in which case it inserts the draft into Attach without
+/// Enter and presents the tools keyboard. Explicit tool-keyboard controls
+/// send terminal sequences through Attach.
 struct AgentComposerView: View {
     let store: AgentComposerStore
     let status: AgentStatus
@@ -105,7 +120,7 @@ struct AgentComposerView: View {
                                     .lineLimit(2)
                                 HStack(spacing: 8) {
                                     Button("Retry") {
-                                        Task { await store.retry(failure.id) }
+                                        Task { await deliverDraft { await store.retry(failure.id) } }
                                     }
                                     Button("Edit Draft") {
                                         store.withdrawToDraft(failure.id)
@@ -196,7 +211,7 @@ struct AgentComposerView: View {
 
                             Spacer(minLength: 0)
                             AgentComposerSendButton(isEnabled: store.canSend) {
-                                Task { await store.send() }
+                                Task { await deliverDraft { await store.send() } }
                             }
                         }
                     }
@@ -281,6 +296,21 @@ struct AgentComposerView: View {
         guard presentation != keyboardPresentation else { return }
         prepareKeyboardPresentation(presentation)
         keyboardPresentation = presentation
+    }
+
+    /// Blocked delivery types into Attach without Enter; the tools keyboard
+    /// is what submits or cancels.
+    private func deliverDraft(
+        _ deliver: () async -> AgentComposerStore.SendResult
+    ) async {
+        let result = await deliver()
+        guard result == .deliveredViaAttach else { return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            setKeyboardPresentation(.tools)
+            isInputFocused = true
+        }
     }
 
     private var focusPreservingSwitcher: TerminalAgentSwitcher {

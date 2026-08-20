@@ -18,7 +18,7 @@
 #   real-password fixture needs sudo, because macOS cannot verify an account
 #   password without root.
 # - Wire-type codegen drift is checked against a committed schema snapshot
-#   (scripts/herdr-schema.json), captured from herdr 0.7.4 via
+#   (scripts/herdr-schema.json), captured from herdr 0.8.2 via
 #   `herdr api schema --json`. CI has no herdr binary, so `--schema` feeds the
 #   snapshot instead of shelling out. The snapshot also pins the exact schema
 #   version the generated types were built from.

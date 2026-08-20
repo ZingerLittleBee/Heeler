@@ -275,7 +275,7 @@ actor HeelerSSHTransport: Transport {
     /// with 17 in every one of its 164 shared definitions, into an unusable
     /// Host (#140); bumping the constant would have rebuilt the same outage at
     /// protocol 20.
-    static let generatedProtocolVersion = 19
+    static let generatedProtocolVersion = 20
     static let maximumResponseBytes = 1_048_576
     static let maxConcurrentForwardingChannels =
         SSHChannelAdmission.Limits.production.ordinaryForwarding
@@ -545,19 +545,8 @@ actor HeelerSSHTransport: Transport {
 
     func availableAgentKinds() async throws -> [SupportedAgentKind] {
         let output = try await runHostCommand(agentDiscoveryCommand)
-        let discovered = Set(
-            String(decoding: output, as: UTF8.self)
-                .split(whereSeparator: \.isNewline)
-                .compactMap { line -> SupportedAgentKind? in
-                    guard line.hasPrefix(SSHTransportSettings.agentAvailabilityMarker) else {
-                        return nil
-                    }
-                    return SupportedAgentKind(
-                        rawValue: String(
-                            line.dropFirst(
-                                SSHTransportSettings.agentAvailabilityMarker.count)))
-                })
-        return SupportedAgentKind.allCases.filter(discovered.contains)
+        return SSHTransportSettings.discoveredAgentKinds(
+            from: String(decoding: output, as: UTF8.self))
     }
 
     func listSkills(_ query: SkillListQuery) async throws -> [AgentSkill] {

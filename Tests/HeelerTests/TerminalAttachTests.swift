@@ -385,6 +385,50 @@ struct TerminalAttachTests {
         return nil
     }
 
+    @MainActor
+    private static func firstAccessibleFrame(in root: UIView, labeled label: String) -> CGRect? {
+        // SwiftUI hosting nests accessibility containers arbitrarily deep, and
+        // which runtime wraps a control in how many containers varies by OS
+        // release — recurse through every container shape, not just UIViews.
+        func visit(_ node: NSObject) -> CGRect? {
+            if let view = node as? UIView {
+                if view.accessibilityLabel == label, view.bounds.width > 0, view.bounds.height > 0 {
+                    return view.convert(view.bounds, to: root)
+                }
+            } else if node.accessibilityLabel == label {
+                let frame = node.accessibilityFrame
+                if frame.width > 0, frame.height > 0 {
+                    return root.convert(frame, from: nil)
+                }
+            }
+            if let elements = node.accessibilityElements {
+                for element in elements {
+                    if let object = element as? NSObject, let frame = visit(object) {
+                        return frame
+                    }
+                }
+            } else {
+                let count = node.accessibilityElementCount()
+                if count > 0, count != NSNotFound {
+                    for index in 0..<count {
+                        if let object = node.accessibilityElement(at: index) as? NSObject,
+                            let frame = visit(object)
+                        {
+                            return frame
+                        }
+                    }
+                }
+            }
+            if let view = node as? UIView {
+                for subview in view.subviews {
+                    if let frame = visit(subview) { return frame }
+                }
+            }
+            return nil
+        }
+        return visit(root)
+    }
+
     @Test func writerPropagatesResizeFailure() async {
         let input = TerminalAttachInputQueue()
         input.resize(cols: 120, rows: 40)
@@ -1276,6 +1320,123 @@ struct TerminalAttachTests {
             system, toolsBeforeUIKitHides, toolsAfterUIKitHides,
             systemBeforeUIKitShows,
         ].map(\.contentInset) == [402, 402, 402, 402])
+    }
+
+    /// Blocked Send presents tools before any software keyboard has been
+    /// measured. A zero dock would hide Enter/Esc; the layout must still
+    /// reserve a usable height and lift Composer by the same amount.
+    @Test func toolsPresentationUsesAMinimumHeightWhenTheKeyboardWasNeverMeasured() {
+        let cold = AgentComposerKeyboardLayout(
+            currentHeight: 0, lastPresentedHeight: 0,
+            presentation: .tools)
+        #expect(cold.availableToolsHeight == AgentComposerKeyboardLayout.minimumToolsHeight)
+        #expect(cold.contentInset == AgentComposerKeyboardLayout.minimumToolsHeight)
+        #expect(cold.availableToolsHeight > 0)
+
+        let hidden = AgentComposerKeyboardLayout(
+            currentHeight: 0, lastPresentedHeight: 0,
+            presentation: .hidden)
+        #expect(hidden.contentInset == 0)
+        #expect(hidden.availableToolsHeight == 0)
+
+        let measured = AgentComposerKeyboardLayout(
+            currentHeight: 0, lastPresentedHeight: 402,
+            presentation: .tools)
+        #expect(measured.availableToolsHeight == 402)
+        #expect(measured.contentInset == 402)
+    }
+
+    /// A real measurement below the cold fallback (landscape, 224pt controls
+    /// keyboard) must stay exact in both modes. Clamping it up to 260 would
+    /// move Composer and resize Ghostty's grid.
+    @Test func aMeasuredHeightBelowTheFallbackKeepsTheSystemFootprintInTools() {
+        let measured: CGFloat = 224
+        #expect(measured < AgentComposerKeyboardLayout.minimumToolsHeight)
+        let system = AgentComposerKeyboardLayout(
+            currentHeight: measured, lastPresentedHeight: measured,
+            presentation: .system)
+        let toolsWhileKeyboardIsUp = AgentComposerKeyboardLayout(
+            currentHeight: measured, lastPresentedHeight: measured,
+            presentation: .tools)
+        let toolsAfterUIKitHides = AgentComposerKeyboardLayout(
+            currentHeight: 0, lastPresentedHeight: measured,
+            presentation: .tools)
+
+        #expect(system.contentInset == measured)
+        #expect(toolsWhileKeyboardIsUp.contentInset == measured)
+        #expect(toolsAfterUIKitHides.contentInset == measured)
+        #expect(toolsWhileKeyboardIsUp.availableToolsHeight == measured)
+        #expect(toolsAfterUIKitHides.availableToolsHeight == measured)
+        #expect(system.contentInset == toolsWhileKeyboardIsUp.contentInset)
+        #expect(system.contentInset == toolsAfterUIKitHides.contentInset)
+    }
+
+    /// The cold Blocked-Send dock is a real view, not just a layout number:
+    /// Enter and Esc have to be on screen and large enough to tap.
+    @MainActor
+    @Test func aColdToolsDockKeepsEnterAndEscapeTappable() async throws {
+        let layout = AgentComposerKeyboardLayout(
+            currentHeight: 0, lastPresentedHeight: 0,
+            presentation: .tools)
+        let width: CGFloat = 402
+        let height = layout.availableToolsHeight
+        let suiteName = "cold-tools-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            throw TransportError.cancelled
+        }
+        let controller = UIHostingController(
+            rootView: AgentToolsKeyboard(
+                store: composer,
+                context: TerminalKeysContext(
+                    settings: TerminalSettings(
+                        themes: TerminalThemeSettings(defaults: defaults),
+                        zoom: TerminalZoomSettings(defaults: defaults),
+                        fonts: TerminalFontSettings(defaults: defaults),
+                        snippets: SnippetStore(defaults: defaults)),
+                    manageSnippets: {}),
+                height: height,
+                quickKeysEnabled: true,
+                sendQuickKey: { _ in }
+            )
+            .frame(width: width, height: height)
+            .ignoresSafeArea())
+        let bounds = CGRect(x: 0, y: 0, width: width, height: height)
+        controller.view.frame = bounds
+        let window = try await makeTestWindow(
+            frame: bounds, rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        await Task.yield()
+
+        #expect(controller.view.bounds.height == height)
+        #expect(height >= 44 * 3)
+        // iOS 26 simulators never materialize hosted SwiftUI accessibility
+        // without an assistive client attached, so the frame probe below is
+        // 27-only; the layout invariants above gate every runtime.
+        guard #available(iOS 27, *) else { return }
+        // Hosted SwiftUI materializes its accessibility tree a run-loop beat
+        // after layout — poll instead of requiring it on the first pass.
+        var frames: [String: CGRect] = [:]
+        for _ in 0..<40 where frames.count < 2 {
+            for label in ["Enter", "Escape"] where frames[label] == nil {
+                frames[label] = Self.firstAccessibleFrame(
+                    in: controller.view, labeled: label)
+            }
+            if frames.count < 2 {
+                try await Task.sleep(nanoseconds: 50_000_000)
+                controller.view.layoutIfNeeded()
+            }
+        }
+        for label in ["Enter", "Escape"] {
+            let frame = try #require(
+                frames[label],
+                "\(label) should be in the cold tools dock")
+            let visible = controller.view.bounds.intersection(frame)
+            #expect(visible.height >= 44, "\(label) frame was \(frame)")
+            #expect(visible.width >= 44, "\(label) frame was \(frame)")
+        }
     }
 
     /// Backgrounding hides the keyboard — animating the accessory out — but

@@ -285,6 +285,7 @@ struct SkillProbeTests {
     @Test func catalogCoversExactlyTheResearchedKinds() {
         let supported = SupportedAgentKind.allCases.filter(SkillSourceCatalog.supports)
         #expect(supported == [.pi, .claude, .codex, .opencode])
+        #expect(!SkillSourceCatalog.supports(.qwen))
     }
 
     @Test func projectSourcesComeFirstForEveryKind() {

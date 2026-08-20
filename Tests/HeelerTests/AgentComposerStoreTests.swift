@@ -276,6 +276,207 @@ struct AgentComposerStoreTests {
         #expect(replacementStore.draft == "Keep this local draft")
     }
 
+    @Test func sendingWhileBlockedInsertsIntoAttachWithoutEnterOrPrompt() async throws {
+        let transport = ScriptedTransport()
+        var writes: [Data] = []
+        let input = TerminalInputController()
+        _ = input.beginSession { writes.append($0) }
+        let store = AgentComposerStore(target: "w1:p1", initialStatus: .blocked) {
+            params in
+            try await transport.promptAgent(params)
+        }
+        store.bindAttachInput(input)
+        store.replaceDraft(with: "n")
+
+        let result = await store.send()
+
+        #expect(result == .deliveredViaAttach)
+        #expect(store.draft.isEmpty)
+        #expect(store.messages.map(\.text) == ["n"])
+        #expect(store.messages.map(\.state) == [.delivered(.acknowledged)])
+        #expect(writes == [Data("n".utf8)])
+        #expect(!writes.contains { $0.contains(0x0D) })
+        #expect(await transport.agentPromptParams.isEmpty)
+    }
+
+    @Test func sendingWhileWorkingStillUsesPromptWhenAttachIsLive() async {
+        let transport = ScriptedTransport()
+        var writes: [Data] = []
+        let input = TerminalInputController()
+        _ = input.beginSession { writes.append($0) }
+        let store = AgentComposerStore(target: "w1:p1", initialStatus: .working) {
+            params in
+            try await transport.promptAgent(params)
+        }
+        store.bindAttachInput(input)
+        store.replaceDraft(with: "Queue this next")
+
+        let result = await store.send()
+
+        #expect(result == .deliveredViaPrompt)
+        #expect(store.messages.map(\.state) == [.delivered(.agentBusy)])
+        #expect(writes.isEmpty)
+        #expect(await transport.agentPromptParams.count == 1)
+        #expect(await transport.agentPromptParams.first?.wait == nil)
+    }
+
+    @Test func agentBlockedPromptFallsThroughToAttachInsert() async throws {
+        let transport = ScriptedTransport()
+        await transport.setAgentPromptFailure(
+            HerdrAPIError(code: "agent_blocked", message: "agent is blocked"))
+        var writes: [Data] = []
+        let input = TerminalInputController()
+        _ = input.beginSession { writes.append($0) }
+        let store = AgentComposerStore(target: "w1:p1") { params in
+            try await transport.promptAgent(params)
+        }
+        store.bindAttachInput(input)
+        store.replaceDraft(with: "approve")
+
+        let result = await store.send()
+
+        #expect(result == .deliveredViaAttach)
+        #expect(store.draft.isEmpty)
+        #expect(store.messages.map(\.state) == [.delivered(.acknowledged)])
+        #expect(writes == [Data("approve".utf8)])
+        #expect(
+            await transport.agentPromptParams == [
+                AgentPromptParams(target: "w1:p1", text: "approve")
+            ])
+        if case .failed(let detail) = store.messages.first?.state {
+            Issue.record("expected Attach delivery, got failure: \(detail)")
+        }
+    }
+
+    @Test func blockedSendWithoutLiveAttachFailsAndKeepsRetry() async throws {
+        let transport = ScriptedTransport()
+        let store = AgentComposerStore(target: "w1:p1", initialStatus: .blocked) {
+            params in
+            try await transport.promptAgent(params)
+        }
+        store.replaceDraft(with: "n")
+
+        let result = await store.send()
+
+        #expect(result == .failed)
+        #expect(await transport.agentPromptParams.isEmpty)
+        let message = try #require(store.messages.first)
+        #expect(
+            message.state
+                == .failed("The message could not be sent. Check the connection and retry.")
+        )
+        #expect(message.text == "n")
+
+        var writes: [Data] = []
+        let input = TerminalInputController()
+        _ = input.beginSession { writes.append($0) }
+        store.bindAttachInput(input)
+        let retry = await store.retry(message.id)
+
+        #expect(retry == .deliveredViaAttach)
+        #expect(store.messages.first?.state == .delivered(.acknowledged))
+        #expect(writes == [Data("n".utf8)])
+        #expect(await transport.agentPromptParams.isEmpty)
+    }
+
+    @Test func agentBlockedWithoutLiveAttachDoesNotShowHerdrRejection() async throws {
+        let transport = ScriptedTransport()
+        await transport.setAgentPromptFailure(
+            HerdrAPIError(code: "agent_blocked", message: "agent is blocked"))
+        let store = AgentComposerStore(target: "w1:p1") { params in
+            try await transport.promptAgent(params)
+        }
+        store.replaceDraft(with: "n")
+
+        let result = await store.send()
+
+        #expect(result == .failed)
+        let message = try #require(store.messages.first)
+        #expect(message.text == "n")
+        #expect(
+            message.state
+                == .failed("The message could not be sent. Check the connection and retry.")
+        )
+        if case .failed(let detail) = message.state {
+            #expect(!detail.contains("herdr rejected"))
+        }
+        #expect(
+            await transport.agentPromptParams == [
+                AgentPromptParams(target: "w1:p1", text: "n")
+            ])
+
+        store.withdrawToDraft(message.id)
+        #expect(store.messages.isEmpty)
+        #expect(store.draft == "n")
+    }
+
+    @Test func blockedSendRejectsUnsafeScalarsWithoutWriting() async throws {
+        let transport = ScriptedTransport()
+        var writes: [Data] = []
+        let input = TerminalInputController()
+        _ = input.beginSession { writes.append($0) }
+        let store = AgentComposerStore(target: "w1:p1", initialStatus: .blocked) {
+            params in
+            try await transport.promptAgent(params)
+        }
+        store.bindAttachInput(input)
+        store.replaceDraft(with: "escape\u{1B}[31m")
+
+        let result = await store.send()
+
+        #expect(result == .failed)
+        #expect(writes.isEmpty)
+        #expect(await transport.agentPromptParams.isEmpty)
+        let message = try #require(store.messages.first)
+        #expect(
+            message.state
+                == .failed("The message contains unsafe terminal control characters."))
+
+        store.withdrawToDraft(message.id)
+        #expect(store.messages.isEmpty)
+        #expect(store.draft == "escape\u{1B}[31m")
+    }
+
+    @Test func blockedAttachInsertDoesNotWrapBracketedPaste() async {
+        let transport = ScriptedTransport()
+        var writes: [Data] = []
+        let input = TerminalInputController()
+        _ = input.beginSession { writes.append($0) }
+        let store = AgentComposerStore(target: "w1:p1", initialStatus: .blocked) {
+            params in
+            try await transport.promptAgent(params)
+        }
+        store.bindAttachInput(input)
+        store.replaceDraft(with: "first\nsecond")
+
+        let result = await store.send()
+
+        #expect(result == .deliveredViaAttach)
+        #expect(writes == [Data("first\nsecond".utf8)])
+        #expect(writes.first?.starts(with: TerminalBracketedPaste.start) != true)
+    }
+
+    @Test func blockedDeliveredEchoDoesNotClaimWorkingFromLaterStatus() async {
+        let transport = ScriptedTransport()
+        var writes: [Data] = []
+        let input = TerminalInputController()
+        _ = input.beginSession { writes.append($0) }
+        let store = AgentComposerStore(target: "w1:p1", initialStatus: .blocked) {
+            params in
+            try await transport.promptAgent(params)
+        }
+        store.bindAttachInput(input)
+        store.replaceDraft(with: "n")
+
+        await store.send()
+        store.agentStatusDidChange(.working)
+        store.agentStatusDidChange(.done)
+
+        #expect(store.messages.map(\.state) == [.delivered(.acknowledged)])
+        #expect(await transport.agentPromptParams.isEmpty)
+        #expect(writes == [Data("n".utf8)])
+    }
+
     private func waitUntil(
         _ comment: Comment,
         timeout: Duration = .seconds(2),
