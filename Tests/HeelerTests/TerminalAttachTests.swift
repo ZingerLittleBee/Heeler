@@ -1412,9 +1412,12 @@ struct TerminalAttachTests {
 
         #expect(controller.view.bounds.height == height)
         #expect(height >= 44 * 3)
+        // iOS 26 simulators never materialize hosted SwiftUI accessibility
+        // without an assistive client attached, so the frame probe below is
+        // 27-only; the layout invariants above gate every runtime.
+        guard #available(iOS 27, *) else { return }
         // Hosted SwiftUI materializes its accessibility tree a run-loop beat
-        // (or several, on older simulators) after layout — poll instead of
-        // requiring it on the first pass.
+        // after layout — poll instead of requiring it on the first pass.
         var frames: [String: CGRect] = [:]
         for _ in 0..<40 where frames.count < 2 {
             for label in ["Enter", "Escape"] where frames[label] == nil {
