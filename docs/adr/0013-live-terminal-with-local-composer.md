@@ -54,3 +54,8 @@ delivery.
   caused by the Composer and software keyboard.
 - Features whose only insertion path was direct terminal input are not exposed
   on this surface until they can insert into Composer instead.
+- Send delivers the complete draft through one `agent.prompt` request, except
+  when Agent Status is Blocked. herdr 0.8.2 rejects `agent.prompt` in that
+  state (`agent_blocked`) because auto-Enter would confirm or dismiss the
+  dialog. Send then inserts the draft into the live Attach PTY without Enter
+  and presents the tools keyboard so the user submits or cancels.

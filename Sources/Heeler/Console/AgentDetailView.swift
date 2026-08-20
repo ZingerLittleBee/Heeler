@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The default Agent detail surface. Ghostty renders the live Attach stream,
 /// while the local Composer owns every user-authored message and delivers it
-/// through one `agent.prompt` request.
+/// through one `agent.prompt` request, except when Agent Status is Blocked.
 struct AgentDetailView: View {
     let agent: ConsoleAgent
     private let console: ConsoleStore

@@ -13,6 +13,15 @@ Entries reference the issue that motivated them.
   app, so pairing no longer depends on scanning a QR that may overflow a
   small terminal. A failed copy prints the code for manual selection. (#204)
 
+### Changed
+
+- When the Agent is Blocked at an approval or question dialog, Composer Send
+  types the draft into the live Attach terminal without pressing Enter, then
+  shows the tools keyboard so Enter or Esc is one tap. If the Host rejects
+  `agent.prompt` with `agent_blocked` after status lagged, Send takes the
+  same path instead of showing a rejection. Idle, Working, Done, and Unknown
+  still deliver through `agent.prompt`. (#217)
+
 ## [0.1.0] - 2026-08-20
 
 ### Fixed

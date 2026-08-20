@@ -92,17 +92,21 @@ tools keyboard sends explicit terminal controls directly to the Agent without
 editing the draft, while its Snippet and Skill tools insert into that draft. A
 draft insertion edits the draft and nothing more; delivery is a separate,
 explicit act.
-Delivered means the Host accepted the text into the pane — whether the Agent
-queues or acts on it is the Agent's business, and the Composer never claims
-otherwise.
+Authored delivery is one `agent.prompt` request, except when Agent Status is
+Blocked: Send then inserts the draft into Attach without Enter, and the tools
+keyboard submits or cancels. Delivered means the Host accepted the text into
+the pane — whether the Agent queues or acts on it is the Agent's business,
+and the Composer never claims otherwise.
 _Avoid_: reply bar, compose bar (the shelved predecessors), input box, message box
 
 **Attach**:
 The realtime PTY stream behind Agent detail. libghostty renders the complete
 TUI, owns local scrollback, and reports its grid size so the remote PTY resizes
-with the view. The surface is display-only: authored input belongs to Composer
-and reaches the Agent through one `agent.prompt` request. Only Composer's
-explicit tools-keyboard controls send terminal control sequences.
+with the view. The surface is display-only: authored input belongs to Composer.
+Delivery is one `agent.prompt` request, except when Agent Status is Blocked, in
+which case Send inserts the draft into Attach without Enter and the tools
+keyboard submits or cancels. Only Composer's explicit tools-keyboard controls
+send terminal control sequences.
 _Avoid_: takeover (that's herdr's flag, not our surface), connect
 
 **Attach Link**:

@@ -10,7 +10,9 @@ protocol ComposerDraftOperations: AnyObject {
 }
 
 /// Owns Agent detail's local draft and delivery state. Draft edits do not
-/// touch Transport; only an explicit send emits one `agent.prompt` RPC.
+/// touch Transport. Send delivers through one `agent.prompt` RPC, except
+/// when Agent Status is Blocked: then it inserts into the live Attach PTY
+/// without Enter.
 @MainActor
 @Observable
 final class AgentComposerStore: ComposerDraftOperations {
@@ -20,6 +22,9 @@ final class AgentComposerStore: ComposerDraftOperations {
         fileprivate var agentWasWorkingAtSend: Bool
         fileprivate var statusRevisionAtSend: UInt64
         fileprivate var observedWorkingAfterSend: Bool
+        /// Attach-inserted Blocked drafts are acked by the PTY write. They
+        /// do not claim Working/Done from later status pushes.
+        fileprivate var tracksAgentProgress: Bool
         fileprivate(set) var state: DeliveryState
     }
 
@@ -36,6 +41,15 @@ final class AgentComposerStore: ComposerDraftOperations {
         case done
     }
 
+    /// How Send finished. `.deliveredViaAttach` is the view's cue to present
+    /// the tools keyboard so the user can Enter or Esc themselves.
+    enum SendResult: Equatable {
+        case ignored
+        case deliveredViaPrompt
+        case deliveredViaAttach
+        case failed
+    }
+
     private(set) var messages: [Message] = []
     private(set) var draft = ""
 
@@ -46,6 +60,10 @@ final class AgentComposerStore: ComposerDraftOperations {
     private let prompt: @Sendable (AgentPromptParams) async throws -> Agent
     @ObservationIgnored private var hasOpened = false
     @ObservationIgnored private var statusTask: Task<Void, Never>?
+    /// The detail screen's live Attach writer. Weak: Composer outlives any
+    /// one Attach pipeline (reconnect replacement), and a dead writer must
+    /// fail the Blocked path rather than retain a stale session.
+    @ObservationIgnored private weak var attachInput: TerminalInputController?
 
     init(
         target: String,
@@ -91,27 +109,37 @@ final class AgentComposerStore: ComposerDraftOperations {
         }
     }
 
-    func send() async {
-        guard canSend else { return }
+    /// The already-open Attach PTY writer owned by Agent detail. Blocked
+    /// Send uses the same pipe as the tools keyboard.
+    func bindAttachInput(_ input: TerminalInputController?) {
+        attachInput = input
+    }
+
+    @discardableResult
+    func send() async -> SendResult {
+        guard canSend else { return .ignored }
         let message = Message(
             id: UUID(), text: draft,
             agentWasWorkingAtSend: agentStatus == .working,
             statusRevisionAtSend: statusRevision,
             observedWorkingAfterSend: false,
+            tracksAgentProgress: true,
             state: .sending)
         draft = ""
         messages.append(message)
-        await deliver(message.id)
+        return await deliver(message.id)
     }
 
-    func retry(_ id: Message.ID) async {
-        guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
-        guard case .failed = messages[index].state else { return }
+    @discardableResult
+    func retry(_ id: Message.ID) async -> SendResult {
+        guard let index = messages.firstIndex(where: { $0.id == id }) else { return .ignored }
+        guard case .failed = messages[index].state else { return .ignored }
         messages[index].agentWasWorkingAtSend = agentStatus == .working
         messages[index].statusRevisionAtSend = statusRevision
         messages[index].observedWorkingAfterSend = false
+        messages[index].tracksAgentProgress = true
         messages[index].state = .sending
-        await deliver(id)
+        return await deliver(id)
     }
 
     /// Removes a failed echo and restores all of its text to the draft. If
@@ -128,6 +156,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         agentStatus = status
         statusRevision &+= 1
         for index in messages.indices {
+            guard messages[index].tracksAgentProgress else { continue }
             if status == .working,
                 messages[index].statusRevisionAtSend != statusRevision
             {
@@ -150,20 +179,64 @@ final class AgentComposerStore: ComposerDraftOperations {
         }
     }
 
-    private func deliver(_ id: Message.ID) async {
-        guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
+    private func deliver(_ id: Message.ID) async -> SendResult {
+        guard let index = messages.firstIndex(where: { $0.id == id }) else { return .ignored }
         let text = messages[index].text
+        if agentStatus == .blocked {
+            return deliverThroughAttach(id, text: text)
+        }
         do {
             _ = try await prompt(AgentPromptParams(target: target, text: text))
             guard let acknowledgedIndex = messages.firstIndex(where: { $0.id == id }) else {
-                return
+                return .ignored
             }
             messages[acknowledgedIndex].state = .delivered(
                 progressAfterAcknowledgment(for: messages[acknowledgedIndex]))
+            return .deliveredViaPrompt
         } catch {
-            guard let failedIndex = messages.firstIndex(where: { $0.id == id }) else { return }
-            messages[failedIndex].state = .failed(Self.message(for: error))
+            if Self.isAgentBlocked(error) {
+                return deliverThroughAttach(id, text: text)
+            }
+            return fail(id, message: Self.message(for: error))
         }
+    }
+
+    /// Types the draft into the live Attach PTY without submitting. Matches
+    /// tools-keyboard writes: UTF-8 bytes, no bracketed paste, no Enter.
+    private func deliverThroughAttach(_ id: Message.ID, text: String) -> SendResult {
+        guard TerminalTextSafety.containsOnlySafeScalars(text) else {
+            return fail(id, message: Self.unsafeTextMessage)
+        }
+        guard let attachInput, attachInput.send(Data(text.utf8)) else {
+            return fail(id, message: Self.missingAttachMessage)
+        }
+        guard let deliveredIndex = messages.firstIndex(where: { $0.id == id }) else {
+            return .ignored
+        }
+        messages[deliveredIndex].tracksAgentProgress = false
+        messages[deliveredIndex].state = .delivered(.acknowledged)
+        return .deliveredViaAttach
+    }
+
+    @discardableResult
+    private func fail(_ id: Message.ID, message: String) -> SendResult {
+        guard let failedIndex = messages.firstIndex(where: { $0.id == id }) else {
+            return .ignored
+        }
+        messages[failedIndex].state = .failed(message)
+        return .failed
+    }
+
+    private static func isAgentBlocked(_ error: any Error) -> Bool {
+        if let apiError = error as? HerdrAPIError {
+            return apiError.code == "agent_blocked"
+        }
+        if let transportError = error as? TransportError,
+            case .apiRejected(let code, _) = transportError
+        {
+            return code == "agent_blocked"
+        }
+        return false
     }
 
     private func progressAfterAcknowledgment(for message: Message) -> AgentProgress {
@@ -187,6 +260,11 @@ final class AgentComposerStore: ComposerDraftOperations {
         return message.agentWasWorkingAtSend ? .agentBusy : .acknowledged
     }
 
+    private static let missingAttachMessage =
+        "The message could not be sent. Check the connection and retry."
+    private static let unsafeTextMessage =
+        "The message contains unsafe terminal control characters."
+
     private static func message(for error: any Error) -> String {
         switch error {
         case TransportError.sshUnreachable:
@@ -198,7 +276,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         case let error as TransportError:
             error.connectionGuidance
         default:
-            "The message could not be sent. Check the connection and retry."
+            missingAttachMessage
         }
     }
 }
