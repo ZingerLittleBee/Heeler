@@ -318,6 +318,7 @@ actor HeelerSSHTransport: Transport {
     private var imageStageClients: [UUID: SSHSFTPClient] = [:]
     private var notificationFileClients: [UUID: SSHSFTPClient] = [:]
     private var notificationTemporaryPaths: [UUID: String] = [:]
+    private var remoteFileClients: [UUID: SSHSFTPClient] = [:]
 
     /// Establishes the libssh2 Transport through the same app-owned
     /// credentials and TOFU policy as the production connection path.
@@ -595,6 +596,277 @@ actor HeelerSSHTransport: Transport {
                 "The skill file is gone or unreadable on the Host.")
         }
         return content
+    }
+
+    // MARK: Remote files
+
+    func listDirectory(at path: String) async throws -> [RemoteFileEntry] {
+        try validateRemoteFilePath(path)
+        return try await withRemoteFileClient(path: path) { sftp in
+            let entries = try await sftp.listDirectory(at: path, timeout: self.requestTimeout)
+            return Self.sortedRemoteFileEntries(entries.map {
+                Self.remoteFileEntry(
+                    name: $0.name,
+                    path: Self.remoteChildPath(directory: path, name: $0.name),
+                    attributes: $0.attributes)
+            })
+        }
+    }
+    func readFile(at path: String, byteLimit: Int) async throws -> RemoteFileSnapshot {
+        try validateRemoteFilePath(path)
+        guard byteLimit >= 0 else {
+            throw RemoteFileError.failure(message: "The file size limit must not be negative.")
+        }
+        return try await withRemoteFileClient(path: path) { sftp in
+            // Preserve the stat that admitted this read. A later stat could
+            // describe a replacement that arrived after these bytes did.
+            let attributes = try await sftp.attributes(at: path, timeout: self.requestTimeout)
+            if let size = attributes.size, size > UInt64(byteLimit) {
+                throw RemoteFileError.tooLarge(
+                    path: path,
+                    sizeBytes: size,
+                    limit: byteLimit)
+            }
+            let data: Data
+            do {
+                data = try await sftp.readFile(
+                    at: path,
+                    byteLimit: byteLimit,
+                    timeout: self.requestTimeout)
+            } catch SSHError.responseTooLarge {
+                let currentAttributes = try await sftp.attributes(
+                    at: path,
+                    timeout: self.requestTimeout)
+                guard let size = currentAttributes.size else {
+                    throw RemoteFileError.failure(
+                        message: "The server omitted the file size needed to enforce the limit.")
+                }
+                throw RemoteFileError.tooLarge(
+                    path: path,
+                    sizeBytes: size,
+                    limit: byteLimit)
+            }
+            return RemoteFileSnapshot(
+                path: path,
+                data: data,
+                modified: attributes.modificationDate,
+                sizeBytes: attributes.size ?? UInt64(data.count))
+        }
+    }
+
+    func writeFile(at path: String, data: Data) async throws -> RemoteFileEntry {
+        try validateRemoteFilePath(path)
+        guard let temporaryPath = Self.temporaryRemoteFilePath(for: path) else {
+            throw RemoteFileError.failure(message: "The remote file path has no filename.")
+        }
+        return try await withRemoteFileClient(path: path) { sftp in
+            var partPath: String? = temporaryPath
+            do {
+                let file = try await sftp.openFileForWriting(
+                    at: temporaryPath,
+                    permissions: 0o600,
+                    timeout: self.requestTimeout)
+                do {
+                    try await file.write(data, timeout: self.requestTimeout)
+                    try await file.close(timeout: self.requestTimeout)
+                } catch {
+                    try? await file.close(timeout: .seconds(2))
+                    throw error
+                }
+                try Task.checkCancellation()
+                try await sftp.renameFileAtomically(
+                    from: temporaryPath,
+                    to: path,
+                    timeout: self.requestTimeout)
+                partPath = nil
+                let attributes = try await sftp.attributes(at: path, timeout: self.requestTimeout)
+                return Self.remoteFileEntry(
+                    name: Self.remoteFileName(for: path),
+                    path: path,
+                    attributes: attributes)
+            } catch {
+                if let partPath {
+                    await self.removeRemoteFileForCompensation(at: partPath, over: sftp)
+                }
+                throw error
+            }
+        }
+    }
+
+    func statFile(at path: String) async throws -> RemoteFileEntry? {
+        try validateRemoteFilePath(path)
+        return try await withRemoteFileClient(path: path) { sftp in
+            do {
+                let attributes = try await sftp.attributes(at: path, timeout: self.requestTimeout)
+                return Self.remoteFileEntry(
+                    name: Self.remoteFileName(for: path),
+                    path: path,
+                    attributes: attributes)
+            } catch SSHError.sftpFailure(let status)
+                where status == Self.noSuchFileStatus || status == Self.noSuchPathStatus
+            {
+                return nil
+            }
+        }
+    }
+
+    private static let noSuchFileStatus: UInt64 = 2
+    private static let permissionDeniedStatus: UInt64 = 3
+    private static let noSuchPathStatus: UInt64 = 10
+
+    private func validateRemoteFilePath(_ path: String) throws {
+        guard RemoteShellPath.isValidSFTPAbsolute(path) else {
+            throw RemoteFileError.failure(
+                message: "Remote paths must be absolute and cannot contain NUL.")
+        }
+    }
+
+    private func withRemoteFileClient<Value: Sendable>(
+        path: String,
+        operation: @escaping @Sendable (SSHSFTPClient) async throws -> Value
+    ) async throws -> Value {
+        guard connected, await connection.isConnected else {
+            connected = false
+            throw TransportError.sshUnreachable(detail: "The SSH connection is not available.")
+        }
+        let operationID = UUID()
+        do {
+            return try await channelAdmission.withChannel(.ordinarySession) {
+                try await self.performRemoteFileOperation(
+                    operationID: operationID,
+                    operation: operation)
+            }
+        } catch {
+            throw Self.remoteFileError(path: path, from: error)
+        }
+    }
+
+    private func performRemoteFileOperation<Value: Sendable>(
+        operationID: UUID,
+        operation: @escaping @Sendable (SSHSFTPClient) async throws -> Value
+    ) async throws -> Value {
+        let sftp = try await connection.openSFTP(timeout: requestTimeout)
+        remoteFileClients[operationID] = sftp
+        do {
+            let value = try await operation(sftp)
+            remoteFileClients[operationID] = nil
+            try await sftp.close(timeout: requestTimeout)
+            return value
+        } catch {
+            remoteFileClients[operationID] = nil
+            try? await sftp.close(timeout: .seconds(2))
+            throw error
+        }
+    }
+
+    private static func remoteFileError(
+        path: String,
+        from error: any Error
+    ) -> any Error {
+        if let error = error as? RemoteFileError { return error }
+        if error is CancellationError { return TransportError.cancelled }
+        if let error = error as? TransportError { return error }
+        guard let error = error as? SSHError else {
+            return RemoteFileError.failure(message: String(describing: error))
+        }
+        switch error {
+        case .sftpFailure(let status):
+            switch status {
+            case noSuchFileStatus, noSuchPathStatus:
+                return RemoteFileError.notFound(path: path)
+            case permissionDeniedStatus:
+                return RemoteFileError.permissionDenied(path: path)
+            default:
+                return RemoteFileError.failure(message: "SFTP status \(status).")
+            }
+        case .sftpUnavailable:
+            return TransportError.sftpUnavailable
+        case .connectionInvalidated:
+            return TransportError.sshUnreachable(
+                detail: "The SSH connection is no longer reusable.")
+        case .timedOut:
+            return TransportError.timedOut
+        case .cancelled:
+            return TransportError.cancelled
+        default:
+            return RemoteFileError.failure(message: String(describing: error))
+        }
+    }
+
+    private static func remoteFileEntry(
+        name: String,
+        path: String,
+        attributes: SSHSFTPAttributes
+    ) -> RemoteFileEntry {
+        let kind: RemoteFileEntry.Kind
+        switch attributes.fileType {
+        case .file:
+            kind = .file
+        case .directory:
+            kind = .directory
+        case .symlink:
+            kind = .symlink
+        case .other, nil:
+            kind = .other
+        }
+        return RemoteFileEntry(
+            name: name,
+            path: path,
+            kind: kind,
+            sizeBytes: attributes.size,
+            modified: attributes.modificationDate)
+    }
+
+    private static func remoteFileEntryPrecedes(
+        _ left: RemoteFileEntry,
+        _ right: RemoteFileEntry
+    ) -> Bool {
+        let leftIsDirectory = left.kind == .directory
+        let rightIsDirectory = right.kind == .directory
+        if leftIsDirectory != rightIsDirectory { return leftIsDirectory }
+        let order = left.name.compare(right.name, options: .caseInsensitive)
+        return order == .orderedSame ? left.name < right.name : order == .orderedAscending
+    }
+
+    private static func sortedRemoteFileEntries(
+        _ entries: [RemoteFileEntry]
+    ) -> [RemoteFileEntry] {
+        entries.sorted(by: remoteFileEntryPrecedes)
+    }
+
+    private static func remoteChildPath(directory: String, name: String) -> String {
+        if directory == "/" { return "/\(name)" }
+        let parent = directory.hasSuffix("/") ? String(directory.dropLast()) : directory
+        return "\(parent)/\(name)"
+    }
+
+    private static func remoteFileName(for path: String) -> String {
+        path.split(separator: "/", omittingEmptySubsequences: true).last.map(String.init) ?? "/"
+    }
+
+    private static func temporaryRemoteFilePath(for path: String) -> String? {
+        guard
+            let slash = path.lastIndex(of: "/"),
+            slash < path.index(before: path.endIndex)
+        else {
+            return nil
+        }
+        let name = String(path[path.index(after: slash)...])
+        let directory = String(path[..<slash])
+        let random = String(format: "%08x", UInt32.random(in: .min ... .max))
+        return "\(directory)/.\(name).heeler-\(random).part"
+    }
+
+    /// Uses the client that created the temporary path. Reopening SFTP during
+    /// cancellation can poison the whole SSH session before cleanup runs.
+    private func removeRemoteFileForCompensation(
+        at path: String,
+        over sftp: SSHSFTPClient
+    ) async {
+        let cleanup = Task {
+            try? await sftp.removeFileForCompensation(at: path, timeout: .seconds(2))
+        }
+        await cleanup.value
     }
 
     func listAgents() async throws -> [Agent] {
@@ -1416,10 +1688,15 @@ actor HeelerSSHTransport: Transport {
         imageStageClients.removeAll()
         let notificationClients = Array(notificationFileClients.values)
         notificationFileClients.removeAll()
+        let fileClients = Array(remoteFileClients.values)
+        remoteFileClients.removeAll()
         for sftp in stagingClients {
             try? await sftp.close(timeout: .seconds(2))
         }
         for sftp in notificationClients {
+            try? await sftp.close(timeout: .seconds(2))
+        }
+        for sftp in fileClients {
             try? await sftp.close(timeout: .seconds(2))
         }
         do {
@@ -1682,6 +1959,19 @@ actor HeelerSSHTransport: Transport {
     /// Test surface for the real post-connect mapper; not a second taxonomy.
     static func mapOperationForTesting(_ error: any Error) -> TransportError {
         map(error)
+    }
+
+    static func remoteFileErrorForTesting(
+        path: String,
+        error: any Error
+    ) -> any Error {
+        remoteFileError(path: path, from: error)
+    }
+
+    static func sortedRemoteFileEntriesForTesting(
+        _ entries: [RemoteFileEntry]
+    ) -> [RemoteFileEntry] {
+        sortedRemoteFileEntries(entries)
     }
     #endif
 

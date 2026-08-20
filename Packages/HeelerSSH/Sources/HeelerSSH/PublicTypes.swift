@@ -57,7 +57,38 @@ public enum SSHError: Error, Sendable, Equatable {
     case connectionInvalidated
 }
 
+
+/// The POSIX file kind encoded in SFTP permission bits when the server sends
+/// them. A missing permission attribute leaves the kind unknown.
+public enum SSHSFTPFileType: Sendable, Equatable {
+    /// A regular file.
+    case file
+    /// A directory.
+    case directory
+    /// A symbolic link.
+    case symlink
+    /// A FIFO, device, socket, or server-specific file kind.
+    case other
+}
+/// Attributes the SFTP server returned for one remote path.
 public struct SSHSFTPAttributes: Sendable, Equatable {
     public let size: UInt64?
+    /// POSIX mode bits, excluding the file-kind bits for compatibility with
+    /// callers that compare this value to a permission mode such as `0o600`.
     public let permissions: UInt32?
+    /// The server-reported modification time, when it sent one.
+    public let modificationDate: Date?
+    /// The file kind derived from the server's full POSIX mode, when present.
+    public let fileType: SSHSFTPFileType?
+
+    /// Whether the server identified this entry as a directory.
+    public var isDirectory: Bool { fileType == .directory }
+}
+
+/// One named entry returned from an SFTP directory listing.
+public struct SSHSFTPDirectoryEntry: Sendable, Equatable {
+    /// The direct child's unescaped remote filename.
+    public let name: String
+    /// Attributes returned in the same SFTP directory response as `name`.
+    public let attributes: SSHSFTPAttributes
 }

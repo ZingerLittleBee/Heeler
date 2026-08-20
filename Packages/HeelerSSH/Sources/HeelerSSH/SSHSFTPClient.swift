@@ -33,6 +33,15 @@ public final class SSHSFTPClient: Sendable {
         try await driver.sftpAttributes(id: id, path: path, timeout: timeout)
     }
 
+    /// Lists direct children of `path`, excluding the protocol's synthetic
+    /// `.` and `..` entries before they reach callers.
+    public func listDirectory(
+        at path: String,
+        timeout: Duration
+    ) async throws -> [SSHSFTPDirectoryEntry] {
+        try await driver.listSFTPDirectory(id: id, path: path, timeout: timeout)
+    }
+
     public func setPermissions(
         _ permissions: UInt32,
         at path: String,
@@ -55,6 +64,21 @@ public final class SSHSFTPClient: Sendable {
         try await driver.readSFTPFileIfPresent(
             id: id,
             path: path,
+            timeout: timeout)
+    }
+
+    /// Reads one complete file only after its server-reported size has passed
+    /// `byteLimit`. Checking the stat first keeps a multi-gigabyte artifact
+    /// off a constrained phone link when the editor cannot display it anyway.
+    public func readFile(
+        at path: String,
+        byteLimit: Int,
+        timeout: Duration
+    ) async throws -> Data {
+        try await driver.readSFTPFile(
+            id: id,
+            path: path,
+            byteLimit: byteLimit,
             timeout: timeout)
     }
 

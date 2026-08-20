@@ -101,6 +101,42 @@ struct HeelerSSHTransportBehaviorE2ETests {
             homePath: environment.homePath)
     }
 
+    @Test("direct Host files list, read, and atomically replace over SFTP")
+    func directRemoteFiles() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let directory = "\(environment.homePath)/.heeler-ci"
+        let filename = "files-\(UUID().uuidString.lowercased()).txt"
+        let path = "\(directory)/\(filename)"
+        let first = Data("first revision".utf8)
+        let replacement = Data("replacement revision".utf8)
+        let transport = try await HeelerSSHTransport.connect(settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        _ = try await transport.writeFile(at: path, data: first)
+        let written = try await transport.writeFile(at: path, data: replacement)
+        #expect(written.name == filename)
+        #expect(written.path == path)
+        #expect(written.kind == .file)
+        #expect(written.sizeBytes == UInt64(replacement.count))
+        #expect(written.modified != nil)
+
+        let listing = try await transport.listDirectory(at: directory)
+        let listed = try #require(listing.first { $0.path == path })
+        #expect(listed.kind == .file)
+        #expect(listed.sizeBytes == UInt64(replacement.count))
+        #expect(listed.modified != nil)
+        #expect(!listing.contains {
+            $0.name.hasPrefix(".\(filename).heeler-") && $0.name.hasSuffix(".part")
+        })
+
+        let snapshot = try await transport.readFile(at: path, byteLimit: 2 * 1_024 * 1_024)
+        #expect(snapshot.path == path)
+        #expect(snapshot.data == replacement)
+        #expect(snapshot.sizeBytes == UInt64(replacement.count))
+        #expect(snapshot.modified != nil)
+        #expect(try await transport.statFile(at: path) == listed)
+    }
+
     @Test("Jump Host notification files preserve atomic SFTP behavior")
     func jumpNotificationFiles() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)

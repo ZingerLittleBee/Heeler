@@ -130,6 +130,18 @@ protocol Transport: Sendable {
         progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
     ) async throws -> StagedFile
 
+    /// Lists direct children of an absolute remote directory over SFTP.
+    func listDirectory(at path: String) async throws -> [RemoteFileEntry]
+
+    /// Reads one complete remote file, refusing a file larger than `byteLimit`.
+    func readFile(at path: String, byteLimit: Int) async throws -> RemoteFileSnapshot
+
+    /// Atomic: writes a sibling temp file then posix-renames over the target. Returns the fresh post-write stat.
+    func writeFile(at path: String, data: Data) async throws -> RemoteFileEntry
+
+    /// Returns a remote path's stat, or nil when it does not exist.
+    func statFile(at path: String) async throws -> RemoteFileEntry?
+
     /// Reads the Notification Registration file (v1, `plugin/README.md`)
     /// from the Heeler plugin's config dir on this Host; nil when no
     /// device has registered yet. Throws
@@ -209,6 +221,24 @@ extension Transport {
         progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
     ) async throws -> StagedFile {
         throw AttachmentStagingError.sftpUnavailable
+    }
+
+    /// Alternative transports without SSH SFTP state report the capability
+    /// honestly rather than asking tests or callers to emulate a filesystem.
+    func listDirectory(at path: String) async throws -> [RemoteFileEntry] {
+        throw TransportError.sftpUnavailable
+    }
+
+    func readFile(at path: String, byteLimit: Int) async throws -> RemoteFileSnapshot {
+        throw TransportError.sftpUnavailable
+    }
+
+    func writeFile(at path: String, data: Data) async throws -> RemoteFileEntry {
+        throw TransportError.sftpUnavailable
+    }
+
+    func statFile(at path: String) async throws -> RemoteFileEntry? {
+        throw TransportError.sftpUnavailable
     }
 
     /// Test doubles and alternative transports without a Host-side plugin
@@ -424,6 +454,12 @@ enum RemoteShellPath {
         quotedAbsolute(path) != nil
     }
 
+    /// SFTP consumes paths directly rather than through a shell, so it needs
+    /// only an absolute, NUL-free path. Shell quoting remains stricter above.
+    static func isValidSFTPAbsolute(_ path: String) -> Bool {
+        path.hasPrefix("/") && !path.utf8.contains(0)
+    }
+
     private static func isQuotable(_ scalar: Unicode.Scalar) -> Bool {
         scalar.value >= 0x20 && scalar.value != 0x7F
             && scalar.value != 0x27 && scalar.value != 0x5C
@@ -587,6 +623,8 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// herdr answered with an error envelope: the request arrived intact and
     /// the server rejected it on its own terms.
     case apiRejected(code: String, message: String)
+    /// This transport does not expose the Host's SFTP subsystem.
+    case sftpUnavailable
     /// The channel failed outside the known failure shapes; carries the
     /// underlying description for diagnostics.
     case channelFailed(detail: String)
@@ -604,6 +642,8 @@ indirect enum TransportError: Error, Sendable, Equatable {
         case .sshUnreachable, .timedOut, .cancelled, .channelFailed,
             .apiRejected:
             true
+        case .sftpUnavailable:
+            false
         case .authenticationFailed, .tcpForwardingUnavailable,
             .deviceKeyCorrupt, .hostKeyRejected, .hostKeyMismatch,
             .socketNotFound, .protocolVersionMismatch,

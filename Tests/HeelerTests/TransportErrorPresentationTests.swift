@@ -28,6 +28,13 @@ struct TransportErrorPresentationTests {
                 == "The connection failed: connection reset")
     }
 
+    @Test func SFTPUnavailableExplainsTheRequiredRepair() {
+        #expect(
+            TransportError.sftpUnavailable.connectionGuidance
+                == "SFTP is unavailable on this Host. Enable its SSH SFTP subsystem.")
+        #expect(TransportError.sftpUnavailable.isRetryable == false)
+    }
+
     @Test func streamLocalOpenFailureLeadsWithHerdrNotRunning() {
         #expect(
             TransportError.streamLocalOpenFailed(path: "/tmp/herdr.sock").connectionGuidance

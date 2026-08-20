@@ -125,6 +125,9 @@ struct PreflightReport: Equatable, Sendable {
         case .apiRejected(let code, let message):
             check = .serverRunning
             hint = "herdr answered but rejected the check: \(message) (\(code))"
+        case .sftpUnavailable:
+            check = .connection
+            hint = "SFTP is unavailable on this Host. Enable its SSH SFTP subsystem."
         case .channelFailed(let detail):
             check = .connection
             hint = "The connection failed unexpectedly. (\(detail))"

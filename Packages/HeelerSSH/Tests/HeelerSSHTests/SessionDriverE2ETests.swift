@@ -839,6 +839,11 @@ struct SessionDriverE2ETests {
             timeout: .seconds(5))
         try await sftp.setPermissions(0o700, at: directory, timeout: .seconds(5))
         #expect(try await sftp.attributes(at: directory, timeout: .seconds(5)).permissions == 0o700)
+        let directoryAttributes = try await sftp.attributes(
+            at: directory,
+            timeout: .seconds(5))
+        #expect(directoryAttributes.isDirectory)
+        #expect(directoryAttributes.modificationDate != nil)
 
         let file = try await sftp.openFileForWriting(
             at: partial,
@@ -856,6 +861,24 @@ struct SessionDriverE2ETests {
             to: final,
             timeout: .seconds(5))
         #expect(try await sftp.attributes(at: final, timeout: .seconds(5)).size == UInt64(bytes.count))
+        let listed = try await sftp.listDirectory(at: directory, timeout: .seconds(5))
+        let listedFile = try #require(listed.first { $0.name == "image.png" })
+        #expect(listedFile.attributes.fileType == .file)
+        #expect(listedFile.attributes.size == UInt64(bytes.count))
+        #expect(listedFile.attributes.modificationDate != nil)
+        #expect(!listed.contains { $0.name == "." || $0.name == ".." })
+        await #expect(throws: SSHError.responseTooLarge(limit: bytes.count - 1)) {
+            _ = try await sftp.readFile(
+                at: final,
+                byteLimit: bytes.count - 1,
+                timeout: .seconds(5))
+        }
+        #expect(
+            try await sftp.readFile(
+                at: final,
+                byteLimit: bytes.count,
+                timeout: .seconds(5))
+                == bytes)
         #expect(
             try await sftp.readFileIfPresent(at: final, timeout: .seconds(5))
                 == bytes)
@@ -863,6 +886,11 @@ struct SessionDriverE2ETests {
             try await sftp.readFileIfPresent(
                 at: "\(directory)/absent.json",
                 timeout: .seconds(5)) == nil)
+        await #expect(throws: SSHError.sftpFailure(status: 2)) {
+            _ = try await sftp.listDirectory(
+                at: "\(directory)/absent-directory",
+                timeout: .seconds(5))
+        }
         try await sftp.removeFile(at: final, timeout: .seconds(5))
         await #expect(throws: SSHError.sftpFailure(status: 2)) {
             _ = try await sftp.attributes(at: final, timeout: .seconds(5))

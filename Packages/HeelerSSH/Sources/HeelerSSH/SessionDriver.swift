@@ -882,13 +882,37 @@ actor SessionDriver {
             }
         }
         try checkSFTPResult(result, sftp: sftp, session: session)
-        let hasSize = attributes.flags & UInt(LIBSSH2_SFTP_ATTR_SIZE) != 0
-        let hasPermissions = attributes.flags & UInt(LIBSSH2_SFTP_ATTR_PERMISSIONS) != 0
-        return SSHSFTPAttributes(
-            size: hasSize ? attributes.filesize : nil,
-            permissions: hasPermissions
-                ? UInt32(truncatingIfNeeded: attributes.permissions) & 0o777
-                : nil)
+        return Self.makeSFTPAttributes(attributes)
+    }
+
+    func listSFTPDirectory(
+        id: UInt64,
+        path: String,
+        timeout: Duration
+    ) async throws -> [SSHSFTPDirectoryEntry] {
+        guard Self.isValidSFTPPath(path) else { throw SSHError.channelFailed }
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        let fileID = try await openSFTPDirectory(id: id, path: path, deadline: deadline)
+
+        do {
+            var entries: [SSHSFTPDirectoryEntry] = []
+            while let entry = try await readSFTPDirectoryEntry(
+                sftpID: id,
+                fileID: fileID,
+                deadline: deadline)
+            {
+                guard entry.name != ".", entry.name != ".." else { continue }
+                entries.append(entry)
+            }
+            try await closeSFTPDirectory(sftpID: id, fileID: fileID, timeout: timeout)
+            return entries
+        } catch {
+            try? await closeSFTPDirectory(
+                sftpID: id,
+                fileID: fileID,
+                timeout: .seconds(2))
+            throw normalize(error)
+        }
     }
 
     func setSFTPPermissions(
@@ -926,7 +950,8 @@ actor SessionDriver {
     func readSFTPFileIfPresent(
         id: UInt64,
         path: String,
-        timeout: Duration
+        timeout: Duration,
+        byteLimit: Int? = nil
     ) async throws -> Data? {
         guard Self.isValidSFTPPath(path) else { throw SSHError.channelFailed }
         let deadline = ContinuousClock.now.advanced(by: timeout)
@@ -943,6 +968,13 @@ actor SessionDriver {
                 fileID: fileID,
                 deadline: deadline)
             {
+                if let byteLimit,
+                   chunk.count > byteLimit || contents.count > byteLimit - chunk.count
+                {
+                    // A server can omit or race its stat size. Retain the cap
+                    // even then, without retaining an unbounded response.
+                    throw SSHError.responseTooLarge(limit: byteLimit)
+                }
                 contents.append(chunk)
             }
             try await closeSFTPFile(
@@ -956,6 +988,137 @@ actor SessionDriver {
                 fileID: fileID,
                 timeout: .seconds(2))
             throw normalize(error)
+        }
+    }
+
+    func readSFTPFile(
+        id: UInt64,
+        path: String,
+        byteLimit: Int,
+        timeout: Duration
+    ) async throws -> Data {
+        guard byteLimit >= 0 else { throw SSHError.channelFailed }
+
+        // The stat must precede open/read: a 2 GiB artifact is an error for
+        // this caller, not a request to first occupy the whole phone link.
+        let attributes = try await sftpAttributes(id: id, path: path, timeout: timeout)
+        if let size = attributes.size, size > UInt64(byteLimit) {
+            throw SSHError.responseTooLarge(limit: byteLimit)
+        }
+        guard let contents = try await readSFTPFileIfPresent(
+            id: id,
+            path: path,
+            timeout: timeout,
+            byteLimit: byteLimit)
+        else {
+            throw SSHError.sftpFailure(status: UInt64(LIBSSH2_FX_NO_SUCH_FILE))
+        }
+        return contents
+    }
+
+    private func openSFTPDirectory(
+        id: UInt64,
+        path: String,
+        deadline: ContinuousClock.Instant
+    ) async throws -> UInt64 {
+        await acquireOperation()
+        defer { releaseOperation() }
+        guard valid, let session, let sftp = sftpClients[id]?.handle else {
+            throw SSHError.connectionInvalidated
+        }
+
+        while true {
+            try checkProgress(deadline: deadline)
+            let directory = path.withCString { pathPointer in
+                libssh2_sftp_open_ex(
+                    sftp,
+                    pathPointer,
+                    UInt32(path.utf8.count),
+                    0,
+                    0,
+                    Int32(LIBSSH2_SFTP_OPENDIR))
+            }
+            if let directory {
+                nextSFTPFileID &+= 1
+                let fileID = nextSFTPFileID
+                // SFTP uses the same native handle type for files and
+                // directories. Keeping both here lets client and session
+                // teardown reclaim an interrupted listing just like a write.
+                sftpClients[id]?.files[fileID] = directory
+                return fileID
+            }
+
+            let error = libssh2_session_last_errno(session)
+            if error == LIBSSH2_ERROR_EAGAIN {
+                try await waitForSession(session, deadline: deadline)
+            } else if Self.isConnectionLoss(error) {
+                invalidateResources()
+                throw SSHError.connectionInvalidated
+            } else {
+                throw mappedSFTPError(sftp: sftp, code: error)
+            }
+        }
+    }
+
+    private func readSFTPDirectoryEntry(
+        sftpID: UInt64,
+        fileID: UInt64,
+        deadline: ContinuousClock.Instant
+    ) async throws -> SSHSFTPDirectoryEntry? {
+        let maximumFilenameBytes = 4 * 1_024
+
+        while true {
+            await acquireOperation()
+            let progress: (
+                entry: SSHSFTPDirectoryEntry?,
+                reachedEOF: Bool,
+                wait: SessionWaitPlan
+            )
+            do {
+                try checkProgress(deadline: deadline)
+                guard
+                    valid,
+                    let session,
+                    let state = sftpClients[sftpID],
+                    let directory = state.files[fileID]
+                else {
+                    throw SSHError.connectionInvalidated
+                }
+                var nameBuffer = [UInt8](repeating: 0, count: maximumFilenameBytes)
+                var attributes = LIBSSH2_SFTP_ATTRIBUTES()
+                let read = nameBuffer.withUnsafeMutableBytes { nameBytes -> Int32 in
+                    guard let baseAddress = nameBytes.baseAddress else { return 0 }
+                    return libssh2_sftp_readdir_ex(
+                        directory,
+                        baseAddress.assumingMemoryBound(to: CChar.self),
+                        nameBytes.count,
+                        nil,
+                        0,
+                        &attributes)
+                }
+                if read < 0, read != Int32(LIBSSH2_ERROR_EAGAIN) {
+                    throw mappedSFTPError(sftp: state.handle, code: read)
+                }
+                let entry = read > 0
+                    ? SSHSFTPDirectoryEntry(
+                        name: String(decoding: nameBuffer.prefix(Int(read)), as: UTF8.self),
+                        attributes: Self.makeSFTPAttributes(attributes))
+                    : nil
+                progress = (
+                    entry,
+                    read == 0,
+                    sessionWaitPlan(session))
+                releaseOperation()
+            } catch {
+                let normalized = normalize(error)
+                if normalized == .connectionInvalidated { invalidateResources() }
+                releaseOperation()
+                throw normalized
+            }
+
+            if let entry = progress.entry { return entry }
+            if progress.reachedEOF { return nil }
+            try await awaitSessionProgress(progress.wait, until: deadline)
         }
     }
 
@@ -1181,6 +1344,17 @@ actor SessionDriver {
         } catch {
             throw teardownFailure(error)
         }
+    }
+
+    private func closeSFTPDirectory(
+        sftpID: UInt64,
+        fileID: UInt64,
+        timeout: Duration
+    ) async throws {
+        // libssh2_sftp_closedir is a C macro for close_handle; routing through
+        // the shared close preserves the same non-cancellable bounded teardown
+        // and removes this directory handle from SFTPState.files.
+        try await closeSFTPFile(sftpID: sftpID, fileID: fileID, timeout: timeout)
     }
 
     func removeSFTPFile(
@@ -2331,6 +2505,36 @@ actor SessionDriver {
         default:
             false
         }
+    }
+
+    private static func makeSFTPAttributes(
+        _ attributes: LIBSSH2_SFTP_ATTRIBUTES
+    ) -> SSHSFTPAttributes {
+        let hasSize = attributes.flags & UInt(LIBSSH2_SFTP_ATTR_SIZE) != 0
+        let hasPermissions = attributes.flags & UInt(LIBSSH2_SFTP_ATTR_PERMISSIONS) != 0
+        let hasModificationDate = attributes.flags & UInt(LIBSSH2_SFTP_ATTR_ACMODTIME) != 0
+        let mode = UInt32(truncatingIfNeeded: attributes.permissions)
+        let fileType: SSHSFTPFileType?
+        if hasPermissions {
+            switch mode & UInt32(LIBSSH2_SFTP_S_IFMT) {
+            case UInt32(LIBSSH2_SFTP_S_IFREG):
+                fileType = .file
+            case UInt32(LIBSSH2_SFTP_S_IFDIR):
+                fileType = .directory
+            case UInt32(LIBSSH2_SFTP_S_IFLNK):
+                fileType = .symlink
+            default:
+                fileType = .other
+            }
+        } else {
+            fileType = nil
+        }
+        return SSHSFTPAttributes(
+            size: hasSize ? attributes.filesize : nil,
+            permissions: hasPermissions ? mode & 0o777 : nil,
+            modificationDate: hasModificationDate
+                ? Date(timeIntervalSince1970: TimeInterval(attributes.mtime)) : nil,
+            fileType: fileType)
     }
 
     private static func isValidSFTPPath(_ path: String) -> Bool {
