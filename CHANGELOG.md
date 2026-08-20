@@ -9,6 +9,14 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Host Files: the whole remote machine, not just one Agent's project. The
+  Console sidebar gains a Files section listing every Host; opening one
+  browses from the Host's home directory (resolved over the live
+  connection). On iPad the detail column becomes a working split — tree on
+  the left, editor filling the rest, files swapping in place — making the
+  editor a primary surface; iPhone gets the same browser as a cover. A Host
+  without Agents offers its Files from the empty state too.
+
 - Project Files: every Agent now carries its project — the worktree checkout
   or launch cwd — as a browsable directory tree with a native code editor.
   On iPad the Files column docks beside the live terminal (the app now

@@ -177,6 +177,12 @@ final class HostConsoleProjection {
             })
     }
 
+    /// The Host's remote home directory — Host Files' browse root. The
+    /// transport resolves it over exec once and caches it per connection.
+    func homeDirectory() async throws -> String {
+        try await session.withTransport { try await $0.homeDirectory() }
+    }
+
     func fileStager() -> FileStager {
         let session = session
         return { file, reporter in

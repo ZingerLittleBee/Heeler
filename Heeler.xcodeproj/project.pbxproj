@@ -234,6 +234,7 @@
 		DF1D75FBECE8FABC8E3A093D /* AppForegroundRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B248F9372687FDBE3AD24A1 /* AppForegroundRecoveryTests.swift */; };
 		DF88C6F619C253A98F0EC3F6 /* NotificationDisclosureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5416AE7B7A89E2987620E65E /* NotificationDisclosureView.swift */; };
 		DFB9F3DD64996FFAF4E519EC /* pairing-code-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = F9EF9F515ABC98C4B0B483C0 /* pairing-code-v1.json */; };
+		DFCA45349569FAAF36BFAFCD /* HostFilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EA15D8633485BE19C1C2DEC /* HostFilesView.swift */; };
 		E1C95FE0F5AC6271001DBF60 /* AgentDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 733AB85D0EBE3F90487289EA /* AgentDetailView.swift */; };
 		E379C1AD65B445D4E08614CF /* AgentNameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64D3B8E2EB97A8376B333914 /* AgentNameTests.swift */; };
 		E40D1C6F825ABCD68AA5F196 /* AttachTerminalStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C5A562F5A01AE08691B8479 /* AttachTerminalStoreTests.swift */; };
@@ -435,6 +436,7 @@
 		8C5A562F5A01AE08691B8479 /* AttachTerminalStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachTerminalStoreTests.swift; sourceTree = "<group>"; };
 		8D23517AF3A39615725A0ADC /* ComposerStagingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerStagingStore.swift; sourceTree = "<group>"; };
 		8D6490F9D4A3ECF0F9899D1A /* TerminalMouseReportingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalMouseReportingTests.swift; sourceTree = "<group>"; };
+		8EA15D8633485BE19C1C2DEC /* HostFilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostFilesView.swift; sourceTree = "<group>"; };
 		8F1676B4E6BAB1C28E5596A7 /* AgentNotificationRouterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationRouterTests.swift; sourceTree = "<group>"; };
 		90A97F1827BC65B4A271F28C /* NotificationRelaySettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRelaySettings.swift; sourceTree = "<group>"; };
 		915C9462A4A8AA91C0B91498 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -1043,6 +1045,7 @@
 				D31CA15A70FCFFBD660E4AD9 /* CodeEditorView.swift */,
 				60E5DE37F3B54A8B821327D2 /* CodeSyntaxHighlighter.swift */,
 				321E267EE49BFE4A60F3B7CB /* FilePreparer.swift */,
+				8EA15D8633485BE19C1C2DEC /* HostFilesView.swift */,
 				9C9B9753B4C1779F9B7B07A7 /* ProjectFilesColumn.swift */,
 				DE617CAD3DBA6A75FAF1AD93 /* ProjectFilesStore.swift */,
 				E52CD63FAF6ED23055FC582F /* ProjectFilesView.swift */,
@@ -1246,6 +1249,7 @@
 				91BF879F537B1B0DD0B5E78B /* HostConsoleProjection.swift in Sources */,
 				FE387FB6FB6CC68E066B23AE /* HostCredentialsProvider.swift in Sources */,
 				83AAFC996DF32402681F38AB /* HostDraft.swift in Sources */,
+				DFCA45349569FAAF36BFAFCD /* HostFilesView.swift in Sources */,
 				268E43B24D46A51173DB8349 /* HostFormView.swift in Sources */,
 				88C55182255106627222F533 /* HostKeyFingerprint.swift in Sources */,
 				B7EFF1362120B2CD74A0F910 /* HostKeyPolicy.swift in Sources */,

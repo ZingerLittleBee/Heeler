@@ -133,6 +133,13 @@ worktree checkout when it has one, else the Agent's launch cwd — the same
 root the Skills probe uses, deliberately not the live foreground cwd.
 _Avoid_: working directory, current directory
 
+**Host Files**:
+The Host-level Files surface: the remote machine browsed from its home
+directory, opened from the Console sidebar's Files section. On iPad the
+detail column splits into tree and editor; Project Files remains the
+Agent-scoped view of the same machinery.
+_Avoid_: remote browser, SFTP client
+
 **Agent Notification**:
 A notification telling the user an Agent crossed a notify-worthy status boundary (Blocked, Done): an APNs push while backgrounded or killed, an in-app banner off the live event stream while foregrounded. Deep-links to the Agent's detail surface.
 _Avoid_: alert, push message, task notification

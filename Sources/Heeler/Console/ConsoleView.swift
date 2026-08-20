@@ -25,6 +25,10 @@ struct ConsoleView: View {
     /// Narrows the flat list to one Host; nil shows every Host. The list
     /// stays flat either way — this is a filter, not a grouping level.
     @State private var hostFilter: Host.ID?
+    /// The Host whose Files fill the detail column (iPad) or a cover
+    /// (iPhone). Mutually exclusive with an Agent selection: choosing either
+    /// clears the other, so the detail column never has two claimants.
+    @State private var filesHostID: Host.ID?
     /// Outlives the detail column's rebuilds, which is the whole point: it
     /// carries the raised keyboard from one Attach screen to the next.
     @State private var keyboardHandoff = TerminalKeyboardHandoff()
@@ -36,6 +40,7 @@ struct ConsoleView: View {
     /// from the middle of the screen to the middle of the terminal.
     @State private var keyboardInset = TerminalKeyboardInset()
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
         // A split view instead of a plain stack for the iPad's sake: regular
@@ -130,6 +135,18 @@ struct ConsoleView: View {
             }
         }
         .animation(.snappy, value: bannerStore.banner)
+        // Compact width has no second column to give Files, so it covers the
+        // stack; a notification deep link dismisses it below, like the sheets.
+        .fullScreenCover(item: compactFilesHost) { destination in
+            NavigationStack {
+                hostFiles(destination.id)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { filesHostID = nil }
+                        }
+                    }
+            }
+        }
         // A notification deep link must land on Agent detail even when one of
         // the Console's sheets covers it. The only other push a sheet can
         // cause is the new-agent flow's, which dismisses itself first, so
@@ -139,14 +156,36 @@ struct ConsoleView: View {
             hostSheet = nil
             isStartingAgent = false
             isShowingSettings = false
+            filesHostID = nil
         }
-        // A filter pointing at a removed Host would silently hide every
-        // Agent; fall back to All Hosts instead.
+        // A filter or an open Files surface pointing at a removed Host would
+        // silently hide every Agent or strand the cover; fall back instead.
         .onChange(of: hosts.hosts) { _, hosts in
             if let hostFilter, !hosts.contains(where: { $0.id == hostFilter }) {
                 self.hostFilter = nil
             }
+            if let filesHostID, !hosts.contains(where: { $0.id == filesHostID }) {
+                self.filesHostID = nil
+            }
         }
+    }
+
+    /// `fullScreenCover(item:)` needs an Identifiable value; a bare Host.ID
+    /// is not one. Nil whenever a regular-width layout owns the destination,
+    /// so rotating an iPad with Files open never double-presents.
+    private struct FilesCoverDestination: Identifiable {
+        let id: Host.ID
+    }
+
+    private var compactFilesHost: Binding<FilesCoverDestination?> {
+        Binding(
+            get: {
+                guard horizontalSizeClass != .regular, let filesHostID else { return nil }
+                return FilesCoverDestination(id: filesHostID)
+            },
+            set: { destination in
+                if destination == nil { filesHostID = nil }
+            })
     }
 
     /// The sidebar selection as a projection of the router's path. Setting
@@ -155,7 +194,32 @@ struct ConsoleView: View {
     private var selectedAgent: Binding<ConsoleAgent.ID?> {
         Binding(
             get: { notificationRouter.path.last },
-            set: { notificationRouter.path = $0.map { [$0] } ?? [] })
+            set: { selection in
+                if selection != nil { filesHostID = nil }
+                notificationRouter.path = selection.map { [$0] } ?? []
+            })
+    }
+
+    /// Opens one Host's Files. On regular width it takes the detail column,
+    /// so the Agent selection is cleared; compact width covers the stack
+    /// instead and leaves the selection alone.
+    private func openFiles(_ hostID: Host.ID) {
+        if horizontalSizeClass == .regular {
+            notificationRouter.path = []
+        }
+        filesHostID = hostID
+    }
+
+    @ViewBuilder
+    private func hostFiles(_ hostID: Host.ID) -> some View {
+        HostFilesView(
+            hostName: hosts.hosts.first(where: { $0.id == hostID })?.displayName ?? "Host",
+            access: console.fileAccess(for: hostID),
+            resolveRoot: { try await console.homeDirectory(for: hostID) },
+            fontFamily: terminal.fonts.familyName,
+            palette: terminal.themes.selection(for: colorScheme)
+                .palette(for: colorScheme))
+        .id(hostID)
     }
 
     /// The split view owns the window's status-bar appearance on iPhone. A
@@ -212,6 +276,8 @@ struct ConsoleView: View {
                     agentID: id, console: console, hosts: hosts)
                 missingAgentSurface(presentation)
             }
+        } else if let filesHostID, horizontalSizeClass == .regular {
+            hostFiles(filesHostID)
         } else {
             ContentUnavailableView(
                 "No Agent Selected", systemImage: "rectangle.on.rectangle",
@@ -263,6 +329,12 @@ struct ConsoleView: View {
                     Button("Manage Hosts") { presentHosts() }
                         .buttonStyle(.borderedProminent)
                 }
+                // A Host without Agents is still a machine full of files.
+                ForEach(filesHosts) { host in
+                    Button("Files on \(host.displayName)", systemImage: "folder") {
+                        openFiles(host.id)
+                    }
+                }
             }
         } else if filteredAgents.isEmpty {
             // Agents exist, just none on the filtered Host. Its connection
@@ -304,6 +376,17 @@ struct ConsoleView: View {
                         AgentCardView(agent: agent)
                     }
                 }
+                Section("Files") {
+                    ForEach(filesHosts) { host in
+                        Button {
+                            openFiles(host.id)
+                        } label: {
+                            Label(host.displayName, systemImage: "folder")
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Browses this Host's files from its home directory.")
+                    }
+                }
             }
             .listStyle(.plain)
         }
@@ -312,6 +395,12 @@ struct ConsoleView: View {
     private var filteredAgents: [ConsoleAgent] {
         guard let hostFilter else { return console.agents }
         return console.agents.filter { $0.hostID == hostFilter }
+    }
+
+    /// The Hosts offered a Files row: the filtered one, or all of them.
+    private var filesHosts: [Host] {
+        guard let hostFilter else { return hosts.hosts }
+        return hosts.hosts.filter { $0.id == hostFilter }
     }
 
     /// Host issues shown in the list: all of them, or the filtered Host's

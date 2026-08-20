@@ -232,6 +232,12 @@ final class ConsoleStore {
             })
     }
 
+    /// The Host's remote home directory: Host Files' browse root. Late-bound
+    /// like every other Host-scoped call so a retry lands on the live session.
+    func homeDirectory(for hostID: Host.ID) async throws -> String {
+        try await projection(for: hostID).homeDirectory()
+    }
+
     private func liveTerminalRunner(for hostID: Host.ID) -> TerminalSessionRunner? {
         projections[hostID]?.terminalRunner()
     }

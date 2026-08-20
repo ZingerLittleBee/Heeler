@@ -142,6 +142,10 @@ protocol Transport: Sendable {
     /// Returns a remote path's stat, or nil when it does not exist.
     func statFile(at path: String) async throws -> RemoteFileEntry?
 
+    /// The Host's absolute home directory, resolved over exec once per
+    /// connection and cached — the root Host Files browses from.
+    func homeDirectory() async throws -> String
+
     /// Reads the Notification Registration file (v1, `plugin/README.md`)
     /// from the Heeler plugin's config dir on this Host; nil when no
     /// device has registered yet. Throws
@@ -239,6 +243,11 @@ extension Transport {
 
     func statFile(at path: String) async throws -> RemoteFileEntry? {
         throw TransportError.sftpUnavailable
+    }
+
+    func homeDirectory() async throws -> String {
+        throw TransportError.homeDirectoryUnresolvable(
+            detail: "This transport cannot resolve a remote home directory.")
     }
 
     /// Test doubles and alternative transports without a Host-side plugin

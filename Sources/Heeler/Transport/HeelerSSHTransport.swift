@@ -710,6 +710,10 @@ actor HeelerSSHTransport: Transport {
         }
     }
 
+    func homeDirectory() async throws -> String {
+        try await remoteHomeDirectory()
+    }
+
     private static let noSuchFileStatus: UInt64 = 2
     private static let permissionDeniedStatus: UInt64 = 3
     private static let noSuchPathStatus: UInt64 = 10
