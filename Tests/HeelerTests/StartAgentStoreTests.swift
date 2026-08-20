@@ -169,14 +169,37 @@ struct StartAgentStoreTests {
             "pi", "claude", "codex", "gemini", "cursor", "devin", "agy",
             "cline", "omp", "mastracode", "opencode", "copilot", "kimi",
             "kiro", "droid", "amp", "grok", "hermes", "kilo", "qodercli",
-            "maki",
+            "maki", "qwen",
         ])
+        #expect(SupportedAgentKind.qwen.rawValue == "qwen")
+        #expect(SupportedAgentKind.qwen.displayName == "Qwen Code")
+        #expect(SupportedAgentKind.qwen.executable == "qwen")
         #expect(SupportedAgentKind.cursor.executable == "cursor-agent")
         #expect(SupportedAgentKind.kiro.executable == "kiro-cli")
         #expect(
             SupportedAgentKind.allCases
                 .filter { $0 != .cursor && $0 != .kiro }
                 .allSatisfy { $0.executable == $0.rawValue })
+    }
+
+    @Test func agentDiscoveryCommandPrintsQwenWhenOnPath() {
+        let command = SSHTransportSettings.defaultAgentDiscoveryCommand
+        #expect(
+            command.contains(
+                "command -v qwen >/dev/null 2>&1"
+                    + " && printf \"__HEELER_AGENT_KIND__=%s\\n\" \"qwen\""))
+    }
+
+    @Test func agentDiscoveryParsesQwenAndDropsUnknownKinds() {
+        let output = """
+            Welcome to the Host
+            gemini
+            __HEELER_AGENT_KIND__=qwen
+            __HEELER_AGENT_KIND__=notarealagent
+            __HEELER_AGENT_KIND__=qwen
+            last login: never
+            """
+        #expect(SSHTransportSettings.discoveredAgentKinds(from: output) == [.qwen])
     }
 
     @Test func preSelectsTheOnlyHost() {
@@ -507,6 +530,23 @@ struct StartAgentStoreTests {
                 == ["--yolo", "--continue", "--label", "code review"])
         #expect(recorder.params.first?.workspaceID == "w1")
         #expect(recorder.worktrees == [nil])
+    }
+
+    @Test func submitDispatchesAgentStartWithQwenKind() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            agentKinds: { _ in [.qwen] },
+            recorder: recorder)
+        await store.discoverAgents()
+        #expect(store.selectedAgentKind == .qwen)
+
+        await store.submit()
+
+        #expect(store.state == started(on: host))
+        #expect(recorder.params.first?.kind == "qwen")
     }
 
     /// Launching from an agent's own screen: Host, workspace, and directory

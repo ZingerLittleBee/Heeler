@@ -9,6 +9,8 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Qwen Code appears in Start Agent when the Host has `qwen` on PATH. (#216)
+
 - Pairing Codes can be copied from the Host popup with `c` and pasted in the
   app, so pairing no longer depends on scanning a QR that may overflow a
   small terminal. A failed copy prints the code for manual selection. (#204)

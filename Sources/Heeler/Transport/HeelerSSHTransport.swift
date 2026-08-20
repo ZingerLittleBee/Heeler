@@ -545,19 +545,8 @@ actor HeelerSSHTransport: Transport {
 
     func availableAgentKinds() async throws -> [SupportedAgentKind] {
         let output = try await runHostCommand(agentDiscoveryCommand)
-        let discovered = Set(
-            String(decoding: output, as: UTF8.self)
-                .split(whereSeparator: \.isNewline)
-                .compactMap { line -> SupportedAgentKind? in
-                    guard line.hasPrefix(SSHTransportSettings.agentAvailabilityMarker) else {
-                        return nil
-                    }
-                    return SupportedAgentKind(
-                        rawValue: String(
-                            line.dropFirst(
-                                SSHTransportSettings.agentAvailabilityMarker.count)))
-                })
-        return SupportedAgentKind.allCases.filter(discovered.contains)
+        return SSHTransportSettings.discoveredAgentKinds(
+            from: String(decoding: output, as: UTF8.self))
     }
 
     func listSkills(_ query: SkillListQuery) async throws -> [AgentSkill] {
