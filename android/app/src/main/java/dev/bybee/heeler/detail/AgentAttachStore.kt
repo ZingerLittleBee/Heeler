@@ -111,6 +111,14 @@ class AgentAttachStore(
     fun scrollTerminal(delta: Int, x: Float, y: Float) {
         val current = pipeline ?: return
         NativeTerminal.scroll(current.handle, delta, x, y)
+        // On the alternate screen (or with mouse reporting on) the native VT
+        // answers a scroll with bytes for the remote application instead of
+        // moving local scrollback. Flush them now — the output collector only
+        // drains this buffer when the *next* remote bytes arrive, which never
+        // happens while an idle TUI waits for exactly this input. The scroll
+        // path is lossy and coalesced so momentum never delays real typing.
+        val remoteScroll = NativeTerminal.drainPtyWrites(current.handle)
+        if (remoteScroll.isNotEmpty()) current.session?.scroll(remoteScroll, rows = 1)
         publishSnapshot(current)
     }
     fun refreshTerminalAppearance() {

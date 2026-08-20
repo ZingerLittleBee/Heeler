@@ -1512,7 +1512,7 @@ export fn heeler_scroll(handle: c.jlong, delta: c.jint, x: c.jfloat, y: c.jfloat
     // Check if mouse reporting is enabled (any mode other than none)
     const mouse_reporting_enabled = terminal.terminal.flags.mouse_event != .none;
 
-    if (in_alt_screen or mouse_reporting_enabled) {
+    if (mouse_reporting_enabled) {
         // Send mouse scroll events to the application.
         // Negative delta = scroll up (older content) → button 4.
         // Positive delta = scroll down (newer content) → button 5.
@@ -1555,6 +1555,22 @@ export fn heeler_scroll(handle: c.jlong, delta: c.jint, x: c.jfloat, y: c.jfloat
         const encoded = writer.buffered();
         if (encoded.len > 0) {
             appendPtyWrite(terminal, encoded);
+        }
+    } else if (in_alt_screen and terminal.terminal.modes.get(.mouse_alternate_scroll)) {
+        // Alternate-screen apps have no scrollback to move, and with mouse
+        // reporting off `encodeMouse` emits nothing at all. DECSET 1007
+        // (default on) says a wheel should arrive as cursor keys instead,
+        // honoring DECCKM — the same conversion the iOS surface makes in
+        // TerminalModeTracker.remoteScrollSequence.
+        const app_cursor = terminal.terminal.modes.get(.cursor_keys);
+        const sequence: []const u8 = if (delta < 0)
+            (if (app_cursor) "\x1bOA" else "\x1b[A")
+        else
+            (if (app_cursor) "\x1bOB" else "\x1b[B");
+        const rows: usize = @max(1, @abs(delta));
+        var i: usize = 0;
+        while (i < rows) : (i += 1) {
+            appendPtyWrite(terminal, sequence);
         }
     } else {
         // Normal scrollback scrolling

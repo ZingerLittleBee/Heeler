@@ -57,6 +57,16 @@ Entries reference the issue that motivated them.
   fonts, and the rest of the audited inventory. The catalogue fails loudly
   when a notice is missing or malformed. (#161; PR #170)
 
+### Fixed
+
+- Android: touch scrolling in an Agent terminal now reaches the remote TUI.
+  On the alternate screen without mouse reporting the scroll produced no
+  bytes at all, and even encoded wheel reports were queued until the next
+  remote output arrived instead of being sent — so an idle Agent's history
+  never moved under a finger. Wheel gestures on the alternate screen now
+  arrive as cursor keys (honoring DECCKM and DECSET 1007), and scroll bytes
+  are flushed immediately on the session's coalesced scroll path.
+
 ### Changed
 
 - App Store builds now target iPhone only. The notification service uses the
