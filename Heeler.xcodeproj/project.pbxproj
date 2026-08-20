@@ -134,6 +134,7 @@
 		72A9243CA6BE664CCBB99EE4 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 86CF5F0136C3ED0B1F7F4EED /* AppIcon.icon */; };
 		74257FA18D6431785BFECE9A /* TerminalInputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1E30B96F852EFC3C322C9EB /* TerminalInputController.swift */; };
 		745597578F4E92FCC065823A /* GitBranchNameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 233075006FC2C8907BBFF40F /* GitBranchNameTests.swift */; };
+		75A8255D9FA3B634C315DBAE /* GridReportSettling.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57EEA346C23330237A2A79EB /* GridReportSettling.swift */; };
 		76B9105012CFC90972589B87 /* TerminalThemePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9469465EF16322DDC174CD5E /* TerminalThemePickerView.swift */; };
 		76D19F97EA2662895D730A98 /* ConsoleStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14FB8560976CE777FB5A105 /* ConsoleStore.swift */; };
 		76EAFFA9DAD45987F02DC536 /* AsyncDeadline.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25E1DC34365B2E2FA6C5AA8 /* AsyncDeadline.swift */; };
@@ -424,6 +425,7 @@
 		55D2BCB4E4038F510852F71C /* SecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretStore.swift; sourceTree = "<group>"; };
 		578B695DF80C644E2D62060C /* TerminalTouchScroll.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTouchScroll.swift; sourceTree = "<group>"; };
 		57EAD92008AF144C63F5582E /* TerminalAppearancePane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAppearancePane.swift; sourceTree = "<group>"; };
+		57EEA346C23330237A2A79EB /* GridReportSettling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GridReportSettling.swift; sourceTree = "<group>"; };
 		5870640477FDEB252DEE80B7 /* AttachLinkIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachLinkIndex.swift; sourceTree = "<group>"; };
 		59A749D2AF2390BCACBADED3 /* HeelerNotificationService.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HeelerNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A3319D35C3BBCD2CB151843 /* TerminalSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSettings.swift; sourceTree = "<group>"; };
@@ -1039,6 +1041,7 @@
 				856A8398D8F0FB87F252D193 /* FakeLiveActivityController.swift */,
 				8273181A2428AD3F78FCC27B /* FakePairingConnector.swift */,
 				696C6905D9D6EEFF77A64E2E /* FakeTransportConnector.swift */,
+				57EEA346C23330237A2A79EB /* GridReportSettling.swift */,
 				51B4AAB6885E0EB9D8C4A131 /* InMemorySecretStore.swift */,
 				C5469F0188E985276A49871C /* LiveActivityVectorFile.swift */,
 				4F172C9E024F73AD2DD96288 /* LocalSSHTestEnvironment.swift */,
@@ -1545,6 +1548,7 @@
 				5789049E3BA965EB057C4577 /* FilePreparerTests.swift in Sources */,
 				297F2EB19960A01651FDA05C /* GeneratedWireTypesTests.swift in Sources */,
 				745597578F4E92FCC065823A /* GitBranchNameTests.swift in Sources */,
+				75A8255D9FA3B634C315DBAE /* GridReportSettling.swift in Sources */,
 				4D0A9B8F7343093907B24788 /* HeelerSSHDirectStreamLocalE2ETests.swift in Sources */,
 				45C187BC7E4A9682CEE6CA7D /* HeelerSSHErrorMappingTests.swift in Sources */,
 				0E50946869DD6FC41373079B /* HeelerSSHHostKeyPolicyTests.swift in Sources */,

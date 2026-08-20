@@ -347,6 +347,11 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// change instead.
     private var keyboardTransitionEndsOnFrameChange = false
     private var keyboardTransitionFallbackTask: Task<Void, Never>?
+    /// How long an unsettled handoff may keep the grid frozen before the
+    /// freeze force-ends anyway — a leash for production, where the settle
+    /// signal can fail to arrive. Tests stretch it so a loaded runner cannot
+    /// end a handoff out from under them (#225).
+    var keyboardTransitionFallbackDelay: TimeInterval = 0.5
     private var keyboardGridReportTask: Task<Void, Never>?
     /// How long Ghostty gets to answer a settled layout before its grid is
     /// forwarded to the Host — long enough to coalesce one layout pass's
@@ -990,8 +995,9 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         keyboardTransitionEndsOnFrameChange = endsOnFrameChange
         callbackBridge.beginSizeReportDeferral()
         keyboardTransitionFallbackTask?.cancel()
+        let fallbackDelay = keyboardTransitionFallbackDelay
         keyboardTransitionFallbackTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(500))
+            try? await Task.sleep(for: .seconds(fallbackDelay))
             guard !Task.isCancelled else { return }
             self?.finishKeyboardTransitionLayout()
         }

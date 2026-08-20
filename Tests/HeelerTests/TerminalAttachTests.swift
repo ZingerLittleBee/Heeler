@@ -1209,12 +1209,16 @@ struct TerminalAttachTests {
         host.view.addSubview(terminal)
         window.layoutIfNeeded()
 
-        try await waitForGridReportsToSettle(&reportedGrids)
+        try await waitForGridReportsToSettle { reportedGrids.count }
         let initialRows = try #require(reportedGrids.last?.rows)
         reportedGrids.removeAll()
 
         // The handoff itself: the replacement surface claims the keyboard as
         // it reaches the window, and freezes its grid until that settles.
+        // This test drives the settle explicitly, so the wall-clock fallback
+        // must stay out of it: on a loaded runner the steps below stretched
+        // past its 500ms and it thawed the freeze mid-handoff (#225).
+        terminal.keyboardTransitionFallbackDelay = 60
         terminal.removeFromSuperview()
         terminal.raisesKeyboardWhenReady = true
         host.view.addSubview(terminal)
@@ -1228,7 +1232,105 @@ struct TerminalAttachTests {
 
         #expect(reportedGrids.isEmpty)
         terminal.finishKeyboardTransitionLayout()
-        try await waitForGridReportsToSettle(&reportedGrids)
+        try await waitForGridReportsToSettle { reportedGrids.count }
+
+        #expect(reportedGrids.count == 1)
+        #expect(reportedGrids.last?.rows ?? 0 > initialRows)
+    }
+
+    /// The freeze must hold for as long as the handoff actually takes — a
+    /// loaded CI runner stretched one past half a second and the transient
+    /// grids escaped (#225). The stall here is the deterministic version of
+    /// that runner.
+    @MainActor
+    @Test func aSlowKeyboardHandoffStillCoalescesIntoOneResize() async throws {
+        var reportedGrids: [(columns: Int, rows: Int)] = []
+        let center = NotificationCenter()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSizeChanged: { columns, rows in
+                reportedGrids.append((columns, rows))
+            },
+            notificationCenter: center)
+        let host = UIViewController()
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 700),
+            rootViewController: host)
+        defer {
+            terminal.removeFromSuperview()
+            window.isHidden = true
+        }
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 360)
+        host.view.addSubview(terminal)
+        window.layoutIfNeeded()
+
+        try await waitForGridReportsToSettle { reportedGrids.count }
+        let initialRows = try #require(reportedGrids.last?.rows)
+        reportedGrids.removeAll()
+
+        terminal.keyboardTransitionFallbackDelay = 60
+        terminal.removeFromSuperview()
+        terminal.raisesKeyboardWhenReady = true
+        host.view.addSubview(terminal)
+
+        // A transient height, then a stall longer than the production
+        // fallback, then another — the shape of the handoff on the runner
+        // that leaked.
+        terminal.frame.size.height = 440
+        terminal.setNeedsLayout()
+        terminal.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(600))
+        terminal.frame.size.height = 600
+        terminal.setNeedsLayout()
+        terminal.layoutIfNeeded()
+
+        #expect(reportedGrids.isEmpty)
+        terminal.finishKeyboardTransitionLayout()
+        try await waitForGridReportsToSettle { reportedGrids.count }
+
+        #expect(reportedGrids.count == 1)
+        #expect(reportedGrids.last?.rows ?? 0 > initialRows)
+    }
+
+    /// The freeze's other edge: a handoff whose settle signal never arrives
+    /// must not stay frozen forever. The fallback thaws it after its delay,
+    /// and the thaw itself still coalesces — one report, not one per
+    /// transient.
+    @MainActor
+    @Test func anUnsettledHandoffThawsThroughTheFallbackInOneResize() async throws {
+        var reportedGrids: [(columns: Int, rows: Int)] = []
+        let center = NotificationCenter()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSizeChanged: { columns, rows in
+                reportedGrids.append((columns, rows))
+            },
+            notificationCenter: center)
+        let host = UIViewController()
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 700),
+            rootViewController: host)
+        defer {
+            terminal.removeFromSuperview()
+            window.isHidden = true
+        }
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 360)
+        host.view.addSubview(terminal)
+        window.layoutIfNeeded()
+
+        try await waitForGridReportsToSettle { reportedGrids.count }
+        let initialRows = try #require(reportedGrids.last?.rows)
+        reportedGrids.removeAll()
+
+        terminal.keyboardTransitionFallbackDelay = 0.1
+        terminal.removeFromSuperview()
+        terminal.raisesKeyboardWhenReady = true
+        host.view.addSubview(terminal)
+
+        terminal.frame.size.height = 600
+        terminal.setNeedsLayout()
+        terminal.layoutIfNeeded()
+
+        // No settle signal, no explicit finish — only the fallback ends this.
+        try await waitForGridReportsToSettle { reportedGrids.count }
 
         #expect(reportedGrids.count == 1)
         #expect(reportedGrids.last?.rows ?? 0 > initialRows)
@@ -1522,23 +1624,6 @@ struct TerminalAttachTests {
         let keyboard = try #require(terminal.inputView as? TerminalKeysKeyboardView)
         #expect(keyboard.intrinsicContentSize.height == 288)
         #expect(keyboard.frame.height == 288)
-    }
-
-    @MainActor
-    private func waitForGridReportsToSettle(
-        _ reports: inout [(columns: Int, rows: Int)]
-    ) async throws {
-        var stablePolls = 0
-        var previousCount = reports.count
-        while stablePolls < 20 {
-            try await Task.sleep(for: .milliseconds(10))
-            if reports.count == previousCount {
-                stablePolls += 1
-            } else {
-                previousCount = reports.count
-                stablePolls = 0
-            }
-        }
     }
 
     @Test func terminalControlKeyboardContainsOnlyUsefulMobileKeys() {
