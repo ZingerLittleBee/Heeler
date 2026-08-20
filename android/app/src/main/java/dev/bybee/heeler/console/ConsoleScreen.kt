@@ -29,7 +29,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +47,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -234,12 +234,25 @@ private fun HostFilter(
     }
 }
 
+/**
+ * One Console card, laid out like the iOS AgentCardView (#8, #41): the
+ * project and status up front, the herdr agent name, terminal title, and
+ * pane address as context below. The workspace leads because a console full
+ * of agents is usually a console full of `claude` — the workspace is what
+ * tells the rows apart.
+ */
 @Composable
 fun AgentCard(
     agent: ConsoleAgent,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val workspaceContext = when {
+        agent.workspaceLabel == null && agent.repoName == null -> null
+        agent.workspaceLabel == null -> agent.repoName
+        agent.repoName == null || agent.repoName == agent.workspaceLabel -> agent.workspaceLabel
+        else -> "${agent.workspaceLabel} · ${agent.repoName}"
+    }
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -249,42 +262,56 @@ fun AgentCard(
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = agent.displayName,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    val context = listOfNotNull(agent.workspaceLabel, agent.repoName).joinToString(" · ")
-                    Text(
-                        text = context.ifBlank { agent.hostName },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                Text(
+                    text = workspaceContext ?: agent.displayName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
                 Spacer(Modifier.width(12.dp))
                 AgentStatusChip(agent.status)
             }
+            if (agent.title.isNotBlank()) {
+                Text(
+                    text = agent.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             if (agent.lastOutputSnippet != null) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Text(
                     text = agent.lastOutputSnippet,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-            } else if (agent.title.isNotBlank()) {
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // The herdr agent name, dropped when the headline already
+                // fell back to it.
+                val footer = listOfNotNull(
+                    agent.displayName.takeIf { workspaceContext != null },
+                    agent.paneId,
+                ).joinToString(" · ")
                 Text(
-                    text = agent.title,
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = footer,
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = agent.hostName,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
                 )
             }
         }

@@ -411,8 +411,15 @@ private fun AgentSwitcherMenu(
                 text = {
                     Column {
                         Text(candidate.switcherLabel, fontWeight = if (candidate.id == selected.id) FontWeight.Bold else FontWeight.Normal)
+                        val context = listOfNotNull(
+                            // The herdr agent name, unless the row's label
+                            // already fell back to it.
+                            candidate.displayName.takeIf { it != candidate.switcherLabel },
+                            candidate.hostName,
+                            candidate.status.rawValue,
+                        ).joinToString(" · ")
                         Text(
-                            "${candidate.hostName} · ${candidate.status.rawValue}",
+                            context,
                             style = MaterialTheme.typography.labelSmall,
                         )
                     }

@@ -77,6 +77,12 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- Android: Console cards now lead with the workspace and tag the herdr agent
+  name (`display_agent`) and pane address below, matching the iOS card, and
+  the terminal title is no longer hidden when an output snippet exists. The
+  Agent switcher menu also names the agent under its workspace label.
+  (refs #41)
+
 - App Store builds now target iPhone only. The notification service uses the
   same device family, so App Store Connect no longer treats iPad screenshots as
   part of the release requirements.
