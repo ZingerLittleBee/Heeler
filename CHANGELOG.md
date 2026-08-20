@@ -67,6 +67,14 @@ Entries reference the issue that motivated them.
   arrive as cursor keys (honoring DECCKM and DECSET 1007), and scroll bytes
   are flushed immediately on the session's coalesced scroll path.
 
+- Android: swipe (glide) typing in the Composer now gets spaces between
+  words. The draft field rebuilt its value from the store on every
+  recomposition without the IME composing region, cancelling the keyboard's
+  composition after each keystroke — Gboard then dropped its automatic space
+  between swiped words. The field now preserves composition locally while
+  the store keeps owning text and selection. The terminal's IME endpoint
+  also retains committed text as spacing context for the same reason.
+
 ### Changed
 
 - App Store builds now target iPhone only. The notification service uses the

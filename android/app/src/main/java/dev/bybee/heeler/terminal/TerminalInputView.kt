@@ -180,6 +180,17 @@ class TerminalInputView(context: Context) : EditText(context) {
             if (common < after.length) reportTextWithNewlineMapping(after.substring(common))
         }
 
+        /**
+         * Mirrors the mutation into the invisible editor, reports the diff to
+         * the terminal, and then *retains* the committed text. The retained
+         * mirror is what lets glide/swipe keyboards behave: Gboard decides
+         * whether a swiped word needs a leading space by reading the text
+         * before the cursor, so a mirror cleared after every commit reads as
+         * an empty field and words run together (the terminal never echoes
+         * back into this editor). Newlines still reset the mirror — the
+         * terminal moved to a fresh line, so retained context would be a lie —
+         * as does [armInputSuppression] for caller-routed virtual keys.
+         */
         private fun mutateAndReport(composing: Boolean, mutation: () -> Boolean): Boolean {
             val before = getEditable().toString()
             directMutationDepth++
@@ -193,8 +204,11 @@ class TerminalInputView(context: Context) : EditText(context) {
                 emittedDuringBatch = true
                 emitDiff(before, after)
             }
-            if (!composing && getEditable().isNotEmpty()) clearImeBuffer(restart = false)
-            if (after.length > MAX_IME_BUFFER_CHARS) clearImeBuffer(restart = true)
+            if (!composing && after.contains('\n')) {
+                clearImeBuffer(restart = false)
+            } else if (after.length > MAX_IME_BUFFER_CHARS) {
+                clearImeBuffer(restart = true)
+            }
             return result
         }
 
@@ -207,12 +221,6 @@ class TerminalInputView(context: Context) : EditText(context) {
             mutateAndReport(composing = !text.isNullOrEmpty()) {
                 super.setComposingText(text ?: "", newCursorPosition)
             }
-
-        override fun finishComposingText(): Boolean {
-            val result = super.finishComposingText()
-            if (getEditable().isNotEmpty()) clearImeBuffer(restart = false)
-            return result
-        }
 
         override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
             val before = getEditable().toString()

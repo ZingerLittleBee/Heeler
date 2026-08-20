@@ -57,10 +57,31 @@ fun AgentDetailComposer(
     var keyboard by remember { mutableStateOf(ComposerKeyboard.SYSTEM) }
     var selectedToolsTab by remember { mutableStateOf(ToolsTab.CONTROLS) }
     var pendingPaste by remember { mutableStateOf<String?>(null) }
-    val fieldValue = TextFieldValue(
-        text = state.draft,
-        selection = TextRange(state.selectionStart, state.selectionEnd),
-    )
+    // The field owns a local TextFieldValue so the IME's composing region
+    // survives recomposition. Rebuilding the value from the store every pass
+    // drops `composition`, which cancels the keyboard's composing state on
+    // each keystroke — Gboard's glide typing then stops inserting its
+    // automatic space between swiped words. The store stays the source of
+    // truth for text and selection; the reconciliation below only fires for
+    // edits that did not originate in this field (Snippets, Skills, paste,
+    // Send clearing the draft), where cancelling composition is correct.
+    var fieldValue by remember {
+        mutableStateOf(
+            TextFieldValue(
+                text = state.draft,
+                selection = TextRange(state.selectionStart, state.selectionEnd),
+            ),
+        )
+    }
+    if (fieldValue.text != state.draft ||
+        fieldValue.selection.start != state.selectionStart ||
+        fieldValue.selection.end != state.selectionEnd
+    ) {
+        fieldValue = TextFieldValue(
+            text = state.draft,
+            selection = TextRange(state.selectionStart, state.selectionEnd),
+        )
+    }
 
     Column(Modifier.fillMaxWidth()) {
         HorizontalDivider()
@@ -77,7 +98,10 @@ fun AgentDetailComposer(
         ) {
             OutlinedTextField(
                 value = fieldValue,
-                onValueChange = { value -> store.setDraft(value.text, value.selection.start, value.selection.end) },
+                onValueChange = { value ->
+                    fieldValue = value
+                    store.setDraft(value.text, value.selection.start, value.selection.end)
+                },
                 modifier = Modifier.weight(1f).focusRequester(focusRequester),
                 label = { Text("Composer") },
                 placeholder = { Text("Message the Agent") },
