@@ -25,8 +25,10 @@ last complete height measurement. Neither mode therefore moves Composer or
 asks Ghostty to resize its grid. A keyboard-safe-area-ignoring geometry root
 holds the terminal proposal fixed while UIKit swaps input views; placing the
 ignore only outside the detail hierarchy still lets SwiftUI briefly propose a
-different Ghostty height. Send still delivers the complete draft through one
-`agent.prompt` request.
+different Ghostty height. Send delivers the complete draft through one
+`agent.prompt` request, except when Agent Status is Blocked: then it inserts
+the draft into the live Attach PTY without Enter and presents the tools
+keyboard so the user submits or cancels.
 
 This supersedes ADR 0012's non-realtime Monitor and separate interactive
 Attach destination. The snapshot renderer, polling cadence, and locally
@@ -40,7 +42,9 @@ preserves its layout, alternate-screen behavior, colors, scrollback, and
 resize semantics more faithfully than reconstructing a conversation from
 bounded `agent.read` snapshots. Keeping composition outside the terminal still
 avoids remote echo latency while drafting and retains explicit one-request
-delivery.
+delivery, except when Agent Status is Blocked. Auto-Enter would confirm or
+dismiss the dialog, so Send inserts the draft into Attach without submitting
+and leaves Enter and Esc to the tools keyboard.
 
 ## Consequences
 
