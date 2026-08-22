@@ -5,9 +5,10 @@ import Foundation
 /// so both surfaces tell exactly the same story. Kept as data — not buried in a
 /// View — so a test can pin the load-bearing claims: it is a *push relay*
 /// (never a "server"), it sees the device token, ciphertext, source IP, and
-/// request timing, and it cannot see the encrypted content (project, task,
-/// agent type, status, pane id, timestamp); a custom relay only helps a
-/// self-built app. All copy is English by project convention.
+/// request timing, and the Live Activity fields APNs needs in cleartext. It
+/// cannot see the encrypted identifying content (project, task, agent type,
+/// Host, or pane id); a custom relay only helps a self-built app. All copy is
+/// English by project convention.
 enum NotificationPrivacyCopy {
     /// The explainer's lead line before the iOS permission prompt.
     static let explainerTitle = "Before you turn on notifications"
@@ -25,14 +26,16 @@ enum NotificationPrivacyCopy {
         "The encrypted notification (ciphertext), which it forwards without decrypting.",
         "Your Host's source IP address, as with any network request.",
         "When and how often your Host sends notification requests.",
+        "For Live Activities: aggregate status counts, the update or end event, priority, "
+            + "and event timing required by Apple.",
     ]
 
     /// What the relay cannot see — the encrypted content it never holds a key
-    /// for. Names the exact plaintext fields so the claim is concrete.
+    /// for. Names the exact encrypted fields so the claim is concrete.
     static let relayCannotSeeTitle = "What it cannot see"
     static let relayCannotSee: [String] = [
-        "The notification content: project name, task title, agent type, status, pane ID, "
-            + "and timestamp.",
+        "The identifying notification details: project name, task title, agent type and name, "
+            + "Host name, pane ID, and per-agent details.",
         "The relay cannot decrypt this content because it never receives your Notification Key.",
     ]
 
@@ -57,7 +60,8 @@ enum NotificationPrivacyCopy {
     /// Per-Host Live Activity toggle footer: counts are what the Lock Screen
     /// renders in the clear; names and titles stay inside the envelope.
     static let liveActivityFooter =
-        "The Lock Screen shows status counts. Agent names and titles stay end-to-end encrypted."
+        "The Lock Screen shows aggregate status counts and update timing. Agent, Host, and task "
+        + "details stay encrypted."
 
     /// Shown under the Live Activity toggle when the system-wide permission
     /// is off. Mirrors the Agent Notifications denied-state wording.

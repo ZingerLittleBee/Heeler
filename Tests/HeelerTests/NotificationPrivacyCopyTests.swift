@@ -33,6 +33,8 @@ struct NotificationPrivacyCopyTests {
         #expect(sees.localizedCaseInsensitiveContains("ciphertext"))
         #expect(sees.localizedCaseInsensitiveContains("IP"))
         #expect(sees.localizedCaseInsensitiveContains("how often"))
+        #expect(sees.localizedCaseInsensitiveContains("status counts"))
+        #expect(sees.localizedCaseInsensitiveContains("event timing"))
     }
 
     @Test func statesWhatTheRelayCannotSee() {
@@ -41,9 +43,9 @@ struct NotificationPrivacyCopyTests {
         #expect(cannot.localizedCaseInsensitiveContains("project name"))
         #expect(cannot.localizedCaseInsensitiveContains("task title"))
         #expect(cannot.localizedCaseInsensitiveContains("agent type"))
-        #expect(cannot.localizedCaseInsensitiveContains("status"))
+        #expect(cannot.localizedCaseInsensitiveContains("Host name"))
         #expect(cannot.localizedCaseInsensitiveContains("pane ID"))
-        #expect(cannot.localizedCaseInsensitiveContains("timestamp"))
+        #expect(cannot.localizedCaseInsensitiveContains("per-agent details"))
         #expect(cannot.localizedCaseInsensitiveContains("Notification Key"))
     }
 
