@@ -3,6 +3,7 @@ import { Picture } from 'astro:assets';
 import agentShot from '../assets/screens/agent-iphone.png';
 import composerShot from '../assets/screens/composer-iphone.png';
 import consoleShot from '../assets/screens/console-iphone.png';
+import liveActivityShot from '../assets/screens/live-activity-iphone.png';
 import Badge from './Badge.astro';
 import Button from './Button.astro';
 
@@ -24,6 +25,12 @@ const screens = [
     alt: 'Live terminal above the Composer on iPhone',
     label: 'Composer',
     caption: 'The session rendered above the draft',
+  },
+  {
+    image: liveActivityShot,
+    alt: 'Heeler Live Activity showing agent status on the iPhone Lock Screen',
+    label: 'Live Activity',
+    caption: 'Agent status at a glance on the Lock Screen',
   },
 ];
 ---
@@ -133,9 +140,9 @@ const screens = [
 
   .screens {
     display: grid;
-    grid-template-columns: repeat(3, 300px);
+    grid-template-columns: repeat(4, 300px);
     justify-content: center;
-    gap: 56px;
+    gap: 48px;
     margin: 88px 0 0;
     padding: 0;
     list-style: none;
@@ -168,9 +175,9 @@ const screens = [
     margin-top: var(--sp-1-5);
   }
 
-  /* Three 300px frames need ~1012px. Below that the row becomes a swipeable
-   * rail rather than three stacked full-height phones. */
-  @media (max-width: 1060px) {
+  /* Four 300px frames need 1344px. Below that the row becomes a swipeable
+   * rail rather than four stacked full-height phones. */
+  @media (max-width: 1408px) {
     .screens {
       display: flex;
       grid-template-columns: none;
