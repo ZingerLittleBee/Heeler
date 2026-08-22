@@ -575,6 +575,7 @@ struct AppForegroundRecoveryTests {
         try await waitUntil("the Host should come up connected") {
             store.hostStatuses[host.id] == .connected
         }
+        try await waitUntilPaneResubscribeSettles(on: alive)
 
         // The link drops, the first re-dial is refused, and the session parks
         // on its second backoff with that dial's replacement still pending.
