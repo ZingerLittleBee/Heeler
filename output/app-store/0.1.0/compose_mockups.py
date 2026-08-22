@@ -53,6 +53,13 @@ MOCKUPS = (
         subhead="Draft with the full iOS keyboard, then deliver one complete prompt.",
         accent=(236, 113, 177),
     ),
+    Mockup(
+        output_name="04-your-agents-at-a-glance.png",
+        source_name="live-activity-iphone.png",
+        headline="Your Agents.\nAt a Glance.",
+        subhead="See live Agent activity from the Lock Screen.",
+        accent=(241, 204, 118),
+    ),
 )
 
 

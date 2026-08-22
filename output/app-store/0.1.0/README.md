@@ -14,6 +14,9 @@ captures and add deterministic marketing copy over a generated background.
 - iphone-6.9/03-compose-locally-send-once.png
   - Source: docs/images/composer-iphone.png
   - Copy: “Compose Locally. Send Once.”
+- iphone-6.9/04-your-agents-at-a-glance.png
+  - Source: docs/images/live-activity-iphone.png
+  - Copy: “Your Agents. At a Glance.”
 
 All files are opaque 1320×2868 PNGs for the iPhone 6.9-inch App Store slot.
 
