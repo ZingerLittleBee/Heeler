@@ -39,7 +39,7 @@ import { encryptNotificationEnvelope } from "${repo_root}/plugin/src/notificatio
 const [key, token, env, status] = process.argv.slice(2);
 const envelope = encryptNotificationEnvelope(
   {
-    paneId: "%tracer",
+    paneId: "wV:p1",
     agentKind: "claude",
     status,
     timestamp: Math.floor(Date.now() / 1000),

@@ -938,6 +938,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
         var updates = session.updates.makeAsyncIterator()
 
         await session.resume()
+        #expect(await updates.next() == .status(.connecting))
         let update = try #require(await updates.next())
         guard case .status(
             .reconnecting(

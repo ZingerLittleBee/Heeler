@@ -448,7 +448,7 @@ struct AppForegroundRecoveryTests {
 
         #expect(store.hostStatuses[host.id] == .failed(failure))
         #expect(
-            failure.connectionGuidance == """
+            failure.presentation.message == """
                 herdr is not running on this Host. If it is running, check SSH \
                 stream-local forwarding.
                 """)
@@ -666,9 +666,11 @@ struct AppForegroundRecoveryTests {
             await second.pingCount == 1
         }
         #expect(await connector.connectCount == 2)
+        #expect(store.hostStatuses[host.id] == .connecting)
+        #expect(store.hostsAwaitingSnapshot.contains(host.id))
 
-        // The production revalidation now meets exactly the state the issue
-        // describes: a `.suspended` projection whose session is mid-dial.
+        // The production revalidation now meets a `.connecting` projection
+        // whose session is mid-dial. It must not start a second activation.
         await store.reactivate()
         await resumePing.open()
 
@@ -692,8 +694,8 @@ struct AppForegroundRecoveryTests {
     /// the session re-activates after the app has declared itself suspended.
     ///
     /// The hold point is the restart's own teardown rather than its dial:
-    /// `EventsSession.restart()` winds the stopped activation down and then
-    /// calls `activate()`, which only spawns the run task, so gating the
+    /// `EventsSession.restart()` announces `.connecting` and then winds the
+    /// stopped activation down before spawning the new run, so gating the
     /// connect would not hold `reactivate()` even in the correct
     /// implementation and could not tell the two shapes apart.
     @Test func aFailedHostsRestartHoldsTheForegroundActivation() async throws {
@@ -730,6 +732,11 @@ struct AppForegroundRecoveryTests {
         try await waitUntil("the restart should reach that teardown") {
             await closeGate.entryCount == 1
         }
+        try await waitUntil("and announce connecting before teardown finishes") {
+            store.hostStatuses[host.id] == .connecting
+        }
+        #expect(store.hostStandingFailures[host.id] == failure)
+        #expect(store.agents.isEmpty)
         // The correct shape is provably parked here, so waiting changes
         // nothing for it; a detached retry needs the room to have finished
         // its activation for the assertion to mean anything.
@@ -804,8 +811,343 @@ struct AppForegroundRecoveryTests {
         }
         await settle()
 
+        #expect(recorder.statuses[beforeTheReturn...].contains(.connecting))
         #expect(!recorder.statuses[beforeTheReturn...].contains(.connected))
         #expect(recorder.statuses.last == .failed(failure))
+        #expect(projection.standingFailure == failure)
+    }
+
+    /// §8.1: a gated resume observes `.connecting` before `.connected`, with
+    /// inventory still unknown until the replacement snapshot lands.
+    @Test func aReturnFromSuspensionAnnouncesConnectingBeforeConnected() async throws {
+        let host = Host.fixture()
+        let first = ScriptedTransport(snapshot: .openSession)
+        let second = ScriptedTransport(snapshot: .openSession)
+        let connector = SequencedTransportConnector([first, second])
+        let store = makeStore(connector: connector)
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Host should come up connected") {
+            store.hostStatuses[host.id] == .connected
+        }
+        try await waitUntil("its Agent should arrive") { store.agents.count == 1 }
+        await store.suspend()
+        try await waitUntil("the Host should suspend") {
+            store.hostStatuses[host.id] == .suspended
+        }
+        #expect(store.agents.isEmpty)
+
+        let resumePing = ScriptedTransportCallGate()
+        await second.gateNextPing(using: resumePing)
+        await store.resume()
+        try await waitUntil("the resumed dial should be in flight") {
+            await second.pingCount == 1 && store.hostStatuses[host.id] == .connecting
+        }
+        #expect(store.hostStatuses[host.id] == .connecting)
+        #expect(await connector.connectCount == 2)
+        #expect(store.agents.isEmpty)
+        #expect(store.hostsAwaitingSnapshot.contains(host.id))
+
+        let snapshotGate = ScriptedTransportCallGate()
+        await second.gateNextSnapshot(using: snapshotGate)
+        await resumePing.open()
+        try await waitUntil("the Host should be connected before its snapshot") {
+            store.hostStatuses[host.id] == .connected
+        }
+        #expect(store.hostsAwaitingSnapshot.contains(host.id))
+        #expect(store.agents.isEmpty)
+
+        await snapshotGate.open()
+        try await waitUntil("the Agent should return") { store.agents.count == 1 }
+        #expect(!store.hostsAwaitingSnapshot.contains(host.id))
+        store.setHosts([])
+    }
+
+    @Test func retryFromFailedAnnouncesConnectingAndKeepsTheStandingFailure() async throws {
+        let host = Host.fixture()
+        let failure = TransportError.streamLocalOpenFailed(
+            path: "/home/dev/.config/herdr/herdr.sock")
+        let first = ScriptedTransport(snapshot: .openSession)
+        let retry = ScriptedTransport(snapshot: .openSession)
+        let connector = SequencedTransportConnector([first, retry])
+        let store = makeStore(connector: connector)
+        let hosts = HostStore(volatileHosts: [host])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Host should come up connected") {
+            store.hostStatuses[host.id] == .connected
+        }
+        await first.failEventStream(failure)
+        try await waitUntil("the Host should fail") {
+            store.hostStatuses[host.id] == .failed(failure)
+        }
+        #expect(store.hostStandingFailures[host.id] == failure)
+
+        let pingGate = ScriptedTransportCallGate()
+        await retry.gateNextPing(using: pingGate)
+        await store.retryHost(host.id)
+        try await waitUntil("the retry dial should be in flight") {
+            await retry.pingCount == 1 && store.hostStatuses[host.id] == .connecting
+        }
+        #expect(store.hostStatuses[host.id] == .connecting)
+        #expect(store.hostStandingFailures[host.id] == failure)
+
+        let agentID = ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1")
+        let detail = MissingAgentPresentation(
+            agentID: agentID, console: store, hosts: hosts)
+        #expect(detail.cause == .hostFailed)
+        #expect(detail.message == "\(host.displayName): \(failure.presentation.message)")
+
+        let consoleRow = try #require(
+            ConsoleHostStatusPresentation(
+                host: host,
+                status: store.hostStatuses[host.id],
+                standingFailure: store.hostStandingFailures[host.id],
+                isAwaitingSnapshot: store.hostsAwaitingSnapshot.contains(host.id),
+                syncError: store.hostSyncErrors[host.id]))
+        #expect(consoleRow.message == "\(host.displayName): \(failure.presentation.message)")
+        #expect(consoleRow.navigates)
+
+        let chip = HostConnectionPresentation(
+            status: store.hostStatuses[host.id],
+            standingFailure: store.hostStandingFailures[host.id],
+            latency: nil)
+        #expect(chip.title == "Unavailable")
+        #expect(chip.tone == .unavailable)
+
+        await pingGate.open()
+        try await waitUntil("the repaired Host should come back") {
+            store.hostStatuses[host.id] == .connected
+        }
+        #expect(store.hostStandingFailures[host.id] == nil)
+        store.setHosts([])
+    }
+
+    @Test func foregroundReProofKeepsStandingFailureOnConnecting() async throws {
+        let host = Host.fixture()
+        let failure = TransportError.streamLocalOpenFailed(
+            path: "/home/dev/.config/herdr/herdr.sock")
+        let first = ScriptedTransport(snapshot: .openSession)
+        let retry = ScriptedTransport(snapshot: .openSession)
+        let connector = SequencedTransportConnector([first, retry])
+        let store = makeStore(connector: connector)
+        let hosts = HostStore(volatileHosts: [host])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Host should come up connected") {
+            store.hostStatuses[host.id] == .connected
+        }
+        await first.failEventStream(failure)
+        try await waitUntil("the Host should fail") {
+            store.hostStatuses[host.id] == .failed(failure)
+        }
+
+        let pingGate = ScriptedTransportCallGate()
+        await retry.gateNextPing(using: pingGate)
+        await store.reactivate()
+        try await waitUntil("the re-proof should be in flight") {
+            await retry.pingCount == 1 && store.hostStatuses[host.id] == .connecting
+        }
+        #expect(store.hostStatuses[host.id] == .connecting)
+        #expect(store.hostStandingFailures[host.id] == failure)
+        let presentation = MissingAgentPresentation(
+            agentID: ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1"),
+            console: store,
+            hosts: hosts)
+        #expect(presentation.cause == .hostFailed)
+        #expect(presentation.message.contains(failure.presentation.message))
+        await pingGate.open()
+        store.setHosts([])
+    }
+
+    @Test func retryFromReconnectingAnnouncesConnectingAndDropsTheBackoff() async throws {
+        let host = Host.fixture()
+        let alive = ScriptedTransport(snapshot: .openSession)
+        let refusing = ScriptedTransport(snapshot: .openSession)
+        for ordinal in 1...2 {
+            await refusing.failPing(atCall: ordinal, with: .timedOut)
+        }
+        let retry = ScriptedTransport(snapshot: .openSession)
+        let connector = SequencedTransportConnector([alive, refusing, retry])
+        let store = makeStore(
+            connector: connector, reconnectPolicy: Self.parkedSecondAttemptPolicy)
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Host should come up connected") {
+            store.hostStatuses[host.id] == .connected
+        }
+        try await waitUntilPaneResubscribeSettles(on: alive)
+        try await alive.close()
+        let backoff = EventsSessionStatus.reconnecting(
+            attempt: 2, delay: .seconds(10), failure: .timedOut)
+        try await waitUntil("the Host should park on its second backoff") {
+            store.hostStatuses[host.id] == backoff
+        }
+
+        let pingGate = ScriptedTransportCallGate()
+        await retry.gateNextPing(using: pingGate)
+        await store.retryHost(host.id)
+        try await waitUntil("the explicit retry should be in flight") {
+            await retry.pingCount == 1 && store.hostStatuses[host.id] == .connecting
+        }
+        #expect(store.hostStatuses[host.id] == .connecting)
+        if case .reconnecting(let attempt, let delay, _) = store.hostStatuses[host.id] {
+            Issue.record("retained reconnecting attempt \(attempt) delay \(delay)")
+        }
+        #expect(store.hostStandingFailures[host.id] == nil)
+        await pingGate.open()
+        try await waitUntil("the retry should connect") {
+            store.hostStatuses[host.id] == .connected
+        }
+        store.setHosts([])
+    }
+
+    @Test func firstActivationAnnouncesConnecting() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(snapshot: .openSession)
+        let pingGate = ScriptedTransportCallGate()
+        await transport.gateNextPing(using: pingGate)
+        let store = makeStore(connector: SequencedTransportConnector([transport]))
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the first dial should be in flight") {
+            await transport.pingCount == 1 && store.hostStatuses[host.id] == .connecting
+        }
+        #expect(store.hostStatuses[host.id] == .connecting)
+        #expect(store.agents.isEmpty)
+        await pingGate.open()
+        try await waitUntil("the Host should come up connected") {
+            store.hostStatuses[host.id] == .connected
+        }
+        store.setHosts([])
+    }
+
+    @Test func aSameTransportSubscriptionReinstallKeepsInventoryUntilRefresh() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(snapshot: .openSession)
+        let session = EventsSession(
+            subscriptions: HostConsoleProjection.subscriptions(paneIDs: []),
+            connect: { transport },
+            reconnectPolicy: Self.fastPolicy,
+            keepalive: nil)
+        let projection = HostConsoleProjection(
+            host: host, session: session, snapshotRetryDelay: .milliseconds(10)
+        ) {}
+        projection.start(isActive: true)
+        defer { projection.end() }
+
+        try await waitUntil("the Host should come up connected") {
+            projection.status == .connected
+        }
+        try await waitUntil("its Agent should arrive") {
+            !projection.agentsByPane.isEmpty && !projection.isAwaitingSnapshot
+        }
+        try await waitUntilPaneResubscribeSettles(on: transport)
+        let inventory = projection.agentsByPane
+        #expect(!inventory.isEmpty)
+
+        let snapshotGate = ScriptedTransportCallGate()
+        await transport.setSnapshot(.fixture(agents: []))
+        await transport.gateNextSnapshot(using: snapshotGate)
+        await session.updateSubscriptions(
+            HostConsoleProjection.subscriptions(paneIDs: ["w1:p1", "w1:p-extra"]))
+        try await waitUntil("the reinstall should have been recorded") {
+            await transport.capturedSubscriptions.count >= 3
+        }
+        #expect(projection.status == .connected)
+        #expect(projection.agentsByPane == inventory)
+        #expect(!projection.isAwaitingSnapshot)
+
+        await snapshotGate.open()
+        try await waitUntil("the refresh should replace the inventory") {
+            projection.agentsByPane.isEmpty && !projection.isAwaitingSnapshot
+        }
+        #expect(projection.status == .connected)
+    }
+
+    @Test func automaticRetryDoesNotAnnounceConnecting() async throws {
+        let host = Host.fixture()
+        let first = ScriptedTransport(snapshot: .openSession)
+        let second = ScriptedTransport(snapshot: .openSession)
+        let connector = SequencedTransportConnector([first, second])
+        let session = EventsSession(
+            subscriptions: HostConsoleProjection.subscriptions(paneIDs: []),
+            connect: { try await connector.connect() },
+            reconnectPolicy: Self.parkedSecondAttemptPolicy,
+            keepalive: nil)
+        let recorder = PublishedStatusRecorder()
+        let projection = HostConsoleProjection(
+            host: host, session: session, snapshotRetryDelay: .milliseconds(10)
+        ) { [recorder] in
+            recorder.record()
+        }
+        recorder.projection = projection
+        projection.start(isActive: true)
+        defer { projection.end() }
+
+        try await waitUntil("the Host should come up connected") {
+            projection.status == .connected
+        }
+        try await waitUntilPaneResubscribeSettles(on: first)
+        let firstConnected = try #require(recorder.statuses.firstIndex(of: .connected))
+        try await first.close()
+        try await waitUntil("automatic recovery should be reconnecting") {
+            if case .reconnecting = projection.status { true } else { false }
+        }
+        #expect(!recorder.statuses[firstConnected...].contains(.connecting))
+        #expect(recorder.statuses.filter { $0 == .connecting }.count == 1)
+    }
+
+    @Test func retryFromConnectedAnnouncesConnectingBeforeTeardown() async throws {
+        let host = Host.fixture()
+        let first = ScriptedTransport(snapshot: .openSession)
+        let second = ScriptedTransport(snapshot: .openSession)
+        let connector = SequencedTransportConnector([first, second])
+        let session = EventsSession(
+            subscriptions: HostConsoleProjection.subscriptions(paneIDs: []),
+            connect: { try await connector.connect() },
+            reconnectPolicy: Self.fastPolicy,
+            keepalive: nil)
+        let recorder = PublishedStatusRecorder()
+        let projection = HostConsoleProjection(
+            host: host, session: session, snapshotRetryDelay: .milliseconds(10)
+        ) { [recorder] in
+            recorder.record()
+        }
+        recorder.projection = projection
+        projection.start(isActive: true)
+        defer { projection.end() }
+
+        try await waitUntil("the Host should come up connected") {
+            projection.status == .connected
+        }
+        try await waitUntil("its Agent should arrive") {
+            !projection.agentsByPane.isEmpty && !projection.isAwaitingSnapshot
+        }
+        try await waitUntilPaneResubscribeSettles(on: first)
+
+        let closeGate = ScriptedTransportCallGate()
+        await first.gateNextClose(using: closeGate)
+        let retrying = Task { await projection.retry() }
+        try await waitUntil("teardown should reach the installed transport") {
+            await closeGate.entryCount == 1
+        }
+        #expect(projection.status == .connecting)
+        #expect(projection.agentsByPane.isEmpty)
+        #expect(projection.isAwaitingSnapshot)
+        #expect(projection.syncError == nil)
+        #expect(await !first.isClosed)
+        await closeGate.open()
+        await retrying.value
+        try await waitUntil("the retry should connect") {
+            projection.status == .connected
+        }
+        #expect(projection.syncError == nil)
     }
 
     /// A store whose session factory hands out scripted transports in order,

@@ -3,6 +3,10 @@ import Testing
 
 @testable import Heeler
 
+/// Sort, cap, and trim tests use deliberately fake pane ids (`w:p-work`,
+/// `w:p%02d` → `w:p00`) as opaque sort keys. Those values are not live herdr
+/// addresses; fixtures that stand in for a real pane use the observed
+/// `w…:p…` family instead (see the shared Live Activity vectors).
 @Suite("Agent activity content builder")
 struct AgentActivityContentBuilderTests {
     private let hostID = UUID()

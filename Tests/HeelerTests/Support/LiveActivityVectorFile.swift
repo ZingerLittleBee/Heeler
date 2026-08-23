@@ -5,6 +5,10 @@ import Foundation
 /// per-Host agent details across the Node plugin and this app. The JSON
 /// file is bundled into the test target as a resource so both suites
 /// exercise the same cases.
+///
+/// Payloads that stand in for a herdr pane use the observed `w…:p…` family
+/// (uppercase included). Pin-order inventory ids such as `w1:p-work` stay
+/// deliberately fake: those cases only need distinct opaque strings.
 struct LiveActivityVectorFile: Decodable, Sendable {
     let valid: [Valid]
     let invalid: [Invalid]

@@ -12,6 +12,12 @@ struct HostLiveActivityCoordinatorTests {
     private let controller = FakeLiveActivityController()
     private let transport = ScriptedTransport()
     private let world = World()
+    /// Observed-family herdr pane id (alphanumeric `w…:p…`, uppercase
+    /// included). This suite treats it as an opaque string; the live shape
+    /// keeps the fixtures from re-teaching the retired tmux-style `%N` habit.
+    /// Pin cases below keep deliberately fake ids (`w:p-work`) because they
+    /// only need a stable opaque token, not a live-shaped address.
+    private let observedPaneID = "wV:p1"
 
     @MainActor
     private final class World {
@@ -131,7 +137,7 @@ struct HostLiveActivityCoordinatorTests {
         let coordinator = makeCoordinator(defaults: defaults)
 
         coordinator.start()
-        coordinator.agentsDidChange([agent("%1", .working)])
+        coordinator.agentsDidChange([agent(observedPaneID, .working)])
         #expect(controller.requested.isEmpty, "the desired state must settle first")
 
         try await waitUntil("a working Agent should start an activity once settled") {
@@ -148,11 +154,11 @@ struct HostLiveActivityCoordinatorTests {
         armWorld()
         let coordinator = makeCoordinator(defaults: defaults)
         coordinator.start()
-        coordinator.agentsDidChange([agent("%1", .working)])
+        coordinator.agentsDidChange([agent(observedPaneID, .working)])
         try await waitUntil("the activity should start") { !controller.requested.isEmpty }
 
         coordinator.agentsDidChange([])
-        coordinator.agentsDidChange([agent("%1", .working)])
+        coordinator.agentsDidChange([agent(observedPaneID, .working)])
         try await waitPastSettle()
 
         #expect(controller.ended.isEmpty)
@@ -167,11 +173,11 @@ struct HostLiveActivityCoordinatorTests {
         armWorld()
         let coordinator = makeCoordinator(defaults: defaults)
         coordinator.start()
-        coordinator.agentsDidChange([agent("%1", .working)])
+        coordinator.agentsDidChange([agent(observedPaneID, .working)])
         try await waitUntil("the activity should start") { !controller.requested.isEmpty }
 
-        coordinator.agentsDidChange([agent("%1", .blocked)])
-        coordinator.agentsDidChange([agent("%1", .done)])
+        coordinator.agentsDidChange([agent(observedPaneID, .blocked)])
+        coordinator.agentsDidChange([agent(observedPaneID, .done)])
         try await waitUntil("only the latest desire should land as an update") {
             controller.updates.count == 1
         }
@@ -189,7 +195,7 @@ struct HostLiveActivityCoordinatorTests {
         armWorld()
         let coordinator = makeCoordinator(defaults: defaults, enable: false)
         coordinator.start()
-        coordinator.agentsDidChange([agent("%1", .blocked)])
+        coordinator.agentsDidChange([agent(observedPaneID, .blocked)])
         try await waitPastSettle()
         #expect(controller.requested.isEmpty)
     }
@@ -200,7 +206,7 @@ struct HostLiveActivityCoordinatorTests {
         armWorld()
         let coordinator = makeCoordinator(defaults: defaults)
         coordinator.start()
-        coordinator.agentsDidChange([agent("%1", .blocked)])
+        coordinator.agentsDidChange([agent(observedPaneID, .blocked)])
         try await waitPastSettle()
         #expect(controller.requested.isEmpty)
     }
@@ -213,7 +219,7 @@ struct HostLiveActivityCoordinatorTests {
         world.deviceToken = nil
         let coordinator = makeCoordinator(defaults: defaults)
         coordinator.start()
-        coordinator.agentsDidChange([agent("%1", .done)])
+        coordinator.agentsDidChange([agent(observedPaneID, .done)])
         try await waitPastSettle()
         #expect(controller.requested.isEmpty)
     }
@@ -226,13 +232,13 @@ struct HostLiveActivityCoordinatorTests {
         controller.areEnabled = false
         let coordinator = makeCoordinator(defaults: defaults)
         coordinator.start()
-        coordinator.agentsDidChange([agent("%1", .working)])
+        coordinator.agentsDidChange([agent(observedPaneID, .working)])
         try await waitPastSettle()
         #expect(controller.requested.isEmpty)
 
         controller.areEnabled = true
         controller.requestError = LiveActivityRequestError.requestFailed()
-        coordinator.agentsDidChange([agent("%1", .blocked)])
+        coordinator.agentsDidChange([agent(observedPaneID, .blocked)])
         try await waitPastSettle()
         #expect(controller.requested.isEmpty)
     }
@@ -246,7 +252,7 @@ struct HostLiveActivityCoordinatorTests {
         armWorld()
         let coordinator = makeCoordinator(defaults: defaults)
         coordinator.start()
-        coordinator.agentsDidChange([agent("%1", .working)])
+        coordinator.agentsDidChange([agent(observedPaneID, .working)])
         try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
         let activityID = try #require(controller.requestedHandles.first?.id)
 
@@ -272,7 +278,7 @@ struct HostLiveActivityCoordinatorTests {
         armWorld()
         let coordinator = makeCoordinator(defaults: defaults)
         coordinator.start()
-        coordinator.agentsDidChange([agent("%1", .working)])
+        coordinator.agentsDidChange([agent(observedPaneID, .working)])
         try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
         let activityID = try #require(controller.requestedHandles.first?.id)
 
@@ -293,7 +299,7 @@ struct HostLiveActivityCoordinatorTests {
         armWorld()
         let coordinator = makeCoordinator(defaults: defaults)
         coordinator.start()
-        coordinator.agentsDidChange([agent("%1", .working)])
+        coordinator.agentsDidChange([agent(observedPaneID, .working)])
         try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
         let activityID = try #require(controller.requestedHandles.first?.id)
 
@@ -320,7 +326,7 @@ struct HostLiveActivityCoordinatorTests {
         armWorld()
         let coordinator = makeCoordinator(defaults: defaults)
         coordinator.start()
-        coordinator.agentsDidChange([agent("%1", .blocked)])
+        coordinator.agentsDidChange([agent(observedPaneID, .blocked)])
         try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
         let activityID = try #require(controller.requestedHandles.first?.id)
         controller.emitToken(id: activityID, Data([0x11]))
@@ -373,7 +379,7 @@ struct HostLiveActivityCoordinatorTests {
         armWorld()
         let coordinator = makeCoordinator(defaults: defaults)
         coordinator.start()
-        coordinator.agentsDidChange([agent("%1", .working)])
+        coordinator.agentsDidChange([agent(observedPaneID, .working)])
         try await waitUntil("the activity should start") { !controller.requested.isEmpty }
         #expect(controller.ended.isEmpty)
 
@@ -389,7 +395,7 @@ struct HostLiveActivityCoordinatorTests {
 
         world.awaitingSnapshot = []
         world.statuses[host.id] = .connected
-        coordinator.agentsDidChange([agent("%1", .working)])
+        coordinator.agentsDidChange([agent(observedPaneID, .working)])
         coordinator.connectionsDidChange()
         try await waitPastSettle()
         #expect(controller.ended.isEmpty)
@@ -403,7 +409,7 @@ struct HostLiveActivityCoordinatorTests {
         armWorld()
         let coordinator = makeCoordinator(defaults: defaults)
         coordinator.start()
-        coordinator.agentsDidChange([agent("%1", .working)])
+        coordinator.agentsDidChange([agent(observedPaneID, .working)])
         try await waitUntil("the activity should start") { !controller.requested.isEmpty }
 
         coordinator.agentsDidChange([])
@@ -450,7 +456,7 @@ struct HostLiveActivityCoordinatorTests {
         armWorld()
         let coordinator = makeCoordinator(defaults: defaults)
         coordinator.start()
-        coordinator.agentsDidChange([agent("%1", .working)])
+        coordinator.agentsDidChange([agent(observedPaneID, .working)])
         try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
         let activityID = try #require(controller.requestedHandles.first?.id)
         controller.emitToken(id: activityID, Data([0xdd]))

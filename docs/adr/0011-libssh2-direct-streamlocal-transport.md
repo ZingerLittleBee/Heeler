@@ -66,6 +66,31 @@ the sentence before the clause — the Console, the surface a user watches,
 withholds the guidance while a Host is reconnecting — and is unchanged. See
 Connection Guidance in `CONTEXT.md` for what each of the four surfaces shows.
 
+Terminology (#163): the pointer above outlives the term it names. `CONTEXT.md`
+no longer carries Connection Guidance. It carries Transport Error Presentation,
+which splits that one string into a Summary, an optional Detail and an optional
+Recovery Suggestion. The reason is a fact this paragraph already half-states:
+"a reconnecting one shows a short summary phrase that names no action" turned
+out to describe the whole retryable set, not one surface's choice — so naming
+no action is a property of those errors, and a type total over the error set
+could not honestly be named for guidance. Stated exactly: every retryable
+error's Summary names no action; an unreachable Host may separately carry a
+Recovery Suggestion, rendered only on surfaces permitted by the
+automatic-recovery presentation rule. The per-surface inventory the pointer
+promised is deliberately not in the glossary any more: it is implementation, it
+was got wrong repeatedly while it lived there (#156), and it belongs with the
+presentation types and their tests.
+The earlier statement that Host detail renders the "full guidance" refers to
+every part of the retryable string that existed when this ADR was accepted;
+under Transport Error Presentation that content is the Explanation. It does not
+authorize a newly modeled Recovery Suggestion during automatic recovery. No
+Reconnecting surface renders that Suggestion.
+Nothing above is retracted. The sentence this decision rests on survives the
+rename intact — withholding an instruction from the ambient surface during
+automatic recovery is exactly what the replacement makes a rule rather than an
+accident, and a stopped Host still carries the whole presentation to where the
+user is already looking. The property is now `TransportError.presentation`.
+
 Cancellation and timeout recovery will be channel-scoped only when the
 affected channel has been allocated and can be closed cleanly. A timeout while
 opening a channel, handshaking, authenticating, or establishing a nested Jump

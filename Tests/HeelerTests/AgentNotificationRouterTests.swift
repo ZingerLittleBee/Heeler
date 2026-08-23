@@ -7,6 +7,10 @@ import Testing
 /// the Console's navigation path, a killed-state tap waits for the pane to
 /// arrive with the Host's first sync, and stale or unresolvable pushes fall
 /// back to the Console with no alarming copy.
+///
+/// Pane ids that stand in for a live herdr address use the observed
+/// alphanumeric `w…:p…` family (uppercase included). `%gone` and `%other`
+/// stay deliberately fake: those cases only need distinct opaque strings.
 @MainActor
 @Suite("Agent notification router")
 struct AgentNotificationRouterTests {
@@ -33,11 +37,11 @@ struct AgentNotificationRouterTests {
     @Test func tapOnAKnownAgentOpensItsDetail() {
         let router = AgentNotificationRouter()
         let hostID = UUID()
-        router.agentsDidChange([consoleAgent(hostID: hostID, paneID: "%5")])
+        router.agentsDidChange([consoleAgent(hostID: hostID, paneID: "wV:p1")])
 
-        router.open(AgentNotificationTarget(hostID: hostID, paneID: "%5"))
+        router.open(AgentNotificationTarget(hostID: hostID, paneID: "wV:p1"))
 
-        #expect(router.path == [ConsoleAgent.ID(hostID: hostID, paneID: "%5")])
+        #expect(router.path == [ConsoleAgent.ID(hostID: hostID, paneID: "wV:p1")])
         #expect(router.pendingTarget == nil)
     }
 
@@ -45,14 +49,14 @@ struct AgentNotificationRouterTests {
         let router = AgentNotificationRouter()
         let hostID = UUID()
         router.agentsDidChange([
-            consoleAgent(hostID: hostID, paneID: "%5"),
-            consoleAgent(hostID: hostID, paneID: "%6"),
+            consoleAgent(hostID: hostID, paneID: "wV:p1"),
+            consoleAgent(hostID: hostID, paneID: "w1C:p1"),
         ])
-        router.path = [ConsoleAgent.ID(hostID: hostID, paneID: "%6")]
+        router.path = [ConsoleAgent.ID(hostID: hostID, paneID: "w1C:p1")]
 
-        router.open(AgentNotificationTarget(hostID: hostID, paneID: "%5"))
+        router.open(AgentNotificationTarget(hostID: hostID, paneID: "wV:p1"))
 
-        #expect(router.path == [ConsoleAgent.ID(hostID: hostID, paneID: "%5")])
+        #expect(router.path == [ConsoleAgent.ID(hostID: hostID, paneID: "wV:p1")])
     }
 
     /// The killed-state launch path: the tap arrives before any Host has
@@ -62,13 +66,13 @@ struct AgentNotificationRouterTests {
         let router = AgentNotificationRouter()
         let hostID = UUID()
 
-        router.open(AgentNotificationTarget(hostID: hostID, paneID: "%5"))
+        router.open(AgentNotificationTarget(hostID: hostID, paneID: "wV:p1"))
         #expect(router.path.isEmpty)
-        #expect(router.pendingTarget == AgentNotificationTarget(hostID: hostID, paneID: "%5"))
+        #expect(router.pendingTarget == AgentNotificationTarget(hostID: hostID, paneID: "wV:p1"))
 
-        router.agentsDidChange([consoleAgent(hostID: hostID, paneID: "%5")])
+        router.agentsDidChange([consoleAgent(hostID: hostID, paneID: "wV:p1")])
 
-        #expect(router.path == [ConsoleAgent.ID(hostID: hostID, paneID: "%5")])
+        #expect(router.path == [ConsoleAgent.ID(hostID: hostID, paneID: "wV:p1")])
         #expect(router.pendingTarget == nil)
     }
 
@@ -77,10 +81,10 @@ struct AgentNotificationRouterTests {
     @Test func stalePaneFallsBackToTheConsoleQuietly() async throws {
         let router = AgentNotificationRouter(pendingGrace: .milliseconds(25))
         let hostID = UUID()
-        router.agentsDidChange([consoleAgent(hostID: hostID, paneID: "%1")])
+        router.agentsDidChange([consoleAgent(hostID: hostID, paneID: "w1:pT")])
         // Viewing some other Agent when the tap lands: fall back means
         // popping to the Console, not staying wherever the user was.
-        router.path = [ConsoleAgent.ID(hostID: hostID, paneID: "%1")]
+        router.path = [ConsoleAgent.ID(hostID: hostID, paneID: "w1:pT")]
 
         router.open(AgentNotificationTarget(hostID: hostID, paneID: "%gone"))
         #expect(router.path.isEmpty)
@@ -96,8 +100,8 @@ struct AgentNotificationRouterTests {
     @Test func unresolvableTapFallsBackToTheConsole() {
         let router = AgentNotificationRouter()
         let hostID = UUID()
-        router.agentsDidChange([consoleAgent(hostID: hostID, paneID: "%5")])
-        router.path = [ConsoleAgent.ID(hostID: hostID, paneID: "%5")]
+        router.agentsDidChange([consoleAgent(hostID: hostID, paneID: "wV:p1")])
+        router.path = [ConsoleAgent.ID(hostID: hostID, paneID: "wV:p1")]
 
         router.open(nil)
 
@@ -111,11 +115,11 @@ struct AgentNotificationRouterTests {
         let router = AgentNotificationRouter()
         let hostID = UUID()
 
-        router.open(AgentNotificationTarget(hostID: hostID, paneID: "%5"))
+        router.open(AgentNotificationTarget(hostID: hostID, paneID: "wV:p1"))
         router.path = [ConsoleAgent.ID(hostID: hostID, paneID: "%other")]
 
         router.agentsDidChange([
-            consoleAgent(hostID: hostID, paneID: "%5"),
+            consoleAgent(hostID: hostID, paneID: "wV:p1"),
             consoleAgent(hostID: hostID, paneID: "%other"),
         ])
 
