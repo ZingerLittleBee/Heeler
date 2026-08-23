@@ -9,6 +9,11 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- Host connections now have a distinct Connecting state, separate from
+  automatic Reconnecting, a paused connection, and loading Agents after the
+  events path is already live. A Host being re-proved after a failure keeps
+  its explanation until the attempt succeeds. (#155)
+
 - Connection and request failures now present a short summary, optional
   detail, and a recovery suggestion only when the error itself supports one.
   Retryable outages no longer promise guidance they cannot give, a Jump Host

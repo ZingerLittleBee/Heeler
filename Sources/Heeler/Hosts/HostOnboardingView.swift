@@ -7,6 +7,7 @@ struct HostOnboardingView: View {
     /// The Host catalog, for the Edit sheet.
     let catalog: HostStore
     let connectionStatus: EventsSessionStatus?
+    let standingFailure: TransportError?
     /// True while Console is serving a Host-detail Reconnect press (the
     /// retry call plus the 1.2 s visual-feedback hold). Distinct from
     /// `EventsSessionStatus.reconnecting`.
@@ -21,11 +22,13 @@ struct HostOnboardingView: View {
         host: Host,
         catalog: HostStore,
         connectionStatus: EventsSessionStatus? = nil,
+        standingFailure: TransportError? = nil,
         isManualReconnectInFlight: Bool = false,
         retryConnection: (@MainActor @Sendable () async -> Void)? = nil
     ) {
         self.catalog = catalog
         self.connectionStatus = connectionStatus
+        self.standingFailure = standingFailure
         self.isManualReconnectInFlight = isManualReconnectInFlight
         self.retryConnection = retryConnection
         _store = State(initialValue: HostOnboardingStore(host: host))
@@ -206,6 +209,7 @@ struct HostOnboardingView: View {
     private var connectionPresentation: HostOnboardingConnectionPresentation {
         HostOnboardingConnectionPresentation(
             status: connectionStatus,
+            standingFailure: standingFailure,
             isManualReconnectInFlight: isManualReconnectInFlight)
     }
 
@@ -279,8 +283,14 @@ struct HostOnboardingConnectionPresentation: Equatable {
     let connectionErrorMessage: String?
     let footerMessage: String?
 
-    init(status: EventsSessionStatus?, isManualReconnectInFlight: Bool) {
+    init(
+        status: EventsSessionStatus?,
+        standingFailure: TransportError? = nil,
+        isManualReconnectInFlight: Bool
+    ) {
         switch status {
+        case .connecting:
+            connectionErrorMessage = standingFailure?.presentation.message
         case .reconnecting(_, _, let failure):
             connectionErrorMessage = failure.presentation.explanation
         case .failed(let failure):

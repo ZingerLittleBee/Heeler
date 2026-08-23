@@ -181,9 +181,6 @@ The status never claims that stopped work is running, and never hides running
 work behind a stopped condition. Whatever a surface then chooses to say is a
 presentation question, answered by Standing Failure and Transport Error
 Presentation.
-Connecting arrives with #155. Until it does, an activation announces nothing,
-and a Host dialling after a return from Suspended still reports Suspended for a
-whole SSH connect plus ping.
 _Avoid_: Agent Status, Reconnect Request, loading, syncing
 
 **Agent Inventory**:

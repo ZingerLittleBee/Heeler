@@ -82,8 +82,8 @@ struct ConsoleHostStatusPresentationTests {
         #expect(presentation.navigates)
     }
 
-    @Test func quietStatusesWithoutASyncErrorProduceNoRow() {
-        let quiet: [EventsSessionStatus?] = [.connected, .suspended, .ended, nil]
+    @Test func endedOrUnknownStatusesWithoutASyncErrorProduceNoRow() {
+        let quiet: [EventsSessionStatus?] = [.ended, nil]
         for status in quiet {
             #expect(
                 ConsoleHostStatusPresentation(
@@ -91,5 +91,53 @@ struct ConsoleHostStatusPresentationTests {
                     status: status,
                     syncError: nil) == nil)
         }
+    }
+
+    @Test func quietConditionRowsAreInformationalAndDoNotNavigate() throws {
+        let paused = try #require(
+            ConsoleHostStatusPresentation(
+                host: host, status: .suspended, syncError: nil))
+        #expect(paused.message == "Connection to studio is paused.")
+        #expect(paused.severity == .informational)
+        #expect(!paused.navigates)
+
+        let connecting = try #require(
+            ConsoleHostStatusPresentation(
+                host: host, status: .connecting, syncError: nil))
+        #expect(connecting.message == "Connecting to studio…")
+        #expect(connecting.severity == .informational)
+        #expect(!connecting.navigates)
+
+        let loading = try #require(
+            ConsoleHostStatusPresentation(
+                host: host,
+                status: .connected,
+                isAwaitingSnapshot: true,
+                syncError: nil))
+        #expect(loading.message == "Loading Agents from studio…")
+        #expect(loading.severity == .informational)
+        #expect(!loading.navigates)
+    }
+
+    @Test func connectingWithAStandingFailureLooksLikeFailure() throws {
+        let failure = TransportError.streamLocalOpenFailed(path: "/tmp/herdr.sock")
+        let presentation = try #require(
+            ConsoleHostStatusPresentation(
+                host: host,
+                status: .connecting,
+                standingFailure: failure,
+                syncError: nil))
+        #expect(presentation.message == "studio: \(failure.presentation.message)")
+        #expect(presentation.severity == .warning)
+        #expect(presentation.navigates)
+    }
+
+    @Test func aConnectedHostWithKnownInventoryAndNoSyncErrorProducesNoRow() {
+        #expect(
+            ConsoleHostStatusPresentation(
+                host: host,
+                status: .connected,
+                isAwaitingSnapshot: false,
+                syncError: nil) == nil)
     }
 }

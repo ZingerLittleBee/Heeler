@@ -30,6 +30,7 @@ struct EventsSessionSubscriptionsTests {
         var updates = session.updates.makeAsyncIterator()
 
         await session.resume()
+        #expect(await updates.next() == .status(.connecting))
         #expect(await updates.next() == .status(.connected))
         #expect(await session.transportGeneration == 0)
 
@@ -61,6 +62,7 @@ struct EventsSessionSubscriptionsTests {
 
         await session.resume()
 
+        #expect(await updates.next() == .status(.connecting))
         #expect(await updates.next() == .status(.connected))
         let latency = await latencyUpdates.next()
         #expect(latency != nil)
@@ -77,6 +79,7 @@ struct EventsSessionSubscriptionsTests {
         var updates = session.updates.makeAsyncIterator()
 
         await session.resume()
+        #expect(await updates.next() == .status(.connecting))
         #expect(await updates.next() == .status(.connected))
 
         await session.updateSubscriptions(initial)
@@ -93,6 +96,7 @@ struct EventsSessionSubscriptionsTests {
         await session.updateSubscriptions(updated)
         await session.resume()
 
+        #expect(await updates.next() == .status(.connecting))
         #expect(await updates.next() == .status(.connected))
         #expect(await transport.capturedSubscriptions == [updated])
         await session.end()
@@ -114,8 +118,10 @@ struct EventsSessionSubscriptionsTests {
 
         await session.resume()
 
-        // Straight to `.connected`: the retry is immediate and the user never
-        // sees a reconnect for what is an ordinary race.
+        // Straight to `.connected` after the activation's `.connecting`: the
+        // missing-pane retry is immediate and the user never sees a reconnect
+        // for what is an ordinary race.
+        #expect(await updates.next() == .status(.connecting))
         #expect(await updates.next() == .status(.connected))
         #expect(await transport.capturedSubscriptions == [updated, initial])
         #expect(await !transport.isClosed, "the SSH connection must survive the rejection")
@@ -132,6 +138,7 @@ struct EventsSessionSubscriptionsTests {
         var updates = session.updates.makeAsyncIterator()
 
         await session.resume()
+        #expect(await updates.next() == .status(.connecting))
         #expect(await updates.next() == .status(.connected))
         await session.updateSubscriptions(updated)
         #expect(await updates.next() == .status(.connected))
@@ -158,6 +165,7 @@ struct EventsSessionSubscriptionsTests {
         var updates = session.updates.makeAsyncIterator()
 
         await session.resume()
+        #expect(await updates.next() == .status(.connecting))
         #expect(await updates.next() == .status(.connected))
         await session.updateSubscriptions(updated)
         #expect(await updates.next() == .status(.connected))
@@ -165,6 +173,7 @@ struct EventsSessionSubscriptionsTests {
         await transport.setMissingPanes(["w1:p1"])
         await session.retry()
 
+        #expect(await updates.next() == .status(.connecting))
         #expect(await updates.next() == .status(.connected))
         #expect(await transport.capturedSubscriptions == [initial, updated, initial])
 
@@ -186,6 +195,7 @@ struct EventsSessionSubscriptionsTests {
 
         await session.resume()
 
+        #expect(await updates.next() == .status(.connecting))
         #expect(await updates.next() == .status(.failed(.authenticationFailed)))
         try await Task.sleep(for: .milliseconds(30))
         #expect(connectionAttempts.withLock { $0 } == 1)
@@ -208,6 +218,7 @@ struct EventsSessionSubscriptionsTests {
 
         await session.resume()
 
+        #expect(await updates.next() == .status(.connecting))
         #expect(await updates.next() == .status(.failed(.deviceKeyCorrupt)))
         try await Task.sleep(for: .milliseconds(30))
         #expect(connectionAttempts.withLock { $0 } == 1)
@@ -230,6 +241,7 @@ struct EventsSessionSubscriptionsTests {
         var updates = session.updates.makeAsyncIterator()
 
         await session.resume()
+        #expect(await updates.next() == .status(.connecting))
         try await waitUntil("the first connection should be in flight") {
             await gate.entryCount == 1
         }
@@ -257,6 +269,7 @@ struct EventsSessionSubscriptionsTests {
         // still parked. Releasing that stale attempt later only closes its
         // Transport; it cannot replace the current one or emit connected.
         await session.resume()
+        #expect(await updates.next() == .status(.connecting))
         #expect(await updates.next() == .status(.connected))
         #expect(await connector.attemptCount == 2)
         #expect(await !resumedTransport.isClosed)
@@ -293,6 +306,7 @@ struct EventsSessionSubscriptionsTests {
         var updates = session.updates.makeAsyncIterator()
 
         await session.resume()
+        #expect(await updates.next() == .status(.connecting))
         #expect(await updates.next() == .status(.connected))
 
         let suspending = Task { await session.suspend() }
@@ -310,6 +324,7 @@ struct EventsSessionSubscriptionsTests {
         await resuming.value
 
         #expect(await updates.next() == .status(.suspended))
+        #expect(await updates.next() == .status(.connecting))
         #expect(await updates.next() == .status(.connected))
         #expect(await connector.connectCount == 2)
         #expect(await first.isClosed)

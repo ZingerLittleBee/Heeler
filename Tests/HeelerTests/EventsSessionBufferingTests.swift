@@ -45,8 +45,8 @@ struct EventsSessionBufferingTests {
             await transport.capturedSubscriptions.count == 1
         }
 
-        // Nobody consumes `updates` yet: 11 yields into a 3-slot buffer must
-        // shed the oldest update — the `.connected` status — and record it.
+        // Nobody consumes `updates` yet: connecting, connected, and 10
+        // events into a 3-slot buffer must shed the oldest statuses.
         for index in 1...10 {
             await transport.emit(workingEvent(index))
         }
@@ -79,6 +79,7 @@ struct EventsSessionBufferingTests {
         var updates = session.updates.makeAsyncIterator()
 
         await session.resume()
+        #expect(await updates.next() == .status(.connecting))
         #expect(await updates.next() == .status(.connected))
         for index in 1...3 {
             await transport.emit(workingEvent(index))

@@ -44,5 +44,51 @@ struct HostListViewTests {
                 status: .suspended,
                 latency: latency
             ).title == "Paused")
+        #expect(
+            HostConnectionPresentation(
+                status: .connecting,
+                latency: latency
+            ).title == "Connecting…")
+        #expect(
+            HostConnectionPresentation(
+                status: .connecting,
+                standingFailure: .streamLocalOpenFailed(path: "/s"),
+                latency: latency
+            ).title == "Unavailable")
+    }
+
+    @Test func nilStatusIsTheConstructionWindowAndSaysConnecting() {
+        let presentation = HostConnectionPresentation(status: nil, latency: nil)
+        #expect(presentation.title == "Connecting…")
+        #expect(presentation.accessibilityLabel == "Connecting")
+        #expect(presentation.tone == .pending)
+    }
+
+    @Test func connectingWithoutAStandingFailureIsPending() {
+        let presentation = HostConnectionPresentation(
+            status: .connecting, latency: .milliseconds(12))
+        #expect(presentation.title == "Connecting…")
+        #expect(presentation.accessibilityLabel == "Connecting")
+        #expect(presentation.tone == .pending)
+    }
+
+    @Test func connectingWithAStandingFailureStaysUnavailable() {
+        let presentation = HostConnectionPresentation(
+            status: .connecting,
+            standingFailure: .authenticationFailed,
+            latency: .milliseconds(12))
+        #expect(presentation.title == "Unavailable")
+        #expect(presentation.accessibilityLabel == "Unavailable")
+        #expect(presentation.tone == .unavailable)
+    }
+
+    @Test func connectedPresentationIgnoresInventoryAndStaysLatencyBased() {
+        let presentation = HostConnectionPresentation(
+            status: .connected,
+            standingFailure: .streamLocalOpenFailed(path: "/s"),
+            latency: .milliseconds(25))
+        #expect(presentation.title == "25 ms")
+        #expect(presentation.tone == .connected)
+        #expect(presentation.accessibilityLabel == "Connected, latency 25 ms")
     }
 }

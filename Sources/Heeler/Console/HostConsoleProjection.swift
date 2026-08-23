@@ -12,6 +12,10 @@ final class HostConsoleProjection {
     private(set) var agentsByPane: [String: ConsoleAgent] = [:]
     private(set) var workspaces: [ConsoleWorkspace] = []
     private(set) var status: EventsSessionStatus?
+    /// The failure that last stopped automatic recovery, retained after the
+    /// next activation begins and discarded when that activation resolves.
+    /// See Standing Failure in `CONTEXT.md`.
+    private(set) var standingFailure: TransportError?
     private(set) var latency: Duration?
     private(set) var syncError: String?
     private(set) var transportGeneration: UInt64 = 0
@@ -103,8 +107,9 @@ final class HostConsoleProjection {
     /// would be a hot loop against a server that is not there, and would bury
     /// the guidance the user needs. It is one attempt on an explicit user
     /// action, and coming back to the app is one. A Host that is still broken
-    /// lands straight back on `.failed` carrying the same guidance, having
-    /// emitted nothing in between that could read as recovery.
+    /// reports `.connecting` while that attempt runs, and the Standing
+    /// Failure keeps every status-derived surface presenting the same
+    /// guidance until the activation answers.
     func revalidate() async {
         if case .failed = status {
             await session.retry()
@@ -232,6 +237,14 @@ final class HostConsoleProjection {
         switch update {
         case .status(let status):
             self.status = status
+            switch status {
+            case .failed(let failure):
+                standingFailure = failure
+            case .connected, .reconnecting:
+                standingFailure = nil
+            case .connecting, .suspended, .ended:
+                break
+            }
             if status == .connected {
                 publish()
                 Task { [weak self] in

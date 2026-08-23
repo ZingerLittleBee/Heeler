@@ -45,21 +45,29 @@ struct KeepalivePolicy: Sendable, Equatable {
 
 /// Where the events session stands; the UI derives staleness from this.
 enum EventsSessionStatus: Sendable, Equatable {
+    /// A new activation is establishing its first usable events path,
+    /// outside the automatic retry loop. Emitted synchronously from
+    /// `activate()` before `run` is spawned.
+    case connecting
     /// The events channel is live. Emitted on every (re)connect — herdr does
     /// not replay state on subscribe (#4), so each `.connected` is the
-    /// consumer's signal to re-snapshot via `listAgents()`.
+    /// consumer's signal to re-snapshot via `listAgents()`. A deliberate
+    /// same-Transport subscription reinstall stays `.connected` through its
+    /// brief stream gap.
     case connected
-    /// The stream is down and attempt `attempt` starts after `delay`;
-    /// everything shown since the last `.connected` may be stale. `failure`
-    /// is what killed the previous attempt, for actionable user guidance.
+    /// Automatic recovery after a retryable failure; covers the announced
+    /// backoff and the dial that follows. Observable only while that cycle
+    /// is the current one.
     case reconnecting(attempt: Int, delay: Duration, failure: TransportError)
-    /// Reconnecting cannot repair this failure. The session remains stopped
-    /// until the caller retries after the Host's configuration is corrected.
+    /// Automatic recovery stopped because retrying without user intervention
+    /// cannot repair the failure. Observable only while no connection work
+    /// is running.
     case failed(TransportError)
     /// Deliberately torn down (the app's background grace period elapsed);
     /// no reconnect activity until `resume()`.
     case suspended
-    /// `end()` was called; the session is finished for good.
+    /// `end()` was called; the session is finished for good. Ownership
+    /// terminal, not a connection condition.
     case ended
 }
 
@@ -193,11 +201,11 @@ actor EventsSession {
             bufferingPolicy: .bufferingNewest(1))
     }
 
-    /// Activates the session (initially, or after `suspend()`): establishes
-    /// the transport and channel, emitting `.connected` on success and
-    /// `.reconnecting` transitions for transient failures. Returns once any
-    /// in-flight teardown has finished and the activation is underway. No-op
-    /// while active or ended.
+    /// Activates the session (initially, or after `suspend()`): announces
+    /// `.connecting` immediately, then establishes the transport and
+    /// channel, emitting `.connected` on success and `.reconnecting` for
+    /// automatic retry iterations. Returns once any in-flight teardown has
+    /// finished and the activation is underway. No-op while active or ended.
     func resume() async {
         await enqueueLifecycleTransition { await self.activate() }
     }
@@ -314,11 +322,16 @@ actor EventsSession {
         }
     }
 
+    /// Every activation announces `.connecting` synchronously before `run`
+    /// is spawned — a first dial, a return from Suspended, and a Reconnect
+    /// Request from Connected, Reconnecting or Failed alike. Automatic
+    /// iterations inside this activation stay `.reconnecting`.
     private func activate() {
         guard phase == .suspended else { return }
         phase = .active
         activationGeneration &+= 1
         let generation = activationGeneration
+        yieldUpdate(.status(.connecting))
         runTask = Task { await self.run(generation: generation) }
     }
 
