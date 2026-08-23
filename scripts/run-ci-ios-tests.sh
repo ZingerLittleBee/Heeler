@@ -1742,7 +1742,7 @@ clear_simulator_environment
 
 if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || grep -q 'skipped:' "$package_e2e_log" \
-    || ! grep -q 'Test run with 26 tests in 2 suites passed' "$package_e2e_log" \
+    || ! grep -q 'Test run with 42 tests in 2 suites passed' "$package_e2e_log" \
     || ! grep -q 'Test "remote transport loss reclaims every owned native resource" passed' \
         "$package_e2e_log" \
     || ! grep -q 'Test "an abruptly severed weak link reclaims every owned native resource" passed' \
@@ -1775,8 +1775,56 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
         "$package_e2e_log" \
     || ! grep -q \
         'Test "direct TCP/IP pump backpressures a fast raw writer without losing bytes" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "outbound backpressure does not livelock a channel open" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "cancelling a transport-send owner drains" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "cancelling a transport-send owner invalidates" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "timing out a transport-send owner at loop-top drains" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "timing out a transport-send owner at loop-top invalidates" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "one-shot RPCs yield so a live PTY can progress" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "cancelling a yielded one-shot distinguishes cleanup outcomes" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "timing out a yielded one-shot distinguishes cleanup outcomes" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "invalidation during a yielding wait does not touch a stale native pointer" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "yielded channel teardown rejects same-id I/O" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "repeated invalidation reclaims every file descriptor" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "measurement: Attach throughput with concurrent RPCs" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "SFTP operations and close wait out an in-flight handle use" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "a serialized channel-open wait honors deadline and cancellation" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "an invalidation generation rejects a watch armed before it" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "a transport-send owner error with outbound pending invalidates" passed' \
         "$package_e2e_log"; then
-    echo "The mandatory HeelerSSH package suites did not execute all twenty-six tests" >&2
+    echo "The mandatory HeelerSSH package suites did not execute all forty-two tests" >&2
     exit 1
 fi
 pinned_lane_logs+=("$package_e2e_log")

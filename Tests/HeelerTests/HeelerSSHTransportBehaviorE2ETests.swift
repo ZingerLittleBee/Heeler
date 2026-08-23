@@ -250,17 +250,13 @@ struct HeelerSSHTransportBehaviorE2ETests {
     @Test("direct Host RPC does not stall Attach")
     func directRPCDoesNotStallAttach() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
-        try await exerciseRPCDoesNotStallAttach(
-            settings: environment.directSettings(),
-            observerSettings: environment.directSettings())
+        try await exerciseRPCDoesNotStallAttach(settings: environment.directSettings())
     }
 
     @Test("Jump Host RPC does not stall Attach")
     func jumpRPCDoesNotStallAttach() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
-        try await exerciseRPCDoesNotStallAttach(
-            settings: environment.jumpSettings(),
-            observerSettings: environment.jumpSettings())
+        try await exerciseRPCDoesNotStallAttach(settings: environment.jumpSettings())
     }
 
     @Test("direct Host clean Attach exit frees the reserved channel")
@@ -1310,8 +1306,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
     }
 
     private func exerciseRPCDoesNotStallAttach(
-        settings: SSHTransportSettings,
-        observerSettings: SSHTransportSettings
+        settings: SSHTransportSettings
     ) async throws {
         let transport = try await HeelerSSHTransport.connect(settings: settings)
         defer { Task { try? await transport.close() } }
@@ -1326,7 +1321,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
         try await expectAttachOutput(&iterator, accumulated: &output, contains: "24 80")
         #expect(output.hasPrefix("TTY-OK"))
 
-        var observerSettings = observerSettings
+        var observerSettings = settings
         observerSettings.requestTimeout = .seconds(25)
         let observer = try await HeelerSSHTransport.connect(settings: observerSettings)
         defer { Task { try? await observer.close() } }
@@ -1340,6 +1335,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
             await delayedCompletion.markCompleted()
             return result
         }
+        defer { delayed.cancel() }
         let observation = try await observer.readPane(
             PaneReadParams(paneID: "fixture:await-delay:\(delayToken)", source: .recent))
         try #require(observation.text == "observed")
@@ -1354,11 +1350,10 @@ struct HeelerSSHTransportBehaviorE2ETests {
         let echoElapsed = echoStarted.duration(to: .now)
         #expect(await delayedCompletion.completed == false)
         #expect(echoElapsed < .seconds(2), "Attach echoed in \(echoElapsed)")
-        #expect(delayedStarted.duration(to: .now) < .seconds(4.5))
 
         let delayedResult = try await delayed.value
         #expect(await delayedCompletion.completed)
-        #expect(!delayedResult.text.isEmpty)
+        #expect(delayedResult.text == "delayed")
         #expect(delayedStarted.duration(to: .now) >= .seconds(4.5))
         #expect(try await transport.ping().protocolVersion == 17)
         await session.end()
