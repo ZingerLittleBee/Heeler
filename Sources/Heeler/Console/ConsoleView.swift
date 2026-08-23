@@ -95,6 +95,7 @@ struct ConsoleView: View {
                         store: hosts,
                         initialHostID: destination.hostID,
                         connectionStatuses: console.hostStatuses,
+                        standingFailures: console.hostStandingFailures,
                         latencies: console.hostLatencies,
                         manualReconnectInFlightHostIDs: manualReconnectInFlightHostIDs,
                         retryConnection: { await reconnectHost($0) })
@@ -170,8 +171,8 @@ struct ConsoleView: View {
         guard let id = notificationRouter.path.last else { return nil }
         let showsTerminalSurface = console.agents.contains(where: { $0.id == id })
         let showsTerminalSyncSurface = !showsTerminalSurface
-            && MissingAgentPresentation(agentID: id, console: console, hosts: hosts).cause
-                == .hostSyncing
+            && MissingAgentPresentation(agentID: id, console: console, hosts: hosts)
+                .renderingMode == .progress
         guard showsTerminalSurface || showsTerminalSyncSurface else { return nil }
         return terminal.themes.selection(for: colorScheme)
             .chromeColorScheme(for: colorScheme)
@@ -227,7 +228,7 @@ struct ConsoleView: View {
 
     @ViewBuilder
     private func missingAgentSurface(_ presentation: MissingAgentPresentation) -> some View {
-        if presentation.cause == .hostSyncing {
+        if presentation.renderingMode == .progress {
             let theme = terminal.themes.selection(for: colorScheme)
             ZStack {
                 theme.surfaceBackground(for: colorScheme)
@@ -235,6 +236,7 @@ struct ConsoleView: View {
                 TerminalStatusDialog(
                     glyph: .progress,
                     title: presentation.title,
+                    message: presentation.message,
                     palette: theme.palette(for: colorScheme),
                     dimsBackground: false)
             }
@@ -247,7 +249,8 @@ struct ConsoleView: View {
 
     @ViewBuilder
     private var content: some View {
-        if hosts.hosts.isEmpty {
+        switch agentsSurface {
+        case .noHosts:
             ContentUnavailableView {
                 Label("No Hosts", systemImage: "server.rack")
             } description: {
@@ -256,54 +259,32 @@ struct ConsoleView: View {
                 Button("Add Host") { presentHosts() }
                     .buttonStyle(.borderedProminent)
             }
-        } else if console.agents.isEmpty {
+        case .noAgents:
             ContentUnavailableView {
                 Label("No Agents", systemImage: "rectangle.on.rectangle.slash")
             } description: {
-                Text(emptyDescription)
-            } actions: {
-                if let issue = hostIssues.first, hostIssues.count == 1 {
-                    Button("Open \(issue.hostName)") { presentHosts(issue.id) }
-                        .buttonStyle(.borderedProminent)
-                } else if !hostIssues.isEmpty {
-                    Button("Manage Hosts") { presentHosts() }
-                        .buttonStyle(.borderedProminent)
-                }
+                Text("Agents detected on your Hosts appear here.")
             }
-        } else if filteredAgents.isEmpty {
-            // Agents exist, just none on the filtered Host. Its connection
-            // issue, if any, is likely the reason — surface it here.
+        case .noAgentsOnHost(let hostName):
             ContentUnavailableView {
-                Label("No Agents on \(filteredHostName)", systemImage: "line.3.horizontal.decrease.circle")
-            } description: {
-                if !visibleHostIssues.isEmpty {
-                    Text(visibleHostIssues.map(\.message).joined(separator: "\n"))
-                }
+                Label(
+                    "No Agents on \(hostName)",
+                    systemImage: "line.3.horizontal.decrease.circle")
             } actions: {
-                if let issue = visibleHostIssues.first {
-                    Button("Host Settings") { presentHosts(issue.id) }
-                }
                 Button("Show All Hosts") { hostFilter = nil }
             }
-        } else {
+        case .rows:
             List(selection: selectedAgent) {
-                ForEach(visibleHostIssues, id: \.id) { issue in
-                    Button { presentHosts(issue.id) } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: issue.systemImage)
-                                .foregroundStyle(issue.isCritical ? Color.red : Color.orange)
-                            Text(issue.message)
-                                .font(.footnote)
-                                .foregroundStyle(issue.isCritical ? Color.red : Color.secondary)
-                                .lineLimit(1)
-                            Spacer(minLength: 0)
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.tertiary)
+                ForEach(visibleHostIssues) { issue in
+                    if issue.navigates {
+                        Button { presentHosts(issue.hostID) } label: {
+                            hostIssueRow(issue, showsChevron: true)
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Opens this Host's settings.")
+                    } else {
+                        hostIssueRow(issue, showsChevron: false)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Opens this Host's settings.")
                 }
                 ForEach(filteredAgents) { agent in
                     NavigationLink(value: agent.id) {
@@ -329,6 +310,14 @@ struct ConsoleView: View {
         }
     }
 
+    private var agentsSurface: ConsoleAgentsSurface {
+        ConsoleAgentsSurface(
+            hostCount: hosts.hosts.count,
+            filteredHostName: hostFilter == nil ? nil : filteredHostName,
+            filteredAgentCount: filteredAgents.count,
+            visibleIssueCount: visibleHostIssues.count)
+    }
+
     private var filteredAgents: [ConsoleAgent] {
         guard let hostFilter else { return console.agents }
         return console.agents.filter { $0.hostID == hostFilter }
@@ -336,28 +325,13 @@ struct ConsoleView: View {
 
     /// Host issues shown in the list: all of them, or the filtered Host's
     /// only — a filtered Console should not nag about other machines.
-    private var visibleHostIssues: [HostIssue] {
+    private var visibleHostIssues: [ConsoleHostStatusPresentation] {
         guard let hostFilter else { return hostIssues }
-        return hostIssues.filter { $0.id == hostFilter }
+        return hostIssues.filter { $0.hostID == hostFilter }
     }
 
     private var filteredHostName: String {
         hosts.hosts.first(where: { $0.id == hostFilter })?.displayName ?? "this Host"
-    }
-
-    private var emptyDescription: String {
-        if hostIssues.isEmpty {
-            return "Agents detected on your Hosts appear here."
-        }
-        return hostIssues.map(\.message).joined(separator: "\n")
-    }
-
-    private struct HostIssue {
-        let id: Host.ID
-        let hostName: String
-        let message: String
-        let systemImage: String
-        let isCritical: Bool
     }
 
     private struct HostSheet: Identifiable {
@@ -367,53 +341,41 @@ struct ConsoleView: View {
 
     /// One actionable status per Host. A disconnected session takes priority;
     /// otherwise a connected Host can still have a failing snapshot RPC.
-    private var hostIssues: [HostIssue] {
+    private var hostIssues: [ConsoleHostStatusPresentation] {
         hosts.hosts.compactMap { host in
-            // The two failing arms present through different functions on
-            // purpose; see Connection Guidance in `CONTEXT.md` for what each
-            // surface shows (#156). What is local to here: the split is
-            // exhaustive at the source, because `.reconnecting` is emitted
-            // solely past a `guard failure.isRetryable`, so `summary(for:)`
-            // needs arms for the retryable set alone.
-            switch console.hostStatuses[host.id] {
-            case .reconnecting(_, _, let failure):
-                return HostIssue(
-                    id: host.id,
-                    hostName: host.displayName,
-                    message: "Reconnecting to \(host.displayName): \(summary(for: failure))",
-                    systemImage: "wifi.exclamationmark",
-                    isCritical: false)
-            case .failed(let failure):
-                return HostIssue(
-                    id: host.id,
-                    hostName: host.displayName,
-                    message: "\(host.displayName): \(failure.connectionGuidance)",
-                    systemImage: failure.isHostKeySecurityFailure
-                        ? "exclamationmark.shield.fill" : "exclamationmark.triangle.fill",
-                    isCritical: failure.isHostKeySecurityFailure)
-            case .connected, .suspended, .ended, nil:
-                break
-            }
-            if let message = console.hostSyncErrors[host.id] {
-                return HostIssue(
-                    id: host.id,
-                    hostName: host.displayName,
-                    message: "\(host.displayName): \(message)",
-                    systemImage: "arrow.trianglehead.2.clockwise",
-                    isCritical: false)
-            }
-            return nil
+            ConsoleHostStatusPresentation(
+                host: host,
+                status: console.hostStatuses[host.id],
+                standingFailure: console.hostStandingFailures[host.id],
+                isAwaitingSnapshot: console.hostsAwaitingSnapshot.contains(host.id),
+                syncError: console.hostSyncErrors[host.id])
         }
     }
 
-    private func summary(for failure: TransportError) -> String {
-        switch failure {
-        case .sshUnreachable: "SSH unavailable"
-        case .timedOut: "request timed out"
-        case .cancelled: "request was cancelled"
-        case .channelFailed: "connection dropped"
-        case .apiRejected: "herdr rejected the request"
-        default: "connection failed"
+    private func hostIssueRow(
+        _ issue: ConsoleHostStatusPresentation, showsChevron: Bool
+    ) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: issue.systemImage)
+                .foregroundStyle(hostIssueTint(issue))
+            Text(issue.message)
+                .font(.footnote)
+                .foregroundStyle(issue.isCritical ? Color.red : Color.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    private func hostIssueTint(_ issue: ConsoleHostStatusPresentation) -> Color {
+        switch issue.severity {
+        case .critical: .red
+        case .warning: .orange
+        case .informational: .secondary
         }
     }
 
@@ -451,47 +413,46 @@ private struct ConsoleStatusBarModifier: ViewModifier {
 }
 
 /// What the detail column shows when the selected Agent is no longer in the
-/// Console list. Four different situations empty that list and they need
-/// four different answers (#141, #146, #154).
+/// Console list. Six conditions empty that list and they need six answers
+/// (#141, #146, #154, #155).
 ///
-/// They are easy to conflate because every non-`.connected` status runs
-/// `invalidateSnapshot()`, clearing `agentsByPane` — so a Host that failed,
-/// and a Host that is reconnecting, each leave the list exactly as empty as
-/// a pane that closed. Reading the empty list alone, "this pane is no longer
-/// reported" is simply false in both: it names the Agent for the Host's
-/// trouble and points at the wrong remedy, while the text written for the
-/// failure — the guidance on `.failed`, the Console's short phrase on
-/// `.reconnecting` — rendered only in the Console list behind it.
-///
-/// Only `.failed` gets that guidance here; `.reconnecting` gets a message
-/// written for it rather than borrowing either neighbour (#154). See
-/// Connection Guidance in `CONTEXT.md`, which records what all four
-/// status-reading surfaces show and points at #163 for whether the split is
-/// right (#156).
+/// Read Host Connection Status first, then Standing Failure, then the Agent
+/// Inventory. A Standing Failure changes only what `.connecting` looks like.
+/// The inventory is consulted only under `.connected`.
 struct MissingAgentPresentation: Equatable {
     /// Which situation emptied the list. Explicit so that collapsing them
     /// into a single message cannot happen by accident.
     enum Cause: Hashable {
-        /// The Host's session stopped on a failure no retry can clear; the
-        /// guidance for most of that set names an action only the user can
-        /// take.
-        case hostFailed
-        /// The connection dropped and the session is re-establishing it.
-        /// Nobody needs to act, so this says so instead of borrowing either
-        /// of the others (#154).
+        case hostSuspended
+        case hostConnecting
         case hostReconnecting
-        /// The Host transport is connected, but its first replacement
-        /// snapshot has not landed yet, so the selected pane is not known to
-        /// be present or gone.
-        case hostSyncing
-        /// The Host is fine and this one pane is gone.
+        /// A stopped Host, or a `.connecting` Host that still carries a
+        /// Standing Failure.
+        case hostFailed
+        /// The Host is Connected, but its first snapshot for this connection
+        /// has not landed yet.
+        case hostLoadingAgents
         case paneGone
+    }
+
+    enum RenderingMode: Equatable {
+        case progress
+        case staticUnavailable
     }
 
     let cause: Cause
     let title: String
     let systemImage: String
     let message: String
+
+    var renderingMode: RenderingMode {
+        switch cause {
+        case .hostConnecting, .hostReconnecting, .hostLoadingAgents:
+            .progress
+        case .hostSuspended, .hostFailed, .paneGone:
+            .staticUnavailable
+        }
+    }
 
     /// Resolves the Host from the selection rather than taking a status the
     /// caller looked up: the pane address alone is not unique across Hosts,
@@ -507,62 +468,61 @@ struct MissingAgentPresentation: Equatable {
         agentID: ConsoleAgent.ID,
         hostStatuses: [Host.ID: EventsSessionStatus],
         hosts: [Host],
-        hostsAwaitingSnapshot: Set<Host.ID> = []
+        hostsAwaitingSnapshot: Set<Host.ID> = [],
+        hostStandingFailures: [Host.ID: TransportError] = [:]
     ) {
         let hostName = hosts.first { $0.id == agentID.hostID }?.displayName
-        // Named like the Console list's own entries, so the same Host reads
-        // the same way in both places.
         func named(_ text: String) -> String {
             hostName.map { "\($0): \(text)" } ?? text
         }
-        let hostStatus = hostStatuses[agentID.hostID]
-        if hostsAwaitingSnapshot.contains(agentID.hostID) {
-            switch hostStatus {
-            case .failed, .reconnecting, .ended:
-                break
-            case .connected, .suspended, nil:
-                cause = .hostSyncing
-                title = "Connecting…"
-                systemImage = "hourglass"
-                message = named("Loading the latest Agents.")
-                return
-            }
+        func applyFailed(_ failure: TransportError) -> (
+            Cause, String, String, String
+        ) {
+            (
+                .hostFailed,
+                "Host Unavailable",
+                failure.isHostKeySecurityFailure
+                    ? "exclamationmark.shield.fill" : "exclamationmark.triangle.fill",
+                named(failure.presentation.message)
+            )
         }
+        let hostStatus = hostStatuses[agentID.hostID]
+        let standingFailure = hostStandingFailures[agentID.hostID]
         switch hostStatus {
-        case .failed(let failure):
-            cause = .hostFailed
-            title = "Host Unavailable"
-            systemImage = failure.isHostKeySecurityFailure
-                ? "exclamationmark.shield.fill" : "exclamationmark.triangle.fill"
-            message = named(failure.connectionGuidance)
-        case .reconnecting:
+        case .suspended:
+            cause = .hostSuspended
+            title = "Connection Paused"
+            systemImage = "pause.circle"
+            message = named("The connection is paused until Heeler becomes active.")
+        case .connecting:
+            if let standingFailure {
+                (cause, title, systemImage, message) = applyFailed(standingFailure)
+            } else {
+                cause = .hostConnecting
+                title = "Connecting…"
+                systemImage = "dot.radiowaves.left.and.right"
+                message = named("Opening the connection.")
+            }
+        case .reconnecting(_, _, let failure):
             cause = .hostReconnecting
             title = "Reconnecting…"
-            // Deliberately not the Console list's `wifi.exclamationmark`.
-            // There the row is one entry in a list of issues, where the alert
-            // mark is the point; a whole screen whose message is "nothing to
-            // do" should not open by shouting.
             systemImage = "arrow.trianglehead.2.clockwise"
-            // Deliberately not `connectionGuidance`. `.reconnecting` is
-            // emitted solely past a `guard failure.isRetryable`, and for that
-            // set the guidance names no action either — it restates the
-            // failure, appending the transport's raw detail in three of the
-            // five and nothing at all in `timedOut` and `cancelled`. This
-            // says what is happening instead. Whether the retryable set
-            // should name actions at all is #163.
-            message = named(
-                "The connection dropped and is being re-established. "
-                    + "Nothing to do — the Agents come back on their own.")
-        case .connected, .suspended, .ended, nil:
-            // `.suspended` stays here on purpose. A suspended session is not
-            // re-establishing anything; it is waiting to be told to, so
-            // "reconnecting" would be the wrong claim. There is a real gap
-            // behind that — nothing is emitted between the resume and the
-            // `.connected` that ends it, so a Host dialling on the foreground
-            // return is indistinguishable from one sitting idle, and the
-            // window is a whole SSH connect plus ping wide. Closing it means
-            // a new status at the transport seam, not a case here, so it is
-            // #155 rather than something widened into this.
+            message = named(failure.presentation.summary)
+        case .failed(let failure):
+            (cause, title, systemImage, message) = applyFailed(failure)
+        case .connected:
+            if hostsAwaitingSnapshot.contains(agentID.hostID) {
+                cause = .hostLoadingAgents
+                title = "Loading Agents…"
+                systemImage = "hourglass"
+                message = named("Fetching the latest Agents.")
+            } else {
+                cause = .paneGone
+                title = "Agent Gone"
+                systemImage = "rectangle.on.rectangle.slash"
+                message = "This Agent's pane is no longer reported."
+            }
+        case .ended, nil:
             cause = .paneGone
             title = "Agent Gone"
             systemImage = "rectangle.on.rectangle.slash"
@@ -591,15 +551,7 @@ struct MissingAgentPresentation: Equatable {
             agentID: agentID,
             hostStatuses: console.hostStatuses,
             hosts: hosts.hosts,
-            hostsAwaitingSnapshot: console.hostsAwaitingSnapshot)
-    }
-}
-
-private extension TransportError {
-    var isHostKeySecurityFailure: Bool {
-        switch self {
-        case .hostKeyMismatch: true
-        default: false
-        }
+            hostsAwaitingSnapshot: console.hostsAwaitingSnapshot,
+            hostStandingFailures: console.hostStandingFailures)
     }
 }

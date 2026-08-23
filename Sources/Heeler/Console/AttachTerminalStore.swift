@@ -281,7 +281,7 @@ final class AttachTerminalStore {
         }
     }
 
-    private static func message(for error: any Error) -> String {
+    static func message(for error: any Error) -> String {
         switch error {
         case TransportError.sshUnreachable:
             "The Host is not connected."
@@ -290,7 +290,7 @@ final class AttachTerminalStore {
         case TransportError.timedOut:
             "The Host did not answer in time."
         case TransportError.herdrBinaryNotFound:
-            TransportError.herdrBinaryNotFound.connectionGuidance
+            TransportError.herdrBinaryNotFound.presentation.message
         default:
             "The session failed: \(error)"
         }

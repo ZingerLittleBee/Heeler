@@ -14,6 +14,7 @@ final class ConsoleStore {
 
     private(set) var agents: [ConsoleAgent] = []
     private(set) var hostStatuses: [Host.ID: EventsSessionStatus] = [:]
+    private(set) var hostStandingFailures: [Host.ID: TransportError] = [:]
     private(set) var hostLatencies: [Host.ID: Duration] = [:]
     private(set) var hostSyncErrors: [Host.ID: String] = [:]
     private(set) var hostConnectionGenerations: [Host.ID: UInt64] = [:]
@@ -400,6 +401,10 @@ final class ConsoleStore {
         hostStatuses = Dictionary(
             uniqueKeysWithValues: current.compactMap { projection in
                 projection.status.map { (projection.host.id, $0) }
+            })
+        hostStandingFailures = Dictionary(
+            uniqueKeysWithValues: current.compactMap { projection in
+                projection.standingFailure.map { (projection.host.id, $0) }
             })
         hostLatencies = Dictionary(
             uniqueKeysWithValues: current.compactMap { projection in

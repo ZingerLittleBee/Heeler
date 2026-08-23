@@ -4,21 +4,22 @@ import Testing
 @testable import Heeler
 
 /// What the session screen's detail column says when the selected Agent is no
-/// longer in the Console list (#146, #154).
+/// longer in the Console list (#146, #154, #155).
 ///
-/// Four situations empty that list and the screen has to tell them apart.
+/// Six situations empty that list and the screen has to tell them apart.
 /// Every non-`.connected` status runs `invalidateSnapshot()`, so a Host that
 /// failed and a Host that is reconnecting each clear `agentsByPane` exactly as
 /// a closed pane does — and the placeholder then blamed the Agent for the
 /// Host's trouble, while the text written for the failure rendered only in the
 /// Console list behind the screen: the guidance on `.failed`, the shorter
 /// phrase that list composes on `.reconnecting`. Which surface renders which
-/// text is Connection Guidance in `CONTEXT.md`; what this suite pins is what
-/// reaches this screen.
+/// text is Transport Error Presentation in `CONTEXT.md`; what this suite
+/// pins is what reaches this screen.
 ///
-/// So the tests cover all four causes and the fields that carry them —
-/// message, title and icon — plus which Host the screen reads them from, and
-/// that the column reads the live stores rather than a snapshot (#152).
+/// So the tests cover all six causes and the fields that carry them —
+/// message, title, icon, and rendering mode — plus which Host the screen
+/// reads them from, and that the column reads the live stores rather than a
+/// snapshot (#152).
 ///
 /// #142 is what made that routine rather than rare: every foreground return
 /// re-proves the connection, so a herdr stopped while the app was away takes
@@ -36,9 +37,7 @@ struct ConsoleDetailPresentationTests {
 
     private static let paneGoneMessage = "This Agent's pane is no longer reported."
 
-    private static let reconnectingMessage =
-        "The connection dropped and is being re-established. "
-        + "Nothing to do — the Agents come back on their own."
+    private static let reconnectingSummary = TransportError.timedOut.presentation.summary
 
     /// The case the ticket names: a Host actually driven to `.failed`, and
     /// what the screen renders once its Agent list has emptied.
@@ -71,6 +70,7 @@ struct ConsoleDetailPresentationTests {
 
         #expect(presentation.cause == .hostFailed)
         #expect(presentation.title == "Host Unavailable")
+        #expect(presentation.renderingMode == .staticUnavailable)
         #expect(presentation.message == "\(host.displayName): \(Self.socketGuidance)")
         // Not the Agent's fault, and not both stories at once.
         #expect(!presentation.message.contains("pane is no longer reported"))
@@ -124,6 +124,42 @@ struct ConsoleDetailPresentationTests {
         console.setHosts([])
     }
 
+    /// A value-only fixture cannot reach the old precedence bug: unknown
+    /// inventory plus `.suspended` used to say "Connecting…". Driving the
+    /// live stores after a real suspend is what pins the honest arm.
+    @Test func aStoreBackedSuspendedHostWithUnknownInventorySaysPaused() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        let console = makeStore(transport: transport)
+        let hosts = HostStore(volatileHosts: [host])
+
+        console.setHosts([host])
+        await console.resume()
+        try await waitUntil("the Host should come up connected") {
+            console.hostStatuses[host.id] == .connected
+        }
+        try await waitUntil("its Agents should land") {
+            !console.agents.isEmpty && !console.hostsAwaitingSnapshot.contains(host.id)
+        }
+
+        await console.suspend()
+        try await waitUntil("the Host should suspend") {
+            console.hostStatuses[host.id] == .suspended
+        }
+        #expect(console.hostsAwaitingSnapshot.contains(host.id))
+        #expect(console.agents.isEmpty)
+
+        let presentation = MissingAgentPresentation(
+            agentID: ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1"),
+            console: console,
+            hosts: hosts)
+        #expect(presentation.cause == .hostSuspended)
+        #expect(presentation.title == "Connection Paused")
+        #expect(presentation.renderingMode == .staticUnavailable)
+        console.setHosts([])
+    }
+
     /// The other half: with the Host fine, the placeholder means what it says.
     @Test func aVanishedPaneOnAHealthyHostStillSaysTheAgentIsGone() {
         let host = Host.fixture()
@@ -152,8 +188,10 @@ struct ConsoleDetailPresentationTests {
             hosts: [host],
             hostsAwaitingSnapshot: [host.id])
 
-        #expect(presentation.cause == .hostSyncing)
-        #expect(presentation.title == "Connecting…")
+        #expect(presentation.cause == .hostLoadingAgents)
+        #expect(presentation.title == "Loading Agents…")
+        #expect(presentation.renderingMode == .progress)
+        #expect(presentation.message == "\(host.displayName): Fetching the latest Agents.")
         #expect(!presentation.message.contains("no longer reported"))
     }
 
@@ -204,7 +242,7 @@ struct ConsoleDetailPresentationTests {
             hostStatuses: statuses, hosts: all)
         #expect(onDropped.cause == .hostReconnecting)
         #expect(onDropped.title == "Reconnecting…")
-        #expect(onDropped.message == "\(dropped.displayName): \(Self.reconnectingMessage)")
+        #expect(onDropped.message == "\(dropped.displayName): \(Self.reconnectingSummary)")
         #expect(!onDropped.message.contains("no longer reported"))
     }
 
@@ -288,24 +326,26 @@ struct ConsoleDetailPresentationTests {
 
             #expect(presentation.cause == .hostReconnecting)
             #expect(presentation.title == "Reconnecting…")
+            #expect(presentation.renderingMode == .progress)
             // Pinned by value, not merely as "some distinct icon": the
             // Console list's `wifi.exclamationmark` is the obvious thing to
-            // reach for and the source rejects it on purpose, because a
-            // whole screen whose message is "nothing to do" should not open
-            // by shouting.
+            // reach for and the source rejects it on purpose: a progress
+            // screen should not open by shouting.
             #expect(presentation.systemImage == "arrow.trianglehead.2.clockwise")
             // A message that renders empty would leave the screen blank at
             // the moment it most needs to explain itself.
             #expect(!presentation.message.isEmpty)
-            #expect(presentation.message == "\(host.displayName): \(Self.reconnectingMessage)")
+            #expect(
+                presentation.message
+                    == "\(host.displayName): \(failure.presentation.summary)")
             // The teeth carried over from the test this was split out of: the
             // guidance names a user action, and here the app is the one
             // acting, so none of it may appear. Its being non-empty is
             // asserted rather than assumed, because a failure kind whose
             // guidance rendered empty would leave the line below asserting
             // nothing at all about this arm.
-            #expect(!failure.connectionGuidance.isEmpty)
-            #expect(!presentation.message.contains(failure.connectionGuidance))
+            #expect(!failure.presentation.message.isEmpty)
+            #expect(!presentation.message.contains(failure.presentation.message))
             // Nor may it fall back to blaming the Agent.
             #expect(!presentation.message.contains("no longer reported"))
         }
@@ -342,9 +382,10 @@ struct ConsoleDetailPresentationTests {
 
             #expect(presentation.cause == .hostReconnecting)
             #expect(presentation.title == "Reconnecting…")
+            #expect(presentation.renderingMode == .progress)
             #expect(presentation.systemImage == "arrow.trianglehead.2.clockwise")
             #expect(!presentation.message.isEmpty)
-            #expect(presentation.message == Self.reconnectingMessage)
+            #expect(presentation.message == TransportError.timedOut.presentation.summary)
             // Unprefixed, because there is no name to prefix it with — not
             // prefixed with something invented in its place, and not with
             // whichever Host the list does still hold.
@@ -354,21 +395,65 @@ struct ConsoleDetailPresentationTests {
         }
     }
 
-    /// The remainder of that original test. A paused or healthy Host still
-    /// gets the placeholder — `.suspended` deliberately included, because a
-    /// suspended session is not re-establishing anything, it is waiting to be
-    /// told to, and claiming otherwise would be a different wrong answer.
-    @Test func aPausedOrHealthyHostStillSaysTheAgentIsGone() {
+    /// A healthy, ended, or deleted Host still gets the placeholder. `nil`
+    /// stays Agent Gone because it also covers a deleted Host whose
+    /// projection is gone from both maps.
+    @Test func aHealthyOrDeletedHostStillSaysTheAgentIsGone() {
         let host = Host.fixture()
-        let atRest: [EventsSessionStatus?] = [.suspended, .connected, .ended, nil]
+        let atRest: [EventsSessionStatus?] = [.connected, .ended, nil]
         for status in atRest {
             let presentation = MissingAgentPresentation(
                 agentID: ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1"),
                 hostStatuses: status.map { [host.id: $0] } ?? [:],
                 hosts: [host])
             #expect(presentation.cause == .paneGone)
+            #expect(presentation.title == "Agent Gone")
+            #expect(presentation.renderingMode == .staticUnavailable)
             #expect(presentation.message == Self.paneGoneMessage)
         }
+    }
+
+    @Test func aSuspendedHostSaysTheConnectionIsPaused() {
+        let host = Host.fixture()
+        let presentation = MissingAgentPresentation(
+            agentID: ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1"),
+            hostStatuses: [host.id: .suspended],
+            hosts: [host],
+            hostsAwaitingSnapshot: [host.id])
+        #expect(presentation.cause == .hostSuspended)
+        #expect(presentation.title == "Connection Paused")
+        #expect(presentation.renderingMode == .staticUnavailable)
+        #expect(
+            presentation.message
+                == "\(host.displayName): The connection is paused until Heeler becomes active.")
+        #expect(!presentation.message.contains("no longer reported"))
+        #expect(!presentation.message.contains("Connecting"))
+    }
+
+    @Test func connectingWithoutAStandingFailureShowsProgress() {
+        let host = Host.fixture()
+        let presentation = MissingAgentPresentation(
+            agentID: ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1"),
+            hostStatuses: [host.id: .connecting],
+            hosts: [host])
+        #expect(presentation.cause == .hostConnecting)
+        #expect(presentation.title == "Connecting…")
+        #expect(presentation.renderingMode == .progress)
+        #expect(presentation.message == "\(host.displayName): Opening the connection.")
+    }
+
+    @Test func connectingWithAStandingFailureKeepsTheFailedPresentation() {
+        let host = Host.fixture()
+        let failure = TransportError.streamLocalOpenFailed(path: "/s")
+        let presentation = MissingAgentPresentation(
+            agentID: ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1"),
+            hostStatuses: [host.id: .connecting],
+            hosts: [host],
+            hostStandingFailures: [host.id: failure])
+        #expect(presentation.cause == .hostFailed)
+        #expect(presentation.title == "Host Unavailable")
+        #expect(presentation.renderingMode == .staticUnavailable)
+        #expect(presentation.message == "\(host.displayName): \(failure.presentation.message)")
     }
 
     /// The approved socket wording is what reaches the screen, unabbreviated
@@ -378,7 +463,7 @@ struct ConsoleDetailPresentationTests {
         // Pinned here as well as at its source: this screen is now one of the
         // two places it renders, and the two must not drift apart.
         #expect(
-            TransportError.streamLocalOpenFailed(path: socketPath).connectionGuidance
+            TransportError.streamLocalOpenFailed(path: socketPath).presentation.message
                 == Self.socketGuidance)
 
         let host = Host.fixture()
@@ -397,39 +482,51 @@ struct ConsoleDetailPresentationTests {
             // nothing at all, which is worse than the wrong message it
             // replaced.
             #expect(!presentation.message.isEmpty)
-            #expect(presentation.message == failure.connectionGuidance)
+            #expect(presentation.message == failure.presentation.message)
             #expect(
                 !presentation.message.lowercased()
                     .contains("remote socket is not listening"))
         }
     }
 
-    /// The four causes stay distinct on every field the screen renders. A
-    /// shared message is the defect restated; a shared title or icon is the
-    /// same collapse arriving through the part of the screen a user reads
-    /// first.
-    @Test func theFourCausesNeverCollapseIntoOneAnswer() {
+    /// The six causes stay distinct on every field the screen renders,
+    /// including rendering mode — that is what keeps a progress surface from
+    /// being a failure surface.
+    @Test func theSixCausesNeverCollapseIntoOneAnswer() {
         let host = Host.fixture()
         let agentID = ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1")
-        func presentation(_ status: EventsSessionStatus) -> MissingAgentPresentation {
-            MissingAgentPresentation(
-                agentID: agentID, hostStatuses: [host.id: status], hosts: [host])
-        }
-        let all = [
-            presentation(.failed(.streamLocalOpenFailed(path: "/s"))),
-            presentation(.reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut)),
-            presentation(.connected),
+        func presentation(
+            _ status: EventsSessionStatus,
+            standing: TransportError? = nil,
+            awaiting: Bool = false
+        ) -> MissingAgentPresentation {
             MissingAgentPresentation(
                 agentID: agentID,
-                hostStatuses: [host.id: .connected],
+                hostStatuses: [host.id: status],
                 hosts: [host],
-                hostsAwaitingSnapshot: [host.id]),
+                hostsAwaitingSnapshot: awaiting ? [host.id] : [],
+                hostStandingFailures: standing.map { [host.id: $0] } ?? [:])
+        }
+        let all = [
+            presentation(.suspended),
+            presentation(.connecting),
+            presentation(.reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut)),
+            presentation(.failed(.streamLocalOpenFailed(path: "/s"))),
+            presentation(.connected, awaiting: true),
+            presentation(.connected),
         ]
 
-        #expect(Set(all.map(\.cause)).count == 4)
-        #expect(Set(all.map(\.title)).count == 4)
-        #expect(Set(all.map(\.message)).count == 4)
-        #expect(Set(all.map(\.systemImage)).count == 4)
+        #expect(Set(all.map(\.cause)).count == 6)
+        #expect(Set(all.map(\.title)).count == 6)
+        #expect(Set(all.map(\.message)).count == 6)
+        #expect(Set(all.map(\.systemImage)).count == 6)
+        #expect(
+            all.map(\.renderingMode) == [
+                .staticUnavailable, .progress, .progress, .staticUnavailable, .progress,
+                .staticUnavailable,
+            ])
+        #expect(presentation(.connecting, standing: .streamLocalOpenFailed(path: "/s")).cause
+            == .hostFailed)
     }
 
     /// A changed host key is a security refusal, not an ordinary outage, and
@@ -448,6 +545,19 @@ struct ConsoleDetailPresentationTests {
             ],
             hosts: [host])
         #expect(mismatch.systemImage == "exclamationmark.shield.fill")
+
+        let jumpMismatch = MissingAgentPresentation(
+            agentID: agentID,
+            hostStatuses: [
+                host.id: .failed(
+                    .jumpHostFailed(
+                        .hostKeyMismatch(
+                            known: HostKeyFingerprint(publicKeyBlob: Data("known".utf8)),
+                            presented: HostKeyFingerprint(
+                                publicKeyBlob: Data("presented".utf8)))))
+            ],
+            hosts: [host])
+        #expect(jumpMismatch.systemImage == "exclamationmark.shield.fill")
 
         let outage = MissingAgentPresentation(
             agentID: agentID,

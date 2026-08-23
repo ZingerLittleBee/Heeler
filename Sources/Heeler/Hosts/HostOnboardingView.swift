@@ -7,6 +7,7 @@ struct HostOnboardingView: View {
     /// The Host catalog, for the Edit sheet.
     let catalog: HostStore
     let connectionStatus: EventsSessionStatus?
+    let standingFailure: TransportError?
     /// True while Console is serving a Host-detail Reconnect press (the
     /// retry call plus the 1.2 s visual-feedback hold). Distinct from
     /// `EventsSessionStatus.reconnecting`.
@@ -21,11 +22,13 @@ struct HostOnboardingView: View {
         host: Host,
         catalog: HostStore,
         connectionStatus: EventsSessionStatus? = nil,
+        standingFailure: TransportError? = nil,
         isManualReconnectInFlight: Bool = false,
         retryConnection: (@MainActor @Sendable () async -> Void)? = nil
     ) {
         self.catalog = catalog
         self.connectionStatus = connectionStatus
+        self.standingFailure = standingFailure
         self.isManualReconnectInFlight = isManualReconnectInFlight
         self.retryConnection = retryConnection
         _store = State(initialValue: HostOnboardingStore(host: host))
@@ -206,6 +209,7 @@ struct HostOnboardingView: View {
     private var connectionPresentation: HostOnboardingConnectionPresentation {
         HostOnboardingConnectionPresentation(
             status: connectionStatus,
+            standingFailure: standingFailure,
             isManualReconnectInFlight: isManualReconnectInFlight)
     }
 
@@ -262,14 +266,11 @@ struct HostOnboardingView: View {
     }
 }
 
-/// Connection Guidance for the Host detail footer.
+/// Host detail footer copy, derived from Host Connection Status.
 ///
-/// `.reconnecting` and `.failed` share an arm here, which no other surface
-/// does: the Console list and the Agent screen show the guidance for
-/// `.failed` only, and the Hosts rows show a chip instead. So this is the
-/// one place the guidance appears while a retry is in flight, where it
-/// names no action — see Connection Guidance in `CONTEXT.md` (#156), and
-/// #163 for whether that is the right text.
+/// Automatic recovery shows the Explanation only — Summary and Detail, no
+/// Recovery Suggestion. A stopped Host shows the whole presentation. See
+/// Transport Error Presentation in `CONTEXT.md`.
 ///
 /// `isManualReconnectInFlight` is a Console-owned Reconnect press (the
 /// retry call plus its 1.2 s hold), not `EventsSessionStatus.reconnecting`.
@@ -277,15 +278,23 @@ struct HostOnboardingView: View {
 /// The animation value stays `connectionErrorMessage` so a press does not
 /// drive the footer's 0.25 s transition.
 struct HostOnboardingConnectionPresentation: Equatable {
-    /// Guidance derived from session status only. The footer animation
-    /// observes this; a manual Reconnect request does not change it.
+    /// Status-derived footer text. The footer animation observes this; a
+    /// manual Reconnect request does not change it.
     let connectionErrorMessage: String?
     let footerMessage: String?
 
-    init(status: EventsSessionStatus?, isManualReconnectInFlight: Bool) {
+    init(
+        status: EventsSessionStatus?,
+        standingFailure: TransportError? = nil,
+        isManualReconnectInFlight: Bool
+    ) {
         switch status {
-        case .reconnecting(_, _, let failure), .failed(let failure):
-            connectionErrorMessage = failure.connectionGuidance
+        case .connecting:
+            connectionErrorMessage = standingFailure?.presentation.message
+        case .reconnecting(_, _, let failure):
+            connectionErrorMessage = failure.presentation.explanation
+        case .failed(let failure):
+            connectionErrorMessage = failure.presentation.message
         case .connected, .suspended, .ended, nil:
             connectionErrorMessage = nil
         }

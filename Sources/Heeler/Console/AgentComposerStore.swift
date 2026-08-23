@@ -265,7 +265,7 @@ final class AgentComposerStore: ComposerDraftOperations {
     private static let unsafeTextMessage =
         "The message contains unsafe terminal control characters."
 
-    private static func message(for error: any Error) -> String {
+    static func message(for error: any Error) -> String {
         switch error {
         case TransportError.sshUnreachable:
             "The Host is not connected. Check the connection and retry."
@@ -274,7 +274,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         case let error as HerdrAPIError:
             "herdr rejected the message: \(error.message)"
         case let error as TransportError:
-            error.connectionGuidance
+            error.presentation.message
         default:
             missingAttachMessage
         }

@@ -42,6 +42,7 @@ struct EventsSessionKeepaliveTests {
         var updates = session.updates.makeAsyncIterator()
 
         await session.resume()
+        #expect(await updates.next() == .status(.connecting))
         #expect(await updates.next() == .status(.connected))
 
         guard case .status(.reconnecting(let attempt, _, let failure)) = await updates.next()
@@ -77,6 +78,7 @@ struct EventsSessionKeepaliveTests {
         var updates = session.updates.makeAsyncIterator()
 
         await session.resume()
+        #expect(await updates.next() == .status(.connecting))
         #expect(await updates.next() == .status(.connected))
 
         // ~500ms of continuous events straddles two keepalive wakeups.

@@ -207,7 +207,7 @@ final class NotificationPreferencesStore {
         }
     }
 
-    private static func message(for error: any Error) -> String {
+    static func message(for error: any Error) -> String {
         switch error {
         case NotificationRegistrationError.pluginNotInstalled:
             "Install the Heeler plugin on this Host, then check again."
@@ -229,7 +229,7 @@ final class NotificationPreferencesStore {
         case TransportError.timedOut:
             "The Host did not answer in time."
         case TransportError.herdrBinaryNotFound:
-            TransportError.herdrBinaryNotFound.connectionGuidance
+            TransportError.herdrBinaryNotFound.presentation.message
         case is TransportError:
             "The connection to the Host failed."
         default:
