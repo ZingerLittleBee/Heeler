@@ -63,6 +63,7 @@
 		3662BE3559CB08401960176C /* AgentNotificationRoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B02412C186BA855DFD9379A /* AgentNotificationRoutingTests.swift */; };
 		3684BDED2C234F399A6758C9 /* GhosttyTheme in Frameworks */ = {isa = PBXBuildFile; productRef = E086C559FC229264CF662993 /* GhosttyTheme */; };
 		36FB81E449F98DC68A366C2E /* HerdrAPITypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F7065C3BE109D2F52AE3BC2 /* HerdrAPITypes.swift */; };
+		388498BDF8F2848EA515819B /* HostOnboardingPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67D6865847B4D827038D1AF0 /* HostOnboardingPresentationTests.swift */; };
 		3ABBA2BF9C6B51EF1E0C7314 /* TerminalKeysKeyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC019B4A164A7B01F1D46344 /* TerminalKeysKeyboard.swift */; };
 		3BB63A16095664E8C760286C /* AgentComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52407E936051CF1EF746647 /* AgentComposerView.swift */; };
 		3C5AFE8D3844A13198DDBEEA /* AttachLinkIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5870640477FDEB252DEE80B7 /* AttachLinkIndex.swift */; };
@@ -440,6 +441,7 @@
 		651D511E8A282C4CB0214098 /* TerminalTitleGlyphs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTitleGlyphs.swift; sourceTree = "<group>"; };
 		65CFDDFD7A676ECD4EF29BDE /* SSHSourcePolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHSourcePolicyTests.swift; sourceTree = "<group>"; };
 		67AAFD0BF81441DB59EEF7AA /* NotificationRegistrationFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRegistrationFile.swift; sourceTree = "<group>"; };
+		67D6865847B4D827038D1AF0 /* HostOnboardingPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostOnboardingPresentationTests.swift; sourceTree = "<group>"; };
 		6803A0055A861DFCA2A67217 /* AgentCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentCardView.swift; sourceTree = "<group>"; };
 		6876069E2B641D09FF1520E6 /* NotificationRelayEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRelayEndpoint.swift; sourceTree = "<group>"; };
 		6908778391053E855ED67E36 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -696,6 +698,7 @@
 				F9D664871CA1A56418C106BC /* HostDraftTests.swift */,
 				DEABDC4E573B0F9EA67F64F1 /* HostListViewTests.swift */,
 				D3A7DD50C003CDD7220D86CE /* HostLiveActivityCoordinatorTests.swift */,
+				67D6865847B4D827038D1AF0 /* HostOnboardingPresentationTests.swift */,
 				4D961656A6D8B4F3964740BD /* HostOnboardingStoreTests.swift */,
 				0443F1688BCEC3474F278889 /* HostStoreTests.swift */,
 				C4889F56EFEFCC5004A55B4C /* ImagePreparerTests.swift */,
@@ -1563,6 +1566,7 @@
 				9583D6804B8922588AD7F154 /* HostDraftTests.swift in Sources */,
 				B7C3D46ED9FE621924D10C7D /* HostListViewTests.swift in Sources */,
 				18266687C19C47984496DD47 /* HostLiveActivityCoordinatorTests.swift in Sources */,
+				388498BDF8F2848EA515819B /* HostOnboardingPresentationTests.swift in Sources */,
 				D6620368048468EFA09B4142 /* HostOnboardingStoreTests.swift in Sources */,
 				519B9551A9C12FB14C8349FD /* HostStoreTests.swift in Sources */,
 				1EDDD0227C94C6B7C2586A68 /* ImagePreparerTests.swift in Sources */,
