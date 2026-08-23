@@ -282,16 +282,6 @@ public final class SSHConnection: Sendable {
         await driver.holdNextOneShotEstablishedForTesting(hold)
     }
 
-    public func holdEachOneShotEstablishedForTesting(
-        _ hold: @escaping @Sendable () async throws -> Void
-    ) async {
-        await driver.holdEachOneShotEstablishedForTesting(hold)
-    }
-
-    public func clearEachOneShotEstablishedHoldForTesting() async {
-        await driver.clearEachOneShotEstablishedHoldForTesting()
-    }
-
     public func holdNextOwnedLoopTopForTesting(
         _ hold: @escaping @Sendable () async throws -> Void
     ) async {
@@ -324,16 +314,6 @@ public final class SSHConnection: Sendable {
         _ hold: @escaping @Sendable () async -> Void
     ) async {
         await driver.holdNextChannelOpenWaiterRegistrationForTesting(hold)
-    }
-
-    public func holdEachSessionWaitForTesting(
-        _ hold: @escaping @Sendable () async -> Void
-    ) async {
-        await driver.holdEachSessionWaitForTesting(hold)
-    }
-
-    public func clearEachSessionWaitForTesting() async {
-        await driver.clearEachSessionWaitForTesting()
     }
 
     public func sftpUseCountForTesting() async -> Int {

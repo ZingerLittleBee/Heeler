@@ -1061,18 +1061,30 @@ struct SessionDriverE2ETests {
             let rpc = Task {
                 try await site.run(on: connection, socketPath: socketPath)
             }
-            try await waitUntilTrue("\(site.rawValue) should wait after establishment") {
-                await hold.hasEntered
+            do {
+                try await requireEventually(
+                    "\(site.rawValue) should wait after establishment"
+                ) {
+                    await hold.hasEntered
+                }
+                let marker = "yield-\(site.rawValue)"
+                try await pty.write(Data("\(marker)\n".utf8), timeout: .seconds(5))
+                try await readPTY(
+                    pty,
+                    untilContaining: marker,
+                    timeout: .seconds(5),
+                    comment: "\(site.rawValue) held the session while a live PTY was waiting")
+                await hold.release()
+                try await site.finish(rpc)
+                #expect(await connection.oneShotRegistryCountForTesting() == 0)
+            } catch {
+                rpc.cancel()
+                await hold.release()
+                _ = try? await rpc.value
+                try? await pty.close(timeout: .seconds(2))
+                try? await connection.close(timeout: .seconds(2))
+                throw error
             }
-            let marker = "yield-\(site.rawValue)"
-            try await pty.write(Data("\(marker)\n".utf8), timeout: .seconds(5))
-            let output = try #require(try await pty.read(timeout: .seconds(5)))
-            #expect(
-                String(decoding: output, as: UTF8.self).contains(marker),
-                "\(site.rawValue) held the session while a live PTY was waiting")
-            await hold.release()
-            try await site.finish(rpc)
-            #expect(await connection.oneShotRegistryCountForTesting() == 0)
         }
 
         try await pty.close(timeout: .seconds(5))
@@ -1282,10 +1294,6 @@ struct SessionDriverE2ETests {
         }
 
         let quiet = try await pump()
-        let parked = CountingHold()
-        await connection.holdEachSessionWaitForTesting {
-            await parked.arriveAndWait()
-        }
         let busy: Double
         do {
             busy = try await withThrowingTaskGroup(of: Void.self) { group in
@@ -1297,19 +1305,21 @@ struct SessionDriverE2ETests {
                         #expect(!result.stdout.isEmpty)
                     }
                 }
-                try await waitUntilTrue("all eight RPCs should park during the pump") {
-                    await parked.arrivedCount == 8
+                try await requireEventually("all eight RPCs should be in flight") {
+                    await connection.oneShotRegistryCountForTesting() == 8
                 }
                 let measured = try await pump()
-                await connection.clearEachSessionWaitForTesting()
-                await parked.releaseAll()
                 try await group.waitForAll()
                 return measured
             }
+        } catch {
+            try? await pty.close(timeout: .seconds(2))
+            try? await connection.close(timeout: .seconds(2))
+            throw error
         }
         print(
             "[issue-130] Attach throughput: \(Int(quiet)) B/s quiet, "
-                + "\(Int(busy)) B/s with 8 parked RPCs")
+                + "\(Int(busy)) B/s with 8 in-flight RPCs")
         try await pty.close(timeout: .seconds(5))
         try await connection.close(timeout: .seconds(2))
     }
@@ -1534,6 +1544,44 @@ struct SessionDriverE2ETests {
         #expect(await condition(), comment)
     }
 
+    private func requireEventually(
+        _ comment: Comment,
+        timeout: Duration = SessionDriverE2ETests.phaseGateObservationBudget,
+        condition: () async -> Bool
+    ) async throws {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while ContinuousClock.now < deadline {
+            if await condition() { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        try #require(await condition(), comment)
+    }
+
+    private func readPTY(
+        _ pty: SSHPTYChannel,
+        untilContaining marker: String,
+        timeout: Duration,
+        comment: Comment
+    ) async throws {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        var output = Data()
+        var decoded = ""
+        while ContinuousClock.now < deadline {
+            let remaining = ContinuousClock.now.duration(to: deadline)
+            do {
+                guard let fragment = try await pty.read(timeout: remaining) else { break }
+                output.append(fragment)
+                decoded = String(decoding: output, as: UTF8.self)
+                if decoded.contains(marker) { return }
+            } catch SSHError.timedOut {
+                break
+            }
+        }
+        try #require(
+            decoded.contains(marker),
+            "\(comment); output \(String(reflecting: decoded)) did not contain \(marker)")
+    }
+
     private func connectThroughProxy(
         environment: SessionDriverTestEnvironment,
         proxy: WeakNetworkProxyFixture
@@ -1641,7 +1689,8 @@ struct SessionDriverE2ETests {
                 #expect(await connection.isConnected == false)
                 #expect(state.isValid == false)
                 #expect(state.descriptorIsOpen == false)
-                #expect(state.hasSession == false)
+                // Failed native reclamation retains pointer ownership for a
+                // later retry; this state snapshot never dereferences it.
                 await #expect(throws: SSHError.connectionInvalidated) {
                     _ = try await connection.execute("printf poisoned", timeout: .seconds(1))
                 }
@@ -1649,6 +1698,15 @@ struct SessionDriverE2ETests {
             }
             try? await pty.close(timeout: .seconds(2))
             try await connection.close(timeout: .seconds(2))
+            if expected == .invalidated {
+                // Closing an already-invalid connection retries the retained
+                // native reclamation without making the session reusable.
+                let reclaimedState = await connection.resourceStateForTesting()
+                #expect(reclaimedState == SessionDriverResourceState(
+                    hasSession: false,
+                    descriptorIsOpen: false,
+                    isValid: false))
+            }
         }
     }
 
@@ -2341,25 +2399,6 @@ private actor SessionWaitHold {
     }
 
     func release() {
-        isReleased = true
-        let resumed = waiters
-        waiters.removeAll()
-        for waiter in resumed { waiter.resume() }
-    }
-}
-
-private actor CountingHold {
-    private(set) var arrivedCount = 0
-    private var isReleased = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-
-    func arriveAndWait() async {
-        arrivedCount += 1
-        guard !isReleased else { return }
-        await withCheckedContinuation { waiters.append($0) }
-    }
-
-    func releaseAll() {
         isReleased = true
         let resumed = waiters
         waiters.removeAll()

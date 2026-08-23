@@ -139,14 +139,12 @@ actor SessionDriver {
     private var nextCompensationShutdownHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextOutboundWriteParkHoldForTesting: (@Sendable () async -> Void)?
     private var nextOneShotEstablishedHoldForTesting: (@Sendable () async throws -> Void)?
-    private var eachOneShotEstablishedHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextOwnedLoopTopHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextOwnedDrainHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextChannelOpenSlotHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextChannelTeardownHoldForTesting: (@Sendable () async -> Void)?
     private var nextResumedChannelOpenWaiterErrorForTesting: SSHError?
     private var nextChannelOpenWaiterRegistrationHoldForTesting: (@Sendable () async -> Void)?
-    private var eachSessionWaitHoldForTesting: (@Sendable () async -> Void)?
     private var ownerSamplesForTesting: [TransportSendOwnerSample]?
     private var shouldFailNextSFTPInitBeforeEAGAINForTesting = false
 #endif
@@ -1908,16 +1906,6 @@ actor SessionDriver {
         nextOneShotEstablishedHoldForTesting = hold
     }
 
-    func holdEachOneShotEstablishedForTesting(
-        _ hold: @escaping @Sendable () async throws -> Void
-    ) {
-        eachOneShotEstablishedHoldForTesting = hold
-    }
-
-    func clearEachOneShotEstablishedHoldForTesting() {
-        eachOneShotEstablishedHoldForTesting = nil
-    }
-
     func holdNextOwnedLoopTopForTesting(
         _ hold: @escaping @Sendable () async throws -> Void
     ) {
@@ -1950,16 +1938,6 @@ actor SessionDriver {
         _ hold: @escaping @Sendable () async -> Void
     ) {
         nextChannelOpenWaiterRegistrationHoldForTesting = hold
-    }
-
-    func holdEachSessionWaitForTesting(
-        _ hold: @escaping @Sendable () async -> Void
-    ) {
-        eachSessionWaitHoldForTesting = hold
-    }
-
-    func clearEachSessionWaitForTesting() {
-        eachSessionWaitHoldForTesting = nil
     }
 
     func sftpUseCountForTesting() -> Int {
@@ -2403,8 +2381,6 @@ actor SessionDriver {
         if let hold = nextSessionWaitHoldForTesting {
             nextSessionWaitHoldForTesting = nil
             try await hold()
-        } else if let hold = eachSessionWaitHoldForTesting {
-            await hold()
         }
 #endif
         try await SocketReadiness.wait(
@@ -2896,14 +2872,9 @@ actor SessionDriver {
     }
 
     private func holdOneShotEstablishedForTestingIfNeeded() async throws {
-        if let hold = nextOneShotEstablishedHoldForTesting {
-            nextOneShotEstablishedHoldForTesting = nil
-            try await hold()
-            return
-        }
-        if let hold = eachOneShotEstablishedHoldForTesting {
-            try await hold()
-        }
+        guard let hold = nextOneShotEstablishedHoldForTesting else { return }
+        nextOneShotEstablishedHoldForTesting = nil
+        try await hold()
     }
 #endif
 
