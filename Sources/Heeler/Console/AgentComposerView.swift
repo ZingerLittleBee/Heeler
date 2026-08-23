@@ -49,6 +49,7 @@ struct AgentComposerActions {
     let showAttachLinks: () -> Void
     let startAgent: () -> Void
     let manageSnippets: () -> Void
+    let showWorktreeDetails: (() -> Void)?
     let renameAgent: () -> Void
     let renameWorkspace: () -> Void
     let closeAgent: () -> Void
@@ -164,6 +165,14 @@ struct AgentComposerView: View {
                                     }
                                 }
                                 Section {
+                                    if let showWorktreeDetails = actions.showWorktreeDetails {
+                                        Button(
+                                            "Worktree Details",
+                                            systemImage: "arrow.triangle.branch"
+                                        ) {
+                                            showWorktreeDetails()
+                                        }
+                                    }
                                     Button("Rename Agent", systemImage: "pencil") {
                                         actions.renameAgent()
                                     }

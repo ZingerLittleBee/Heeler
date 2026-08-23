@@ -189,7 +189,9 @@
                             cwd: "/workspace/heeler"),
                     ],
                     workspaces: [
-                        workspace(id: "mobile", label: "iOS App", repo: "heeler"),
+                        workspace(
+                            id: "mobile", label: "iOS App", repo: "heeler",
+                            isLinkedWorktree: true),
                         workspace(id: "docs", label: "Product Docs", repo: "docs-site"),
                     ]),
                 paneSnippets: [
@@ -313,9 +315,11 @@
         private static func workspace(
             id: String,
             label: String,
-            repo: String
+            repo: String,
+            isLinkedWorktree: Bool = false
         ) -> WorkspaceInfo {
-            WorkspaceInfo(
+            let repoRoot = isLinkedWorktree ? "/source/\(repo)" : "/workspace/\(repo)"
+            return WorkspaceInfo(
                 activeTabID: "\(id):t1",
                 agentStatus: .unknown,
                 focused: false,
@@ -326,10 +330,10 @@
                 workspaceID: id,
                 worktree: WorkspaceWorktreeInfo(
                     checkoutPath: "/workspace/\(repo)",
-                    isLinkedWorktree: false,
-                    repoKey: "/workspace/\(repo)/.git",
+                    isLinkedWorktree: isLinkedWorktree,
+                    repoKey: "\(repoRoot)/.git",
                     repoName: repo,
-                    repoRoot: "/workspace/\(repo)"))
+                    repoRoot: repoRoot))
         }
     }
 

@@ -48,6 +48,8 @@ struct AgentTerminalView: View {
     /// pane's long-press menu.
     @State private var viewingSkill: AgentSkill?
     @State private var isRenamingWorkspace = false
+    @State private var isShowingWorktree = false
+    @State private var worktreeStore: WorktreeDetailStore?
     @State private var isShowingAttachLinks = false
     @State private var closeErrorMessage: String?
     @Environment(\.colorScheme) private var colorScheme
@@ -223,6 +225,13 @@ struct AgentTerminalView: View {
                         agent.agent.workspaceID, label: label, on: agent.hostID)
                 })
         }
+        .sheet(isPresented: $isShowingWorktree) {
+            if let worktreeStore {
+                WorktreeDetailView(store: worktreeStore) { _ in
+                    isShowingWorktree = false
+                }
+            }
+        }
         .sheet(
             isPresented: Binding(
                 get: { attach.pendingPaste != nil },
@@ -370,9 +379,42 @@ struct AgentTerminalView: View {
             showAttachLinks: { isShowingAttachLinks = true },
             startAgent: { isStartingAgent = true },
             manageSnippets: { isManagingSnippets = true },
+            showWorktreeDetails: agent.isLinkedWorktree
+                ? {
+                    if let checkout = agent.repositoryCheckout {
+                        worktreeStore = makeWorktreeStore(checkout: checkout)
+                        isShowingWorktree = true
+                    }
+                } : nil,
             renameAgent: { isRenamingAgent = true },
             renameWorkspace: { isRenamingWorkspace = true },
             closeAgent: { isConfirmingClose = true })
+    }
+
+    private func makeWorktreeStore(checkout: RepositoryCheckout) -> WorktreeDetailStore {
+        let hostID = agent.hostID
+        let workspaceID = agent.agent.workspaceID
+        let request = WorktreeRemovalRequest(
+            identity: WorktreeIdentity(
+                hostID: hostID, workspaceID: workspaceID, checkout: checkout))
+        return WorktreeDetailStore(
+            request: request,
+            workspaceLabel: agent.workspaceLabel ?? checkout.repoName,
+            checkout: checkout,
+            list: { [console] workspaceID in
+                try await console.listWorktrees(
+                    forWorkspaceID: workspaceID, on: hostID)
+            },
+            remove: { [console] request in
+                try await console.removeWorktree(request, on: hostID)
+            },
+            hasWorkingAgent: { [console] in
+                console.agents.contains {
+                    $0.hostID == hostID
+                        && $0.agent.workspaceID == workspaceID
+                        && $0.agent.status == .working
+                }
+            })
     }
 
     private var terminalSurface: some View {

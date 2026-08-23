@@ -133,7 +133,7 @@ struct AgentActivityContentBuilderTests {
         let agents = [
             ConsoleAgent(
                 hostID: hostID, hostName: "mbp", agent: blankKind,
-                workspaceLabel: nil, repoName: nil)
+                workspaceLabel: nil, repositoryCheckout: nil)
         ]
 
         let desire = try #require(
@@ -233,7 +233,7 @@ struct AgentActivityContentBuilderTests {
                         workspaceID: "w", tabID: "t", paneID: item.paneID,
                         cwd: "/", revision: 1,
                         name: nonEmpty(item.displayAgent) ?? nonEmpty(item.name)),
-                    workspaceLabel: nil, repoName: nil)
+                    workspaceLabel: nil, repositoryCheckout: nil)
             }
 
             let desire = try #require(
@@ -295,6 +295,6 @@ struct AgentActivityContentBuilderTests {
             hostID: hostID, hostName: "mbp",
             agent: Agent(
                 .fixture(paneID: paneID, status: status, kind: kind, title: title, name: name)),
-            workspaceLabel: nil, repoName: nil)
+            workspaceLabel: nil, repositoryCheckout: nil)
     }
 }

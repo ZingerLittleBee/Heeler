@@ -1616,7 +1616,7 @@ fi
 run_suite HeelerSSHPTYE2ETests 3 1
 run_suite HeelerSSHDirectStreamLocalE2ETests 11 1
 run_suite HeelerSSHJumpHostGateE2ETests 9 1
-run_suite HeelerSSHTransportBehaviorE2ETests 46 1
+run_suite HeelerSSHTransportBehaviorE2ETests 48 1
 run_suite ImageStagingE2ETests 8 1
 run_suite WeakNetworkE2ETests 8 1
 run_suite PairingCeremonyE2ETests 11 1
@@ -1654,6 +1654,11 @@ assert_behavior "workspace rename params" HeelerSSHTransportBehaviorE2ETests \
     '"workspace rename sends its label and workspace id exactly"'
 assert_behavior "pane read params and result" HeelerSSHTransportBehaviorE2ETests \
     '"pane read sends exact params and round trips the result"'
+assert_behavior "worktree remove params" HeelerSSHTransportBehaviorE2ETests \
+    '"confirmed worktree removal crosses the real wire dispatch seam"'
+assert_behavior "worktree remove stale authorization writes nothing" \
+    HeelerSSHTransportBehaviorE2ETests \
+    '"stale worktree authorization writes no request bytes"'
 assert_behavior "herdr API rejection" HeelerSSHTransportBehaviorE2ETests \
     '"a herdr error envelope surfaces as a typed API rejection"'
 assert_behavior "session API rejection mapping" HeelerSSHTransportBehaviorE2ETests \

@@ -63,6 +63,7 @@ METHODS = [
     "session.snapshot",
     "workspace.rename",
     "worktree.create",
+    "worktree.list",
     "worktree.remove",
 ]
 
@@ -94,6 +95,7 @@ RESULT_TAGS = [
     "ok",  # pane.close
     "workspace_info",  # workspace.rename
     "worktree_created",  # worktree.create
+    "worktree_list",  # worktree.list
     "worktree_removed",  # worktree.remove
 ]
 

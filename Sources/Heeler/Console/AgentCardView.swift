@@ -37,6 +37,15 @@ struct AgentCardView: View {
                     .lineLimit(2)
             }
             HStack(spacing: 6) {
+                if agent.isLinkedWorktree {
+                    Label("Worktree", systemImage: "arrow.triangle.branch")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.quaternary, in: Capsule())
+                        .accessibilityLabel("Linked worktree")
+                }
                 if let kind = agentKindTag {
                     Text(kind)
                         .font(.caption2)
@@ -71,16 +80,7 @@ struct AgentCardView: View {
     /// The workspace context: label, with the worktree repo when it adds
     /// information the label does not already carry.
     private var workspaceContext: String? {
-        switch (agent.workspaceLabel, agent.repoName) {
-        case (nil, nil):
-            return nil
-        case (let label?, nil):
-            return label
-        case (nil, let repo?):
-            return repo
-        case (let label?, let repo?):
-            return label == repo ? label : "\(label) · \(repo)"
-        }
+        agent.workspaceContext
     }
 }
 
@@ -118,7 +118,12 @@ struct AgentStatusBadge: View {
                     status: .blocked, workspaceID: "w1", tabID: "w1:t1", paneID: "w1:p1",
                     cwd: "/work/proj", revision: 3),
                 workspaceLabel: "proj",
-                repoName: "proj",
+                repositoryCheckout: RepositoryCheckout(
+                    repoKey: "/work/proj/.git",
+                    repoName: "proj",
+                    repoRoot: "/work/proj",
+                    checkoutPath: "/work/proj-wt",
+                    isLinkedWorktree: true),
                 lastOutputSnippet: "Allow Claude to run rm -rf? 1. Yes 2. No"))
         // No workspace in the snapshot: the agent name takes the lead line
         // and the foot tag drops.
@@ -131,7 +136,7 @@ struct AgentStatusBadge: View {
                     status: .working, workspaceID: "w2", tabID: "w2:t1", paneID: "w2:p1",
                     cwd: "/tmp", revision: 1),
                 workspaceLabel: nil,
-                repoName: nil,
+                repositoryCheckout: nil,
                 lastOutputSnippet: nil))
     }
 }

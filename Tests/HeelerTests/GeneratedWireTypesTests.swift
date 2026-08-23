@@ -177,6 +177,18 @@ import Testing
         #expect(response.forced == false)
     }
 
+    @Test func worktreeListResponseRoundTripsNamedAndDetachedEntries() throws {
+        let json = #"{"type":"worktree_list","source":{"repo_key":"/Users/u/Heeler/.git","repo_name":"Heeler","repo_root":"/Users/u/Heeler","source_checkout_path":"/Users/u/Heeler","source_workspace_id":"wV"},"worktrees":[{"path":"/Users/u/Heeler","branch":"main","is_bare":false,"is_detached":false,"is_prunable":false,"is_linked_worktree":false,"label":"Heeler","open_workspace_id":"wV"},{"path":"/Users/u/wt/Heeler/feat-x","branch":null,"is_bare":false,"is_detached":true,"is_prunable":false,"is_linked_worktree":true,"label":"Heeler","open_workspace_id":"w15"}]}"#
+
+        let response = try roundTrip(WorktreeListResponse.self, json)
+
+        #expect(response.source.repoKey == "/Users/u/Heeler/.git")
+        #expect(response.worktrees[0].branch == "main")
+        #expect(response.worktrees[1].branch == nil)
+        #expect(response.worktrees[1].isDetached)
+        #expect(response.worktrees[1].openWorkspaceID == "w15")
+    }
+
     @Test func okResponseDecodes() throws {
         // The bare-acknowledgement result shape (`pane.close`).
         _ = try roundTrip(OkResponse.self, #"{"type":"ok"}"#)

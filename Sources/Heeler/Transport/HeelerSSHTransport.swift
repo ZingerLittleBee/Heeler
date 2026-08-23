@@ -659,12 +659,34 @@ actor HeelerSSHTransport: Transport {
                 paneID: created.rootPane.paneID)
             return Agent(response.agent)
         } catch let error as HerdrAPIError {
-            try? await removeWorktree(workspaceID: created.workspace.workspaceID)
+            try? await removeCreatedWorktree(workspaceID: created.workspace.workspaceID)
             throw error
         }
     }
 
-    private func removeWorktree(workspaceID: String) async throws {
+    func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
+        try await request(
+            method: "worktree.list",
+            params: WorktreeListParams(workspaceID: workspaceID),
+            decoding: WorktreeListResponse.self)
+    }
+
+    func removeWorktree(
+        _ removal: WorktreeRemovalRequest,
+        authorize: @escaping @Sendable (WorktreeRemovalRequest) async throws -> Void,
+        onDispatched: @escaping @Sendable (WorktreeRemovalRequest) async -> Void
+    ) async throws -> WorktreeRemovedResponse {
+        try await request(
+            method: "worktree.remove",
+            params: WorktreeRemoveParams(
+                workspaceID: removal.identity.workspaceID,
+                force: false),
+            decoding: WorktreeRemovedResponse.self,
+            beforeDispatch: { try await authorize(removal) },
+            onDispatched: { await onDispatched(removal) })
+    }
+
+    private func removeCreatedWorktree(workspaceID: String) async throws {
         _ = try await request(
             method: "worktree.remove",
             params: WorktreeRemoveParams(workspaceID: workspaceID),
@@ -1442,20 +1464,26 @@ actor HeelerSSHTransport: Transport {
     private func request<P: Encodable & Sendable, R: Decodable & Sendable>(
         method: String,
         params: P,
-        decoding type: R.Type
+        decoding type: R.Type,
+        beforeDispatch: (@Sendable () async throws -> Void)? = nil,
+        onDispatched: (@Sendable () async -> Void)? = nil
     ) async throws -> R {
         try await withColdStartWake {
             try await self.performRequest(
                 method: method,
                 params: params,
-                decoding: type)
+                decoding: type,
+                beforeDispatch: beforeDispatch,
+                onDispatched: onDispatched)
         }
     }
 
     private func performRequest<P: Encodable & Sendable, R: Decodable & Sendable>(
         method: String,
         params: P,
-        decoding type: R.Type
+        decoding type: R.Type,
+        beforeDispatch: (@Sendable () async throws -> Void)? = nil,
+        onDispatched: (@Sendable () async -> Void)? = nil
     ) async throws -> R {
         guard connected else {
             throw TransportError.sshUnreachable(
@@ -1474,12 +1502,16 @@ actor HeelerSSHTransport: Transport {
                         socketPath: socketPath,
                         request: Data(line.utf8),
                         maximumResponseBytes: Self.maximumResponseBytes,
-                        timeout: self.requestTimeout)
+                        timeout: self.requestTimeout,
+                        beforeRequestWrite: beforeDispatch,
+                        onRequestWritten: onDispatched)
                 } catch SSHError.streamLocalOpenFailed {
                     throw try await self.classifyStreamLocalOpenFailure(
                         socketPath: socketPath)
-                } catch {
+                } catch let error as SSHError {
                     throw await self.mapOperationError(error)
+                } catch {
+                    throw error
                 }
             }
         }
@@ -1673,8 +1705,8 @@ actor HeelerSSHTransport: Transport {
             return .tcpForwardingUnavailable
         case .invalidEndpoint, .connectionFailed, .algorithmNegotiationFailed,
             .channelFailed, .streamLocalOpenFailed, .unexpectedEOF,
-            .responseTooLarge, .connectionInvalidated, .targetUnreachable,
-            .sftpUnavailable, .sftpFailure:
+            .responseTooLarge, .connectionInvalidated,
+            .targetUnreachable, .sftpUnavailable, .sftpFailure:
             return nil
         }
     }

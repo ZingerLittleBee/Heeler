@@ -18,7 +18,7 @@ struct AgentNotificationRouterTests {
         ConsoleAgent(
             hostID: hostID, hostName: "mac-studio",
             agent: Agent(.fixture(paneID: paneID)),
-            workspaceLabel: nil, repoName: nil, lastOutputSnippet: nil)
+            workspaceLabel: nil, repositoryCheckout: nil, lastOutputSnippet: nil)
     }
 
     /// Polls until `condition` holds, yielding so the router's tasks progress.

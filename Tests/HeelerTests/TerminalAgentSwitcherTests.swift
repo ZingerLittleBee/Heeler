@@ -25,7 +25,14 @@ struct TerminalAgentSwitcherTests {
                 status: status, workspaceID: "w", tabID: "w:t", paneID: pane,
                 cwd: "/work", revision: 1, name: name),
             workspaceLabel: workspace,
-            repoName: repo,
+            repositoryCheckout: repo.map {
+                RepositoryCheckout(
+                    repoKey: "/work/\($0)/.git",
+                    repoName: $0,
+                    repoRoot: "/work/\($0)",
+                    checkoutPath: "/work/\($0)",
+                    isLinkedWorktree: false)
+            },
             lastOutputSnippet: nil)
     }
 
