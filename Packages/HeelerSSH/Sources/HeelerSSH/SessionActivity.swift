@@ -26,13 +26,20 @@ final class SessionActivity: @unchecked Sendable {
 
     private let lock = NSLock()
     private var receiveCount: UInt64 = 0
+    private var generation: UInt64 = 0
     private var registrations: [ObjectIdentifier: Registration] = [:]
 
-    /// Records the current receive count so a later wait can tell whether the
-    /// session moved while it was arming. Callers must capture this before
-    /// they release the session to the next operation.
+    /// Records the current receive count and invalidation generation so a
+    /// later wait can tell whether the session moved or was invalidated while
+    /// it was arming. Callers must capture this before they release the
+    /// session to the next operation.
     func watch() -> SessionActivityWatch {
-        SessionActivityWatch(activity: self, token: lock.withLock { receiveCount })
+        lock.withLock {
+            SessionActivityWatch(
+                activity: self,
+                token: receiveCount,
+                generation: generation)
+        }
     }
 
     /// Installs the counting receive callback on `session`.
@@ -53,8 +60,13 @@ final class SessionActivity: @unchecked Sendable {
     /// Parks `waiter` until the receive count moves past `token`, and reports
     /// whether it did so. False means bytes already moved, so the caller must
     /// retry immediately rather than wait for an edge that will never come.
-    func register(_ waiter: DispatchWaiter, since token: UInt64) -> Bool {
+    func register(
+        _ waiter: DispatchWaiter,
+        since token: UInt64,
+        generation: UInt64
+    ) -> Bool {
         lock.withLock {
+            guard self.generation == generation else { return false }
             guard receiveCount == token else { return false }
             registrations[ObjectIdentifier(waiter)] = Registration(
                 waiter: waiter,
@@ -83,21 +95,35 @@ final class SessionActivity: @unchecked Sendable {
         for waiter in stale { waiter.finish(.success(())) }
     }
 
+    /// Releases every parked wait before the session descriptor is closed.
+    /// Invalidation does not move the receive count, so a waiter armed around
+    /// that moment would otherwise sleep out its own deadline.
+    func releaseAllWaiters() {
+        let waiters: [DispatchWaiter] = lock.withLock {
+            generation &+= 1
+            let current = Array(registrations.values.map(\.waiter))
+            registrations.removeAll()
+            return current
+        }
+        for waiter in waiters { waiter.finish(.success(())) }
+    }
+
     fileprivate func recordReceive() {
         lock.withLock { receiveCount &+= 1 }
     }
 }
 
-/// The receive count one operation observed, paired with the session it
-/// observed it on.
+/// The receive count and invalidation generation one operation observed,
+/// paired with the session it observed them on.
 struct SessionActivityWatch: Sendable {
     let activity: SessionActivity
     let token: UInt64
+    let generation: UInt64
 
-    /// Reports false when the session already moved on, meaning the caller
-    /// must retry now instead of waiting.
+    /// Reports false when the session already moved on or was invalidated,
+    /// meaning the caller must retry now instead of waiting.
     func register(_ waiter: DispatchWaiter) -> Bool {
-        activity.register(waiter, since: token)
+        activity.register(waiter, since: token, generation: generation)
     }
 
     func unregister(_ waiter: DispatchWaiter) {

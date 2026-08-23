@@ -6,12 +6,11 @@ import Foundation
 /// short turn on that driver, so an idle stream never monopolizes the SSH
 /// session while ordinary channels make progress.
 ///
-/// That holds in one direction only. An ordinary RPC — `execute`,
-/// `executeResponseLine`, `exchangeStreamLocal` — takes the same operation
-/// mutex and holds it for its entire round trip, so a read here queues behind
-/// one until it completes or its own deadline ends it. The effect is delay
-/// rather than failure: the stream is not torn down, it simply makes no
-/// progress meanwhile. See #130.
+/// Ordinary RPCs — `execute`, `executeResponseLine`, `exchangeStreamLocal` —
+/// take the same turns after the channel is established. A live stream keeps
+/// moving while one of those waits for its remote response; a cancelled or
+/// timed-out write either drains the packet it owns or invalidates the session
+/// rather than leaving the next caller spun on a stranded send. See #130.
 public final class SSHStreamLocalChannel: Sendable {
     private let id: UInt64
     private let driver: SessionDriver

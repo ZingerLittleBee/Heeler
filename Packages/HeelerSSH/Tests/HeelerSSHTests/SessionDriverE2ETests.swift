@@ -943,6 +943,579 @@ struct SessionDriverE2ETests {
         try await connection.close(timeout: .seconds(2))
     }
 
+    @Test("outbound backpressure does not livelock a channel open")
+    func outboundBackpressureDoesNotLivelockAChannelOpen() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let proxy = try #require(WeakNetworkProxyFixture.current)
+        try await withDegradedLink(proxy) {
+            let connection = try await connectThroughProxy(
+                environment: environment,
+                proxy: proxy)
+            await connection.startSamplingTransportSendOwnerForTesting()
+            try await connection.shrinkSendBufferForTesting(bytes: 2_048)
+            let pty = try await connection.openPTY(
+                command: "cat",
+                columns: 80,
+                rows: 24,
+                timeout: .seconds(15))
+            let hold = SessionWaitHold()
+            await connection.holdNextOutboundWriteParkForTesting {
+                await hold.waitUntilReleased()
+            }
+            let write = Task {
+                try await pty.write(
+                    Data(repeating: 0x61, count: 32 * 1_024),
+                    timeout: .seconds(10))
+            }
+            try await waitUntilTrue("the write should park on an outbound send") {
+                await hold.hasEntered
+            }
+            let opened = Task {
+                try await connection.execute("printf opened", timeout: .seconds(10))
+            }
+            await hold.release()
+            try await write.value
+            let result = try await opened.value
+            #expect(result.stdout == Data("opened".utf8))
+            #expect(result.exitStatus == 0)
+            #expect(await connection.oneShotRegistryCountForTesting() == 0)
+            let ownerSamples = await connection.transportSendOwnerSamplesForTesting()
+            #expect(!ownerSamples.isEmpty)
+            #expect(ownerSamples.allSatisfy { !$0.isForbiddenClearWindow })
+            let ping = try await connection.execute("printf ping", timeout: .seconds(5))
+            #expect(ping.stdout == Data("ping".utf8))
+            #expect(await connection.isConnected)
+            try await pty.close(timeout: .seconds(5))
+            try await connection.close(timeout: .seconds(2))
+        }
+    }
+
+    @Test("cancelling a transport-send owner drains")
+    func cancellingATransportSendOwnerDrains() async throws {
+        try await exerciseOwnedWriteInterruption(
+            expected: .drained,
+            expectedError: .cancelled
+        ) { write, gates in
+            try await waitForOwnedLoopTop(gates)
+            write.cancel()
+            await gates.loopTop.release()
+        }
+    }
+
+    @Test("cancelling a transport-send owner invalidates")
+    func cancellingATransportSendOwnerInvalidates() async throws {
+        try await exerciseOwnedWriteInterruption(
+            expected: .invalidated,
+            expectedError: .cancelled,
+            drainThrows: true
+        ) { write, gates in
+            try await waitForOwnedLoopTop(gates)
+            write.cancel()
+            await gates.loopTop.release()
+        }
+    }
+
+    @Test("timing out a transport-send owner at loop-top drains")
+    func timingOutATransportSendOwnerAtLoopTopDrains() async throws {
+        try await exerciseOwnedWriteInterruption(
+            expected: .drained,
+            expectedError: .timedOut,
+            loopTopThrows: .timedOut
+        ) { _, gates in
+            try await waitForOwnedLoopTop(gates)
+            await gates.loopTop.release()
+        }
+    }
+
+    @Test("timing out a transport-send owner at loop-top invalidates")
+    func timingOutATransportSendOwnerAtLoopTopInvalidates() async throws {
+        try await exerciseOwnedWriteInterruption(
+            expected: .invalidated,
+            expectedError: .timedOut,
+            loopTopThrows: .timedOut,
+            drainThrows: true
+        ) { _, gates in
+            try await waitForOwnedLoopTop(gates)
+            await gates.loopTop.release()
+        }
+    }
+
+    @Test("one-shot RPCs yield so a live PTY can progress")
+    func oneShotRPCsYieldSoALivePTYCanProgress() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let socketPath = try #require(SessionDriverTestEnvironment.streamLocalSocketPath)
+        let connection = try await environment.connect()
+        let pty = try await connection.openPTY(
+            command: "cat",
+            columns: 80,
+            rows: 24,
+            timeout: .seconds(5))
+
+        for site in OneShotYieldSite.allCases {
+            let hold = SessionWaitHold()
+            await connection.holdNextOneShotEstablishedForTesting {
+                await connection.holdNextSessionWaitForTesting {
+                    await hold.waitUntilReleased()
+                }
+            }
+            let rpc = Task {
+                try await site.run(on: connection, socketPath: socketPath)
+            }
+            try await waitUntilTrue("\(site.rawValue) should wait after establishment") {
+                await hold.hasEntered
+            }
+            let marker = "yield-\(site.rawValue)"
+            try await pty.write(Data("\(marker)\n".utf8), timeout: .seconds(5))
+            let output = try #require(try await pty.read(timeout: .seconds(5)))
+            #expect(
+                String(decoding: output, as: UTF8.self).contains(marker),
+                "\(site.rawValue) held the session while a live PTY was waiting")
+            await hold.release()
+            try await site.finish(rpc)
+            #expect(await connection.oneShotRegistryCountForTesting() == 0)
+        }
+
+        try await pty.close(timeout: .seconds(5))
+        #expect(await connection.isConnected)
+        try await connection.close(timeout: .seconds(2))
+    }
+
+    @Test("cancelling a yielded one-shot distinguishes cleanup outcomes")
+    func cancellingAYieldedOneShotDistinguishesCleanupOutcomes() async throws {
+        for expected in TransportSendOwnerOutcome.allCases {
+            try await exerciseYieldedOneShotInterruption(
+                expected: expected,
+                expectedError: .cancelled
+            ) { rpc, hold in
+                rpc.cancel()
+                await hold.release()
+            }
+        }
+    }
+
+    @Test("timing out a yielded one-shot distinguishes cleanup outcomes")
+    func timingOutAYieldedOneShotDistinguishesCleanupOutcomes() async throws {
+        for expected in TransportSendOwnerOutcome.allCases {
+            try await exerciseYieldedOneShotInterruption(
+                expected: expected,
+                expectedError: .timedOut,
+                waitThrows: .timedOut
+            ) { _, hold in
+                await hold.release()
+            }
+        }
+    }
+
+    @Test("invalidation during a yielding wait does not touch a stale native pointer")
+    func invalidationDuringAYieldingWaitDoesNotTouchAStaleNativePointer() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        let hold = SessionWaitHold()
+        await connection.holdNextOneShotEstablishedForTesting {
+            await connection.holdNextSessionWaitForTesting {
+                await hold.waitUntilReleased()
+            }
+        }
+        let rpc = Task {
+            try await connection.execute("sleep 20", timeout: .seconds(15))
+        }
+        try await waitUntilTrue("the one-shot should wait after establishment") {
+            await hold.hasEntered
+        }
+        try await connection.close(timeout: .seconds(2))
+        await hold.release()
+        await #expect(throws: SSHError.self) { _ = try await rpc.value }
+        #expect(await connection.oneShotRegistryCountForTesting() == 0)
+        let state = await connection.resourceStateForTesting()
+        #expect(state.isValid == false)
+        #expect(state.descriptorIsOpen == false)
+        #expect(state.hasSession == false)
+    }
+
+    @Test("yielded channel teardown rejects same-id I/O and preserves close")
+    func yieldedChannelTeardownRejectsSameIDIOAndPreservesClose() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let socketPath = try #require(SessionDriverTestEnvironment.streamLocalSocketPath)
+        let connection = try await environment.connect()
+
+        let pty = try await connection.openPTY(
+            command: "cat",
+            columns: 80,
+            rows: 24,
+            timeout: .seconds(5))
+        let ptyTeardown = SessionWaitHold()
+        await connection.holdNextChannelTeardownForTesting {
+            await ptyTeardown.waitUntilReleased()
+        }
+        let closePTY = Task { try await pty.close(timeout: .seconds(5)) }
+        try await waitUntilTrue("PTY teardown should yield after closing starts") {
+            await ptyTeardown.hasEntered
+        }
+        await #expect(throws: SSHError.channelFailed) {
+            try await pty.write(Data("x".utf8), timeout: .seconds(1))
+        }
+        await #expect(throws: SSHError.channelFailed) {
+            _ = try await pty.read(timeout: .seconds(1))
+        }
+        await #expect(throws: SSHError.channelFailed) {
+            try await pty.resize(columns: 81, rows: 24, timeout: .seconds(1))
+        }
+        await ptyTeardown.release()
+        try await closePTY.value
+
+        let exitingPTY = try await connection.openPTY(
+            command: "sh -c 'exit 7'",
+            columns: 80,
+            rows: 24,
+            timeout: .seconds(5))
+        while try await exitingPTY.read(timeout: .seconds(5)) != nil {}
+        let exitStatusTeardown = SessionWaitHold()
+        await connection.holdNextChannelTeardownForTesting {
+            await exitStatusTeardown.waitUntilReleased()
+        }
+        let exitStatus = Task {
+            try await exitingPTY.exitStatus(timeout: .seconds(5))
+        }
+        try await waitUntilTrue("exit status should suspend during teardown") {
+            await exitStatusTeardown.hasEntered
+        }
+        let closeExitingPTY = Task {
+            try await exitingPTY.close(timeout: .seconds(5))
+        }
+        try await waitUntilTrue("close should wait for exit-status teardown") {
+            await connection.ptyTeardownWaiterCountForTesting() == 1
+        }
+        #expect(await connection.ptyChannelCountForTesting() == 1)
+        await exitStatusTeardown.release()
+        #expect(try await exitStatus.value == 7)
+        try await closeExitingPTY.value
+        #expect(await connection.ptyChannelCountForTesting() == 0)
+
+        let retryablePTY = try await connection.openPTY(
+            command: "sh -c 'exit 0'",
+            columns: 80,
+            rows: 24,
+            timeout: .seconds(5))
+        while try await retryablePTY.read(timeout: .seconds(5)) != nil {}
+        let failedExitStatusTeardown = SessionWaitHold()
+        await connection.holdNextChannelTeardownForTesting {
+            await failedExitStatusTeardown.waitUntilReleased()
+        }
+        let failedExitStatus = Task {
+            try await retryablePTY.exitStatus(timeout: .milliseconds(50))
+        }
+        try await waitUntilTrue("the failing exit status should suspend") {
+            await failedExitStatusTeardown.hasEntered
+        }
+        try await Task.sleep(for: .milliseconds(75))
+        await failedExitStatusTeardown.release()
+        await #expect(throws: SSHError.timedOut) {
+            _ = try await failedExitStatus.value
+        }
+        #expect(await retryablePTY.acceptsIOForTesting())
+        try await retryablePTY.close(timeout: .seconds(5))
+
+        let stream = try await connection.openStreamLocal(
+            socketPath: socketPath,
+            timeout: .seconds(5))
+        let streamTeardown = SessionWaitHold()
+        await connection.holdNextChannelTeardownForTesting {
+            await streamTeardown.waitUntilReleased()
+        }
+        let closeStream = Task { try await stream.close(timeout: .seconds(5)) }
+        try await waitUntilTrue("stream-local teardown should yield after closing starts") {
+            await streamTeardown.hasEntered
+        }
+        await #expect(throws: SSHError.channelFailed) {
+            try await stream.write(Data("x".utf8), timeout: .seconds(1))
+        }
+        await #expect(throws: SSHError.channelFailed) {
+            _ = try await stream.read(timeout: .seconds(1))
+        }
+        await streamTeardown.release()
+        try await closeStream.value
+        try await connection.close(timeout: .seconds(2))
+    }
+
+    @Test("repeated invalidation reclaims every file descriptor")
+    func repeatedInvalidationReclaimsEveryFileDescriptor() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        try await invalidateOneYieldingSession(environment: environment)
+        let baseline = openFileDescriptorCount()
+        let rounds = 5
+        for _ in 0..<rounds {
+            try await invalidateOneYieldingSession(environment: environment)
+        }
+        let final = openFileDescriptorCount()
+        print(
+            "[issue-130] descriptors: baseline \(baseline), "
+                + "after \(rounds) invalidated sessions \(final)")
+        #expect(
+            final <= baseline + 2,
+            "descriptors grew from \(baseline) to \(final) across \(rounds) sessions")
+    }
+
+    /// Measurement only. The red regression guard for scheduling progress is
+    /// `one-shot RPCs yield so a live PTY can progress`.
+    @Test("measurement: Attach throughput with concurrent RPCs")
+    func measureAttachThroughputWithConcurrentRPCs() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        let pty = try await connection.openPTY(
+            command: "cat",
+            columns: 80,
+            rows: 24,
+            timeout: .seconds(5))
+        let payload = Data("probe-bytes-0123456789\n".utf8)
+        let rounds = 20
+
+        func pump() async throws -> Double {
+            let started = ContinuousClock.now
+            var bytes = 0
+            for _ in 0..<rounds {
+                try await pty.write(payload, timeout: .seconds(5))
+                let output = try #require(try await pty.read(timeout: .seconds(5)))
+                bytes += payload.count + output.count
+            }
+            let seconds = durationSeconds(started.duration(to: .now))
+            return seconds > 0 ? Double(bytes) / seconds : 0
+        }
+
+        let quiet = try await pump()
+        let parked = CountingHold()
+        await connection.holdEachSessionWaitForTesting {
+            await parked.arriveAndWait()
+        }
+        let busy: Double
+        do {
+            busy = try await withThrowingTaskGroup(of: Void.self) { group in
+                for index in 0..<8 {
+                    group.addTask {
+                        let result = try await connection.execute(
+                            "sleep 2; printf rpc\(index)",
+                            timeout: .seconds(15))
+                        #expect(!result.stdout.isEmpty)
+                    }
+                }
+                try await waitUntilTrue("all eight RPCs should park during the pump") {
+                    await parked.arrivedCount == 8
+                }
+                let measured = try await pump()
+                await connection.clearEachSessionWaitForTesting()
+                await parked.releaseAll()
+                try await group.waitForAll()
+                return measured
+            }
+        }
+        print(
+            "[issue-130] Attach throughput: \(Int(quiet)) B/s quiet, "
+                + "\(Int(busy)) B/s with 8 parked RPCs")
+        try await pty.close(timeout: .seconds(5))
+        try await connection.close(timeout: .seconds(2))
+    }
+
+    @Test("SFTP operations and close wait out an in-flight handle use")
+    func sftpOperationsAndCloseWaitOutAnInFlightHandleUse() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let proxy = try #require(WeakNetworkProxyFixture.current)
+        try await withDegradedLink(proxy) {
+            let connection = try await connectThroughProxy(
+                environment: environment,
+                proxy: proxy)
+            try await connection.shrinkSendBufferForTesting(bytes: 2_048)
+            let home = try await remoteHome(of: connection)
+            let sftp = try await connection.openSFTP(timeout: .seconds(15))
+            let pty = try await connection.openPTY(
+                command: "cat",
+                columns: 80,
+                rows: 24,
+                timeout: .seconds(15))
+            let park = SessionWaitHold()
+            await connection.holdNextOutboundWriteParkForTesting {
+                await park.waitUntilReleased()
+            }
+            let write = Task {
+                try await pty.write(
+                    Data(repeating: 0x61, count: 512 * 1_024),
+                    timeout: .seconds(15))
+            }
+            try await waitUntilTrue("the PTY write should own the send") {
+                await park.hasEntered
+            }
+            let stat = Task {
+                _ = try await sftp.attributes(at: home, timeout: .seconds(15))
+            }
+            try await waitUntilTrue("the SFTP call should hold a handle lease") {
+                await connection.sftpUseCountForTesting() == 1
+            }
+            let secondStat = Task {
+                _ = try await sftp.attributes(at: home, timeout: .seconds(15))
+            }
+            try await waitUntilTrue("a second SFTP call should wait for the lease") {
+                await connection.sftpIdleWaiterCountForTesting() == 1
+            }
+            #expect(await connection.sftpUseCountForTesting() == 1)
+            await park.release()
+            try await write.value
+            _ = try await stat.value
+            _ = try await secondStat.value
+
+            let closePark = SessionWaitHold()
+            await connection.holdNextOutboundWriteParkForTesting {
+                await closePark.waitUntilReleased()
+            }
+            let closeWrite = Task {
+                try await pty.write(
+                    Data(repeating: 0x62, count: 512 * 1_024),
+                    timeout: .seconds(15))
+            }
+            try await waitUntilTrue("the second PTY write should own the send") {
+                await closePark.hasEntered
+            }
+            let closeStat = Task {
+                _ = try await sftp.attributes(at: home, timeout: .seconds(15))
+            }
+            try await waitUntilTrue("the SFTP call should hold the close lease") {
+                await connection.sftpUseCountForTesting() == 1
+            }
+            let closing = Task {
+                try await sftp.close(timeout: .seconds(15))
+            }
+            try await waitUntilTrue("closeSFTP should wait for the lease") {
+                await connection.sftpIdleWaiterCountForTesting() == 1
+            }
+            await closePark.release()
+            try await closeWrite.value
+            _ = try await closeStat.value
+            try await closing.value
+            #expect(await connection.sftpUseCountForTesting() == 0)
+            #expect(await connection.isConnected)
+            let ping = try await connection.execute("printf sftp-lease", timeout: .seconds(5))
+            #expect(ping.stdout == Data("sftp-lease".utf8))
+            try await pty.close(timeout: .seconds(5))
+            try await connection.close(timeout: .seconds(2))
+        }
+    }
+
+    @Test("a serialized channel-open wait honors deadline and cancellation")
+    func serializedChannelOpenWaitHonorsDeadlineAndCancellation() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let proxy = try #require(WeakNetworkProxyFixture.current)
+        try await withDegradedLink(proxy) {
+            let connection = try await connectThroughProxy(
+                environment: environment,
+                proxy: proxy)
+            try await connection.shrinkSendBufferForTesting(bytes: 2_048)
+            let pty = try await connection.openPTY(
+                command: "cat",
+                columns: 80,
+                rows: 24,
+                timeout: .seconds(15))
+            let park = SessionWaitHold()
+            await connection.holdNextOutboundWriteParkForTesting {
+                await park.waitUntilReleased()
+            }
+            let write = Task {
+                try await pty.write(
+                    Data(repeating: 0x61, count: 512 * 1_024),
+                    timeout: .seconds(15))
+            }
+            try await waitUntilTrue("the PTY write should own the send") {
+                await park.hasEntered
+            }
+
+            let slot = SessionWaitHold()
+            await slot.release()
+            await connection.holdNextChannelOpenSlotForTesting {
+                await slot.waitUntilReleased()
+            }
+            let first = Task {
+                try await connection.execute("printf first-open", timeout: .seconds(15))
+            }
+            try await waitUntilTrue("the first open should claim the slot") {
+                await slot.hasEntered
+            }
+            let timedOut = Task {
+                try await connection.execute("printf timed-out-open", timeout: .milliseconds(200))
+            }
+            try await waitUntilTrue("the timed-out open should park on the slot") {
+                await connection.channelOpenWaiterCountForTesting() == 1
+            }
+            await #expect(throws: SSHError.timedOut) { _ = try await timedOut.value }
+            #expect(await connection.isConnected)
+
+            let cancelled = Task {
+                try await connection.execute("printf cancelled-open", timeout: .seconds(15))
+            }
+            try await waitUntilTrue("the cancelled open should park on the slot") {
+                await connection.channelOpenWaiterCountForTesting() == 1
+            }
+            cancelled.cancel()
+            await #expect(throws: SSHError.cancelled) { _ = try await cancelled.value }
+            #expect(await connection.isConnected)
+
+            let registrationGuard = SessionWaitHold()
+            await connection.holdNextChannelOpenWaiterRegistrationForTesting {
+                await registrationGuard.waitUntilReleased()
+            }
+            let cancelledBeforeRegistration = Task {
+                try await connection.execute(
+                    "printf cancelled-before-registration",
+                    timeout: .seconds(15))
+            }
+            try await waitUntilTrue("the waiter should reach its registration guard") {
+                await registrationGuard.hasEntered
+            }
+            cancelledBeforeRegistration.cancel()
+            await registrationGuard.release()
+            await #expect(throws: SSHError.cancelled) {
+                _ = try await cancelledBeforeRegistration.value
+            }
+            #expect(await connection.channelOpenWaiterCountForTesting() == 0)
+
+            await connection.failNextResumedChannelOpenWaiterForTesting(.cancelled)
+            let resumedHead = Task {
+                try await connection.execute("printf resumed-head", timeout: .seconds(15))
+            }
+            let resumedFollower = Task {
+                try await connection.execute("printf resumed-follower", timeout: .seconds(15))
+            }
+            try await waitUntilTrue("both channel-open waiters should park") {
+                await connection.channelOpenWaiterCountForTesting() == 2
+            }
+
+            await park.release()
+            try await write.value
+            let firstResult = try await first.value
+            #expect(firstResult.stdout == Data("first-open".utf8))
+            let resumedHeadResult: Result<SSHExecResult, any Error>
+            do {
+                resumedHeadResult = .success(try await resumedHead.value)
+            } catch {
+                resumedHeadResult = .failure(error)
+            }
+            let resumedFollowerResult: Result<SSHExecResult, any Error>
+            do {
+                resumedFollowerResult = .success(try await resumedFollower.value)
+            } catch {
+                resumedFollowerResult = .failure(error)
+            }
+            let resumedResults = [resumedHeadResult, resumedFollowerResult]
+            #expect(resumedResults.filter {
+                if case .success = $0 { return true }
+                return false
+            }.count == 1)
+            #expect(resumedResults.filter { result in
+                guard case .failure(let error) = result else { return false }
+                return error as? SSHError == .cancelled
+            }.count == 1)
+            let ping = try await connection.execute("printf after-open-wait", timeout: .seconds(5))
+            #expect(ping.stdout == Data("after-open-wait".utf8))
+            try await pty.close(timeout: .seconds(5))
+            try await connection.close(timeout: .seconds(2))
+        }
+    }
+
     /// How long phase-gate probes may wait to observe a held path under CI load.
     /// This is a test-observation guard only; product operation timeouts
     /// (100ms / 200ms / 2s) are independent and must not be widened to match.
@@ -959,6 +1532,239 @@ struct SessionDriverE2ETests {
             try await Task.sleep(for: .milliseconds(5))
         }
         #expect(await condition(), comment)
+    }
+
+    private func connectThroughProxy(
+        environment: SessionDriverTestEnvironment,
+        proxy: WeakNetworkProxyFixture
+    ) async throws -> SSHConnection {
+        let endpoint = SSHEndpoint(host: environment.endpoint.host, port: proxy.port)
+        let connection = try await SSHConnection.connect(
+            to: endpoint,
+            timeout: .seconds(15))
+        try await environment.authenticate(connection)
+        return connection
+    }
+
+    private struct OwnedWriteGates: Sendable {
+        let park: SessionWaitHold
+        let wait: SessionWaitHold
+        let loopTop: SessionWaitHold
+    }
+
+    private func waitForOwnedLoopTop(_ gates: OwnedWriteGates) async throws {
+        try await waitUntilTrue("the write should own the send") {
+            await gates.park.hasEntered
+        }
+        await gates.park.release()
+        try await waitUntilTrue("the write should reach its session wait") {
+            await gates.wait.hasEntered
+        }
+        await gates.wait.release()
+        try await waitUntilTrue("the write should reach an owned loop-top") {
+            await gates.loopTop.hasEntered
+        }
+    }
+
+    private func exerciseOwnedWriteInterruption(
+        expected: TransportSendOwnerOutcome,
+        expectedError: SSHError,
+        loopTopThrows: SSHError? = nil,
+        drainThrows: Bool = false,
+        interrupt: (Task<Void, any Error>, OwnedWriteGates) async throws -> Void
+    ) async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let proxy = try #require(WeakNetworkProxyFixture.current)
+        try await withDegradedLink(proxy) {
+            let connection = try await connectThroughProxy(
+                environment: environment,
+                proxy: proxy)
+            await connection.startSamplingTransportSendOwnerForTesting()
+            try await connection.shrinkSendBufferForTesting(bytes: 2_048)
+            let pty = try await connection.openPTY(
+                command: "cat",
+                columns: 80,
+                rows: 24,
+                timeout: .seconds(15))
+            let gates = OwnedWriteGates(
+                park: SessionWaitHold(),
+                wait: SessionWaitHold(),
+                loopTop: SessionWaitHold())
+            await connection.holdNextOutboundWriteParkForTesting {
+                await gates.park.waitUntilReleased()
+            }
+            await connection.holdNextSessionWaitForTesting {
+                await gates.wait.waitUntilReleased()
+            }
+            await connection.holdNextOwnedLoopTopForTesting {
+                await gates.loopTop.waitUntilReleased()
+                if let loopTopThrows { throw loopTopThrows }
+            }
+            if drainThrows {
+                await connection.holdNextOwnedDrainForTesting {
+                    throw expectedError
+                }
+            }
+            let write = Task {
+                try await pty.write(
+                    Data(repeating: 0x61, count: 512 * 1_024),
+                    timeout: .seconds(15))
+            }
+            do {
+                try await interrupt(write, gates)
+                await #expect(throws: expectedError) { try await write.value }
+            } catch {
+                write.cancel()
+                await gates.park.release()
+                await gates.wait.release()
+                await gates.loopTop.release()
+                try? await pty.close(timeout: .seconds(2))
+                throw error
+            }
+            let ownerSamples = await connection.transportSendOwnerSamplesForTesting()
+            #expect(!ownerSamples.isEmpty)
+            #expect(ownerSamples.allSatisfy { !$0.isForbiddenClearWindow })
+            #expect(await connection.oneShotRegistryCountForTesting() == 0)
+            let state = await connection.resourceStateForTesting()
+            switch expected {
+            case .drained:
+                #expect(await connection.isConnected)
+                #expect(state.isValid)
+                #expect(state.descriptorIsOpen)
+                #expect(state.hasSession)
+                let descriptors = openFileDescriptorCount()
+                let echo = try await connection.execute("printf drained", timeout: .seconds(5))
+                #expect(echo.stdout == Data("drained".utf8))
+                #expect(openFileDescriptorCount() <= descriptors + 2)
+                print("[issue-130] owner interruption outcome: drained")
+            case .invalidated:
+                #expect(await connection.isConnected == false)
+                #expect(state.isValid == false)
+                #expect(state.descriptorIsOpen == false)
+                #expect(state.hasSession == false)
+                await #expect(throws: SSHError.connectionInvalidated) {
+                    _ = try await connection.execute("printf poisoned", timeout: .seconds(1))
+                }
+                print("[issue-130] owner interruption outcome: invalidated")
+            }
+            try? await pty.close(timeout: .seconds(2))
+            try await connection.close(timeout: .seconds(2))
+        }
+    }
+
+    private func exerciseYieldedOneShotInterruption(
+        expected: TransportSendOwnerOutcome,
+        expectedError: SSHError,
+        waitThrows: SSHError? = nil,
+        interrupt: (Task<SSHExecResult, any Error>, SessionWaitHold) async -> Void
+    ) async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        let hold = SessionWaitHold()
+        await connection.holdNextOneShotEstablishedForTesting {
+            await connection.holdNextSessionWaitForTesting {
+                await hold.waitUntilReleased()
+                if let waitThrows { throw waitThrows }
+            }
+        }
+        if expected == .invalidated {
+            await connection.holdNextExecCleanupForTesting {
+                throw SSHError.channelFailed
+            }
+        }
+        let rpc = Task {
+            try await connection.execute("sleep 20", timeout: .seconds(15))
+        }
+        try await waitUntilTrue("the one-shot should yield after establishment") {
+            await hold.hasEntered
+        }
+        await interrupt(rpc, hold)
+        await #expect(throws: expectedError) { _ = try await rpc.value }
+        #expect(await connection.oneShotRegistryCountForTesting() == 0)
+        let state = await connection.resourceStateForTesting()
+        switch expected {
+        case .drained:
+            #expect(await connection.isConnected)
+            #expect(state.isValid)
+            #expect(state.descriptorIsOpen)
+            #expect(state.hasSession)
+            let echo = try await connection.execute("printf reclaimed", timeout: .seconds(5))
+            #expect(echo.stdout == Data("reclaimed".utf8))
+        case .invalidated:
+            #expect(await connection.isConnected == false)
+            #expect(state.isValid == false)
+            #expect(state.descriptorIsOpen == false)
+            #expect(state.hasSession == false)
+            await #expect(throws: SSHError.connectionInvalidated) {
+                _ = try await connection.execute("printf poisoned", timeout: .seconds(1))
+            }
+        }
+        try? await connection.close(timeout: .seconds(2))
+    }
+
+    private func invalidateOneYieldingSession(
+        environment: SessionDriverTestEnvironment
+    ) async throws {
+        let connection = try await environment.connect()
+        let hold = SessionWaitHold()
+        await connection.holdNextOneShotEstablishedForTesting {
+            await connection.holdNextSessionWaitForTesting {
+                await hold.waitUntilReleased()
+            }
+        }
+        let rpc = Task {
+            try await connection.execute("sleep 20", timeout: .seconds(15))
+        }
+        try await waitUntilTrue("the one-shot should wait after establishment") {
+            await hold.hasEntered
+        }
+        try? await connection.close(timeout: .seconds(2))
+        await hold.release()
+        _ = try? await rpc.value
+    }
+
+    private func durationSeconds(_ duration: Duration) -> Double {
+        let components = duration.components
+        return Double(components.seconds) + Double(components.attoseconds) / 1e18
+    }
+}
+
+private enum TransportSendOwnerOutcome: String, CaseIterable, Equatable {
+    case drained
+    case invalidated
+}
+
+private enum OneShotYieldSite: String, CaseIterable {
+    case execute
+    case executeResponseLine
+    case exchangeStreamLocal
+
+    func run(on connection: SSHConnection, socketPath: String) async throws {
+        switch self {
+        case .execute:
+            _ = try await connection.execute("sleep 8", timeout: .seconds(15))
+        case .executeResponseLine:
+            let response = try await connection.executeResponseLine(
+                "IFS= read -r line; sleep 8; printf 'accepted:%s\\n' \"$line\"",
+                input: Data("device-key-line\n".utf8),
+                maximumResponseBytes: 64,
+                timeout: .seconds(15))
+            #expect(response == Data("accepted:device-key-line\n".utf8))
+        case .exchangeStreamLocal:
+            let token = UUID().uuidString
+            let request = Data(
+                #"{"id":"delay","method":"pane.read","params":{"pane_id":"fixture:delay:\#(token)"}}\#n"#
+                    .utf8)
+            let response = try await connection.exchangeStreamLocal(
+                socketPath: socketPath,
+                request: request,
+                timeout: .seconds(15))
+            #expect(!response.isEmpty)
+        }
+    }
+
+    func finish(_ rpc: Task<Void, any Error>) async throws {
+        try await rpc.value
     }
 }
 
@@ -1535,6 +2341,25 @@ private actor SessionWaitHold {
     }
 
     func release() {
+        isReleased = true
+        let resumed = waiters
+        waiters.removeAll()
+        for waiter in resumed { waiter.resume() }
+    }
+}
+
+private actor CountingHold {
+    private(set) var arrivedCount = 0
+    private var isReleased = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func arriveAndWait() async {
+        arrivedCount += 1
+        guard !isReleased else { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func releaseAll() {
         isReleased = true
         let resumed = waiters
         waiters.removeAll()
