@@ -139,6 +139,98 @@ Host driver uses the outer direct-tcpip channel as its transport and coordinates
 progress with the outer driver; blocking libssh2 calls and a global cross-Host
 lock are prohibited.
 
+Amendment (#130): the promise that channel state machines may make concurrent
+progress is bounded by libssh2 in three places — channel open, the outbound
+transport packet, and any one SFTP handle. The first is channel open. In the
+pinned 1.11.1 the continuation state for an unfinished open lives on the
+session, not on any channel — `open_state`, `open_channel`, `open_packet`,
+`open_data` and
+`open_packet_requirev_state` for the generic open, `direct_state` and
+`direct_message` for direct-streamlocal, all fields of `LIBSSH2_SESSION` in
+`src/libssh2_priv.h`. A second open entered while the first is at `EAGAIN`
+skips its own setup, resumes the first state machine, and returns the first
+call's channel to the second caller. Every open therefore stays serialized
+under the driver's operation mutex and finishes before another one begins.
+Waiting for that serialized slot is admission, not an open attempt: cancelling
+or timing out there leaves the session reusable because no native continuation
+belongs to the waiter. Once its own open call begins, an interrupted open still
+invalidates the session under the original cancellation rule above.
+
+Post-open continuation is usually channel-owned — process startup, reads,
+writes, close, wait-closed and free each keep their state on `LIBSSH2_CHANNEL`
+— so an established channel may make progress in bounded turns instead of
+holding the session for a whole round trip. A turn re-acquires the operation
+mutex, confirms the driver is still valid and still owns the same session,
+re-resolves its channel from a driver-owned registry by stable id, does one
+bounded piece of libssh2 work, and releases before it waits or yields. No
+native pointer survives a release across a turn boundary: invalidation clears
+the registries before it frees the session, and freeing a session destroys
+every channel on it, so a resumed turn that finds no entry has nothing left to
+dereference. The rule belongs to the shared retry primitive rather than to the
+three round-trip methods alone, because a resize holds the session across its
+own waits for exactly the same reason an ordinary RPC does, and a resize that
+cannot reach the Host promptly is the failure this decision exists to prevent.
+
+"Usually" is load-bearing: every packet producer also shares one session-owned
+outbound transport continuation. A send that could not flush its whole packet
+records that packet on the session and requires the next attempt to arrive with
+the same data pointer and the same length; a different producer is handed
+`EAGAIN` and cannot advance it. So when a packet-producing call returns `EAGAIN`
+while the session reports an outbound block, the driver records that logical
+operation as the transport-send owner, and until the same logical call returns
+a non-`EAGAIN` result no other libssh2 call may enter that session unless it is
+proved incapable of producing a packet. Channel open is not exempt and cannot
+cut ahead of the owner. The rule reads only the public block-direction report,
+never private packet layout, and is conservative by construction: recording
+ownership too eagerly costs concurrency, while recording it too late strands
+the owner behind a caller that can never make progress and can only end at its
+own deadline.
+
+Ownership ends in exactly two ways, and a caller giving up is neither of them.
+The exact owning call returning a non-`EAGAIN` result is one; completed
+whole-session invalidation, which reclaims the session and its pending packet
+together, is the other. Cancellation or a deadline observed while that call is
+parked clears nothing by itself, because the native packet outlives the task
+that produced it and the next producer or cleanup call to enter meets the same
+refusal and rebuilds the livelock. An operation cancelled or timed out while it
+owns the send must therefore first drive the exact owning call non-cancellably
+to a non-`EAGAIN` result inside its own reclamation budget and only then run
+channel-scoped cleanup; a budget that expires invalidates the whole session,
+exactly as a channel that cannot be reclaimed already does. There is no
+admissible state in which the owner is clear while the session is still valid
+and its packet still pending.
+
+Yielding is a per-resource privilege rather than a session-wide one: only an
+operation whose complete native continuation is proven safe for its own
+resource may take bounded turns. SFTP does not qualify and stays outside this
+decision. One `LIBSSH2_SFTP` holds a single continuation slot per operation
+kind and one partial-packet parser shared across all of them, so a second call
+of the same kind resumes the first call's state instead of starting its own,
+and a handle id re-resolves to exactly that shared state rather than isolating
+it. Every call on one SFTP handle therefore remains mutually exclusive for its
+whole logical operation, waits included, and `libssh2_sftp_init` stays fully
+serialized because its continuation is session-owned. Letting SFTP yield needs
+its own decision and a per-handle logical-operation lease to go with it.
+
+Three costs are accepted with it. Waking is session-wide: an operation that
+takes bytes off the socket releases every wait armed before it, so raising the
+number of channels that can be parked at once raises the number of wakeups each
+inbound packet causes, and the turn body has to stay small enough that the
+extra wakeups cost less than the stall they remove. Concurrency is suspended
+for as long as a transport-send owner exists, which is precisely when the link
+is congested — the case where the stall this decision removes hurts most. And
+an open the server is slow to confirm still holds the session for that one
+round trip; only a separate single-flight open owner could relax that, and it
+needs its own evidence that open itself costs user-visible time.
+
+Error precedence is unchanged. A turn checks cancellation and the deadline
+before it checks session validity, and the error that entered the catch is the
+error the caller sees; whole-session invalidation remains a side effect of
+cleanup that could not reclaim its channel, never a reported outcome that
+replaces the caller's own. Channel admission is unchanged too: a lease is held
+for a channel's whole lifetime, and yielding the operation mutex mid-turn
+neither releases one nor creates capacity for another.
+
 The native dependencies will be built without the OpenSSL legacy provider and
 will not enable obsolete SSH-DSS, SHA-1 SSH-RSA, CBC, group1, or equivalent
 legacy algorithms for compatibility. The supported algorithm set must be at
