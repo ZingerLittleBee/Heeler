@@ -6,6 +6,7 @@ import Testing
 /// The three one-off request consumers keep every context-specific arm they
 /// already had. Only the branch that read `connectionGuidance` now reads
 /// `presentation.message` (#163).
+@MainActor
 @Suite("Request failure presentation")
 struct RequestFailurePresentationTests {
     @Test func notificationRegistrationKeepsItsContextSpecificArms() {
