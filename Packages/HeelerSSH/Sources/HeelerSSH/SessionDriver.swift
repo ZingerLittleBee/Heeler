@@ -69,15 +69,54 @@ actor SessionDriver {
     private var nextSFTPFileID: UInt64 = 0
     private var sftpClients: [UInt64: SFTPState] = [:]
 
+    private struct ChannelOpenAdmissionError: Error, Sendable {
+        let underlying: SSHError
+    }
+
+    private struct OneShotChannel {
+        let channel: OpaquePointer
+        let session: OpaquePointer
+    }
+
+    private enum ChannelIdentity: Equatable {
+        case oneShot(UInt64)
+        case pty(UInt64)
+        case streamLocal(UInt64)
+    }
+
+    private var nextOneShotID: UInt64 = 0
+    private var oneShotChannels: [UInt64: OneShotChannel] = [:]
+    private var nextTransportSendIdentity: UInt64 = 0
+    /// The logical libssh2 call that last returned `EAGAIN` with an outbound
+    /// block. Cleared only by that same call returning non-`EAGAIN`, or by
+    /// completed whole-session invalidation. Cancellation does not clear it.
+    private var transportSendOwner: UInt64?
+    /// Session-owned channel opens must not interleave, even when the opener
+    /// releases the operation mutex to wait for a foreign send owner.
+    private var channelOpenInProgress = false
+    private var nextChannelOpenWaiterID: UInt64 = 0
+    private var channelOpenWaiters: [UInt64: CheckedContinuation<Void, any Error>] = [:]
+    private var sftpUses: [UInt64: Int] = [:]
+    private var nextSFTPIdleWaiterID: UInt64 = 0
+    private var sftpIdleWaiters: [UInt64: CheckedContinuation<Void, any Error>] = [:]
+
 #if DEBUG
     private var nextSFTPWriteDelayForTesting: Duration?
     private var sftpWriteDelayIsActiveForTesting = false
-    private var nextSessionWaitHoldForTesting: (@Sendable () async -> Void)?
+    private var nextSessionWaitHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextExecChannelAllocatedHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextExecCleanupHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextCompensationUnlinkPhaseHookForTesting: (@Sendable () async throws -> Void)?
     private var nextCompensationStatPhaseHookForTesting: (@Sendable () async throws -> Void)?
     private var nextCompensationShutdownHoldForTesting: (@Sendable () async throws -> Void)?
+    private var nextOutboundWriteParkHoldForTesting: (@Sendable () async -> Void)?
+    private var nextOneShotEstablishedHoldForTesting: (@Sendable () async throws -> Void)?
+    private var eachOneShotEstablishedHoldForTesting: (@Sendable () async throws -> Void)?
+    private var nextOwnedLoopTopHoldForTesting: (@Sendable () async throws -> Void)?
+    private var nextOwnedDrainHoldForTesting: (@Sendable () async throws -> Void)?
+    private var nextChannelOpenSlotHoldForTesting: (@Sendable () async throws -> Void)?
+    private var eachSessionWaitHoldForTesting: (@Sendable () async -> Void)?
+    private var ownerSamplesForTesting: [TransportSendOwnerSample]?
     private var shouldFailNextSFTPInitBeforeEAGAINForTesting = false
 #endif
 
@@ -215,55 +254,60 @@ actor SessionDriver {
         await acquireOperation()
         defer { releaseOperation() }
 
-        guard valid, !forwarding, authenticated, let session else {
+        guard valid, !forwarding, authenticated, session != nil else {
             throw SSHError.connectionInvalidated
         }
         guard !command.isEmpty else { throw SSHError.channelFailed }
         let deadline = ContinuousClock.now.advanced(by: timeout)
-        var channel: OpaquePointer?
+        var oneShotID: UInt64?
 
         do {
-            channel = try await openSessionChannel(session: session, deadline: deadline)
-            guard let channel else { throw SSHError.channelFailed }
+            let channel = try await openSessionChannel(deadline: deadline)
+            let session = try requireSession()
+            let id = registerOneShot(channel: channel, session: session)
+            oneShotID = id
 #if DEBUG
             try await holdExecChannelAllocationForTestingIfNeeded()
+            try await holdOneShotEstablishedForTestingIfNeeded()
 #endif
             try await startExec(
-                channel: channel,
+                identity: .oneShot(id),
                 command: command,
-                session: session,
                 deadline: deadline)
 
             let result = try await exchange(
-                channel: channel,
+                identity: .oneShot(id),
                 input: input,
-                session: session,
                 deadline: deadline)
-            let freeResult = try await repeatUntilComplete(deadline: deadline) {
-                libssh2_channel_free(channel)
+            let freeResult = try await repeatUntilCompleteYielding(
+                deadline: deadline,
+                identity: .oneShot(id)
+            ) {
+                libssh2_channel_free($0)
             }
             guard freeResult == 0 else { throw SSHError.channelFailed }
+            removeOneShot(id)
             return result
         } catch {
             let normalized = normalize(error)
-            if let channel {
+            if let id = oneShotID {
                 do {
                     let cleanupDeadline = ContinuousClock.now.advanced(by: .seconds(2))
 #if DEBUG
                     try await holdExecCleanupForTestingIfNeeded()
 #endif
                     try await cleanChannel(
-                        channel,
-                        session: session,
+                        identity: .oneShot(id),
                         deadline: cleanupDeadline,
                         cancellable: false)
+                    removeOneShot(id)
                 } catch {
                     // This is the last owner of the allocated exec channel.
                     // If cleanup cannot finish, only session teardown can
                     // reclaim its native channel and server session slot.
                     invalidateResources()
                 }
-            } else {
+            } else if !(error is ChannelOpenAdmissionError) {
                 // A channel-open outcome is uncertain, so the session must not
                 // admit later work even if the underlying TCP socket survives.
                 invalidateResources()
@@ -281,7 +325,7 @@ actor SessionDriver {
         await acquireOperation()
         defer { releaseOperation() }
 
-        guard valid, !forwarding, authenticated, let session else {
+        guard valid, !forwarding, authenticated, session != nil else {
             throw SSHError.connectionInvalidated
         }
         guard
@@ -294,51 +338,52 @@ actor SessionDriver {
             throw SSHError.channelFailed
         }
         let deadline = ContinuousClock.now.advanced(by: timeout)
-        var channel: OpaquePointer?
+        var oneShotID: UInt64?
 
         do {
-            channel = try await openSessionChannel(session: session, deadline: deadline)
-            guard let channel else { throw SSHError.channelFailed }
+            let channel = try await openSessionChannel(deadline: deadline)
+            let session = try requireSession()
+            let id = registerOneShot(channel: channel, session: session)
+            oneShotID = id
 #if DEBUG
             try await holdExecChannelAllocationForTestingIfNeeded()
+            try await holdOneShotEstablishedForTestingIfNeeded()
 #endif
             try await startExec(
-                channel: channel,
+                identity: .oneShot(id),
                 command: command,
-                session: session,
                 deadline: deadline)
             let response = try await exchangeResponseLine(
-                channel: channel,
+                identity: .oneShot(id),
                 request: input,
                 maximumResponseBytes: maximumResponseBytes,
-                session: session,
                 deadline: deadline)
             try await cleanChannel(
-                channel,
-                session: session,
+                identity: .oneShot(id),
                 deadline: deadline,
                 cancellable: true)
+            removeOneShot(id)
             return response
         } catch {
             let normalized = normalize(error)
-            if let channel {
+            if let id = oneShotID {
                 do {
                     let cleanupDeadline = ContinuousClock.now.advanced(by: .seconds(2))
 #if DEBUG
                     try await holdExecCleanupForTestingIfNeeded()
 #endif
                     try await cleanChannel(
-                        channel,
-                        session: session,
+                        identity: .oneShot(id),
                         deadline: cleanupDeadline,
                         cancellable: false)
+                    removeOneShot(id)
                 } catch {
                     // The response-line channel has no owner after this scope.
                     // A failed cleanup therefore requires session teardown to
                     // reclaim the native channel and its server session slot.
                     invalidateResources()
                 }
-            } else {
+            } else if !(error is ChannelOpenAdmissionError) {
                 invalidateResources()
             }
             throw normalized
@@ -355,7 +400,7 @@ actor SessionDriver {
         await acquireOperation()
         defer { releaseOperation() }
 
-        guard valid, !forwarding, authenticated, let session else {
+        guard valid, !forwarding, authenticated, session != nil else {
             throw SSHError.connectionInvalidated
         }
         guard
@@ -373,40 +418,38 @@ actor SessionDriver {
             throw SSHError.channelFailed
         }
         let deadline = ContinuousClock.now.advanced(by: timeout)
-        var channel: OpaquePointer?
+        var registeredID: UInt64?
 
         do {
-            channel = try await openSessionChannel(session: session, deadline: deadline)
-            guard let channel else { throw SSHError.channelFailed }
+            let channel = try await openSessionChannel(deadline: deadline)
+            nextPTYChannelID &+= 1
+            let id = nextPTYChannelID
+            ptyChannels[id] = PTYChannelState(channel: channel)
+            registeredID = id
             try await configurePTY(
-                channel: channel,
+                identity: .pty(id),
                 terminal: terminal,
                 columns: columns,
                 rows: rows,
                 deadline: deadline)
             try await startExec(
-                channel: channel,
+                identity: .pty(id),
                 command: command,
-                session: session,
                 deadline: deadline)
-
-            nextPTYChannelID &+= 1
-            let id = nextPTYChannelID
-            ptyChannels[id] = PTYChannelState(channel: channel)
             return SSHPTYChannel(id: id, driver: self)
         } catch {
             let normalized = normalize(error)
-            if let channel {
+            if let id = registeredID {
                 do {
                     try await cleanChannel(
-                        channel,
-                        session: session,
+                        identity: .pty(id),
                         deadline: ContinuousClock.now.advanced(by: .seconds(2)),
                         cancellable: false)
+                    ptyChannels.removeValue(forKey: id)
                 } catch {
                     invalidateResources()
                 }
-            } else {
+            } else if !(error is ChannelOpenAdmissionError) {
                 invalidateResources()
             }
             throw normalized
@@ -417,30 +460,34 @@ actor SessionDriver {
         guard !data.isEmpty else { return }
         let deadline = ContinuousClock.now.advanced(by: timeout)
         var offset = 0
+        let owner = allocateTransportSendOwner()
 
         while offset < data.count {
             await acquireOperation()
-            let progress: (written: Int, wait: SessionWaitPlan)
+            let progress: (written: Int, wait: SessionWaitPlan, parkedOutbound: Bool)
             do {
+                try await holdOwnedLoopTopForTestingIfNeeded(owner: owner)
                 try checkProgress(deadline: deadline)
-                guard valid, let session else { throw SSHError.connectionInvalidated }
-                guard let channel = ptyChannels[id]?.channel else {
-                    throw SSHError.channelFailed
-                }
-                let written = data.withUnsafeBytes { bytes -> Int in
-                    guard let baseAddress = bytes.baseAddress else { return 0 }
-                    return libssh2_channel_write_ex(
-                        channel,
-                        0,
-                        baseAddress.advanced(by: offset).assumingMemoryBound(to: CChar.self),
-                        data.count - offset)
-                }
+                try await waitForTransportSendAdmission(
+                    owner: owner,
+                    deadline: deadline,
+                    cancellable: true)
+                let session = try requireSession()
+                let channel = try resolveChannel(.pty(id))
+                let written = writeChannel(channel, data: data, offset: offset)
+                notePacketProducingWrite(written, owner: owner, session: session)
                 guard written >= 0 || written == Int(LIBSSH2_ERROR_EAGAIN) else {
                     throw SSHError.channelFailed
                 }
-                progress = (written, sessionWaitPlan(session))
+                progress = (
+                    written,
+                    sessionWaitPlan(session),
+                    written == Int(LIBSSH2_ERROR_EAGAIN) && transportSendOwner == owner)
                 releaseOperation()
             } catch {
+                await finishOwnedSendIfNeeded(owner: owner) {
+                    writeChannelOnce(identity: .pty(id), data: data, offset: offset)
+                }
                 releaseOperation()
                 throw normalize(error)
             }
@@ -449,7 +496,21 @@ actor SessionDriver {
                 offset += progress.written
                 await Task.yield()
             } else {
-                try await awaitSessionProgress(progress.wait, until: deadline)
+#if DEBUG
+                if progress.parkedOutbound {
+                    await holdOutboundWriteParkForTestingIfNeeded()
+                }
+#endif
+                do {
+                    try await awaitSessionProgress(progress.wait, until: deadline)
+                } catch {
+                    await acquireOperation()
+                    await finishOwnedSendIfNeeded(owner: owner) {
+                        writeChannelOnce(identity: .pty(id), data: data, offset: offset)
+                    }
+                    releaseOperation()
+                    throw normalize(error)
+                }
             }
         }
     }
@@ -462,29 +523,53 @@ actor SessionDriver {
         guard maximumBytes > 0 else { throw SSHError.channelFailed }
         let deadline = ContinuousClock.now.advanced(by: timeout)
 
+        let owner = allocateTransportSendOwner()
         while true {
             await acquireOperation()
             let progress: (data: Data, eof: Bool, wait: SessionWaitPlan)
             do {
                 try checkProgress(deadline: deadline)
-                guard valid, let session else { throw SSHError.connectionInvalidated }
-                guard let channel = ptyChannels[id]?.channel else {
-                    throw SSHError.channelFailed
-                }
+                try await waitForTransportSendAdmission(
+                    owner: owner,
+                    deadline: deadline,
+                    cancellable: true)
+                let session = try requireSession()
+                let channel = try resolveChannel(.pty(id))
                 var buffer = [UInt8](repeating: 0, count: maximumBytes)
-                let data = try readAvailable(channel: channel, stream: 0, buffer: &buffer)
+                let data = try readAvailableNoting(
+                    channel: channel,
+                    stream: 0,
+                    buffer: &buffer,
+                    owner: owner,
+                    session: session)
                 let eof = libssh2_channel_eof(channel) == 1
                 if eof { ptyChannels[id]?.reachedEOF = true }
                 progress = (data, eof, sessionWaitPlan(session))
                 releaseOperation()
             } catch {
+                await finishOwnedSendIfNeeded(owner: owner) {
+                    guard let channel = try? resolveChannel(.pty(id)) else { return nil }
+                    var scratch = [UInt8](repeating: 0, count: maximumBytes)
+                    return readOnce(channel: channel, stream: 0, buffer: &scratch)
+                }
                 releaseOperation()
                 throw normalize(error)
             }
 
             if !progress.data.isEmpty { return progress.data }
             if progress.eof { return nil }
-            try await awaitSessionProgress(progress.wait, until: deadline)
+            do {
+                try await awaitSessionProgress(progress.wait, until: deadline)
+            } catch {
+                await acquireOperation()
+                await finishOwnedSendIfNeeded(owner: owner) {
+                    guard let channel = try? resolveChannel(.pty(id)) else { return nil }
+                    var scratch = [UInt8](repeating: 0, count: maximumBytes)
+                    return readOnce(channel: channel, stream: 0, buffer: &scratch)
+                }
+                releaseOperation()
+                throw normalize(error)
+            }
         }
     }
 
@@ -506,11 +591,12 @@ actor SessionDriver {
         defer { releaseOperation() }
 
         guard valid, session != nil else { throw SSHError.connectionInvalidated }
-        guard let channel = ptyChannels[id]?.channel else { throw SSHError.channelFailed }
-        let result = try await repeatUntilComplete(
-            deadline: ContinuousClock.now.advanced(by: timeout)
+        guard ptyChannels[id] != nil else { throw SSHError.channelFailed }
+        let result = try await repeatUntilCompleteYielding(
+            deadline: ContinuousClock.now.advanced(by: timeout),
+            identity: .pty(id)
         ) {
-            libssh2_channel_request_pty_size_ex(channel, Int32(columns), Int32(rows), 0, 0)
+            libssh2_channel_request_pty_size_ex($0, Int32(columns), Int32(rows), 0, 0)
         }
         guard result == 0 else { throw SSHError.channelFailed }
     }
@@ -527,7 +613,7 @@ actor SessionDriver {
         }
 
         let exitStatus = try await exitStatusAfterChannelClose(
-            channel: state.channel,
+            identity: .pty(id),
             deadline: deadline)
         ptyChannels[id]?.closed = true
         return exitStatus
@@ -537,26 +623,31 @@ actor SessionDriver {
         await acquireOperation()
         defer { releaseOperation() }
 
-        guard let state = ptyChannels.removeValue(forKey: id) else { return }
-        guard valid, let session else { return }
+        guard ptyChannels[id] != nil else { return }
+        guard valid, session != nil else {
+            ptyChannels.removeValue(forKey: id)
+            return
+        }
         do {
             let deadline = ContinuousClock.now.advanced(by: timeout)
-            if state.closed {
-                let freeResult = try await repeatUntilComplete(
+            if ptyChannels[id]?.closed == true {
+                let freeResult = try await repeatUntilCompleteYielding(
                     deadline: deadline,
-                    cancellable: false
+                    cancellable: false,
+                    identity: .pty(id)
                 ) {
-                    libssh2_channel_free(state.channel)
+                    libssh2_channel_free($0)
                 }
                 guard freeResult == 0 else { throw SSHError.channelFailed }
             } else {
                 try await cleanChannel(
-                    state.channel,
-                    session: session,
+                    identity: .pty(id),
                     deadline: deadline,
                     cancellable: false)
             }
+            ptyChannels.removeValue(forKey: id)
         } catch {
+            ptyChannels.removeValue(forKey: id)
             throw teardownFailure(error)
         }
     }
@@ -572,7 +663,7 @@ actor SessionDriver {
         await acquireOperation()
         defer { releaseOperation() }
 
-        guard valid, !forwarding, authenticated, let session else {
+        guard valid, !forwarding, authenticated, session != nil else {
             throw SSHError.connectionInvalidated
         }
         guard
@@ -586,41 +677,48 @@ actor SessionDriver {
         }
 
         let deadline = ContinuousClock.now.advanced(by: timeout)
-        var channel: OpaquePointer?
+        var oneShotID: UInt64?
 
         do {
-            channel = try await openStreamLocalChannel(
+            let channel = try await openStreamLocalChannel(
                 socketPath: socketPath,
-                session: session,
                 deadline: deadline)
-            guard let channel else { throw SSHError.streamLocalOpenFailed }
-            let response = try await exchangeResponseLine(
+            let session = try requireSession()
+            let id = registerOneShot(
                 channel: channel,
+                session: session)
+            oneShotID = id
+#if DEBUG
+            try await holdOneShotEstablishedForTestingIfNeeded()
+#endif
+            let response = try await exchangeResponseLine(
+                identity: .oneShot(id),
                 request: request,
                 maximumResponseBytes: maximumResponseBytes,
-                session: session,
                 deadline: deadline,
                 beforeRequestWrite: beforeRequestWrite,
                 onRequestWritten: onRequestWritten)
             try await cleanChannel(
-                channel,
-                session: session,
+                identity: .oneShot(id),
                 deadline: deadline,
                 cancellable: true)
+            removeOneShot(id)
             return response
         } catch {
             let normalized = (error as? SSHError).map(normalize)
-            if let channel {
+            if let id = oneShotID {
                 do {
                     try await cleanChannel(
-                        channel,
-                        session: session,
+                        identity: .oneShot(id),
                         deadline: ContinuousClock.now.advanced(by: .seconds(2)),
                         cancellable: false)
+                    removeOneShot(id)
                 } catch {
                     invalidateResources()
                 }
-            } else if normalized != .streamLocalOpenFailed {
+            } else if !(error is ChannelOpenAdmissionError),
+                normalized != .streamLocalOpenFailed
+            {
                 // `.streamLocalOpenFailed` now means only what it says: the
                 // server refused this one channel and the session is intact.
                 // Everything else — a timeout or cancellation with an uncertain
@@ -643,7 +741,7 @@ actor SessionDriver {
         await acquireOperation()
         defer { releaseOperation() }
 
-        guard valid, !forwarding, authenticated, let session else {
+        guard valid, !forwarding, authenticated, session != nil else {
             throw SSHError.connectionInvalidated
         }
         guard socketPath.hasPrefix("/"), !socketPath.utf8.contains(0) else {
@@ -655,7 +753,6 @@ actor SessionDriver {
         do {
             channel = try await openStreamLocalChannel(
                 socketPath: socketPath,
-                session: session,
                 deadline: deadline)
             guard let channel else { throw SSHError.streamLocalOpenFailed }
             nextStreamLocalChannelID &+= 1
@@ -668,13 +765,15 @@ actor SessionDriver {
                 do {
                     try await cleanChannel(
                         channel,
-                        session: session,
+                        session: try requireSession(),
                         deadline: ContinuousClock.now.advanced(by: .seconds(2)),
                         cancellable: false)
                 } catch {
                     invalidateResources()
                 }
-            } else if normalized != .streamLocalOpenFailed {
+            } else if !(error is ChannelOpenAdmissionError),
+                normalized != .streamLocalOpenFailed
+            {
                 // The same rule `exchangeStreamLocal` states above: only a
                 // refusal of this one channel leaves the session usable.
                 invalidateResources()
@@ -691,33 +790,34 @@ actor SessionDriver {
         guard !data.isEmpty else { return }
         let deadline = ContinuousClock.now.advanced(by: timeout)
         var offset = 0
+        let owner = allocateTransportSendOwner()
 
         while offset < data.count {
             await acquireOperation()
-            let progress: (written: Int, wait: SessionWaitPlan)
+            let progress: (written: Int, wait: SessionWaitPlan, parkedOutbound: Bool)
             do {
+                try await holdOwnedLoopTopForTestingIfNeeded(owner: owner)
                 try checkProgress(deadline: deadline)
-                guard
-                    valid,
-                    let session,
-                    let channel = streamLocalChannels[id]
-                else {
-                    throw SSHError.connectionInvalidated
-                }
-                let written = data.withUnsafeBytes { bytes -> Int in
-                    guard let baseAddress = bytes.baseAddress else { return 0 }
-                    return libssh2_channel_write_ex(
-                        channel,
-                        0,
-                        baseAddress.advanced(by: offset).assumingMemoryBound(to: CChar.self),
-                        data.count - offset)
-                }
+                try await waitForTransportSendAdmission(
+                    owner: owner,
+                    deadline: deadline,
+                    cancellable: true)
+                let session = try requireSession()
+                let channel = try resolveChannel(.streamLocal(id))
+                let written = writeChannel(channel, data: data, offset: offset)
+                notePacketProducingWrite(written, owner: owner, session: session)
                 guard written >= 0 || written == Int(LIBSSH2_ERROR_EAGAIN) else {
                     throw SSHError.channelFailed
                 }
-                progress = (written, sessionWaitPlan(session))
+                progress = (
+                    written,
+                    sessionWaitPlan(session),
+                    written == Int(LIBSSH2_ERROR_EAGAIN) && transportSendOwner == owner)
                 releaseOperation()
             } catch {
+                await finishOwnedSendIfNeeded(owner: owner) {
+                    writeChannelOnce(identity: .streamLocal(id), data: data, offset: offset)
+                }
                 releaseOperation()
                 throw normalize(error)
             }
@@ -726,7 +826,21 @@ actor SessionDriver {
                 offset += progress.written
                 await Task.yield()
             } else {
-                try await awaitSessionProgress(progress.wait, until: deadline)
+#if DEBUG
+                if progress.parkedOutbound {
+                    await holdOutboundWriteParkForTestingIfNeeded()
+                }
+#endif
+                do {
+                    try await awaitSessionProgress(progress.wait, until: deadline)
+                } catch {
+                    await acquireOperation()
+                    await finishOwnedSendIfNeeded(owner: owner) {
+                        writeChannelOnce(identity: .streamLocal(id), data: data, offset: offset)
+                    }
+                    releaseOperation()
+                    throw normalize(error)
+                }
             }
         }
     }
@@ -738,34 +852,55 @@ actor SessionDriver {
     ) async throws -> Data? {
         guard maximumBytes > 0 else { throw SSHError.channelFailed }
         let deadline = ContinuousClock.now.advanced(by: timeout)
+        let owner = allocateTransportSendOwner()
 
         while true {
             await acquireOperation()
             let progress: (data: Data, eof: Bool, wait: SessionWaitPlan)
             do {
                 try checkProgress(deadline: deadline)
-                guard
-                    valid,
-                    let session,
-                    let channel = streamLocalChannels[id]
-                else {
-                    throw SSHError.connectionInvalidated
-                }
+                try await waitForTransportSendAdmission(
+                    owner: owner,
+                    deadline: deadline,
+                    cancellable: true)
+                let session = try requireSession()
+                let channel = try resolveChannel(.streamLocal(id))
                 var buffer = [UInt8](repeating: 0, count: maximumBytes)
-                let data = try readAvailable(channel: channel, stream: 0, buffer: &buffer)
+                let data = try readAvailableNoting(
+                    channel: channel,
+                    stream: 0,
+                    buffer: &buffer,
+                    owner: owner,
+                    session: session)
                 progress = (
                     data,
                     libssh2_channel_eof(channel) == 1,
                     sessionWaitPlan(session))
                 releaseOperation()
             } catch {
+                await finishOwnedSendIfNeeded(owner: owner) {
+                    guard let channel = try? resolveChannel(.streamLocal(id)) else { return nil }
+                    var scratch = [UInt8](repeating: 0, count: maximumBytes)
+                    return readOnce(channel: channel, stream: 0, buffer: &scratch)
+                }
                 releaseOperation()
                 throw normalize(error)
             }
 
             if !progress.data.isEmpty { return progress.data }
             if progress.eof { return nil }
-            try await awaitSessionProgress(progress.wait, until: deadline)
+            do {
+                try await awaitSessionProgress(progress.wait, until: deadline)
+            } catch {
+                await acquireOperation()
+                await finishOwnedSendIfNeeded(owner: owner) {
+                    guard let channel = try? resolveChannel(.streamLocal(id)) else { return nil }
+                    var scratch = [UInt8](repeating: 0, count: maximumBytes)
+                    return readOnce(channel: channel, stream: 0, buffer: &scratch)
+                }
+                releaseOperation()
+                throw normalize(error)
+            }
         }
     }
 
@@ -773,15 +908,19 @@ actor SessionDriver {
         await acquireOperation()
         defer { releaseOperation() }
 
-        guard let channel = streamLocalChannels.removeValue(forKey: id) else { return }
-        guard valid, let session else { return }
+        guard streamLocalChannels[id] != nil else { return }
+        guard valid, session != nil else {
+            streamLocalChannels.removeValue(forKey: id)
+            return
+        }
         do {
             try await cleanChannel(
-                channel,
-                session: session,
+                identity: .streamLocal(id),
                 deadline: ContinuousClock.now.advanced(by: timeout),
                 cancellable: false)
+            streamLocalChannels.removeValue(forKey: id)
         } catch {
+            streamLocalChannels.removeValue(forKey: id)
             throw teardownFailure(error)
         }
     }
@@ -790,28 +929,36 @@ actor SessionDriver {
         await acquireOperation()
         defer { releaseOperation() }
 
-        guard valid, !forwarding, authenticated, let session else {
+        guard valid, !forwarding, authenticated, session != nil else {
             throw SSHError.connectionInvalidated
         }
         let deadline = ContinuousClock.now.advanced(by: timeout)
         var initWasPending = false
+        let owner = allocateTransportSendOwner()
 
         do {
             while true {
                 try checkProgress(deadline: deadline)
+                try await waitForTransportSendAdmission(
+                    owner: owner,
+                    deadline: deadline,
+                    cancellable: true)
 #if DEBUG
                 if shouldFailNextSFTPInitBeforeEAGAINForTesting {
                     shouldFailNextSFTPInitBeforeEAGAINForTesting = false
                     throw SSHError.sftpUnavailable
                 }
 #endif
+                let session = try requireSession()
                 if let sftp = libssh2_sftp_init(session) {
+                    notePacketProducingResult(0, owner: owner, session: session)
                     nextSFTPID &+= 1
                     let id = nextSFTPID
                     sftpClients[id] = SFTPState(handle: sftp)
                     return SSHSFTPClient(id: id, driver: self)
                 }
                 let error = libssh2_session_last_errno(session)
+                notePacketProducingResult(error, owner: owner, session: session)
                 if error == LIBSSH2_ERROR_EAGAIN {
                     initWasPending = true
                     try await waitForSession(session, deadline: deadline)
@@ -822,6 +969,7 @@ actor SessionDriver {
                 }
             }
         } catch {
+            if transportSendOwner == owner { invalidateResources() }
             let normalized = normalize(error)
             // libssh2 1.11.1 keeps one in-progress SFTP-init state per session,
             // including its channel and allocation. Any failure after EAGAIN
@@ -847,12 +995,10 @@ actor SessionDriver {
         }
         await acquireOperation()
         defer { releaseOperation() }
-        guard valid, let session, let sftp = sftpClients[id]?.handle else {
-            throw SSHError.connectionInvalidated
-        }
-        let result = try await repeatUntilComplete(
+        let result = try await repeatUntilCompleteHoldingSFTP(
+            id: id,
             deadline: ContinuousClock.now.advanced(by: timeout)
-        ) {
+        ) { sftp in
             path.withCString { pathPointer in
                 libssh2_sftp_mkdir_ex(
                     sftp,
@@ -861,7 +1007,7 @@ actor SessionDriver {
                     Int(permissions))
             }
         }
-        try checkSFTPResult(result, sftp: sftp, session: session)
+        try checkSFTPResult(result, sftpID: id)
     }
 
     func sftpAttributes(
@@ -872,13 +1018,11 @@ actor SessionDriver {
         guard Self.isValidSFTPPath(path) else { throw SSHError.channelFailed }
         await acquireOperation()
         defer { releaseOperation() }
-        guard valid, let session, let sftp = sftpClients[id]?.handle else {
-            throw SSHError.connectionInvalidated
-        }
         var attributes = LIBSSH2_SFTP_ATTRIBUTES()
-        let result = try await repeatUntilComplete(
+        let result = try await repeatUntilCompleteHoldingSFTP(
+            id: id,
             deadline: ContinuousClock.now.advanced(by: timeout)
-        ) {
+        ) { sftp in
             path.withCString { pathPointer in
                 libssh2_sftp_stat_ex(
                     sftp,
@@ -888,7 +1032,7 @@ actor SessionDriver {
                     &attributes)
             }
         }
-        try checkSFTPResult(result, sftp: sftp, session: session)
+        try checkSFTPResult(result, sftpID: id)
         let hasSize = attributes.flags & UInt(LIBSSH2_SFTP_ATTR_SIZE) != 0
         let hasPermissions = attributes.flags & UInt(LIBSSH2_SFTP_ATTR_PERMISSIONS) != 0
         return SSHSFTPAttributes(
@@ -909,15 +1053,13 @@ actor SessionDriver {
         }
         await acquireOperation()
         defer { releaseOperation() }
-        guard valid, let session, let sftp = sftpClients[id]?.handle else {
-            throw SSHError.connectionInvalidated
-        }
         var attributes = LIBSSH2_SFTP_ATTRIBUTES()
         attributes.flags = UInt(LIBSSH2_SFTP_ATTR_PERMISSIONS)
         attributes.permissions = UInt(permissions)
-        let result = try await repeatUntilComplete(
+        let result = try await repeatUntilCompleteHoldingSFTP(
+            id: id,
             deadline: ContinuousClock.now.advanced(by: timeout)
-        ) {
+        ) { sftp in
             path.withCString { pathPointer in
                 libssh2_sftp_stat_ex(
                     sftp,
@@ -927,7 +1069,7 @@ actor SessionDriver {
                     &attributes)
             }
         }
-        try checkSFTPResult(result, sftp: sftp, session: session)
+        try checkSFTPResult(result, sftpID: id)
     }
 
     func readSFTPFileIfPresent(
@@ -937,32 +1079,34 @@ actor SessionDriver {
     ) async throws -> Data? {
         guard Self.isValidSFTPPath(path) else { throw SSHError.channelFailed }
         let deadline = ContinuousClock.now.advanced(by: timeout)
-        guard let fileID = try await openSFTPFileForReadingIfPresent(
-            sftpID: id,
-            path: path,
-            deadline: deadline)
-        else { return nil }
-
-        do {
-            var contents = Data()
-            while let chunk = try await readSFTPFileChunk(
+        return try await withSFTPUse(id: id, deadline: deadline) {
+            guard let fileID = try await openSFTPFileForReadingIfPresent(
                 sftpID: id,
-                fileID: fileID,
+                path: path,
                 deadline: deadline)
-            {
-                contents.append(chunk)
+            else { return nil }
+
+            do {
+                var contents = Data()
+                while let chunk = try await readSFTPFileChunk(
+                    sftpID: id,
+                    fileID: fileID,
+                    deadline: deadline)
+                {
+                    contents.append(chunk)
+                }
+                try await closeSFTPFileWithinUse(
+                    sftpID: id,
+                    fileID: fileID,
+                    timeout: timeout)
+                return contents
+            } catch {
+                try? await closeSFTPFileWithinUse(
+                    sftpID: id,
+                    fileID: fileID,
+                    timeout: .seconds(2))
+                throw normalize(error)
             }
-            try await closeSFTPFile(
-                sftpID: id,
-                fileID: fileID,
-                timeout: timeout)
-            return contents
-        } catch {
-            try? await closeSFTPFile(
-                sftpID: id,
-                fileID: fileID,
-                timeout: .seconds(2))
-            throw normalize(error)
         }
     }
 
@@ -973,12 +1117,22 @@ actor SessionDriver {
     ) async throws -> UInt64? {
         await acquireOperation()
         defer { releaseOperation() }
-        guard valid, let session, let sftp = sftpClients[sftpID]?.handle else {
+        guard valid, session != nil, sftpClients[sftpID]?.handle != nil else {
             throw SSHError.connectionInvalidated
         }
+        let owner = allocateTransportSendOwner()
 
+        do {
         while true {
             try checkProgress(deadline: deadline)
+            try await waitForTransportSendAdmission(
+                owner: owner,
+                deadline: deadline,
+                cancellable: true)
+            let session = try requireSession()
+            guard let sftp = sftpClients[sftpID]?.handle else {
+                throw SSHError.connectionInvalidated
+            }
             let file = path.withCString { pathPointer in
                 libssh2_sftp_open_ex(
                     sftp,
@@ -989,6 +1143,7 @@ actor SessionDriver {
                     Int32(LIBSSH2_SFTP_OPENFILE))
             }
             if let file {
+                notePacketProducingResult(0, owner: owner, session: session)
                 nextSFTPFileID &+= 1
                 let fileID = nextSFTPFileID
                 sftpClients[sftpID]?.files[fileID] = file
@@ -996,6 +1151,7 @@ actor SessionDriver {
             }
 
             let error = libssh2_session_last_errno(session)
+            notePacketProducingResult(error, owner: owner, session: session)
             if error == LIBSSH2_ERROR_EAGAIN {
                 try await waitForSession(session, deadline: deadline)
                 continue
@@ -1008,6 +1164,10 @@ actor SessionDriver {
             if status == UInt64(LIBSSH2_FX_NO_SUCH_FILE) { return nil }
             throw SSHError.sftpFailure(status: status)
         }
+        } catch {
+            if transportSendOwner == owner { invalidateResources() }
+            throw error
+        }
     }
 
     private func readSFTPFileChunk(
@@ -1016,12 +1176,17 @@ actor SessionDriver {
         deadline: ContinuousClock.Instant
     ) async throws -> Data? {
         let maximumChunkBytes = 64 * 1_024
+        let owner = allocateTransportSendOwner()
 
         while true {
             await acquireOperation()
             let progress: (data: Data, reachedEOF: Bool, wait: SessionWaitPlan)
             do {
                 try checkProgress(deadline: deadline)
+                try await waitForTransportSendAdmission(
+                    owner: owner,
+                    deadline: deadline,
+                    cancellable: true)
                 guard
                     valid,
                     let session,
@@ -1038,6 +1203,7 @@ actor SessionDriver {
                         baseAddress.assumingMemoryBound(to: CChar.self),
                         bytes.count)
                 }
+                notePacketProducingWrite(read, owner: owner, session: session)
                 if read < 0, read != Int(LIBSSH2_ERROR_EAGAIN) {
                     throw mappedSFTPError(sftp: state.handle, code: Int32(read))
                 }
@@ -1049,13 +1215,27 @@ actor SessionDriver {
             } catch {
                 let normalized = normalize(error)
                 if normalized == .connectionInvalidated { invalidateResources() }
+                await finishOwnedSendIfNeeded(owner: owner) {
+                    readSFTPOnce(sftpID: sftpID, fileID: fileID)
+                }
                 releaseOperation()
                 throw normalized
             }
 
             if !progress.data.isEmpty { return progress.data }
             if progress.reachedEOF { return nil }
-            try await awaitSessionProgress(progress.wait, until: deadline)
+            do {
+                try await awaitSessionProgress(progress.wait, until: deadline)
+            } catch {
+                let normalized = normalize(error)
+                if normalized == .connectionInvalidated { invalidateResources() }
+                await acquireOperation()
+                await finishOwnedSendIfNeeded(owner: owner) {
+                    readSFTPOnce(sftpID: sftpID, fileID: fileID)
+                }
+                releaseOperation()
+                throw normalized
+            }
         }
     }
 
@@ -1070,15 +1250,31 @@ actor SessionDriver {
         }
         await acquireOperation()
         defer { releaseOperation() }
-        guard valid, let session, let sftp = sftpClients[sftpID]?.handle else {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        guard valid, session != nil, sftpClients[sftpID]?.handle != nil else {
             throw SSHError.connectionInvalidated
         }
-        let deadline = ContinuousClock.now.advanced(by: timeout)
+        try await waitUntilSFTPIdle(
+            id: sftpID,
+            deadline: deadline,
+            cancellable: true)
+        try beginSFTPUse(sftpID)
+        defer { endSFTPUse(sftpID) }
         let flags = UInt(
             LIBSSH2_FXF_WRITE | LIBSSH2_FXF_CREAT | LIBSSH2_FXF_TRUNC | LIBSSH2_FXF_EXCL)
+        let owner = allocateTransportSendOwner()
 
+        do {
         while true {
             try checkProgress(deadline: deadline)
+            try await waitForTransportSendAdmission(
+                owner: owner,
+                deadline: deadline,
+                cancellable: true)
+            let session = try requireSession()
+            guard let sftp = sftpClients[sftpID]?.handle else {
+                throw SSHError.connectionInvalidated
+            }
             let file = path.withCString { pathPointer in
                 libssh2_sftp_open_ex(
                     sftp,
@@ -1089,17 +1285,23 @@ actor SessionDriver {
                     Int32(LIBSSH2_SFTP_OPENFILE))
             }
             if let file {
+                notePacketProducingResult(0, owner: owner, session: session)
                 nextSFTPFileID &+= 1
                 let fileID = nextSFTPFileID
                 sftpClients[sftpID]?.files[fileID] = file
                 return SSHSFTPFile(sftpID: sftpID, fileID: fileID, driver: self)
             }
             let error = libssh2_session_last_errno(session)
+            notePacketProducingResult(error, owner: owner, session: session)
             if error == LIBSSH2_ERROR_EAGAIN {
                 try await waitForSession(session, deadline: deadline)
             } else {
                 throw mappedSFTPError(sftp: sftp, code: error)
             }
+        }
+        } catch {
+            if transportSendOwner == owner { invalidateResources() }
+            throw error
         }
     }
 
@@ -1124,45 +1326,67 @@ actor SessionDriver {
         }
 #endif
         let deadline = ContinuousClock.now.advanced(by: timeout)
-        var offset = 0
+        try await withSFTPUse(id: sftpID, deadline: deadline) {
+            var offset = 0
+            let owner = allocateTransportSendOwner()
 
-        while offset < data.count {
-            await acquireOperation()
-            let progress: (written: Int, wait: SessionWaitPlan)
-            do {
-                try checkProgress(deadline: deadline)
-                guard
-                    valid,
-                    let session,
-                    let state = sftpClients[sftpID],
-                    let file = state.files[fileID]
-                else {
-                    throw SSHError.connectionInvalidated
+            while offset < data.count {
+                await acquireOperation()
+                let progress: (written: Int, wait: SessionWaitPlan)
+                do {
+                    try checkProgress(deadline: deadline)
+                    try await waitForTransportSendAdmission(
+                        owner: owner,
+                        deadline: deadline,
+                        cancellable: true)
+                    guard
+                        valid,
+                        let session,
+                        let state = sftpClients[sftpID],
+                        let file = state.files[fileID]
+                    else {
+                        throw SSHError.connectionInvalidated
+                    }
+                    let written = data.withUnsafeBytes { bytes -> Int in
+                        guard let baseAddress = bytes.baseAddress else { return 0 }
+                        return libssh2_sftp_write(
+                            file,
+                            baseAddress.advanced(by: offset).assumingMemoryBound(to: CChar.self),
+                            data.count - offset)
+                    }
+                    notePacketProducingWrite(written, owner: owner, session: session)
+                    if written < 0, written != Int(LIBSSH2_ERROR_EAGAIN) {
+                        throw mappedSFTPError(sftp: state.handle, code: Int32(written))
+                    }
+                    progress = (written, sessionWaitPlan(session))
+                    releaseOperation()
+                } catch {
+                    let normalized = normalize(error)
+                    if normalized == .connectionInvalidated { invalidateResources() }
+                    await finishOwnedSendIfNeeded(owner: owner) {
+                        writeSFTPOnce(sftpID: sftpID, fileID: fileID, data: data, offset: offset)
+                    }
+                    releaseOperation()
+                    throw normalized
                 }
-                let written = data.withUnsafeBytes { bytes -> Int in
-                    guard let baseAddress = bytes.baseAddress else { return 0 }
-                    return libssh2_sftp_write(
-                        file,
-                        baseAddress.advanced(by: offset).assumingMemoryBound(to: CChar.self),
-                        data.count - offset)
-                }
-                if written < 0, written != Int(LIBSSH2_ERROR_EAGAIN) {
-                    throw mappedSFTPError(sftp: state.handle, code: Int32(written))
-                }
-                progress = (written, sessionWaitPlan(session))
-                releaseOperation()
-            } catch {
-                let normalized = normalize(error)
-                if normalized == .connectionInvalidated { invalidateResources() }
-                releaseOperation()
-                throw normalized
-            }
 
-            if progress.written > 0 {
-                offset += progress.written
-                await Task.yield()
-            } else {
-                try await awaitSessionProgress(progress.wait, until: deadline)
+                if progress.written > 0 {
+                    offset += progress.written
+                    await Task.yield()
+                } else {
+                    do {
+                        try await awaitSessionProgress(progress.wait, until: deadline)
+                    } catch {
+                        let normalized = normalize(error)
+                        if normalized == .connectionInvalidated { invalidateResources() }
+                        await acquireOperation()
+                        await finishOwnedSendIfNeeded(owner: owner) {
+                            writeSFTPOnce(sftpID: sftpID, fileID: fileID, data: data, offset: offset)
+                        }
+                        releaseOperation()
+                        throw normalized
+                    }
+                }
             }
         }
     }
@@ -1174,20 +1398,62 @@ actor SessionDriver {
     ) async throws {
         await acquireOperation()
         defer { releaseOperation() }
-        guard let state = sftpClients[sftpID], let file = state.files[fileID] else { return }
+        guard sftpClients[sftpID]?.files[fileID] != nil else { return }
         guard valid, session != nil else { return }
         do {
-            let result = try await repeatUntilComplete(
-                deadline: ContinuousClock.now.advanced(by: timeout),
-                cancellable: false
-            ) {
-                libssh2_sftp_close_handle(file)
-            }
-            guard result == 0 else { throw SSHError.channelFailed }
-            sftpClients[sftpID]?.files[fileID] = nil
+            let deadline = ContinuousClock.now.advanced(by: timeout)
+            try await waitUntilSFTPIdle(
+                id: sftpID,
+                deadline: deadline,
+                cancellable: false)
+            try beginSFTPUse(sftpID)
+            defer { endSFTPUse(sftpID) }
+            try await closeSFTPFileHoldingOperation(
+                sftpID: sftpID,
+                fileID: fileID,
+                deadline: deadline)
         } catch {
             throw teardownFailure(error)
         }
+    }
+
+    private func closeSFTPFileWithinUse(
+        sftpID: UInt64,
+        fileID: UInt64,
+        timeout: Duration
+    ) async throws {
+        await acquireOperation()
+        defer { releaseOperation() }
+        guard sftpClients[sftpID]?.files[fileID] != nil else { return }
+        guard valid, session != nil else { return }
+        do {
+            try await closeSFTPFileHoldingOperation(
+                sftpID: sftpID,
+                fileID: fileID,
+                deadline: ContinuousClock.now.advanced(by: timeout))
+        } catch {
+            throw teardownFailure(error)
+        }
+    }
+
+    private func closeSFTPFileHoldingOperation(
+        sftpID: UInt64,
+        fileID: UInt64,
+        deadline: ContinuousClock.Instant
+    ) async throws {
+        try await waitForTransportSendAdmission(
+            owner: allocateTransportSendOwner(),
+            deadline: deadline,
+            cancellable: false)
+        guard let file = sftpClients[sftpID]?.files[fileID] else { return }
+        let result = try await repeatUntilCompleteHolding(
+            deadline: deadline,
+            cancellable: false
+        ) {
+            libssh2_sftp_close_handle(file)
+        }
+        guard result == 0 else { throw SSHError.channelFailed }
+        sftpClients[sftpID]?.files[fileID] = nil
     }
 
     func removeSFTPFile(
@@ -1262,7 +1528,7 @@ actor SessionDriver {
             try await hold()
         }
 #endif
-        let result = try await repeatUntilComplete(
+        let result = try await repeatUntilCompleteHolding(
             deadline: deadline,
             cancellable: false
         ) {
@@ -1281,10 +1547,20 @@ actor SessionDriver {
         cancellable: Bool,
         verifyAbsence: Bool
     ) async throws {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        try await waitUntilSFTPIdle(
+            id: id,
+            deadline: deadline,
+            cancellable: cancellable)
+        try beginSFTPUse(id)
+        defer { endSFTPUse(id) }
+        try await waitForTransportSendAdmission(
+            owner: allocateTransportSendOwner(),
+            deadline: deadline,
+            cancellable: cancellable)
         guard valid, let session, let sftp = sftpClients[id]?.handle else {
             throw SSHError.connectionInvalidated
         }
-        let deadline = ContinuousClock.now.advanced(by: timeout)
         let result = try await repeatCompensationOperation(
             phase: .unlink,
             deadline: deadline,
@@ -1348,12 +1624,10 @@ actor SessionDriver {
         }
         await acquireOperation()
         defer { releaseOperation() }
-        guard valid, let session, let sftp = sftpClients[id]?.handle else {
-            throw SSHError.connectionInvalidated
-        }
-        let result = try await repeatUntilComplete(
+        let result = try await repeatUntilCompleteHoldingSFTP(
+            id: id,
             deadline: ContinuousClock.now.advanced(by: timeout)
-        ) {
+        ) { sftp in
             sourcePath.withCString { sourcePointer in
                 destinationPath.withCString { destinationPointer in
                     libssh2_sftp_posix_rename_ex(
@@ -1365,17 +1639,27 @@ actor SessionDriver {
                 }
             }
         }
-        try checkSFTPResult(result, sftp: sftp, session: session)
+        try checkSFTPResult(result, sftpID: id)
     }
 
     func closeSFTP(id: UInt64, timeout: Duration) async throws {
         await acquireOperation()
         defer { releaseOperation() }
-        guard let state = sftpClients.removeValue(forKey: id) else { return }
-        guard valid, session != nil else { return }
+        guard sftpClients[id] != nil else { return }
+        let deadline = ContinuousClock.now.advanced(by: timeout)
         do {
-            let result = try await repeatUntilComplete(
-                deadline: ContinuousClock.now.advanced(by: timeout),
+            try await waitUntilSFTPIdle(
+                id: id,
+                deadline: deadline,
+                cancellable: false)
+            guard let state = sftpClients.removeValue(forKey: id) else { return }
+            guard valid, session != nil else { return }
+            try await waitForTransportSendAdmission(
+                owner: allocateTransportSendOwner(),
+                deadline: deadline,
+                cancellable: false)
+            let result = try await repeatUntilCompleteHolding(
+                deadline: deadline,
                 cancellable: false
             ) {
                 libssh2_sftp_shutdown(state.handle)
@@ -1414,8 +1698,14 @@ actor SessionDriver {
             }
             try await freeSession(session, deadline: deadline, cancellable: true)
             self.session = nil
-            closeDescriptor()
             valid = false
+            oneShotChannels.removeAll()
+            streamLocalChannels.removeAll()
+            ptyChannels.removeAll()
+            sftpClients.removeAll()
+            transportSendOwner = nil
+            activity.releaseAllWaiters()
+            closeDescriptor()
         } catch {
             invalidateResources()
             throw normalize(error)
@@ -1443,7 +1733,9 @@ actor SessionDriver {
     /// naturally passes through: released to the next operation, not yet
     /// watching the socket. Widening that window turns the race this driver
     /// has to survive into something a test can drive.
-    func holdNextSessionWaitForTesting(_ hold: @escaping @Sendable () async -> Void) {
+    func holdNextSessionWaitForTesting(
+        _ hold: @escaping @Sendable () async throws -> Void
+    ) {
         nextSessionWaitHoldForTesting = hold
     }
 
@@ -1457,6 +1749,92 @@ actor SessionDriver {
         _ hold: @escaping @Sendable () async throws -> Void
     ) {
         nextExecCleanupHoldForTesting = hold
+    }
+
+    func holdNextOutboundWriteParkForTesting(
+        _ hold: @escaping @Sendable () async -> Void
+    ) {
+        nextOutboundWriteParkHoldForTesting = hold
+    }
+
+    func holdNextOneShotEstablishedForTesting(
+        _ hold: @escaping @Sendable () async throws -> Void
+    ) {
+        nextOneShotEstablishedHoldForTesting = hold
+    }
+
+    func holdEachOneShotEstablishedForTesting(
+        _ hold: @escaping @Sendable () async throws -> Void
+    ) {
+        eachOneShotEstablishedHoldForTesting = hold
+    }
+
+    func clearEachOneShotEstablishedHoldForTesting() {
+        eachOneShotEstablishedHoldForTesting = nil
+    }
+
+    func holdNextOwnedLoopTopForTesting(
+        _ hold: @escaping @Sendable () async throws -> Void
+    ) {
+        nextOwnedLoopTopHoldForTesting = hold
+    }
+
+    func holdNextOwnedDrainForTesting(
+        _ hold: @escaping @Sendable () async throws -> Void
+    ) {
+        nextOwnedDrainHoldForTesting = hold
+    }
+
+    func holdNextChannelOpenSlotForTesting(
+        _ hold: @escaping @Sendable () async throws -> Void
+    ) {
+        nextChannelOpenSlotHoldForTesting = hold
+    }
+
+    func holdEachSessionWaitForTesting(
+        _ hold: @escaping @Sendable () async -> Void
+    ) {
+        eachSessionWaitHoldForTesting = hold
+    }
+
+    func clearEachSessionWaitForTesting() {
+        eachSessionWaitHoldForTesting = nil
+    }
+
+    func sftpUseCountForTesting() -> Int {
+        sftpUses.values.reduce(0, +)
+    }
+
+    func sftpIdleWaiterCountForTesting() -> Int {
+        sftpIdleWaiters.count
+    }
+
+    func channelOpenWaiterCountForTesting() -> Int {
+        channelOpenWaiters.count
+    }
+
+    func startSamplingTransportSendOwnerForTesting() {
+        ownerSamplesForTesting = []
+    }
+
+    func transportSendOwnerSamplesForTesting() -> [TransportSendOwnerSample] {
+        ownerSamplesForTesting ?? []
+    }
+
+    func oneShotRegistryCountForTesting() -> Int {
+        oneShotChannels.count
+    }
+
+    func shrinkSendBufferForTesting(bytes: Int) throws {
+        guard descriptor >= 0 else { throw SSHError.connectionInvalidated }
+        var size = Int32(clamping: bytes)
+        let result = setsockopt(
+            descriptor,
+            SOL_SOCKET,
+            SO_SNDBUF,
+            &size,
+            socklen_t(MemoryLayout<Int32>.size))
+        guard result == 0 else { throw SSHError.connectionInvalidated }
     }
 
     func runNextCompensationUnlinkPhaseHookForTesting(
@@ -1556,7 +1934,6 @@ actor SessionDriver {
         do {
             channel = try await openDirectTCPIPChannel(
                 endpoint: endpoint,
-                session: session,
                 deadline: deadline)
             guard let channel else { throw SSHError.channelFailed }
             let transport = try DirectTCPIPByteTransport()
@@ -1582,7 +1959,9 @@ actor SessionDriver {
                 } catch {
                     invalidateResources()
                 }
-            } else if normalized == .timedOut || normalized == .cancelled {
+            } else if !(error is ChannelOpenAdmissionError),
+                normalized == .timedOut || normalized == .cancelled
+            {
                 invalidateResources()
             }
             throw normalized
@@ -1591,11 +1970,27 @@ actor SessionDriver {
 
     private func openDirectTCPIPChannel(
         endpoint: SSHEndpoint,
-        session: OpaquePointer,
         deadline: ContinuousClock.Instant
     ) async throws -> OpaquePointer {
+        do {
+            try await claimChannelOpenSlot(deadline: deadline, cancellable: true)
+        } catch {
+            throw ChannelOpenAdmissionError(underlying: normalize(error))
+        }
+        defer { releaseChannelOpenSlot() }
+        let owner = allocateTransportSendOwner()
         while true {
             try checkProgress(deadline: deadline)
+            do {
+                try await waitForTransportSendAdmission(
+                    owner: owner,
+                    deadline: deadline,
+                    cancellable: true)
+            } catch {
+                if transportSendOwner == owner { invalidateResources() }
+                throw error
+            }
+            let session = try requireSession()
             let channel = endpoint.host.withCString { hostPointer in
                 libssh2_channel_direct_tcpip_ex(
                     session,
@@ -1604,11 +1999,20 @@ actor SessionDriver {
                     "127.0.0.1",
                     0)
             }
-            if let channel { return channel }
+            if let channel {
+                notePacketProducingResult(0, owner: owner, session: session)
+                return channel
+            }
 
             let error = libssh2_session_last_errno(session)
+            notePacketProducingResult(error, owner: owner, session: session)
             if error == LIBSSH2_ERROR_EAGAIN {
-                try await waitForSession(session, deadline: deadline)
+                do {
+                    try await waitForSession(session, deadline: deadline)
+                } catch {
+                    if transportSendOwner == owner { invalidateResources() }
+                    throw error
+                }
             } else {
                 throw classifyDirectTCPIPOpenFailure(session)
             }
@@ -1814,6 +2218,8 @@ actor SessionDriver {
 #if DEBUG
         if let hold = nextSessionWaitHoldForTesting {
             nextSessionWaitHoldForTesting = nil
+            try await hold()
+        } else if let hold = eachSessionWaitHoldForTesting {
             await hold()
         }
 #endif
@@ -1838,6 +2244,352 @@ actor SessionDriver {
         return directions
     }
 
+    private func sessionReportsOutbound(_ session: OpaquePointer) -> Bool {
+        libssh2_session_block_directions(session) & LIBSSH2_SESSION_BLOCK_OUTBOUND != 0
+    }
+
+    private func requireSession() throws -> OpaquePointer {
+        guard valid, let session else { throw SSHError.connectionInvalidated }
+        return session
+    }
+
+    private func allocateTransportSendOwner() -> UInt64 {
+        nextTransportSendIdentity &+= 1
+        return nextTransportSendIdentity
+    }
+
+    private func notePacketProducingResult(
+        _ result: Int32,
+        owner: UInt64,
+        session: OpaquePointer
+    ) {
+        if result == LIBSSH2_ERROR_EAGAIN {
+            if sessionReportsOutbound(session), transportSendOwner == nil {
+                transportSendOwner = owner
+            }
+        } else if transportSendOwner == owner {
+            transportSendOwner = nil
+        }
+    }
+
+    private func notePacketProducingWrite(
+        _ written: Int,
+        owner: UInt64,
+        session: OpaquePointer
+    ) {
+        if written == Int(LIBSSH2_ERROR_EAGAIN) {
+            notePacketProducingResult(LIBSSH2_ERROR_EAGAIN, owner: owner, session: session)
+        } else if written >= 0 {
+            notePacketProducingResult(0, owner: owner, session: session)
+        } else {
+            notePacketProducingResult(Int32(clamping: written), owner: owner, session: session)
+        }
+    }
+
+    /// Caller holds the operation mutex. Releases it while a foreign owner
+    /// occupies the send, then re-acquires before returning or throwing so a
+    /// matching `releaseOperation()` stays balanced.
+    private func waitForTransportSendAdmission(
+        owner: UInt64,
+        deadline: ContinuousClock.Instant,
+        cancellable: Bool
+    ) async throws {
+        while let existing = transportSendOwner, existing != owner {
+            let session = try requireSession()
+            let plan = sessionWaitPlan(session)
+            releaseOperation()
+            do {
+                try await awaitSessionProgress(
+                    plan,
+                    until: deadline,
+                    cancellable: cancellable)
+            } catch {
+                await acquireOperation()
+                throw error
+            }
+            await acquireOperation()
+            if cancellable {
+                try checkProgress(deadline: deadline)
+            } else if ContinuousClock.now >= deadline {
+                throw SSHError.timedOut
+            }
+        }
+    }
+
+    /// Drives the exact owning libssh2 call to a non-`EAGAIN` result, or
+    /// invalidates. Cancellation and timeout never clear ownership by themselves.
+    private func finishOwnedSendIfNeeded(
+        owner: UInt64,
+        drive: () -> Int32
+    ) async {
+        await finishOwnedSendIfNeeded(owner: owner, drive: { drive() as Int32? })
+    }
+
+    private func finishOwnedSendIfNeeded(
+        owner: UInt64,
+        drive: () -> Int32?
+    ) async {
+        guard transportSendOwner == owner else { return }
+#if DEBUG
+        if let hold = nextOwnedDrainHoldForTesting {
+            nextOwnedDrainHoldForTesting = nil
+            do {
+                try await hold()
+            } catch {
+                invalidateResources()
+                return
+            }
+        }
+#endif
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        do {
+            while transportSendOwner == owner {
+                if ContinuousClock.now >= deadline {
+                    invalidateResources()
+                    return
+                }
+                guard valid else { return }
+                guard let result = drive() else {
+                    invalidateResources()
+                    return
+                }
+                let session = try requireSession()
+                notePacketProducingResult(result, owner: owner, session: session)
+                if result != LIBSSH2_ERROR_EAGAIN { return }
+                try await waitForSession(
+                    session,
+                    deadline: deadline,
+                    cancellable: false)
+            }
+        } catch {
+            invalidateResources()
+        }
+    }
+
+    private func claimChannelOpenSlot(
+        deadline: ContinuousClock.Instant,
+        cancellable: Bool
+    ) async throws {
+        while channelOpenInProgress {
+            if cancellable {
+                try checkProgress(deadline: deadline)
+            } else if ContinuousClock.now >= deadline {
+                throw SSHError.timedOut
+            }
+            nextChannelOpenWaiterID &+= 1
+            let waiterID = nextChannelOpenWaiterID
+            do {
+                try await waitForChannelOpenSlot(
+                    id: waiterID,
+                    deadline: deadline,
+                    cancellable: cancellable)
+            } catch {
+                await acquireOperation()
+                throw error
+            }
+            await acquireOperation()
+            if cancellable {
+                try checkProgress(deadline: deadline)
+            } else if ContinuousClock.now >= deadline {
+                throw SSHError.timedOut
+            }
+            guard valid else { throw SSHError.connectionInvalidated }
+        }
+        channelOpenInProgress = true
+#if DEBUG
+        if let hold = nextChannelOpenSlotHoldForTesting {
+            nextChannelOpenSlotHoldForTesting = nil
+            do {
+                try await hold()
+            } catch {
+                releaseChannelOpenSlot()
+                throw error
+            }
+        }
+#endif
+    }
+
+    private func waitForChannelOpenSlot(
+        id: UInt64,
+        deadline: ContinuousClock.Instant,
+        cancellable: Bool
+    ) async throws {
+        if cancellable {
+            try await withTaskCancellationHandler {
+                try await parkChannelOpenWaiterUntilDeadline(id: id, deadline: deadline)
+            } onCancel: {
+                Task { await self.resumeChannelOpenWaiter(id: id, .failure(SSHError.cancelled)) }
+            }
+        } else {
+            try await parkChannelOpenWaiterUntilDeadline(id: id, deadline: deadline)
+        }
+    }
+
+    private func parkChannelOpenWaiterUntilDeadline(
+        id: UInt64,
+        deadline: ContinuousClock.Instant
+    ) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+            channelOpenWaiters[id] = continuation
+            releaseOperation()
+            Task {
+                try? await Task.sleep(until: deadline, clock: .continuous)
+                await self.resumeChannelOpenWaiter(id: id, .failure(SSHError.timedOut))
+            }
+        }
+    }
+
+    private func resumeChannelOpenWaiter(id: UInt64, _ result: Result<Void, any Error>) {
+        guard let continuation = channelOpenWaiters.removeValue(forKey: id) else { return }
+        continuation.resume(with: result)
+    }
+
+    private func releaseChannelOpenSlot() {
+        channelOpenInProgress = false
+        if let id = channelOpenWaiters.keys.sorted().first {
+            resumeChannelOpenWaiter(id: id, .success(()))
+        }
+    }
+
+    private func resumeAllChannelOpenWaiters() {
+        let ids = Array(channelOpenWaiters.keys)
+        for id in ids {
+            resumeChannelOpenWaiter(id: id, .success(()))
+        }
+    }
+
+    private func registerOneShot(
+        channel: OpaquePointer,
+        session: OpaquePointer
+    ) -> UInt64 {
+        nextOneShotID &+= 1
+        let id = nextOneShotID
+        oneShotChannels[id] = OneShotChannel(
+            channel: channel,
+            session: session)
+        return id
+    }
+
+    private func removeOneShot(_ id: UInt64) {
+        oneShotChannels.removeValue(forKey: id)
+    }
+
+    private func resolveChannel(_ identity: ChannelIdentity) throws -> OpaquePointer {
+        let session = try requireSession()
+        switch identity {
+        case .oneShot(let id):
+            guard let entry = oneShotChannels[id], entry.session == session else {
+                throw SSHError.channelFailed
+            }
+            return entry.channel
+        case .pty(let id):
+            guard let state = ptyChannels[id] else { throw SSHError.channelFailed }
+            return state.channel
+        case .streamLocal(let id):
+            guard let channel = streamLocalChannels[id] else {
+                throw SSHError.connectionInvalidated
+            }
+            return channel
+        }
+    }
+
+    private func writeChannel(
+        _ channel: OpaquePointer,
+        data: Data,
+        offset: Int
+    ) -> Int {
+        data.withUnsafeBytes { bytes -> Int in
+            guard let baseAddress = bytes.baseAddress else { return 0 }
+            return libssh2_channel_write_ex(
+                channel,
+                0,
+                baseAddress.advanced(by: offset).assumingMemoryBound(to: CChar.self),
+                data.count - offset)
+        }
+    }
+
+    private func writeChannelOnce(
+        identity: ChannelIdentity,
+        data: Data,
+        offset: Int
+    ) -> Int32? {
+        guard let channel = try? resolveChannel(identity) else { return nil }
+        let written = writeChannel(channel, data: data, offset: offset)
+        if written == Int(LIBSSH2_ERROR_EAGAIN) { return LIBSSH2_ERROR_EAGAIN }
+        if written >= 0 { return 0 }
+        return Int32(clamping: written)
+    }
+
+    private func readSFTPOnce(sftpID: UInt64, fileID: UInt64) -> Int32? {
+        guard let file = sftpClients[sftpID]?.files[fileID] else { return nil }
+        var scratch = [UInt8](repeating: 0, count: 64 * 1_024)
+        let read = scratch.withUnsafeMutableBytes { bytes -> Int in
+            guard let baseAddress = bytes.baseAddress else { return 0 }
+            return libssh2_sftp_read(
+                file,
+                baseAddress.assumingMemoryBound(to: CChar.self),
+                bytes.count)
+        }
+        if read == Int(LIBSSH2_ERROR_EAGAIN) { return LIBSSH2_ERROR_EAGAIN }
+        if read >= 0 { return 0 }
+        return Int32(clamping: read)
+    }
+
+    private func writeSFTPOnce(
+        sftpID: UInt64,
+        fileID: UInt64,
+        data: Data,
+        offset: Int
+    ) -> Int32? {
+        guard let file = sftpClients[sftpID]?.files[fileID] else { return nil }
+        let written = data.withUnsafeBytes { bytes -> Int in
+            guard let baseAddress = bytes.baseAddress else { return 0 }
+            return libssh2_sftp_write(
+                file,
+                baseAddress.advanced(by: offset).assumingMemoryBound(to: CChar.self),
+                data.count - offset)
+        }
+        if written == Int(LIBSSH2_ERROR_EAGAIN) { return LIBSSH2_ERROR_EAGAIN }
+        if written >= 0 { return 0 }
+        return Int32(clamping: written)
+    }
+
+    private func sampleTransportSendOwnerIfNeeded() {
+#if DEBUG
+        guard ownerSamplesForTesting != nil else { return }
+        let outboundPending: Bool
+        if let session {
+            outboundPending = sessionReportsOutbound(session)
+        } else {
+            outboundPending = false
+        }
+        ownerSamplesForTesting?.append(
+            TransportSendOwnerSample(
+                hasOwner: transportSendOwner != nil,
+                isValid: valid,
+                outboundPending: outboundPending))
+#endif
+    }
+
+#if DEBUG
+    private func holdOutboundWriteParkForTestingIfNeeded() async {
+        guard let hold = nextOutboundWriteParkHoldForTesting else { return }
+        nextOutboundWriteParkHoldForTesting = nil
+        await hold()
+    }
+
+    private func holdOneShotEstablishedForTestingIfNeeded() async throws {
+        if let hold = nextOneShotEstablishedHoldForTesting {
+            nextOneShotEstablishedHoldForTesting = nil
+            try await hold()
+            return
+        }
+        if let hold = eachOneShotEstablishedHoldForTesting {
+            try await hold()
+        }
+    }
+#endif
+
     private func extractHostKey(_ session: OpaquePointer) throws -> SSHHostKey {
         var length = 0
         var type: Int32 = 0
@@ -1854,11 +2606,27 @@ actor SessionDriver {
     }
 
     private func openSessionChannel(
-        session: OpaquePointer,
         deadline: ContinuousClock.Instant
     ) async throws -> OpaquePointer {
+        do {
+            try await claimChannelOpenSlot(deadline: deadline, cancellable: true)
+        } catch {
+            throw ChannelOpenAdmissionError(underlying: normalize(error))
+        }
+        defer { releaseChannelOpenSlot() }
+        let owner = allocateTransportSendOwner()
         while true {
             try checkProgress(deadline: deadline)
+            do {
+                try await waitForTransportSendAdmission(
+                    owner: owner,
+                    deadline: deadline,
+                    cancellable: true)
+            } catch {
+                if transportSendOwner == owner { invalidateResources() }
+                throw error
+            }
+            let session = try requireSession()
             if let channel = libssh2_channel_open_ex(
                 session,
                 "session",
@@ -1868,21 +2636,44 @@ actor SessionDriver {
                 nil,
                 0)
             {
+                notePacketProducingResult(0, owner: owner, session: session)
                 return channel
             }
             let error = libssh2_session_last_errno(session)
+            notePacketProducingResult(error, owner: owner, session: session)
             guard error == LIBSSH2_ERROR_EAGAIN else { throw SSHError.channelFailed }
-            try await waitForSession(session, deadline: deadline)
+            do {
+                try await waitForSession(session, deadline: deadline)
+            } catch {
+                if transportSendOwner == owner { invalidateResources() }
+                throw error
+            }
         }
     }
 
     private func openStreamLocalChannel(
         socketPath: String,
-        session: OpaquePointer,
         deadline: ContinuousClock.Instant
     ) async throws -> OpaquePointer {
+        do {
+            try await claimChannelOpenSlot(deadline: deadline, cancellable: true)
+        } catch {
+            throw ChannelOpenAdmissionError(underlying: normalize(error))
+        }
+        defer { releaseChannelOpenSlot() }
+        let owner = allocateTransportSendOwner()
         while true {
             try checkProgress(deadline: deadline)
+            do {
+                try await waitForTransportSendAdmission(
+                    owner: owner,
+                    deadline: deadline,
+                    cancellable: true)
+            } catch {
+                if transportSendOwner == owner { invalidateResources() }
+                throw error
+            }
+            let session = try requireSession()
             let channel = socketPath.withCString { socketPathPointer in
                 libssh2_channel_direct_streamlocal_ex(
                     session,
@@ -1890,11 +2681,20 @@ actor SessionDriver {
                     "127.0.0.1",
                     0)
             }
-            if let channel { return channel }
+            if let channel {
+                notePacketProducingResult(0, owner: owner, session: session)
+                return channel
+            }
 
             let error = libssh2_session_last_errno(session)
+            notePacketProducingResult(error, owner: owner, session: session)
             if error == LIBSSH2_ERROR_EAGAIN {
-                try await waitForSession(session, deadline: deadline)
+                do {
+                    try await waitForSession(session, deadline: deadline)
+                } catch {
+                    if transportSendOwner == owner { invalidateResources() }
+                    throw error
+                }
             } else {
                 throw Self.mappedStreamLocalOpenError(error)
             }
@@ -1919,12 +2719,14 @@ actor SessionDriver {
     }
 
     private func startExec(
-        channel: OpaquePointer,
+        identity: ChannelIdentity,
         command: String,
-        session: OpaquePointer,
         deadline: ContinuousClock.Instant
     ) async throws {
-        let result = try await repeatUntilComplete(deadline: deadline) {
+        let result = try await repeatUntilCompleteYielding(
+            deadline: deadline,
+            identity: identity
+        ) { channel in
             command.withCString { commandPointer in
                 libssh2_channel_process_startup(
                     channel,
@@ -1938,19 +2740,23 @@ actor SessionDriver {
     }
 
     private func configurePTY(
-        channel: OpaquePointer,
+        identity: ChannelIdentity,
         terminal: String,
         columns: Int,
         rows: Int,
         deadline: ContinuousClock.Instant
     ) async throws {
+        let mergeChannel = try resolveChannel(identity)
         let mergeResult = libssh2_channel_handle_extended_data2(
-            channel,
+            mergeChannel,
             LIBSSH2_CHANNEL_EXTENDED_DATA_MERGE)
         guard mergeResult == 0 else { throw SSHError.channelFailed }
 
         let result = try await repeatUntilComplete(deadline: deadline) {
-            terminal.withCString { terminalPointer in
+            guard let channel = try? resolveChannel(identity) else {
+                return LIBSSH2_ERROR_CHANNEL_CLOSED
+            }
+            return terminal.withCString { terminalPointer in
                 libssh2_channel_request_pty_ex(
                     channel,
                     terminalPointer,
@@ -1967,9 +2773,8 @@ actor SessionDriver {
     }
 
     private func exchange(
-        channel: OpaquePointer,
+        identity: ChannelIdentity,
         input: Data,
-        session: OpaquePointer,
         deadline: ContinuousClock.Instant
     ) async throws -> SSHExecResult {
         var inputOffset = 0
@@ -1977,73 +2782,152 @@ actor SessionDriver {
         var stdout = Data()
         var stderr = Data()
         var buffer = [UInt8](repeating: 0, count: 16 * 1024)
+        let writeOwner = allocateTransportSendOwner()
+        let eofOwner = allocateTransportSendOwner()
+        let stdoutOwner = allocateTransportSendOwner()
+        let stderrOwner = allocateTransportSendOwner()
+
+        func drainOwnedSends() async {
+            await finishOwnedSendIfNeeded(owner: writeOwner) {
+                writeChannelOnce(identity: identity, data: input, offset: inputOffset)
+            }
+            await finishOwnedSendIfNeeded(owner: eofOwner) {
+                guard let channel = try? resolveChannel(identity) else { return nil }
+                return libssh2_channel_send_eof(channel)
+            }
+            await finishOwnedSendIfNeeded(owner: stdoutOwner) {
+                guard let channel = try? resolveChannel(identity) else { return nil }
+                var scratch = [UInt8](repeating: 0, count: 16 * 1024)
+                return readOnce(channel: channel, stream: 0, buffer: &scratch)
+            }
+            await finishOwnedSendIfNeeded(owner: stderrOwner) {
+                guard let channel = try? resolveChannel(identity) else { return nil }
+                var scratch = [UInt8](repeating: 0, count: 16 * 1024)
+                return readOnce(
+                    channel: channel,
+                    stream: Int32(SSH_EXTENDED_DATA_STDERR),
+                    buffer: &scratch)
+            }
+        }
 
         while true {
-            try checkProgress(deadline: deadline)
-            var madeProgress = false
+            do {
+                try checkProgress(deadline: deadline)
+                var madeProgress = false
+                var skipReads = false
 
-            if inputOffset < input.count {
-                let written = input.withUnsafeBytes { bytes -> Int in
-                    guard let baseAddress = bytes.baseAddress else { return 0 }
-                    let pointer = baseAddress.advanced(by: inputOffset)
-                        .assumingMemoryBound(to: CChar.self)
-                    return libssh2_channel_write_ex(
-                        channel,
-                        0,
-                        pointer,
-                        input.count - inputOffset)
+                if inputOffset < input.count {
+                    try await waitForTransportSendAdmission(
+                        owner: writeOwner,
+                        deadline: deadline,
+                        cancellable: true)
+                    let channel = try resolveChannel(identity)
+                    let session = try requireSession()
+                    let written = writeChannel(channel, data: input, offset: inputOffset)
+                    notePacketProducingWrite(written, owner: writeOwner, session: session)
+                    if written > 0 {
+                        inputOffset += written
+                        madeProgress = true
+                    } else if written != Int(LIBSSH2_ERROR_EAGAIN) {
+                        throw SSHError.channelFailed
+                    } else if transportSendOwner == writeOwner {
+                        skipReads = true
+                    }
+                } else if !sentEOF {
+                    try await waitForTransportSendAdmission(
+                        owner: eofOwner,
+                        deadline: deadline,
+                        cancellable: true)
+                    let channel = try resolveChannel(identity)
+                    let session = try requireSession()
+                    let result = libssh2_channel_send_eof(channel)
+                    notePacketProducingResult(result, owner: eofOwner, session: session)
+                    if result == 0 {
+                        sentEOF = true
+                        madeProgress = true
+                    } else if result != LIBSSH2_ERROR_EAGAIN {
+                        throw SSHError.channelFailed
+                    } else if transportSendOwner == eofOwner {
+                        skipReads = true
+                    }
                 }
-                if written > 0 {
-                    inputOffset += written
-                    madeProgress = true
-                } else if written != Int(LIBSSH2_ERROR_EAGAIN) {
-                    throw SSHError.channelFailed
-                }
-            } else if !sentEOF {
-                let result = libssh2_channel_send_eof(channel)
-                if result == 0 {
-                    sentEOF = true
-                    madeProgress = true
-                } else if result != LIBSSH2_ERROR_EAGAIN {
-                    throw SSHError.channelFailed
-                }
-            }
 
-            let stdoutRead = try readAvailable(channel: channel, stream: 0, buffer: &buffer)
-            if stdoutRead.count > 0 {
-                stdout.append(stdoutRead)
-                madeProgress = true
-            }
-            let stderrRead = try readAvailable(
-                channel: channel,
-                stream: Int32(SSH_EXTENDED_DATA_STDERR),
-                buffer: &buffer)
-            if stderrRead.count > 0 {
-                stderr.append(stderrRead)
-                madeProgress = true
-            }
+                if !skipReads {
+                    try await waitForTransportSendAdmission(
+                        owner: stdoutOwner,
+                        deadline: deadline,
+                        cancellable: true)
+                    let stdoutChannel = try resolveChannel(identity)
+                    let session = try requireSession()
+                    let stdoutRead = try readAvailableNoting(
+                        channel: stdoutChannel,
+                        stream: 0,
+                        buffer: &buffer,
+                        owner: stdoutOwner,
+                        session: session)
+                    if stdoutRead.count > 0 {
+                        stdout.append(stdoutRead)
+                        madeProgress = true
+                    }
+                    if transportSendOwner != stdoutOwner {
+                        try await waitForTransportSendAdmission(
+                            owner: stderrOwner,
+                            deadline: deadline,
+                            cancellable: true)
+                        let stderrChannel = try resolveChannel(identity)
+                        let stderrSession = try requireSession()
+                        let stderrRead = try readAvailableNoting(
+                            channel: stderrChannel,
+                            stream: Int32(SSH_EXTENDED_DATA_STDERR),
+                            buffer: &buffer,
+                            owner: stderrOwner,
+                            session: stderrSession)
+                        if stderrRead.count > 0 {
+                            stderr.append(stderrRead)
+                            madeProgress = true
+                        }
+                    }
+                }
 
-            if libssh2_channel_eof(channel) == 1 {
-                let exitStatus = try await exitStatusAfterChannelClose(
-                    channel: channel,
-                    deadline: deadline)
-                return SSHExecResult(
-                    stdout: stdout,
-                    stderr: stderr,
-                    exitStatus: exitStatus,
-                    reachedEOF: true)
-            }
-            if !madeProgress {
-                try await waitForSession(session, deadline: deadline)
+                let eofChannel = try resolveChannel(identity)
+                if libssh2_channel_eof(eofChannel) == 1 {
+                    let exitStatus = try await exitStatusAfterChannelClose(
+                        identity: identity,
+                        deadline: deadline)
+                    return SSHExecResult(
+                        stdout: stdout,
+                        stderr: stderr,
+                        exitStatus: exitStatus,
+                        reachedEOF: true)
+                }
+
+                let plan = sessionWaitPlan(try requireSession())
+                if madeProgress {
+                    releaseOperation()
+                    await Task.yield()
+                    await acquireOperation()
+                } else {
+                    releaseOperation()
+                    do {
+                        try await awaitSessionProgress(plan, until: deadline)
+                    } catch {
+                        await acquireOperation()
+                        await drainOwnedSends()
+                        throw error
+                    }
+                    await acquireOperation()
+                }
+            } catch {
+                await drainOwnedSends()
+                throw error
             }
         }
     }
 
     private func exchangeResponseLine(
-        channel: OpaquePointer,
+        identity: ChannelIdentity,
         request: Data,
         maximumResponseBytes: Int,
-        session: OpaquePointer,
         deadline: ContinuousClock.Instant,
         beforeRequestWrite: (@Sendable () async throws -> Void)? = nil,
         onRequestWritten: (@Sendable () async -> Void)? = nil
@@ -2052,56 +2936,105 @@ actor SessionDriver {
         var response = Data()
         var buffer = [UInt8](repeating: 0, count: 16 * 1024)
         var didAnnounceWrite = false
+        let writeOwner = allocateTransportSendOwner()
+        let readOwner = allocateTransportSendOwner()
 
         try await beforeRequestWrite?()
 
+        func drainOwnedSends() async {
+            await finishOwnedSendIfNeeded(owner: writeOwner) {
+                writeChannelOnce(identity: identity, data: request, offset: requestOffset)
+            }
+            await finishOwnedSendIfNeeded(owner: readOwner) {
+                guard let channel = try? resolveChannel(identity) else { return nil }
+                var scratch = [UInt8](repeating: 0, count: 16 * 1024)
+                return readOnce(channel: channel, stream: 0, buffer: &scratch)
+            }
+        }
+
         while true {
-            try checkProgress(deadline: deadline)
-            var madeProgress = false
+            do {
+                try checkProgress(deadline: deadline)
+                var madeProgress = false
+                var skipRead = false
 
-            if requestOffset < request.count {
-                let written = request.withUnsafeBytes { bytes -> Int in
-                    guard let baseAddress = bytes.baseAddress else { return 0 }
-                    return libssh2_channel_write_ex(
-                        channel,
-                        0,
-                        baseAddress.advanced(by: requestOffset)
-                            .assumingMemoryBound(to: CChar.self),
-                        request.count - requestOffset)
-                }
-                if written > 0 {
-                    requestOffset += written
-                    madeProgress = true
-                } else if written != Int(LIBSSH2_ERROR_EAGAIN) {
-                    throw SSHError.channelFailed
-                }
-            }
-            if requestOffset == request.count, !didAnnounceWrite {
-                didAnnounceWrite = true
-                await onRequestWritten?()
-            }
-
-            let received = try readAvailable(channel: channel, stream: 0, buffer: &buffer)
-            if !received.isEmpty {
-                response.append(received)
-                madeProgress = true
-                if let newline = response.firstIndex(of: 0x0A) {
-                    let lineLength = response.distance(from: response.startIndex, to: newline) + 1
-                    guard lineLength <= maximumResponseBytes else {
-                        throw SSHError.responseTooLarge(limit: maximumResponseBytes)
+                if requestOffset < request.count {
+                    try await waitForTransportSendAdmission(
+                        owner: writeOwner,
+                        deadline: deadline,
+                        cancellable: true)
+                    let channel = try resolveChannel(identity)
+                    let session = try requireSession()
+                    let written = writeChannel(channel, data: request, offset: requestOffset)
+                    notePacketProducingWrite(written, owner: writeOwner, session: session)
+                    if written > 0 {
+                        requestOffset += written
+                        madeProgress = true
+                    } else if written != Int(LIBSSH2_ERROR_EAGAIN) {
+                        throw SSHError.channelFailed
+                    } else if transportSendOwner == writeOwner {
+                        skipRead = true
                     }
-                    return Data(response.prefix(lineLength))
                 }
-                guard response.count <= maximumResponseBytes else {
-                    throw SSHError.responseTooLarge(limit: maximumResponseBytes)
+                if requestOffset == request.count, !didAnnounceWrite {
+                    didAnnounceWrite = true
+                    await onRequestWritten?()
                 }
-            }
 
-            if libssh2_channel_eof(channel) == 1 {
-                throw SSHError.unexpectedEOF
-            }
-            if !madeProgress {
-                try await waitForSession(session, deadline: deadline)
+                if !skipRead {
+                    try await waitForTransportSendAdmission(
+                        owner: readOwner,
+                        deadline: deadline,
+                        cancellable: true)
+                    let channel = try resolveChannel(identity)
+                    let session = try requireSession()
+                    let received = try readAvailableNoting(
+                        channel: channel,
+                        stream: 0,
+                        buffer: &buffer,
+                        owner: readOwner,
+                        session: session)
+                    if !received.isEmpty {
+                        response.append(received)
+                        madeProgress = true
+                        if let newline = response.firstIndex(of: 0x0A) {
+                            let lineLength = response.distance(
+                                from: response.startIndex,
+                                to: newline) + 1
+                            guard lineLength <= maximumResponseBytes else {
+                                throw SSHError.responseTooLarge(limit: maximumResponseBytes)
+                            }
+                            return Data(response.prefix(lineLength))
+                        }
+                        guard response.count <= maximumResponseBytes else {
+                            throw SSHError.responseTooLarge(limit: maximumResponseBytes)
+                        }
+                    }
+                }
+
+                if libssh2_channel_eof(try resolveChannel(identity)) == 1 {
+                    throw SSHError.unexpectedEOF
+                }
+
+                let plan = sessionWaitPlan(try requireSession())
+                if madeProgress {
+                    releaseOperation()
+                    await Task.yield()
+                    await acquireOperation()
+                } else {
+                    releaseOperation()
+                    do {
+                        try await awaitSessionProgress(plan, until: deadline)
+                    } catch {
+                        await acquireOperation()
+                        await drainOwnedSends()
+                        throw error
+                    }
+                    await acquireOperation()
+                }
+            } catch {
+                await drainOwnedSends()
+                throw error
             }
         }
     }
@@ -2111,7 +3044,43 @@ actor SessionDriver {
         stream: Int32,
         buffer: inout [UInt8]
     ) throws -> Data {
-        let count = buffer.withUnsafeMutableBytes { bytes -> Int in
+        let count = rawChannelRead(channel: channel, stream: stream, buffer: &buffer)
+        if count > 0 { return Data(buffer.prefix(count)) }
+        if count == 0 || count == Int(LIBSSH2_ERROR_EAGAIN) { return Data() }
+        throw SSHError.channelFailed
+    }
+
+    private func readAvailableNoting(
+        channel: OpaquePointer,
+        stream: Int32,
+        buffer: inout [UInt8],
+        owner: UInt64,
+        session: OpaquePointer
+    ) throws -> Data {
+        let count = rawChannelRead(channel: channel, stream: stream, buffer: &buffer)
+        notePacketProducingWrite(count, owner: owner, session: session)
+        if count > 0 { return Data(buffer.prefix(count)) }
+        if count == 0 || count == Int(LIBSSH2_ERROR_EAGAIN) { return Data() }
+        throw SSHError.channelFailed
+    }
+
+    private func readOnce(
+        channel: OpaquePointer,
+        stream: Int32,
+        buffer: inout [UInt8]
+    ) -> Int32 {
+        let count = rawChannelRead(channel: channel, stream: stream, buffer: &buffer)
+        if count == Int(LIBSSH2_ERROR_EAGAIN) { return LIBSSH2_ERROR_EAGAIN }
+        if count >= 0 { return 0 }
+        return Int32(clamping: count)
+    }
+
+    private func rawChannelRead(
+        channel: OpaquePointer,
+        stream: Int32,
+        buffer: inout [UInt8]
+    ) -> Int {
+        buffer.withUnsafeMutableBytes { bytes -> Int in
             guard let baseAddress = bytes.baseAddress else { return 0 }
             return libssh2_channel_read_ex(
                 channel,
@@ -2119,31 +3088,74 @@ actor SessionDriver {
                 baseAddress.assumingMemoryBound(to: CChar.self),
                 bytes.count)
         }
-        if count > 0 { return Data(buffer.prefix(count)) }
-        if count == 0 || count == Int(LIBSSH2_ERROR_EAGAIN) { return Data() }
-        throw SSHError.channelFailed
     }
 
     /// Close the remote channel, wait for the peer to acknowledge close, then
     /// read exit status. Remote EOF can precede the exit-status request, so
     /// status is only reliable after wait_closed.
     private func exitStatusAfterChannelClose(
-        channel: OpaquePointer,
+        identity: ChannelIdentity,
         deadline: ContinuousClock.Instant
     ) async throws -> Int32 {
-        let closeResult = try await repeatUntilComplete(deadline: deadline) {
-            libssh2_channel_close(channel)
+        let closeResult = try await repeatUntilCompleteYielding(
+            deadline: deadline,
+            identity: identity
+        ) {
+            libssh2_channel_close($0)
         }
         guard closeResult == 0 || closeResult == LIBSSH2_ERROR_CHANNEL_CLOSED else {
             throw SSHError.channelFailed
         }
-        let waitResult = try await repeatUntilComplete(deadline: deadline) {
-            libssh2_channel_wait_closed(channel)
+        let waitResult = try await repeatUntilCompleteYielding(
+            deadline: deadline,
+            identity: identity
+        ) {
+            libssh2_channel_wait_closed($0)
         }
         guard waitResult == 0 || waitResult == LIBSSH2_ERROR_CHANNEL_CLOSED else {
             throw SSHError.channelFailed
         }
-        return Int32(libssh2_channel_get_exit_status(channel))
+        return Int32(libssh2_channel_get_exit_status(try resolveChannel(identity)))
+    }
+
+    private func cleanChannel(
+        identity: ChannelIdentity,
+        deadline: ContinuousClock.Instant,
+        cancellable: Bool
+    ) async throws {
+        let eofResult = try await repeatUntilCompleteYielding(
+            deadline: deadline,
+            cancellable: cancellable,
+            identity: identity
+        ) {
+            libssh2_channel_send_eof($0)
+        }
+        guard eofResult == 0
+            || eofResult == LIBSSH2_ERROR_CHANNEL_EOF_SENT
+            || eofResult == LIBSSH2_ERROR_CHANNEL_CLOSED
+        else {
+            throw SSHError.channelFailed
+        }
+
+        let closeResult = try await repeatUntilCompleteYielding(
+            deadline: deadline,
+            cancellable: cancellable,
+            identity: identity
+        ) {
+            libssh2_channel_close($0)
+        }
+        guard closeResult == 0 || closeResult == LIBSSH2_ERROR_CHANNEL_CLOSED else {
+            throw SSHError.channelFailed
+        }
+
+        let freeResult = try await repeatUntilCompleteYielding(
+            deadline: deadline,
+            cancellable: cancellable,
+            identity: identity
+        ) {
+            libssh2_channel_free($0)
+        }
+        guard freeResult == 0 else { throw SSHError.channelFailed }
     }
 
     private func cleanChannel(
@@ -2184,25 +3196,326 @@ actor SessionDriver {
         guard freeResult == 0 else { throw SSHError.channelFailed }
     }
 
+    private func beginSFTPUse(id: UInt64) throws {
+        guard valid, sftpClients[id] != nil else {
+            throw SSHError.connectionInvalidated
+        }
+        sftpUses[id, default: 0] += 1
+    }
+
+    private func endSFTPUse(id: UInt64) {
+        guard let count = sftpUses[id] else { return }
+        if count <= 1 {
+            sftpUses.removeValue(forKey: id)
+            wakeSFTPIdleWaiters()
+        } else {
+            sftpUses[id] = count - 1
+        }
+    }
+
+    private func wakeSFTPIdleWaiters() {
+        let ids = Array(sftpIdleWaiters.keys)
+        for id in ids { resumeSFTPIdleWaiter(id: id, .success(())) }
+    }
+
+    private func waitUntilSFTPIdle(
+        id: UInt64,
+        deadline: ContinuousClock.Instant,
+        cancellable: Bool
+    ) async throws {
+        while (sftpUses[id] ?? 0) > 0 {
+            if cancellable {
+                try checkProgress(deadline: deadline)
+            } else if ContinuousClock.now >= deadline {
+                throw SSHError.timedOut
+            }
+            nextSFTPIdleWaiterID &+= 1
+            let waiterID = nextSFTPIdleWaiterID
+            do {
+                try await waitForSFTPIdleSignal(
+                    id: waiterID,
+                    deadline: deadline,
+                    cancellable: cancellable)
+            } catch {
+                await acquireOperation()
+                throw error
+            }
+            await acquireOperation()
+            if cancellable {
+                try checkProgress(deadline: deadline)
+            } else if ContinuousClock.now >= deadline {
+                throw SSHError.timedOut
+            }
+            guard valid else { throw SSHError.connectionInvalidated }
+        }
+    }
+
+    private func waitForSFTPIdleSignal(
+        id: UInt64,
+        deadline: ContinuousClock.Instant,
+        cancellable: Bool
+    ) async throws {
+        if cancellable {
+            try await withTaskCancellationHandler {
+                try await parkSFTPIdleWaiterUntilDeadline(id: id, deadline: deadline)
+            } onCancel: {
+                Task { await self.resumeSFTPIdleWaiter(id: id, .failure(SSHError.cancelled)) }
+            }
+        } else {
+            try await parkSFTPIdleWaiterUntilDeadline(id: id, deadline: deadline)
+        }
+    }
+
+    private func parkSFTPIdleWaiterUntilDeadline(
+        id: UInt64,
+        deadline: ContinuousClock.Instant
+    ) async throws {
+        try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<Void, any Error>) in
+            sftpIdleWaiters[id] = continuation
+            releaseOperation()
+            Task {
+                try? await Task.sleep(until: deadline, clock: .continuous)
+                await self.resumeSFTPIdleWaiter(id: id, .failure(SSHError.timedOut))
+            }
+        }
+    }
+
+    private func resumeSFTPIdleWaiter(
+        id: UInt64,
+        _ result: Result<Void, any Error>
+    ) {
+        guard let continuation = sftpIdleWaiters.removeValue(forKey: id) else { return }
+        continuation.resume(with: result)
+    }
+
+    private func withSFTPUse<T: Sendable>(
+        id: UInt64,
+        deadline: ContinuousClock.Instant,
+        _ body: () async throws -> T
+    ) async throws -> T {
+        await acquireOperation()
+        do {
+            try await waitUntilSFTPIdle(
+                id: id,
+                deadline: deadline,
+                cancellable: true)
+            try beginSFTPUse(id)
+        } catch {
+            releaseOperation()
+            throw error
+        }
+        releaseOperation()
+        do {
+            let result = try await body()
+            await acquireOperation()
+            endSFTPUse(id)
+            releaseOperation()
+            return result
+        } catch {
+            await acquireOperation()
+            endSFTPUse(id)
+            releaseOperation()
+            throw error
+        }
+    }
+
+    private func holdOwnedLoopTopForTestingIfNeeded(owner: UInt64) async throws {
+#if DEBUG
+        guard transportSendOwner == owner, let hold = nextOwnedLoopTopHoldForTesting else {
+            return
+        }
+        nextOwnedLoopTopHoldForTesting = nil
+        try await hold()
+#else
+        _ = owner
+#endif
+    }
+
+    private func checkProgressFinishingOwnedSend(
+        owner: UInt64,
+        deadline: ContinuousClock.Instant,
+        cancellable: Bool,
+        drive: () -> Int32?
+    ) async throws {
+        do {
+            try await holdOwnedLoopTopForTestingIfNeeded(owner: owner)
+        } catch {
+            await finishOwnedSendIfNeeded(owner: owner, drive: drive)
+            throw normalize(error)
+        }
+        let cancelled = cancellable && Task.isCancelled
+        let timedOut = ContinuousClock.now >= deadline
+        guard cancelled || timedOut else { return }
+        await finishOwnedSendIfNeeded(owner: owner, drive: drive)
+        if cancelled { throw SSHError.cancelled }
+        throw SSHError.timedOut
+    }
+
+    @discardableResult
+    private func repeatUntilCompleteHolding(
+        deadline: ContinuousClock.Instant,
+        cancellable: Bool = true,
+        _ operation: () -> Int32
+    ) async throws -> Int32 {
+        let owner = allocateTransportSendOwner()
+        while true {
+            try await checkProgressFinishingOwnedSend(
+                owner: owner,
+                deadline: deadline,
+                cancellable: cancellable,
+                drive: operation)
+            let session = try requireSession()
+            let result = operation()
+            notePacketProducingResult(result, owner: owner, session: session)
+            if result != LIBSSH2_ERROR_EAGAIN { return result }
+            do {
+                try await waitForSession(
+                    session,
+                    deadline: deadline,
+                    cancellable: cancellable)
+            } catch {
+                await finishOwnedSendIfNeeded(owner: owner, drive: operation)
+                throw error
+            }
+        }
+    }
+
+    @discardableResult
+    private func repeatUntilCompleteHoldingSFTP(
+        id: UInt64,
+        deadline: ContinuousClock.Instant,
+        cancellable: Bool = true,
+        _ operation: (OpaquePointer) -> Int32
+    ) async throws -> Int32 {
+        try await waitUntilSFTPIdle(
+            id: id,
+            deadline: deadline,
+            cancellable: cancellable)
+        try beginSFTPUse(id)
+        defer { endSFTPUse(id) }
+        let owner = allocateTransportSendOwner()
+        func drive() -> Int32? {
+            guard let sftp = sftpClients[id]?.handle else { return nil }
+            return operation(sftp)
+        }
+        do {
+            try await waitForTransportSendAdmission(
+                owner: owner,
+                deadline: deadline,
+                cancellable: cancellable)
+        } catch {
+            await finishOwnedSendIfNeeded(owner: owner, drive: drive)
+            throw error
+        }
+        while true {
+            try await checkProgressFinishingOwnedSend(
+                owner: owner,
+                deadline: deadline,
+                cancellable: cancellable,
+                drive: drive)
+            guard let sftp = sftpClients[id]?.handle else {
+                throw SSHError.connectionInvalidated
+            }
+            let session = try requireSession()
+            let result = operation(sftp)
+            notePacketProducingResult(result, owner: owner, session: session)
+            if result != LIBSSH2_ERROR_EAGAIN { return result }
+            do {
+                try await waitForSession(
+                    session,
+                    deadline: deadline,
+                    cancellable: cancellable)
+            } catch {
+                await finishOwnedSendIfNeeded(owner: owner, drive: drive)
+                throw error
+            }
+        }
+    }
+
     @discardableResult
     private func repeatUntilComplete(
         deadline: ContinuousClock.Instant,
         cancellable: Bool = true,
         _ operation: () -> Int32
     ) async throws -> Int32 {
-        guard let session else { throw SSHError.connectionInvalidated }
+        let owner = allocateTransportSendOwner()
         while true {
-            if cancellable {
-                try checkProgress(deadline: deadline)
-            } else if ContinuousClock.now >= deadline {
-                throw SSHError.timedOut
-            }
-            let result = operation()
-            if result != LIBSSH2_ERROR_EAGAIN { return result }
-            try await waitForSession(
-                session,
+            try await checkProgressFinishingOwnedSend(
+                owner: owner,
                 deadline: deadline,
-                cancellable: cancellable)
+                cancellable: cancellable,
+                drive: operation)
+            do {
+                try await waitForTransportSendAdmission(
+                    owner: owner,
+                    deadline: deadline,
+                    cancellable: cancellable)
+            } catch {
+                await finishOwnedSendIfNeeded(owner: owner, drive: operation)
+                throw error
+            }
+            let session = try requireSession()
+            let result = operation()
+            notePacketProducingResult(result, owner: owner, session: session)
+            if result != LIBSSH2_ERROR_EAGAIN { return result }
+            do {
+                try await waitForSession(
+                    session,
+                    deadline: deadline,
+                    cancellable: cancellable)
+            } catch {
+                await finishOwnedSendIfNeeded(owner: owner, drive: operation)
+                throw error
+            }
+        }
+    }
+
+    @discardableResult
+    private func repeatUntilCompleteYielding(
+        deadline: ContinuousClock.Instant,
+        cancellable: Bool = true,
+        identity: ChannelIdentity,
+        _ operation: (OpaquePointer) -> Int32
+    ) async throws -> Int32 {
+        let owner = allocateTransportSendOwner()
+        func drive() -> Int32? {
+            guard let channel = try? resolveChannel(identity) else { return nil }
+            return operation(channel)
+        }
+        while true {
+            try await checkProgressFinishingOwnedSend(
+                owner: owner,
+                deadline: deadline,
+                cancellable: cancellable,
+                drive: drive)
+            do {
+                try await waitForTransportSendAdmission(
+                    owner: owner,
+                    deadline: deadline,
+                    cancellable: cancellable)
+            } catch {
+                await finishOwnedSendIfNeeded(owner: owner, drive: drive)
+                throw error
+            }
+            let channel = try resolveChannel(identity)
+            let session = try requireSession()
+            let result = operation(channel)
+            notePacketProducingResult(result, owner: owner, session: session)
+            if result != LIBSSH2_ERROR_EAGAIN { return result }
+            let plan = sessionWaitPlan(session)
+            releaseOperation()
+            do {
+                try await awaitSessionProgress(
+                    plan,
+                    until: deadline,
+                    cancellable: cancellable)
+            } catch {
+                await acquireOperation()
+                await finishOwnedSendIfNeeded(owner: owner, drive: drive)
+                throw error
+            }
+            await acquireOperation()
         }
     }
 
@@ -2212,22 +3525,29 @@ actor SessionDriver {
         cancellable: Bool,
         _ operation: () -> Int32
     ) async throws -> Int32 {
-        guard let session else { throw SSHError.connectionInvalidated }
+        let owner = allocateTransportSendOwner()
         while true {
-            if cancellable {
-                try checkProgress(deadline: deadline)
-            } else if ContinuousClock.now >= deadline {
-                throw SSHError.timedOut
-            }
+            try await checkProgressFinishingOwnedSend(
+                owner: owner,
+                deadline: deadline,
+                cancellable: cancellable,
+                drive: operation)
+            let session = try requireSession()
             let result = operation()
 #if DEBUG
             try await runCompensationPhaseHookForTestingIfNeeded(phase)
 #endif
+            notePacketProducingResult(result, owner: owner, session: session)
             if result != LIBSSH2_ERROR_EAGAIN { return result }
-            try await waitForSession(
-                session,
-                deadline: deadline,
-                cancellable: cancellable)
+            do {
+                try await waitForSession(
+                    session,
+                    deadline: deadline,
+                    cancellable: cancellable)
+            } catch {
+                await finishOwnedSendIfNeeded(owner: owner, drive: operation)
+                throw error
+            }
         }
     }
 
@@ -2332,6 +3652,13 @@ actor SessionDriver {
         guard valid, self.session == session else { throw SSHError.connectionInvalidated }
     }
 
+    private func checkSFTPResult(_ result: Int32, sftpID: UInt64) throws {
+        guard valid, let session, let sftp = sftpClients[sftpID]?.handle else {
+            throw SSHError.connectionInvalidated
+        }
+        try checkSFTPResult(result, sftp: sftp, session: session)
+    }
+
     private func mappedSFTPError(sftp: OpaquePointer, code: Int32) -> SSHError {
         if Self.isConnectionLoss(code) { return .connectionInvalidated }
         return .sftpFailure(status: UInt64(libssh2_sftp_last_error(sftp)))
@@ -2360,6 +3687,7 @@ actor SessionDriver {
     }
 
     private func normalize(_ error: any Error) -> SSHError {
+        if let error = error as? ChannelOpenAdmissionError { return error.underlying }
         if let error = error as? SSHError { return error }
         return .connectionFailed
     }
@@ -2396,7 +3724,14 @@ actor SessionDriver {
         streamLocalChannels.removeAll()
         ptyChannels.removeAll()
         sftpClients.removeAll()
+        sftpUses.removeAll()
+        oneShotChannels.removeAll()
+        channelOpenInProgress = false
+        resumeAllChannelOpenWaiters()
+        wakeSFTPIdleWaiters()
+        activity.releaseAllWaiters()
         InvalidatedSessionTeardown.reclaim(&session)
+        transportSendOwner = nil
         closeDescriptor()
     }
 
@@ -2410,11 +3745,13 @@ actor SessionDriver {
     private func acquireOperation() async {
         if !operationInProgress {
             operationInProgress = true
+            sampleTransportSendOwnerIfNeeded()
             return
         }
         await withCheckedContinuation { continuation in
             operationWaiters.append(continuation)
         }
+        sampleTransportSendOwnerIfNeeded()
     }
 
     private func releaseOperation() {
@@ -2503,6 +3840,16 @@ struct SessionDriverResourceState: Sendable, Equatable {
     let hasSession: Bool
     let descriptorIsOpen: Bool
     let isValid: Bool
+}
+
+struct TransportSendOwnerSample: Sendable, Equatable {
+    let hasOwner: Bool
+    let isValid: Bool
+    let outboundPending: Bool
+
+    var isForbiddenClearWindow: Bool {
+        !hasOwner && isValid && outboundPending
+    }
 }
 #endif
 
