@@ -151,39 +151,111 @@ _Avoid_: subscribe, enable push
 The app-side abstraction that executes herdr API requests and delivers event streams over SSH. UI code talks to Transport, never to SSH primitives.
 _Avoid_: client, bridge, tunnel
 
-**Connection Guidance**:
-The text a `TransportError` carries for the user, `connectionGuidance`, as
-against the shorter phrase the Console composes for the same error in
-`summary(for:)`. Only two statuses carry a `TransportError` at all,
-`.reconnecting` and `.failed`, and they partition the error set: the session
-emits `.failed` only where `isRetryable` is false and `.reconnecting` only
-where it is true. On `.failed` the text names an action the user can take in
-11 of the 13 cases `isRetryable` rejects outright; on `.reconnecting` it does
-so in none of the 5 it accepts, restating what happened and appending the
-transport's raw detail in three of them (`jumpHostFailed` prefixes and
-inherits whichever it wraps). So what the guidance adds over the Console's
-phrase during a reconnect is raw detail or nothing, never an instruction, and
-the name promises more than the strings deliver; #163 owns whether the strings
-gain actions or the term is renamed.
-Four surfaces turn those two statuses into text. The Console list shows the
-short phrase on `.reconnecting` and the guidance on `.failed`. The Agent
-detail screen (`MissingAgentPresentation`) shows a fixed "nothing to do"
-message on `.reconnecting` and the guidance on `.failed`. The Host detail
-screen (`HostOnboardingView.connectionErrorMessage`) shows the guidance on
-both, and is the only surface that shows it while a retry is in flight. The
-Hosts sheet rows (`HostConnectionPresentation`) show a status chip,
-"Reconnecting…" or "Unavailable", and never the guidance at all: a chip is not
-guidance, so those rows sit outside this term.
-Two exceptions the description keeps rather than tidies away. The Host detail
-footer is gated on no manual Reconnect being in flight, so pressing Reconnect
-suppresses the guidance entirely for the length of the retry call plus 1.2 s —
-on `.failed` as much as on `.reconnecting` (#160). And that screen is reached
-four ways: a Host row, the add form, a finished Pairing scan, and a deep link,
-which is what the Console's own issue buttons use to push the user onto it.
-Only the two surfaces with a presentation type of their own are tested; the
-Console list and the Host detail footer live inside `View` bodies and have no
-coverage.
-_Avoid_: error message, connection error, retry hint
+**Host Connection Status**:
+Where one Host's events session stands, as the user is entitled to see it. Five
+connection conditions, plus one ownership terminal. Connecting, Reconnecting
+and Connected say connection work is under way or done; Suspended and Failed
+say none is. Ended is not a connection condition at all: it retires the events
+session for good, and belongs to whoever owns that session.
+Connecting means a new activation is establishing its first usable events path
+— the SSH connection, the herdr ping, the events subscription — outside the
+automatic retry loop. Every activation announces it, synchronously, before its
+run begins: a first dial, a return from Suspended, and a Reconnect Request from
+Connected, Reconnecting or Failed alike. Automatic iterations inside one
+activation stay Reconnecting.
+Reconnecting is automatic recovery after a retryable failure, and covers its
+announced backoff as well as the dial that follows. It is observable only while
+that cycle is still the current one. Failed means automatic recovery stopped
+because retrying without user intervention cannot repair the failure. It is
+observable only while no connection work is running; an explicit retry or
+foreground re-proof starts a new Connecting activation and carries the prior
+explanation as Standing Failure.
+Connected means the session established a usable events path and is maintaining
+it on a trusted Transport; a deliberate same-Transport subscription reinstall
+stays Connected through its brief stream gap. Suspended means lifecycle
+teardown deliberately stopped everything until the app is active again. A
+foreground return that finds the connection still believed live proves it with
+a ping and stays Connected while that ping is in flight, so a healthy trip out
+of the app costs the user no churn.
+The status never claims that stopped work is running, and never hides running
+work behind a stopped condition. Whatever a surface then chooses to say is a
+presentation question, answered by Standing Failure and Transport Error
+Presentation.
+Connecting arrives with #155. Until it does, an activation announces nothing,
+and a Host dialling after a return from Suspended still reports Suspended for a
+whole SSH connect plus ping.
+_Avoid_: Agent Status, Reconnect Request, loading, syncing
+
+**Agent Inventory**:
+The Agents the Console believes a Host has. It is replaced wholesale when a
+snapshot lands, never merged, because herdr replays no state on subscribe.
+It becomes unknown when a Host Connection Status transition invalidates the
+prior snapshot — so an empty Console during a connection problem means unknown
+rather than none, and the window between a fresh Connected and its first
+snapshot is loading rather than empty. A same-Transport subscription reinstall
+is not such a transition and may keep the current inventory until its refresh
+lands.
+Readiness is a data condition and not a Host Connection Status: a Host is
+Connected while its inventory is still unknown. Surfaces say the Agents are
+loading there. They must not say the Host is connecting, and must never say a
+pane is gone, which is answerable only once the inventory is known.
+_Avoid_: agent list, snapshot state, syncing
+
+**Standing Failure**:
+The failure that last stopped automatic recovery on a Host, kept after the next
+activation begins and discarded only when that activation resolves — by
+connecting, by entering automatic recovery, or by failing again, which replaces
+it.
+It exists so Host Connection Status can report running work honestly without
+the app withdrawing the explanation at the moment the user is reading it: a
+Host re-proved on a foreground return is Connecting, and every status-derived
+surface keeps presenting the Standing Failure until the activation answers,
+except that a Reconnect Request may temporarily suppress the Host detail footer
+while its button shows request progress. The failure remains stored and
+continues to render on Agent detail, the Console, and the Hosts chip.
+Only a failure that reached Failed becomes standing. A retryable failure inside
+a recovery cycle does not, because nothing stopped and Reconnecting already
+says what happened.
+_Avoid_: last error, cached failure, sticky error
+
+**Transport Error Presentation**:
+What one `TransportError` is allowed to say to the user: a Summary naming what
+happened, an optional Detail carrying the error's own interpolated text, and an
+optional Recovery Suggestion naming something the user can do about it. It is
+total over the error set and is therefore not only about connections — a
+rejected herdr request means the connection worked — so it serves failed
+one-off requests as readily as a stopped Host.
+The Suggestion is optional because most errors do not support one: of the
+errors automatic retry accepts, only an unreachable Host does. An API total
+over the set may not promise that every case is actionable. Detail is the
+error's own words, never authored instruction: a transport's failure string, or
+herdr's own code and message.
+Which parts a surface shows is decided by whether anything but the user can
+change the outcome. A Failed Host shows the whole presentation, and so does a
+failed one-off request wherever the surface has no more specific words of its
+own, because in both cases nothing changes until the user acts. While
+automatic recovery is running, no surface shows the Recovery Suggestion — an
+instruction misstates who has to act and invites a restart that discards the
+attempt already running — so Reconnecting shows the Summary, and, where the
+surface is about one Host's connection health rather than about the Agents, the
+Detail with it. Hosts sheet rows are chips rather than prose and sit outside
+this term. A first-hop failure is presented against the Jump Host; where no
+Jump-Host-directed text exists, the Suggestion is dropped rather than aimed at
+the wrong machine.
+This replaces Connection Guidance, whose name promised an instruction that the
+retryable errors never carried; #163 owns the replacement, and until it lands
+the app still carries the old name and the old promise.
+_Avoid_: Connection Guidance, error message, connection error, retry hint,
+actionable error
+
+**Reconnect Request**:
+A user's explicit Reconnect press on Host detail, and the brief window in which
+the app shows that press being served. It is feedback about a request, not a
+Host Connection Status: it is never derived from the status and never changes
+it, an automatic Reconnecting is not a Reconnect Request, and a press in flight
+suppresses the Host detail failure footer while driving the button's own
+progress (#160).
+_Avoid_: retry, reconnecting, manual reconnect state
 
 **Background Grace Period**:
 The window after backgrounding during which the app keeps running under an iOS background-execution assertion and holds its Host connections, so a short trip out of the app costs nothing on return. Only when it elapses does the app suspend and tear the connections down. Bounded by what iOS grants (tens of seconds); staying reachable for longer is what Agent Notifications are for.
