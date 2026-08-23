@@ -3122,7 +3122,7 @@ actor SessionDriver {
         let stdoutOwner = allocateTransportSendOwner()
         let stderrOwner = allocateTransportSendOwner()
 
-        func drainOwnedSends() async {
+        func drainOwnedSends(inputOffset: Int) async {
             await finishOwnedSendIfNeeded(owner: writeOwner) {
                 writeChannelOnce(identity: identity, data: input, offset: inputOffset)
             }
@@ -3254,14 +3254,15 @@ actor SessionDriver {
                     do {
                         try await awaitSessionProgress(plan, until: deadline)
                     } catch {
+                        let drainInputOffset = inputOffset
                         await acquireOperation()
-                        await drainOwnedSends()
+                        await drainOwnedSends(inputOffset: drainInputOffset)
                         throw error
                     }
                     await acquireOperation()
                 }
             } catch {
-                await drainOwnedSends()
+                await drainOwnedSends(inputOffset: inputOffset)
                 throw error
             }
         }
@@ -3284,7 +3285,7 @@ actor SessionDriver {
 
         try await beforeRequestWrite?()
 
-        func drainOwnedSends() async {
+        func drainOwnedSends(requestOffset: Int) async {
             await finishOwnedSendIfNeeded(owner: writeOwner) {
                 writeChannelOnce(identity: identity, data: request, offset: requestOffset)
             }
@@ -3373,14 +3374,15 @@ actor SessionDriver {
                     do {
                         try await awaitSessionProgress(plan, until: deadline)
                     } catch {
+                        let drainRequestOffset = requestOffset
                         await acquireOperation()
-                        await drainOwnedSends()
+                        await drainOwnedSends(requestOffset: drainRequestOffset)
                         throw error
                     }
                     await acquireOperation()
                 }
             } catch {
-                await drainOwnedSends()
+                await drainOwnedSends(requestOffset: requestOffset)
                 throw error
             }
         }
