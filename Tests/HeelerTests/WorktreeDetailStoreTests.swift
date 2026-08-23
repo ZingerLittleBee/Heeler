@@ -54,12 +54,14 @@ struct WorktreeDetailStoreTests {
                 return WorktreeRemovalReceipt(request: request, affectedAgentIDs: [])
             })
         store.prepareConfirmation()
+        let request = try #require(store.beginRemoval())
+        #expect(store.beginRemoval() == nil)
 
-        let first = Task { await store.confirmRemoval() }
+        let first = Task { await store.finishRemoval(request) }
         try await waitUntil("the first removal should start") {
             await recorder.requests.count == 1
         }
-        await store.confirmRemoval()
+        await store.finishRemoval(request)
         #expect(await recorder.requests.count == 1)
         await gate.open()
         await first.value
@@ -69,7 +71,28 @@ struct WorktreeDetailStoreTests {
         }
     }
 
-    @Test func serverFailureStaysOnTheDetailAndCanRetry() async {
+    @Test func dialogDismissalAfterActionCannotClearCapturedRemoval() async throws {
+        let recorder = WorktreeRemoveRecorder()
+        let store = makeStore(
+            list: { _ in Self.list(branch: "feat/issue-99") },
+            remove: { request in
+                await recorder.record(request)
+                return WorktreeRemovalReceipt(request: request, affectedAgentIDs: [])
+            })
+        store.prepareConfirmation()
+
+        // The button action runs synchronously, then SwiftUI may dismiss the
+        // dialog through its binding before the queued Task begins.
+        let request = try #require(store.beginRemoval())
+        store.cancelConfirmation()
+        await store.finishRemoval(request)
+
+        #expect(await recorder.requests == [request])
+        #expect(store.removalPhase == .removed(
+            WorktreeRemovalReceipt(request: request, affectedAgentIDs: [])))
+    }
+
+    @Test func serverFailureStaysOnTheDetailAndCanRetry() async throws {
         let store = makeStore(
             list: { _ in Self.list(branch: "feat/issue-99") },
             remove: { _ in
@@ -78,8 +101,9 @@ struct WorktreeDetailStoreTests {
                     message: "dirty")
             })
         store.prepareConfirmation()
+        let request = try #require(store.beginRemoval())
 
-        await store.confirmRemoval()
+        await store.finishRemoval(request)
 
         guard case .failed(let message) = store.removalPhase else {
             Issue.record("server rejection should be a stable failure")
@@ -90,28 +114,46 @@ struct WorktreeDetailStoreTests {
         #expect(store.removalPhase == .idle)
     }
 
-    @Test func transportUncertaintyIsNotReportedAsSuccess() async {
+    @Test func transportUncertaintyIsNotReportedAsSuccess() async throws {
         let store = makeStore(
             list: { _ in Self.list(branch: nil, detached: true) },
             remove: { _ in throw WorktreeRemovalError.outcomeUnconfirmed })
         store.prepareConfirmation()
+        let request = try #require(store.beginRemoval())
 
-        await store.confirmRemoval()
+        await store.finishRemoval(request)
 
         #expect(store.removalPhase == .unconfirmed)
     }
 
-    @Test func staleConfirmationFailsClosedUntilTheDetailIsReopened() async {
+    @Test func staleConfirmationFailsClosedUntilTheDetailIsReopened() async throws {
         let store = makeStore(
             list: { _ in Self.list(branch: "feat/old") },
             remove: { _ in throw WorktreeRemovalError.staleIdentity })
         store.prepareConfirmation()
+        let request = try #require(store.beginRemoval())
 
-        await store.confirmRemoval()
+        await store.finishRemoval(request)
 
         #expect(store.removalPhase == .stale(WorktreeRemovalError.staleIdentity.message))
         store.dismissFeedback()
         #expect(!store.canRemove)
+    }
+
+    @Test func transportCancellationRestoresIdleWithoutFailureFeedback() async throws {
+        let store = makeStore(
+            list: { _ in throw TransportError.cancelled },
+            remove: { _ in throw TransportError.cancelled })
+
+        await store.loadBranchIfNeeded()
+        #expect(store.branch == .loading)
+
+        store.prepareConfirmation()
+        let request = try #require(store.beginRemoval())
+        await store.finishRemoval(request)
+
+        #expect(store.removalPhase == .idle)
+        #expect(!store.showsFeedback)
     }
 
     private func makeStore(

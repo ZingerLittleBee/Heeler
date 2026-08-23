@@ -43,27 +43,6 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         self.lastOutputSnippet = lastOutputSnippet
     }
 
-    /// Compatibility initializer for callers that only need display context,
-    /// not a removable snapshot identity.
-    init(
-        hostID: Host.ID,
-        hostName: String,
-        agent: Agent,
-        workspaceLabel: String?,
-        repoName: String?,
-        checkoutPath: String? = nil,
-        lastOutputSnippet: String? = nil
-    ) {
-        self.init(
-            hostID: hostID,
-            hostName: hostName,
-            agent: agent,
-            workspaceLabel: workspaceLabel,
-            repositoryCheckout: Self.displayOnlyCheckout(
-                repoName: repoName, checkoutPath: checkoutPath),
-            lastOutputSnippet: lastOutputSnippet)
-    }
-
     var repoName: String? { repositoryCheckout?.repoName }
 
     var checkoutPath: String? { repositoryCheckout?.checkoutPath }
@@ -79,16 +58,6 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         case (nil, let repo?): repo
         case (let label?, let repo?): label == repo ? label : "\(label) · \(repo)"
         }
-    }
-
-    private static func displayOnlyCheckout(
-        repoName: String?, checkoutPath: String?
-    ) -> RepositoryCheckout? {
-        guard let repoName else { return nil }
-        let path = checkoutPath ?? ""
-        return RepositoryCheckout(
-            repoKey: "", repoName: repoName, repoRoot: "",
-            checkoutPath: path, isLinkedWorktree: false)
     }
 
     /// The keyboard switcher's chip label. The project leads, as it does on

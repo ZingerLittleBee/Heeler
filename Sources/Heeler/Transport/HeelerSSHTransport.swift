@@ -500,7 +500,7 @@ actor HeelerSSHTransport: Transport {
             .algorithmNegotiationFailed, .connectionInvalidated:
             return .sshUnreachable(detail: String(describing: error))
         case .channelFailed, .streamLocalOpenFailed, .unexpectedEOF,
-            .responseTooLarge, .requestNotAuthorized, .sftpUnavailable, .sftpFailure:
+            .responseTooLarge, .sftpUnavailable, .sftpFailure:
             return .channelFailed(detail: String(describing: error))
         case .authenticationFailed, .timedOut, .cancelled, .forwardingDenied:
             // Exhaustiveness only: `sharedClassification` is total over these.
@@ -676,26 +676,14 @@ actor HeelerSSHTransport: Transport {
         authorize: @escaping @Sendable (WorktreeRemovalRequest) async throws -> Void,
         onDispatched: @escaping @Sendable (WorktreeRemovalRequest) async -> Void
     ) async throws -> WorktreeRemovedResponse {
-        do {
-            return try await request(
-                method: "worktree.remove",
-                params: WorktreeRemoveParams(
-                    workspaceID: removal.identity.workspaceID,
-                    force: false),
-                decoding: WorktreeRemovedResponse.self,
-                beforeDispatch: {
-                    do {
-                        try await authorize(removal)
-                        return true
-                    } catch {
-                        return false
-                    }
-                },
-                onDispatched: { await onDispatched(removal) })
-        } catch TransportError.channelFailed(let detail)
-        where detail == Self.requestNotAuthorizedDetail {
-            throw WorktreeRemovalError.staleIdentity
-        }
+        try await request(
+            method: "worktree.remove",
+            params: WorktreeRemoveParams(
+                workspaceID: removal.identity.workspaceID,
+                force: false),
+            decoding: WorktreeRemovedResponse.self,
+            beforeDispatch: { try await authorize(removal) },
+            onDispatched: { await onDispatched(removal) })
     }
 
     private func removeCreatedWorktree(workspaceID: String) async throws {
@@ -1477,7 +1465,7 @@ actor HeelerSSHTransport: Transport {
         method: String,
         params: P,
         decoding type: R.Type,
-        beforeDispatch: (@Sendable () async -> Bool)? = nil,
+        beforeDispatch: (@Sendable () async throws -> Void)? = nil,
         onDispatched: (@Sendable () async -> Void)? = nil
     ) async throws -> R {
         try await withColdStartWake {
@@ -1494,7 +1482,7 @@ actor HeelerSSHTransport: Transport {
         method: String,
         params: P,
         decoding type: R.Type,
-        beforeDispatch: (@Sendable () async -> Bool)? = nil,
+        beforeDispatch: (@Sendable () async throws -> Void)? = nil,
         onDispatched: (@Sendable () async -> Void)? = nil
     ) async throws -> R {
         guard connected else {
@@ -1520,8 +1508,10 @@ actor HeelerSSHTransport: Transport {
                 } catch SSHError.streamLocalOpenFailed {
                     throw try await self.classifyStreamLocalOpenFailure(
                         socketPath: socketPath)
-                } catch {
+                } catch let error as SSHError {
                     throw await self.mapOperationError(error)
+                } catch {
+                    throw error
                 }
             }
         }
@@ -1681,8 +1671,6 @@ actor HeelerSSHTransport: Transport {
             return .malformedResponse("stream-local channel closed before a response line")
         case .responseTooLarge(let limit):
             return .malformedResponse("response line exceeds \(limit) bytes")
-        case .requestNotAuthorized:
-            return .channelFailed(detail: Self.requestNotAuthorizedDetail)
         case .connectionInvalidated:
             return .sshUnreachable(detail: "The SSH connection is no longer reusable.")
         // `.streamLocalOpenFailed` falls here on purpose. Only
@@ -1717,13 +1705,11 @@ actor HeelerSSHTransport: Transport {
             return .tcpForwardingUnavailable
         case .invalidEndpoint, .connectionFailed, .algorithmNegotiationFailed,
             .channelFailed, .streamLocalOpenFailed, .unexpectedEOF,
-            .responseTooLarge, .requestNotAuthorized, .connectionInvalidated,
+            .responseTooLarge, .connectionInvalidated,
             .targetUnreachable, .sftpUnavailable, .sftpFailure:
             return nil
         }
     }
-
-    private static let requestNotAuthorizedDetail = "request not authorized"
 
     #if DEBUG
     /// Test surface for the real connect-time mapper; not a second taxonomy.

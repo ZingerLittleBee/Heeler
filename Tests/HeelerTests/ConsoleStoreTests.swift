@@ -56,7 +56,7 @@ struct ConsoleStoreTests {
             hostName: hostName,
             agent: Agent(.fixture(paneID: paneID, status: status)),
             workspaceLabel: workspaceLabel,
-            repoName: nil)
+            repositoryCheckout: nil)
     }
 
     private func makePinDefaults() throws -> (UserDefaults, cleanup: () -> Void) {
@@ -1483,6 +1483,68 @@ struct ConsoleStoreTests {
         }
         #expect(await transport.removedWorktreeRequests.isEmpty)
         #expect(store.removedWorktreesByAgent.isEmpty)
+        store.setHosts([])
+    }
+
+    @Test func canonicalizedRemovalPathDoesNotOverrideWorkspaceIdentity() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: linkedWorktreeSnapshot(workspaces: [("w1", "one", "/var/work/one-wt")]))
+        await transport.setWorktreeRemoveResponsePath("/private/var/work/one-wt")
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the linked-worktree Agent should arrive") {
+            store.agents.first?.isLinkedWorktree == true
+        }
+        let agent = try #require(store.agents.first)
+        let request = WorktreeRemovalRequest(
+            identity: WorktreeIdentity(
+                hostID: host.id,
+                workspaceID: "w1",
+                checkout: try #require(agent.repositoryCheckout)))
+
+        let receipt = try await store.removeWorktree(request, on: host.id)
+
+        #expect(receipt.request == request)
+        #expect(await transport.removedWorktreeRequests == [request])
+        store.setHosts([])
+    }
+
+    @Test func laterSnapshotPrunesReceiptForRecreatedExactIdentity() async throws {
+        let host = Host.fixture()
+        let linked = linkedWorktreeSnapshot(
+            workspaces: [("w1", "one", "/work/one-wt")])
+        let transport = ScriptedTransport(snapshot: linked)
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the original linked-worktree Agent should arrive") {
+            store.agents.first?.isLinkedWorktree == true
+        }
+        let agent = try #require(store.agents.first)
+        let request = WorktreeRemovalRequest(
+            identity: WorktreeIdentity(
+                hostID: host.id,
+                workspaceID: "w1",
+                checkout: try #require(agent.repositoryCheckout)))
+        await transport.setSnapshot(.fixture())
+
+        _ = try await store.removeWorktree(request, on: host.id)
+        try await waitUntil("the absent snapshot should retain the removal receipt") {
+            store.agents.isEmpty && store.removedWorktreesByAgent[agent.id]?.request == request
+        }
+
+        await transport.setSnapshot(linked)
+        #expect(
+            await transport.emit(
+                HerdrEvent(
+                    kind: GlobalEventKind.workspaceMetadataUpdated.kind,
+                    data: .object([:]))) == true)
+        try await waitUntil("the recreated exact identity should clear the old receipt") {
+            store.agents.first?.repositoryCheckout == agent.repositoryCheckout
+                && store.removedWorktreesByAgent[agent.id] == nil
+        }
         store.setHosts([])
     }
 

@@ -498,7 +498,13 @@ struct AgentComposerStoreTests {
                 terminalID: "term-1", kind: "claude", title: "Task",
                 status: status, workspaceID: "w1", tabID: "w1:t1", paneID: "w1:p1",
                 cwd: "/work", revision: 1),
-            workspaceLabel: "Project", repoName: "Project")
+            workspaceLabel: "Project",
+            repositoryCheckout: RepositoryCheckout(
+                repoKey: "/work/Project/.git",
+                repoName: "Project",
+                repoRoot: "/work/Project",
+                checkoutPath: "/work/Project",
+                isLinkedWorktree: false))
     }
 }
 

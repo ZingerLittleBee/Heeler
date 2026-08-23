@@ -33,7 +33,9 @@ final class WorktreeDetailStore {
     private let remove: (WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt
     private let hasWorkingAgent: () -> Bool
     private var didLoadBranch = false
-    private var isConfirming = false
+    /// A token captured synchronously by the confirmation action and consumed
+    /// exactly once when its asynchronous removal task starts.
+    private var pendingRemovalRequestID: UUID?
 
     init(
         request: WorktreeRemovalRequest,
@@ -52,7 +54,7 @@ final class WorktreeDetailStore {
     }
 
     var canRemove: Bool {
-        checkout.isLinkedWorktree && !isConfirming && removalPhase == .idle
+        checkout.isLinkedWorktree && removalPhase == .idle
     }
 
     func loadBranchIfNeeded() async {
@@ -84,6 +86,9 @@ final class WorktreeDetailStore {
         } catch is CancellationError {
             didLoadBranch = false
             branch = .loading
+        } catch TransportError.cancelled {
+            didLoadBranch = false
+            branch = .loading
         } catch {
             branch = .unavailable
         }
@@ -109,14 +114,22 @@ final class WorktreeDetailStore {
         confirmation = nil
     }
 
-    func confirmRemoval() async {
-        guard !isConfirming, let confirmation else { return }
-        isConfirming = true
+    /// Captures and transitions the exact confirmed request synchronously.
+    /// SwiftUI may clear the dialog binding immediately after this returns;
+    /// the asynchronous dispatch no longer reads that mutable dialog state.
+    func beginRemoval() -> WorktreeRemovalRequest? {
+        guard canRemove, let confirmation else { return nil }
         removalPhase = .removing
         self.confirmation = nil
-        defer { isConfirming = false }
+        pendingRemovalRequestID = confirmation.request.id
+        return confirmation.request
+    }
+
+    func finishRemoval(_ request: WorktreeRemovalRequest) async {
+        guard pendingRemovalRequestID == request.id, request == self.request else { return }
+        pendingRemovalRequestID = nil
         do {
-            removalPhase = .removed(try await remove(confirmation.request))
+            removalPhase = .removed(try await remove(request))
         } catch WorktreeRemovalError.staleIdentity {
             removalPhase = .stale(WorktreeRemovalError.staleIdentity.message)
             showsFeedback = true
@@ -124,6 +137,8 @@ final class WorktreeDetailStore {
             removalPhase = .unconfirmed
             showsFeedback = true
         } catch is CancellationError {
+            removalPhase = .idle
+        } catch TransportError.cancelled {
             removalPhase = .idle
         } catch {
             removalPhase = .failed(WorktreeRemovalRefusal.message(for: error))

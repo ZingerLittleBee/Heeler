@@ -87,7 +87,7 @@ struct HostLiveActivityCoordinatorTests {
         ConsoleAgent(
             hostID: host.id, hostName: "mbp",
             agent: Agent(.fixture(paneID: paneID, status: status, title: title)),
-            workspaceLabel: nil, repoName: nil)
+            workspaceLabel: nil, repositoryCheckout: nil)
     }
 
     private func waitUntil(

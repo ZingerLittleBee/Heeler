@@ -52,7 +52,6 @@ public enum SSHError: Error, Sendable, Equatable {
     case streamLocalOpenFailed
     case unexpectedEOF
     case responseTooLarge(limit: Int)
-    case requestNotAuthorized
     case sftpUnavailable
     case sftpFailure(status: UInt64)
     case connectionInvalidated

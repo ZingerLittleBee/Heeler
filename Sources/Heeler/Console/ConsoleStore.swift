@@ -445,8 +445,11 @@ final class ConsoleStore {
         if workspacesByHost != nextWorkspacesByHost {
             workspacesByHost = nextWorkspacesByHost
         }
-        removedWorktreesByAgent = current.reduce(into: [:]) { result, projection in
+        let nextRemovedWorktreesByAgent = current.reduce(into: [:]) { result, projection in
             result.merge(projection.removedWorktreesByAgent) { _, latest in latest }
+        }
+        if removedWorktreesByAgent != nextRemovedWorktreesByAgent {
+            removedWorktreesByAgent = nextRemovedWorktreesByAgent
         }
         publishAgentStatuses()
     }

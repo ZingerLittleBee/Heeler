@@ -176,14 +176,15 @@ public final class SSHConnection: Sendable {
     /// Opens one direct-streamlocal channel, writes one request, reads one
     /// newline-terminated response, and closes the channel. Every call owns a
     /// fresh channel to preserve one-request-per-socket protocols.
-    /// `beforeRequestWrite` may veto after the channel opens but before any
-    /// byte is written; `onRequestWritten` runs after the complete request.
+    /// `beforeRequestWrite` may throw after the channel opens but before any
+    /// byte is written; its original error is preserved after channel cleanup.
+    /// `onRequestWritten` runs after the complete request.
     public func exchangeStreamLocal(
         socketPath: String,
         request: Data,
         maximumResponseBytes: Int = 1_048_576,
         timeout: Duration,
-        beforeRequestWrite: (@Sendable () async -> Bool)? = nil,
+        beforeRequestWrite: (@Sendable () async throws -> Void)? = nil,
         onRequestWritten: (@Sendable () async -> Void)? = nil
     ) async throws -> Data {
         try await driver.exchangeStreamLocal(

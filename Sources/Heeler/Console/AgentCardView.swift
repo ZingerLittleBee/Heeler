@@ -118,7 +118,12 @@ struct AgentStatusBadge: View {
                     status: .blocked, workspaceID: "w1", tabID: "w1:t1", paneID: "w1:p1",
                     cwd: "/work/proj", revision: 3),
                 workspaceLabel: "proj",
-                repoName: "proj",
+                repositoryCheckout: RepositoryCheckout(
+                    repoKey: "/work/proj/.git",
+                    repoName: "proj",
+                    repoRoot: "/work/proj",
+                    checkoutPath: "/work/proj-wt",
+                    isLinkedWorktree: true),
                 lastOutputSnippet: "Allow Claude to run rm -rf? 1. Yes 2. No"))
         // No workspace in the snapshot: the agent name takes the lead line
         // and the foot tag drops.
@@ -131,7 +136,7 @@ struct AgentStatusBadge: View {
                     status: .working, workspaceID: "w2", tabID: "w2:t1", paneID: "w2:p1",
                     cwd: "/tmp", revision: 1),
                 workspaceLabel: nil,
-                repoName: nil,
+                repositoryCheckout: nil,
                 lastOutputSnippet: nil))
     }
 }

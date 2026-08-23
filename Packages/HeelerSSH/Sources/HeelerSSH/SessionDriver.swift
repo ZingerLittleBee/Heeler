@@ -566,7 +566,7 @@ actor SessionDriver {
         request: Data,
         maximumResponseBytes: Int,
         timeout: Duration,
-        beforeRequestWrite: (@Sendable () async -> Bool)? = nil,
+        beforeRequestWrite: (@Sendable () async throws -> Void)? = nil,
         onRequestWritten: (@Sendable () async -> Void)? = nil
     ) async throws -> Data {
         await acquireOperation()
@@ -609,7 +609,7 @@ actor SessionDriver {
                 cancellable: true)
             return response
         } catch {
-            let normalized = normalize(error)
+            let normalized = (error as? SSHError).map(normalize)
             if let channel {
                 do {
                     try await cleanChannel(
@@ -629,7 +629,10 @@ actor SessionDriver {
                 // — must not admit later work on this session.
                 invalidateResources()
             }
-            throw normalized
+            if let normalized {
+                throw normalized
+            }
+            throw error
         }
     }
 
@@ -2042,7 +2045,7 @@ actor SessionDriver {
         maximumResponseBytes: Int,
         session: OpaquePointer,
         deadline: ContinuousClock.Instant,
-        beforeRequestWrite: (@Sendable () async -> Bool)? = nil,
+        beforeRequestWrite: (@Sendable () async throws -> Void)? = nil,
         onRequestWritten: (@Sendable () async -> Void)? = nil
     ) async throws -> Data {
         var requestOffset = 0
@@ -2050,9 +2053,7 @@ actor SessionDriver {
         var buffer = [UInt8](repeating: 0, count: 16 * 1024)
         var didAnnounceWrite = false
 
-        if let beforeRequestWrite, !(await beforeRequestWrite()) {
-            throw SSHError.requestNotAuthorized
-        }
+        try await beforeRequestWrite?()
 
         while true {
             try checkProgress(deadline: deadline)

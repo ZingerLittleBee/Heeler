@@ -72,7 +72,7 @@ enum WorktreeRemovalError: Error, Equatable, Sendable {
         case .alreadyInProgress:
             "This worktree already has a removal in progress."
         case .outcomeUnconfirmed:
-            "The Host did not confirm whether removal completed. To avoid removing a reused workspace, close this sheet and reopen Worktree Details after the Console refreshes."
+            "The Host did not confirm whether removal completed. Close this sheet, wait for the Console to refresh, then reopen Worktree Details."
         }
     }
 }
@@ -105,10 +105,10 @@ struct WorktreeRemovalConfirmation: Equatable, Sendable {
         case .unavailable:
             sentences.append("Any local branch is kept.")
         }
-        sentences.append("This can't be undone.")
         if hasWorkingAgent {
             sentences.append("An Agent is still working in this worktree.")
         }
+        sentences.append("This can't be undone.")
         return WorktreeRemovalConfirmation(
             request: request,
             title: "Remove \(workspaceLabel) worktree?",
@@ -129,6 +129,8 @@ enum WorktreeRemovalRefusal {
             "The Host is not connected."
         case TransportError.timedOut:
             "The Host did not answer in time."
+        case TransportError.cancelled:
+            "Worktree removal was cancelled."
         default:
             "Removing the worktree failed: \(error)"
         }

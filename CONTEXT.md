@@ -71,7 +71,8 @@ A fresh git checkout of a workspace's repository, created by herdr as its own
 workspace so a new Agent starts on a clean copy of the code. The branch
 defaults to herdr's generated `worktree/<name>` off HEAD; removing the
 Worktree deletes the checkout and closes its workspace, but the branch
-survives.
+survives. Snapshot worktree metadata also describes the main checkout; only
+`is_linked_worktree` makes a workspace eligible for linked-Worktree removal.
 _Avoid_: sandbox, branch copy, checkout folder
 
 **Console**:

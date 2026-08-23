@@ -31,6 +31,7 @@ final actor ScriptedTransport: Transport {
     private var worktreeListResponse: WorktreeListResponse?
     private var worktreeListFailure: (any Error)?
     private var worktreeRemoveFailure: (any Error)?
+    private var worktreeRemoveResponsePath: String?
     private var nextWorktreeAuthorizationGate: ScriptedTransportCallGate?
     /// Every `agent.rename` / `workspace.rename` received, in order; the
     /// rename flows (#98) assert on the params they forwarded.
@@ -179,6 +180,10 @@ final actor ScriptedTransport: Transport {
 
     func setWorktreeRemoveFailure(_ failure: (any Error)?) {
         worktreeRemoveFailure = failure
+    }
+
+    func setWorktreeRemoveResponsePath(_ path: String?) {
+        worktreeRemoveResponsePath = path
     }
 
     func gateNextWorktreeAuthorization(using gate: ScriptedTransportCallGate) {
@@ -430,7 +435,7 @@ final actor ScriptedTransport: Transport {
         if let worktreeRemoveFailure { throw worktreeRemoveFailure }
         return WorktreeRemovedResponse(
             forced: false,
-            path: request.identity.checkoutPath,
+            path: worktreeRemoveResponsePath ?? request.identity.checkoutPath,
             workspaceID: request.identity.workspaceID)
     }
 

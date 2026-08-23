@@ -276,10 +276,7 @@ final class HostConsoleProjection {
                         await self.worktreeRemovalWasDispatched(request)
                     })
             }
-            guard
-                response.workspaceID == request.identity.workspaceID,
-                response.path == request.identity.checkoutPath
-            else {
+            guard response.workspaceID == request.identity.workspaceID else {
                 try markWorktreeRemovalUnconfirmed(request)
                 scheduleResync()
                 throw WorktreeRemovalError.outcomeUnconfirmed
@@ -574,8 +571,23 @@ final class HostConsoleProjection {
         workspaces = snapshot.workspaces
             .map { ConsoleWorkspace(id: $0.workspaceID, label: $0.label) }
             .sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
+        pruneReceiptsReintroducedByCurrentSnapshot()
         reconcileUnconfirmedWorktreeRemovals(requestGeneration: requestGeneration)
         publish()
+    }
+
+    /// A later snapshot is the source of truth for existence. If the exact
+    /// removed identity appears again, it is a recreated/live worktree and
+    /// must not inherit an older success surface.
+    private func pruneReceiptsReintroducedByCurrentSnapshot() {
+        removedWorktreesByAgent = removedWorktreesByAgent.filter { agentID, receipt in
+            guard let agent = agentsByPane[agentID.paneID], agent.id == agentID else {
+                return true
+            }
+            let identity = receipt.request.identity
+            return agent.agent.workspaceID != identity.workspaceID
+                || agent.repositoryCheckout.map(identity.matches) != true
+        }
     }
 
     private func reconcileUnconfirmedWorktreeRemovals(requestGeneration: UInt64) {

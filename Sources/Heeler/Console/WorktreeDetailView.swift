@@ -30,7 +30,7 @@ struct WorktreeDetailView: View {
                 }
 
                 Section {
-                    Button("Remove Worktree…", role: .destructive) {
+                    Button("Remove Worktree", role: .destructive) {
                         store.prepareConfirmation()
                     }
                     .disabled(!store.canRemove)
@@ -62,7 +62,8 @@ struct WorktreeDetailView: View {
                 titleVisibility: .visible
             ) {
                 Button("Remove Worktree", role: .destructive) {
-                    Task { await store.confirmRemoval() }
+                    guard let request = store.beginRemoval() else { return }
+                    Task { await store.finishRemoval(request) }
                 }
                 Button("Cancel", role: .cancel) { store.cancelConfirmation() }
             } message: {
@@ -130,6 +131,7 @@ struct WorktreeDetailView: View {
             case .unavailable:
                 Text("Unavailable").foregroundStyle(.secondary)
                 Button("Retry") { Task { await store.retryBranch() } }
+                    .buttonStyle(.borderless)
             }
         }
     }
