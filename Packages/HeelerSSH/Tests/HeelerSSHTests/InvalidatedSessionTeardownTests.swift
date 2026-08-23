@@ -19,7 +19,7 @@ func invalidationAttemptsSessionReclamationOnlyOnce() {
 }
 
 @Test("invalidation retains ownership until native reclamation succeeds")
-func invalidationRetainsOwnershipUntilNativeReclamationSucceeds() {
+func invalidationRetainsOwnershipUntilNativeReclamationSucceeds() throws {
     var session: OpaquePointer? = OpaquePointer(bitPattern: 1)
     var results = [Int32(LIBSSH2_ERROR_EAGAIN), 0]
 
@@ -35,4 +35,11 @@ func invalidationRetainsOwnershipUntilNativeReclamationSucceeds() {
     #expect(secondResult == 0)
     #expect(session == nil)
     #expect(results.isEmpty)
+
+    try #require(NativeLibrary.initializationResult == 0)
+    let createdSession = try #require(libssh2_session_init_ex(nil, nil, nil, nil))
+    var nativeSession: OpaquePointer? = createdSession
+    let nativeResult = InvalidatedSessionTeardown.reclaim(&nativeSession)
+    #expect(nativeResult == 0)
+    #expect(nativeSession == nil)
 }
