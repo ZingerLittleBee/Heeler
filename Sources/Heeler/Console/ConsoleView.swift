@@ -23,7 +23,10 @@ struct ConsoleView: View {
     @State private var hostSheet: HostSheet?
     @State private var isStartingAgent = false
     @State private var isShowingSettings = false
-    @State private var reconnectingHostIDs: Set<Host.ID> = []
+    /// Hosts whose Host-detail Reconnect request is in flight, including the
+    /// 1.2 s visual-feedback hold after `retryHost` returns. Distinct from
+    /// `EventsSessionStatus.reconnecting`.
+    @State private var manualReconnectInFlightHostIDs: Set<Host.ID> = []
     /// Narrows the flat list to one Host; nil shows every Host. The list
     /// stays flat either way — this is a filter, not a grouping level.
     @State private var hostFilter: Host.ID?
@@ -93,7 +96,7 @@ struct ConsoleView: View {
                         initialHostID: destination.hostID,
                         connectionStatuses: console.hostStatuses,
                         latencies: console.hostLatencies,
-                        reconnectingHostIDs: reconnectingHostIDs,
+                        manualReconnectInFlightHostIDs: manualReconnectInFlightHostIDs,
                         retryConnection: { await reconnectHost($0) })
                 }
                 .sheet(isPresented: $isStartingAgent) {
@@ -419,10 +422,10 @@ struct ConsoleView: View {
     }
 
     private func reconnectHost(_ id: Host.ID) async {
-        guard reconnectingHostIDs.insert(id).inserted else { return }
+        guard manualReconnectInFlightHostIDs.insert(id).inserted else { return }
         await console.retryHost(id)
         try? await Task.sleep(for: .milliseconds(1_200))
-        reconnectingHostIDs.remove(id)
+        manualReconnectInFlightHostIDs.remove(id)
     }
 }
 

@@ -169,20 +169,20 @@ Four surfaces turn those two statuses into text. The Console list shows the
 short phrase on `.reconnecting` and the guidance on `.failed`. The Agent
 detail screen (`MissingAgentPresentation`) shows a fixed "nothing to do"
 message on `.reconnecting` and the guidance on `.failed`. The Host detail
-screen (`HostOnboardingView.connectionErrorMessage`) shows the guidance on
+screen (`HostOnboardingConnectionPresentation`) shows the guidance on
 both, and is the only surface that shows it while a retry is in flight. The
 Hosts sheet rows (`HostConnectionPresentation`) show a status chip,
 "Reconnecting…" or "Unavailable", and never the guidance at all: a chip is not
 guidance, so those rows sit outside this term.
 Two exceptions the description keeps rather than tidies away. The Host detail
-footer is gated on no manual Reconnect being in flight, so pressing Reconnect
-suppresses the guidance entirely for the length of the retry call plus 1.2 s —
-on `.failed` as much as on `.reconnecting` (#160). And that screen is reached
-four ways: a Host row, the add form, a finished Pairing scan, and a deep link,
-which is what the Console's own issue buttons use to push the user onto it.
-Only the two surfaces with a presentation type of their own are tested; the
-Console list and the Host detail footer live inside `View` bodies and have no
-coverage.
+footer is gated on no manual Reconnect request being in flight, so pressing
+Reconnect suppresses the guidance entirely for the length of the retry call
+plus 1.2 s — on `.failed` as much as on `.reconnecting` (#160). And that
+screen is reached four ways: a Host row, the add form, a finished Pairing
+scan, and a deep link, which is what the Console's own issue buttons use to
+push the user onto it.
+Three surfaces have a presentation type of their own; the Console list still
+lives inside a `View` body and has no coverage.
 _Avoid_: error message, connection error, retry hint
 
 **Background Grace Period**:
