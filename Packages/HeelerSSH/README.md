@@ -151,7 +151,7 @@ package runner asserts only that something executed, not an exact count, so
 machines without the disposable sshd fixture can skip the E2E suite cleanly.
 
 The E2E integration package must update `scripts/run-ci-ios-tests.sh` before
-merge so its package lane expects **42** executed tests and pins these new
+merge so its package lane expects **43** executed tests and pins these new
 display names exactly:
 
 - `outbound backpressure does not livelock a channel open`
@@ -170,6 +170,7 @@ display names exactly:
 - `a serialized channel-open wait honors deadline and cancellation`
 - `an invalidation generation rejects a watch armed before it`
 - `a transport-send owner error with outbound pending invalidates`
+- `a bridge write to a closed peer reports peerClosed`
 
 This core package intentionally does not edit that integration script.
 

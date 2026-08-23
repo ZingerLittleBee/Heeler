@@ -1742,7 +1742,7 @@ clear_simulator_environment
 
 if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || grep -q 'skipped:' "$package_e2e_log" \
-    || ! grep -q 'Test run with 42 tests in 2 suites passed' "$package_e2e_log" \
+    || ! grep -q 'Test run with 43 tests in 2 suites passed' "$package_e2e_log" \
     || ! grep -q 'Test "remote transport loss reclaims every owned native resource" passed' \
         "$package_e2e_log" \
     || ! grep -q 'Test "an abruptly severed weak link reclaims every owned native resource" passed' \
@@ -1823,8 +1823,11 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
         "$package_e2e_log" \
     || ! grep -q \
         'Test "a transport-send owner error with outbound pending invalidates" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "a bridge write to a closed peer reports peerClosed" passed' \
         "$package_e2e_log"; then
-    echo "The mandatory HeelerSSH package suites did not execute all forty-two tests" >&2
+    echo "The mandatory HeelerSSH package suites did not execute all forty-three tests" >&2
     exit 1
 fi
 pinned_lane_logs+=("$package_e2e_log")

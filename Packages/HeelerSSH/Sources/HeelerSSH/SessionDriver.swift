@@ -4,6 +4,12 @@ import Darwin
 import Foundation
 
 actor SessionDriver {
+    enum BridgeWriteResult: Equatable {
+        case blocked
+        case peerClosed
+        case wrote(Int)
+    }
+
     enum TransportSendOwnerDisposition: Equatable {
         case unchanged
         case clear
@@ -2309,18 +2315,27 @@ actor SessionDriver {
             }
 
             if !toInner.isEmpty {
-                let written = toInner.withUnsafeBytes { bytes in
-                    Darwin.write(bridgeDescriptor, bytes.baseAddress, bytes.count)
-                }
-                if written > 0 {
+                switch try Self.writeBridge(toInner, descriptor: bridgeDescriptor) {
+                case .wrote(let written):
                     toInner.removeFirst(written)
                     madeProgress = true
-                } else if written < 0, errno != EAGAIN, errno != EWOULDBLOCK {
-                    throw SSHError.connectionFailed
+                case .blocked:
+                    break
+                case .peerClosed:
+                    // The nested session closes its socket before the pump has
+                    // necessarily delivered the last bytes already read from
+                    // the outer channel. No consumer remains for this
+                    // direction, and that full-descriptor close also ends the
+                    // opposite one.
+                    toInner.removeAll(keepingCapacity: true)
+                    innerEOF = true
+                    madeProgress = true
                 }
             }
 
             if outerEOF, toInner.isEmpty {
+                // `toInner` only grows while `outerEOF` is false, so no later
+                // bridge write can misread this local shutdown as peer close.
                 _ = Darwin.shutdown(bridgeDescriptor, SHUT_WR)
             }
             if innerEOF, toOuter.isEmpty { return }
@@ -2353,6 +2368,20 @@ actor SessionDriver {
                 }
             }
         }
+    }
+
+    static func writeBridge(_ data: Data, descriptor: Int32) throws -> BridgeWriteResult {
+        let (written, writeErrno) = data.withUnsafeBytes { bytes -> (Int, Int32) in
+            guard let baseAddress = bytes.baseAddress else { return (0, 0) }
+            let result = Darwin.write(descriptor, baseAddress, bytes.count)
+            return (result, result < 0 ? errno : 0)
+        }
+        if written > 0 { return .wrote(written) }
+        if written == 0 || writeErrno == EAGAIN || writeErrno == EWOULDBLOCK {
+            return .blocked
+        }
+        if writeErrno == EPIPE { return .peerClosed }
+        throw SSHError.connectionFailed
     }
 
     /// Everything a blocked operation needs to wait on the session, captured
