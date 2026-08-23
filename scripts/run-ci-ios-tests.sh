@@ -1804,7 +1804,7 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
         'Test "invalidation during a yielding wait does not touch a stale native pointer" passed' \
         "$package_e2e_log" \
     || ! grep -q \
-        'Test "yielded channel teardown rejects same-id I/O" passed' \
+        'Test "yielded channel teardown rejects same-id I/O and preserves close" passed' \
         "$package_e2e_log" \
     || ! grep -q \
         'Test "repeated invalidation reclaims every file descriptor" passed' \
