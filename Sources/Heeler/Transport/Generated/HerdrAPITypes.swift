@@ -1062,6 +1062,33 @@ struct WorktreeInfo: Codable, Equatable, Sendable {
     }
 }
 
+/// herdr schema `$defs/WorktreeListParams`.
+struct WorktreeListParams: Codable, Equatable, Sendable {
+    let cwd: String?
+    let workspaceID: String?
+
+    init(cwd: String? = nil, workspaceID: String? = nil) {
+        self.cwd = cwd
+        self.workspaceID = workspaceID
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case cwd
+        case workspaceID = "workspace_id"
+    }
+}
+
+/// The `"type":"worktree_list"` result payload of herdr's success_response schema.
+struct WorktreeListResponse: Codable, Equatable, Sendable {
+    let source: WorktreeSourceInfo
+    let worktrees: [WorktreeInfo]
+
+    init(source: WorktreeSourceInfo, worktrees: [WorktreeInfo]) {
+        self.source = source
+        self.worktrees = worktrees
+    }
+}
+
 /// herdr schema `$defs/WorktreeRemoveParams`.
 struct WorktreeRemoveParams: Codable, Equatable, Sendable {
     let force: Bool?
@@ -1094,5 +1121,36 @@ struct WorktreeRemovedResponse: Codable, Equatable, Sendable {
         case forced
         case path
         case workspaceID = "workspace_id"
+    }
+}
+
+/// herdr schema `$defs/WorktreeSourceInfo`.
+struct WorktreeSourceInfo: Codable, Equatable, Sendable {
+    let repoKey: String
+    let repoName: String
+    let repoRoot: String
+    let sourceCheckoutPath: String
+    let sourceWorkspaceID: String?
+
+    init(
+        repoKey: String,
+        repoName: String,
+        repoRoot: String,
+        sourceCheckoutPath: String,
+        sourceWorkspaceID: String? = nil
+    ) {
+        self.repoKey = repoKey
+        self.repoName = repoName
+        self.repoRoot = repoRoot
+        self.sourceCheckoutPath = sourceCheckoutPath
+        self.sourceWorkspaceID = sourceWorkspaceID
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case repoKey = "repo_key"
+        case repoName = "repo_name"
+        case repoRoot = "repo_root"
+        case sourceCheckoutPath = "source_checkout_path"
+        case sourceWorkspaceID = "source_workspace_id"
     }
 }

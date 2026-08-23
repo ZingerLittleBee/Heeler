@@ -23,6 +23,23 @@ final class HostConsoleProjection {
     /// snapshot. `.connected` arrives before that request completes, so an
     /// empty projection in this window means "unknown", not "no Agents".
     private(set) var isAwaitingSnapshot = true
+    /// Stable success surfaces keyed by every Agent that belonged to the
+    /// exact validated worktree at dispatch.
+    private(set) var removedWorktreesByAgent: [
+        ConsoleAgent.ID: WorktreeRemovalReceipt
+    ] = [:]
+
+    private struct WorktreeRemovalOperation {
+        enum Phase {
+            case preparing
+            case dispatched(snapshotRequestGeneration: UInt64)
+            case unconfirmed(snapshotRequestGeneration: UInt64)
+        }
+
+        let request: WorktreeRemovalRequest
+        var affectedAgentIDs: Set<ConsoleAgent.ID> = []
+        var phase: Phase = .preparing
+    }
 
     private let snapshotRetryDelay: Duration
     private let onChange: @MainActor @Sendable () -> Void
@@ -35,6 +52,11 @@ final class HostConsoleProjection {
     /// already in flight may still return after its Host drops, but its stale
     /// rows must never repopulate the Console.
     private var snapshotEpoch: UInt64 = 0
+    /// Request-start order, used only after a complete remove request line was
+    /// written. A snapshot already in flight cannot resolve its outcome.
+    private var snapshotRequestGeneration: UInt64 = 0
+    private var workspacesByID: [String: WorkspaceInfo] = [:]
+    private var worktreeRemovalOperations: [UUID: WorktreeRemovalOperation] = [:]
     private var statusChangeRevision: UInt64 = 0
     private var latestStatusChanges: [
         String: (revision: UInt64, status: AgentStatus)
@@ -217,6 +239,152 @@ final class HostConsoleProjection {
         scheduleResync()
     }
 
+    func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
+        try await session.withTransport { transport in
+            try await transport.listWorktrees(forWorkspaceID: workspaceID)
+        }
+    }
+
+    /// One operation record per immutable request prevents repeated taps and
+    /// concurrent removals from replacing one another. Exact identity is
+    /// checked again inside the Transport's write boundary, after channel
+    /// admission and immediately before the first request byte.
+    func removeWorktree(
+        _ request: WorktreeRemovalRequest
+    ) async throws -> WorktreeRemovalReceipt {
+        guard request.identity.hostID == host.id else {
+            throw WorktreeRemovalError.staleIdentity
+        }
+        guard worktreeRemovalOperations[request.id] == nil else {
+            throw WorktreeRemovalError.alreadyInProgress
+        }
+        guard !worktreeRemovalOperations.values.contains(where: {
+            $0.request.identity == request.identity
+        }) else {
+            throw WorktreeRemovalError.alreadyInProgress
+        }
+        worktreeRemovalOperations[request.id] = WorktreeRemovalOperation(request: request)
+
+        do {
+            let response = try await session.withTransport { transport in
+                try await transport.removeWorktree(
+                    request,
+                    authorize: { request in
+                        try await self.authorizeWorktreeRemoval(request)
+                    },
+                    onDispatched: { request in
+                        await self.worktreeRemovalWasDispatched(request)
+                    })
+            }
+            guard
+                response.workspaceID == request.identity.workspaceID,
+                response.path == request.identity.checkoutPath
+            else {
+                try markWorktreeRemovalUnconfirmed(request)
+                scheduleResync()
+                throw WorktreeRemovalError.outcomeUnconfirmed
+            }
+            let receipt = try finishSuccessfulWorktreeRemoval(request)
+            scheduleResync()
+            publish()
+            return receipt
+        } catch let error as WorktreeRemovalError {
+            if error != .outcomeUnconfirmed {
+                worktreeRemovalOperations[request.id] = nil
+            }
+            publish()
+            throw error
+        } catch {
+            if Self.isDefiniteWorktreeRejection(error) {
+                worktreeRemovalOperations[request.id] = nil
+                publish()
+                throw error
+            }
+            guard let operation = worktreeRemovalOperations[request.id],
+                case .dispatched = operation.phase
+            else {
+                worktreeRemovalOperations[request.id] = nil
+                publish()
+                throw error
+            }
+            try markWorktreeRemovalUnconfirmed(request)
+            scheduleResync()
+            publish()
+            throw WorktreeRemovalError.outcomeUnconfirmed
+        }
+    }
+
+    private func authorizeWorktreeRemoval(_ request: WorktreeRemovalRequest) throws {
+        guard
+            var operation = worktreeRemovalOperations[request.id],
+            operation.request == request,
+            case .preparing = operation.phase,
+            let workspace = workspacesByID[request.identity.workspaceID],
+            let checkout = workspace.worktree.map(RepositoryCheckout.init),
+            request.identity.matches(checkout)
+        else {
+            throw WorktreeRemovalError.staleIdentity
+        }
+        operation.affectedAgentIDs = Set(
+            agentsByPane.values.lazy
+                .filter {
+                    $0.agent.workspaceID == request.identity.workspaceID
+                        && $0.repositoryCheckout.map(request.identity.matches) == true
+                }
+                .map(\.id))
+        worktreeRemovalOperations[request.id] = operation
+    }
+
+    private func worktreeRemovalWasDispatched(_ request: WorktreeRemovalRequest) {
+        guard var operation = worktreeRemovalOperations[request.id],
+            operation.request == request,
+            case .preparing = operation.phase
+        else { return }
+        operation.phase = .dispatched(
+            snapshotRequestGeneration: snapshotRequestGeneration)
+        worktreeRemovalOperations[request.id] = operation
+    }
+
+    private func markWorktreeRemovalUnconfirmed(
+        _ request: WorktreeRemovalRequest
+    ) throws {
+        guard var operation = worktreeRemovalOperations[request.id],
+            operation.request == request,
+            case .dispatched(let generation) = operation.phase
+        else { throw WorktreeRemovalError.staleIdentity }
+        operation.phase = .unconfirmed(snapshotRequestGeneration: generation)
+        worktreeRemovalOperations[request.id] = operation
+    }
+
+    private func finishSuccessfulWorktreeRemoval(
+        _ request: WorktreeRemovalRequest
+    ) throws -> WorktreeRemovalReceipt {
+        guard let operation = worktreeRemovalOperations.removeValue(forKey: request.id),
+            operation.request == request
+        else { throw WorktreeRemovalError.staleIdentity }
+        let receipt = WorktreeRemovalReceipt(
+            request: request, affectedAgentIDs: operation.affectedAgentIDs)
+        record(receipt)
+        return receipt
+    }
+
+    private func record(_ receipt: WorktreeRemovalReceipt) {
+        for agentID in receipt.affectedAgentIDs {
+            removedWorktreesByAgent[agentID] = receipt
+        }
+    }
+
+    private static func isDefiniteWorktreeRejection(_ error: any Error) -> Bool {
+        switch error {
+        case is HerdrAPIError:
+            true
+        case TransportError.apiRejected(_, _):
+            true
+        default:
+            false
+        }
+    }
+
     /// Renames an Agent (#98); a nil name clears back to the detected kind.
     /// The new name lands via the post-RPC resync, not an event delta:
     /// `pane.updated` does not carry the agent name and fires on every
@@ -310,6 +478,8 @@ final class HostConsoleProjection {
     }
 
     private func runResync() async {
+        snapshotRequestGeneration &+= 1
+        let requestGeneration = snapshotRequestGeneration
         let epochBeforeSnapshot = snapshotEpoch
         let statusRevisionBeforeSnapshot = statusChangeRevision
         do {
@@ -326,7 +496,8 @@ final class HostConsoleProjection {
             syncError = nil
             apply(
                 snapshot,
-                preservingStatusChangesAfter: statusRevisionBeforeSnapshot)
+                preservingStatusChangesAfter: statusRevisionBeforeSnapshot,
+                requestGeneration: requestGeneration)
             await session.updateSubscriptions(
                 Self.subscriptions(paneIDs: agentsByPane.keys))
             refreshSnippets()
@@ -368,11 +539,13 @@ final class HostConsoleProjection {
         pendingSnippetRefreshes.removeAll(keepingCapacity: true)
         agentsByPane.removeAll(keepingCapacity: true)
         workspaces.removeAll(keepingCapacity: true)
+        workspacesByID.removeAll(keepingCapacity: true)
     }
 
     private func apply(
         _ snapshot: SessionSnapshot,
-        preservingStatusChangesAfter snapshotStartRevision: UInt64
+        preservingStatusChangesAfter snapshotStartRevision: UInt64,
+        requestGeneration: UInt64
     ) {
         let workspaceByID = Dictionary(
             snapshot.workspaces.map { ($0.workspaceID, $0) }) { first, _ in first }
@@ -385,8 +558,7 @@ final class HostConsoleProjection {
                 hostName: host.displayName,
                 agent: agent,
                 workspaceLabel: workspace?.label,
-                repoName: workspace?.worktree?.repoName,
-                checkoutPath: workspace?.worktree?.checkoutPath,
+                repositoryCheckout: workspace?.worktree.map(RepositoryCheckout.init),
                 lastOutputSnippet: agentsByPane[agent.paneID]?.lastOutputSnippet)
         }
         for (paneID, change) in latestStatusChanges
@@ -398,10 +570,31 @@ final class HostConsoleProjection {
         latestStatusChanges.removeAll(keepingCapacity: true)
         isAwaitingSnapshot = false
         agentsByPane = nextAgents
+        workspacesByID = workspaceByID
         workspaces = snapshot.workspaces
             .map { ConsoleWorkspace(id: $0.workspaceID, label: $0.label) }
             .sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
+        reconcileUnconfirmedWorktreeRemovals(requestGeneration: requestGeneration)
         publish()
+    }
+
+    private func reconcileUnconfirmedWorktreeRemovals(requestGeneration: UInt64) {
+        for (id, operation) in worktreeRemovalOperations {
+            guard case .unconfirmed(let dispatchGeneration) = operation.phase,
+                requestGeneration > dispatchGeneration
+            else { continue }
+            let stillPresent = workspacesByID[operation.request.identity.workspaceID]
+                .flatMap(\.worktree)
+                .map(RepositoryCheckout.init)
+                .map(operation.request.identity.matches) == true
+            worktreeRemovalOperations[id] = nil
+            if !stillPresent {
+                record(
+                    WorktreeRemovalReceipt(
+                        request: operation.request,
+                        affectedAgentIDs: operation.affectedAgentIDs))
+            }
+        }
     }
 
     private func applyStatusChange(_ data: JSONValue) -> AgentStatus? {

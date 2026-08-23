@@ -37,6 +37,15 @@ struct AgentCardView: View {
                     .lineLimit(2)
             }
             HStack(spacing: 6) {
+                if agent.isLinkedWorktree {
+                    Label("Worktree", systemImage: "arrow.triangle.branch")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.quaternary, in: Capsule())
+                        .accessibilityLabel("Linked worktree")
+                }
                 if let kind = agentKindTag {
                     Text(kind)
                         .font(.caption2)
@@ -71,16 +80,7 @@ struct AgentCardView: View {
     /// The workspace context: label, with the worktree repo when it adds
     /// information the label does not already carry.
     private var workspaceContext: String? {
-        switch (agent.workspaceLabel, agent.repoName) {
-        case (nil, nil):
-            return nil
-        case (let label?, nil):
-            return label
-        case (nil, let repo?):
-            return repo
-        case (let label?, let repo?):
-            return label == repo ? label : "\(label) · \(repo)"
-        }
+        agent.workspaceContext
     }
 }
 

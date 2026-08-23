@@ -26,6 +26,12 @@ final actor ScriptedTransport: Transport {
     /// appends here).
     private(set) var closedPanes: [PaneTarget] = []
     private var closeFailure: TransportError?
+    private(set) var listedWorktreeWorkspaceIDs: [String] = []
+    private(set) var removedWorktreeRequests: [WorktreeRemovalRequest] = []
+    private var worktreeListResponse: WorktreeListResponse?
+    private var worktreeListFailure: (any Error)?
+    private var worktreeRemoveFailure: (any Error)?
+    private var nextWorktreeAuthorizationGate: ScriptedTransportCallGate?
     /// Every `agent.rename` / `workspace.rename` received, in order; the
     /// rename flows (#98) assert on the params they forwarded.
     private(set) var agentRenames: [AgentRenameParams] = []
@@ -162,6 +168,21 @@ final actor ScriptedTransport: Transport {
     /// Makes every subsequent `closePane` throw `failure`.
     func setCloseFailure(_ failure: TransportError?) {
         closeFailure = failure
+    }
+
+    func configureWorktreeList(
+        _ response: WorktreeListResponse?, failure: (any Error)? = nil
+    ) {
+        worktreeListResponse = response
+        worktreeListFailure = failure
+    }
+
+    func setWorktreeRemoveFailure(_ failure: (any Error)?) {
+        worktreeRemoveFailure = failure
+    }
+
+    func gateNextWorktreeAuthorization(using gate: ScriptedTransportCallGate) {
+        nextWorktreeAuthorizationGate = gate
     }
 
     /// Makes every subsequent rename (agent or workspace) throw `failure`.
@@ -384,6 +405,33 @@ final actor ScriptedTransport: Transport {
     func closePane(_ params: PaneTarget) async throws {
         if let closeFailure { throw closeFailure }
         closedPanes.append(params)
+    }
+
+    func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
+        listedWorktreeWorkspaceIDs.append(workspaceID)
+        if let worktreeListFailure { throw worktreeListFailure }
+        guard let worktreeListResponse else {
+            throw TransportError.channelFailed(detail: "no worktree list scripted")
+        }
+        return worktreeListResponse
+    }
+
+    func removeWorktree(
+        _ request: WorktreeRemovalRequest,
+        authorize: @escaping @Sendable (WorktreeRemovalRequest) async throws -> Void,
+        onDispatched: @escaping @Sendable (WorktreeRemovalRequest) async -> Void
+    ) async throws -> WorktreeRemovedResponse {
+        let gate = nextWorktreeAuthorizationGate
+        nextWorktreeAuthorizationGate = nil
+        await gate?.waitUntilOpen()
+        try await authorize(request)
+        removedWorktreeRequests.append(request)
+        await onDispatched(request)
+        if let worktreeRemoveFailure { throw worktreeRemoveFailure }
+        return WorktreeRemovedResponse(
+            forced: false,
+            path: request.identity.checkoutPath,
+            workspaceID: request.identity.workspaceID)
     }
 
     func renameAgent(_ params: AgentRenameParams) async throws {
@@ -636,14 +684,19 @@ extension AgentInfo {
 
 extension WorkspaceInfo {
     static func fixture(
-        workspaceID: String, label: String, repoName: String? = nil
+        workspaceID: String,
+        label: String,
+        repoName: String? = nil,
+        checkoutPath: String? = nil,
+        isLinkedWorktree: Bool = false
     ) -> WorkspaceInfo {
         WorkspaceInfo(
             activeTabID: "\(workspaceID):t1", agentStatus: .unknown, focused: false,
             label: label, number: 1, paneCount: 1, tabCount: 1, workspaceID: workspaceID,
             worktree: repoName.map { name in
                 WorkspaceWorktreeInfo(
-                    checkoutPath: "/work/\(name)", isLinkedWorktree: false,
+                    checkoutPath: checkoutPath ?? "/work/\(name)",
+                    isLinkedWorktree: isLinkedWorktree,
                     repoKey: "/work/\(name)/.git", repoName: name, repoRoot: "/work/\(name)")
             })
     }

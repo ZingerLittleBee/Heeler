@@ -76,6 +76,21 @@ protocol Transport: Sendable {
     /// id; returns once the server acknowledges.
     func closePane(_ params: PaneTarget) async throws
 
+    /// Lists git worktrees for the repository containing `workspaceID`.
+    /// Console detail uses this only to obtain branch presentation because
+    /// `session.snapshot` already carries repository and checkout identity.
+    func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse
+
+    /// Removes one exact confirmed linked Worktree. `authorize` is invoked
+    /// after the stream-local channel opens but before its first request byte;
+    /// `onDispatched` runs only after the complete request line is written.
+    /// Both receive the immutable request that crosses this Transport seam.
+    func removeWorktree(
+        _ request: WorktreeRemovalRequest,
+        authorize: @escaping @Sendable (WorktreeRemovalRequest) async throws -> Void,
+        onDispatched: @escaping @Sendable (WorktreeRemovalRequest) async -> Void
+    ) async throws -> WorktreeRemovedResponse
+
     /// Renames an Agent (`agent.rename`): the Console management action
     /// (#98). A nil name clears the custom name back to the detected kind
     /// (verified live against herdr 0.7.5: omitting the key clears). The
@@ -227,6 +242,20 @@ extension Transport {
 
     func replaceNotificationConfig(_ contents: Data) async throws {
         throw NotificationRegistrationError.pluginNotInstalled
+    }
+
+    func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
+        throw TransportError.channelFailed(
+            detail: "This transport cannot list worktrees.")
+    }
+
+    func removeWorktree(
+        _ request: WorktreeRemovalRequest,
+        authorize: @escaping @Sendable (WorktreeRemovalRequest) async throws -> Void,
+        onDispatched: @escaping @Sendable (WorktreeRemovalRequest) async -> Void
+    ) async throws -> WorktreeRemovedResponse {
+        throw TransportError.channelFailed(
+            detail: "This transport cannot remove worktrees.")
     }
 }
 

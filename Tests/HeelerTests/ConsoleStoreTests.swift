@@ -1414,6 +1414,175 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    @Test func linkedWorktreeRemovalRecordsOnlyItsAffectedAgents() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: linkedWorktreeSnapshot(
+                workspaces: [
+                    ("w1", "one", "/work/one-wt"),
+                    ("w2", "two", "/work/two-wt"),
+                ]))
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("both linked-worktree Agents should arrive") {
+            store.agents.count == 2
+        }
+        let first = try #require(store.agents.first { $0.agent.workspaceID == "w1" })
+        let checkout = try #require(first.repositoryCheckout)
+        let request = WorktreeRemovalRequest(
+            identity: WorktreeIdentity(
+                hostID: host.id, workspaceID: "w1", checkout: checkout))
+
+        let receipt = try await store.removeWorktree(request, on: host.id)
+
+        #expect(await transport.removedWorktreeRequests == [request])
+        #expect(receipt.affectedAgentIDs == [first.id])
+        #expect(store.removedWorktreesByAgent[first.id] == receipt)
+        let unaffected = try #require(store.agents.first { $0.agent.workspaceID == "w2" })
+        #expect(store.removedWorktreesByAgent[unaffected.id] == nil)
+        store.setHosts([])
+    }
+
+    @Test func staleIdentityAtTheWriteBoundarySendsNoRemoval() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: linkedWorktreeSnapshot(workspaces: [("w1", "one", "/work/one-wt")]))
+        let gate = ScriptedTransportCallGate()
+        await transport.gateNextWorktreeAuthorization(using: gate)
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the linked-worktree Agent should arrive") {
+            store.agents.first?.isLinkedWorktree == true
+        }
+        let agent = try #require(store.agents.first)
+        let checkout = try #require(agent.repositoryCheckout)
+        let request = WorktreeRemovalRequest(
+            identity: WorktreeIdentity(
+                hostID: host.id, workspaceID: "w1", checkout: checkout))
+        let removal = Task { try await store.removeWorktree(request, on: host.id) }
+
+        try await waitUntil("remove should be waiting immediately before authorization") {
+            await gate.entryCount == 1
+        }
+        await transport.setSnapshot(
+            linkedWorktreeSnapshot(workspaces: [("w1", "replacement", "/work/reused-wt")]))
+        #expect(
+            await transport.emit(
+                HerdrEvent(
+                    kind: GlobalEventKind.workspaceMetadataUpdated.kind,
+                    data: .object([:]))) == true)
+        try await waitUntil("the replacement identity should become the latest snapshot") {
+            store.agents.first?.checkoutPath == "/work/reused-wt"
+        }
+        await gate.open()
+
+        await #expect(throws: WorktreeRemovalError.staleIdentity) {
+            try await removal.value
+        }
+        #expect(await transport.removedWorktreeRequests.isEmpty)
+        #expect(store.removedWorktreesByAgent.isEmpty)
+        store.setHosts([])
+    }
+
+    @Test func repeatedAndConcurrentRemovalRequestsStayDistinct() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: linkedWorktreeSnapshot(
+                workspaces: [
+                    ("w1", "one", "/work/one-wt"),
+                    ("w2", "two", "/work/two-wt"),
+                ]))
+        let gate = ScriptedTransportCallGate()
+        await transport.gateNextWorktreeAuthorization(using: gate)
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("both Agents should arrive") { store.agents.count == 2 }
+        let one = try #require(store.agents.first { $0.agent.workspaceID == "w1" })
+        let two = try #require(store.agents.first { $0.agent.workspaceID == "w2" })
+        let requestOne = WorktreeRemovalRequest(
+            identity: WorktreeIdentity(
+                hostID: host.id,
+                workspaceID: "w1",
+                checkout: try #require(one.repositoryCheckout)))
+        let requestTwo = WorktreeRemovalRequest(
+            identity: WorktreeIdentity(
+                hostID: host.id,
+                workspaceID: "w2",
+                checkout: try #require(two.repositoryCheckout)))
+        let first = Task { try await store.removeWorktree(requestOne, on: host.id) }
+        try await waitUntil("the first request should wait at authorization") {
+            await gate.entryCount == 1
+        }
+
+        await #expect(throws: WorktreeRemovalError.alreadyInProgress) {
+            try await store.removeWorktree(requestOne, on: host.id)
+        }
+        let second = Task { try await store.removeWorktree(requestTwo, on: host.id) }
+        await gate.open()
+        _ = try await first.value
+        _ = try await second.value
+
+        let requests = await transport.removedWorktreeRequests
+        #expect(requests.count == 2)
+        #expect(Set(requests) == [requestOne, requestTwo])
+        store.setHosts([])
+    }
+
+    @Test func serverAndTransportFailuresHaveDeterministicOutcomes() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: linkedWorktreeSnapshot(workspaces: [("w1", "one", "/work/one-wt")]))
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Agent should arrive") { store.agents.count == 1 }
+        let agent = try #require(store.agents.first)
+        let checkout = try #require(agent.repositoryCheckout)
+
+        await transport.setWorktreeRemoveFailure(
+            HerdrAPIError(code: "dirty_worktree_requires_force", message: "dirty"))
+        let rejected = WorktreeRemovalRequest(
+            identity: WorktreeIdentity(
+                hostID: host.id, workspaceID: "w1", checkout: checkout))
+        await #expect(throws: HerdrAPIError.self) {
+            try await store.removeWorktree(rejected, on: host.id)
+        }
+        #expect(store.removedWorktreesByAgent.isEmpty)
+
+        await transport.setWorktreeRemoveFailure(TransportError.timedOut)
+        await transport.setSnapshot(.fixture())
+        let uncertain = WorktreeRemovalRequest(
+            identity: WorktreeIdentity(
+                hostID: host.id, workspaceID: "w1", checkout: checkout))
+        await #expect(throws: WorktreeRemovalError.outcomeUnconfirmed) {
+            try await store.removeWorktree(uncertain, on: host.id)
+        }
+        try await waitUntil("a newer absent snapshot should resolve the exact removal") {
+            store.removedWorktreesByAgent[agent.id]?.request == uncertain
+        }
+        store.setHosts([])
+    }
+
+    private func linkedWorktreeSnapshot(
+        workspaces: [(id: String, name: String, path: String)]
+    ) -> SessionSnapshot {
+        .fixture(
+            agents: workspaces.map {
+                .fixture(paneID: "\($0.id):p1", workspaceID: $0.id)
+            },
+            workspaces: workspaces.map {
+                .fixture(
+                    workspaceID: $0.id,
+                    label: $0.name,
+                    repoName: $0.name,
+                    checkoutPath: $0.path,
+                    isLinkedWorktree: true)
+            })
+    }
+
     /// A store whose session factory hands each Host the next transport in
     /// its scripted sequence, so tests can drive SSH-level replacement.
     private func makeStore(transportQueues: [Host.ID: TransportQueue]) -> ConsoleStore {

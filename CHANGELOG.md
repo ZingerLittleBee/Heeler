@@ -7,6 +7,13 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- Linked worktrees are now marked on Console cards. Agent detail shows their
+  repository, branch, and checkout path, and can remove the checkout and its
+  workspace after an identity-bound confirmation while keeping the local
+  branch. (#99)
+
 ### Changed
 
 - Host connections now have a distinct Connecting state, separate from

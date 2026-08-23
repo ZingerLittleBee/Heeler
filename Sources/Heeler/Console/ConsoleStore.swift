@@ -26,6 +26,12 @@ final class ConsoleStore {
     /// than a projection lookup so an open New Agent picker refreshes when a
     /// snapshot arrives or a workspace membership event resyncs the Host.
     private(set) var workspacesByHost: [Host.ID: [ConsoleWorkspace]] = [:]
+    /// Successful or snapshot-reconciled removals keyed by the exact Agents
+    /// that belonged to the validated worktree. This survives their rows
+    /// disappearing so Agent detail can show a stable result.
+    private(set) var removedWorktreesByAgent: [
+        ConsoleAgent.ID: WorktreeRemovalReceipt
+    ] = [:]
 
     @ObservationIgnored private var projections: [
         Host.ID: HostConsoleProjection
@@ -363,6 +369,18 @@ final class ConsoleStore {
         try await projection(for: hostID).closePane(paneID)
     }
 
+    func listWorktrees(
+        forWorkspaceID workspaceID: String, on hostID: Host.ID
+    ) async throws -> WorktreeListResponse {
+        try await projection(for: hostID).listWorktrees(forWorkspaceID: workspaceID)
+    }
+
+    func removeWorktree(
+        _ request: WorktreeRemovalRequest, on hostID: Host.ID
+    ) async throws -> WorktreeRemovalReceipt {
+        try await projection(for: hostID).removeWorktree(request)
+    }
+
     func renameAgent(
         _ paneID: String, name: String?, on hostID: Host.ID
     ) async throws {
@@ -426,6 +444,9 @@ final class ConsoleStore {
             })
         if workspacesByHost != nextWorkspacesByHost {
             workspacesByHost = nextWorkspacesByHost
+        }
+        removedWorktreesByAgent = current.reduce(into: [:]) { result, projection in
+            result.merge(projection.removedWorktreesByAgent) { _, latest in latest }
         }
         publishAgentStatuses()
     }

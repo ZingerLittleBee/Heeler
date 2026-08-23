@@ -176,17 +176,23 @@ public final class SSHConnection: Sendable {
     /// Opens one direct-streamlocal channel, writes one request, reads one
     /// newline-terminated response, and closes the channel. Every call owns a
     /// fresh channel to preserve one-request-per-socket protocols.
+    /// `beforeRequestWrite` may veto after the channel opens but before any
+    /// byte is written; `onRequestWritten` runs after the complete request.
     public func exchangeStreamLocal(
         socketPath: String,
         request: Data,
         maximumResponseBytes: Int = 1_048_576,
-        timeout: Duration
+        timeout: Duration,
+        beforeRequestWrite: (@Sendable () async -> Bool)? = nil,
+        onRequestWritten: (@Sendable () async -> Void)? = nil
     ) async throws -> Data {
         try await driver.exchangeStreamLocal(
             socketPath: socketPath,
             request: request,
             maximumResponseBytes: maximumResponseBytes,
-            timeout: timeout)
+            timeout: timeout,
+            beforeRequestWrite: beforeRequestWrite,
+            onRequestWritten: onRequestWritten)
     }
 
     /// Opens one long-lived direct-streamlocal channel. The returned handle

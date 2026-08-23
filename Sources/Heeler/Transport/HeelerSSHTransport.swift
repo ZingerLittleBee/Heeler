@@ -500,7 +500,7 @@ actor HeelerSSHTransport: Transport {
             .algorithmNegotiationFailed, .connectionInvalidated:
             return .sshUnreachable(detail: String(describing: error))
         case .channelFailed, .streamLocalOpenFailed, .unexpectedEOF,
-            .responseTooLarge, .sftpUnavailable, .sftpFailure:
+            .responseTooLarge, .requestNotAuthorized, .sftpUnavailable, .sftpFailure:
             return .channelFailed(detail: String(describing: error))
         case .authenticationFailed, .timedOut, .cancelled, .forwardingDenied:
             // Exhaustiveness only: `sharedClassification` is total over these.
@@ -659,12 +659,46 @@ actor HeelerSSHTransport: Transport {
                 paneID: created.rootPane.paneID)
             return Agent(response.agent)
         } catch let error as HerdrAPIError {
-            try? await removeWorktree(workspaceID: created.workspace.workspaceID)
+            try? await removeCreatedWorktree(workspaceID: created.workspace.workspaceID)
             throw error
         }
     }
 
-    private func removeWorktree(workspaceID: String) async throws {
+    func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
+        try await request(
+            method: "worktree.list",
+            params: WorktreeListParams(workspaceID: workspaceID),
+            decoding: WorktreeListResponse.self)
+    }
+
+    func removeWorktree(
+        _ removal: WorktreeRemovalRequest,
+        authorize: @escaping @Sendable (WorktreeRemovalRequest) async throws -> Void,
+        onDispatched: @escaping @Sendable (WorktreeRemovalRequest) async -> Void
+    ) async throws -> WorktreeRemovedResponse {
+        do {
+            return try await request(
+                method: "worktree.remove",
+                params: WorktreeRemoveParams(
+                    workspaceID: removal.identity.workspaceID,
+                    force: false),
+                decoding: WorktreeRemovedResponse.self,
+                beforeDispatch: {
+                    do {
+                        try await authorize(removal)
+                        return true
+                    } catch {
+                        return false
+                    }
+                },
+                onDispatched: { await onDispatched(removal) })
+        } catch TransportError.channelFailed(let detail)
+        where detail == Self.requestNotAuthorizedDetail {
+            throw WorktreeRemovalError.staleIdentity
+        }
+    }
+
+    private func removeCreatedWorktree(workspaceID: String) async throws {
         _ = try await request(
             method: "worktree.remove",
             params: WorktreeRemoveParams(workspaceID: workspaceID),
@@ -1442,20 +1476,26 @@ actor HeelerSSHTransport: Transport {
     private func request<P: Encodable & Sendable, R: Decodable & Sendable>(
         method: String,
         params: P,
-        decoding type: R.Type
+        decoding type: R.Type,
+        beforeDispatch: (@Sendable () async -> Bool)? = nil,
+        onDispatched: (@Sendable () async -> Void)? = nil
     ) async throws -> R {
         try await withColdStartWake {
             try await self.performRequest(
                 method: method,
                 params: params,
-                decoding: type)
+                decoding: type,
+                beforeDispatch: beforeDispatch,
+                onDispatched: onDispatched)
         }
     }
 
     private func performRequest<P: Encodable & Sendable, R: Decodable & Sendable>(
         method: String,
         params: P,
-        decoding type: R.Type
+        decoding type: R.Type,
+        beforeDispatch: (@Sendable () async -> Bool)? = nil,
+        onDispatched: (@Sendable () async -> Void)? = nil
     ) async throws -> R {
         guard connected else {
             throw TransportError.sshUnreachable(
@@ -1474,7 +1514,9 @@ actor HeelerSSHTransport: Transport {
                         socketPath: socketPath,
                         request: Data(line.utf8),
                         maximumResponseBytes: Self.maximumResponseBytes,
-                        timeout: self.requestTimeout)
+                        timeout: self.requestTimeout,
+                        beforeRequestWrite: beforeDispatch,
+                        onRequestWritten: onDispatched)
                 } catch SSHError.streamLocalOpenFailed {
                     throw try await self.classifyStreamLocalOpenFailure(
                         socketPath: socketPath)
@@ -1639,6 +1681,8 @@ actor HeelerSSHTransport: Transport {
             return .malformedResponse("stream-local channel closed before a response line")
         case .responseTooLarge(let limit):
             return .malformedResponse("response line exceeds \(limit) bytes")
+        case .requestNotAuthorized:
+            return .channelFailed(detail: Self.requestNotAuthorizedDetail)
         case .connectionInvalidated:
             return .sshUnreachable(detail: "The SSH connection is no longer reusable.")
         // `.streamLocalOpenFailed` falls here on purpose. Only
@@ -1673,11 +1717,13 @@ actor HeelerSSHTransport: Transport {
             return .tcpForwardingUnavailable
         case .invalidEndpoint, .connectionFailed, .algorithmNegotiationFailed,
             .channelFailed, .streamLocalOpenFailed, .unexpectedEOF,
-            .responseTooLarge, .connectionInvalidated, .targetUnreachable,
-            .sftpUnavailable, .sftpFailure:
+            .responseTooLarge, .requestNotAuthorized, .connectionInvalidated,
+            .targetUnreachable, .sftpUnavailable, .sftpFailure:
             return nil
         }
     }
+
+    private static let requestNotAuthorizedDetail = "request not authorized"
 
     #if DEBUG
     /// Test surface for the real connect-time mapper; not a second taxonomy.

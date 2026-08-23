@@ -17,13 +17,10 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     /// Workspace label from the session snapshot; nil when the snapshot did
     /// not carry the workspace.
     let workspaceLabel: String?
-    /// Worktree repo name where the workspace has one — sharper context than
-    /// a raw checkout path.
-    let repoName: String?
-    /// Worktree checkout path where the workspace has one: the directory
-    /// whose files the agent actually sees, which for a linked worktree is
-    /// the checkout rather than the main repository root.
-    let checkoutPath: String?
+    /// Snapshot git metadata when the workspace reported any. Presence does
+    /// not mean this is removable: the main checkout is reported with
+    /// `isLinkedWorktree == false` too.
+    let repositoryCheckout: RepositoryCheckout?
     /// Trailing terminal output (`pane.read`, ANSI stripped), fetched after
     /// snapshots and status changes; nil until the first read lands.
     var lastOutputSnippet: String?
@@ -35,17 +32,63 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         hostName: String,
         agent: Agent,
         workspaceLabel: String?,
-        repoName: String?,
-        checkoutPath: String? = nil,
+        repositoryCheckout: RepositoryCheckout?,
         lastOutputSnippet: String? = nil
     ) {
         self.hostID = hostID
         self.hostName = hostName
         self.agent = agent
         self.workspaceLabel = workspaceLabel
-        self.repoName = repoName
-        self.checkoutPath = checkoutPath
+        self.repositoryCheckout = repositoryCheckout
         self.lastOutputSnippet = lastOutputSnippet
+    }
+
+    /// Compatibility initializer for callers that only need display context,
+    /// not a removable snapshot identity.
+    init(
+        hostID: Host.ID,
+        hostName: String,
+        agent: Agent,
+        workspaceLabel: String?,
+        repoName: String?,
+        checkoutPath: String? = nil,
+        lastOutputSnippet: String? = nil
+    ) {
+        self.init(
+            hostID: hostID,
+            hostName: hostName,
+            agent: agent,
+            workspaceLabel: workspaceLabel,
+            repositoryCheckout: Self.displayOnlyCheckout(
+                repoName: repoName, checkoutPath: checkoutPath),
+            lastOutputSnippet: lastOutputSnippet)
+    }
+
+    var repoName: String? { repositoryCheckout?.repoName }
+
+    var checkoutPath: String? { repositoryCheckout?.checkoutPath }
+
+    /// Console badge and destructive-action eligibility come only from the
+    /// latest session snapshot's explicit linkage bit.
+    var isLinkedWorktree: Bool { repositoryCheckout?.isLinkedWorktree == true }
+
+    var workspaceContext: String? {
+        switch (workspaceLabel, repoName) {
+        case (nil, nil): nil
+        case (let label?, nil): label
+        case (nil, let repo?): repo
+        case (let label?, let repo?): label == repo ? label : "\(label) · \(repo)"
+        }
+    }
+
+    private static func displayOnlyCheckout(
+        repoName: String?, checkoutPath: String?
+    ) -> RepositoryCheckout? {
+        guard let repoName else { return nil }
+        let path = checkoutPath ?? ""
+        return RepositoryCheckout(
+            repoKey: "", repoName: repoName, repoRoot: "",
+            checkoutPath: path, isLinkedWorktree: false)
     }
 
     /// The keyboard switcher's chip label. The project leads, as it does on
@@ -63,6 +106,39 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     var skillsProjectRoot: String? {
         if let checkoutPath, !checkoutPath.isEmpty { return checkoutPath }
         return agent.cwd.isEmpty ? nil : agent.cwd
+    }
+}
+
+/// The snapshot's exact git checkout identity for one workspace. Workspace
+/// ids are reusable slots, so destructive actions match this tuple too.
+struct RepositoryCheckout: Sendable, Equatable, Hashable {
+    let repoKey: String
+    let repoName: String
+    let repoRoot: String
+    let checkoutPath: String
+    let isLinkedWorktree: Bool
+
+    init(
+        repoKey: String,
+        repoName: String,
+        repoRoot: String,
+        checkoutPath: String,
+        isLinkedWorktree: Bool
+    ) {
+        self.repoKey = repoKey
+        self.repoName = repoName
+        self.repoRoot = repoRoot
+        self.checkoutPath = checkoutPath
+        self.isLinkedWorktree = isLinkedWorktree
+    }
+
+    init(_ info: WorkspaceWorktreeInfo) {
+        self.init(
+            repoKey: info.repoKey,
+            repoName: info.repoName,
+            repoRoot: info.repoRoot,
+            checkoutPath: info.checkoutPath,
+            isLinkedWorktree: info.isLinkedWorktree)
     }
 }
 

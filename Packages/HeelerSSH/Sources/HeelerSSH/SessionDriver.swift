@@ -565,7 +565,9 @@ actor SessionDriver {
         socketPath: String,
         request: Data,
         maximumResponseBytes: Int,
-        timeout: Duration
+        timeout: Duration,
+        beforeRequestWrite: (@Sendable () async -> Bool)? = nil,
+        onRequestWritten: (@Sendable () async -> Void)? = nil
     ) async throws -> Data {
         await acquireOperation()
         defer { releaseOperation() }
@@ -597,7 +599,9 @@ actor SessionDriver {
                 request: request,
                 maximumResponseBytes: maximumResponseBytes,
                 session: session,
-                deadline: deadline)
+                deadline: deadline,
+                beforeRequestWrite: beforeRequestWrite,
+                onRequestWritten: onRequestWritten)
             try await cleanChannel(
                 channel,
                 session: session,
@@ -2037,11 +2041,18 @@ actor SessionDriver {
         request: Data,
         maximumResponseBytes: Int,
         session: OpaquePointer,
-        deadline: ContinuousClock.Instant
+        deadline: ContinuousClock.Instant,
+        beforeRequestWrite: (@Sendable () async -> Bool)? = nil,
+        onRequestWritten: (@Sendable () async -> Void)? = nil
     ) async throws -> Data {
         var requestOffset = 0
         var response = Data()
         var buffer = [UInt8](repeating: 0, count: 16 * 1024)
+        var didAnnounceWrite = false
+
+        if let beforeRequestWrite, !(await beforeRequestWrite()) {
+            throw SSHError.requestNotAuthorized
+        }
 
         while true {
             try checkProgress(deadline: deadline)
@@ -2063,6 +2074,10 @@ actor SessionDriver {
                 } else if written != Int(LIBSSH2_ERROR_EAGAIN) {
                     throw SSHError.channelFailed
                 }
+            }
+            if requestOffset == request.count, !didAnnounceWrite {
+                didAnnounceWrite = true
+                await onRequestWritten?()
             }
 
             let received = try readAvailable(channel: channel, stream: 0, buffer: &buffer)
