@@ -25,9 +25,14 @@ final class HostConsoleProjection {
     private(set) var isAwaitingSnapshot = true
     /// Stable success surfaces keyed by every Agent that belonged to the
     /// exact validated worktree at dispatch.
-    private(set) var removedWorktreesByAgent: [
-        ConsoleAgent.ID: WorktreeRemovalReceipt
-    ] = [:]
+    var removedWorktreesByAgent: [ConsoleAgent.ID: WorktreeRemovalReceipt] {
+        worktreeRemovalReceiptsByAgent.mapValues(\.receipt)
+    }
+
+    private struct WorktreeRemovalReceiptRecord {
+        let receipt: WorktreeRemovalReceipt
+        let snapshotRequestGeneration: UInt64
+    }
 
     private struct WorktreeRemovalOperation {
         enum Phase {
@@ -57,6 +62,9 @@ final class HostConsoleProjection {
     private var snapshotRequestGeneration: UInt64 = 0
     private var workspacesByID: [String: WorkspaceInfo] = [:]
     private var worktreeRemovalOperations: [UUID: WorktreeRemovalOperation] = [:]
+    private var worktreeRemovalReceiptsByAgent: [
+        ConsoleAgent.ID: WorktreeRemovalReceiptRecord
+    ] = [:]
     private var statusChangeRevision: UInt64 = 0
     private var latestStatusChanges: [
         String: (revision: UInt64, status: AgentStatus)
@@ -361,13 +369,19 @@ final class HostConsoleProjection {
         else { throw WorktreeRemovalError.staleIdentity }
         let receipt = WorktreeRemovalReceipt(
             request: request, affectedAgentIDs: operation.affectedAgentIDs)
-        record(receipt)
+        record(receipt, atSnapshotRequestGeneration: snapshotRequestGeneration)
         return receipt
     }
 
-    private func record(_ receipt: WorktreeRemovalReceipt) {
+    private func record(
+        _ receipt: WorktreeRemovalReceipt,
+        atSnapshotRequestGeneration generation: UInt64
+    ) {
+        let record = WorktreeRemovalReceiptRecord(
+            receipt: receipt,
+            snapshotRequestGeneration: generation)
         for agentID in receipt.affectedAgentIDs {
-            removedWorktreesByAgent[agentID] = receipt
+            worktreeRemovalReceiptsByAgent[agentID] = record
         }
     }
 
@@ -571,7 +585,8 @@ final class HostConsoleProjection {
         workspaces = snapshot.workspaces
             .map { ConsoleWorkspace(id: $0.workspaceID, label: $0.label) }
             .sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
-        pruneReceiptsReintroducedByCurrentSnapshot()
+        pruneReceiptsReintroducedByCurrentSnapshot(
+            requestGeneration: requestGeneration)
         reconcileUnconfirmedWorktreeRemovals(requestGeneration: requestGeneration)
         publish()
     }
@@ -579,12 +594,18 @@ final class HostConsoleProjection {
     /// A later snapshot is the source of truth for existence. If the exact
     /// removed identity appears again, it is a recreated/live worktree and
     /// must not inherit an older success surface.
-    private func pruneReceiptsReintroducedByCurrentSnapshot() {
-        removedWorktreesByAgent = removedWorktreesByAgent.filter { agentID, receipt in
+    private func pruneReceiptsReintroducedByCurrentSnapshot(
+        requestGeneration: UInt64
+    ) {
+        worktreeRemovalReceiptsByAgent = worktreeRemovalReceiptsByAgent.filter {
+            agentID, record in
+            guard requestGeneration > record.snapshotRequestGeneration else {
+                return true
+            }
             guard let agent = agentsByPane[agentID.paneID], agent.id == agentID else {
                 return true
             }
-            let identity = receipt.request.identity
+            let identity = record.receipt.request.identity
             return agent.agent.workspaceID != identity.workspaceID
                 || agent.repositoryCheckout.map(identity.matches) != true
         }
@@ -604,7 +625,8 @@ final class HostConsoleProjection {
                 record(
                     WorktreeRemovalReceipt(
                         request: operation.request,
-                        affectedAgentIDs: operation.affectedAgentIDs))
+                        affectedAgentIDs: operation.affectedAgentIDs),
+                    atSnapshotRequestGeneration: requestGeneration)
             }
         }
     }

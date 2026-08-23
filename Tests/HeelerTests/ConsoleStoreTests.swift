@@ -1433,14 +1433,19 @@ struct ConsoleStoreTests {
         let request = WorktreeRemovalRequest(
             identity: WorktreeIdentity(
                 hostID: host.id, workspaceID: "w1", checkout: checkout))
+        let unaffected = try #require(store.agents.first { $0.agent.workspaceID == "w2" })
+        await transport.setSnapshot(
+            linkedWorktreeSnapshot(workspaces: [("w2", "two", "/work/two-wt")]))
 
         let receipt = try await store.removeWorktree(request, on: host.id)
 
         #expect(await transport.removedWorktreeRequests == [request])
         #expect(receipt.affectedAgentIDs == [first.id])
-        #expect(store.removedWorktreesByAgent[first.id] == receipt)
-        let unaffected = try #require(store.agents.first { $0.agent.workspaceID == "w2" })
-        #expect(store.removedWorktreesByAgent[unaffected.id] == nil)
+        try await waitUntil("the post-removal snapshot should retain only the unaffected Agent") {
+            store.agents.map(\.id) == [unaffected.id]
+                && store.removedWorktreesByAgent[first.id] == receipt
+                && store.removedWorktreesByAgent[unaffected.id] == nil
+        }
         store.setHosts([])
     }
 
@@ -1545,6 +1550,66 @@ struct ConsoleStoreTests {
             store.agents.first?.repositoryCheckout == agent.repositoryCheckout
                 && store.removedWorktreesByAgent[agent.id] == nil
         }
+        store.setHosts([])
+    }
+
+    @Test func staleInflightSnapshotCannotPruneNewRemovalReceipt() async throws {
+        let host = Host.fixture()
+        let linked = linkedWorktreeSnapshot(
+            workspaces: [("w1", "one", "/work/one-wt")])
+        let transport = ScriptedTransport(snapshot: linked)
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the pane subscription should settle") {
+            await transport.capturedSubscriptions.last?.contains(
+                .pane(.agentStatusChanged, paneID: "w1:p1")) == true
+        }
+        let agent = try #require(store.agents.first)
+        let request = WorktreeRemovalRequest(
+            identity: WorktreeIdentity(
+                hostID: host.id,
+                workspaceID: "w1",
+                checkout: try #require(agent.repositoryCheckout)))
+
+        let staleSnapshotGate = ScriptedTransportCallGate()
+        await transport.gateNextSnapshot(using: staleSnapshotGate)
+        #expect(
+            await transport.emit(
+                HerdrEvent(
+                    kind: GlobalEventKind.workspaceMetadataUpdated.kind,
+                    data: .object([:]))) == true)
+        try await waitUntil("the pre-removal snapshot should be in flight") {
+            await staleSnapshotGate.entryCount == 1
+        }
+
+        let convergenceSnapshotGate = ScriptedTransportCallGate()
+        await transport.setSnapshot(.fixture())
+        await transport.gateNextSnapshot(using: convergenceSnapshotGate)
+        let receipt = try await store.removeWorktree(request, on: host.id)
+        #expect(store.removedWorktreesByAgent[agent.id] == receipt)
+
+        await staleSnapshotGate.open()
+        try await waitUntil("the post-removal convergence snapshot should start") {
+            await convergenceSnapshotGate.entryCount == 1
+        }
+        #expect(store.agents.first?.repositoryCheckout == agent.repositoryCheckout)
+        #expect(store.removedWorktreesByAgent[agent.id] == receipt)
+        #expect(
+            RemovedWorktreeSelection.receipt(
+                for: agent.id,
+                agents: store.agents,
+                receipts: store.removedWorktreesByAgent) == receipt)
+
+        await convergenceSnapshotGate.open()
+        try await waitUntil("the post-removal snapshot should converge") {
+            store.agents.isEmpty && store.removedWorktreesByAgent[agent.id] == receipt
+        }
+        #expect(
+            RemovedWorktreeSelection.receipt(
+                for: agent.id,
+                agents: store.agents,
+                receipts: store.removedWorktreesByAgent) == receipt)
         store.setHosts([])
     }
 
