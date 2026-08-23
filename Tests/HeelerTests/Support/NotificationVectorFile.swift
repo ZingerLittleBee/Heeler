@@ -6,6 +6,10 @@ import Foundation
 /// into the test target as a resource so the Swift tests exercise exactly the
 /// same cases as the Node tests: the plugin proves the encrypt direction,
 /// these tests prove the decrypt direction.
+///
+/// `payload.paneId` values that stand in for a herdr address use the observed
+/// alphanumeric `w…:p…` family (uppercase included). Production code still
+/// treats pane ids as opaque strings; these fixtures do not define a grammar.
 struct NotificationVectorFile: Decodable, Sendable {
     let valid: [Valid]
     let invalid: [Invalid]

@@ -41,8 +41,11 @@ suite("shared vectors (encrypt direction)", () => {
 
 suite("encryptNotificationEnvelope", () => {
   const key = Buffer.from(Array.from({ length: 32 }, (_, i) => i));
+  // Observed-family herdr pane id (opaque `w…:p…`, uppercase included).
+  // This payload only needs a non-empty string; the live shape keeps the
+  // fixture from re-teaching the retired tmux-style `%N` habit.
   const payload = {
-    paneId: "%5",
+    paneId: "wV:p1",
     agentKind: "claude",
     status: "blocked",
     timestamp: 1753305600,

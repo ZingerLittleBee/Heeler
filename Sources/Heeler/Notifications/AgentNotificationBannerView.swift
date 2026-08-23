@@ -36,7 +36,7 @@ struct AgentNotificationBannerView: View {
 #Preview {
     AgentNotificationBannerView(
         banner: AgentNotificationBanner(
-            target: AgentNotificationTarget(hostID: UUID(), paneID: "%5"),
+            target: AgentNotificationTarget(hostID: UUID(), paneID: "wV:p1"),
             alert: AgentNotificationAlert(
                 title: "heeler · claude",
                 body: "Blocked · 排查修复 split 按钮 UI 结构问题"))
