@@ -697,6 +697,75 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(recorded[2] == #"worktree.remove {"workspace_id":"workspace:\#(token)"}"#)
     }
 
+    @Test("confirmed worktree removal crosses the real wire dispatch seam")
+    func confirmedWorktreeRemovalCrossesTheRealWireDispatchSeam() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("remove")
+        let checkout = RepositoryCheckout(
+            repoKey: "/tmp/repo/.git",
+            repoName: "repo",
+            repoRoot: "/tmp/repo",
+            checkoutPath: "/tmp/worktree/\(token)",
+            isLinkedWorktree: true)
+        let request = WorktreeRemovalRequest(
+            identity: WorktreeIdentity(
+                hostID: UUID(),
+                workspaceID: "workspace:\(token)",
+                checkout: checkout))
+        let boundary = WorktreeWireBoundaryRecorder()
+
+        let response = try await transport.removeWorktree(
+            request,
+            authorize: { candidate in await boundary.authorize(candidate) },
+            onDispatched: { candidate in await boundary.recordDispatch(candidate) })
+
+        #expect(response.workspaceID == request.identity.workspaceID)
+        #expect(response.path == request.identity.checkoutPath)
+        #expect(await boundary.authorized == [request])
+        #expect(await boundary.dispatched == [request])
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        #expect(
+            recorded == [
+                #"worktree.remove {"force":false,"workspace_id":"workspace:\#(token)"}"#
+            ])
+    }
+
+    @Test("stale worktree authorization writes no request bytes")
+    func staleWorktreeAuthorizationWritesNoRequestBytes() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("stale")
+        let checkout = RepositoryCheckout(
+            repoKey: "/tmp/repo/.git",
+            repoName: "repo",
+            repoRoot: "/tmp/repo",
+            checkoutPath: "/tmp/worktree/\(token)",
+            isLinkedWorktree: true)
+        let request = WorktreeRemovalRequest(
+            identity: WorktreeIdentity(
+                hostID: UUID(),
+                workspaceID: "workspace:\(token)",
+                checkout: checkout))
+        let boundary = WorktreeWireBoundaryRecorder()
+
+        await #expect(throws: WorktreeRemovalError.staleIdentity) {
+            _ = try await transport.removeWorktree(
+                request,
+                authorize: { _ in throw WorktreeRemovalError.staleIdentity },
+                onDispatched: { candidate in await boundary.recordDispatch(candidate) })
+        }
+
+        #expect(await boundary.dispatched.isEmpty)
+        #expect(try await Self.recordedRequests(from: transport, token: token).isEmpty)
+    }
+
     /// A launch started from another agent's screen carries that agent's
     /// directory. Dropping the cwd is invisible in the reply — herdr answers
     /// with a healthy tab either way — so only the request proves it went.
@@ -1356,6 +1425,19 @@ struct HeelerSSHTransportBehaviorE2ETests {
     private func connectionCount(from transport: HeelerSSHTransport) async throws -> Int {
         let session = try #require(try await transport.listSessions().first)
         return try #require(Int(session.name.dropFirst("count-".count)))
+    }
+}
+
+private actor WorktreeWireBoundaryRecorder {
+    private(set) var authorized: [WorktreeRemovalRequest] = []
+    private(set) var dispatched: [WorktreeRemovalRequest] = []
+
+    func authorize(_ request: WorktreeRemovalRequest) {
+        authorized.append(request)
+    }
+
+    func recordDispatch(_ request: WorktreeRemovalRequest) {
+        dispatched.append(request)
     }
 }
 

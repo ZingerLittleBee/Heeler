@@ -654,7 +654,7 @@ struct AgentSurfaceReplacementTests {
                 status: .idle, workspaceID: "w", tabID: "w:t", paneID: pane,
                 cwd: "/work", revision: 1, name: nil),
             workspaceLabel: nil,
-            repoName: nil,
+            repositoryCheckout: nil,
             lastOutputSnippet: nil)
     }
 

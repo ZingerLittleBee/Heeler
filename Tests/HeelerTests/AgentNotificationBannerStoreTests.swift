@@ -47,7 +47,9 @@ struct AgentNotificationBannerStoreTests {
         ConsoleAgent(
             hostID: hostID ?? self.hostID, hostName: "mac-studio",
             agent: Agent(.fixture(paneID: paneID, status: status, kind: kind)),
-            workspaceLabel: workspaceLabel, repoName: nil, lastOutputSnippet: nil)
+            workspaceLabel: workspaceLabel,
+            repositoryCheckout: nil,
+            lastOutputSnippet: nil)
     }
 
     /// Polls until `condition` holds, yielding so the store's tasks progress.

@@ -185,7 +185,9 @@ struct ConsoleView: View {
     @ViewBuilder
     private var detail: some View {
         if let id = notificationRouter.path.last {
-            if let agent = console.agents.first(where: { $0.id == id }) {
+            if let receipt = matchingRemovedWorktreeReceipt(for: id) {
+                removedWorktreeSurface(receipt)
+            } else if let agent = console.agents.first(where: { $0.id == id }) {
                 AgentDetailView(
                     agent: agent,
                     console: console,
@@ -223,6 +225,33 @@ struct ConsoleView: View {
             ContentUnavailableView(
                 "No Agent Selected", systemImage: "rectangle.on.rectangle",
                 description: Text("Choose an Agent to view its live terminal."))
+        }
+    }
+
+    /// A receipt is keyed by the Agent set captured at the authorized write.
+    /// If the same pane id has already returned, require the live row to match
+    /// the exact removed workspace/worktree identity before showing it.
+    private func matchingRemovedWorktreeReceipt(
+        for id: ConsoleAgent.ID
+    ) -> WorktreeRemovalReceipt? {
+        RemovedWorktreeSelection.receipt(
+            for: id,
+            agents: console.agents,
+            receipts: console.removedWorktreesByAgent)
+    }
+
+    private func removedWorktreeSurface(
+        _ receipt: WorktreeRemovalReceipt
+    ) -> some View {
+        ContentUnavailableView {
+            Label("Worktree Removed", systemImage: "checkmark.circle")
+        } description: {
+            Text(
+                "The checkout at \(receipt.request.identity.checkoutPath) was removed and its workspace was closed. No branch was deleted."
+            )
+        } actions: {
+            Button("Back to Console") { notificationRouter.path = [] }
+                .buttonStyle(.borderedProminent)
         }
     }
 
