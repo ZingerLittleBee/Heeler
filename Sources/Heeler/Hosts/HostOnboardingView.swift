@@ -7,7 +7,10 @@ struct HostOnboardingView: View {
     /// The Host catalog, for the Edit sheet.
     let catalog: HostStore
     let connectionStatus: EventsSessionStatus?
-    let isReconnecting: Bool
+    /// True while Console is serving a Host-detail Reconnect press (the
+    /// retry call plus the 1.2 s visual-feedback hold). Distinct from
+    /// `EventsSessionStatus.reconnecting`.
+    let isManualReconnectInFlight: Bool
     let retryConnection: (@MainActor @Sendable () async -> Void)?
     @State private var store: HostOnboardingStore
     @State private var isEditing = false
@@ -18,12 +21,12 @@ struct HostOnboardingView: View {
         host: Host,
         catalog: HostStore,
         connectionStatus: EventsSessionStatus? = nil,
-        isReconnecting: Bool = false,
+        isManualReconnectInFlight: Bool = false,
         retryConnection: (@MainActor @Sendable () async -> Void)? = nil
     ) {
         self.catalog = catalog
         self.connectionStatus = connectionStatus
-        self.isReconnecting = isReconnecting
+        self.isManualReconnectInFlight = isManualReconnectInFlight
         self.retryConnection = retryConnection
         _store = State(initialValue: HostOnboardingStore(host: host))
     }
@@ -45,25 +48,27 @@ struct HostOnboardingView: View {
                     } label: {
                         ZStack(alignment: .leading) {
                             Label("Reconnect", systemImage: "arrow.clockwise")
-                                .opacity(isReconnecting ? 0 : 1)
+                                .opacity(isManualReconnectInFlight ? 0 : 1)
                             HStack {
                                 ProgressView()
                                 Text("Connecting…")
                             }
-                            .opacity(isReconnecting ? 1 : 0)
+                            .opacity(isManualReconnectInFlight ? 1 : 0)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .animation(.smooth(duration: 0.25), value: isReconnecting)
+                        .animation(.smooth(duration: 0.25), value: isManualReconnectInFlight)
                     }
-                    .disabled(isReconnecting)
+                    .disabled(isManualReconnectInFlight)
                 } footer: {
-                    if !isReconnecting, let connectionErrorMessage {
-                        Text(connectionErrorMessage)
+                    if let footerMessage = connectionPresentation.footerMessage {
+                        Text(footerMessage)
                             .foregroundStyle(.red)
                             .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
-                .animation(.smooth(duration: 0.25), value: connectionErrorMessage)
+                .animation(
+                    .smooth(duration: 0.25),
+                    value: connectionPresentation.connectionErrorMessage)
             }
 
             Section {
@@ -192,29 +197,16 @@ struct HostOnboardingView: View {
     }
 
     private func retry() {
-        guard !isReconnecting, let retryConnection else { return }
+        guard !isManualReconnectInFlight, let retryConnection else { return }
         Task { @MainActor in
             await retryConnection()
         }
     }
 
-    /// `.reconnecting` and `.failed` share an arm here, which no other
-    /// surface does: the Console list and the Agent screen show the guidance
-    /// for `.failed` only, and the Hosts rows show a chip instead. So this is
-    /// the one place the guidance appears while a retry is in flight, where it
-    /// names no action — see Connection Guidance in `CONTEXT.md` (#156), and
-    /// #163 for whether that is the right text.
-    ///
-    /// The footer that renders this is additionally gated on `!isReconnecting`
-    /// (a manual Reconnect being in flight, not the status), so a press hides
-    /// it for both arms — recorded, not endorsed, in #160.
-    private var connectionErrorMessage: String? {
-        switch connectionStatus {
-        case .reconnecting(_, _, let failure), .failed(let failure):
-            failure.connectionGuidance
-        case .connected, .suspended, .ended, nil:
-            nil
-        }
+    private var connectionPresentation: HostOnboardingConnectionPresentation {
+        HostOnboardingConnectionPresentation(
+            status: connectionStatus,
+            isManualReconnectInFlight: isManualReconnectInFlight)
     }
 
     private func status(for check: PreflightCheck) -> PreflightCheckStatus? {
@@ -267,6 +259,37 @@ struct HostOnboardingView: View {
         } catch {
             sessionSelectionError = "The selected session could not be saved."
         }
+    }
+}
+
+/// Connection Guidance for the Host detail footer.
+///
+/// `.reconnecting` and `.failed` share an arm here, which no other surface
+/// does: the Console list and the Agent screen show the guidance for
+/// `.failed` only, and the Hosts rows show a chip instead. So this is the
+/// one place the guidance appears while a retry is in flight, where it
+/// names no action — see Connection Guidance in `CONTEXT.md` (#156), and
+/// #163 for whether that is the right text.
+///
+/// `isManualReconnectInFlight` is a Console-owned Reconnect press (the
+/// retry call plus its 1.2 s hold), not `EventsSessionStatus.reconnecting`.
+/// A press hides the footer for both arms — recorded, not endorsed, in #160.
+/// The animation value stays `connectionErrorMessage` so a press does not
+/// drive the footer's 0.25 s transition.
+struct HostOnboardingConnectionPresentation: Equatable {
+    /// Guidance derived from session status only. The footer animation
+    /// observes this; a manual Reconnect request does not change it.
+    let connectionErrorMessage: String?
+    let footerMessage: String?
+
+    init(status: EventsSessionStatus?, isManualReconnectInFlight: Bool) {
+        switch status {
+        case .reconnecting(_, _, let failure), .failed(let failure):
+            connectionErrorMessage = failure.connectionGuidance
+        case .connected, .suspended, .ended, nil:
+            connectionErrorMessage = nil
+        }
+        footerMessage = isManualReconnectInFlight ? nil : connectionErrorMessage
     }
 }
 

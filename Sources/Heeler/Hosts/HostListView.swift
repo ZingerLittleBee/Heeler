@@ -68,7 +68,9 @@ struct HostListView: View {
     private let initialHostID: Host.ID?
     private let connectionStatuses: [Host.ID: EventsSessionStatus]
     private let latencies: [Host.ID: Duration]
-    private let reconnectingHostIDs: Set<Host.ID>
+    /// Hosts whose Host-detail Reconnect request is in flight. Distinct from
+    /// `EventsSessionStatus.reconnecting`.
+    private let manualReconnectInFlightHostIDs: Set<Host.ID>
     private let retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)?
     @State private var removal: HostRemovalStore
     @State private var isAddingHost = false
@@ -81,14 +83,14 @@ struct HostListView: View {
         initialHostID: Host.ID? = nil,
         connectionStatuses: [Host.ID: EventsSessionStatus] = [:],
         latencies: [Host.ID: Duration] = [:],
-        reconnectingHostIDs: Set<Host.ID> = [],
+        manualReconnectInFlightHostIDs: Set<Host.ID> = [],
         retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)? = nil
     ) {
         self.store = store
         self.initialHostID = initialHostID
         self.connectionStatuses = connectionStatuses
         self.latencies = latencies
-        self.reconnectingHostIDs = reconnectingHostIDs
+        self.manualReconnectInFlightHostIDs = manualReconnectInFlightHostIDs
         self.retryConnection = retryConnection
         _removal = State(initialValue: HostRemovalStore(store: store))
     }
@@ -153,7 +155,7 @@ struct HostListView: View {
                         host: host,
                         catalog: store,
                         connectionStatus: connectionStatuses[id],
-                        isReconnecting: reconnectingHostIDs.contains(id),
+                        isManualReconnectInFlight: manualReconnectInFlightHostIDs.contains(id),
                         retryConnection: retryAction(for: id))
                         .id(host)
                 } else {
