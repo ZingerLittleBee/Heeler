@@ -8,6 +8,10 @@ import Testing
 /// never repeat for an unchanged status (dedupe), stay silent for the
 /// presented Agent and for Hosts whose notification preferences are unknown
 /// or off (fail closed), and auto-dismiss after a few seconds.
+///
+/// Pane ids here stand in for live herdr addresses, so they use the observed
+/// alphanumeric `w…:p…` family (uppercase included). The store only compares
+/// them as opaque strings.
 @MainActor
 @Suite("Agent notification banner store")
 struct AgentNotificationBannerStoreTests {
@@ -69,9 +73,9 @@ struct AgentNotificationBannerStoreTests {
     @Test func blockedTransitionBannersAfterTheHoldWithThePushCopy() async throws {
         world.triggers[hostID] = NotificationTriggerPreferences()
         let store = makeStore()
-        store.agentsDidChange([agent("%5", .working)])
+        store.agentsDidChange([agent("wV:p1", .working)])
 
-        store.agentsDidChange([agent("%5", .blocked)])
+        store.agentsDidChange([agent("wV:p1", .blocked)])
         #expect(store.banner == nil, "the transition must hold before announcing")
 
         try await waitUntil("the banner should show once the hold elapses") {
@@ -80,7 +84,7 @@ struct AgentNotificationBannerStoreTests {
         #expect(
             store.banner
                 == AgentNotificationBanner(
-                    target: AgentNotificationTarget(hostID: hostID, paneID: "%5"),
+                    target: AgentNotificationTarget(hostID: hostID, paneID: "wV:p1"),
                     alert: AgentNotificationAlert(title: "claude", body: "Blocked · Task")))
         #expect(world.soundCount == 1)
     }
@@ -90,9 +94,9 @@ struct AgentNotificationBannerStoreTests {
     @Test func aKnownWorkspaceLeadsTheBanner() async throws {
         world.triggers[hostID] = NotificationTriggerPreferences()
         let store = makeStore()
-        store.agentsDidChange([agent("%5", .working, workspaceLabel: "Caterm")])
+        store.agentsDidChange([agent("wV:p1", .working, workspaceLabel: "Caterm")])
 
-        store.agentsDidChange([agent("%5", .blocked, workspaceLabel: "Caterm")])
+        store.agentsDidChange([agent("wV:p1", .blocked, workspaceLabel: "Caterm")])
 
         try await waitUntil("the banner should show") { store.banner != nil }
         #expect(
@@ -104,9 +108,9 @@ struct AgentNotificationBannerStoreTests {
     @Test func doneTransitionBannersWithTheDoneCopy() async throws {
         world.triggers[hostID] = NotificationTriggerPreferences()
         let store = makeStore()
-        store.agentsDidChange([agent("%5", .working, kind: "codex")])
+        store.agentsDidChange([agent("wV:p1", .working, kind: "codex")])
 
-        store.agentsDidChange([agent("%5", .done, kind: "codex")])
+        store.agentsDidChange([agent("wV:p1", .done, kind: "codex")])
 
         try await waitUntil("the Done banner should show") { store.banner != nil }
         #expect(
@@ -120,7 +124,7 @@ struct AgentNotificationBannerStoreTests {
         world.triggers[hostID] = NotificationTriggerPreferences()
         let store = makeStore()
 
-        store.agentsDidChange([agent("%5", .blocked)])
+        store.agentsDidChange([agent("wV:p1", .blocked)])
 
         try await waitPastHold()
         #expect(store.banner == nil)
@@ -130,10 +134,10 @@ struct AgentNotificationBannerStoreTests {
     @Test func workingAndIdleTransitionsNeverBanner() async throws {
         world.triggers[hostID] = NotificationTriggerPreferences()
         let store = makeStore()
-        store.agentsDidChange([agent("%5", .idle)])
+        store.agentsDidChange([agent("wV:p1", .idle)])
 
-        store.agentsDidChange([agent("%5", .working)])
-        store.agentsDidChange([agent("%5", .idle)])
+        store.agentsDidChange([agent("wV:p1", .working)])
+        store.agentsDidChange([agent("wV:p1", .idle)])
 
         try await waitPastHold()
         #expect(store.banner == nil)
@@ -144,10 +148,10 @@ struct AgentNotificationBannerStoreTests {
     @Test func aTransitionThatDoesNotHoldNeverBanners() async throws {
         world.triggers[hostID] = NotificationTriggerPreferences()
         let store = makeStore()
-        store.agentsDidChange([agent("%5", .working)])
+        store.agentsDidChange([agent("wV:p1", .working)])
 
-        store.agentsDidChange([agent("%5", .blocked)])
-        store.agentsDidChange([agent("%5", .working)])
+        store.agentsDidChange([agent("wV:p1", .blocked)])
+        store.agentsDidChange([agent("wV:p1", .working)])
 
         try await waitPastHold()
         #expect(store.banner == nil)
@@ -158,11 +162,11 @@ struct AgentNotificationBannerStoreTests {
     @Test func aFlapThatSettlesBannersOnce() async throws {
         world.triggers[hostID] = NotificationTriggerPreferences()
         let store = makeStore()
-        store.agentsDidChange([agent("%5", .working)])
+        store.agentsDidChange([agent("wV:p1", .working)])
 
-        store.agentsDidChange([agent("%5", .blocked)])
-        store.agentsDidChange([agent("%5", .working)])
-        store.agentsDidChange([agent("%5", .blocked)])
+        store.agentsDidChange([agent("wV:p1", .blocked)])
+        store.agentsDidChange([agent("wV:p1", .working)])
+        store.agentsDidChange([agent("wV:p1", .blocked)])
 
         try await waitUntil("the settled transition should banner") { store.banner != nil }
         #expect(world.soundCount == 1)
@@ -171,12 +175,12 @@ struct AgentNotificationBannerStoreTests {
     @Test func aVanishedPaneCancelsItsPendingBanner() async throws {
         world.triggers[hostID] = NotificationTriggerPreferences()
         let store = makeStore()
-        store.agentsDidChange([agent("%5", .working)])
+        store.agentsDidChange([agent("wV:p1", .working)])
 
-        store.agentsDidChange([agent("%5", .blocked)])
+        store.agentsDidChange([agent("wV:p1", .blocked)])
         store.agentsDidChange([])
         // Reappearing is a fresh baseline, not a transition.
-        store.agentsDidChange([agent("%5", .blocked)])
+        store.agentsDidChange([agent("wV:p1", .blocked)])
 
         try await waitPastHold()
         #expect(store.banner == nil)
@@ -187,13 +191,13 @@ struct AgentNotificationBannerStoreTests {
     @Test func anUnchangedStatusNeverRepeatsTheBanner() async throws {
         world.triggers[hostID] = NotificationTriggerPreferences()
         let store = makeStore()
-        store.agentsDidChange([agent("%5", .working)])
-        store.agentsDidChange([agent("%5", .blocked)])
+        store.agentsDidChange([agent("wV:p1", .working)])
+        store.agentsDidChange([agent("wV:p1", .blocked)])
         try await waitUntil("the first banner should show") { store.banner != nil }
 
         store.dismiss()
-        store.agentsDidChange([agent("%5", .blocked)])
-        store.agentsDidChange([agent("%5", .blocked)])
+        store.agentsDidChange([agent("wV:p1", .blocked)])
+        store.agentsDidChange([agent("wV:p1", .blocked)])
 
         try await waitPastHold()
         #expect(store.banner == nil)
@@ -207,10 +211,10 @@ struct AgentNotificationBannerStoreTests {
     @Test func thePresentedAgentsOwnTransitionNeverBanners() async throws {
         world.triggers[hostID] = NotificationTriggerPreferences()
         let store = makeStore()
-        store.agentsDidChange([agent("%5", .working)])
+        store.agentsDidChange([agent("wV:p1", .working)])
 
-        store.agentsDidChange([agent("%5", .blocked)])
-        world.presentedAgent = ConsoleAgent.ID(hostID: hostID, paneID: "%5")
+        store.agentsDidChange([agent("wV:p1", .blocked)])
+        world.presentedAgent = ConsoleAgent.ID(hostID: hostID, paneID: "wV:p1")
 
         try await waitPastHold()
         #expect(store.banner == nil)
@@ -219,23 +223,23 @@ struct AgentNotificationBannerStoreTests {
 
     @Test func anotherAgentsTransitionBannersWhileOneIsPresented() async throws {
         world.triggers[hostID] = NotificationTriggerPreferences()
-        world.presentedAgent = ConsoleAgent.ID(hostID: hostID, paneID: "%1")
+        world.presentedAgent = ConsoleAgent.ID(hostID: hostID, paneID: "w1:pT")
         let store = makeStore()
-        store.agentsDidChange([agent("%1", .working), agent("%5", .working)])
+        store.agentsDidChange([agent("w1:pT", .working), agent("wV:p1", .working)])
 
-        store.agentsDidChange([agent("%1", .working), agent("%5", .blocked)])
+        store.agentsDidChange([agent("w1:pT", .working), agent("wV:p1", .blocked)])
 
         try await waitUntil("the other pane's banner should show") { store.banner != nil }
-        #expect(store.banner?.target == AgentNotificationTarget(hostID: hostID, paneID: "%5"))
+        #expect(store.banner?.target == AgentNotificationTarget(hostID: hostID, paneID: "wV:p1"))
     }
 
     /// Unknown preferences (Host unreachable, never registered, still loading)
     /// fail closed, matching the plugin's missing-flag semantics.
     @Test func unknownPreferencesFailClosed() async throws {
         let store = makeStore()
-        store.agentsDidChange([agent("%5", .working)])
+        store.agentsDidChange([agent("wV:p1", .working)])
 
-        store.agentsDidChange([agent("%5", .blocked)])
+        store.agentsDidChange([agent("wV:p1", .blocked)])
 
         try await waitPastHold()
         #expect(store.banner == nil)
@@ -244,13 +248,13 @@ struct AgentNotificationBannerStoreTests {
     @Test func aDisabledDoneFlagSkipsDoneButKeepsBlocked() async throws {
         world.triggers[hostID] = NotificationTriggerPreferences(blocked: true, done: false)
         let store = makeStore()
-        store.agentsDidChange([agent("%5", .working)])
+        store.agentsDidChange([agent("wV:p1", .working)])
 
-        store.agentsDidChange([agent("%5", .done)])
+        store.agentsDidChange([agent("wV:p1", .done)])
         try await waitPastHold()
         #expect(store.banner == nil)
 
-        store.agentsDidChange([agent("%5", .blocked)])
+        store.agentsDidChange([agent("wV:p1", .blocked)])
         try await waitUntil("the Blocked banner should still show") { store.banner != nil }
     }
 
@@ -259,9 +263,9 @@ struct AgentNotificationBannerStoreTests {
     @Test func theBannerAutoDismissesAfterItsDelay() async throws {
         world.triggers[hostID] = NotificationTriggerPreferences()
         let store = makeStore(dismissDelay: .milliseconds(40))
-        store.agentsDidChange([agent("%5", .working)])
+        store.agentsDidChange([agent("wV:p1", .working)])
 
-        store.agentsDidChange([agent("%5", .blocked)])
+        store.agentsDidChange([agent("wV:p1", .blocked)])
 
         try await waitUntil("the banner should show") { store.banner != nil }
         try await waitUntil("the banner should auto-dismiss") { store.banner == nil }
@@ -270,24 +274,24 @@ struct AgentNotificationBannerStoreTests {
     @Test func aNewerBannerReplacesTheCurrentOne() async throws {
         world.triggers[hostID] = NotificationTriggerPreferences()
         let store = makeStore()
-        store.agentsDidChange([agent("%1", .working), agent("%2", .working)])
+        store.agentsDidChange([agent("w1:pT", .working), agent("wR:pC", .working)])
 
-        store.agentsDidChange([agent("%1", .blocked), agent("%2", .working)])
+        store.agentsDidChange([agent("w1:pT", .blocked), agent("wR:pC", .working)])
         try await waitUntil("the first banner should show") {
-            store.banner?.target.paneID == "%1"
+            store.banner?.target.paneID == "w1:pT"
         }
 
-        store.agentsDidChange([agent("%1", .blocked), agent("%2", .done)])
+        store.agentsDidChange([agent("w1:pT", .blocked), agent("wR:pC", .done)])
         try await waitUntil("the newer banner should replace it") {
-            store.banner?.target.paneID == "%2"
+            store.banner?.target.paneID == "wR:pC"
         }
     }
 
     @Test func dismissClearsTheBanner() async throws {
         world.triggers[hostID] = NotificationTriggerPreferences()
         let store = makeStore()
-        store.agentsDidChange([agent("%5", .working)])
-        store.agentsDidChange([agent("%5", .blocked)])
+        store.agentsDidChange([agent("wV:p1", .working)])
+        store.agentsDidChange([agent("wV:p1", .blocked)])
         try await waitUntil("the banner should show") { store.banner != nil }
 
         store.dismiss()

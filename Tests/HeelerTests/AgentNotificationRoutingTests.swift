@@ -8,6 +8,10 @@ import Testing
 /// registration, pane extraction by decryption, and the presentation-time
 /// banner rule. Envelopes come from the shared vectors so routing can never
 /// drift from the envelope contract.
+///
+/// Hand-written pane ids that stand in for a live herdr address use the
+/// observed `w…:p…` family (uppercase included). This suite only compares
+/// them as opaque strings.
 @Suite("Agent notification routing")
 struct AgentNotificationRoutingTests {
     private static let vectors = NotificationVectorFile.shared
@@ -92,19 +96,19 @@ struct AgentNotificationRoutingTests {
 
     @Test func suppressesTheBannerOnlyForThePresentedAgent() {
         let hostID = UUID()
-        let target = AgentNotificationTarget(hostID: hostID, paneID: "%5")
+        let target = AgentNotificationTarget(hostID: hostID, paneID: "wV:p1")
 
         #expect(
             AgentNotificationRouting.shouldSuppressBanner(
-                target: target, presentedAgent: ConsoleAgent.ID(hostID: hostID, paneID: "%5")))
+                target: target, presentedAgent: ConsoleAgent.ID(hostID: hostID, paneID: "wV:p1")))
         // Another pane on the same Host is not "already watching it".
         #expect(
             !AgentNotificationRouting.shouldSuppressBanner(
-                target: target, presentedAgent: ConsoleAgent.ID(hostID: hostID, paneID: "%6")))
+                target: target, presentedAgent: ConsoleAgent.ID(hostID: hostID, paneID: "w1C:p1")))
         // Pane ids collide across Hosts; the Host must match too.
         #expect(
             !AgentNotificationRouting.shouldSuppressBanner(
-                target: target, presentedAgent: ConsoleAgent.ID(hostID: UUID(), paneID: "%5")))
+                target: target, presentedAgent: ConsoleAgent.ID(hostID: UUID(), paneID: "wV:p1")))
         // On the Console list, nothing is presented.
         #expect(
             !AgentNotificationRouting.shouldSuppressBanner(target: target, presentedAgent: nil))
@@ -115,7 +119,7 @@ struct AgentNotificationRoutingTests {
     @Test func neverSuppressesAnUnresolvablePush() {
         #expect(
             !AgentNotificationRouting.shouldSuppressBanner(
-                target: nil, presentedAgent: ConsoleAgent.ID(hostID: UUID(), paneID: "%5")))
+                target: nil, presentedAgent: ConsoleAgent.ID(hostID: UUID(), paneID: "wV:p1")))
         #expect(!AgentNotificationRouting.shouldSuppressBanner(target: nil, presentedAgent: nil))
     }
 }
