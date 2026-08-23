@@ -126,9 +126,12 @@ extension TransportError {
     }
 
     /// A changed host key is a security refusal, not an ordinary outage.
+    /// Nested first-hop failures keep that classification: a Jump Host key
+    /// change is still a host-key refusal.
     var isHostKeySecurityFailure: Bool {
         switch self {
         case .hostKeyMismatch: true
+        case .jumpHostFailed(let underlying): underlying.isHostKeySecurityFailure
         default: false
         }
     }

@@ -543,6 +543,19 @@ struct ConsoleDetailPresentationTests {
             hosts: [host])
         #expect(mismatch.systemImage == "exclamationmark.shield.fill")
 
+        let jumpMismatch = MissingAgentPresentation(
+            agentID: agentID,
+            hostStatuses: [
+                host.id: .failed(
+                    .jumpHostFailed(
+                        .hostKeyMismatch(
+                            known: HostKeyFingerprint(publicKeyBlob: Data("known".utf8)),
+                            presented: HostKeyFingerprint(
+                                publicKeyBlob: Data("presented".utf8)))))
+            ],
+            hosts: [host])
+        #expect(jumpMismatch.systemImage == "exclamationmark.shield.fill")
+
         let outage = MissingAgentPresentation(
             agentID: agentID,
             hostStatuses: [host.id: .failed(.streamLocalOpenFailed(path: "/s"))],

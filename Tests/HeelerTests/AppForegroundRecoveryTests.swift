@@ -694,8 +694,8 @@ struct AppForegroundRecoveryTests {
     /// the session re-activates after the app has declared itself suspended.
     ///
     /// The hold point is the restart's own teardown rather than its dial:
-    /// `EventsSession.restart()` winds the stopped activation down and then
-    /// calls `activate()`, which only spawns the run task, so gating the
+    /// `EventsSession.restart()` announces `.connecting` and then winds the
+    /// stopped activation down before spawning the new run, so gating the
     /// connect would not hold `reactivate()` even in the correct
     /// implementation and could not tell the two shapes apart.
     @Test func aFailedHostsRestartHoldsTheForegroundActivation() async throws {
@@ -732,6 +732,11 @@ struct AppForegroundRecoveryTests {
         try await waitUntil("the restart should reach that teardown") {
             await closeGate.entryCount == 1
         }
+        try await waitUntil("and announce connecting before teardown finishes") {
+            store.hostStatuses[host.id] == .connecting
+        }
+        #expect(store.hostStandingFailures[host.id] == failure)
+        #expect(store.agents.isEmpty)
         // The correct shape is provably parked here, so waiting changes
         // nothing for it; a detached retry needs the room to have finished
         // its activation for the assertion to mean anything.
@@ -1070,21 +1075,79 @@ struct AppForegroundRecoveryTests {
         let first = ScriptedTransport(snapshot: .openSession)
         let second = ScriptedTransport(snapshot: .openSession)
         let connector = SequencedTransportConnector([first, second])
-        let store = makeStore(
-            connector: connector, reconnectPolicy: Self.parkedSecondAttemptPolicy)
+        let session = EventsSession(
+            subscriptions: HostConsoleProjection.subscriptions(paneIDs: []),
+            connect: { try await connector.connect() },
+            reconnectPolicy: Self.parkedSecondAttemptPolicy,
+            keepalive: nil)
+        let recorder = PublishedStatusRecorder()
+        let projection = HostConsoleProjection(
+            host: host, session: session, snapshotRetryDelay: .milliseconds(10)
+        ) { [recorder] in
+            recorder.record()
+        }
+        recorder.projection = projection
+        projection.start(isActive: true)
+        defer { projection.end() }
 
-        store.setHosts([host])
-        await store.resume()
         try await waitUntil("the Host should come up connected") {
-            store.hostStatuses[host.id] == .connected
+            projection.status == .connected
         }
         try await waitUntilPaneResubscribeSettles(on: first)
+        let firstConnected = try #require(recorder.statuses.firstIndex(of: .connected))
         try await first.close()
         try await waitUntil("automatic recovery should be reconnecting") {
-            if case .reconnecting = store.hostStatuses[host.id] { true } else { false }
+            if case .reconnecting = projection.status { true } else { false }
         }
-        #expect(store.hostStatuses[host.id] != .connecting)
-        store.setHosts([])
+        #expect(!recorder.statuses[firstConnected...].contains(.connecting))
+        #expect(recorder.statuses.filter { $0 == .connecting }.count == 1)
+    }
+
+    @Test func retryFromConnectedAnnouncesConnectingBeforeTeardown() async throws {
+        let host = Host.fixture()
+        let first = ScriptedTransport(snapshot: .openSession)
+        let second = ScriptedTransport(snapshot: .openSession)
+        let connector = SequencedTransportConnector([first, second])
+        let session = EventsSession(
+            subscriptions: HostConsoleProjection.subscriptions(paneIDs: []),
+            connect: { try await connector.connect() },
+            reconnectPolicy: Self.fastPolicy,
+            keepalive: nil)
+        let recorder = PublishedStatusRecorder()
+        let projection = HostConsoleProjection(
+            host: host, session: session, snapshotRetryDelay: .milliseconds(10)
+        ) { [recorder] in
+            recorder.record()
+        }
+        recorder.projection = projection
+        projection.start(isActive: true)
+        defer { projection.end() }
+
+        try await waitUntil("the Host should come up connected") {
+            projection.status == .connected
+        }
+        try await waitUntil("its Agent should arrive") {
+            !projection.agentsByPane.isEmpty && !projection.isAwaitingSnapshot
+        }
+        try await waitUntilPaneResubscribeSettles(on: first)
+
+        let closeGate = ScriptedTransportCallGate()
+        await first.gateNextClose(using: closeGate)
+        let retrying = Task { await projection.retry() }
+        try await waitUntil("teardown should reach the installed transport") {
+            await closeGate.entryCount == 1
+        }
+        #expect(projection.status == .connecting)
+        #expect(projection.agentsByPane.isEmpty)
+        #expect(projection.isAwaitingSnapshot)
+        #expect(projection.syncError == nil)
+        #expect(await !first.isClosed)
+        await closeGate.open()
+        await retrying.value
+        try await waitUntil("the retry should connect") {
+            projection.status == .connected
+        }
+        #expect(projection.syncError == nil)
     }
 
     /// A store whose session factory hands out scripted transports in order,

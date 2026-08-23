@@ -180,6 +180,37 @@ struct EventsSessionSubscriptionsTests {
         await session.end()
     }
 
+    @Test func retryAnnouncesConnectingBeforeTeardownClosesTheTransport() async throws {
+        let first = ScriptedTransport()
+        let second = ScriptedTransport()
+        let connector = SequencedTransportConnector([first, second])
+        let session = EventsSession(
+            subscriptions: initial,
+            connect: { try await connector.connect() },
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .milliseconds(10), multiplier: 2, maxDelay: .milliseconds(50)),
+            keepalive: nil)
+        var updates = session.updates.makeAsyncIterator()
+
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+
+        let closeGate = ScriptedTransportCallGate()
+        await first.gateNextClose(using: closeGate)
+        let retrying = Task { await session.retry() }
+        try await waitUntil("teardown should reach the installed transport") {
+            await closeGate.entryCount == 1
+        }
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await !first.isClosed)
+        await closeGate.open()
+        await retrying.value
+        #expect(await updates.next() == .status(.connected))
+        #expect(await first.isClosed)
+        await session.end()
+    }
+
     @Test func permanentFailureStopsTheReconnectLoop() async throws {
         let connectionAttempts = Mutex(0)
         let session = EventsSession(

@@ -70,6 +70,21 @@ struct ConsoleHostStatusPresentationTests {
         #expect(presentation.navigates)
     }
 
+    @Test func aJumpHostKeyMismatchIsCritical() throws {
+        let failure = TransportError.jumpHostFailed(
+            .hostKeyMismatch(
+                known: HostKeyFingerprint(publicKeyBlob: Data("known".utf8)),
+                presented: HostKeyFingerprint(publicKeyBlob: Data("presented".utf8))))
+        let presentation = try #require(
+            ConsoleHostStatusPresentation(
+                host: host,
+                status: .failed(failure),
+                syncError: nil))
+        #expect(presentation.systemImage == "exclamationmark.shield.fill")
+        #expect(presentation.severity == .critical)
+        #expect(presentation.navigates)
+    }
+
     @Test func aConnectedHostWithASyncErrorKeepsTheSnapshotRow() throws {
         let presentation = try #require(
             ConsoleHostStatusPresentation(
@@ -139,5 +154,64 @@ struct ConsoleHostStatusPresentationTests {
                 status: .connected,
                 isAwaitingSnapshot: false,
                 syncError: nil) == nil)
+    }
+
+    @Test func unknownInventoryNeverClaimsNoAgents() {
+        let conditions: [EventsSessionStatus] = [
+            .connecting,
+            .reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut),
+            .suspended,
+            .failed(.streamLocalOpenFailed(path: "/s")),
+        ]
+        for status in conditions {
+            let row = ConsoleHostStatusPresentation(
+                host: host, status: status, syncError: nil)
+            #expect(row != nil)
+            #expect(
+                ConsoleAgentsSurface(
+                    hostCount: 1,
+                    filteredHostName: nil,
+                    filteredAgentCount: 0,
+                    visibleIssueCount: 1) == .rows)
+            #expect(
+                ConsoleAgentsSurface(
+                    hostCount: 1,
+                    filteredHostName: "studio",
+                    filteredAgentCount: 0,
+                    visibleIssueCount: 1) == .rows)
+        }
+        #expect(
+            ConsoleHostStatusPresentation(
+                host: host,
+                status: .connected,
+                isAwaitingSnapshot: true,
+                syncError: nil) != nil)
+    }
+
+    @Test func knownEmptyInventoryMayClaimNoAgents() {
+        #expect(
+            ConsoleAgentsSurface(
+                hostCount: 0,
+                filteredHostName: nil,
+                filteredAgentCount: 0,
+                visibleIssueCount: 0) == .noHosts)
+        #expect(
+            ConsoleAgentsSurface(
+                hostCount: 1,
+                filteredHostName: nil,
+                filteredAgentCount: 0,
+                visibleIssueCount: 0) == .noAgents)
+        #expect(
+            ConsoleAgentsSurface(
+                hostCount: 2,
+                filteredHostName: "studio",
+                filteredAgentCount: 0,
+                visibleIssueCount: 0) == .noAgentsOnHost("studio"))
+        #expect(
+            ConsoleAgentsSurface(
+                hostCount: 2,
+                filteredHostName: nil,
+                filteredAgentCount: 1,
+                visibleIssueCount: 1) == .rows)
     }
 }

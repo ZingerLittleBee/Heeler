@@ -112,6 +112,7 @@ final class HostConsoleProjection {
     /// guidance until the activation answers.
     func revalidate() async {
         if case .failed = status {
+            beginNewActivation()
             await session.retry()
         } else {
             await session.revalidate()
@@ -123,7 +124,17 @@ final class HostConsoleProjection {
     }
 
     func retry() async {
+        beginNewActivation()
         await session.retry()
+    }
+
+    /// Makes the new activation visible on this projection before the
+    /// session hops into teardown, so an in-flight resync cannot observe
+    /// `.connected` after `currentTransport` is already gone.
+    private func beginNewActivation() {
+        status = .connecting
+        invalidateSnapshot()
+        publish()
     }
 
     func end() {

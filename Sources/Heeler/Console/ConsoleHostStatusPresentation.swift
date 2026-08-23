@@ -97,3 +97,34 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
         )
     }
 }
+
+/// Which Console agents surface to show for a catalog and inventory.
+///
+/// "No Agents" is a known-empty snapshot, not an unknown inventory. Connecting,
+/// reconnecting, paused, failed, and Connected-awaiting-snapshot all produce
+/// condition rows, so those states take `.rows` rather than the empty claim.
+enum ConsoleAgentsSurface: Equatable {
+    case noHosts
+    case noAgents
+    case noAgentsOnHost(String)
+    case rows
+
+    init(
+        hostCount: Int,
+        filteredHostName: String?,
+        filteredAgentCount: Int,
+        visibleIssueCount: Int
+    ) {
+        if hostCount == 0 {
+            self = .noHosts
+        } else if filteredAgentCount == 0 && visibleIssueCount == 0 {
+            if let filteredHostName {
+                self = .noAgentsOnHost(filteredHostName)
+            } else {
+                self = .noAgents
+            }
+        } else {
+            self = .rows
+        }
+    }
+}

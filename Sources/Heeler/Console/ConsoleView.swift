@@ -249,7 +249,8 @@ struct ConsoleView: View {
 
     @ViewBuilder
     private var content: some View {
-        if hosts.hosts.isEmpty {
+        switch agentsSurface {
+        case .noHosts:
             ContentUnavailableView {
                 Label("No Hosts", systemImage: "server.rack")
             } description: {
@@ -258,36 +259,21 @@ struct ConsoleView: View {
                 Button("Add Host") { presentHosts() }
                     .buttonStyle(.borderedProminent)
             }
-        } else if console.agents.isEmpty {
+        case .noAgents:
             ContentUnavailableView {
                 Label("No Agents", systemImage: "rectangle.on.rectangle.slash")
             } description: {
-                Text(emptyDescription)
-            } actions: {
-                if let issue = actionableHostIssues.first, actionableHostIssues.count == 1 {
-                    Button("Open \(issue.hostName)") { presentHosts(issue.hostID) }
-                        .buttonStyle(.borderedProminent)
-                } else if !actionableHostIssues.isEmpty {
-                    Button("Manage Hosts") { presentHosts() }
-                        .buttonStyle(.borderedProminent)
-                }
+                Text("Agents detected on your Hosts appear here.")
             }
-        } else if filteredAgents.isEmpty {
-            // Agents exist, just none on the filtered Host. Its connection
-            // issue, if any, is likely the reason — surface it here.
+        case .noAgentsOnHost(let hostName):
             ContentUnavailableView {
-                Label("No Agents on \(filteredHostName)", systemImage: "line.3.horizontal.decrease.circle")
-            } description: {
-                if !visibleHostIssues.isEmpty {
-                    Text(visibleHostIssues.map(\.message).joined(separator: "\n"))
-                }
+                Label(
+                    "No Agents on \(hostName)",
+                    systemImage: "line.3.horizontal.decrease.circle")
             } actions: {
-                if let issue = visibleHostIssues.first(where: \.navigates) {
-                    Button("Host Settings") { presentHosts(issue.hostID) }
-                }
                 Button("Show All Hosts") { hostFilter = nil }
             }
-        } else {
+        case .rows:
             List(selection: selectedAgent) {
                 ForEach(visibleHostIssues) { issue in
                     if issue.navigates {
@@ -324,6 +310,14 @@ struct ConsoleView: View {
         }
     }
 
+    private var agentsSurface: ConsoleAgentsSurface {
+        ConsoleAgentsSurface(
+            hostCount: hosts.hosts.count,
+            filteredHostName: hostFilter == nil ? nil : filteredHostName,
+            filteredAgentCount: filteredAgents.count,
+            visibleIssueCount: visibleHostIssues.count)
+    }
+
     private var filteredAgents: [ConsoleAgent] {
         guard let hostFilter else { return console.agents }
         return console.agents.filter { $0.hostID == hostFilter }
@@ -338,13 +332,6 @@ struct ConsoleView: View {
 
     private var filteredHostName: String {
         hosts.hosts.first(where: { $0.id == hostFilter })?.displayName ?? "this Host"
-    }
-
-    private var emptyDescription: String {
-        if hostIssues.isEmpty {
-            return "Agents detected on your Hosts appear here."
-        }
-        return hostIssues.map(\.message).joined(separator: "\n")
     }
 
     private struct HostSheet: Identifiable {
@@ -363,10 +350,6 @@ struct ConsoleView: View {
                 isAwaitingSnapshot: console.hostsAwaitingSnapshot.contains(host.id),
                 syncError: console.hostSyncErrors[host.id])
         }
-    }
-
-    private var actionableHostIssues: [ConsoleHostStatusPresentation] {
-        hostIssues.filter(\.navigates)
     }
 
     private func hostIssueRow(

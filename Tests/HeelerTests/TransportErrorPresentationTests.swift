@@ -229,6 +229,18 @@ struct TransportErrorPresentationTests {
         #expect(!presentation.summary.contains("Jump Host: Jump Host"))
     }
 
+    @Test func aJumpHostKeyMismatchKeepsTheSecurityClassification() {
+        let mismatch = TransportError.hostKeyMismatch(
+            known: Self.knownKey, presented: Self.presentedKey)
+        #expect(mismatch.isHostKeySecurityFailure)
+        #expect(TransportError.jumpHostFailed(mismatch).isHostKeySecurityFailure)
+        #expect(
+            TransportError.jumpHostFailed(.jumpHostFailed(mismatch))
+                .isHostKeySecurityFailure)
+        #expect(!TransportError.jumpHostFailed(.timedOut).isHostKeySecurityFailure)
+        #expect(!TransportError.authenticationFailed.isHostKeySecurityFailure)
+    }
+
     // MARK: Non-retryable copy that gained detail
 
     @Test func socketNotFoundIncludesThePath() {

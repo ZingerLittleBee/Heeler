@@ -335,14 +335,22 @@ actor EventsSession {
         runTask = Task { await self.run(generation: generation) }
     }
 
+    /// Restarts the current activation. `.connecting` is announced and the
+    /// generation advances before teardown, so a consumer never observes the
+    /// previous `.connected` against a Transport that `windDown` has already
+    /// removed. The old `run` sees the generation change and cannot install
+    /// a Transport into this activation.
     private func restart() async {
         guard phase == .active else {
             activate()
             return
         }
-        phase = .suspended
+        activationGeneration &+= 1
+        let generation = activationGeneration
+        yieldUpdate(.status(.connecting))
         await windDown()
-        activate()
+        guard phase == .active, activationGeneration == generation else { return }
+        runTask = Task { await self.run(generation: generation) }
     }
 
     private func deactivate() async {
