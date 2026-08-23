@@ -979,9 +979,9 @@ struct SessionDriverE2ETests {
             #expect(result.stdout == Data("opened".utf8))
             #expect(result.exitStatus == 0)
             #expect(await connection.oneShotRegistryCountForTesting() == 0)
-            #expect(
-                await connection.transportSendOwnerSamplesForTesting()
-                    .allSatisfy { !$0.isForbiddenClearWindow })
+            let ownerSamples = await connection.transportSendOwnerSamplesForTesting()
+            #expect(!ownerSamples.isEmpty)
+            #expect(ownerSamples.allSatisfy { !$0.isForbiddenClearWindow })
             let ping = try await connection.execute("printf ping", timeout: .seconds(5))
             #expect(ping.stdout == Data("ping".utf8))
             #expect(await connection.isConnected)
@@ -1132,6 +1132,59 @@ struct SessionDriverE2ETests {
         #expect(state.hasSession == false)
     }
 
+    @Test("yielded channel teardown rejects same-id I/O")
+    func yieldedChannelTeardownRejectsSameIDIO() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let socketPath = try #require(SessionDriverTestEnvironment.streamLocalSocketPath)
+        let connection = try await environment.connect()
+
+        let pty = try await connection.openPTY(
+            command: "cat",
+            columns: 80,
+            rows: 24,
+            timeout: .seconds(5))
+        let ptyTeardown = SessionWaitHold()
+        await connection.holdNextChannelTeardownForTesting {
+            await ptyTeardown.waitUntilReleased()
+        }
+        let closePTY = Task { try await pty.close(timeout: .seconds(5)) }
+        try await waitUntilTrue("PTY teardown should yield after closing starts") {
+            await ptyTeardown.hasEntered
+        }
+        await #expect(throws: SSHError.channelFailed) {
+            try await pty.write(Data("x".utf8), timeout: .seconds(1))
+        }
+        await #expect(throws: SSHError.channelFailed) {
+            _ = try await pty.read(timeout: .seconds(1))
+        }
+        await #expect(throws: SSHError.channelFailed) {
+            try await pty.resize(columns: 81, rows: 24, timeout: .seconds(1))
+        }
+        await ptyTeardown.release()
+        try await closePTY.value
+
+        let stream = try await connection.openStreamLocal(
+            socketPath: socketPath,
+            timeout: .seconds(5))
+        let streamTeardown = SessionWaitHold()
+        await connection.holdNextChannelTeardownForTesting {
+            await streamTeardown.waitUntilReleased()
+        }
+        let closeStream = Task { try await stream.close(timeout: .seconds(5)) }
+        try await waitUntilTrue("stream-local teardown should yield after closing starts") {
+            await streamTeardown.hasEntered
+        }
+        await #expect(throws: SSHError.channelFailed) {
+            try await stream.write(Data("x".utf8), timeout: .seconds(1))
+        }
+        await #expect(throws: SSHError.channelFailed) {
+            _ = try await stream.read(timeout: .seconds(1))
+        }
+        await streamTeardown.release()
+        try await closeStream.value
+        try await connection.close(timeout: .seconds(2))
+    }
+
     @Test("repeated invalidation reclaims every file descriptor")
     func repeatedInvalidationReclaimsEveryFileDescriptor() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
@@ -1150,8 +1203,10 @@ struct SessionDriverE2ETests {
             "descriptors grew from \(baseline) to \(final) across \(rounds) sessions")
     }
 
-    @Test("Attach throughput with concurrent RPCs is printed")
-    func attachThroughputWithConcurrentRPCsIsPrinted() async throws {
+    /// Measurement only. The red regression guard for scheduling progress is
+    /// `one-shot RPCs yield so a live PTY can progress`.
+    @Test("measurement: Attach throughput with concurrent RPCs")
+    func measureAttachThroughputWithConcurrentRPCs() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
         let connection = try await environment.connect()
         let pty = try await connection.openPTY(
@@ -1328,10 +1383,6 @@ struct SessionDriverE2ETests {
             try await waitUntilTrue("the first open should claim the slot") {
                 await slot.hasEntered
             }
-            try await waitUntilTrue("the first open should release the mutex") {
-                await connection.operationWaiterCountForTesting == 0
-            }
-
             let timedOut = Task {
                 try await connection.execute("printf timed-out-open", timeout: .milliseconds(200))
             }
@@ -1351,10 +1402,56 @@ struct SessionDriverE2ETests {
             await #expect(throws: SSHError.cancelled) { _ = try await cancelled.value }
             #expect(await connection.isConnected)
 
+            let registrationGate = SessionWaitHold()
+            let cancelledBeforeRegistration = Task {
+                await registrationGate.waitUntilReleased()
+                return try await connection.execute(
+                    "printf cancelled-before-registration",
+                    timeout: .seconds(15))
+            }
+            cancelledBeforeRegistration.cancel()
+            await registrationGate.release()
+            await #expect(throws: SSHError.cancelled) {
+                _ = try await cancelledBeforeRegistration.value
+            }
+            #expect(await connection.channelOpenWaiterCountForTesting() == 0)
+
+            await connection.failNextResumedChannelOpenWaiterForTesting(.cancelled)
+            let resumedHead = Task {
+                try await connection.execute("printf resumed-head", timeout: .seconds(15))
+            }
+            let resumedFollower = Task {
+                try await connection.execute("printf resumed-follower", timeout: .seconds(15))
+            }
+            try await waitUntilTrue("both channel-open waiters should park") {
+                await connection.channelOpenWaiterCountForTesting() == 2
+            }
+
             await park.release()
             try await write.value
             let firstResult = try await first.value
             #expect(firstResult.stdout == Data("first-open".utf8))
+            let resumedHeadResult: Result<SSHExecResult, any Error>
+            do {
+                resumedHeadResult = .success(try await resumedHead.value)
+            } catch {
+                resumedHeadResult = .failure(error)
+            }
+            let resumedFollowerResult: Result<SSHExecResult, any Error>
+            do {
+                resumedFollowerResult = .success(try await resumedFollower.value)
+            } catch {
+                resumedFollowerResult = .failure(error)
+            }
+            let resumedResults = [resumedHeadResult, resumedFollowerResult]
+            #expect(resumedResults.filter {
+                if case .success = $0 { return true }
+                return false
+            }.count == 1)
+            #expect(resumedResults.filter { result in
+                guard case .failure(let error) = result else { return false }
+                return error as? SSHError == .cancelled
+            }.count == 1)
             let ping = try await connection.execute("printf after-open-wait", timeout: .seconds(5))
             #expect(ping.stdout == Data("after-open-wait".utf8))
             try await pty.close(timeout: .seconds(5))
@@ -1467,9 +1564,9 @@ struct SessionDriverE2ETests {
                 try? await pty.close(timeout: .seconds(2))
                 throw error
             }
-            #expect(
-                await connection.transportSendOwnerSamplesForTesting()
-                    .allSatisfy { !$0.isForbiddenClearWindow })
+            let ownerSamples = await connection.transportSendOwnerSamplesForTesting()
+            #expect(!ownerSamples.isEmpty)
+            #expect(ownerSamples.allSatisfy { !$0.isForbiddenClearWindow })
             #expect(await connection.oneShotRegistryCountForTesting() == 0)
             let state = await connection.resourceStateForTesting()
             switch expected {

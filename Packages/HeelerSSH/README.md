@@ -95,8 +95,9 @@ packet-producing `EAGAIN` is the public signal for it, and `send_existing` runs
 before `_libssh2_transport_send` clears that bit, so the report is conservative
 rather than falsely clear.
 
-Only two things end that ownership: the **exact** owning call returning
-non-`EAGAIN`, or completed whole-session invalidation, which frees
+Only two things end that ownership: the **exact** owning call returning a
+non-`EAGAIN` result after outbound state is clear, or completed whole-session
+invalidation, which frees
 `session->packet` along with the session. A cancelled or timed-out Swift task
 is not one of them — the native packet outlives it. `_libssh2_channel_write`
 leaves `write_state` at `libssh2_NB_state_created` on `EAGAIN`, so re-calling
@@ -108,7 +109,15 @@ Before #130, `writePTY` and `writeStreamLocal` threw directly out of their wait,
 so cancellation could strand a packet for the rest of the session's life.
 Cleanup now drives the exact owning call non-cancellably to a non-`EAGAIN`
 result within its reclamation budget, and invalidates the session if that
-budget expires.
+budget expires. A negative non-`EAGAIN` result while libssh2 still reports
+outbound state also invalidates: clearing the owner in that state would admit
+a foreign producer while the native packet may still be pending.
+
+Channel teardown has its own resource transition. As soon as PTY or
+direct-streamlocal close begins, the registry entry stops accepting reads,
+writes, and resizes. Cleanup may still re-resolve that entry across yielded
+turns, but user I/O cannot interleave with close/free on the same native
+channel.
 
 SFTP is a second exception and a stronger one. `struct _LIBSSH2_SFTP`
 (`src/sftp.h`) carries one continuation slot per operation kind —
@@ -137,11 +146,28 @@ for this package's own suites, including `SessionDriverE2ETests`. The local
 package runner asserts only that something executed, not an exact count, so
 machines without the disposable sshd fixture can skip the E2E suite cleanly.
 
-Merge CI runs `scripts/run-ci-ios-tests.sh`, which now also drives the
-`HeelerSSH` package scheme after the app lanes. That package lane pins an
-exact executed count and named tests, including the #130 scheduling
-invariants. Driver-level regressions cannot hide behind the local runner's
-`executed > 0` floor.
+The E2E integration package must update `scripts/run-ci-ios-tests.sh` before
+merge so its package lane expects **42** executed tests and pins these new
+display names exactly:
+
+- `outbound backpressure does not livelock a channel open`
+- `cancelling a transport-send owner drains`
+- `cancelling a transport-send owner invalidates`
+- `timing out a transport-send owner at loop-top drains`
+- `timing out a transport-send owner at loop-top invalidates`
+- `one-shot RPCs yield so a live PTY can progress`
+- `cancelling a yielded one-shot distinguishes cleanup outcomes`
+- `timing out a yielded one-shot distinguishes cleanup outcomes`
+- `invalidation during a yielding wait does not touch a stale native pointer`
+- `yielded channel teardown rejects same-id I/O`
+- `repeated invalidation reclaims every file descriptor`
+- `measurement: Attach throughput with concurrent RPCs`
+- `SFTP operations and close wait out an in-flight handle use`
+- `a serialized channel-open wait honors deadline and cancellation`
+- `an invalidation generation rejects a watch armed before it`
+- `a transport-send owner error with outbound pending invalidates`
+
+This core package intentionally does not edit that integration script.
 
 ## Direct-streamlocal acceptance
 

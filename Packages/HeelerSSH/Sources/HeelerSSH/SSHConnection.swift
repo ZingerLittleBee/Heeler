@@ -310,6 +310,16 @@ public final class SSHConnection: Sendable {
         await driver.holdNextChannelOpenSlotForTesting(hold)
     }
 
+    func holdNextChannelTeardownForTesting(
+        _ hold: @escaping @Sendable () async -> Void
+    ) async {
+        await driver.holdNextChannelTeardownForTesting(hold)
+    }
+
+    func failNextResumedChannelOpenWaiterForTesting(_ error: SSHError) async {
+        await driver.failNextResumedChannelOpenWaiterForTesting(error)
+    }
+
     public func holdEachSessionWaitForTesting(
         _ hold: @escaping @Sendable () async -> Void
     ) async {
@@ -336,7 +346,7 @@ public final class SSHConnection: Sendable {
         await driver.startSamplingTransportSendOwnerForTesting()
     }
 
-    public func transportSendOwnerSamplesForTesting() async -> [TransportSendOwnerSample] {
+    func transportSendOwnerSamplesForTesting() async -> [TransportSendOwnerSample] {
         await driver.transportSendOwnerSamplesForTesting()
     }
 
@@ -348,7 +358,7 @@ public final class SSHConnection: Sendable {
         try await driver.shrinkSendBufferForTesting(bytes: bytes)
     }
 
-    public func resourceStateForTesting() async -> SessionDriverResourceState {
+    func resourceStateForTesting() async -> SessionDriverResourceState {
         await driver.resourceStateForTesting()
     }
 

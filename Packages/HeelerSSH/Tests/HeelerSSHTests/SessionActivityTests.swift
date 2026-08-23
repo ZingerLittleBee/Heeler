@@ -15,3 +15,22 @@ func invalidationGenerationRejectsAWatchArmedBeforeIt() {
     #expect(fresh.register(waiter))
     fresh.unregister(waiter)
 }
+
+@Test("a transport-send owner error with outbound pending invalidates")
+func transportSendOwnerErrorWithOutboundPendingInvalidates() {
+    #expect(
+        SessionDriver.transportSendOwnerDisposition(
+            result: -37,
+            isCurrentOwner: true,
+            hasOutbound: true) == .invalidate)
+    #expect(
+        SessionDriver.transportSendOwnerDisposition(
+            result: -37,
+            isCurrentOwner: true,
+            hasOutbound: false) == .clear)
+    #expect(
+        SessionDriver.transportSendOwnerDisposition(
+            result: -37,
+            isCurrentOwner: false,
+            hasOutbound: true) == .unchanged)
+}
