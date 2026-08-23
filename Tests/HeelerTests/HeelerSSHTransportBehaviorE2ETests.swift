@@ -247,6 +247,22 @@ struct HeelerSSHTransportBehaviorE2ETests {
             socketPath: environment.socketPath)
     }
 
+    @Test("direct Host RPC does not stall Attach")
+    func directRPCDoesNotStallAttach() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        try await exerciseRPCDoesNotStallAttach(
+            settings: environment.directSettings(),
+            observerSettings: environment.directSettings())
+    }
+
+    @Test("Jump Host RPC does not stall Attach")
+    func jumpRPCDoesNotStallAttach() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        try await exerciseRPCDoesNotStallAttach(
+            settings: environment.jumpSettings(),
+            observerSettings: environment.jumpSettings())
+    }
+
     @Test("direct Host clean Attach exit frees the reserved channel")
     func directCleanAttachExit() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
@@ -1293,6 +1309,62 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(try await transport.ping().protocolVersion == 17)
     }
 
+    private func exerciseRPCDoesNotStallAttach(
+        settings: SSHTransportSettings,
+        observerSettings: SSHTransportSettings
+    ) async throws {
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        defer { Task { try? await transport.close() } }
+        let session = try await transport.attachTerminal(
+            TerminalAttachRequest(
+                target: "fixture:pane",
+                takeover: true,
+                cols: 80,
+                rows: 24))
+        var iterator = session.output.makeAsyncIterator()
+        var output = ""
+        try await expectAttachOutput(&iterator, accumulated: &output, contains: "24 80")
+        #expect(output.hasPrefix("TTY-OK"))
+
+        var observerSettings = observerSettings
+        observerSettings.requestTimeout = .seconds(25)
+        let observer = try await HeelerSSHTransport.connect(settings: observerSettings)
+        defer { Task { try? await observer.close() } }
+
+        let delayToken = UUID().uuidString
+        let delayedStarted = ContinuousClock.now
+        let delayedCompletion = RPCCompletionFlag()
+        let delayed = Task {
+            let result = try await transport.readPane(
+                PaneReadParams(paneID: "fixture:delay:\(delayToken)", source: .recent))
+            await delayedCompletion.markCompleted()
+            return result
+        }
+        let observation = try await observer.readPane(
+            PaneReadParams(paneID: "fixture:await-delay:\(delayToken)", source: .recent))
+        try #require(observation.text == "observed")
+
+        let echoStarted = ContinuousClock.now
+        let marker = "rpc-hol-\(UUID().uuidString.prefix(8))"
+        session.send(Data("\(marker)\n".utf8))
+        try await expectAttachOutput(
+            &iterator,
+            accumulated: &output,
+            contains: "GOT:\(marker)")
+        let echoElapsed = echoStarted.duration(to: .now)
+        #expect(await delayedCompletion.completed == false)
+        #expect(echoElapsed < .seconds(2), "Attach echoed in \(echoElapsed)")
+        #expect(delayedStarted.duration(to: .now) < .seconds(4.5))
+
+        let delayedResult = try await delayed.value
+        #expect(await delayedCompletion.completed)
+        #expect(!delayedResult.text.isEmpty)
+        #expect(delayedStarted.duration(to: .now) >= .seconds(4.5))
+        #expect(try await transport.ping().protocolVersion == 17)
+        await session.end()
+        #expect(await transport.isConnected)
+    }
+
     private func exerciseAttach(
         settings: SSHTransportSettings,
         socketPath: String
@@ -1659,5 +1731,13 @@ struct HeelerSSHTransportBehaviorEnvironment: Sendable {
         let jumpPort: UInt16
         let targetHost: String
         let targetPort: UInt16
+    }
+}
+
+private actor RPCCompletionFlag {
+    private(set) var completed = false
+
+    func markCompleted() {
+        completed = true
     }
 }

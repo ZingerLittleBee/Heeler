@@ -1616,7 +1616,7 @@ fi
 run_suite HeelerSSHPTYE2ETests 3 1
 run_suite HeelerSSHDirectStreamLocalE2ETests 11 1
 run_suite HeelerSSHJumpHostGateE2ETests 9 1
-run_suite HeelerSSHTransportBehaviorE2ETests 48 1
+run_suite HeelerSSHTransportBehaviorE2ETests 50 1
 run_suite ImageStagingE2ETests 8 1
 run_suite WeakNetworkE2ETests 8 1
 run_suite PairingCeremonyE2ETests 11 1
@@ -1644,6 +1644,11 @@ assert_behavior "PTY" HeelerSSHPTYE2ETests \
     '"PTY exec preserves raw IO, merged output, geometry, and exit status"'
 assert_behavior "resize" HeelerSSHTransportBehaviorE2ETests \
     '"direct Host Attach preserves PTY IO, resize, end, and reuse"'
+assert_behavior "RPC does not stall Attach" HeelerSSHTransportBehaviorE2ETests \
+    '"direct Host RPC does not stall Attach"'
+assert_behavior "RPC does not stall Attach on a Jump Host" \
+    HeelerSSHTransportBehaviorE2ETests \
+    '"Jump Host RPC does not stall Attach"'
 # These writes can return healthy response envelopes even when a serializer
 # silently drops a field. Keep every distinct wire contract named (#165).
 assert_behavior "agent rename params" HeelerSSHTransportBehaviorE2ETests \

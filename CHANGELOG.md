@@ -27,6 +27,10 @@ Entries reference the issue that motivated them.
   authentication failure names the Jump Host rather than the Host, and an
   incompatible herdr protocol tells the user to update herdr. (#163)
 
+### Fixed
+
+- A slow ordinary Host request no longer freezes a live Attach session. (#130)
+
 ## [0.1.1] - 2026-08-20
 
 ### Added
