@@ -129,7 +129,8 @@ struct ConsoleDetailPresentationTests {
     /// live stores after a real suspend is what pins the honest arm.
     @Test func aStoreBackedSuspendedHostWithUnknownInventorySaysPaused() async throws {
         let host = Host.fixture()
-        let transport = ScriptedTransport(snapshot: .fixture())
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
         let console = makeStore(transport: transport)
         let hosts = HostStore(volatileHosts: [host])
 
@@ -138,7 +139,9 @@ struct ConsoleDetailPresentationTests {
         try await waitUntil("the Host should come up connected") {
             console.hostStatuses[host.id] == .connected
         }
-        try await waitUntil("its Agents should land") { !console.agents.isEmpty }
+        try await waitUntil("its Agents should land") {
+            !console.agents.isEmpty && !console.hostsAwaitingSnapshot.contains(host.id)
+        }
 
         await console.suspend()
         try await waitUntil("the Host should suspend") {
