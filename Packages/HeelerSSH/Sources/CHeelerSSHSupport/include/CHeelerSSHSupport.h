@@ -4,6 +4,7 @@
 #include <CLibSSH2/libssh2.h>
 
 int heeler_libssh2_abandon_session(LIBSSH2_SESSION *session);
+void heeler_libssh2_prepare_session_abandonment(LIBSSH2_SESSION *session);
 
 typedef ssize_t (*heeler_libssh2_receive_callback)(
     libssh2_socket_t socket,

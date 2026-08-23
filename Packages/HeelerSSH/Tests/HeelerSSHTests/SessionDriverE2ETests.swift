@@ -1334,6 +1334,7 @@ struct SessionDriverE2ETests {
                 proxy: proxy)
             try await connection.shrinkSendBufferForTesting(bytes: 2_048)
             let home = try await remoteHome(of: connection)
+            let missingPath = "\(home)/.heeler-missing-\(UUID().uuidString)"
             let sftp = try await connection.openSFTP(timeout: .seconds(15))
             let pty = try await connection.openPTY(
                 command: "cat",
@@ -1346,29 +1347,48 @@ struct SessionDriverE2ETests {
             }
             let write = Task {
                 try await pty.write(
-                    Data(repeating: 0x61, count: 512 * 1_024),
+                    Data(repeating: 0x61, count: 32 * 1_024),
                     timeout: .seconds(15))
             }
-            try await waitUntilTrue("the PTY write should own the send") {
-                await park.hasEntered
+            var leaseTasks: [Task<Data?, any Error>] = []
+            do {
+                try await requireEventually("the PTY write should own the send") {
+                    await park.hasEntered
+                }
+                let read = Task {
+                    try await sftp.readFileIfPresent(
+                        at: missingPath,
+                        timeout: .seconds(15))
+                }
+                leaseTasks.append(read)
+                try await requireEventually("the SFTP call should hold a handle lease") {
+                    await connection.sftpUseCountForTesting() == 1
+                }
+                let secondRead = Task {
+                    try await sftp.readFileIfPresent(
+                        at: missingPath,
+                        timeout: .seconds(15))
+                }
+                leaseTasks.append(secondRead)
+                try await requireEventually("a second SFTP call should wait for the lease") {
+                    await connection.sftpIdleWaiterCountForTesting() == 1
+                }
+                #expect(await connection.sftpUseCountForTesting() == 1)
+                await park.release()
+                try await write.value
+                #expect(try await read.value == nil)
+                #expect(try await secondRead.value == nil)
+            } catch {
+                write.cancel()
+                for task in leaseTasks { task.cancel() }
+                await park.release()
+                _ = try? await write.value
+                for task in leaseTasks { _ = try? await task.value }
+                try? await sftp.close(timeout: .seconds(2))
+                try? await pty.close(timeout: .seconds(2))
+                try? await connection.close(timeout: .seconds(2))
+                throw error
             }
-            let stat = Task {
-                _ = try await sftp.attributes(at: home, timeout: .seconds(15))
-            }
-            try await waitUntilTrue("the SFTP call should hold a handle lease") {
-                await connection.sftpUseCountForTesting() == 1
-            }
-            let secondStat = Task {
-                _ = try await sftp.attributes(at: home, timeout: .seconds(15))
-            }
-            try await waitUntilTrue("a second SFTP call should wait for the lease") {
-                await connection.sftpIdleWaiterCountForTesting() == 1
-            }
-            #expect(await connection.sftpUseCountForTesting() == 1)
-            await park.release()
-            try await write.value
-            _ = try await stat.value
-            _ = try await secondStat.value
 
             let closePark = SessionWaitHold()
             await connection.holdNextOutboundWriteParkForTesting {
@@ -1376,28 +1396,48 @@ struct SessionDriverE2ETests {
             }
             let closeWrite = Task {
                 try await pty.write(
-                    Data(repeating: 0x62, count: 512 * 1_024),
+                    Data(repeating: 0x62, count: 32 * 1_024),
                     timeout: .seconds(15))
             }
-            try await waitUntilTrue("the second PTY write should own the send") {
-                await closePark.hasEntered
+            var closeRead: Task<Data?, any Error>?
+            var closing: Task<Void, any Error>?
+            do {
+                try await requireEventually("the second PTY write should own the send") {
+                    await closePark.hasEntered
+                }
+                let read = Task {
+                    try await sftp.readFileIfPresent(
+                        at: missingPath,
+                        timeout: .seconds(15))
+                }
+                closeRead = read
+                try await requireEventually("the SFTP call should hold the close lease") {
+                    await connection.sftpUseCountForTesting() == 1
+                }
+                let close = Task {
+                    try await sftp.close(timeout: .seconds(15))
+                }
+                closing = close
+                try await requireEventually("closeSFTP should wait for the lease") {
+                    await connection.sftpIdleWaiterCountForTesting() == 1
+                }
+                await closePark.release()
+                try await closeWrite.value
+                #expect(try await read.value == nil)
+                try await close.value
+            } catch {
+                closeWrite.cancel()
+                closeRead?.cancel()
+                closing?.cancel()
+                await closePark.release()
+                _ = try? await closeWrite.value
+                if let closeRead { _ = try? await closeRead.value }
+                if let closing { _ = try? await closing.value }
+                try? await sftp.close(timeout: .seconds(2))
+                try? await pty.close(timeout: .seconds(2))
+                try? await connection.close(timeout: .seconds(2))
+                throw error
             }
-            let closeStat = Task {
-                _ = try await sftp.attributes(at: home, timeout: .seconds(15))
-            }
-            try await waitUntilTrue("the SFTP call should hold the close lease") {
-                await connection.sftpUseCountForTesting() == 1
-            }
-            let closing = Task {
-                try await sftp.close(timeout: .seconds(15))
-            }
-            try await waitUntilTrue("closeSFTP should wait for the lease") {
-                await connection.sftpIdleWaiterCountForTesting() == 1
-            }
-            await closePark.release()
-            try await closeWrite.value
-            _ = try await closeStat.value
-            try await closing.value
             #expect(await connection.sftpUseCountForTesting() == 0)
             #expect(await connection.isConnected)
             let ping = try await connection.execute("printf sftp-lease", timeout: .seconds(5))
@@ -1427,102 +1467,124 @@ struct SessionDriverE2ETests {
             }
             let write = Task {
                 try await pty.write(
-                    Data(repeating: 0x61, count: 512 * 1_024),
+                    Data(repeating: 0x61, count: 32 * 1_024),
                     timeout: .seconds(15))
             }
-            try await waitUntilTrue("the PTY write should own the send") {
-                await park.hasEntered
-            }
-
             let slot = SessionWaitHold()
-            await slot.release()
+            let registrationGuard = SessionWaitHold()
             await connection.holdNextChannelOpenSlotForTesting {
                 await slot.waitUntilReleased()
             }
             let first = Task {
                 try await connection.execute("printf first-open", timeout: .seconds(15))
             }
-            try await waitUntilTrue("the first open should claim the slot") {
-                await slot.hasEntered
-            }
-            let timedOut = Task {
-                try await connection.execute("printf timed-out-open", timeout: .milliseconds(200))
-            }
-            try await waitUntilTrue("the timed-out open should park on the slot") {
-                await connection.channelOpenWaiterCountForTesting() == 1
-            }
-            await #expect(throws: SSHError.timedOut) { _ = try await timedOut.value }
-            #expect(await connection.isConnected)
-
-            let cancelled = Task {
-                try await connection.execute("printf cancelled-open", timeout: .seconds(15))
-            }
-            try await waitUntilTrue("the cancelled open should park on the slot") {
-                await connection.channelOpenWaiterCountForTesting() == 1
-            }
-            cancelled.cancel()
-            await #expect(throws: SSHError.cancelled) { _ = try await cancelled.value }
-            #expect(await connection.isConnected)
-
-            let registrationGuard = SessionWaitHold()
-            await connection.holdNextChannelOpenWaiterRegistrationForTesting {
-                await registrationGuard.waitUntilReleased()
-            }
-            let cancelledBeforeRegistration = Task {
-                try await connection.execute(
-                    "printf cancelled-before-registration",
-                    timeout: .seconds(15))
-            }
-            try await waitUntilTrue("the waiter should reach its registration guard") {
-                await registrationGuard.hasEntered
-            }
-            cancelledBeforeRegistration.cancel()
-            await registrationGuard.release()
-            await #expect(throws: SSHError.cancelled) {
-                _ = try await cancelledBeforeRegistration.value
-            }
-            #expect(await connection.channelOpenWaiterCountForTesting() == 0)
-
-            await connection.failNextResumedChannelOpenWaiterForTesting(.cancelled)
-            let resumedHead = Task {
-                try await connection.execute("printf resumed-head", timeout: .seconds(15))
-            }
-            let resumedFollower = Task {
-                try await connection.execute("printf resumed-follower", timeout: .seconds(15))
-            }
-            try await waitUntilTrue("both channel-open waiters should park") {
-                await connection.channelOpenWaiterCountForTesting() == 2
-            }
-
-            await park.release()
-            try await write.value
-            let firstResult = try await first.value
-            #expect(firstResult.stdout == Data("first-open".utf8))
-            let resumedHeadResult: Result<SSHExecResult, any Error>
+            var openTasks = [first]
             do {
-                resumedHeadResult = .success(try await resumedHead.value)
+                try await requireEventually("the PTY write should own the send") {
+                    await park.hasEntered
+                }
+                try await requireEventually("the first open should claim the slot") {
+                    await slot.hasEntered
+                }
+                let timedOut = Task {
+                    try await connection.execute(
+                        "printf timed-out-open",
+                        timeout: .milliseconds(200))
+                }
+                openTasks.append(timedOut)
+                try await requireEventually("the timed-out open should park on the slot") {
+                    await connection.channelOpenWaiterCountForTesting() == 1
+                }
+                await #expect(throws: SSHError.timedOut) { _ = try await timedOut.value }
+                #expect(await connection.isConnected)
+
+                let cancelled = Task {
+                    try await connection.execute("printf cancelled-open", timeout: .seconds(15))
+                }
+                openTasks.append(cancelled)
+                try await requireEventually("the cancelled open should park on the slot") {
+                    await connection.channelOpenWaiterCountForTesting() == 1
+                }
+                cancelled.cancel()
+                await #expect(throws: SSHError.cancelled) { _ = try await cancelled.value }
+                #expect(await connection.isConnected)
+
+                await connection.holdNextChannelOpenWaiterRegistrationForTesting {
+                    await registrationGuard.waitUntilReleased()
+                }
+                let cancelledBeforeRegistration = Task {
+                    try await connection.execute(
+                        "printf cancelled-before-registration",
+                        timeout: .seconds(15))
+                }
+                openTasks.append(cancelledBeforeRegistration)
+                try await requireEventually("the waiter should reach its registration guard") {
+                    await registrationGuard.hasEntered
+                }
+                cancelledBeforeRegistration.cancel()
+                await registrationGuard.release()
+                await #expect(throws: SSHError.cancelled) {
+                    _ = try await cancelledBeforeRegistration.value
+                }
+                #expect(await connection.channelOpenWaiterCountForTesting() == 0)
+
+                await connection.failNextResumedChannelOpenWaiterForTesting(.cancelled)
+                let resumedHead = Task {
+                    try await connection.execute("printf resumed-head", timeout: .seconds(15))
+                }
+                openTasks.append(resumedHead)
+                let resumedFollower = Task {
+                    try await connection.execute("printf resumed-follower", timeout: .seconds(15))
+                }
+                openTasks.append(resumedFollower)
+                try await requireEventually("both channel-open waiters should park") {
+                    await connection.channelOpenWaiterCountForTesting() == 2
+                }
+
+                await slot.release()
+                await park.release()
+                try await write.value
+                let firstResult = try await first.value
+                #expect(firstResult.stdout == Data("first-open".utf8))
+                let resumedHeadResult: Result<SSHExecResult, any Error>
+                do {
+                    resumedHeadResult = .success(try await resumedHead.value)
+                } catch {
+                    resumedHeadResult = .failure(error)
+                }
+                let resumedFollowerResult: Result<SSHExecResult, any Error>
+                do {
+                    resumedFollowerResult = .success(try await resumedFollower.value)
+                } catch {
+                    resumedFollowerResult = .failure(error)
+                }
+                let resumedResults = [resumedHeadResult, resumedFollowerResult]
+                #expect(resumedResults.filter {
+                    if case .success = $0 { return true }
+                    return false
+                }.count == 1)
+                #expect(resumedResults.filter { result in
+                    guard case .failure(let error) = result else { return false }
+                    return error as? SSHError == .cancelled
+                }.count == 1)
+                let ping = try await connection.execute(
+                    "printf after-open-wait",
+                    timeout: .seconds(5))
+                #expect(ping.stdout == Data("after-open-wait".utf8))
+                try await pty.close(timeout: .seconds(5))
+                try await connection.close(timeout: .seconds(2))
             } catch {
-                resumedHeadResult = .failure(error)
+                write.cancel()
+                for task in openTasks { task.cancel() }
+                await registrationGuard.release()
+                await slot.release()
+                await park.release()
+                _ = try? await write.value
+                for task in openTasks { _ = try? await task.value }
+                try? await pty.close(timeout: .seconds(2))
+                try? await connection.close(timeout: .seconds(2))
+                throw error
             }
-            let resumedFollowerResult: Result<SSHExecResult, any Error>
-            do {
-                resumedFollowerResult = .success(try await resumedFollower.value)
-            } catch {
-                resumedFollowerResult = .failure(error)
-            }
-            let resumedResults = [resumedHeadResult, resumedFollowerResult]
-            #expect(resumedResults.filter {
-                if case .success = $0 { return true }
-                return false
-            }.count == 1)
-            #expect(resumedResults.filter { result in
-                guard case .failure(let error) = result else { return false }
-                return error as? SSHError == .cancelled
-            }.count == 1)
-            let ping = try await connection.execute("printf after-open-wait", timeout: .seconds(5))
-            #expect(ping.stdout == Data("after-open-wait".utf8))
-            try await pty.close(timeout: .seconds(5))
-            try await connection.close(timeout: .seconds(2))
         }
     }
 
@@ -1689,8 +1751,7 @@ struct SessionDriverE2ETests {
                 #expect(await connection.isConnected == false)
                 #expect(state.isValid == false)
                 #expect(state.descriptorIsOpen == false)
-                // Failed native reclamation retains pointer ownership for a
-                // later retry; this state snapshot never dereferences it.
+                #expect(state.hasSession == false)
                 await #expect(throws: SSHError.connectionInvalidated) {
                     _ = try await connection.execute("printf poisoned", timeout: .seconds(1))
                 }
@@ -1699,8 +1760,8 @@ struct SessionDriverE2ETests {
             try? await pty.close(timeout: .seconds(2))
             try await connection.close(timeout: .seconds(2))
             if expected == .invalidated {
-                // Closing an already-invalid connection retries the retained
-                // native reclamation without making the session reusable.
+                // Explicit close stays idempotent after synchronous native
+                // reclamation and cannot make the connection reusable.
                 let reclaimedState = await connection.resourceStateForTesting()
                 #expect(reclaimedState == SessionDriverResourceState(
                     hasSession: false,

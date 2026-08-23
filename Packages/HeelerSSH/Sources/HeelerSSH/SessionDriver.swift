@@ -2496,12 +2496,6 @@ actor SessionDriver {
                 throw error
             }
             await acquireOperation()
-#if DEBUG
-            if let error = nextResumedChannelOpenWaiterErrorForTesting {
-                nextResumedChannelOpenWaiterErrorForTesting = nil
-                throw error
-            }
-#endif
             if cancellable {
                 try checkProgress(deadline: deadline)
             } else if ContinuousClock.now >= deadline {
@@ -2530,7 +2524,7 @@ actor SessionDriver {
             do {
                 try await hold()
             } catch {
-                invalidateResources()
+                abandonOwnedSend(owner: owner, drive: drive)
                 return
             }
         }
@@ -2539,7 +2533,7 @@ actor SessionDriver {
         do {
             while transportSendOwner == owner {
                 if ContinuousClock.now >= deadline {
-                    invalidateResources()
+                    abandonOwnedSend(owner: owner, drive: drive)
                     return
                 }
                 guard valid else { return }
@@ -2552,6 +2546,10 @@ actor SessionDriver {
                     result,
                     owner: owner,
                     session: session)
+                if disposition == .invalidate {
+                    abandonOwnedSend(owner: owner, drive: drive)
+                    return
+                }
                 applyTransportSendOwnerDisposition(disposition)
                 if result != LIBSSH2_ERROR_EAGAIN { return }
                 try await waitForSession(
@@ -2560,8 +2558,23 @@ actor SessionDriver {
                     cancellable: false)
             }
         } catch {
-            invalidateResources()
+            abandonOwnedSend(owner: owner, drive: drive)
         }
+    }
+
+    /// Completes the one pending packet through its exact owning call while
+    /// native I/O is redirected locally, then synchronously frees the session.
+    private func abandonOwnedSend(
+        owner: UInt64,
+        drive: () -> Int32?
+    ) {
+        guard transportSendOwner == owner, let session else {
+            invalidateResources()
+            return
+        }
+        heeler_libssh2_prepare_session_abandonment(session)
+        _ = drive()
+        invalidateResources()
     }
 
     private func claimChannelOpenSlot(
@@ -2586,6 +2599,12 @@ actor SessionDriver {
                 throw error
             }
             await acquireOperation()
+#if DEBUG
+            if let error = nextResumedChannelOpenWaiterErrorForTesting {
+                nextResumedChannelOpenWaiterErrorForTesting = nil
+                throw error
+            }
+#endif
             if cancellable {
                 try checkProgress(deadline: deadline)
             } else if ContinuousClock.now >= deadline {
@@ -2597,12 +2616,17 @@ actor SessionDriver {
 #if DEBUG
         if let hold = nextChannelOpenSlotHoldForTesting {
             nextChannelOpenSlotHoldForTesting = nil
+            // Keep the native-open slot claimed while allowing later callers
+            // to reach and observe its waiter queue.
+            releaseOperation()
             do {
                 try await hold()
             } catch {
+                await acquireOperation()
                 releaseChannelOpenSlot()
                 throw error
             }
+            await acquireOperation()
         }
 #endif
     }
