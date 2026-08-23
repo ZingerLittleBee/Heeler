@@ -95,9 +95,11 @@ packet-producing `EAGAIN` is the public signal for it, and `send_existing` runs
 before `_libssh2_transport_send` clears that bit, so the report is conservative
 rather than falsely clear.
 
-Only two things end that ownership: the **exact** owning call returning a
-non-`EAGAIN` result after outbound state is clear, or completed whole-session
-invalidation, which frees
+The **exact** owning call decides how ownership ends. A successful
+non-`EAGAIN` result clears ownership even if libssh2's direction bit is stale.
+A negative result clears only when no outbound block remains; with outbound
+still reported, the caller first reads any native error status it needs and
+then invalidates the whole session. Completed invalidation frees
 `session->packet` along with the session. A cancelled or timed-out Swift task
 is not one of them — the native packet outlives it. `_libssh2_channel_write`
 leaves `write_state` at `libssh2_NB_state_created` on `EAGAIN`, so re-calling
@@ -113,11 +115,13 @@ budget expires. A negative non-`EAGAIN` result while libssh2 still reports
 outbound state also invalidates: clearing the owner in that state would admit
 a foreign producer while the native packet may still be pending.
 
-Channel teardown has its own resource transition. As soon as PTY or
-direct-streamlocal close begins, the registry entry stops accepting reads,
-writes, and resizes. Cleanup may still re-resolve that entry across yielded
-turns, but user I/O cannot interleave with close/free on the same native
-channel.
+Channel teardown has its own resource transition. As soon as PTY exit-status,
+PTY close, or direct-streamlocal close begins, the registry entry stops
+accepting reads, writes, and resizes. Cleanup may still re-resolve that entry
+across yielded turns, but user I/O cannot interleave with close/free on the
+same native channel. PTY close waits for an in-flight exit-status handshake;
+if that handshake fails, ordinary PTY I/O is enabled again so the caller can
+retry or close explicitly.
 
 SFTP is a second exception and a stronger one. `struct _LIBSSH2_SFTP`
 (`src/sftp.h`) carries one continuation slot per operation kind —
@@ -159,7 +163,7 @@ display names exactly:
 - `cancelling a yielded one-shot distinguishes cleanup outcomes`
 - `timing out a yielded one-shot distinguishes cleanup outcomes`
 - `invalidation during a yielding wait does not touch a stale native pointer`
-- `yielded channel teardown rejects same-id I/O`
+- `yielded channel teardown rejects same-id I/O and preserves close`
 - `repeated invalidation reclaims every file descriptor`
 - `measurement: Attach throughput with concurrent RPCs`
 - `SFTP operations and close wait out an in-flight handle use`

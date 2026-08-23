@@ -186,11 +186,13 @@ ownership too eagerly costs concurrency, while recording it too late strands
 the owner behind a caller that can never make progress and can only end at its
 own deadline.
 
-Ownership ends in exactly two ways, and a caller giving up is neither of them.
-The exact owning call returning a non-`EAGAIN` result with no outbound state
-remaining is one; completed
-whole-session invalidation, which reclaims the session and its pending packet
-together, is the other. Cancellation or a deadline observed while that call is
+Ownership ends only from the exact owning call or whole-session invalidation,
+and a caller giving up is neither. A successful non-`EAGAIN` result clears the
+owner regardless of a possibly stale outbound direction bit. A negative
+non-`EAGAIN` result clears only when no outbound block remains; otherwise the
+caller captures any native error status first and then invalidates the session.
+Completed whole-session invalidation reclaims the session and its pending
+packet together. Cancellation or a deadline observed while that call is
 parked clears nothing by itself, because the native packet outlives the task
 that produced it and the next producer or cleanup call to enter meets the same
 refusal and rebuilds the livelock. An operation cancelled or timed out while it
@@ -232,11 +234,14 @@ replaces the caller's own. Channel admission is unchanged too: a lease is held
 for a channel's whole lifetime, and yielding the operation mutex mid-turn
 neither releases one nor creates capacity for another.
 
-Close is an explicit resource transition. Before a PTY or direct-streamlocal
-teardown yields, its registry entry stops accepting user reads, writes, and
-resizes. The cleanup operation alone may re-resolve the entry while closing,
-so close/free cannot race same-id I/O even though unrelated resources can keep
-using the session.
+Close is an explicit resource transition. Before PTY exit-status, PTY close,
+or direct-streamlocal teardown yields, its registry entry stops accepting user
+reads, writes, and resizes. The cleanup operation alone may re-resolve the
+entry while closing, so close/free cannot race same-id I/O even though
+unrelated resources can keep using the session. PTY close waits for an
+in-flight exit-status handshake instead of treating it as an already-complete
+close; exit-status failure restores ordinary I/O eligibility so the caller can
+retry or close explicitly.
 
 The native dependencies will be built without the OpenSSL legacy provider and
 will not enable obsolete SSH-DSS, SHA-1 SSH-RSA, CBC, group1, or equivalent

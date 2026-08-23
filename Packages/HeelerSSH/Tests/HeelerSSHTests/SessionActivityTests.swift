@@ -33,4 +33,9 @@ func transportSendOwnerErrorWithOutboundPendingInvalidates() {
             result: -37,
             isCurrentOwner: false,
             hasOutbound: true) == .unchanged)
+    #expect(
+        SessionDriver.transportSendOwnerDisposition(
+            result: 0,
+            isCurrentOwner: true,
+            hasOutbound: true) == .clear)
 }

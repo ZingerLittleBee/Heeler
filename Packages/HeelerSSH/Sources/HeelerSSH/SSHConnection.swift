@@ -320,6 +320,12 @@ public final class SSHConnection: Sendable {
         await driver.failNextResumedChannelOpenWaiterForTesting(error)
     }
 
+    func holdNextChannelOpenWaiterRegistrationForTesting(
+        _ hold: @escaping @Sendable () async -> Void
+    ) async {
+        await driver.holdNextChannelOpenWaiterRegistrationForTesting(hold)
+    }
+
     public func holdEachSessionWaitForTesting(
         _ hold: @escaping @Sendable () async -> Void
     ) async {
@@ -340,6 +346,14 @@ public final class SSHConnection: Sendable {
 
     public func channelOpenWaiterCountForTesting() async -> Int {
         await driver.channelOpenWaiterCountForTesting()
+    }
+
+    func ptyTeardownWaiterCountForTesting() async -> Int {
+        await driver.ptyTeardownWaiterCountForTesting()
+    }
+
+    func ptyChannelCountForTesting() async -> Int {
+        await driver.ptyChannelCountForTesting()
     }
 
     public func startSamplingTransportSendOwnerForTesting() async {

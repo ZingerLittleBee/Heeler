@@ -10,6 +10,11 @@ actor SessionDriver {
         case invalidate
     }
 
+    private struct PacketOperationResult {
+        let code: Int32
+        let disposition: TransportSendOwnerDisposition
+    }
+
     static let hostKeyAlgorithms = [
         "ssh-ed25519",
         "ecdsa-sha2-nistp384",
@@ -112,7 +117,13 @@ actor SessionDriver {
         let continuation: CheckedContinuation<Void, any Error>
         let deadlineTask: Task<Void, Never>
     }
+    private struct PTYTeardownWaiter {
+        let ptyID: UInt64
+        let waiter: DriverWaiter
+    }
     private var channelOpenWaiters: [UInt64: DriverWaiter] = [:]
+    private var nextPTYTeardownWaiterID: UInt64 = 0
+    private var ptyTeardownWaiters: [UInt64: PTYTeardownWaiter] = [:]
     private var sftpUses: [UInt64: Int] = [:]
     private var nextSFTPIdleWaiterID: UInt64 = 0
     private var sftpIdleWaiters: [UInt64: DriverWaiter] = [:]
@@ -134,6 +145,7 @@ actor SessionDriver {
     private var nextChannelOpenSlotHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextChannelTeardownHoldForTesting: (@Sendable () async -> Void)?
     private var nextResumedChannelOpenWaiterErrorForTesting: SSHError?
+    private var nextChannelOpenWaiterRegistrationHoldForTesting: (@Sendable () async -> Void)?
     private var eachSessionWaitHoldForTesting: (@Sendable () async -> Void)?
     private var ownerSamplesForTesting: [TransportSendOwnerSample]?
     private var shouldFailNextSFTPInitBeforeEAGAINForTesting = false
@@ -494,7 +506,11 @@ actor SessionDriver {
                 let session = try requireSession()
                 let channel = try resolveChannel(.pty(id))
                 let written = writeChannel(channel, data: data, offset: offset)
-                notePacketProducingWrite(written, owner: owner, session: session)
+                let disposition = notePacketProducingWrite(
+                    written,
+                    owner: owner,
+                    session: session)
+                applyTransportSendOwnerDisposition(disposition)
                 guard written >= 0 || written == Int(LIBSSH2_ERROR_EAGAIN) else {
                     throw SSHError.channelFailed
                 }
@@ -645,9 +661,12 @@ actor SessionDriver {
                 allowClosing: true)
             ptyChannels[id]?.closed = true
             ptyChannels[id]?.teardownInProgress = false
+            wakePTYTeardownWaiters(for: id)
             return exitStatus
         } catch {
+            ptyChannels[id]?.acceptsIO = true
             ptyChannels[id]?.teardownInProgress = false
+            wakePTYTeardownWaiters(for: id)
             throw error
         }
     }
@@ -656,12 +675,24 @@ actor SessionDriver {
         await acquireOperation()
         defer { releaseOperation() }
 
+        guard ptyChannels[id] != nil else { return }
+        guard valid, session != nil else {
+            ptyChannels.removeValue(forKey: id)
+            wakePTYTeardownWaiters(for: id)
+            return
+        }
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        do {
+            try await waitUntilPTYTeardownCompletes(id: id, deadline: deadline)
+        } catch {
+            throw normalize(error)
+        }
         guard var state = ptyChannels[id] else { return }
         guard valid, session != nil else {
             ptyChannels.removeValue(forKey: id)
+            wakePTYTeardownWaiters(for: id)
             return
         }
-        guard !state.teardownInProgress else { return }
         state.acceptsIO = false
         state.teardownInProgress = true
         ptyChannels[id] = state
@@ -669,7 +700,6 @@ actor SessionDriver {
         await holdChannelTeardownForTestingIfNeeded()
 #endif
         do {
-            let deadline = ContinuousClock.now.advanced(by: timeout)
             if ptyChannels[id]?.closed == true {
                 let freeResult = try await repeatUntilCompleteYielding(
                     deadline: deadline,
@@ -688,8 +718,10 @@ actor SessionDriver {
                     allowClosing: true)
             }
             ptyChannels.removeValue(forKey: id)
+            wakePTYTeardownWaiters(for: id)
         } catch {
             ptyChannels.removeValue(forKey: id)
+            wakePTYTeardownWaiters(for: id)
             throw teardownFailure(error)
         }
     }
@@ -852,7 +884,11 @@ actor SessionDriver {
                 let session = try requireSession()
                 let channel = try resolveChannel(.streamLocal(id))
                 let written = writeChannel(channel, data: data, offset: offset)
-                notePacketProducingWrite(written, owner: owner, session: session)
+                let disposition = notePacketProducingWrite(
+                    written,
+                    owner: owner,
+                    session: session)
+                applyTransportSendOwnerDisposition(disposition)
                 guard written >= 0 || written == Int(LIBSSH2_ERROR_EAGAIN) else {
                     throw SSHError.channelFailed
                 }
@@ -1006,14 +1042,22 @@ actor SessionDriver {
 #endif
                 let session = try requireSession()
                 if let sftp = libssh2_sftp_init(session) {
-                    notePacketProducingResult(0, owner: owner, session: session)
+                    let disposition = notePacketProducingResult(
+                        0,
+                        owner: owner,
+                        session: session)
+                    applyTransportSendOwnerDisposition(disposition)
                     nextSFTPID &+= 1
                     let id = nextSFTPID
                     sftpClients[id] = SFTPState(handle: sftp)
                     return SSHSFTPClient(id: id, driver: self)
                 }
                 let error = libssh2_session_last_errno(session)
-                notePacketProducingResult(error, owner: owner, session: session)
+                let disposition = notePacketProducingResult(
+                    error,
+                    owner: owner,
+                    session: session)
+                applyTransportSendOwnerDisposition(disposition)
                 if error == LIBSSH2_ERROR_EAGAIN {
                     initWasPending = true
                     try await waitForSession(session, deadline: deadline)
@@ -1198,7 +1242,11 @@ actor SessionDriver {
                     Int32(LIBSSH2_SFTP_OPENFILE))
             }
             if let file {
-                notePacketProducingResult(0, owner: owner, session: session)
+                let disposition = notePacketProducingResult(
+                    0,
+                    owner: owner,
+                    session: session)
+                applyTransportSendOwnerDisposition(disposition)
                 nextSFTPFileID &+= 1
                 let fileID = nextSFTPFileID
                 sftpClients[sftpID]?.files[fileID] = file
@@ -1206,10 +1254,10 @@ actor SessionDriver {
             }
 
             let error = libssh2_session_last_errno(session)
-            let openFailure = error == LIBSSH2_ERROR_EAGAIN
-                ? nil
-                : classifyDirectTCPIPOpenFailure(session)
-            notePacketProducingResult(error, owner: owner, session: session)
+            let disposition = notePacketProducingResult(
+                error,
+                owner: owner,
+                session: session)
             if error == LIBSSH2_ERROR_EAGAIN {
                 try await waitForSession(session, deadline: deadline)
                 continue
@@ -1219,6 +1267,8 @@ actor SessionDriver {
                 throw SSHError.connectionInvalidated
             }
             let status = UInt64(libssh2_sftp_last_error(sftp))
+            applyTransportSendOwnerDisposition(disposition)
+            if disposition == .invalidate { throw SSHError.connectionInvalidated }
             if status == UInt64(LIBSSH2_FX_NO_SUCH_FILE) { return nil }
             throw SSHError.sftpFailure(status: status)
         }
@@ -1261,10 +1311,18 @@ actor SessionDriver {
                         baseAddress.assumingMemoryBound(to: CChar.self),
                         bytes.count)
                 }
-                notePacketProducingWrite(read, owner: owner, session: session)
+                let disposition = notePacketProducingWrite(
+                    read,
+                    owner: owner,
+                    session: session)
                 if read < 0, read != Int(LIBSSH2_ERROR_EAGAIN) {
-                    throw mappedSFTPError(sftp: state.handle, code: Int32(read))
+                    let mappedError = mappedSFTPError(
+                        sftp: state.handle,
+                        code: Int32(read))
+                    applyTransportSendOwnerDisposition(disposition)
+                    throw mappedError
                 }
+                applyTransportSendOwnerDisposition(disposition)
                 progress = (
                     read > 0 ? Data(buffer.prefix(read)) : Data(),
                     read == 0,
@@ -1343,18 +1401,27 @@ actor SessionDriver {
                     Int32(LIBSSH2_SFTP_OPENFILE))
             }
             if let file {
-                notePacketProducingResult(0, owner: owner, session: session)
+                let disposition = notePacketProducingResult(
+                    0,
+                    owner: owner,
+                    session: session)
+                applyTransportSendOwnerDisposition(disposition)
                 nextSFTPFileID &+= 1
                 let fileID = nextSFTPFileID
                 sftpClients[sftpID]?.files[fileID] = file
                 return SSHSFTPFile(sftpID: sftpID, fileID: fileID, driver: self)
             }
             let error = libssh2_session_last_errno(session)
-            notePacketProducingResult(error, owner: owner, session: session)
+            let disposition = notePacketProducingResult(
+                error,
+                owner: owner,
+                session: session)
             if error == LIBSSH2_ERROR_EAGAIN {
                 try await waitForSession(session, deadline: deadline)
             } else {
-                throw mappedSFTPError(sftp: sftp, code: error)
+                let mappedError = mappedSFTPError(sftp: sftp, code: error)
+                applyTransportSendOwnerDisposition(disposition)
+                throw mappedError
             }
         }
         } catch {
@@ -1412,10 +1479,18 @@ actor SessionDriver {
                             baseAddress.advanced(by: offset).assumingMemoryBound(to: CChar.self),
                             data.count - offset)
                     }
-                    notePacketProducingWrite(written, owner: owner, session: session)
+                    let disposition = notePacketProducingWrite(
+                        written,
+                        owner: owner,
+                        session: session)
                     if written < 0, written != Int(LIBSSH2_ERROR_EAGAIN) {
-                        throw mappedSFTPError(sftp: state.handle, code: Int32(written))
+                        let mappedError = mappedSFTPError(
+                            sftp: state.handle,
+                            code: Int32(written))
+                        applyTransportSendOwnerDisposition(disposition)
+                        throw mappedError
                     }
+                    applyTransportSendOwnerDisposition(disposition)
                     progress = (written, sessionWaitPlan(session))
                     releaseOperation()
                 } catch {
@@ -1628,16 +1703,21 @@ actor SessionDriver {
                 libssh2_sftp_unlink_ex(sftp, pathPointer, UInt32(path.utf8.count))
             }
         }
-        if result != 0 {
-            if Self.isConnectionLoss(result) { throw SSHError.connectionInvalidated }
-            let status = UInt64(libssh2_sftp_last_error(sftp))
-            guard verifyAbsence, status == UInt64(LIBSSH2_FX_NO_SUCH_FILE) else {
-                try checkSFTPResult(result, sftp: sftp, session: session)
-                return
+        if result.code != 0 {
+            if Self.isConnectionLoss(result.code) {
+                applyTransportSendOwnerDisposition(result.disposition)
+                throw SSHError.connectionInvalidated
             }
+            let status = UInt64(libssh2_sftp_last_error(sftp))
+            applyTransportSendOwnerDisposition(result.disposition)
+            if result.disposition == .invalidate { throw SSHError.connectionInvalidated }
+            guard verifyAbsence, status == UInt64(LIBSSH2_FX_NO_SUCH_FILE) else {
+                throw SSHError.sftpFailure(status: status)
+            }
+        } else {
+            applyTransportSendOwnerDisposition(result.disposition)
         }
         guard verifyAbsence else {
-            try checkSFTPResult(result, sftp: sftp, session: session)
             return
         }
 
@@ -1656,12 +1736,19 @@ actor SessionDriver {
                     &attributes)
             }
         }
-        if statResult == 0 { throw SSHError.channelFailed }
-        if Self.isConnectionLoss(statResult) { throw SSHError.connectionInvalidated }
+        if statResult.code == 0 {
+            applyTransportSendOwnerDisposition(statResult.disposition)
+            throw SSHError.channelFailed
+        }
+        if Self.isConnectionLoss(statResult.code) {
+            applyTransportSendOwnerDisposition(statResult.disposition)
+            throw SSHError.connectionInvalidated
+        }
         let status = UInt64(libssh2_sftp_last_error(sftp))
+        applyTransportSendOwnerDisposition(statResult.disposition)
+        if statResult.disposition == .invalidate { throw SSHError.connectionInvalidated }
         guard status == UInt64(LIBSSH2_FX_NO_SUCH_FILE) else {
-            try checkSFTPResult(statResult, sftp: sftp, session: session)
-            return
+            throw SSHError.sftpFailure(status: status)
         }
         guard valid, self.session == session else {
             throw SSHError.connectionInvalidated
@@ -1859,6 +1946,12 @@ actor SessionDriver {
         nextResumedChannelOpenWaiterErrorForTesting = error
     }
 
+    func holdNextChannelOpenWaiterRegistrationForTesting(
+        _ hold: @escaping @Sendable () async -> Void
+    ) {
+        nextChannelOpenWaiterRegistrationHoldForTesting = hold
+    }
+
     func holdEachSessionWaitForTesting(
         _ hold: @escaping @Sendable () async -> Void
     ) {
@@ -1879,6 +1972,18 @@ actor SessionDriver {
 
     func channelOpenWaiterCountForTesting() -> Int {
         channelOpenWaiters.count
+    }
+
+    func ptyTeardownWaiterCountForTesting() -> Int {
+        ptyTeardownWaiters.count
+    }
+
+    func ptyChannelCountForTesting() -> Int {
+        ptyChannels.count
+    }
+
+    func ptyAcceptsIOForTesting(id: UInt64) -> Bool {
+        ptyChannels[id]?.acceptsIO == true
     }
 
     func startSamplingTransportSendOwnerForTesting() {
@@ -2068,12 +2173,22 @@ actor SessionDriver {
                     0)
             }
             if let channel {
-                notePacketProducingResult(0, owner: owner, session: session)
+                let disposition = notePacketProducingResult(
+                    0,
+                    owner: owner,
+                    session: session)
+                applyTransportSendOwnerDisposition(disposition)
                 return channel
             }
 
             let error = libssh2_session_last_errno(session)
-            notePacketProducingResult(error, owner: owner, session: session)
+            let openFailure = error == LIBSSH2_ERROR_EAGAIN
+                ? nil
+                : classifyDirectTCPIPOpenFailure(session)
+            let disposition = notePacketProducingResult(
+                error,
+                owner: owner,
+                session: session)
             if error == LIBSSH2_ERROR_EAGAIN {
                 do {
                     try await waitForSession(session, deadline: deadline)
@@ -2082,6 +2197,7 @@ actor SessionDriver {
                     throw error
                 }
             } else {
+                applyTransportSendOwnerDisposition(disposition)
                 throw openFailure ?? SSHError.channelFailed
             }
         }
@@ -2330,25 +2446,20 @@ actor SessionDriver {
         _ result: Int32,
         owner: UInt64,
         session: OpaquePointer
-    ) {
+    ) -> TransportSendOwnerDisposition {
         if result == LIBSSH2_ERROR_EAGAIN {
             if sessionReportsOutbound(session), transportSendOwner == nil {
                 transportSendOwner = owner
             }
-        } else {
-            switch Self.transportSendOwnerDisposition(
-                result: result,
-                isCurrentOwner: transportSendOwner == owner,
-                hasOutbound: sessionReportsOutbound(session))
-            {
-            case .unchanged:
-                break
-            case .clear:
-                transportSendOwner = nil
-            case .invalidate:
-                invalidateResources()
-            }
+            return .unchanged
         }
+        guard transportSendOwner == owner else { return .unchanged }
+        let disposition = Self.transportSendOwnerDisposition(
+            result: result,
+            isCurrentOwner: true,
+            hasOutbound: sessionReportsOutbound(session))
+        if disposition == .clear { transportSendOwner = nil }
+        return disposition
     }
 
     static func transportSendOwnerDisposition(
@@ -2361,17 +2472,29 @@ actor SessionDriver {
         return .clear
     }
 
+    private func applyTransportSendOwnerDisposition(
+        _ disposition: TransportSendOwnerDisposition
+    ) {
+        if disposition == .invalidate { invalidateResources() }
+    }
+
     private func notePacketProducingWrite(
         _ written: Int,
         owner: UInt64,
         session: OpaquePointer
-    ) {
+    ) -> TransportSendOwnerDisposition {
         if written == Int(LIBSSH2_ERROR_EAGAIN) {
-            notePacketProducingResult(LIBSSH2_ERROR_EAGAIN, owner: owner, session: session)
+            return notePacketProducingResult(
+                LIBSSH2_ERROR_EAGAIN,
+                owner: owner,
+                session: session)
         } else if written >= 0 {
-            notePacketProducingResult(0, owner: owner, session: session)
+            return notePacketProducingResult(0, owner: owner, session: session)
         } else {
-            notePacketProducingResult(Int32(clamping: written), owner: owner, session: session)
+            return notePacketProducingResult(
+                Int32(clamping: written),
+                owner: owner,
+                session: session)
         }
     }
 
@@ -2449,7 +2572,11 @@ actor SessionDriver {
                     return
                 }
                 let session = try requireSession()
-                notePacketProducingResult(result, owner: owner, session: session)
+                let disposition = notePacketProducingResult(
+                    result,
+                    owner: owner,
+                    session: session)
+                applyTransportSendOwnerDisposition(disposition)
                 if result != LIBSSH2_ERROR_EAGAIN { return }
                 try await waitForSession(
                     session,
@@ -2511,6 +2638,9 @@ actor SessionDriver {
     ) async throws {
         if cancellable {
             try await withTaskCancellationHandler {
+#if DEBUG
+                await holdChannelOpenWaiterRegistrationForTestingIfNeeded()
+#endif
                 try await parkChannelOpenWaiterUntilDeadline(
                     id: id,
                     deadline: deadline,
@@ -2543,7 +2673,7 @@ actor SessionDriver {
                 } catch {
                     return
                 }
-                await self.resumeChannelOpenWaiter(id: id, .failure(SSHError.timedOut))
+                self.resumeChannelOpenWaiter(id: id, .failure(SSHError.timedOut))
             }
             channelOpenWaiters[id] = DriverWaiter(
                 continuation: continuation,
@@ -2560,10 +2690,7 @@ actor SessionDriver {
 
     private func releaseChannelOpenSlot() {
         channelOpenInProgress = false
-        let ids = Array(channelOpenWaiters.keys)
-        for id in ids {
-            resumeChannelOpenWaiter(id: id, .success(()))
-        }
+        resumeAllChannelOpenWaiters()
     }
 
     private func resumeAllChannelOpenWaiters() {
@@ -2571,6 +2698,76 @@ actor SessionDriver {
         for id in ids {
             resumeChannelOpenWaiter(id: id, .success(()))
         }
+    }
+
+    private func waitUntilPTYTeardownCompletes(
+        id: UInt64,
+        deadline: ContinuousClock.Instant
+    ) async throws {
+        while ptyChannels[id]?.teardownInProgress == true {
+            guard ContinuousClock.now < deadline else { throw SSHError.timedOut }
+            nextPTYTeardownWaiterID &+= 1
+            let waiterID = nextPTYTeardownWaiterID
+            do {
+                try await parkPTYTeardownWaiter(
+                    id: waiterID,
+                    ptyID: id,
+                    deadline: deadline)
+            } catch {
+                await acquireOperation()
+                throw error
+            }
+            await acquireOperation()
+            guard ContinuousClock.now < deadline else { throw SSHError.timedOut }
+            guard valid else { throw SSHError.connectionInvalidated }
+        }
+    }
+
+    private func parkPTYTeardownWaiter(
+        id: UInt64,
+        ptyID: UInt64,
+        deadline: ContinuousClock.Instant
+    ) async throws {
+        try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<Void, any Error>) in
+            let deadlineTask = Task {
+                do {
+                    try await Task.sleep(until: deadline, clock: .continuous)
+                } catch {
+                    return
+                }
+                self.resumePTYTeardownWaiter(
+                    id: id,
+                    .failure(SSHError.timedOut))
+            }
+            ptyTeardownWaiters[id] = PTYTeardownWaiter(
+                ptyID: ptyID,
+                waiter: DriverWaiter(
+                    continuation: continuation,
+                    deadlineTask: deadlineTask))
+            releaseOperation()
+        }
+    }
+
+    private func resumePTYTeardownWaiter(
+        id: UInt64,
+        _ result: Result<Void, any Error>
+    ) {
+        guard let entry = ptyTeardownWaiters.removeValue(forKey: id) else { return }
+        entry.waiter.deadlineTask.cancel()
+        entry.waiter.continuation.resume(with: result)
+    }
+
+    private func wakePTYTeardownWaiters(for ptyID: UInt64) {
+        let ids = ptyTeardownWaiters.compactMap { id, entry in
+            entry.ptyID == ptyID ? id : nil
+        }
+        for id in ids { resumePTYTeardownWaiter(id: id, .success(())) }
+    }
+
+    private func resumeAllPTYTeardownWaiters() {
+        let ids = Array(ptyTeardownWaiters.keys)
+        for id in ids { resumePTYTeardownWaiter(id: id, .success(())) }
     }
 
     private func registerOneShot(
@@ -2756,12 +2953,22 @@ actor SessionDriver {
                 nil,
                 0)
             {
-                notePacketProducingResult(0, owner: owner, session: session)
+                let disposition = notePacketProducingResult(
+                    0,
+                    owner: owner,
+                    session: session)
+                applyTransportSendOwnerDisposition(disposition)
                 return channel
             }
             let error = libssh2_session_last_errno(session)
-            notePacketProducingResult(error, owner: owner, session: session)
-            guard error == LIBSSH2_ERROR_EAGAIN else { throw SSHError.channelFailed }
+            let disposition = notePacketProducingResult(
+                error,
+                owner: owner,
+                session: session)
+            guard error == LIBSSH2_ERROR_EAGAIN else {
+                applyTransportSendOwnerDisposition(disposition)
+                throw SSHError.channelFailed
+            }
             do {
                 try await waitForSession(session, deadline: deadline)
             } catch {
@@ -2802,12 +3009,19 @@ actor SessionDriver {
                     0)
             }
             if let channel {
-                notePacketProducingResult(0, owner: owner, session: session)
+                let disposition = notePacketProducingResult(
+                    0,
+                    owner: owner,
+                    session: session)
+                applyTransportSendOwnerDisposition(disposition)
                 return channel
             }
 
             let error = libssh2_session_last_errno(session)
-            notePacketProducingResult(error, owner: owner, session: session)
+            let disposition = notePacketProducingResult(
+                error,
+                owner: owner,
+                session: session)
             if error == LIBSSH2_ERROR_EAGAIN {
                 do {
                     try await waitForSession(session, deadline: deadline)
@@ -2816,6 +3030,7 @@ actor SessionDriver {
                     throw error
                 }
             } else {
+                applyTransportSendOwnerDisposition(disposition)
                 throw Self.mappedStreamLocalOpenError(error)
             }
         }
@@ -2944,7 +3159,11 @@ actor SessionDriver {
                     let channel = try resolveChannel(identity)
                     let session = try requireSession()
                     let written = writeChannel(channel, data: input, offset: inputOffset)
-                    notePacketProducingWrite(written, owner: writeOwner, session: session)
+                    let disposition = notePacketProducingWrite(
+                        written,
+                        owner: writeOwner,
+                        session: session)
+                    applyTransportSendOwnerDisposition(disposition)
                     if written > 0 {
                         inputOffset += written
                         madeProgress = true
@@ -2961,7 +3180,11 @@ actor SessionDriver {
                     let channel = try resolveChannel(identity)
                     let session = try requireSession()
                     let result = libssh2_channel_send_eof(channel)
-                    notePacketProducingResult(result, owner: eofOwner, session: session)
+                    let disposition = notePacketProducingResult(
+                        result,
+                        owner: eofOwner,
+                        session: session)
+                    applyTransportSendOwnerDisposition(disposition)
                     if result == 0 {
                         sentEOF = true
                         madeProgress = true
@@ -3086,7 +3309,11 @@ actor SessionDriver {
                     let channel = try resolveChannel(identity)
                     let session = try requireSession()
                     let written = writeChannel(channel, data: request, offset: requestOffset)
-                    notePacketProducingWrite(written, owner: writeOwner, session: session)
+                    let disposition = notePacketProducingWrite(
+                        written,
+                        owner: writeOwner,
+                        session: session)
+                    applyTransportSendOwnerDisposition(disposition)
                     if written > 0 {
                         requestOffset += written
                         madeProgress = true
@@ -3178,7 +3405,11 @@ actor SessionDriver {
         session: OpaquePointer
     ) throws -> Data {
         let count = rawChannelRead(channel: channel, stream: stream, buffer: &buffer)
-        notePacketProducingWrite(count, owner: owner, session: session)
+        let disposition = notePacketProducingWrite(
+            count,
+            owner: owner,
+            session: session)
+        applyTransportSendOwnerDisposition(disposition)
         if count > 0 { return Data(buffer.prefix(count)) }
         if count == 0 || count == Int(LIBSSH2_ERROR_EAGAIN) { return Data() }
         throw SSHError.channelFailed
@@ -3418,7 +3649,7 @@ actor SessionDriver {
                 } catch {
                     return
                 }
-                await self.resumeSFTPIdleWaiter(id: id, .failure(SSHError.timedOut))
+                self.resumeSFTPIdleWaiter(id: id, .failure(SSHError.timedOut))
             }
             sftpIdleWaiters[id] = DriverWaiter(
                 continuation: continuation,
@@ -3514,8 +3745,14 @@ actor SessionDriver {
                 drive: operation)
             let session = try requireSession()
             let result = operation()
-            notePacketProducingResult(result, owner: owner, session: session)
-            if result != LIBSSH2_ERROR_EAGAIN { return result }
+            let disposition = notePacketProducingResult(
+                result,
+                owner: owner,
+                session: session)
+            if result != LIBSSH2_ERROR_EAGAIN {
+                applyTransportSendOwnerDisposition(disposition)
+                return result
+            }
             do {
                 try await waitForSession(
                     session,
@@ -3534,7 +3771,7 @@ actor SessionDriver {
         deadline: ContinuousClock.Instant,
         cancellable: Bool = true,
         _ operation: (OpaquePointer) -> Int32
-    ) async throws -> Int32 {
+    ) async throws -> PacketOperationResult {
         try await waitUntilSFTPIdle(
             id: id,
             deadline: deadline,
@@ -3566,8 +3803,15 @@ actor SessionDriver {
             }
             let session = try requireSession()
             let result = operation(sftp)
-            notePacketProducingResult(result, owner: owner, session: session)
-            if result != LIBSSH2_ERROR_EAGAIN { return result }
+            let disposition = notePacketProducingResult(
+                result,
+                owner: owner,
+                session: session)
+            if result != LIBSSH2_ERROR_EAGAIN {
+                return PacketOperationResult(
+                    code: result,
+                    disposition: disposition)
+            }
             do {
                 try await waitForSession(
                     session,
@@ -3604,8 +3848,14 @@ actor SessionDriver {
             }
             let session = try requireSession()
             let result = operation()
-            notePacketProducingResult(result, owner: owner, session: session)
-            if result != LIBSSH2_ERROR_EAGAIN { return result }
+            let disposition = notePacketProducingResult(
+                result,
+                owner: owner,
+                session: session)
+            if result != LIBSSH2_ERROR_EAGAIN {
+                applyTransportSendOwnerDisposition(disposition)
+                return result
+            }
             do {
                 try await waitForSession(
                     session,
@@ -3651,8 +3901,14 @@ actor SessionDriver {
             let channel = try resolveChannel(identity, allowClosing: allowClosing)
             let session = try requireSession()
             let result = operation(channel)
-            notePacketProducingResult(result, owner: owner, session: session)
-            if result != LIBSSH2_ERROR_EAGAIN { return result }
+            let disposition = notePacketProducingResult(
+                result,
+                owner: owner,
+                session: session)
+            if result != LIBSSH2_ERROR_EAGAIN {
+                applyTransportSendOwnerDisposition(disposition)
+                return result
+            }
             let plan = sessionWaitPlan(session)
             releaseOperation()
             do {
@@ -3674,7 +3930,7 @@ actor SessionDriver {
         deadline: ContinuousClock.Instant,
         cancellable: Bool,
         _ operation: () -> Int32
-    ) async throws -> Int32 {
+    ) async throws -> PacketOperationResult {
         let owner = allocateTransportSendOwner()
         while true {
             try await checkProgressFinishingOwnedSend(
@@ -3687,8 +3943,15 @@ actor SessionDriver {
 #if DEBUG
             try await runCompensationPhaseHookForTestingIfNeeded(phase)
 #endif
-            notePacketProducingResult(result, owner: owner, session: session)
-            if result != LIBSSH2_ERROR_EAGAIN { return result }
+            let disposition = notePacketProducingResult(
+                result,
+                owner: owner,
+                session: session)
+            if result != LIBSSH2_ERROR_EAGAIN {
+                return PacketOperationResult(
+                    code: result,
+                    disposition: disposition)
+            }
             do {
                 try await waitForSession(
                     session,
@@ -3702,6 +3965,12 @@ actor SessionDriver {
     }
 
 #if DEBUG
+    private func holdChannelOpenWaiterRegistrationForTestingIfNeeded() async {
+        guard let hold = nextChannelOpenWaiterRegistrationHoldForTesting else { return }
+        nextChannelOpenWaiterRegistrationHoldForTesting = nil
+        await hold()
+    }
+
     private func holdChannelTeardownForTestingIfNeeded() async {
         guard let hold = nextChannelTeardownHoldForTesting else { return }
         nextChannelTeardownHoldForTesting = nil
@@ -3817,6 +4086,19 @@ actor SessionDriver {
         try checkSFTPResult(result, sftp: sftp, session: session)
     }
 
+    private func checkSFTPResult(
+        _ result: PacketOperationResult,
+        sftpID: UInt64
+    ) throws {
+        do {
+            try checkSFTPResult(result.code, sftpID: sftpID)
+        } catch {
+            applyTransportSendOwnerDisposition(result.disposition)
+            throw error
+        }
+        applyTransportSendOwnerDisposition(result.disposition)
+    }
+
     private func mappedSFTPError(sftp: OpaquePointer, code: Int32) -> SSHError {
         if Self.isConnectionLoss(code) { return .connectionInvalidated }
         return .sftpFailure(status: UInt64(libssh2_sftp_last_error(sftp)))
@@ -3886,6 +4168,7 @@ actor SessionDriver {
         oneShotChannels.removeAll()
         channelOpenInProgress = false
         resumeAllChannelOpenWaiters()
+        resumeAllPTYTeardownWaiters()
         wakeSFTPIdleWaiters()
         activity.releaseAllWaiters()
         InvalidatedSessionTeardown.reclaim(&session)

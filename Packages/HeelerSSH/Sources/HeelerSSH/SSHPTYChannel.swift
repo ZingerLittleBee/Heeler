@@ -52,6 +52,12 @@ public final class SSHPTYChannel: Sendable {
         try await driver.closePTY(id: id, timeout: timeout)
     }
 
+#if DEBUG
+    func acceptsIOForTesting() async -> Bool {
+        await driver.ptyAcceptsIOForTesting(id: id)
+    }
+#endif
+
     deinit {
         let id = id
         let driver = driver

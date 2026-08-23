@@ -1132,8 +1132,8 @@ struct SessionDriverE2ETests {
         #expect(state.hasSession == false)
     }
 
-    @Test("yielded channel teardown rejects same-id I/O")
-    func yieldedChannelTeardownRejectsSameIDIO() async throws {
+    @Test("yielded channel teardown rejects same-id I/O and preserves close")
+    func yieldedChannelTeardownRejectsSameIDIOAndPreservesClose() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
         let socketPath = try #require(SessionDriverTestEnvironment.streamLocalSocketPath)
         let connection = try await environment.connect()
@@ -1162,6 +1162,58 @@ struct SessionDriverE2ETests {
         }
         await ptyTeardown.release()
         try await closePTY.value
+
+        let exitingPTY = try await connection.openPTY(
+            command: "sh -c 'exit 7'",
+            columns: 80,
+            rows: 24,
+            timeout: .seconds(5))
+        while try await exitingPTY.read(timeout: .seconds(5)) != nil {}
+        let exitStatusTeardown = SessionWaitHold()
+        await connection.holdNextChannelTeardownForTesting {
+            await exitStatusTeardown.waitUntilReleased()
+        }
+        let exitStatus = Task {
+            try await exitingPTY.exitStatus(timeout: .seconds(5))
+        }
+        try await waitUntilTrue("exit status should suspend during teardown") {
+            await exitStatusTeardown.hasEntered
+        }
+        let closeExitingPTY = Task {
+            try await exitingPTY.close(timeout: .seconds(5))
+        }
+        try await waitUntilTrue("close should wait for exit-status teardown") {
+            await connection.ptyTeardownWaiterCountForTesting() == 1
+        }
+        #expect(await connection.ptyChannelCountForTesting() == 1)
+        await exitStatusTeardown.release()
+        #expect(try await exitStatus.value == 7)
+        try await closeExitingPTY.value
+        #expect(await connection.ptyChannelCountForTesting() == 0)
+
+        let retryablePTY = try await connection.openPTY(
+            command: "sh -c 'exit 0'",
+            columns: 80,
+            rows: 24,
+            timeout: .seconds(5))
+        while try await retryablePTY.read(timeout: .seconds(5)) != nil {}
+        let failedExitStatusTeardown = SessionWaitHold()
+        await connection.holdNextChannelTeardownForTesting {
+            await failedExitStatusTeardown.waitUntilReleased()
+        }
+        let failedExitStatus = Task {
+            try await retryablePTY.exitStatus(timeout: .milliseconds(50))
+        }
+        try await waitUntilTrue("the failing exit status should suspend") {
+            await failedExitStatusTeardown.hasEntered
+        }
+        try await Task.sleep(for: .milliseconds(75))
+        await failedExitStatusTeardown.release()
+        await #expect(throws: SSHError.timedOut) {
+            _ = try await failedExitStatus.value
+        }
+        #expect(await retryablePTY.acceptsIOForTesting())
+        try await retryablePTY.close(timeout: .seconds(5))
 
         let stream = try await connection.openStreamLocal(
             socketPath: socketPath,
@@ -1402,15 +1454,20 @@ struct SessionDriverE2ETests {
             await #expect(throws: SSHError.cancelled) { _ = try await cancelled.value }
             #expect(await connection.isConnected)
 
-            let registrationGate = SessionWaitHold()
+            let registrationGuard = SessionWaitHold()
+            await connection.holdNextChannelOpenWaiterRegistrationForTesting {
+                await registrationGuard.waitUntilReleased()
+            }
             let cancelledBeforeRegistration = Task {
-                await registrationGate.waitUntilReleased()
-                return try await connection.execute(
+                try await connection.execute(
                     "printf cancelled-before-registration",
                     timeout: .seconds(15))
             }
+            try await waitUntilTrue("the waiter should reach its registration guard") {
+                await registrationGuard.hasEntered
+            }
             cancelledBeforeRegistration.cancel()
-            await registrationGate.release()
+            await registrationGuard.release()
             await #expect(throws: SSHError.cancelled) {
                 _ = try await cancelledBeforeRegistration.value
             }
