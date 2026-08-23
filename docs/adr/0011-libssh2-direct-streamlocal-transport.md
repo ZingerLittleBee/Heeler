@@ -89,8 +89,7 @@ Nothing above is retracted. The sentence this decision rests on survives the
 rename intact — withholding an instruction from the ambient surface during
 automatic recovery is exactly what the replacement makes a rule rather than an
 accident, and a stopped Host still carries the whole presentation to where the
-user is already looking. The property is renamed by #163's implementation;
-until then the app still calls it `connectionGuidance`.
+user is already looking. The property is now `TransportError.presentation`.
 
 Cancellation and timeout recovery will be channel-scoped only when the
 affected channel has been allocated and can be closed cleanly. A timeout while

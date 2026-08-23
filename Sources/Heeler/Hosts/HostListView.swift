@@ -281,10 +281,9 @@ private struct HostRow: View {
     }
 }
 
-/// The status chip on a Host row. This is the one status-reading surface that
-/// never shows `connectionGuidance`, even on `.failed`, where it says
-/// "Unavailable" instead. See Connection Guidance in `CONTEXT.md`, which
-/// scopes that term to prose and so leaves these rows out of it (#156, #163).
+/// The status chip on a Host row. Chips render Host Connection Status, never
+/// a Transport Error Presentation — even on `.failed`, where they say
+/// "Unavailable". See Transport Error Presentation in `CONTEXT.md`.
 struct HostConnectionPresentation: Equatable {
     enum Tone: Equatable {
         case connected

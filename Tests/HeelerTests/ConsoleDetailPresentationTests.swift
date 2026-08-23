@@ -13,8 +13,8 @@ import Testing
 /// Host's trouble, while the text written for the failure rendered only in the
 /// Console list behind the screen: the guidance on `.failed`, the shorter
 /// phrase that list composes on `.reconnecting`. Which surface renders which
-/// text is Connection Guidance in `CONTEXT.md`; what this suite pins is what
-/// reaches this screen.
+/// text is Transport Error Presentation in `CONTEXT.md`; what this suite
+/// pins is what reaches this screen.
 ///
 /// So the tests cover all four causes and the fields that carry them —
 /// message, title and icon — plus which Host the screen reads them from, and
@@ -304,8 +304,8 @@ struct ConsoleDetailPresentationTests {
             // asserted rather than assumed, because a failure kind whose
             // guidance rendered empty would leave the line below asserting
             // nothing at all about this arm.
-            #expect(!failure.connectionGuidance.isEmpty)
-            #expect(!presentation.message.contains(failure.connectionGuidance))
+            #expect(!failure.presentation.message.isEmpty)
+            #expect(!presentation.message.contains(failure.presentation.message))
             // Nor may it fall back to blaming the Agent.
             #expect(!presentation.message.contains("no longer reported"))
         }
@@ -378,7 +378,7 @@ struct ConsoleDetailPresentationTests {
         // Pinned here as well as at its source: this screen is now one of the
         // two places it renders, and the two must not drift apart.
         #expect(
-            TransportError.streamLocalOpenFailed(path: socketPath).connectionGuidance
+            TransportError.streamLocalOpenFailed(path: socketPath).presentation.message
                 == Self.socketGuidance)
 
         let host = Host.fixture()
@@ -397,7 +397,7 @@ struct ConsoleDetailPresentationTests {
             // nothing at all, which is worse than the wrong message it
             // replaced.
             #expect(!presentation.message.isEmpty)
-            #expect(presentation.message == failure.connectionGuidance)
+            #expect(presentation.message == failure.presentation.message)
             #expect(
                 !presentation.message.lowercased()
                     .contains("remote socket is not listening"))

@@ -7,6 +7,14 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Changed
+
+- Connection and request failures now present a short summary, optional
+  detail, and a recovery suggestion only when the error itself supports one.
+  Retryable outages no longer promise guidance they cannot give, a Jump Host
+  authentication failure names the Jump Host rather than the Host, and an
+  incompatible herdr protocol tells the user to update herdr. (#163)
+
 ## [0.1.1] - 2026-08-20
 
 ### Added

@@ -243,8 +243,7 @@ this term. A first-hop failure is presented against the Jump Host; where no
 Jump-Host-directed text exists, the Suggestion is dropped rather than aimed at
 the wrong machine.
 This replaces Connection Guidance, whose name promised an instruction that the
-retryable errors never carried; #163 owns the replacement, and until it lands
-the app still carries the old name and the old promise.
+retryable errors never carried.
 _Avoid_: Connection Guidance, error message, connection error, retry hint,
 actionable error
 

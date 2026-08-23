@@ -448,7 +448,7 @@ struct AppForegroundRecoveryTests {
 
         #expect(store.hostStatuses[host.id] == .failed(failure))
         #expect(
-            failure.connectionGuidance == """
+            failure.presentation.message == """
                 herdr is not running on this Host. If it is running, check SSH \
                 stream-local forwarding.
                 """)
