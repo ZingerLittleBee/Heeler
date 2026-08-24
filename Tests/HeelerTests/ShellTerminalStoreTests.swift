@@ -219,6 +219,43 @@ struct ShellTerminalStoreTests {
         #expect(await transport.shellTerminalCreations.count == 1)
     }
 
+    @Test func offStageAbortedReplacementRejoinsOnTheNextActivationSignal() async throws {
+        let transport = ScriptedTransport()
+        let endGate = ScriptedTransportCallGate()
+        var isOnStage = true
+        let store = makeOpenStore(
+            agent: makeAgent(),
+            transport: transport,
+            isDetailOnStage: { isOnStage })
+        store.open()
+        let shell = try await shell(in: store)
+        shell.viewDidResize(cols: 80, rows: 24)
+        try #require(await eventually { await transport.attachRequests.count == 1 })
+        #expect(await transport.emitAttachOutput(Data("shell".utf8)))
+        try #require(await eventually { shell.terminalStatus == .live })
+        let previousSurfaceID = shell.terminalID
+        await transport.gateNextAttachEnd(on: endGate)
+
+        shell.transportGenerationDidChange(2)
+        try #require(await eventually { await endGate.entryCount == 1 })
+        isOnStage = false
+        await endGate.open()
+        try #require(await eventually { shell.terminalStatus == .stopped })
+
+        // The stage comes back without a balancing disappear/appear pair.
+        // Foreground delivery is the next on-stage lifecycle signal.
+        isOnStage = true
+        shell.didBecomeActive(afterPossibleSuspension: false)
+
+        try #require(await eventually { shell.terminalID != previousSurfaceID })
+        shell.viewDidResize(cols: 80, rows: 24)
+        try #require(await eventually { await transport.attachRequests.count == 2 })
+        #expect(
+            await transport.attachRequests.map(\.target)
+                == [.terminal("term-shell"), .terminal("term-shell")])
+        #expect(await transport.shellTerminalCreations.count == 1)
+    }
+
     @Test func backWaitsForShellTeardownBeforeRestoringAgent() async throws {
         let transport = ScriptedTransport()
         let endGate = ScriptedTransportCallGate()
@@ -276,13 +313,14 @@ struct ShellTerminalStoreTests {
     private func makeOpenStore(
         agent: ConsoleAgent,
         transport: ScriptedTransport,
+        isDetailOnStage: @escaping @MainActor () -> Bool = { true },
         leaveAgent: @escaping @MainActor () -> Task<Void, Never> = { Task {} },
         rejoinAgent: @escaping @MainActor () -> Void = {}
     ) -> AgentOpenTerminalStore {
         AgentOpenTerminalStore(
             agent: agent,
             transportGeneration: 1,
-            isDetailOnStage: { true },
+            isDetailOnStage: isDetailOnStage,
             createTerminal: { request in
                 try await transport.createShellTerminal(request)
             },

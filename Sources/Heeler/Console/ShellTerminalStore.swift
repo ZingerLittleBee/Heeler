@@ -185,6 +185,7 @@ final class AgentOpenTerminalStore {
 final class ShellTerminalStore {
     private enum LifecycleState {
         case active
+        case rejoinRequired
         case left
     }
 
@@ -256,7 +257,12 @@ final class ShellTerminalStore {
     func retryTerminal() { terminal.retry() }
 
     func didBecomeActive(afterPossibleSuspension: Bool) {
-        guard lifecycleState == .active, isOnStage() else { return }
+        guard isOnStage() else { return }
+        if lifecycleState == .rejoinRequired {
+            rejoin()
+            return
+        }
+        guard lifecycleState == .active else { return }
         if afterPossibleSuspension {
             input.detachSessionForReplacement()
             replaceTerminal()
@@ -287,8 +293,7 @@ final class ShellTerminalStore {
                 self.lifecycleState == .active,
                 self.isOnStage()
             else {
-                guard self.replacementID == replacementID else { return }
-                self.isReplacing = false
+                self.abortReplacementOffStage(replacementID: replacementID)
                 return
             }
             self.terminal = Self.makeTerminal(
@@ -300,7 +305,7 @@ final class ShellTerminalStore {
     }
 
     func rejoin() {
-        guard lifecycleState == .left, isOnStage() else { return }
+        guard lifecycleState != .active, isOnStage() else { return }
         lifecycleState = .active
         replacementID &+= 1
         let replacementID = replacementID
@@ -311,8 +316,7 @@ final class ShellTerminalStore {
                 self.lifecycleState == .active,
                 self.isOnStage()
             else {
-                guard self.replacementID == replacementID else { return }
-                self.isReplacing = false
+                self.abortReplacementOffStage(replacementID: replacementID)
                 return
             }
             if self.terminal.status != .stopped {
@@ -322,8 +326,7 @@ final class ShellTerminalStore {
                 self.lifecycleState == .active,
                 self.isOnStage()
             else {
-                guard self.replacementID == replacementID else { return }
-                self.isReplacing = false
+                self.abortReplacementOffStage(replacementID: replacementID)
                 return
             }
             self.terminal = Self.makeTerminal(
@@ -332,6 +335,17 @@ final class ShellTerminalStore {
                 runTerminal: self.runTerminal)
             self.isReplacing = false
         }
+    }
+
+    /// A queued replacement can become invalid after its predecessor has
+    /// stopped but before SwiftUI delivers a balancing disappear/appear pair.
+    /// Preserve that incomplete outcome so the next on-stage signal rebuilds
+    /// the same remembered terminal instead of leaving a stopped pipeline.
+    private func abortReplacementOffStage(replacementID: UInt64) {
+        guard self.replacementID == replacementID else { return }
+        isReplacing = false
+        guard lifecycleState == .active, !isOnStage() else { return }
+        lifecycleState = .rejoinRequired
     }
 
     @discardableResult
