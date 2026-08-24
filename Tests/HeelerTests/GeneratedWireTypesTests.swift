@@ -153,6 +153,20 @@ import Testing
         #expect(response.workspace.label == "Proj")
     }
 
+    @Test func workspaceCreatedResponseRoundTripsProtocolTwentyShape() throws {
+        // `workspace.create` success payload (protocol 20): workspace, tab,
+        // and root pane. Synthetic per the schema; no live capture in this
+        // checkout.
+        let json = #"{"type":"workspace_created","workspace":{"workspace_id":"wN","number":4,"label":"app","focused":false,"pane_count":1,"tab_count":1,"active_tab_id":"wN:t1","agent_status":"unknown"},"tab":{"tab_id":"wN:t1","workspace_id":"wN","number":1,"label":"1","focused":false,"pane_count":1,"agent_status":"unknown"},"root_pane":{"pane_id":"wN:p1","terminal_id":"term_ws","workspace_id":"wN","tab_id":"wN:t1","focused":false,"agent_status":"unknown","revision":0}}"#
+
+        let response = try roundTrip(WorkspaceCreatedResponse.self, json)
+
+        #expect(response.workspace.workspaceID == "wN")
+        #expect(response.workspace.label == "app")
+        #expect(response.tab.tabID == "wN:t1")
+        #expect(response.rootPane.paneID == "wN:p1")
+    }
+
     @Test func worktreeCreatedResponseRoundTripsLiveCapture() throws {
         // `worktree.create` live capture (herdr 0.7.5, sanitized, #97): the
         // new workspace arrives with its tab and root pane, plus the
@@ -316,6 +330,31 @@ import Testing
         ) as? [String: Any]
         #expect(fields?.keys.sorted() == ["label", "workspace_id"])
         #expect(fields?["workspace_id"] as? String == "w9")
+    }
+
+    @Test func workspaceCreateParamsEncodeDirectoryFocusAndOptionalLabel() throws {
+        let unlabeled = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(
+                WorkspaceCreateParams(cwd: "/home/you/src/app", focus: false))
+        ) as? [String: Any]
+        #expect(unlabeled?.keys.sorted() == ["cwd", "focus"])
+        #expect(unlabeled?["cwd"] as? String == "/home/you/src/app")
+        #expect(unlabeled?["focus"] as? Bool == false)
+
+        let labeled = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(
+                WorkspaceCreateParams(cwd: "/home/you/src/app", focus: false, label: "app"))
+        ) as? [String: Any]
+        #expect(labeled?.keys.sorted() == ["cwd", "focus", "label"])
+        #expect(labeled?["label"] as? String == "app")
+    }
+
+    @Test func workspaceTargetEncodesSnakeCase() throws {
+        let fields = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(WorkspaceTarget(workspaceID: "wN"))
+        ) as? [String: Any]
+        #expect(fields?.keys.sorted() == ["workspace_id"])
+        #expect(fields?["workspace_id"] as? String == "wN")
     }
 
     @Test func paneTargetTravelsThroughTheRequestEnvelope() throws {

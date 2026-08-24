@@ -234,6 +234,17 @@ final class HostConsoleProjection {
         return agent
     }
 
+    @discardableResult
+    func startAgentInNewWorkspace(
+        _ request: AgentLaunchRequest, workspace: NewWorkspaceSpec
+    ) async throws -> Agent {
+        let agent = try await session.withTransport { transport in
+            try await transport.startAgentInNewWorkspace(request, workspace: workspace)
+        }
+        scheduleResync()
+        return agent
+    }
+
     func availableAgentKinds() async throws -> [SupportedAgentKind] {
         try await session.withTransport { transport in
             try await transport.availableAgentKinds()

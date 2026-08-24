@@ -66,6 +66,12 @@ _Avoid_: agent state, activity
 herdr's unit of terminal real estate that an Agent lives in. Used as an address (`pane_id`), never as a layout concept in this app.
 _Avoid_: window, tile
 
+**Workspace**:
+herdr's unit that groups tabs and panes around one working directory. New
+Agent can start in an existing Workspace, a new Worktree of one, or a new
+Workspace opened at a remote directory. The id is an opaque string.
+_Avoid_: project, folder, window
+
 **Worktree**:
 A fresh git checkout of a workspace's repository, created by herdr as its own
 workspace so a new Agent starts on a clean copy of the code. The branch

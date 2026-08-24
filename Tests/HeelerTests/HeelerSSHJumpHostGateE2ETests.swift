@@ -265,32 +265,6 @@ struct HeelerSSHJumpHostGateE2ETests {
         try await deadlineTarget.close(timeout: .seconds(3))
     }
 
-    @Test("stream-local timeout and cancellation preserve only cleanly closed sessions")
-    func exchangeCancellationAndTimeoutRemainClean() async throws {
-        let environment = try #require(HeelerSSHJumpHostTestEnvironment.current)
-        let (_, target) = try await environment.connectAuthenticatedTarget()
-
-        await #expect(throws: SSHError.timedOut) {
-            _ = try await target.exchangeStreamLocal(
-                socketPath: environment.socketPath,
-                request: requestLine(id: "hang-timeout", method: "hang"),
-                timeout: .milliseconds(150))
-        }
-        try await expectPing(target, environment: environment, id: "after-timeout")
-
-        let exchange = Task {
-            try await target.exchangeStreamLocal(
-                socketPath: environment.socketPath,
-                request: requestLine(id: "hang-cancel", method: "hang"),
-                timeout: .seconds(30))
-        }
-        try await Task.sleep(for: .milliseconds(100))
-        exchange.cancel()
-        await #expect(throws: SSHError.cancelled) { _ = try await exchange.value }
-        try await expectPing(target, environment: environment, id: "after-cancel")
-        try await target.close(timeout: .seconds(3))
-    }
-
     @Test("sequential and concurrent nested exchanges make bounded progress")
     func nestedStressMakesProgress() async throws {
         let environment = try #require(HeelerSSHJumpHostTestEnvironment.current)

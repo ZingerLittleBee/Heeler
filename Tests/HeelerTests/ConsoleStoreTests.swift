@@ -968,6 +968,40 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    @Test func startAgentInNewWorkspaceForwardsTheSpecAndResnapshots() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(snapshot: .fixture(agents: []))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Host should connect") {
+            store.hostStatuses[host.id] == .connected
+        }
+        let snapshotsBefore = await transport.snapshotFetchCount
+
+        await transport.setSnapshot(
+            .fixture(agents: [.fixture(paneID: "nw1:pnew", status: .working, workspaceID: "nw1")]))
+        let started = try await store.startAgentInNewWorkspace(
+            AgentLaunchRequest(kind: "claude", name: "reviewer"),
+            workspace: NewWorkspaceSpec(directory: "/src/app", label: "App"),
+            on: host.id)
+
+        #expect(started.workspaceID == "nw1")
+        let starts = await transport.workspaceStarts
+        #expect(starts.map { $0.request.kind } == ["claude"])
+        #expect(starts.map { $0.request.workspaceID } == [nil])
+        #expect(
+            starts.map { $0.workspace }
+                == [NewWorkspaceSpec(directory: "/src/app", label: "App")])
+        try await waitUntil("the resync should surface the new pane") {
+            store.agents.map(\.agent.paneID) == ["nw1:pnew"]
+        }
+        #expect(await transport.snapshotFetchCount > snapshotsBefore)
+
+        store.setHosts([])
+    }
+
     @Test func waitForAgentReturnsOnceTheResyncSurfacesThePane() async throws {
         // The new-agent flow opens the started pane's terminal; the wait
         // bridges the gap between the start RPC and the resync that makes

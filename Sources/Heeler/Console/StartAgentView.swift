@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// The new-agent sheet (#12, User Story 8): pick a Host and workspace, type a
+/// The new-agent sheet (#12, User Story 8): pick a Host and a launch target
+/// (an existing Workspace or a new one at a remote directory), type an
 /// installed Agent and its native arguments, and dispatch it through the
 /// Transport launch flow. On success the sheet dismisses and hands the
 /// started Agent's identity to `onStarted`; the owner opens it, so a fresh
@@ -27,12 +28,16 @@ struct StartAgentView: View {
                             .compactMap { $0.agent.name })
                 },
                 discoverAgentKinds: { try await console.availableAgentKinds(on: $0) },
-                start: { params, worktree, hostID in
-                    if let worktree {
+                start: { params, destination, hostID in
+                    switch destination {
+                    case .existingWorkspace:
+                        try await console.startAgent(params, on: hostID)
+                    case .newWorktree(let worktree):
                         try await console.startAgentInNewWorktree(
                             params, worktree: worktree, on: hostID)
-                    } else {
-                        try await console.startAgent(params, on: hostID)
+                    case .newWorkspace(let workspace):
+                        try await console.startAgentInNewWorkspace(
+                            params, workspace: workspace, on: hostID)
                     }
                 },
                 awaitAgentVisible: { await console.waitForAgent($0) },
@@ -66,21 +71,58 @@ struct StartAgentView: View {
                     }
 
                     Section {
-                        Picker("Workspace", selection: $store.selectedWorkspaceID) {
-                            if store.workspaces.isEmpty {
-                                Text("None reported").tag(String?.none)
-                            }
-                            ForEach(store.workspaces) { workspace in
-                                Text(workspace.label).tag(String?.some(workspace.id))
+                        if store.offersNewWorkspace {
+                            Picker("Launch", selection: $store.launchTarget) {
+                                Text("Existing Workspace").tag(
+                                    StartAgentStore.LaunchTarget.existingWorkspace)
+                                Text("New Workspace").tag(
+                                    StartAgentStore.LaunchTarget.newWorkspace)
                             }
                         }
-                        .disabled(store.selectedHostID == nil || store.workspaces.isEmpty)
+                        if store.launchTarget != .newWorkspace {
+                            Picker("Workspace", selection: $store.selectedWorkspaceID) {
+                                if store.workspaces.isEmpty {
+                                    Text("None reported").tag(String?.none)
+                                }
+                                ForEach(store.workspaces) { workspace in
+                                    Text(workspace.label).tag(String?.some(workspace.id))
+                                }
+                            }
+                            .disabled(store.selectedHostID == nil || store.workspaces.isEmpty)
+                        }
                     } header: {
                         Text("Workspace")
                     } footer: {
-                        Text(
-                            "Where the agent runs. Defaults to the one you last started an agent in."
-                        )
+                        if store.launchTarget == .newWorkspace {
+                            Text("The Host does not need to report an existing Workspace.")
+                        } else {
+                            Text(
+                                "Where the agent runs. Defaults to the one you last started an agent in."
+                            )
+                        }
+                    }
+
+                    if store.launchTarget == .newWorkspace {
+                        Section {
+                            TextField("e.g. /home/you/src/app", text: $store.newWorkspaceDirectory)
+                                .font(.callout.monospaced())
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                        } header: {
+                            Text("Directory")
+                        } footer: {
+                            Text("Remote path herdr opens as the new Workspace.")
+                        }
+
+                        Section {
+                            TextField("Optional", text: $store.newWorkspaceLabel)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                        } header: {
+                            Text("Workspace Label")
+                        } footer: {
+                            Text("Empty uses herdr's default label.")
+                        }
                     }
                 }
 

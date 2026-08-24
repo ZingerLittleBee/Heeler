@@ -5,9 +5,9 @@ import UIKit
 
 @testable import Heeler
 
-/// New-agent form logic (#12) against scripted discovery and start closures:
-/// argument parsing, Host/workspace/Agent selection, param assembly, and outcome
-/// mapping — no SSH, no ConsoleStore.
+/// New-agent form logic (#12, #97, #230) against scripted discovery and start
+/// closures: argument parsing, Host/workspace/Agent selection, param assembly,
+/// and outcome mapping — no SSH, no ConsoleStore.
 @MainActor
 @Suite("Start agent store")
 struct StartAgentStoreTests {
@@ -15,19 +15,27 @@ struct StartAgentStoreTests {
     @MainActor
     private final class StartRecorder {
         var params: [AgentLaunchRequest] = []
+        var destinations: [StartAgentStore.LaunchDestination] = []
         /// One entry per start, aligned with `params`; nil is a plain
         /// workspace launch, non-nil the fresh-worktree variant (#97).
-        var worktrees: [WorktreeSpec?] = []
+        var worktrees: [WorktreeSpec?] {
+            destinations.map {
+                if case .newWorktree(let spec) = $0 { return spec }
+                return nil
+            }
+        }
         var hostIDs: [Host.ID] = []
         var error: (any Error)?
         var agent = Agent(.fixture(paneID: "w1:pnew", status: .working))
         var gate: ScriptedTransportCallGate?
 
         func record(
-            _ params: AgentLaunchRequest, _ worktree: WorktreeSpec?, _ hostID: Host.ID
+            _ params: AgentLaunchRequest,
+            _ destination: StartAgentStore.LaunchDestination,
+            _ hostID: Host.ID
         ) async throws -> Agent {
             self.params.append(params)
-            worktrees.append(worktree)
+            destinations.append(destination)
             hostIDs.append(hostID)
             await gate?.waitUntilOpen()
             if let error { throw error }
@@ -60,8 +68,8 @@ struct StartAgentStoreTests {
             hosts: hosts, workspaces: workspaces,
             existingAgentNames: existingAgentNames,
             discoverAgentKinds: agentKinds,
-            start: { params, worktree, hostID in
-                try await recorder.record(params, worktree, hostID)
+            start: { params, destination, hostID in
+                try await recorder.record(params, destination, hostID)
             },
             awaitAgentVisible: awaitAgentVisible,
             origin: origin,
@@ -362,10 +370,125 @@ struct StartAgentStoreTests {
         store.name = "reviewer"
         await store.discoverAgents()
 
+        #expect(store.launchTarget == .existingWorkspace)
         #expect(store.canSubmit == false)
         await store.submit()
         #expect(store.state == .editing)
         #expect(recorder.params.isEmpty)
+    }
+
+    @Test func newWorkspaceCanSubmitWithZeroReportedWorkspaces() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(hosts: [host], recorder: recorder)
+        await store.discoverAgents()
+
+        #expect(store.canSubmit == false)
+        store.launchTarget = .newWorkspace
+        #expect(store.canSubmit == false)
+        store.newWorkspaceDirectory = "   "
+        #expect(store.canSubmit == false)
+        store.newWorkspaceDirectory = "  /home/you/src/app  "
+        #expect(store.canSubmit == true)
+
+        await store.submit()
+
+        #expect(store.state == started(on: host))
+        #expect(recorder.params.first?.workspaceID == nil)
+        #expect(recorder.params.first?.cwd == nil)
+        #expect(
+            recorder.destinations
+                == [.newWorkspace(NewWorkspaceSpec(directory: "/home/you/src/app"))])
+    }
+
+    @Test func newWorkspaceTrimsDirectoryAndDropsAnEmptyLabel() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recorder: recorder)
+        await store.discoverAgents()
+        store.launchTarget = .newWorkspace
+        store.newWorkspaceDirectory = "\n /tmp/project \t"
+        store.newWorkspaceLabel = "   "
+
+        await store.submit()
+
+        #expect(store.state == started(on: host))
+        #expect(recorder.params.first?.workspaceID == nil)
+        #expect(
+            recorder.destinations
+                == [.newWorkspace(NewWorkspaceSpec(directory: "/tmp/project", label: nil))])
+    }
+
+    @Test func newWorkspaceSubmitRemembersTheReturnedWorkspaceAndWaits() async throws {
+        let host = Host.fixture()
+        let recents = makeRecents()
+        let recorder = StartRecorder()
+        recorder.agent = Agent(
+            .fixture(paneID: "nw1:pnew", status: .working, workspaceID: "nw1"))
+        let visibilityGate = ScriptedTransportCallGate()
+        final class SeenBox { var ids: [ConsoleAgent.ID] = [] }
+        let seen = SeenBox()
+        let store = makeStore(
+            hosts: [host],
+            awaitAgentVisible: { id in
+                seen.ids.append(id)
+                await visibilityGate.waitUntilOpen()
+            },
+            recents: recents,
+            recorder: recorder)
+        await store.discoverAgents()
+        store.launchTarget = .newWorkspace
+        store.newWorkspaceDirectory = "/src/app"
+        store.newWorkspaceLabel = "  App  "
+
+        let submit = Task { await store.submit() }
+        try await waitUntil("the visibility wait should begin") {
+            await visibilityGate.entryCount == 1
+        }
+        #expect(store.state == .starting)
+
+        await visibilityGate.open()
+        await submit.value
+
+        #expect(store.state == started(on: host, paneID: "nw1:pnew"))
+        #expect(seen.ids == [ConsoleAgent.ID(hostID: host.id, paneID: "nw1:pnew")])
+        #expect(
+            recorder.destinations
+                == [.newWorkspace(NewWorkspaceSpec(directory: "/src/app", label: "App"))])
+
+        let next = makeStore(
+            hosts: [host],
+            workspaces: { _ in
+                [ConsoleWorkspace(id: "w1", label: "Old"),
+                    ConsoleWorkspace(id: "nw1", label: "App")]
+            },
+            recents: recents,
+            recorder: StartRecorder())
+        #expect(next.selectedWorkspaceID == "nw1")
+    }
+
+    @Test func newWorkspaceServerRejectionUsesExistingErrorPresentation() async {
+        let host = Host.fixture()
+        let recents = makeRecents()
+        let recorder = StartRecorder()
+        recorder.error = HerdrAPIError(code: "cwd_not_found", message: "no such directory")
+        let store = makeStore(hosts: [host], recents: recents, recorder: recorder)
+        await store.discoverAgents()
+        store.launchTarget = .newWorkspace
+        store.newWorkspaceDirectory = "/missing"
+
+        await store.submit()
+
+        #expect(store.state == .failed("herdr rejected the command: no such directory"))
+        let next = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recents: recents,
+            recorder: StartRecorder())
+        #expect(next.selectedWorkspaceID == "w1")
     }
 
     @Test func switchingHostClearsStaleWorkspaceAndAgentPicks() async {
@@ -529,6 +652,7 @@ struct StartAgentStoreTests {
             recorder.params.first?.arguments
                 == ["--yolo", "--continue", "--label", "code review"])
         #expect(recorder.params.first?.workspaceID == "w1")
+        #expect(recorder.destinations == [.existingWorkspace])
         #expect(recorder.worktrees == [nil])
     }
 
@@ -600,6 +724,31 @@ struct StartAgentStoreTests {
         #expect(recorder.params.first?.cwd == "/Users/dev/proj")
     }
 
+    /// New Workspace would open a different directory and drop the origin
+    /// Workspace. The origin flow hides the choice, and forcing the fields
+    /// cannot smuggle it onto the request.
+    @Test func originLaunchNeverExposesOrTakesNewWorkspace() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            origin: StartAgentStore.LaunchOrigin(
+                hostID: host.id, workspaceID: "w1", cwd: "/Users/dev/proj"),
+            recorder: recorder)
+        #expect(!store.offersNewWorkspace)
+        store.launchTarget = .newWorkspace
+        store.newWorkspaceDirectory = "/tmp/elsewhere"
+        await store.discoverAgents()
+
+        await store.submit()
+
+        #expect(store.state == started(on: host))
+        #expect(recorder.destinations == [.existingWorkspace])
+        #expect(recorder.params.first?.workspaceID == "w1")
+        #expect(recorder.params.first?.cwd == "/Users/dev/proj")
+    }
+
     /// The origin agent proves its workspace exists, so it outranks both the
     /// remembered pick and the snapshot the Host happens to report.
     @Test func originWorkspaceOutranksTheRememberedAndReportedOnes() async {
@@ -657,6 +806,9 @@ struct StartAgentStoreTests {
 
         #expect(store.state == started(on: host))
         #expect(recorder.params.first?.workspaceID == "w1")
+        #expect(
+            recorder.destinations
+                == [.newWorktree(WorktreeSpec(branch: "task/fix-97", base: "origin/main"))])
         #expect(recorder.worktrees == [WorktreeSpec(branch: "task/fix-97", base: "origin/main")])
     }
 
@@ -716,6 +868,52 @@ struct StartAgentStoreTests {
         #expect(store.startsInNewWorktree == false)
         #expect(store.worktreeBranch.isEmpty)
         #expect(store.worktreeBase.isEmpty)
+    }
+
+    @Test func switchingToNewWorkspaceDropsAnActiveWorktreeRequest() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recorder: recorder)
+        await store.discoverAgents()
+        store.startsInNewWorktree = true
+        store.worktreeBranch = "task/fix"
+        store.worktreeBase = "origin/main"
+        #expect(store.offersWorktree)
+
+        store.launchTarget = .newWorkspace
+
+        #expect(!store.offersWorktree)
+        #expect(store.startsInNewWorktree == false)
+        #expect(store.worktreeBranch.isEmpty)
+        #expect(store.worktreeBase.isEmpty)
+        store.newWorkspaceDirectory = "/src/app"
+        await store.submit()
+
+        #expect(
+            recorder.destinations
+                == [.newWorkspace(NewWorkspaceSpec(directory: "/src/app"))])
+        #expect(recorder.worktrees == [nil])
+        #expect(recorder.params.first?.workspaceID == nil)
+    }
+
+    @Test func switchingHostResetsNewWorkspaceFields() {
+        let hostA = Host.fixture(address: "a.example")
+        let hostB = Host.fixture(address: "b.example")
+        let store = makeStore(hosts: [hostA, hostB], recorder: StartRecorder())
+        store.selectedHostID = hostA.id
+        store.launchTarget = .newWorkspace
+        store.newWorkspaceDirectory = "/src/app"
+        store.newWorkspaceLabel = "App"
+
+        store.selectedHostID = hostB.id
+
+        #expect(store.launchTarget == .existingWorkspace)
+        #expect(store.newWorkspaceDirectory.isEmpty)
+        #expect(store.newWorkspaceLabel.isEmpty)
+        #expect(store.offersWorktree)
     }
 
     @Test func worktreeFailuresGetFirstClassCopy() async {

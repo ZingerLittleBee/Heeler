@@ -2,11 +2,12 @@ import Foundation
 import Observation
 
 /// The new-agent flow's form logic (#12, User Story 8): pick a Host, pick a
-/// workspace (or the Host's current one), detect and select an installed
-/// Agent, parse its native arguments, and dispatch it via the Transport launch
-/// flow. The started pane surfaces in the Console through the store's normal
-/// snapshot/delta machinery; on success the store reports the started Agent's
-/// Console identity so the owning screen can open it right away.
+/// launch target (an existing Workspace, or a new one at a remote directory),
+/// detect and select an installed Agent, parse its native arguments, and
+/// dispatch it via the Transport launch flow. The started pane surfaces in
+/// the Console through the store's normal snapshot/delta machinery; on
+/// success the store reports the started Agent's Console identity so the
+/// owning screen can open it right away.
 ///
 /// Kept off the SSH types (standing repo rule): it talks to injected closures
 /// over the `ConsoleStore`, so it is testable against a scripted transport.
@@ -40,6 +41,22 @@ final class StartAgentStore {
         let hostID: Host.ID
         let workspaceID: String
         let cwd: String
+    }
+
+    /// Where a Console-originated launch should create the Agent (#230).
+    /// Origin launches skip this choice: they inherit the origin Workspace.
+    enum LaunchTarget: Equatable, Hashable {
+        case existingWorkspace
+        case newWorkspace
+    }
+
+    /// The Transport variant `submit()` dispatches. Invalid combinations
+    /// (a Worktree of a Workspace that does not exist yet) cannot be
+    /// represented.
+    enum LaunchDestination: Equatable, Sendable {
+        case existingWorkspace
+        case newWorktree(WorktreeSpec)
+        case newWorkspace(NewWorkspaceSpec)
     }
 
     enum ArgumentError: Error, Equatable {
@@ -79,6 +96,9 @@ final class StartAgentStore {
                 availableAgentKinds = []
                 selectedAgentKind = nil
                 agentDiscoveryState = .idle
+                launchTarget = .existingWorkspace
+                newWorkspaceDirectory = ""
+                newWorkspaceLabel = ""
                 startsInNewWorktree = false
                 worktreeBranch = ""
                 worktreeBase = ""
@@ -86,12 +106,13 @@ final class StartAgentStore {
         }
     }
 
-    /// The workspace the agent starts in: what the user picked, else the one
-    /// they last started an agent in on this Host, else the Host's first.
+    /// The existing Workspace the agent starts in: what the user picked, else
+    /// the one they last started an agent in on this Host, else the Host's
+    /// first.
     ///
-    /// Nil while the Host reports no workspaces at all. The form cannot submit
-    /// until a concrete workspace is available, so the launch target is always
-    /// visible to the user.
+    /// Nil while the Host reports no Workspaces at all. Existing-Workspace
+    /// and origin launches cannot submit until a concrete Workspace is
+    /// available; New Workspace does not use this pick.
     var selectedWorkspaceID: String? {
         get {
             // The origin agent is living proof its workspace exists, so it
@@ -129,6 +150,24 @@ final class StartAgentStore {
     /// parsing still normalizes any smart characters supplied by paste or a
     /// third-party keyboard without mutating the live editing buffer.
     var arguments: String = ""
+    /// Existing Workspace vs New Workspace on the Console-originated form.
+    /// Switching target drops an incompatible Worktree request so it cannot
+    /// ride along with a launch that has no source Workspace.
+    var launchTarget: LaunchTarget = .existingWorkspace {
+        didSet {
+            if launchTarget != oldValue {
+                startsInNewWorktree = false
+                worktreeBranch = ""
+                worktreeBase = ""
+            }
+        }
+    }
+    /// Remote directory for a New Workspace launch. Required once that
+    /// target is selected; trimmed at submit.
+    var newWorkspaceDirectory: String = ""
+    /// Optional label for a New Workspace launch. Empty or whitespace
+    /// becomes nil so herdr applies its default.
+    var newWorkspaceLabel: String = ""
     /// Whether the launch targets a fresh git worktree of the selected
     /// workspace's repository instead of the workspace itself (#97).
     var startsInNewWorktree = false
@@ -152,9 +191,9 @@ final class StartAgentStore {
     /// skipping them merely bumps the suffix.
     private let existingAgentNames: (Host.ID) -> Set<String>
     private let discoverAgentKinds: (Host.ID) async throws -> [SupportedAgentKind]
-    /// A non-nil `WorktreeSpec` routes the launch through the fresh-worktree
-    /// choreography; nil starts in the workspace itself.
-    private let start: (AgentLaunchRequest, WorktreeSpec?, Host.ID) async throws -> Agent
+    /// Dispatches the assembled request through the matching Transport
+    /// launch variant.
+    private let start: (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent
     /// Suspends (bounded) until the started Agent is visible in the Console.
     /// The row the owner navigates to exists only after the post-start resync
     /// lands; waiting here keeps the opened detail from flashing its
@@ -171,7 +210,7 @@ final class StartAgentStore {
         workspaces: @escaping (Host.ID) -> [ConsoleWorkspace],
         existingAgentNames: @escaping (Host.ID) -> Set<String>,
         discoverAgentKinds: @escaping (Host.ID) async throws -> [SupportedAgentKind],
-        start: @escaping (AgentLaunchRequest, WorktreeSpec?, Host.ID) async throws -> Agent,
+        start: @escaping (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent,
         awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void,
         origin: LaunchOrigin? = nil,
         recents: RecentWorkspaceStore = RecentWorkspaceStore()
@@ -192,8 +231,14 @@ final class StartAgentStore {
     /// defined by landing in the origin agent's directory, and a worktree
     /// launch lands in a brand-new checkout instead — the two cannot both
     /// hold, so the origin flow drops the option rather than silently
-    /// ignoring the requested directory.
-    var offersWorktree: Bool { origin == nil }
+    /// ignoring the requested directory. New Workspace likewise has no
+    /// source Workspace to branch from.
+    var offersWorktree: Bool { origin == nil && launchTarget == .existingWorkspace }
+
+    /// Whether the form offers Existing vs New Workspace. Origin launches
+    /// inherit the origin agent's Workspace and directory, so the choice
+    /// would contradict that inheritance.
+    var offersNewWorkspace: Bool { origin == nil }
 
     /// The workspaces the selected Host knows; empty when no Host is picked.
     var workspaces: [ConsoleWorkspace] {
@@ -237,13 +282,25 @@ final class StartAgentStore {
 
     /// Whether the form is complete enough to dispatch.
     var canSubmit: Bool {
-        selectedHostID != nil && selectedWorkspaceID != nil
+        selectedHostID != nil && hasLaunchTarget
             && nameErrorMessage == nil
             && selectedAgentKind != nil
             && parsedArguments.isSuccess
             && worktreeBranchErrorMessage == nil
             && agentDiscoveryState == .loaded
             && state != .starting
+    }
+
+    /// Existing Workspace and origin launches need a reported Workspace;
+    /// New Workspace needs a non-empty trimmed directory instead.
+    private var hasLaunchTarget: Bool {
+        if origin != nil { return selectedWorkspaceID != nil }
+        switch launchTarget {
+        case .existingWorkspace:
+            return selectedWorkspaceID != nil
+        case .newWorkspace:
+            return Self.nonEmptyTrimmed(newWorkspaceDirectory) != nil
+        }
     }
 
     /// Whether the sheet may be dismissed without abandoning an in-flight
@@ -284,8 +341,8 @@ final class StartAgentStore {
         guard
             !isStarting,
             let hostID = selectedHostID,
-            let workspaceID = selectedWorkspaceID,
             let kind = selectedAgentKind,
+            let destination = launchDestination,
             case .success(let arguments) = parsedArguments,
             worktreeBranchErrorMessage == nil,
             nameErrorMessage == nil
@@ -298,21 +355,26 @@ final class StartAgentStore {
         isStarting = true
         state = .starting
         defer { isStarting = false }
+        let workspaceID: String?
+        switch destination {
+        case .newWorkspace:
+            workspaceID = nil
+        case .existingWorkspace, .newWorktree:
+            workspaceID = selectedWorkspaceID
+        }
         let request = AgentLaunchRequest(
             kind: kind.rawValue,
             name: agentName,
             arguments: arguments,
             workspaceID: workspaceID,
             cwd: origin?.cwd)
-        let worktree: WorktreeSpec? =
-            offersWorktree && startsInNewWorktree
-            ? WorktreeSpec(
-                branch: Self.nonEmptyTrimmed(worktreeBranch),
-                base: Self.nonEmptyTrimmed(worktreeBase))
-            : nil
         do {
-            let agent = try await start(request, worktree, hostID)
-            recents.remember(workspaceID, for: hostID)
+            let agent = try await start(request, destination, hostID)
+            if case .newWorkspace = destination {
+                recents.remember(agent.workspaceID, for: hostID)
+            } else if let workspaceID {
+                recents.remember(workspaceID, for: hostID)
+            }
             let startedID = ConsoleAgent.ID(hostID: hostID, paneID: agent.paneID)
             // The wait is bounded; on timeout the owner still navigates and
             // the row catches up with the next resync.
@@ -320,6 +382,35 @@ final class StartAgentStore {
             state = .started(startedID)
         } catch {
             state = .failed(Self.message(for: error))
+        }
+    }
+
+    /// Assembles the Transport variant from the current form. Nil when the
+    /// chosen target is incomplete, so `submit()` is a no-op rather than
+    /// inventing a Workspace id.
+    private var launchDestination: LaunchDestination? {
+        if origin != nil {
+            guard selectedWorkspaceID != nil else { return nil }
+            return .existingWorkspace
+        }
+        switch launchTarget {
+        case .existingWorkspace:
+            guard selectedWorkspaceID != nil else { return nil }
+            if offersWorktree && startsInNewWorktree {
+                return .newWorktree(
+                    WorktreeSpec(
+                        branch: Self.nonEmptyTrimmed(worktreeBranch),
+                        base: Self.nonEmptyTrimmed(worktreeBase)))
+            }
+            return .existingWorkspace
+        case .newWorkspace:
+            guard let directory = Self.nonEmptyTrimmed(newWorkspaceDirectory) else {
+                return nil
+            }
+            return .newWorkspace(
+                NewWorkspaceSpec(
+                    directory: directory,
+                    label: Self.nonEmptyTrimmed(newWorkspaceLabel)))
         }
     }
 
