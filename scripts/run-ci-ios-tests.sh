@@ -1616,7 +1616,7 @@ fi
 run_suite HeelerSSHPTYE2ETests 3 1
 run_suite HeelerSSHDirectStreamLocalE2ETests 11 1
 run_suite HeelerSSHJumpHostGateE2ETests 9 1
-run_suite HeelerSSHTransportBehaviorE2ETests 50 1
+run_suite HeelerSSHTransportBehaviorE2ETests 53 1
 run_suite ImageStagingE2ETests 8 1
 run_suite WeakNetworkE2ETests 8 1
 run_suite PairingCeremonyE2ETests 11 1
@@ -1673,13 +1673,25 @@ assert_behavior "session API rejection mapping" HeelerSSHTransportBehaviorE2ETes
 # between a refactor and silently dropping a documented server behaviour (#128).
 assert_behavior "agent_pane_busy retry" HeelerSSHTransportBehaviorE2ETests \
     '"agent start waits out a fresh pane'"'"'s booting shell"'
-# Both compensations, named separately: they clean up different Host state and
-# a count alone cannot tell which of the two a change removed.
+# Each compensation cleans up different Host state; a count alone cannot tell
+# which of them a change removed. New Workspace (#230) also names the
+# create-then-start shape and the ambiguous-failure preserve rule, because
+# those are the two ways that path can silently drift without changing the
+# suite total.
 assert_behavior "failed launch closes its pane" HeelerSSHTransportBehaviorE2ETests \
     '"a refused agent start closes the pane it created"'
 assert_behavior "failed launch removes its worktree" \
     HeelerSSHTransportBehaviorE2ETests \
     '"a refused worktree agent start removes the worktree it created"'
+assert_behavior "new-workspace launch skips tab.create" \
+    HeelerSSHTransportBehaviorE2ETests \
+    '"a new-workspace agent start creates the workspace then starts in its root pane"'
+assert_behavior "failed launch closes its workspace" \
+    HeelerSSHTransportBehaviorE2ETests \
+    '"a refused new-workspace agent start closes the workspace it created"'
+assert_behavior "ambiguous launch preserves its workspace" \
+    HeelerSSHTransportBehaviorE2ETests \
+    '"an ambiguous new-workspace agent start does not close the workspace"'
 assert_behavior "SFTP" ImageStagingE2ETests \
     'directStagingStreamsPrivateFileAndAtomicallyRenamesThePart()'
 assert_behavior "forwarding denial" HeelerSSHDirectStreamLocalE2ETests \
