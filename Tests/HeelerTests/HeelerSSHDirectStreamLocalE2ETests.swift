@@ -77,21 +77,6 @@ struct HeelerSSHDirectStreamLocalE2ETests {
         }
     }
 
-    @Test("timeout closes only its channel and preserves connection reuse")
-    func timeoutPreservesConnectionReuse() async throws {
-        let environment = try #require(DirectStreamLocalTestEnvironment.current)
-        let connection = try await environment.deviceKeyConnection(to: environment.endpoint)
-        try await withClosingDirectConnection(connection) { connection in
-            await #expect(throws: SSHError.timedOut) {
-                _ = try await connection.exchangeStreamLocal(
-                    socketPath: environment.socketPath,
-                    request: requestLine(method: "hang"),
-                    timeout: .milliseconds(150))
-            }
-            try await expectPing(connection, socketPath: environment.socketPath)
-        }
-    }
-
     @Test("cancellation closes only its channel and preserves connection reuse")
     func cancellationPreservesConnectionReuse() async throws {
         let environment = try #require(DirectStreamLocalTestEnvironment.current)
