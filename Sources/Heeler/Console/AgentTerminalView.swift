@@ -30,6 +30,9 @@ struct AgentTerminalView: View {
     /// dismiss — the owner clears the sidebar selection instead, which also
     /// pops the collapsed stack on iPhone.
     private let onClosed: () -> Void
+    private let canOpenTerminal: Bool
+    private let isOpeningTerminal: Bool
+    private let openTerminal: () -> Void
     private let composer: AgentComposerStore
     @State private var attach: AgentAttachStore
     /// Nil for agent kinds without a skills source catalog; the Keys
@@ -76,6 +79,9 @@ struct AgentTerminalView: View {
         isOnStage: @escaping () -> Bool,
         onSwitch: @escaping (ConsoleAgent.ID) -> Void,
         onClosed: @escaping () -> Void,
+        canOpenTerminal: Bool = false,
+        isOpeningTerminal: Bool = false,
+        openTerminal: @escaping () -> Void = {},
         composer: AgentComposerStore,
         attachStore: AgentAttachStore? = nil
     ) {
@@ -88,6 +94,9 @@ struct AgentTerminalView: View {
         self.keyboardInset = keyboardInset
         self.onSwitch = onSwitch
         self.onClosed = onClosed
+        self.canOpenTerminal = canOpenTerminal
+        self.isOpeningTerminal = isOpeningTerminal
+        self.openTerminal = openTerminal
         self.composer = composer
         _attach = State(
             initialValue: attachStore ?? AgentAttachStore(
@@ -377,6 +386,8 @@ struct AgentTerminalView: View {
             addImage: { isSelectingPhoto = true },
             addFile: { isSelectingFile = true },
             showAttachLinks: { isShowingAttachLinks = true },
+            openTerminal: canOpenTerminal ? openTerminal : nil,
+            isOpeningTerminal: isOpeningTerminal,
             startAgent: { isStartingAgent = true },
             manageSnippets: { isManagingSnippets = true },
             showWorktreeDetails: agent.isLinkedWorktree

@@ -1819,6 +1819,25 @@ struct TerminalAttachTests {
         #expect(!command.hasSuffix("\n"))
     }
 
+    @Test func terminalTargetSelectsTerminalAttachWithTheSameBootstrapAndSocketScope() throws {
+        let command = try HeelerSSHTransport.attachExecCommand(
+            agentAttachCommand: "herdr agent attach",
+            terminalAttachCommand: "herdr terminal attach",
+            request: TerminalAttachRequest(
+                target: .terminal("terminal-123"),
+                takeover: true,
+                cols: 80,
+                rows: 24),
+            socketPath: "/home/u/.config/herdr/sessions/dev/herdr.sock")
+
+        #expect(command.contains(HerdrHostPath.pathExport))
+        #expect(command.contains("export HERDR_SOCKET_PATH=\"$2\""))
+        #expect(command.contains(AttachBootstrapHandshake.markerPrintfFormat))
+        #expect(command.contains("exec herdr terminal attach \"$1\" --takeover"))
+        #expect(command.contains("'terminal-123'"))
+        #expect(!command.contains("exec herdr agent attach"))
+    }
+
     @Test(arguments: [
         "", "w1'p1", #"w1\p1"#, "w1\np1", "w1\rp1", "w1\u{1B}p1",
     ])

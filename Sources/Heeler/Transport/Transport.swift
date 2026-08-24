@@ -54,6 +54,14 @@ protocol Transport: Sendable {
     /// value into the list themselves.
     func startAgent(_ request: AgentLaunchRequest) async throws -> Agent
 
+    /// Creates one ordinary shell tab in an existing Workspace. The concrete
+    /// directory is mandatory so herdr cannot inherit an unrelated focused
+    /// Pane's cwd. The returned identity is sufficient to attach the shell;
+    /// no Agent is started and the Pane is not projected into the Console.
+    func createShellTerminal(
+        _ request: ShellTerminalCreationRequest
+    ) async throws -> ShellTerminalIdentity
+
     /// Starts a new Agent in a fresh git worktree (#97): `worktree.create`
     /// resolves the repository from the source workspace's cwd (a non-git cwd
     /// fails with `not_git_worktree`) and returns a new workspace whose root
@@ -213,6 +221,13 @@ extension Transport {
         []
     }
 
+    func createShellTerminal(
+        _ request: ShellTerminalCreationRequest
+    ) async throws -> ShellTerminalIdentity {
+        throw TransportError.channelFailed(
+            detail: "This transport cannot create shell terminals.")
+    }
+
     func listSkills(_ query: SkillListQuery) async throws -> [AgentSkill] {
         []
     }
@@ -364,6 +379,34 @@ struct AgentLaunchRequest: Sendable, Equatable {
         self.arguments = arguments
         self.workspaceID = workspaceID
         self.cwd = cwd
+    }
+}
+
+/// The one-shot API request behind Agent Detail's Open Terminal action.
+/// `cwd` is concrete by construction; callers disable the action when they
+/// cannot resolve one honestly.
+struct ShellTerminalCreationRequest: Sendable, Equatable {
+    let workspaceID: String
+    let cwd: String
+
+    init(workspaceID: String, cwd: String) {
+        self.workspaceID = workspaceID
+        self.cwd = cwd
+    }
+}
+
+/// Stable remote identity retained after `tab.create` succeeds. Attach retry
+/// and Host-generation replacement use `terminalID`; Pane and Tab ids remain
+/// available without inventing a `ConsoleAgent` for the shell.
+struct ShellTerminalIdentity: Sendable, Equatable, Hashable {
+    let paneID: String
+    let tabID: String
+    let terminalID: String
+
+    init(paneID: String, tabID: String, terminalID: String) {
+        self.paneID = paneID
+        self.tabID = tabID
+        self.terminalID = terminalID
     }
 }
 

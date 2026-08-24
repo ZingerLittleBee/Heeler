@@ -47,6 +47,8 @@ struct AgentComposerActions {
     let addImage: () -> Void
     let addFile: () -> Void
     let showAttachLinks: () -> Void
+    let openTerminal: (() -> Void)?
+    let isOpeningTerminal: Bool
     let startAgent: () -> Void
     let manageSnippets: () -> Void
     let showWorktreeDetails: (() -> Void)?
@@ -157,6 +159,13 @@ struct AgentComposerView: View {
 
                             Menu {
                                 Section {
+                                    Button("Open Terminal", systemImage: "apple.terminal") {
+                                        actions.openTerminal?()
+                                    }
+                                    .disabled(
+                                        actions.openTerminal == nil
+                                            || actions.isOpeningTerminal
+                                    )
                                     Button("New Agent", systemImage: "plus") {
                                         actions.startAgent()
                                     }
@@ -528,9 +537,7 @@ struct AgentToolsKeyboard: View {
     @State private var selectedTab: TerminalKeysTab = .controls
 
     private var tabs: [TerminalKeysTab] {
-        TerminalKeysTab.allCases.filter {
-            $0 != .skills || context.skills != nil
-        }
+        context.tabs
     }
 
     var body: some View {

@@ -451,7 +451,8 @@
             terminalContinuation = continuation
             continuation.yield(
                 Data(
-                    (profile.terminalOutputs[request.target] ?? DemoScreenshotFixture.terminalOutput)
+                    (profile.terminalOutputs[request.target.identifier]
+                        ?? DemoScreenshotFixture.terminalOutput)
                         .utf8)
             )
             return TerminalAttachSession(output: { output }, input: input) {

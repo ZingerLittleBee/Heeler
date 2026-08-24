@@ -15,6 +15,7 @@ final actor ScriptedTransport: Transport {
     /// Every `agent.start` received, in order; the new-agent flow (#12)
     /// asserts on the params it forwarded.
     private(set) var agentStarts: [AgentLaunchRequest] = []
+    private(set) var shellTerminalCreations: [ShellTerminalCreationRequest] = []
     /// Every worktree launch received, in order; the new-worktree flow (#97)
     /// asserts on the request/spec pairs it forwarded.
     private(set) var worktreeStarts: [(request: AgentLaunchRequest, worktree: WorktreeSpec)] = []
@@ -44,6 +45,12 @@ final actor ScriptedTransport: Transport {
     private var renameFailure: TransportError?
     private var startFailure: TransportError?
     private var startedAgent: AgentInfo?
+    private var shellTerminalIdentity = ShellTerminalIdentity(
+        paneID: "w1:p-shell",
+        tabID: "w1:t-shell",
+        terminalID: "term-shell")
+    private var shellTerminalCreationFailure: (any Error)?
+    private var nextShellTerminalCreationGate: ScriptedTransportCallGate?
     private(set) var snapshotFetchCount = 0
     /// Every attach request received, in order; the Attach store's
     /// open-once behavior asserts on this.
@@ -160,6 +167,19 @@ final actor ScriptedTransport: Transport {
     /// Makes every subsequent `startAgent` throw `failure`.
     func setStartFailure(_ failure: TransportError?) {
         startFailure = failure
+    }
+
+    func configureShellTerminalCreation(
+        identity: ShellTerminalIdentity = ShellTerminalIdentity(
+            paneID: "w1:p-shell",
+            tabID: "w1:t-shell",
+            terminalID: "term-shell"),
+        failure: (any Error)? = nil,
+        gate: ScriptedTransportCallGate? = nil
+    ) {
+        shellTerminalIdentity = identity
+        shellTerminalCreationFailure = failure
+        nextShellTerminalCreationGate = gate
     }
 
     func setAvailableAgentKinds(
@@ -463,6 +483,17 @@ final actor ScriptedTransport: Transport {
     func renameWorkspace(_ params: WorkspaceRenameParams) async throws {
         if let renameFailure { throw renameFailure }
         workspaceRenames.append(params)
+    }
+
+    func createShellTerminal(
+        _ request: ShellTerminalCreationRequest
+    ) async throws -> ShellTerminalIdentity {
+        shellTerminalCreations.append(request)
+        let gate = nextShellTerminalCreationGate
+        nextShellTerminalCreationGate = nil
+        await gate?.waitUntilOpen()
+        if let shellTerminalCreationFailure { throw shellTerminalCreationFailure }
+        return shellTerminalIdentity
     }
 
     func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream {

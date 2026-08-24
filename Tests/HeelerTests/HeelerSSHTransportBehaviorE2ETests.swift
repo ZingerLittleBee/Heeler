@@ -247,6 +247,22 @@ struct HeelerSSHTransportBehaviorE2ETests {
             socketPath: environment.socketPath)
     }
 
+    @Test("direct Host ordinary terminal Attach preserves PTY behavior")
+    func directShellTerminalAttach() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        try await exerciseShellTerminalAttach(
+            settings: environment.directSettings(),
+            socketPath: environment.socketPath)
+    }
+
+    @Test("Jump Host ordinary terminal Attach preserves PTY behavior")
+    func jumpShellTerminalAttach() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        try await exerciseShellTerminalAttach(
+            settings: environment.jumpSettings(),
+            socketPath: environment.socketPath)
+    }
+
     @Test("direct Host RPC does not stall Attach")
     func directRPCDoesNotStallAttach() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
@@ -881,6 +897,30 @@ struct HeelerSSHTransportBehaviorE2ETests {
         )
     }
 
+    @Test("shell terminal creation sends one exact tab create request")
+    func shellTerminalCreationSendsOneExactTabCreateRequest() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("shell")
+        let identity = try await transport.createShellTerminal(
+            ShellTerminalCreationRequest(
+                workspaceID: "workspace-1",
+                cwd: "/fixture/\(token)"))
+
+        #expect(!identity.paneID.isEmpty)
+        #expect(!identity.tabID.isEmpty)
+        #expect(!identity.terminalID.isEmpty)
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        #expect(
+            recorded
+                == [
+                    #"tab.create {"cwd":"/fixture/\#(token)","focus":false,"workspace_id":"workspace-1"}"#
+                ])
+    }
+
     /// A named session becomes a directory component of the remote socket path,
     /// so discovery output is not trusted to stay inside herdr's grammar. One
     /// bad name fails the whole list rather than being dropped from it: a
@@ -1493,6 +1533,37 @@ struct HeelerSSHTransportBehaviorE2ETests {
         await replacement.end()
     }
 
+    private func exerciseShellTerminalAttach(
+        settings: SSHTransportSettings,
+        socketPath: String
+    ) async throws {
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        defer { Task { try? await transport.close() } }
+        let session = try await transport.attachTerminal(
+            TerminalAttachRequest(
+                target: .terminal("fixture:terminal"),
+                takeover: true,
+                cols: 80,
+                rows: 24))
+        var iterator = session.output.makeAsyncIterator()
+        var output = ""
+        try await expectAttachOutput(&iterator, accumulated: &output, contains: "24 80")
+        #expect(output.hasPrefix("TTY-OK"))
+        #expect(output.contains("ARGS:fixture:terminal --takeover"))
+        #expect(output.contains("SOCKET:\(socketPath)"))
+
+        session.send(Data("shell-input\n".utf8))
+        try await expectAttachOutput(
+            &iterator,
+            accumulated: &output,
+            contains: "GOT:shell-input")
+        session.resize(cols: 101, rows: 43)
+        session.send(Data("probe\n".utf8))
+        try await expectAttachOutput(&iterator, accumulated: &output, contains: "43 101")
+        await session.end()
+        #expect(try await transport.ping().protocolVersion == 17)
+    }
+
     private func exerciseCleanAttachExit(settings: SSHTransportSettings) async throws {
         let transport = try await HeelerSSHTransport.connect(settings: settings)
         defer { Task { try? await transport.close() } }
@@ -1736,6 +1807,7 @@ struct HeelerSSHTransportBehaviorEnvironment: Sendable {
         settings.homeCommand =
             "/bin/sh -c 'printf \"__HEELER_HOME__=%s\\n\" \"$1\"' home \(quotedHome)"
         settings.attachCommand = "\(homePath)/.heeler-ci/fake-attach"
+        settings.terminalAttachCommand = "\(homePath)/.heeler-ci/fake-attach"
         settings.stageDirectoryCommand =
             "/bin/sh -c 'umask 077; "
             + "directory=$(mktemp -d \"$1/heeler.XXXXXXXX\") || exit 1; "
