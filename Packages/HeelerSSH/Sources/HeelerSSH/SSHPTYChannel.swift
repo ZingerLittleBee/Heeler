@@ -7,12 +7,11 @@ import Foundation
 /// take short turns on the driver so the live terminal does not monopolize the
 /// SSH session while other channels make progress.
 ///
-/// That holds in one direction only. An ordinary RPC — `execute`,
-/// `executeResponseLine`, `exchangeStreamLocal` — takes the same operation
-/// mutex and holds it for its entire round trip, so terminal output,
-/// keystrokes and resizes queue behind one until it completes or its own
-/// deadline ends it. The effect is delay rather than failure: the terminal is
-/// not torn down, it simply stops moving meanwhile. See #130.
+/// Ordinary RPCs — `execute`, `executeResponseLine`, `exchangeStreamLocal` —
+/// take the same turns after the channel is established. A live terminal keeps
+/// moving while one of those waits for its remote response; a cancelled or
+/// timed-out write either drains the packet it owns or invalidates the session
+/// rather than leaving the next caller spun on a stranded send. See #130.
 public final class SSHPTYChannel: Sendable {
     private let id: UInt64
     private let driver: SessionDriver
@@ -52,6 +51,12 @@ public final class SSHPTYChannel: Sendable {
     public func close(timeout: Duration) async throws {
         try await driver.closePTY(id: id, timeout: timeout)
     }
+
+#if DEBUG
+    func acceptsIOForTesting() async -> Bool {
+        await driver.ptyAcceptsIOForTesting(id: id)
+    }
+#endif
 
     deinit {
         let id = id

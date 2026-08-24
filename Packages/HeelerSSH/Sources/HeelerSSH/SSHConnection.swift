@@ -178,7 +178,7 @@ public final class SSHConnection: Sendable {
     /// fresh channel to preserve one-request-per-socket protocols.
     /// `beforeRequestWrite` may throw after the channel opens but before any
     /// byte is written; its original error is preserved after channel cleanup.
-    /// `onRequestWritten` runs after the complete request.
+    /// `onRequestWritten` runs exactly once after the complete request.
     public func exchangeStreamLocal(
         socketPath: String,
         request: Data,
@@ -231,7 +231,7 @@ public final class SSHConnection: Sendable {
     }
 
     public func holdNextSessionWaitForTesting(
-        _ hold: @escaping @Sendable () async -> Void
+        _ hold: @escaping @Sendable () async throws -> Void
     ) async {
         await driver.holdNextSessionWaitForTesting(hold)
     }
@@ -268,6 +268,92 @@ public final class SSHConnection: Sendable {
 
     public func failNextSFTPInitBeforeEAGAINForTesting() async {
         await driver.failNextSFTPInitBeforeEAGAINForTesting()
+    }
+
+    public func holdNextOutboundWriteParkForTesting(
+        _ hold: @escaping @Sendable () async -> Void
+    ) async {
+        await driver.holdNextOutboundWriteParkForTesting(hold)
+    }
+
+    public func holdNextOneShotEstablishedForTesting(
+        _ hold: @escaping @Sendable () async throws -> Void
+    ) async {
+        await driver.holdNextOneShotEstablishedForTesting(hold)
+    }
+
+    public func holdNextOwnedLoopTopForTesting(
+        _ hold: @escaping @Sendable () async throws -> Void
+    ) async {
+        await driver.holdNextOwnedLoopTopForTesting(hold)
+    }
+
+    public func holdNextOwnedDrainForTesting(
+        _ hold: @escaping @Sendable () async throws -> Void
+    ) async {
+        await driver.holdNextOwnedDrainForTesting(hold)
+    }
+
+    public func holdNextChannelOpenSlotForTesting(
+        _ hold: @escaping @Sendable () async throws -> Void
+    ) async {
+        await driver.holdNextChannelOpenSlotForTesting(hold)
+    }
+
+    func holdNextChannelTeardownForTesting(
+        _ hold: @escaping @Sendable () async -> Void
+    ) async {
+        await driver.holdNextChannelTeardownForTesting(hold)
+    }
+
+    func failNextResumedChannelOpenWaiterForTesting(_ error: SSHError) async {
+        await driver.failNextResumedChannelOpenWaiterForTesting(error)
+    }
+
+    func holdNextChannelOpenWaiterRegistrationForTesting(
+        _ hold: @escaping @Sendable () async -> Void
+    ) async {
+        await driver.holdNextChannelOpenWaiterRegistrationForTesting(hold)
+    }
+
+    public func sftpUseCountForTesting() async -> Int {
+        await driver.sftpUseCountForTesting()
+    }
+
+    public func sftpIdleWaiterCountForTesting() async -> Int {
+        await driver.sftpIdleWaiterCountForTesting()
+    }
+
+    public func channelOpenWaiterCountForTesting() async -> Int {
+        await driver.channelOpenWaiterCountForTesting()
+    }
+
+    func ptyTeardownWaiterCountForTesting() async -> Int {
+        await driver.ptyTeardownWaiterCountForTesting()
+    }
+
+    func ptyChannelCountForTesting() async -> Int {
+        await driver.ptyChannelCountForTesting()
+    }
+
+    public func startSamplingTransportSendOwnerForTesting() async {
+        await driver.startSamplingTransportSendOwnerForTesting()
+    }
+
+    func transportSendOwnerSamplesForTesting() async -> [TransportSendOwnerSample] {
+        await driver.transportSendOwnerSamplesForTesting()
+    }
+
+    public func oneShotRegistryCountForTesting() async -> Int {
+        await driver.oneShotRegistryCountForTesting()
+    }
+
+    public func shrinkSendBufferForTesting(bytes: Int) async throws {
+        try await driver.shrinkSendBufferForTesting(bytes: bytes)
+    }
+
+    func resourceStateForTesting() async -> SessionDriverResourceState {
+        await driver.resourceStateForTesting()
     }
 
     public var operationWaiterCountForTesting: Int {

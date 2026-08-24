@@ -2,7 +2,7 @@
 
 #include <errno.h>
 
-static ssize_t heeler_abandoned_send(
+static ssize_t heeler_discarded_send(
     libssh2_socket_t socket,
     const void *buffer,
     size_t length,
@@ -11,11 +11,9 @@ static ssize_t heeler_abandoned_send(
 ) {
     (void)socket;
     (void)buffer;
-    (void)length;
     (void)flags;
     (void)abstract;
-    errno = EPIPE;
-    return -1;
+    return (ssize_t)length;
 }
 
 static ssize_t heeler_abandoned_receive(
@@ -30,8 +28,31 @@ static ssize_t heeler_abandoned_receive(
     (void)length;
     (void)flags;
     (void)abstract;
-    errno = ECONNRESET;
-    return -1;
+    return -ECONNRESET;
+}
+
+void heeler_libssh2_prepare_session_abandonment(LIBSSH2_SESSION *session) {
+    if (session == NULL) {
+        return;
+    }
+
+    /*
+     * A pending transport packet must first be completed by the exact owning
+     * libssh2 call: send_existing rejects a different data pointer with EAGAIN
+     * before invoking this callback. Reporting the owner's remaining bytes as
+     * consumed clears that packet without peer I/O. Fatal receives then keep
+     * channel teardown from waiting for remote close acknowledgements.
+     */
+    libssh2_session_callback_set2(
+        session,
+        LIBSSH2_CALLBACK_SEND,
+        (libssh2_cb_generic *)heeler_discarded_send
+    );
+    libssh2_session_callback_set2(
+        session,
+        LIBSSH2_CALLBACK_RECV,
+        (libssh2_cb_generic *)heeler_abandoned_receive
+    );
 }
 
 int heeler_libssh2_abandon_session(LIBSSH2_SESSION *session) {
@@ -39,22 +60,6 @@ int heeler_libssh2_abandon_session(LIBSSH2_SESSION *session) {
         return LIBSSH2_ERROR_BAD_USE;
     }
 
-    /*
-     * In pinned libssh2 1.11.1, session_free can propagate EAGAIN only while
-     * freeing channels or listeners. Those paths obtain EAGAIN from transport
-     * send or receive callbacks. Replacing both callbacks with fatal I/O makes
-     * abandonment a one-shot local reclamation with no peer-readiness wait.
-     */
-    libssh2_session_callback_set2(
-        session,
-        LIBSSH2_CALLBACK_SEND,
-        (libssh2_cb_generic *)heeler_abandoned_send
-    );
-    libssh2_session_callback_set2(
-        session,
-        LIBSSH2_CALLBACK_RECV,
-        (libssh2_cb_generic *)heeler_abandoned_receive
-    );
-
+    heeler_libssh2_prepare_session_abandonment(session);
     return libssh2_session_free(session);
 }

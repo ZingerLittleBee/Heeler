@@ -79,6 +79,7 @@ class Server:
         self.hang_condition = threading.Condition()
         self.hang_requests = _OneShotBarrier(self.hang_condition)
         self.pane_hangs = _OneShotBarrier(self.hang_condition)
+        self.pane_delays = _OneShotBarrier(self.hang_condition)
         self.script_lock = threading.Lock()
         self.recorded_requests: dict[str, list[str]] = {}
         self.agent_start_attempts: dict[str, int] = {}
@@ -140,12 +141,37 @@ class Server:
                 self.pane_hangs.record(pane_hang_token)
                 time.sleep(30)
                 return
+            pane_delay_token = self._fixture_token(pane_id, "fixture:delay:")
+            pane_await_delay_token = self._fixture_token(
+                pane_id,
+                "fixture:await-delay:",
+            )
             pane_observer_token = self._fixture_token(
                 pane_id,
                 "fixture:await-hang:",
             )
             record_query = self._fixture_token(pane_id, RECORD_QUERY_PREFIX)
-            if method == "pane.read" and record_query is not None:
+            if method == "pane.read" and pane_delay_token is not None:
+                self.pane_delays.record(pane_delay_token)
+                time.sleep(5)
+                response = {
+                    "id": envelope.get("id"),
+                    "result": self._pane_read_result(pane_id, "delayed"),
+                }
+                payload = json.dumps(response, separators=(",", ":")).encode() + b"\n"
+                chunk_size = 7
+            elif method == "pane.read" and pane_await_delay_token is not None:
+                observed = self.pane_delays.wait(pane_await_delay_token)
+                response = {
+                    "id": envelope.get("id"),
+                    "result": self._pane_read_result(
+                        pane_id,
+                        "observed" if observed else "not observed",
+                    ),
+                }
+                payload = json.dumps(response, separators=(",", ":")).encode() + b"\n"
+                chunk_size = 7
+            elif method == "pane.read" and record_query is not None:
                 response = {
                     "id": envelope.get("id"),
                     "result": self._pane_read_result(

@@ -41,6 +41,139 @@ and signature switches disabled; the small reviewed patch in `Patches/`
 removes SHA-1 key exchange and MAC methods that libssh2 1.11.1 otherwise has no
 build switch for.
 
+## Session scheduling
+
+`SessionDriver` owns one `LIBSSH2_SESSION` and serializes every call into it
+behind one operation mutex. What may release that mutex mid-operation is fixed
+by where libssh2 keeps its non-blocking continuation state, so re-check this
+section against `Sources.lock` whenever libssh2 is bumped.
+
+In 1.11.1 an unfinished channel open is **session** state: `open_state`,
+`open_channel`, `open_packet`, `open_data` and `open_packet_requirev_state`
+drive `_libssh2_channel_open`, and `direct_state` with `direct_message` drives
+both `channel_direct_tcpip` and `channel_direct_streamlocal` — one state
+machine for the two, despite the declaring comment naming only the first. All
+of them are fields of `LIBSSH2_SESSION` in
+`src/libssh2_priv.h`. `_libssh2_channel_open` only builds its request while
+`open_state` is idle, so a second open entered during another's `EAGAIN`
+resumes the first state machine and hands the first call's channel to the
+second caller. Channel opens must not interleave.
+
+Waiting for that serialized open slot is not itself an open attempt. A task
+cancelled or timed out while queued has no uncertain native channel state, so
+it leaves the connection reusable; once its own open call has started, the
+existing whole-session invalidation rule still applies to an interrupted open.
+
+Most of what follows open is **channel** state — `process_state`, `read_state`,
+`write_state`, `close_state`, `wait_eof_state`, `wait_closed_state`,
+`free_state` and `reqPTY_state` all live on `LIBSSH2_CHANNEL` — which is why
+the PTY and long-lived stream-local paths can take one short turn per call.
+Any operation that means to release the mutex between turns has to re-resolve
+its channel by id from a driver registry afterwards: invalidation frees the
+session, `libssh2_session_free` destroys every channel attached to it, and a
+pointer captured before the release would dangle.
+
+Sending is the exception, and it cuts across every channel. The pending
+outbound packet is **session** state: `odata`, `olen`, `osent` and `ototal_num`
+on `struct transportpacket` (`src/libssh2_priv.h`), reached through
+`session->packet`. `_libssh2_transport_send` records them whenever a send could
+not flush the whole packet — including when it sent nothing — and
+`send_existing` refuses any retry whose `data` pointer or length differs, with
+the comment "Address is different, returning EAGAIN" (`src/transport.c`). It
+returns `EAGAIN` without advancing the packet, so a foreign producer can never
+drain it.
+
+The consequence is a livelock, not a slowdown. `_libssh2_channel_write` sends
+from the channel's own `write_packet` buffer, so the owning channel can resume
+across a mutex release; anyone else cannot. If a caller holds the operation
+mutex across its own `EAGAIN` loop while another channel owns a pending packet,
+it spins until its deadline and the owner never gets a turn. Channel open is
+such a caller. Any call that loops on `EAGAIN` while holding the mutex must
+therefore first establish that no other operation is the transport-send owner;
+`libssh2_session_block_directions` reporting an outbound block after a
+packet-producing `EAGAIN` is the public signal for it, and `send_existing` runs
+before `_libssh2_transport_send` clears that bit, so the report is conservative
+rather than falsely clear.
+
+The **exact** owning call decides how ownership ends. A successful
+non-`EAGAIN` result clears ownership even if libssh2's direction bit is stale.
+A negative result clears only when no outbound block remains; with outbound
+still reported, the caller first reads any native error status it needs and
+then invalidates the whole session. Completed invalidation frees
+`session->packet` along with the session. A cancelled or timed-out Swift task
+is not one of them — the native packet outlives it. `_libssh2_channel_write`
+leaves `write_state` at `libssh2_NB_state_created` on `EAGAIN`, so re-calling
+`libssh2_channel_write_ex` on the same channel resends the same
+`write_packet`/`write_packet_len` and is the only call that can drain it;
+`send_existing` sanity-checks `data` and `data_len` alone and never the payload,
+so a caller that resumes with a different payload buffer gets no diagnostic.
+Before #130, `writePTY` and `writeStreamLocal` threw directly out of their wait,
+so cancellation could strand a packet for the rest of the session's life.
+Cleanup now drives the exact owning call non-cancellably to a non-`EAGAIN`
+result within its reclamation budget, and invalidates the session if that
+budget expires. A negative non-`EAGAIN` result while libssh2 still reports
+outbound state also invalidates: clearing the owner in that state would admit
+a foreign producer while the native packet may still be pending.
+
+Channel teardown has its own resource transition. As soon as PTY exit-status,
+PTY close, or direct-streamlocal close begins, the registry entry stops
+accepting reads, writes, and resizes. Cleanup may still re-resolve that entry
+across yielded turns, but user I/O cannot interleave with close/free on the
+same native channel. PTY close waits for an in-flight exit-status handshake;
+if that handshake fails, ordinary PTY I/O is enabled again so the caller can
+retry or close explicitly.
+
+SFTP is a second exception and a stronger one. `struct _LIBSSH2_SFTP`
+(`src/sftp.h`) carries one continuation slot per operation kind —
+`mkdir_state`/`mkdir_packet`/`mkdir_request_id`, `stat_*`, `unlink_*`,
+`rename_*`, `fstat_*` and the rest — plus one shared inbound parser
+(`packet_state`, `partial_packet`, `partial_len`, `partial_received`). A second
+call of the same kind resumes the first call's state instead of starting its
+own, so it can combine one request's packet with another's length or deliver
+one call's result into another's output buffer. Re-resolving the handle by id
+does not isolate this, because the id resolves to the same shared state. Every
+call on one SFTP handle stays mutually exclusive for its whole logical
+operation, waits included, and `libssh2_sftp_init` stays serialized on its own
+session-owned `open_state`.
+
+Waits are released session-wide rather than per channel. libssh2 buffers what
+it decrypts, so an operation reading its own channel consumes the packets the
+others are blocked on and the socket keeps no edge to report; `SessionActivity`
+therefore counts receives and wakes every wait armed before the last one. The
+number of wakeups per inbound packet grows with the number of channels parked
+at once, so turn bodies stay small.
+
+## Test lanes
+
+`make test` runs the app suites and then `scripts/run-heelerssh-package-tests.sh`
+for this package's own suites, including `SessionDriverE2ETests`. The local
+package runner asserts only that something executed, not an exact count, so
+machines without the disposable sshd fixture can skip the E2E suite cleanly.
+
+The E2E integration package must update `scripts/run-ci-ios-tests.sh` before
+merge so its package lane expects **43** executed tests and pins these new
+display names exactly:
+
+- `outbound backpressure does not livelock a channel open`
+- `cancelling a transport-send owner drains`
+- `cancelling a transport-send owner invalidates`
+- `timing out a transport-send owner at loop-top drains`
+- `timing out a transport-send owner at loop-top invalidates`
+- `one-shot RPCs yield so a live PTY can progress`
+- `cancelling a yielded one-shot distinguishes cleanup outcomes`
+- `timing out a yielded one-shot distinguishes cleanup outcomes`
+- `invalidation during a yielding wait does not touch a stale native pointer`
+- `yielded channel teardown rejects same-id I/O and preserves close`
+- `repeated invalidation reclaims every file descriptor`
+- `measurement: Attach throughput with concurrent RPCs`
+- `SFTP operations and close wait out an in-flight handle use`
+- `a serialized channel-open wait honors deadline and cancellation`
+- `an invalidation generation rejects a watch armed before it`
+- `a transport-send owner error with outbound pending invalidates`
+- `a bridge write to a closed peer reports peerClosed`
+
+This core package intentionally does not edit that integration script.
+
 ## Direct-streamlocal acceptance
 
 `scripts/run-ci-ios-tests.sh` provisions disposable OpenSSH endpoints and a
