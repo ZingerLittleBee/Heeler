@@ -98,6 +98,26 @@ extract_shipped_function clear_simulator_environment
 extract_shipped_function stop_privileged_sshd
 extract_shipped_function release_resource_lock
 
+# The optimized gate has exactly three app fixture invocations. The package
+# suite runs in its own workflow job, so putting it back into the app lane or
+# silently expanding the fixture invocations must make this harness fail.
+app_fixture_lane_count=$(grep -c '^run_suite ' "$gate_script")
+[[ "$app_fixture_lane_count" == 3 ]] \
+    || die "gate has $app_fixture_lane_count app fixture lanes, expected 3"
+grep -qF 'if [[ "$ci_lane" == "package" ]]; then' "$gate_script" \
+    || die "gate has no isolated package lane"
+grep -qF 'HEELER_CI_LANE: package' "$repo_root/.github/workflows/ci.yml" \
+    || die "workflow has no package-only job"
+grep -qF 'HEELER_CI_LANE: app' "$repo_root/.github/workflows/ci.yml" \
+    || die "workflow does not pin the app-only job"
+awk '
+    /if \[\[ "\$ci_lane" == "app" \]\]; then/ { in_app_lane = 1; next }
+    in_app_lane && /clear_simulator_environment/ { cleared = 1 }
+    in_app_lane && /^fi$/ { in_app_lane = 0 }
+    END { exit cleared ? 0 : 1 }
+' "$gate_script" \
+    || die "app lane does not clear fixture environment before the full test lane"
+
 # cleanup reads these ownership slots even when a case never claimed a
 # resource. The real gate initializes them before installing its trap; the
 # extracted function needs the same empty starting state. Only the extracted
@@ -197,6 +217,14 @@ new_case() {
     rm -rf "$dir"
     mkdir -p "$dir"
     cp "$work/lanes/"*.log "$dir/"
+    cat \
+        "$dir/HeelerSSHPTYE2ETests.log" \
+        "$dir/HeelerSSHJumpHostGateE2ETests.log" \
+        "$dir/HeelerSSHTransportBehaviorE2ETests.log" \
+        "$dir/ImageStagingE2ETests.log" \
+        "$dir/WeakNetworkE2ETests.log" \
+        "$dir/PairingCeremonyE2ETests.log" \
+        > "$dir/SharedFixtureE2ETests.log"
     printf '%s' "$dir"
 }
 
@@ -230,11 +258,11 @@ run_case() {
         fixture_dir="$case_dir"
         # shellcheck disable=SC2034
         password_fixture_available="$case_password_fixture"
-        pinned_lane_logs=()
-        for lane in "${lane_names[@]}"; do
-            [[ "$lane" == full-lane ]] && continue
-            pinned_lane_logs+=("$case_dir/$lane.log")
-        done
+        pinned_lane_logs=(
+            "$case_dir/HeelerSSHSessionE2ETests.log"
+            "$case_dir/HeelerSSHDirectStreamLocalE2ETests.log"
+            "$case_dir/SharedFixtureE2ETests.log"
+        )
         # The guards signal failure with `exit`, which would take this capture
         # subshell down with them and leave no status to read. Nesting one more
         # subshell keeps the status observable, so a red case is recorded as the
@@ -382,7 +410,7 @@ run_case pass '' "added tests do not require editing the gate" "$case_dir" \
 echo
 echo "== a full-lane skip loses the lane that proved it =="
 case_dir=$(new_case unproven-skip)
-/usr/bin/python3 - "$case_dir/HeelerSSHPTYE2ETests.log" <<'PY'
+/usr/bin/python3 - "$case_dir/SharedFixtureE2ETests.log" <<'PY'
 import sys
 
 path = sys.argv[1]
@@ -464,7 +492,7 @@ run_case pass '' "with it absent, exactly those two are exempt" "$case_dir" \
     assert_full_lane_coverage "$case_dir/full-lane.log" "$gate_executed_floor"
 
 case_dir=$(new_case exemption-cannot-widen)
-/usr/bin/python3 - "$case_dir/HeelerSSHTransportBehaviorE2ETests.log" <<'PY'
+/usr/bin/python3 - "$case_dir/SharedFixtureE2ETests.log" <<'PY'
 import sys
 
 path = sys.argv[1]
@@ -551,16 +579,16 @@ run_suite_case() {
 # nothing to reason from. This is the case that dies if the append is removed.
 run_suite_case pass "PINNED_LAST=$work/cases" \
     "a passing lane is recorded as evidence" HeelerSSHPTYE2ETests \
-    HeelerSSHPTYE2ETests 3 1
+    HeelerSSHPTYE2ETests 3 1 0 HeelerSSHPTYE2ETests
 
 # And run_suite's own guards, which were equally untested: a lane whose executed
 # count moved, and a lane that skipped where no skip was budgeted.
 run_suite_case fail "did not execute all 4 tests" \
     "a lane with the wrong executed count is refused" HeelerSSHPTYE2ETests \
-    HeelerSSHPTYE2ETests 4 1
+    HeelerSSHPTYE2ETests 4 1 0 HeelerSSHPTYE2ETests
 run_suite_case fail "skipped 2 tests; exactly 0 may skip" \
     "an unbudgeted skip is refused" HeelerSSHSessionE2ETests \
-    HeelerSSHSessionE2ETests 14 1
+    HeelerSSHSessionE2ETests 14 1 0 HeelerSSHSessionE2ETests
 
 echo
 echo "== privileged sshd stop is bounded before preserving evidence =="
