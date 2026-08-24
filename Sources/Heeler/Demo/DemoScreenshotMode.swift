@@ -419,6 +419,12 @@
             try await startAgent(request)
         }
 
+        func startAgentInNewWorkspace(
+            _ request: AgentLaunchRequest, workspace: NewWorkspaceSpec
+        ) async throws -> Agent {
+            try await startAgent(request)
+        }
+
         func closePane(_ params: PaneTarget) async throws {}
         func renameAgent(_ params: AgentRenameParams) async throws {}
         func renameWorkspace(_ params: WorkspaceRenameParams) async throws {}

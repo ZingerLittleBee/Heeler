@@ -664,6 +664,28 @@ actor HeelerSSHTransport: Transport {
         }
     }
 
+    func startAgentInNewWorkspace(
+        _ launch: AgentLaunchRequest,
+        workspace: NewWorkspaceSpec
+    ) async throws -> Agent {
+        let created = try await request(
+            method: "workspace.create",
+            params: WorkspaceCreateParams(
+                cwd: workspace.directory,
+                focus: false,
+                label: workspace.label),
+            decoding: WorkspaceCreatedResponse.self)
+        do {
+            let response = try await startAgentAwaitingShell(
+                launch,
+                paneID: created.rootPane.paneID)
+            return Agent(response.agent)
+        } catch let error as HerdrAPIError {
+            try? await closeCreatedWorkspace(workspaceID: created.workspace.workspaceID)
+            throw error
+        }
+    }
+
     func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
         try await request(
             method: "worktree.list",
@@ -691,6 +713,13 @@ actor HeelerSSHTransport: Transport {
             method: "worktree.remove",
             params: WorktreeRemoveParams(workspaceID: workspaceID),
             decoding: WorktreeRemovedResponse.self)
+    }
+
+    private func closeCreatedWorkspace(workspaceID: String) async throws {
+        _ = try await request(
+            method: "workspace.close",
+            params: WorkspaceTarget(workspaceID: workspaceID),
+            decoding: OkResponse.self)
     }
 
     private func startAgentAwaitingShell(

@@ -18,6 +18,10 @@ final actor ScriptedTransport: Transport {
     /// Every worktree launch received, in order; the new-worktree flow (#97)
     /// asserts on the request/spec pairs it forwarded.
     private(set) var worktreeStarts: [(request: AgentLaunchRequest, worktree: WorktreeSpec)] = []
+    /// Every new-Workspace launch received, in order; the new-Workspace flow
+    /// (#230) asserts on the request/spec pairs it forwarded.
+    private(set) var workspaceStarts: [(request: AgentLaunchRequest, workspace: NewWorkspaceSpec)] =
+        []
     private(set) var agentDiscoveryCount = 0
     private var availableKinds = SupportedAgentKind.allCases
     private var agentDiscoveryFailure: TransportError?
@@ -404,6 +408,18 @@ final actor ScriptedTransport: Transport {
         return Agent(
             .fixture(
                 paneID: "wt1:pnew", status: .working, workspaceID: "wt1",
+                kind: request.kind, title: request.name))
+    }
+
+    func startAgentInNewWorkspace(
+        _ request: AgentLaunchRequest, workspace: NewWorkspaceSpec
+    ) async throws -> Agent {
+        workspaceStarts.append((request, workspace))
+        if let startFailure { throw startFailure }
+        if let startedAgent { return Agent(startedAgent) }
+        return Agent(
+            .fixture(
+                paneID: "nw1:pnew", status: .working, workspaceID: "nw1",
                 kind: request.kind, title: request.name))
     }
 
