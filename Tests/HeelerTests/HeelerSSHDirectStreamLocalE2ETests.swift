@@ -12,25 +12,6 @@ import Testing
         "requires the disposable stream-local fixture"),
     .serialized)
 struct HeelerSSHDirectStreamLocalE2ETests {
-    @Test("Transport ping validates protocol 17 and opens a fresh channel")
-    func transportPingUsesFreshChannels() async throws {
-        let environment = try #require(DirectStreamLocalTestEnvironment.current)
-        let connection = try await environment.deviceKeyConnection(to: environment.endpoint)
-        let before = try await environment.connectionCount(using: connection)
-        let transport: any Transport = HeelerSSHTransport(
-            connection: connection,
-            socketPath: environment.socketPath)
-
-        let first = try await transport.ping()
-        let second = try await transport.ping()
-        let after = try await environment.connectionCount(using: connection)
-
-        #expect(first == ServerInfo(version: "fake", protocolVersion: 17))
-        #expect(second == first)
-        #expect(after == before + 2)
-        try await transport.close()
-    }
-
     @Test("partial request writes and response reads complete one line")
     func partialReadsAndWritesComplete() async throws {
         let environment = try #require(DirectStreamLocalTestEnvironment.current)

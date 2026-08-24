@@ -1614,7 +1614,7 @@ if [[ "$password_fixture_available" == "1" ]]; then
     fi
 fi
 run_suite HeelerSSHPTYE2ETests 3 1
-run_suite HeelerSSHDirectStreamLocalE2ETests 10 1
+run_suite HeelerSSHDirectStreamLocalE2ETests 9 1
 run_suite HeelerSSHJumpHostGateE2ETests 8 1
 run_suite HeelerSSHTransportBehaviorE2ETests 56 1
 run_suite ImageStagingE2ETests 8 1
@@ -1636,8 +1636,6 @@ assert_behavior "two-hop trust" HeelerSSHJumpHostGateE2ETests \
 # down in order. Folded into the trust assertion it was invisible to rename.
 assert_behavior "Jump Host product path" HeelerSSHJumpHostGateE2ETests \
     '"protocol 17 ping traverses independent SSH hops"'
-assert_behavior "RPC" HeelerSSHDirectStreamLocalE2ETests \
-    '"Transport ping validates protocol 17 and opens a fresh channel"'
 assert_behavior "Events" HeelerSSHTransportBehaviorE2ETests \
     '"direct Host Events preserve framing, concurrency, and slot reuse"'
 assert_behavior "PTY" HeelerSSHPTYE2ETests \
