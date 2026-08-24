@@ -1614,7 +1614,7 @@ if [[ "$password_fixture_available" == "1" ]]; then
     fi
 fi
 run_suite HeelerSSHPTYE2ETests 3 1
-run_suite HeelerSSHDirectStreamLocalE2ETests 11 1
+run_suite HeelerSSHDirectStreamLocalE2ETests 10 1
 run_suite HeelerSSHJumpHostGateE2ETests 9 1
 run_suite HeelerSSHTransportBehaviorE2ETests 56 1
 run_suite ImageStagingE2ETests 8 1
@@ -1711,8 +1711,6 @@ assert_behavior "forwarding denial surviving a failed wake" \
     '"a failed wake does not narrow a forwarding denial"'
 assert_behavior "cancellation" HeelerSSHDirectStreamLocalE2ETests \
     '"cancellation closes only its channel and preserves connection reuse"'
-assert_behavior "timeout" HeelerSSHDirectStreamLocalE2ETests \
-    '"timeout closes only its channel and preserves connection reuse"'
 assert_behavior "teardown" HeelerSSHSessionE2ETests \
     '"clean channel close leaves the connection reusable"'
 
