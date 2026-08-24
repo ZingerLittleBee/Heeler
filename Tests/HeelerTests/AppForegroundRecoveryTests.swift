@@ -713,6 +713,7 @@ struct AppForegroundRecoveryTests {
         try await waitUntil("the Host should come up connected") {
             store.hostStatuses[host.id] == .connected
         }
+        try await waitUntilPaneResubscribeSettles(on: stopped)
 
         await stopped.failEventStream(failure)
         try await waitUntil("the stopped herdr should fail the Host") {
@@ -793,6 +794,7 @@ struct AppForegroundRecoveryTests {
         try await waitUntil("the Host should come up connected") {
             projection.status == .connected
         }
+        try await waitUntilPaneResubscribeSettles(on: stopped)
 
         await stopped.failEventStream(failure)
         try await waitUntil("the stopped herdr should fail the Host") {
@@ -879,6 +881,7 @@ struct AppForegroundRecoveryTests {
         try await waitUntil("the Host should come up connected") {
             store.hostStatuses[host.id] == .connected
         }
+        try await waitUntilPaneResubscribeSettles(on: first)
         await first.failEventStream(failure)
         try await waitUntil("the Host should fail") {
             store.hostStatuses[host.id] == .failed(failure)
@@ -940,6 +943,7 @@ struct AppForegroundRecoveryTests {
         try await waitUntil("the Host should come up connected") {
             store.hostStatuses[host.id] == .connected
         }
+        try await waitUntilPaneResubscribeSettles(on: first)
         await first.failEventStream(failure)
         try await waitUntil("the Host should fail") {
             store.hostStatuses[host.id] == .failed(failure)
