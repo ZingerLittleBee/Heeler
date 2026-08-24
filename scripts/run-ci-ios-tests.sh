@@ -1615,7 +1615,7 @@ if [[ "$password_fixture_available" == "1" ]]; then
 fi
 run_suite HeelerSSHPTYE2ETests 3 1
 run_suite HeelerSSHDirectStreamLocalE2ETests 10 1
-run_suite HeelerSSHJumpHostGateE2ETests 9 1
+run_suite HeelerSSHJumpHostGateE2ETests 8 1
 run_suite HeelerSSHTransportBehaviorE2ETests 56 1
 run_suite ImageStagingE2ETests 8 1
 run_suite WeakNetworkE2ETests 8 1
