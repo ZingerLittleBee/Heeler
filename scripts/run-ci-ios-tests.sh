@@ -1641,7 +1641,7 @@ if [[ "$password_fixture_available" == "1" ]]; then
 fi
 run_suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 \
     HeelerSSHDirectStreamLocalE2ETests
-run_suite SharedFixtureE2ETests 91 6 0 \
+run_suite SharedFixtureE2ETests 94 6 0 \
     HeelerSSHPTYE2ETests \
     HeelerSSHJumpHostGateE2ETests \
     HeelerSSHTransportBehaviorE2ETests \
@@ -1682,6 +1682,14 @@ assert_behavior "PTY" HeelerSSHPTYE2ETests \
     '"PTY exec preserves raw IO, merged output, geometry, and exit status"'
 assert_behavior "resize" HeelerSSHTransportBehaviorE2ETests \
     '"direct Host Attach preserves PTY IO, resize, end, and reuse"'
+assert_behavior "shell terminal creation" HeelerSSHTransportBehaviorE2ETests \
+    '"shell terminal creation sends one exact tab create request"'
+assert_behavior "direct Host shell terminal Attach" \
+    HeelerSSHTransportBehaviorE2ETests \
+    '"direct Host ordinary terminal Attach preserves PTY behavior"'
+assert_behavior "Jump Host shell terminal Attach" \
+    HeelerSSHTransportBehaviorE2ETests \
+    '"Jump Host ordinary terminal Attach preserves PTY behavior"'
 assert_behavior "RPC does not stall Attach" HeelerSSHTransportBehaviorE2ETests \
     '"direct Host RPC does not stall Attach"'
 assert_behavior "RPC does not stall Attach on a Jump Host" \

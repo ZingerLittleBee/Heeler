@@ -1,19 +1,52 @@
 import Foundation
 import Synchronization
 
-/// One Attach request (#11): the `herdr agent attach` target (a Pane
-/// address), herdr's takeover flag, and the initial PTY geometry.
+/// The remote object one interactive PTY Attach resolves.
+///
+/// Agent Attach addresses herdr's Agent-facing command with a Pane id. An
+/// ordinary shell terminal instead addresses `herdr terminal attach` with the
+/// terminal id returned by `tab.create`. Keeping the distinction in the
+/// request prevents UI code from selecting remote commands itself.
+enum TerminalAttachTarget: Sendable, Equatable {
+    case agentPane(String)
+    case terminal(String)
+
+    var identifier: String {
+        switch self {
+        case .agentPane(let identifier), .terminal(let identifier):
+            identifier
+        }
+    }
+}
+
+/// One interactive terminal request: its typed remote target, herdr's
+/// takeover flag, and the initial PTY geometry.
 struct TerminalAttachRequest: Sendable, Equatable {
-    let target: String
+    let target: TerminalAttachTarget
     let takeover: Bool
     let cols: Int
     let rows: Int
 
-    init(target: String, takeover: Bool = false, cols: Int, rows: Int) {
+    init(
+        target: TerminalAttachTarget,
+        takeover: Bool = false,
+        cols: Int,
+        rows: Int
+    ) {
         self.target = target
         self.takeover = takeover
         self.cols = cols
         self.rows = rows
+    }
+
+    /// Compatibility spelling for existing Agent Attach callers. New call
+    /// sites that can target more than an Agent use the typed initializer.
+    init(target: String, takeover: Bool = false, cols: Int, rows: Int) {
+        self.init(
+            target: .agentPane(target),
+            takeover: takeover,
+            cols: cols,
+            rows: rows)
     }
 }
 

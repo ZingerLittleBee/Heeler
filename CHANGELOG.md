@@ -9,6 +9,11 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Agent detail's More menu gains Open Terminal: it creates a new herdr tab in
+  the Agent's launch directory and opens its shell as a fully interactive
+  Shell Terminal. Back detaches and leaves the remote tab alive for desktop
+  handoff. (#231)
+
 - New Agent can start in a new Workspace at a remote directory, with an
   optional label, even when the Host reports none. (#230)
 

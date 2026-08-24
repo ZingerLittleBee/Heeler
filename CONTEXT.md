@@ -63,7 +63,9 @@ herdr's detected state of an Agent: Idle, Working, Blocked, Done, or Unknown. Bl
 _Avoid_: agent state, activity
 
 **Pane**:
-herdr's unit of terminal real estate that an Agent lives in. Used as an address (`pane_id`), never as a layout concept in this app.
+herdr's unit of terminal real estate. A Pane hosts either an Agent or an
+ordinary shell — a workspace's root pane starts as a shell. Used as an address
+(`pane_id`), never as a layout concept in this app.
 _Avoid_: window, tile
 
 **Workspace**:
@@ -107,13 +109,15 @@ and the Composer never claims otherwise.
 _Avoid_: reply bar, compose bar (the shelved predecessors), input box, message box
 
 **Attach**:
-The realtime PTY stream behind Agent detail. libghostty renders the complete
-TUI, owns local scrollback, and reports its grid size so the remote PTY resizes
-with the view. The surface is display-only: authored input belongs to Composer.
+The realtime PTY stream behind Agent detail, Agent-specific and display-only.
+libghostty renders the complete TUI, owns local scrollback, and reports its
+grid size so the remote PTY resizes with the view. Authored input belongs to
+Composer.
 Delivery is one `agent.prompt` request, except when Agent Status is Blocked, in
 which case Send inserts the draft into Attach without Enter and the tools
 keyboard submits or cancels. Only Composer's explicit tools-keyboard controls
-send terminal control sequences.
+send terminal control sequences. The directly interactive surface on an
+ordinary shell is the Shell Terminal, never unqualified "Attach".
 _Avoid_: takeover (that's herdr's flag, not our surface), connect
 
 **Attach Link**:
@@ -121,6 +125,18 @@ An ordinary web URL observed in the terminal during one Agent detail session. It
 available after scrolling or reconnecting, but is forgotten when the user
 leaves the detail; a later session discovers whatever its terminal shows anew.
 _Avoid_: recent link, visible link, link history
+
+**Shell Terminal**:
+The full interactive terminal on an ordinary shell Pane, opened by Agent
+detail's Open Terminal action. Heeler creates a fresh herdr tab in the Agent's
+launch directory and attaches the returned terminal id through herdr's direct
+terminal attach with takeover. libghostty renders it, and direct keyboard
+input and PTY resize go straight to the remote terminal — no Composer, no
+Agent semantics, no notification routing. It replaces Agent detail while open
+so the Host's single terminal lifetime hands off cleanly; Back detaches and
+leaves the remote tab alive for desktop handoff.
+_Avoid_: Attach (that's the Agent-specific display surface), shell console,
+terminal pane view
 
 **Terminal Keyboard**:
 The two keyboard modes below Composer, swapped in place at one shared measured

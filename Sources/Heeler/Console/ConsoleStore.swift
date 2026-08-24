@@ -341,6 +341,13 @@ final class ConsoleStore {
         try await projection(for: hostID).startAgent(request)
     }
 
+    func createShellTerminal(
+        _ request: ShellTerminalCreationRequest,
+        on hostID: Host.ID
+    ) async throws -> ShellTerminalIdentity {
+        try await projection(for: hostID).createShellTerminal(request)
+    }
+
     @discardableResult
     func startAgentInNewWorktree(
         _ request: AgentLaunchRequest,

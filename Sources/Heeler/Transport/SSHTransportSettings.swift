@@ -9,6 +9,7 @@ struct SSHTransportSettings: Sendable {
         + "printf \"__HEELER_STAGE_DIR__=%s\\n\" \"$directory\"'"
     static let defaultWakeCommand = "herdr remote-client-bridge"
     static let defaultAttachCommand = "herdr agent attach"
+    static let defaultTerminalAttachCommand = "herdr terminal attach"
     static let defaultHomeCommand = "printf '__HEELER_HOME__=%s\\n' \"$HOME\""
     static let defaultPluginListCommand = "herdr plugin list --json"
     static let agentAvailabilityMarker = "__HEELER_AGENT_KIND__="
@@ -98,6 +99,10 @@ struct SSHTransportSettings: Sendable {
     /// well-known install prefixes to PATH; a per-Host override is for a
     /// binary that lives somewhere else, or for a test fixture.
     var attachCommand: String = Self.defaultAttachCommand
+    /// Ordinary shell counterpart to ``attachCommand``. It is separate so
+    /// fixtures can exercise command selection without teaching UI code how
+    /// herdr spells either attach command.
+    var terminalAttachCommand: String = Self.defaultTerminalAttachCommand
     /// Command used to print a marker-delimited remote home directory. It is
     /// injectable only at the environment boundary for real-SSH tests.
     var homeCommand: String = Self.defaultHomeCommand
