@@ -1940,7 +1940,9 @@ struct AgentAttachStoreTests {
         try await goLive(incoming, transport)
 
         // The channel went to the screen on stage, never to a zombie.
-        #expect(await transport.attachRequests.map(\.target) == ["w1:p1", "w1:p2"])
+        #expect(
+            await transport.attachRequests.map(\.target)
+                == [.agentPane("w1:p1"), .agentPane("w1:p2")])
 
         await incoming.leave().value
     }
@@ -2515,6 +2517,27 @@ struct AgentAttachStoreForegroundTests {
         #expect(await transport.hasLiveAttachSession == false)
 
         await store.leave().value
+    }
+
+    @Test func deliberateTerminalHandoffTearsDownAnOnStageActivationRecovery() async throws {
+        let transport = ScriptedTransport()
+        let endGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachEnd(on: endGate)
+        let store = makeStore(transport: transport)
+
+        try await goLive(store, transport)
+        store.didBecomeActive(afterPossibleSuspension: true)
+        try await waitUntil("recovery should reach the predecessor PTY teardown") {
+            await endGate.entryCount == 1
+        }
+
+        let handoff = store.leaveForTerminalHandoff()
+        await endGate.open()
+        await handoff.value
+
+        #expect(store.terminalStatus == .stopped)
+        #expect(await transport.attachRequests.count == 1)
+        #expect(await transport.hasLiveAttachSession == false)
     }
 
     @Test func recoveryDoesNotConfirmReviewedPasteThroughThePredecessorWriter() async throws {

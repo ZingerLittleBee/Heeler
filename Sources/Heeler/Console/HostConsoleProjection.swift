@@ -192,6 +192,14 @@ final class HostConsoleProjection {
         }
     }
 
+    func createShellTerminal(
+        _ request: ShellTerminalCreationRequest
+    ) async throws -> ShellTerminalIdentity {
+        try await session.withTransport { transport in
+            try await transport.createShellTerminal(request)
+        }
+    }
+
     func imageStager() -> ImageStager {
         let session = session
         return { image, reporter in

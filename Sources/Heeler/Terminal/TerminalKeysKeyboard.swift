@@ -62,6 +62,9 @@ struct TerminalKeysContext {
     /// Nil hides the Skills tab: the agent's kind has no skills mechanism
     /// this app knows how to probe.
     let skills: TerminalSkillsContext?
+    /// Shell terminals keep terminal controls and appearance but do not expose
+    /// the Agent Composer's reusable draft snippets.
+    let showsSnippets: Bool
     /// Opens the Snippets management surface. That means leaving the keyboard,
     /// so the screen owns the presentation and the keyboard only asks.
     let manageSnippets: () -> Void
@@ -69,11 +72,21 @@ struct TerminalKeysContext {
     init(
         settings: TerminalSettings,
         skills: TerminalSkillsContext? = nil,
+        showsSnippets: Bool = true,
         manageSnippets: @escaping () -> Void
     ) {
         self.settings = settings
         self.skills = skills
+        self.showsSnippets = showsSnippets
         self.manageSnippets = manageSnippets
+    }
+
+    var tabs: [TerminalKeysTab] {
+        TerminalKeysTab.allCases.filter { tab in
+            if tab == .skills { return skills != nil }
+            if tab == .snippets { return showsSnippets }
+            return true
+        }
     }
 }
 
@@ -108,9 +121,7 @@ final class TerminalKeysKeyboardView: UIInputView, UIInputViewAudioFeedback {
 
     private var tabs: [TerminalKeysTab] {
         guard let context else { return [.controls] }
-        return TerminalKeysTab.allCases.filter {
-            $0 != .skills || context.skills != nil
-        }
+        return context.tabs
     }
 
     init(

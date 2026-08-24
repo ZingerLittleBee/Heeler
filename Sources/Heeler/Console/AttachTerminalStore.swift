@@ -95,7 +95,7 @@ final class AttachTerminalStore {
     /// different surface to SwiftUI.
     let surfaceID = TerminalSurfaceID()
 
-    private let target: String
+    private let target: TerminalAttachTarget
     private let takeover: Bool
     private let input: TerminalInputController
     private let observeOutput: @MainActor @Sendable (Data) -> Void
@@ -113,7 +113,7 @@ final class AttachTerminalStore {
     private var runTask: Task<Void, Never>?
 
     init(
-        target: String, takeover: Bool = false,
+        target: TerminalAttachTarget, takeover: Bool = false,
         input: TerminalInputController = TerminalInputController(),
         observeOutput: @escaping @MainActor @Sendable (Data) -> Void = { _ in },
         finishOutput: @escaping @MainActor @Sendable () -> Void = {},
@@ -125,6 +125,22 @@ final class AttachTerminalStore {
         self.observeOutput = observeOutput
         self.finishOutput = finishOutput
         self.runTerminal = runTerminal
+    }
+
+    convenience init(
+        target: String, takeover: Bool = false,
+        input: TerminalInputController = TerminalInputController(),
+        observeOutput: @escaping @MainActor @Sendable (Data) -> Void = { _ in },
+        finishOutput: @escaping @MainActor @Sendable () -> Void = {},
+        runTerminal: @escaping TerminalSessionRunner
+    ) {
+        self.init(
+            target: .agentPane(target),
+            takeover: takeover,
+            input: input,
+            observeOutput: observeOutput,
+            finishOutput: finishOutput,
+            runTerminal: runTerminal)
     }
 
     /// The terminal view's geometry, reported on first layout and on every

@@ -290,6 +290,7 @@ actor HeelerSSHTransport: Transport {
     private let sessionListCommand: String
     private let agentDiscoveryCommand: String
     private let attachCommand: String
+    private let terminalAttachCommand: String
     private let homeCommand: String
     private let stageDirectoryCommand: String
     private let pluginListCommand: String
@@ -407,6 +408,7 @@ actor HeelerSSHTransport: Transport {
         sessionListCommand = SSHTransportSettings.defaultSessionListCommand
         agentDiscoveryCommand = SSHTransportSettings.defaultAgentDiscoveryCommand
         attachCommand = SSHTransportSettings.defaultAttachCommand
+        terminalAttachCommand = SSHTransportSettings.defaultTerminalAttachCommand
         homeCommand = SSHTransportSettings.defaultHomeCommand
         stageDirectoryCommand = SSHTransportSettings.defaultStageDirectoryCommand
         pluginListCommand = SSHTransportSettings.defaultPluginListCommand
@@ -423,6 +425,7 @@ actor HeelerSSHTransport: Transport {
         sessionListCommand = settings.sessionListCommand
         agentDiscoveryCommand = settings.agentDiscoveryCommand
         attachCommand = settings.attachCommand
+        terminalAttachCommand = settings.terminalAttachCommand
         homeCommand = settings.homeCommand
         stageDirectoryCommand = settings.stageDirectoryCommand
         pluginListCommand = settings.pluginListCommand
@@ -620,6 +623,22 @@ actor HeelerSSHTransport: Transport {
             method: "agent.send_keys",
             params: params,
             decoding: OkResponse.self)
+    }
+
+    func createShellTerminal(
+        _ creation: ShellTerminalCreationRequest
+    ) async throws -> ShellTerminalIdentity {
+        let created = try await request(
+            method: "tab.create",
+            params: TabCreateParams(
+                cwd: creation.cwd,
+                focus: false,
+                workspaceID: creation.workspaceID),
+            decoding: TabCreatedResponse.self)
+        return ShellTerminalIdentity(
+            paneID: created.rootPane.paneID,
+            tabID: created.rootPane.tabID,
+            terminalID: created.rootPane.terminalID)
     }
 
     func startAgent(_ launch: AgentLaunchRequest) async throws -> Agent {
@@ -2015,8 +2034,13 @@ actor HeelerSSHTransport: Transport {
             let lease = try await channelAdmission.acquire(.attach)
             admissionLease = lease
             let socketPath = try await resolvedSocketPath()
+            let selectedAttachCommand = Self.attachCommand(
+                agentAttachCommand: attachCommand,
+                terminalAttachCommand: terminalAttachCommand,
+                target: request.target)
             let command = try Self.attachExecCommand(
-                attachCommand: attachCommand,
+                agentAttachCommand: attachCommand,
+                terminalAttachCommand: terminalAttachCommand,
                 request: request,
                 socketPath: socketPath)
             let channel: SSHPTYChannel
@@ -2042,7 +2066,7 @@ actor HeelerSSHTransport: Transport {
                     admissionLease: lease,
                     input: input,
                     output: outputGate,
-                    attachCommand: attachCommand)
+                    attachCommand: selectedAttachCommand)
             }
             return TerminalAttachSession(
                 output: outputGate.makeOutput,
@@ -2068,10 +2092,16 @@ actor HeelerSSHTransport: Transport {
     /// before `exec` of attach so the bootstrap gate can drop everything earlier.
     /// See `AttachBootstrapHandshake`.
     static func attachExecCommand(
-        attachCommand: String,
+        agentAttachCommand: String,
+        terminalAttachCommand: String,
         request: TerminalAttachRequest,
         socketPath: String
     ) throws -> String {
+        let attachCommand = attachCommand(
+            agentAttachCommand: agentAttachCommand,
+            terminalAttachCommand: terminalAttachCommand,
+            target: request.target)
+        let target = request.target.identifier
         let unquotable: (Character) -> Bool = { character in
             character == "'" || character == "\\"
                 || character.unicodeScalars.contains(where: {
@@ -2080,8 +2110,8 @@ actor HeelerSSHTransport: Transport {
         }
         guard
             !attachCommand.isEmpty,
-            !request.target.isEmpty,
-            !request.target.contains(where: unquotable)
+            !target.isEmpty,
+            !target.contains(where: unquotable)
         else {
             throw TransportError.channelFailed(
                 detail: "attach target cannot be quoted for the remote command")
@@ -2097,7 +2127,33 @@ actor HeelerSSHTransport: Transport {
             + "export HERDR_SOCKET_PATH=\"$2\"; "
             + "printf \"\(AttachBootstrapHandshake.markerPrintfFormat)\"; "
             + "exec \(attachCommand) \"$1\"\(takeover)' attach "
-            + "'\(request.target)' \(quotedSocketPath)"
+            + "'\(target)' \(quotedSocketPath)"
+    }
+
+    /// Compatibility seam for existing Agent Attach tests and fixtures.
+    static func attachExecCommand(
+        attachCommand: String,
+        request: TerminalAttachRequest,
+        socketPath: String
+    ) throws -> String {
+        try attachExecCommand(
+            agentAttachCommand: attachCommand,
+            terminalAttachCommand: attachCommand,
+            request: request,
+            socketPath: socketPath)
+    }
+
+    private static func attachCommand(
+        agentAttachCommand: String,
+        terminalAttachCommand: String,
+        target: TerminalAttachTarget
+    ) -> String {
+        switch target {
+        case .agentPane:
+            agentAttachCommand
+        case .terminal:
+            terminalAttachCommand
+        }
     }
 
     /// Maps a remote attach exit onto the Transport taxonomy. Exit 127 is

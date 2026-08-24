@@ -439,10 +439,26 @@ final class AgentAttachStore {
     /// terminal: black, no overlay, no way back.
     @discardableResult
     func leave() -> Task<Void, Never> {
+        leave(preservingOnStageActivationRecovery: true)
+    }
+
+    /// A deliberate local destination handoff is not SwiftUI navigation churn.
+    /// It must tear down even while a foreground recovery owns the on-stage
+    /// lifecycle, because the shell cannot take the Host terminal lease until
+    /// this Attach has explicitly released it.
+    @discardableResult
+    func leaveForTerminalHandoff() -> Task<Void, Never> {
+        leave(preservingOnStageActivationRecovery: false)
+    }
+
+    private func leave(
+        preservingOnStageActivationRecovery: Bool
+    ) -> Task<Void, Never> {
         guard lifecycleState != .left else {
             return lifecycleTask ?? Task {}
         }
-        if lifecycleState == .active,
+        if preservingOnStageActivationRecovery,
+            lifecycleState == .active,
             activationRecoveryOwnsOnStageLifecycle,
             terminalRecoveryOwner != nil,
             isOnStage()
