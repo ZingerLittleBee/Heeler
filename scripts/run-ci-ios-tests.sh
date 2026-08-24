@@ -23,6 +23,15 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
+ci_lane="${HEELER_CI_LANE:-app}"
+case "$ci_lane" in
+    app | package) ;;
+    *)
+        echo "HEELER_CI_LANE must be app or package, got: $ci_lane" >&2
+        exit 2
+        ;;
+esac
+
 # The gate must leave the worktree byte-identical: this workflow treats a clean
 # worktree as a verification precondition, so a stray `__pycache__` beside the
 # Python fixtures is a standing false signal. `.gitignore` covers it too; this
@@ -1100,7 +1109,7 @@ pairing_mismatched_pid=$started_sshd_pid
 # Real password authentication is the one behaviour macOS cannot exercise
 # unprivileged: only root can verify an account password, and an unprivileged
 # sshd can only authenticate the account it already runs as.
-if sudo -n true >/dev/null 2>&1; then
+if [[ "$ci_lane" == "app" ]] && sudo -n true >/dev/null 2>&1; then
     password_username="heelerssh${RANDOM}"
     password_secret="$(uuidgen)-$(uuidgen)"
     password_home="$fixture_dir/password-home"
@@ -1165,10 +1174,10 @@ if sudo -n true >/dev/null 2>&1; then
         password_log_printed=1
         exit 1
     fi
-elif [[ "$mandatory_matrix" == "1" ]]; then
+elif [[ "$ci_lane" == "app" && "$mandatory_matrix" == "1" ]]; then
     echo "Merge CI requires passwordless sudo for the real-password fixture" >&2
     exit 1
-else
+elif [[ "$ci_lane" == "app" ]]; then
     echo "==> No passwordless sudo: skipping the real-password sshd fixture." >&2
     echo "==> Twelve of the thirteen mandatory behaviours still run." >&2
 fi
@@ -1309,28 +1318,31 @@ jump_fixture_configuration=$(printf \
     "$device_key_seed" \
     "$streamlocal_socket")
 jump_fixture_configuration_base64=$(printf '%s' "$jump_fixture_configuration" | base64)
-if ! pairing_node_path="$(command -v node)"; then
-    echo "Node is required for the mandatory Pairing ceremony suite" >&2
-    exit 1
+pairing_fixture_configuration_base64=""
+if [[ "$ci_lane" == "app" ]]; then
+    if ! pairing_node_path="$(command -v node)"; then
+        echo "Node is required for the mandatory Pairing ceremony suite" >&2
+        exit 1
+    fi
+    pairing_accept_script="$PWD/plugin/src/pair-accept.js"
+    if [[ ! -f "$pairing_accept_script" ]]; then
+        echo "Pairing accept entrypoint not found at $pairing_accept_script" >&2
+        exit 1
+    fi
+    pairing_fixture_configuration=$(printf \
+        '{"host":"127.0.0.1","port":%s,"mismatchedHostAddress":"::1","username":"%s","deviceKeySeed":"%s","nodePath":"%s","acceptScriptPath":"%s","homePath":"%s","authorizedKeysPath":"%s","localStateRoot":"%s","remoteStateRoot":"%s"}' \
+        "$pairing_port" \
+        "$pairing_username" \
+        "$device_key_seed" \
+        "$pairing_node_path" \
+        "$pairing_accept_script" \
+        "$pairing_home" \
+        "$pairing_authorized_keys" \
+        "$pairing_state_root" \
+        "$pairing_state_root")
+    pairing_fixture_configuration_base64=$(printf \
+        '%s' "$pairing_fixture_configuration" | base64)
 fi
-pairing_accept_script="$PWD/plugin/src/pair-accept.js"
-if [[ ! -f "$pairing_accept_script" ]]; then
-    echo "Pairing accept entrypoint not found at $pairing_accept_script" >&2
-    exit 1
-fi
-pairing_fixture_configuration=$(printf \
-    '{"host":"127.0.0.1","port":%s,"mismatchedHostAddress":"::1","username":"%s","deviceKeySeed":"%s","nodePath":"%s","acceptScriptPath":"%s","homePath":"%s","authorizedKeysPath":"%s","localStateRoot":"%s","remoteStateRoot":"%s"}' \
-    "$pairing_port" \
-    "$pairing_username" \
-    "$device_key_seed" \
-    "$pairing_node_path" \
-    "$pairing_accept_script" \
-    "$pairing_home" \
-    "$pairing_authorized_keys" \
-    "$pairing_state_root" \
-    "$pairing_state_root")
-pairing_fixture_configuration_base64=$(printf \
-    '%s' "$pairing_fixture_configuration" | base64)
 # A disjoint port block is necessary for two runs to coexist but not
 # sufficient: the fixture reaches the tests through `simctl launchctl setenv`,
 # which is per-device state. Two runs sharing one device overwrite each other's
@@ -1440,36 +1452,48 @@ pinned_lane_logs=()
 # HEELER_SSH_E2E_REQUIRED set a fixture-backed suite must fail rather than skip,
 # so a skip here means a condition that can still hide missing coverage.
 run_suite() {
-    local suite=$1
+    local lane=$1
     local expected_tests=$2
     local expected_suites=$3
     local expected_skips=${4:-0}
-    local log="$fixture_dir/$suite.log"
+    shift 4
+    local log="$fixture_dir/$lane.log"
     local noun="suite"
     local skips
+    local suite
+    local -a selectors=()
+
+    if [[ "$#" -eq 0 ]]; then
+        echo "$lane has no test selectors" >&2
+        exit 1
+    fi
+    for suite in "$@"; do
+        selectors+=("-only-testing:HeelerTests/$suite")
+    done
 
     if [[ "$expected_suites" != "1" ]]; then
         noun="suites"
     fi
-    run_xcodebuild "$suite" "$xcodebuild_test_timeout_seconds" \
+    run_xcodebuild "$lane" "$xcodebuild_test_timeout_seconds" \
         test-without-building \
         -project Heeler.xcodeproj \
         -scheme Heeler \
         -derivedDataPath "$app_derived_data_path" \
         -destination "$simulator_destination" \
         -collect-test-diagnostics never \
-        "-only-testing:HeelerTests/$suite" \
+        -parallel-testing-enabled NO \
+        "${selectors[@]}" \
         2>&1 | tee "$log"
 
     skips=$(grep -cE '(Test|Suite) .* skipped' "$log" || true)
     if [[ "$skips" != "$expected_skips" ]]; then
-        echo "$suite skipped $skips tests; exactly $expected_skips may skip" >&2
+        echo "$lane skipped $skips tests; exactly $expected_skips may skip" >&2
         exit 1
     fi
     if ! grep -q \
         "Test run with $expected_tests tests in $expected_suites $noun passed" \
         "$log"; then
-        echo "$suite did not execute all $expected_tests tests" >&2
+        echo "$lane did not execute all $expected_tests tests" >&2
         exit 1
     fi
     pinned_lane_logs+=("$log")
@@ -1564,6 +1588,7 @@ assert_full_lane_coverage() {
         "$skips skipped and all of them proven elsewhere." >&2
 }
 
+if [[ "$ci_lane" == "app" ]]; then
 # The direct-streamlocal suite asserts that a stale socket is still stale.
 # HeelerSSHTransportBehaviorE2ETests relinks that socket, so it must run after.
 # Swift Testing counts a skipped test in the run total, so only the permitted
@@ -1605,7 +1630,8 @@ push_simulator_environment \
 if [[ "$password_fixture_available" == "1" ]]; then
     start_password_sshd || exit 1
 fi
-run_suite HeelerSSHSessionE2ETests 13 1 "$session_skip_count"
+run_suite HeelerSSHSessionE2ETests 13 1 "$session_skip_count" \
+    HeelerSSHSessionE2ETests
 if [[ "$password_fixture_available" == "1" ]]; then
     if stop_privileged_sshd "$password_pid" "$password_pid_file"; then
         password_pid=""
@@ -1613,13 +1639,27 @@ if [[ "$password_fixture_available" == "1" ]]; then
         exit 1
     fi
 fi
-run_suite HeelerSSHPTYE2ETests 3 1
-run_suite HeelerSSHDirectStreamLocalE2ETests 9 1
-run_suite HeelerSSHJumpHostGateE2ETests 8 1
-run_suite HeelerSSHTransportBehaviorE2ETests 53 1
-run_suite ImageStagingE2ETests 8 1
-run_suite WeakNetworkE2ETests 8 1
-run_suite PairingCeremonyE2ETests 11 1
+run_suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 \
+    HeelerSSHDirectStreamLocalE2ETests
+run_suite SharedFixtureE2ETests 91 6 0 \
+    HeelerSSHPTYE2ETests \
+    HeelerSSHJumpHostGateE2ETests \
+    HeelerSSHTransportBehaviorE2ETests \
+    ImageStagingE2ETests \
+    WeakNetworkE2ETests \
+    PairingCeremonyE2ETests
+
+# Named behaviour assertions still identify their owning suite. Point those
+# logical names at the one serialized lane log rather than duplicating it.
+for suite in \
+    HeelerSSHPTYE2ETests \
+    HeelerSSHJumpHostGateE2ETests \
+    HeelerSSHTransportBehaviorE2ETests \
+    ImageStagingE2ETests \
+    WeakNetworkE2ETests \
+    PairingCeremonyE2ETests; do
+    ln -s "SharedFixtureE2ETests.log" "$fixture_dir/$suite.log"
+done
 
 if [[ "$password_fixture_available" == "1" ]]; then
     assert_behavior "real Password" HeelerSSHSessionE2ETests \
@@ -1727,6 +1767,15 @@ assert_behavior "weak-network descriptor reclamation" WeakNetworkE2ETests \
 assert_behavior "disconnect is reported" WeakNetworkE2ETests \
     '"a severed link makes the transport report itself disconnected"'
 
+else
+    xcrun simctl bootstatus "$simulator_udid" -b
+fi
+
+if [[ "$ci_lane" == "app" ]]; then
+    clear_simulator_environment
+fi
+
+if [[ "$ci_lane" == "package" ]]; then
 push_simulator_environment \
     HEELER_SSH_E2E_REQUIRED \
     HEELER_SSH_E2E_HOST \
@@ -1838,7 +1887,8 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     echo "The mandatory HeelerSSH package suites did not execute all forty-three tests" >&2
     exit 1
 fi
-pinned_lane_logs+=("$package_e2e_log")
+exit 0
+fi
 
 # The full lane runs with no fixture configured, so every fixture-backed suite
 # must skip — hence the clear above. The gate is still in force, though, and

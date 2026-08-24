@@ -138,6 +138,7 @@ jobs:
         # privileged part (the real-password sshd) a hard requirement here
         # rather than something merge CI may quietly run without.
         env:
+          HEELER_CI_LANE: app
           HEELER_CI_MANDATORY: "1"
         run: scripts/run-ci-ios-tests.sh
 
@@ -146,6 +147,34 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ios-ci-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/heeler-ci-diagnostics-*
+          if-no-files-found: ignore
+          retention-days: 7
+
+  heelerssh-package-e2e:
+    name: HeelerSSH package E2E (iOS Simulator)
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Show Xcode and simulator versions
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes
+
+      - name: Run package E2E
+        timeout-minutes: 12
+        env:
+          HEELER_CI_LANE: package
+          HEELER_CI_MANDATORY: "1"
+        run: scripts/run-ci-ios-tests.sh
+
+      - name: Upload package timeout diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heelerssh-package-ci-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/heeler-ci-diagnostics-*
           if-no-files-found: ignore
           retention-days: 7
