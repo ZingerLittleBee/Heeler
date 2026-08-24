@@ -851,6 +851,45 @@ struct TabInfo: Codable, Equatable, Sendable {
     }
 }
 
+/// herdr schema `$defs/WorkspaceCreateParams`.
+struct WorkspaceCreateParams: Codable, Equatable, Sendable {
+    let cwd: String?
+    let env: [String: String]?
+    let focus: Bool?
+    let label: String?
+
+    init(
+        cwd: String? = nil,
+        env: [String: String]? = nil,
+        focus: Bool? = nil,
+        label: String? = nil
+    ) {
+        self.cwd = cwd
+        self.env = env
+        self.focus = focus
+        self.label = label
+    }
+}
+
+/// The `"type":"workspace_created"` result payload of herdr's success_response schema.
+struct WorkspaceCreatedResponse: Codable, Equatable, Sendable {
+    let rootPane: PaneInfo
+    let tab: TabInfo
+    let workspace: WorkspaceInfo
+
+    init(rootPane: PaneInfo, tab: TabInfo, workspace: WorkspaceInfo) {
+        self.rootPane = rootPane
+        self.tab = tab
+        self.workspace = workspace
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case rootPane = "root_pane"
+        case tab
+        case workspace
+    }
+}
+
 /// herdr schema `$defs/WorkspaceInfo`.
 struct WorkspaceInfo: Codable, Equatable, Sendable {
     let activeTabID: String
@@ -923,6 +962,19 @@ struct WorkspaceRenameParams: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case label
+        case workspaceID = "workspace_id"
+    }
+}
+
+/// herdr schema `$defs/WorkspaceTarget`.
+struct WorkspaceTarget: Codable, Equatable, Sendable {
+    let workspaceID: String
+
+    init(workspaceID: String) {
+        self.workspaceID = workspaceID
+    }
+
+    private enum CodingKeys: String, CodingKey {
         case workspaceID = "workspace_id"
     }
 }

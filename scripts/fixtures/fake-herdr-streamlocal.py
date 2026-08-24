@@ -12,10 +12,10 @@ from typing import Optional
 
 # One scripted run, spelled `fixture:<behavior>:<unique>`. Tests plant it in a
 # request parameter the Transport carries to herdr — `tab.create`'s cwd,
-# `worktree.create`'s branch — and the fixture derives every id it answers with
-# from it, so each later request in the same launch carries the token onward.
-# That both steers the scripted failures and keeps one test's recorded requests
-# from being confused with another's.
+# `worktree.create`'s branch, `workspace.create`'s cwd — and the fixture
+# derives every id it answers with from it, so each later request in the same
+# launch carries the token onward. That both steers the scripted failures and
+# keeps one test's recorded requests from being confused with another's.
 SCRIPT_TOKEN_PATTERN = re.compile(r"fixture:[a-z0-9]+:[0-9a-f-]+")
 
 # `pane.read` on this pane id answers with the requests recorded under the
@@ -208,6 +208,11 @@ class Server:
                 token = self._scripted_run_token(params)
                 if token is not None:
                     self._record(token, method, params)
+                    if (
+                        method == "agent.start"
+                        and token.split(":")[1] == "startdrop"
+                    ):
+                        return
                 error = self._scripted_error(method, token)
                 if error is not None:
                     response = {"id": envelope.get("id"), "error": error}
@@ -264,7 +269,9 @@ class Server:
         `busyN` refuses the first N starts the way herdr 0.7.5 refuses a pane
         whose shell has not reached its prompt, then lets the launch through;
         `busyforever` never lets it through; `startfails` refuses once with a
-        code no retry policy may swallow; `ok` scripts no failure at all.
+        code no retry policy may swallow; `startdrop` is handled in `_serve`
+        by closing the channel with no reply (an ambiguous transport failure);
+        `ok` scripts no failure at all.
 
         A word outside that set is refused rather than treated as `ok`: a
         mistyped behaviour would otherwise leave a test green while proving
@@ -274,6 +281,8 @@ class Server:
             return None
         behavior = token.split(":")[1]
         if behavior == "ok":
+            return None
+        if behavior == "startdrop":
             return None
         if behavior == "startfails":
             return dict(NON_RETRYABLE_START_FAILURE)
@@ -466,10 +475,25 @@ class Server:
                     "open_workspace_id": "workspace-worktree",
                 },
             }
+        if method == "workspace.create":
+            return {
+                "type": "workspace_created",
+                "workspace": self._workspace("workspace-new"),
+                "tab": self._tab("tab-workspace", "workspace-new"),
+                "root_pane": self._pane(
+                    "pane-workspace", "tab-workspace", "workspace-new"
+                ),
+            }
+        if method == "workspace.close":
+            return {"type": "ok"}
         if method == "agent.start":
             pane_id = params.get("pane_id", "pane-new") if isinstance(params, dict) else "pane-new"
             workspace_id = (
-                "workspace-worktree" if pane_id == "pane-worktree" else "workspace-1"
+                "workspace-worktree"
+                if pane_id == "pane-worktree"
+                else "workspace-new"
+                if pane_id == "pane-workspace"
+                else "workspace-1"
             )
             return {
                 "type": "agent_started",
@@ -485,9 +509,10 @@ class Server:
     def _scripted_result(self, method: str, token: str) -> Optional[object]:
         """Ids derived from `token`, so a scripted launch stays self-identifying.
 
-        `tab.create` and `worktree.create` hand the Transport a pane the token
-        names; the `agent.start`, `pane.close` and `worktree.remove` that follow
-        therefore carry it back without the test having to inject anything else.
+        `tab.create`, `worktree.create` and `workspace.create` hand the
+        Transport a pane the token names; the `agent.start`, `pane.close`,
+        `worktree.remove` and `workspace.close` that follow therefore carry
+        it back without the test having to inject anything else.
         """
         pane_id = "pane:" + token
         tab_id = "tab:" + token
@@ -514,6 +539,13 @@ class Server:
                     "label": "fixture",
                     "open_workspace_id": workspace_id,
                 },
+            }
+        if method == "workspace.create":
+            return {
+                "type": "workspace_created",
+                "workspace": self._workspace(workspace_id),
+                "tab": self._tab(tab_id, workspace_id),
+                "root_pane": self._pane(pane_id, tab_id, workspace_id),
             }
         if method == "agent.start":
             return {
@@ -559,7 +591,12 @@ class Server:
         tab_id: Optional[str] = None,
     ) -> object:
         if tab_id is None:
-            tab_id = "tab-worktree" if workspace_id == "workspace-worktree" else "tab-new"
+            if workspace_id == "workspace-worktree":
+                tab_id = "tab-worktree"
+            elif workspace_id == "workspace-new":
+                tab_id = "tab-workspace"
+            else:
+                tab_id = "tab-new"
         return {
             "terminal_id": "terminal-1",
             "agent": "codex",

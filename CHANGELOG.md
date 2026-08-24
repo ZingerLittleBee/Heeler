@@ -9,6 +9,9 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- New Agent can start in a new Workspace at a remote directory, with an
+  optional label, even when the Host reports none. (#230)
+
 - Linked worktrees are now marked on Console cards. Agent detail shows their
   repository, branch, and checkout path, and can remove the checkout and its
   workspace after an identity-bound confirmation while keeping the local

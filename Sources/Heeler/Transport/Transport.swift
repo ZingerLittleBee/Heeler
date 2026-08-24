@@ -66,6 +66,18 @@ protocol Transport: Sendable {
         _ request: AgentLaunchRequest, worktree: WorktreeSpec
     ) async throws -> Agent
 
+    /// Starts a new Agent in a freshly created Workspace (#230):
+    /// `workspace.create` opens the remote directory as its own Workspace
+    /// (no existing Workspace required) and returns a root pane already
+    /// running a shell, so this variant skips `tab.create` and starts the
+    /// agent in that pane directly (the `agent_pane_busy` readiness retry
+    /// still applies). `request.workspaceID` is unused; the started agent
+    /// lives in the returned Workspace and surfaces through the normal
+    /// snapshot/delta machinery.
+    func startAgentInNewWorkspace(
+        _ request: AgentLaunchRequest, workspace: NewWorkspaceSpec
+    ) async throws -> Agent
+
     /// Closes a Pane (`pane.close`): the Agent detail screen's destructive
     /// close action (#13, User Story 9 — a Done agent must not be destroyed
     /// by a stray swipe, so the UI gates this behind an explicit
@@ -384,6 +396,19 @@ struct WorktreeSpec: Sendable, Equatable {
     init(branch: String? = nil, base: String? = nil) {
         self.branch = branch
         self.base = base
+    }
+}
+
+/// App-domain refinements for the new-Workspace launch variant (#230).
+/// `directory` is the remote path `workspace.create` opens; `label` is
+/// optional and omitted on the wire when nil so herdr applies its default.
+struct NewWorkspaceSpec: Sendable, Equatable {
+    let directory: String
+    let label: String?
+
+    init(directory: String, label: String? = nil) {
+        self.directory = directory
+        self.label = label
     }
 }
 

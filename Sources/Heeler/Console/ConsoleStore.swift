@@ -350,6 +350,16 @@ final class ConsoleStore {
         try await projection(for: hostID).startAgentInNewWorktree(request, worktree: worktree)
     }
 
+    @discardableResult
+    func startAgentInNewWorkspace(
+        _ request: AgentLaunchRequest,
+        workspace: NewWorkspaceSpec,
+        on hostID: Host.ID
+    ) async throws -> Agent {
+        try await projection(for: hostID).startAgentInNewWorkspace(
+            request, workspace: workspace)
+    }
+
     /// Suspends until `id` is reported by its Host's sync machinery, or the
     /// timeout elapses. The new-agent flow (#12) opens the started Agent's
     /// terminal, and the row it navigates to exists only once the post-start

@@ -709,6 +709,84 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(recorded[2] == #"worktree.remove {"workspace_id":"workspace:\#(token)"}"#)
     }
 
+    /// New Workspace (#230) creates the Workspace first, then starts in its
+    /// root pane. `tab.create` would open a second tab inside a Workspace
+    /// that already has one.
+    @Test("a new-workspace agent start creates the workspace then starts in its root pane")
+    func newWorkspaceAgentStartCreatesThenStartsWithoutATab() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("ok")
+        let agent = try await transport.startAgentInNewWorkspace(
+            AgentLaunchRequest(kind: "codex", name: "fixture"),
+            workspace: NewWorkspaceSpec(directory: "/fixture/\(token)", label: "App"))
+
+        #expect(agent.paneID == "pane:\(token)")
+        #expect(agent.workspaceID == "workspace:\(token)")
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        try #require(recorded.count == 2)
+        #expect(
+            recorded[0]
+                == #"workspace.create {"cwd":"/fixture/\#(token)","focus":false,"label":"App"}"#)
+        #expect(recorded[1].hasPrefix("agent.start "))
+        #expect(!recorded.contains { $0.hasPrefix("tab.create ") })
+    }
+
+    /// The new-Workspace half of the same compensation: a refused launch
+    /// would otherwise leave an empty Workspace behind.
+    @Test("a refused new-workspace agent start closes the workspace it created")
+    func refusedNewWorkspaceAgentStartClosesTheWorkspace() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("startfails")
+        await #expect(throws: Self.refusedStart) {
+            _ = try await transport.startAgentInNewWorkspace(
+                AgentLaunchRequest(kind: "codex", name: "fixture"),
+                workspace: NewWorkspaceSpec(directory: "/fixture/\(token)"))
+        }
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        try #require(recorded.count == 3)
+        #expect(
+            recorded[0]
+                == #"workspace.create {"cwd":"/fixture/\#(token)","focus":false}"#)
+        #expect(recorded[1].hasPrefix("agent.start "))
+        #expect(recorded[2] == #"workspace.close {"workspace_id":"workspace:\#(token)"}"#)
+        #expect(!recorded.contains { $0.hasPrefix("tab.create ") })
+    }
+
+    /// Closing the channel without a herdr error envelope is ambiguous: the
+    /// Agent may already exist on the Host. Compensating `workspace.close`
+    /// would destroy a possibly successful result.
+    @Test("an ambiguous new-workspace agent start does not close the workspace")
+    func ambiguousNewWorkspaceAgentStartPreservesTheWorkspace() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        var settings = environment.directSettings()
+        settings.requestTimeout = .seconds(1)
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("startdrop")
+        await #expect(throws: TransportError.self) {
+            _ = try await transport.startAgentInNewWorkspace(
+                AgentLaunchRequest(kind: "codex", name: "fixture"),
+                workspace: NewWorkspaceSpec(directory: "/fixture/\(token)"))
+        }
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        try #require(recorded.count == 2)
+        #expect(recorded[0].hasPrefix("workspace.create "))
+        #expect(recorded[1].hasPrefix("agent.start "))
+        #expect(!recorded.contains { $0.hasPrefix("workspace.close ") })
+        #expect(!recorded.contains { $0.hasPrefix("tab.create ") })
+    }
+
     @Test("confirmed worktree removal crosses the real wire dispatch seam")
     func confirmedWorktreeRemovalCrossesTheRealWireDispatchSeam() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
@@ -1119,6 +1197,11 @@ struct HeelerSSHTransportBehaviorE2ETests {
                     workspaceID: "workspace-1"),
                 worktree: WorktreeSpec(branch: "task/fixture", base: "main"))
                 .workspaceID == "workspace-worktree")
+        #expect(
+            try await transport.startAgentInNewWorkspace(
+                AgentLaunchRequest(kind: "codex", name: "fixture-workspace"),
+                workspace: NewWorkspaceSpec(directory: "/tmp/project", label: "Fixture"))
+                .workspaceID == "workspace-new")
         await #expect(
             throws: HerdrAPIError(
                 code: "500",
