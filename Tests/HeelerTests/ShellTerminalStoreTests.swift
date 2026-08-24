@@ -227,6 +227,7 @@ struct ShellTerminalStoreTests {
             agent: makeAgent(),
             transport: transport,
             isDetailOnStage: { isOnStage })
+        await transport.gateNextAttachEnd(on: endGate)
         store.open()
         let shell = try await shell(in: store)
         shell.viewDidResize(cols: 80, rows: 24)
@@ -234,7 +235,6 @@ struct ShellTerminalStoreTests {
         #expect(await transport.emitAttachOutput(Data("shell".utf8)))
         try #require(await eventually { shell.terminalStatus == .live })
         let previousSurfaceID = shell.terminalID
-        await transport.gateNextAttachEnd(on: endGate)
 
         shell.transportGenerationDidChange(2)
         try #require(await eventually { await endGate.entryCount == 1 })
@@ -313,7 +313,7 @@ struct ShellTerminalStoreTests {
     private func makeOpenStore(
         agent: ConsoleAgent,
         transport: ScriptedTransport,
-        isDetailOnStage: @escaping @MainActor () -> Bool = { true },
+        isDetailOnStage: @escaping () -> Bool = { true },
         leaveAgent: @escaping @MainActor () -> Task<Void, Never> = { Task {} },
         rejoinAgent: @escaping @MainActor () -> Void = {}
     ) -> AgentOpenTerminalStore {

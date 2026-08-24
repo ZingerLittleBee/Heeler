@@ -69,13 +69,13 @@ final class AgentOpenTerminalStore {
     @ObservationIgnored private let runTerminal: TerminalSessionRunner
     @ObservationIgnored private let leaveAgent: @MainActor () -> Task<Void, Never>
     @ObservationIgnored private let rejoinAgent: @MainActor () -> Void
-    @ObservationIgnored private let isDetailOnStage: @MainActor () -> Bool
+    @ObservationIgnored private let isDetailOnStage: () -> Bool
     @ObservationIgnored private var transportGeneration: UInt64?
 
     init(
         agent: ConsoleAgent,
         transportGeneration: UInt64?,
-        isDetailOnStage: @escaping @MainActor () -> Bool,
+        isDetailOnStage: @escaping () -> Bool,
         createTerminal: @escaping ShellTerminalCreator,
         runTerminal: @escaping TerminalSessionRunner,
         leaveAgent: @escaping @MainActor () -> Task<Void, Never>,

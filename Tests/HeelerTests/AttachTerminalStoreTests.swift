@@ -2525,7 +2525,10 @@ struct AgentAttachStoreForegroundTests {
         await transport.gateNextAttachEnd(on: endGate)
         let store = makeStore(transport: transport)
 
-        try await goLive(store, transport)
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("attach should open") { await transport.hasLiveAttachSession }
+        #expect(await transport.emitAttachOutput(Data("opening".utf8)))
+        try await waitUntil("terminal should go live") { store.terminalStatus == .live }
         store.didBecomeActive(afterPossibleSuspension: true)
         try await waitUntil("recovery should reach the predecessor PTY teardown") {
             await endGate.entryCount == 1
