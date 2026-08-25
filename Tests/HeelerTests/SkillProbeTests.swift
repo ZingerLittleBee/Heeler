@@ -284,8 +284,26 @@ struct SkillProbeTests {
 
     @Test func catalogCoversExactlyTheResearchedKinds() {
         let supported = SupportedAgentKind.allCases.filter(SkillSourceCatalog.supports)
-        #expect(supported == [.pi, .claude, .codex, .cursor, .opencode])
-        #expect(!SkillSourceCatalog.supports(.qwen))
+        #expect(
+            supported == [
+                .pi, .claude, .codex, .cursor, .cline, .opencode, .copilot,
+                .kimi, .kiro, .droid, .grok, .qwen,
+            ])
+        // Researched exclusions, not gaps: no typed invocation prefix.
+        #expect(!SkillSourceCatalog.supports(.gemini))
+        #expect(!SkillSourceCatalog.supports(.amp))
+    }
+
+    @Test func kimiUsesTheSkillPrefix() {
+        let sources = SkillSourceCatalog.sources(for: .kimi)
+        #expect(!sources.isEmpty)
+        #expect(sources.allSatisfy { $0.commandPrefix == "/skill:" })
+    }
+
+    @Test func droidProbesCommandsBeforeSkillsSoTheCommandWinsAClash() {
+        let paths = SkillSourceCatalog.sources(for: .droid)
+            .filter { $0.root == .project }.map(\.relativePath)
+        #expect(paths.first == ".factory/commands")
     }
 
     @Test func cursorUsesTheSlashPrefixAcrossItsOwnAndSharedRoots() {

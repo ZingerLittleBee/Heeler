@@ -15,6 +15,14 @@ Entries reference the issue that motivated them.
   and Composer suggestions light up for Cursor like the other supported
   kinds.
 
+- Skills catalogues for seven more Agent kinds, each probing the
+  directories its CLI documents: Cline, GitHub Copilot CLI, Droid
+  (including `.factory/commands` markdown commands), Grok Build, Kimi CLI
+  (invoked `/skill:name`), Kiro CLI, and Qwen Code (including
+  `.qwen/commands`). Gemini CLI and Amp stay without a catalogue on
+  purpose — their Skills have no typed invocation the Composer could
+  insert.
+
 - Agent detail shows the Host's latest connection latency next to Agent
   status, rounded exactly as the Hosts sheet rounds it. It measures the Host's
   API connection over SSH, not the Agent's response time, and disappears
