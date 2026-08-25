@@ -11,44 +11,40 @@ Entries reference the issue that motivated them.
 
 - Cursor Agents now have a Skills catalogue: Cursor 2.4 ships Agent Skills
   in the editor and CLI, so Heeler probes `.cursor/skills` and
-  `.agents/skills` at both the project root and home, and the Skills pane
-  and Composer suggestions light up for Cursor like the other supported
-  kinds.
+  `.agents/skills` at the project root and home, and the Skills pane and
+  Composer suggestions cover Cursor like the other supported kinds.
 
 - Skills catalogues for thirteen more Agent kinds, each probing the
   directories its CLI documents: Antigravity, Cline, GitHub Copilot CLI,
   Devin CLI, Droid (including `.factory/commands` markdown commands), Grok
   Build, Hermes Agent, Kilo Code, Kimi CLI and OMP (both invoked
   `/skill:name`), Kiro CLI, Qoder CLI, and Qwen Code (including
-  `.qwen/commands`). Gemini CLI and Amp stay without a catalogue on
-  purpose — their Skills have no typed invocation the Composer could
-  insert — and Mastra Code and Maki document no on-disk skill discovery
-  at all.
+  `.qwen/commands`). On purpose, Gemini CLI and Amp get none — their Skills
+  have no typed invocation the Composer could insert — and Mastra Code and
+  Maki document no on-disk skill discovery at all.
 
 - Agent detail shows the Host's latest connection latency next to Agent
-  status, rounded exactly as the Hosts sheet rounds it. It measures the Host's
-  API connection over SSH, not the Agent's response time, and disappears
-  whenever the current connection has no measurement of its own. The status
-  row it joins now follows the terminal theme's luminance instead of the
-  system appearance, so both labels stay legible on a dark theme under a
-  light system and vice versa. (#236)
+  status, rounded as the Hosts sheet rounds it. It measures the Host's SSH
+  API connection, not the Agent's response time, and disappears when the
+  current connection has no measurement. The status row now follows the
+  terminal theme's luminance instead of the system appearance, so both
+  labels stay legible on a dark theme under a light system and vice
+  versa. (#236)
 
-- The Composer now suggests the selected Agent's discovered Skills inline
-  while an invocation prefix is typed, and its More menu gains a searchable
-  Skill picker. Both entry points share the tools keyboard's Skills
-  catalogue and insert the full command into the draft without sending it —
-  Codex Skills with `$`, each Skill by its own prefix. (#234)
+- The Composer suggests the selected Agent's discovered Skills inline while
+  an invocation prefix is typed, and its More menu gains a searchable Skill
+  picker. Both share the tools keyboard's Skills catalogue and insert the
+  full command into the draft without sending it — Codex Skills with `$`,
+  each Skill by its own prefix. (#234)
 
 - Agent detail's More menu gains Open Terminal: a fully interactive shell in
-  the Agent's launch directory, opened as a Shell Terminal. Each Workspace
-  gets one remembered tab — created on first use, reattached on later visits,
-  and recreated only after verifying the old one is gone — so repeat visits
-  do not accumulate tabs on the Host. The input row above the keyboard is app
-  content rather than a keyboard accessory, so switching between Text and the
-  Keys pad keeps the row fixed and preserves the keyboard's candidate row and
-  any in-flight IME composition (pinyin included). Back detaches and leaves
-  the remote tab alive for desktop handoff; a Close Terminal action closes it
-  on the Host when it is not worth keeping. (#231)
+  the Agent's launch directory. Each Workspace keeps one remembered tab —
+  created on first use, reattached on later visits, recreated only once the
+  old one is verified gone — so repeat visits don't accumulate tabs. The
+  input row above the keyboard is app content, not a keyboard accessory, so
+  switching Text/Keys keeps it fixed and preserves the candidate row and any
+  in-flight IME composition (pinyin included). Back leaves the tab alive for
+  desktop handoff; Close Terminal closes it on the Host. (#231)
 
 - New Agent can start in a new Workspace at a remote directory, with an
   optional label, even when the Host reports none. (#230)
@@ -62,17 +58,17 @@ Entries reference the issue that motivated them.
 
 - Host connections now have a distinct Connecting state, separate from
   automatic Reconnecting, a paused connection, and loading Agents after the
-  events path is already live. A Host being re-proved after a failure keeps
-  its explanation until the attempt succeeds. (#155)
+  events path is already live. A Host re-proved after a failure keeps its
+  explanation until the attempt succeeds. (#155)
 
 - Connection and request failures now present a short summary, optional
-  detail, and a recovery suggestion only when the error itself supports one.
+  detail, and a recovery suggestion only when the error supports one.
   Retryable outages no longer promise guidance they cannot give, a Jump Host
   authentication failure names the Jump Host rather than the Host, and an
-  incompatible herdr protocol tells the user to update herdr. (#163)
+  incompatible herdr protocol says to update herdr. (#163)
 
 - GhosttyTerminal (libghostty-spm) 1.3.1 → 1.4.0, wrapping the Ghostty
-  v1.3.1 release. Terminals keep their surface across temporary window
+  v1.3.1 release: terminals keep their surface across temporary window
   detaches, draws are paced by an on-demand display link instead of
   per-wakeup dispatch, and keyboard input rides the upstream key-encoder
   path with better IME and hardware-keyboard handling. (#242)
@@ -80,12 +76,12 @@ Entries reference the issue that motivated them.
 ### Fixed
 
 - Covering a terminal with a presentation could crash the app on the next
-  screen update: ghostty's freed rendering surface left its content layer in
-  the view's layer tree, and Core Animation would later call through that
-  layer into freed renderer memory. Terminal views now drop orphaned content
-  layers the moment a surface is torn down, and the GhosttyTerminal upgrade
-  above stops the temporary window detach from freeing the surface at all —
-  a terminal behind a cover keeps its grid and scrollback. (#242)
+  screen update: ghostty's freed rendering surface left its content layer
+  behind, and Core Animation would later call through it into freed renderer
+  memory. Terminal views now drop orphaned content layers the moment a
+  surface is torn down, and the GhosttyTerminal upgrade above stops the
+  temporary window detach from freeing the surface at all — a covered
+  terminal keeps its grid and scrollback. (#242)
 
 - A slow ordinary Host request no longer freezes a live Attach session. (#130)
 
