@@ -265,7 +265,7 @@ actor EventsSession {
         else { return }
         do {
             let latency = try await measureLatency(on: transport)
-            publishLatency(latency)
+            guard publishLatency(latency, measuredOn: stream) else { return }
             noteConnectionActivity()
         } catch is CancellationError {
         } catch TransportError.cancelled {
@@ -648,7 +648,10 @@ actor EventsSession {
                 guard self.connectionIsIdle(within: keepalive.interval) else { continue }
                 do {
                     let latency = try await self.measureLatency(on: transport)
-                    self.publishLatency(latency)
+                    // A ping answered after this channel was replaced also
+                    // means this loop is keeping a connection alive that the
+                    // session no longer has.
+                    guard self.publishLatency(latency, measuredOn: stream) else { break }
                     self.noteConnectionActivity()
                 } catch is CancellationError {
                     break
@@ -669,6 +672,29 @@ actor EventsSession {
 
     private func noteConnectionActivity() {
         lastConnectionActivity = .now
+    }
+
+    /// Publishes a measurement taken on `stream`, unless that channel is no
+    /// longer the session's live one — and reports which it was.
+    ///
+    /// Cancellation is a request, not a guarantee: `windDown` cancels the
+    /// keepalive task without awaiting it, and a Transport is free to answer a
+    /// ping that was already in flight when its connection was torn down. Such
+    /// an answer describes a connection this session no longer has, so
+    /// publishing it would resurrect the value the non-connected status
+    /// cleared on the way out — and, once a replacement has connected,
+    /// overwrite that connection's own proof with the dead one's.
+    ///
+    /// The connect path has no channel to name yet and does not need one: it
+    /// publishes with no suspension point between its activation check and the
+    /// write, and any teardown after that clears the value through the status
+    /// it publishes.
+    private func publishLatency(
+        _ latency: Duration, measuredOn stream: HerdrEventStream
+    ) -> Bool {
+        guard phase == .active, liveStream === stream else { return false }
+        publishLatency(latency)
+        return true
     }
 
     /// The single gate every measurement leaves through: the connection-scoped

@@ -18,12 +18,16 @@ import Testing
 struct EventsSessionLatencyTests {
     private let subscriptions: [EventSubscription] = [.global(.paneAgentDetected)]
 
+    private func makeSession(transport: ScriptedTransport) -> EventsSession {
+        makeSession(connect: { transport })
+    }
+
     private func makeSession(
-        transport: ScriptedTransport
+        connect: @escaping @Sendable () async throws -> any Transport
     ) -> EventsSession {
         EventsSession(
             subscriptions: subscriptions,
-            connect: { transport },
+            connect: connect,
             reconnectPolicy: ReconnectPolicy(
                 initialDelay: .milliseconds(10), multiplier: 2, maxDelay: .milliseconds(50)),
             keepalive: nil)
@@ -125,6 +129,58 @@ struct EventsSessionLatencyTests {
         await gate.open()
         #expect(await updates.next() == .status(.connected))
         #expect(session.currentLatency != nil)
+
+        await session.end()
+    }
+
+    /// A ping is only cancellable by request: `windDown` cancels the keepalive
+    /// task without awaiting it, and a Transport may answer a request that was
+    /// already in flight when its connection was torn down —
+    /// `ScriptedTransport.ping()` returns successfully whether or not its task
+    /// was cancelled, exactly as a real one is free to. Such an answer
+    /// describes a connection the session no longer has, so it must neither
+    /// resurrect its own value nor overwrite the replacement connection's.
+    @Test func aPingThatOutlivesItsConnectionCannotPublish() async throws {
+        let first = ScriptedTransport()
+        let second = ScriptedTransport()
+        let connector = SequencedTransportConnector([first, second])
+        let session = makeSession(connect: { try await connector.connect() })
+        var updates = session.updates.makeAsyncIterator()
+
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+        #expect(session.currentLatency != nil)
+
+        // A revalidate ping goes out on the live connection and is held there.
+        let parked = ScriptedTransportCallGate()
+        await first.gateNextPing(using: parked)
+        let revalidation = Task { await session.revalidate() }
+        try await waitUntil("the revalidate ping should be in flight") {
+            await parked.entryCount == 1
+        }
+
+        // The connection it was taken on goes away, and a different one
+        // replaces it and proves itself.
+        await session.suspend()
+        #expect(await updates.next() == .status(.suspended))
+        #expect(session.currentLatency == nil)
+
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+        let fresh = session.currentLatency
+        #expect(fresh != nil)
+        #expect(
+            await connector.connectCount == 2,
+            "the replacement connection must be a fresh dial with its own ping")
+
+        // The parked ping answers at last, on a channel this session no longer
+        // has.
+        await parked.open()
+        await revalidation.value
+        #expect(await first.pingCount == 2, "the held ping did answer")
+        #expect(session.currentLatency == fresh)
 
         await session.end()
     }
