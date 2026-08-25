@@ -9,6 +9,12 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Cursor Agents now have a Skills catalogue: Cursor 2.4 ships Agent Skills
+  in the editor and CLI, so Heeler probes `.cursor/skills` and
+  `.agents/skills` at both the project root and home, and the Skills pane
+  and Composer suggestions light up for Cursor like the other supported
+  kinds.
+
 - Agent detail shows the Host's latest connection latency next to Agent
   status, rounded exactly as the Hosts sheet rounds it. It measures the Host's
   API connection over SSH, not the Agent's response time, and disappears

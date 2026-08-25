@@ -284,8 +284,19 @@ struct SkillProbeTests {
 
     @Test func catalogCoversExactlyTheResearchedKinds() {
         let supported = SupportedAgentKind.allCases.filter(SkillSourceCatalog.supports)
-        #expect(supported == [.pi, .claude, .codex, .opencode])
+        #expect(supported == [.pi, .claude, .codex, .cursor, .opencode])
         #expect(!SkillSourceCatalog.supports(.qwen))
+    }
+
+    @Test func cursorUsesTheSlashPrefixAcrossItsOwnAndSharedRoots() {
+        let sources = SkillSourceCatalog.sources(for: .cursor)
+        #expect(sources.allSatisfy { $0.commandPrefix == "/" })
+        #expect(sources.allSatisfy { $0.layout == .skillDirectories })
+        #expect(
+            sources.map(\.relativePath) == [
+                ".cursor/skills", ".agents/skills",
+                ".cursor/skills", ".agents/skills",
+            ])
     }
 
     @Test func projectSourcesComeFirstForEveryKind() {

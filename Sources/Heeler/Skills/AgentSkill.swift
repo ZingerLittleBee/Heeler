@@ -133,6 +133,28 @@ enum SkillSourceCatalog {
                     root: .home, relativePath: ".codex/skills",
                     layout: .skillDirectories, commandPrefix: "$"),
             ]
+        case .cursor:
+            // Agent Skills shipped in Cursor 2.4 for both the editor and the
+            // CLI, invoked from the `/` menu. Cursor also loads the Claude
+            // and Codex directories for compatibility and discovers nested
+            // monorepo skill folders; both stay out until someone misses
+            // them, like the nested trees noted above. `.cursor/commands`
+            // stays out too — CLI support for custom commands is reported
+            // inconsistent on the Cursor forum.
+            [
+                SkillSource(
+                    root: .project, relativePath: ".cursor/skills",
+                    layout: .skillDirectories),
+                SkillSource(
+                    root: .project, relativePath: ".agents/skills",
+                    layout: .skillDirectories),
+                SkillSource(
+                    root: .home, relativePath: ".cursor/skills",
+                    layout: .skillDirectories),
+                SkillSource(
+                    root: .home, relativePath: ".agents/skills",
+                    layout: .skillDirectories),
+            ]
         case .opencode:
             // Commands only: stable OpenCode's skills are model-invoked (a
             // `skill` tool), not slash-callable, so listing them here would
