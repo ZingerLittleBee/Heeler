@@ -93,6 +93,16 @@ final class AgentComposerStore: ComposerDraftOperations {
         draft.append(text)
     }
 
+    /// Completes an inline Skill suggestion: swaps the typed trigger token at
+    /// the end of the draft for the full invocation. A draft that no longer
+    /// ends with the token — edited under a stale suggestion — is left alone
+    /// rather than mangled.
+    func replaceTrailingToken(_ token: String, with text: String) {
+        guard !token.isEmpty, draft.hasSuffix(token) else { return }
+        draft.removeLast(token.count)
+        draft.append(text)
+    }
+
     /// Starts consuming Console's existing per-Agent status fan-out. This
     /// does not open a Transport event stream or perform an RPC.
     func open() {

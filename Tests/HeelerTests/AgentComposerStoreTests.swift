@@ -477,6 +477,39 @@ struct AgentComposerStoreTests {
         #expect(writes == [Data("n".utf8)])
     }
 
+    @Test func replaceTrailingTokenSwapsTheTokenAndKeepsTheRest() {
+        let store = Self.draftOnlyStore()
+        store.replaceDraft(with: "fix this /rev")
+
+        store.replaceTrailingToken("/rev", with: "/code-review ")
+
+        #expect(store.draft == "fix this /code-review ")
+    }
+
+    @Test func replaceTrailingTokenLeavesADraftThatNoLongerEndsWithIt() {
+        let store = Self.draftOnlyStore()
+        store.replaceDraft(with: "/rev then more")
+
+        store.replaceTrailingToken("/rev", with: "/code-review ")
+
+        #expect(store.draft == "/rev then more")
+    }
+
+    @Test func replaceTrailingTokenIgnoresAnEmptyToken() {
+        let store = Self.draftOnlyStore()
+        store.replaceDraft(with: "keep me")
+
+        store.replaceTrailingToken("", with: "/code-review ")
+
+        #expect(store.draft == "keep me")
+    }
+
+    private static func draftOnlyStore() -> AgentComposerStore {
+        AgentComposerStore(target: "w1:p1") { _ in
+            throw TransportError.timedOut
+        }
+    }
+
     private func waitUntil(
         _ comment: Comment,
         timeout: Duration = .seconds(2),

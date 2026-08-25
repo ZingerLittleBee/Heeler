@@ -46,6 +46,7 @@ struct AgentTerminalView: View {
     @State private var isConfirmingClose = false
     @State private var isStartingAgent = false
     @State private var isManagingSnippets = false
+    @State private var isShowingSkillsPicker = false
     @State private var isRenamingAgent = false
     /// The skill whose full document is on screen; set from the Skills
     /// pane's long-press menu.
@@ -120,12 +121,13 @@ struct AgentTerminalView: View {
     private static func makeSkillsStore(
         for agent: ConsoleAgent, console: ConsoleStore
     ) -> SkillsPaneStore? {
-        guard
-            let kind = SupportedAgentKind(rawValue: agent.agent.kind),
-            SkillSourceCatalog.supports(kind)
-        else { return nil }
+        guard let kind = SupportedAgentKind(rawValue: agent.agent.kind) else { return nil }
+        let sources = SkillSourceCatalog.sources(for: kind)
+        guard !sources.isEmpty else { return nil }
         let projectRoot = agent.skillsProjectRoot
-        return SkillsPaneStore { [console] forceRefresh in
+        return SkillsPaneStore(
+            commandPrefixes: sources.map(\.commandPrefix)
+        ) { [console] forceRefresh in
             try await console.fetchSkills(
                 kind: kind,
                 projectRoot: projectRoot,
@@ -206,6 +208,19 @@ struct AgentTerminalView: View {
         // back; see `allowsKeyboardActivation` in HeelerTerminalView.
         .sheet(isPresented: $isManagingSnippets) {
             SnippetsManagementView(store: terminal.snippets)
+        }
+        // Same keyboard choreography as the Snippets sheet above. The picker
+        // shares the tools keyboard's SkillsPaneStore, so both surfaces load
+        // and fail together.
+        .sheet(isPresented: $isShowingSkillsPicker) {
+            if let skills {
+                SkillsPickerView(
+                    store: skills,
+                    onInsert: { composer.insertIntoDraft($0.insertionText) },
+                    readSkill: { [console, agent] skill in
+                        try await console.readSkillFile(path: skill.path, on: agent.hostID)
+                    })
+            }
         }
         // Same keyboard choreography as the Snippets sheet above.
         .sheet(item: $viewingSkill) { skill in
@@ -399,6 +414,7 @@ struct AgentTerminalView: View {
             isOpeningTerminal: isOpeningTerminal,
             startAgent: { isStartingAgent = true },
             manageSnippets: { isManagingSnippets = true },
+            showSkills: skills != nil ? { isShowingSkillsPicker = true } : nil,
             showWorktreeDetails: agent.isLinkedWorktree
                 ? {
                     if let checkout = agent.repositoryCheckout {
@@ -459,6 +475,7 @@ struct AgentTerminalView: View {
                 keyboardHandoff: keyboardHandoff,
                 keyboardHeight: composerKeyboardLayout.availableToolsHeight,
                 actions: composerActions,
+                skills: skills,
                 keyboardPresentation: $composerKeyboardPresentation,
                 prepareKeyboardPresentation: prepareComposerKeyboardPresentation)
         }

@@ -51,6 +51,10 @@ struct AgentComposerActions {
     let isOpeningTerminal: Bool
     let startAgent: () -> Void
     let manageSnippets: () -> Void
+    /// Opens the explicit Skill picker. Nil for agent kinds without a skills
+    /// source catalog, which hides the More-menu entry entirely rather than
+    /// offering a dead button.
+    let showSkills: (() -> Void)?
     let showWorktreeDetails: (() -> Void)?
     let renameAgent: () -> Void
     let renameWorkspace: () -> Void
@@ -91,9 +95,16 @@ struct AgentComposerView: View {
     let keyboardHandoff: TerminalKeyboardHandoff
     let keyboardHeight: CGFloat
     let actions: AgentComposerActions
+    /// The screen's one Skills store, shared with the tools keyboard and the
+    /// explicit picker. Nil for kinds without a skills source catalog, which
+    /// disables inline suggestions.
+    let skills: SkillsPaneStore?
     @Binding var keyboardPresentation: AgentComposerKeyboardPresentation
     let prepareKeyboardPresentation: (AgentComposerKeyboardPresentation) -> Void
     @State private var isInputFocused = false
+    /// An explicit dismissal hides suggestions for the current trigger token;
+    /// removing the token arms them again.
+    @State private var isSuggestionsDismissed = false
 
     private var isToolsKeyboardPresented: Bool {
         keyboardPresentation == .tools
@@ -114,6 +125,18 @@ struct AgentComposerView: View {
 
                 VStack(spacing: 0) {
                     VStack(alignment: .leading, spacing: 8) {
+                        if let skills, let trigger = suggestionTrigger,
+                            isInputFocused, !isSuggestionsDismissed
+                        {
+                            AgentComposerSkillSuggestions(
+                                skills: skills,
+                                trigger: trigger,
+                                onSelect: { skill in
+                                    store.replaceTrailingToken(
+                                        trigger.token, with: skill.insertionText)
+                                },
+                                onDismiss: { isSuggestionsDismissed = true })
+                        }
                         ZStack(alignment: .topLeading) {
                             AgentComposerTextEditor(
                                 text: Binding(
@@ -184,6 +207,13 @@ struct AgentComposerView: View {
                                     )
                                     Button("New Agent", systemImage: "plus") {
                                         actions.startAgent()
+                                    }
+                                    // Skills before Snippets: the Keys
+                                    // keyboard's tab order.
+                                    if let showSkills = actions.showSkills {
+                                        Button("Skills", systemImage: "sparkles") {
+                                            showSkills()
+                                        }
                                     }
                                     Button("Snippets", systemImage: "quote.bubble") {
                                         actions.manageSnippets()
@@ -290,6 +320,25 @@ struct AgentComposerView: View {
                 setKeyboardPresentation(.hidden)
             }
         }
+        .onChange(of: store.draft) { _, _ in
+            guard let skills else { return }
+            if suggestionTrigger == nil {
+                isSuggestionsDismissed = false
+            } else if !isSuggestionsDismissed {
+                // Typing the prefix is the pane-selection moment: load once,
+                // then reuse (the ConsoleStore caches underneath).
+                Task { await skills.loadIfNeeded() }
+            }
+        }
+    }
+
+    /// The invocation token at the end of the draft, when this agent has
+    /// skill sources at all. Prefixes ride the skills and their catalog, not
+    /// the Composer.
+    private var suggestionTrigger: SkillSuggestionTrigger? {
+        guard let skills else { return nil }
+        return SkillSuggestionTrigger.detect(
+            draft: store.draft, prefixes: skills.triggerPrefixes)
     }
 
     private var isKeyboardPresented: Bool {
@@ -412,6 +461,117 @@ struct AgentComposerView: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(telemetry.accessibilityLabel)
             .accessibilityValue(telemetry.accessibilityValue)
+    }
+}
+
+/// The inline suggestion menu above the Composer's text area: the Skills the
+/// typed trigger token matches, or the load in progress behind them. Selecting
+/// a row swaps the token for the full invocation in the draft — nothing is
+/// sent. Renders nothing when a loaded catalogue has no match, so prose that
+/// happens to contain a prefix is not nagged.
+private struct AgentComposerSkillSuggestions: View {
+    let skills: SkillsPaneStore
+    let trigger: SkillSuggestionTrigger
+    let onSelect: (AgentSkill) -> Void
+    let onDismiss: () -> Void
+    /// The suggestion list's measured content height. The scroll view is
+    /// sized to it so one match does not reserve the full cap of empty
+    /// space; the cap only bounds long lists.
+    @State private var listHeight: CGFloat = Self.maximumListHeight
+
+    private static let maximumListHeight: CGFloat = 176
+
+    var body: some View {
+        switch skills.phase {
+        case .idle, .loading:
+            header {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        case .failed(let message):
+            VStack(alignment: .leading, spacing: 4) {
+                header {
+                    Button("Retry") { Task { await skills.refresh() } }
+                        .font(.caption)
+                }
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        case .loaded:
+            let matches = trigger.matches(in: skills.skills)
+            if !matches.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    header { EmptyView() }
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(matches) { skill in
+                                row(for: skill)
+                            }
+                        }
+                        .onGeometryChange(for: CGFloat.self) { proxy in
+                            proxy.size.height
+                        } action: { height in
+                            listHeight = height
+                        }
+                    }
+                    .frame(height: min(listHeight, Self.maximumListHeight))
+                    .scrollBounceBehavior(.basedOnSize)
+                    Divider()
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Skill Suggestions")
+            }
+        }
+    }
+
+    private func header(@ViewBuilder trailing: () -> some View) -> some View {
+        HStack(spacing: 8) {
+            Text("Skills")
+                .font(.caption.weight(.semibold))
+                .textCase(.uppercase)
+                .foregroundStyle(.secondary)
+            trailing()
+            Spacer(minLength: 0)
+            Button {
+                onDismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss Skill Suggestions")
+        }
+    }
+
+    private func row(for skill: AgentSkill) -> some View {
+        Button {
+            onSelect(skill)
+        } label: {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(skill.command)
+                    .font(.subheadline.weight(.medium))
+                    .fontDesign(.monospaced)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                if let description = skill.description {
+                    Text(description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 7)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(skill.name)
+        .accessibilityHint("Inserts \(skill.command) without sending it")
     }
 }
 

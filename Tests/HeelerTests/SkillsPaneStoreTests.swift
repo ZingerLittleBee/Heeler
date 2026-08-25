@@ -63,6 +63,43 @@ struct SkillsPaneStoreTests {
         #expect(store.skills.map(\.name) == ["kept"])
     }
 
+    @Test func matchingFiltersOverCommandAndDescription() async {
+        let store = SkillsPaneStore { _ in
+            [
+                AgentSkill(
+                    scope: .project, name: "code-review",
+                    description: "Review a pull request"),
+                AgentSkill(
+                    scope: .global, name: "tdd",
+                    description: "Red, green, refactor"),
+                AgentSkill(
+                    scope: .global, name: "pdf-tools", description: nil,
+                    commandPrefix: "$"),
+            ]
+        }
+        await store.loadIfNeeded()
+
+        #expect(store.matching("").map(\.name) == ["code-review", "tdd", "pdf-tools"])
+        #expect(store.matching("REVIEW").map(\.name) == ["code-review"])
+        #expect(store.matching("green").map(\.name) == ["tdd"])
+        #expect(store.matching("$pdf").map(\.name) == ["pdf-tools"])
+        #expect(store.matching("absent").isEmpty)
+    }
+
+    @Test func triggerPrefixesUniteTheCatalogAndTheLoadedSkillsLongestFirst() async {
+        let store = SkillsPaneStore(commandPrefixes: ["/", "/skill:", "/"]) { _ in
+            [
+                AgentSkill(
+                    scope: .global, name: "pdf-tools", description: nil,
+                    commandPrefix: "$")
+            ]
+        }
+        #expect(store.triggerPrefixes == ["/skill:", "/"])
+
+        await store.loadIfNeeded()
+        #expect(store.triggerPrefixes == ["/skill:", "$", "/"])
+    }
+
     @Test func cancellationReturnsToIdleSoTheNextAppearanceRetries() async {
         var attempts = 0
         let store = SkillsPaneStore { _ in
