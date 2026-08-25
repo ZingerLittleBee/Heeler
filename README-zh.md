@@ -25,11 +25,15 @@ Heeler 是一个 **agent 控制台**：把所有机器上正在运行的 coding 
 
 ## 截图
 
-汇聚所有 Host、按优先级排序的 Agent Console；实时终端下方工具键盘的 Agent 控制键；渲染在 Composer 上方的 Agent 会话；锁屏上实时跟踪 Agent 的实时活动：
+汇聚所有 Host、按优先级排序的 Agent Console；实时终端下方工具键盘的 Agent 控制键；渲染在 Composer 上方的 Agent 会话；带 Text / Keys 的普通 Terminal；输入时弹出的 Composer Skills 建议；锁屏上实时跟踪 Agent 的实时活动：
 
-| Agent Console | Composer + 工具键盘 | 实时终端 | 实时活动 |
-| --- | --- | --- | --- |
-| ![iPhone 上的 Agent Console](docs/images/console-iphone.png) | ![iPhone 上带工具键盘的 Agent 终端](docs/images/agent-iphone.png) | ![iPhone 上 Composer 上方的 Agent 实时终端](docs/images/composer-iphone.png) | ![iPhone 锁屏上实时跟踪 Agent 的实时活动](docs/images/live-activity-iphone.png) |
+| Agent Console | Composer + 工具键盘 | 实时终端 |
+| --- | --- | --- |
+| ![iPhone 上的 Agent Console](docs/images/console-iphone.png) | ![iPhone 上带工具键盘的 Agent 终端](docs/images/agent-iphone.png) | ![iPhone 上 Composer 上方的 Agent 实时终端](docs/images/composer-iphone.png) |
+
+| Terminal | Skills | 实时活动 |
+| --- | --- | --- |
+| ![iPhone 上带 Text / Keys 的普通 Terminal](docs/images/terminal-iphone.png) | ![iPhone 上 Composer 的 Skills 建议](docs/images/skills-iphone.png) | ![iPhone 锁屏上实时跟踪 Agent 的实时活动](docs/images/live-activity-iphone.png) |
 
 ## 功能
 
