@@ -303,6 +303,7 @@
 		F96B2A54E2C6FF38CF5407BA /* DemoScreenshotModeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEFE51A74497E9691DBD8D7D /* DemoScreenshotModeTests.swift */; };
 		FA19EF5420E1D4FFFEF78155 /* TerminalStatusDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DAC3DCDEF81B14A2019DDBE /* TerminalStatusDialog.swift */; };
 		FB3A2B881CE2C93601F1A90F /* SkillFrontmatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CB3A0C20671F436B322D0F3 /* SkillFrontmatter.swift */; };
+		FBC2F27922BF5A627A27C339 /* EventsSessionLatencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F565A5BE8CC4ABA3FA10D57 /* EventsSessionLatencyTests.swift */; };
 		FC3565466275E3A63ED59687 /* PairingCeremony.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4CA687285B470E3968D1DB6 /* PairingCeremony.swift */; };
 		FCC374190EE36E254109D6AD /* HerdrHostPathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB90BB1A82BAAD178E1258F3 /* HerdrHostPathTests.swift */; };
 		FCCE1492C64201FF221B64A3 /* AgentActivityEnvelope.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69EBBC2C99AA84420FDF600A /* AgentActivityEnvelope.swift */; };
@@ -401,6 +402,7 @@
 		29723E2E7A65ABAF27698733 /* AgentActivityContentBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentActivityContentBuilder.swift; sourceTree = "<group>"; };
 		297D9D4C1F200A21A2A0AA64 /* NotificationRegistrationFileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRegistrationFileTests.swift; sourceTree = "<group>"; };
 		2D6996CA1550E32EE6AC3669 /* GitBranchName.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitBranchName.swift; sourceTree = "<group>"; };
+		2F565A5BE8CC4ABA3FA10D57 /* EventsSessionLatencyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsSessionLatencyTests.swift; sourceTree = "<group>"; };
 		31B3368D352EFC805C2534F9 /* RealSSHFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealSSHFixture.swift; sourceTree = "<group>"; };
 		31F09325DE68693680E5A3BB /* HerdrSocketLocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrSocketLocationTests.swift; sourceTree = "<group>"; };
 		321E267EE49BFE4A60F3B7CB /* FilePreparer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreparer.swift; sourceTree = "<group>"; };
@@ -709,6 +711,7 @@
 				016BA41A48C6D6CCCEB10A47 /* DeviceKeyTests.swift */,
 				FE302F516B139F4BADCEC6CB /* EventsSessionBufferingTests.swift */,
 				823B2239BDC425FCE456B625 /* EventsSessionKeepaliveTests.swift */,
+				2F565A5BE8CC4ABA3FA10D57 /* EventsSessionLatencyTests.swift */,
 				39AD641EA732307D72698216 /* EventsSessionSubscriptionsTests.swift */,
 				0C833B5BA50276247A54258B /* FilePreparerTests.swift */,
 				D5C058D102046A707547A0FD /* GeneratedWireTypesTests.swift */,
@@ -1595,6 +1598,7 @@
 				C30EE891E4215D9F2D3B7821 /* DeviceKeyTests.swift in Sources */,
 				4934C8086D2B27A7F07391E5 /* EventsSessionBufferingTests.swift in Sources */,
 				DA9ABDB7E506248091ACF17E /* EventsSessionKeepaliveTests.swift in Sources */,
+				FBC2F27922BF5A627A27C339 /* EventsSessionLatencyTests.swift in Sources */,
 				FEC497C4A95E5F4D945EF3BA /* EventsSessionSubscriptionsTests.swift in Sources */,
 				58EE685D5F9C4B21D4B4DC0E /* FakeLiveActivityController.swift in Sources */,
 				E7CE4737CFB94163D9EEC8F2 /* FakePairingConnector.swift in Sources */,

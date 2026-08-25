@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// Bounded backoff for transient events-channel failures (#18): capped
 /// exponential delay, unlimited attempts. Action-required failures stop and
@@ -121,9 +122,26 @@ actor EventsSession {
     private let updatesContinuation: AsyncStream<EventsSessionUpdate>.Continuation
     /// Successful herdr ping round trips on the Host's live SSH connection.
     /// This is separate from `updates`: latency is latest-value telemetry, not
-    /// part of the ordered status/event convergence stream.
+    /// part of the ordered status/event convergence stream. It is a *signal* —
+    /// "a new measurement exists" — and carries the sample for callers that
+    /// only want the number. A consumer that also folds `updates` must read
+    /// `currentLatency` instead of this payload; see that property.
     nonisolated let latencyUpdates: AsyncStream<Duration>
     private let latencyContinuation: AsyncStream<Duration>.Continuation
+    /// The round trip the Host's *current* connection last proved, or nil
+    /// while no live connection has proved one.
+    ///
+    /// `updates` and `latencyUpdates` are separate streams with separate
+    /// consumers, so their consumption order establishes nothing: a delayed
+    /// sample from a dead connection could otherwise land after the status
+    /// that ended it. This value is instead written strictly before the update
+    /// that makes the same fact observable — set before the `.connected` that
+    /// follows a fresh ping, cleared before any non-connected status leaves
+    /// `yieldUpdate` — so folding an update and reading this in the same turn
+    /// yields a measurement that belongs to that update's own connection, at
+    /// whatever moment either stream is actually consumed.
+    nonisolated var currentLatency: Duration? { latencyBox.withLock { $0 } }
+    private nonisolated let latencyBox = Mutex<Duration?>(nil)
     /// How many updates the bounded buffer has shed so far. Every shed
     /// update is covered by a marker (see `yieldUpdate`), so this is
     /// observability for diagnostics and tests, not a consumer signal.
@@ -247,7 +265,7 @@ actor EventsSession {
         else { return }
         do {
             let latency = try await measureLatency(on: transport)
-            latencyContinuation.yield(latency)
+            publishLatency(latency)
             noteConnectionActivity()
         } catch is CancellationError {
         } catch TransportError.cancelled {
@@ -375,6 +393,12 @@ actor EventsSession {
     /// is later shed itself lands right back here and is re-armed (see
     /// `HerdrEvent.eventsDropped`).
     private func yieldUpdate(_ update: EventsSessionUpdate) {
+        // Ordered before the yield, so no consumer can observe a status that
+        // ends a connection while `currentLatency` still holds that
+        // connection's measurement.
+        if case .status(let status) = update, status != .connected {
+            latencyBox.withLock { $0 = nil }
+        }
         guard case .dropped = updatesContinuation.yield(update) else { return }
         droppedUpdateCount += 1
         if case .dropped = updatesContinuation.yield(.event(.eventsDropped)) {
@@ -546,7 +570,7 @@ actor EventsSession {
             guard activationIsCurrent(generation) else {
                 throw TransportError.cancelled
             }
-            latencyContinuation.yield(latency)
+            publishLatency(latency)
         } catch {
             try? await transport.close()
             throw error
@@ -624,7 +648,7 @@ actor EventsSession {
                 guard self.connectionIsIdle(within: keepalive.interval) else { continue }
                 do {
                     let latency = try await self.measureLatency(on: transport)
-                    self.latencyContinuation.yield(latency)
+                    self.publishLatency(latency)
                     self.noteConnectionActivity()
                 } catch is CancellationError {
                     break
@@ -645,6 +669,14 @@ actor EventsSession {
 
     private func noteConnectionActivity() {
         lastConnectionActivity = .now
+    }
+
+    /// The single gate every measurement leaves through: the connection-scoped
+    /// value first, then the signal. A consumer woken by the signal reads the
+    /// value it was woken for or a newer one, never an older one.
+    private func publishLatency(_ latency: Duration) {
+        latencyBox.withLock { $0 = latency }
+        latencyContinuation.yield(latency)
     }
 
     /// Measures only the herdr `ping` request on an established Transport.
