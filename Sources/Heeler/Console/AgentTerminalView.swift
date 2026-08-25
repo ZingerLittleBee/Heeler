@@ -387,6 +387,15 @@ struct AgentTerminalView: View {
         }
     }
 
+    /// Read inside the view body so it follows `ConsoleStore`'s observation:
+    /// a fresh keepalive measurement re-renders this row and nothing else.
+    /// No request of its own — the Host's connection measured this already.
+    private var hostTelemetry: HostTelemetryPresentation? {
+        HostTelemetryPresentation(
+            status: console.hostStatuses[agent.hostID],
+            latency: console.hostLatencies[agent.hostID])
+    }
+
     private var composerKeyboardLayout: AgentComposerKeyboardLayout {
         AgentComposerKeyboardLayout(
             currentHeight: keyboardInset.height,
@@ -459,6 +468,9 @@ struct AgentTerminalView: View {
             AgentComposerView(
                 store: composer,
                 status: agent.agent.status,
+                hostTelemetry: hostTelemetry,
+                chromeColorScheme: terminal.themes.selection(for: colorScheme)
+                    .chromeColorScheme(for: colorScheme),
                 switcher: agentSwitcher,
                 keyboardHandoff: keyboardHandoff,
                 keyboardHeight: composerKeyboardLayout.availableToolsHeight,

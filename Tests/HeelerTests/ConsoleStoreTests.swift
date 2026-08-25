@@ -1254,6 +1254,53 @@ struct ConsoleStoreTests {
         #expect(store.hostLatencies.isEmpty)
     }
 
+    /// A latency belongs to the connection that measured it (#236), and the
+    /// projection folds both from one ordered source — so every assertion here
+    /// is made the instant the status is observable, with nothing waited for
+    /// in between. Neither the Hosts sheet nor Agent detail can present a
+    /// number the current connection never proved, and neither is left blank
+    /// while it has one.
+    @Test func hostLatencyIsPairedWithTheConnectionThatMeasuredIt() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(snapshot: .fixture())
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Host should report connected") {
+            store.hostStatuses[host.id] == .connected
+        }
+        // Not waited for: the connect ping answered before `.connected` was
+        // published, so the number is already here.
+        #expect(store.hostLatencies[host.id] != nil)
+
+        await store.suspend()
+        try await waitUntil("the Host should report suspended") {
+            store.hostStatuses[host.id] == .suspended
+        }
+        // Absent, not zero and not the previous measurement: the Host is
+        // still in the catalog, only its proof is gone.
+        #expect(store.hostLatencies[host.id] == nil)
+
+        // Hold the replacement connection's ping open. Any latency published
+        // in this window could only be the suspended connection's.
+        let gate = ScriptedTransportCallGate()
+        await transport.gateNextPing(using: gate)
+        await store.resume()
+        try await waitUntil("the replacement connection should be pinging") {
+            await gate.entryCount == 1
+        }
+        #expect(store.hostLatencies[host.id] == nil)
+
+        await gate.open()
+        try await waitUntil("the reconnected Host should report connected") {
+            store.hostStatuses[host.id] == .connected
+        }
+        #expect(store.hostLatencies[host.id] != nil)
+
+        store.setHosts([])
+    }
+
     @Test func resumedHostStaysLoadingUntilItsReplacementSnapshotLands() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(

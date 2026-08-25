@@ -82,6 +82,15 @@ struct AgentComposerLinkPresentation: Equatable {
 struct AgentComposerView: View {
     let store: AgentComposerStore
     let status: AgentStatus
+    /// Read-only projection of the Host's own connection telemetry; nil
+    /// whenever there is nothing proven to show.
+    let hostTelemetry: HostTelemetryPresentation?
+    /// The terminal theme's luminance, not the system appearance. The status
+    /// row sits directly on the themed terminal surface, so hierarchical
+    /// styles and the status inks must resolve against that background — a
+    /// dark theme under a light system otherwise renders light-mode grays
+    /// into near-black and the row disappears.
+    let chromeColorScheme: ColorScheme
     let switcher: TerminalAgentSwitcher
     let keyboardHandoff: TerminalKeyboardHandoff
     let keyboardHeight: CGFloat
@@ -104,8 +113,15 @@ struct AgentComposerView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
-                statusLabel
-                    .padding(.horizontal, 16)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    statusLabel
+                    Spacer(minLength: 8)
+                    if let hostTelemetry {
+                        hostTelemetryLabel(hostTelemetry)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .environment(\.colorScheme, chromeColorScheme)
 
                 VStack(spacing: 0) {
                     VStack(alignment: .leading, spacing: 8) {
@@ -426,6 +442,25 @@ struct AgentComposerView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Agent status")
         .accessibilityValue(status.rawValue.capitalized)
+    }
+
+    /// Deliberately quieter than Agent Status: it never changes color with the
+    /// value and never animates, so a number that moves on its own cadence
+    /// cannot pull attention away from the Agent the user came here for.
+    private func hostTelemetryLabel(
+        _ telemetry: HostTelemetryPresentation
+    ) -> some View {
+        Text(telemetry.title)
+            .font(.caption2)
+            .monospacedDigit()
+            // One step brighter on dark themes: tertiary gray recedes into a
+            // near-black surface faster than it does into a light one.
+            .foregroundStyle(
+                chromeColorScheme == .dark
+                    ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(telemetry.accessibilityLabel)
+            .accessibilityValue(telemetry.accessibilityValue)
     }
 }
 

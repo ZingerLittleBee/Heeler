@@ -9,6 +9,14 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Agent detail shows the Host's latest connection latency next to Agent
+  status, rounded exactly as the Hosts sheet rounds it. It measures the Host's
+  API connection over SSH, not the Agent's response time, and disappears
+  whenever the current connection has no measurement of its own. The status
+  row it joins now follows the terminal theme's luminance instead of the
+  system appearance, so both labels stay legible on a dark theme under a
+  light system and vice versa. (#236)
+
 - The Composer now suggests the selected Agent's discovered Skills inline
   while an invocation prefix is typed, and its More menu gains a searchable
   Skill picker. Both entry points share the tools keyboard's Skills
