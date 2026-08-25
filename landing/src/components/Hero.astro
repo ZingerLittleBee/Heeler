@@ -4,6 +4,8 @@ import agentShot from '../assets/screens/agent-iphone.png';
 import composerShot from '../assets/screens/composer-iphone.png';
 import consoleShot from '../assets/screens/console-iphone.png';
 import liveActivityShot from '../assets/screens/live-activity-iphone.png';
+import skillsShot from '../assets/screens/skills-iphone.png';
+import terminalShot from '../assets/screens/terminal-iphone.png';
 import Badge from './Badge.astro';
 import Button from './Button.astro';
 
@@ -25,6 +27,18 @@ const screens = [
     alt: 'Live terminal above the Composer on iPhone',
     label: 'Composer',
     caption: 'The session rendered above the draft',
+  },
+  {
+    image: terminalShot,
+    alt: 'Plain Terminal with Text and Keys on iPhone',
+    label: 'Terminal',
+    caption: 'A shell pane with Text and Keys',
+  },
+  {
+    image: skillsShot,
+    alt: 'Composer Skills suggestions on iPhone',
+    label: 'Skills',
+    caption: 'Inline Skills while you type a prefix',
   },
   {
     image: liveActivityShot,
@@ -140,7 +154,7 @@ const screens = [
 
   .screens {
     display: grid;
-    grid-template-columns: repeat(4, 300px);
+    grid-template-columns: repeat(3, 300px);
     justify-content: center;
     gap: 48px;
     margin: 88px 0 0;
@@ -175,9 +189,9 @@ const screens = [
     margin-top: var(--sp-1-5);
   }
 
-  /* Four 300px frames need 1344px. Below that the row becomes a swipeable
-   * rail rather than four stacked full-height phones. */
-  @media (max-width: 1408px) {
+  /* Three 300px frames need 996px. Below that the grid becomes a swipeable
+   * rail rather than two stacked rows of full-height phones. */
+  @media (max-width: 1060px) {
     .screens {
       display: flex;
       grid-template-columns: none;

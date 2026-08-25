@@ -49,6 +49,22 @@ final class TerminalKeyboardControl {
     func sendQuickKey(_ key: AgentQuickKey) {
         terminal?.sendQuickKey(key)
     }
+
+    func setKeyboardMode(_ mode: TerminalKeyboardMode) {
+        terminal?.setKeyboardMode(mode)
+    }
+
+    func sendControlKey(_ key: TerminalControlKey) {
+        terminal?.sendControlKey(key)
+    }
+
+    func sendNewLine() {
+        terminal?.sendNewLine()
+    }
+
+    func paste(_ text: String) {
+        terminal?.requestPaste(text)
+    }
 }
 
 /// The interactive Ghostty surface. PTY bytes flow into an in-memory Ghostty
@@ -65,10 +81,6 @@ struct TerminalScreenView: UIViewRepresentable {
     var onSend: ((Data) -> Void)?
     var onScroll: ((_ sequence: Data, _ rows: Int) -> Void)?
     var onPaste: ((_ text: String, _ bracketed: Bool) -> Void)?
-    var onSnippet: ((_ text: String, _ bracketed: Bool) -> Void)?
-    /// Fills the Keys keyboard's Snippets and Appearance tabs. Without one the
-    /// keyboard shows the control keys alone.
-    var keysContext: TerminalKeysContext?
     /// Asked exactly once, as the surface is created: does this terminal
     /// inherit the keyboard from the one it replaced? Asking through a
     /// closure rather than a stored flag keeps the answer tied to the
@@ -93,17 +105,14 @@ struct TerminalScreenView: UIViewRepresentable {
             onSend: onSend,
             onScroll: onScroll,
             onPaste: onPaste,
-            onSnippet: onSnippet,
-            keysContext: keysContext,
             theme: theme,
             fontSize: fontSize,
             fontFamily: fontFamily)
-        view.delegate = context.coordinator
+        view.onOpenLink = { url in openURL(url) }
         // Only here, never in updateUIView: the intent belongs to this
         // terminal's first appearance, not to every state change after it.
         view.raisesKeyboardWhenReady = claimsKeyboard?() ?? false
         keyboardControl?.terminal = view
-        context.coordinator.terminalView = view
         view.setLocalInputEnabled(isLocalInputEnabled)
         // The feed holds the surface weakly so a replaced UIKit view cannot be
         // kept alive by an obsolete terminal pipeline.
@@ -121,8 +130,6 @@ struct TerminalScreenView: UIViewRepresentable {
         onSend: ((Data) -> Void)? = nil,
         onScroll: ((_ sequence: Data, _ rows: Int) -> Void)? = nil,
         onPaste: ((_ text: String, _ bracketed: Bool) -> Void)? = nil,
-        onSnippet: ((_ text: String, _ bracketed: Bool) -> Void)? = nil,
-        keysContext: TerminalKeysContext? = nil,
         theme: TerminalTheme = .default,
         fontSize: Float = TerminalZoomSettings.defaultFontSize,
         fontFamily: String? = nil,
@@ -139,8 +146,6 @@ struct TerminalScreenView: UIViewRepresentable {
             onSend: onSend,
             onScroll: onScroll,
             onPaste: onPaste,
-            onSnippet: onSnippet,
-            keysContext: keysContext,
             theme: theme,
             fontSize: fontSize,
             fontFamily: fontFamily,
@@ -155,9 +160,7 @@ struct TerminalScreenView: UIViewRepresentable {
             onViewportTextChanged: onViewportTextChanged,
             onSend: onSend,
             onScroll: onScroll,
-            onPaste: onPaste,
-            onSnippet: onSnippet)
-        view.keysContext = keysContext
+            onPaste: onPaste)
         keyboardControl?.terminal = view
         view.setLocalInputEnabled(isLocalInputEnabled)
         view.applyTheme(theme)
@@ -169,33 +172,7 @@ struct TerminalScreenView: UIViewRepresentable {
         // feeds the Attach Link index, whose observers include this very view,
         // and the update loops on itself until the app is wedged. Terminal
         // output already schedules a snapshot in `receive`.
-        context.coordinator.onOpenLink = { url in openURL(url) }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onOpenLink: { url in openURL(url) })
-    }
-
-    @MainActor
-    final class Coordinator: NSObject, TerminalSurfaceOpenURLDelegate,
-        TerminalSurfaceTextSelectionRequestDelegate
-    {
-        weak var terminalView: HeelerTerminalView?
-        var onOpenLink: ((URL) -> Void)?
-
-        init(onOpenLink: ((URL) -> Void)? = nil) {
-            self.onOpenLink = onOpenLink
-        }
-
-        func terminalDidRequestOpenURL(_ url: String, kind _: TerminalOpenURLKind) {
-            guard let url = TerminalLinkPolicy.url(for: url) else { return }
-            onOpenLink?(url)
-        }
-
-        func terminalDidRequestTextSelection(_ request: TerminalTextSelectionRequest) {
-            guard let terminalView else { return }
-            TerminalTextSelectionPresenter.present(request, from: terminalView)
-        }
+        view.onOpenLink = { url in openURL(url) }
     }
 }
 
@@ -208,7 +185,6 @@ private final class TerminalSessionCallbackBridge {
     var onSend: ((Data) -> Void)?
     var onScroll: ((Data, Int) -> Void)?
     var onPaste: ((String, Bool) -> Void)?
-    var onSnippet: ((String, Bool) -> Void)?
     var onViewport: ((InMemoryTerminalViewport) -> Void)?
     var onReliableInput: (() -> Void)?
     var onTerminalInput: ((Data) -> Void)?
@@ -220,15 +196,13 @@ private final class TerminalSessionCallbackBridge {
         onViewportTextChanged: ((String) -> Void)?,
         onSend: ((Data) -> Void)?,
         onScroll: ((Data, Int) -> Void)?,
-        onPaste: ((String, Bool) -> Void)?,
-        onSnippet: ((String, Bool) -> Void)?
+        onPaste: ((String, Bool) -> Void)?
     ) {
         self.onSizeChanged = onSizeChanged
         self.onViewportTextChanged = onViewportTextChanged
         self.onSend = onSend
         self.onScroll = onScroll
         self.onPaste = onPaste
-        self.onSnippet = onSnippet
     }
 
     nonisolated func send(_ data: Data) {
@@ -278,10 +252,6 @@ private final class TerminalSessionCallbackBridge {
         onPaste?(text, bracketed)
     }
 
-    func snippet(_ text: String, bracketed: Bool) {
-        onSnippet?(text, bracketed)
-    }
-
     func viewportTextDidChange(_ text: String) {
         onViewportTextChanged?(text)
     }
@@ -324,9 +294,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private(set) var appliedFontSize: Float
     private(set) var appliedFontFamily: String?
     var onFontSizeChanged: ((Float) -> Void)?
-    /// Rebuilt into the Keys keyboard the next time it is raised; a live
-    /// keyboard keeps the context it was built with.
-    var keysContext: TerminalKeysContext?
+    var onOpenLink: ((URL) -> Void)?
     /// Raises the keyboard once this surface reaches a window. An Agent switch
     /// rebuilds the whole terminal, and the user who tapped a switcher chip
     /// was mid-conversation — dropping the keyboard would hide the switcher
@@ -371,7 +339,6 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private var touchScrollMomentumDisplayLink: CADisplayLink?
     private var touchScrollMomentumVelocityY: CGFloat = 0
     private var touchScrollMomentumTimestamp: CFTimeInterval = 0
-    var controlKeyboardHeight = TerminalKeysKeyboardView.defaultHeight
 
     private lazy var touchScrollGesture = UIPanGestureRecognizer(
         target: self,
@@ -384,14 +351,6 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private lazy var tapGesture = UITapGestureRecognizer(
         target: self,
         action: #selector(handleHerdrTap(_:)))
-
-    private lazy var terminalKeyboardAccessory = TerminalKeyboardAccessory(
-        frame: CGRect(
-            x: 0,
-            y: 0,
-            width: bounds.width,
-            height: TerminalKeyboardAccessory.preferredHeight),
-        terminalView: self)
 
     override var inputView: UIView? {
         terminalInputView
@@ -514,8 +473,11 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
             with: NSRange(location: range.location, length: range.length))
     }
 
+    /// Nothing rides the keyboard any more: the input row lives in the app
+    /// (see `ShellTerminalView`), where a keyboard-mode switch cannot tear it
+    /// down, and where UIKit's candidate-row teardown cannot move it.
     override var inputAccessoryView: UIView? {
-        terminalKeyboardAccessory
+        nil
     }
 
     /// Only a tap on the input row raises the keyboard, so the surface refuses
@@ -544,9 +506,6 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         if isFirstResponder, !responderGate.mayBecomeFirstResponder {
             return true
         }
-        // UIKit reads the accessory hierarchy while installing the software
-        // keyboard. Restore its content before that transaction starts.
-        terminalKeyboardAccessory.resetDismissalAppearance()
         return super.becomeFirstResponder()
     }
 
@@ -568,22 +527,18 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         onSend: ((Data) -> Void)?,
         onScroll: ((Data, Int) -> Void)?,
         onPaste: ((String, Bool) -> Void)?,
-        onSnippet: ((String, Bool) -> Void)?,
-        keysContext: TerminalKeysContext?,
         theme: TerminalTheme,
         fontSize: Float,
         fontFamily: String?,
         clipboard: TerminalClipboard
     ) {
-        self.keysContext = keysContext
         self.clipboard = clipboard
         let callbackBridge = TerminalSessionCallbackBridge(
             onSizeChanged: onSizeChanged,
             onViewportTextChanged: onViewportTextChanged,
             onSend: onSend,
             onScroll: onScroll,
-            onPaste: onPaste,
-            onSnippet: onSnippet)
+            onPaste: onPaste)
         self.callbackBridge = callbackBridge
         terminalSession = InMemoryTerminalSession(
             write: { [weak callbackBridge] data in
@@ -604,6 +559,9 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         appliedFontSize = clampedFontSize
         appliedFontFamily = fontFamily
         super.init(frame: frame)
+        // The view is its own surface delegate so orphan-layer cleanup runs
+        // wherever the view is used, not only under the SwiftUI representable.
+        delegate = self
         callbackBridge.onTerminalInput = { [weak self] data in
             self?.recordTerminalInput(data)
         }
@@ -631,15 +589,13 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         onViewportTextChanged: ((String) -> Void)?,
         onSend: ((Data) -> Void)?,
         onScroll: ((Data, Int) -> Void)?,
-        onPaste: ((String, Bool) -> Void)?,
-        onSnippet: ((String, Bool) -> Void)?
+        onPaste: ((String, Bool) -> Void)?
     ) {
         callbackBridge.onSizeChanged = onSizeChanged
         callbackBridge.onViewportTextChanged = onViewportTextChanged
         callbackBridge.onSend = onSend
         callbackBridge.onScroll = onScroll
         callbackBridge.onPaste = onPaste
-        callbackBridge.onSnippet = onSnippet
     }
 
     @discardableResult
@@ -769,13 +725,6 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         if !isEnabled, isFirstResponder {
             _ = dismissKeyboard()
         }
-        terminalKeyboardAccessory.setInputEnabled(isEnabled)
-        if let keysKeyboard {
-            keysKeyboard.localInputEnabledDidChange()
-        } else {
-            terminalInputView?.isUserInteractionEnabled = isEnabled
-            terminalInputView?.alpha = isEnabled ? 1 : 0.5
-        }
     }
 
     func requestPaste(_ text: String?) {
@@ -783,21 +732,6 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         reliableInputDidBegin()
         recordCommittedText(text)
         callbackBridge.paste(text, bracketed: usesBracketedPaste)
-    }
-
-    /// Sends a Snippet the user tapped in the Keys keyboard.
-    func sendSnippet(_ snippet: Snippet) {
-        sendInsertedText(snippet.body)
-    }
-
-    /// Sends text a keyboard pane inserts on the user's behalf — a Snippet's
-    /// body, a skill's slash command. Same delivery semantics either way: no
-    /// submit byte of its own.
-    func sendInsertedText(_ text: String) {
-        guard isLocalInputEnabled else { return }
-        reliableInputDidBegin()
-        recordCommittedText(text)
-        callbackBridge.snippet(text, bracketed: usesBracketedPaste)
     }
 
     override func deleteBackward() {
@@ -1320,5 +1254,42 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private func reliableInputDidBegin() {
         stopTouchScrollMomentum()
         touchScrollAccumulator.reset()
+    }
+}
+
+extension HeelerTerminalView: TerminalSurfaceOpenURLDelegate,
+    TerminalSurfaceTextSelectionRequestDelegate, TerminalSurfaceLifecycleDelegate,
+    TerminalSurfaceGridResizeDelegate
+{
+    func terminalDidRequestOpenURL(_ url: String, kind _: TerminalOpenURLKind) {
+        guard let url = TerminalLinkPolicy.url(for: url) else { return }
+        onOpenLink?(url)
+    }
+
+    /// The one metrics source that still carries cell dimensions. Since
+    /// GhosttyTerminal 1.4.0 the in-memory session's resize dispatches come
+    /// from the engine's receive-resize callback, which reports the grid and
+    /// total pixels but not the cell size — `updateTouchScrollMetrics` keeps
+    /// consuming those for columns and rows, while this delegate keeps
+    /// `terminalCellSize` real so tap-to-cell mapping and touch-scroll row
+    /// heights don't fall back to the 8×16 default.
+    func terminalDidResize(_ size: TerminalGridMetrics) {
+        terminalGridSize = (Int(size.columns), Int(size.rows))
+        guard size.cellWidthPixels > 0, size.cellHeightPixels > 0 else { return }
+        let scale = window?.screen.nativeScale ?? traitCollection.displayScale
+        guard scale > 0 else { return }
+        terminalCellSize = CGSize(
+            width: CGFloat(size.cellWidthPixels) / scale,
+            height: CGFloat(size.cellHeightPixels) / scale)
+    }
+
+    func terminalDidRequestTextSelection(_ request: TerminalTextSelectionRequest) {
+        TerminalTextSelectionPresenter.present(request, from: self)
+    }
+
+    func terminalDidAttachSurface(_: TerminalSurface) {}
+
+    func terminalDidDetachSurface() {
+        removeOrphanedSurfaceLayers()
     }
 }

@@ -51,6 +51,19 @@ final class ConsoleStore {
     @ObservationIgnored private var composerStores: [
         ConsoleAgent.ID: AgentComposerStore
     ] = [:]
+    /// The shell tab this app created per Workspace, so Open Terminal
+    /// reattaches to it instead of accumulating a new tab per visit.
+    /// In-memory on purpose: tabs die with the herdr server, and reuse
+    /// verifies liveness before attaching, so persistence would only add
+    /// stale state. Deliberately kept across reconnects — tabs survive them.
+    @ObservationIgnored private var shellTerminals: [
+        ShellTerminalKey: ShellTerminalIdentity
+    ] = [:]
+
+    private struct ShellTerminalKey: Hashable {
+        let hostID: Host.ID
+        let workspaceID: String
+    }
     @ObservationIgnored private let makeSession:
         @Sendable (Host, [EventSubscription]) -> EventsSession
     @ObservationIgnored private let snapshotRetryDelay: Duration
@@ -346,6 +359,33 @@ final class ConsoleStore {
         on hostID: Host.ID
     ) async throws -> ShellTerminalIdentity {
         try await projection(for: hostID).createShellTerminal(request)
+    }
+
+    func recallShellTerminal(
+        forWorkspaceID workspaceID: String, on hostID: Host.ID
+    ) -> ShellTerminalIdentity? {
+        shellTerminals[ShellTerminalKey(hostID: hostID, workspaceID: workspaceID)]
+    }
+
+    func rememberShellTerminal(
+        _ identity: ShellTerminalIdentity,
+        forWorkspaceID workspaceID: String,
+        on hostID: Host.ID
+    ) {
+        shellTerminals[ShellTerminalKey(hostID: hostID, workspaceID: workspaceID)] =
+            identity
+    }
+
+    func forgetShellTerminal(
+        forWorkspaceID workspaceID: String, on hostID: Host.ID
+    ) {
+        shellTerminals[ShellTerminalKey(hostID: hostID, workspaceID: workspaceID)] = nil
+    }
+
+    func shellTerminalStillExists(
+        _ identity: ShellTerminalIdentity, on hostID: Host.ID
+    ) async throws -> Bool {
+        try await projection(for: hostID).paneExists(identity.paneID)
     }
 
     @discardableResult

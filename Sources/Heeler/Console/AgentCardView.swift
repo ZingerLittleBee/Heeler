@@ -38,13 +38,17 @@ struct AgentCardView: View {
             }
             HStack(spacing: 6) {
                 if agent.isLinkedWorktree {
-                    Label("Worktree", systemImage: "arrow.triangle.branch")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(.quaternary, in: Capsule())
-                        .accessibilityLabel("Linked worktree")
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.triangle.branch")
+                        Text("Worktree")
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.quaternary, in: Capsule())
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Linked worktree")
                 }
                 if let kind = agentKindTag {
                     Text(kind)

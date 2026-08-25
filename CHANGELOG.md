@@ -9,47 +9,52 @@ Entries reference the issue that motivated them.
 
 ### Added
 
-- Agent detail shows the Host's latest connection latency next to Agent
-  status, rounded exactly as the Hosts sheet rounds it. It measures the Host's
-  API connection over SSH, not the Agent's response time, and disappears
-  whenever the current connection has no measurement of its own. The status
-  row it joins now follows the terminal theme's luminance instead of the
-  system appearance, so both labels stay legible on a dark theme under a
-  light system and vice versa. (#236)
+- Cursor (2.4+) Agents get a Skills catalogue, probed from `.cursor/skills`
+  and `.agents/skills` at the project root and home.
 
-- The Composer now suggests the selected Agent's discovered Skills inline
-  while an invocation prefix is typed, and its More menu gains a searchable
-  Skill picker. Both entry points share the tools keyboard's Skills
-  catalogue and insert the full command into the draft without sending it —
-  Codex Skills with `$`, each Skill by its own prefix. (#234)
+- Skills catalogues for thirteen more kinds, each probing its CLI's
+  documented directories — Antigravity, Cline, GitHub Copilot CLI, Devin
+  CLI, Droid, Grok Build, Hermes Agent, Kilo Code, Kimi CLI, OMP, Kiro CLI,
+  Qoder CLI, Qwen Code; Gemini CLI, Amp, Mastra Code, and Maki stay out by
+  design.
 
-- Agent detail's More menu gains Open Terminal: it creates a new herdr tab in
-  the Agent's launch directory and opens its shell as a fully interactive
-  Shell Terminal. Back detaches and leaves the remote tab alive for desktop
-  handoff. (#231)
+- Agent detail shows the Host's latest SSH API latency next to Agent status,
+  on a status row that now follows the terminal theme's luminance. (#236)
+
+- The Composer suggests discovered Skills inline while an invocation prefix
+  is typed, and the More menu gains a searchable Skill picker — both insert
+  the command into the draft without sending. (#234)
+
+- Open Terminal in Agent detail's More menu: an interactive shell in the
+  Agent's launch directory, one reused tab per Workspace, an IME-safe fixed
+  input row, Back for desktop handoff, Close Terminal to reclaim the
+  tab. (#231)
 
 - New Agent can start in a new Workspace at a remote directory, with an
   optional label, even when the Host reports none. (#230)
 
-- Linked worktrees are now marked on Console cards. Agent detail shows their
-  repository, branch, and checkout path, and can remove the checkout and its
-  workspace after an identity-bound confirmation while keeping the local
-  branch. (#99)
+- Console cards mark linked worktrees, whose repository, branch, and
+  checkout path show in Agent detail alongside a confirmed remove that keeps
+  the local branch. (#99)
 
 ### Changed
 
-- Host connections now have a distinct Connecting state, separate from
-  automatic Reconnecting, a paused connection, and loading Agents after the
-  events path is already live. A Host being re-proved after a failure keeps
-  its explanation until the attempt succeeds. (#155)
+- Hosts get a distinct Connecting state, separate from automatic
+  Reconnecting, a paused connection, and loading Agents on a live events
+  path. (#155)
 
-- Connection and request failures now present a short summary, optional
-  detail, and a recovery suggestion only when the error itself supports one.
-  Retryable outages no longer promise guidance they cannot give, a Jump Host
-  authentication failure names the Jump Host rather than the Host, and an
-  incompatible herdr protocol tells the user to update herdr. (#163)
+- Failures show a short summary, optional detail, and a recovery suggestion
+  only when the error supports one. (#163)
+
+- GhosttyTerminal 1.3.1 → 1.4.0 (Ghostty v1.3.1): surfaces survive window
+  detaches, draws pace on a display link, and keyboard input rides the
+  upstream key encoder with better IME handling. (#242)
 
 ### Fixed
+
+- Covering a terminal with a presentation no longer risks a later crash
+  from ghostty's orphaned content layer calling into freed renderer
+  memory. (#242)
 
 - A slow ordinary Host request no longer freezes a live Attach session. (#130)
 

@@ -54,33 +54,6 @@ struct TerminalAgentSwitcherTests {
         #expect(Self.makeAgent(pane: "p4").switcherLabel == "claude")
     }
 
-    /// The keyboard row carries typing controls only. The keyboard toggle
-    /// moved to the Agent strip, which outlives the keyboard — a control that
-    /// summons the keyboard back cannot live on the keyboard itself.
-    @MainActor
-    @Test func theKeyboardRowCarriesTypingControlsAlone() throws {
-        let terminal = TerminalScreenView.makeConfiguredTerminal()
-        let accessory = try #require(
-            terminal.inputAccessoryView as? TerminalKeyboardAccessory)
-        accessory.frame = CGRect(
-            x: 0, y: 0, width: 402, height: TerminalKeyboardAccessory.preferredHeight)
-        accessory.layoutIfNeeded()
-
-        #expect(
-            TerminalKeyboardAccessory.preferredHeight
-                == TerminalKeyboardAccessory.inputRowHeight)
-        for control in [accessory.pasteControl, accessory.newLineButton] as [UIView] {
-            let frame = accessory.convert(control.bounds, from: control)
-            #expect(frame.maxY <= TerminalKeyboardAccessory.preferredHeight)
-        }
-        // Paste anchors the leading edge, new line the trailing one, with the
-        // mode control centred between them.
-        #expect(accessory.pasteControl.frame.minX == 8)
-        #expect(accessory.newLineButton.frame.maxX == accessory.bounds.width - 8)
-        #expect(accessory.pasteControl.frame.maxX < accessory.newLineButton.frame.minX)
-        #expect(Self.keyboardToggles(in: accessory).isEmpty)
-    }
-
     private static func firstStrip(in view: UIView) -> TerminalAgentSwitcherBar? {
         if let strip = view as? TerminalAgentSwitcherBar { return strip }
         for subview in view.subviews {
@@ -89,14 +62,6 @@ struct TerminalAgentSwitcherTests {
         return nil
     }
 
-    private static func keyboardToggles(in view: UIView) -> [UIView] {
-        let labels: Set<String> = ["Dismiss keyboard", "Show keyboard"]
-        let matches = view.subviews.flatMap { keyboardToggles(in: $0) }
-        guard let label = view.accessibilityLabel, labels.contains(label) else {
-            return matches
-        }
-        return matches + [view]
-    }
 
     /// The strip is a scroll view whose content is as wide as its chips, so
     /// asked how big it wants to be it answers with the whole list. Mounted in

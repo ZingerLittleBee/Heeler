@@ -59,6 +59,8 @@ struct AgentDetailView: View {
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
             }
         _attach = State(initialValue: attach)
+        let hostID = agent.hostID
+        let workspaceID = agent.agent.workspaceID
         _openTerminal = State(
             initialValue: openTerminalStore
                 ?? AgentOpenTerminalStore(
@@ -66,11 +68,29 @@ struct AgentDetailView: View {
                     transportGeneration: console.hostConnectionGenerations[agent.hostID],
                     isDetailOnStage: isOnStage,
                     createTerminal: { [console] request in
-                        try await console.createShellTerminal(request, on: agent.hostID)
+                        try await console.createShellTerminal(request, on: hostID)
                     },
                     runTerminal: console.terminalRunner(for: agent.hostID),
                     leaveAgent: { attach.leaveForTerminalHandoff() },
-                    rejoinAgent: { attach.rejoin() }))
+                    rejoinAgent: { attach.rejoin() },
+                    recallTerminal: { [console] in
+                        console.recallShellTerminal(
+                            forWorkspaceID: workspaceID, on: hostID)
+                    },
+                    rememberTerminal: { [console] identity in
+                        console.rememberShellTerminal(
+                            identity, forWorkspaceID: workspaceID, on: hostID)
+                    },
+                    forgetTerminal: { [console] in
+                        console.forgetShellTerminal(
+                            forWorkspaceID: workspaceID, on: hostID)
+                    },
+                    verifyTerminal: { [console] identity in
+                        try await console.shellTerminalStillExists(identity, on: hostID)
+                    },
+                    closeRemoteTerminal: { [console] identity in
+                        try await console.closePane(identity.paneID, on: hostID)
+                    }))
     }
 
     var body: some View {
@@ -80,7 +100,9 @@ struct AgentDetailView: View {
                     store: shell,
                     terminal: terminal,
                     activity: activity,
-                    isReturning: openTerminal.isReturning
+                    isReturning: openTerminal.isReturning,
+                    isClosingTerminal: openTerminal.isClosingTerminal,
+                    onCloseTerminal: { openTerminal.closeTerminal() }
                 ) {
                     await openTerminal.returnToAgent()
                 }
@@ -117,6 +139,16 @@ struct AgentDetailView: View {
             Button("OK", role: .cancel) { openTerminal.dismissFailure() }
         } message: {
             Text(openTerminal.failure?.message ?? "")
+        }
+        .alert(
+            "Couldn't Close Terminal",
+            isPresented: Binding(
+                get: { openTerminal.closeFailureMessage != nil },
+                set: { if !$0 { openTerminal.dismissCloseFailure() } })
+        ) {
+            Button("OK", role: .cancel) { openTerminal.dismissCloseFailure() }
+        } message: {
+            Text(openTerminal.closeFailureMessage ?? "")
         }
     }
 }

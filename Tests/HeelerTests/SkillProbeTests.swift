@@ -284,8 +284,45 @@ struct SkillProbeTests {
 
     @Test func catalogCoversExactlyTheResearchedKinds() {
         let supported = SupportedAgentKind.allCases.filter(SkillSourceCatalog.supports)
-        #expect(supported == [.pi, .claude, .codex, .opencode])
-        #expect(!SkillSourceCatalog.supports(.qwen))
+        #expect(
+            supported == [
+                .pi, .claude, .codex, .cursor, .devin, .antigravity, .cline,
+                .omp, .opencode, .copilot, .kimi, .kiro, .droid, .grok,
+                .hermes, .kilo, .qodercli, .qwen,
+            ])
+        // Researched exclusions, not gaps: no typed invocation prefix
+        // (gemini, amp) or no on-disk discovery at all (mastracode, maki).
+        #expect(!SkillSourceCatalog.supports(.gemini))
+        #expect(!SkillSourceCatalog.supports(.amp))
+        #expect(!SkillSourceCatalog.supports(.mastracode))
+        #expect(!SkillSourceCatalog.supports(.maki))
+    }
+
+    @Test func skillPrefixKindsUseItOnEverySource() {
+        for kind in [SupportedAgentKind.kimi, .omp] {
+            let sources = SkillSourceCatalog.sources(for: kind)
+            #expect(!sources.isEmpty)
+            #expect(
+                sources.allSatisfy { $0.commandPrefix == "/skill:" },
+                "kind \(kind) mixes prefixes")
+        }
+    }
+
+    @Test func droidProbesCommandsBeforeSkillsSoTheCommandWinsAClash() {
+        let paths = SkillSourceCatalog.sources(for: .droid)
+            .filter { $0.root == .project }.map(\.relativePath)
+        #expect(paths.first == ".factory/commands")
+    }
+
+    @Test func cursorUsesTheSlashPrefixAcrossItsOwnAndSharedRoots() {
+        let sources = SkillSourceCatalog.sources(for: .cursor)
+        #expect(sources.allSatisfy { $0.commandPrefix == "/" })
+        #expect(sources.allSatisfy { $0.layout == .skillDirectories })
+        #expect(
+            sources.map(\.relativePath) == [
+                ".cursor/skills", ".agents/skills",
+                ".cursor/skills", ".agents/skills",
+            ])
     }
 
     @Test func projectSourcesComeFirstForEveryKind() {

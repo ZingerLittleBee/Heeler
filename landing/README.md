@@ -30,11 +30,11 @@ npm run deploy       # wrangler deploy (needs Cloudflare credentials)
 | `src/components/*.astro` | One component per section, plus `Button`/`Badge`. |
 | `src/styles/substrate/` | Vendored design system (see below). |
 | `src/styles/landing.css` | Page skeleton: gutters, section rhythm, shared text roles. |
-| `src/assets/` | Logo and the four iPhone screenshots, optimised at build time. |
+| `src/assets/` | Logo and the six iPhone screenshots, optimised at build time. |
 
 Breakpoints live with the component that needs them. The source design is
 desktop-only; the responsive behaviour (header nav collapse, the screenshot
-rail below 1408px, single-column grids on phones) was added here.
+rail below 1060px, single-column grids on phones) was added here.
 
 ## Design source
 
