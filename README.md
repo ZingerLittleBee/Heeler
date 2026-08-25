@@ -67,10 +67,10 @@ Heeler is an **agent console**: a native dashboard of every coding agent running
 Heeler speaks herdr's JSON API over SSH: each request opens a
 direct-streamlocal channel onto `herdr.sock`, one long-lived channel carries
 the event stream, and interactive terminals run `herdr agent attach
---takeover` on an SSH PTY. SSH access plus a running herdr is the whole
-prerequisite — no server changes, no extra packages. The SSH server must
-allow stream-local forwarding (the OpenSSH default); onboarding says so when
-it is off.
+--takeover` on an SSH PTY. The only prerequisites are SSH access and a
+running herdr — no server changes, no extra packages. The SSH server must
+allow stream-local forwarding (the OpenSSH default); onboarding calls it out
+when it's disabled.
 
 Unroutable machines can sit behind an SSH Jump Host:
 
@@ -87,8 +87,8 @@ herdr plugin install ZingerLittleBee/Heeler/plugin --ref main --yes
 herdr plugin action invoke heeler.pair
 ```
 
-Scan the Pairing Code QR it shows and the machine is added as a Host —
-addresses, host key fingerprint, and SSH key enrollment all ride the code.
+Scan the Pairing Code QR it shows and the machine is added as a Host — the
+code carries the addresses, the host key fingerprint, and SSH key enrollment.
 The same [plugin](plugin/README.md) delivers the encrypted notifications once
 you enable them for the Host in the app.
 
@@ -107,6 +107,6 @@ layout, build/test, and conventions.
 
 ## Status
 
-Beta, on [TestFlight](https://testflight.apple.com/join/aXSxRn4r). Built
-personal-use first and shaped by daily driving, so expect rough edges and
+Beta, on [TestFlight](https://testflight.apple.com/join/aXSxRn4r). Built for
+personal use first and shaped by daily driving, so expect rough edges and
 fast iteration. Not affiliated with the herdr project.
