@@ -15,13 +15,15 @@ Entries reference the issue that motivated them.
   and Composer suggestions light up for Cursor like the other supported
   kinds.
 
-- Skills catalogues for seven more Agent kinds, each probing the
-  directories its CLI documents: Cline, GitHub Copilot CLI, Droid
-  (including `.factory/commands` markdown commands), Grok Build, Kimi CLI
-  (invoked `/skill:name`), Kiro CLI, and Qwen Code (including
+- Skills catalogues for thirteen more Agent kinds, each probing the
+  directories its CLI documents: Antigravity, Cline, GitHub Copilot CLI,
+  Devin CLI, Droid (including `.factory/commands` markdown commands), Grok
+  Build, Hermes Agent, Kilo Code, Kimi CLI and OMP (both invoked
+  `/skill:name`), Kiro CLI, Qoder CLI, and Qwen Code (including
   `.qwen/commands`). Gemini CLI and Amp stay without a catalogue on
   purpose — their Skills have no typed invocation the Composer could
-  insert.
+  insert — and Mastra Code and Maki document no on-disk skill discovery
+  at all.
 
 - Agent detail shows the Host's latest connection latency next to Agent
   status, rounded exactly as the Hosts sheet rounds it. It measures the Host's
@@ -63,14 +65,21 @@ Entries reference the issue that motivated them.
   authentication failure names the Jump Host rather than the Host, and an
   incompatible herdr protocol tells the user to update herdr. (#163)
 
+- GhosttyTerminal (libghostty-spm) 1.3.1 → 1.4.0, wrapping the Ghostty
+  v1.3.1 release. Terminals keep their surface across temporary window
+  detaches, draws are paced by an on-demand display link instead of
+  per-wakeup dispatch, and keyboard input rides the upstream key-encoder
+  path with better IME and hardware-keyboard handling. (#242)
+
 ### Fixed
 
-- Leaving a terminal on screen while a presentation pulled it out of the
-  window could crash the app on the next screen update: ghostty frees its
-  rendering surface on window detach but leaves the surface's content layer
-  behind, and Core Animation would later call through that layer into freed
-  renderer memory. Terminal views now drop the orphaned content layer the
-  moment the surface is freed.
+- Covering a terminal with a presentation could crash the app on the next
+  screen update: ghostty's freed rendering surface left its content layer in
+  the view's layer tree, and Core Animation would later call through that
+  layer into freed renderer memory. Terminal views now drop orphaned content
+  layers the moment a surface is torn down, and the GhosttyTerminal upgrade
+  below stops the temporary window detach from freeing the surface at all —
+  a terminal behind a cover keeps its grid and scrollback. (#242)
 
 - A slow ordinary Host request no longer freezes a live Attach session. (#130)
 

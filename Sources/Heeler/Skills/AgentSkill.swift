@@ -133,6 +133,28 @@ enum SkillSourceCatalog {
                     root: .home, relativePath: ".codex/skills",
                     layout: .skillDirectories, commandPrefix: "$"),
             ]
+        case .antigravity:
+            // Skills double as slash commands (`/name`), and a bare
+            // markdown file in the workspace root also counts
+            // (`.agents/skills/lint.md` → `/lint`). Global discovery is
+            // messy across the AGY flavours: the CLI's `/skills` reports
+            // `~/.gemini/antigravity-cli/skills`, while
+            // `~/.gemini/config/skills` is the one location every flavour
+            // recognises — probe both.
+            [
+                SkillSource(
+                    root: .project, relativePath: ".agents/skills",
+                    layout: .skillDirectories),
+                SkillSource(
+                    root: .project, relativePath: ".agents/skills",
+                    layout: .markdownFiles),
+                SkillSource(
+                    root: .home, relativePath: ".gemini/antigravity-cli/skills",
+                    layout: .skillDirectories),
+                SkillSource(
+                    root: .home, relativePath: ".gemini/config/skills",
+                    layout: .skillDirectories),
+            ]
         case .cline:
             // Skills only, shipped in Cline 3.48 and invoked `/skill-name`.
             // Workflows stay out: they are invoked with their `.md` suffix
@@ -191,6 +213,29 @@ enum SkillSourceCatalog {
                     root: .home, relativePath: ".agents/skills",
                     layout: .skillDirectories),
             ]
+        case .devin:
+            // `/skill-name`; the directory name is the identifier.
+            // `.windsurf/skills` shares the format (same product family),
+            // and the `.agents` standard is supported. The per-channel
+            // `~/.codeium/<channel>/skills` roots stay out — the channel
+            // is not knowable from here.
+            [
+                SkillSource(
+                    root: .project, relativePath: ".devin/skills",
+                    layout: .skillDirectories),
+                SkillSource(
+                    root: .project, relativePath: ".windsurf/skills",
+                    layout: .skillDirectories),
+                SkillSource(
+                    root: .project, relativePath: ".agents/skills",
+                    layout: .skillDirectories),
+                SkillSource(
+                    root: .home, relativePath: ".config/devin/skills",
+                    layout: .skillDirectories),
+                SkillSource(
+                    root: .home, relativePath: ".agents/skills",
+                    layout: .skillDirectories),
+            ]
         case .droid:
             // Skills (`/skill-name`) plus legacy markdown commands
             // (`.factory/commands/*.md`, `/name`, still supported). On a
@@ -231,6 +276,42 @@ enum SkillSourceCatalog {
                     root: .home, relativePath: ".agents/skills",
                     layout: .skillDirectories),
             ]
+        case .hermes:
+            // `/skill-name`. The global root conventionally nests one
+            // category level (`~/.hermes/skills/<category>/<name>/SKILL.md`),
+            // which the one-level probe cannot see — same stance as the
+            // nested Codex and Pi trees above; project skills and the
+            // shared standard root are flat.
+            [
+                SkillSource(
+                    root: .project, relativePath: ".hermes/skills",
+                    layout: .skillDirectories),
+                SkillSource(
+                    root: .project, relativePath: ".agents/skills",
+                    layout: .skillDirectories),
+                SkillSource(
+                    root: .home, relativePath: ".hermes/skills",
+                    layout: .skillDirectories),
+            ]
+        case .kilo:
+            // Commands/workflows only (`/name`, markdown): the current CLI
+            // roots plus the still-documented legacy workflow directories.
+            // Kilo skill directories are not documented for the CLI, so
+            // they stay out until they are.
+            [
+                SkillSource(
+                    root: .project, relativePath: ".kilo/commands",
+                    layout: .markdownFiles),
+                SkillSource(
+                    root: .project, relativePath: ".kilocode/workflows",
+                    layout: .markdownFiles),
+                SkillSource(
+                    root: .home, relativePath: ".config/kilo/commands",
+                    layout: .markdownFiles),
+                SkillSource(
+                    root: .home, relativePath: ".kilocode/workflows",
+                    layout: .markdownFiles),
+            ]
         case .kimi:
             // Agent Skills invoked `/skill:<name>`; flat markdown files are
             // accepted alongside skill directories. Kimi also reads the
@@ -269,6 +350,26 @@ enum SkillSourceCatalog {
                 SkillSource(
                     root: .home, relativePath: ".kiro/skills",
                     layout: .skillDirectories),
+            ]
+        case .omp:
+            // `/skill:<name>` is always recognised; the plain per-skill
+            // slash command rides a config toggle
+            // (`skills.enableSkillCommands`), so the prefix form is the
+            // safe insertion. omp also inherits `.claude`, `.cursor`, and
+            // friends wholesale — compat roots stay out, like Cursor's.
+            [
+                SkillSource(
+                    root: .project, relativePath: ".agents/skills",
+                    layout: .skillDirectories, commandPrefix: "/skill:"),
+                SkillSource(
+                    root: .project, relativePath: ".agent/skills",
+                    layout: .skillDirectories, commandPrefix: "/skill:"),
+                SkillSource(
+                    root: .project, relativePath: ".github/skills",
+                    layout: .skillDirectories, commandPrefix: "/skill:"),
+                SkillSource(
+                    root: .home, relativePath: ".omp/agent/managed-skills",
+                    layout: .skillDirectories, commandPrefix: "/skill:"),
             ]
         case .opencode:
             // Commands only: stable OpenCode's skills are model-invoked (a
@@ -320,6 +421,28 @@ enum SkillSourceCatalog {
                     root: .home, relativePath: ".pi/agent/prompts",
                     layout: .markdownFiles),
             ]
+        case .qodercli:
+            // One root per level serves both mechanisms: bare `.md` files
+            // are commands, and a subdirectory holding a `SKILL.md`
+            // registers as a single command too. Qoder resolves user over
+            // project on a name clash — the opposite of the shadowing
+            // here, like Cline; namespaced subdirectories
+            // (`git/commit.md` → `/git:commit`) are beyond the one-level
+            // probe.
+            [
+                SkillSource(
+                    root: .project, relativePath: ".qoder/commands",
+                    layout: .markdownFiles),
+                SkillSource(
+                    root: .project, relativePath: ".qoder/commands",
+                    layout: .skillDirectories),
+                SkillSource(
+                    root: .home, relativePath: ".qoder/commands",
+                    layout: .markdownFiles),
+                SkillSource(
+                    root: .home, relativePath: ".qoder/commands",
+                    layout: .skillDirectories),
+            ]
         case .qwen:
             // Skills are `/name`-invocable; commands are markdown since the
             // fork diverged from Gemini's TOML (which is deprecated but
@@ -343,9 +466,11 @@ enum SkillSourceCatalog {
         // Researched and deliberately absent, not merely unknown:
         // Gemini CLI's skills are model-invoked only (no typed prefix) and
         // its custom commands are TOML; Amp removed custom commands and
-        // invokes skills from a palette, again with no typed prefix. Both
-        // would insert text their composer doesn't understand — the
-        // opencode-stable rule.
+        // invokes skills from a palette, again with no typed prefix — both
+        // would insert text their composer doesn't understand, the
+        // opencode-stable rule. Mastra Code and Maki document no on-disk
+        // skill or command discovery at all (Mastra's "skills" are a
+        // framework library; Maki extends via Lua plugins).
         default:
             []
         }
