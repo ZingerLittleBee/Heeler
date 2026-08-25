@@ -9,65 +9,52 @@ Entries reference the issue that motivated them.
 
 ### Added
 
-- Cursor (2.4+) Agents get a Skills catalogue: Heeler probes `.cursor/skills`
-  and `.agents/skills` at the project root and home for the Skills pane and
-  Composer suggestions.
+- Cursor (2.4+) Agents get a Skills catalogue, probed from `.cursor/skills`
+  and `.agents/skills` at the project root and home.
 
 - Skills catalogues for thirteen more kinds, each probing its CLI's
-  documented directories: Antigravity, Cline, GitHub Copilot CLI, Devin CLI,
-  Droid (plus `.factory/commands`), Grok Build, Hermes Agent, Kilo Code,
-  Kimi CLI and OMP (both `/skill:name`), Kiro CLI, Qoder CLI, Qwen Code
-  (plus `.qwen/commands`). Gemini CLI and Amp have no typed invocation to
-  insert; Mastra Code and Maki document no on-disk discovery.
+  documented directories — Antigravity, Cline, GitHub Copilot CLI, Devin
+  CLI, Droid, Grok Build, Hermes Agent, Kilo Code, Kimi CLI, OMP, Kiro CLI,
+  Qoder CLI, Qwen Code; Gemini CLI, Amp, Mastra Code, and Maki stay out by
+  design.
 
-- Agent detail shows the Host's latest SSH API latency (not Agent response
-  time) next to Agent status, hidden when the connection has no measurement.
-  That status row now follows the terminal theme's luminance, not the system
-  appearance. (#236)
+- Agent detail shows the Host's latest SSH API latency next to Agent status,
+  on a status row that now follows the terminal theme's luminance. (#236)
 
-- The Composer suggests discovered Skills inline as an invocation prefix is
-  typed, and the More menu gains a searchable Skill picker; both insert the
-  full command into the draft without sending (Codex with `$`, others by
-  their own prefix). (#234)
+- The Composer suggests discovered Skills inline while an invocation prefix
+  is typed, and the More menu gains a searchable Skill picker — both insert
+  the command into the draft without sending. (#234)
 
 - Open Terminal in Agent detail's More menu: an interactive shell in the
-  Agent's launch directory, one remembered tab per Workspace — reattached on
-  revisit, recreated only when verified gone. The input row is app content,
-  so Text/Keys switching keeps it fixed and preserves the IME candidate row
-  and composition. Back leaves the tab for desktop handoff; Close Terminal
-  closes it. (#231)
+  Agent's launch directory, one reused tab per Workspace, an IME-safe fixed
+  input row, Back for desktop handoff, Close Terminal to reclaim the
+  tab. (#231)
 
 - New Agent can start in a new Workspace at a remote directory, with an
   optional label, even when the Host reports none. (#230)
 
-- Console cards mark linked worktrees; Agent detail shows their repository,
-  branch, and checkout path, and can remove checkout and workspace after an
-  identity-bound confirmation, keeping the local branch. (#99)
+- Console cards mark linked worktrees, whose repository, branch, and
+  checkout path show in Agent detail alongside a confirmed remove that keeps
+  the local branch. (#99)
 
 ### Changed
 
 - Hosts get a distinct Connecting state, separate from automatic
   Reconnecting, a paused connection, and loading Agents on a live events
-  path; a Host re-proved after a failure keeps its explanation until
-  success. (#155)
+  path. (#155)
 
-- Failures now show a short summary, optional detail, and a recovery
-  suggestion only when the error supports one: retryable outages promise no
-  guidance, a Jump Host auth failure names the Jump Host, an incompatible
-  herdr protocol says to update herdr. (#163)
+- Failures show a short summary, optional detail, and a recovery suggestion
+  only when the error supports one. (#163)
 
-- GhosttyTerminal 1.3.1 → 1.4.0 (Ghostty v1.3.1): surfaces survive temporary
-  window detaches, draws pace on an on-demand display link instead of
-  per-wakeup dispatch, and keyboard input rides the upstream key encoder
-  with better IME and hardware-keyboard handling. (#242)
+- GhosttyTerminal 1.3.1 → 1.4.0 (Ghostty v1.3.1): surfaces survive window
+  detaches, draws pace on a display link, and keyboard input rides the
+  upstream key encoder with better IME handling. (#242)
 
 ### Fixed
 
-- Covering a terminal with a presentation could crash the app later: the
-  freed rendering surface left its content layer behind for Core Animation
-  to call into freed memory. Orphaned layers now drop at surface teardown,
-  and the 1.4.0 upgrade stops the detach from freeing the surface — a
-  covered terminal keeps its grid and scrollback. (#242)
+- Covering a terminal with a presentation no longer risks a later crash
+  from ghostty's orphaned content layer calling into freed renderer
+  memory. (#242)
 
 - A slow ordinary Host request no longer freezes a live Attach session. (#130)
 
