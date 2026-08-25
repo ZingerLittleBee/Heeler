@@ -7,6 +7,8 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-26
+
 ### Added
 
 - Cursor (2.4+) Agents get a Skills catalogue, probed from `.cursor/skills`
