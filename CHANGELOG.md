@@ -12,7 +12,10 @@ Entries reference the issue that motivated them.
 - Agent detail shows the Host's latest connection latency next to Agent
   status, rounded exactly as the Hosts sheet rounds it. It measures the Host's
   API connection over SSH, not the Agent's response time, and disappears
-  whenever the current connection has no measurement of its own. (#236)
+  whenever the current connection has no measurement of its own. The status
+  row it joins now follows the terminal theme's luminance instead of the
+  system appearance, so both labels stay legible on a dark theme under a
+  light system and vice versa. (#236)
 
 - Agent detail's More menu gains Open Terminal: it creates a new herdr tab in
   the Agent's launch directory and opens its shell as a fully interactive
