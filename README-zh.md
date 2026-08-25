@@ -37,7 +37,7 @@ Heeler 是一个 **agent 控制台**：把所有机器上正在运行的 coding 
 
 - **Console** —— 所有机器上的 Agent 汇成一个按状态排序的列表（Blocked
   排最前），可按 Host 过滤，实时更新。
-- **Attach** —— libghostty 渲染的 Agent 真实终端：原生回滚、也能驱动全屏
+- **Attach** —— libghostty 渲染的 Agent 真实终端：原生历史回看、也能驱动全屏
   TUI 的惯性触摸滚动、长按选择、接管失效的终端占用者，并静默收集网页链接
   供稍后打开。
 - **Composer** —— 在本地用完整的 iOS 键盘起草（自动纠错、输入法、听写），
