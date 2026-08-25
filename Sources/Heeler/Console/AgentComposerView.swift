@@ -439,6 +439,12 @@ private struct AgentComposerSkillSuggestions: View {
     let trigger: SkillSuggestionTrigger
     let onSelect: (AgentSkill) -> Void
     let onDismiss: () -> Void
+    /// The suggestion list's measured content height. The scroll view is
+    /// sized to it so one match does not reserve the full cap of empty
+    /// space; the cap only bounds long lists.
+    @State private var listHeight: CGFloat = Self.maximumListHeight
+
+    private static let maximumListHeight: CGFloat = 176
 
     var body: some View {
         switch skills.phase {
@@ -464,13 +470,18 @@ private struct AgentComposerSkillSuggestions: View {
                 VStack(alignment: .leading, spacing: 0) {
                     header { EmptyView() }
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 0) {
+                        VStack(alignment: .leading, spacing: 0) {
                             ForEach(matches) { skill in
                                 row(for: skill)
                             }
                         }
+                        .onGeometryChange(for: CGFloat.self) { proxy in
+                            proxy.size.height
+                        } action: { height in
+                            listHeight = height
+                        }
                     }
-                    .frame(maxHeight: 176)
+                    .frame(height: min(listHeight, Self.maximumListHeight))
                     .scrollBounceBehavior(.basedOnSize)
                     Divider()
                 }
