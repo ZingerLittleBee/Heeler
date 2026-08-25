@@ -16,6 +16,9 @@ final class HostConsoleProjection {
     /// next activation begins and discarded when that activation resolves.
     /// See Standing Failure in `CONTEXT.md`.
     private(set) var standingFailure: TransportError?
+    /// The last herdr `ping` round trip measured on the Host's *current*
+    /// connection. Cleared the moment the session leaves `.connected`, so a
+    /// measurement never outlives the connection that proved it.
     private(set) var latency: Duration?
     private(set) var syncError: String?
     private(set) var transportGeneration: UInt64 = 0
@@ -163,6 +166,7 @@ final class HostConsoleProjection {
     /// `.connected` after `currentTransport` is already gone.
     private func beginNewActivation() {
         status = .connecting
+        latency = nil
         invalidateSnapshot()
         publish()
     }
@@ -470,6 +474,11 @@ final class HostConsoleProjection {
                 }
                 scheduleResync()
             } else {
+                // A latency belongs to the connection that measured it. Any
+                // other status means the Host is unproven, so every surface
+                // reading this projection stops showing a number rather than
+                // holding the last one across the gap.
+                latency = nil
                 invalidateSnapshot()
                 publish()
             }

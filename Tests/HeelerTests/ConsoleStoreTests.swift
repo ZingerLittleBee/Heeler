@@ -1254,6 +1254,36 @@ struct ConsoleStoreTests {
         #expect(store.hostLatencies.isEmpty)
     }
 
+    /// A latency belongs to the connection that measured it (#236). Leaving
+    /// `.connected` drops it immediately, so neither the Hosts sheet nor Agent
+    /// detail can present a number the current connection never proved.
+    @Test func leavingConnectedDropsTheHostLatencyImmediately() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(snapshot: .fixture())
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Host should publish its ping latency") {
+            store.hostLatencies[host.id] != nil
+        }
+
+        await store.suspend()
+        try await waitUntil("the Host should report suspended") {
+            store.hostStatuses[host.id] == .suspended
+        }
+        // Absent, not zero and not the previous measurement: the Host is
+        // still in the catalog, only its proof is gone.
+        #expect(store.hostLatencies[host.id] == nil)
+
+        await store.resume()
+        try await waitUntil("the reconnected Host should measure again") {
+            store.hostLatencies[host.id] != nil
+        }
+
+        store.setHosts([])
+    }
+
     @Test func resumedHostStaysLoadingUntilItsReplacementSnapshotLands() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(

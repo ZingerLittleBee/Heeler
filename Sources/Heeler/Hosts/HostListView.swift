@@ -311,7 +311,7 @@ struct HostConnectionPresentation: Equatable {
         switch status {
         case .connected:
             if let latency {
-                let formattedLatency = Self.formatted(latency)
+                let formattedLatency = HostLatencyFormatting.formatted(latency)
                 title = formattedLatency
                 accessibilityLabel = "Connected, latency \(formattedLatency)"
             } else {
@@ -346,16 +346,6 @@ struct HostConnectionPresentation: Equatable {
             accessibilityLabel = "Connecting"
             tone = .pending
         }
-    }
-
-    private static func formatted(_ latency: Duration) -> String {
-        let components = latency.components
-        let milliseconds = max(
-            0,
-            Double(components.seconds) * 1_000
-                + Double(components.attoseconds) / 1_000_000_000_000_000)
-        guard milliseconds >= 1 else { return "<1 ms" }
-        return "\(Int(milliseconds.rounded())) ms"
     }
 }
 
