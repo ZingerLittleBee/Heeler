@@ -652,13 +652,24 @@ struct TerminalAttachTests {
     }
 
     @MainActor
-    @Test func systemKeyboardBackspaceSynchronizesTheTextInputContext() async {
+    @Test func systemKeyboardBackspaceSynchronizesTheTextInputContext() async throws {
         var sent = Data()
         var events: [String] = []
         let terminal = TerminalScreenView.makeConfiguredTerminal(
             onSend: { sent.append($0) })
         let inputDelegate = TextInputDelegateRecorder(events: { events.append($0) })
         terminal.inputDelegate = inputDelegate
+
+        // GhosttyTerminal 1.4.0 routes backspace through the core's key
+        // encoder, which needs a live surface — and a surface needs a window.
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
+        let controller = UIViewController()
+        controller.view = terminal
+        let window = try await makeTestWindow(
+            frame: terminal.bounds,
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        try await waitForGhosttyContentLayer(in: terminal)
 
         terminal.terminalSession.sendInput(Data("abc".utf8))
         let insertDeadline = ContinuousClock.now + .seconds(1)

@@ -11,6 +11,7 @@
 		00FB65666F7C2E065D94DF2C /* StartAgentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B24EF5EA39899292A1907226 /* StartAgentStore.swift */; };
 		03970FA28B8C09C524AF435E /* NotificationPrivacyCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 943C187E6425414801A4734E /* NotificationPrivacyCopyTests.swift */; };
 		03A4895D457152CA4D31FC5A /* WorktreeDetailStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 442A5127B47FF6FF8840B0B9 /* WorktreeDetailStoreTests.swift */; };
+		0507BD8B4201DB778E11B712 /* GhosttyContentLayers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 190CD80AFC8069AB4ECE7781 /* GhosttyContentLayers.swift */; };
 		052916002C06699B9F2F1A4B /* AttachTerminalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F07A0F64626D74A8EC9A1FE2 /* AttachTerminalStore.swift */; };
 		099CD816C9173740BCE1E64E /* TestWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 069388B06CE04D1F3CC24740 /* TestWindow.swift */; };
 		09C7B75B4780E79E3221E9C4 /* TerminalAgentSwitcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD8509C4FD5C50A0D7AFEC1A /* TerminalAgentSwitcher.swift */; };
@@ -393,6 +394,7 @@
 		16A6D0F6E54809BDE46AC1AE /* HerdrEventsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrEventsTests.swift; sourceTree = "<group>"; };
 		175D872736F56BE7D98A5A40 /* ShellTerminalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellTerminalStore.swift; sourceTree = "<group>"; };
 		176C059114F4646026196943 /* SkillProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillProbeTests.swift; sourceTree = "<group>"; };
+		190CD80AFC8069AB4ECE7781 /* GhosttyContentLayers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhosttyContentLayers.swift; sourceTree = "<group>"; };
 		19FF62E7BD9DC71E1172A472 /* TerminalTextSelectionPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTextSelectionPresenter.swift; sourceTree = "<group>"; };
 		1A3BD235B5209892137FCAF9 /* PhotosPickerImageSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosPickerImageSelection.swift; sourceTree = "<group>"; };
 		1D46328CE795C513FE11AD04 /* ClosePaneStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosePaneStore.swift; sourceTree = "<group>"; };
@@ -1104,6 +1106,7 @@
 				856A8398D8F0FB87F252D193 /* FakeLiveActivityController.swift */,
 				8273181A2428AD3F78FCC27B /* FakePairingConnector.swift */,
 				696C6905D9D6EEFF77A64E2E /* FakeTransportConnector.swift */,
+				190CD80AFC8069AB4ECE7781 /* GhosttyContentLayers.swift */,
 				57EEA346C23330237A2A79EB /* GridReportSettling.swift */,
 				51B4AAB6885E0EB9D8C4A131 /* InMemorySecretStore.swift */,
 				C5469F0188E985276A49871C /* LiveActivityVectorFile.swift */,
@@ -1623,6 +1626,7 @@
 				1AD6824BFB55CB50607AD702 /* FakeTransportConnector.swift in Sources */,
 				5789049E3BA965EB057C4577 /* FilePreparerTests.swift in Sources */,
 				297F2EB19960A01651FDA05C /* GeneratedWireTypesTests.swift in Sources */,
+				0507BD8B4201DB778E11B712 /* GhosttyContentLayers.swift in Sources */,
 				745597578F4E92FCC065823A /* GitBranchNameTests.swift in Sources */,
 				75A8255D9FA3B634C315DBAE /* GridReportSettling.swift in Sources */,
 				4D0A9B8F7343093907B24788 /* HeelerSSHDirectStreamLocalE2ETests.swift in Sources */,
@@ -2077,7 +2081,7 @@
 			repositoryURL = "https://github.com/lakr233/libghostty-spm.git";
 			requirement = {
 				kind = exactVersion;
-				version = 1.3.1;
+				version = 1.4.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

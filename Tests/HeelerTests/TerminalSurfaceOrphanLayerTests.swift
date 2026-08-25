@@ -6,40 +6,26 @@ import UIKit
 
 /// The ghostty surface parks an `IOSurfaceLayer` sublayer inside the terminal
 /// view's layer. That layer is a CALayer subclass whose `display` override
-/// calls back into the surface's renderer through a raw context pointer, so a
-/// layer that outlives its surface keeps a dangling pointer: the next Core
-/// Animation commit that touches it (any bounds change schedules display) calls
-/// straight into freed renderer memory. On device this is the PAC trap in
-/// `object_getClass` under `CA::Context::commit_transaction`.
+/// calls back into the surface's renderer through a raw context pointer, and
+/// nothing on ghostty's teardown path removes it from the tree — so a layer
+/// that outlives its freed surface keeps a dangling pointer, and the next
+/// Core Animation commit that touches it jumps into freed renderer memory.
+/// On device this was the PAC trap in `object_getClass` under
+/// `CA::Context::commit_transaction` (#242).
 ///
-/// The package frees the surface in `didMoveToWindow(nil)` — every SwiftUI
-/// presentation or navigation that pulls the hierarchy out of the window hits
-/// this path — so no content layer may survive a detach, and a detach/reattach
-/// cycle must not accumulate layers.
+/// GhosttyTerminal 1.4.0 keeps the surface across temporary window detaches
+/// (a SwiftUI presentation pulling the hierarchy out of the window no longer
+/// frees it), so the orphan-producing path left is the in-place surface
+/// rebuild — assigning a new controller or non-equivalent configuration —
+/// which tears the old surface down while the view stays alive. Heeler
+/// removes the orphans from `terminalDidDetachSurface()`.
 @MainActor
 struct TerminalSurfaceOrphanLayerTests {
-    private static let ghosttyContentLayerClass = "IOSurfaceLayer"
-
-    private func ghosttyContentLayers(of view: UIView) -> [CALayer] {
-        (view.layer.sublayers ?? []).filter {
-            NSStringFromClass(type(of: $0)) == Self.ghosttyContentLayerClass
-        }
-    }
-
-    private func waitForContentLayer(
-        in view: UIView,
-        timeout: Duration = .seconds(5)
-    ) async throws {
-        let deadline = ContinuousClock.now + timeout
-        while ghosttyContentLayers(of: view).isEmpty, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        try #require(
-            !ghosttyContentLayers(of: view).isEmpty,
-            "the surface should park its content layer after attaching to a window")
-    }
-
-    @Test func freeingTheSurfaceOnWindowDetachLeavesNoOrphanContentLayer() async throws {
+    /// Upstream's fix for the empty-terminal-after-cover bug: a temporary
+    /// window detach must keep the surface, so its content layer stays too.
+    /// Guards against reintroducing cleanup in `didMoveToWindow(nil)`, which
+    /// would blank a live terminal behind every presentation.
+    @Test func aTemporaryWindowDetachKeepsTheLiveSurfaceLayer() async throws {
         let terminal = TerminalScreenView.makeConfiguredTerminal()
         terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
         let controller = UIViewController()
@@ -49,14 +35,12 @@ struct TerminalSurfaceOrphanLayerTests {
             rootViewController: controller)
         defer { window.isHidden = true }
 
-        try await waitForContentLayer(in: terminal)
+        try await waitForGhosttyContentLayer(in: terminal)
 
         terminal.removeFromSuperview()
         await Task.yield()
 
-        #expect(
-            ghosttyContentLayers(of: terminal).isEmpty,
-            "a content layer that outlives its freed surface keeps a dangling renderer pointer")
+        #expect(ghosttyContentLayers(of: terminal).count == 1)
     }
 
     @Test func detachReattachCycleDoesNotAccumulateContentLayers() async throws {
@@ -69,19 +53,39 @@ struct TerminalSurfaceOrphanLayerTests {
             rootViewController: controller)
         defer { window.isHidden = true }
 
-        try await waitForContentLayer(in: terminal)
+        try await waitForGhosttyContentLayer(in: terminal)
 
         terminal.removeFromSuperview()
         await Task.yield()
         controller.view.addSubview(terminal)
-        try await waitForContentLayer(in: terminal)
+        try await waitForGhosttyContentLayer(in: terminal)
 
-        #expect(
-            ghosttyContentLayers(of: terminal).count == 1,
-            "each detach/reattach must replace the content layer, not stack orphans")
+        #expect(ghosttyContentLayers(of: terminal).count == 1)
     }
 
-    @Test func themePreviewAlsoDropsItsContentLayerOnWindowDetach() async throws {
+    /// The orphan-producing path on 1.4.0: an in-place rebuild frees the old
+    /// surface while the view stays in the window. Without the
+    /// `terminalDidDetachSurface()` cleanup the old content layer stacks
+    /// under the new one, dangling renderer pointer and all.
+    @Test func anInPlaceSurfaceRebuildLeavesNoOrphanContentLayer() async throws {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
+        let controller = UIViewController()
+        controller.view.addSubview(terminal)
+        let window = try await makeTestWindow(
+            frame: terminal.bounds,
+            rootViewController: controller)
+        defer { window.isHidden = true }
+
+        try await waitForGhosttyContentLayer(in: terminal)
+
+        terminal.controller = TerminalController(theme: .default)
+        try await waitForGhosttyContentLayer(in: terminal)
+
+        #expect(ghosttyContentLayers(of: terminal).count == 1)
+    }
+
+    @Test func themePreviewRebuildAlsoLeavesNoOrphanContentLayer() async throws {
         let palette = TerminalThemeOption.followSystem.configuration(isDark: false)
         let preview = TerminalThemePreviewView(
             theme: TerminalTheme(light: palette, dark: palette), fontSize: 13)
@@ -93,11 +97,11 @@ struct TerminalSurfaceOrphanLayerTests {
             rootViewController: controller)
         defer { window.isHidden = true }
 
-        try await waitForContentLayer(in: preview)
+        try await waitForGhosttyContentLayer(in: preview)
 
-        preview.removeFromSuperview()
-        await Task.yield()
+        preview.controller = TerminalController(theme: .default)
+        try await waitForGhosttyContentLayer(in: preview)
 
-        #expect(ghosttyContentLayers(of: preview).isEmpty)
+        #expect(ghosttyContentLayers(of: preview).count == 1)
     }
 }

@@ -98,12 +98,11 @@ struct TerminalScreenView: UIViewRepresentable {
             theme: theme,
             fontSize: fontSize,
             fontFamily: fontFamily)
-        view.delegate = context.coordinator
+        view.onOpenLink = { url in openURL(url) }
         // Only here, never in updateUIView: the intent belongs to this
         // terminal's first appearance, not to every state change after it.
         view.raisesKeyboardWhenReady = claimsKeyboard?() ?? false
         keyboardControl?.terminal = view
-        context.coordinator.terminalView = view
         view.setLocalInputEnabled(isLocalInputEnabled)
         // The feed holds the surface weakly so a replaced UIKit view cannot be
         // kept alive by an obsolete terminal pipeline.
@@ -169,33 +168,7 @@ struct TerminalScreenView: UIViewRepresentable {
         // feeds the Attach Link index, whose observers include this very view,
         // and the update loops on itself until the app is wedged. Terminal
         // output already schedules a snapshot in `receive`.
-        context.coordinator.onOpenLink = { url in openURL(url) }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onOpenLink: { url in openURL(url) })
-    }
-
-    @MainActor
-    final class Coordinator: NSObject, TerminalSurfaceOpenURLDelegate,
-        TerminalSurfaceTextSelectionRequestDelegate
-    {
-        weak var terminalView: HeelerTerminalView?
-        var onOpenLink: ((URL) -> Void)?
-
-        init(onOpenLink: ((URL) -> Void)? = nil) {
-            self.onOpenLink = onOpenLink
-        }
-
-        func terminalDidRequestOpenURL(_ url: String, kind _: TerminalOpenURLKind) {
-            guard let url = TerminalLinkPolicy.url(for: url) else { return }
-            onOpenLink?(url)
-        }
-
-        func terminalDidRequestTextSelection(_ request: TerminalTextSelectionRequest) {
-            guard let terminalView else { return }
-            TerminalTextSelectionPresenter.present(request, from: terminalView)
-        }
+        view.onOpenLink = { url in openURL(url) }
     }
 }
 
@@ -324,6 +297,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private(set) var appliedFontSize: Float
     private(set) var appliedFontFamily: String?
     var onFontSizeChanged: ((Float) -> Void)?
+    var onOpenLink: ((URL) -> Void)?
     /// Rebuilt into the Keys keyboard the next time it is raised; a live
     /// keyboard keeps the context it was built with.
     var keysContext: TerminalKeysContext?
@@ -604,6 +578,9 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         appliedFontSize = clampedFontSize
         appliedFontFamily = fontFamily
         super.init(frame: frame)
+        // The view is its own surface delegate so orphan-layer cleanup runs
+        // wherever the view is used, not only under the SwiftUI representable.
+        delegate = self
         callbackBridge.onTerminalInput = { [weak self] data in
             self?.recordTerminalInput(data)
         }
@@ -920,7 +897,6 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
             stopTouchScrollMomentum()
             responderGate.invalidateTouches()
             cancelKeyboardTransitionLayoutDeferral()
-            removeOrphanedSurfaceLayers()
         } else {
             inheritKeyboard()
         }
@@ -1321,5 +1297,42 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private func reliableInputDidBegin() {
         stopTouchScrollMomentum()
         touchScrollAccumulator.reset()
+    }
+}
+
+extension HeelerTerminalView: TerminalSurfaceOpenURLDelegate,
+    TerminalSurfaceTextSelectionRequestDelegate, TerminalSurfaceLifecycleDelegate,
+    TerminalSurfaceGridResizeDelegate
+{
+    func terminalDidRequestOpenURL(_ url: String, kind _: TerminalOpenURLKind) {
+        guard let url = TerminalLinkPolicy.url(for: url) else { return }
+        onOpenLink?(url)
+    }
+
+    /// The one metrics source that still carries cell dimensions. Since
+    /// GhosttyTerminal 1.4.0 the in-memory session's resize dispatches come
+    /// from the engine's receive-resize callback, which reports the grid and
+    /// total pixels but not the cell size — `updateTouchScrollMetrics` keeps
+    /// consuming those for columns and rows, while this delegate keeps
+    /// `terminalCellSize` real so tap-to-cell mapping and touch-scroll row
+    /// heights don't fall back to the 8×16 default.
+    func terminalDidResize(_ size: TerminalGridMetrics) {
+        terminalGridSize = (Int(size.columns), Int(size.rows))
+        guard size.cellWidthPixels > 0, size.cellHeightPixels > 0 else { return }
+        let scale = window?.screen.nativeScale ?? traitCollection.displayScale
+        guard scale > 0 else { return }
+        terminalCellSize = CGSize(
+            width: CGFloat(size.cellWidthPixels) / scale,
+            height: CGFloat(size.cellHeightPixels) / scale)
+    }
+
+    func terminalDidRequestTextSelection(_ request: TerminalTextSelectionRequest) {
+        TerminalTextSelectionPresenter.present(request, from: self)
+    }
+
+    func terminalDidAttachSurface(_: TerminalSurface) {}
+
+    func terminalDidDetachSurface() {
+        removeOrphanedSurfaceLayers()
     }
 }

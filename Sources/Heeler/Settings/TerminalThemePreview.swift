@@ -46,6 +46,7 @@ final class TerminalThemePreviewView: UITerminalView {
         inputAccessoryItems = []
         configuration = TerminalSurfaceOptions(backend: .inMemory(session))
         controller = themeController
+        delegate = self
         isUserInteractionEnabled = false
         isAccessibilityElement = true
         accessibilityLabel = "Terminal theme preview"
@@ -58,11 +59,7 @@ final class TerminalThemePreviewView: UITerminalView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        guard window != nil else {
-            removeOrphanedSurfaceLayers()
-            return
-        }
-        guard !hasLoadedPreview else { return }
+        guard window != nil, !hasLoadedPreview else { return }
         hasLoadedPreview = true
         previewSession.receive(Self.preview)
     }
@@ -74,5 +71,13 @@ final class TerminalThemePreviewView: UITerminalView {
     func applyFontSize(_ fontSize: Float) {
         _ = themeController.setTerminalConfiguration(
             TerminalConfiguration().fontSize(TerminalZoomSettings.clamped(fontSize)))
+    }
+}
+
+extension TerminalThemePreviewView: TerminalSurfaceLifecycleDelegate {
+    func terminalDidAttachSurface(_: TerminalSurface) {}
+
+    func terminalDidDetachSurface() {
+        removeOrphanedSurfaceLayers()
     }
 }
