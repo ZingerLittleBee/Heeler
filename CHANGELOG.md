@@ -65,6 +65,13 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Switching a Shell Terminal between Text and Keys no longer tears down the
+  keyboard's candidate row or drops an in-flight IME composition: the input
+  row is app content instead of a keyboard accessory, and Keys mode replaces
+  the system keyboard in place behind an app-side dock, the way the Composer's
+  tools keyboard already did. Pinyin (and any other marked-text input) now
+  survives a round trip through Keys with its candidates intact.
+
 - Leaving a terminal on screen while a presentation pulled it out of the
   window could crash the app on the next screen update: ghostty frees its
   rendering surface on window detach but leaves the surface's content layer

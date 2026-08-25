@@ -546,47 +546,31 @@ struct TerminalAttachTests {
         let terminal = TerminalScreenView.makeConfiguredTerminal()
         #expect(terminal.keyboardMode == .text)
         #expect(terminal.inputView == nil)
-        #expect(terminal.inputAccessoryView is TerminalKeyboardAccessory)
+        // The input row is app content (see `ShellTerminalInputRow`); an
+        // accessory here would ride the keyboard and die with a mode switch.
+        #expect(terminal.inputAccessoryView == nil)
     }
 
     @MainActor
-    @Test func keyboardAccessoryExposesSystemPasteControlInBothModes() throws {
-        let terminal = TerminalScreenView.makeConfiguredTerminal()
-        let accessory = try #require(
-            terminal.inputAccessoryView as? TerminalKeyboardAccessory)
-
-        #expect(accessory.pasteControl.target === terminal)
-        #expect(accessory.pasteControl.accessibilityLabel == "Paste")
-        #expect(accessory.pasteControl.isEnabled)
-
-        terminal.setKeyboardMode(.controls)
-        #expect(accessory.pasteControl.isDescendant(of: accessory))
-    }
-
-    @MainActor
-    @Test func keyboardAccessoryInsertsANewLineWithoutSubmitting() async throws {
+    @Test func theInputRowNewLineInsertsWithoutSubmitting() async throws {
         var sent = Data()
         let terminal = TerminalScreenView.makeConfiguredTerminal(
             onSend: { sent.append($0) })
-        let accessory = try #require(
-            terminal.inputAccessoryView as? TerminalKeyboardAccessory)
+        let control = TerminalKeyboardControl()
+        control.terminal = terminal
 
-        #expect(accessory.newLineButton.configuration?.image != nil)
-        #expect(accessory.newLineButton.configuration?.title == nil)
-        #expect(accessory.newLineButton.accessibilityLabel == "Insert New Line")
-        accessory.newLineButton.sendActions(for: .touchUpInside)
+        control.sendNewLine()
         await Task.yield()
         #expect(sent == Data([0x0A]))
 
         sent.removeAll()
         terminal.setKeyboardMode(.controls)
-        accessory.newLineButton.sendActions(for: .touchUpInside)
+        control.sendNewLine()
         await Task.yield()
         #expect(sent == Data([0x0A]))
 
         terminal.setLocalInputEnabled(false)
-        #expect(!accessory.newLineButton.isEnabled)
-        accessory.newLineButton.sendActions(for: .touchUpInside)
+        control.sendNewLine()
         await Task.yield()
         #expect(sent == Data([0x0A]))
     }
@@ -603,9 +587,16 @@ struct TerminalAttachTests {
         terminal.setLocalInputEnabled(false)
         terminal.requestPaste("blocked")
         #expect(pastes == ["one\n two"])
-        #expect(
-            (terminal.inputAccessoryView as? TerminalKeyboardAccessory)?
-                .pasteControl.isEnabled == false)
+
+        // The input row's paste routes through the same reviewed path and
+        // honours the same gate.
+        let control = TerminalKeyboardControl()
+        control.terminal = terminal
+        control.paste("still blocked")
+        #expect(pastes == ["one\n two"])
+        terminal.setLocalInputEnabled(true)
+        control.paste("routed")
+        #expect(pastes == ["one\n two", "routed"])
     }
 
     @MainActor
@@ -1027,19 +1018,6 @@ struct TerminalAttachTests {
         #expect(scrolledRows == 2)
     }
 
-    @MainActor
-    @Test func attachSwitchesBetweenTextAndTerminalKeys() {
-        let terminal = TerminalScreenView.makeConfiguredTerminal()
-
-        terminal.setKeyboardMode(.controls)
-        #expect(terminal.keyboardMode == .controls)
-        #expect(terminal.inputView is TerminalKeysKeyboardView)
-
-        terminal.setKeyboardMode(.text)
-        #expect(terminal.keyboardMode == .text)
-        #expect(terminal.inputView == nil)
-    }
-
     /// The keyboard toggle rides the Agent strip, which outlives the keyboard,
     /// so it has to work both ways — and a dismissal has to leave the keyboard
     /// recoverable, or the toggle is a one-way trip out of typing.
@@ -1080,40 +1058,6 @@ struct TerminalAttachTests {
         #expect(!control.isKeyboardUp)
         // Nothing to drive, and nothing to crash on.
         control.toggleKeyboard()
-    }
-
-    /// UIKit animates the keyboard away without taking the accessory's content
-    /// with it, so the toolbar hung at the bottom of the screen after the
-    /// keyboard had gone.
-    @MainActor
-    @Test func theKeyboardRowLeavesInSyncWithTheKeyboard() throws {
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
-        // The terminal's own center: a test's keyboard events must not reach
-        // another test's terminal, this one's included (#157).
-        let center = NotificationCenter()
-        let terminal = TerminalScreenView.makeConfiguredTerminal(
-            notificationCenter: center)
-        window.addSubview(terminal)
-        window.makeKeyAndVisible()
-        terminal.requestKeyboard()
-        let accessory = try #require(
-            terminal.inputAccessoryView as? TerminalKeyboardAccessory)
-
-        center.post(
-            name: UIResponder.keyboardWillHideNotification, object: nil,
-            userInfo: [UIResponder.keyboardAnimationDurationUserInfoKey: NSNumber(value: 0.0)])
-
-        #expect(accessory.alpha == 1)
-        #expect(accessory.transform == .identity)
-        #expect(accessory.toolbarContentView.alpha == 0)
-        #expect(
-            accessory.toolbarContentView.transform.ty
-                == TerminalKeyboardAccessory.preferredHeight)
-
-        // Typing again puts it back, or the row would stay gone for good.
-        terminal.requestKeyboard()
-        #expect(accessory.toolbarContentView.alpha == 1)
-        #expect(accessory.toolbarContentView.transform == .identity)
     }
 
     /// A SwiftUI update must not write back into the state that drove it.
@@ -1541,34 +1485,6 @@ struct TerminalAttachTests {
         }
     }
 
-    /// Backgrounding hides the keyboard — animating the accessory out — but
-    /// leaves the first responder in place, so the re-presentation on return
-    /// never passes through `becomeFirstResponder`. The keyboard came back
-    /// wearing a fully transparent toolbar until will-show restored it.
-    @MainActor
-    @Test func aRepresentedKeyboardRestoresItsDismissedAccessory() throws {
-        // The terminal's own center: a test's keyboard events must not reach
-        // another test's terminal, this one's included (#157).
-        let center = NotificationCenter()
-        let terminal = TerminalScreenView.makeConfiguredTerminal(
-            notificationCenter: center)
-        let accessory = try #require(
-            terminal.inputAccessoryView as? TerminalKeyboardAccessory)
-
-        // UIView.animate applies the model values immediately; this is the
-        // state a backgrounding leaves behind.
-        accessory.animateDismissal(duration: 0)
-        #expect(accessory.toolbarContentView.alpha == 0)
-
-        center.post(
-            name: UIResponder.keyboardWillShowNotification, object: nil,
-            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
-                x: 0, y: 554, width: 440, height: 436)])
-
-        #expect(accessory.toolbarContentView.alpha == 1)
-        #expect(accessory.toolbarContentView.transform == .identity)
-    }
-
     /// UIKit measures the input accessory after the keyboard itself, so a
     /// presentation can arrive as two frames. The terminal must not resize
     /// twice on the way up either.
@@ -1612,18 +1528,6 @@ struct TerminalAttachTests {
         #expect(TerminalKeyboardInset.insetHeight(covered: 436, bottomSafeArea: 34) == 402)
         #expect(TerminalKeyboardInset.insetHeight(covered: 436, bottomSafeArea: 0) == 436)
         #expect(TerminalKeyboardInset.insetHeight(covered: 20, bottomSafeArea: 34) == 0)
-    }
-
-    @MainActor
-    @Test func terminalKeysReuseTheMeasuredSystemKeyboardHeight() throws {
-        let terminal = TerminalScreenView.makeConfiguredTerminal()
-        terminal.recordTextKeyboardHeight(totalHeight: 336, accessoryHeight: 48)
-        terminal.recordTextKeyboardHeight(totalHeight: 48, accessoryHeight: 48)
-
-        terminal.setKeyboardMode(.controls)
-        let keyboard = try #require(terminal.inputView as? TerminalKeysKeyboardView)
-        #expect(keyboard.intrinsicContentSize.height == 288)
-        #expect(keyboard.frame.height == 288)
     }
 
     @Test func terminalControlKeyboardContainsOnlyUsefulMobileKeys() {

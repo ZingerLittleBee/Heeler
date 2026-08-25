@@ -697,7 +697,7 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
 /// measured keyboard footprint behind it, so removing the candidate row never
 /// exposes an intermediate gap.
 final class AgentComposerUITextView: UITextView {
-    private lazy var suppressedSoftKeyboard = AgentSuppressedSoftKeyboardView()
+    private lazy var suppressedSoftKeyboard = TerminalSuppressedSoftKeyboardView()
     private var keyboardPresentation: AgentComposerKeyboardPresentation = .hidden
 
     func updateKeyboard(presentation: AgentComposerKeyboardPresentation) {
@@ -714,12 +714,6 @@ final class AgentComposerUITextView: UITextView {
         UIView.performWithoutAnimation {
             reloadInputViews()
         }
-    }
-}
-
-final class AgentSuppressedSoftKeyboardView: UIView {
-    override var intrinsicContentSize: CGSize {
-        CGSize(width: UIView.noIntrinsicMetric, height: 0)
     }
 }
 
