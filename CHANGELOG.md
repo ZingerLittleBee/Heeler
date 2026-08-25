@@ -54,6 +54,13 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- Open Terminal now remembers the shell tab it created for each Workspace
+  and reattaches to it on later visits instead of opening another tab every
+  time; a remembered tab that has died (closed on the desktop, server
+  restarted) is verified first and recreated. The Shell Terminal also gains
+  a Close Terminal action that closes the remote tab for the times it is not
+  worth keeping — Back still leaves it alive for desktop handoff. (#231)
+
 - Host connections now have a distinct Connecting state, separate from
   automatic Reconnecting, a paused connection, and loading Agents after the
   events path is already live. A Host being re-proved after a failure keeps

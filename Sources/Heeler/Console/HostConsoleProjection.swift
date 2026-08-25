@@ -279,6 +279,25 @@ final class HostConsoleProjection {
         scheduleResync()
     }
 
+    /// Whether a Pane is still alive on the Host, probed with a minimal
+    /// `pane.read`. A server rejection means the Pane is gone (closed on the
+    /// desktop, or the server restarted and lost every tab); a transport
+    /// failure proves nothing and is rethrown so the caller does not mistake
+    /// an outage for a missing Pane.
+    func paneExists(_ paneID: String) async throws -> Bool {
+        do {
+            _ = try await session.withTransport { transport in
+                try await transport.readPane(
+                    PaneReadParams(paneID: paneID, source: .visible, lines: 1))
+            }
+            return true
+        } catch is HerdrAPIError {
+            return false
+        } catch TransportError.apiRejected {
+            return false
+        }
+    }
+
     func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
         try await session.withTransport { transport in
             try await transport.listWorktrees(forWorkspaceID: workspaceID)

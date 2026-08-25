@@ -16,11 +16,15 @@ struct ShellTerminalView: View {
     let terminal: TerminalSettings
     let activity: AppActivityCoordinator
     let isReturning: Bool
+    /// Nil hides the Close Terminal action entirely (previews, tests).
+    var isClosingTerminal: Bool = false
+    var onCloseTerminal: (@MainActor () -> Void)? = nil
     let onBack: @MainActor () async -> Void
 
     @State private var keyboardControl = TerminalKeyboardControl()
     @State private var keyboardMode: TerminalKeyboardMode = .text
     @State private var keyboardInset = TerminalKeyboardInset()
+    @State private var isConfirmingClose = false
     @Environment(\.colorScheme) private var colorScheme
 
     private var terminalScreen: TerminalScreenView {
@@ -139,6 +143,28 @@ struct ShellTerminalView: View {
                     }
                     .disabled(isReturning)
                 }
+                if onCloseTerminal != nil {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(role: .destructive) {
+                            isConfirmingClose = true
+                        } label: {
+                            Label("Close Terminal", systemImage: "trash")
+                        }
+                        .disabled(isClosingTerminal || isReturning)
+                    }
+                }
+            }
+            .confirmationDialog(
+                "Close Terminal?", isPresented: $isConfirmingClose, titleVisibility: .visible
+            ) {
+                Button("Close Terminal", role: .destructive) {
+                    onCloseTerminal?()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(
+                    "This closes the tab on the Host, ending anything running in it. "
+                        + "Going Back instead leaves it for desktop handoff.")
             }
             .overlay(alignment: .leading) {
                 ShellTerminalEdgeBackGesture(isEnabled: !isReturning) {

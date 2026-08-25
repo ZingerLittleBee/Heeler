@@ -312,12 +312,176 @@ struct ShellTerminalStoreTests {
         #expect(store.shell == nil)
     }
 
+    /// Records what crosses the store's memory closures. A MainActor class so
+    /// the `@Sendable` verify/close closures can capture it.
+    @MainActor
+    private final class TerminalMemoryProbe {
+        var verified: [ShellTerminalIdentity] = []
+        var closed: [ShellTerminalIdentity] = []
+    }
+
+    @Test func openReattachesTheRememberedTerminalInsteadOfCreating() async throws {
+        let transport = ScriptedTransport()
+        let remembered = ShellTerminalIdentity(
+            paneID: "w1:p-old", tabID: "w1:t-old", terminalID: "term-old")
+        let probe = TerminalMemoryProbe()
+        let store = makeOpenStore(
+            agent: makeAgent(),
+            transport: transport,
+            recallTerminal: { remembered },
+            verifyTerminal: { @MainActor identity in
+                probe.verified.append(identity)
+                return true
+            })
+
+        store.open()
+
+        let shell = try await shell(in: store)
+        #expect(shell.identity == remembered)
+        #expect(probe.verified == [remembered])
+        #expect(await transport.shellTerminalCreations.isEmpty)
+    }
+
+    @Test func aDeadRememberedTerminalIsForgottenAndRecreated() async throws {
+        let transport = ScriptedTransport()
+        let remembered = ShellTerminalIdentity(
+            paneID: "w1:p-old", tabID: "w1:t-old", terminalID: "term-old")
+        var forgets = 0
+        var rememberedIdentities: [ShellTerminalIdentity] = []
+        let store = makeOpenStore(
+            agent: makeAgent(),
+            transport: transport,
+            recallTerminal: { remembered },
+            rememberTerminal: { rememberedIdentities.append($0) },
+            forgetTerminal: { forgets += 1 },
+            verifyTerminal: { _ in false })
+
+        store.open()
+
+        let shell = try await shell(in: store)
+        #expect(shell.identity != remembered)
+        #expect(forgets == 1)
+        #expect(await transport.shellTerminalCreations.count == 1)
+        // The fresh tab replaces the dead one in the Workspace's memory.
+        #expect(rememberedIdentities == [shell.identity])
+    }
+
+    @Test func aFreshCreationIsRemembered() async throws {
+        let transport = ScriptedTransport()
+        var rememberedIdentities: [ShellTerminalIdentity] = []
+        let store = makeOpenStore(
+            agent: makeAgent(),
+            transport: transport,
+            rememberTerminal: { rememberedIdentities.append($0) })
+
+        store.open()
+
+        let shell = try await shell(in: store)
+        #expect(rememberedIdentities == [shell.identity])
+    }
+
+    /// A verification that cannot reach the Host must not quietly create a
+    /// second tab next to a possibly-live remembered one.
+    @Test func anUnreachableVerificationFailsOpenWithoutCreating() async throws {
+        let transport = ScriptedTransport()
+        let remembered = ShellTerminalIdentity(
+            paneID: "w1:p-old", tabID: "w1:t-old", terminalID: "term-old")
+        let store = makeOpenStore(
+            agent: makeAgent(),
+            transport: transport,
+            recallTerminal: { remembered },
+            verifyTerminal: { _ in throw TransportError.timedOut })
+
+        store.open()
+
+        try #require(await eventually { store.failure != nil })
+        #expect(store.shell == nil)
+        #expect(await transport.shellTerminalCreations.isEmpty)
+    }
+
+    @Test func closeTerminalClosesTheTabForgetsItAndReturnsToTheAgent() async throws {
+        let transport = ScriptedTransport()
+        let probe = TerminalMemoryProbe()
+        var forgets = 0
+        var rejoined = 0
+        let store = makeOpenStore(
+            agent: makeAgent(),
+            transport: transport,
+            rejoinAgent: { rejoined += 1 },
+            forgetTerminal: { forgets += 1 },
+            closeRemoteTerminal: { @MainActor identity in
+                probe.closed.append(identity)
+            })
+        store.open()
+        let shell = try await shell(in: store)
+
+        store.closeTerminal()
+
+        try #require(await eventually { store.shell == nil })
+        #expect(probe.closed == [shell.identity])
+        #expect(forgets == 1)
+        #expect(rejoined == 1)
+        #expect(store.closeFailureMessage == nil)
+    }
+
+    /// A tab already closed on the desktop is the outcome the user asked for,
+    /// not an error to surface.
+    @Test func closeTerminalTreatsAnAlreadyGoneTabAsClosed() async throws {
+        let transport = ScriptedTransport()
+        var forgets = 0
+        let store = makeOpenStore(
+            agent: makeAgent(),
+            transport: transport,
+            forgetTerminal: { forgets += 1 },
+            closeRemoteTerminal: { _ in
+                throw HerdrAPIError(code: "pane_not_found", message: "pane gone")
+            })
+        store.open()
+        _ = try await shell(in: store)
+
+        store.closeTerminal()
+
+        try #require(await eventually { store.shell == nil })
+        #expect(forgets == 1)
+        #expect(store.closeFailureMessage == nil)
+    }
+
+    /// An unreachable Host means the tab is still open there: stay in the
+    /// shell, keep the memory, and say so.
+    @Test func closeTerminalKeepsTheShellWhenTheHostIsUnreachable() async throws {
+        let transport = ScriptedTransport()
+        var forgets = 0
+        let store = makeOpenStore(
+            agent: makeAgent(),
+            transport: transport,
+            forgetTerminal: { forgets += 1 },
+            closeRemoteTerminal: { _ in throw TransportError.timedOut })
+        store.open()
+        _ = try await shell(in: store)
+
+        store.closeTerminal()
+
+        try #require(await eventually { store.closeFailureMessage != nil })
+        #expect(store.shell != nil)
+        #expect(forgets == 0)
+        #expect(!store.isClosingTerminal)
+    }
+
     private func makeOpenStore(
         agent: ConsoleAgent,
         transport: ScriptedTransport,
         isDetailOnStage: @escaping () -> Bool = { true },
         leaveAgent: @escaping @MainActor () -> Task<Void, Never> = { Task {} },
-        rejoinAgent: @escaping @MainActor () -> Void = {}
+        rejoinAgent: @escaping @MainActor () -> Void = {},
+        recallTerminal: @escaping @MainActor () -> ShellTerminalIdentity? = { nil },
+        rememberTerminal: @escaping @MainActor (ShellTerminalIdentity) -> Void = { _ in },
+        forgetTerminal: @escaping @MainActor () -> Void = {},
+        verifyTerminal: @escaping @Sendable (ShellTerminalIdentity) async throws -> Bool = {
+            _ in true
+        },
+        closeRemoteTerminal: @escaping @Sendable (ShellTerminalIdentity) async throws -> Void = {
+            _ in
+        }
     ) -> AgentOpenTerminalStore {
         AgentOpenTerminalStore(
             agent: agent,
@@ -328,7 +492,12 @@ struct ShellTerminalStoreTests {
             },
             runTerminal: terminalRunner(transport),
             leaveAgent: leaveAgent,
-            rejoinAgent: rejoinAgent)
+            rejoinAgent: rejoinAgent,
+            recallTerminal: recallTerminal,
+            rememberTerminal: rememberTerminal,
+            forgetTerminal: forgetTerminal,
+            verifyTerminal: verifyTerminal,
+            closeRemoteTerminal: closeRemoteTerminal)
     }
 
     private func terminalRunner(_ transport: ScriptedTransport) -> TerminalSessionRunner {
