@@ -920,6 +920,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
             stopTouchScrollMomentum()
             responderGate.invalidateTouches()
             cancelKeyboardTransitionLayoutDeferral()
+            removeOrphanedSurfaceLayers()
         } else {
             inheritKeyboard()
         }

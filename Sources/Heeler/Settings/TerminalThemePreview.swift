@@ -58,7 +58,11 @@ final class TerminalThemePreviewView: UITerminalView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        guard window != nil, !hasLoadedPreview else { return }
+        guard window != nil else {
+            removeOrphanedSurfaceLayers()
+            return
+        }
+        guard !hasLoadedPreview else { return }
         hasLoadedPreview = true
         previewSession.receive(Self.preview)
     }

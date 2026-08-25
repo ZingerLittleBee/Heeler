@@ -57,6 +57,13 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Leaving a terminal on screen while a presentation pulled it out of the
+  window could crash the app on the next screen update: ghostty frees its
+  rendering surface on window detach but leaves the surface's content layer
+  behind, and Core Animation would later call through that layer into freed
+  renderer memory. Terminal views now drop the orphaned content layer the
+  moment the surface is freed.
+
 - A slow ordinary Host request no longer freezes a live Attach session. (#130)
 
 ## [0.1.1] - 2026-08-20
