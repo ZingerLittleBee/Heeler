@@ -453,6 +453,8 @@ struct AgentTerminalView: View {
                 store: composer,
                 status: agent.agent.status,
                 hostTelemetry: hostTelemetry,
+                chromeColorScheme: terminal.themes.selection(for: colorScheme)
+                    .chromeColorScheme(for: colorScheme),
                 switcher: agentSwitcher,
                 keyboardHandoff: keyboardHandoff,
                 keyboardHeight: composerKeyboardLayout.availableToolsHeight,

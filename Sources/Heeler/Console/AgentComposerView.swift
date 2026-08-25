@@ -81,6 +81,12 @@ struct AgentComposerView: View {
     /// Read-only projection of the Host's own connection telemetry; nil
     /// whenever there is nothing proven to show.
     let hostTelemetry: HostTelemetryPresentation?
+    /// The terminal theme's luminance, not the system appearance. The status
+    /// row sits directly on the themed terminal surface, so hierarchical
+    /// styles and the status inks must resolve against that background — a
+    /// dark theme under a light system otherwise renders light-mode grays
+    /// into near-black and the row disappears.
+    let chromeColorScheme: ColorScheme
     let switcher: TerminalAgentSwitcher
     let keyboardHandoff: TerminalKeyboardHandoff
     let keyboardHeight: CGFloat
@@ -104,6 +110,7 @@ struct AgentComposerView: View {
                     }
                 }
                 .padding(.horizontal, 16)
+                .environment(\.colorScheme, chromeColorScheme)
 
                 VStack(spacing: 0) {
                     VStack(alignment: .leading, spacing: 8) {
