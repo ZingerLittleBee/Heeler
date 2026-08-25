@@ -49,6 +49,22 @@ final class TerminalKeyboardControl {
     func sendQuickKey(_ key: AgentQuickKey) {
         terminal?.sendQuickKey(key)
     }
+
+    func setKeyboardMode(_ mode: TerminalKeyboardMode) {
+        terminal?.setKeyboardMode(mode)
+    }
+
+    func sendControlKey(_ key: TerminalControlKey) {
+        terminal?.sendControlKey(key)
+    }
+
+    func sendNewLine() {
+        terminal?.sendNewLine()
+    }
+
+    func paste(_ text: String) {
+        terminal?.requestPaste(text)
+    }
 }
 
 /// The interactive Ghostty surface. PTY bytes flow into an in-memory Ghostty
@@ -65,10 +81,6 @@ struct TerminalScreenView: UIViewRepresentable {
     var onSend: ((Data) -> Void)?
     var onScroll: ((_ sequence: Data, _ rows: Int) -> Void)?
     var onPaste: ((_ text: String, _ bracketed: Bool) -> Void)?
-    var onSnippet: ((_ text: String, _ bracketed: Bool) -> Void)?
-    /// Fills the Keys keyboard's Snippets and Appearance tabs. Without one the
-    /// keyboard shows the control keys alone.
-    var keysContext: TerminalKeysContext?
     /// Asked exactly once, as the surface is created: does this terminal
     /// inherit the keyboard from the one it replaced? Asking through a
     /// closure rather than a stored flag keeps the answer tied to the
@@ -93,8 +105,6 @@ struct TerminalScreenView: UIViewRepresentable {
             onSend: onSend,
             onScroll: onScroll,
             onPaste: onPaste,
-            onSnippet: onSnippet,
-            keysContext: keysContext,
             theme: theme,
             fontSize: fontSize,
             fontFamily: fontFamily)
@@ -120,8 +130,6 @@ struct TerminalScreenView: UIViewRepresentable {
         onSend: ((Data) -> Void)? = nil,
         onScroll: ((_ sequence: Data, _ rows: Int) -> Void)? = nil,
         onPaste: ((_ text: String, _ bracketed: Bool) -> Void)? = nil,
-        onSnippet: ((_ text: String, _ bracketed: Bool) -> Void)? = nil,
-        keysContext: TerminalKeysContext? = nil,
         theme: TerminalTheme = .default,
         fontSize: Float = TerminalZoomSettings.defaultFontSize,
         fontFamily: String? = nil,
@@ -138,8 +146,6 @@ struct TerminalScreenView: UIViewRepresentable {
             onSend: onSend,
             onScroll: onScroll,
             onPaste: onPaste,
-            onSnippet: onSnippet,
-            keysContext: keysContext,
             theme: theme,
             fontSize: fontSize,
             fontFamily: fontFamily,
@@ -154,9 +160,7 @@ struct TerminalScreenView: UIViewRepresentable {
             onViewportTextChanged: onViewportTextChanged,
             onSend: onSend,
             onScroll: onScroll,
-            onPaste: onPaste,
-            onSnippet: onSnippet)
-        view.keysContext = keysContext
+            onPaste: onPaste)
         keyboardControl?.terminal = view
         view.setLocalInputEnabled(isLocalInputEnabled)
         view.applyTheme(theme)
@@ -181,7 +185,6 @@ private final class TerminalSessionCallbackBridge {
     var onSend: ((Data) -> Void)?
     var onScroll: ((Data, Int) -> Void)?
     var onPaste: ((String, Bool) -> Void)?
-    var onSnippet: ((String, Bool) -> Void)?
     var onViewport: ((InMemoryTerminalViewport) -> Void)?
     var onReliableInput: (() -> Void)?
     var onTerminalInput: ((Data) -> Void)?
@@ -193,15 +196,13 @@ private final class TerminalSessionCallbackBridge {
         onViewportTextChanged: ((String) -> Void)?,
         onSend: ((Data) -> Void)?,
         onScroll: ((Data, Int) -> Void)?,
-        onPaste: ((String, Bool) -> Void)?,
-        onSnippet: ((String, Bool) -> Void)?
+        onPaste: ((String, Bool) -> Void)?
     ) {
         self.onSizeChanged = onSizeChanged
         self.onViewportTextChanged = onViewportTextChanged
         self.onSend = onSend
         self.onScroll = onScroll
         self.onPaste = onPaste
-        self.onSnippet = onSnippet
     }
 
     nonisolated func send(_ data: Data) {
@@ -251,10 +252,6 @@ private final class TerminalSessionCallbackBridge {
         onPaste?(text, bracketed)
     }
 
-    func snippet(_ text: String, bracketed: Bool) {
-        onSnippet?(text, bracketed)
-    }
-
     func viewportTextDidChange(_ text: String) {
         onViewportTextChanged?(text)
     }
@@ -298,9 +295,6 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private(set) var appliedFontFamily: String?
     var onFontSizeChanged: ((Float) -> Void)?
     var onOpenLink: ((URL) -> Void)?
-    /// Rebuilt into the Keys keyboard the next time it is raised; a live
-    /// keyboard keeps the context it was built with.
-    var keysContext: TerminalKeysContext?
     /// Raises the keyboard once this surface reaches a window. An Agent switch
     /// rebuilds the whole terminal, and the user who tapped a switcher chip
     /// was mid-conversation — dropping the keyboard would hide the switcher
@@ -345,7 +339,6 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private var touchScrollMomentumDisplayLink: CADisplayLink?
     private var touchScrollMomentumVelocityY: CGFloat = 0
     private var touchScrollMomentumTimestamp: CFTimeInterval = 0
-    var controlKeyboardHeight = TerminalKeysKeyboardView.defaultHeight
 
     private lazy var touchScrollGesture = UIPanGestureRecognizer(
         target: self,
@@ -358,14 +351,6 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private lazy var tapGesture = UITapGestureRecognizer(
         target: self,
         action: #selector(handleHerdrTap(_:)))
-
-    private lazy var terminalKeyboardAccessory = TerminalKeyboardAccessory(
-        frame: CGRect(
-            x: 0,
-            y: 0,
-            width: bounds.width,
-            height: TerminalKeyboardAccessory.preferredHeight),
-        terminalView: self)
 
     override var inputView: UIView? {
         terminalInputView
@@ -488,8 +473,11 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
             with: NSRange(location: range.location, length: range.length))
     }
 
+    /// Nothing rides the keyboard any more: the input row lives in the app
+    /// (see `ShellTerminalView`), where a keyboard-mode switch cannot tear it
+    /// down, and where UIKit's candidate-row teardown cannot move it.
     override var inputAccessoryView: UIView? {
-        terminalKeyboardAccessory
+        nil
     }
 
     /// Only a tap on the input row raises the keyboard, so the surface refuses
@@ -518,9 +506,6 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         if isFirstResponder, !responderGate.mayBecomeFirstResponder {
             return true
         }
-        // UIKit reads the accessory hierarchy while installing the software
-        // keyboard. Restore its content before that transaction starts.
-        terminalKeyboardAccessory.resetDismissalAppearance()
         return super.becomeFirstResponder()
     }
 
@@ -542,22 +527,18 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         onSend: ((Data) -> Void)?,
         onScroll: ((Data, Int) -> Void)?,
         onPaste: ((String, Bool) -> Void)?,
-        onSnippet: ((String, Bool) -> Void)?,
-        keysContext: TerminalKeysContext?,
         theme: TerminalTheme,
         fontSize: Float,
         fontFamily: String?,
         clipboard: TerminalClipboard
     ) {
-        self.keysContext = keysContext
         self.clipboard = clipboard
         let callbackBridge = TerminalSessionCallbackBridge(
             onSizeChanged: onSizeChanged,
             onViewportTextChanged: onViewportTextChanged,
             onSend: onSend,
             onScroll: onScroll,
-            onPaste: onPaste,
-            onSnippet: onSnippet)
+            onPaste: onPaste)
         self.callbackBridge = callbackBridge
         terminalSession = InMemoryTerminalSession(
             write: { [weak callbackBridge] data in
@@ -608,15 +589,13 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         onViewportTextChanged: ((String) -> Void)?,
         onSend: ((Data) -> Void)?,
         onScroll: ((Data, Int) -> Void)?,
-        onPaste: ((String, Bool) -> Void)?,
-        onSnippet: ((String, Bool) -> Void)?
+        onPaste: ((String, Bool) -> Void)?
     ) {
         callbackBridge.onSizeChanged = onSizeChanged
         callbackBridge.onViewportTextChanged = onViewportTextChanged
         callbackBridge.onSend = onSend
         callbackBridge.onScroll = onScroll
         callbackBridge.onPaste = onPaste
-        callbackBridge.onSnippet = onSnippet
     }
 
     @discardableResult
@@ -746,13 +725,6 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         if !isEnabled, isFirstResponder {
             _ = dismissKeyboard()
         }
-        terminalKeyboardAccessory.setInputEnabled(isEnabled)
-        if let keysKeyboard {
-            keysKeyboard.localInputEnabledDidChange()
-        } else {
-            terminalInputView?.isUserInteractionEnabled = isEnabled
-            terminalInputView?.alpha = isEnabled ? 1 : 0.5
-        }
     }
 
     func requestPaste(_ text: String?) {
@@ -760,21 +732,6 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         reliableInputDidBegin()
         recordCommittedText(text)
         callbackBridge.paste(text, bracketed: usesBracketedPaste)
-    }
-
-    /// Sends a Snippet the user tapped in the Keys keyboard.
-    func sendSnippet(_ snippet: Snippet) {
-        sendInsertedText(snippet.body)
-    }
-
-    /// Sends text a keyboard pane inserts on the user's behalf — a Snippet's
-    /// body, a skill's slash command. Same delivery semantics either way: no
-    /// submit byte of its own.
-    func sendInsertedText(_ text: String) {
-        guard isLocalInputEnabled else { return }
-        reliableInputDidBegin()
-        recordCommittedText(text)
-        callbackBridge.snippet(text, bracketed: usesBracketedPaste)
     }
 
     override func deleteBackward() {

@@ -117,7 +117,9 @@ struct ShellTerminalStoreTests {
             AgentSurfaceReplacementTests.terminals(in: controller.view).first)
 
         #expect(terminal.isLocalInputEnabled)
-        #expect(terminal.keysContext?.tabs == [.controls, .appearance])
+        // No Snippets or Skills on a shell terminal: its Keys dock offers the
+        // control pad and Appearance alone.
+        #expect(ShellTerminalKeysDock.tabs == [.controls, .appearance])
         terminal.sendControlKey(.enter)
         try #require(
             await eventually {

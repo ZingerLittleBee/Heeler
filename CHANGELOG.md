@@ -73,6 +73,13 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Switching a Shell Terminal between Text and Keys no longer tears down the
+  keyboard's candidate row or drops an in-flight IME composition: the input
+  row is app content instead of a keyboard accessory, and Keys mode replaces
+  the system keyboard in place behind an app-side dock, the way the Composer's
+  tools keyboard already did. Pinyin (and any other marked-text input) now
+  survives a round trip through Keys with its candidates intact.
+
 - Covering a terminal with a presentation could crash the app on the next
   screen update: ghostty's freed rendering surface left its content layer in
   the view's layer tree, and Core Animation would later call through that
