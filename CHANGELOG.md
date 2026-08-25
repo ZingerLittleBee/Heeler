@@ -9,6 +9,12 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- The Composer now suggests the selected Agent's discovered Skills inline
+  while an invocation prefix is typed, and its More menu gains a searchable
+  Skill picker. Both entry points share the tools keyboard's Skills
+  catalogue and insert the full command into the draft without sending it —
+  Codex Skills with `$`, each Skill by its own prefix. (#234)
+
 - Agent detail's More menu gains Open Terminal: it creates a new herdr tab in
   the Agent's launch directory and opens its shell as a fully interactive
   Shell Terminal. Back detaches and leaves the remote tab alive for desktop
