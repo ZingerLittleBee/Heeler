@@ -131,7 +131,7 @@ Entries reference the issue that motivated them.
   toggle within reach without reopening the Console. While the keyboard is
   visible, a neighbouring control switches between the iOS keyboard and a
   tabbed tools keyboard. Its Agent controls send Esc, Tab, Shift-Tab, arrows,
-  Enter, and Backspace directly to the Agent without changing the draft. The
+  Enter, and Backspace directly to the Agent without changing the draft.
   The tools dock stays positioned behind the system keyboard and replaces it
   without exposing the disappearing native candidate row as an empty frame.
   Both modes share the same complete measured height, including the native iOS

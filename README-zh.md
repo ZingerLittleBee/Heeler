@@ -21,7 +21,7 @@
 
 ---
 
-Heeler 是一个 **agent 控制台**：把所有机器上正在运行的 coding agent 汇成一个原生仪表盘，按「谁需要你」排序。打开一个 Agent 即可阅读并操控它的实时终端，在原生 Composer 里用完整的 iOS 键盘起草，一次 Send 投递完整消息 —— 一切只经由普通 SSH。
+Heeler 是一个 **agent 控制台**：把所有机器上正在运行的 coding agent 汇成一个原生仪表盘，按「谁需要你」排序。打开一个 Agent 即可阅读并操控它的实时终端，在原生 Composer 里用完整的 iOS 键盘起草，一次 Send 投递完整消息 —— 全程只走普通 SSH。
 
 ## 截图
 
@@ -61,7 +61,7 @@ Heeler 是一个 **agent 控制台**：把所有机器上正在运行的 coding 
 
 Heeler 通过 SSH 使用 herdr 的 JSON API：每个请求经 direct-streamlocal
 通道直连 `herdr.sock`，一条长连接承载事件流，交互终端则在 SSH PTY 上运行
-`herdr agent attach --takeover`。全部前提只有 SSH 访问和一个运行中的
+`herdr agent attach --takeover`。前提只有 SSH 访问和一个运行中的
 herdr —— 不改服务器、不装额外软件包。SSH 服务器需允许 stream-local 转发
 （OpenSSH 默认开启）；若被关闭，引导流程会明确指出。
 
