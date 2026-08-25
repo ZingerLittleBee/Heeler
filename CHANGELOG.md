@@ -39,10 +39,16 @@ Entries reference the issue that motivated them.
   catalogue and insert the full command into the draft without sending it —
   Codex Skills with `$`, each Skill by its own prefix. (#234)
 
-- Agent detail's More menu gains Open Terminal: it creates a new herdr tab in
-  the Agent's launch directory and opens its shell as a fully interactive
-  Shell Terminal. Back detaches and leaves the remote tab alive for desktop
-  handoff. (#231)
+- Agent detail's More menu gains Open Terminal: a fully interactive shell in
+  the Agent's launch directory, opened as a Shell Terminal. Each Workspace
+  gets one remembered tab — created on first use, reattached on later visits,
+  and recreated only after verifying the old one is gone — so repeat visits
+  do not accumulate tabs on the Host. The input row above the keyboard is app
+  content rather than a keyboard accessory, so switching between Text and the
+  Keys pad keeps the row fixed and preserves the keyboard's candidate row and
+  any in-flight IME composition (pinyin included). Back detaches and leaves
+  the remote tab alive for desktop handoff; a Close Terminal action closes it
+  on the Host when it is not worth keeping. (#231)
 
 - New Agent can start in a new Workspace at a remote directory, with an
   optional label, even when the Host reports none. (#230)
@@ -53,13 +59,6 @@ Entries reference the issue that motivated them.
   branch. (#99)
 
 ### Changed
-
-- Open Terminal now remembers the shell tab it created for each Workspace
-  and reattaches to it on later visits instead of opening another tab every
-  time; a remembered tab that has died (closed on the desktop, server
-  restarted) is verified first and recreated. The Shell Terminal also gains
-  a Close Terminal action that closes the remote tab for the times it is not
-  worth keeping — Back still leaves it alive for desktop handoff. (#231)
 
 - Host connections now have a distinct Connecting state, separate from
   automatic Reconnecting, a paused connection, and loading Agents after the
@@ -80,19 +79,12 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
-- Switching a Shell Terminal between Text and Keys no longer tears down the
-  keyboard's candidate row or drops an in-flight IME composition: the input
-  row is app content instead of a keyboard accessory, and Keys mode replaces
-  the system keyboard in place behind an app-side dock, the way the Composer's
-  tools keyboard already did. Pinyin (and any other marked-text input) now
-  survives a round trip through Keys with its candidates intact.
-
 - Covering a terminal with a presentation could crash the app on the next
   screen update: ghostty's freed rendering surface left its content layer in
   the view's layer tree, and Core Animation would later call through that
   layer into freed renderer memory. Terminal views now drop orphaned content
   layers the moment a surface is torn down, and the GhosttyTerminal upgrade
-  below stops the temporary window detach from freeing the surface at all —
+  above stops the temporary window detach from freeing the surface at all —
   a terminal behind a cover keeps its grid and scrollback. (#242)
 
 - A slow ordinary Host request no longer freezes a live Attach session. (#130)
