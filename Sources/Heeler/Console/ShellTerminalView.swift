@@ -47,8 +47,29 @@ struct ShellTerminalView: View {
     /// The Composer's keyboard arithmetic, reused verbatim: Keys mode is the
     /// tools presentation, a raised system keyboard is the system one.
     private var keyboardPresentation: AgentComposerKeyboardPresentation {
-        if keyboardMode == .controls { return .tools }
-        return keyboardInset.height > 0 ? .system : .hidden
+        Self.keyboardPresentation(
+            mode: keyboardMode,
+            insetHeight: keyboardInset.height,
+            keyboardIsUp: keyboardControl.isKeyboardUp)
+    }
+
+    /// Switching back to Text re-presents the system keyboard in place, and
+    /// UIKit passes through a transient will-hide that zeroes the measured
+    /// inset on the way — while the terminal keeps first responder the whole
+    /// time. Deriving hidden from the height alone tore the input row down
+    /// for that beat and let it ride back up with the keyboard. A real
+    /// dismissal (a sheet, leaving the screen) resigns first responder before
+    /// its will-hide, so the responder is what tells the two apart. Every
+    /// transition that matters arrives with a height change, so rendering
+    /// keyed off the observable inset still re-reads the responder in time.
+    static func keyboardPresentation(
+        mode: TerminalKeyboardMode,
+        insetHeight: CGFloat,
+        keyboardIsUp: Bool
+    ) -> AgentComposerKeyboardPresentation {
+        if mode == .controls { return .tools }
+        if insetHeight > 0 || keyboardIsUp { return .system }
+        return .hidden
     }
 
     private var keyboardLayout: AgentComposerKeyboardLayout {

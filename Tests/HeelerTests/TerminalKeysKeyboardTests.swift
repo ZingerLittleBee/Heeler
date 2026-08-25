@@ -100,6 +100,29 @@ struct TerminalKeysKeyboardTests {
         #expect(withSkills.tabs == [.controls, .skills, .snippets, .appearance])
     }
 
+    /// The in-place swap back to Text passes through a transient will-hide
+    /// that zeroes the measured inset while the terminal keeps first
+    /// responder. Reading hidden off the height alone tore the input row down
+    /// for a frame and let it ride back up with the keyboard.
+    @Test func aTransientZeroInsetDoesNotHideTheInputRowMidSwap() {
+        // The regression: height dipped to zero mid-swap, responder retained.
+        #expect(
+            ShellTerminalView.keyboardPresentation(
+                mode: .text, insetHeight: 0, keyboardIsUp: true) == .system)
+
+        #expect(
+            ShellTerminalView.keyboardPresentation(
+                mode: .text, insetHeight: 336, keyboardIsUp: true) == .system)
+        // A real dismissal resigns first responder before its will-hide.
+        #expect(
+            ShellTerminalView.keyboardPresentation(
+                mode: .text, insetHeight: 0, keyboardIsUp: false) == .hidden)
+        // Keys mode is the tools presentation no matter what the inset says.
+        #expect(
+            ShellTerminalView.keyboardPresentation(
+                mode: .controls, insetHeight: 0, keyboardIsUp: true) == .tools)
+    }
+
     @Test func everyTabHasItsOwnIconAndLabel() {
         let icons = Set(TerminalKeysTab.allCases.map(\.systemImageName))
         let labels = Set(TerminalKeysTab.allCases.map(\.accessibilityLabel))
