@@ -13,7 +13,7 @@ struct HostTelemetryPresentationTests {
                 status: .connected,
                 latency: .milliseconds(25) + .microseconds(600)))
 
-        #expect(presentation.title == "Host · 26 ms")
+        #expect(presentation.title == "26 ms")
         #expect(presentation.accessibilityLabel == "Host API connection latency")
         #expect(presentation.accessibilityValue == "26 milliseconds over SSH")
     }
@@ -22,7 +22,7 @@ struct HostTelemetryPresentationTests {
         let presentation = try #require(
             HostTelemetryPresentation(status: .connected, latency: .microseconds(400)))
 
-        #expect(presentation.title == "Host · <1 ms")
+        #expect(presentation.title == "<1 ms")
         #expect(presentation.accessibilityValue == "Less than 1 millisecond over SSH")
     }
 
@@ -30,7 +30,7 @@ struct HostTelemetryPresentationTests {
         let presentation = try #require(
             HostTelemetryPresentation(status: .connected, latency: .milliseconds(1)))
 
-        #expect(presentation.title == "Host · 1 ms")
+        #expect(presentation.title == "1 ms")
         #expect(presentation.accessibilityValue == "1 millisecond over SSH")
     }
 
@@ -40,15 +40,15 @@ struct HostTelemetryPresentationTests {
         #expect(
             HostTelemetryPresentation(
                 status: .connected, latency: .microseconds(1_400)
-            )?.title == "Host · 1 ms")
+            )?.title == "1 ms")
         #expect(
             HostTelemetryPresentation(
                 status: .connected, latency: .microseconds(999)
-            )?.title == "Host · <1 ms")
+            )?.title == "<1 ms")
         #expect(
             HostTelemetryPresentation(
                 status: .connected, latency: .microseconds(1_500)
-            )?.title == "Host · 2 ms")
+            )?.title == "2 ms")
     }
 
     @Test func connectedWithoutAMeasurementRendersNothing() {
@@ -91,7 +91,7 @@ struct HostTelemetryPresentationTests {
             let chip = HostConnectionPresentation(status: .connected, latency: latency)
             let label = try #require(
                 HostTelemetryPresentation(status: .connected, latency: latency))
-            #expect(label.title == "Host · \(chip.title)")
+            #expect(label.title == chip.title)
         }
     }
 
@@ -100,7 +100,7 @@ struct HostTelemetryPresentationTests {
         let presentation = try #require(
             HostTelemetryPresentation(status: .connected, latency: .milliseconds(-5)))
 
-        #expect(presentation.title == "Host · <1 ms")
+        #expect(presentation.title == "<1 ms")
         #expect(
             HostConnectionPresentation(
                 status: .connected, latency: .milliseconds(-5)

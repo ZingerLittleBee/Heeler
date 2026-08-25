@@ -404,7 +404,11 @@ struct AgentComposerView: View {
         Text(telemetry.title)
             .font(.caption2)
             .monospacedDigit()
-            .foregroundStyle(.tertiary)
+            // One step brighter on dark themes: tertiary gray recedes into a
+            // near-black surface faster than it does into a light one.
+            .foregroundStyle(
+                chromeColorScheme == .dark
+                    ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(telemetry.accessibilityLabel)
             .accessibilityValue(telemetry.accessibilityValue)
