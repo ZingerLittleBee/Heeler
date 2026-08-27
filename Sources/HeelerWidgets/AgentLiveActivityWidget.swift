@@ -11,13 +11,11 @@ import WidgetKit
 struct AgentLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: AgentActivityAttributes.self) { context in
-            AgentActivityLockScreenView(
+            AgentActivityLockScreenContainer(
                 presentation: AgentActivityDecryptor.presentation(for: context.state),
                 hostID: context.attributes.hostID,
                 isStale: context.isStale
             )
-            .activityBackgroundTint(nil)
-            .activitySystemActionForegroundColor(nil)
         } dynamicIsland: { context in
             AgentActivityIsland.make(
                 presentation: AgentActivityDecryptor.presentation(for: context.state),
@@ -29,8 +27,9 @@ struct AgentLiveActivityWidget: Widget {
 // MARK: - Surface seam
 
 enum AgentActivitySurface {
-    /// Lock Screen banner. Status colors follow the system appearance
-    /// (Latte in Light, Mocha in Dark) via AgentStatusPalette.
+    /// Lock Screen banner. Status colors follow the device appearance
+    /// (Latte in Light, Mocha in Dark) via AgentStatusPalette. The device
+    /// screen trait bypasses ActivityKit's incorrect iOS 26+ color scheme.
     case lockScreen
     /// Compact, minimal, and expanded Dynamic Island. Always Mocha,
     /// resolved against a dark trait collection, ignoring ambient Light Mode.
@@ -76,6 +75,66 @@ enum AgentActivityStatusStyle {
 }
 
 // MARK: - Lock screen
+
+private struct AgentActivityLockScreenContainer: View {
+    @Environment(\.colorScheme) private var activityKitColorScheme
+
+    let presentation: AgentActivityPresentation
+    let hostID: String
+    let isStale: Bool
+
+    var body: some View {
+        let appearance = AgentActivityLockScreenAppearance.resolve(
+            screenStyle: UIScreen.main.traitCollection.userInterfaceStyle,
+            fallback: activityKitColorScheme)
+
+        AgentActivityLockScreenView(
+            presentation: presentation,
+            hostID: hostID,
+            isStale: isStale
+        )
+        .environment(\.colorScheme, appearance.colorScheme)
+        .activityBackgroundTint(Color(uiColor: appearance.backgroundColor))
+        .activitySystemActionForegroundColor(Color(uiColor: appearance.actionColor))
+    }
+}
+
+enum AgentActivityLockScreenAppearance: Equatable {
+    case light
+    case dark
+
+    static func resolve(
+        screenStyle: UIUserInterfaceStyle,
+        fallback: ColorScheme
+    ) -> AgentActivityLockScreenAppearance {
+        switch screenStyle {
+        case .light:
+            return .light
+        case .dark:
+            return .dark
+        case .unspecified:
+            return fallback == .dark ? .dark : .light
+        @unknown default:
+            return fallback == .dark ? .dark : .light
+        }
+    }
+
+    var colorScheme: ColorScheme {
+        self == .dark ? .dark : .light
+    }
+
+    var backgroundColor: UIColor {
+        UIColor.systemBackground.resolvedColor(with: traitCollection)
+    }
+
+    var actionColor: UIColor {
+        UIColor.label.resolvedColor(with: traitCollection)
+    }
+
+    private var traitCollection: UITraitCollection {
+        UITraitCollection(userInterfaceStyle: self == .dark ? .dark : .light)
+    }
+}
 
 struct AgentActivityLockScreenView: View {
     let presentation: AgentActivityPresentation

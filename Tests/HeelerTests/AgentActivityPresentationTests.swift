@@ -122,6 +122,52 @@ struct AgentActivityPresentationTests {
         #expect(AgentActivityRowMetrics.lockScreenMinimumHeight(agentCount: 4) == 28)
     }
 
+    @Test func deviceLightAppearanceOverridesIncorrectActivityKitDarkScheme() {
+        let appearance = AgentActivityLockScreenAppearance.resolve(
+            screenStyle: .light,
+            fallback: .dark)
+
+        #expect(appearance == .light)
+        #expect(appearance.colorScheme == .light)
+    }
+
+    @Test func deviceDarkAppearanceOverridesIncorrectActivityKitLightScheme() {
+        let appearance = AgentActivityLockScreenAppearance.resolve(
+            screenStyle: .dark,
+            fallback: .light)
+
+        #expect(appearance == .dark)
+        #expect(appearance.colorScheme == .dark)
+    }
+
+    @Test func unspecifiedDeviceAppearanceUsesActivityKitFallback() {
+        #expect(
+            AgentActivityLockScreenAppearance.resolve(
+                screenStyle: .unspecified,
+                fallback: .light
+            ) == .light)
+        #expect(
+            AgentActivityLockScreenAppearance.resolve(
+                screenStyle: .unspecified,
+                fallback: .dark
+            ) == .dark)
+    }
+
+    @Test func lockScreenChromeResolvesAgainstDeviceAppearance() {
+        #expect(
+            rgba(AgentActivityLockScreenAppearance.light.backgroundColor)
+                == rgba(UIColor.systemBackground, .light))
+        #expect(
+            rgba(AgentActivityLockScreenAppearance.dark.backgroundColor)
+                == rgba(UIColor.systemBackground, .dark))
+        #expect(
+            rgba(AgentActivityLockScreenAppearance.light.actionColor)
+                == rgba(UIColor.label, .light))
+        #expect(
+            rgba(AgentActivityLockScreenAppearance.dark.actionColor)
+                == rgba(UIColor.label, .dark))
+    }
+
     @Test func lockScreenInkMatchesPaletteForEachAppearance() {
         for (wire, palette) in Self.statuses {
             for style in [UIUserInterfaceStyle.light, .dark] {

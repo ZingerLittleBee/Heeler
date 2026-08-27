@@ -72,7 +72,7 @@ Apple HIG Lock Screen gallery (same page as #1) also showed system examples: Foo
 
 ## Design principles
 
-1. **System surface, Heeler language.** Lock Screen chrome is the system Live Activity material. Heeler identity lives in status hue (the same Catppuccin roles as the Console and herdr), not in a branded plate.
+1. **System surface, Heeler language.** Lock Screen chrome follows the device's iOS Light/Dark appearance. Heeler identity lives in status hue (the same Catppuccin roles as the Console and herdr), not in a branded plate. On iOS 26 and 27, ActivityKit can incorrectly report `.dark` in system Light Mode; the widget resolves the concrete `UIScreen` trait instead of trusting that environment value.
 2. **One appearance model, two palettes, one hex owner.** The layout does not change between Light and Dark. Only tokens flip, from `AgentStatusPalette`. The widget never duplicates those hexes.
 3. **Island is a different surface.** Dynamic Island is always black. It keeps Mocha inks even when the Lock Screen is Latte. Shared views take an explicit `AgentActivitySurface`; they must not read ambient `colorScheme` to pick status color.
 4. **Attention order is Blocked, then Done, then Working.** Same as Console and the envelope. Compact leading and any other single-count pick follow it. Blocked is the only shouted *visual* (wash + ink title).
@@ -166,8 +166,8 @@ Prefer system / dynamic colors wherever they satisfy the intent. Custom colors a
 
 | Token | Light | Dark | Implementation |
 | --- | --- | --- | --- |
-| `surface.lockScreen` | System Live Activity material | System Live Activity material | `.activityBackgroundTint(nil)` |
-| `action.systemEnd` | System default | System default | `.activitySystemActionForegroundColor(nil)` |
+| `surface.lockScreen` | Resolved `UIColor.systemBackground` | Resolved `UIColor.systemBackground` | Resolve against `UIScreen.main.traitCollection.userInterfaceStyle`, then pass the concrete color to `.activityBackgroundTint` |
+| `action.systemEnd` | Resolved `UIColor.label` | Resolved `UIColor.label` | Resolve against the same device trait, then pass the concrete color to `.activitySystemActionForegroundColor` |
 | `surface.island` | Opaque black (system) | Opaque black (system) | Do not tint. Cannot be customized. |
 | `text.primary` | `Color.primary` | `Color.primary` | System. On the island this is light-on-black. |
 | `text.secondary` | `Color.secondary` | `Color.secondary` | Overflow, identity, stale caption. |
@@ -377,7 +377,7 @@ Idle and unknown Agents are not in the activity. An empty eligible inventory end
 
 ## SwiftUI implementation guidance
 
-1. **Chrome.** In `AgentLiveActivityWidget.body`, replace the two modifiers with `nil` (or delete them; default is system material / system End color). Remove `AgentActivityChrome` if nothing else references it.
+1. **Chrome.** In `AgentLiveActivityWidget.body`, resolve Lock Screen appearance from `UIScreen.main.traitCollection.userInterfaceStyle`, falling back to ActivityKit's `colorScheme` only when the screen trait is unspecified. Resolve `UIColor.systemBackground` and `UIColor.label` against that concrete appearance, pass them to the two ActivityKit modifiers, and inject the same `ColorScheme` into the Lock Screen content. Do not consult Heeler's Appearance setting. Dynamic Island remains system-black and does not use this resolver.
 
 2. **Palette file in the widget target.** Add `Sources/Heeler/Console/AgentStatusPalette.swift` to `HeelerWidgets.sources` in `project.yml`. Run `xcodegen generate` and commit `Heeler.xcodeproj` with that change. Do not duplicate hexes.
 
@@ -399,13 +399,11 @@ Sketch (illustrative):
 
 ```swift
 ActivityConfiguration(for: AgentActivityAttributes.self) { context in
-    AgentActivityLockScreenView(
+    AgentActivityLockScreenContainer(
         presentation: AgentActivityDecryptor.presentation(for: context.state),
         hostID: context.attributes.hostID,
         isStale: context.isStale
     )
-    .activityBackgroundTint(nil)
-    .activitySystemActionForegroundColor(nil)
 } dynamicIsland: { context in
     AgentActivityIsland.make(
         presentation: AgentActivityDecryptor.presentation(for: context.state),
@@ -463,7 +461,7 @@ Not exercised in this research pass: physical device, Always-On, StandBy, Increa
 
 No remaining product or ownership choices. Implement the following as specified:
 
-1. Lock Screen background = system material (`activityBackgroundTint(nil)`). End button = system color (`activitySystemActionForegroundColor(nil)`).
+1. Lock Screen background and End button use concrete system colors resolved from `UIScreen.main.traitCollection.userInterfaceStyle`. The ActivityKit environment is only a fallback for an unspecified screen trait. Heeler's Appearance setting is not consulted.
 2. Hex owner is `AgentStatusPalette.swift`. Add that file to `HeelerWidgets.sources` in `project.yml`, regenerate and commit `Heeler.xcodeproj`. Do not duplicate hexes.
 3. Every shared row, headline, and chip takes `surface: AgentActivitySurface`. Lock Screen passes `.lockScreen`. Compact, minimal, and expanded pass `.island`, which resolves Mocha against a dark trait collection. Ambient Light Mode must not tint the island.
 4. Keep the aggregate list, pin-aware envelope order, full first row, compact secondary rows, and no Host name, buttons, logo, or progress bar. Use per-Agent links on Lock Screen and expanded presentations, plus one Console fallback link for each presentation. Chip enumeration stays `blocked`, `working`, `done`.
