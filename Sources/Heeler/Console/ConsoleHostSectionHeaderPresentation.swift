@@ -10,11 +10,11 @@ struct ConsoleHostSectionHeaderPresentation: Equatable {
     /// chip language rather than the longer flat-list issue sentences.
     let readinessText: String
     let isCollapsed: Bool
-    let attentionCount: Int
-    /// Visual badge only while collapsed; VoiceOver still hears attention
-    /// whenever the count is non-zero.
-    let showsAttentionBadge: Bool
-    let attentionText: String?
+    let statusItems: [ConsoleHostAgentStatusCount]
+    /// Visual status pills only while collapsed; VoiceOver still hears the
+    /// status breakdown whenever one of the counts is non-zero.
+    let showsStatusPills: Bool
+    let statusText: String?
     let disclosureSystemImage: String
     let accessibilityLabel: String
     let accessibilityValue: String
@@ -24,9 +24,10 @@ struct ConsoleHostSectionHeaderPresentation: Equatable {
         hostDisplayName = section.hostDisplayName
         readinessText = Self.readinessText(for: section)
         isCollapsed = section.isCollapsed
-        attentionCount = section.attentionCount
-        showsAttentionBadge = section.isCollapsed && section.attentionCount > 0
-        attentionText = Self.attentionText(count: section.attentionCount)
+        let projectedStatusItems = section.statusCounts.items
+        statusItems = projectedStatusItems
+        showsStatusPills = section.isCollapsed && !projectedStatusItems.isEmpty
+        statusText = Self.statusText(items: projectedStatusItems)
         disclosureSystemImage = section.isCollapsed ? "chevron.right" : "chevron.down"
         accessibilityValue = section.isCollapsed ? "Collapsed" : "Expanded"
         accessibilityHint =
@@ -35,8 +36,8 @@ struct ConsoleHostSectionHeaderPresentation: Equatable {
             : "Collapses this Host."
 
         var labelParts = [section.hostDisplayName, readinessText]
-        if let attentionText {
-            labelParts.append(attentionText)
+        if let statusText {
+            labelParts.append(statusText)
         }
         accessibilityLabel = labelParts.joined(separator: ", ")
     }
@@ -74,11 +75,8 @@ struct ConsoleHostSectionHeaderPresentation: Equatable {
         }
     }
 
-    static func attentionText(count: Int) -> String? {
-        guard count > 0 else { return nil }
-        if count == 1 {
-            return "1 Agent needs attention"
-        }
-        return "\(count) Agents need attention"
+    static func statusText(items: [ConsoleHostAgentStatusCount]) -> String? {
+        guard !items.isEmpty else { return nil }
+        return items.map { "\($0.count) \($0.status.rawValue)" }.joined(separator: ", ")
     }
 }

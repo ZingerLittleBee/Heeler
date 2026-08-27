@@ -148,7 +148,7 @@ struct ConsoleListPresentationStoreTests {
         #expect(sections[1].statusPresentation?.hostID == disconnected.id)
     }
 
-    @Test func attentionCountsBlockedAndDoneEvenWhenCollapsed() throws {
+    @Test func statusCountsMatchLiveActivityStatusesEvenWhenCollapsed() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
         let host = Host.fixture()
@@ -165,6 +165,7 @@ struct ConsoleListPresentationStoreTests {
 
         let section = try #require(store.sections(hosts: [host], agents: agents).first)
         #expect(section.isCollapsed)
-        #expect(section.attentionCount == 2)
+        #expect(section.statusCounts == .init(blocked: 1, working: 1, done: 1))
+        #expect(section.statusCounts.items.map(\.status) == [.blocked, .working, .done])
     }
 }

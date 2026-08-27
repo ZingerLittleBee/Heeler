@@ -30,9 +30,45 @@ struct ConsoleHostSection: Identifiable, Equatable {
     let statusPresentation: ConsoleHostStatusPresentation?
     let agents: [ConsoleAgent]
     let isCollapsed: Bool
-    let attentionCount: Int
+    let statusCounts: ConsoleHostAgentStatusCounts
 
     var id: Host.ID { hostID }
+}
+
+/// The Live Activity-eligible Agent statuses shown in a collapsed Host
+/// section. Keeping the same order and labels as the Live Activity makes the
+/// two summaries directly comparable.
+struct ConsoleHostAgentStatusCounts: Equatable {
+    let blocked: Int
+    let working: Int
+    let done: Int
+
+    init(blocked: Int = 0, working: Int = 0, done: Int = 0) {
+        self.blocked = blocked
+        self.working = working
+        self.done = done
+    }
+
+    init(agents: [ConsoleAgent]) {
+        blocked = agents.count { $0.agent.status == .blocked }
+        working = agents.count { $0.agent.status == .working }
+        done = agents.count { $0.agent.status == .done }
+    }
+
+    var items: [ConsoleHostAgentStatusCount] {
+        var items: [ConsoleHostAgentStatusCount] = []
+        if blocked > 0 { items.append(.init(status: .blocked, count: blocked)) }
+        if working > 0 { items.append(.init(status: .working, count: working)) }
+        if done > 0 { items.append(.init(status: .done, count: done)) }
+        return items
+    }
+}
+
+struct ConsoleHostAgentStatusCount: Identifiable, Equatable {
+    let status: AgentStatus
+    let count: Int
+
+    var id: String { status.rawValue }
 }
 
 /// Persists the Console presentation choice and per-Host collapsed state,
@@ -137,9 +173,7 @@ final class ConsoleListPresentationStore {
                     syncError: hostSyncErrors[host.id]),
                 agents: hostAgents,
                 isCollapsed: isCollapsed(host.id),
-                attentionCount: hostAgents.count {
-                    $0.agent.status == .blocked || $0.agent.status == .done
-                })
+                statusCounts: ConsoleHostAgentStatusCounts(agents: hostAgents))
         }
     }
 

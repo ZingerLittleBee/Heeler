@@ -13,7 +13,7 @@ struct ConsoleHostSectionHeaderPresentationTests {
         statusPresentation: ConsoleHostStatusPresentation? = nil,
         agents: [ConsoleAgent] = [],
         isCollapsed: Bool = false,
-        attentionCount: Int = 0
+        statusCounts: ConsoleHostAgentStatusCounts = .init()
     ) -> ConsoleHostSection {
         ConsoleHostSection(
             hostID: host.id,
@@ -23,7 +23,7 @@ struct ConsoleHostSectionHeaderPresentationTests {
             statusPresentation: statusPresentation,
             agents: agents,
             isCollapsed: isCollapsed,
-            attentionCount: attentionCount)
+            statusCounts: statusCounts)
     }
 
     private func consoleAgent(paneID: String, status: AgentStatus) -> ConsoleAgent {
@@ -76,15 +76,18 @@ struct ConsoleHostSectionHeaderPresentationTests {
                 section: section(status: .suspended)).readinessText == "Paused")
     }
 
-    @Test func attentionBadgeIsCollapsedOnlyButVoiceOverKeepsTheCount() {
+    @Test func statusPillsAreCollapsedOnlyButVoiceOverKeepsTheBreakdown() {
+        let counts = ConsoleHostAgentStatusCounts(blocked: 1, working: 2, done: 3)
         let expanded = ConsoleHostSectionHeaderPresentation(
             section: section(
                 status: .connected,
                 isCollapsed: false,
-                attentionCount: 2))
-        #expect(!expanded.showsAttentionBadge)
-        #expect(expanded.attentionText == "2 Agents need attention")
-        #expect(expanded.accessibilityLabel.contains("2 Agents need attention"))
+                statusCounts: counts))
+        #expect(!expanded.showsStatusPills)
+        #expect(expanded.statusItems.map(\.status) == [.blocked, .working, .done])
+        #expect(expanded.statusItems.map(\.count) == [1, 2, 3])
+        #expect(expanded.statusText == "1 blocked, 2 working, 3 done")
+        #expect(expanded.accessibilityLabel.contains("1 blocked, 2 working, 3 done"))
         #expect(expanded.accessibilityValue == "Expanded")
         #expect(expanded.accessibilityHint == "Collapses this Host.")
         #expect(expanded.disclosureSystemImage == "chevron.down")
@@ -93,9 +96,9 @@ struct ConsoleHostSectionHeaderPresentationTests {
             section: section(
                 status: .connected,
                 isCollapsed: true,
-                attentionCount: 1))
-        #expect(collapsed.showsAttentionBadge)
-        #expect(collapsed.attentionText == "1 Agent needs attention")
+                statusCounts: counts))
+        #expect(collapsed.showsStatusPills)
+        #expect(collapsed.statusText == "1 blocked, 2 working, 3 done")
         #expect(collapsed.accessibilityValue == "Collapsed")
         #expect(collapsed.accessibilityHint == "Expands this Host.")
         #expect(collapsed.disclosureSystemImage == "chevron.right")

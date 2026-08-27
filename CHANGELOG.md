@@ -18,9 +18,10 @@ Entries reference the issue that motivated them.
 ### Added
 
 - Console can switch between the flat status-sorted Agent list and a by-Host
-  grouped list with collapsible sections; collapsed Hosts still show a
-  Blocked/Done attention count, and both the presentation choice and per-Host
-  collapse state persist across launches. (#245)
+  grouped list with collapsible sections; collapsed Hosts show Live
+  Activity-style Blocked, Working, and Done count pills, and both the
+  presentation choice and per-Host collapse state persist across launches.
+  (#245)
 
 ## [0.1.2] - 2026-08-26
 
