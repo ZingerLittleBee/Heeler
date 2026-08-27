@@ -9,12 +9,12 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
-- Live Activity Lock Screen follows iOS system Light/Dark changes, including
-  existing activities and iOS versions where ActivityKit reports the wrong
-  SwiftUI color scheme, and shares the Console status palette; the Lock Screen
-  shows up to four Agents in a dense hierarchy, stale updates retain an
-  out-of-date caption, and each visible Agent opens its detail while the
-  surrounding activity opens the Console. (#247)
+- Live Activity Lock Screen uses system semantic colors and shares the Console
+  status palette; it shows up to four Agents in a dense hierarchy, stale
+  updates retain an out-of-date caption, and each visible Agent opens its
+  detail while the surrounding activity opens the Console. An iOS 27
+  ActivityKit regression can still force the Dark appearance and prevent an
+  existing activity from refreshing after a system appearance change. (#247)
 
 ### Added
 

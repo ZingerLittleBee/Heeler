@@ -27,9 +27,8 @@ struct AgentLiveActivityWidget: Widget {
 // MARK: - Surface seam
 
 enum AgentActivitySurface {
-    /// Lock Screen banner. Status colors follow the device appearance
-    /// (Latte in Light, Mocha in Dark) via AgentStatusPalette. The device
-    /// screen trait bypasses ActivityKit's incorrect iOS 26+ color scheme.
+    /// Lock Screen banner. Status colors remain dynamic so ActivityKit can
+    /// resolve Latte in Light appearance and Mocha in Dark appearance.
     case lockScreen
     /// Compact, minimal, and expanded Dynamic Island. Always Mocha,
     /// resolved against a dark trait collection, ignoring ambient Light Mode.
@@ -115,8 +114,8 @@ private struct AgentActivityLockScreenContainer: View {
 }
 
 enum AgentActivityLockScreenChrome {
-    /// Keep these semantic colors unresolved so SwiftUI can redraw the
-    /// lock-screen surface when the system appearance changes.
+    /// Keep these semantic colors unresolved so ActivityKit can apply the
+    /// system appearance when its host provides the correct trait collection.
     static let backgroundColor = UIColor.systemBackground
     static let actionColor = UIColor.label
 }
