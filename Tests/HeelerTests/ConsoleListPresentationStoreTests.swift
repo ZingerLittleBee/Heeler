@@ -140,7 +140,8 @@ struct ConsoleListPresentationStoreTests {
             ])
 
         #expect(sections.count == 2)
-        #expect(sections.allSatisfy(\.agents.isEmpty))
+        #expect(sections[0].agents.isEmpty)
+        #expect(sections[1].agents.isEmpty)
         #expect(sections[0].connectionStatus == .connected)
         #expect(sections[0].statusPresentation == nil)
         #expect(sections[1].connectionStatus == .failed(failure))
