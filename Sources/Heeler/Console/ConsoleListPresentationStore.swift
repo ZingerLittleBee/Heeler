@@ -9,6 +9,14 @@ enum ConsoleListPresentationMode: String, CaseIterable, Identifiable, Sendable {
     case grouped
 
     var id: Self { self }
+
+    /// Toolbar / picker label for the presentation switcher.
+    var title: String {
+        switch self {
+        case .flat: "Status order"
+        case .grouped: "By Host"
+        }
+    }
 }
 
 /// One Host section projected from the Host catalog and the Console's
