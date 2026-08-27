@@ -6,10 +6,25 @@ import UIKit
 
 @Suite("Agent activity presentation")
 struct AgentActivityPresentationTests {
+    private static let statuses: [(wire: String, palette: AgentStatus)] = [
+        ("blocked", .blocked),
+        ("done", .done),
+        ("working", .working),
+        ("unknown", .unknown),
+    ]
+
+    private func agentDetail(
+        paneID: String, status: String = "working"
+    ) -> AgentActivityDetails.AgentDetail {
+        AgentActivityDetails.AgentDetail(
+            paneID: paneID, kind: "claude", name: nil, status: status,
+            title: "Task \(paneID)")
+    }
+
     private func detailedPresentation(
         agentCount: Int, total: AgentActivityAttributes.ContentState.Counts
     ) -> AgentActivityPresentation {
-        let agents = (0..<agentCount).map { agent("w1:p\($0)", "working") }
+        let agents = (0..<agentCount).map { agentDetail(paneID: "w1:p\($0)") }
         return .detailed(
             details: AgentActivityDetails(hostName: "mbp", agents: agents),
             counts: total)
@@ -80,21 +95,66 @@ struct AgentActivityPresentationTests {
         #expect(workingOnly.attentionStatusItem?.count == 3)
     }
 
-    @Test func islandInkUsesMochaEvenWhenResolvedInLightMode() {
-        let lightTraits = UITraitCollection(userInterfaceStyle: .light)
-        let islandBlocked = AgentActivityStatusStyle.ink(for: "blocked", on: .island)
-        let lockScreenBlocked = AgentActivityStatusStyle.ink(for: "blocked", on: .lockScreen)
-
-        let islandUIColor = UIColor(islandBlocked)
-            .resolvedColor(with: lightTraits)
-        let lockScreenUIColor = UIColor(lockScreenBlocked)
-            .resolvedColor(with: lightTraits)
-
-        #expect(rgba(islandUIColor) == rgba(AgentStatus.blocked.inkUIColor, style: .dark))
-        #expect(rgba(lockScreenUIColor) != rgba(AgentStatus.blocked.inkUIColor, style: .dark))
+    @Test func narrationIncludesStatusForIslandAccessibility() {
+        let agent = agentDetail(paneID: "w1:p1", status: "blocked")
+        #expect(AgentActivityNarration.rowLabel(for: agent) == "claude, blocked, Task w1:p1")
     }
 
-    private func rgba(_ color: UIColor, style: UIUserInterfaceStyle) -> [Int] {
+    @Test func lockScreenInkMatchesPaletteForEachAppearance() {
+        for (wire, palette) in Self.statuses {
+            for style in [UIUserInterfaceStyle.light, .dark] {
+                let resolved = rgba(
+                    UIColor(AgentActivityStatusStyle.ink(for: wire, on: .lockScreen)),
+                    style)
+                #expect(resolved == rgba(palette.inkUIColor, style), "\(wire) ink \(style.rawValue)")
+            }
+        }
+    }
+
+    @Test func lockScreenWashMatchesPaletteForEachAppearance() {
+        for (wire, palette) in Self.statuses {
+            for style in [UIUserInterfaceStyle.light, .dark] {
+                let resolved = rgba(
+                    UIColor(AgentActivityStatusStyle.wash(for: wire, on: .lockScreen)),
+                    style)
+                #expect(resolved == rgba(palette.tintUIColor, style), "\(wire) wash \(style.rawValue)")
+            }
+        }
+    }
+
+    @Test func islandInkStaysMochaUnderLightAppearance() {
+        for (wire, palette) in Self.statuses {
+            let resolved = rgba(
+                UIColor(AgentActivityStatusStyle.ink(for: wire, on: .island)),
+                .light)
+            #expect(
+                resolved == rgba(palette.inkUIColor, .dark),
+                "\(wire) island ink must stay Mocha")
+        }
+    }
+
+    @Test func islandWashStaysMochaUnderLightAppearance() {
+        for (wire, palette) in Self.statuses {
+            let resolved = rgba(
+                UIColor(AgentActivityStatusStyle.wash(for: wire, on: .island)),
+                .light)
+            #expect(
+                resolved == rgba(palette.tintUIColor, .dark),
+                "\(wire) island wash must stay Mocha")
+        }
+    }
+
+    @Test func unknownWireStatusMapsToMutedPaletteRole() {
+        let bogus = "haunted"
+        #expect(
+            rgba(UIColor(AgentActivityStatusStyle.ink(for: bogus, on: .lockScreen)), .light)
+                == rgba(AgentStatus.unknown.inkUIColor, .light))
+        #expect(
+            rgba(UIColor(AgentActivityStatusStyle.wash(for: bogus, on: .island)), .light)
+                == rgba(AgentStatus.unknown.tintUIColor, .dark))
+    }
+
+    private func rgba(_ color: UIColor, _ style: UIUserInterfaceStyle) -> [Int] {
         rgba(color.resolvedColor(with: UITraitCollection(userInterfaceStyle: style)))
     }
 

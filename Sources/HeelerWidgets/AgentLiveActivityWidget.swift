@@ -152,11 +152,7 @@ struct AgentActivityLockScreenView: View {
     }
 
     private static func narration(for agent: AgentActivityDetails.AgentDetail) -> String {
-        var row = "\(agent.displayName), \(agent.status)"
-        if let title = agent.displayTitle {
-            row += ", \(title)"
-        }
-        return row
+        AgentActivityNarration.rowLabel(for: agent)
     }
 }
 
@@ -257,6 +253,16 @@ private struct AgentActivityCompactLeading: View {
     }
 }
 
+enum AgentActivityNarration {
+    static func rowLabel(for agent: AgentActivityDetails.AgentDetail) -> String {
+        var row = "\(agent.displayName), \(agent.status)"
+        if let title = agent.displayTitle {
+            row += ", \(title)"
+        }
+        return row
+    }
+}
+
 // MARK: - Shared pieces
 
 /// Applies the Console deep link inside a `body` so the MainActor-isolated
@@ -338,7 +344,7 @@ private struct AgentActivityHeadlineView: View {
     private var isBlocked: Bool { agent.status == "blocked" }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        let content = VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 7) {
                 Circle()
                     .fill(ink)
@@ -357,6 +363,12 @@ private struct AgentActivityHeadlineView: View {
                     .padding(.leading, 15)
             }
         }
+        switch surface {
+        case .island:
+            content.accessibilityLabel(AgentActivityNarration.rowLabel(for: agent))
+        case .lockScreen:
+            content
+        }
     }
 }
 
@@ -373,7 +385,7 @@ private struct AgentActivityRowView: View {
     private var wash: Color { AgentActivityStatusStyle.wash(for: agent.status, on: surface) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
+        let content = VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 7) {
                 Circle()
                     .fill(ink)
@@ -401,6 +413,12 @@ private struct AgentActivityRowView: View {
                     .fill(wash.opacity(0.15))
             }
         }
+        switch surface {
+        case .island:
+            content.accessibilityLabel(AgentActivityNarration.rowLabel(for: agent))
+        case .lockScreen:
+            content
+        }
     }
 }
 
@@ -414,6 +432,148 @@ private struct AgentActivityRowView: View {
     ) -> AgentActivityDetails.AgentDetail {
         AgentActivityDetails.AgentDetail(
             paneID: pane, kind: kind, name: name, status: status, title: title)
+    }
+
+    private enum AgentActivityPreviewFixtures {
+        static let longGraphemeTitle = String(repeating: "锁", count: 80)
+        static let longGraphemeName = String(repeating: "屏", count: 80)
+
+        static var mixedOverflow: AgentActivityPresentation {
+            .detailed(
+                details: AgentActivityDetails(
+                    hostName: "mbp",
+                    agents: [
+                        previewAgent(
+                            "blocked", kind: "claude", name: "reviewer", pane: "w1:p1",
+                            title: "Approve the transport refactor plan"),
+                        previewAgent(
+                            "done", kind: "droid", name: "doc-writer", pane: "w1:p2",
+                            title: "API reference draft finished"),
+                        previewAgent(
+                            "working", kind: "grok", name: "la-demo", pane: "w1:p3",
+                            title: "Research ActivityKit budgets"),
+                        previewAgent(
+                            "working", kind: "codex", name: "fixer", pane: "w1:p4",
+                            title: "Chase the flaky pairing test"),
+                        previewAgent(
+                            "working", kind: "claude", pane: "w1:p5",
+                            title: "Refactor the transport queue"),
+                    ]),
+                counts: .init(working: 3, blocked: 1, done: 1))
+        }
+
+        static var singleUnnamedIdentityOnly: AgentActivityPresentation {
+            .detailed(
+                details: AgentActivityDetails(
+                    hostName: "mbp",
+                    agents: [previewAgent("working", kind: "claude", pane: "w1:p1")]),
+                counts: .init(working: 1, blocked: 0, done: 0))
+        }
+
+        static var fourRows: AgentActivityPresentation {
+            .detailed(
+                details: AgentActivityDetails(
+                    hostName: "mbp",
+                    agents: [
+                        previewAgent(
+                            "blocked", kind: "claude", name: "reviewer", pane: "w1:p1",
+                            title: "Approve the transport refactor plan"),
+                        previewAgent(
+                            "working", kind: "claude", pane: "w1:p2",
+                            title: "Refactor the transport queue"),
+                        previewAgent(
+                            "working", kind: "grok", name: "la-demo", pane: "w1:p3",
+                            title: "Write the landing copy"),
+                        previewAgent(
+                            "working", kind: "codex", name: "fixer", pane: "w1:p4",
+                            title: "Chase the flaky pairing test"),
+                    ]),
+                counts: .init(working: 3, blocked: 1, done: 0))
+        }
+
+        static var countsOnly: AgentActivityPresentation {
+            .countsOnly(counts: .init(working: 2, blocked: 1, done: 0))
+        }
+
+        static var longTitle: AgentActivityPresentation {
+            .detailed(
+                details: AgentActivityDetails(
+                    hostName: "mbp",
+                    agents: [
+                        previewAgent(
+                            "blocked", kind: "claude", name: "reviewer", pane: "w1:p1",
+                            title: longGraphemeTitle),
+                        previewAgent("working", kind: "grok", pane: "w1:p2", title: "Second row"),
+                    ]),
+                counts: .init(working: 1, blocked: 1, done: 1))
+        }
+
+        static var longNameWithTitle: AgentActivityPresentation {
+            .detailed(
+                details: AgentActivityDetails(
+                    hostName: "mbp",
+                    agents: [
+                        previewAgent(
+                            "blocked", kind: "claude", name: longGraphemeName, pane: "w1:p1",
+                            title: "Approve the transport refactor plan"),
+                    ]),
+                counts: .init(working: 0, blocked: 1, done: 0))
+        }
+
+        static var longNameNoTitle: AgentActivityPresentation {
+            .detailed(
+                details: AgentActivityDetails(
+                    hostName: "mbp",
+                    agents: [
+                        previewAgent(
+                            "working", kind: "claude", name: longGraphemeName, pane: "w1:p1"),
+                    ]),
+                counts: .init(working: 1, blocked: 0, done: 0))
+        }
+
+        static var staleMaxHeight: AgentActivityPresentation {
+            .detailed(
+                details: AgentActivityDetails(
+                    hostName: "mbp",
+                    agents: [
+                        previewAgent("blocked", kind: "claude", pane: "w1:p1", title: "First"),
+                        previewAgent("done", kind: "droid", pane: "w1:p2", title: "Second"),
+                        previewAgent("working", kind: "grok", pane: "w1:p3", title: "Third"),
+                        previewAgent("working", kind: "codex", pane: "w1:p4", title: "Fourth"),
+                        previewAgent("working", kind: "claude", pane: "w1:p5", title: "Fifth"),
+                    ]),
+                counts: .init(working: 3, blocked: 1, done: 1))
+        }
+
+        static var staleThreeRows: AgentActivityPresentation {
+            .detailed(
+                details: AgentActivityDetails(
+                    hostName: "mbp",
+                    agents: [
+                        previewAgent("blocked", kind: "claude", pane: "w1:p1", title: "First"),
+                        previewAgent("done", kind: "droid", pane: "w1:p2", title: "Second"),
+                        previewAgent("working", kind: "grok", pane: "w1:p3", title: "Third"),
+                    ]),
+                counts: .init(working: 1, blocked: 1, done: 1))
+        }
+
+        static var expandedMixed: AgentActivityPresentation {
+            .detailed(
+                details: AgentActivityDetails(
+                    hostName: "mbp",
+                    agents: [
+                        previewAgent(
+                            "blocked", kind: "claude", name: "reviewer", pane: "w1:p1",
+                            title: "Approve the transport refactor plan"),
+                        previewAgent(
+                            "done", kind: "droid", name: "doc-writer", pane: "w1:p2",
+                            title: "API reference draft finished"),
+                        previewAgent(
+                            "working", kind: "grok", name: "la-demo", pane: "w1:p3",
+                            title: "Research ActivityKit budgets"),
+                    ]),
+                counts: .init(working: 1, blocked: 1, done: 1))
+        }
     }
 
     private func previewLockScreenBanner(
@@ -480,293 +640,82 @@ private struct AgentActivityRowView: View {
         .padding()
     }
 
-    private let longGraphemeTitle = String(repeating: "锁", count: 80)
-    private let longGraphemeName = String(repeating: "屏", count: 80)
-
     #Preview("P1 Mixed + overflow (Light)") {
-        previewLockScreenBanner(
-            .detailed(
-                details: AgentActivityDetails(
-                    hostName: "mbp",
-                    agents: [
-                        previewAgent(
-                            "blocked", kind: "claude", name: "reviewer", pane: "w1:p1",
-                            title: "Approve the transport refactor plan"),
-                        previewAgent(
-                            "done", kind: "droid", name: "doc-writer", pane: "w1:p2",
-                            title: "API reference draft finished"),
-                        previewAgent(
-                            "working", kind: "grok", name: "la-demo", pane: "w1:p3",
-                            title: "Research ActivityKit budgets"),
-                        previewAgent(
-                            "working", kind: "codex", name: "fixer", pane: "w1:p4",
-                            title: "Chase the flaky pairing test"),
-                        previewAgent(
-                            "working", kind: "claude", pane: "w1:p5",
-                            title: "Refactor the transport queue"),
-                    ]),
-                counts: .init(working: 3, blocked: 1, done: 1)),
-            colorScheme: .light)
+        previewLockScreenBanner(AgentActivityPreviewFixtures.mixedOverflow, colorScheme: .light)
     }
 
     #Preview("P1 Mixed + overflow (Dark)") {
-        previewLockScreenBanner(
-            .detailed(
-                details: AgentActivityDetails(
-                    hostName: "mbp",
-                    agents: [
-                        previewAgent(
-                            "blocked", kind: "claude", name: "reviewer", pane: "w1:p1",
-                            title: "Approve the transport refactor plan"),
-                        previewAgent(
-                            "done", kind: "droid", name: "doc-writer", pane: "w1:p2",
-                            title: "API reference draft finished"),
-                        previewAgent(
-                            "working", kind: "grok", name: "la-demo", pane: "w1:p3",
-                            title: "Research ActivityKit budgets"),
-                        previewAgent(
-                            "working", kind: "codex", name: "fixer", pane: "w1:p4",
-                            title: "Chase the flaky pairing test"),
-                        previewAgent(
-                            "working", kind: "claude", pane: "w1:p5",
-                            title: "Refactor the transport queue"),
-                    ]),
-                counts: .init(working: 3, blocked: 1, done: 1)),
-            colorScheme: .dark)
+        previewLockScreenBanner(AgentActivityPreviewFixtures.mixedOverflow, colorScheme: .dark)
     }
 
-    #Preview("P2 Single unnamed working (Light)") {
+    #Preview("P2 Unnamed identity only (Light)") {
         previewLockScreenBanner(
-            .detailed(
-                details: AgentActivityDetails(
-                    hostName: "mbp",
-                    agents: [
-                        previewAgent(
-                            "working", kind: "claude", pane: "w1:p1",
-                            title: "◑ lockscreen-agent-live-activity")
-                    ]),
-                counts: .init(working: 1, blocked: 0, done: 0)),
-            colorScheme: .light)
+            AgentActivityPreviewFixtures.singleUnnamedIdentityOnly, colorScheme: .light)
     }
 
-    #Preview("P2 Single unnamed working (Dark)") {
+    #Preview("P2 Unnamed identity only (Dark)") {
         previewLockScreenBanner(
-            .detailed(
-                details: AgentActivityDetails(
-                    hostName: "mbp",
-                    agents: [
-                        previewAgent(
-                            "working", kind: "claude", pane: "w1:p1",
-                            title: "◑ lockscreen-agent-live-activity")
-                    ]),
-                counts: .init(working: 1, blocked: 0, done: 0)),
-            colorScheme: .dark)
+            AgentActivityPreviewFixtures.singleUnnamedIdentityOnly, colorScheme: .dark)
     }
 
     #Preview("P3 Four rows (Light)") {
-        previewLockScreenBanner(
-            .detailed(
-                details: AgentActivityDetails(
-                    hostName: "mbp",
-                    agents: [
-                        previewAgent(
-                            "blocked", kind: "claude", name: "reviewer", pane: "w1:p1",
-                            title: "Approve the transport refactor plan"),
-                        previewAgent(
-                            "working", kind: "claude", pane: "w1:p2",
-                            title: "Refactor the transport queue"),
-                        previewAgent(
-                            "working", kind: "grok", name: "la-demo", pane: "w1:p3",
-                            title: "Write the landing copy"),
-                        previewAgent(
-                            "working", kind: "codex", name: "fixer", pane: "w1:p4",
-                            title: "Chase the flaky pairing test"),
-                    ]),
-                counts: .init(working: 3, blocked: 1, done: 0)),
-            colorScheme: .light)
+        previewLockScreenBanner(AgentActivityPreviewFixtures.fourRows, colorScheme: .light)
     }
 
     #Preview("P3 Four rows (Dark)") {
-        previewLockScreenBanner(
-            .detailed(
-                details: AgentActivityDetails(
-                    hostName: "mbp",
-                    agents: [
-                        previewAgent(
-                            "blocked", kind: "claude", name: "reviewer", pane: "w1:p1",
-                            title: "Approve the transport refactor plan"),
-                        previewAgent(
-                            "working", kind: "claude", pane: "w1:p2",
-                            title: "Refactor the transport queue"),
-                        previewAgent(
-                            "working", kind: "grok", name: "la-demo", pane: "w1:p3",
-                            title: "Write the landing copy"),
-                        previewAgent(
-                            "working", kind: "codex", name: "fixer", pane: "w1:p4",
-                            title: "Chase the flaky pairing test"),
-                    ]),
-                counts: .init(working: 3, blocked: 1, done: 0)),
-            colorScheme: .dark)
+        previewLockScreenBanner(AgentActivityPreviewFixtures.fourRows, colorScheme: .dark)
     }
 
     #Preview("P4 Counts only (Light)") {
-        previewLockScreenBanner(
-            .countsOnly(counts: .init(working: 2, blocked: 1, done: 0)),
-            colorScheme: .light)
+        previewLockScreenBanner(AgentActivityPreviewFixtures.countsOnly, colorScheme: .light)
     }
 
     #Preview("P4 Counts only (Dark)") {
-        previewLockScreenBanner(
-            .countsOnly(counts: .init(working: 2, blocked: 1, done: 0)),
-            colorScheme: .dark)
+        previewLockScreenBanner(AgentActivityPreviewFixtures.countsOnly, colorScheme: .dark)
     }
 
     #Preview("P5 Long title (Light)") {
-        previewLockScreenBanner(
-            .detailed(
-                details: AgentActivityDetails(
-                    hostName: "mbp",
-                    agents: [
-                        previewAgent(
-                            "blocked", kind: "claude", name: "reviewer", pane: "w1:p1",
-                            title: longGraphemeTitle),
-                        previewAgent("working", kind: "grok", pane: "w1:p2", title: "Second row"),
-                    ]),
-                counts: .init(working: 1, blocked: 1, done: 1)),
-            colorScheme: .light)
+        previewLockScreenBanner(AgentActivityPreviewFixtures.longTitle, colorScheme: .light)
     }
 
     #Preview("P5 Long title (Dark)") {
-        previewLockScreenBanner(
-            .detailed(
-                details: AgentActivityDetails(
-                    hostName: "mbp",
-                    agents: [
-                        previewAgent(
-                            "blocked", kind: "claude", name: "reviewer", pane: "w1:p1",
-                            title: longGraphemeTitle),
-                        previewAgent("working", kind: "grok", pane: "w1:p2", title: "Second row"),
-                    ]),
-                counts: .init(working: 1, blocked: 1, done: 1)),
-            colorScheme: .dark)
+        previewLockScreenBanner(AgentActivityPreviewFixtures.longTitle, colorScheme: .dark)
     }
 
     #Preview("P5a Long name with title (Light)") {
-        previewLockScreenBanner(
-            .detailed(
-                details: AgentActivityDetails(
-                    hostName: "mbp",
-                    agents: [
-                        previewAgent(
-                            "blocked", kind: "claude", name: longGraphemeName, pane: "w1:p1",
-                            title: "Approve the transport refactor plan"),
-                    ]),
-                counts: .init(working: 0, blocked: 1, done: 0)),
-            colorScheme: .light)
+        previewLockScreenBanner(AgentActivityPreviewFixtures.longNameWithTitle, colorScheme: .light)
     }
 
     #Preview("P5a Long name with title (Dark)") {
-        previewLockScreenBanner(
-            .detailed(
-                details: AgentActivityDetails(
-                    hostName: "mbp",
-                    agents: [
-                        previewAgent(
-                            "blocked", kind: "claude", name: longGraphemeName, pane: "w1:p1",
-                            title: "Approve the transport refactor plan"),
-                    ]),
-                counts: .init(working: 0, blocked: 1, done: 0)),
-            colorScheme: .dark)
+        previewLockScreenBanner(AgentActivityPreviewFixtures.longNameWithTitle, colorScheme: .dark)
     }
 
     #Preview("P5b Long name, no title (Light)") {
-        previewLockScreenBanner(
-            .detailed(
-                details: AgentActivityDetails(
-                    hostName: "mbp",
-                    agents: [
-                        previewAgent(
-                            "working", kind: "claude", name: longGraphemeName, pane: "w1:p1"),
-                    ]),
-                counts: .init(working: 1, blocked: 0, done: 0)),
-            colorScheme: .light)
+        previewLockScreenBanner(AgentActivityPreviewFixtures.longNameNoTitle, colorScheme: .light)
     }
 
     #Preview("P5b Long name, no title (Dark)") {
-        previewLockScreenBanner(
-            .detailed(
-                details: AgentActivityDetails(
-                    hostName: "mbp",
-                    agents: [
-                        previewAgent(
-                            "working", kind: "claude", name: longGraphemeName, pane: "w1:p1"),
-                    ]),
-                counts: .init(working: 1, blocked: 0, done: 0)),
-            colorScheme: .dark)
+        previewLockScreenBanner(AgentActivityPreviewFixtures.longNameNoTitle, colorScheme: .dark)
     }
 
     #Preview("P6 Stale max height (Light)") {
         previewLockScreenBanner(
-            .detailed(
-                details: AgentActivityDetails(
-                    hostName: "mbp",
-                    agents: [
-                        previewAgent("blocked", kind: "claude", pane: "w1:p1", title: "First"),
-                        previewAgent("done", kind: "droid", pane: "w1:p2", title: "Second"),
-                        previewAgent("working", kind: "grok", pane: "w1:p3", title: "Third"),
-                        previewAgent("working", kind: "codex", pane: "w1:p4", title: "Fourth"),
-                        previewAgent("working", kind: "claude", pane: "w1:p5", title: "Fifth"),
-                    ]),
-                counts: .init(working: 3, blocked: 1, done: 1)),
-            colorScheme: .light,
-            isStale: true)
+            AgentActivityPreviewFixtures.staleMaxHeight, colorScheme: .light, isStale: true)
     }
 
     #Preview("P6 Stale max height (Dark)") {
         previewLockScreenBanner(
-            .detailed(
-                details: AgentActivityDetails(
-                    hostName: "mbp",
-                    agents: [
-                        previewAgent("blocked", kind: "claude", pane: "w1:p1", title: "First"),
-                        previewAgent("done", kind: "droid", pane: "w1:p2", title: "Second"),
-                        previewAgent("working", kind: "grok", pane: "w1:p3", title: "Third"),
-                        previewAgent("working", kind: "codex", pane: "w1:p4", title: "Fourth"),
-                        previewAgent("working", kind: "claude", pane: "w1:p5", title: "Fifth"),
-                    ]),
-                counts: .init(working: 3, blocked: 1, done: 1)),
-            colorScheme: .dark,
-            isStale: true)
+            AgentActivityPreviewFixtures.staleMaxHeight, colorScheme: .dark, isStale: true)
     }
 
     #Preview("P6b Stale three rows (Light)") {
         previewLockScreenBanner(
-            .detailed(
-                details: AgentActivityDetails(
-                    hostName: "mbp",
-                    agents: [
-                        previewAgent("blocked", kind: "claude", pane: "w1:p1", title: "First"),
-                        previewAgent("done", kind: "droid", pane: "w1:p2", title: "Second"),
-                        previewAgent("working", kind: "grok", pane: "w1:p3", title: "Third"),
-                    ]),
-                counts: .init(working: 1, blocked: 1, done: 1)),
-            colorScheme: .light,
-            isStale: true)
+            AgentActivityPreviewFixtures.staleThreeRows, colorScheme: .light, isStale: true)
     }
 
     #Preview("P6b Stale three rows (Dark)") {
         previewLockScreenBanner(
-            .detailed(
-                details: AgentActivityDetails(
-                    hostName: "mbp",
-                    agents: [
-                        previewAgent("blocked", kind: "claude", pane: "w1:p1", title: "First"),
-                        previewAgent("done", kind: "droid", pane: "w1:p2", title: "Second"),
-                        previewAgent("working", kind: "grok", pane: "w1:p3", title: "Third"),
-                    ]),
-                counts: .init(working: 1, blocked: 1, done: 1)),
-            colorScheme: .dark,
-            isStale: true)
+            AgentActivityPreviewFixtures.staleThreeRows, colorScheme: .dark, isStale: true)
     }
 
     #Preview("P7 Compact blocked (Light island)") {
@@ -792,21 +741,6 @@ private struct AgentActivityRowView: View {
     }
 
     #Preview("P11 Expanded mixed (Light island)") {
-        previewIslandExpanded(
-            .detailed(
-                details: AgentActivityDetails(
-                    hostName: "mbp",
-                    agents: [
-                        previewAgent(
-                            "blocked", kind: "claude", name: "reviewer", pane: "w1:p1",
-                            title: "Approve the transport refactor plan"),
-                        previewAgent(
-                            "done", kind: "droid", name: "doc-writer", pane: "w1:p2",
-                            title: "API reference draft finished"),
-                        previewAgent(
-                            "working", kind: "grok", name: "la-demo", pane: "w1:p3",
-                            title: "Research ActivityKit budgets"),
-                    ]),
-                counts: .init(working: 1, blocked: 1, done: 1)))
+        previewIslandExpanded(AgentActivityPreviewFixtures.expandedMixed)
     }
 #endif
