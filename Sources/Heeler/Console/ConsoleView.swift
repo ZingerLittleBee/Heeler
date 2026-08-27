@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// The Console home screen (#8): the flat, status-sorted Agent list across
-/// every Host. Host management (#14) lives behind the toolbar button.
+/// The Console home screen (#8): Agents across every Host, shown either as
+/// the flat status-sorted list or grouped by Host with collapsible sections
+/// (#245). Host management (#14) lives behind the toolbar button.
 struct ConsoleView: View {
     let hosts: HostStore
     let console: ConsoleStore
@@ -27,9 +28,11 @@ struct ConsoleView: View {
     /// 1.2 s visual-feedback hold after `retryHost` returns. Distinct from
     /// `EventsSessionStatus.reconnecting`.
     @State private var manualReconnectInFlightHostIDs: Set<Host.ID> = []
-    /// Narrows the flat list to one Host; nil shows every Host. The list
-    /// stays flat either way — this is a filter, not a grouping level.
+    /// Narrows the Agent list to one Host; nil shows every Host. This is a
+    /// filter in both presentations, not a second grouping mechanism.
     @State private var hostFilter: Host.ID?
+    /// Owns flat/grouped mode and per-Host collapsed state (#245).
+    @State private var listPresentation = ConsoleListPresentationStore()
     /// Outlives the detail column's rebuilds, which is the whole point: it
     /// carries the raised keyboard from one Attach screen to the next.
     @State private var keyboardHandoff = TerminalKeyboardHandoff()
@@ -41,6 +44,7 @@ struct ConsoleView: View {
     /// from the middle of the screen to the middle of the terminal.
     @State private var keyboardInset = TerminalKeyboardInset()
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         // A split view instead of a plain stack for the iPad's sake: regular
@@ -69,6 +73,25 @@ struct ConsoleView: View {
                                     }
                                 }
                             }
+                        }
+                    }
+                    if !hosts.hosts.isEmpty {
+                        ToolbarItem(placement: .primaryAction) {
+                            Menu {
+                                Picker("Presentation", selection: presentationModeBinding) {
+                                    ForEach(ConsoleListPresentationMode.allCases) { mode in
+                                        Text(mode.title).tag(mode)
+                                    }
+                                }
+                            } label: {
+                                Label(
+                                    "Presentation",
+                                    systemImage: listPresentation.mode == .grouped
+                                        ? "list.bullet.rectangle"
+                                        : "list.bullet")
+                            }
+                            .accessibilityLabel("Agent list presentation")
+                            .accessibilityValue(listPresentation.mode.title)
                         }
                     }
                     ToolbarItem(placement: .primaryAction) {
@@ -304,38 +327,71 @@ struct ConsoleView: View {
             }
         case .rows:
             List(selection: selectedAgent) {
-                ForEach(visibleHostIssues) { issue in
-                    if issue.navigates {
-                        Button { presentHosts(issue.hostID) } label: {
-                            hostIssueRow(issue, showsChevron: true)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityHint("Opens this Host's settings.")
-                    } else {
-                        hostIssueRow(issue, showsChevron: false)
-                    }
-                }
-                ForEach(filteredAgents) { agent in
-                    NavigationLink(value: agent.id) {
-                        AgentCardView(
-                            agent: agent,
-                            isPinned: console.pins.isPinned(
-                                hostID: agent.hostID, paneID: agent.agent.paneID))
-                    }
-                    .contextMenu {
-                        let pinned = console.pins.isPinned(
-                            hostID: agent.hostID, paneID: agent.agent.paneID)
-                        Button(
-                            pinned ? "Unpin" : "Pin",
-                            systemImage: pinned ? "pin.slash" : "pin"
-                        ) {
-                            console.togglePin(
-                                hostID: agent.hostID, paneID: agent.agent.paneID)
-                        }
-                    }
+                if listPresentation.mode == .flat {
+                    flatAgentListRows
+                } else {
+                    groupedAgentListRows
                 }
             }
             .listStyle(.plain)
+        }
+    }
+
+    @ViewBuilder
+    private var flatAgentListRows: some View {
+        ForEach(visibleHostIssues) { issue in
+            if issue.navigates {
+                Button { presentHosts(issue.hostID) } label: {
+                    hostIssueRow(issue, showsChevron: true)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens this Host's settings.")
+            } else {
+                hostIssueRow(issue, showsChevron: false)
+            }
+        }
+        ForEach(filteredAgents) { agent in
+            agentRow(agent)
+        }
+    }
+
+    @ViewBuilder
+    private var groupedAgentListRows: some View {
+        ForEach(hostSections) { section in
+            Section {
+                if !section.isCollapsed {
+                    ForEach(section.agents) { agent in
+                        agentRow(agent)
+                    }
+                }
+            } header: {
+                ConsoleHostSectionHeaderView(
+                    presentation: ConsoleHostSectionHeaderPresentation(section: section)
+                ) {
+                    toggleHostSection(section.hostID)
+                }
+                .textCase(nil)
+            }
+        }
+    }
+
+    private func agentRow(_ agent: ConsoleAgent) -> some View {
+        NavigationLink(value: agent.id) {
+            AgentCardView(
+                agent: agent,
+                isPinned: console.pins.isPinned(
+                    hostID: agent.hostID, paneID: agent.agent.paneID))
+        }
+        .contextMenu {
+            let pinned = console.pins.isPinned(
+                hostID: agent.hostID, paneID: agent.agent.paneID)
+            Button(
+                pinned ? "Unpin" : "Pin",
+                systemImage: pinned ? "pin.slash" : "pin"
+            ) {
+                console.togglePin(
+                    hostID: agent.hostID, paneID: agent.agent.paneID)
+            }
         }
     }
 
@@ -344,7 +400,32 @@ struct ConsoleView: View {
             hostCount: hosts.hosts.count,
             filteredHostName: hostFilter == nil ? nil : filteredHostName,
             filteredAgentCount: filteredAgents.count,
-            visibleIssueCount: visibleHostIssues.count)
+            visibleIssueCount: visibleHostIssues.count,
+            presentationMode: listPresentation.mode,
+            projectedSectionCount: hostSections.count)
+    }
+
+    private var hostSections: [ConsoleHostSection] {
+        listPresentation.sections(
+            hosts: hosts.hosts,
+            console: console,
+            filteredHostID: hostFilter)
+    }
+
+    private var presentationModeBinding: Binding<ConsoleListPresentationMode> {
+        Binding(
+            get: { listPresentation.mode },
+            set: { listPresentation.select($0) })
+    }
+
+    private func toggleHostSection(_ hostID: Host.ID) {
+        if reduceMotion {
+            listPresentation.toggleCollapsed(hostID)
+        } else {
+            withAnimation(.snappy) {
+                listPresentation.toggleCollapsed(hostID)
+            }
+        }
     }
 
     private var filteredAgents: [ConsoleAgent] {
@@ -582,5 +663,50 @@ struct MissingAgentPresentation: Equatable {
             hosts: hosts.hosts,
             hostsAwaitingSnapshot: console.hostsAwaitingSnapshot,
             hostStandingFailures: console.hostStandingFailures)
+    }
+}
+
+/// Collapsible Host-section header for the grouped Console list (#245).
+private struct ConsoleHostSectionHeaderView: View {
+    let presentation: ConsoleHostSectionHeaderPresentation
+    let onToggle: () -> Void
+
+    var body: some View {
+        Button(action: onToggle) {
+            HStack(spacing: 8) {
+                Image(systemName: presentation.disclosureSystemImage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 12, alignment: .center)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(presentation.hostDisplayName)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(presentation.readinessText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                if presentation.showsAttentionBadge {
+                    Text("\(presentation.attentionCount)")
+                        .font(.caption2.weight(.semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.orange, in: Capsule())
+                        .accessibilityHidden(true)
+                }
+            }
+            .contentShape(Rectangle())
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(presentation.accessibilityLabel)
+        .accessibilityValue(presentation.accessibilityValue)
+        .accessibilityHint(presentation.accessibilityHint)
+        .accessibilityAddTraits(.isHeader)
     }
 }
