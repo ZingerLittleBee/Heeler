@@ -250,7 +250,7 @@ private struct AgentActivityCompactLeading: View {
                 .padding(.horizontal, 5)
                 .padding(.vertical, 1)
                 .background(
-                    AgentActivityStatusStyle.ink(for: item.status, on: .island).opacity(0.22),
+                    AgentActivityStatusStyle.wash(for: item.status, on: .island).opacity(0.22),
                     in: Capsule())
                 .accessibilityLabel("\(item.count) \(item.status)")
         }
