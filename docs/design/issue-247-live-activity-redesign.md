@@ -29,7 +29,7 @@ Grounded in issue #247, ADR 0014, `docs/agents/live-activity-contract.md`, and `
 - **One Live Activity per Host, aggregate list.** Not one activity per Agent. Envelope order is pin-aware, then `blocked > done > working`. The widget must not re-sort.
 - **Attention order is Blocked, then Done, then Working.** Console sort buckets and the Live Activity envelope both use this because Blocked is waiting on an answer, Done has a result to read, and Working needs nothing (`Sources/Heeler/Console/ConsoleAgent.swift` `consoleSortBucket`; `docs/agents/live-activity-contract.md`). Any widget presentation that shows a *single* status count uses this order. Chip capsules are different: they enumerate every non-zero count and keep today's order (`blocked`, `working`, `done` in `chipItems`).
 - **Eligible statuses on the wire:** `working`, `blocked`, `done`. Idle and unknown are hidden. There is no `error`, `waiting`, or `disconnected` string in `ContentState`. The widget cannot represent disconnection as its own state (see Content-state matrix).
-- **Lock Screen budget:** Apple may truncate above 160 pt. The first row keeps the two-line hierarchy; up to four secondary rows use a compact single line. Fresh shows at most five rows, stale at most four, with overflow and stale state sharing one caption2 line. Padding is 14 pt horizontal / 10 pt vertical; row spacing is 5 pt.
+- **Lock Screen budget:** Apple may truncate above 160 pt. The first row keeps the two-line hierarchy; up to three secondary rows use a compact single line. The Lock Screen shows at most four independently linked rows, with overflow and stale state sharing one caption2 line. Padding is 14 pt horizontal / 8 pt vertical; row spacing is 2 pt.
 - **Hierarchy per row:** task `title` on top (status glyphs stripped), identity (`name` else `kind`) indented beneath; missing title promotes identity. Host name is never rendered.
 - **Deep links:** each row is a `Link` to that Agent's detail (`heeler://agent/{hostID}/{paneID}`). Taps outside a row, and every Dynamic Island compact/minimal tap, open the Console (`heeler://agent/{hostID}`).
 - **Counts chips** enumerate non-zero counts in existing `chipItems` order (`blocked`, `working`, `done`). Zero counts omitted. Chips are `fixedSize()` so the title truncates first.
@@ -77,8 +77,8 @@ Apple HIG Lock Screen gallery (same page as #1) also showed system examples: Foo
 3. **Island is a different surface.** Dynamic Island is always black. It keeps Mocha inks even when the Lock Screen is Latte. Shared views take an explicit `AgentActivitySurface`; they must not read ambient `colorScheme` to pick status color.
 4. **Attention order is Blocked, then Done, then Working.** Same as Console and the envelope. Compact leading and any other single-count pick follow it. Blocked is the only shouted *visual* (wash + ink title).
 5. **Glance, then identity.** Status and counts are the first read. Task title is the second. Agent name/kind is the third. Host is never shown.
-6. **One large interaction target.** No app icon, wordmark, progress bar, map, or row controls. Apple recommends a 44×44 pt default iOS target and prefers one interactive element in a Live Activity. The whole activity opens Console; rows are glanceable information.
-7. **Fit the 160 pt budget; do not fill it.** Fresh shows up to five rows using compact secondary rows. Stale shows up to four, with overflow and the stale caption sharing one caption2 line. Shorter inventories stay short.
+6. **Rows deep-link to Agents.** No app icon, wordmark, progress bar, map, or action buttons. Apple supports multiple `Link` controls in Lock Screen and expanded Live Activity presentations. One to three rows use the default 44 pt iOS control height; four rows use Apple's 28 pt minimum dense control height. Taps outside a row open Console.
+7. **Fit the 160 pt budget; do not fill it.** Lock Screen shows up to four rows using compact secondary rows, with overflow and the stale caption sharing one caption2 line. Shorter inventories stay short.
 8. **Do not copy another product's artwork.** Distill structure (headline / secondary / metric / snug island) and throw away brand fills, mascots, and steppers.
 
 ## Rejected alternatives
@@ -228,17 +228,17 @@ Always-On and Increase Contrast were not measured on device. System material and
 │              identity]          [chips →]    │  header: first agent + chips
 │ [row 2: dot + title · identity]               │  5 pt stack spacing
 │ [row 3: …]                                   │
-│ [row 4 / row 5 / trailing caption2]           │  see row-cap rules
+│ [row 4 / trailing caption2]                   │  see row-cap rules
 └──────────────────────────────────────────────┘
   padding: 14 horizontal, 10 vertical
   height: system-sized, never above 160 pt
 ```
 
-Keep `AgentActivityLockScreenView`'s stack. Changes are tokens, `surface: .lockScreen` on shared views, stale-aware row caps, a single trailing caption2, and previews.
+Keep `AgentActivityLockScreenView`'s stack. Changes are tokens, `surface: .lockScreen` on shared views, row deep links, a single trailing caption2, and previews.
 
 **Header.** First visible agent is the full-density `AgentActivityRowView(..., surface: .lockScreen)`. Chips stay trailing, `AgentActivityCountChips(..., surface: .lockScreen)`, `fixedSize()`, never wrap. When no agents are visible (counts-only), headline is `Text(presentation.headerTitle)` at `.subheadline.weight(.semibold)`, `Color.primary`, `lineLimit(1)`.
 
-**Rows.** The first row retains title over identity. Secondary rows place `title · identity` on one line in envelope order. Blocked wash stays. Rows are not independent controls; the complete activity is the sole Console link.
+**Rows.** The first row retains title over identity. Secondary rows place `title · identity` on one line in envelope order. Blocked wash stays. Each row is a full-width `Link` to that Agent; the complete activity keeps a Console `widgetURL` fallback for taps outside the rows.
 
 **Row cap and overflow (stale-aware).** Replace the current `lockScreenAgents` / `lockScreenOverflowCount` (which key only on `counts.total`) with helpers that also take `isStale`. Suggested shape on `AgentActivityPresentation`:
 
@@ -252,8 +252,8 @@ Cap:
 | `isStale` | `counts.total` | Visible agent rows | Trailing caption2 |
 | --- | --- | --- | --- |
 | false | 0 | 0 (counts-only headline) | none, unless Debug decrypt copy |
-| false | 1…5 | `total` (all fit) | none |
-| false | ≥ 6 | 5 | `+N more` (`N = total − 5`) |
+| false | 1…4 | `total` (all fit) | none |
+| false | ≥ 5 | 4 | `+N more` (`N = total − 4`) |
 | true | 0 | 0 | `May be out of date` |
 | true | 1…4 | `total` | `May be out of date` |
 | true | ≥ 5 | 4 | `+N more · May be out of date` (`N = total − 4`) |
@@ -262,10 +262,10 @@ Overflow count is always `max(0, counts.total − visibleRows)` and is zero in c
 
 Overflow and stale share one `.caption2` / `text.secondary` line, with a middle dot (` · `) when both apply. Do not draw a separate stale line. When `isStale && total >= 5`, show four rows and fold overflow into the trailing line.
 
-**Maximum-height cases (both must stay ≤ 160 pt):**
+**Maximum-height cases (all must stay ≤ 160 pt):**
 
-1. Fresh, `total == 5`: one full row plus four compact rows, no caption2.
-2. Fresh, `total >= 6`: one full row plus four compact rows and `+N more`.
+1. Fresh, `total == 4`: one full row plus three compact rows, no caption2.
+2. Fresh, `total >= 5`: one full row plus three compact rows and `+N more`.
 3. Stale, `total >= 5`: one full row plus three compact rows and `+N more · May be out of date`.
 
 DEBUG decrypt reason stays Debug-only and is out of the production height budget.
@@ -297,7 +297,7 @@ Keep content snug; no extra padding against the camera. Capsule horizontal paddi
 
 - Center: primary agent as `AgentActivityHeadlineView(agent:surface: .island)` (or `"Heeler"` when counts-only).
 - Bottom: secondary agents (`rowLimit - 1` = 2) via `AgentActivityRowView(..., surface: .island)`, overflow line, then `AgentActivityCountChips(..., surface: .island)`.
-- Interaction: one Console `widgetURL` on the complete `DynamicIsland`; no per-agent `Link` targets.
+- Interaction: Agent rows use per-Agent `Link` targets in the expanded presentation. One Console `widgetURL` on the complete `DynamicIsland` handles compact, minimal, and expanded chrome taps.
 
 Island type stays slightly larger than Lock Screen rows for the primary (`.subheadline` / `.footnote`) and `.caption` for secondaries. Status dots: 8 pt primary, 7 pt rows. All inks Mocha via `.island`.
 
@@ -338,7 +338,7 @@ Unchanged enumeration, retokened through `surface`:
 ### Interaction and system actions
 
 - Apply one Console `widgetURL` to the complete Lock Screen view and one to the complete `DynamicIsland`.
-- Do not add per-row `Link` controls. The activity itself is comfortably larger than Apple's recommended 44×44 pt iOS target, and one destination avoids adjacent-target mistakes.
+- Use full-width per-row `Link` controls. One to three Lock Screen rows use 44 pt minimum height; four rows use the documented 28 pt dense minimum. Link targets must not overlap. Compact and minimal presentations keep one Console target.
 - Do not add `Button` / App Intent controls.
 - System End: default color (`nil`). Verify on device that the generated End label is readable on both appearances; that is an acceptance item, not a token to pre-empt.
 
@@ -385,7 +385,7 @@ Idle and unknown Agents are not in the activity. An empty eligible inventory end
 
 4. **`isStale` is Lock Screen-only.** Pass `context.isStale` into `AgentActivityLockScreenView` only. Do not add it to `AgentActivityIsland.make`.
 
-5. **Row cap.** Change `AgentActivityPresentation.lockScreenAgents` / `lockScreenOverflowCount` to take `isStale` and implement the table in Lock Screen anatomy. The Lock Screen view uses those helpers and draws at most one trailing caption2.
+5. **Row cap.** `AgentActivityPresentation.lockScreenAgents` draws at most four independently linked rows. The Lock Screen view uses those helpers and draws at most one trailing caption2.
 
 6. **Compact leading.** Replace the `ellipsis` branch with the first non-zero of `blocked`, then `done`, then `working`. Keep the capsule treatment. Mocha via `.island`.
 
@@ -453,7 +453,7 @@ Xcode canvas previews are the development check. They **do not** replace a physi
 | D3 | Always-On reduced luminance | **Device-required** | **Device-required** | Lock Screen | Status dots still distinguishable |
 | D4 | Increase Contrast | **Device-required** | **Device-required** | Lock Screen | No lost text on washes |
 | D5 | StandBy (Lock Screen ×2) | **Device-required** | **Device-required** | StandBy | Default material blends; 14 pt inset does not clip |
-| D6 | Tap anywhere in activity | **Device-required** | | Lock Screen | Entire activity → Console; no adjacent row targets |
+| D6 | Tap Agent rows and surrounding chrome | **Device-required** | | Lock Screen | Each row → matching Agent detail; surrounding chrome → Console; no target overlap |
 | D7 | Compact tap both sides | **Device-required** | | Dynamic Island | Both sides → Console |
 | D8 | Light Mode while island is showing | **Device-required** | | Dynamic Island | Island stays black with Mocha inks; Lock Screen (if shown) is Latte |
 
@@ -466,12 +466,12 @@ No remaining product or ownership choices. Implement the following as specified:
 1. Lock Screen background = system material (`activityBackgroundTint(nil)`). End button = system color (`activitySystemActionForegroundColor(nil)`).
 2. Hex owner is `AgentStatusPalette.swift`. Add that file to `HeelerWidgets.sources` in `project.yml`, regenerate and commit `Heeler.xcodeproj`. Do not duplicate hexes.
 3. Every shared row, headline, and chip takes `surface: AgentActivitySurface`. Lock Screen passes `.lockScreen`. Compact, minimal, and expanded pass `.island`, which resolves Mocha against a dark trait collection. Ambient Light Mode must not tint the island.
-4. Keep the aggregate list, pin-aware envelope order, full first row, compact secondary rows, and no Host name, buttons, logo, or progress bar. Use one Console link for each presentation. Chip enumeration stays `blocked`, `working`, `done`.
+4. Keep the aggregate list, pin-aware envelope order, full first row, compact secondary rows, and no Host name, buttons, logo, or progress bar. Use per-Agent links on Lock Screen and expanded presentations, plus one Console fallback link for each presentation. Chip enumeration stays `blocked`, `working`, `done`.
 5. Compact leading = first non-zero count in attention order: blocked, then done, then working. Never the working ellipsis. Never Working before Done.
-6. Fresh Lock Screen: show up to five rows. Stale Lock Screen: show up to four; trailing caption2 is `May be out of date`, or `+N more · May be out of date` when `total >= 5`. Pass `isStale` only into the Lock Screen view.
+6. Lock Screen: show up to four rows. Stale trailing caption2 is `May be out of date`, or `+N more · May be out of date` when `total >= 5`. Pass `isStale` only into the Lock Screen view.
 7. Disconnected has no widget presentation. Counts-only is decrypt/envelope failure, not disconnection. Stale is only `context.isStale` after content that included a stale date.
 8. Chip wash opacity 0.15 on Lock Screen; blocked-row wash 0.15; island compact capsule 0.22; expanded island chips 0.16.
-9. 14 pt horizontal, 10 pt vertical, 5 pt Lock Screen stack spacing, 7/8 pt dots.
+9. 14 pt horizontal, 8 pt vertical, 2 pt Lock Screen stack spacing, 7/8 pt dots. Row target height is 44 pt for up to three rows and 28 pt for four rows.
 10. Canvas previews: Light and Dark Lock Screen, including P5/P5a/P5b long title and long name (with and without title), P6 stale maximum height, and island previews in a Light environment (Mocha).
 11. Physical Lock Screen Light/Dark remains a required acceptance check before treating #247 as done.
 

@@ -4,10 +4,10 @@ import UIKit
 import WidgetKit
 
 /// Live Activity for one Host. The lock-screen banner gives the leading
-/// agent a full two-line row and packs up to four more agents into compact
+/// agent a full two-line row and packs up to three more agents into compact
 /// rows. Rows arrive in the sender's pin-aware order and are rendered as
-/// given; Host identity is never rendered. The entire activity is one large
-/// interaction target that opens the Console.
+/// given; Host identity is never rendered. Agent rows deep-link to their
+/// detail while the surrounding chrome opens the Console.
 struct AgentLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: AgentActivityAttributes.self) { context in
@@ -83,13 +83,15 @@ struct AgentActivityLockScreenView: View {
     let isStale: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 2) {
             header
             ForEach(visibleAgents.dropFirst(), id: \.paneID) { agent in
-                AgentActivityRowView(
+                AgentActivityLinkedRow(
+                    hostID: hostID,
                     agent: agent,
                     surface: .lockScreen,
-                    density: .compact)
+                    density: .compact,
+                    minimumHeight: rowMinimumHeight)
             }
             if let caption = presentation.lockScreenTrailingCaption(isStale: isStale) {
                 Text(caption)
@@ -106,10 +108,8 @@ struct AgentActivityLockScreenView: View {
             #endif
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
         .widgetURL(AgentActivityLink.consoleURL(hostID: hostID))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(lockScreenAccessibilityLabel)
     }
 
     private var visibleAgents: [AgentActivityDetails.AgentDetail] {
@@ -127,7 +127,11 @@ struct AgentActivityLockScreenView: View {
     @ViewBuilder
     private var headline: some View {
         if let first = visibleAgents.first {
-            AgentActivityRowView(agent: first, surface: .lockScreen)
+            AgentActivityLinkedRow(
+                hostID: hostID,
+                agent: first,
+                surface: .lockScreen,
+                minimumHeight: rowMinimumHeight)
         } else {
             Text(presentation.headerTitle)
                 .font(.subheadline.weight(.semibold))
@@ -136,26 +140,8 @@ struct AgentActivityLockScreenView: View {
         }
     }
 
-    private var lockScreenAccessibilityLabel: String {
-        var parts = [
-            visibleAgents.first.map(Self.narration(for:))
-                ?? presentation.headerTitle
-        ]
-        parts.append(contentsOf: presentation.counts.chipItems.map { "\($0.count) \($0.status)" })
-        for agent in visibleAgents.dropFirst() {
-            parts.append(Self.narration(for: agent))
-        }
-        if presentation.lockScreenOverflowCount(isStale: isStale) > 0 {
-            parts.append("\(presentation.lockScreenOverflowCount(isStale: isStale)) more")
-        }
-        if isStale {
-            parts.append("may be out of date")
-        }
-        return parts.joined(separator: ", ")
-    }
-
-    private static func narration(for agent: AgentActivityDetails.AgentDetail) -> String {
-        AgentActivityNarration.rowLabel(for: agent)
+    private var rowMinimumHeight: CGFloat {
+        AgentActivityRowMetrics.lockScreenMinimumHeight(agentCount: visibleAgents.count)
     }
 }
 
@@ -166,7 +152,13 @@ enum AgentActivityIsland {
         DynamicIsland {
             DynamicIslandExpandedRegion(.center) {
                 if let primary = presentation.primaryAgent {
-                    AgentActivityHeadlineView(agent: primary, surface: .island)
+                    AgentActivityLinked(
+                        hostID: hostID,
+                        agent: primary,
+                        minimumHeight: AgentActivityRowMetrics.denseMinimumHeight
+                    ) {
+                        AgentActivityHeadlineView(agent: primary, surface: .island)
+                    }
                 } else {
                     Text(presentation.headerTitle)
                         .font(.headline)
@@ -177,7 +169,11 @@ enum AgentActivityIsland {
             DynamicIslandExpandedRegion(.bottom) {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(presentation.secondaryAgents, id: \.paneID) { agent in
-                        AgentActivityRowView(agent: agent, surface: .island)
+                        AgentActivityLinkedRow(
+                            hostID: hostID,
+                            agent: agent,
+                            surface: .island,
+                            minimumHeight: AgentActivityRowMetrics.denseMinimumHeight)
                     }
                     if presentation.overflowCount > 0 {
                         Text("+\(presentation.overflowCount) more")
@@ -260,6 +256,57 @@ enum AgentActivityNarration {
 }
 
 // MARK: - Shared pieces
+
+enum AgentActivityRowMetrics {
+    /// Apple's default iOS control size when the presentation has room.
+    static let comfortableMinimumHeight: CGFloat = 44
+    /// Apple's documented minimum iOS control size for dense layouts.
+    static let denseMinimumHeight: CGFloat = 28
+
+    static func lockScreenMinimumHeight(agentCount: Int) -> CGFloat {
+        agentCount <= 3 ? comfortableMinimumHeight : denseMinimumHeight
+    }
+}
+
+/// Wraps row content in a deep link to that Agent's detail. The outer
+/// widgetURL remains the fallback for taps on the surrounding chrome.
+private struct AgentActivityLinked<Content: View>: View {
+    let hostID: String
+    let agent: AgentActivityDetails.AgentDetail
+    let minimumHeight: CGFloat
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        if let url = AgentActivityLink.agentURL(hostID: hostID, paneID: agent.paneID) {
+            Link(destination: url) {
+                content
+                    .frame(maxWidth: .infinity, minHeight: minimumHeight, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .tint(.primary)
+            .accessibilityLabel(AgentActivityNarration.rowLabel(for: agent))
+            .accessibilityHint("Opens this Agent in Heeler")
+        } else {
+            content
+                .frame(maxWidth: .infinity, minHeight: minimumHeight, alignment: .leading)
+        }
+    }
+}
+
+private struct AgentActivityLinkedRow: View {
+    let hostID: String
+    let agent: AgentActivityDetails.AgentDetail
+    let surface: AgentActivitySurface
+    var density: AgentActivityRowDensity = .full
+    let minimumHeight: CGFloat
+
+    var body: some View {
+        AgentActivityLinked(hostID: hostID, agent: agent, minimumHeight: minimumHeight) {
+            AgentActivityRowView(agent: agent, surface: surface, density: density)
+        }
+    }
+}
 
 private enum AgentActivityRowDensity: Equatable {
     case full

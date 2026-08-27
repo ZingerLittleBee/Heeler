@@ -56,12 +56,13 @@ enum AgentActivityPresentation: Equatable, Sendable {
         return max(0, counts.total - shown)
     }
 
-    /// Lock-screen rows. The first row carries the full hierarchy while
-    /// secondary rows render compactly, leaving room for five fresh rows.
+    /// Lock-screen rows. Four is the largest set whose independent tap
+    /// targets and overflow/stale caption stay inside ActivityKit's 160 pt
+    /// presentation budget.
     func lockScreenAgents(isStale: Bool) -> [AgentActivityDetails.AgentDetail] {
         let total = counts.total
         guard total > 0 else { return [] }
-        let visible = min(total, isStale ? 4 : 5)
+        let visible = min(total, 4)
         return Array(agents.prefix(visible))
     }
 

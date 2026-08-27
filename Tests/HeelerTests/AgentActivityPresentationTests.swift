@@ -38,20 +38,20 @@ struct AgentActivityPresentationTests {
         #expect(presentation.lockScreenTrailingCaption(isStale: false) == nil)
     }
 
-    @Test func freshShowsFiveRowsWhenTotalIsFive() {
+    @Test func freshShowsFourRowsAndOverflowWhenTotalIsFive() {
         let presentation = detailedPresentation(
             agentCount: 5, total: .init(working: 5, blocked: 0, done: 0))
-        #expect(presentation.lockScreenAgents(isStale: false).count == 5)
-        #expect(presentation.lockScreenOverflowCount(isStale: false) == 0)
-        #expect(presentation.lockScreenTrailingCaption(isStale: false) == nil)
-    }
-
-    @Test func freshShowsFiveRowsAndOverflowWhenTotalExceedsEnvelopeLimit() {
-        let presentation = detailedPresentation(
-            agentCount: 5, total: .init(working: 6, blocked: 0, done: 0))
-        #expect(presentation.lockScreenAgents(isStale: false).count == 5)
+        #expect(presentation.lockScreenAgents(isStale: false).count == 4)
         #expect(presentation.lockScreenOverflowCount(isStale: false) == 1)
         #expect(presentation.lockScreenTrailingCaption(isStale: false) == "+1 more")
+    }
+
+    @Test func freshShowsFourRowsAndOverflowWhenTotalExceedsEnvelopeLimit() {
+        let presentation = detailedPresentation(
+            agentCount: 5, total: .init(working: 6, blocked: 0, done: 0))
+        #expect(presentation.lockScreenAgents(isStale: false).count == 4)
+        #expect(presentation.lockScreenOverflowCount(isStale: false) == 2)
+        #expect(presentation.lockScreenTrailingCaption(isStale: false) == "+2 more")
     }
 
     @Test func staleShowsFourRowsWhenTotalIsFour() {
@@ -114,6 +114,12 @@ struct AgentActivityPresentationTests {
     @Test func narrationIncludesStatusForIslandAccessibility() {
         let agent = agentDetail(paneID: "w1:p1", status: "blocked")
         #expect(AgentActivityNarration.rowLabel(for: agent) == "claude, blocked, Task w1:p1")
+    }
+
+    @Test func lockScreenRowsUseComfortableAndDenseAppleTargetHeights() {
+        #expect(AgentActivityRowMetrics.lockScreenMinimumHeight(agentCount: 1) == 44)
+        #expect(AgentActivityRowMetrics.lockScreenMinimumHeight(agentCount: 3) == 44)
+        #expect(AgentActivityRowMetrics.lockScreenMinimumHeight(agentCount: 4) == 28)
     }
 
     @Test func lockScreenInkMatchesPaletteForEachAppearance() {

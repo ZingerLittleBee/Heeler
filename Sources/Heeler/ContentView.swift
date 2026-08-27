@@ -130,9 +130,9 @@ struct ContentView: View {
         .onChange(of: console.pins.revision) {
             liveActivities.pinsDidChange()
         }
-        // Live Activity taps land on the Console through one large system
-        // target. Notification links can still name an Agent and route to
-        // its detail through the same URL parser.
+        // Live Activity row links name an Agent; surrounding chrome,
+        // compact, and minimal presentations name only the Host and land on
+        // the Console. Notification links share the same URL parser.
         .onOpenURL { url in
             guard let link = AgentActivityLink.target(from: url) else { return }
             notificationRouter.open(

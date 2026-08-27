@@ -11,9 +11,9 @@ Entries reference the issue that motivated them.
 
 - Live Activity Lock Screen and Dynamic Island use appearance-adaptive
   system material and the shared Console status palette; the Lock Screen
-  shows up to five Agents in a dense hierarchy, stale updates retain an
-  out-of-date caption, and the entire activity uses one large Console link
-  instead of undersized per-row targets. (#247)
+  shows up to four Agents in a dense hierarchy, stale updates retain an
+  out-of-date caption, and each visible Agent opens its detail while the
+  surrounding activity opens the Console. (#247)
 
 ### Added
 
