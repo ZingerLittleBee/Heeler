@@ -103,6 +103,10 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
 /// "No Agents" is a known-empty snapshot, not an unknown inventory. Connecting,
 /// reconnecting, paused, failed, and Connected-awaiting-snapshot all produce
 /// condition rows, so those states take `.rows` rather than the empty claim.
+///
+/// Grouped presentation always takes `.rows` when any Host section is
+/// projected: empty and disconnected Hosts remain visible as sections rather
+/// than collapsing into the flat-list empty claim.
 enum ConsoleAgentsSurface: Equatable {
     case noHosts
     case noAgents
@@ -113,10 +117,14 @@ enum ConsoleAgentsSurface: Equatable {
         hostCount: Int,
         filteredHostName: String?,
         filteredAgentCount: Int,
-        visibleIssueCount: Int
+        visibleIssueCount: Int,
+        presentationMode: ConsoleListPresentationMode = .flat,
+        projectedSectionCount: Int = 0
     ) {
         if hostCount == 0 {
             self = .noHosts
+        } else if presentationMode == .grouped {
+            self = projectedSectionCount > 0 ? .rows : .noHosts
         } else if filteredAgentCount == 0 && visibleIssueCount == 0 {
             if let filteredHostName {
                 self = .noAgentsOnHost(filteredHostName)
@@ -125,6 +133,24 @@ enum ConsoleAgentsSurface: Equatable {
             }
         } else {
             self = .rows
+        }
+    }
+}
+
+/// Where Host connection/readiness issues appear for a presentation mode.
+///
+/// Grouped mode folds those conditions into section headers so the same
+/// failure or loading message is not also listed as a top-of-list row.
+enum ConsoleHostIssuePlacement: Equatable {
+    /// Flat list: global Host-issue rows above the Agent cards.
+    case flatIssueRows
+    /// Grouped list: Host readiness lives on each section header only.
+    case sectionHeaders
+
+    init(mode: ConsoleListPresentationMode) {
+        switch mode {
+        case .flat: self = .flatIssueRows
+        case .grouped: self = .sectionHeaders
         }
     }
 }

@@ -84,7 +84,7 @@ survives. Snapshot worktree metadata also describes the main checkout; only
 _Avoid_: sandbox, branch copy, checkout folder
 
 **Console**:
-The native dashboard surface: the flat, status-sorted list of Agents across Hosts, plus the Agent detail screen.
+The native dashboard surface: Agents across Hosts as either a flat status-sorted list or a by-Host grouped list with collapsible sections, plus the Agent detail screen.
 _Avoid_: dashboard, home
 
 **Pin**:
