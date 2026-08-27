@@ -38,18 +38,34 @@ struct AgentActivityPresentationTests {
         #expect(presentation.lockScreenTrailingCaption(isStale: false) == nil)
     }
 
-    @Test func freshShowsThreeRowsAndOverflowWhenTotalIsFiveOrMore() {
+    @Test func freshShowsFiveRowsWhenTotalIsFive() {
         let presentation = detailedPresentation(
             agentCount: 5, total: .init(working: 5, blocked: 0, done: 0))
-        #expect(presentation.lockScreenAgents(isStale: false).count == 3)
-        #expect(presentation.lockScreenOverflowCount(isStale: false) == 2)
-        #expect(presentation.lockScreenTrailingCaption(isStale: false) == "+2 more")
+        #expect(presentation.lockScreenAgents(isStale: false).count == 5)
+        #expect(presentation.lockScreenOverflowCount(isStale: false) == 0)
+        #expect(presentation.lockScreenTrailingCaption(isStale: false) == nil)
     }
 
-    @Test func staleNeverShowsFourRows() {
+    @Test func freshShowsFiveRowsAndOverflowWhenTotalExceedsEnvelopeLimit() {
+        let presentation = detailedPresentation(
+            agentCount: 5, total: .init(working: 6, blocked: 0, done: 0))
+        #expect(presentation.lockScreenAgents(isStale: false).count == 5)
+        #expect(presentation.lockScreenOverflowCount(isStale: false) == 1)
+        #expect(presentation.lockScreenTrailingCaption(isStale: false) == "+1 more")
+    }
+
+    @Test func staleShowsFourRowsWhenTotalIsFour() {
         let presentation = detailedPresentation(
             agentCount: 4, total: .init(working: 4, blocked: 0, done: 0))
-        #expect(presentation.lockScreenAgents(isStale: true).count == 3)
+        #expect(presentation.lockScreenAgents(isStale: true).count == 4)
+        #expect(presentation.lockScreenOverflowCount(isStale: true) == 0)
+        #expect(presentation.lockScreenTrailingCaption(isStale: true) == "May be out of date")
+    }
+
+    @Test func staleShowsFourRowsAndOverflowWhenTotalExceedsFour() {
+        let presentation = detailedPresentation(
+            agentCount: 5, total: .init(working: 5, blocked: 0, done: 0))
+        #expect(presentation.lockScreenAgents(isStale: true).count == 4)
         #expect(presentation.lockScreenOverflowCount(isStale: true) == 1)
         #expect(presentation.lockScreenTrailingCaption(isStale: true) == "+1 more · May be out of date")
     }

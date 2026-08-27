@@ -10,9 +10,10 @@ Entries reference the issue that motivated them.
 ### Changed
 
 - Live Activity Lock Screen and Dynamic Island use appearance-adaptive
-  system material and the shared Console status palette; stale updates show
-  a reduced row budget and an out-of-date caption on the Lock Screen only.
-  (#247)
+  system material and the shared Console status palette; the Lock Screen
+  shows up to five Agents in a dense hierarchy, stale updates retain an
+  out-of-date caption, and the entire activity uses one large Console link
+  instead of undersized per-row targets. (#247)
 
 ### Added
 

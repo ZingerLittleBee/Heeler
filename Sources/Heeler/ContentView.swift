@@ -130,10 +130,9 @@ struct ContentView: View {
         .onChange(of: console.pins.revision) {
             liveActivities.pinsDidChange()
         }
-        // Live Activity taps: an agent row deep-links to that agent's
-        // detail through the same router notification taps use; a tap
-        // outside any row (compact island, banner chrome) lands on the
-        // Console.
+        // Live Activity taps land on the Console through one large system
+        // target. Notification links can still name an Agent and route to
+        // its detail through the same URL parser.
         .onOpenURL { url in
             guard let link = AgentActivityLink.target(from: url) else { return }
             notificationRouter.open(

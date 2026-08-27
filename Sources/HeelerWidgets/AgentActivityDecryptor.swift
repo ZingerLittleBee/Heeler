@@ -56,17 +56,12 @@ enum AgentActivityPresentation: Equatable, Sendable {
         return max(0, counts.total - shown)
     }
 
-    /// Lock-screen rows, uniform type. Four two-line rows are the ~160pt
-    /// budget's ceiling when fresh; stale never shows four rows.
+    /// Lock-screen rows. The first row carries the full hierarchy while
+    /// secondary rows render compactly, leaving room for five fresh rows.
     func lockScreenAgents(isStale: Bool) -> [AgentActivityDetails.AgentDetail] {
         let total = counts.total
         guard total > 0 else { return [] }
-        let visible: Int
-        if isStale {
-            visible = min(total, 3)
-        } else {
-            visible = total <= 4 ? total : 3
-        }
+        let visible = min(total, isStale ? 4 : 5)
         return Array(agents.prefix(visible))
     }
 

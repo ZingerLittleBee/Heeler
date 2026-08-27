@@ -3,11 +3,11 @@ import SwiftUI
 import UIKit
 import WidgetKit
 
-/// Live Activity for one Host. Lock-screen banner is a uniform agent list
-/// under a ~160pt budget: four rows when everything fits, three plus
-/// "+N more" otherwise. Rows arrive in the sender's pin-aware order and
-/// are rendered as given; Host identity is never rendered. Every agent row is a deep link into that
-/// agent's detail; taps outside a row land on the Console.
+/// Live Activity for one Host. The lock-screen banner gives the leading
+/// agent a full two-line row and packs up to four more agents into compact
+/// rows. Rows arrive in the sender's pin-aware order and are rendered as
+/// given; Host identity is never rendered. The entire activity is one large
+/// interaction target that opens the Console.
 struct AgentLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: AgentActivityAttributes.self) { context in
@@ -83,10 +83,13 @@ struct AgentActivityLockScreenView: View {
     let isStale: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 5) {
             header
             ForEach(visibleAgents.dropFirst(), id: \.paneID) { agent in
-                AgentActivityLinkedRow(hostID: hostID, agent: agent, surface: .lockScreen)
+                AgentActivityRowView(
+                    agent: agent,
+                    surface: .lockScreen,
+                    density: .compact)
             }
             if let caption = presentation.lockScreenTrailingCaption(isStale: isStale) {
                 Text(caption)
@@ -103,7 +106,7 @@ struct AgentActivityLockScreenView: View {
             #endif
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.vertical, 10)
         .widgetURL(AgentActivityLink.consoleURL(hostID: hostID))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(lockScreenAccessibilityLabel)
@@ -124,7 +127,7 @@ struct AgentActivityLockScreenView: View {
     @ViewBuilder
     private var headline: some View {
         if let first = visibleAgents.first {
-            AgentActivityLinkedRow(hostID: hostID, agent: first, surface: .lockScreen)
+            AgentActivityRowView(agent: first, surface: .lockScreen)
         } else {
             Text(presentation.headerTitle)
                 .font(.subheadline.weight(.semibold))
@@ -163,9 +166,7 @@ enum AgentActivityIsland {
         DynamicIsland {
             DynamicIslandExpandedRegion(.center) {
                 if let primary = presentation.primaryAgent {
-                    AgentActivityLinked(hostID: hostID, paneID: primary.paneID) {
-                        AgentActivityHeadlineView(agent: primary, surface: .island)
-                    }
+                    AgentActivityHeadlineView(agent: primary, surface: .island)
                 } else {
                     Text(presentation.headerTitle)
                         .font(.headline)
@@ -176,7 +177,7 @@ enum AgentActivityIsland {
             DynamicIslandExpandedRegion(.bottom) {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(presentation.secondaryAgents, id: \.paneID) { agent in
-                        AgentActivityLinkedRow(hostID: hostID, agent: agent, surface: .island)
+                        AgentActivityRowView(agent: agent, surface: .island)
                     }
                     if presentation.overflowCount > 0 {
                         Text("+\(presentation.overflowCount) more")
@@ -188,31 +189,26 @@ enum AgentActivityIsland {
                 }
             }
         } compactLeading: {
-            AgentActivityConsoleLinked(hostID: hostID) {
-                AgentActivityCompactLeading(counts: presentation.counts)
-            }
+            AgentActivityCompactLeading(counts: presentation.counts)
         } compactTrailing: {
-            AgentActivityConsoleLinked(hostID: hostID) {
-                Text("\(presentation.counts.total)")
-                    .font(.body.weight(.semibold).monospacedDigit())
-                    .accessibilityLabel("\(presentation.counts.total) agents")
-            }
+            Text("\(presentation.counts.total)")
+                .font(.body.weight(.semibold).monospacedDigit())
+                .accessibilityLabel("\(presentation.counts.total) agents")
         } minimal: {
-            AgentActivityConsoleLinked(hostID: hostID) {
-                Text("\(presentation.counts.total)")
-                    .font(
-                        .body.weight(presentation.counts.blocked > 0 ? .bold : .semibold)
-                            .monospacedDigit()
-                    )
-                    .foregroundStyle(
-                        presentation.counts.blocked > 0
-                            ? AgentActivityStatusStyle.ink(for: "blocked", on: .island)
-                            : Color.primary
-                    )
-                    .accessibilityLabel(minimalAccessibilityLabel(counts: presentation.counts))
-            }
+            Text("\(presentation.counts.total)")
+                .font(
+                    .body.weight(presentation.counts.blocked > 0 ? .bold : .semibold)
+                        .monospacedDigit()
+                )
+                .foregroundStyle(
+                    presentation.counts.blocked > 0
+                        ? AgentActivityStatusStyle.ink(for: "blocked", on: .island)
+                        : Color.primary
+                )
+                .accessibilityLabel(minimalAccessibilityLabel(counts: presentation.counts))
         }
         .keylineTint(islandKeylineTint(counts: presentation.counts))
+        .widgetURL(AgentActivityLink.consoleURL(hostID: hostID))
     }
 
     private static func islandKeylineTint(
@@ -265,43 +261,9 @@ enum AgentActivityNarration {
 
 // MARK: - Shared pieces
 
-/// Applies the Console deep link inside a `body` so the MainActor-isolated
-/// `widgetURL` is reachable from the nonisolated DynamicIsland builders.
-private struct AgentActivityConsoleLinked<Content: View>: View {
-    let hostID: String
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        content.widgetURL(AgentActivityLink.consoleURL(hostID: hostID))
-    }
-}
-
-/// Wraps row content in a deep link to that agent's detail; falls back to
-/// plain content when the URL cannot be built (never expected).
-private struct AgentActivityLinked<Content: View>: View {
-    let hostID: String
-    let paneID: String
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        if let url = AgentActivityLink.agentURL(hostID: hostID, paneID: paneID) {
-            Link(destination: url) { content }
-        } else {
-            content
-        }
-    }
-}
-
-private struct AgentActivityLinkedRow: View {
-    let hostID: String
-    let agent: AgentActivityDetails.AgentDetail
-    let surface: AgentActivitySurface
-
-    var body: some View {
-        AgentActivityLinked(hostID: hostID, paneID: agent.paneID) {
-            AgentActivityRowView(agent: agent, surface: surface)
-        }
-    }
+private enum AgentActivityRowDensity: Equatable {
+    case full
+    case compact
 }
 
 private struct AgentActivityCountChips: View {
@@ -372,53 +334,87 @@ private struct AgentActivityHeadlineView: View {
     }
 }
 
-/// One agent row: the same two-line rule as the headline, smaller type —
-/// task title on top, identity (name, kind when unnamed) indented beneath.
-/// Status is painted, not narrated as an event — a done row is the current
-/// state, not "just finished".
+/// One agent row. Full density mirrors the headline hierarchy at smaller
+/// type; compact density keeps the title and identity on one line. Status
+/// is painted, not narrated as an event — a done row is the current state,
+/// not "just finished".
 private struct AgentActivityRowView: View {
     let agent: AgentActivityDetails.AgentDetail
     let surface: AgentActivitySurface
+    var density: AgentActivityRowDensity = .full
 
     private var isBlocked: Bool { agent.status == "blocked" }
     private var ink: Color { AgentActivityStatusStyle.ink(for: agent.status, on: surface) }
     private var wash: Color { AgentActivityStatusStyle.wash(for: agent.status, on: surface) }
 
     var body: some View {
-        let content = VStack(alignment: .leading, spacing: 1) {
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(ink)
-                    .frame(width: 7, height: 7)
-                    .accessibilityHidden(true)
-                Text(agent.displayTitle ?? agent.displayName)
-                    .font(.caption.weight(isBlocked ? .semibold : .regular))
-                    .foregroundStyle(isBlocked ? ink : .primary)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
+        let content = rowContent
+            .padding(.vertical, isBlocked ? blockedVerticalPadding : 0)
+            .padding(.horizontal, isBlocked ? 6 : 0)
+            .background {
+                if isBlocked {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(wash.opacity(0.15))
+                }
             }
-            if agent.displayTitle != nil {
-                Text(agent.displayName)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .padding(.leading, 14)
-            }
-        }
-        .padding(.vertical, isBlocked ? 3 : 0)
-        .padding(.horizontal, isBlocked ? 6 : 0)
-        .background {
-            if isBlocked {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(wash.opacity(0.15))
-            }
-        }
         switch surface {
         case .island:
             content.accessibilityLabel(AgentActivityNarration.rowLabel(for: agent))
         case .lockScreen:
             content
         }
+    }
+
+    @ViewBuilder
+    private var rowContent: some View {
+        switch density {
+        case .full:
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 7) {
+                    statusDot
+                    title
+                    Spacer(minLength: 0)
+                }
+                if agent.displayTitle != nil {
+                    Text(agent.displayName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .padding(.leading, 14)
+                }
+            }
+        case .compact:
+            HStack(spacing: 7) {
+                statusDot
+                title
+                    .layoutPriority(1)
+                if agent.displayTitle != nil {
+                    Text("· \(agent.displayName)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private var statusDot: some View {
+        Circle()
+            .fill(ink)
+            .frame(width: 7, height: 7)
+            .accessibilityHidden(true)
+    }
+
+    private var title: some View {
+        Text(agent.displayTitle ?? agent.displayName)
+            .font(.caption.weight(isBlocked ? .semibold : .regular))
+            .foregroundStyle(isBlocked ? ink : .primary)
+            .lineLimit(1)
+    }
+
+    private var blockedVerticalPadding: CGFloat {
+        density == .compact ? 2 : 3
     }
 }
 
@@ -459,7 +455,7 @@ private struct AgentActivityRowView: View {
                             "working", kind: "claude", pane: "w1:p5",
                             title: "Refactor the transport queue"),
                     ]),
-                counts: .init(working: 3, blocked: 1, done: 1))
+                counts: .init(working: 4, blocked: 1, done: 1))
         }
 
         static var singleUnnamedIdentityOnly: AgentActivityPresentation {
@@ -586,8 +582,6 @@ private struct AgentActivityRowView: View {
             hostID: "6D8EC348-4DAF-455C-BA8F-5FCC41799C0E",
             isStale: isStale
         )
-        .buttonStyle(.plain)
-        .tint(.primary)
         .background(
             colorScheme == .light
                 ? Color(white: 0.97)
