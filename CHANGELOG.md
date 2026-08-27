@@ -7,6 +7,8 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-08-28
+
 ### Changed
 
 - Live Activity Lock Screen uses system semantic colors and shares the Console
