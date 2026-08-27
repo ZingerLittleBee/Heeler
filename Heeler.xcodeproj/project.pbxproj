@@ -218,6 +218,7 @@
 		AA6498ABD1E1782C0B5D8F5B /* ConsoleStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00807A3942817BEE9800534F /* ConsoleStoreTests.swift */; };
 		AE7E2063C7A908DFECE9FB98 /* NotificationRelaySettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90A97F1827BC65B4A271F28C /* NotificationRelaySettings.swift */; };
 		AEE3EAD6534D2D9774BBDB1E /* SkillContentSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFB68C31A4C8A5EE1BAE32EC /* SkillContentSheet.swift */; };
+		AEFAF47E29B1ABADCC273B80 /* ConsoleListPresentationStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D0218973C687D6D07E82963 /* ConsoleListPresentationStoreTests.swift */; };
 		AFA3583DF83EFBAFEEE91E28 /* TerminalAgentSwitcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA59306306EAEAA6DA78E337 /* TerminalAgentSwitcherTests.swift */; };
 		B253EC25B4FA08551D5E6B4B /* WeakNetworkProxy.swift in Sources */ = {isa = PBXBuildFile; fileRef = F44E8A7E5D2D96096928B69C /* WeakNetworkProxy.swift */; };
 		B2C0FB87155FFE531C2C6265 /* AgentNotificationRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F1676B4E6BAB1C28E5596A7 /* AgentNotificationRouterTests.swift */; };
@@ -280,6 +281,7 @@
 		DF1D75FBECE8FABC8E3A093D /* AppForegroundRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B248F9372687FDBE3AD24A1 /* AppForegroundRecoveryTests.swift */; };
 		DF88C6F619C253A98F0EC3F6 /* NotificationDisclosureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5416AE7B7A89E2987620E65E /* NotificationDisclosureView.swift */; };
 		DFB9F3DD64996FFAF4E519EC /* pairing-code-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = F9EF9F515ABC98C4B0B483C0 /* pairing-code-v1.json */; };
+		E118CE5CB81C21030F23BC84 /* ConsoleListPresentationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76FEA2FB18C10525E4B4F1D8 /* ConsoleListPresentationStore.swift */; };
 		E1C95FE0F5AC6271001DBF60 /* AgentDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 733AB85D0EBE3F90487289EA /* AgentDetailView.swift */; };
 		E2F51D71F8D6E3AF5FD1B9E8 /* SealedEnvelopeCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BE9C95E2AC313465A7B38FD /* SealedEnvelopeCodec.swift */; };
 		E379C1AD65B445D4E08614CF /* AgentNameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64D3B8E2EB97A8376B333914 /* AgentNameTests.swift */; };
@@ -442,6 +444,7 @@
 		48F025CF6E2C3068BF911290 /* IBMPlexMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexMono-Regular.ttf"; sourceTree = "<group>"; };
 		4997A79DA8D98F7BA97E60F6 /* TerminalMouseReporting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalMouseReporting.swift; sourceTree = "<group>"; };
 		4AB8C5EA497D1094E86F69C4 /* WeakNetworkE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeakNetworkE2ETests.swift; sourceTree = "<group>"; };
+		4D0218973C687D6D07E82963 /* ConsoleListPresentationStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleListPresentationStoreTests.swift; sourceTree = "<group>"; };
 		4D6E7022FBB1A7A39C88ACA9 /* RenameStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenameStoreTests.swift; sourceTree = "<group>"; };
 		4D961656A6D8B4F3964740BD /* HostOnboardingStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostOnboardingStoreTests.swift; sourceTree = "<group>"; };
 		4EEAD52089A35D4B2D47AF25 /* PairingConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingConnector.swift; sourceTree = "<group>"; };
@@ -492,6 +495,7 @@
 		764EB7D298185F64BA26C8B2 /* HerdrEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrEvents.swift; sourceTree = "<group>"; };
 		768235F2FBD7790800281BC3 /* PinnedAgentsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinnedAgentsStoreTests.swift; sourceTree = "<group>"; };
 		7683DF30B1A0E9FA0064AAA2 /* HeelerSSHTransportBehaviorE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeelerSSHTransportBehaviorE2ETests.swift; sourceTree = "<group>"; };
+		76FEA2FB18C10525E4B4F1D8 /* ConsoleListPresentationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleListPresentationStore.swift; sourceTree = "<group>"; };
 		7780BE78D868DB0A8275E6FB /* Heeler.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Heeler.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		78F85C588963C3CE948AA9E4 /* AgentNotificationBannerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationBannerStore.swift; sourceTree = "<group>"; };
 		79662827F6A91D8EFBF112F7 /* HostListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostListView.swift; sourceTree = "<group>"; };
@@ -716,6 +720,7 @@
 				239FD696B72E804AE3D85D72 /* ComposerStagingStoreTests.swift */,
 				86F44B0C95580FC88ED880FD /* ConsoleDetailPresentationTests.swift */,
 				512561E4D83FFB6575A1A8A5 /* ConsoleHostStatusPresentationTests.swift */,
+				4D0218973C687D6D07E82963 /* ConsoleListPresentationStoreTests.swift */,
 				00807A3942817BEE9800534F /* ConsoleStoreTests.swift */,
 				7374E36C37E07625B05361AE /* ContentViewActivityDriverTests.swift */,
 				BEFE51A74497E9691DBD8D7D /* DemoScreenshotModeTests.swift */,
@@ -946,6 +951,7 @@
 				1D46328CE795C513FE11AD04 /* ClosePaneStore.swift */,
 				6D83F0739372AE699009E238 /* ConsoleAgent.swift */,
 				530D32C2D59D0DD128053804 /* ConsoleHostStatusPresentation.swift */,
+				76FEA2FB18C10525E4B4F1D8 /* ConsoleListPresentationStore.swift */,
 				A14FB8560976CE777FB5A105 /* ConsoleStore.swift */,
 				C74A32020C9520EB5629B071 /* ConsoleView.swift */,
 				2D6996CA1550E32EE6AC3669 /* GitBranchName.swift */,
@@ -1452,6 +1458,7 @@
 				6FB5BA238B79801E1FDA2849 /* ConsoleActivityDriver.swift in Sources */,
 				B92B65E584DB19D068C41180 /* ConsoleAgent.swift in Sources */,
 				7B1292E9A9C6175D1272755D /* ConsoleHostStatusPresentation.swift in Sources */,
+				E118CE5CB81C21030F23BC84 /* ConsoleListPresentationStore.swift in Sources */,
 				76D19F97EA2662895D730A98 /* ConsoleStore.swift in Sources */,
 				BC3CE4B2C61D43EB4BA6B66E /* ConsoleView.swift in Sources */,
 				F71F183E690597E106438E55 /* ContentView.swift in Sources */,
@@ -1612,6 +1619,7 @@
 				847FCB04EA7913ACB390C978 /* ComposerStagingStoreTests.swift in Sources */,
 				7A73A34256C7B55060AAE9DE /* ConsoleDetailPresentationTests.swift in Sources */,
 				F61261FF8A17C9C754B99ED9 /* ConsoleHostStatusPresentationTests.swift in Sources */,
+				AEFAF47E29B1ABADCC273B80 /* ConsoleListPresentationStoreTests.swift in Sources */,
 				AA6498ABD1E1782C0B5D8F5B /* ConsoleStoreTests.swift in Sources */,
 				8B171AB6CB0C087D059631C4 /* ContentViewActivityDriverTests.swift in Sources */,
 				F96B2A54E2C6FF38CF5407BA /* DemoScreenshotModeTests.swift in Sources */,
