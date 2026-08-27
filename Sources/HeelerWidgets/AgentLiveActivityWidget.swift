@@ -115,8 +115,8 @@ private struct AgentActivityLockScreenContainer: View {
 }
 
 enum AgentActivityLockScreenChrome {
-    /// Keep these semantic colors unresolved. WidgetKit can then resolve the
-    /// existing Live Activity again when the iOS system appearance changes.
+    /// Keep these semantic colors unresolved so SwiftUI can redraw the
+    /// lock-screen surface when the system appearance changes.
     static let backgroundColor = UIColor.systemBackground
     static let actionColor = UIColor.label
 }
@@ -127,32 +127,39 @@ struct AgentActivityLockScreenView: View {
     let isStale: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            header
-            ForEach(visibleAgents.dropFirst(), id: \.paneID) { agent in
-                AgentActivityLinkedRow(
-                    hostID: hostID,
-                    agent: agent,
-                    surface: .lockScreen,
-                    density: .compact,
-                    minimumHeight: rowMinimumHeight)
-            }
-            if let caption = presentation.lockScreenTrailingCaption(isStale: isStale) {
-                Text(caption)
-                    .font(.caption2)
-                    .foregroundStyle(AgentActivitySemanticStyle.secondary(on: .lockScreen))
-            }
-            #if DEBUG
-                if let reason = AgentActivityDecryptor.lastFailureReason {
-                    Text(reason)
+        ZStack {
+            Color(uiColor: AgentActivityLockScreenChrome.backgroundColor)
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 2) {
+                header
+                ForEach(visibleAgents.dropFirst(), id: \.paneID) { agent in
+                    AgentActivityLinkedRow(
+                        hostID: hostID,
+                        agent: agent,
+                        surface: .lockScreen,
+                        density: .compact,
+                        minimumHeight: rowMinimumHeight)
+                }
+                if let caption = presentation.lockScreenTrailingCaption(isStale: isStale) {
+                    Text(caption)
                         .font(.caption2)
                         .foregroundStyle(AgentActivitySemanticStyle.secondary(on: .lockScreen))
-                        .lineLimit(3)
                 }
-            #endif
+                #if DEBUG
+                    if let reason = AgentActivityDecryptor.lastFailureReason {
+                        Text(reason)
+                            .font(.caption2)
+                            .foregroundStyle(
+                                AgentActivitySemanticStyle.secondary(on: .lockScreen)
+                            )
+                            .lineLimit(3)
+                    }
+                #endif
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
         .widgetURL(AgentActivityLink.consoleURL(hostID: hostID))
     }
 
