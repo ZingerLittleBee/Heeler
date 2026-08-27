@@ -154,6 +154,8 @@ targets:
       # HeelerNotificationCore needs it.
       - Sources/Heeler/Transport/Generated/HerdrAPITypes.swift
       - Sources/Heeler/Transport/JSONValue.swift
+      # Shared with the app Console; single hex owner for status colors (#247).
+      - Sources/Heeler/Console/AgentStatusPalette.swift
     entitlements:
       path: Sources/HeelerWidgets/HeelerWidgets.entitlements
       properties:

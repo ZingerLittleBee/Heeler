@@ -7,6 +7,13 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Changed
+
+- Live Activity Lock Screen and Dynamic Island use appearance-adaptive
+  system material and the shared Console status palette; stale updates show
+  a reduced row budget and an out-of-date caption on the Lock Screen only.
+  (#247)
+
 ### Added
 
 - Console can switch between the flat status-sorted Agent list and a by-Host
