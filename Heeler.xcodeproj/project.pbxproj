@@ -23,6 +23,7 @@
 		0E50946869DD6FC41373079B /* HeelerSSHHostKeyPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E70C49925D454207F859F897 /* HeelerSSHHostKeyPolicyTests.swift */; };
 		0FCA9A08E011A847F31A4B85 /* AgentNotificationCenterDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00BABBDEFEDCB3D11EF1EFA7 /* AgentNotificationCenterDelegate.swift */; };
 		0FE90B9982AF87386D6898ED /* AgentActivityDecryptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B60468938DA99734F4DCBBEC /* AgentActivityDecryptor.swift */; };
+		10324EE6A79714E5D12220B6 /* AgentStatusPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A430D16838A39772ED0AA73 /* AgentStatusPalette.swift */; };
 		11F7B6617DA23C1B24E3A027 /* AgentActivityContentBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29723E2E7A65ABAF27698733 /* AgentActivityContentBuilder.swift */; };
 		12B61E17D212416E86EE63ED /* AgentCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6803A0055A861DFCA2A67217 /* AgentCardView.swift */; };
 		13D6ADF6E19529103D2522DE /* SealedEnvelopeCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BE9C95E2AC313465A7B38FD /* SealedEnvelopeCodec.swift */; };
@@ -48,6 +49,7 @@
 		24075F825EA192C037A09507 /* SnippetsManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB430B706185A38891A5DAC2 /* SnippetsManagementView.swift */; };
 		247E069905D31490FEF889CE /* ComposerStagingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D23517AF3A39615725A0ADC /* ComposerStagingStore.swift */; };
 		24B38E6323258B77CF7E17B8 /* NotificationPreferencesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C87F6E13D72316E56DC0C571 /* NotificationPreferencesStore.swift */; };
+		2566EFE94582C9CB4796E5ED /* AgentActivityPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B39CBCF8D249D054DC71463E /* AgentActivityPresentationTests.swift */; };
 		25AE0EAE56CE592F547BE1F2 /* HostLatencyFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = E088B83BDB55BAFA2D41450F /* HostLatencyFormatting.swift */; };
 		268E43B24D46A51173DB8349 /* HostFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33EF900D8EF7982B54965402 /* HostFormView.swift */; };
 		28155122AFE694FA3D41F172 /* ImageStagingE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A8ED9AD5019F303932B0F9C /* ImageStagingE2ETests.swift */; };
@@ -573,6 +575,7 @@
 		B24EF5EA39899292A1907226 /* StartAgentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartAgentStore.swift; sourceTree = "<group>"; };
 		B2627DBEB9BFBDC600F211A1 /* NotificationPrivacyCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPrivacyCopy.swift; sourceTree = "<group>"; };
 		B2DAE3FAB8786392318939A6 /* NotificationVectorFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationVectorFile.swift; sourceTree = "<group>"; };
+		B39CBCF8D249D054DC71463E /* AgentActivityPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentActivityPresentationTests.swift; sourceTree = "<group>"; };
 		B4EA32065B4A00D219B301CF /* HostKeyFingerprint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostKeyFingerprint.swift; sourceTree = "<group>"; };
 		B52407E936051CF1EF746647 /* AgentComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentComposerView.swift; sourceTree = "<group>"; };
 		B5D958EC1516F09B78E346C6 /* NotificationRelaySettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRelaySettingsTests.swift; sourceTree = "<group>"; };
@@ -706,6 +709,7 @@
 				519305F6554977DB6C5E93F2 /* AgentActivityContentStateTests.swift */,
 				F7E3DCBFDF3ED4A63CBC1B3C /* AgentActivityEnvelopeTests.swift */,
 				3A62B60BB8431BE061FAA21B /* AgentActivityLinkTests.swift */,
+				B39CBCF8D249D054DC71463E /* AgentActivityPresentationTests.swift */,
 				362EF66CE6DA07688C3E5F63 /* AgentComposerStoreTests.swift */,
 				64D3B8E2EB97A8376B333914 /* AgentNameTests.swift */,
 				0A319930B80D42FB33DC8E42 /* AgentNotificationBannerStoreTests.swift */,
@@ -1412,6 +1416,7 @@
 				4AF54D36B8F0639880713FD1 /* AgentActivityLink.swift in Sources */,
 				33046B4CC05A07D26F088082 /* AgentLiveActivityWidget.swift in Sources */,
 				554C1ECECE17B440C8B37A3D /* AgentNotificationRenderer.swift in Sources */,
+				10324EE6A79714E5D12220B6 /* AgentStatusPalette.swift in Sources */,
 				8668C3C60FB9539A7DD1A4EC /* Base64URL.swift in Sources */,
 				B4720B610754009B9E30565F /* HeelerWidgetsBundle.swift in Sources */,
 				9E7AFEC6FD8926C79DCB9D1D /* HerdrAPITypes.swift in Sources */,
@@ -1607,6 +1612,7 @@
 				A1E5F3DFA582BFF8D2C00E00 /* AgentActivityContentStateTests.swift in Sources */,
 				FE66019721BB44E8BAD287DB /* AgentActivityEnvelopeTests.swift in Sources */,
 				0032AB8CC6C1DFDB893E35C6 /* AgentActivityLinkTests.swift in Sources */,
+				2566EFE94582C9CB4796E5ED /* AgentActivityPresentationTests.swift in Sources */,
 				6DA75E728052945BC787BBD3 /* AgentComposerStoreTests.swift in Sources */,
 				E379C1AD65B445D4E08614CF /* AgentNameTests.swift in Sources */,
 				6CD1D3CCDB58EBFF5350AC7F /* AgentNotificationBannerStoreTests.swift in Sources */,

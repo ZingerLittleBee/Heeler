@@ -57,16 +57,40 @@ enum AgentActivityPresentation: Equatable, Sendable {
     }
 
     /// Lock-screen rows, uniform type. Four two-line rows are the ~160pt
-    /// budget's ceiling; when the inventory is larger, three rows leave
-    /// height for the "+N more" line.
-    var lockScreenAgents: [AgentActivityDetails.AgentDetail] {
-        Array(agents.prefix(counts.total <= 4 ? 4 : 3))
+    /// budget's ceiling when fresh; stale never shows four rows.
+    func lockScreenAgents(isStale: Bool) -> [AgentActivityDetails.AgentDetail] {
+        let total = counts.total
+        guard total > 0 else { return [] }
+        let visible: Int
+        if isStale {
+            visible = min(total, 3)
+        } else {
+            visible = total <= 4 ? total : 3
+        }
+        return Array(agents.prefix(visible))
     }
 
     /// Inventory beyond the drawn lock-screen rows. Zero in counts-only.
-    var lockScreenOverflowCount: Int {
-        guard !lockScreenAgents.isEmpty else { return 0 }
-        return max(0, counts.total - lockScreenAgents.count)
+    func lockScreenOverflowCount(isStale: Bool) -> Int {
+        let shown = lockScreenAgents(isStale: isStale)
+        guard !shown.isEmpty else { return 0 }
+        return max(0, counts.total - shown.count)
+    }
+
+    /// Trailing caption2 on the lock screen: overflow, stale notice, or both.
+    func lockScreenTrailingCaption(isStale: Bool) -> String? {
+        let overflow = lockScreenOverflowCount(isStale: isStale)
+        let staleCaption = "May be out of date"
+        if isStale {
+            if overflow > 0 {
+                return "+\(overflow) more · \(staleCaption)"
+            }
+            return staleCaption
+        }
+        if overflow > 0 {
+            return "+\(overflow) more"
+        }
+        return nil
     }
 }
 
@@ -160,5 +184,13 @@ extension AgentActivityAttributes.ContentState.Counts {
         if working > 0 { items.append(("working", working)) }
         if done > 0 { items.append(("done", done)) }
         return items
+    }
+
+    /// First non-zero count in attention order: blocked, done, working.
+    var attentionStatusItem: (status: String, count: Int)? {
+        if blocked > 0 { return ("blocked", blocked) }
+        if done > 0 { return ("done", done) }
+        if working > 0 { return ("working", working) }
+        return nil
     }
 }
