@@ -74,66 +74,51 @@ enum AgentActivityStatusStyle {
     }
 }
 
+enum AgentActivitySemanticStyle {
+    static func primary(on surface: AgentActivitySurface) -> Color {
+        switch surface {
+        case .lockScreen:
+            Color(uiColor: .label)
+        case .island:
+            Color.primary
+        }
+    }
+
+    static func secondary(on surface: AgentActivitySurface) -> Color {
+        switch surface {
+        case .lockScreen:
+            Color(uiColor: .secondaryLabel)
+        case .island:
+            Color.secondary
+        }
+    }
+}
+
 // MARK: - Lock screen
 
 private struct AgentActivityLockScreenContainer: View {
-    @Environment(\.colorScheme) private var activityKitColorScheme
-
     let presentation: AgentActivityPresentation
     let hostID: String
     let isStale: Bool
 
     var body: some View {
-        let appearance = AgentActivityLockScreenAppearance.resolve(
-            screenStyle: UIScreen.main.traitCollection.userInterfaceStyle,
-            fallback: activityKitColorScheme)
-
         AgentActivityLockScreenView(
             presentation: presentation,
             hostID: hostID,
             isStale: isStale
         )
-        .environment(\.colorScheme, appearance.colorScheme)
-        .activityBackgroundTint(Color(uiColor: appearance.backgroundColor))
-        .activitySystemActionForegroundColor(Color(uiColor: appearance.actionColor))
+        .foregroundStyle(AgentActivitySemanticStyle.primary(on: .lockScreen))
+        .activityBackgroundTint(Color(uiColor: AgentActivityLockScreenChrome.backgroundColor))
+        .activitySystemActionForegroundColor(
+            Color(uiColor: AgentActivityLockScreenChrome.actionColor))
     }
 }
 
-enum AgentActivityLockScreenAppearance: Equatable {
-    case light
-    case dark
-
-    static func resolve(
-        screenStyle: UIUserInterfaceStyle,
-        fallback: ColorScheme
-    ) -> AgentActivityLockScreenAppearance {
-        switch screenStyle {
-        case .light:
-            return .light
-        case .dark:
-            return .dark
-        case .unspecified:
-            return fallback == .dark ? .dark : .light
-        @unknown default:
-            return fallback == .dark ? .dark : .light
-        }
-    }
-
-    var colorScheme: ColorScheme {
-        self == .dark ? .dark : .light
-    }
-
-    var backgroundColor: UIColor {
-        UIColor.systemBackground.resolvedColor(with: traitCollection)
-    }
-
-    var actionColor: UIColor {
-        UIColor.label.resolvedColor(with: traitCollection)
-    }
-
-    private var traitCollection: UITraitCollection {
-        UITraitCollection(userInterfaceStyle: self == .dark ? .dark : .light)
-    }
+enum AgentActivityLockScreenChrome {
+    /// Keep these semantic colors unresolved. WidgetKit can then resolve the
+    /// existing Live Activity again when the iOS system appearance changes.
+    static let backgroundColor = UIColor.systemBackground
+    static let actionColor = UIColor.label
 }
 
 struct AgentActivityLockScreenView: View {
@@ -155,13 +140,13 @@ struct AgentActivityLockScreenView: View {
             if let caption = presentation.lockScreenTrailingCaption(isStale: isStale) {
                 Text(caption)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AgentActivitySemanticStyle.secondary(on: .lockScreen))
             }
             #if DEBUG
                 if let reason = AgentActivityDecryptor.lastFailureReason {
                     Text(reason)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AgentActivitySemanticStyle.secondary(on: .lockScreen))
                         .lineLimit(3)
                 }
             #endif
@@ -194,7 +179,7 @@ struct AgentActivityLockScreenView: View {
         } else {
             Text(presentation.headerTitle)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(AgentActivitySemanticStyle.primary(on: .lockScreen))
                 .lineLimit(1)
         }
     }
@@ -214,6 +199,7 @@ enum AgentActivityIsland {
                     AgentActivityLinked(
                         hostID: hostID,
                         agent: primary,
+                        surface: .island,
                         minimumHeight: AgentActivityRowMetrics.denseMinimumHeight
                     ) {
                         AgentActivityHeadlineView(agent: primary, surface: .island)
@@ -332,6 +318,7 @@ enum AgentActivityRowMetrics {
 private struct AgentActivityLinked<Content: View>: View {
     let hostID: String
     let agent: AgentActivityDetails.AgentDetail
+    let surface: AgentActivitySurface
     let minimumHeight: CGFloat
     @ViewBuilder let content: Content
 
@@ -343,7 +330,7 @@ private struct AgentActivityLinked<Content: View>: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .tint(.primary)
+            .tint(AgentActivitySemanticStyle.primary(on: surface))
             .accessibilityLabel(AgentActivityNarration.rowLabel(for: agent))
             .accessibilityHint("Opens this Agent in Heeler")
         } else {
@@ -361,7 +348,12 @@ private struct AgentActivityLinkedRow: View {
     let minimumHeight: CGFloat
 
     var body: some View {
-        AgentActivityLinked(hostID: hostID, agent: agent, minimumHeight: minimumHeight) {
+        AgentActivityLinked(
+            hostID: hostID,
+            agent: agent,
+            surface: surface,
+            minimumHeight: minimumHeight
+        ) {
             AgentActivityRowView(agent: agent, surface: surface, density: density)
         }
     }
@@ -420,13 +412,14 @@ private struct AgentActivityHeadlineView: View {
                     .accessibilityHidden(true)
                 Text(agent.displayTitle ?? agent.displayName)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(isBlocked ? ink : Color.primary)
+                    .foregroundStyle(
+                        isBlocked ? ink : AgentActivitySemanticStyle.primary(on: surface))
                     .lineLimit(1)
             }
             if agent.displayTitle != nil {
                 Text(agent.displayName)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AgentActivitySemanticStyle.secondary(on: surface))
                     .lineLimit(1)
                     .padding(.leading, 15)
             }
@@ -484,7 +477,7 @@ private struct AgentActivityRowView: View {
                 if agent.displayTitle != nil {
                     Text(agent.displayName)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AgentActivitySemanticStyle.secondary(on: surface))
                         .lineLimit(1)
                         .padding(.leading, 14)
                 }
@@ -497,7 +490,7 @@ private struct AgentActivityRowView: View {
                 if agent.displayTitle != nil {
                     Text("· \(agent.displayName)")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AgentActivitySemanticStyle.secondary(on: surface))
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
@@ -515,7 +508,8 @@ private struct AgentActivityRowView: View {
     private var title: some View {
         Text(agent.displayTitle ?? agent.displayName)
             .font(.caption.weight(isBlocked ? .semibold : .regular))
-            .foregroundStyle(isBlocked ? ink : .primary)
+            .foregroundStyle(
+                isBlocked ? ink : AgentActivitySemanticStyle.primary(on: surface))
             .lineLimit(1)
     }
 

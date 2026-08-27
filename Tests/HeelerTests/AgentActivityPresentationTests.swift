@@ -122,50 +122,32 @@ struct AgentActivityPresentationTests {
         #expect(AgentActivityRowMetrics.lockScreenMinimumHeight(agentCount: 4) == 28)
     }
 
-    @Test func deviceLightAppearanceOverridesIncorrectActivityKitDarkScheme() {
-        let appearance = AgentActivityLockScreenAppearance.resolve(
-            screenStyle: .light,
-            fallback: .dark)
-
-        #expect(appearance == .light)
-        #expect(appearance.colorScheme == .light)
-    }
-
-    @Test func deviceDarkAppearanceOverridesIncorrectActivityKitLightScheme() {
-        let appearance = AgentActivityLockScreenAppearance.resolve(
-            screenStyle: .dark,
-            fallback: .light)
-
-        #expect(appearance == .dark)
-        #expect(appearance.colorScheme == .dark)
-    }
-
-    @Test func unspecifiedDeviceAppearanceUsesActivityKitFallback() {
+    @Test func lockScreenChromeRemainsDynamicAcrossSystemAppearances() {
         #expect(
-            AgentActivityLockScreenAppearance.resolve(
-                screenStyle: .unspecified,
-                fallback: .light
-            ) == .light)
-        #expect(
-            AgentActivityLockScreenAppearance.resolve(
-                screenStyle: .unspecified,
-                fallback: .dark
-            ) == .dark)
-    }
-
-    @Test func lockScreenChromeResolvesAgainstDeviceAppearance() {
-        #expect(
-            rgba(AgentActivityLockScreenAppearance.light.backgroundColor)
+            rgba(AgentActivityLockScreenChrome.backgroundColor, .light)
                 == rgba(UIColor.systemBackground, .light))
         #expect(
-            rgba(AgentActivityLockScreenAppearance.dark.backgroundColor)
+            rgba(AgentActivityLockScreenChrome.backgroundColor, .dark)
                 == rgba(UIColor.systemBackground, .dark))
         #expect(
-            rgba(AgentActivityLockScreenAppearance.light.actionColor)
+            rgba(AgentActivityLockScreenChrome.actionColor, .light)
                 == rgba(UIColor.label, .light))
         #expect(
-            rgba(AgentActivityLockScreenAppearance.dark.actionColor)
+            rgba(AgentActivityLockScreenChrome.actionColor, .dark)
                 == rgba(UIColor.label, .dark))
+        #expect(
+            rgba(AgentActivityLockScreenChrome.backgroundColor, .light)
+                != rgba(AgentActivityLockScreenChrome.backgroundColor, .dark))
+    }
+
+    @Test func lockScreenSemanticTextRemainsDynamicAcrossSystemAppearances() {
+        let primary = UIColor(AgentActivitySemanticStyle.primary(on: .lockScreen))
+        let secondary = UIColor(AgentActivitySemanticStyle.secondary(on: .lockScreen))
+
+        #expect(rgba(primary, .light) == rgba(UIColor.label, .light))
+        #expect(rgba(primary, .dark) == rgba(UIColor.label, .dark))
+        #expect(rgba(secondary, .light) == rgba(UIColor.secondaryLabel, .light))
+        #expect(rgba(secondary, .dark) == rgba(UIColor.secondaryLabel, .dark))
     }
 
     @Test func lockScreenInkMatchesPaletteForEachAppearance() {
