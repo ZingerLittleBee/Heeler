@@ -683,19 +683,15 @@ private struct ConsoleHostSectionHeaderView: View {
                     Text(presentation.hostDisplayName)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
+                        .lineLimit(1)
                     Text(presentation.readinessText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
                 Spacer(minLength: 0)
-                if presentation.showsAttentionBadge {
-                    Text("\(presentation.attentionCount)")
-                        .font(.caption2.weight(.semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(.orange, in: Capsule())
+                if presentation.showsStatusPills {
+                    ConsoleHostStatusCountPills(items: presentation.statusItems)
                         .accessibilityHidden(true)
                 }
             }
@@ -708,5 +704,27 @@ private struct ConsoleHostSectionHeaderView: View {
         .accessibilityValue(presentation.accessibilityValue)
         .accessibilityHint(presentation.accessibilityHint)
         .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// Mirrors the Live Activity count chips so a collapsed Host communicates
+/// the same status distribution at a glance.
+private struct ConsoleHostStatusCountPills: View {
+    let items: [ConsoleHostAgentStatusCount]
+
+    var body: some View {
+        HStack(spacing: 5) {
+            ForEach(items) { item in
+                Text("\(item.count) \(item.status.rawValue)")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color(item.status.inkUIColor))
+                    .fixedSize()
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        Color(item.status.tintUIColor).opacity(0.15),
+                        in: Capsule())
+            }
+        }
     }
 }
