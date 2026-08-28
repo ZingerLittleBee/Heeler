@@ -7,6 +7,11 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Fixed
+
+- Fall back to task title or repo name in keyboard switcher chips when the
+  workspace label is a generic root/home path like `~`.
+
 ## [0.1.3] - 2026-08-28
 
 ### Changed
