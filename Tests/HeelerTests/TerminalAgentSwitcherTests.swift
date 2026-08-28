@@ -14,6 +14,7 @@ struct TerminalAgentSwitcherTests {
         workspace: String? = nil,
         repo: String? = nil,
         name: String? = nil,
+        title: String = "",
         status: AgentStatus = .idle,
         host: UUID = UUID()
     ) -> ConsoleAgent {
@@ -21,7 +22,7 @@ struct TerminalAgentSwitcherTests {
             hostID: host,
             hostName: "devbox",
             agent: Agent(
-                terminalID: "term_\(pane)", kind: "claude", title: "",
+                terminalID: "term_\(pane)", kind: "claude", title: title,
                 status: status, workspaceID: "w", tabID: "w:t", paneID: pane,
                 cwd: "/work", revision: 1, name: name),
             workspaceLabel: workspace,
@@ -46,12 +47,14 @@ struct TerminalAgentSwitcherTests {
 
     /// The project is what tells a console full of `claude` apart, so it
     /// leads; the agent's own name is the fallback when nothing named the
-    /// workspace.
+    /// workspace. Generic home labels like `~` fall back to the task title or repo.
     @Test func chipLabelsPreferTheProject() {
         #expect(Self.makeAgent(pane: "p1", workspace: "proj", repo: "repo").switcherLabel == "proj")
         #expect(Self.makeAgent(pane: "p2", repo: "repo").switcherLabel == "repo")
         #expect(Self.makeAgent(pane: "p3", name: "reviewer").switcherLabel == "reviewer")
         #expect(Self.makeAgent(pane: "p4").switcherLabel == "claude")
+        #expect(Self.makeAgent(pane: "p5", workspace: "~", title: "sync-tasks").switcherLabel == "sync-tasks")
+        #expect(Self.makeAgent(pane: "p6", workspace: "~", repo: "repo").switcherLabel == "repo")
     }
 
     private static func firstStrip(in view: UIView) -> TerminalAgentSwitcherBar? {

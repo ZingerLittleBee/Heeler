@@ -63,9 +63,16 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     /// The keyboard switcher's chip label. The project leads, as it does on
     /// the card, but without the card's `label · repo` pairing: a chip has
     /// room for one word, and a console full of `claude` is told apart by
-    /// where each one is working.
+    /// where each one is working. Generic home/root workspace labels like `~`
+    /// fall back to task title or repo name so chips remain distinctive.
     var switcherLabel: String {
-        workspaceLabel ?? repoName ?? agent.displayName
+        if let workspaceLabel, !workspaceLabel.isEmpty, workspaceLabel != "~" {
+            return workspaceLabel
+        }
+        if !agent.title.isEmpty {
+            return agent.title
+        }
+        return repoName ?? agent.displayName
     }
 
     /// The directory the skills probe treats as the agent's project root:
