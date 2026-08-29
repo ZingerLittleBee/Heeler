@@ -35,6 +35,7 @@ enum AgentQuickKey: CaseIterable, Hashable {
     case escape
     case tab
     case shiftTab
+    case shiftEnter
     case left
     case up
     case down
@@ -47,6 +48,7 @@ enum AgentQuickKey: CaseIterable, Hashable {
         case .escape: "Esc"
         case .tab: "Tab"
         case .shiftTab: "⇧Tab"
+        case .shiftEnter: "⇧Enter"
         case .enter: "Enter"
         case .backspace: "Backspace"
         case .left, .up, .down, .right: nil
@@ -59,7 +61,7 @@ enum AgentQuickKey: CaseIterable, Hashable {
         case .up: "arrow.up"
         case .down: "arrow.down"
         case .right: "arrow.right"
-        case .escape, .tab, .shiftTab, .enter, .backspace: nil
+        case .escape, .tab, .shiftTab, .shiftEnter, .enter, .backspace: nil
         }
     }
 
@@ -68,6 +70,7 @@ enum AgentQuickKey: CaseIterable, Hashable {
         case .escape: "Escape"
         case .tab: "Tab"
         case .shiftTab: "Shift Tab"
+        case .shiftEnter: "Shift Enter"
         case .left: "Left Arrow"
         case .up: "Up Arrow"
         case .down: "Down Arrow"
@@ -82,6 +85,9 @@ enum AgentQuickKey: CaseIterable, Hashable {
         case .escape: TerminalControlKey.escape.bytes(applicationCursor: applicationCursor)
         case .tab: TerminalControlKey.tab.bytes(applicationCursor: applicationCursor)
         case .shiftTab: TerminalEscapeSequences.shiftTab
+        // LF / Ctrl-J keeps the multiline action distinct from Enter's CR
+        // without depending on a negotiated enhanced-keyboard protocol.
+        case .shiftEnter: TerminalEscapeSequences.newLine
         case .left: TerminalControlKey.left.bytes(applicationCursor: applicationCursor)
         case .up: TerminalControlKey.up.bytes(applicationCursor: applicationCursor)
         case .down: TerminalControlKey.down.bytes(applicationCursor: applicationCursor)

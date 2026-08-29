@@ -10,8 +10,8 @@ Entries reference the issue that motivated them.
 ### Added
 
 - Agent detail can hide the Composer and type into the live Attach PTY with the
-  iOS keyboard plus Esc, Tab, Shift-Tab, Enter, and arrow-key shortcuts
-  (Direct Input).
+  iOS keyboard plus Esc, Tab, Shift-Tab, Shift-Enter, Backspace, Enter, and
+  arrow-key shortcuts (Direct Input).
   The shortcut row stays visible above the Agent switcher strip whenever
   Direct Input is active; keyboard show/hide stays on that strip. Composer
   stays the default; hiding it hands the visible iOS keyboard directly to the

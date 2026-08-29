@@ -44,8 +44,9 @@ struct AgentDirectInputChrome: View {
     @Environment(\.displayScale) private var displayScale
 
     private static let shortcutKeys: [AgentQuickKey] = [
-        .escape, .tab, .shiftTab, .enter,
+        .escape, .tab, .shiftTab,
         .up, .down, .left, .right,
+        .backspace, .shiftEnter,
     ]
 
     private var presentation: AgentDirectInputChromeContext.Presentation {
@@ -107,6 +108,8 @@ struct AgentDirectInputChrome: View {
                 .padding(.trailing, 6)
             }
 
+            shortcutKeyButton(.enter)
+
             moreMenu
                 .frame(width: 44, height: 44)
                 .background(Color(uiColor: .secondarySystemBackground))
@@ -144,6 +147,8 @@ struct AgentDirectInputChrome: View {
             38
         case .shiftTab:
             46
+        case .shiftEnter:
+            54
         case .enter:
             42
         case .left, .up, .down, .right:

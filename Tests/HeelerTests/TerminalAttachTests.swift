@@ -1693,18 +1693,20 @@ struct TerminalAttachTests {
     @Test func agentQuickKeysEncodeExpectedBytes() {
         #expect(
             AgentQuickKey.allCases == [
-                .escape, .tab, .shiftTab, .left, .up, .down, .right, .enter,
-                .backspace,
+                .escape, .tab, .shiftTab, .shiftEnter, .left, .up, .down, .right,
+                .enter, .backspace,
             ])
         #expect(AgentQuickKey.escape.bytes(applicationCursor: false) == [0x1B])
         #expect(AgentQuickKey.tab.bytes(applicationCursor: false) == [0x09])
         #expect(AgentQuickKey.shiftTab.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x5A])
+        #expect(AgentQuickKey.shiftEnter.bytes(applicationCursor: false) == [0x0A])
         #expect(AgentQuickKey.left.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x44])
         #expect(AgentQuickKey.up.bytes(applicationCursor: true) == [0x1B, 0x4F, 0x41])
         #expect(AgentQuickKey.down.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x42])
         #expect(AgentQuickKey.right.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x43])
         #expect(AgentQuickKey.enter.bytes(applicationCursor: false) == [0x0D])
         #expect(AgentQuickKey.backspace.bytes(applicationCursor: false) == [0x7F])
+        #expect(AgentQuickKey.shiftEnter.title == "⇧Enter")
         #expect(AgentQuickKey.enter.title == "Enter")
         #expect(AgentQuickKey.backspace.title == "Backspace")
         #expect(AgentQuickKey.enter.systemImageName == nil)

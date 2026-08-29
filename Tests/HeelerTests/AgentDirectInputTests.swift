@@ -581,7 +581,7 @@ struct AgentDirectInputTests {
             .frame.height
 
         for label in [
-            "Escape", "Tab", "Shift Tab", "Enter",
+            "Escape", "Tab", "Shift Tab", "Backspace", "Shift Enter", "Enter",
             "Up Arrow", "Down Arrow", "Left Arrow", "Right Arrow",
         ] {
             try #require(Self.activateAccessibility(labeled: label, in: controller.view))
@@ -611,7 +611,10 @@ struct AgentDirectInputTests {
                 && inputs.contains(TerminalAttachInput.keystrokes(Data([0x09])))
                 && inputs.contains(
                     TerminalAttachInput.keystrokes(Data([0x1B, 0x5B, 0x5A])))
+                && inputs.contains(
+                    TerminalAttachInput.keystrokes(Data([0x0A])))
                 && inputs.contains(TerminalAttachInput.keystrokes(Data([0x0D])))
+                && inputs.contains(TerminalAttachInput.keystrokes(Data([0x7F])))
                 && inputs.contains(TerminalAttachInput.keystrokes(Data([0x1B, 0x5B, 0x41])))
                 && inputs.contains(TerminalAttachInput.keystrokes(Data([0x1B, 0x5B, 0x42])))
                 && inputs.contains(TerminalAttachInput.keystrokes(Data([0x1B, 0x5B, 0x44])))
