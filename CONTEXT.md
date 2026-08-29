@@ -160,7 +160,7 @@ it with a tabbed pad: Agent controls send key sequences directly to the pane,
 while Skills, Snippets, and terminal appearance edit the draft or the terminal
 and never touch the pane. Direct Input reuses the same measured footprint for
 an optional tools dock, but its primary shortcuts ride an app-content row
-above the system keyboard rather than replacing it.
+above the Agent switcher strip rather than replacing the system keyboard.
 _Avoid_: desktop keyboard, reply keyboard, Keys mode (the direct-input predecessor)
 
 **Snippet**:

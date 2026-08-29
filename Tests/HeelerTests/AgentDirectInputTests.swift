@@ -518,6 +518,15 @@ struct AgentDirectInputTests {
             try #require(Self.activateAccessibility(labeled: label, in: controller.view))
         }
 
+        // Shortcut row sits immediately above the Agent switcher strip.
+        // Keyboard dismiss lives only on the switcher — not on the row.
+        let escapeFrame = try #require(
+            Self.firstAccessibleFrame(labeled: "Escape", in: controller.view))
+        let dismissFrame = try #require(
+            Self.firstAccessibleFrame(labeled: "Dismiss keyboard", in: controller.view))
+        #expect(escapeFrame.maxY <= dismissFrame.minY + 1)
+        #expect(Self.accessibleCount(labeled: "Dismiss keyboard", in: controller.view) == 1)
+
         try #require(await Self.eventually {
             let inputs = await transport.attachInputs
             return inputs.contains(TerminalAttachInput.keystrokes(Data([0x1B])))
@@ -617,8 +626,8 @@ struct AgentDirectInputTests {
         controller.view.layoutIfNeeded()
         await Task.yield()
 
-        // Pre-show `.system` hold: shortcut row stays adjacent to the keyboard
-        // footprint even while measured height is still zero. Two-sided bound:
+        // Pre-show `.system` hold: shortcut row stays visible above the
+        // switcher even while measured height is still zero. Two-sided bound:
         // wiring the modifier to the raw zero height expands the terminal by
         // ~lastPresentedHeight and still satisfies a one-sided upper bound.
         #expect(Self.accessibleCount(labeled: showComposer, in: controller.view) == 2)
@@ -920,10 +929,11 @@ struct AgentDirectInputTests {
         #expect(!firstFeed.isAttached(to: afterFirst))
         try #require(await Self.eventually { afterFirst.isFirstResponder })
 
-        // Production dismiss clears Direct Input raised intent. A leftover
-        // TerminalKeyboardHandoff arm after the first replacement must not
-        // resurrect the keyboard on the next pipeline rebuild. Wait on the
-        // observable chrome refresh after reclaim, not a stale surface.
+        // Production dismiss clears Direct Input raised intent via the
+        // switcher-owned keyboard toggle. A leftover TerminalKeyboardHandoff
+        // arm after the first replacement must not resurrect the keyboard on
+        // the next pipeline rebuild. Wait on the observable chrome refresh
+        // after reclaim, not a stale surface.
         try #require(await Self.eventually {
             controller.view.setNeedsLayout()
             controller.view.layoutIfNeeded()
@@ -1158,6 +1168,25 @@ struct AgentDirectInputTests {
 
     private static func firstAccessible(labeled label: String, in root: UIView) -> NSObject? {
         firstAccessible(in: root) { $0.accessibilityLabel == label }
+    }
+
+    private static func firstAccessibleFrame(labeled label: String, in root: UIView) -> CGRect? {
+        // Reuse visitAccessible so frame probes share the same container walk as
+        // label lookups. Skip zero-size matches and keep searching — same rule
+        // TerminalAttachTests uses for hosted SwiftUI chrome.
+        var match: CGRect?
+        visitAccessible(in: root) { node in
+            guard match == nil, node.accessibilityLabel == label else { return }
+            if let view = node as? UIView {
+                guard view.bounds.width > 0, view.bounds.height > 0 else { return }
+                match = view.convert(view.bounds, to: root)
+            } else {
+                let frame = node.accessibilityFrame
+                guard frame.width > 0, frame.height > 0 else { return }
+                match = root.convert(frame, from: nil)
+            }
+        }
+        return match
     }
 
     private static func accessibleCount(labeled label: String, in root: UIView) -> Int {

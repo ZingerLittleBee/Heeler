@@ -34,11 +34,12 @@ struct AgentDirectInputChromeContext {
     let interactions: Interactions
 }
 
-/// Compact Agent-detail chrome for Direct Input: status, Agent switcher with
-/// Show Composer, and a shortcut row while the software keyboard is up.
-/// Bottom-up order matches the approved geometry: system keyboard, shortcut
-/// row, switcher, status. App content rather than a keyboard accessory, so
-/// UIKit's candidate-row teardown cannot tear it down or leave a hollow gap.
+/// Compact Agent-detail chrome for Direct Input: status, a shortcut row while
+/// the software keyboard is up, and the Agent switcher with Show Composer.
+/// Bottom-up order: system keyboard, switcher, shortcut row, status. The
+/// shortcut row sits immediately above the persistent Agent strip. App content
+/// rather than a keyboard accessory, so UIKit's candidate-row teardown cannot
+/// tear it down or leave a hollow gap.
 struct AgentDirectInputChrome: View {
     let context: AgentDirectInputChromeContext
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -64,6 +65,12 @@ struct AgentDirectInputChrome: View {
                     hostTelemetry: presentation.hostTelemetry,
                     chromeColorScheme: presentation.chromeColorScheme)
 
+                // Immediately above the Agent list/switcher strip. Keyboard
+                // show/hide stays on the switcher row — not duplicated here.
+                if presentation.showShortcutRow {
+                    shortcutRow
+                }
+
                 TerminalAgentSwitcherRow(
                     switcher: interactions.switcher,
                     isKeyboardUp: presentation.isKeyboardUp,
@@ -71,12 +78,6 @@ struct AgentDirectInputChrome: View {
                     isToolsKeyboardPresented: presentation.isToolsKeyboardPresented,
                     switchKeyboard: interactions.switchKeyboard,
                     modeControl: modeControl)
-
-                // Adjacent to the software keyboard it augments — below the
-                // switcher in this top-to-bottom stack, above the keyboard.
-                if presentation.showShortcutRow {
-                    shortcutRow
-                }
             }
             .padding(.vertical, 8)
         }
@@ -119,14 +120,6 @@ struct AgentDirectInputChrome: View {
                         AgentDirectInputPresentation.showComposerAccessibilityHint)
 
                 moreMenu
-
-                Button(action: interactions.toggleKeyboard) {
-                    Image(systemName: "keyboard.chevron.compact.down")
-                        .font(.system(size: 12, weight: .medium))
-                        .frame(width: 44, height: 44)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Dismiss keyboard")
             }
             .padding(.horizontal, 12)
         }

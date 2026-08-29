@@ -9,8 +9,8 @@ default off. Composer remains the default authored-input path from ADR 0013.
 When Direct Input is on, Agent detail hides the Composer card, preserves the
 `AgentComposerStore` draft unchanged, enables Ghostty local input, and routes
 the system keyboard into the live Agent Attach PTY. A compact app-owned
-shortcut row (Esc, Tab, Shift-Tab, Enter) sits above the system keyboard as
-ordinary content — never as `inputAccessoryView`. Show Composer restores the
+shortcut row (Esc, Tab, Shift-Tab, Enter) sits above the Agent switcher strip
+as ordinary content — never as `inputAccessoryView`. Show Composer restores the
 card immediately. Mode changes disable animation, never Send, insert, or clear
 the draft, and do not force Composer when Agent Status is Blocked.
 
