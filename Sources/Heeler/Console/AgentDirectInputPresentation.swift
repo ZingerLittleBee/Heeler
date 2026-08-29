@@ -3,23 +3,28 @@ import Foundation
 import Observation
 
 /// Focused Direct Input chrome policy: software-keyboard coverage, shortcut
-/// row visibility, content inset, and the Hide/Show accessibility copy the
+/// row visibility, keyboard layout, and the Hide/Show accessibility copy the
 /// switcher control speaks. Separates Ghostty first-responder intent from the
 /// software keyboard footprint so a hardware keyboard cannot leave a stale gap.
+///
+/// ``layout`` is the single production seam for the Agent detail bottom inset
+/// and tools dock height — `AgentTerminalView` consumes it directly.
 struct AgentDirectInputPresentation: Equatable, Sendable {
     var keyboardPresentation: AgentComposerKeyboardPresentation
     var showsShortcutRow: Bool
-    var contentInset: CGFloat
-    var availableToolsHeight: CGFloat
+    /// Production bottom inset / tools height. Do not rebuild this beside the view.
+    var layout: AgentComposerKeyboardLayout
 
-    /// Software keyboard coverage only. Tools mode is independent. First
-    /// responder alone never counts — that is hardware-keyboard territory.
+    /// Software keyboard coverage, with an explicit Tools→iOS pre-show hold so
+    /// the 60 ms inset coalesce cannot drop the terminal through `.hidden`.
+    /// First responder alone never counts — that is hardware-keyboard territory.
     static func keyboardPresentation(
         usesToolsKeyboard: Bool,
-        softwareKeyboardHeight: CGFloat
+        softwareKeyboardHeight: CGFloat,
+        expectsSystemKeyboard: Bool
     ) -> AgentComposerKeyboardPresentation {
         if usesToolsKeyboard { return .tools }
-        if softwareKeyboardHeight > 0 { return .system }
+        if softwareKeyboardHeight > 0 || expectsSystemKeyboard { return .system }
         return .hidden
     }
 
@@ -31,12 +36,14 @@ struct AgentDirectInputPresentation: Equatable, Sendable {
 
     static func resolve(
         usesToolsKeyboard: Bool,
+        expectsSystemKeyboard: Bool,
         currentHeight: CGFloat,
         lastPresentedHeight: CGFloat
     ) -> AgentDirectInputPresentation {
         let presentation = keyboardPresentation(
             usesToolsKeyboard: usesToolsKeyboard,
-            softwareKeyboardHeight: currentHeight)
+            softwareKeyboardHeight: currentHeight,
+            expectsSystemKeyboard: expectsSystemKeyboard)
         let layout = AgentComposerKeyboardLayout(
             currentHeight: currentHeight,
             lastPresentedHeight: lastPresentedHeight,
@@ -44,8 +51,7 @@ struct AgentDirectInputPresentation: Equatable, Sendable {
         return AgentDirectInputPresentation(
             keyboardPresentation: presentation,
             showsShortcutRow: showsShortcutRow(presentation: presentation),
-            contentInset: layout.contentInset,
-            availableToolsHeight: layout.availableToolsHeight)
+            layout: layout)
     }
 
     static let hideComposerAccessibilityLabel = "Hide Composer"

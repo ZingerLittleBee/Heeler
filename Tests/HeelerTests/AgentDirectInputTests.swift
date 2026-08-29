@@ -8,30 +8,55 @@ import UIKit
 @MainActor
 @Suite("Agent Direct Input")
 struct AgentDirectInputTests {
-    @Test func softwareKeyboardPresentationIgnoresFirstResponderAlone() {
+    @Test func productionLayoutSeamTracksSoftwareKeyboardOnly() {
         let hardwareOnly = AgentDirectInputPresentation.resolve(
             usesToolsKeyboard: false,
+            expectsSystemKeyboard: false,
             currentHeight: 0,
             lastPresentedHeight: 336)
         #expect(hardwareOnly.keyboardPresentation == .hidden)
         #expect(!hardwareOnly.showsShortcutRow)
-        #expect(hardwareOnly.contentInset == 0)
+        #expect(hardwareOnly.layout.contentInset == 0)
 
         let softwareUp = AgentDirectInputPresentation.resolve(
             usesToolsKeyboard: false,
+            expectsSystemKeyboard: false,
             currentHeight: 336,
             lastPresentedHeight: 336)
         #expect(softwareUp.keyboardPresentation == .system)
         #expect(softwareUp.showsShortcutRow)
-        #expect(softwareUp.contentInset == 336)
+        #expect(softwareUp.layout.contentInset == 336)
 
         let tools = AgentDirectInputPresentation.resolve(
             usesToolsKeyboard: true,
+            expectsSystemKeyboard: false,
             currentHeight: 0,
             lastPresentedHeight: 336)
         #expect(tools.keyboardPresentation == .tools)
         #expect(!tools.showsShortcutRow)
-        #expect(tools.contentInset == 336)
+        #expect(tools.layout.contentInset == 336)
+    }
+
+    @Test func toolsToSystemPreShowKeepsStableInset() {
+        // Shared TerminalAttachTests contract: `.system` with currentHeight 0
+        // still reserves lastPresentedHeight during the Tools→iOS swap.
+        let midSwap = AgentDirectInputPresentation.resolve(
+            usesToolsKeyboard: false,
+            expectsSystemKeyboard: true,
+            currentHeight: 0,
+            lastPresentedHeight: 336)
+        #expect(midSwap.keyboardPresentation == .system)
+        #expect(midSwap.showsShortcutRow)
+        #expect(midSwap.layout.contentInset == 336)
+        #expect(midSwap.layout.availableToolsHeight == 336)
+
+        let withoutHold = AgentDirectInputPresentation.resolve(
+            usesToolsKeyboard: false,
+            expectsSystemKeyboard: false,
+            currentHeight: 0,
+            lastPresentedHeight: 336)
+        #expect(withoutHold.keyboardPresentation == .hidden)
+        #expect(withoutHold.layout.contentInset == 0)
     }
 
     @Test func hideAndShowComposerAccessibilityCopyIsProductionFacing() {
@@ -69,12 +94,14 @@ struct AgentDirectInputTests {
             rootViewController: controller)
         defer { window.isHidden = true }
         controller.view.layoutIfNeeded()
-        try #require(await Self.eventually { owner.terminalStatus == .live })
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+        })
 
         let terminal = try #require(Self.terminals(in: controller.view).first)
         #expect(!terminal.isLocalInputEnabled)
         terminal.requestKeyboard()
-        terminal.sendControlKey(.enter)
+        terminal.sendControlKey(TerminalControlKey.enter)
         await Task.yield()
         #expect(!terminal.isFirstResponder)
         #expect(
@@ -107,7 +134,9 @@ struct AgentDirectInputTests {
             rootViewController: controller)
         defer { window.isHidden = true }
         controller.view.layoutIfNeeded()
-        try #require(await Self.eventually { owner.terminalStatus == .live })
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+        })
 
         #expect(
             Self.firstAccessible(
@@ -120,7 +149,7 @@ struct AgentDirectInputTests {
                 in: controller.view))
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
-        try #require(await Self.eventually { inputMode.mode == .direct })
+        try #require(await Self.eventually { inputMode.mode == AgentInputMode.direct })
 
         let terminal = try #require(Self.terminals(in: controller.view).first)
         #expect(terminal.isLocalInputEnabled)
@@ -138,7 +167,7 @@ struct AgentDirectInputTests {
                 in: controller.view))
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
-        try #require(await Self.eventually { inputMode.mode == .composer })
+        try #require(await Self.eventually { inputMode.mode == AgentInputMode.composer })
 
         let restored = try #require(Self.terminals(in: controller.view).first)
         #expect(!restored.isLocalInputEnabled)
@@ -150,7 +179,9 @@ struct AgentDirectInputTests {
 
     @Test func coldPersistedDirectDoesNotRaiseKeyboard() async throws {
         let transport = ScriptedTransport()
-        let composer = AgentComposerStore(target: "w1:p1") { _ in }
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
         let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
@@ -165,7 +196,9 @@ struct AgentDirectInputTests {
             rootViewController: controller)
         defer { window.isHidden = true }
         controller.view.layoutIfNeeded()
-        try #require(await Self.eventually { owner.terminalStatus == .live })
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+        })
 
         let terminal = try #require(Self.terminals(in: controller.view).first)
         #expect(terminal.isLocalInputEnabled)
@@ -176,11 +209,54 @@ struct AgentDirectInputTests {
         await owner.leave().value
     }
 
+    @Test func ghosttyReturnSendsPtyCRWithoutComposerPrompt() async throws {
+        let transport = ScriptedTransport()
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
+        composer.replaceDraft(with: "waiting draft")
+        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
+        defer { cleanup() }
+
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                attachStore: owner,
+                composer: composer,
+                inputMode: inputMode))
+        let window = Self.makeLocalTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+        })
+
+        let terminal = try #require(Self.terminals(in: controller.view).first)
+        #expect(terminal.isLocalInputEnabled)
+        terminal.requestKeyboard()
+        try #require(await Self.eventually { terminal.isFirstResponder })
+
+        // System Return / Ghostty local-input path — not the app shortcut row.
+        terminal.sendControlKey(TerminalControlKey.enter)
+        try #require(await Self.eventually {
+            await transport.attachInputs.contains(
+                TerminalAttachInput.keystrokes(Data([0x0D])))
+        })
+        #expect(composer.draft == "waiting draft")
+        #expect(await transport.agentPromptParams.isEmpty)
+
+        await owner.leave().value
+    }
+
     @Test func shortcutRowButtonsSendBytesWhileSoftwareKeyboardIsUp() async throws {
         let center = NotificationCenter()
         let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
         let transport = ScriptedTransport()
-        let composer = AgentComposerStore(target: "w1:p1") { _ in }
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
         let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
@@ -196,7 +272,9 @@ struct AgentDirectInputTests {
             rootViewController: controller)
         defer { window.isHidden = true }
         controller.view.layoutIfNeeded()
-        try #require(await Self.eventually { owner.terminalStatus == .live })
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+        })
 
         let terminal = try #require(Self.terminals(in: controller.view).first)
         terminal.requestKeyboard()
@@ -221,10 +299,11 @@ struct AgentDirectInputTests {
 
         try #require(await Self.eventually {
             let inputs = await transport.attachInputs
-            return inputs.contains(.keystrokes(Data([0x1B])))
-                && inputs.contains(.keystrokes(Data([0x09])))
-                && inputs.contains(.keystrokes(Data([0x1B, 0x5B, 0x5A])))
-                && inputs.contains(.keystrokes(Data([0x0D])))
+            return inputs.contains(TerminalAttachInput.keystrokes(Data([0x1B])))
+                && inputs.contains(TerminalAttachInput.keystrokes(Data([0x09])))
+                && inputs.contains(
+                    TerminalAttachInput.keystrokes(Data([0x1B, 0x5B, 0x5A])))
+                && inputs.contains(TerminalAttachInput.keystrokes(Data([0x0D])))
         })
         #expect(await transport.agentPromptParams.isEmpty)
 
@@ -234,20 +313,25 @@ struct AgentDirectInputTests {
         controller.view.layoutIfNeeded()
         await Task.yield()
         #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) == nil)
-        #expect(
-            AgentDirectInputPresentation.resolve(
-                usesToolsKeyboard: false,
-                currentHeight: inset.height,
-                lastPresentedHeight: inset.lastPresentedHeight).contentInset == 0)
+        // Production consumes presentation.layout — zero height must not keep
+        // lastPresentedHeight as the bottom inset.
+        let dismissed = AgentDirectInputPresentation.resolve(
+            usesToolsKeyboard: false,
+            expectsSystemKeyboard: false,
+            currentHeight: inset.height,
+            lastPresentedHeight: inset.lastPresentedHeight)
+        #expect(dismissed.layout.contentInset == 0)
 
         await owner.leave().value
     }
 
-    @Test func hardwareFirstResponderDoesNotReserveSoftwareKeyboardGap() async throws {
+    @Test func toolsToSystemSwapKeepsShortcutRowThroughCoalesce() async throws {
         let center = NotificationCenter()
         let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
         let transport = ScriptedTransport()
-        let composer = AgentComposerStore(target: "w1:p1") { _ in }
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
         let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
@@ -263,7 +347,81 @@ struct AgentDirectInputTests {
             rootViewController: controller)
         defer { window.isHidden = true }
         controller.view.layoutIfNeeded()
-        try #require(await Self.eventually { owner.terminalStatus == .live })
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+        })
+
+        let terminal = try #require(Self.terminals(in: controller.view).first)
+        terminal.requestKeyboard()
+        try #require(await Self.eventually { terminal.isFirstResponder })
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [
+                UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                    x: 0, y: 500, width: 402, height: 370)
+            ])
+        try #require(await Self.eventually { inset.height == 336 })
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+        await Task.yield()
+
+        try #require(
+            Self.activateAccessibility(labeled: "Show tools keyboard", in: controller.view))
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+        await Task.yield()
+        #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) == nil)
+
+        // UIKit tears the software keyboard down while Tools stays first
+        // responder — the production hold must keep `.system` once we leave Tools.
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        #expect(inset.height == 0)
+        #expect(inset.lastPresentedHeight == 336)
+
+        try #require(
+            Self.activateAccessibility(labeled: "Show iOS keyboard", in: controller.view))
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+        await Task.yield()
+
+        // Pre-show `.system` hold: shortcut row stays adjacent to the keyboard
+        // footprint even while measured height is still zero.
+        #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) != nil)
+        let midSwap = AgentDirectInputPresentation.resolve(
+            usesToolsKeyboard: false,
+            expectsSystemKeyboard: true,
+            currentHeight: inset.height,
+            lastPresentedHeight: inset.lastPresentedHeight)
+        #expect(midSwap.layout.contentInset == 336)
+
+        await owner.leave().value
+    }
+
+    @Test func hardwareFirstResponderDoesNotReserveSoftwareKeyboardGap() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
+        let transport = ScriptedTransport()
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
+        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
+        defer { cleanup() }
+
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                attachStore: owner,
+                composer: composer,
+                inputMode: inputMode,
+                keyboardInset: inset))
+        let window = Self.makeLocalTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+        })
 
         center.post(
             name: UIResponder.keyboardWillShowNotification, object: nil,
@@ -287,12 +445,13 @@ struct AgentDirectInputTests {
 
         let presentation = AgentDirectInputPresentation.resolve(
             usesToolsKeyboard: false,
+            expectsSystemKeyboard: false,
             currentHeight: inset.height,
             lastPresentedHeight: inset.lastPresentedHeight)
         #expect(terminal.isFirstResponder)
         #expect(presentation.keyboardPresentation == .hidden)
         #expect(!presentation.showsShortcutRow)
-        #expect(presentation.contentInset == 0)
+        #expect(presentation.layout.contentInset == 0)
         #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) == nil)
 
         await owner.leave().value
@@ -300,7 +459,9 @@ struct AgentDirectInputTests {
 
     @Test func directPasteRoutesThroughAttachReview() async throws {
         let transport = ScriptedTransport()
-        let composer = AgentComposerStore(target: "w1:p1") { _ in }
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
         let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
@@ -315,7 +476,9 @@ struct AgentDirectInputTests {
             rootViewController: controller)
         defer { window.isHidden = true }
         controller.view.layoutIfNeeded()
-        try #require(await Self.eventually { owner.terminalStatus == .live })
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+        })
 
         let terminal = try #require(Self.terminals(in: controller.view).first)
         #expect(terminal.isLocalInputEnabled)
@@ -343,7 +506,9 @@ struct AgentDirectInputTests {
 
     @Test func blockedStatusStaysInDirectInput() async throws {
         let transport = ScriptedTransport()
-        let composer = AgentComposerStore(target: "w1:p1", initialStatus: .blocked) { _ in }
+        let composer = AgentComposerStore(target: "w1:p1", initialStatus: .blocked) { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
         let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
@@ -359,14 +524,17 @@ struct AgentDirectInputTests {
             rootViewController: controller)
         defer { window.isHidden = true }
         controller.view.layoutIfNeeded()
-        try #require(await Self.eventually { owner.terminalStatus == .live })
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+        })
 
-        #expect(inputMode.mode == .direct)
+        #expect(inputMode.mode == AgentInputMode.direct)
         let terminal = try #require(Self.terminals(in: controller.view).first)
         #expect(terminal.isLocalInputEnabled)
-        terminal.sendQuickKey(.enter)
+        terminal.sendQuickKey(AgentQuickKey.enter)
         try #require(await Self.eventually {
-            await transport.attachInputs.contains(.keystrokes(Data([0x0D])))
+            await transport.attachInputs.contains(
+                TerminalAttachInput.keystrokes(Data([0x0D])))
         })
         #expect(await transport.agentPromptParams.isEmpty)
 
@@ -375,7 +543,9 @@ struct AgentDirectInputTests {
 
     @Test func terminalReplacementWhileDirectOwnsKeyboardClaimsIntent() async throws {
         let transport = ScriptedTransport()
-        let composer = AgentComposerStore(target: "w1:p1") { _ in }
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
         composer.replaceDraft(with: "keep")
         let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
         let (inputMode, cleanup) = try Self.makeInputMode()
@@ -391,27 +561,28 @@ struct AgentDirectInputTests {
             rootViewController: controller)
         defer { window.isHidden = true }
         controller.view.layoutIfNeeded()
-        try #require(await Self.eventually { owner.terminalStatus == .live })
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+        })
 
         try #require(
             Self.activateAccessibility(
                 labeled: AgentDirectInputPresentation.hideComposerAccessibilityLabel,
                 in: controller.view))
-        try #require(await Self.eventually { inputMode.mode == .direct })
+        try #require(await Self.eventually { inputMode.mode == AgentInputMode.direct })
         let first = try #require(Self.terminals(in: controller.view).first)
         try #require(await Self.eventually { first.isFirstResponder })
         let firstID = owner.terminalID
         let firstSurface = ObjectIdentifier(first)
 
-        // Same-screen pipeline replacement (reconnect). Intent is owned by
-        // Direct Input's presentation state, so the new surface claims without
-        // raising a keyboard that was down.
         owner.transportGenerationDidChange(2)
         try #require(await Self.eventually {
             owner.terminalID != firstID
         })
         #expect(await transport.emitAttachOutput(Data("replaced".utf8)))
-        try #require(await Self.eventually { owner.terminalStatus == .live })
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+        })
 
         let replacement = try #require(Self.terminals(in: controller.view).first)
         #expect(ObjectIdentifier(replacement) != firstSurface)
@@ -422,9 +593,81 @@ struct AgentDirectInputTests {
         await owner.leave().value
     }
 
+    @Test func dismissAfterReplacementDoesNotRaiseOnSecondReplacement() async throws {
+        let transport = ScriptedTransport()
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
+        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let (inputMode, cleanup) = try Self.makeInputMode()
+        defer { cleanup() }
+        let handoff = TerminalKeyboardHandoff()
+        let agent = Self.makeAgent(status: .idle)
+
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                agent: agent,
+                attachStore: owner,
+                composer: composer,
+                inputMode: inputMode,
+                keyboardHandoff: handoff))
+        let window = Self.makeLocalTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+        })
+
+        try #require(
+            Self.activateAccessibility(
+                labeled: AgentDirectInputPresentation.hideComposerAccessibilityLabel,
+                in: controller.view))
+        try #require(await Self.eventually { inputMode.mode == AgentInputMode.direct })
+        let first = try #require(Self.terminals(in: controller.view).first)
+        try #require(await Self.eventually { first.isFirstResponder })
+        let firstID = owner.terminalID
+
+        // Replacement while keyboard up — intent reclaim, not a leftover handoff.
+        owner.transportGenerationDidChange(2)
+        try #require(await Self.eventually { owner.terminalID != firstID })
+        #expect(await transport.emitAttachOutput(Data("first-replace".utf8)))
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+        })
+        let afterFirst = try #require(Self.terminals(in: controller.view).first)
+        try #require(await Self.eventually { afterFirst.isFirstResponder })
+
+        // Production dismiss clears Direct Input raised intent. A leftover
+        // TerminalKeyboardHandoff arm after the first replacement must not
+        // resurrect the keyboard on the next pipeline rebuild.
+        try #require(
+            Self.activateAccessibility(labeled: "Dismiss keyboard", in: controller.view))
+        try #require(await Self.eventually { !afterFirst.isFirstResponder })
+        #expect(!handoff.consume(agent.id))
+
+        let secondID = owner.terminalID
+        owner.transportGenerationDidChange(3)
+        try #require(await Self.eventually { owner.terminalID != secondID })
+        #expect(await transport.emitAttachOutput(Data("second-replace".utf8)))
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+        })
+
+        let afterSecond = try #require(Self.terminals(in: controller.view).first)
+        #expect(afterSecond.isLocalInputEnabled)
+        #expect(!afterSecond.isFirstResponder)
+        #expect(!handoff.consume(agent.id))
+
+        await owner.leave().value
+    }
+
     @Test func terminalReplacementWhileDirectKeyboardDownStaysDown() async throws {
         let transport = ScriptedTransport()
-        let composer = AgentComposerStore(target: "w1:p1") { _ in }
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
         let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
@@ -439,7 +682,9 @@ struct AgentDirectInputTests {
             rootViewController: controller)
         defer { window.isHidden = true }
         controller.view.layoutIfNeeded()
-        try #require(await Self.eventually { owner.terminalStatus == .live })
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+        })
 
         let first = try #require(Self.terminals(in: controller.view).first)
         #expect(!first.isFirstResponder)
@@ -448,7 +693,9 @@ struct AgentDirectInputTests {
         owner.transportGenerationDidChange(2)
         try #require(await Self.eventually { owner.terminalID != firstID })
         #expect(await transport.emitAttachOutput(Data("still-down".utf8)))
-        try #require(await Self.eventually { owner.terminalStatus == .live })
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+        })
 
         let replacement = try #require(Self.terminals(in: controller.view).first)
         #expect(replacement.isLocalInputEnabled)
@@ -517,7 +764,9 @@ struct AgentDirectInputTests {
             await transport.attachRequests.count == 1
         })
         #expect(await transport.emitAttachOutput(Data("live".utf8)))
-        try #require(await Self.eventually { owner.terminalStatus == .live })
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+        })
         return owner
     }
 

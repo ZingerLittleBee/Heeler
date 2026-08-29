@@ -43,6 +43,10 @@ struct AgentTerminalView: View {
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
     /// Direct Input's tools dock, separate from Composer focus presentation.
     @State private var usesDirectToolsKeyboard = false
+    /// Holds `.system` presentation across the Tools→iOS coalesce window so
+    /// the terminal does not expand then shrink while UIKit re-shows the
+    /// software keyboard. Never set for bare first-responder / hardware.
+    @State private var expectsDirectSystemKeyboard = false
     /// Survives same-screen terminal replacement so a raised Direct Input
     /// keyboard is reclaimed without raising one that was down.
     @State private var directKeyboardIntent = DirectInputKeyboardIntent()
@@ -391,11 +395,19 @@ struct AgentTerminalView: View {
         .onChange(of: attach.terminalID) { _, _ in
             guard isDirectInput else { return }
             usesDirectToolsKeyboard = false
+            expectsDirectSystemKeyboard = false
             keyboardControl.setKeyboardMode(.text)
             keyboardInset.resumeHeightCapture()
-            // Intent already armed (or persisted on directKeyboardIntent) before
-            // the replacement; claimsKeyboard consumes it on the new surface.
-            armDirectKeyboardClaimIfNeeded()
+            // Do not re-arm TerminalKeyboardHandoff here: claimsKeyboard already
+            // consumed any pre-armed token or reclaimed via same-screen intent.
+            // Arming again leaves a stale one-shot that can raise a dismissed
+            // keyboard on a later replacement.
+        }
+        .onChange(of: keyboardControl.isFirstResponder) { _, isUp in
+            // Tools→iOS keeps first responder across the coalesce window; a
+            // real dismiss resigns and must drop the pre-show `.system` hold.
+            guard isDirectInput, !isUp else { return }
+            expectsDirectSystemKeyboard = false
         }
     }
 
@@ -437,6 +449,7 @@ struct AgentTerminalView: View {
     private var directInputPresentation: AgentDirectInputPresentation {
         AgentDirectInputPresentation.resolve(
             usesToolsKeyboard: usesDirectToolsKeyboard,
+            expectsSystemKeyboard: expectsDirectSystemKeyboard,
             currentHeight: keyboardInset.height,
             lastPresentedHeight: keyboardInset.lastPresentedHeight)
     }
@@ -450,10 +463,8 @@ struct AgentTerminalView: View {
 
     private var composerKeyboardLayout: AgentComposerKeyboardLayout {
         if isDirectInput {
-            return AgentComposerKeyboardLayout(
-                currentHeight: keyboardInset.height,
-                lastPresentedHeight: keyboardInset.lastPresentedHeight,
-                presentation: directInputPresentation.keyboardPresentation)
+            // Single seam: never rebuild layout beside the resolved presentation.
+            return directInputPresentation.layout
         }
         return AgentComposerKeyboardLayout(
             currentHeight: keyboardInset.height,
@@ -655,10 +666,12 @@ struct AgentTerminalView: View {
                 prepareComposerKeyboardPresentation(.hidden)
                 composerKeyboardPresentation = .hidden
                 usesDirectToolsKeyboard = false
+                expectsDirectSystemKeyboard = false
                 keyboardControl.setKeyboardMode(.text)
                 inputMode.select(.direct)
             case .composer:
                 usesDirectToolsKeyboard = false
+                expectsDirectSystemKeyboard = false
                 directKeyboardIntent.setWantsKeyboard(false)
                 keyboardControl.setKeyboardMode(.text)
                 keyboardControl.dismissKeyboard()
@@ -697,12 +710,14 @@ struct AgentTerminalView: View {
             transaction.disablesAnimations = true
             withTransaction(transaction) {
                 usesDirectToolsKeyboard = false
+                expectsDirectSystemKeyboard = false
                 keyboardInset.resumeHeightCapture()
                 keyboardControl.setKeyboardMode(.text)
             }
             directKeyboardIntent.setWantsKeyboard(false)
             keyboardControl.dismissKeyboard()
         } else if keyboardControl.isKeyboardUp {
+            expectsDirectSystemKeyboard = false
             directKeyboardIntent.setWantsKeyboard(false)
             keyboardControl.dismissKeyboard()
         } else {
@@ -717,10 +732,14 @@ struct AgentTerminalView: View {
         transaction.disablesAnimations = true
         withTransaction(transaction) {
             if enteringTools {
+                expectsDirectSystemKeyboard = false
                 keyboardInset.pauseHeightCapture()
                 usesDirectToolsKeyboard = true
                 keyboardControl.setKeyboardMode(.controls)
             } else {
+                // Hold `.system` through UIKit's coalesce window so content
+                // inset stays at lastPresentedHeight instead of dipping to zero.
+                expectsDirectSystemKeyboard = true
                 keyboardInset.resumeHeightCapture()
                 usesDirectToolsKeyboard = false
                 keyboardControl.setKeyboardMode(.text)
