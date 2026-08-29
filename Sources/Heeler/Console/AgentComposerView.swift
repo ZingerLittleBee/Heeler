@@ -173,14 +173,9 @@ struct AgentComposerView: View {
 
                         HStack(spacing: 8) {
                             Menu {
-                                Button("Add Image", systemImage: "photo") {
-                                    actions.addImage()
-                                }
-                                .disabled(!actions.canBegin)
-                                Button("Add File", systemImage: "doc") {
-                                    actions.addFile()
-                                }
-                                .disabled(!actions.canBegin)
+                                AgentActionMenuContent(
+                                    actions: actions,
+                                    sections: AgentActionMenuPolicy.composerAddSections)
                             } label: {
                                 Image(systemName: "plus")
                                     .font(.system(size: 15, weight: .semibold))
@@ -194,51 +189,9 @@ struct AgentComposerView: View {
                             .accessibilityHint("Adds an image or file to the draft")
 
                             Menu {
-                                Section {
-                                    Button("Open Terminal", systemImage: "apple.terminal") {
-                                        actions.openTerminal?()
-                                    }
-                                    .disabled(
-                                        actions.openTerminal == nil
-                                            || actions.isOpeningTerminal
-                                    )
-                                    Button("New Agent", systemImage: "plus") {
-                                        actions.startAgent()
-                                    }
-                                    // Skills before Snippets: the Keys
-                                    // keyboard's tab order.
-                                    if let showSkills = actions.showSkills {
-                                        Button("Skills", systemImage: "sparkles") {
-                                            showSkills()
-                                        }
-                                    }
-                                    Button("Snippets", systemImage: "quote.bubble") {
-                                        actions.manageSnippets()
-                                    }
-                                }
-                                Section {
-                                    if let showWorktreeDetails = actions.showWorktreeDetails {
-                                        Button(
-                                            "Worktree Details",
-                                            systemImage: "arrow.triangle.branch"
-                                        ) {
-                                            showWorktreeDetails()
-                                        }
-                                    }
-                                    Button("Rename Agent", systemImage: "pencil") {
-                                        actions.renameAgent()
-                                    }
-                                    Button("Rename Workspace", systemImage: "pencil.line") {
-                                        actions.renameWorkspace()
-                                    }
-                                    Button(
-                                        "Close Agent",
-                                        systemImage: "trash",
-                                        role: .destructive
-                                    ) {
-                                        actions.closeAgent()
-                                    }
-                                }
+                                AgentActionMenuContent(
+                                    actions: actions,
+                                    sections: AgentActionMenuPolicy.composerMoreSections)
                             } label: {
                                 Image(systemName: "ellipsis")
                                     .font(.system(size: 17, weight: .semibold))

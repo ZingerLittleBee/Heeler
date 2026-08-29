@@ -74,6 +74,125 @@ struct AgentDirectInputTests {
                 "draft"))
     }
 
+    @Test func sharedActionMenuSectionsMatchSurfaceContracts() {
+        #expect(
+            AgentActionMenuPolicy.composerAddSections
+                == [.addAttachments])
+        #expect(
+            AgentActionMenuPolicy.composerMoreSections
+                == [.sessionTools, .agentLifecycle])
+        #expect(
+            AgentActionMenuPolicy.directInputMoreSections
+                == [.addAttachments, .sessionTools, .agentLifecycle])
+        #expect(
+            AgentActionMenuSection.sessionTools.items
+                == [.openTerminal, .newAgent, .skills, .snippets])
+        #expect(
+            AgentActionMenuItem.addImage.isDraftOwned
+                && AgentActionMenuItem.addFile.isDraftOwned
+                && AgentActionMenuItem.skills.isDraftOwned
+                && AgentActionMenuItem.snippets.isDraftOwned)
+        #expect(
+            !AgentActionMenuItem.openTerminal.isDraftOwned
+                && !AgentActionMenuItem.newAgent.isDraftOwned
+                && !AgentActionMenuItem.renameAgent.isDraftOwned
+                && !AgentActionMenuItem.closeAgent.isDraftOwned)
+        #expect(AgentActionMenuItem.closeAgent.role == .destructive)
+    }
+
+    @Test func sharedActionMenuAvailabilityFollowsComposerActions() {
+        var openedTerminal = false
+        var startedAgent = false
+        var showedSkills = false
+        var managedSnippets = false
+        var addedImage = false
+        let actions = AgentComposerActions(
+            canBegin: false,
+            attachLinkCount: 0,
+            addImage: { addedImage = true },
+            addFile: {},
+            showAttachLinks: {},
+            openTerminal: { openedTerminal = true },
+            isOpeningTerminal: true,
+            startAgent: { startedAgent = true },
+            manageSnippets: { managedSnippets = true },
+            showSkills: { showedSkills = true },
+            showWorktreeDetails: nil,
+            renameAgent: {},
+            renameWorkspace: {},
+            closeAgent: {})
+
+        #expect(!AgentActionMenuPolicy.isEnabled(.addImage, actions: actions))
+        #expect(!AgentActionMenuPolicy.isEnabled(.addFile, actions: actions))
+        #expect(!AgentActionMenuPolicy.isEnabled(.openTerminal, actions: actions))
+        #expect(AgentActionMenuPolicy.isVisible(.skills, actions: actions))
+        #expect(!AgentActionMenuPolicy.isVisible(.worktreeDetails, actions: actions))
+
+        let ready = AgentComposerActions(
+            canBegin: true,
+            attachLinkCount: 0,
+            addImage: { addedImage = true },
+            addFile: {},
+            showAttachLinks: {},
+            openTerminal: { openedTerminal = true },
+            isOpeningTerminal: false,
+            startAgent: { startedAgent = true },
+            manageSnippets: { managedSnippets = true },
+            showSkills: nil,
+            showWorktreeDetails: {},
+            renameAgent: {},
+            renameWorkspace: {},
+            closeAgent: {})
+        #expect(AgentActionMenuPolicy.isEnabled(.addImage, actions: ready))
+        #expect(AgentActionMenuPolicy.isEnabled(.openTerminal, actions: ready))
+        #expect(!AgentActionMenuPolicy.isVisible(.skills, actions: ready))
+        #expect(AgentActionMenuPolicy.isVisible(.worktreeDetails, actions: ready))
+
+        AgentActionMenuPolicy.perform(.addImage, actions: actions)
+        AgentActionMenuPolicy.perform(.openTerminal, actions: ready)
+        AgentActionMenuPolicy.perform(.newAgent, actions: actions)
+        AgentActionMenuPolicy.perform(.skills, actions: actions)
+        AgentActionMenuPolicy.perform(.snippets, actions: actions)
+        #expect(addedImage)
+        #expect(openedTerminal)
+        #expect(startedAgent)
+        #expect(showedSkills)
+        #expect(managedSnippets)
+    }
+
+    @Test func keyboardClaimPolicyUnifiesReplacementAndAgentSwitchGates() {
+        #expect(
+            !AgentDirectInputPresentation.shouldClaimKeyboard(
+                wantsKeyboard: false,
+                isKeyboardUp: false,
+                usesToolsKeyboard: false,
+                softwareKeyboardHeight: 0))
+        #expect(
+            AgentDirectInputPresentation.shouldClaimKeyboard(
+                wantsKeyboard: true,
+                isKeyboardUp: false,
+                usesToolsKeyboard: false,
+                softwareKeyboardHeight: 0))
+        #expect(
+            AgentDirectInputPresentation.shouldClaimKeyboard(
+                wantsKeyboard: false,
+                isKeyboardUp: true,
+                usesToolsKeyboard: false,
+                softwareKeyboardHeight: 0))
+        #expect(
+            AgentDirectInputPresentation.shouldClaimKeyboard(
+                wantsKeyboard: false,
+                isKeyboardUp: false,
+                usesToolsKeyboard: true,
+                softwareKeyboardHeight: 0))
+        #expect(
+            AgentDirectInputPresentation.shouldClaimKeyboard(
+                wantsKeyboard: false,
+                isKeyboardUp: false,
+                usesToolsKeyboard: false,
+                softwareKeyboardHeight: 336))
+    }
+
     @Test func composerModeStillRejectsLocalGhosttyInput() async throws {
         let transport = ScriptedTransport()
         let composer = AgentComposerStore(target: "w1:p1") { params in
