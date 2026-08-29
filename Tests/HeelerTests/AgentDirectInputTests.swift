@@ -238,8 +238,9 @@ struct AgentDirectInputTests {
         terminal.requestKeyboard()
         try #require(await Self.eventually { terminal.isFirstResponder })
 
-        // System Return / Ghostty local-input path — not the app shortcut row.
-        terminal.sendControlKey(TerminalControlKey.enter)
+        // Soft-keyboard Return enters through UIKeyInput.insertText("\n"),
+        // not sendControlKey / sendQuickKey. Production maps that to PTY CR.
+        (terminal as UIKeyInput).insertText("\n")
         try #require(await Self.eventually {
             await transport.attachInputs.contains(
                 TerminalAttachInput.keystrokes(Data([0x0D])))
@@ -281,6 +282,8 @@ struct AgentDirectInputTests {
         try #require(await Self.eventually { terminal.isFirstResponder })
 
         #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) == nil)
+        controller.view.layoutIfNeeded()
+        let heightBeforeKeyboard = terminal.frame.height
 
         center.post(
             name: UIResponder.keyboardWillShowNotification, object: nil,
@@ -292,6 +295,8 @@ struct AgentDirectInputTests {
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
         await Task.yield()
+        let heightWithKeyboard = try #require(Self.terminals(in: controller.view).first)
+            .frame.height
 
         for label in ["Escape", "Tab", "Shift Tab", "Enter"] {
             try #require(Self.activateAccessibility(labeled: label, in: controller.view))
@@ -307,20 +312,19 @@ struct AgentDirectInputTests {
         })
         #expect(await transport.agentPromptParams.isEmpty)
 
+        // Rendered production inset: AgentTerminalKeyboardInsetModifier must
+        // shrink the hosted terminal by the software-keyboard height.
+        #expect(heightBeforeKeyboard - heightWithKeyboard >= 336)
+
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
         #expect(inset.height == 0)
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
         await Task.yield()
         #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) == nil)
-        // Production consumes presentation.layout — zero height must not keep
-        // lastPresentedHeight as the bottom inset.
-        let dismissed = AgentDirectInputPresentation.resolve(
-            usesToolsKeyboard: false,
-            expectsSystemKeyboard: false,
-            currentHeight: inset.height,
-            lastPresentedHeight: inset.lastPresentedHeight)
-        #expect(dismissed.layout.contentInset == 0)
+        let heightAfterHide = try #require(Self.terminals(in: controller.view).first)
+            .frame.height
+        #expect(abs(heightAfterHide - heightBeforeKeyboard) < 1)
 
         await owner.leave().value
     }
@@ -364,6 +368,8 @@ struct AgentDirectInputTests {
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
         await Task.yield()
+        let heightWithSoftwareKeyboard = try #require(
+            Self.terminals(in: controller.view).first).frame.height
 
         try #require(
             Self.activateAccessibility(labeled: "Show tools keyboard", in: controller.view))
@@ -387,12 +393,38 @@ struct AgentDirectInputTests {
         // Pre-show `.system` hold: shortcut row stays adjacent to the keyboard
         // footprint even while measured height is still zero.
         #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) != nil)
-        let midSwap = AgentDirectInputPresentation.resolve(
-            usesToolsKeyboard: false,
-            expectsSystemKeyboard: true,
-            currentHeight: inset.height,
-            lastPresentedHeight: inset.lastPresentedHeight)
-        #expect(midSwap.layout.contentInset == 336)
+        let midSwapTerminal = try #require(Self.terminals(in: controller.view).first)
+        #expect(midSwapTerminal.isFirstResponder)
+        #expect(heightWithSoftwareKeyboard - midSwapTerminal.frame.height <= 1)
+
+        // Software keyboard actually appears — hold must release without a
+        // transient `.hidden` dip (row and inset stay).
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [
+                UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                    x: 0, y: 500, width: 402, height: 370)
+            ])
+        try #require(await Self.eventually { inset.height == 336 })
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+        await Task.yield()
+        #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) != nil)
+        let afterShow = try #require(Self.terminals(in: controller.view).first)
+        #expect(afterShow.isFirstResponder)
+        #expect(abs(afterShow.frame.height - heightWithSoftwareKeyboard) < 1)
+
+        // Hardware keyboard hides the software keyboard while Ghostty remains
+        // first responder. Released hold must not keep a stale inset or row.
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        #expect(inset.height == 0)
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+        await Task.yield()
+        let afterHardwareHide = try #require(Self.terminals(in: controller.view).first)
+        #expect(afterHardwareHide.isFirstResponder)
+        #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) == nil)
+        #expect(afterHardwareHide.frame.height - heightWithSoftwareKeyboard >= 336)
 
         await owner.leave().value
     }
@@ -431,6 +463,11 @@ struct AgentDirectInputTests {
             ])
         try #require(await Self.eventually { inset.height == 336 })
         #expect(inset.lastPresentedHeight == 336)
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+        await Task.yield()
+        let heightWithSoftwareKeyboard = try #require(
+            Self.terminals(in: controller.view).first).frame.height
 
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
         #expect(inset.height == 0)
@@ -443,16 +480,11 @@ struct AgentDirectInputTests {
         controller.view.layoutIfNeeded()
         await Task.yield()
 
-        let presentation = AgentDirectInputPresentation.resolve(
-            usesToolsKeyboard: false,
-            expectsSystemKeyboard: false,
-            currentHeight: inset.height,
-            lastPresentedHeight: inset.lastPresentedHeight)
-        #expect(terminal.isFirstResponder)
-        #expect(presentation.keyboardPresentation == .hidden)
-        #expect(!presentation.showsShortcutRow)
-        #expect(presentation.layout.contentInset == 0)
+        let hardwareTerminal = try #require(Self.terminals(in: controller.view).first)
+        #expect(hardwareTerminal.isFirstResponder)
         #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) == nil)
+        // No software keyboard: production inset must not reserve lastPresentedHeight.
+        #expect(hardwareTerminal.frame.height - heightWithSoftwareKeyboard >= 336)
 
         await owner.leave().value
     }
@@ -484,7 +516,9 @@ struct AgentDirectInputTests {
         #expect(terminal.isLocalInputEnabled)
         terminal.requestPaste("git status\ngit diff")
         let pending = try #require(owner.pendingPaste)
-        #expect(pending.text == "git status\ngit diff")
+        #expect(pending.preview == "git status\ngit diff")
+        #expect(pending.lineCount == 2)
+        #expect(pending.characterCount == "git status\ngit diff".count)
         #expect(
             await transport.attachInputs.allSatisfy {
                 if case .keystrokes = $0 { false } else { true }

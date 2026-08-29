@@ -45,7 +45,9 @@ struct AgentTerminalView: View {
     @State private var usesDirectToolsKeyboard = false
     /// Holds `.system` presentation across the Tools→iOS coalesce window so
     /// the terminal does not expand then shrink while UIKit re-shows the
-    /// software keyboard. Never set for bare first-responder / hardware.
+    /// software keyboard. Cleared once `keyboardInset.height` becomes positive
+    /// (or on resign / mode change). Never set for bare first-responder /
+    /// hardware.
     @State private var expectsDirectSystemKeyboard = false
     /// Survives same-screen terminal replacement so a raised Direct Input
     /// keyboard is reclaimed without raising one that was down.
@@ -407,6 +409,15 @@ struct AgentTerminalView: View {
             // Tools→iOS keeps first responder across the coalesce window; a
             // real dismiss resigns and must drop the pre-show `.system` hold.
             guard isDirectInput, !isUp else { return }
+            expectsDirectSystemKeyboard = false
+        }
+        .onChange(of: keyboardInset.height) { _, height in
+            // Release the Tools→iOS pre-show hold only after the software
+            // keyboard has actually appeared. Clearing while height is still
+            // zero would dip through `.hidden`; clearing once height is
+            // positive keeps `.system` via the live measurement. A later
+            // hardware-keyboard hide can then drop to zero inset cleanly.
+            guard isDirectInput, expectsDirectSystemKeyboard, height > 0 else { return }
             expectsDirectSystemKeyboard = false
         }
     }

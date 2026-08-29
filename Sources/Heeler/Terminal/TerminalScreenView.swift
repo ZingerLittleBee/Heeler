@@ -771,6 +771,18 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         callbackBridge.paste(text, bracketed: usesBracketedPaste)
     }
 
+    /// Soft-keyboard Return arrives here as `"\n"` (UIKeyInput). Direct Input
+    /// and Shell treat Enter as PTY CR (`0x0D`), matching shortcut Enter and
+    /// `TerminalControlKey.enter` — not LF.
+    override func insertText(_ text: String) {
+        guard isLocalInputEnabled else { return }
+        if text == "\n" {
+            super.insertText("\r")
+            return
+        }
+        super.insertText(text)
+    }
+
     override func deleteBackward() {
         guard isLocalInputEnabled else { return }
 

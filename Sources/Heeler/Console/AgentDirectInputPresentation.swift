@@ -17,7 +17,9 @@ struct AgentDirectInputPresentation: Equatable, Sendable {
 
     /// Software keyboard coverage, with an explicit Tools→iOS pre-show hold so
     /// the 60 ms inset coalesce cannot drop the terminal through `.hidden`.
-    /// First responder alone never counts — that is hardware-keyboard territory.
+    /// `expectsSystemKeyboard` is only valid until measured height becomes
+    /// positive; after that, height alone drives `.system`. First responder
+    /// alone never counts — that is hardware-keyboard territory.
     static func keyboardPresentation(
         usesToolsKeyboard: Bool,
         softwareKeyboardHeight: CGFloat,
