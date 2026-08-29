@@ -62,6 +62,10 @@ struct AgentDirectInputPresentation: Equatable, Sendable {
     static let showComposerAccessibilityLabel = "Show Composer"
     static let showComposerAccessibilityHint =
         "Restores the Composer. The draft is unchanged."
+    /// Source-specific identity for the software-keyboard shortcut-row
+    /// container. Distinct from Tools keypad Escape, which shares the spoken
+    /// accessibility label.
+    static let shortcutRowAccessibilityIdentifier = "direct-input.shortcut-row"
 }
 
 /// Survives same-screen terminal pipeline replacement so Direct Input can

@@ -139,6 +139,9 @@ struct AgentDirectInputChrome: View {
                 .frame(height: 1 / max(displayScale, 1))
         }
         .background(Color(uiColor: .secondarySystemBackground))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(
+            AgentDirectInputPresentation.shortcutRowAccessibilityIdentifier)
     }
 
     private var moreMenu: some View {

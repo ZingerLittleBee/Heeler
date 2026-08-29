@@ -370,15 +370,21 @@ struct AgentDirectInputTests {
         await Task.yield()
         let heightWithSoftwareKeyboard = try #require(
             Self.terminals(in: controller.view).first).frame.height
+        let shortcutRowID =
+            AgentDirectInputPresentation.shortcutRowAccessibilityIdentifier
+        try #require(await Self.eventually {
+            Self.firstAccessible(identifier: shortcutRowID, in: controller.view) != nil
+        })
 
         try #require(
             Self.activateAccessibility(labeled: "Show tools keyboard", in: controller.view))
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
         // Tools presentation hides the software-keyboard shortcut row; wait for
-        // that chrome transition rather than assuming one yield rebuilt a11y.
+        // that source-specific identity rather than the shared Escape label the
+        // Tools keypad also speaks.
         try #require(await Self.eventually {
-            Self.firstAccessible(labeled: "Escape", in: controller.view) == nil
+            Self.firstAccessible(identifier: shortcutRowID, in: controller.view) == nil
         })
 
         // UIKit tears the software keyboard down while Tools stays first
@@ -397,7 +403,8 @@ struct AgentDirectInputTests {
         // footprint even while measured height is still zero. Two-sided bound:
         // wiring the modifier to the raw zero height expands the terminal by
         // ~lastPresentedHeight and still satisfies a one-sided upper bound.
-        #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) != nil)
+        #expect(
+            Self.firstAccessible(identifier: shortcutRowID, in: controller.view) != nil)
         let midSwapTerminal = try #require(Self.terminals(in: controller.view).first)
         #expect(midSwapTerminal.isFirstResponder)
         #expect(abs(heightWithSoftwareKeyboard - midSwapTerminal.frame.height) <= 1)
@@ -414,7 +421,8 @@ struct AgentDirectInputTests {
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
         await Task.yield()
-        #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) != nil)
+        #expect(
+            Self.firstAccessible(identifier: shortcutRowID, in: controller.view) != nil)
         let afterShow = try #require(Self.terminals(in: controller.view).first)
         #expect(afterShow.isFirstResponder)
         #expect(abs(afterShow.frame.height - heightWithSoftwareKeyboard) < 1)
@@ -428,7 +436,8 @@ struct AgentDirectInputTests {
         await Task.yield()
         let afterHardwareHide = try #require(Self.terminals(in: controller.view).first)
         #expect(afterHardwareHide.isFirstResponder)
-        #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) == nil)
+        #expect(
+            Self.firstAccessible(identifier: shortcutRowID, in: controller.view) == nil)
         #expect(afterHardwareHide.frame.height - heightWithSoftwareKeyboard >= 336)
 
         await owner.leave().value
@@ -627,8 +636,18 @@ struct AgentDirectInputTests {
         try #require(await Self.eventually {
             owner.terminalStatus == AttachTerminalStore.Status.live
         })
+        // Hosted UI may still expose the predecessor surface briefly after the
+        // replacement Attach is live — wait for a distinct rendered terminal.
+        try #require(await Self.eventually {
+            Self.terminals(in: controller.view).contains {
+                ObjectIdentifier($0) != firstSurface
+            }
+        })
 
-        let replacement = try #require(Self.terminals(in: controller.view).first)
+        let replacement = try #require(
+            Self.terminals(in: controller.view).first {
+                ObjectIdentifier($0) != firstSurface
+            })
         #expect(ObjectIdentifier(replacement) != firstSurface)
         #expect(replacement.isLocalInputEnabled)
         try #require(await Self.eventually { replacement.isFirstResponder })
@@ -690,6 +709,9 @@ struct AgentDirectInputTests {
         // Production dismiss clears Direct Input raised intent. A leftover
         // TerminalKeyboardHandoff arm after the first replacement must not
         // resurrect the keyboard on the next pipeline rebuild.
+        try #require(await Self.eventually {
+            Self.firstAccessible(labeled: "Dismiss keyboard", in: controller.view) != nil
+        })
         try #require(
             Self.activateAccessibility(labeled: "Dismiss keyboard", in: controller.view))
         try #require(await Self.eventually { !afterFirst.isFirstResponder })
@@ -892,8 +914,20 @@ struct AgentDirectInputTests {
     }
 
     private static func firstAccessible(labeled label: String, in root: UIView) -> NSObject? {
+        firstAccessible(in: root) { $0.accessibilityLabel == label }
+    }
+
+    private static func firstAccessible(
+        identifier: String, in root: UIView
+    ) -> NSObject? {
+        firstAccessible(in: root) { $0.accessibilityIdentifier == identifier }
+    }
+
+    private static func firstAccessible(
+        in root: UIView, matching: (NSObject) -> Bool
+    ) -> NSObject? {
         func visit(_ node: NSObject) -> NSObject? {
-            if node.accessibilityLabel == label {
+            if matching(node) {
                 return node
             }
             if let elements = node.accessibilityElements {
