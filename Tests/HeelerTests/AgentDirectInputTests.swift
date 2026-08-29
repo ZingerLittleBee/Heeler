@@ -74,6 +74,222 @@ struct AgentDirectInputTests {
                 "draft"))
     }
 
+    @Test func sharedActionMenuContractIsExhaustive() {
+        #expect(
+            AgentActionMenuPolicy.composerAddSections == [.addAttachments])
+        #expect(
+            AgentActionMenuPolicy.composerMoreSections
+                == [.sessionTools, .agentLifecycle])
+        #expect(
+            AgentActionMenuPolicy.directInputMoreSections
+                == [.addAttachments, .sessionTools, .agentLifecycle])
+        #expect(
+            AgentActionMenuSection.addAttachments.items
+                == [.addImage, .addFile])
+        #expect(
+            AgentActionMenuSection.sessionTools.items
+                == [.openTerminal, .newAgent, .skills, .snippets])
+        #expect(
+            AgentActionMenuSection.agentLifecycle.items
+                == [.worktreeDetails, .renameAgent, .renameWorkspace, .closeAgent])
+        #expect(
+            AgentActionMenuItem.allCases
+                == AgentActionMenuSection.allCases.flatMap(\.items))
+
+        let metadata: [(AgentActionMenuItem, String, String, Bool, Bool)] = [
+            (.addImage, "Add Image", "photo", false, true),
+            (.addFile, "Add File", "doc", false, true),
+            (.openTerminal, "Open Terminal", "apple.terminal", false, false),
+            (.newAgent, "New Agent", "plus", false, false),
+            (.skills, "Skills", "sparkles", false, true),
+            (.snippets, "Snippets", "quote.bubble", false, true),
+            (.worktreeDetails, "Worktree Details", "arrow.triangle.branch", false, false),
+            (.renameAgent, "Rename Agent", "pencil", false, false),
+            (.renameWorkspace, "Rename Workspace", "pencil.line", false, false),
+            (.closeAgent, "Close Agent", "trash", true, false),
+        ]
+        for (item, title, systemImage, isDestructive, isDraftOwned) in metadata {
+            #expect(item.title == title)
+            #expect(item.systemImage == systemImage)
+            #expect((item.role == .destructive) == isDestructive)
+            #expect(item.isDraftOwned == isDraftOwned)
+        }
+    }
+
+    @Test func sharedActionMenuAvailabilityAndDispatchCoverAllGates() {
+        enum Event: Equatable {
+            case addImage, addFile, openTerminal, startAgent, skills, snippets
+            case worktree, renameAgent, renameWorkspace, closeAgent
+        }
+        var events: [Event] = []
+        let gated = AgentComposerActions(
+            canBegin: false,
+            attachLinkCount: 0,
+            addImage: { events.append(.addImage) },
+            addFile: { events.append(.addFile) },
+            showAttachLinks: {},
+            openTerminal: nil,
+            isOpeningTerminal: false,
+            startAgent: { events.append(.startAgent) },
+            manageSnippets: { events.append(.snippets) },
+            showSkills: nil,
+            showWorktreeDetails: nil,
+            renameAgent: { events.append(.renameAgent) },
+            renameWorkspace: { events.append(.renameWorkspace) },
+            closeAgent: { events.append(.closeAgent) })
+        let busy = AgentComposerActions(
+            canBegin: true,
+            attachLinkCount: 0,
+            addImage: { events.append(.addImage) },
+            addFile: { events.append(.addFile) },
+            showAttachLinks: {},
+            openTerminal: { events.append(.openTerminal) },
+            isOpeningTerminal: true,
+            startAgent: { events.append(.startAgent) },
+            manageSnippets: { events.append(.snippets) },
+            showSkills: { events.append(.skills) },
+            showWorktreeDetails: { events.append(.worktree) },
+            renameAgent: { events.append(.renameAgent) },
+            renameWorkspace: { events.append(.renameWorkspace) },
+            closeAgent: { events.append(.closeAgent) })
+        let ready = AgentComposerActions(
+            canBegin: true,
+            attachLinkCount: 0,
+            addImage: { events.append(.addImage) },
+            addFile: { events.append(.addFile) },
+            showAttachLinks: {},
+            openTerminal: { events.append(.openTerminal) },
+            isOpeningTerminal: false,
+            startAgent: { events.append(.startAgent) },
+            manageSnippets: { events.append(.snippets) },
+            showSkills: { events.append(.skills) },
+            showWorktreeDetails: { events.append(.worktree) },
+            renameAgent: { events.append(.renameAgent) },
+            renameWorkspace: { events.append(.renameWorkspace) },
+            closeAgent: { events.append(.closeAgent) })
+
+        let availability: [(AgentActionMenuItem, AgentComposerActions, Bool, Bool)] = [
+            (.addImage, gated, true, false),
+            (.addFile, gated, true, false),
+            (.openTerminal, gated, true, false),
+            (.openTerminal, busy, true, false),
+            (.openTerminal, ready, true, true),
+            (.newAgent, ready, true, true),
+            (.skills, gated, false, true),
+            (.skills, ready, true, true),
+            (.snippets, ready, true, true),
+            (.worktreeDetails, gated, false, true),
+            (.worktreeDetails, ready, true, true),
+            (.renameAgent, ready, true, true),
+            (.renameWorkspace, ready, true, true),
+            (.closeAgent, ready, true, true),
+        ]
+        for (item, actions, visible, enabled) in availability {
+            #expect(AgentActionMenuPolicy.isVisible(item, actions: actions) == visible)
+            #expect(AgentActionMenuPolicy.isEnabled(item, actions: actions) == enabled)
+        }
+
+        for item in AgentActionMenuItem.allCases {
+            AgentActionMenuPolicy.perform(item, actions: ready)
+        }
+        #expect(
+            events == [
+                .addImage, .addFile, .openTerminal, .startAgent, .skills, .snippets,
+                .worktree, .renameAgent, .renameWorkspace, .closeAgent,
+            ])
+    }
+
+    @Test func directInputRestoreComposerThenRunsBeforeDraftOwnedActions() {
+        enum Step: Equatable {
+            case restore
+            case action(AgentActionMenuItem)
+        }
+        var steps: [Step] = []
+        let actions = AgentComposerActions(
+            canBegin: true,
+            attachLinkCount: 0,
+            addImage: { steps.append(.action(.addImage)) },
+            addFile: { steps.append(.action(.addFile)) },
+            showAttachLinks: {},
+            openTerminal: { steps.append(.action(.openTerminal)) },
+            isOpeningTerminal: false,
+            startAgent: { steps.append(.action(.newAgent)) },
+            manageSnippets: { steps.append(.action(.snippets)) },
+            showSkills: { steps.append(.action(.skills)) },
+            showWorktreeDetails: { steps.append(.action(.worktreeDetails)) },
+            renameAgent: { steps.append(.action(.renameAgent)) },
+            renameWorkspace: { steps.append(.action(.renameWorkspace)) },
+            closeAgent: { steps.append(.action(.closeAgent)) })
+        let restoreComposerThen: (@escaping () -> Void) -> Void = { action in
+            steps.append(.restore)
+            action()
+        }
+
+        for item in AgentActionMenuItem.allCases {
+            AgentActionMenuPolicy.dispatch(
+                item,
+                actions: actions,
+                restoreComposerThen: restoreComposerThen)
+        }
+
+        #expect(
+            steps == [
+                .restore, .action(.addImage),
+                .restore, .action(.addFile),
+                .action(.openTerminal),
+                .action(.newAgent),
+                .restore, .action(.skills),
+                .restore, .action(.snippets),
+                .action(.worktreeDetails),
+                .action(.renameAgent),
+                .action(.renameWorkspace),
+                .action(.closeAgent),
+            ])
+
+        steps.removeAll()
+        for item in AgentActionMenuItem.allCases where item.isDraftOwned {
+            AgentActionMenuPolicy.dispatch(item, actions: actions)
+        }
+        #expect(
+            steps == [
+                .action(.addImage), .action(.addFile),
+                .action(.skills), .action(.snippets),
+            ])
+    }
+
+    @Test func keyboardClaimPolicyUnifiesReplacementAndAgentSwitchGates() {
+        #expect(
+            !AgentDirectInputPresentation.shouldClaimKeyboard(
+                wantsKeyboard: false,
+                isKeyboardUp: false,
+                usesToolsKeyboard: false,
+                softwareKeyboardHeight: 0))
+        #expect(
+            AgentDirectInputPresentation.shouldClaimKeyboard(
+                wantsKeyboard: true,
+                isKeyboardUp: false,
+                usesToolsKeyboard: false,
+                softwareKeyboardHeight: 0))
+        #expect(
+            AgentDirectInputPresentation.shouldClaimKeyboard(
+                wantsKeyboard: false,
+                isKeyboardUp: true,
+                usesToolsKeyboard: false,
+                softwareKeyboardHeight: 0))
+        #expect(
+            AgentDirectInputPresentation.shouldClaimKeyboard(
+                wantsKeyboard: false,
+                isKeyboardUp: false,
+                usesToolsKeyboard: true,
+                softwareKeyboardHeight: 0))
+        #expect(
+            AgentDirectInputPresentation.shouldClaimKeyboard(
+                wantsKeyboard: false,
+                isKeyboardUp: false,
+                usesToolsKeyboard: false,
+                softwareKeyboardHeight: 336))
+    }
+
     @Test func composerModeStillRejectsLocalGhosttyInput() async throws {
         let transport = ScriptedTransport()
         let composer = AgentComposerStore(target: "w1:p1") { params in

@@ -62,6 +62,18 @@ struct AgentDirectInputPresentation: Equatable, Sendable {
     static let showComposerAccessibilityLabel = "Show Composer"
     static let showComposerAccessibilityHint =
         "Restores the Composer. The draft is unchanged."
+
+    /// Single production predicate for arming Direct Input keyboard handoff
+    /// across terminal replacement/reactivation and Agent-switch paths. Intent,
+    /// Ghostty first responder, tools keyboard, or measured software height.
+    static func shouldClaimKeyboard(
+        wantsKeyboard: Bool,
+        isKeyboardUp: Bool,
+        usesToolsKeyboard: Bool,
+        softwareKeyboardHeight: CGFloat
+    ) -> Bool {
+        wantsKeyboard || isKeyboardUp || usesToolsKeyboard || softwareKeyboardHeight > 0
+    }
 }
 
 /// Survives same-screen terminal pipeline replacement so Direct Input can

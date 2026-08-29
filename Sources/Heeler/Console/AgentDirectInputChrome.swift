@@ -1,29 +1,46 @@
 import SwiftUI
 import UIKit
 
+/// Cohesive seam between Agent detail and Direct Input chrome. Groups the
+/// live presentation gates from the interaction handlers so call sites pass
+/// one typed model instead of a flat fourteen-argument surface.
+@MainActor
+struct AgentDirectInputChromeContext {
+    struct Presentation {
+        let status: AgentStatus
+        let hostTelemetry: HostTelemetryPresentation?
+        let chromeColorScheme: ColorScheme
+        /// Ghostty first-responder / tools intent for the switcher toggle glyph.
+        let isKeyboardUp: Bool
+        let isToolsKeyboardPresented: Bool
+        /// Software-keyboard shortcut row only — never hardware-first-responder.
+        let showShortcutRow: Bool
+    }
+
+    struct Interactions {
+        /// Switcher `onSelect` is `AgentTerminalView.switchToAgent`, the sole
+        /// production owner of Direct Input keyboard-claim arming.
+        let switcher: TerminalAgentSwitcher
+        let actions: AgentComposerActions
+        let toggleKeyboard: () -> Void
+        let switchKeyboard: (() -> Void)?
+        let sendQuickKey: (AgentQuickKey) -> Void
+        let showComposer: () -> Void
+        /// Routes More / Add actions that own the draft: restore Composer first.
+        let restoreComposerThen: (@escaping () -> Void) -> Void
+    }
+
+    let presentation: Presentation
+    let interactions: Interactions
+}
+
 /// Compact Agent-detail chrome for Direct Input: status, Agent switcher with
 /// Show Composer, and a shortcut row while the software keyboard is up.
 /// Bottom-up order matches the approved geometry: system keyboard, shortcut
 /// row, switcher, status. App content rather than a keyboard accessory, so
 /// UIKit's candidate-row teardown cannot tear it down or leave a hollow gap.
 struct AgentDirectInputChrome: View {
-    let status: AgentStatus
-    let hostTelemetry: HostTelemetryPresentation?
-    let chromeColorScheme: ColorScheme
-    let switcher: TerminalAgentSwitcher
-    let keyboardHandoff: TerminalKeyboardHandoff
-    /// Ghostty first-responder / tools intent for the switcher toggle glyph.
-    let isKeyboardUp: Bool
-    let isToolsKeyboardPresented: Bool
-    /// Software-keyboard shortcut row only — never hardware-first-responder.
-    let showShortcutRow: Bool
-    let actions: AgentComposerActions
-    let toggleKeyboard: () -> Void
-    let switchKeyboard: (() -> Void)?
-    let sendQuickKey: (AgentQuickKey) -> Void
-    let showComposer: () -> Void
-    /// Routes More / Add actions that own the draft: restore Composer first.
-    let restoreComposerThen: (@escaping () -> Void) -> Void
+    let context: AgentDirectInputChromeContext
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.displayScale) private var displayScale
 
@@ -31,25 +48,33 @@ struct AgentDirectInputChrome: View {
         .escape, .tab, .shiftTab, .enter,
     ]
 
+    private var presentation: AgentDirectInputChromeContext.Presentation {
+        context.presentation
+    }
+
+    private var interactions: AgentDirectInputChromeContext.Interactions {
+        context.interactions
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
                 AgentDetailStatusChrome(
-                    status: status,
-                    hostTelemetry: hostTelemetry,
-                    chromeColorScheme: chromeColorScheme)
+                    status: presentation.status,
+                    hostTelemetry: presentation.hostTelemetry,
+                    chromeColorScheme: presentation.chromeColorScheme)
 
                 TerminalAgentSwitcherRow(
-                    switcher: focusPreservingSwitcher,
-                    isKeyboardUp: isKeyboardUp,
-                    toggleKeyboard: toggleKeyboard,
-                    isToolsKeyboardPresented: isToolsKeyboardPresented,
-                    switchKeyboard: switchKeyboard,
+                    switcher: interactions.switcher,
+                    isKeyboardUp: presentation.isKeyboardUp,
+                    toggleKeyboard: interactions.toggleKeyboard,
+                    isToolsKeyboardPresented: presentation.isToolsKeyboardPresented,
+                    switchKeyboard: interactions.switchKeyboard,
                     modeControl: modeControl)
 
                 // Adjacent to the software keyboard it augments — below the
                 // switcher in this top-to-bottom stack, above the keyboard.
-                if showShortcutRow {
+                if presentation.showShortcutRow {
                     shortcutRow
                 }
             }
@@ -62,27 +87,14 @@ struct AgentDirectInputChrome: View {
             return .segmented(
                 selection: .direct,
                 select: { mode in
-                    if mode == .composer { showComposer() }
+                    if mode == .composer { interactions.showComposer() }
                 })
         }
         return .button(
             systemImage: "square.and.pencil",
             accessibilityLabel: AgentDirectInputPresentation.showComposerAccessibilityLabel,
             accessibilityHint: AgentDirectInputPresentation.showComposerAccessibilityHint,
-            action: showComposer)
-    }
-
-    private var focusPreservingSwitcher: TerminalAgentSwitcher {
-        TerminalAgentSwitcher(
-            items: switcher.items,
-            selectedID: switcher.selectedID,
-            onSelect: { id in
-                if isKeyboardUp {
-                    keyboardHandoff.arm(for: id)
-                }
-                switcher.onSelect(id)
-            },
-            onTogglePin: switcher.onTogglePin)
+            action: interactions.showComposer)
     }
 
     private var shortcutRow: some View {
@@ -94,7 +106,7 @@ struct AgentDirectInputChrome: View {
 
                 Spacer(minLength: 8)
 
-                Button("Composer", action: showComposer)
+                Button("Composer", action: interactions.showComposer)
                     .font(.caption.weight(.semibold))
                     .frame(minHeight: 44)
                     .padding(.horizontal, 10)
@@ -108,7 +120,7 @@ struct AgentDirectInputChrome: View {
 
                 moreMenu
 
-                Button(action: toggleKeyboard) {
+                Button(action: interactions.toggleKeyboard) {
                     Image(systemName: "keyboard.chevron.compact.down")
                         .font(.system(size: 12, weight: .medium))
                         .frame(width: 44, height: 44)
@@ -130,7 +142,7 @@ struct AgentDirectInputChrome: View {
     private func shortcutKeyButton(_ key: AgentQuickKey) -> some View {
         Button {
             UIDevice.current.playInputClick()
-            sendQuickKey(key)
+            interactions.sendQuickKey(key)
         } label: {
             Text(key.title ?? key.accessibilityLabel)
                 .font(.caption.weight(.medium))
@@ -147,49 +159,10 @@ struct AgentDirectInputChrome: View {
 
     private var moreMenu: some View {
         Menu {
-            Section {
-                Button("Add Image", systemImage: "photo") {
-                    restoreComposerThen { actions.addImage() }
-                }
-                .disabled(!actions.canBegin)
-                Button("Add File", systemImage: "doc") {
-                    restoreComposerThen { actions.addFile() }
-                }
-                .disabled(!actions.canBegin)
-            }
-            Section {
-                Button("Open Terminal", systemImage: "apple.terminal") {
-                    actions.openTerminal?()
-                }
-                .disabled(actions.openTerminal == nil || actions.isOpeningTerminal)
-                Button("New Agent", systemImage: "plus") {
-                    actions.startAgent()
-                }
-                if let showSkills = actions.showSkills {
-                    Button("Skills", systemImage: "sparkles") {
-                        restoreComposerThen(showSkills)
-                    }
-                }
-                Button("Snippets", systemImage: "quote.bubble") {
-                    restoreComposerThen(actions.manageSnippets)
-                }
-            }
-            Section {
-                if let showWorktreeDetails = actions.showWorktreeDetails {
-                    Button("Worktree Details", systemImage: "arrow.triangle.branch") {
-                        showWorktreeDetails()
-                    }
-                }
-                Button("Rename Agent", systemImage: "pencil") {
-                    actions.renameAgent()
-                }
-                Button("Rename Workspace", systemImage: "pencil.line") {
-                    actions.renameWorkspace()
-                }
-                Button("Close Agent", systemImage: "trash", role: .destructive) {
-                    actions.closeAgent()
-                }
-            }
+            AgentActionMenuContent(
+                actions: interactions.actions,
+                sections: AgentActionMenuPolicy.directInputMoreSections,
+                restoreComposerThen: interactions.restoreComposerThen)
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 12, weight: .semibold))

@@ -608,21 +608,23 @@ struct AgentTerminalView: View {
     private var inputChrome: some View {
         if isDirectInput {
             AgentDirectInputChrome(
-                status: agent.agent.status,
-                hostTelemetry: hostTelemetry,
-                chromeColorScheme: terminal.themes.selection(for: colorScheme)
-                    .chromeColorScheme(for: colorScheme),
-                switcher: agentSwitcher,
-                keyboardHandoff: keyboardHandoff,
-                isKeyboardUp: directSwitcherKeyboardIsUp,
-                isToolsKeyboardPresented: usesDirectToolsKeyboard,
-                showShortcutRow: directInputPresentation.showsShortcutRow,
-                actions: composerActions,
-                toggleKeyboard: toggleDirectKeyboard,
-                switchKeyboard: directKeyboardSwitchAction,
-                sendQuickKey: keyboardControl.sendQuickKey,
-                showComposer: { selectInputMode(.composer) },
-                restoreComposerThen: restoreComposerThen)
+                context: AgentDirectInputChromeContext(
+                    presentation: .init(
+                        status: agent.agent.status,
+                        hostTelemetry: hostTelemetry,
+                        chromeColorScheme: terminal.themes.selection(for: colorScheme)
+                            .chromeColorScheme(for: colorScheme),
+                        isKeyboardUp: directSwitcherKeyboardIsUp,
+                        isToolsKeyboardPresented: usesDirectToolsKeyboard,
+                        showShortcutRow: directInputPresentation.showsShortcutRow),
+                    interactions: .init(
+                        switcher: agentSwitcher,
+                        actions: composerActions,
+                        toggleKeyboard: toggleDirectKeyboard,
+                        switchKeyboard: directKeyboardSwitchAction,
+                        sendQuickKey: keyboardControl.sendQuickKey,
+                        showComposer: { selectInputMode(.composer) },
+                        restoreComposerThen: restoreComposerThen)))
         } else {
             AgentComposerView(
                 store: composer,
@@ -764,10 +766,11 @@ struct AgentTerminalView: View {
 
     private func armDirectKeyboardClaimIfNeeded() {
         guard isDirectInput else { return }
-        guard directKeyboardIntent.wantsKeyboard
-            || keyboardControl.isKeyboardUp
-            || usesDirectToolsKeyboard
-            || keyboardInset.height > 0
+        guard AgentDirectInputPresentation.shouldClaimKeyboard(
+            wantsKeyboard: directKeyboardIntent.wantsKeyboard,
+            isKeyboardUp: keyboardControl.isKeyboardUp,
+            usesToolsKeyboard: usesDirectToolsKeyboard,
+            softwareKeyboardHeight: keyboardInset.height)
         else { return }
         directKeyboardIntent.setWantsKeyboard(true)
         keyboardHandoff.arm(for: agent.id)
@@ -813,10 +816,11 @@ struct AgentTerminalView: View {
         // first responder with a hardware keyboard and a zero inset.
         let keyboardIsUp =
             isDirectInput
-            ? (directKeyboardIntent.wantsKeyboard
-                || keyboardControl.isKeyboardUp
-                || usesDirectToolsKeyboard
-                || keyboardInset.height > 0)
+            ? AgentDirectInputPresentation.shouldClaimKeyboard(
+                wantsKeyboard: directKeyboardIntent.wantsKeyboard,
+                isKeyboardUp: keyboardControl.isKeyboardUp,
+                usesToolsKeyboard: usesDirectToolsKeyboard,
+                softwareKeyboardHeight: keyboardInset.height)
             : keyboardInset.height > 0
         if keyboardIsUp {
             keyboardHandoff.arm(for: id)
