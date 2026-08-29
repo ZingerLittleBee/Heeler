@@ -106,18 +106,23 @@ Blocked: Send then inserts the draft into Attach without Enter, and the tools
 keyboard submits or cancels. Delivered means the Host accepted the text into
 the pane — whether the Agent queues or acts on it is the Agent's business,
 and the Composer never claims otherwise.
+Composer remains the default authored-input path on Agent detail. Direct Input
+is an explicit, opt-in alternative that hides the Composer card without
+clearing or submitting the draft.
 _Avoid_: reply bar, compose bar (the shelved predecessors), input box, message box
 
 **Attach**:
-The realtime PTY stream behind Agent detail, Agent-specific and display-only.
-libghostty renders the complete TUI, owns local scrollback, and reports its
-grid size so the remote PTY resizes with the view. Authored input belongs to
-Composer.
+The realtime PTY stream behind Agent detail, Agent-specific. In Composer mode
+it is display-only: libghostty renders the complete TUI, owns local scrollback,
+and reports its grid size so the remote PTY resizes with the view, while
+authored input belongs to Composer. Direct Input is the scoped exception that
+lets the system keyboard type that same Attach PTY.
 Delivery is one `agent.prompt` request, except when Agent Status is Blocked, in
-which case Send inserts the draft into Attach without Enter and the tools
-keyboard submits or cancels. Only Composer's explicit tools-keyboard controls
-send terminal control sequences. The directly interactive surface on an
-ordinary shell is the Shell Terminal, never unqualified "Attach".
+which case Composer Send inserts the draft into Attach without Enter and the
+tools keyboard submits or cancels. Only Composer's explicit tools-keyboard
+controls (and Direct Input's shortcut row / system Return) send terminal
+control sequences. The directly interactive surface on an ordinary shell is
+the Shell Terminal, never unqualified "Attach".
 _Avoid_: takeover (that's herdr's flag, not our surface), connect
 
 **Attach Link**:
@@ -138,13 +143,24 @@ leaves the remote tab alive for desktop handoff.
 _Avoid_: Attach (that's the Agent-specific display surface), shell console,
 terminal pane view
 
+**Direct Input**:
+The opt-in Agent-detail mode that hides the Composer card and routes the
+system keyboard plus a compact app-owned shortcut row (Esc, Tab, Shift-Tab,
+Enter) into the live Attach PTY. The draft stays in `AgentComposerStore`
+untouched. Mode preference is app-wide, default off. Distinct from Shell
+Terminal (ordinary shell, no Agent semantics) and from Terminal Keyboard (the
+iOS/tools swap under Composer).
+_Avoid_: Keys mode, terminal mode, raw input, Attach mode
+
 **Terminal Keyboard**:
 The two keyboard modes below Composer, swapped in place at one shared measured
 height. The standard iOS keyboard edits the draft with composition,
 autocorrection, dictation, and language switching. The tools keyboard replaces
 it with a tabbed pad: Agent controls send key sequences directly to the pane,
 while Skills, Snippets, and terminal appearance edit the draft or the terminal
-and never touch the pane.
+and never touch the pane. Direct Input reuses the same measured footprint for
+an optional tools dock, but its primary shortcuts ride an app-content row
+above the system keyboard rather than replacing it.
 _Avoid_: desktop keyboard, reply keyboard, Keys mode (the direct-input predecessor)
 
 **Snippet**:

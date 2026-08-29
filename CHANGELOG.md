@@ -7,6 +7,13 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- Agent detail can hide the Composer and type into the live Attach PTY with the
+  iOS keyboard plus Esc, Tab, Shift-Tab, and Enter shortcuts (Direct Input).
+  Composer stays the default; the draft is preserved across the mode switch.
+  (#251)
+
 ## [0.1.3] - 2026-08-28
 
 ### Changed

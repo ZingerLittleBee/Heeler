@@ -7,6 +7,7 @@ struct ConsoleView: View {
     let hosts: HostStore
     let console: ConsoleStore
     let terminal: TerminalSettings
+    let inputMode: AgentInputModeSettings
     let appearance: AppAppearanceSettings
     let pushRegistration: PushRegistrationStore
     let notificationPreferences: NotificationPreferencesStore
@@ -215,6 +216,7 @@ struct ConsoleView: View {
                     agent: agent,
                     console: console,
                     terminal: terminal,
+                    inputMode: inputMode,
                     hosts: hosts.hosts,
                     activity: activity,
                     keyboardHandoff: keyboardHandoff,
