@@ -7,6 +7,12 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Fixed
+
+- New Agent now detects supported Agent CLIs from the Host's standard
+  user-local, Bun, Cargo, Homebrew, and Linuxbrew install paths over SSH.
+  (#254)
+
 ## [0.1.4] - 2026-09-01
 
 ### Changed
