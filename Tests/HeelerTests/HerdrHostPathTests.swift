@@ -11,9 +11,15 @@ struct HerdrHostPathTests {
         #expect(HerdrHostPath.extraPATH.contains("/home/linuxbrew/.linuxbrew/bin"))
         #expect(HerdrHostPath.extraPATH.contains("$HOME/.linuxbrew/bin"))
         #expect(HerdrHostPath.extraPATH.contains("$HOME/.cargo/bin"))
+        #expect(HerdrHostPath.extraPATH.contains("$HOME/.bun/bin"))
         #expect(HerdrHostPath.extraPATH.contains("/usr/local/bin"))
         // Existing PATH entries keep priority over the extra prefixes.
         #expect(HerdrHostPath.pathExport.hasPrefix("export PATH=\"$PATH:"))
+    }
+
+    @Test func agentDiscoveryExportsExtraPATHBeforeProbing() {
+        let command = SSHTransportSettings.defaultAgentDiscoveryCommand
+        #expect(command.hasPrefix("/bin/sh -c '\(HerdrHostPath.pathExport); "))
     }
 
     @Test func bareHerdrIsOnlyTheCommandWord() {
