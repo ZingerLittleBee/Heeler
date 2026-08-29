@@ -126,6 +126,7 @@ struct AgentDirectInputChrome: View {
             moreMenu
                 .frame(width: 44, height: 44)
         }
+        .padding(.leading, 4)
         .background(Color(uiColor: .secondarySystemBackground))
         .overlay(alignment: .leading) {
             LinearGradient(
