@@ -108,11 +108,7 @@ struct AgentDirectInputChrome: View {
                 .padding(.trailing, 6)
             }
 
-            shortcutKeyButton(.enter)
-
-            moreMenu
-                .frame(width: 44, height: 44)
-                .background(Color(uiColor: .secondarySystemBackground))
+            fixedShortcutButtons
         }
         .frame(height: 44)
         .background(alignment: .top) {
@@ -121,6 +117,26 @@ struct AgentDirectInputChrome: View {
                 .frame(height: 1 / max(displayScale, 1))
         }
         .background(Color(uiColor: .secondarySystemBackground))
+    }
+
+    private var fixedShortcutButtons: some View {
+        HStack(spacing: 0) {
+            shortcutKeyButton(.enter)
+
+            moreMenu
+                .frame(width: 44, height: 44)
+        }
+        .background(Color(uiColor: .secondarySystemBackground))
+        .overlay(alignment: .leading) {
+            LinearGradient(
+                colors: [.clear, Color(uiColor: .separator).opacity(0.7)],
+                startPoint: .leading,
+                endPoint: .trailing)
+                .frame(width: 8)
+                .offset(x: -8)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
     }
 
     private func shortcutKeyButton(_ key: AgentQuickKey) -> some View {
