@@ -101,6 +101,8 @@ struct AgentComposerView: View {
     let skills: SkillsPaneStore?
     @Binding var keyboardPresentation: AgentComposerKeyboardPresentation
     let prepareKeyboardPresentation: (AgentComposerKeyboardPresentation) -> Void
+    /// Optional Hide Composer control on the switcher trail.
+    var modeControl: TerminalAgentSwitcherModeControl? = nil
     @State private var isInputFocused = false
     /// An explicit dismissal hides suggestions for the current trigger token;
     /// removing the token arms them again.
@@ -288,7 +290,8 @@ struct AgentComposerView: View {
                         isKeyboardUp: isKeyboardPresented,
                         toggleKeyboard: dismissOrPresentKeyboard,
                         isToolsKeyboardPresented: isToolsKeyboardPresented,
-                        switchKeyboard: keyboardSwitchAction)
+                        switchKeyboard: keyboardSwitchAction,
+                        modeControl: modeControl)
                 }
                 .background(
                     .regularMaterial,

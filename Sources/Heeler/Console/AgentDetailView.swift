@@ -1,12 +1,13 @@
 import SwiftUI
 
-/// The default Agent detail surface. Ghostty renders the live Attach stream,
-/// while the local Composer owns every user-authored message and delivers it
-/// through one `agent.prompt` request, except when Agent Status is Blocked.
+/// The default Agent detail surface. Ghostty renders the live Attach stream.
+/// Composer owns authored delivery by default; Direct Input (ADR 0016) is an
+/// explicit opt-in that types the Attach PTY with the system keyboard.
 struct AgentDetailView: View {
     let agent: ConsoleAgent
     private let console: ConsoleStore
     private let terminal: TerminalSettings
+    private let inputMode: AgentInputModeSettings
     private let hosts: [Host]
     private let activity: AppActivityCoordinator
     private let keyboardHandoff: TerminalKeyboardHandoff
@@ -22,6 +23,7 @@ struct AgentDetailView: View {
         agent: ConsoleAgent,
         console: ConsoleStore,
         terminal: TerminalSettings,
+        inputMode: AgentInputModeSettings,
         hosts: [Host],
         activity: AppActivityCoordinator,
         keyboardHandoff: TerminalKeyboardHandoff,
@@ -36,6 +38,7 @@ struct AgentDetailView: View {
         self.agent = agent
         self.console = console
         self.terminal = terminal
+        self.inputMode = inputMode
         self.hosts = hosts
         self.activity = activity
         self.keyboardHandoff = keyboardHandoff
@@ -112,6 +115,7 @@ struct AgentDetailView: View {
                     agent: agent,
                     console: console,
                     terminal: terminal,
+                    inputMode: inputMode,
                     hosts: hosts,
                     activity: activity,
                     keyboardHandoff: keyboardHandoff,

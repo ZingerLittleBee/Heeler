@@ -495,6 +495,19 @@ final class TerminalAgentChip: UIControl {
     }
 }
 
+/// Trailing control that enters or leaves Direct Input without living inside
+/// the chip scroller. Icon on compact width; segmented on regular width.
+enum TerminalAgentSwitcherModeControl {
+    case button(
+        systemImage: String,
+        accessibilityLabel: String,
+        accessibilityHint: String,
+        action: () -> Void)
+    case segmented(
+        selection: AgentInputMode,
+        select: (AgentInputMode) -> Void)
+}
+
 /// The resident Agent strip: the chips over their own fill, with the keyboard
 /// toggle pinned at the trailing edge — outside the scroll view, so the one
 /// control that summons the keyboard back can never scroll out of reach.
@@ -504,6 +517,8 @@ struct TerminalAgentSwitcherRow: View {
     let toggleKeyboard: () -> Void
     var isToolsKeyboardPresented = false
     var switchKeyboard: (() -> Void)?
+    /// Optional Hide Composer / Show Composer (or iPad Composer | Keyboard).
+    var modeControl: TerminalAgentSwitcherModeControl?
     /// Matches `UIPasteControl`'s fixed glyph size in the row below, or the
     /// two read as icons borrowed from different sets.
     private static let glyphPointSize: CGFloat = 12
@@ -519,6 +534,9 @@ struct TerminalAgentSwitcherRow: View {
             Rectangle()
                 .fill(Color(uiColor: .separator))
                 .frame(width: hairline, height: 20)
+            if let modeControl {
+                modeControlView(modeControl)
+            }
             if isKeyboardUp, let switchKeyboard {
                 Button(action: switchKeyboard) {
                     Image(
@@ -553,6 +571,34 @@ struct TerminalAgentSwitcherRow: View {
                 .frame(height: hairline)
         }
         .background(Color(uiColor: .secondarySystemBackground))
+    }
+
+    @ViewBuilder
+    private func modeControlView(_ control: TerminalAgentSwitcherModeControl) -> some View {
+        switch control {
+        case let .button(systemImage, accessibilityLabel, accessibilityHint, action):
+            Button(action: action) {
+                Image(systemName: systemImage)
+                    .font(.system(size: Self.glyphPointSize))
+                    .foregroundStyle(Color(uiColor: .label))
+                    .frame(width: 44, height: TerminalAgentSwitcherBar.preferredHeight)
+            }
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityHint(accessibilityHint)
+        case let .segmented(selection, select):
+            Picker("Input mode", selection: Binding(
+                get: { selection },
+                set: select)
+            ) {
+                ForEach(AgentInputMode.allCases) { mode in
+                    Text(mode.segmentTitle).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 184)
+            .padding(.horizontal, 4)
+            .accessibilityLabel("Input mode")
+        }
     }
 
     private struct StripRepresentable: UIViewRepresentable {

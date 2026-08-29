@@ -46,6 +46,14 @@ final class TerminalKeyboardControl {
         }
     }
 
+    func requestKeyboard() {
+        terminal?.requestKeyboard()
+    }
+
+    func dismissKeyboard() {
+        _ = terminal?.dismissKeyboard()
+    }
+
     func sendQuickKey(_ key: AgentQuickKey) {
         terminal?.sendQuickKey(key)
     }

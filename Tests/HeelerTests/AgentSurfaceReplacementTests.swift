@@ -692,6 +692,7 @@ struct AgentSurfaceReplacementTests {
                 agent: agent,
                 console: console,
                 terminal: terminal,
+                inputMode: AgentInputModeSettings(defaults: defaults),
                 hosts: [],
                 activity: activity,
                 keyboardHandoff: handoff,
@@ -707,7 +708,8 @@ struct AgentSurfaceReplacementTests {
         agent: ConsoleAgent,
         activity: AppActivityCoordinator,
         attachStore: AgentAttachStore,
-        composer: AgentComposerStore
+        composer: AgentComposerStore,
+        inputMode: AgentInputModeSettings? = nil
     ) -> AgentTerminalView {
         let defaults = UserDefaults(suiteName: "attach-recovery-\(UUID())") ?? .standard
         let console = ConsoleStore(snapshotRetryDelay: .seconds(30)) { _, subscriptions in
@@ -726,6 +728,7 @@ struct AgentSurfaceReplacementTests {
             agent: agent,
             console: console,
             terminal: terminal,
+            inputMode: inputMode ?? AgentInputModeSettings(defaults: defaults),
             hosts: [],
             activity: activity,
             keyboardHandoff: TerminalKeyboardHandoff(),

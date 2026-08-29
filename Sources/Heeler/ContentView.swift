@@ -18,6 +18,7 @@ struct ContentView: View {
     @State private var terminalFonts = TerminalFontSettings()
     @State private var snippets = SnippetStore()
     @State private var appearance = AppAppearanceSettings()
+    @State private var inputMode = AgentInputModeSettings()
     @State private var relaySettings: NotificationRelaySettings
     @State private var bannerStore: AgentNotificationBannerStore
     @State private var liveActivities: HostLiveActivityCoordinator
@@ -96,6 +97,7 @@ struct ContentView: View {
     var body: some View {
         ConsoleView(
             hosts: hostStore, console: console, terminal: terminal,
+            inputMode: inputMode,
             appearance: appearance,
             pushRegistration: pushRegistration,
             notificationPreferences: notificationPreferences,

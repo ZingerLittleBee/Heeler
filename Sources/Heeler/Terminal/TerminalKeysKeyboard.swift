@@ -63,20 +63,32 @@ struct TerminalKeysContext {
     /// Opens the Snippets management surface. That means leaving the keyboard,
     /// so the screen owns the presentation and the keyboard only asks.
     let manageSnippets: () -> Void
+    /// Skills and Snippets insert into the Composer draft. Direct Input hides
+    /// that draft, so those tabs stay off until Composer is restored.
+    var includesDraftTools = true
 
     init(
         settings: TerminalSettings,
         skills: TerminalSkillsContext? = nil,
+        includesDraftTools: Bool = true,
         manageSnippets: @escaping () -> Void
     ) {
         self.settings = settings
         self.skills = skills
+        self.includesDraftTools = includesDraftTools
         self.manageSnippets = manageSnippets
     }
 
     var tabs: [TerminalKeysTab] {
         TerminalKeysTab.allCases.filter { tab in
-            tab != .skills || skills != nil
+            switch tab {
+            case .skills:
+                includesDraftTools && skills != nil
+            case .snippets:
+                includesDraftTools
+            case .controls, .appearance:
+                true
+            }
         }
     }
 }
