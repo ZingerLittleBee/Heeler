@@ -524,9 +524,12 @@ struct TerminalAgentSwitcherRow: View {
     var switchKeyboard: (() -> Void)?
     /// Optional Hide Composer / Show Composer (or iPad Composer | Keyboard).
     var modeControl: TerminalAgentSwitcherModeControl?
-    /// Matches `UIPasteControl`'s fixed glyph size in the row below, or the
-    /// two read as icons borrowed from different sets.
+    /// Matches `UIPasteControl`'s fixed glyph size in the row below. The
+    /// optically smaller Composer symbol is corrected at its call site.
     private static let glyphPointSize: CGFloat = 12
+    private static let composerGlyphPointSize: CGFloat = 14
+    private static let glyphSlotSize: CGFloat = 18
+    private static let groupedGlyphOffset: CGFloat = 2
     @Environment(\.displayScale) private var displayScale
 
     private var hairline: CGFloat { 1 / max(displayScale, 1) }
@@ -543,30 +546,22 @@ struct TerminalAgentSwitcherRow: View {
                 modeControlView(modeControl)
             }
             if isKeyboardUp, let switchKeyboard {
-                Button(action: switchKeyboard) {
-                    Image(
-                        systemName: isToolsKeyboardPresented
-                            ? "keyboard" : "wrench.and.screwdriver"
-                    )
-                        .font(.system(size: Self.glyphPointSize))
-                        .foregroundStyle(Color(uiColor: .label))
-                        .frame(width: 44, height: TerminalAgentSwitcherBar.preferredHeight)
-                        .contentTransition(.symbolEffect(.replace))
-                }
-                .accessibilityLabel(
-                    isToolsKeyboardPresented ? "Show iOS keyboard" : "Show tools keyboard")
+                trailingIconButton(
+                    systemImage: isToolsKeyboardPresented
+                        ? "keyboard" : "wrench.and.screwdriver",
+                    pointSize: Self.glyphPointSize,
+                    horizontalOffset: 0,
+                    accessibilityLabel: isToolsKeyboardPresented
+                        ? "Show iOS keyboard" : "Show tools keyboard",
+                    action: switchKeyboard)
             }
-            Button(action: toggleKeyboard) {
-                Image(
-                    systemName: isKeyboardUp
-                        ? "keyboard.chevron.compact.down" : "keyboard"
-                )
-                .font(.system(size: Self.glyphPointSize))
-                .foregroundStyle(Color(uiColor: .label))
-                .frame(width: 44, height: TerminalAgentSwitcherBar.preferredHeight)
-                .contentTransition(.symbolEffect(.replace))
-            }
-            .accessibilityLabel(isKeyboardUp ? "Dismiss keyboard" : "Show keyboard")
+            trailingIconButton(
+                systemImage: isKeyboardUp
+                    ? "keyboard.chevron.compact.down" : "keyboard",
+                pointSize: Self.glyphPointSize,
+                horizontalOffset: -Self.groupedGlyphOffset,
+                accessibilityLabel: isKeyboardUp ? "Dismiss keyboard" : "Show keyboard",
+                action: toggleKeyboard)
             .padding(.trailing, 8)
         }
         .frame(height: TerminalAgentSwitcherBar.preferredHeight)
@@ -582,22 +577,13 @@ struct TerminalAgentSwitcherRow: View {
     private func modeControlView(_ control: TerminalAgentSwitcherModeControl) -> some View {
         switch control {
         case let .button(systemImage, accessibilityLabel, accessibilityHint, action):
-            // Visual bar stays `preferredHeight` (40); the control's conceptual
-            // hit target is 44×44 by expanding two points above and below.
-            Button(action: action) {
-                Image(systemName: systemImage)
-                    .font(.system(size: Self.glyphPointSize))
-                    .foregroundStyle(Color(uiColor: .label))
-                    .frame(
-                        width: 44,
-                        height: TerminalAgentSwitcherBar.preferredHeight)
-            }
-            .buttonStyle(.plain)
-            .frame(width: 44, height: 44)
-            .contentShape(Rectangle())
-            .padding(.vertical, (TerminalAgentSwitcherBar.preferredHeight - 44) / 2)
-            .accessibilityLabel(accessibilityLabel)
-            .accessibilityHint(accessibilityHint)
+            trailingIconButton(
+                systemImage: systemImage,
+                pointSize: Self.composerGlyphPointSize,
+                horizontalOffset: Self.groupedGlyphOffset,
+                accessibilityLabel: accessibilityLabel,
+                accessibilityHint: accessibilityHint,
+                action: action)
         case let .segmented(selection, select):
             Picker("Input mode", selection: Binding(
                 get: { selection },
@@ -611,6 +597,37 @@ struct TerminalAgentSwitcherRow: View {
             .frame(maxWidth: 184)
             .padding(.horizontal, 4)
             .accessibilityLabel("Input mode")
+        }
+    }
+
+    @ViewBuilder
+    private func trailingIconButton(
+        systemImage: String,
+        pointSize: CGFloat,
+        horizontalOffset: CGFloat,
+        accessibilityLabel: String,
+        accessibilityHint: String? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
+        let button = Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: pointSize))
+                .foregroundStyle(Color(uiColor: .label))
+                .frame(width: Self.glyphSlotSize, height: Self.glyphSlotSize)
+                .offset(x: horizontalOffset)
+                .frame(width: 44, height: TerminalAgentSwitcherBar.preferredHeight)
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .buttonStyle(.plain)
+        .frame(width: 44, height: 44)
+        .contentShape(Rectangle())
+        .padding(.vertical, (TerminalAgentSwitcherBar.preferredHeight - 44) / 2)
+        .accessibilityLabel(accessibilityLabel)
+
+        if let accessibilityHint {
+            button.accessibilityHint(accessibilityHint)
+        } else {
+            button
         }
     }
 
