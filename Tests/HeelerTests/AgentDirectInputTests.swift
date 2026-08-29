@@ -1171,45 +1171,22 @@ struct AgentDirectInputTests {
     }
 
     private static func firstAccessibleFrame(labeled label: String, in root: UIView) -> CGRect? {
-        // SwiftUI hosting nests accessibility containers arbitrarily deep —
-        // recurse through every container shape, not just UIViews.
-        func visit(_ node: NSObject) -> CGRect? {
+        // Reuse visitAccessible so frame probes share the same container walk as
+        // label lookups. Skip zero-size matches and keep searching — same rule
+        // TerminalAttachTests uses for hosted SwiftUI chrome.
+        var match: CGRect?
+        visitAccessible(in: root) { node in
+            guard match == nil, node.accessibilityLabel == label else { return }
             if let view = node as? UIView {
-                if view.accessibilityLabel == label, view.bounds.width > 0, view.bounds.height > 0 {
-                    return view.convert(view.bounds, to: root)
-                }
-            } else if node.accessibilityLabel == label {
-                let frame = node.accessibilityFrame
-                if frame.width > 0, frame.height > 0 {
-                    return root.convert(frame, from: nil)
-                }
-            }
-            if let elements = node.accessibilityElements {
-                for element in elements {
-                    if let object = element as? NSObject, let frame = visit(object) {
-                        return frame
-                    }
-                }
+                guard view.bounds.width > 0, view.bounds.height > 0 else { return }
+                match = view.convert(view.bounds, to: root)
             } else {
-                let count = node.accessibilityElementCount()
-                if count > 0, count != NSNotFound {
-                    for index in 0..<count {
-                        if let object = node.accessibilityElement(at: index) as? NSObject,
-                            let frame = visit(object)
-                        {
-                            return frame
-                        }
-                    }
-                }
+                let frame = node.accessibilityFrame
+                guard frame.width > 0, frame.height > 0 else { return }
+                match = root.convert(frame, from: nil)
             }
-            if let view = node as? UIView {
-                for subview in view.subviews {
-                    if let frame = visit(subview) { return frame }
-                }
-            }
-            return nil
         }
-        return visit(root)
+        return match
     }
 
     private static func accessibleCount(labeled label: String, in root: UIView) -> Int {
