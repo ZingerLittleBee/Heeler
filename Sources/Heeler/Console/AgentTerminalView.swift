@@ -43,6 +43,9 @@ struct AgentTerminalView: View {
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
     /// Direct Input's tools dock, separate from Composer focus presentation.
     @State private var usesDirectToolsKeyboard = false
+    /// Survives same-screen terminal replacement so a raised Direct Input
+    /// keyboard is reclaimed without raising one that was down.
+    @State private var directKeyboardIntent = DirectInputKeyboardIntent()
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isSelectingPhoto = false
     @State private var isSelectingFile = false
@@ -161,9 +164,15 @@ struct AgentTerminalView: View {
         }
         screen.keyboardControl = keyboardControl
         screen.isLocalInputEnabled = isDirectInput
-        screen.claimsKeyboard = { [keyboardHandoff, agent, inputMode] in
+        screen.claimsKeyboard = { [keyboardHandoff, agent, inputMode, directKeyboardIntent] in
             guard inputMode.isDirect else { return false }
-            return keyboardHandoff.consume(agent.id)
+            if keyboardHandoff.consume(agent.id) {
+                directKeyboardIntent.setWantsKeyboard(true)
+                return true
+            }
+            // Same-screen pipeline replacement: reclaim only while Direct
+            // Input still owns raised intent. Cold persisted Direct stays down.
+            return directKeyboardIntent.wantsKeyboard
         }
         screen.theme = terminal.themes.theme
         screen.fontSize = terminal.zoom.fontSize
@@ -371,6 +380,9 @@ struct AgentTerminalView: View {
         // one transaction and rejoin() can only undo a leave it can see.
         .onAppear {
             composer.bindAttachInput(attach.input)
+            // Arm before rejoin so a full pipeline replacement can claim the
+            // keyboard while Direct Input still owns raised intent.
+            armDirectKeyboardClaimIfNeeded()
             attach.rejoin()
         }
         .onDisappear {
@@ -381,6 +393,9 @@ struct AgentTerminalView: View {
             usesDirectToolsKeyboard = false
             keyboardControl.setKeyboardMode(.text)
             keyboardInset.resumeHeightCapture()
+            // Intent already armed (or persisted on directKeyboardIntent) before
+            // the replacement; claimsKeyboard consumes it on the new surface.
+            armDirectKeyboardClaimIfNeeded()
         }
     }
 
@@ -419,21 +434,31 @@ struct AgentTerminalView: View {
             latency: console.hostLatencies[agent.hostID])
     }
 
+    private var directInputPresentation: AgentDirectInputPresentation {
+        AgentDirectInputPresentation.resolve(
+            usesToolsKeyboard: usesDirectToolsKeyboard,
+            currentHeight: keyboardInset.height,
+            lastPresentedHeight: keyboardInset.lastPresentedHeight)
+    }
+
     private var activeKeyboardPresentation: AgentComposerKeyboardPresentation {
         if isDirectInput {
-            return AgentDirectInputChrome.keyboardPresentation(
-                usesToolsKeyboard: usesDirectToolsKeyboard,
-                insetHeight: keyboardInset.height,
-                keyboardIsUp: keyboardControl.isKeyboardUp)
+            return directInputPresentation.keyboardPresentation
         }
         return composerKeyboardPresentation
     }
 
     private var composerKeyboardLayout: AgentComposerKeyboardLayout {
-        AgentComposerKeyboardLayout(
+        if isDirectInput {
+            return AgentComposerKeyboardLayout(
+                currentHeight: keyboardInset.height,
+                lastPresentedHeight: keyboardInset.lastPresentedHeight,
+                presentation: directInputPresentation.keyboardPresentation)
+        }
+        return AgentComposerKeyboardLayout(
             currentHeight: keyboardInset.height,
             lastPresentedHeight: keyboardInset.lastPresentedHeight,
-            presentation: activeKeyboardPresentation)
+            presentation: composerKeyboardPresentation)
     }
 
     private var composerActions: AgentComposerActions {
@@ -567,10 +592,9 @@ struct AgentTerminalView: View {
                     .chromeColorScheme(for: colorScheme),
                 switcher: agentSwitcher,
                 keyboardHandoff: keyboardHandoff,
-                isKeyboardUp: activeKeyboardPresentation != .hidden,
+                isKeyboardUp: directSwitcherKeyboardIsUp,
                 isToolsKeyboardPresented: usesDirectToolsKeyboard,
-                showShortcutRow: AgentDirectInputChrome.showsShortcutRow(
-                    presentation: activeKeyboardPresentation),
+                showShortcutRow: directInputPresentation.showsShortcutRow,
                 actions: composerActions,
                 toggleKeyboard: toggleDirectKeyboard,
                 switchKeyboard: directKeyboardSwitchAction,
@@ -603,10 +627,14 @@ struct AgentTerminalView: View {
         }
         return .button(
             systemImage: "rectangle.bottomhalf.inset.filled",
-            accessibilityLabel: "Hide Composer",
-            accessibilityHint:
-                "Hides the Composer and types into the Agent with the iOS keyboard.",
+            accessibilityLabel: AgentDirectInputPresentation.hideComposerAccessibilityLabel,
+            accessibilityHint: AgentDirectInputPresentation.hideComposerAccessibilityHint,
             action: { selectInputMode(.direct) })
+    }
+
+    /// Switcher toggle glyph: first responder or tools, not software inset alone.
+    private var directSwitcherKeyboardIsUp: Bool {
+        keyboardControl.isKeyboardUp || usesDirectToolsKeyboard || keyboardInset.height > 0
     }
 
     private var directKeyboardSwitchAction: (() -> Void)? {
@@ -631,6 +659,7 @@ struct AgentTerminalView: View {
                 inputMode.select(.direct)
             case .composer:
                 usesDirectToolsKeyboard = false
+                directKeyboardIntent.setWantsKeyboard(false)
                 keyboardControl.setKeyboardMode(.text)
                 keyboardControl.dismissKeyboard()
                 keyboardInset.resumeHeightCapture()
@@ -646,6 +675,7 @@ struct AgentTerminalView: View {
                 argument: "Keyboard. Typing into the Agent.")
             Task { @MainActor in
                 await Task.yield()
+                directKeyboardIntent.setWantsKeyboard(true)
                 keyboardControl.requestKeyboard()
             }
         case .composer:
@@ -670,9 +700,14 @@ struct AgentTerminalView: View {
                 keyboardInset.resumeHeightCapture()
                 keyboardControl.setKeyboardMode(.text)
             }
+            directKeyboardIntent.setWantsKeyboard(false)
+            keyboardControl.dismissKeyboard()
+        } else if keyboardControl.isKeyboardUp {
+            directKeyboardIntent.setWantsKeyboard(false)
             keyboardControl.dismissKeyboard()
         } else {
-            keyboardControl.toggleKeyboard()
+            directKeyboardIntent.setWantsKeyboard(true)
+            keyboardControl.requestKeyboard()
         }
     }
 
@@ -692,15 +727,19 @@ struct AgentTerminalView: View {
             }
         }
         if enteringTools {
+            directKeyboardIntent.setWantsKeyboard(true)
             keyboardControl.requestKeyboard()
         }
     }
 
     private func armDirectKeyboardClaimIfNeeded() {
         guard isDirectInput else { return }
-        guard keyboardControl.isKeyboardUp || usesDirectToolsKeyboard
+        guard directKeyboardIntent.wantsKeyboard
+            || keyboardControl.isKeyboardUp
+            || usesDirectToolsKeyboard
             || keyboardInset.height > 0
         else { return }
+        directKeyboardIntent.setWantsKeyboard(true)
         keyboardHandoff.arm(for: agent.id)
     }
 
@@ -744,7 +783,9 @@ struct AgentTerminalView: View {
         // first responder with a hardware keyboard and a zero inset.
         let keyboardIsUp =
             isDirectInput
-            ? (keyboardControl.isKeyboardUp || usesDirectToolsKeyboard
+            ? (directKeyboardIntent.wantsKeyboard
+                || keyboardControl.isKeyboardUp
+                || usesDirectToolsKeyboard
                 || keyboardInset.height > 0)
             : keyboardInset.height > 0
         if keyboardIsUp {

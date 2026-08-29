@@ -577,12 +577,20 @@ struct TerminalAgentSwitcherRow: View {
     private func modeControlView(_ control: TerminalAgentSwitcherModeControl) -> some View {
         switch control {
         case let .button(systemImage, accessibilityLabel, accessibilityHint, action):
+            // Visual bar stays `preferredHeight` (40); the control's conceptual
+            // hit target is 44×44 by expanding two points above and below.
             Button(action: action) {
                 Image(systemName: systemImage)
                     .font(.system(size: Self.glyphPointSize))
                     .foregroundStyle(Color(uiColor: .label))
-                    .frame(width: 44, height: TerminalAgentSwitcherBar.preferredHeight)
+                    .frame(
+                        width: 44,
+                        height: TerminalAgentSwitcherBar.preferredHeight)
             }
+            .buttonStyle(.plain)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+            .padding(.vertical, (TerminalAgentSwitcherBar.preferredHeight - 44) / 2)
             .accessibilityLabel(accessibilityLabel)
             .accessibilityHint(accessibilityHint)
         case let .segmented(selection, select):

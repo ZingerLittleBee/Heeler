@@ -1,18 +1,21 @@
 import SwiftUI
 import UIKit
 
-/// Compact Agent-detail chrome for Direct Input: status, a shortcut row while
-/// the system keyboard is up, and the Agent switcher with Show Composer.
-/// App content rather than a keyboard accessory, so UIKit's candidate-row
-/// teardown cannot tear it down or leave a hollow gap.
+/// Compact Agent-detail chrome for Direct Input: status, Agent switcher with
+/// Show Composer, and a shortcut row while the software keyboard is up.
+/// Bottom-up order matches the approved geometry: system keyboard, shortcut
+/// row, switcher, status. App content rather than a keyboard accessory, so
+/// UIKit's candidate-row teardown cannot tear it down or leave a hollow gap.
 struct AgentDirectInputChrome: View {
     let status: AgentStatus
     let hostTelemetry: HostTelemetryPresentation?
     let chromeColorScheme: ColorScheme
     let switcher: TerminalAgentSwitcher
     let keyboardHandoff: TerminalKeyboardHandoff
+    /// Ghostty first-responder / tools intent for the switcher toggle glyph.
     let isKeyboardUp: Bool
     let isToolsKeyboardPresented: Bool
+    /// Software-keyboard shortcut row only — never hardware-first-responder.
     let showShortcutRow: Bool
     let actions: AgentComposerActions
     let toggleKeyboard: () -> Void
@@ -28,42 +31,13 @@ struct AgentDirectInputChrome: View {
         .escape, .tab, .shiftTab, .enter,
     ]
 
-    /// Same arithmetic Shell uses: a transient zero inset while first
-    /// responder is retained must not hide the chrome mid-swap.
-    static func keyboardPresentation(
-        usesToolsKeyboard: Bool,
-        insetHeight: CGFloat,
-        keyboardIsUp: Bool
-    ) -> AgentComposerKeyboardPresentation {
-        if usesToolsKeyboard { return .tools }
-        if insetHeight > 0 || keyboardIsUp { return .system }
-        return .hidden
-    }
-
-    /// Shortcut keys ride the system keyboard only. Tools mode already has
-    /// the pad; a dismissed keyboard must leave no hollow black bar.
-    static func showsShortcutRow(
-        presentation: AgentComposerKeyboardPresentation
-    ) -> Bool {
-        presentation == .system
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    statusLabel
-                    Spacer(minLength: 8)
-                    if let hostTelemetry {
-                        hostTelemetryLabel(hostTelemetry)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .environment(\.colorScheme, chromeColorScheme)
-
-                if showShortcutRow {
-                    shortcutRow
-                }
+                AgentDetailStatusChrome(
+                    status: status,
+                    hostTelemetry: hostTelemetry,
+                    chromeColorScheme: chromeColorScheme)
 
                 TerminalAgentSwitcherRow(
                     switcher: focusPreservingSwitcher,
@@ -72,6 +46,12 @@ struct AgentDirectInputChrome: View {
                     isToolsKeyboardPresented: isToolsKeyboardPresented,
                     switchKeyboard: switchKeyboard,
                     modeControl: modeControl)
+
+                // Adjacent to the software keyboard it augments — below the
+                // switcher in this top-to-bottom stack, above the keyboard.
+                if showShortcutRow {
+                    shortcutRow
+                }
             }
             .padding(.vertical, 8)
         }
@@ -87,8 +67,8 @@ struct AgentDirectInputChrome: View {
         }
         return .button(
             systemImage: "square.and.pencil",
-            accessibilityLabel: "Show Composer",
-            accessibilityHint: "Restores the Composer. The draft is unchanged.",
+            accessibilityLabel: AgentDirectInputPresentation.showComposerAccessibilityLabel,
+            accessibilityHint: AgentDirectInputPresentation.showComposerAccessibilityHint,
             action: showComposer)
     }
 
@@ -135,8 +115,10 @@ struct AgentDirectInputChrome: View {
                     .background(
                         Color(uiColor: .secondarySystemFill),
                         in: .rect(cornerRadius: 8))
-                    .accessibilityLabel("Show Composer")
-                    .accessibilityHint("Restores the Composer. The draft is unchanged.")
+                    .accessibilityLabel(
+                        AgentDirectInputPresentation.showComposerAccessibilityLabel)
+                    .accessibilityHint(
+                        AgentDirectInputPresentation.showComposerAccessibilityHint)
 
                 moreMenu
 
@@ -211,39 +193,5 @@ struct AgentDirectInputChrome: View {
         }
         .accessibilityLabel("More")
         .accessibilityHint("Opens Agent actions")
-    }
-
-    private var statusLabel: some View {
-        HStack(spacing: 4) {
-            if status == .working {
-                SolvingOrbView(size: 10)
-                    .accessibilityHidden(true)
-            } else {
-                Circle()
-                    .fill(Color(status.inkUIColor))
-                    .frame(width: 7, height: 7)
-                    .accessibilityHidden(true)
-            }
-            Text(status.rawValue.capitalized)
-        }
-        .font(.caption2.weight(.medium))
-        .foregroundStyle(Color(status.inkUIColor))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Agent status")
-        .accessibilityValue(status.rawValue.capitalized)
-    }
-
-    private func hostTelemetryLabel(
-        _ telemetry: HostTelemetryPresentation
-    ) -> some View {
-        Text(telemetry.title)
-            .font(.caption2)
-            .monospacedDigit()
-            .foregroundStyle(
-                chromeColorScheme == .dark
-                    ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(telemetry.accessibilityLabel)
-            .accessibilityValue(telemetry.accessibilityValue)
     }
 }

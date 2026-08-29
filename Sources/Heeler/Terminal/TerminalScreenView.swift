@@ -1,4 +1,5 @@
 import GhosttyTerminal
+import Observation
 import SwiftUI
 import UIKit
 
@@ -30,12 +31,26 @@ struct TerminalClipboard {
 /// A handle on the live terminal for chrome that sits outside it. The reference
 /// is weak and set by the surface itself, so an Agent switch rebuilding the
 /// terminal cannot leave the keyboard toggle or Composer quick keys driving a
-/// dead one.
+/// dead one. First-responder state is observable so Direct Input chrome can
+/// refresh without waiting on an unrelated SwiftUI invalidation.
 @MainActor
+@Observable
 final class TerminalKeyboardControl {
-    weak var terminal: HeelerTerminalView?
+    weak var terminal: HeelerTerminalView? {
+        didSet {
+            oldValue?.onFirstResponderChange = nil
+            terminal?.onFirstResponderChange = { [weak self] in
+                self?.syncFirstResponder()
+            }
+            syncFirstResponder()
+        }
+    }
 
-    var isKeyboardUp: Bool { terminal?.isFirstResponder ?? false }
+    /// Ghostty first-responder intent. Distinct from software-keyboard inset:
+    /// a hardware keyboard can keep this true with a zero footprint.
+    private(set) var isFirstResponder = false
+
+    var isKeyboardUp: Bool { isFirstResponder }
 
     func toggleKeyboard() {
         guard let terminal else { return }
@@ -72,6 +87,12 @@ final class TerminalKeyboardControl {
 
     func paste(_ text: String) {
         terminal?.requestPaste(text)
+    }
+
+    private func syncFirstResponder() {
+        let next = terminal?.isFirstResponder ?? false
+        guard isFirstResponder != next else { return }
+        isFirstResponder = next
     }
 }
 
@@ -308,6 +329,8 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// was mid-conversation — dropping the keyboard would hide the switcher
     /// along with it.
     var raisesKeyboardWhenReady = false
+    /// Notifies ``TerminalKeyboardControl`` when first-responder intent changes.
+    var onFirstResponderChange: (() -> Void)?
     /// How many times the input views have been rebuilt. Nothing else observes
     /// the rebuild that republishes the keyboard's settled frame after a
     /// handoff, and a lost rebuild costs the terminal a toolbar's worth of
@@ -514,7 +537,9 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         if isFirstResponder, !responderGate.mayBecomeFirstResponder {
             return true
         }
-        return super.becomeFirstResponder()
+        let accepted = super.becomeFirstResponder()
+        onFirstResponderChange?()
+        return accepted
     }
 
     /// Ghostty's `touchesEnded` dismisses the keyboard after any body tap or
@@ -525,7 +550,11 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     @discardableResult
     override func resignFirstResponder() -> Bool {
         guard responderGate.mayResignFirstResponder else { return false }
-        return super.resignFirstResponder()
+        let resigned = super.resignFirstResponder()
+        if resigned {
+            onFirstResponderChange?()
+        }
+        return resigned
     }
 
     init(
