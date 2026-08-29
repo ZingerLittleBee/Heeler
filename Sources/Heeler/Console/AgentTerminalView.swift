@@ -23,6 +23,9 @@ struct AgentTerminalView: View {
     /// same reason as the handoff: a switch that inherits a raised keyboard
     /// must lay the terminal out at the right height on its first frame.
     private let keyboardInset: TerminalKeyboardInset
+    /// Router truth used to distinguish a real navigation from SwiftUI's
+    /// same-screen disappear/appear churn.
+    private let isOnStage: () -> Bool
     /// Opens another Agent from the terminal's switcher strip. The owner moves
     /// the selection, exactly as a tap in the Agent list would.
     private let onSwitch: (ConsoleAgent.ID) -> Void
@@ -41,8 +44,22 @@ struct AgentTerminalView: View {
     @State private var skills: SkillsPaneStore?
     @State private var keyboardControl = TerminalKeyboardControl()
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
+    /// Keeps Composer mounted while its visible system keyboard moves to the
+    /// terminal. Direct Input becomes the rendered mode only after the
+    /// terminal confirms first-responder ownership.
+    @State private var composerToDirectHandoffID: UUID?
+    /// Keeps Direct Input active while the newly mounted Composer takes over
+    /// its visible software keyboard.
+    @State private var directToComposerHandoffID: UUID?
+    /// This view's handoff after the destination responder has accepted it but
+    /// before that responder's own keyboard frame settles. The inset is shared
+    /// by the Console, so ownership must never be inferred from its active ID.
+    @State private var settlingKeyboardHandoffID: UUID?
     /// Direct Input's tools dock, separate from Composer focus presentation.
     @State private var usesDirectToolsKeyboard = false
+    /// Keeps reverse-handoff preloading from adopting Composer's taller layout
+    /// before Composer actually owns keyboard input.
+    @State private var directInputChromeHeight: CGFloat?
     /// Holds `.system` presentation across the Tools→iOS coalesce window so
     /// the terminal does not expand then shrink while UIKit re-shows the
     /// software keyboard. Cleared once `keyboardInset.height` becomes positive
@@ -110,6 +127,7 @@ struct AgentTerminalView: View {
         self.activity = activity
         self.keyboardHandoff = keyboardHandoff
         self.keyboardInset = keyboardInset
+        self.isOnStage = isOnStage
         self.onSwitch = onSwitch
         self.onClosed = onClosed
         self.canOpenTerminal = canOpenTerminal
@@ -169,8 +187,23 @@ struct AgentTerminalView: View {
             attach.requestPaste(text, bracketedPaste: bracketed)
         }
         screen.keyboardControl = keyboardControl
-        screen.isLocalInputEnabled = isDirectInput
-        screen.claimsKeyboard = { [keyboardHandoff, agent, inputMode, directKeyboardIntent] in
+        // Agent input is natural-language authored text in both Composer and
+        // Direct Input. Matching traits lets UIKit retain one Apple keyboard
+        // context across the responder transfer; Shell terminals keep the
+        // command-oriented defaults.
+        screen.textInputStyle = .naturalLanguage
+        screen.isLocalInputEnabled = isDirectInput || composerToDirectHandoffID != nil
+        screen.claimsKeyboard = {
+            [
+                keyboardHandoff,
+                agent,
+                inputMode,
+                directKeyboardIntent,
+                composerToDirectHandoffID,
+            ] in
+            if composerToDirectHandoffID != nil {
+                return directKeyboardIntent.wantsKeyboard
+            }
             guard inputMode.isDirect else { return false }
             if keyboardHandoff.consume(agent.id) {
                 directKeyboardIntent.setWantsKeyboard(true)
@@ -179,6 +212,24 @@ struct AgentTerminalView: View {
             // Same-screen pipeline replacement: reclaim only while Direct
             // Input still owns raised intent. Cold persisted Direct stays down.
             return directKeyboardIntent.wantsKeyboard
+        }
+        screen.keyboardHandoffID = composerToDirectHandoffID
+        screen.isKeyboardHandoffCurrent = { id in
+            isOnStage()
+                && keyboardInset.activeResponderHandoffID == id
+                && composerToDirectHandoffID == id
+        }
+        screen.onKeyboardHandoffResult = { id, succeeded in
+            guard composerToDirectHandoffID == id else { return }
+            if succeeded {
+                settlingKeyboardHandoffID = id
+                applyInputMode(.direct, preservingKeyboardHandoff: true)
+            } else {
+                cancelKeyboardHandoff(id)
+            }
+        }
+        screen.onKeyboardHandoffSettled = { id in
+            endKeyboardHandoff(id)
         }
         screen.theme = terminal.themes.theme
         screen.fontSize = terminal.zoom.fontSize
@@ -393,8 +444,14 @@ struct AgentTerminalView: View {
         }
         .onDisappear {
             attach.leave()
+            Task { @MainActor in
+                await Task.yield()
+                guard !isOnStage() else { return }
+                cancelKeyboardHandoffs()
+            }
         }
         .onChange(of: attach.terminalID) { _, _ in
+            cancelKeyboardHandoffs()
             guard isDirectInput else { return }
             usesDirectToolsKeyboard = false
             expectsDirectSystemKeyboard = false
@@ -466,7 +523,7 @@ struct AgentTerminalView: View {
     }
 
     private var activeKeyboardPresentation: AgentComposerKeyboardPresentation {
-        if isDirectInput {
+        if isDirectInput, directToComposerHandoffID == nil {
             return directInputPresentation.keyboardPresentation
         }
         return composerKeyboardPresentation
@@ -606,40 +663,76 @@ struct AgentTerminalView: View {
 
     @ViewBuilder
     private var inputChrome: some View {
-        if isDirectInput {
-            AgentDirectInputChrome(
-                context: AgentDirectInputChromeContext(
-                    presentation: .init(
-                        status: agent.agent.status,
-                        hostTelemetry: hostTelemetry,
-                        chromeColorScheme: terminal.themes.selection(for: colorScheme)
-                            .chromeColorScheme(for: colorScheme),
-                        isKeyboardUp: directSwitcherKeyboardIsUp,
-                        isToolsKeyboardPresented: usesDirectToolsKeyboard),
-                    interactions: .init(
-                        switcher: agentSwitcher,
-                        actions: composerActions,
-                        toggleKeyboard: toggleDirectKeyboard,
-                        switchKeyboard: directKeyboardSwitchAction,
-                        sendQuickKey: keyboardControl.sendQuickKey,
-                        showComposer: { selectInputMode(.composer) },
-                        restoreComposerThen: restoreComposerThen)))
+        if isDirectInput, directToComposerHandoffID == nil {
+            directInputChrome
         } else {
-            AgentComposerView(
-                store: composer,
-                status: agent.agent.status,
-                hostTelemetry: hostTelemetry,
-                chromeColorScheme: terminal.themes.selection(for: colorScheme)
-                    .chromeColorScheme(for: colorScheme),
-                switcher: agentSwitcher,
-                keyboardHandoff: keyboardHandoff,
-                keyboardHeight: composerKeyboardLayout.availableToolsHeight,
-                actions: composerActions,
-                skills: skills,
-                keyboardPresentation: $composerKeyboardPresentation,
-                prepareKeyboardPresentation: prepareComposerKeyboardPresentation,
-                modeControl: composerModeControl)
+            ZStack(alignment: .bottom) {
+                composerChrome
+                    .opacity(directToComposerHandoffID == nil ? 1 : 0)
+                    .allowsHitTesting(directToComposerHandoffID == nil)
+                    .accessibilityHidden(directToComposerHandoffID != nil)
+                if directToComposerHandoffID != nil {
+                    // Composer is mounted underneath so its UITextView can take
+                    // first responder, but the visible chrome keeps describing
+                    // the terminal that still owns hardware input until then.
+                    directInputChrome
+                }
+            }
+            .frame(
+                height: directToComposerHandoffID == nil ? nil : directInputChromeHeight,
+                alignment: .bottom)
+            .clipped()
         }
+    }
+
+    private var directInputChrome: some View {
+        AgentDirectInputChrome(
+            context: AgentDirectInputChromeContext(
+                presentation: .init(
+                    status: agent.agent.status,
+                    hostTelemetry: hostTelemetry,
+                    chromeColorScheme: terminal.themes.selection(for: colorScheme)
+                        .chromeColorScheme(for: colorScheme),
+                    isKeyboardUp: directSwitcherKeyboardIsUp,
+                    isToolsKeyboardPresented: usesDirectToolsKeyboard),
+                interactions: .init(
+                    switcher: agentSwitcher,
+                    actions: composerActions,
+                    toggleKeyboard: toggleDirectKeyboard,
+                    switchKeyboard: directKeyboardSwitchAction,
+                    sendQuickKey: keyboardControl.sendQuickKey,
+                    showComposer: { selectInputMode(.composer) },
+                    restoreComposerThen: restoreComposerThen)))
+            .onGeometryChange(for: CGFloat.self) { geometry in
+                geometry.size.height
+            } action: { height in
+                directInputChromeHeight = height
+            }
+    }
+
+    private var composerChrome: some View {
+        AgentComposerView(
+            store: composer,
+            status: agent.agent.status,
+            hostTelemetry: hostTelemetry,
+            chromeColorScheme: terminal.themes.selection(for: colorScheme)
+                .chromeColorScheme(for: colorScheme),
+            switcher: agentSwitcher,
+            keyboardHandoff: keyboardHandoff,
+            keyboardHeight: composerKeyboardLayout.availableToolsHeight,
+            actions: composerActions,
+            skills: skills,
+            keyboardPresentation: $composerKeyboardPresentation,
+            prepareKeyboardPresentation: prepareComposerKeyboardPresentation,
+            modeControl: composerModeControl,
+            keyboardHandoffID: directToComposerHandoffID,
+            isKeyboardHandoffCurrent: { id in
+                isOnStage()
+                    && keyboardInset.activeResponderHandoffID == id
+                    && directToComposerHandoffID == id
+            },
+            onFirstResponderRequest: composerFirstResponderRequest,
+            onKeyboardHandoffSettled: composerKeyboardHandoffSettled)
     }
 
     private var composerModeControl: TerminalAgentSwitcherModeControl {
@@ -670,37 +763,76 @@ struct AgentTerminalView: View {
 
     private func selectInputMode(_ mode: AgentInputMode) {
         guard mode != inputMode.mode else { return }
-        let shouldHandoffSystemKeyboard = mode == .direct
-            && composerKeyboardPresentation == .system
-        let didHandoffSystemKeyboard: Bool
-        if shouldHandoffSystemKeyboard {
+        guard composerToDirectHandoffID == nil,
+              directToComposerHandoffID == nil,
+              settlingKeyboardHandoffID == nil
+        else { return }
+        if mode == .direct, composerKeyboardPresentation == .system {
             directKeyboardIntent.setWantsKeyboard(true)
             keyboardControl.setKeyboardMode(.text)
-            didHandoffSystemKeyboard = keyboardControl.handoffKeyboardToLocalInput()
-        } else {
-            didHandoffSystemKeyboard = false
+            let id = keyboardInset.beginResponderHandoff(
+                currentHeight: currentWindowKeyboardHeight
+            ) { expiredID in
+                cancelKeyboardHandoff(expiredID)
+            }
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                composerToDirectHandoffID = id
+            }
+            return
         }
+        if mode == .composer,
+           isDirectInput,
+           keyboardControl.isFirstResponder,
+           !usesDirectToolsKeyboard
+        {
+            let id = keyboardInset.beginResponderHandoff(
+                currentHeight: currentWindowKeyboardHeight
+            ) { expiredID in
+                cancelKeyboardHandoff(expiredID)
+            }
+            keyboardHandoff.arm(for: agent.id)
+            composerKeyboardPresentation = .system
+            directToComposerHandoffID = id
+            return
+        }
+        applyInputMode(mode)
+    }
+
+    private func applyInputMode(
+        _ mode: AgentInputMode,
+        preservingKeyboardHandoff: Bool = false
+    ) {
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
             switch mode {
             case .direct:
-                prepareComposerKeyboardPresentation(.hidden)
+                if !preservingKeyboardHandoff {
+                    prepareComposerKeyboardPresentation(.hidden)
+                }
                 composerKeyboardPresentation = .hidden
+                composerToDirectHandoffID = nil
                 usesDirectToolsKeyboard = false
                 expectsDirectSystemKeyboard = false
                 keyboardControl.setKeyboardMode(.text)
                 inputMode.select(.direct)
             case .composer:
+                directToComposerHandoffID = nil
                 usesDirectToolsKeyboard = false
                 expectsDirectSystemKeyboard = false
                 directKeyboardIntent.setWantsKeyboard(false)
                 keyboardControl.setKeyboardMode(.text)
-                keyboardControl.dismissKeyboard()
-                keyboardInset.resumeHeightCapture()
+                if !preservingKeyboardHandoff {
+                    keyboardControl.dismissKeyboard()
+                    keyboardInset.resumeHeightCapture()
+                }
                 inputMode.select(.composer)
                 // Composer onAppear consumes this and focuses the draft.
-                keyboardHandoff.arm(for: agent.id)
+                if !preservingKeyboardHandoff {
+                    keyboardHandoff.arm(for: agent.id)
+                }
             }
         }
         switch mode {
@@ -708,7 +840,7 @@ struct AgentTerminalView: View {
             UIAccessibility.post(
                 notification: .announcement,
                 argument: "Keyboard. Typing into the Agent.")
-            if !didHandoffSystemKeyboard {
+            if !keyboardControl.isFirstResponder {
                 Task { @MainActor in
                     await Task.yield()
                     directKeyboardIntent.setWantsKeyboard(true)
@@ -718,6 +850,65 @@ struct AgentTerminalView: View {
         case .composer:
             UIAccessibility.post(notification: .announcement, argument: "Composer.")
         }
+    }
+
+    private func cancelKeyboardHandoff(_ id: UUID) {
+        var ownsHandoff = false
+        if composerToDirectHandoffID == id {
+            composerToDirectHandoffID = nil
+            directKeyboardIntent.setWantsKeyboard(false)
+            ownsHandoff = true
+        }
+        if directToComposerHandoffID == id {
+            directToComposerHandoffID = nil
+            keyboardHandoff.cancel(for: agent.id)
+            ownsHandoff = true
+        }
+        if settlingKeyboardHandoffID == id {
+            settlingKeyboardHandoffID = nil
+            ownsHandoff = true
+        }
+        guard ownsHandoff else { return }
+        keyboardInset.cancelResponderHandoff(
+            id, currentHeight: currentWindowKeyboardHeight)
+    }
+
+    private func currentWindowKeyboardHeight() -> CGFloat? {
+        guard let window = keyboardControl.terminal?.window else { return nil }
+        let frame = window.bounds.intersection(window.keyboardLayoutGuide.layoutFrame)
+        let includesBottomSafeArea = abs(frame.maxY - window.bounds.maxY) <= 1
+        return TerminalKeyboardInset.insetHeight(
+            covered: frame.height,
+            bottomSafeArea: includesBottomSafeArea ? window.safeAreaInsets.bottom : 0)
+    }
+
+    private func cancelKeyboardHandoffs() {
+        if let id = composerToDirectHandoffID
+            ?? directToComposerHandoffID
+            ?? settlingKeyboardHandoffID
+        {
+            cancelKeyboardHandoff(id)
+        }
+    }
+
+    private func composerFirstResponderRequest(_ id: UUID, _ succeeded: Bool) {
+        guard directToComposerHandoffID == id else { return }
+        guard succeeded else {
+            cancelKeyboardHandoff(id)
+            return
+        }
+        settlingKeyboardHandoffID = id
+        applyInputMode(.composer, preservingKeyboardHandoff: true)
+    }
+
+    private func composerKeyboardHandoffSettled(_ id: UUID) {
+        endKeyboardHandoff(id)
+    }
+
+    private func endKeyboardHandoff(_ id: UUID) {
+        guard settlingKeyboardHandoffID == id else { return }
+        settlingKeyboardHandoffID = nil
+        keyboardInset.endResponderHandoff(id)
     }
 
     private func restoreComposerThen(_ action: @escaping () -> Void) {

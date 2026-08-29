@@ -32,6 +32,16 @@ final class TerminalKeyboardInset {
     @ObservationIgnored private var coalesceTask: Task<Void, Never>?
     @ObservationIgnored private let measure: @MainActor (CGRect) -> CGFloat?
     @ObservationIgnored private var capturesPresentedHeight = true
+    /// Composer-to-terminal responder handoff can publish transient show,
+    /// change-frame, and even hide notifications while the software keyboard
+    /// never visibly leaves. Keep the last settled footprint until the new
+    /// terminal confirms that its own keyboard frame settled.
+    private(set) var activeResponderHandoffID: UUID?
+    @ObservationIgnored private var responderHandoffFallbackTask: Task<Void, Never>?
+    @ObservationIgnored private var sawDismissDuringResponderHandoff = false
+    @ObservationIgnored var responderHandoffFallbackDelay = Duration.milliseconds(500)
+
+    var isHoldingHandoffHeight: Bool { activeResponderHandoffID != nil }
 
     init(
         notificationCenter: NotificationCenter = .default,
@@ -65,6 +75,7 @@ final class TerminalKeyboardInset {
     }
 
     private func keyboardWillPresent(endFrame: CGRect?) {
+        guard !isHoldingHandoffHeight else { return }
         guard capturesPresentedHeight else { return }
         guard let endFrame, let height = measure(endFrame), height > 0 else { return }
         coalesceTask?.cancel()
@@ -76,6 +87,10 @@ final class TerminalKeyboardInset {
     }
 
     private func keyboardWillDismiss() {
+        guard !isHoldingHandoffHeight else {
+            sawDismissDuringResponderHandoff = true
+            return
+        }
         coalesceTask?.cancel()
         coalesceTask = nil
         apply(0)
@@ -93,6 +108,62 @@ final class TerminalKeyboardInset {
 
     func resumeHeightCapture() {
         capturesPresentedHeight = true
+    }
+
+    /// Freezes the app-owned keyboard inset while UIKit transfers responder
+    /// ownership. All frames inside the handoff are transient by definition:
+    /// both endpoints use the same system keyboard, so retaining one would let
+    /// a candidate-row or another window's frame replace the settled height.
+    func beginResponderHandoff(
+        currentHeight: @escaping @MainActor () -> CGFloat? = { nil },
+        onFallback: @escaping @MainActor (UUID) -> Void = { _ in }
+    ) -> UUID {
+        let id = UUID()
+        coalesceTask?.cancel()
+        coalesceTask = nil
+        responderHandoffFallbackTask?.cancel()
+        activeResponderHandoffID = id
+        sawDismissDuringResponderHandoff = false
+        let fallbackDelay = responderHandoffFallbackDelay
+        responderHandoffFallbackTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: fallbackDelay)
+            guard !Task.isCancelled else { return }
+            guard let self, self.activeResponderHandoffID == id else { return }
+            self.responderHandoffFallbackTask = nil
+            self.activeResponderHandoffID = nil
+            let shouldApplyDismissal = self.sawDismissDuringResponderHandoff
+            self.sawDismissDuringResponderHandoff = false
+            if shouldApplyDismissal {
+                self.apply(max(0, currentHeight() ?? 0))
+            }
+            onFallback(id)
+        }
+        return id
+    }
+
+    /// Releases a responder-handoff freeze after the destination terminal's
+    /// own keyboard frame settles. The pre-handoff settled height stays
+    /// authoritative; a later ordinary keyboard event can replace it.
+    func endResponderHandoff(_ id: UUID) {
+        guard activeResponderHandoffID == id else { return }
+        responderHandoffFallbackTask?.cancel()
+        responderHandoffFallbackTask = nil
+        activeResponderHandoffID = nil
+        sawDismissDuringResponderHandoff = false
+    }
+
+    /// Cancels a transfer without committing any frame emitted while neither
+    /// responder had stable ownership.
+    func cancelResponderHandoff(
+        _ id: UUID,
+        currentHeight: @escaping @MainActor () -> CGFloat? = { nil }
+    ) {
+        guard activeResponderHandoffID == id else { return }
+        let shouldApplyDismissal = sawDismissDuringResponderHandoff
+        endResponderHandoff(id)
+        if shouldApplyDismissal {
+            apply(max(0, currentHeight() ?? 0))
+        }
     }
 
     private func apply(_ height: CGFloat) {
@@ -133,6 +204,30 @@ final class TerminalKeyboardInset {
 
     nonisolated static func insetHeight(covered: CGFloat, bottomSafeArea: CGFloat) -> CGFloat {
         max(0, covered - bottomSafeArea)
+    }
+
+    /// Normalizes docked keyboard frames to the content edge above the home
+    /// indicator while leaving floating keyboard geometry unchanged.
+    static func normalizedKeyboardFrame(_ frame: CGRect, in window: UIWindow) -> CGRect {
+        var visible = window.bounds.intersection(frame)
+        if abs(visible.maxY - window.bounds.maxY) <= 1 {
+            visible.size.height = max(
+                0, window.safeAreaLayoutGuide.layoutFrame.maxY - visible.minY)
+        }
+        return visible
+    }
+
+    static func keyboardFrame(
+        _ frame: CGRect, matches otherFrame: CGRect, in window: UIWindow
+    ) -> Bool {
+        let lhs = normalizedKeyboardFrame(frame, in: window)
+        let rhs = normalizedKeyboardFrame(otherFrame, in: window)
+        return lhs.height > 0
+            && rhs.height > 0
+            && abs(lhs.minX - rhs.minX) <= 1
+            && abs(lhs.minY - rhs.minY) <= 1
+            && abs(lhs.maxX - rhs.maxX) <= 1
+            && abs(lhs.maxY - rhs.maxY) <= 1
     }
 }
 

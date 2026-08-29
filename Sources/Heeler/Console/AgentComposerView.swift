@@ -103,6 +103,10 @@ struct AgentComposerView: View {
     let prepareKeyboardPresentation: (AgentComposerKeyboardPresentation) -> Void
     /// Optional Hide Composer control on the switcher trail.
     var modeControl: TerminalAgentSwitcherModeControl? = nil
+    var keyboardHandoffID: UUID?
+    var isKeyboardHandoffCurrent: (UUID) -> Bool = { _ in false }
+    var onFirstResponderRequest: (UUID, Bool) -> Void = { _, _ in }
+    var onKeyboardHandoffSettled: (UUID) -> Void = { _ in }
     @State private var isInputFocused = false
     /// An explicit dismissal hides suggestions for the current trigger token;
     /// removing the token arms them again.
@@ -140,7 +144,11 @@ struct AgentComposerView: View {
                                     get: { store.draft },
                                     set: { store.replaceDraft(with: $0) }),
                                 isFocused: $isInputFocused,
-                                keyboardPresentation: keyboardPresentation)
+                                keyboardPresentation: keyboardPresentation,
+                                keyboardHandoffID: keyboardHandoffID,
+                                isKeyboardHandoffCurrent: isKeyboardHandoffCurrent,
+                                onFirstResponderRequest: onFirstResponderRequest,
+                                onKeyboardHandoffSettled: onKeyboardHandoffSettled)
                             if store.draft.isEmpty {
                                 Text("Message Agent")
                                     .foregroundStyle(.tertiary)
@@ -528,6 +536,10 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
     @Binding var text: String
     @Binding var isFocused: Bool
     let keyboardPresentation: AgentComposerKeyboardPresentation
+    let keyboardHandoffID: UUID?
+    let isKeyboardHandoffCurrent: (UUID) -> Bool
+    let onFirstResponderRequest: (UUID, Bool) -> Void
+    let onKeyboardHandoffSettled: (UUID) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(text: $text, isFocused: $isFocused)
@@ -542,6 +554,7 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
         textView.textContainerInset = UIEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
         textView.textContainer.lineFragmentPadding = 0
         textView.accessibilityLabel = "Message the Agent"
+        textView.onKeyboardHandoffSettled = onKeyboardHandoffSettled
         return textView
     }
 
@@ -550,14 +563,27 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
             textView.text = text
         }
         textView.updateKeyboard(presentation: keyboardPresentation)
+        textView.onKeyboardHandoffSettled = onKeyboardHandoffSettled
         let shouldFocus = isFocused
         guard shouldFocus != textView.isFirstResponder else { return }
         DispatchQueue.main.async { [weak textView] in
             guard let textView else { return }
             if shouldFocus {
-                textView.becomeFirstResponder()
+                if let keyboardHandoffID {
+                    guard textView.window != nil,
+                          isKeyboardHandoffCurrent(keyboardHandoffID)
+                    else {
+                        onFirstResponderRequest(keyboardHandoffID, false)
+                        return
+                    }
+                    onFirstResponderRequest(
+                        keyboardHandoffID,
+                        textView.requestKeyboardHandoff(id: keyboardHandoffID))
+                } else {
+                    textView.becomeFirstResponder()
+                }
             } else {
-                textView.resignFirstResponder()
+                _ = textView.resignFirstResponder()
             }
         }
     }
@@ -612,6 +638,58 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
 final class AgentComposerUITextView: UITextView {
     private lazy var suppressedSoftKeyboard = TerminalSuppressedSoftKeyboardView()
     private var keyboardPresentation: AgentComposerKeyboardPresentation = .hidden
+    var onKeyboardHandoffSettled: ((UUID) -> Void)?
+    private var activeKeyboardHandoffID: UUID?
+
+    override init(frame: CGRect, textContainer: NSTextContainer?) {
+        super.init(frame: frame, textContainer: textContainer)
+        installKeyboardObservers()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        installKeyboardObservers()
+    }
+
+    private func installKeyboardObservers() {
+        for name: Notification.Name in [
+            UIResponder.keyboardDidShowNotification,
+            UIResponder.keyboardDidChangeFrameNotification,
+        ] {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(keyboardFrameDidSettle(_:)),
+                name: name,
+                object: nil)
+        }
+    }
+
+    @objc private func keyboardFrameDidSettle(_ notification: Notification) {
+        guard isFirstResponder, let window, window.isKeyWindow,
+              let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]
+                as? CGRect
+        else { return }
+        let frameInWindow = window.convert(endFrame, from: window.screen.coordinateSpace)
+        guard TerminalKeyboardInset.keyboardFrame(
+            frameInWindow,
+            matches: window.keyboardLayoutGuide.layoutFrame,
+            in: window)
+        else { return }
+        guard let activeKeyboardHandoffID else { return }
+        self.activeKeyboardHandoffID = nil
+        onKeyboardHandoffSettled?(activeKeyboardHandoffID)
+    }
+
+    @discardableResult
+    func requestKeyboardHandoff(id: UUID) -> Bool {
+        guard window != nil else { return false }
+        activeKeyboardHandoffID = id
+        let accepted = becomeFirstResponder()
+        if !accepted {
+            activeKeyboardHandoffID = nil
+        }
+        return accepted
+    }
 
     func updateKeyboard(presentation: AgentComposerKeyboardPresentation) {
         guard presentation != keyboardPresentation else { return }

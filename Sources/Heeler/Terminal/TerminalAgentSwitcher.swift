@@ -44,6 +44,11 @@ final class TerminalKeyboardHandoff {
         armedID = id
     }
 
+    func cancel(for id: ConsoleAgent.ID) {
+        guard armedID == id else { return }
+        armedID = nil
+    }
+
     /// Reads and clears the intent — a handoff is good for exactly one screen,
     /// so a later push from the Agent list starts with the keyboard down.
     func consume(_ id: ConsoleAgent.ID) -> Bool {

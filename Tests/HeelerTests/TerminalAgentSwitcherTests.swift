@@ -688,6 +688,21 @@ struct TerminalAgentSwitcherTests {
         #expect(!handoff.consume(second))
     }
 
+    @MainActor
+    @Test func keyboardHandoffCancellationOnlyClearsTheMatchingAgent() {
+        let handoff = TerminalKeyboardHandoff()
+        let first = ConsoleAgent.ID(hostID: UUID(), paneID: "w1:p1")
+        let second = ConsoleAgent.ID(hostID: UUID(), paneID: "w2:p2")
+
+        handoff.arm(for: first)
+        handoff.cancel(for: second)
+        #expect(handoff.consume(first))
+
+        handoff.arm(for: second)
+        handoff.cancel(for: second)
+        #expect(!handoff.consume(second))
+    }
+
     /// The keyboard may not dip between the two terminals: it carries the
     /// switcher, so a dip flashes the row away mid-switch. The replacement
     /// takes first responder in the same pass it reaches the window.
@@ -760,10 +775,14 @@ struct TerminalAgentSwitcherTests {
         // fallback must stay out of it: the sleeps inside the handoff window
         // can stretch past its 500ms on a loaded runner (#225).
         terminal.keyboardTransitionFallbackDelay = 60
+        let localKeyboardFrame = CGRect(x: 0, y: 400, width: 390, height: 300)
+        terminal.keyboardLayoutFrameProvider = { _ in localKeyboardFrame }
         terminal.raisesKeyboardWhenReady = true
         terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 600)
         host.view.addSubview(terminal)
         window.layoutIfNeeded()
+        let ownKeyboardEndFrame = window.convert(
+            localKeyboardFrame, to: window.screen.coordinateSpace)
 
         // A foreign settle, posted to the process-wide center inside the
         // handoff window. Before the isolation above, exactly this thawed the
@@ -787,8 +806,7 @@ struct TerminalAgentSwitcherTests {
         // the terminal's own center, the only one it observes.
         center.post(
             name: UIResponder.keyboardDidChangeFrameNotification, object: nil,
-            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
-                x: 0, y: 400, width: 390, height: 300)])
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: ownKeyboardEndFrame])
         try await waitForGridReportsToSettle { reportedGrids.count }
         let escaped = reportedGrids
         #expect(!escaped.isEmpty, "the settled grid never made it past the freeze")
@@ -891,6 +909,8 @@ struct TerminalAgentSwitcherTests {
                 reportedGrids.append(TerminalGrid(columns: columns, rows: rows))
             },
             notificationCenter: center)
+        let localKeyboardFrame = CGRect(x: 0, y: 400, width: 390, height: 300)
+        terminal.keyboardLayoutFrameProvider = { _ in localKeyboardFrame }
         let foreignHost = UIViewController()
         let foreignWindow = try await makeTestWindow(
             frame: CGRect(x: 0, y: 0, width: 390, height: 700),
@@ -916,6 +936,8 @@ struct TerminalAgentSwitcherTests {
         host.view.addSubview(terminal)
         window.layoutIfNeeded()
         #expect(terminal.isFirstResponder)
+        let ownKeyboardEndFrame = window.convert(
+            localKeyboardFrame, to: window.screen.coordinateSpace)
 
         // The other window's keyboard notifications provide no usable scene
         // identity. Its end frame leaves nothing covering this terminal's
@@ -936,6 +958,12 @@ struct TerminalAgentSwitcherTests {
             name: UIResponder.keyboardDidChangeFrameNotification, object: nil,
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
                 x: 0, y: 700, width: 390, height: 300)])
+        // Same top edge as this window's keyboard, but a different floating
+        // footprint. Comparing only minY would incorrectly thaw the handoff.
+        center.post(
+            name: UIResponder.keyboardDidChangeFrameNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 50, y: 400, width: 290, height: 300)])
         #expect(terminal.inputViewRebuildCount == rebuildsBeforeForeignEvent)
 
         for height: CGFloat in [520, 440, 360] {
@@ -950,12 +978,12 @@ struct TerminalAgentSwitcherTests {
         // the terminal's window, and the freeze thaws.
         center.post(
             name: UIResponder.keyboardDidChangeFrameNotification, object: nil,
-            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
-                x: 0, y: 400, width: 390, height: 300)])
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: ownKeyboardEndFrame])
         #expect(terminal.inputViewRebuildCount > rebuildsBeforeForeignEvent)
         try await waitForGridReportsToSettle { reportedGrids.count }
         #expect(
             !reportedGrids.isEmpty,
             "the terminal's own settle never made it past the freeze")
     }
+
 }

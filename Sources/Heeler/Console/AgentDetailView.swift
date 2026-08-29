@@ -120,7 +120,9 @@ struct AgentDetailView: View {
                     activity: activity,
                     keyboardHandoff: keyboardHandoff,
                     keyboardInset: keyboardInset,
-                    isOnStage: isOnStage,
+                    isOnStage: {
+                        isOnStage() && openTerminal.shell == nil
+                    },
                     onSwitch: onSwitch,
                     onClosed: onClosed,
                     canOpenTerminal: openTerminal.canOpen,

@@ -1353,6 +1353,121 @@ struct TerminalAttachTests {
         #expect(inset.height == 402)
     }
 
+    /// Moving a visible system keyboard between Composer and Direct Input can
+    /// emit a transient hide followed by a smaller frame. Neither may move the
+    /// app-owned chrome before the destination responder settles.
+    @MainActor
+    @Test func responderHandoffKeepsTheKeyboardInsetAtItsSettledHeight() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { frame in
+            frame.height == 436 ? 402 : 365
+        }
+        let completeFrame = CGRect(x: 0, y: 554, width: 440, height: 436)
+        let transientFrame = CGRect(x: 0, y: 591, width: 440, height: 399)
+
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: completeFrame])
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(inset.height == 402)
+
+        let handoffID = inset.beginResponderHandoff()
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        center.post(
+            name: UIResponder.keyboardWillChangeFrameNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: transientFrame])
+
+        #expect(inset.height == 402)
+        #expect(inset.lastPresentedHeight == 402)
+
+        inset.endResponderHandoff(UUID())
+        #expect(inset.isHoldingHandoffHeight)
+        #expect(inset.height == 402)
+
+        inset.endResponderHandoff(handoffID)
+        #expect(!inset.isHoldingHandoffHeight)
+        #expect(inset.height == 402)
+        #expect(inset.lastPresentedHeight == 402)
+    }
+
+    /// A scene transition can emit will-hide without a matching did-frame.
+    /// The safety leash must release the hold, notify its owner, and reconcile
+    /// a hide that never received a destination frame.
+    @MainActor
+    @Test func responderHandoffFallbackReleasesAnUnsettledFreeze() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
+        inset.responderHandoffFallbackDelay = .milliseconds(50)
+
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 554, width: 440, height: 436)])
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(inset.height == 402)
+
+        var ownerHandoffID: UUID?
+        var expiredHandoffID: UUID?
+        let handoffID = inset.beginResponderHandoff(onFallback: { expiredID in
+            expiredHandoffID = expiredID
+            if ownerHandoffID == expiredID {
+                ownerHandoffID = nil
+            }
+        })
+        ownerHandoffID = handoffID
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        try await Task.sleep(for: .milliseconds(80))
+
+        #expect(!inset.isHoldingHandoffHeight)
+        #expect(expiredHandoffID == handoffID)
+        #expect(ownerHandoffID == nil)
+        #expect(inset.height == 0)
+        #expect(inset.lastPresentedHeight == 402)
+    }
+
+    /// Keyboard notifications are process-wide on iPad. A hide from another
+    /// scene must not clear this scene's still-visible keyboard footprint.
+    @MainActor
+    @Test func responderHandoffFallbackUsesTheOwningWindowHeight() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
+        inset.responderHandoffFallbackDelay = .milliseconds(50)
+
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 554, width: 440, height: 436)])
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(inset.height == 402)
+
+        _ = inset.beginResponderHandoff(currentHeight: { 402 })
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        try await Task.sleep(for: .milliseconds(80))
+
+        #expect(!inset.isHoldingHandoffHeight)
+        #expect(inset.height == 402)
+        #expect(inset.lastPresentedHeight == 402)
+    }
+
+    @MainActor
+    @Test func responderHandoffCancellationUsesTheOwningWindowHeight() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 554, width: 440, height: 436)])
+        try await Task.sleep(for: .milliseconds(120))
+
+        let handoffID = inset.beginResponderHandoff()
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        inset.cancelResponderHandoff(handoffID, currentHeight: { 402 })
+
+        #expect(!inset.isHoldingHandoffHeight)
+        #expect(inset.height == 402)
+        #expect(inset.lastPresentedHeight == 402)
+    }
+
     @Test func agentKeyboardReplacementKeepsTheTerminalInsetStable() {
         let system = AgentComposerKeyboardLayout(
             currentHeight: 402, lastPresentedHeight: 402,

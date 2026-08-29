@@ -394,8 +394,7 @@ extension HeelerTerminalView {
     /// There is nothing to balance: the center drops an observer that
     /// deallocates.
     func installKeyboardSwitcher(notificationCenter: NotificationCenter = .default) {
-        inputAssistantItem.leadingBarButtonGroups = []
-        inputAssistantItem.trailingBarButtonGroups = []
+        installInputAssistantStyle()
         notificationCenter.addObserver(
             self, selector: #selector(textKeyboardFrameDidChange(_:)),
             name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
@@ -458,11 +457,15 @@ extension HeelerTerminalView {
     /// this terminal's handoff. A post carrying no frame cannot establish
     /// ownership and is ignored.
     private func notificationSettlesOwnKeyboard(_ notification: Notification) -> Bool {
-        guard isFirstResponder, let window else { return false }
+        guard isFirstResponder, let window, window.isKeyWindow else { return false }
         guard let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]
             as? CGRect
         else { return false }
         let frameInWindow = window.convert(endFrame, from: window.screen.coordinateSpace)
-        return window.bounds.intersection(frameInWindow).height > 0
+        return TerminalKeyboardInset.keyboardFrame(
+            frameInWindow,
+            matches: keyboardLayoutFrameProvider?(window)
+                ?? window.keyboardLayoutGuide.layoutFrame,
+            in: window)
     }
 }

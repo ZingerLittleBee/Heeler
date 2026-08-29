@@ -326,9 +326,13 @@ struct AgentDirectInputTests {
         await owner.leave().value
     }
 
-    @Test func hideComposerControlSelectsDirectAndRaisesKeyboard() async throws {
-        let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
+    @Test func composerAndDirectInputTransferVisibleKeyboardWithoutReloading() async throws {
+        let center = NotificationCenter.default
+        let inset = TerminalKeyboardInset(notificationCenter: center)
+        let keyboardTransitions = KeyboardTransitionProbe(
+            notificationCenter: center,
+            insetHeight: { inset.height })
+        defer { keyboardTransitions.stop() }
         let transport = ScriptedTransport()
         let composer = AgentComposerStore(target: "w1:p1") { params in
             try await transport.promptAgent(params)
@@ -344,10 +348,9 @@ struct AgentDirectInputTests {
                 composer: composer,
                 inputMode: inputMode,
                 keyboardInset: inset))
-        let window = Self.makeLocalTestWindow(
+        let window = try await makeTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
-            rootViewController: controller,
-            attachesToScene: true)
+            rootViewController: controller)
         defer { window.isHidden = true }
         controller.view.layoutIfNeeded()
         try #require(await Self.eventually {
@@ -363,13 +366,20 @@ struct AgentDirectInputTests {
         composerInput.becomeFirstResponder()
         try #require(await Self.eventually { composerInput.isFirstResponder })
         try #require(await Self.eventually { composerInput.inputView == nil })
-        center.post(
-            name: UIResponder.keyboardWillShowNotification, object: nil,
-            userInfo: [
-                UIResponder.keyboardFrameEndUserInfoKey: CGRect(
-                    x: 0, y: 500, width: 402, height: 370)
-            ])
-        try #require(await Self.eventually { inset.height == 336 })
+        try #require(await Self.eventually {
+            inset.height > 0
+                && (keyboardTransitions.willShowCount > 0
+                    || keyboardTransitions.willChangeFrameCount > 0)
+        })
+        let keyboardHeight = inset.height
+        #expect(window.isKeyWindow)
+        #expect(composerInput.window === window)
+        keyboardTransitions.setChromeSample {
+            Self.keyboardChromeSample(in: controller.view, window: window, inset: inset)
+        }
+        keyboardTransitions.reset()
+        try #require(await Self.eventually { keyboardTransitions.hasStableTail() })
+        keyboardTransitions.reset()
 
         #expect(
             Self.firstAccessible(
@@ -382,15 +392,28 @@ struct AgentDirectInputTests {
                 in: controller.view))
         // The measured keyboard stays in place while SwiftUI updates the
         // existing terminal and transfers first responder to it.
-        #expect(inset.height == 336)
+        #expect(inset.height == keyboardHeight)
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
-        try #require(await Self.eventually { inputMode.mode == AgentInputMode.direct })
-
-        #expect(terminal.isLocalInputEnabled)
-        try #require(await Self.eventually { terminal.isFirstResponder })
+        try #require(await Self.eventually {
+            inputMode.mode == AgentInputMode.direct
+                && terminal.isLocalInputEnabled
+                && terminal.isFirstResponder
+                && !inset.isHoldingHandoffHeight
+                && keyboardTransitions.observedHandoffWindow()
+                && keyboardTransitions.hasStableTail()
+        })
+        keyboardTransitions.stopSampling()
         #expect(!composerInput.isFirstResponder)
-        #expect(inset.height == 336)
+        #expect(terminal.window === window)
+        #expect(inset.height == keyboardHeight)
+        #expect(
+            keyboardTransitions.observedInsetHeights.allSatisfy { $0 == keyboardHeight },
+            "Composer→Direct Input exposed transient insets: \(keyboardTransitions.observedInsetHeights)")
+        Self.expectStableKeyboardChrome(
+            keyboardTransitions.chromeSamples,
+            keyboardHeight: keyboardHeight,
+            direction: "Composer→Direct Input")
         #expect(composer.draft == "do not send")
         #expect(await transport.agentPromptParams.isEmpty)
         #expect(
@@ -398,16 +421,39 @@ struct AgentDirectInputTests {
                 if case .keystrokes = $0 { false } else { true }
             })
 
+        keyboardTransitions.reset()
         try #require(
             Self.activateAccessibility(
                 labeled: AgentDirectInputPresentation.showComposerAccessibilityLabel,
                 in: controller.view))
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
-        try #require(await Self.eventually { inputMode.mode == AgentInputMode.composer })
+        try #require(await Self.eventually {
+            inputMode.mode == AgentInputMode.composer
+                && !inset.isHoldingHandoffHeight
+                && keyboardTransitions.observedHandoffWindow()
+                && keyboardTransitions.hasStableTail()
+        })
+        keyboardTransitions.stopSampling()
 
         let restored = try #require(Self.terminals(in: controller.view).first)
+        let restoredComposerInput = try #require(
+            Self.firstView(in: controller.view) {
+                $0 is UITextView && $0.accessibilityLabel == "Message the Agent"
+            } as? UITextView)
         #expect(!restored.isLocalInputEnabled)
+        #expect(restoredComposerInput.isFirstResponder)
+        #expect(restoredComposerInput.autocorrectionType == terminal.autocorrectionType)
+        #expect(restoredComposerInput.autocapitalizationType == terminal.autocapitalizationType)
+        #expect(!terminal.isFirstResponder)
+        #expect(inset.height == keyboardHeight)
+        #expect(
+            keyboardTransitions.observedInsetHeights.allSatisfy { $0 == keyboardHeight },
+            "Direct Input→Composer exposed transient insets: \(keyboardTransitions.observedInsetHeights)")
+        Self.expectStableKeyboardChrome(
+            keyboardTransitions.chromeSamples,
+            keyboardHeight: keyboardHeight,
+            direction: "Direct Input→Composer")
         #expect(composer.draft == "do not send")
         #expect(await transport.agentPromptParams.isEmpty)
 
@@ -1175,6 +1221,207 @@ struct AgentDirectInputTests {
         return nil
     }
 
+    private struct KeyboardChromeSample {
+        let insetHeight: CGFloat
+        let switcherBottom: CGFloat?
+    }
+
+    @MainActor
+    private final class KeyboardTransitionProbe: NSObject {
+        // Hosted app tests cannot inspect the out-of-process keyboard surface:
+        // its layout guide remains empty even while Simulator renders it. This
+        // probe therefore samples the app-owned chrome on every display frame;
+        // Simulator acceptance separately verifies the keyboard surface itself.
+        private let notificationCenter: NotificationCenter
+        private var token: NSObjectProtocol?
+        private var showToken: NSObjectProtocol?
+        private var changeFrameToken: NSObjectProtocol?
+        private var displayLink: CADisplayLink?
+        private var samplingStartedAt: CFTimeInterval?
+        private let insetHeight: @MainActor () -> CGFloat
+        private var chromeSample: (@MainActor () -> KeyboardChromeSample)?
+        private(set) var willShowCount = 0
+        private(set) var willHideCount = 0
+        private(set) var willChangeFrameCount = 0
+        private(set) var observedInsetHeights: [CGFloat] = []
+        private(set) var chromeSamples: [KeyboardChromeSample] = []
+
+        init(
+            notificationCenter: NotificationCenter,
+            insetHeight: @escaping @MainActor () -> CGFloat
+        ) {
+            self.notificationCenter = notificationCenter
+            self.insetHeight = insetHeight
+            super.init()
+            showToken = notificationCenter.addObserver(
+                forName: UIResponder.keyboardWillShowNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.willShowCount += 1
+                    self?.recordInsetHeight()
+                }
+            }
+            token = notificationCenter.addObserver(
+                forName: UIResponder.keyboardWillHideNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.willHideCount += 1
+                    self?.recordInsetHeight()
+                }
+            }
+            changeFrameToken = notificationCenter.addObserver(
+                forName: UIResponder.keyboardWillChangeFrameNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.willChangeFrameCount += 1
+                    self?.recordInsetHeight()
+                }
+            }
+        }
+
+        func reset() {
+            stopSampling()
+            willShowCount = 0
+            willHideCount = 0
+            willChangeFrameCount = 0
+            observedInsetHeights = []
+            chromeSamples = []
+            captureChromeSample()
+            let displayLink = CADisplayLink(target: self, selector: #selector(sampleDisplayFrame))
+            displayLink.add(to: .main, forMode: .common)
+            self.displayLink = displayLink
+            samplingStartedAt = CACurrentMediaTime()
+        }
+
+        func setChromeSample(_ sample: @escaping @MainActor () -> KeyboardChromeSample) {
+            chromeSample = sample
+        }
+
+        func captureChromeSample() {
+            if let chromeSample {
+                chromeSamples.append(chromeSample())
+            }
+        }
+
+        @objc private func sampleDisplayFrame() {
+            captureChromeSample()
+        }
+
+        func hasStableTail(frameCount: Int = 4) -> Bool {
+            guard chromeSamples.count >= frameCount,
+                  let baseline = chromeSamples.last,
+                  baseline.switcherBottom != nil
+            else { return false }
+            return chromeSamples.suffix(frameCount).allSatisfy { sample in
+                abs(sample.insetHeight - baseline.insetHeight) <= 1
+                    && Self.close(sample.switcherBottom, baseline.switcherBottom)
+            }
+        }
+
+        func observedHandoffWindow(_ duration: TimeInterval = 0.65) -> Bool {
+            guard let samplingStartedAt else { return false }
+            return CACurrentMediaTime() - samplingStartedAt >= duration
+        }
+
+        private static func close(_ lhs: CGFloat?, _ rhs: CGFloat?) -> Bool {
+            guard let lhs, let rhs else { return lhs == nil && rhs == nil }
+            return abs(lhs - rhs) <= 1
+        }
+
+        func stopSampling() {
+            displayLink?.invalidate()
+            displayLink = nil
+            samplingStartedAt = nil
+        }
+
+        private func recordInsetHeight() {
+            observedInsetHeights.append(insetHeight())
+            captureChromeSample()
+        }
+
+        func stop() {
+            stopSampling()
+            if let showToken {
+                notificationCenter.removeObserver(showToken)
+            }
+            if let token {
+                notificationCenter.removeObserver(token)
+            }
+            if let changeFrameToken {
+                notificationCenter.removeObserver(changeFrameToken)
+            }
+            showToken = nil
+            self.token = nil
+            changeFrameToken = nil
+        }
+    }
+
+    @MainActor
+    private static func keyboardChromeSample(
+        in root: UIView,
+        window: UIWindow,
+        inset: TerminalKeyboardInset
+    ) -> KeyboardChromeSample {
+        let switcher = switchers(in: root)
+            .filter { $0.window === window }
+            .max { effectivePresentationOpacity(of: $0) < effectivePresentationOpacity(of: $1) }
+        let bottom = switcher.flatMap { switcher -> CGFloat? in
+            guard switcher.window === window, let superview = switcher.superview else { return nil }
+            let frame = switcher.layer.presentation()?.frame ?? switcher.frame
+            return superview.convert(frame, to: window).maxY
+        }
+        return KeyboardChromeSample(
+            insetHeight: inset.height,
+            switcherBottom: bottom)
+    }
+
+    private static func switchers(in root: UIView) -> [TerminalAgentSwitcherBar] {
+        var result: [TerminalAgentSwitcherBar] = []
+        if let switcher = root as? TerminalAgentSwitcherBar {
+            result.append(switcher)
+        }
+        for subview in root.subviews {
+            result.append(contentsOf: switchers(in: subview))
+        }
+        return result
+    }
+
+    private static func effectivePresentationOpacity(of view: UIView) -> Float {
+        var opacity: Float = 1
+        var current: UIView? = view
+        while let node = current {
+            if node.isHidden { return 0 }
+            opacity *= node.layer.presentation()?.opacity ?? node.layer.opacity
+            current = node.superview
+        }
+        return opacity
+    }
+
+    private static func expectStableKeyboardChrome(
+        _ samples: [KeyboardChromeSample],
+        keyboardHeight: CGFloat,
+        direction: String
+    ) {
+        #expect(!samples.isEmpty, "\(direction) produced no display-frame samples")
+        #expect(
+            samples.allSatisfy { abs($0.insetHeight - keyboardHeight) <= 1 },
+            "\(direction) moved the keyboard inset during a UIKit transition")
+        let bottoms = samples.compactMap(\.switcherBottom)
+        #expect(
+            bottoms.count == samples.count,
+            "\(direction) removed the Agent switcher during a UIKit transition")
+        guard let baseline = bottoms.first else { return }
+        #expect(
+            bottoms.allSatisfy { abs($0 - baseline) <= 1 },
+            "\(direction) moved the Agent switcher during a UIKit transition: \(bottoms)")
+    }
+
     /// Waits for the hosted terminal attached to the owner's current feed —
     /// the binding seam when UIView object identity may be reused and Ghostty
     /// viewport text is not a reliable harness signal.
@@ -1286,20 +1533,9 @@ struct AgentDirectInputTests {
 
     private static func makeLocalTestWindow(
         frame: CGRect,
-        rootViewController: UIViewController,
-        attachesToScene: Bool = false
+        rootViewController: UIViewController
     ) -> UIWindow {
-        let window: UIWindow
-        if attachesToScene,
-           let scene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first
-        {
-            window = UIWindow(windowScene: scene)
-            window.frame = frame
-        } else {
-            window = UIWindow(frame: frame)
-        }
+        let window = UIWindow(frame: frame)
         window.rootViewController = rootViewController
         window.makeKeyAndVisible()
         return window
