@@ -375,8 +375,11 @@ struct AgentDirectInputTests {
             Self.activateAccessibility(labeled: "Show tools keyboard", in: controller.view))
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
-        await Task.yield()
-        #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) == nil)
+        // Tools presentation hides the software-keyboard shortcut row; wait for
+        // that chrome transition rather than assuming one yield rebuilt a11y.
+        try #require(await Self.eventually {
+            Self.firstAccessible(labeled: "Escape", in: controller.view) == nil
+        })
 
         // UIKit tears the software keyboard down while Tools stays first
         // responder — the production hold must keep `.system` once we leave Tools.
@@ -615,6 +618,11 @@ struct AgentDirectInputTests {
         try #require(await Self.eventually {
             owner.terminalID != firstID
         })
+        // Replacement pipeline is a fresh Attach waiting for its first size.
+        owner.viewDidResize(cols: 80, rows: 24)
+        try #require(await Self.eventually {
+            await transport.attachRequests.count == 2
+        })
         #expect(await transport.emitAttachOutput(Data("replaced".utf8)))
         try #require(await Self.eventually {
             owner.terminalStatus == AttachTerminalStore.Status.live
@@ -668,6 +676,10 @@ struct AgentDirectInputTests {
         // Replacement while keyboard up — intent reclaim, not a leftover handoff.
         owner.transportGenerationDidChange(2)
         try #require(await Self.eventually { owner.terminalID != firstID })
+        owner.viewDidResize(cols: 80, rows: 24)
+        try #require(await Self.eventually {
+            await transport.attachRequests.count == 2
+        })
         #expect(await transport.emitAttachOutput(Data("first-replace".utf8)))
         try #require(await Self.eventually {
             owner.terminalStatus == AttachTerminalStore.Status.live
@@ -686,6 +698,10 @@ struct AgentDirectInputTests {
         let secondID = owner.terminalID
         owner.transportGenerationDidChange(3)
         try #require(await Self.eventually { owner.terminalID != secondID })
+        owner.viewDidResize(cols: 80, rows: 24)
+        try #require(await Self.eventually {
+            await transport.attachRequests.count == 3
+        })
         #expect(await transport.emitAttachOutput(Data("second-replace".utf8)))
         try #require(await Self.eventually {
             owner.terminalStatus == AttachTerminalStore.Status.live
@@ -728,6 +744,10 @@ struct AgentDirectInputTests {
 
         owner.transportGenerationDidChange(2)
         try #require(await Self.eventually { owner.terminalID != firstID })
+        owner.viewDidResize(cols: 80, rows: 24)
+        try #require(await Self.eventually {
+            await transport.attachRequests.count == 2
+        })
         #expect(await transport.emitAttachOutput(Data("still-down".utf8)))
         try #require(await Self.eventually {
             owner.terminalStatus == AttachTerminalStore.Status.live
