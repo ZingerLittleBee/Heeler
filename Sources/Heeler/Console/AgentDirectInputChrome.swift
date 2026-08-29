@@ -18,8 +18,9 @@ struct AgentDirectInputChromeContext {
     }
 
     struct Interactions {
+        /// Switcher `onSelect` is `AgentTerminalView.switchToAgent`, the sole
+        /// production owner of Direct Input keyboard-claim arming.
         let switcher: TerminalAgentSwitcher
-        let keyboardHandoff: TerminalKeyboardHandoff
         let actions: AgentComposerActions
         let toggleKeyboard: () -> Void
         let switchKeyboard: (() -> Void)?
@@ -64,7 +65,7 @@ struct AgentDirectInputChrome: View {
                     chromeColorScheme: presentation.chromeColorScheme)
 
                 TerminalAgentSwitcherRow(
-                    switcher: focusPreservingSwitcher,
+                    switcher: interactions.switcher,
                     isKeyboardUp: presentation.isKeyboardUp,
                     toggleKeyboard: interactions.toggleKeyboard,
                     isToolsKeyboardPresented: presentation.isToolsKeyboardPresented,
@@ -94,19 +95,6 @@ struct AgentDirectInputChrome: View {
             accessibilityLabel: AgentDirectInputPresentation.showComposerAccessibilityLabel,
             accessibilityHint: AgentDirectInputPresentation.showComposerAccessibilityHint,
             action: interactions.showComposer)
-    }
-
-    private var focusPreservingSwitcher: TerminalAgentSwitcher {
-        TerminalAgentSwitcher(
-            items: interactions.switcher.items,
-            selectedID: interactions.switcher.selectedID,
-            onSelect: { id in
-                if presentation.isKeyboardUp {
-                    interactions.keyboardHandoff.arm(for: id)
-                }
-                interactions.switcher.onSelect(id)
-            },
-            onTogglePin: interactions.switcher.onTogglePin)
     }
 
     private var shortcutRow: some View {

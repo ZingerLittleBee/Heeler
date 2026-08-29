@@ -152,6 +152,21 @@ enum AgentActionMenuPolicy {
             actions.closeAgent()
         }
     }
+
+    /// Production dispatch for menu taps. Direct Input supplies
+    /// `restoreComposerThen` so draft-owned actions restore Composer first.
+    static func dispatch(
+        _ item: AgentActionMenuItem,
+        actions: AgentComposerActions,
+        restoreComposerThen: ((@escaping () -> Void) -> Void)? = nil
+    ) {
+        let action = { perform(item, actions: actions) }
+        if item.isDraftOwned, let restoreComposerThen {
+            restoreComposerThen(action)
+        } else {
+            action()
+        }
+    }
 }
 
 /// One menu body for Composer Add, Composer More, and Direct Input More.
@@ -178,17 +193,11 @@ struct AgentActionMenuContent: View {
 
     private func button(for item: AgentActionMenuItem) -> some View {
         Button(item.title, systemImage: item.systemImage, role: item.role) {
-            run(item)
+            AgentActionMenuPolicy.dispatch(
+                item,
+                actions: actions,
+                restoreComposerThen: restoreComposerThen)
         }
         .disabled(!AgentActionMenuPolicy.isEnabled(item, actions: actions))
-    }
-
-    private func run(_ item: AgentActionMenuItem) {
-        let action = { AgentActionMenuPolicy.perform(item, actions: actions) }
-        if item.isDraftOwned, let restoreComposerThen {
-            restoreComposerThen(action)
-        } else {
-            action()
-        }
     }
 }

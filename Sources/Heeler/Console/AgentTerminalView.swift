@@ -619,7 +619,6 @@ struct AgentTerminalView: View {
                         showShortcutRow: directInputPresentation.showsShortcutRow),
                     interactions: .init(
                         switcher: agentSwitcher,
-                        keyboardHandoff: keyboardHandoff,
                         actions: composerActions,
                         toggleKeyboard: toggleDirectKeyboard,
                         switchKeyboard: directKeyboardSwitchAction,
