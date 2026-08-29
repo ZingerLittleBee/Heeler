@@ -89,21 +89,7 @@ struct AgentDirectInputChrome: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 ForEach(Self.shortcutKeys, id: \.self) { key in
-                    Button {
-                        UIDevice.current.playInputClick()
-                        sendQuickKey(key)
-                    } label: {
-                        Text(key.title ?? key.accessibilityLabel)
-                            .font(.caption.weight(.medium))
-                            .frame(minWidth: 44, minHeight: 44)
-                            .padding(.horizontal, 4)
-                    }
-                    .buttonStyle(.plain)
-                    .background(
-                        Color(uiColor: .secondarySystemFill),
-                        in: .rect(cornerRadius: 8))
-                    .accessibilityLabel(key.accessibilityLabel)
-                    .accessibilityHint("Sends this key directly to the Agent")
+                    shortcutKeyButton(key)
                 }
 
                 Spacer(minLength: 8)
@@ -139,9 +125,36 @@ struct AgentDirectInputChrome: View {
                 .frame(height: 1 / max(displayScale, 1))
         }
         .background(Color(uiColor: .secondarySystemBackground))
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(
-            AgentDirectInputPresentation.shortcutRowAccessibilityIdentifier)
+    }
+
+    /// Escape carries the source-specific row identity so hosted a11y traversal
+    /// can discover the software-keyboard shortcut row. A `.contain` container
+    /// identifier does not materialize in that walk; Tools keypad Escape must
+    /// keep the shared spoken label without this identifier.
+    @ViewBuilder
+    private func shortcutKeyButton(_ key: AgentQuickKey) -> some View {
+        let button = Button {
+            UIDevice.current.playInputClick()
+            sendQuickKey(key)
+        } label: {
+            Text(key.title ?? key.accessibilityLabel)
+                .font(.caption.weight(.medium))
+                .frame(minWidth: 44, minHeight: 44)
+                .padding(.horizontal, 4)
+        }
+        .buttonStyle(.plain)
+        .background(
+            Color(uiColor: .secondarySystemFill),
+            in: .rect(cornerRadius: 8))
+        .accessibilityLabel(key.accessibilityLabel)
+        .accessibilityHint("Sends this key directly to the Agent")
+
+        if key == .escape {
+            button.accessibilityIdentifier(
+                AgentDirectInputPresentation.shortcutRowAccessibilityIdentifier)
+        } else {
+            button
+        }
     }
 
     private var moreMenu: some View {

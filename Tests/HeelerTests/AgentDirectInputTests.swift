@@ -621,7 +621,6 @@ struct AgentDirectInputTests {
         let first = try #require(Self.terminals(in: controller.view).first)
         try #require(await Self.eventually { first.isFirstResponder })
         let firstID = owner.terminalID
-        let firstSurface = ObjectIdentifier(first)
 
         owner.transportGenerationDidChange(2)
         try #require(await Self.eventually {
@@ -636,19 +635,11 @@ struct AgentDirectInputTests {
         try #require(await Self.eventually {
             owner.terminalStatus == AttachTerminalStore.Status.live
         })
-        // Hosted UI may still expose the predecessor surface briefly after the
-        // replacement Attach is live — wait for a distinct rendered terminal.
-        try #require(await Self.eventually {
-            Self.terminals(in: controller.view).contains {
-                ObjectIdentifier($0) != firstSurface
-            }
-        })
-
-        let replacement = try #require(
-            Self.terminals(in: controller.view).first {
-                ObjectIdentifier($0) != firstSurface
-            })
-        #expect(ObjectIdentifier(replacement) != firstSurface)
+        // Hosted SwiftUI may reuse/reconfigure the same UIView object across
+        // pipeline replacement — do not require ObjectIdentifier churn. Prove
+        // the rendered surface is bound to the replacement session instead.
+        let replacement = try #require(await Self.eventuallyTerminal(
+            in: controller.view, viewportContaining: "replaced"))
         #expect(replacement.isLocalInputEnabled)
         try #require(await Self.eventually { replacement.isFirstResponder })
         #expect(composer.draft == "keep")
@@ -703,14 +694,21 @@ struct AgentDirectInputTests {
         try #require(await Self.eventually {
             owner.terminalStatus == AttachTerminalStore.Status.live
         })
-        let afterFirst = try #require(Self.terminals(in: controller.view).first)
+        // Bind to the replacement session before reading first-responder or
+        // chrome — `.first` can still be a predecessor briefly, and object
+        // identity is not a reliable replacement signal.
+        let afterFirst = try #require(await Self.eventuallyTerminal(
+            in: controller.view, viewportContaining: "first-replace"))
         try #require(await Self.eventually { afterFirst.isFirstResponder })
 
         // Production dismiss clears Direct Input raised intent. A leftover
         // TerminalKeyboardHandoff arm after the first replacement must not
-        // resurrect the keyboard on the next pipeline rebuild.
+        // resurrect the keyboard on the next pipeline rebuild. Wait on the
+        // observable chrome refresh after reclaim, not a stale surface.
         try #require(await Self.eventually {
-            Self.firstAccessible(labeled: "Dismiss keyboard", in: controller.view) != nil
+            controller.view.setNeedsLayout()
+            controller.view.layoutIfNeeded()
+            return Self.firstAccessible(labeled: "Dismiss keyboard", in: controller.view) != nil
         })
         try #require(
             Self.activateAccessibility(labeled: "Dismiss keyboard", in: controller.view))
@@ -729,7 +727,8 @@ struct AgentDirectInputTests {
             owner.terminalStatus == AttachTerminalStore.Status.live
         })
 
-        let afterSecond = try #require(Self.terminals(in: controller.view).first)
+        let afterSecond = try #require(await Self.eventuallyTerminal(
+            in: controller.view, viewportContaining: "second-replace"))
         #expect(afterSecond.isLocalInputEnabled)
         #expect(!afterSecond.isFirstResponder)
         #expect(!handoff.consume(agent.id))
@@ -911,6 +910,28 @@ struct AgentDirectInputTests {
         }
         walk(root)
         return found
+    }
+
+    /// Waits for a rendered terminal whose Ghostty session shows the
+    /// replacement output — the reliable binding signal when UIView object
+    /// identity may be reused across pipeline replacement.
+    private static func eventuallyTerminal(
+        in root: UIView,
+        viewportContaining needle: String,
+        timeout: Duration = .seconds(5)
+    ) async throws -> HeelerTerminalView? {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if let terminal = terminals(in: root).first(where: {
+                $0.terminalSession.readViewportText()?.contains(needle) == true
+            }) {
+                return terminal
+            }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        return terminals(in: root).first(where: {
+            $0.terminalSession.readViewportText()?.contains(needle) == true
+        })
     }
 
     private static func firstAccessible(labeled label: String, in root: UIView) -> NSObject? {
