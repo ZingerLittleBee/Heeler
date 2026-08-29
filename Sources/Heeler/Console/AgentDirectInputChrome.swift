@@ -33,7 +33,7 @@ struct AgentDirectInputChromeContext {
 }
 
 /// Compact Agent-detail chrome for Direct Input: status, a persistent shortcut
-/// row, and the Agent switcher with Show Composer.
+/// row, and the Agent switcher.
 /// Bottom-up order: system keyboard, switcher, shortcut row, status. The
 /// shortcut row sits immediately above the persistent Agent strip. App content
 /// rather than a keyboard accessory, so UIKit's candidate-row teardown cannot
@@ -45,6 +45,7 @@ struct AgentDirectInputChrome: View {
 
     private static let shortcutKeys: [AgentQuickKey] = [
         .escape, .tab, .shiftTab, .enter,
+        .up, .down, .left, .right,
     ]
 
     private var presentation: AgentDirectInputChromeContext.Presentation {
@@ -95,31 +96,22 @@ struct AgentDirectInputChrome: View {
     }
 
     private var shortcutRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(Self.shortcutKeys, id: \.self) { key in
-                    shortcutKeyButton(key)
+        HStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    ForEach(Self.shortcutKeys, id: \.self) { key in
+                        shortcutKeyButton(key)
+                    }
                 }
-
-                Spacer(minLength: 8)
-
-                Button("Composer", action: interactions.showComposer)
-                    .font(.caption.weight(.semibold))
-                    .frame(minHeight: 44)
-                    .padding(.horizontal, 10)
-                    .background(
-                        Color(uiColor: .secondarySystemFill),
-                        in: .rect(cornerRadius: 8))
-                    .accessibilityLabel(
-                        AgentDirectInputPresentation.showComposerAccessibilityLabel)
-                    .accessibilityHint(
-                        AgentDirectInputPresentation.showComposerAccessibilityHint)
-
-                moreMenu
+                .padding(.leading, 8)
+                .padding(.trailing, 6)
             }
-            .padding(.horizontal, 12)
+
+            moreMenu
+                .frame(width: 44, height: 44)
+                .background(Color(uiColor: .secondarySystemBackground))
         }
-        .frame(height: 48)
+        .frame(height: 44)
         .background(alignment: .top) {
             Rectangle()
                 .fill(Color(uiColor: .separator))
@@ -133,17 +125,43 @@ struct AgentDirectInputChrome: View {
             UIDevice.current.playInputClick()
             interactions.sendQuickKey(key)
         } label: {
-            Text(key.title ?? key.accessibilityLabel)
-                .font(.caption.weight(.medium))
-                .frame(minWidth: 44, minHeight: 44)
-                .padding(.horizontal, 4)
+            shortcutKeyLabel(key)
+                .frame(minWidth: keyCapWidth(for: key), minHeight: 30)
+                .background(
+                    Color(uiColor: .secondarySystemFill),
+                    in: .rect(cornerRadius: 7))
         }
+        .frame(height: 44)
+        .contentShape(.rect)
         .buttonStyle(.plain)
-        .background(
-            Color(uiColor: .secondarySystemFill),
-            in: .rect(cornerRadius: 8))
         .accessibilityLabel(key.accessibilityLabel)
         .accessibilityHint("Sends this key directly to the Agent")
+    }
+
+    private func keyCapWidth(for key: AgentQuickKey) -> CGFloat {
+        switch key {
+        case .escape, .tab:
+            38
+        case .shiftTab:
+            46
+        case .enter:
+            42
+        case .left, .up, .down, .right:
+            30
+        case .backspace:
+            64
+        }
+    }
+
+    @ViewBuilder
+    private func shortcutKeyLabel(_ key: AgentQuickKey) -> some View {
+        if let systemImageName = key.systemImageName {
+            Image(systemName: systemImageName)
+                .font(.system(size: 12, weight: .semibold))
+        } else if let title = key.title {
+            Text(title)
+                .font(.caption.weight(.medium))
+        }
     }
 
     private var moreMenu: some View {
@@ -155,7 +173,8 @@ struct AgentDirectInputChrome: View {
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 12, weight: .semibold))
-                .frame(width: 44, height: 44)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(.rect)
         }
         .accessibilityLabel("More")
         .accessibilityHint("Opens Agent actions")

@@ -580,7 +580,10 @@ struct AgentDirectInputTests {
         let heightWithKeyboard = try #require(Self.terminals(in: controller.view).first)
             .frame.height
 
-        for label in ["Escape", "Tab", "Shift Tab", "Enter"] {
+        for label in [
+            "Escape", "Tab", "Shift Tab", "Enter",
+            "Up Arrow", "Down Arrow", "Left Arrow", "Right Arrow",
+        ] {
             try #require(Self.activateAccessibility(labeled: label, in: controller.view))
         }
 
@@ -590,8 +593,17 @@ struct AgentDirectInputTests {
             Self.firstAccessibleFrame(labeled: "Escape", in: controller.view))
         let dismissFrame = try #require(
             Self.firstAccessibleFrame(labeled: "Dismiss keyboard", in: controller.view))
+        let enterFrame = try #require(
+            Self.firstAccessibleFrame(labeled: "Enter", in: controller.view))
+        let moreFrame = try #require(
+            Self.firstAccessibleFrame(labeled: "More", in: controller.view))
         #expect(escapeFrame.maxY <= dismissFrame.minY + 1)
+        #expect(moreFrame.minX >= enterFrame.maxX)
         #expect(Self.accessibleCount(labeled: "Dismiss keyboard", in: controller.view) == 1)
+        #expect(
+            Self.accessibleCount(
+                labeled: AgentDirectInputPresentation.showComposerAccessibilityLabel,
+                in: controller.view) == 1)
 
         try #require(await Self.eventually {
             let inputs = await transport.attachInputs
@@ -600,6 +612,10 @@ struct AgentDirectInputTests {
                 && inputs.contains(
                     TerminalAttachInput.keystrokes(Data([0x1B, 0x5B, 0x5A])))
                 && inputs.contains(TerminalAttachInput.keystrokes(Data([0x0D])))
+                && inputs.contains(TerminalAttachInput.keystrokes(Data([0x1B, 0x5B, 0x41])))
+                && inputs.contains(TerminalAttachInput.keystrokes(Data([0x1B, 0x5B, 0x42])))
+                && inputs.contains(TerminalAttachInput.keystrokes(Data([0x1B, 0x5B, 0x44])))
+                && inputs.contains(TerminalAttachInput.keystrokes(Data([0x1B, 0x5B, 0x43])))
         })
         #expect(await transport.agentPromptParams.isEmpty)
 
@@ -662,11 +678,11 @@ struct AgentDirectInputTests {
         await Task.yield()
         let heightWithSoftwareKeyboard = try #require(
             Self.terminals(in: controller.view).first).frame.height
-        // Shortcut-row Show Composer and the switcher both speak the label.
-        // Direct Input keeps both controls through every keyboard presentation.
+        // Show Composer lives only on the switcher; the shortcut row remains
+        // focused on terminal keys through every keyboard presentation.
         let showComposer = AgentDirectInputPresentation.showComposerAccessibilityLabel
         try #require(await Self.eventually {
-            Self.accessibleCount(labeled: showComposer, in: controller.view) == 2
+            Self.accessibleCount(labeled: showComposer, in: controller.view) == 1
         })
 
         try #require(
@@ -675,7 +691,7 @@ struct AgentDirectInputTests {
         controller.view.layoutIfNeeded()
         // Tools replaces the software keyboard without hiding the shortcut row.
         try #require(await Self.eventually {
-            Self.accessibleCount(labeled: showComposer, in: controller.view) == 2
+            Self.accessibleCount(labeled: showComposer, in: controller.view) == 1
         })
 
         // UIKit tears the software keyboard down while Tools stays first
@@ -694,7 +710,7 @@ struct AgentDirectInputTests {
         // switcher even while measured height is still zero. Two-sided bound:
         // wiring the modifier to the raw zero height expands the terminal by
         // ~lastPresentedHeight and still satisfies a one-sided upper bound.
-        #expect(Self.accessibleCount(labeled: showComposer, in: controller.view) == 2)
+        #expect(Self.accessibleCount(labeled: showComposer, in: controller.view) == 1)
         let midSwapTerminal = try #require(Self.terminals(in: controller.view).first)
         #expect(midSwapTerminal.isFirstResponder)
         #expect(abs(heightWithSoftwareKeyboard - midSwapTerminal.frame.height) <= 1)
@@ -711,7 +727,7 @@ struct AgentDirectInputTests {
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
         await Task.yield()
-        #expect(Self.accessibleCount(labeled: showComposer, in: controller.view) == 2)
+        #expect(Self.accessibleCount(labeled: showComposer, in: controller.view) == 1)
         let afterShow = try #require(Self.terminals(in: controller.view).first)
         #expect(afterShow.isFirstResponder)
         #expect(abs(afterShow.frame.height - heightWithSoftwareKeyboard) < 1)
@@ -726,7 +742,7 @@ struct AgentDirectInputTests {
         await Task.yield()
         let afterHardwareHide = try #require(Self.terminals(in: controller.view).first)
         #expect(afterHardwareHide.isFirstResponder)
-        #expect(Self.accessibleCount(labeled: showComposer, in: controller.view) == 2)
+        #expect(Self.accessibleCount(labeled: showComposer, in: controller.view) == 1)
         #expect(afterHardwareHide.frame.height - heightWithSoftwareKeyboard >= 336)
 
         await owner.leave().value
