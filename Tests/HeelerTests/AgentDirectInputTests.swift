@@ -370,10 +370,12 @@ struct AgentDirectInputTests {
         await Task.yield()
         let heightWithSoftwareKeyboard = try #require(
             Self.terminals(in: controller.view).first).frame.height
-        let shortcutRowID =
-            AgentDirectInputPresentation.shortcutRowAccessibilityIdentifier
+        // Shortcut-row Show Composer is the row-owned control Tools lacks.
+        // The switcher also speaks the same label, so row presence is the
+        // second copy — not a shared Escape / identifier walk.
+        let showComposer = AgentDirectInputPresentation.showComposerAccessibilityLabel
         try #require(await Self.eventually {
-            Self.firstAccessible(identifier: shortcutRowID, in: controller.view) != nil
+            Self.accessibleCount(labeled: showComposer, in: controller.view) >= 2
         })
 
         try #require(
@@ -381,10 +383,10 @@ struct AgentDirectInputTests {
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
         // Tools presentation hides the software-keyboard shortcut row; wait for
-        // that source-specific identity rather than the shared Escape label the
-        // Tools keypad also speaks.
+        // that row-owned Show Composer to leave rather than the shared Escape
+        // label the Tools keypad also speaks.
         try #require(await Self.eventually {
-            Self.firstAccessible(identifier: shortcutRowID, in: controller.view) == nil
+            Self.accessibleCount(labeled: showComposer, in: controller.view) < 2
         })
 
         // UIKit tears the software keyboard down while Tools stays first
@@ -403,8 +405,7 @@ struct AgentDirectInputTests {
         // footprint even while measured height is still zero. Two-sided bound:
         // wiring the modifier to the raw zero height expands the terminal by
         // ~lastPresentedHeight and still satisfies a one-sided upper bound.
-        #expect(
-            Self.firstAccessible(identifier: shortcutRowID, in: controller.view) != nil)
+        #expect(Self.accessibleCount(labeled: showComposer, in: controller.view) >= 2)
         let midSwapTerminal = try #require(Self.terminals(in: controller.view).first)
         #expect(midSwapTerminal.isFirstResponder)
         #expect(abs(heightWithSoftwareKeyboard - midSwapTerminal.frame.height) <= 1)
@@ -421,8 +422,7 @@ struct AgentDirectInputTests {
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
         await Task.yield()
-        #expect(
-            Self.firstAccessible(identifier: shortcutRowID, in: controller.view) != nil)
+        #expect(Self.accessibleCount(labeled: showComposer, in: controller.view) >= 2)
         let afterShow = try #require(Self.terminals(in: controller.view).first)
         #expect(afterShow.isFirstResponder)
         #expect(abs(afterShow.frame.height - heightWithSoftwareKeyboard) < 1)
@@ -436,8 +436,7 @@ struct AgentDirectInputTests {
         await Task.yield()
         let afterHardwareHide = try #require(Self.terminals(in: controller.view).first)
         #expect(afterHardwareHide.isFirstResponder)
-        #expect(
-            Self.firstAccessible(identifier: shortcutRowID, in: controller.view) == nil)
+        #expect(Self.accessibleCount(labeled: showComposer, in: controller.view) < 2)
         #expect(afterHardwareHide.frame.height - heightWithSoftwareKeyboard >= 336)
 
         await owner.leave().value
@@ -621,6 +620,7 @@ struct AgentDirectInputTests {
         let first = try #require(Self.terminals(in: controller.view).first)
         try #require(await Self.eventually { first.isFirstResponder })
         let firstID = owner.terminalID
+        let firstFeed = owner.terminalFeed
 
         owner.transportGenerationDidChange(2)
         try #require(await Self.eventually {
@@ -635,11 +635,12 @@ struct AgentDirectInputTests {
         try #require(await Self.eventually {
             owner.terminalStatus == AttachTerminalStore.Status.live
         })
-        // Hosted SwiftUI may reuse/reconfigure the same UIView object across
-        // pipeline replacement — do not require ObjectIdentifier churn. Prove
-        // the rendered surface is bound to the replacement session instead.
+        // Hosted SwiftUI may reuse the UIView address; prove the rendered
+        // terminal is attached to the replacement feed, not the predecessor.
+        #expect(owner.terminalFeed !== firstFeed)
         let replacement = try #require(await Self.eventuallyTerminal(
-            in: controller.view, viewportContaining: "replaced"))
+            boundTo: owner.terminalFeed, in: controller.view))
+        #expect(!firstFeed.isAttached(to: replacement))
         #expect(replacement.isLocalInputEnabled)
         try #require(await Self.eventually { replacement.isFirstResponder })
         #expect(composer.draft == "keep")
@@ -682,6 +683,7 @@ struct AgentDirectInputTests {
         let first = try #require(Self.terminals(in: controller.view).first)
         try #require(await Self.eventually { first.isFirstResponder })
         let firstID = owner.terminalID
+        let firstFeed = owner.terminalFeed
 
         // Replacement while keyboard up — intent reclaim, not a leftover handoff.
         owner.transportGenerationDidChange(2)
@@ -694,11 +696,12 @@ struct AgentDirectInputTests {
         try #require(await Self.eventually {
             owner.terminalStatus == AttachTerminalStore.Status.live
         })
-        // Bind to the replacement session before reading first-responder or
-        // chrome — `.first` can still be a predecessor briefly, and object
-        // identity is not a reliable replacement signal.
+        // Bind to the replacement feed before reading first-responder or
+        // chrome — `.first` can still be a predecessor briefly.
+        #expect(owner.terminalFeed !== firstFeed)
         let afterFirst = try #require(await Self.eventuallyTerminal(
-            in: controller.view, viewportContaining: "first-replace"))
+            boundTo: owner.terminalFeed, in: controller.view))
+        #expect(!firstFeed.isAttached(to: afterFirst))
         try #require(await Self.eventually { afterFirst.isFirstResponder })
 
         // Production dismiss clears Direct Input raised intent. A leftover
@@ -716,6 +719,7 @@ struct AgentDirectInputTests {
         #expect(!handoff.consume(agent.id))
 
         let secondID = owner.terminalID
+        let secondFeed = owner.terminalFeed
         owner.transportGenerationDidChange(3)
         try #require(await Self.eventually { owner.terminalID != secondID })
         owner.viewDidResize(cols: 80, rows: 24)
@@ -727,8 +731,10 @@ struct AgentDirectInputTests {
             owner.terminalStatus == AttachTerminalStore.Status.live
         })
 
+        #expect(owner.terminalFeed !== secondFeed)
         let afterSecond = try #require(await Self.eventuallyTerminal(
-            in: controller.view, viewportContaining: "second-replace"))
+            boundTo: owner.terminalFeed, in: controller.view))
+        #expect(!secondFeed.isAttached(to: afterSecond))
         #expect(afterSecond.isLocalInputEnabled)
         #expect(!afterSecond.isFirstResponder)
         #expect(!handoff.consume(agent.id))
@@ -912,73 +918,84 @@ struct AgentDirectInputTests {
         return found
     }
 
-    /// Waits for a rendered terminal whose Ghostty session shows the
-    /// replacement output — the reliable binding signal when UIView object
-    /// identity may be reused across pipeline replacement.
+    /// Waits for the hosted terminal attached to the owner's current feed —
+    /// the binding seam when UIView object identity may be reused and Ghostty
+    /// viewport text is not a reliable harness signal.
     private static func eventuallyTerminal(
+        boundTo feed: TerminalByteFeed,
         in root: UIView,
-        viewportContaining needle: String,
         timeout: Duration = .seconds(5)
     ) async throws -> HeelerTerminalView? {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
-            if let terminal = terminals(in: root).first(where: {
-                $0.terminalSession.readViewportText()?.contains(needle) == true
-            }) {
+            root.setNeedsLayout()
+            root.layoutIfNeeded()
+            if let terminal = terminals(in: root).first(where: { feed.isAttached(to: $0) }) {
                 return terminal
             }
             try await Task.sleep(for: .milliseconds(5))
         }
-        return terminals(in: root).first(where: {
-            $0.terminalSession.readViewportText()?.contains(needle) == true
-        })
+        root.setNeedsLayout()
+        root.layoutIfNeeded()
+        return terminals(in: root).first(where: { feed.isAttached(to: $0) })
     }
 
     private static func firstAccessible(labeled label: String, in root: UIView) -> NSObject? {
         firstAccessible(in: root) { $0.accessibilityLabel == label }
     }
 
-    private static func firstAccessible(
-        identifier: String, in root: UIView
-    ) -> NSObject? {
-        firstAccessible(in: root) {
-            ($0 as? UIAccessibilityIdentification)?.accessibilityIdentifier == identifier
+    private static func accessibleCount(labeled label: String, in root: UIView) -> Int {
+        var seen = Set<ObjectIdentifier>()
+        var count = 0
+        visitAccessible(in: root) { node in
+            let id = ObjectIdentifier(node)
+            guard seen.insert(id).inserted else { return }
+            if node.accessibilityLabel == label {
+                count += 1
+            }
         }
+        return count
     }
 
     private static func firstAccessible(
         in root: UIView, matching: (NSObject) -> Bool
     ) -> NSObject? {
-        func visit(_ node: NSObject) -> NSObject? {
-            if matching(node) {
-                return node
-            }
+        var match: NSObject?
+        visitAccessible(in: root) { node in
+            guard match == nil, matching(node) else { return }
+            match = node
+        }
+        return match
+    }
+
+    private static func visitAccessible(
+        in root: UIView, body: (NSObject) -> Void
+    ) {
+        func visit(_ node: NSObject) {
+            body(node)
             if let elements = node.accessibilityElements {
                 for element in elements {
-                    if let object = element as? NSObject, let match = visit(object) {
-                        return match
+                    if let object = element as? NSObject {
+                        visit(object)
                     }
                 }
             } else {
                 let count = node.accessibilityElementCount()
                 if count > 0, count != NSNotFound {
                     for index in 0..<count {
-                        if let object = node.accessibilityElement(at: index) as? NSObject,
-                            let match = visit(object)
-                        {
-                            return match
+                        if let object = node.accessibilityElement(at: index) as? NSObject {
+                            visit(object)
                         }
                     }
                 }
             }
             if let view = node as? UIView {
                 for subview in view.subviews {
-                    if let match = visit(subview) { return match }
+                    visit(subview)
                 }
             }
-            return nil
         }
-        return visit(root)
+        visit(root)
     }
 
     @discardableResult

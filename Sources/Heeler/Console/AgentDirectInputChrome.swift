@@ -127,13 +127,8 @@ struct AgentDirectInputChrome: View {
         .background(Color(uiColor: .secondarySystemBackground))
     }
 
-    /// Escape carries the source-specific row identity so hosted a11y traversal
-    /// can discover the software-keyboard shortcut row. A `.contain` container
-    /// identifier does not materialize in that walk; Tools keypad Escape must
-    /// keep the shared spoken label without this identifier.
-    @ViewBuilder
     private func shortcutKeyButton(_ key: AgentQuickKey) -> some View {
-        let button = Button {
+        Button {
             UIDevice.current.playInputClick()
             sendQuickKey(key)
         } label: {
@@ -148,13 +143,6 @@ struct AgentDirectInputChrome: View {
             in: .rect(cornerRadius: 8))
         .accessibilityLabel(key.accessibilityLabel)
         .accessibilityHint("Sends this key directly to the Agent")
-
-        if key == .escape {
-            button.accessibilityIdentifier(
-                AgentDirectInputPresentation.shortcutRowAccessibilityIdentifier)
-        } else {
-            button
-        }
     }
 
     private var moreMenu: some View {
