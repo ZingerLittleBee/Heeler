@@ -2,16 +2,15 @@ import CoreGraphics
 import Foundation
 import Observation
 
-/// Focused Direct Input chrome policy: software-keyboard coverage, shortcut
-/// row visibility, keyboard layout, and the Hide/Show accessibility copy the
-/// switcher control speaks. Separates Ghostty first-responder intent from the
-/// software keyboard footprint so a hardware keyboard cannot leave a stale gap.
+/// Focused Direct Input chrome policy: software-keyboard coverage, keyboard
+/// layout, and the Hide/Show accessibility copy the switcher control speaks.
+/// Separates Ghostty first-responder intent from the software keyboard
+/// footprint so a hardware keyboard cannot leave a stale gap.
 ///
 /// ``layout`` is the single production seam for the Agent detail bottom inset
 /// and tools dock height — `AgentTerminalView` consumes it directly.
 struct AgentDirectInputPresentation: Equatable, Sendable {
     var keyboardPresentation: AgentComposerKeyboardPresentation
-    var showsShortcutRow: Bool
     /// Production bottom inset / tools height. Do not rebuild this beside the view.
     var layout: AgentComposerKeyboardLayout
 
@@ -30,12 +29,6 @@ struct AgentDirectInputPresentation: Equatable, Sendable {
         return .hidden
     }
 
-    static func showsShortcutRow(
-        presentation: AgentComposerKeyboardPresentation
-    ) -> Bool {
-        presentation == .system
-    }
-
     static func resolve(
         usesToolsKeyboard: Bool,
         expectsSystemKeyboard: Bool,
@@ -52,7 +45,6 @@ struct AgentDirectInputPresentation: Equatable, Sendable {
             presentation: presentation)
         return AgentDirectInputPresentation(
             keyboardPresentation: presentation,
-            showsShortcutRow: showsShortcutRow(presentation: presentation),
             layout: layout)
     }
 

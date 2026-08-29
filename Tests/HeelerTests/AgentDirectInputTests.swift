@@ -15,7 +15,6 @@ struct AgentDirectInputTests {
             currentHeight: 0,
             lastPresentedHeight: 336)
         #expect(hardwareOnly.keyboardPresentation == .hidden)
-        #expect(!hardwareOnly.showsShortcutRow)
         #expect(hardwareOnly.layout.contentInset == 0)
 
         let softwareUp = AgentDirectInputPresentation.resolve(
@@ -24,7 +23,6 @@ struct AgentDirectInputTests {
             currentHeight: 336,
             lastPresentedHeight: 336)
         #expect(softwareUp.keyboardPresentation == .system)
-        #expect(softwareUp.showsShortcutRow)
         #expect(softwareUp.layout.contentInset == 336)
 
         let tools = AgentDirectInputPresentation.resolve(
@@ -33,7 +31,6 @@ struct AgentDirectInputTests {
             currentHeight: 0,
             lastPresentedHeight: 336)
         #expect(tools.keyboardPresentation == .tools)
-        #expect(!tools.showsShortcutRow)
         #expect(tools.layout.contentInset == 336)
     }
 
@@ -46,7 +43,6 @@ struct AgentDirectInputTests {
             currentHeight: 0,
             lastPresentedHeight: 336)
         #expect(midSwap.keyboardPresentation == .system)
-        #expect(midSwap.showsShortcutRow)
         #expect(midSwap.layout.contentInset == 336)
         #expect(midSwap.layout.availableToolsHeight == 336)
 
@@ -419,8 +415,7 @@ struct AgentDirectInputTests {
         let terminal = try #require(Self.terminals(in: controller.view).first)
         #expect(terminal.isLocalInputEnabled)
         #expect(!terminal.isFirstResponder)
-        #expect(
-            Self.firstAccessible(labeled: "Escape", in: controller.view) == nil)
+        #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) != nil)
 
         await owner.leave().value
     }
@@ -467,7 +462,7 @@ struct AgentDirectInputTests {
         await owner.leave().value
     }
 
-    @Test func shortcutRowButtonsSendBytesWhileSoftwareKeyboardIsUp() async throws {
+    @Test func shortcutRowPersistsAndSendsBytesAcrossKeyboardVisibility() async throws {
         let center = NotificationCenter()
         let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
         let transport = ScriptedTransport()
@@ -497,7 +492,7 @@ struct AgentDirectInputTests {
         terminal.requestKeyboard()
         try #require(await Self.eventually { terminal.isFirstResponder })
 
-        #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) == nil)
+        #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) != nil)
         controller.view.layoutIfNeeded()
         let heightBeforeKeyboard = terminal.frame.height
 
@@ -546,7 +541,8 @@ struct AgentDirectInputTests {
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
         await Task.yield()
-        #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) == nil)
+        #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) != nil)
+        #expect(Self.accessibleCount(labeled: "Dismiss keyboard", in: controller.view) == 1)
         let heightAfterHide = try #require(Self.terminals(in: controller.view).first)
             .frame.height
         #expect(abs(heightAfterHide - heightBeforeKeyboard) < 1)
@@ -595,9 +591,8 @@ struct AgentDirectInputTests {
         await Task.yield()
         let heightWithSoftwareKeyboard = try #require(
             Self.terminals(in: controller.view).first).frame.height
-        // Shortcut-row Show Composer is the row-owned control Tools lacks.
-        // The switcher also speaks the same label, so row presence is exactly
-        // two controls; row absence is exactly one (the switcher).
+        // Shortcut-row Show Composer and the switcher both speak the label.
+        // Direct Input keeps both controls through every keyboard presentation.
         let showComposer = AgentDirectInputPresentation.showComposerAccessibilityLabel
         try #require(await Self.eventually {
             Self.accessibleCount(labeled: showComposer, in: controller.view) == 2
@@ -607,11 +602,9 @@ struct AgentDirectInputTests {
             Self.activateAccessibility(labeled: "Show tools keyboard", in: controller.view))
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
-        // Tools presentation hides the software-keyboard shortcut row; wait for
-        // exactly the one switcher Show Composer rather than the shared Escape
-        // label the Tools keypad also speaks.
+        // Tools replaces the software keyboard without hiding the shortcut row.
         try #require(await Self.eventually {
-            Self.accessibleCount(labeled: showComposer, in: controller.view) == 1
+            Self.accessibleCount(labeled: showComposer, in: controller.view) == 2
         })
 
         // UIKit tears the software keyboard down while Tools stays first
@@ -653,7 +646,8 @@ struct AgentDirectInputTests {
         #expect(abs(afterShow.frame.height - heightWithSoftwareKeyboard) < 1)
 
         // Hardware keyboard hides the software keyboard while Ghostty remains
-        // first responder. Released hold must not keep a stale inset or row.
+        // first responder. Released hold must not keep a stale inset; the row
+        // remains because Direct Input still owns it.
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
         #expect(inset.height == 0)
         controller.view.setNeedsLayout()
@@ -661,7 +655,7 @@ struct AgentDirectInputTests {
         await Task.yield()
         let afterHardwareHide = try #require(Self.terminals(in: controller.view).first)
         #expect(afterHardwareHide.isFirstResponder)
-        #expect(Self.accessibleCount(labeled: showComposer, in: controller.view) == 1)
+        #expect(Self.accessibleCount(labeled: showComposer, in: controller.view) == 2)
         #expect(afterHardwareHide.frame.height - heightWithSoftwareKeyboard >= 336)
 
         await owner.leave().value
@@ -720,7 +714,7 @@ struct AgentDirectInputTests {
 
         let hardwareTerminal = try #require(Self.terminals(in: controller.view).first)
         #expect(hardwareTerminal.isFirstResponder)
-        #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) == nil)
+        #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) != nil)
         // No software keyboard: production inset must not reserve lastPresentedHeight.
         #expect(hardwareTerminal.frame.height - heightWithSoftwareKeyboard >= 336)
 

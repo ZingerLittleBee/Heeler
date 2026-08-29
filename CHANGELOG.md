@@ -11,9 +11,9 @@ Entries reference the issue that motivated them.
 
 - Agent detail can hide the Composer and type into the live Attach PTY with the
   iOS keyboard plus Esc, Tab, Shift-Tab, and Enter shortcuts (Direct Input).
-  The shortcut row sits above the Agent switcher strip; keyboard show/hide
-  stays on that strip. Composer stays the default; the draft is preserved
-  across the mode switch. (#251)
+  The shortcut row stays visible above the Agent switcher strip whenever
+  Direct Input is active; keyboard show/hide stays on that strip. Composer
+  stays the default; the draft is preserved across the mode switch. (#251)
 
 ## [0.1.3] - 2026-08-28
 

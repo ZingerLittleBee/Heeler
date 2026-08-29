@@ -615,8 +615,7 @@ struct AgentTerminalView: View {
                         chromeColorScheme: terminal.themes.selection(for: colorScheme)
                             .chromeColorScheme(for: colorScheme),
                         isKeyboardUp: directSwitcherKeyboardIsUp,
-                        isToolsKeyboardPresented: usesDirectToolsKeyboard,
-                        showShortcutRow: directInputPresentation.showsShortcutRow),
+                        isToolsKeyboardPresented: usesDirectToolsKeyboard),
                     interactions: .init(
                         switcher: agentSwitcher,
                         actions: composerActions,

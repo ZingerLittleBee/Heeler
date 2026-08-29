@@ -13,8 +13,6 @@ struct AgentDirectInputChromeContext {
         /// Ghostty first-responder / tools intent for the switcher toggle glyph.
         let isKeyboardUp: Bool
         let isToolsKeyboardPresented: Bool
-        /// Software-keyboard shortcut row only — never hardware-first-responder.
-        let showShortcutRow: Bool
     }
 
     struct Interactions {
@@ -34,8 +32,8 @@ struct AgentDirectInputChromeContext {
     let interactions: Interactions
 }
 
-/// Compact Agent-detail chrome for Direct Input: status, a shortcut row while
-/// the software keyboard is up, and the Agent switcher with Show Composer.
+/// Compact Agent-detail chrome for Direct Input: status, a persistent shortcut
+/// row, and the Agent switcher with Show Composer.
 /// Bottom-up order: system keyboard, switcher, shortcut row, status. The
 /// shortcut row sits immediately above the persistent Agent strip. App content
 /// rather than a keyboard accessory, so UIKit's candidate-row teardown cannot
@@ -67,9 +65,7 @@ struct AgentDirectInputChrome: View {
 
                 // Immediately above the Agent list/switcher strip. Keyboard
                 // show/hide stays on the switcher row — not duplicated here.
-                if presentation.showShortcutRow {
-                    shortcutRow
-                }
+                shortcutRow
 
                 TerminalAgentSwitcherRow(
                     switcher: interactions.switcher,
