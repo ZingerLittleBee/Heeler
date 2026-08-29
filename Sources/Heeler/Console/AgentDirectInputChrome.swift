@@ -128,11 +128,9 @@ struct AgentDirectInputChrome: View {
             UIDevice.current.playInputClick()
             interactions.sendQuickKey(key)
         } label: {
-            shortcutKeyLabel(key)
-                .frame(minWidth: keyCapWidth(for: key), minHeight: 30)
-                .background(
-                    Color(uiColor: .secondarySystemFill),
-                    in: .rect(cornerRadius: 7))
+            shortcutKeyCap(minWidth: keyCapWidth(for: key)) {
+                shortcutKeyLabel(key)
+            }
         }
         .frame(height: 44)
         .contentShape(.rect)
@@ -169,6 +167,17 @@ struct AgentDirectInputChrome: View {
         }
     }
 
+    private func shortcutKeyCap<Content: View>(
+        minWidth: CGFloat,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .frame(minWidth: minWidth, minHeight: 30)
+            .background(
+                Color(uiColor: .secondarySystemFill),
+                in: .rect(cornerRadius: 7))
+    }
+
     private var moreMenu: some View {
         Menu {
             AgentActionMenuContent(
@@ -176,11 +185,14 @@ struct AgentDirectInputChrome: View {
                 sections: AgentActionMenuPolicy.directInputMoreSections,
                 restoreComposerThen: interactions.restoreComposerThen)
         } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 12, weight: .semibold))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(.rect)
+            shortcutKeyCap(minWidth: 30) {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(.rect)
         }
+        .buttonStyle(.plain)
         .accessibilityLabel("More")
         .accessibilityHint("Opens Agent actions")
     }
