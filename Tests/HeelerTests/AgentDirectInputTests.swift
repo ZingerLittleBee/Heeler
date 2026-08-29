@@ -6,7 +6,7 @@ import UIKit
 @testable import Heeler
 
 @MainActor
-@Suite("Agent Direct Input")
+@Suite("Agent Direct Input", .serialized)
 struct AgentDirectInputTests {
     @Test func productionLayoutSeamTracksSoftwareKeyboardOnly() {
         let hardwareOnly = AgentDirectInputPresentation.resolve(
@@ -327,6 +327,8 @@ struct AgentDirectInputTests {
     }
 
     @Test func hideComposerControlSelectsDirectAndRaisesKeyboard() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
         let transport = ScriptedTransport()
         let composer = AgentComposerStore(target: "w1:p1") { params in
             try await transport.promptAgent(params)
@@ -340,15 +342,34 @@ struct AgentDirectInputTests {
             rootView: Self.makeDetailView(
                 attachStore: owner,
                 composer: composer,
-                inputMode: inputMode))
+                inputMode: inputMode,
+                keyboardInset: inset))
         let window = Self.makeLocalTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
-            rootViewController: controller)
+            rootViewController: controller,
+            attachesToScene: true)
         defer { window.isHidden = true }
         controller.view.layoutIfNeeded()
         try #require(await Self.eventually {
             owner.terminalStatus == AttachTerminalStore.Status.live
         })
+
+        let terminal = try #require(Self.terminals(in: controller.view).first)
+        #expect(!terminal.isLocalInputEnabled)
+        let composerInput = try #require(
+            Self.firstView(in: controller.view) {
+                $0 is UITextView && $0.accessibilityLabel == "Message the Agent"
+            } as? UITextView)
+        composerInput.becomeFirstResponder()
+        try #require(await Self.eventually { composerInput.isFirstResponder })
+        try #require(await Self.eventually { composerInput.inputView == nil })
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [
+                UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                    x: 0, y: 500, width: 402, height: 370)
+            ])
+        try #require(await Self.eventually { inset.height == 336 })
 
         #expect(
             Self.firstAccessible(
@@ -359,13 +380,17 @@ struct AgentDirectInputTests {
             Self.activateAccessibility(
                 labeled: AgentDirectInputPresentation.hideComposerAccessibilityLabel,
                 in: controller.view))
+        // The measured keyboard stays in place while SwiftUI updates the
+        // existing terminal and transfers first responder to it.
+        #expect(inset.height == 336)
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
         try #require(await Self.eventually { inputMode.mode == AgentInputMode.direct })
 
-        let terminal = try #require(Self.terminals(in: controller.view).first)
         #expect(terminal.isLocalInputEnabled)
         try #require(await Self.eventually { terminal.isFirstResponder })
+        #expect(!composerInput.isFirstResponder)
+        #expect(inset.height == 336)
         #expect(composer.draft == "do not send")
         #expect(await transport.agentPromptParams.isEmpty)
         #expect(
@@ -1138,6 +1163,18 @@ struct AgentDirectInputTests {
         return found
     }
 
+    private static func firstView(
+        in root: UIView, matching: (UIView) -> Bool
+    ) -> UIView? {
+        if matching(root) { return root }
+        for subview in root.subviews {
+            if let match = firstView(in: subview, matching: matching) {
+                return match
+            }
+        }
+        return nil
+    }
+
     /// Waits for the hosted terminal attached to the owner's current feed —
     /// the binding seam when UIView object identity may be reused and Ghostty
     /// viewport text is not a reliable harness signal.
@@ -1249,9 +1286,20 @@ struct AgentDirectInputTests {
 
     private static func makeLocalTestWindow(
         frame: CGRect,
-        rootViewController: UIViewController
+        rootViewController: UIViewController,
+        attachesToScene: Bool = false
     ) -> UIWindow {
-        let window = UIWindow(frame: frame)
+        let window: UIWindow
+        if attachesToScene,
+           let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first
+        {
+            window = UIWindow(windowScene: scene)
+            window.frame = frame
+        } else {
+            window = UIWindow(frame: frame)
+        }
         window.rootViewController = rootViewController
         window.makeKeyAndVisible()
         return window

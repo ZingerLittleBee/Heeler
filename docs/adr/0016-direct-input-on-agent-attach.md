@@ -13,7 +13,9 @@ shortcut row (Esc, Tab, Shift-Tab, Enter) remains above the Agent switcher strip
 as ordinary content in every keyboard state — never as `inputAccessoryView`.
 Show Composer restores the card immediately. Mode changes disable animation,
 never Send, insert, or clear the draft, and do not force Composer when Agent
-Status is Blocked.
+Status is Blocked. Hiding a focused Composer transfers first responder to the
+terminal before removing the Composer, so the visible system keyboard does not
+dismiss and present again.
 
 ## Rationale
 

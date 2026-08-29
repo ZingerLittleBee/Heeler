@@ -65,6 +65,17 @@ final class TerminalKeyboardControl {
         terminal?.requestKeyboard()
     }
 
+    /// Transfers an already-present system keyboard to the terminal before
+    /// SwiftUI removes the previous responder. Enabling local input first lets
+    /// UIKit switch responders without dismissing and presenting the keyboard.
+    @discardableResult
+    func handoffKeyboardToLocalInput() -> Bool {
+        guard let terminal else { return false }
+        terminal.setLocalInputEnabled(true)
+        terminal.requestKeyboard()
+        return terminal.isFirstResponder
+    }
+
     func dismissKeyboard() {
         _ = terminal?.dismissKeyboard()
     }
@@ -191,7 +202,13 @@ struct TerminalScreenView: UIViewRepresentable {
             onScroll: onScroll,
             onPaste: onPaste)
         keyboardControl?.terminal = view
+        let claimsKeyboardOnEnable = !view.isLocalInputEnabled
+            && isLocalInputEnabled
+            && (claimsKeyboard?() ?? false)
         view.setLocalInputEnabled(isLocalInputEnabled)
+        if claimsKeyboardOnEnable {
+            view.requestKeyboard()
+        }
         view.applyTheme(theme)
         view.applyFontSize(fontSize)
         view.applyFontFamily(fontFamily)

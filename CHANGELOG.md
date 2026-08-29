@@ -13,7 +13,8 @@ Entries reference the issue that motivated them.
   iOS keyboard plus Esc, Tab, Shift-Tab, and Enter shortcuts (Direct Input).
   The shortcut row stays visible above the Agent switcher strip whenever
   Direct Input is active; keyboard show/hide stays on that strip. Composer
-  stays the default; the draft is preserved across the mode switch. (#251)
+  stays the default; hiding it hands the visible iOS keyboard directly to the
+  terminal without a dismiss/re-present jump, and preserves the draft. (#251)
 
 ## [0.1.3] - 2026-08-28
 

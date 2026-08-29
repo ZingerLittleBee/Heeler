@@ -670,6 +670,16 @@ struct AgentTerminalView: View {
 
     private func selectInputMode(_ mode: AgentInputMode) {
         guard mode != inputMode.mode else { return }
+        let shouldHandoffSystemKeyboard = mode == .direct
+            && composerKeyboardPresentation == .system
+        let didHandoffSystemKeyboard: Bool
+        if shouldHandoffSystemKeyboard {
+            directKeyboardIntent.setWantsKeyboard(true)
+            keyboardControl.setKeyboardMode(.text)
+            didHandoffSystemKeyboard = keyboardControl.handoffKeyboardToLocalInput()
+        } else {
+            didHandoffSystemKeyboard = false
+        }
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
@@ -698,10 +708,12 @@ struct AgentTerminalView: View {
             UIAccessibility.post(
                 notification: .announcement,
                 argument: "Keyboard. Typing into the Agent.")
-            Task { @MainActor in
-                await Task.yield()
-                directKeyboardIntent.setWantsKeyboard(true)
-                keyboardControl.requestKeyboard()
+            if !didHandoffSystemKeyboard {
+                Task { @MainActor in
+                    await Task.yield()
+                    directKeyboardIntent.setWantsKeyboard(true)
+                    keyboardControl.requestKeyboard()
+                }
             }
         case .composer:
             UIAccessibility.post(notification: .announcement, argument: "Composer.")
