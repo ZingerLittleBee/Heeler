@@ -920,7 +920,9 @@ struct AgentDirectInputTests {
     private static func firstAccessible(
         identifier: String, in root: UIView
     ) -> NSObject? {
-        firstAccessible(in: root) { $0.accessibilityIdentifier == identifier }
+        firstAccessible(in: root) {
+            ($0 as? UIAccessibilityIdentification)?.accessibilityIdentifier == identifier
+        }
     }
 
     private static func firstAccessible(
