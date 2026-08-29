@@ -391,11 +391,13 @@ struct AgentDirectInputTests {
         await Task.yield()
 
         // Pre-show `.system` hold: shortcut row stays adjacent to the keyboard
-        // footprint even while measured height is still zero.
+        // footprint even while measured height is still zero. Two-sided bound:
+        // wiring the modifier to the raw zero height expands the terminal by
+        // ~lastPresentedHeight and still satisfies a one-sided upper bound.
         #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) != nil)
         let midSwapTerminal = try #require(Self.terminals(in: controller.view).first)
         #expect(midSwapTerminal.isFirstResponder)
-        #expect(heightWithSoftwareKeyboard - midSwapTerminal.frame.height <= 1)
+        #expect(abs(heightWithSoftwareKeyboard - midSwapTerminal.frame.height) <= 1)
 
         // Software keyboard actually appears — hold must release without a
         // transient `.hidden` dip (row and inset stay).
@@ -793,7 +795,10 @@ struct AgentDirectInputTests {
             stageFile: { _, _ in throw TransportError.cancelled },
             composer: composer,
             closePane: {})
-        owner.rejoin()
+        // Fresh stores start `.active` with `.waitingForSize`. `rejoin()` is a
+        // no-op until leave/rejoinRequired, so open the channel the same way
+        // production does: the first positive size report.
+        owner.viewDidResize(cols: 80, rows: 24)
         try #require(await Self.eventually {
             await transport.attachRequests.count == 1
         })
