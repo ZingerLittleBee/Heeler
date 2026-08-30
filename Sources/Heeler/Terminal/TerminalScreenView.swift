@@ -392,6 +392,11 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// an inherited keyboard never leaves, so its settled signal is the frame
     /// change instead.
     private var keyboardTransitionEndsOnFrameChange = false
+    /// An inherited keyboard first publishes the frame that still includes
+    /// both responders' accessories. Rebuilding the input views publishes the
+    /// destination-only frame; the handoff cannot settle before that second
+    /// owned frame arrives.
+    private var didReloadInputViewsForKeyboardHandoff = false
     private var keyboardTransitionFallbackTask: Task<Void, Never>?
     /// Test seam for process-wide keyboard notification ownership. Production
     /// reads the window-local layout guide directly.
@@ -1103,6 +1108,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private func beginKeyboardTransitionLayoutDeferral(endsOnFrameChange: Bool = false) {
         defersLayoutForKeyboardTransition = true
         keyboardTransitionEndsOnFrameChange = endsOnFrameChange
+        didReloadInputViewsForKeyboardHandoff = false
         callbackBridge.beginSizeReportDeferral()
         keyboardTransitionFallbackTask?.cancel()
         let fallbackDelay = keyboardTransitionFallbackDelay
@@ -1132,19 +1138,28 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// (#157).
     func keyboardFrameDidSettle() {
         guard keyboardTransitionEndsOnFrameChange else { return }
+        guard didReloadInputViewsForKeyboardHandoff else {
+            // Set the phase first because UIKit may synchronously publish the
+            // repopulated frame from inside reloadInputViews().
+            didReloadInputViewsForKeyboardHandoff = true
+            UIView.performWithoutAnimation { reloadInputViews() }
+            return
+        }
         finishKeyboardTransitionLayout()
     }
 
     func finishKeyboardTransitionLayout() {
         guard defersLayoutForKeyboardTransition else { return }
         let inheritedTheKeyboard = keyboardTransitionEndsOnFrameChange
+        let alreadyReloadedInputViews = didReloadInputViewsForKeyboardHandoff
         let settledHandoffID = activeKeyboardHandoffID
         activeKeyboardHandoffID = nil
         defersLayoutForKeyboardTransition = false
         keyboardTransitionEndsOnFrameChange = false
+        didReloadInputViewsForKeyboardHandoff = false
         keyboardTransitionFallbackTask?.cancel()
         keyboardTransitionFallbackTask = nil
-        if inheritedTheKeyboard {
+        if inheritedTheKeyboard, !alreadyReloadedInputViews {
             // Both terminals' accessories were on the keyboard while it
             // changed hands, and that is the frame the keyboard published:
             // one accessory too tall. UIKit does not publish another when the
@@ -1165,6 +1180,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         activeKeyboardHandoffID = nil
         defersLayoutForKeyboardTransition = false
         keyboardTransitionEndsOnFrameChange = false
+        didReloadInputViewsForKeyboardHandoff = false
         keyboardTransitionFallbackTask?.cancel()
         keyboardTransitionFallbackTask = nil
         keyboardGridReportTask?.cancel()

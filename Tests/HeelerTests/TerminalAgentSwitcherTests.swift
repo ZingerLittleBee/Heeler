@@ -801,9 +801,15 @@ struct TerminalAgentSwitcherTests {
         }
         #expect(reportedGrids.isEmpty)
 
-        // The keyboard settled. A keyboard that never left reports no
-        // did-show, so its end frame is what thaws the grid — delivered on
-        // the terminal's own center, the only one it observes.
+        // The first owned frame still includes both responders' accessories.
+        // It rebuilds the input views but must leave the grid frozen until
+        // UIKit republishes the destination-only frame.
+        center.post(
+            name: UIResponder.keyboardDidChangeFrameNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: ownKeyboardEndFrame])
+        #expect(reportedGrids.isEmpty)
+
+        // The rebuilt input views republish the settled destination frame.
         center.post(
             name: UIResponder.keyboardDidChangeFrameNotification, object: nil,
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: ownKeyboardEndFrame])
@@ -974,12 +980,16 @@ struct TerminalAgentSwitcherTests {
         #expect(terminal.inputViewRebuildCount == rebuildsBeforeForeignEvent)
         #expect(reportedGrids.isEmpty)
 
-        // This terminal's own settle: the keyboard ends its move covering
-        // the terminal's window, and the freeze thaws.
+        // The first owned frame rebuilds the destination input views while
+        // retaining the freeze; their republished frame then thaws it.
         center.post(
             name: UIResponder.keyboardDidChangeFrameNotification, object: nil,
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: ownKeyboardEndFrame])
         #expect(terminal.inputViewRebuildCount > rebuildsBeforeForeignEvent)
+        #expect(reportedGrids.isEmpty)
+        center.post(
+            name: UIResponder.keyboardDidChangeFrameNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: ownKeyboardEndFrame])
         try await waitForGridReportsToSettle { reportedGrids.count }
         #expect(
             !reportedGrids.isEmpty,
