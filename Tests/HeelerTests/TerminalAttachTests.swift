@@ -1021,7 +1021,11 @@ struct TerminalAttachTests {
         #expect(terminal.bounds.contains(region))
         // Reaches the visible prompt above the parked caret (#90), or the
         // single entry point is unhittable in practice.
-        #expect(region.height >= TerminalKeyboardTapTarget.alternateScreenMinimumHeight)
+        // CGRect intersection can round an exact-height band down by one ULP
+        // when Ghostty reports fractional caret metrics.
+        #expect(
+            region.height
+                >= TerminalKeyboardTapTarget.alternateScreenMinimumHeight.nextDown)
         // Full width: the row is the target, not the glyph the cursor sits on.
         #expect(region.width == terminal.bounds.width)
     }
