@@ -71,7 +71,15 @@ struct AgentDirectInputTests {
     }
 
     @Test func accessibilityTraversalFallsBackToIndexedContainerWhenElementsAreEmpty() {
-        let root = IndexedAccessibilityContainerView(label: "Indexed control")
+        let root = IndexedAccessibilityContainerView(indexedLabel: "Indexed control")
+
+        #expect(Self.firstAccessible(labeled: "Indexed control", in: root) != nil)
+    }
+
+    @Test func accessibilityTraversalIncludesIndexedElementsWhenArrayIsIncomplete() {
+        let root = IndexedAccessibilityContainerView(
+            indexedLabel: "Indexed control",
+            arrayLabel: "Array control")
 
         #expect(Self.firstAccessible(labeled: "Indexed control", in: root) != nil)
     }
@@ -1521,22 +1529,20 @@ struct AgentDirectInputTests {
         func visit(_ node: NSObject) {
             guard visited.insert(ObjectIdentifier(node)).inserted else { return }
             body(node)
-            let elements = node.accessibilityElements
-            if let elements, !elements.isEmpty {
+            if let elements = node.accessibilityElements {
                 for element in elements {
                     if let object = element as? NSObject {
                         visit(object)
                     }
                 }
-            } else {
-                // Some SwiftUI containers expose an empty array while their
-                // indexed accessibility API still owns the live controls.
-                let count = node.accessibilityElementCount()
-                if count > 0, count != NSNotFound {
-                    for index in 0..<count {
-                        if let object = node.accessibilityElement(at: index) as? NSObject {
-                            visit(object)
-                        }
+            }
+            // SwiftUI containers can expose an empty or incomplete array while
+            // their indexed accessibility API still owns the live controls.
+            let count = node.accessibilityElementCount()
+            if count > 0, count != NSNotFound {
+                for index in 0..<count {
+                    if let object = node.accessibilityElement(at: index) as? NSObject {
+                        visit(object)
                     }
                 }
             }
@@ -1584,14 +1590,21 @@ struct AgentDirectInputTests {
 
 private final class IndexedAccessibilityContainerView: UIView {
     private let indexedLabel: String
+    private let arrayLabel: String?
     private lazy var indexedElement: UIAccessibilityElement = {
         let element = UIAccessibilityElement(accessibilityContainer: self)
         element.accessibilityLabel = indexedLabel
         return element
     }()
+    private lazy var arrayElement: UIAccessibilityElement = {
+        let element = UIAccessibilityElement(accessibilityContainer: self)
+        element.accessibilityLabel = arrayLabel
+        return element
+    }()
 
-    init(label: String) {
-        indexedLabel = label
+    init(indexedLabel: String, arrayLabel: String? = nil) {
+        self.indexedLabel = indexedLabel
+        self.arrayLabel = arrayLabel
         super.init(frame: .zero)
     }
 
@@ -1601,7 +1614,7 @@ private final class IndexedAccessibilityContainerView: UIView {
     }
 
     override var accessibilityElements: [Any]? {
-        get { [] }
+        get { arrayLabel == nil ? [] : [arrayElement] }
         set { }
     }
 
