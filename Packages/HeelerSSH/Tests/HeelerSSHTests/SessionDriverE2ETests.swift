@@ -2148,12 +2148,12 @@ while sent < payload_size:
             raise RuntimeError("raw writer socket closed")
         sent += written
     except BlockingIOError:
-        _, writable, _ = select.select([], [connection], [], 1.0)
-        if writable:
-            continue
         if not reported_block:
             publish("blocked", sent)
             reported_block = True
+        _, writable, _ = select.select([], [connection], [], 1.0)
+        if writable:
+            continue
         connection.setblocking(True)
 
 connection.shutdown(socket.SHUT_WR)
