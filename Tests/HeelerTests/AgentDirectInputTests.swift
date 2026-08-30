@@ -521,9 +521,14 @@ struct AgentDirectInputTests {
         let terminal = try #require(Self.terminals(in: controller.view).first)
         #expect(terminal.isLocalInputEnabled)
         #expect(!terminal.isFirstResponder)
-        #expect(!interactions.switchDirectKeyboard())
         if #available(iOS 27, *) {
+            #expect(
+                Self.firstAccessible(
+                    labeled: "Show tools keyboard",
+                    in: controller.view) == nil)
             #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) != nil)
+        } else {
+            #expect(!interactions.switchDirectKeyboard())
         }
 
         await owner.leave().value
