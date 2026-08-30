@@ -103,6 +103,12 @@ enum TerminalTextInputStyle: Equatable {
     case naturalLanguage
 }
 
+enum TerminalKeyboardHandoffOutcome: Equatable {
+    case settled
+    case timedOut
+    case cancelled
+}
+
 struct TerminalScreenView: UIViewRepresentable {
     let feed: TerminalByteFeed
     #if DEBUG
@@ -125,9 +131,10 @@ struct TerminalScreenView: UIViewRepresentable {
     var keyboardHandoffID: UUID?
     var isKeyboardHandoffCurrent: (@MainActor (_ id: UUID) -> Bool)?
     var onKeyboardHandoffResult: (@MainActor (_ id: UUID, _ succeeded: Bool) -> Void)?
-    /// Fires only after this terminal's own keyboard frame settles (or its
-    /// bounded production fallback ends the freeze).
-    var onKeyboardHandoffSettled: (@MainActor (_ id: UUID) -> Void)?
+    /// Reports whether this terminal settled the handoff or had to abandon it.
+    var onKeyboardHandoffEnded: (@MainActor (
+        _ id: UUID, _ outcome: TerminalKeyboardHandoffOutcome
+    ) -> Void)?
     /// Handed the surface once it exists, so the Agent strip's toggle can
     /// raise and lower this terminal's keyboard.
     var keyboardControl: TerminalKeyboardControl?
@@ -156,9 +163,10 @@ struct TerminalScreenView: UIViewRepresentable {
         // terminal's first appearance, not to every state change after it.
         view.raisesKeyboardWhenReady = claimsKeyboard?() ?? false
         keyboardControl?.terminal = view
-        view.onKeyboardHandoffSettled = { [weak view, weak keyboardControl] id in
-            guard let view, keyboardControl?.terminal === view else { return }
-            onKeyboardHandoffSettled?(id)
+        view.onKeyboardHandoffEnded = { [weak view, weak keyboardControl] id, outcome in
+            guard let view else { return }
+            if let keyboardControl, keyboardControl.terminal !== view { return }
+            onKeyboardHandoffEnded?(id, outcome)
         }
         view.setTextInputStyle(textInputStyle)
         view.setLocalInputEnabled(isLocalInputEnabled)
@@ -210,9 +218,10 @@ struct TerminalScreenView: UIViewRepresentable {
             onScroll: onScroll,
             onPaste: onPaste)
         keyboardControl?.terminal = view
-        view.onKeyboardHandoffSettled = { [weak view, weak keyboardControl] id in
-            guard let view, keyboardControl?.terminal === view else { return }
-            onKeyboardHandoffSettled?(id)
+        view.onKeyboardHandoffEnded = { [weak view, weak keyboardControl] id, outcome in
+            guard let view else { return }
+            if let keyboardControl, keyboardControl.terminal !== view { return }
+            onKeyboardHandoffEnded?(id, outcome)
         }
         let claimsKeyboardOnEnable = !view.isLocalInputEnabled
             && isLocalInputEnabled
@@ -376,7 +385,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     var onFirstResponderChange: (() -> Void)?
     /// Completes the app-owned inset freeze for a responder handoff after the
     /// terminal's own keyboard frame has settled.
-    var onKeyboardHandoffSettled: ((UUID) -> Void)?
+    var onKeyboardHandoffEnded: ((UUID, TerminalKeyboardHandoffOutcome) -> Void)?
     private var activeKeyboardHandoffID: UUID?
     /// How many times the input views have been rebuilt. Nothing else observes
     /// the rebuild that republishes the keyboard's settled frame after a
@@ -397,6 +406,12 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// destination-only frame; the handoff cannot settle before that second
     /// owned frame arrives.
     private var didReloadInputViewsForKeyboardHandoff = false
+    /// The first owned keyboard frame can arrive synchronously from
+    /// `becomeFirstResponder()`. Defer rebuilding until the responder-handoff
+    /// owner has accepted the request, and coalesce any duplicate first
+    /// frames that arrive in the meantime.
+    private var keyboardHandoffReloadIsScheduled = false
+    private var keyboardTransitionCycleID: UUID?
     private var keyboardTransitionFallbackTask: Task<Void, Never>?
     /// Test seam for process-wide keyboard notification ownership. Production
     /// reads the window-local layout guide directly.
@@ -829,7 +844,9 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// Raises the keyboard, and records that the user wants it up.
     func requestKeyboard() {
         guard isLocalInputEnabled else { return }
-        finishKeyboardTransitionLayout()
+        if activeKeyboardHandoffID == nil {
+            finishKeyboardTransitionLayout(handoffOutcome: .cancelled)
+        }
         raiseKeyboard()
     }
 
@@ -868,6 +885,9 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     func setLocalInputEnabled(_ isEnabled: Bool) {
         guard isLocalInputEnabled != isEnabled else { return }
         isLocalInputEnabled = isEnabled
+        if !isEnabled {
+            cancelKeyboardTransitionLayoutDeferral()
+        }
         if !isEnabled, isFirstResponder {
             _ = dismissKeyboard()
         }
@@ -1034,7 +1054,6 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         if window == nil {
             stopTouchScrollMomentum()
             responderGate.invalidateTouches()
-            cancelKeyboardTransitionLayoutDeferral()
         } else {
             inheritKeyboard()
         }
@@ -1109,13 +1128,15 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         defersLayoutForKeyboardTransition = true
         keyboardTransitionEndsOnFrameChange = endsOnFrameChange
         didReloadInputViewsForKeyboardHandoff = false
+        keyboardHandoffReloadIsScheduled = false
+        keyboardTransitionCycleID = UUID()
         callbackBridge.beginSizeReportDeferral()
         keyboardTransitionFallbackTask?.cancel()
         let fallbackDelay = keyboardTransitionFallbackDelay
         keyboardTransitionFallbackTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(fallbackDelay))
             guard !Task.isCancelled else { return }
-            self?.finishKeyboardTransitionLayout()
+            self?.finishKeyboardTransitionLayout(handoffOutcome: .timedOut)
         }
     }
 
@@ -1139,16 +1160,30 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     func keyboardFrameDidSettle() {
         guard keyboardTransitionEndsOnFrameChange else { return }
         guard didReloadInputViewsForKeyboardHandoff else {
-            // Set the phase first because UIKit may synchronously publish the
-            // repopulated frame from inside reloadInputViews().
-            didReloadInputViewsForKeyboardHandoff = true
-            UIView.performWithoutAnimation { reloadInputViews() }
+            guard !keyboardHandoffReloadIsScheduled,
+                  let cycleID = keyboardTransitionCycleID
+            else { return }
+            keyboardHandoffReloadIsScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      self.keyboardTransitionCycleID == cycleID,
+                      self.keyboardTransitionEndsOnFrameChange,
+                      self.keyboardHandoffReloadIsScheduled
+                else { return }
+                // Set the phase first because UIKit may synchronously publish
+                // the repopulated frame from inside reloadInputViews().
+                self.keyboardHandoffReloadIsScheduled = false
+                self.didReloadInputViewsForKeyboardHandoff = true
+                UIView.performWithoutAnimation { self.reloadInputViews() }
+            }
             return
         }
-        finishKeyboardTransitionLayout()
+        finishKeyboardTransitionLayout(handoffOutcome: .settled)
     }
 
-    func finishKeyboardTransitionLayout() {
+    func finishKeyboardTransitionLayout(
+        handoffOutcome: TerminalKeyboardHandoffOutcome = .settled
+    ) {
         guard defersLayoutForKeyboardTransition else { return }
         let inheritedTheKeyboard = keyboardTransitionEndsOnFrameChange
         let alreadyReloadedInputViews = didReloadInputViewsForKeyboardHandoff
@@ -1157,6 +1192,8 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         defersLayoutForKeyboardTransition = false
         keyboardTransitionEndsOnFrameChange = false
         didReloadInputViewsForKeyboardHandoff = false
+        keyboardHandoffReloadIsScheduled = false
+        keyboardTransitionCycleID = nil
         keyboardTransitionFallbackTask?.cancel()
         keyboardTransitionFallbackTask = nil
         if inheritedTheKeyboard, !alreadyReloadedInputViews {
@@ -1172,20 +1209,26 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         layoutIfNeeded()
         scheduleGridReport(after: Self.gridSettleDelay)
         if inheritedTheKeyboard, let settledHandoffID {
-            onKeyboardHandoffSettled?(settledHandoffID)
+            onKeyboardHandoffEnded?(settledHandoffID, handoffOutcome)
         }
     }
 
     private func cancelKeyboardTransitionLayoutDeferral() {
+        let cancelledHandoffID = activeKeyboardHandoffID
         activeKeyboardHandoffID = nil
         defersLayoutForKeyboardTransition = false
         keyboardTransitionEndsOnFrameChange = false
         didReloadInputViewsForKeyboardHandoff = false
+        keyboardHandoffReloadIsScheduled = false
+        keyboardTransitionCycleID = nil
         keyboardTransitionFallbackTask?.cancel()
         keyboardTransitionFallbackTask = nil
         keyboardGridReportTask?.cancel()
         keyboardGridReportTask = nil
         callbackBridge.cancelSizeReportDeferral()
+        if let cancelledHandoffID {
+            onKeyboardHandoffEnded?(cancelledHandoffID, .cancelled)
+        }
     }
 
     var usesApplicationCursorKeys: Bool {

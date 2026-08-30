@@ -1449,6 +1449,63 @@ struct TerminalAttachTests {
         #expect(inset.lastPresentedHeight == 402)
     }
 
+    /// Composer-to-Direct already has the destination terminal's bounded
+    /// fallback. A second inset-owned timer starts earlier and can commit a
+    /// transient hide before the terminal gets its final frame.
+    @MainActor
+    @Test func destinationOwnedFallbackKeepsTheInsetFrozen() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
+        inset.responderHandoffFallbackDelay = .milliseconds(50)
+        inset.destinationResponderHandoffFallbackDelay = .milliseconds(200)
+
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 554, width: 440, height: 436)])
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(inset.height == 402)
+
+        let handoffID = inset.beginDestinationOwnedResponderHandoff()
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        try await Task.sleep(for: .milliseconds(80))
+
+        #expect(inset.isHoldingHandoffHeight)
+        #expect(inset.height == 402)
+        inset.endResponderHandoff(handoffID)
+        #expect(!inset.isHoldingHandoffHeight)
+        #expect(inset.height == 402)
+    }
+
+    /// A destination can disappear before its weakly captured terminal timer
+    /// fires. The inset owner has a later watchdog so that loss cannot leave
+    /// the shared handoff token frozen forever.
+    @MainActor
+    @Test func destinationLossFallsBackThroughTheInsetOwner() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
+        inset.destinationResponderHandoffFallbackDelay = .milliseconds(50)
+
+        center.post(
+            name: UIResponder.keyboardWillShowNotification,
+            object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 554, width: 440, height: 436)])
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(inset.height == 402)
+
+        var expiredID: UUID?
+        let handoffID = inset.beginDestinationOwnedResponderHandoff(
+            currentHeight: { nil }
+        ) { expiredID = $0 }
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        try await Task.sleep(for: .milliseconds(80))
+
+        #expect(expiredID == handoffID)
+        #expect(!inset.isHoldingHandoffHeight)
+        #expect(inset.height == 402)
+    }
+
     @MainActor
     @Test func responderHandoffCancellationUsesTheOwningWindowHeight() async throws {
         let center = NotificationCenter()

@@ -40,6 +40,10 @@ final class TerminalKeyboardInset {
     @ObservationIgnored private var responderHandoffFallbackTask: Task<Void, Never>?
     @ObservationIgnored private var sawDismissDuringResponderHandoff = false
     @ObservationIgnored var responderHandoffFallbackDelay = Duration.milliseconds(500)
+    /// The destination terminal owns the primary 500ms timeout. This later
+    /// owner-side watchdog exists only for a destination that is deallocated
+    /// before its weakly captured timeout can report an outcome.
+    @ObservationIgnored var destinationResponderHandoffFallbackDelay = Duration.seconds(1)
 
     var isHoldingHandoffHeight: Bool { activeResponderHandoffID != nil }
 
@@ -118,12 +122,7 @@ final class TerminalKeyboardInset {
         currentHeight: @escaping @MainActor () -> CGFloat? = { nil },
         onFallback: @escaping @MainActor (UUID) -> Void = { _ in }
     ) -> UUID {
-        let id = UUID()
-        coalesceTask?.cancel()
-        coalesceTask = nil
-        responderHandoffFallbackTask?.cancel()
-        activeResponderHandoffID = id
-        sawDismissDuringResponderHandoff = false
+        let id = prepareResponderHandoff()
         let fallbackDelay = responderHandoffFallbackDelay
         responderHandoffFallbackTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: fallbackDelay)
@@ -138,6 +137,41 @@ final class TerminalKeyboardInset {
             }
             onFallback(id)
         }
+        return id
+    }
+
+    /// Starts a freeze whose destination owns the primary fallback. A later
+    /// owner-side watchdog prevents a deallocated destination from leaving
+    /// the shared inset and handoff token active forever.
+    func beginDestinationOwnedResponderHandoff(
+        currentHeight: @escaping @MainActor () -> CGFloat? = { nil },
+        onFallback: @escaping @MainActor (UUID) -> Void = { _ in }
+    ) -> UUID {
+        let id = prepareResponderHandoff()
+        let fallbackDelay = destinationResponderHandoffFallbackDelay
+        responderHandoffFallbackTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: fallbackDelay)
+            guard !Task.isCancelled else { return }
+            guard let self, self.activeResponderHandoffID == id else { return }
+            self.responderHandoffFallbackTask = nil
+            self.activeResponderHandoffID = nil
+            let shouldApplyDismissal = self.sawDismissDuringResponderHandoff
+            self.sawDismissDuringResponderHandoff = false
+            if shouldApplyDismissal, let height = currentHeight() {
+                self.apply(max(0, height))
+            }
+            onFallback(id)
+        }
+        return id
+    }
+
+    private func prepareResponderHandoff() -> UUID {
+        let id = UUID()
+        coalesceTask?.cancel()
+        coalesceTask = nil
+        responderHandoffFallbackTask?.cancel()
+        activeResponderHandoffID = id
+        sawDismissDuringResponderHandoff = false
         return id
     }
 
@@ -161,8 +195,8 @@ final class TerminalKeyboardInset {
         guard activeResponderHandoffID == id else { return }
         let shouldApplyDismissal = sawDismissDuringResponderHandoff
         endResponderHandoff(id)
-        if shouldApplyDismissal {
-            apply(max(0, currentHeight() ?? 0))
+        if shouldApplyDismissal, let height = currentHeight() {
+            apply(max(0, height))
         }
     }
 

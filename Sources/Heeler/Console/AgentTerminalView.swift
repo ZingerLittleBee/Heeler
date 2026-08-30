@@ -282,6 +282,9 @@ struct AgentTerminalView: View {
         // context across the responder transfer; Shell terminals keep the
         // command-oriented defaults.
         screen.textInputStyle = .naturalLanguage
+        // Keep the destination terminal enabled until Composer-to-Direct has
+        // fully settled. The reverse handoff must disable this outgoing
+        // terminal as soon as Composer accepts first responder.
         screen.isLocalInputEnabled = isDirectInput || composerToDirectHandoffID != nil
         screen.claimsKeyboard = {
             [
@@ -318,8 +321,13 @@ struct AgentTerminalView: View {
                 cancelKeyboardHandoff(id)
             }
         }
-        screen.onKeyboardHandoffSettled = { id in
-            endKeyboardHandoff(id)
+        screen.onKeyboardHandoffEnded = { id, outcome in
+            switch outcome {
+            case .settled, .timedOut:
+                endKeyboardHandoff(id)
+            case .cancelled:
+                cancelKeyboardHandoff(id)
+            }
         }
         screen.theme = terminal.themes.theme
         screen.fontSize = terminal.zoom.fontSize
@@ -885,7 +893,7 @@ struct AgentTerminalView: View {
         if mode == .direct, composerKeyboardPresentation == .system {
             directKeyboardIntent.setWantsKeyboard(true)
             keyboardControl.setKeyboardMode(.text)
-            let id = keyboardInset.beginResponderHandoff(
+            let id = keyboardInset.beginDestinationOwnedResponderHandoff(
                 currentHeight: currentWindowKeyboardHeight
             ) { expiredID in
                 cancelKeyboardHandoff(expiredID)
@@ -926,9 +934,9 @@ struct AgentTerminalView: View {
             case .direct:
                 if !preservingKeyboardHandoff {
                     prepareComposerKeyboardPresentation(.hidden)
+                    composerToDirectHandoffID = nil
                 }
                 composerKeyboardPresentation = .hidden
-                composerToDirectHandoffID = nil
                 usesDirectToolsKeyboard = false
                 expectsDirectSystemKeyboard = false
                 keyboardControl.setKeyboardMode(.text)
@@ -968,10 +976,13 @@ struct AgentTerminalView: View {
     }
 
     private func cancelKeyboardHandoff(_ id: UUID) {
+        let destinationAccepted = settlingKeyboardHandoffID == id
         var ownsHandoff = false
         if composerToDirectHandoffID == id {
             composerToDirectHandoffID = nil
-            directKeyboardIntent.setWantsKeyboard(false)
+            if !destinationAccepted {
+                directKeyboardIntent.setWantsKeyboard(false)
+            }
             ownsHandoff = true
         }
         if directToComposerHandoffID == id {
@@ -1023,6 +1034,9 @@ struct AgentTerminalView: View {
     private func endKeyboardHandoff(_ id: UUID) {
         guard settlingKeyboardHandoffID == id else { return }
         settlingKeyboardHandoffID = nil
+        if composerToDirectHandoffID == id {
+            composerToDirectHandoffID = nil
+        }
         keyboardInset.endResponderHandoff(id)
     }
 
