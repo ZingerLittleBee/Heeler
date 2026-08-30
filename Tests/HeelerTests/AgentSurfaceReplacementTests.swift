@@ -112,7 +112,8 @@ struct AgentSurfaceReplacementTests {
 
         // Deliberately not retained: the predecessor has to be free to go away,
         // or a stale sink would still look live.
-        weak var predecessor = Self.terminals(in: controller.view).first
+        weak var predecessor: HeelerTerminalView?
+        predecessor = Self.terminals(in: controller.view).first
         #expect(predecessor != nil, "the first surface should exist")
         feed.write(Data("first".utf8))
 
@@ -692,6 +693,7 @@ struct AgentSurfaceReplacementTests {
                 agent: agent,
                 console: console,
                 terminal: terminal,
+                inputMode: AgentInputModeSettings(defaults: defaults),
                 hosts: [],
                 activity: activity,
                 keyboardHandoff: handoff,
@@ -707,7 +709,8 @@ struct AgentSurfaceReplacementTests {
         agent: ConsoleAgent,
         activity: AppActivityCoordinator,
         attachStore: AgentAttachStore,
-        composer: AgentComposerStore
+        composer: AgentComposerStore,
+        inputMode: AgentInputModeSettings? = nil
     ) -> AgentTerminalView {
         let defaults = UserDefaults(suiteName: "attach-recovery-\(UUID())") ?? .standard
         let console = ConsoleStore(snapshotRetryDelay: .seconds(30)) { _, subscriptions in
@@ -726,6 +729,7 @@ struct AgentSurfaceReplacementTests {
             agent: agent,
             console: console,
             terminal: terminal,
+            inputMode: inputMode ?? AgentInputModeSettings(defaults: defaults),
             hosts: [],
             activity: activity,
             keyboardHandoff: TerminalKeyboardHandoff(),

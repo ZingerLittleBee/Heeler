@@ -9,9 +9,17 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
-- Fresh installations use an 8 pt terminal font by default, fitting more of an
-  Agent's TUI on a mobile display while preserving existing saved sizes.
-  (#256; PR #257)
+- When no size has been saved, Terminal Text Size now defaults to 8 pt instead
+  of 14 pt. Existing saved sizes do not change. (#256; PR #257)
+
+### Added
+
+- Agent detail now offers Direct Input, which hides the Composer and routes iOS
+  keyboard input directly to the live Attach PTY. A persistent row above the
+  Agent switcher provides Esc, Tab, Shift-Tab, arrow keys, Backspace,
+  Shift-Enter, and Enter; keyboard show/hide controls remain in the switcher.
+  Composer remains the default. Switching modes preserves the draft and keeps
+  a visible iOS keyboard in place. (#251; PR #253)
 
 ## [0.1.3] - 2026-08-28
 
