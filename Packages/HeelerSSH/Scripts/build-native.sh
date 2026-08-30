@@ -239,8 +239,9 @@ codesign --timestamp --sign "${XCFRAMEWORK_SIGNING_IDENTITY}" \
 
 cp "${LIBSSH2_SOURCE}/COPYING" "${GENERATED_ARTIFACTS}/Notices/libssh2-BSD-3-Clause.txt"
 cp "${OPENSSL_SOURCE}/LICENSE.txt" "${GENERATED_ARTIFACTS}/Notices/OpenSSL-Apache-2.0.txt"
-# Separately licensed objects inside libssh2 1.11.1 (see REUSE SPDX tags in
-# the source headers). The app inventory bundles these next to COPYING (#161).
+# Separately licensed objects inside the pinned libssh2 snapshot (see REUSE
+# SPDX tags in the source headers). The app inventory bundles these next to
+# COPYING (#161).
 extract_c_header_notice() {
     local source_file="$1"
     local destination="$2"

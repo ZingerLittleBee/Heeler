@@ -10,7 +10,7 @@ dependency-maintenance operation, not part of ordinary app or CI builds.
 
 ## Audit and rebuild
 
-`Sources.lock` records the exact upstream release archives, tags, commits, and
+`Sources.lock` records the exact upstream source archives, tags, commits, and
 SHA-256 hashes. `Scripts/build-native.sh` verifies both archives before
 extracting or compiling them. A mismatch is fatal.
 
@@ -36,10 +36,8 @@ make verify-ssh-artifacts
 ```
 
 OpenSSL is built without its legacy provider and without the legacy algorithms
-listed in the provenance record. libssh2 is compiled with its obsolete cipher
-and signature switches disabled; the small reviewed patch in `Patches/`
-removes SHA-1 key exchange and MAC methods that libssh2 1.11.1 otherwise has no
-build switch for.
+listed in the provenance record. The pinned libssh2 snapshot disables obsolete
+algorithms upstream; the build additionally defines `LIBSSH2_NO_AES_CBC`.
 
 ## Session scheduling
 
