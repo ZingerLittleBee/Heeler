@@ -419,14 +419,27 @@ struct PairingCeremonyE2ETests {
     /// same way the plugin discovers it at code-generation time. Pinning it
     /// keeps these tests independent of which host key sshd negotiates.
     private static func discoverHostKeyFingerprint(
-        _ base: PairingE2EEnvironment.Base
+        _ base: PairingE2EEnvironment.Base,
+        retried: Bool = false
     ) async throws -> HostKeyFingerprint {
-        let connection = try await SSHConnection.connect(
-            to: SSHEndpoint(host: base.host, port: UInt16(base.port)),
-            timeout: .seconds(5))
-        let fingerprint = HostKeyFingerprint(publicKeyBlob: connection.hostKey.key)
-        try await connection.close(timeout: .seconds(2))
-        return fingerprint
+        do {
+            let connection = try await SSHConnection.connect(
+                to: SSHEndpoint(host: base.host, port: UInt16(base.port)),
+                timeout: .seconds(5))
+            let fingerprint = HostKeyFingerprint(publicKeyBlob: connection.hostKey.key)
+            try await connection.close(timeout: .seconds(2))
+            return fingerprint
+        } catch SSHError.cancelled {
+            throw SSHError.cancelled
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch where !retried {
+            // The fixture sshd drops the rare pre-auth connection under CI
+            // load; the immediately-following handshake succeeds, so the
+            // bare connect retries once before failing the ceremony.
+            try? await Task.sleep(for: .milliseconds(100))
+            return try await discoverHostKeyFingerprint(base, retried: true)
+        }
     }
 }
 
