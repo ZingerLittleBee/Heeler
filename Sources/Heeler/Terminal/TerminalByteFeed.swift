@@ -34,6 +34,13 @@ final class TerminalByteFeed {
         }
     }
 
+    /// Whether `candidate` is the surface currently receiving this feed's bytes.
+    /// The hosted terminal binds in `TerminalScreenView.makeUIView`; a
+    /// replacement pipeline's feed is not attached until that remount runs.
+    func isAttached(to candidate: any TerminalByteSink) -> Bool {
+        sink === candidate
+    }
+
     func write(_ data: Data) {
         guard !data.isEmpty else { return }
         if let sink {

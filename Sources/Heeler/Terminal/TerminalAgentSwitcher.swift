@@ -44,6 +44,11 @@ final class TerminalKeyboardHandoff {
         armedID = id
     }
 
+    func cancel(for id: ConsoleAgent.ID) {
+        guard armedID == id else { return }
+        armedID = nil
+    }
+
     /// Reads and clears the intent — a handoff is good for exactly one screen,
     /// so a later push from the Agent list starts with the keyboard down.
     func consume(_ id: ConsoleAgent.ID) -> Bool {
@@ -495,6 +500,19 @@ final class TerminalAgentChip: UIControl {
     }
 }
 
+/// Trailing control that enters or leaves Direct Input without living inside
+/// the chip scroller. Icon on compact width; segmented on regular width.
+enum TerminalAgentSwitcherModeControl {
+    case button(
+        systemImage: String,
+        accessibilityLabel: String,
+        accessibilityHint: String,
+        action: () -> Void)
+    case segmented(
+        selection: AgentInputMode,
+        select: (AgentInputMode) -> Void)
+}
+
 /// The resident Agent strip: the chips over their own fill, with the keyboard
 /// toggle pinned at the trailing edge — outside the scroll view, so the one
 /// control that summons the keyboard back can never scroll out of reach.
@@ -504,9 +522,14 @@ struct TerminalAgentSwitcherRow: View {
     let toggleKeyboard: () -> Void
     var isToolsKeyboardPresented = false
     var switchKeyboard: (() -> Void)?
-    /// Matches `UIPasteControl`'s fixed glyph size in the row below, or the
-    /// two read as icons borrowed from different sets.
+    /// Optional Hide Composer / Show Composer (or iPad Composer | Keyboard).
+    var modeControl: TerminalAgentSwitcherModeControl?
+    /// Matches `UIPasteControl`'s fixed glyph size in the row below. The
+    /// optically smaller Composer symbol is corrected at its call site.
     private static let glyphPointSize: CGFloat = 12
+    private static let composerGlyphPointSize: CGFloat = 14
+    private static let glyphSlotSize: CGFloat = 18
+    private static let groupedGlyphOffset: CGFloat = 2
     @Environment(\.displayScale) private var displayScale
 
     private var hairline: CGFloat { 1 / max(displayScale, 1) }
@@ -519,31 +542,26 @@ struct TerminalAgentSwitcherRow: View {
             Rectangle()
                 .fill(Color(uiColor: .separator))
                 .frame(width: hairline, height: 20)
+            if let modeControl {
+                modeControlView(modeControl)
+            }
             if isKeyboardUp, let switchKeyboard {
-                Button(action: switchKeyboard) {
-                    Image(
-                        systemName: isToolsKeyboardPresented
-                            ? "keyboard" : "wrench.and.screwdriver"
-                    )
-                        .font(.system(size: Self.glyphPointSize))
-                        .foregroundStyle(Color(uiColor: .label))
-                        .frame(width: 44, height: TerminalAgentSwitcherBar.preferredHeight)
-                        .contentTransition(.symbolEffect(.replace))
-                }
-                .accessibilityLabel(
-                    isToolsKeyboardPresented ? "Show iOS keyboard" : "Show tools keyboard")
+                trailingIconButton(
+                    systemImage: isToolsKeyboardPresented
+                        ? "keyboard" : "wrench.and.screwdriver",
+                    pointSize: Self.glyphPointSize,
+                    horizontalOffset: 0,
+                    accessibilityLabel: isToolsKeyboardPresented
+                        ? "Show iOS keyboard" : "Show tools keyboard",
+                    action: switchKeyboard)
             }
-            Button(action: toggleKeyboard) {
-                Image(
-                    systemName: isKeyboardUp
-                        ? "keyboard.chevron.compact.down" : "keyboard"
-                )
-                .font(.system(size: Self.glyphPointSize))
-                .foregroundStyle(Color(uiColor: .label))
-                .frame(width: 44, height: TerminalAgentSwitcherBar.preferredHeight)
-                .contentTransition(.symbolEffect(.replace))
-            }
-            .accessibilityLabel(isKeyboardUp ? "Dismiss keyboard" : "Show keyboard")
+            trailingIconButton(
+                systemImage: isKeyboardUp
+                    ? "keyboard.chevron.compact.down" : "keyboard",
+                pointSize: Self.glyphPointSize,
+                horizontalOffset: -Self.groupedGlyphOffset,
+                accessibilityLabel: isKeyboardUp ? "Dismiss keyboard" : "Show keyboard",
+                action: toggleKeyboard)
             .padding(.trailing, 8)
         }
         .frame(height: TerminalAgentSwitcherBar.preferredHeight)
@@ -553,6 +571,64 @@ struct TerminalAgentSwitcherRow: View {
                 .frame(height: hairline)
         }
         .background(Color(uiColor: .secondarySystemBackground))
+    }
+
+    @ViewBuilder
+    private func modeControlView(_ control: TerminalAgentSwitcherModeControl) -> some View {
+        switch control {
+        case let .button(systemImage, accessibilityLabel, accessibilityHint, action):
+            trailingIconButton(
+                systemImage: systemImage,
+                pointSize: Self.composerGlyphPointSize,
+                horizontalOffset: Self.groupedGlyphOffset,
+                accessibilityLabel: accessibilityLabel,
+                accessibilityHint: accessibilityHint,
+                action: action)
+        case let .segmented(selection, select):
+            Picker("Input mode", selection: Binding(
+                get: { selection },
+                set: select)
+            ) {
+                ForEach(AgentInputMode.allCases) { mode in
+                    Text(mode.segmentTitle).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 184)
+            .padding(.horizontal, 4)
+            .accessibilityLabel("Input mode")
+        }
+    }
+
+    @ViewBuilder
+    private func trailingIconButton(
+        systemImage: String,
+        pointSize: CGFloat,
+        horizontalOffset: CGFloat,
+        accessibilityLabel: String,
+        accessibilityHint: String? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
+        let button = Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: pointSize))
+                .foregroundStyle(Color(uiColor: .label))
+                .frame(width: Self.glyphSlotSize, height: Self.glyphSlotSize)
+                .offset(x: horizontalOffset)
+                .frame(width: 44, height: TerminalAgentSwitcherBar.preferredHeight)
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .buttonStyle(.plain)
+        .frame(width: 44, height: 44)
+        .contentShape(Rectangle())
+        .padding(.vertical, (TerminalAgentSwitcherBar.preferredHeight - 44) / 2)
+        .accessibilityLabel(accessibilityLabel)
+
+        if let accessibilityHint {
+            button.accessibilityHint(accessibilityHint)
+        } else {
+            button
+        }
     }
 
     private struct StripRepresentable: UIViewRepresentable {

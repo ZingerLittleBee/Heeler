@@ -7,6 +7,20 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Changed
+
+- When no size has been saved, Terminal Text Size now defaults to 9 pt instead
+  of 14 pt. Existing saved sizes do not change. (PR #253)
+
+### Added
+
+- Agent detail now offers Direct Input, which hides the Composer and routes iOS
+  keyboard input directly to the live Attach PTY. A persistent row above the
+  Agent switcher provides Esc, Tab, Shift-Tab, arrow keys, Backspace,
+  Shift-Enter, and Enter; keyboard show/hide controls remain in the switcher.
+  Composer remains the default. Switching modes preserves the draft and keeps
+  a visible iOS keyboard in place. (#251; PR #253)
+
 ## [0.1.3] - 2026-08-28
 
 ### Changed

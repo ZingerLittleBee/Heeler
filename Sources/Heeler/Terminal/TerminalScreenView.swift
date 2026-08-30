@@ -1,4 +1,5 @@
 import GhosttyTerminal
+import Observation
 import SwiftUI
 import UIKit
 
@@ -30,12 +31,26 @@ struct TerminalClipboard {
 /// A handle on the live terminal for chrome that sits outside it. The reference
 /// is weak and set by the surface itself, so an Agent switch rebuilding the
 /// terminal cannot leave the keyboard toggle or Composer quick keys driving a
-/// dead one.
+/// dead one. First-responder state is observable so Direct Input chrome can
+/// refresh without waiting on an unrelated SwiftUI invalidation.
 @MainActor
+@Observable
 final class TerminalKeyboardControl {
-    weak var terminal: HeelerTerminalView?
+    weak var terminal: HeelerTerminalView? {
+        didSet {
+            oldValue?.onFirstResponderChange = nil
+            terminal?.onFirstResponderChange = { [weak self] in
+                self?.syncFirstResponder()
+            }
+            syncFirstResponder()
+        }
+    }
 
-    var isKeyboardUp: Bool { terminal?.isFirstResponder ?? false }
+    /// Ghostty first-responder intent. Distinct from software-keyboard inset:
+    /// a hardware keyboard can keep this true with a zero footprint.
+    private(set) var isFirstResponder = false
+
+    var isKeyboardUp: Bool { isFirstResponder }
 
     func toggleKeyboard() {
         guard let terminal else { return }
@@ -44,6 +59,14 @@ final class TerminalKeyboardControl {
         } else {
             terminal.requestKeyboard()
         }
+    }
+
+    func requestKeyboard() {
+        terminal?.requestKeyboard()
+    }
+
+    func dismissKeyboard() {
+        _ = terminal?.dismissKeyboard()
     }
 
     func sendQuickKey(_ key: AgentQuickKey) {
@@ -65,10 +88,27 @@ final class TerminalKeyboardControl {
     func paste(_ text: String) {
         terminal?.requestPaste(text)
     }
+
+    private func syncFirstResponder() {
+        let next = terminal?.isFirstResponder ?? false
+        guard isFirstResponder != next else { return }
+        isFirstResponder = next
+    }
 }
 
 /// The interactive Ghostty surface. PTY bytes flow into an in-memory Ghostty
 /// session, while its write and resize callbacks flow back to Attach.
+enum TerminalTextInputStyle: Equatable {
+    case terminal
+    case naturalLanguage
+}
+
+enum TerminalKeyboardHandoffOutcome: Equatable {
+    case settled
+    case timedOut
+    case cancelled
+}
+
 struct TerminalScreenView: UIViewRepresentable {
     let feed: TerminalByteFeed
     #if DEBUG
@@ -86,10 +126,20 @@ struct TerminalScreenView: UIViewRepresentable {
     /// closure rather than a stored flag keeps the answer tied to the
     /// surface's creation instead of to how often SwiftUI evaluates the body.
     var claimsKeyboard: (@MainActor () -> Bool)?
+    /// Reports whether an update-time responder handoff reached the current,
+    /// visible terminal. The owner keeps Composer mounted on failure.
+    var keyboardHandoffID: UUID?
+    var isKeyboardHandoffCurrent: (@MainActor (_ id: UUID) -> Bool)?
+    var onKeyboardHandoffResult: (@MainActor (_ id: UUID, _ succeeded: Bool) -> Void)?
+    /// Reports whether this terminal settled the handoff or had to abandon it.
+    var onKeyboardHandoffEnded: (@MainActor (
+        _ id: UUID, _ outcome: TerminalKeyboardHandoffOutcome
+    ) -> Void)?
     /// Handed the surface once it exists, so the Agent strip's toggle can
     /// raise and lower this terminal's keyboard.
     var keyboardControl: TerminalKeyboardControl?
     var isLocalInputEnabled = true
+    var textInputStyle = TerminalTextInputStyle.terminal
     var theme: TerminalTheme = .default
     var fontSize: Float = TerminalZoomSettings.defaultFontSize
     var fontFamily: String?
@@ -113,6 +163,12 @@ struct TerminalScreenView: UIViewRepresentable {
         // terminal's first appearance, not to every state change after it.
         view.raisesKeyboardWhenReady = claimsKeyboard?() ?? false
         keyboardControl?.terminal = view
+        view.onKeyboardHandoffEnded = { [weak view, weak keyboardControl] id, outcome in
+            guard let view else { return }
+            if let keyboardControl, keyboardControl.terminal !== view { return }
+            onKeyboardHandoffEnded?(id, outcome)
+        }
+        view.setTextInputStyle(textInputStyle)
         view.setLocalInputEnabled(isLocalInputEnabled)
         // The feed holds the surface weakly so a replaced UIKit view cannot be
         // kept alive by an obsolete terminal pipeline.
@@ -162,7 +218,32 @@ struct TerminalScreenView: UIViewRepresentable {
             onScroll: onScroll,
             onPaste: onPaste)
         keyboardControl?.terminal = view
+        view.onKeyboardHandoffEnded = { [weak view, weak keyboardControl] id, outcome in
+            guard let view else { return }
+            if let keyboardControl, keyboardControl.terminal !== view { return }
+            onKeyboardHandoffEnded?(id, outcome)
+        }
+        let claimsKeyboardOnEnable = !view.isLocalInputEnabled
+            && isLocalInputEnabled
+            && (claimsKeyboard?() ?? false)
+        view.setTextInputStyle(textInputStyle)
         view.setLocalInputEnabled(isLocalInputEnabled)
+        if claimsKeyboardOnEnable, let keyboardHandoffID {
+            DispatchQueue.main.async { [weak view, weak keyboardControl] in
+                guard let view,
+                      view.window != nil,
+                      view.isLocalInputEnabled,
+                      keyboardControl?.terminal === view,
+                      isKeyboardHandoffCurrent?(keyboardHandoffID) == true
+                else {
+                    onKeyboardHandoffResult?(keyboardHandoffID, false)
+                    return
+                }
+                onKeyboardHandoffResult?(
+                    keyboardHandoffID,
+                    view.requestKeyboardHandoff(id: keyboardHandoffID))
+            }
+        }
         view.applyTheme(theme)
         view.applyFontSize(fontSize)
         view.applyFontFamily(fontFamily)
@@ -178,18 +259,43 @@ struct TerminalScreenView: UIViewRepresentable {
 
 /// Bridges Ghostty's sendable session callbacks onto the UI's main-actor
 /// closures without making the transport layer depend on Ghostty types.
+private final class TerminalResizeSequence: @unchecked Sendable {
+    private let lock = NSLock()
+    private var latest: UInt64 = 0
+
+    func next() -> UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        latest &+= 1
+        return latest
+    }
+
+    func current() -> UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        return latest
+    }
+}
+
 @MainActor
-private final class TerminalSessionCallbackBridge {
+final class TerminalSessionCallbackBridge {
     var onSizeChanged: ((Int, Int) -> Void)?
     var onViewportTextChanged: ((String) -> Void)?
     var onSend: ((Data) -> Void)?
     var onScroll: ((Data, Int) -> Void)?
     var onPaste: ((String, Bool) -> Void)?
     var onViewport: ((InMemoryTerminalViewport) -> Void)?
+    var isSizeReportCurrent: ((_ columns: Int, _ rows: Int) -> Bool)?
     var onReliableInput: (() -> Void)?
     var onTerminalInput: ((Data) -> Void)?
+    nonisolated private let resizeSequence = TerminalResizeSequence()
+    private var pendingResizeReports: [UInt64: InMemoryTerminalViewport] = [:]
+    private var lastProcessedResizeSequence: UInt64 = 0
+    private var discardsResizeReportsThrough: UInt64 = 0
     private var defersSizeReports = false
     private var deferredSize: (columns: Int, rows: Int)?
+    private var finishesSizeReportDeferralThrough: UInt64?
+    private var suppressesDuplicateSize: (columns: Int, rows: Int)?
 
     init(
         onSizeChanged: ((Int, Int) -> Void)?,
@@ -218,34 +324,100 @@ private final class TerminalSessionCallbackBridge {
     }
 
     nonisolated func resize(_ viewport: InMemoryTerminalViewport) {
+        let sequence = resizeSequence.next()
         Task { @MainActor [weak self] in
-            guard let self else { return }
-            onViewport?(viewport)
-            let size = (columns: Int(viewport.columns), rows: Int(viewport.rows))
-            if defersSizeReports {
-                deferredSize = size
-            } else {
-                onSizeChanged?(size.columns, size.rows)
-            }
+            self?.receiveResize(viewport, sequence: sequence)
         }
     }
 
     func beginSizeReportDeferral() {
+        // A Ghostty resize may already have left its callback thread while its
+        // main-actor delivery is still queued. It describes the layout before
+        // this freeze and must not become the deferred result merely because
+        // its Task happens to run after the handoff begins.
+        discardsResizeReportsThrough = max(
+            discardsResizeReportsThrough, resizeSequence.current())
         defersSizeReports = true
         deferredSize = nil
+        finishesSizeReportDeferralThrough = nil
+        suppressesDuplicateSize = nil
     }
 
     func finishSizeReportDeferral() {
         guard defersSizeReports else { return }
-        defersSizeReports = false
-        guard let deferredSize else { return }
-        self.deferredSize = nil
-        onSizeChanged?(deferredSize.columns, deferredSize.rows)
+        // `resize` crosses onto the main actor asynchronously. Keep the freeze
+        // in force until every callback that had already left Ghostty when the
+        // thaw was requested has been consumed in sequence.
+        finishesSizeReportDeferralThrough = resizeSequence.current()
+        completeSizeReportDeferralIfReady()
+    }
+
+    func provideAuthoritativeDeferredSize(columns: Int, rows: Int) {
+        guard defersSizeReports else { return }
+        deferredSize = (columns, rows)
     }
 
     func cancelSizeReportDeferral() {
+        discardsResizeReportsThrough = max(
+            discardsResizeReportsThrough, resizeSequence.current())
         defersSizeReports = false
         deferredSize = nil
+        finishesSizeReportDeferralThrough = nil
+        suppressesDuplicateSize = nil
+    }
+
+    private func receiveResize(
+        _ viewport: InMemoryTerminalViewport,
+        sequence: UInt64
+    ) {
+        pendingResizeReports[sequence] = viewport
+
+        while let viewport = pendingResizeReports.removeValue(
+            forKey: lastProcessedResizeSequence &+ 1)
+        {
+            lastProcessedResizeSequence &+= 1
+            if lastProcessedResizeSequence > discardsResizeReportsThrough {
+                let size = (columns: Int(viewport.columns), rows: Int(viewport.rows))
+                if isSizeReportCurrent?(size.columns, size.rows) != false {
+                    onViewport?(viewport)
+                    if defersSizeReports {
+                        deferredSize = size
+                    } else {
+                        deliverSize(size)
+                    }
+                }
+            }
+            completeSizeReportDeferralIfReady()
+        }
+    }
+
+    private func completeSizeReportDeferralIfReady() {
+        guard let finishSequence = finishesSizeReportDeferralThrough,
+              lastProcessedResizeSequence >= finishSequence
+        else { return }
+        finishesSizeReportDeferralThrough = nil
+        defersSizeReports = false
+        guard let deferredSize else { return }
+        self.deferredSize = nil
+        guard let onSizeChanged else { return }
+        onSizeChanged(deferredSize.columns, deferredSize.rows)
+        // The surface delegate supplied the settled grid synchronously. The
+        // equivalent engine callback can still be in Ghostty's IO pipeline;
+        // consume that one duplicate when it arrives. A different current
+        // grid clears the token and is delivered normally.
+        suppressesDuplicateSize = deferredSize
+    }
+
+    private func deliverSize(_ size: (columns: Int, rows: Int)) {
+        if let suppressedSize = suppressesDuplicateSize {
+            suppressesDuplicateSize = nil
+            if suppressedSize.columns == size.columns,
+               suppressedSize.rows == size.rows
+            {
+                return
+            }
+        }
+        onSizeChanged?(size.columns, size.rows)
     }
 
     func paste(_ text: String, bracketed: Bool) {
@@ -300,6 +472,12 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// was mid-conversation — dropping the keyboard would hide the switcher
     /// along with it.
     var raisesKeyboardWhenReady = false
+    /// Notifies ``TerminalKeyboardControl`` when first-responder intent changes.
+    var onFirstResponderChange: (() -> Void)?
+    /// Completes the app-owned inset freeze for a responder handoff after the
+    /// terminal's own keyboard frame has settled.
+    var onKeyboardHandoffEnded: ((UUID, TerminalKeyboardHandoffOutcome) -> Void)?
+    private var activeKeyboardHandoffID: UUID?
     /// How many times the input views have been rebuilt. Nothing else observes
     /// the rebuild that republishes the keyboard's settled frame after a
     /// handoff, and a lost rebuild costs the terminal a toolbar's worth of
@@ -314,7 +492,21 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// an inherited keyboard never leaves, so its settled signal is the frame
     /// change instead.
     private var keyboardTransitionEndsOnFrameChange = false
+    /// An inherited keyboard first publishes the frame that still includes
+    /// both responders' accessories. Rebuilding the input views publishes the
+    /// destination-only frame; the handoff cannot settle before that second
+    /// owned frame arrives.
+    private var didReloadInputViewsForKeyboardHandoff = false
+    /// The first owned keyboard frame can arrive synchronously from
+    /// `becomeFirstResponder()`. Defer rebuilding until the responder-handoff
+    /// owner has accepted the request, and coalesce any duplicate first
+    /// frames that arrive in the meantime.
+    private var keyboardHandoffReloadIsScheduled = false
+    private var keyboardTransitionCycleID: UUID?
     private var keyboardTransitionFallbackTask: Task<Void, Never>?
+    /// Test seam for process-wide keyboard notification ownership. Production
+    /// reads the window-local layout guide directly.
+    var keyboardLayoutFrameProvider: ((UIWindow) -> CGRect)?
     /// How long an unsettled handoff may keep the grid frozen before the
     /// freeze force-ends anyway — a leash for production, where the settle
     /// signal can fail to arrive. Tests stretch it so a loaded runner cannot
@@ -328,12 +520,16 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private var responderGate = TerminalKeyboardResponderGate()
     private var viewportSnapshotTask: Task<Void, Never>?
     private(set) var isLocalInputEnabled = true
+    private var textInputStyle = TerminalTextInputStyle.terminal
+    private var defaultLeadingAssistantGroups: [UIBarButtonItemGroup]?
+    private var defaultTrailingAssistantGroups: [UIBarButtonItemGroup]?
     // Ghostty keeps only marked text in its UITextInput document. UIKit needs
     // committed text to remain in that document so Backspace can observe a
     // shrinking selection and continue its native key repeat.
     private var textInputStorage = ""
     private var textInputSelection = NSRange(location: 0, length: 0)
     private var terminalGridSize = (columns: 80, rows: 24)
+    private var hasTerminalGridMetrics = false
     private var terminalCellSize = CGSize(width: 8, height: 16)
     private var touchScrollAccumulator = TerminalTouchScrollAccumulator()
     private var touchScrollMomentumDisplayLink: CADisplayLink?
@@ -354,6 +550,42 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
 
     override var inputView: UIView? {
         terminalInputView
+    }
+
+    override var autocorrectionType: UITextAutocorrectionType {
+        get { textInputStyle == .naturalLanguage ? .default : .no }
+        set {}
+    }
+
+    override var autocapitalizationType: UITextAutocapitalizationType {
+        get { textInputStyle == .naturalLanguage ? .sentences : .none }
+        set {}
+    }
+
+    override var spellCheckingType: UITextSpellCheckingType {
+        get { textInputStyle == .naturalLanguage ? .default : .no }
+        set {}
+    }
+
+    override var smartQuotesType: UITextSmartQuotesType {
+        get { textInputStyle == .naturalLanguage ? .default : .no }
+        set {}
+    }
+
+    override var smartDashesType: UITextSmartDashesType {
+        get { textInputStyle == .naturalLanguage ? .default : .no }
+        set {}
+    }
+
+    override var smartInsertDeleteType: UITextSmartInsertDeleteType {
+        get { textInputStyle == .naturalLanguage ? .default : .no }
+        set {}
+    }
+
+    @available(iOS 17.0, *)
+    override var inlinePredictionType: UITextInlinePredictionType {
+        get { textInputStyle == .naturalLanguage ? .default : .no }
+        set {}
     }
 
     override var beginningOfDocument: UITextPosition {
@@ -506,7 +738,9 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         if isFirstResponder, !responderGate.mayBecomeFirstResponder {
             return true
         }
-        return super.becomeFirstResponder()
+        let accepted = super.becomeFirstResponder()
+        onFirstResponderChange?()
+        return accepted
     }
 
     /// Ghostty's `touchesEnded` dismisses the keyboard after any body tap or
@@ -517,7 +751,11 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     @discardableResult
     override func resignFirstResponder() -> Bool {
         guard responderGate.mayResignFirstResponder else { return false }
-        return super.resignFirstResponder()
+        let resigned = super.resignFirstResponder()
+        if resigned {
+            onFirstResponderChange?()
+        }
+        return resigned
     }
 
     init(
@@ -546,7 +784,8 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
             },
             resize: { [weak callbackBridge] viewport in
                 callbackBridge?.resize(viewport)
-            })
+            },
+            suppressesPixelOnlyResizes: true)
         // Font size rides the controller's per-session configuration rather
         // than the surface's one-shot option, so later changes reach the live
         // surface through the same path the initial value took.
@@ -569,8 +808,9 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         inputAccessoryItems = []
         configuration = TerminalSurfaceOptions(backend: .inMemory(terminalSession))
         controller = terminalController
-        callbackBridge.onViewport = { [weak self] viewport in
-            self?.updateTouchScrollMetrics(viewport)
+        callbackBridge.isSizeReportCurrent = { [weak self] columns, rows in
+            guard let self, hasTerminalGridMetrics else { return true }
+            return terminalGridSize.columns == columns && terminalGridSize.rows == rows
         }
         callbackBridge.onReliableInput = { [weak self] in
             self?.reliableInputDidBegin()
@@ -698,8 +938,25 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// Raises the keyboard, and records that the user wants it up.
     func requestKeyboard() {
         guard isLocalInputEnabled else { return }
-        finishKeyboardTransitionLayout()
+        if activeKeyboardHandoffID == nil {
+            finishKeyboardTransitionLayout(handoffOutcome: .cancelled)
+        }
         raiseKeyboard()
+    }
+
+    /// Transfers an already-visible keyboard to this terminal without
+    /// exposing the intermediate layouts UIKit publishes between responders.
+    @discardableResult
+    func requestKeyboardHandoff(id: UUID) -> Bool {
+        guard isLocalInputEnabled, window != nil else { return false }
+        activeKeyboardHandoffID = id
+        beginKeyboardTransitionLayoutDeferral(endsOnFrameChange: true)
+        raiseKeyboard()
+        guard isFirstResponder else {
+            cancelKeyboardTransitionLayoutDeferral()
+            return false
+        }
+        return true
     }
 
     private func raiseKeyboard() {
@@ -722,8 +979,34 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     func setLocalInputEnabled(_ isEnabled: Bool) {
         guard isLocalInputEnabled != isEnabled else { return }
         isLocalInputEnabled = isEnabled
+        if !isEnabled {
+            cancelKeyboardTransitionLayoutDeferral()
+        }
         if !isEnabled, isFirstResponder {
             _ = dismissKeyboard()
+        }
+    }
+
+    func setTextInputStyle(_ style: TerminalTextInputStyle) {
+        guard textInputStyle != style else { return }
+        textInputStyle = style
+        applyInputAssistantStyle()
+    }
+
+    func installInputAssistantStyle() {
+        defaultLeadingAssistantGroups = inputAssistantItem.leadingBarButtonGroups
+        defaultTrailingAssistantGroups = inputAssistantItem.trailingBarButtonGroups
+        applyInputAssistantStyle()
+    }
+
+    private func applyInputAssistantStyle() {
+        switch textInputStyle {
+        case .terminal:
+            inputAssistantItem.leadingBarButtonGroups = []
+            inputAssistantItem.trailingBarButtonGroups = []
+        case .naturalLanguage:
+            inputAssistantItem.leadingBarButtonGroups = defaultLeadingAssistantGroups ?? []
+            inputAssistantItem.trailingBarButtonGroups = defaultTrailingAssistantGroups ?? []
         }
     }
 
@@ -732,6 +1015,18 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         reliableInputDidBegin()
         recordCommittedText(text)
         callbackBridge.paste(text, bracketed: usesBracketedPaste)
+    }
+
+    /// Soft-keyboard Return arrives here as `"\n"` (UIKeyInput). Direct Input
+    /// and Shell treat Enter as PTY CR (`0x0D`), matching shortcut Enter and
+    /// `TerminalControlKey.enter` — not LF.
+    override func insertText(_ text: String) {
+        guard isLocalInputEnabled else { return }
+        if text == "\n" {
+            super.insertText("\r")
+            return
+        }
+        super.insertText(text)
     }
 
     override func deleteBackward() {
@@ -853,7 +1148,6 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         if window == nil {
             stopTouchScrollMomentum()
             responderGate.invalidateTouches()
-            cancelKeyboardTransitionLayoutDeferral()
         } else {
             inheritKeyboard()
         }
@@ -925,15 +1219,20 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// frame rather than through SwiftUI's two-stage avoidance — see
     /// ``TerminalKeyboardInset``.
     private func beginKeyboardTransitionLayoutDeferral(endsOnFrameChange: Bool = false) {
+        keyboardGridReportTask?.cancel()
+        keyboardGridReportTask = nil
         defersLayoutForKeyboardTransition = true
         keyboardTransitionEndsOnFrameChange = endsOnFrameChange
+        didReloadInputViewsForKeyboardHandoff = false
+        keyboardHandoffReloadIsScheduled = false
+        keyboardTransitionCycleID = UUID()
         callbackBridge.beginSizeReportDeferral()
         keyboardTransitionFallbackTask?.cancel()
         let fallbackDelay = keyboardTransitionFallbackDelay
         keyboardTransitionFallbackTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(fallbackDelay))
             guard !Task.isCancelled else { return }
-            self?.finishKeyboardTransitionLayout()
+            self?.finishKeyboardTransitionLayout(handoffOutcome: .timedOut)
         }
     }
 
@@ -956,17 +1255,44 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// (#157).
     func keyboardFrameDidSettle() {
         guard keyboardTransitionEndsOnFrameChange else { return }
-        finishKeyboardTransitionLayout()
+        guard didReloadInputViewsForKeyboardHandoff else {
+            guard !keyboardHandoffReloadIsScheduled,
+                  let cycleID = keyboardTransitionCycleID
+            else { return }
+            keyboardHandoffReloadIsScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      self.keyboardTransitionCycleID == cycleID,
+                      self.keyboardTransitionEndsOnFrameChange,
+                      self.keyboardHandoffReloadIsScheduled
+                else { return }
+                // Set the phase first because UIKit may synchronously publish
+                // the repopulated frame from inside reloadInputViews().
+                self.keyboardHandoffReloadIsScheduled = false
+                self.didReloadInputViewsForKeyboardHandoff = true
+                UIView.performWithoutAnimation { self.reloadInputViews() }
+            }
+            return
+        }
+        finishKeyboardTransitionLayout(handoffOutcome: .settled)
     }
 
-    func finishKeyboardTransitionLayout() {
+    func finishKeyboardTransitionLayout(
+        handoffOutcome: TerminalKeyboardHandoffOutcome = .settled
+    ) {
         guard defersLayoutForKeyboardTransition else { return }
         let inheritedTheKeyboard = keyboardTransitionEndsOnFrameChange
+        let alreadyReloadedInputViews = didReloadInputViewsForKeyboardHandoff
+        let settledHandoffID = activeKeyboardHandoffID
+        activeKeyboardHandoffID = nil
         defersLayoutForKeyboardTransition = false
         keyboardTransitionEndsOnFrameChange = false
+        didReloadInputViewsForKeyboardHandoff = false
+        keyboardHandoffReloadIsScheduled = false
+        keyboardTransitionCycleID = nil
         keyboardTransitionFallbackTask?.cancel()
         keyboardTransitionFallbackTask = nil
-        if inheritedTheKeyboard {
+        if inheritedTheKeyboard, !alreadyReloadedInputViews {
             // Both terminals' accessories were on the keyboard while it
             // changed hands, and that is the frame the keyboard published:
             // one accessory too tall. UIKit does not publish another when the
@@ -977,17 +1303,39 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         }
         setNeedsLayout()
         layoutIfNeeded()
+        if hasTerminalGridMetrics {
+            // A fresh surface can publish its first grid just before the
+            // handoff freeze begins. The bridge correctly rejects that queued
+            // pre-freeze callback, and libghostty may suppress an identical
+            // post-layout callback. Seed the deferral from the surface
+            // delegate's synchronous final metrics so Attach still receives
+            // its initial size, without letting the stale grid escape.
+            callbackBridge.provideAuthoritativeDeferredSize(
+                columns: terminalGridSize.columns,
+                rows: terminalGridSize.rows)
+        }
         scheduleGridReport(after: Self.gridSettleDelay)
+        if inheritedTheKeyboard, let settledHandoffID {
+            onKeyboardHandoffEnded?(settledHandoffID, handoffOutcome)
+        }
     }
 
     private func cancelKeyboardTransitionLayoutDeferral() {
+        let cancelledHandoffID = activeKeyboardHandoffID
+        activeKeyboardHandoffID = nil
         defersLayoutForKeyboardTransition = false
         keyboardTransitionEndsOnFrameChange = false
+        didReloadInputViewsForKeyboardHandoff = false
+        keyboardHandoffReloadIsScheduled = false
+        keyboardTransitionCycleID = nil
         keyboardTransitionFallbackTask?.cancel()
         keyboardTransitionFallbackTask = nil
         keyboardGridReportTask?.cancel()
         keyboardGridReportTask = nil
         callbackBridge.cancelSizeReportDeferral()
+        if let cancelledHandoffID {
+            onKeyboardHandoffEnded?(cancelledHandoffID, .cancelled)
+        }
     }
 
     var usesApplicationCursorKeys: Bool {
@@ -1200,18 +1548,6 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         }
     }
 
-    /// Ghostty reports cell metrics in surface pixels; touches arrive in
-    /// points, so the grid has to be converted once per resize.
-    private func updateTouchScrollMetrics(_ viewport: InMemoryTerminalViewport) {
-        terminalGridSize = (Int(viewport.columns), Int(viewport.rows))
-        guard viewport.cellWidthPixels > 0, viewport.cellHeightPixels > 0 else { return }
-        let scale = window?.screen.nativeScale ?? traitCollection.displayScale
-        guard scale > 0 else { return }
-        terminalCellSize = CGSize(
-            width: CGFloat(viewport.cellWidthPixels) / scale,
-            height: CGFloat(viewport.cellHeightPixels) / scale)
-    }
-
     func startTouchScrollMomentum(velocityY: CGFloat) {
         guard abs(velocityY) >= 80 else {
             touchScrollAccumulator.reset()
@@ -1268,13 +1604,13 @@ extension HeelerTerminalView: TerminalSurfaceOpenURLDelegate,
 
     /// The one metrics source that still carries cell dimensions. Since
     /// GhosttyTerminal 1.4.0 the in-memory session's resize dispatches come
-    /// from the engine's receive-resize callback, which reports the grid and
-    /// total pixels but not the cell size — `updateTouchScrollMetrics` keeps
-    /// consuming those for columns and rows, while this delegate keeps
-    /// `terminalCellSize` real so tap-to-cell mapping and touch-scroll row
-    /// heights don't fall back to the 8×16 default.
+    /// from the engine's receive-resize callback, which reports the logical
+    /// grid to the Host, while this delegate keeps `terminalCellSize` real so
+    /// tap-to-cell mapping and touch-scroll row heights don't fall back to the
+    /// 8×16 default.
     func terminalDidResize(_ size: TerminalGridMetrics) {
         terminalGridSize = (Int(size.columns), Int(size.rows))
+        hasTerminalGridMetrics = true
         guard size.cellWidthPixels > 0, size.cellHeightPixels > 0 else { return }
         let scale = window?.screen.nativeScale ?? traitCollection.displayScale
         guard scale > 0 else { return }
