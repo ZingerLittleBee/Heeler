@@ -23,7 +23,7 @@ struct SessionDriverE2ETests {
         let driver = SessionDriver()
 
         _ = try await driver.handshake(
-            endpoint: environment.endpoint,
+            endpoint: environment.postQuantumEndpoint,
             timeout: .seconds(5))
         try await driver.close(timeout: .seconds(2))
     }
@@ -2649,6 +2649,7 @@ private enum WeakNetworkProxyFixtureError: Error {
 
 private struct SessionDriverTestEnvironment: Sendable {
     let endpoint: SSHEndpoint
+    let postQuantumEndpoint: SSHEndpoint
     let curve25519Endpoint: SSHEndpoint
     let username: String
     let privateKey: Curve25519.Signing.PrivateKey
@@ -2670,6 +2671,8 @@ private struct SessionDriverTestEnvironment: Sendable {
             let host = environment["HEELER_SSH_E2E_HOST"],
             let portText = environment["HEELER_SSH_E2E_PORT"],
             let port = UInt16(portText),
+            let postQuantumPortText = environment["HEELER_SSH_E2E_PQ_PORT"],
+            let postQuantumPort = UInt16(postQuantumPortText),
             let curve25519PortText = environment["HEELER_SSH_E2E_RESTRICTED_PORT"],
             let curve25519Port = UInt16(curve25519PortText),
             let username = environment["HEELER_SSH_E2E_USERNAME"],
@@ -2681,6 +2684,7 @@ private struct SessionDriverTestEnvironment: Sendable {
         }
         return SessionDriverTestEnvironment(
             endpoint: SSHEndpoint(host: host, port: port),
+            postQuantumEndpoint: SSHEndpoint(host: host, port: postQuantumPort),
             curve25519Endpoint: SSHEndpoint(host: host, port: curve25519Port),
             username: username,
             privateKey: privateKey)

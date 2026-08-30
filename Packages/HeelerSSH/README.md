@@ -172,6 +172,10 @@ display names exactly:
 - `a transport-send owner error with outbound pending invalidates`
 - `a bridge write to a closed peer reports peerClosed`
 
+The post-quantum handshake uses its own ML-KEM-only sshd endpoint. The shared
+resource and timing suites remain on a Curve25519-only baseline so algorithm
+coverage cannot change their fixture behavior.
+
 The package lane treats the count and display names as merge gates, so adding
 E2E behavior requires updating both in the same change.
 

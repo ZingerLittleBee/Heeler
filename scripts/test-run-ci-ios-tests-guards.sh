@@ -104,12 +104,21 @@ extract_shipped_function release_resource_lock
 app_fixture_lane_count=$(grep -c '^run_suite ' "$gate_script")
 [[ "$app_fixture_lane_count" == 3 ]] \
     || die "gate has $app_fixture_lane_count app fixture lanes, expected 3"
+# These are source-code literals. The variable-looking text must not expand.
+# shellcheck disable=SC2016
 grep -qF 'if [[ "$ci_lane" == "package" ]]; then' "$gate_script" \
     || die "gate has no isolated package lane"
 grep -qF 'HEELER_CI_LANE: package' "$repo_root/.github/workflows/ci.yml" \
     || die "workflow has no package-only job"
 grep -qF 'HEELER_CI_LANE: app' "$repo_root/.github/workflows/ci.yml" \
     || die "workflow does not pin the app-only job"
+# shellcheck disable=SC2016
+grep -qF '"KexAlgorithms curve25519-sha256" >> "$modern_config"' "$gate_script" \
+    || die "shared modern fixture does not pin the Curve25519 baseline"
+# shellcheck disable=SC2016
+grep -qF '"KexAlgorithms mlkem768x25519-sha256" >> "$post_quantum_config"' \
+    "$gate_script" \
+    || die "post-quantum coverage does not use a dedicated fixture"
 awk '
     /if \[\[ "\$ci_lane" == "app" \]\]; then/ { in_app_lane = 1; next }
     in_app_lane && /clear_simulator_environment/ { cleared = 1 }
