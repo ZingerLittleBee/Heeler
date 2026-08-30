@@ -220,6 +220,7 @@ struct SessionDriverE2ETests {
         // the remote process and temp dir without a parsed PID handle.
         let directory = "/tmp/heeler-raw-tcp-\(UUID().uuidString)"
         let driver = SessionDriver()
+        let bufferFullHold = SessionWaitHold()
         var transport: DirectTCPIPByteTransport?
         var descriptor: Int32 = -1
         var primaryError: (any Error)?
@@ -239,6 +240,9 @@ struct SessionDriverE2ETests {
                 publicKey: environment.publicKeyBlob,
                 signer: { try privateKey.signature(for: $0) },
                 timeout: .seconds(5))
+            await driver.holdNextDirectTCPIPInboundBufferFullForTesting {
+                await bufferFullHold.waitUntilReleased()
+            }
             let opened = try await driver.openDirectTCPIP(
                 endpoint: SSHEndpoint(host: "127.0.0.1", port: launched.port),
                 timeout: .seconds(5))
@@ -246,9 +250,14 @@ struct SessionDriverE2ETests {
             descriptor = try opened.takeDescriptor()
 
             let preDrainState = try await launched.waitUntilStartedAndSettled(using: observer)
-            #expect(
+            try #require(
                 preDrainState == .blocked,
                 "the raw writer completed before the bounded pump was drained")
+            try await requireEventually(
+                "the pump should fill its one-megabyte inbound buffer before draining"
+            ) { await bufferFullHold.hasEntered }
+            #expect(await driver.directTCPIPInboundBufferHighWaterMarkForTesting() == 1_048_576)
+            await bufferFullHold.release()
 
             var offset = 0
             var firstMismatch: String?
@@ -293,6 +302,7 @@ struct SessionDriverE2ETests {
             transport = nil
             try await driver.close(timeout: .seconds(2))
         } catch {
+            await bufferFullHold.release()
             if descriptor >= 0 { Darwin.close(descriptor) }
             transport?.abort()
             await driver.invalidate()

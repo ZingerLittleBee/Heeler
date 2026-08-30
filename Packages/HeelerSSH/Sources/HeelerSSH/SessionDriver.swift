@@ -135,6 +135,8 @@ actor SessionDriver {
     private var sftpIdleWaiters: [UInt64: DriverWaiter] = [:]
 
 #if DEBUG
+    private var directTCPIPInboundBufferHighWaterMark = 0
+    private var nextDirectTCPIPInboundBufferFullHoldForTesting: (@Sendable () async -> Void)?
     private var nextSFTPWriteDelayForTesting: Duration?
     private var sftpWriteDelayIsActiveForTesting = false
     private var nextSessionWaitHoldForTesting: (@Sendable () async throws -> Void)?
@@ -1870,6 +1872,16 @@ actor SessionDriver {
     }
 
 #if DEBUG
+    func directTCPIPInboundBufferHighWaterMarkForTesting() -> Int {
+        directTCPIPInboundBufferHighWaterMark
+    }
+
+    func holdNextDirectTCPIPInboundBufferFullForTesting(
+        _ hold: @escaping @Sendable () async -> Void
+    ) {
+        nextDirectTCPIPInboundBufferFullHoldForTesting = hold
+    }
+
     func delayNextSFTPWriteForTesting(_ delay: Duration) {
         nextSFTPWriteDelayForTesting = delay
     }
@@ -2095,6 +2107,9 @@ actor SessionDriver {
             guard let channel else { throw SSHError.channelFailed }
             let transport = try DirectTCPIPByteTransport()
             let pumpDescriptor = try transport.takePumpDescriptor()
+#if DEBUG
+            directTCPIPInboundBufferHighWaterMark = 0
+#endif
             forwarding = true
             let task = Task { [self] in
                 await pumpDirectTCPIP(
@@ -2304,6 +2319,17 @@ actor SessionDriver {
                 }
                 if readCount > 0 {
                     toInner.append(contentsOf: scratch.prefix(readCount))
+#if DEBUG
+                    directTCPIPInboundBufferHighWaterMark = max(
+                        directTCPIPInboundBufferHighWaterMark,
+                        toInner.count)
+                    if toInner.count == bufferLimit,
+                        let hold = nextDirectTCPIPInboundBufferFullHoldForTesting
+                    {
+                        nextDirectTCPIPInboundBufferFullHoldForTesting = nil
+                        await hold()
+                    }
+#endif
                     madeProgress = true
                 } else if readCount != 0 && readCount != Int(LIBSSH2_ERROR_EAGAIN) {
                     throw SSHError.connectionFailed
@@ -2314,7 +2340,13 @@ actor SessionDriver {
                 }
             }
 
-            if !toInner.isEmpty {
+            let shouldHoldBridgeWrites: Bool
+#if DEBUG
+            shouldHoldBridgeWrites = nextDirectTCPIPInboundBufferFullHoldForTesting != nil
+#else
+            shouldHoldBridgeWrites = false
+#endif
+            if !toInner.isEmpty, !shouldHoldBridgeWrites {
                 switch try Self.writeBridge(toInner, descriptor: bridgeDescriptor) {
                 case .wrote(let written):
                     toInner.removeFirst(written)
