@@ -7,6 +7,13 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- HeelerSSH connections negotiate post-quantum hybrid key exchange
+  (`mlkem768x25519-sha256`) against servers that offer it, via a libssh2
+  snapshot that carries upstream ML-KEM support; servers without it keep
+  using `curve25519-sha256`. (#261)
+
 ## [0.1.3] - 2026-08-28
 
 ### Changed

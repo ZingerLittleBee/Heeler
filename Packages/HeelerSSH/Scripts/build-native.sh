@@ -13,7 +13,7 @@ XCFRAMEWORK_SIGNING_IDENTITY="${HEELER_SSH_XCFRAMEWORK_SIGNING_IDENTITY:-}"
 # shellcheck source=../Sources.lock
 source "${SOURCE_LOCK}"
 
-for command in curl shasum tar patch perl make cmake xcodebuild xcrun codesign; do
+for command in curl shasum tar perl make cmake xcodebuild xcrun codesign; do
     command -v "${command}" >/dev/null || {
         echo "error: required command not found: ${command}" >&2
         exit 1
@@ -61,7 +61,6 @@ fi
 
 LIBSSH2_SOURCE="${WORK_DIR}/libssh2-${LIBSSH2_VERSION}"
 OPENSSL_SOURCE="${WORK_DIR}/openssl-${OPENSSL_VERSION}"
-patch -d "${LIBSSH2_SOURCE}" -p1 < "${PACKAGE_DIR}/Patches/libssh2-modern-algorithms.patch"
 
 build_openssl() {
     local name="$1"
@@ -106,7 +105,7 @@ build_libssh2() {
     local build_dir="${WORK_DIR}/libssh2-${name}"
     local install_dir="${WORK_DIR}/libssh2-${name}-install"
     local security_defines
-    security_defines="-DLIBSSH2_NO_MD5 -DLIBSSH2_NO_MD5_PEM -DLIBSSH2_NO_HMAC_RIPEMD -DLIBSSH2_NO_RSA_SHA1 -DLIBSSH2_NO_AES_CBC -DLIBSSH2_NO_BLOWFISH -DLIBSSH2_NO_RC4 -DLIBSSH2_NO_CAST -DLIBSSH2_NO_3DES"
+    security_defines="-DLIBSSH2_NO_AES_CBC"
 
     env -u CPPFLAGS -u CFLAGS -u CXXFLAGS -u LDFLAGS \
         cmake -S "${LIBSSH2_SOURCE}" -B "${build_dir}" \
@@ -292,8 +291,9 @@ cat > "${GENERATED_ARTIFACTS}/PROVENANCE.md" <<EOF
 - Configuration: Release, static libraries, arm64 device and arm64 Simulator
 - OpenSSL features: no shared library, module, legacy provider, deprecated API, DSA, RC2, RC4, DES, CAST, Blowfish, IDEA, SEED, Camellia, ARIA, SM2, SM3, SM4, Whirlpool, or RIPEMD-160
 - OpenSSL privacy manifest: upstream os-dep/Apple/PrivacyInfo.xcprivacy
-- libssh2 crypto backend: OpenSSL, with DSA, SHA-1 RSA signatures, SHA-1 MACs, MD5, RIPEMD, CBC, Blowfish, RC4, CAST, and 3DES negotiation disabled
-- libssh2 patch: Patches/libssh2-modern-algorithms.patch removes SHA-1 key exchange and MAC methods from negotiation
+- libssh2 crypto backend: OpenSSL; MD5, RIPEMD, RSA-SHA1, SHA-1 KEX/MACs,
+  Blowfish, RC4, CAST, 3DES, and CBC are off (upstream defaults and
+  LIBSSH2_NO_AES_CBC); ML-KEM hybrid key exchanges available
 - Build command: make ssh-artifacts
 EOF
 
