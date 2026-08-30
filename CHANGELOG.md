@@ -7,6 +7,11 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Changed
+
+- Terminal Text Size defaults to 9 pt (was 14 pt). Existing saved sizes are
+  unchanged.
+
 ### Added
 
 - Agent detail can hide the Composer and type into the live Attach PTY with the
