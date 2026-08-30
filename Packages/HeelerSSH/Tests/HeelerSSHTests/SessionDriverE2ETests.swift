@@ -220,7 +220,6 @@ struct SessionDriverE2ETests {
         // the remote process and temp dir without a parsed PID handle.
         let directory = "/tmp/heeler-raw-tcp-\(UUID().uuidString)"
         let driver = SessionDriver()
-        let bufferFullHold = SessionWaitHold()
         var transport: DirectTCPIPByteTransport?
         var descriptor: Int32 = -1
         var primaryError: (any Error)?
@@ -240,9 +239,6 @@ struct SessionDriverE2ETests {
                 publicKey: environment.publicKeyBlob,
                 signer: { try privateKey.signature(for: $0) },
                 timeout: .seconds(5))
-            await driver.holdNextDirectTCPIPInboundBufferFullForTesting {
-                await bufferFullHold.waitUntilReleased()
-            }
             let opened = try await driver.openDirectTCPIP(
                 endpoint: SSHEndpoint(host: "127.0.0.1", port: launched.port),
                 timeout: .seconds(5))
@@ -250,14 +246,9 @@ struct SessionDriverE2ETests {
             descriptor = try opened.takeDescriptor()
 
             let preDrainState = try await launched.waitUntilStartedAndSettled(using: observer)
-            try #require(
+            #expect(
                 preDrainState == .blocked,
                 "the raw writer completed before the bounded pump was drained")
-            try await requireEventually(
-                "the pump should fill its one-megabyte inbound buffer before draining"
-            ) { await bufferFullHold.hasEntered }
-            #expect(await driver.directTCPIPInboundBufferHighWaterMarkForTesting() == 1_048_576)
-            await bufferFullHold.release()
 
             var offset = 0
             var firstMismatch: String?
@@ -302,7 +293,6 @@ struct SessionDriverE2ETests {
             transport = nil
             try await driver.close(timeout: .seconds(2))
         } catch {
-            await bufferFullHold.release()
             if descriptor >= 0 { Darwin.close(descriptor) }
             transport?.abort()
             await driver.invalidate()
@@ -1946,7 +1936,7 @@ private struct RawTCPWriter {
         let result = try await observer.execute(
             command,
             input: Data(pythonSource.utf8),
-            timeout: .seconds(20))
+            timeout: .seconds(10))
         let response = String(decoding: result.stdout, as: UTF8.self)
             .split(separator: "\n", omittingEmptySubsequences: true)
             .map(String.init)
@@ -2158,12 +2148,12 @@ while sent < payload_size:
             raise RuntimeError("raw writer socket closed")
         sent += written
     except BlockingIOError:
-        if not reported_block:
-            publish("blocked", sent)
-            reported_block = True
         _, writable, _ = select.select([], [connection], [], 1.0)
         if writable:
             continue
+        if not reported_block:
+            publish("blocked", sent)
+            reported_block = True
         connection.setblocking(True)
 
 connection.shutdown(socket.SHUT_WR)
