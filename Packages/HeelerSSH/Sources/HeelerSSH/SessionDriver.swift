@@ -2309,13 +2309,14 @@ actor SessionDriver {
             }
 
             if !outerEOF, toInner.count < bufferLimit {
+                let maximumReadCount = min(scratch.count, bufferLimit - toInner.count)
                 let readCount = scratch.withUnsafeMutableBytes { bytes -> Int in
                     guard let baseAddress = bytes.baseAddress else { return 0 }
                     return libssh2_channel_read_ex(
                         channel,
                         0,
                         baseAddress.assumingMemoryBound(to: CChar.self),
-                        bytes.count)
+                        maximumReadCount)
                 }
                 if readCount > 0 {
                     toInner.append(contentsOf: scratch.prefix(readCount))
@@ -2323,11 +2324,13 @@ actor SessionDriver {
                     directTCPIPInboundBufferHighWaterMark = max(
                         directTCPIPInboundBufferHighWaterMark,
                         toInner.count)
-                    if toInner.count == bufferLimit,
+                    if toInner.count >= bufferLimit,
                         let hold = nextDirectTCPIPInboundBufferFullHoldForTesting
                     {
                         nextDirectTCPIPInboundBufferFullHoldForTesting = nil
                         await hold()
+                        if Task.isCancelled { throw SSHError.cancelled }
+                        guard valid else { throw SSHError.connectionInvalidated }
                     }
 #endif
                     madeProgress = true
