@@ -965,6 +965,7 @@ write_common_config \
     "$modern_port" \
     "$fixture_dir/host_ed25519" \
     "$fixture_dir/sshd-modern.pid" > "$modern_config"
+printf '%s\n' "KexAlgorithms mlkem768x25519-sha256" >> "$modern_config"
 write_common_config \
     "$legacy_port" \
     "$fixture_dir/host_rsa" \
@@ -974,7 +975,10 @@ write_common_config \
     "$restricted_port" \
     "$fixture_dir/host_ed25519" \
     "$fixture_dir/sshd-restricted.pid" > "$restricted_config"
-printf '%s\n' "MaxSessions 0" >> "$restricted_config"
+printf '%s\n' \
+    "KexAlgorithms curve25519-sha256" \
+    "MaxSessions 0" \
+    >> "$restricted_config"
 write_common_config \
     "$streamlocal_global_policy_port" \
     "$fixture_dir/host_ed25519" \
@@ -1788,6 +1792,7 @@ push_simulator_environment \
     HEELER_SSH_E2E_REQUIRED \
     HEELER_SSH_E2E_HOST \
     HEELER_SSH_E2E_PORT \
+    HEELER_SSH_E2E_RESTRICTED_PORT \
     HEELER_SSH_E2E_USERNAME \
     HEELER_SSH_E2E_DEVICE_KEY_SEED \
     HEELER_SSH_E2E_WEAK_PORT \
@@ -1807,7 +1812,13 @@ clear_simulator_environment
 
 if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || grep -q 'skipped:' "$package_e2e_log" \
-    || ! grep -q 'Test run with 43 tests in 2 suites passed' "$package_e2e_log" \
+    || ! grep -q 'Test run with 45 tests in 2 suites passed' "$package_e2e_log" \
+    || ! grep -q \
+        'Test "handshake negotiates post-quantum key exchange" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "handshake falls back to Curve25519 key exchange" passed' \
+        "$package_e2e_log" \
     || ! grep -q 'Test "remote transport loss reclaims every owned native resource" passed' \
         "$package_e2e_log" \
     || ! grep -q 'Test "an abruptly severed weak link reclaims every owned native resource" passed' \
@@ -1892,7 +1903,7 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || ! grep -q \
         'Test "a bridge write to a closed peer reports peerClosed" passed' \
         "$package_e2e_log"; then
-    echo "The mandatory HeelerSSH package suites did not execute all forty-three tests" >&2
+    echo "The mandatory HeelerSSH package suites did not execute all forty-five tests" >&2
     exit 1
 fi
 exit 0
