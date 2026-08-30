@@ -82,6 +82,15 @@ struct AgentDirectInputTests {
             arrayLabel: "Array control")
 
         #expect(Self.firstAccessible(labeled: "Indexed control", in: root) != nil)
+        #expect(Self.firstAccessible(labeled: "Array control", in: root) != nil)
+    }
+
+    @Test func accessibilityTraversalDeduplicatesElementsAcrossContainerSources() {
+        let root = IndexedAccessibilityContainerView(
+            indexedLabel: "Shared control",
+            includesIndexedElementInArray: true)
+
+        #expect(Self.accessibleCount(labeled: "Shared control", in: root) == 1)
     }
 
     @Test func sharedActionMenuContractIsExhaustive() {
@@ -1591,6 +1600,7 @@ struct AgentDirectInputTests {
 private final class IndexedAccessibilityContainerView: UIView {
     private let indexedLabel: String
     private let arrayLabel: String?
+    private let includesIndexedElementInArray: Bool
     private lazy var indexedElement: UIAccessibilityElement = {
         let element = UIAccessibilityElement(accessibilityContainer: self)
         element.accessibilityLabel = indexedLabel
@@ -1602,9 +1612,14 @@ private final class IndexedAccessibilityContainerView: UIView {
         return element
     }()
 
-    init(indexedLabel: String, arrayLabel: String? = nil) {
+    init(
+        indexedLabel: String,
+        arrayLabel: String? = nil,
+        includesIndexedElementInArray: Bool = false
+    ) {
         self.indexedLabel = indexedLabel
         self.arrayLabel = arrayLabel
+        self.includesIndexedElementInArray = includesIndexedElementInArray
         super.init(frame: .zero)
     }
 
@@ -1614,7 +1629,12 @@ private final class IndexedAccessibilityContainerView: UIView {
     }
 
     override var accessibilityElements: [Any]? {
-        get { arrayLabel == nil ? [] : [arrayElement] }
+        get {
+            if includesIndexedElementInArray {
+                return [indexedElement]
+            }
+            return arrayLabel == nil ? [] : [arrayElement]
+        }
         set { }
     }
 
