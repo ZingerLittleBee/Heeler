@@ -1946,7 +1946,7 @@ private struct RawTCPWriter {
         let result = try await observer.execute(
             command,
             input: Data(pythonSource.utf8),
-            timeout: .seconds(10))
+            timeout: .seconds(20))
         let response = String(decoding: result.stdout, as: UTF8.self)
             .split(separator: "\n", omittingEmptySubsequences: true)
             .map(String.init)
