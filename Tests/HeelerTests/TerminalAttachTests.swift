@@ -1,4 +1,5 @@
 import Foundation
+import GhosttyTerminal
 import SwiftUI
 import Synchronization
 import Testing
@@ -19,6 +20,93 @@ struct TerminalAttachTests {
 
     private enum FakeAttachChannelError: Error {
         case rejectedWrite
+    }
+
+    private struct ReportedGrid: Equatable {
+        let columns: Int
+        let rows: Int
+    }
+
+    /// A pre-handoff resize can still be inside Ghostty's IO pipeline when the
+    /// keyboard freeze begins, then arrive as if it belonged to the handoff.
+    /// The settled surface grid must replace that stale deferred value.
+    @MainActor
+    @Test func aSettledSurfaceGridOverridesAStaleDeferredResize() async throws {
+        var reportedGrids: [ReportedGrid] = []
+        let bridge = TerminalSessionCallbackBridge(
+            onSizeChanged: { columns, rows in
+                reportedGrids.append(ReportedGrid(columns: columns, rows: rows))
+            },
+            onViewportTextChanged: nil,
+            onSend: nil,
+            onScroll: nil,
+            onPaste: nil)
+        let stale = InMemoryTerminalViewport(columns: 33, rows: 20)
+
+        bridge.beginSizeReportDeferral()
+        await withCheckedContinuation { continuation in
+            bridge.onViewport = { _ in continuation.resume() }
+            bridge.resize(stale)
+        }
+        bridge.onViewport = nil
+        bridge.provideAuthoritativeDeferredSize(columns: 33, rows: 14)
+        bridge.finishSizeReportDeferral()
+        try await waitForGridReportsToSettle { reportedGrids.count }
+        #expect(reportedGrids == [ReportedGrid(columns: 33, rows: 14)])
+    }
+
+    /// Ghostty can publish the engine resize after the surface delegate has
+    /// already supplied the settled fallback. A stale grid is rejected
+    /// against the live surface, and its matching final callback is consumed
+    /// as the fallback's duplicate rather than resizing the Host twice.
+    @MainActor
+    @Test func aSettledFallbackRejectsLateStaleAndDuplicateResizes() async throws {
+        var reportedGrids: [ReportedGrid] = []
+        let bridge = TerminalSessionCallbackBridge(
+            onSizeChanged: { columns, rows in
+                reportedGrids.append(ReportedGrid(columns: columns, rows: rows))
+            },
+            onViewportTextChanged: nil,
+            onSend: nil,
+            onScroll: nil,
+            onPaste: nil)
+        bridge.isSizeReportCurrent = { columns, rows in
+            columns == 33 && rows == 14
+        }
+
+        bridge.beginSizeReportDeferral()
+        bridge.provideAuthoritativeDeferredSize(columns: 33, rows: 14)
+        bridge.finishSizeReportDeferral()
+        try await waitForGridReportsToSettle { reportedGrids.count }
+
+        await withCheckedContinuation { continuation in
+            bridge.onViewport = { _ in continuation.resume() }
+            bridge.resize(InMemoryTerminalViewport(columns: 33, rows: 20))
+            bridge.resize(InMemoryTerminalViewport(columns: 33, rows: 14))
+        }
+        #expect(reportedGrids == [ReportedGrid(columns: 33, rows: 14)])
+    }
+
+    /// Thawing cannot overtake a post-freeze resize whose main-actor delivery
+    /// is still queued, or the deferred final grid is silently lost.
+    @MainActor
+    @Test func aHandoffThawWaitsForItsQueuedResize() async throws {
+        var reportedGrids: [ReportedGrid] = []
+        let bridge = TerminalSessionCallbackBridge(
+            onSizeChanged: { columns, rows in
+                reportedGrids.append(ReportedGrid(columns: columns, rows: rows))
+            },
+            onViewportTextChanged: nil,
+            onSend: nil,
+            onScroll: nil,
+            onPaste: nil)
+        let settled = InMemoryTerminalViewport(columns: 33, rows: 14)
+
+        bridge.beginSizeReportDeferral()
+        bridge.resize(settled)
+        bridge.finishSizeReportDeferral()
+        try await waitForGridReportsToSettle { reportedGrids.count }
+        #expect(reportedGrids == [ReportedGrid(columns: 33, rows: 14)])
     }
 
     @Test func attachOutputPumpWithholdsStartupChatterUntilTheHandshake() async throws {

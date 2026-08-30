@@ -259,18 +259,43 @@ struct TerminalScreenView: UIViewRepresentable {
 
 /// Bridges Ghostty's sendable session callbacks onto the UI's main-actor
 /// closures without making the transport layer depend on Ghostty types.
+private final class TerminalResizeSequence: @unchecked Sendable {
+    private let lock = NSLock()
+    private var latest: UInt64 = 0
+
+    func next() -> UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        latest &+= 1
+        return latest
+    }
+
+    func current() -> UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        return latest
+    }
+}
+
 @MainActor
-private final class TerminalSessionCallbackBridge {
+final class TerminalSessionCallbackBridge {
     var onSizeChanged: ((Int, Int) -> Void)?
     var onViewportTextChanged: ((String) -> Void)?
     var onSend: ((Data) -> Void)?
     var onScroll: ((Data, Int) -> Void)?
     var onPaste: ((String, Bool) -> Void)?
     var onViewport: ((InMemoryTerminalViewport) -> Void)?
+    var isSizeReportCurrent: ((_ columns: Int, _ rows: Int) -> Bool)?
     var onReliableInput: (() -> Void)?
     var onTerminalInput: ((Data) -> Void)?
+    nonisolated private let resizeSequence = TerminalResizeSequence()
+    private var pendingResizeReports: [UInt64: InMemoryTerminalViewport] = [:]
+    private var lastProcessedResizeSequence: UInt64 = 0
+    private var discardsResizeReportsThrough: UInt64 = 0
     private var defersSizeReports = false
     private var deferredSize: (columns: Int, rows: Int)?
+    private var finishesSizeReportDeferralThrough: UInt64?
+    private var suppressesDuplicateSize: (columns: Int, rows: Int)?
 
     init(
         onSizeChanged: ((Int, Int) -> Void)?,
@@ -299,34 +324,100 @@ private final class TerminalSessionCallbackBridge {
     }
 
     nonisolated func resize(_ viewport: InMemoryTerminalViewport) {
+        let sequence = resizeSequence.next()
         Task { @MainActor [weak self] in
-            guard let self else { return }
-            onViewport?(viewport)
-            let size = (columns: Int(viewport.columns), rows: Int(viewport.rows))
-            if defersSizeReports {
-                deferredSize = size
-            } else {
-                onSizeChanged?(size.columns, size.rows)
-            }
+            self?.receiveResize(viewport, sequence: sequence)
         }
     }
 
     func beginSizeReportDeferral() {
+        // A Ghostty resize may already have left its callback thread while its
+        // main-actor delivery is still queued. It describes the layout before
+        // this freeze and must not become the deferred result merely because
+        // its Task happens to run after the handoff begins.
+        discardsResizeReportsThrough = max(
+            discardsResizeReportsThrough, resizeSequence.current())
         defersSizeReports = true
         deferredSize = nil
+        finishesSizeReportDeferralThrough = nil
+        suppressesDuplicateSize = nil
     }
 
     func finishSizeReportDeferral() {
         guard defersSizeReports else { return }
-        defersSizeReports = false
-        guard let deferredSize else { return }
-        self.deferredSize = nil
-        onSizeChanged?(deferredSize.columns, deferredSize.rows)
+        // `resize` crosses onto the main actor asynchronously. Keep the freeze
+        // in force until every callback that had already left Ghostty when the
+        // thaw was requested has been consumed in sequence.
+        finishesSizeReportDeferralThrough = resizeSequence.current()
+        completeSizeReportDeferralIfReady()
+    }
+
+    func provideAuthoritativeDeferredSize(columns: Int, rows: Int) {
+        guard defersSizeReports else { return }
+        deferredSize = (columns, rows)
     }
 
     func cancelSizeReportDeferral() {
+        discardsResizeReportsThrough = max(
+            discardsResizeReportsThrough, resizeSequence.current())
         defersSizeReports = false
         deferredSize = nil
+        finishesSizeReportDeferralThrough = nil
+        suppressesDuplicateSize = nil
+    }
+
+    private func receiveResize(
+        _ viewport: InMemoryTerminalViewport,
+        sequence: UInt64
+    ) {
+        pendingResizeReports[sequence] = viewport
+
+        while let viewport = pendingResizeReports.removeValue(
+            forKey: lastProcessedResizeSequence &+ 1)
+        {
+            lastProcessedResizeSequence &+= 1
+            if lastProcessedResizeSequence > discardsResizeReportsThrough {
+                let size = (columns: Int(viewport.columns), rows: Int(viewport.rows))
+                if isSizeReportCurrent?(size.columns, size.rows) != false {
+                    onViewport?(viewport)
+                    if defersSizeReports {
+                        deferredSize = size
+                    } else {
+                        deliverSize(size)
+                    }
+                }
+            }
+            completeSizeReportDeferralIfReady()
+        }
+    }
+
+    private func completeSizeReportDeferralIfReady() {
+        guard let finishSequence = finishesSizeReportDeferralThrough,
+              lastProcessedResizeSequence >= finishSequence
+        else { return }
+        finishesSizeReportDeferralThrough = nil
+        defersSizeReports = false
+        guard let deferredSize else { return }
+        self.deferredSize = nil
+        guard let onSizeChanged else { return }
+        onSizeChanged(deferredSize.columns, deferredSize.rows)
+        // The surface delegate supplied the settled grid synchronously. The
+        // equivalent engine callback can still be in Ghostty's IO pipeline;
+        // consume that one duplicate when it arrives. A different current
+        // grid clears the token and is delivered normally.
+        suppressesDuplicateSize = deferredSize
+    }
+
+    private func deliverSize(_ size: (columns: Int, rows: Int)) {
+        if let suppressedSize = suppressesDuplicateSize {
+            suppressesDuplicateSize = nil
+            if suppressedSize.columns == size.columns,
+               suppressedSize.rows == size.rows
+            {
+                return
+            }
+        }
+        onSizeChanged?(size.columns, size.rows)
     }
 
     func paste(_ text: String, bracketed: Bool) {
@@ -438,6 +529,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private var textInputStorage = ""
     private var textInputSelection = NSRange(location: 0, length: 0)
     private var terminalGridSize = (columns: 80, rows: 24)
+    private var hasTerminalGridMetrics = false
     private var terminalCellSize = CGSize(width: 8, height: 16)
     private var touchScrollAccumulator = TerminalTouchScrollAccumulator()
     private var touchScrollMomentumDisplayLink: CADisplayLink?
@@ -716,8 +808,9 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         inputAccessoryItems = []
         configuration = TerminalSurfaceOptions(backend: .inMemory(terminalSession))
         controller = terminalController
-        callbackBridge.onViewport = { [weak self] viewport in
-            self?.terminalGridSize = (Int(viewport.columns), Int(viewport.rows))
+        callbackBridge.isSizeReportCurrent = { [weak self] columns, rows in
+            guard let self, hasTerminalGridMetrics else { return true }
+            return terminalGridSize.columns == columns && terminalGridSize.rows == rows
         }
         callbackBridge.onReliableInput = { [weak self] in
             self?.reliableInputDidBegin()
@@ -1126,6 +1219,8 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// frame rather than through SwiftUI's two-stage avoidance — see
     /// ``TerminalKeyboardInset``.
     private func beginKeyboardTransitionLayoutDeferral(endsOnFrameChange: Bool = false) {
+        keyboardGridReportTask?.cancel()
+        keyboardGridReportTask = nil
         defersLayoutForKeyboardTransition = true
         keyboardTransitionEndsOnFrameChange = endsOnFrameChange
         didReloadInputViewsForKeyboardHandoff = false
@@ -1208,6 +1303,17 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         }
         setNeedsLayout()
         layoutIfNeeded()
+        if hasTerminalGridMetrics {
+            // A fresh surface can publish its first grid just before the
+            // handoff freeze begins. The bridge correctly rejects that queued
+            // pre-freeze callback, and libghostty may suppress an identical
+            // post-layout callback. Seed the deferral from the surface
+            // delegate's synchronous final metrics so Attach still receives
+            // its initial size, without letting the stale grid escape.
+            callbackBridge.provideAuthoritativeDeferredSize(
+                columns: terminalGridSize.columns,
+                rows: terminalGridSize.rows)
+        }
         scheduleGridReport(after: Self.gridSettleDelay)
         if inheritedTheKeyboard, let settledHandoffID {
             onKeyboardHandoffEnded?(settledHandoffID, handoffOutcome)
@@ -1504,6 +1610,7 @@ extension HeelerTerminalView: TerminalSurfaceOpenURLDelegate,
     /// 8×16 default.
     func terminalDidResize(_ size: TerminalGridMetrics) {
         terminalGridSize = (Int(size.columns), Int(size.rows))
+        hasTerminalGridMetrics = true
         guard size.cellWidthPixels > 0, size.cellHeightPixels > 0 else { return }
         let scale = window?.screen.nativeScale ?? traitCollection.displayScale
         guard scale > 0 else { return }
