@@ -70,6 +70,12 @@ struct AgentDirectInputTests {
                 "draft"))
     }
 
+    @Test func accessibilityTraversalFallsBackToIndexedContainerWhenElementsAreEmpty() {
+        let root = IndexedAccessibilityContainerView(label: "Indexed control")
+
+        #expect(Self.firstAccessible(labeled: "Indexed control", in: root) != nil)
+    }
+
     @Test func sharedActionMenuContractIsExhaustive() {
         #expect(
             AgentActionMenuPolicy.composerAddSections == [.addAttachments])
@@ -1513,15 +1519,21 @@ struct AgentDirectInputTests {
     private static func visitAccessible(
         in root: UIView, body: (NSObject) -> Void
     ) {
+        var visited = Set<ObjectIdentifier>()
+
         func visit(_ node: NSObject) {
+            guard visited.insert(ObjectIdentifier(node)).inserted else { return }
             body(node)
-            if let elements = node.accessibilityElements {
+            let elements = node.accessibilityElements
+            if let elements, !elements.isEmpty {
                 for element in elements {
                     if let object = element as? NSObject {
                         visit(object)
                     }
                 }
             } else {
+                // Some SwiftUI containers expose an empty array while their
+                // indexed accessibility API still owns the live controls.
                 let count = node.accessibilityElementCount()
                 if count > 0, count != NSNotFound {
                     for index in 0..<count {
@@ -1570,5 +1582,35 @@ struct AgentDirectInputTests {
             try await Task.sleep(for: .milliseconds(5))
         }
         return await condition()
+    }
+}
+
+private final class IndexedAccessibilityContainerView: UIView {
+    private let indexedLabel: String
+    private lazy var indexedElement: UIAccessibilityElement = {
+        let element = UIAccessibilityElement(accessibilityContainer: self)
+        element.accessibilityLabel = indexedLabel
+        return element
+    }()
+
+    init(label: String) {
+        indexedLabel = label
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var accessibilityElements: [Any]? {
+        get { [] }
+        set { }
+    }
+
+    override func accessibilityElementCount() -> Int { 1 }
+
+    override func accessibilityElement(at index: Int) -> Any? {
+        index == 0 ? indexedElement : nil
     }
 }
