@@ -9,8 +9,8 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
-- When no size has been saved, Terminal Text Size now defaults to 9 pt instead
-  of 14 pt. Existing saved sizes do not change. (PR #253)
+- When no size has been saved, Terminal Text Size now defaults to 8 pt instead
+  of 14 pt. Existing saved sizes do not change. (#256; PR #257)
 
 ### Added
 

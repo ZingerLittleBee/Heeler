@@ -933,6 +933,16 @@ struct TerminalAttachTests {
         #expect(region == CGRect(x: 0, y: 344, width: 390, height: 132))
     }
 
+    @Test func keyboardTapTargetKeepsItsMinimumHeightAtTheViewportEdge() {
+        let bounds = CGRect(x: 0, y: 0, width: 390, height: 720)
+        let region = TerminalKeyboardTapTarget.region(
+            caretRect: CGRect(x: 72, y: 700, width: 9, height: 20),
+            in: bounds,
+            minimumHeight: TerminalKeyboardTapTarget.alternateScreenMinimumHeight)
+
+        #expect(region == CGRect(x: 0, y: 588, width: 390, height: 132))
+    }
+
     /// Every chat-style agent TUI pins its input box to the bottom rows, but
     /// each parks the caret somewhere of its own, so the bottom quarter is
     /// the tool-agnostic floor the caret band cannot be.
