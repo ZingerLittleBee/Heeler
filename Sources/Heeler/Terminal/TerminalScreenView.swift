@@ -692,7 +692,8 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
             },
             resize: { [weak callbackBridge] viewport in
                 callbackBridge?.resize(viewport)
-            })
+            },
+            suppressesPixelOnlyResizes: true)
         // Font size rides the controller's per-session configuration rather
         // than the surface's one-shot option, so later changes reach the live
         // surface through the same path the initial value took.
@@ -716,7 +717,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         configuration = TerminalSurfaceOptions(backend: .inMemory(terminalSession))
         controller = terminalController
         callbackBridge.onViewport = { [weak self] viewport in
-            self?.updateTouchScrollMetrics(viewport)
+            self?.terminalGridSize = (Int(viewport.columns), Int(viewport.rows))
         }
         callbackBridge.onReliableInput = { [weak self] in
             self?.reliableInputDidBegin()
@@ -1441,18 +1442,6 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         }
     }
 
-    /// Ghostty reports cell metrics in surface pixels; touches arrive in
-    /// points, so the grid has to be converted once per resize.
-    private func updateTouchScrollMetrics(_ viewport: InMemoryTerminalViewport) {
-        terminalGridSize = (Int(viewport.columns), Int(viewport.rows))
-        guard viewport.cellWidthPixels > 0, viewport.cellHeightPixels > 0 else { return }
-        let scale = window?.screen.nativeScale ?? traitCollection.displayScale
-        guard scale > 0 else { return }
-        terminalCellSize = CGSize(
-            width: CGFloat(viewport.cellWidthPixels) / scale,
-            height: CGFloat(viewport.cellHeightPixels) / scale)
-    }
-
     func startTouchScrollMomentum(velocityY: CGFloat) {
         guard abs(velocityY) >= 80 else {
             touchScrollAccumulator.reset()
@@ -1509,11 +1498,10 @@ extension HeelerTerminalView: TerminalSurfaceOpenURLDelegate,
 
     /// The one metrics source that still carries cell dimensions. Since
     /// GhosttyTerminal 1.4.0 the in-memory session's resize dispatches come
-    /// from the engine's receive-resize callback, which reports the grid and
-    /// total pixels but not the cell size — `updateTouchScrollMetrics` keeps
-    /// consuming those for columns and rows, while this delegate keeps
-    /// `terminalCellSize` real so tap-to-cell mapping and touch-scroll row
-    /// heights don't fall back to the 8×16 default.
+    /// from the engine's receive-resize callback, which reports the logical
+    /// grid to the Host, while this delegate keeps `terminalCellSize` real so
+    /// tap-to-cell mapping and touch-scroll row heights don't fall back to the
+    /// 8×16 default.
     func terminalDidResize(_ size: TerminalGridMetrics) {
         terminalGridSize = (Int(size.columns), Int(size.rows))
         guard size.cellWidthPixels > 0, size.cellHeightPixels > 0 else { return }
