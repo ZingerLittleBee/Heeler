@@ -13,11 +13,11 @@ struct TerminalZoomSettingsTests {
         return (defaults, { defaults.removePersistentDomain(forName: suiteName) })
     }
 
-    @Test func defaultsToFourteenPoints() throws {
+    @Test func defaultsToEightPoints() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
 
-        #expect(TerminalZoomSettings(defaults: defaults).fontSize == 14)
+        #expect(TerminalZoomSettings(defaults: defaults).fontSize == 8)
     }
 
     @Test func fontSizePersistsAcrossStoreInstances() throws {
