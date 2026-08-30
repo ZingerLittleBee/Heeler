@@ -3,6 +3,85 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
+/// Stable in-process seam for exercising Agent-detail behavior without relying
+/// on hosted SwiftUI accessibility. iOS 26 does not materialize those elements
+/// without an assistive client; button wiring remains UI-test coverage.
+@MainActor
+final class AgentTerminalInteractionProbe {
+    private var selectInputModeAction: ((AgentInputMode) -> Void)?
+    private var sendQuickKeyAction: ((AgentQuickKey) -> Void)?
+    private var toggleDirectKeyboardAction: (() -> Void)?
+    private var switchDirectKeyboardAction: (() -> Void)?
+    private var directInputChromeMountCount = 0
+
+    var isConnected: Bool { selectInputModeAction != nil }
+    var isDirectInputChromeMounted: Bool { directInputChromeMountCount > 0 }
+
+    @discardableResult
+    func selectInputMode(_ mode: AgentInputMode) -> Bool {
+        guard let selectInputModeAction else { return false }
+        selectInputModeAction(mode)
+        return true
+    }
+
+    @discardableResult
+    func sendQuickKey(_ key: AgentQuickKey) -> Bool {
+        guard let sendQuickKeyAction else { return false }
+        sendQuickKeyAction(key)
+        return true
+    }
+
+    @discardableResult
+    func toggleDirectKeyboard() -> Bool {
+        guard let toggleDirectKeyboardAction else { return false }
+        toggleDirectKeyboardAction()
+        return true
+    }
+
+    @discardableResult
+    func switchDirectKeyboard() -> Bool {
+        guard let switchDirectKeyboardAction else { return false }
+        switchDirectKeyboardAction()
+        return true
+    }
+
+    fileprivate func connect(selectInputMode: @escaping (AgentInputMode) -> Void) {
+        selectInputModeAction = selectInputMode
+    }
+
+    fileprivate func directInputChromeDidAppear(
+        sendQuickKey: @escaping (AgentQuickKey) -> Void,
+        toggleDirectKeyboard: @escaping () -> Void,
+        switchDirectKeyboard: (() -> Void)?
+    ) {
+        directInputChromeMountCount += 1
+        sendQuickKeyAction = sendQuickKey
+        toggleDirectKeyboardAction = toggleDirectKeyboard
+        switchDirectKeyboardAction = switchDirectKeyboard
+    }
+
+    fileprivate func disconnect() {
+        selectInputModeAction = nil
+        sendQuickKeyAction = nil
+        toggleDirectKeyboardAction = nil
+        switchDirectKeyboardAction = nil
+        directInputChromeMountCount = 0
+    }
+
+    fileprivate func directInputChromeDidDisappear() {
+        directInputChromeMountCount = max(0, directInputChromeMountCount - 1)
+        guard directInputChromeMountCount == 0 else { return }
+        sendQuickKeyAction = nil
+        toggleDirectKeyboardAction = nil
+        switchDirectKeyboardAction = nil
+    }
+
+    fileprivate func updateSwitchDirectKeyboard(_ action: (() -> Void)?) {
+        guard directInputChromeMountCount > 0 else { return }
+        switchDirectKeyboardAction = action
+    }
+}
+
 /// The live Ghostty surface used by Agent detail. Composer mode keeps the
 /// terminal display-only and routes authored text through the local draft;
 /// Direct Input (ADR 0016) enables Ghostty local input so the system keyboard
@@ -38,6 +117,7 @@ struct AgentTerminalView: View {
     private let isOpeningTerminal: Bool
     private let openTerminal: () -> Void
     private let composer: AgentComposerStore
+    private let interactionProbe: AgentTerminalInteractionProbe?
     @State private var attach: AgentAttachStore
     /// Nil for agent kinds without a skills source catalog; the Keys
     /// keyboard hides the Skills tab in that case.
@@ -117,7 +197,8 @@ struct AgentTerminalView: View {
         isOpeningTerminal: Bool = false,
         openTerminal: @escaping () -> Void = {},
         composer: AgentComposerStore,
-        attachStore: AgentAttachStore? = nil
+        attachStore: AgentAttachStore? = nil,
+        interactionProbe: AgentTerminalInteractionProbe? = nil
     ) {
         self.agent = agent
         self.console = console
@@ -134,6 +215,7 @@ struct AgentTerminalView: View {
         self.isOpeningTerminal = isOpeningTerminal
         self.openTerminal = openTerminal
         self.composer = composer
+        self.interactionProbe = interactionProbe
         _attach = State(
             initialValue: attachStore ?? AgentAttachStore(
                 target: agent.agent.paneID,
@@ -436,6 +518,7 @@ struct AgentTerminalView: View {
         // calls must stay synchronous, because the spurious pair can land in
         // one transaction and rejoin() can only undo a leave it can see.
         .onAppear {
+            interactionProbe?.connect(selectInputMode: { mode in selectInputMode(mode) })
             composer.bindAttachInput(attach.input)
             // Arm before rejoin so a full pipeline replacement can claim the
             // keyboard while Direct Input still owns raised intent.
@@ -443,6 +526,7 @@ struct AgentTerminalView: View {
             attach.rejoin()
         }
         .onDisappear {
+            interactionProbe?.disconnect()
             attach.leave()
             Task { @MainActor in
                 await Task.yield()
@@ -703,6 +787,16 @@ struct AgentTerminalView: View {
                     sendQuickKey: keyboardControl.sendQuickKey,
                     showComposer: { selectInputMode(.composer) },
                     restoreComposerThen: restoreComposerThen)))
+            .onAppear {
+                interactionProbe?.directInputChromeDidAppear(
+                    sendQuickKey: { key in keyboardControl.sendQuickKey(key) },
+                    toggleDirectKeyboard: { toggleDirectKeyboard() },
+                    switchDirectKeyboard: directKeyboardSwitchAction)
+            }
+            .onDisappear { interactionProbe?.directInputChromeDidDisappear() }
+            .onChange(of: isDirectKeyboardSwitchAvailable) { _, _ in
+                interactionProbe?.updateSwitchDirectKeyboard(directKeyboardSwitchAction)
+            }
             .onGeometryChange(for: CGFloat.self) { geometry in
                 geometry.size.height
             } action: { height in
@@ -754,11 +848,14 @@ struct AgentTerminalView: View {
     }
 
     private var directKeyboardSwitchAction: (() -> Void)? {
-        guard composerKeyboardLayout.availableToolsHeight > 0
+        guard isDirectKeyboardSwitchAvailable else { return nil }
+        return { switchDirectKeyboard() }
+    }
+
+    private var isDirectKeyboardSwitchAvailable: Bool {
+        composerKeyboardLayout.availableToolsHeight > 0
             || keyboardInset.lastPresentedHeight > 0
             || keyboardControl.isKeyboardUp
-        else { return nil }
-        return { switchDirectKeyboard() }
     }
 
     private func selectInputMode(_ mode: AgentInputMode) {
