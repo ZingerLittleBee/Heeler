@@ -132,10 +132,14 @@ enum AgentActivityContentBuilder {
         let kind = agent.agent.kind.isEmpty ? "unknown" : agent.agent.kind
         let trimmed = prefixGraphemes(agent.agent.title, max: maxTitleGraphemes)
         let name = agent.agent.name.map { prefixGraphemes($0, max: maxTitleGraphemes) }
+        let workspace = agent.workspaceLabel.map {
+            prefixGraphemes($0, max: maxTitleGraphemes)
+        }
         return AgentActivityDetails.AgentDetail(
             paneID: agent.agent.paneID,
             kind: kind,
             name: name?.isEmpty == false ? name : nil,
+            workspace: workspace?.isEmpty == false ? workspace : nil,
             status: agent.agent.status.rawValue,
             title: trimmed.isEmpty ? nil : trimmed)
     }

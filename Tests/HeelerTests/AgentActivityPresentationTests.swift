@@ -17,7 +17,7 @@ struct AgentActivityPresentationTests {
         paneID: String, status: String = "working"
     ) -> AgentActivityDetails.AgentDetail {
         AgentActivityDetails.AgentDetail(
-            paneID: paneID, kind: "claude", name: nil, status: status,
+            paneID: paneID, kind: "claude", name: nil, workspace: "Heeler", status: status,
             title: "Task \(paneID)")
     }
 
@@ -113,7 +113,27 @@ struct AgentActivityPresentationTests {
 
     @Test func narrationIncludesStatusForIslandAccessibility() {
         let agent = agentDetail(paneID: "w1:p1", status: "blocked")
-        #expect(AgentActivityNarration.rowLabel(for: agent) == "claude, blocked, Task w1:p1")
+        #expect(AgentActivityNarration.rowLabel(for: agent) == "Heeler, Claude, blocked")
+    }
+
+    @Test func identityIgnoresCustomAgentNameAndTerminalTitle() {
+        let agent = AgentActivityDetails.AgentDetail(
+            paneID: "w1:p1", kind: "codex", name: "identityprobe", workspace: "Heeler",
+            status: "working", title: "Developer · identityprobe")
+
+        #expect(agent.displayIdentity == "Heeler · Codex")
+        #expect(agent.displayWorkspace == "Heeler")
+    }
+
+    @Test func liveActivityRowsNarrateWorkspaceKindAndStatusWithoutTaskNoise() {
+        let agent = AgentActivityDetails.AgentDetail(
+            paneID: "w1:p1", kind: "claude", workspace: "Checkout",
+            status: "blocked", title: nil)
+
+        #expect(agent.displayWorkspace == "Checkout")
+        #expect(
+            AgentActivityNarration.rowLabel(for: agent)
+                == "Checkout, Claude, blocked")
     }
 
     @Test func lockScreenRowsUseComfortableAndDenseAppleTargetHeights() {

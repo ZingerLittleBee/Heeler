@@ -200,10 +200,38 @@ async function listAgents(binPath) {
   return agents;
 }
 
+/**
+ * Resolve all workspace labels once per update. Labels are presentation-only,
+ * so a Host that cannot answer still sends kind-only identities.
+ */
+async function listWorkspaceLabels(binPath) {
+  try {
+    const result = await runHerdr(binPath, ["workspace", "list"]);
+    if (result.code !== 0) return new Map();
+    const workspaces = JSON.parse(result.stdout)?.result?.workspaces;
+    if (!Array.isArray(workspaces)) return new Map();
+    const labels = new Map();
+    for (const workspace of workspaces) {
+      const id = optionalText(workspace?.workspace_id);
+      const label = optionalText(workspace?.label);
+      if (id !== null && label !== null) labels.set(id, label);
+    }
+    return labels;
+  } catch {
+    return new Map();
+  }
+}
+
 function dropTitles(plaintextObject) {
   return {
     agents: plaintextObject.agents.map((agent) => {
-      const entry = { kind: agent.kind, pane: agent.pane, status: agent.status };
+      const entry = {};
+      entry.kind = agent.kind;
+      entry.pane = agent.pane;
+      entry.status = agent.status;
+      if (typeof agent.workspace === "string" && agent.workspace.length > 0) {
+        entry.workspace = agent.workspace;
+      }
       return entry;
     }),
     host: plaintextObject.host,
@@ -372,6 +400,7 @@ async function main() {
   const empty = Object.keys(statuses).length === 0;
   if (empty && lastState?.ended === true) return;
 
+  const workspaceLabels = empty ? new Map() : await listWorkspaceLabels(binPath);
   const pushEvent = empty ? "end" : "update";
   const priority = hasNewlyBlocked(statuses, previous) ? 10 : 5;
   const timestamp = Math.floor(Date.now() / 1000);
@@ -385,6 +414,7 @@ async function main() {
       agents,
       hostName,
       pinnedPaneIds: device.pinnedPaneIds,
+      workspaceLabels,
     });
     const content =
       pushEvent === "end"

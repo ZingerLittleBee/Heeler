@@ -81,9 +81,12 @@ async function startFakeRelay(respond = () => ({ status: 200, body: { apnsId: "x
   });
 }
 
-function writeHerdrStub(agents) {
+function writeHerdrStub(
+  agents,
+  workspaces = [{ workspace_id: "w1", label: "Heeler" }],
+) {
   const binPath = join(stubDir, "herdr");
-  writeFileSync(join(stubDir, "response.json"), JSON.stringify({ agents }));
+  writeFileSync(join(stubDir, "response.json"), JSON.stringify({ agents, workspaces }));
   writeFileSync(
     binPath,
     [
@@ -96,15 +99,15 @@ function writeHerdrStub(agents) {
       '  path.join(dir, "invocations.log"),',
       '  JSON.stringify({ args, at: Date.now() }) + "\\n",',
       ");",
-      'if (args[0] !== "agent" || args[1] !== "list") {',
+      'const response = JSON.parse(fs.readFileSync(path.join(dir, "response.json"), "utf8"));',
+      'if (args[0] === "agent" && args[1] === "list") {',
+      '  process.stdout.write(JSON.stringify({ id: "cli:agent:list", result: { agents: response.agents, type: "agent_list" } }));',
+      '} else if (args[0] === "workspace" && args[1] === "list") {',
+      '  process.stdout.write(JSON.stringify({ id: "cli:workspace:list", result: { workspaces: response.workspaces, type: "workspace_list" } }));',
+      '} else {',
       '  process.stderr.write(`stub: unexpected subcommand ${args.join(" ")}`);',
       "  process.exit(64);",
       "}",
-      'const response = JSON.parse(fs.readFileSync(path.join(dir, "response.json"), "utf8"));',
-      "process.stdout.write(JSON.stringify({",
-      '  id: "cli:agent:list",',
-      "  result: { agents: response.agents, type: \"agent_list\" },",
-      "}));",
       "process.exit(0);",
     ].join("\n"),
     { mode: 0o755 },
@@ -299,8 +302,12 @@ suite("activity-hook: update and end", () => {
     assert.equal(opened.payload.agents[0].pane, PANE_ID);
     assert.equal(opened.payload.agents[0].status, "working");
     assert.equal(opened.payload.agents[0].title, "实现锁屏显示 agent 工作状态");
+    assert.equal(opened.payload.agents[0].workspace, "Heeler");
     decryptEnvelope(byToken.get(ACTIVITY_TOKEN_B).envelope, KEY_B);
-    assert.deepEqual(stubInvocations()[0].args, ["agent", "list"]);
+    assert.deepEqual(stubInvocations().map((entry) => entry.args), [
+      ["agent", "list"],
+      ["workspace", "list"],
+    ]);
   });
 
   test("pinned_pane_ids from each device reorder that device's envelope only", async () => {
@@ -461,6 +468,7 @@ suite("activity-hook: relay failures", () => {
     const second = decryptEnvelope(relay.requests[1].body.envelope, KEY_A);
     assert.equal(first.payload.agents[0].title, "a long enough title to drop");
     assert.equal("title" in second.payload.agents[0], false);
+    assert.equal(second.payload.agents[0].workspace, "Heeler");
     assert.equal(second.payload.agents[0].pane, PANE_ID);
     assert.equal(second.payload.agents[0].status, "working");
   });

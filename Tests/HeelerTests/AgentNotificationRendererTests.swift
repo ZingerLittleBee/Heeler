@@ -5,7 +5,7 @@ import Testing
 
 /// The service extension's whole job as a pure function: pick the right
 /// Notification Key by the envelope's kid, decrypt, and rewrite the alert to
-/// Host, agent kind, and status — or degrade to the generic fallback banner
+/// workspace, Agent kind, and status — or degrade to the generic fallback banner
 /// on any undecryptable push (#71). Envelopes come from the shared vectors,
 /// so this stays in lockstep with the plugin's encrypt direction.
 @Suite("Agent notification renderer")
@@ -24,7 +24,7 @@ struct AgentNotificationRendererTests {
     }
 
     /// A payload from a plugin that predates the display fields: the copy
-    /// degrades to the agent kind and a status sentence rather than falling
+    /// degrades to the friendly Agent kind and status rather than falling
     /// back to the generic banner.
     @Test func rewritesABlockedPushWithoutDisplayFields() throws {
         let vector = try Self.vector(named: "blocked claude agent")
@@ -33,21 +33,21 @@ struct AgentNotificationRendererTests {
         let alert = AgentNotificationRenderer.alert(
             userInfo: ["envelope": vector.envelope], keys: [record])
 
-        #expect(alert.title == "claude")
-        #expect(alert.body == "Blocked: waiting for your input")
+        #expect(alert.title == "Claude")
+        #expect(alert.body == "Blocked — waiting for input")
     }
 
-    /// The shape the current plugin sends: the project leads, the agent kind
-    /// trails it, and the body says what the agent was doing.
-    @Test func leadsWithTheProjectAndTheAgentsTask() throws {
+    /// The shape the current plugin sends: the workspace leads, the friendly
+    /// Agent kind trails it, and the body carries status only.
+    @Test func leadsWithTheWorkspaceAndFriendlyAgentKind() throws {
         let vector = try Self.vector(named: "blocked agent with a project and a task title")
         let record = try Self.record(forVector: vector, named: "mac-studio")
 
         let alert = AgentNotificationRenderer.alert(
             userInfo: ["envelope": vector.envelope], keys: [record])
 
-        #expect(alert.title == "Caterm · claude")
-        #expect(alert.body == "Blocked · 排查修复 split 按钮 UI 结构问题")
+        #expect(alert.title == "Caterm · Claude")
+        #expect(alert.body == "Blocked — waiting for input")
     }
 
     /// The Host is the same machine on every notification and would spend the
@@ -63,36 +63,29 @@ struct AgentNotificationRendererTests {
         #expect(!alert.body.contains("zingerbee"))
     }
 
-    @Test func trimsATaskTitleThatWouldOverrunTheBanner() {
-        let long = String(repeating: "重构传输层", count: 40)
-
+    @Test func doesNotRenderTheTerminalTask() {
         let alert = AgentNotificationRenderer.alert(
-            project: "heeler", agentKind: "claude", task: long, status: .done)
+            workspace: "Heeler", agentKind: "codex", status: .done)
 
-        let task = alert.body.dropFirst("Done · ".count)
-        #expect(task.count == AgentNotificationRenderer.taskLimit)
-        #expect(task.hasSuffix("…"))
-        #expect(long.hasPrefix(task.dropLast()))
+        #expect(alert == AgentNotificationAlert(title: "Heeler · Codex", body: "Done"))
     }
 
     /// Best-effort fields: whitespace-only is the same as absent, so a Host
     /// that resolved a blank never renders a dangling separator.
     @Test func treatsBlankDisplayFieldsAsAbsent() {
         let alert = AgentNotificationRenderer.alert(
-            project: "  ", agentKind: "claude", task: "\n", status: .blocked)
+            workspace: "  ", agentKind: "claude", status: .blocked)
 
-        #expect(alert.title == "claude")
-        #expect(alert.body == "Blocked: waiting for your input")
+        #expect(alert.title == "Claude")
+        #expect(alert.body == "Blocked — waiting for input")
     }
 
-    /// An unrecognized status still names itself in the short form when there
-    /// is a task to pair it with.
-    @Test func pairsAnUnrecognizedStatusWithTheTask() {
+    /// An unrecognized status still names itself factually.
+    @Test func rendersAnUnrecognizedStatusFactually() {
         let alert = AgentNotificationRenderer.alert(
-            project: "heeler", agentKind: "claude", task: "Fix the flaky test",
-            status: AgentStatus(rawValue: "exited"))
+            workspace: "heeler", agentKind: "claude", status: AgentStatus(rawValue: "exited"))
 
-        #expect(alert.body == "exited · Fix the flaky test")
+        #expect(alert.body == "Status: exited")
     }
 
     @Test func rewritesADonePush() throws {
@@ -102,8 +95,8 @@ struct AgentNotificationRendererTests {
         let alert = AgentNotificationRenderer.alert(
             userInfo: ["envelope": vector.envelope], keys: [record])
 
-        #expect(alert.title == "codex")
-        #expect(alert.body == "Done: the agent finished")
+        #expect(alert.title == "Codex")
+        #expect(alert.body == "Done")
     }
 
     /// The status set is open on the wire; an unrecognized value must still
@@ -135,10 +128,10 @@ struct AgentNotificationRendererTests {
         let doneAlert = AgentNotificationRenderer.alert(
             userInfo: ["envelope": done.envelope], keys: records)
 
-        #expect(blockedAlert.title == "claude")
-        #expect(blockedAlert.body == "Blocked: waiting for your input")
-        #expect(doneAlert.title == "codex")
-        #expect(doneAlert.body == "Done: the agent finished")
+        #expect(blockedAlert.title == "Claude")
+        #expect(blockedAlert.body == "Blocked — waiting for input")
+        #expect(doneAlert.title == "Codex")
+        #expect(doneAlert.body == "Done")
     }
 
     @Test func unknownKidFallsBackToTheGenericBanner() throws {

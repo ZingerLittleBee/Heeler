@@ -362,8 +362,9 @@ this command and `src/notify-hook.js` for the same event (verified on
 notify hook: `notify` flags do not gate it, and a Host with no
 `live_activity` registration sends nothing.
 
-The hook lists the Host's agents through `HERDR_BIN_PATH` (`herdr agent list`)
-and drives one Live Activity per Host. Eligible statuses are **Working**,
+The hook lists the Host's agents through `HERDR_BIN_PATH` (`herdr agent list`),
+resolves workspace labels best-effort through `herdr workspace list`, and drives
+one Live Activity per Host. Eligible statuses are **Working**,
 **Blocked**, and **Done**; idle and unknown panes are hidden. The encrypted
 details envelope uses the same Notification Key as alerts, sealed under AAD
 `HERDR-ACTIVITY:1` (see `docs/agents/live-activity-contract.md` and
@@ -392,9 +393,10 @@ activity token, and the sealed envelope. Transient failures (network errors,
 429, 5xx) are retried up to 3 attempts. A `410 Unregistered` verdict deletes
 only that entry's `live_activity` field, preserving the alert `token`, `key`,
 `notify` flags, and any field this plugin does not understand. A relay-origin
-`413` degrades the envelope once per step (drop every `title`, then send
-`agents: []`) and retries; the hook also pre-degrades when the projected
-ciphertext would exceed the Live Activity size budget.
+`413` degrades the envelope once per step (drop every `title` while retaining
+the displayed workspace/kind/status, then send `agents: []`) and retries;
+the hook also pre-degrades when the projected ciphertext would exceed the Live
+Activity size budget.
 
 Last-state (`activity/last-state.json`: `sent_at_ms`, `statuses`, `ended`) is
 written only after at least one successful delivery. All state writes are

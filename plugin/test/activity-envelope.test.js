@@ -25,6 +25,9 @@ function openedFields(payload) {
       const entry = { kind: agent.kind, pane: agent.pane, status: agent.status };
       if (typeof agent.name === "string" && agent.name.length > 0) entry.name = agent.name;
       if (typeof agent.title === "string" && agent.title.length > 0) entry.title = agent.title;
+      if (typeof agent.workspace === "string" && agent.workspace.length > 0) {
+        entry.workspace = agent.workspace;
+      }
       return entry;
     }),
   };

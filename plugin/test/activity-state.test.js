@@ -99,6 +99,21 @@ suite("buildActivityState", () => {
     assert.deepEqual(Object.keys(byPane["w1:p1"]), ["kind", "name", "pane", "status"]);
   });
 
+  test("carries the workspace label by workspace id and omits unavailable labels", () => {
+    const { plaintextObject } = buildActivityState({
+      agents: [
+        agent("w1:p1", "working", { agent: "codex", workspace_id: "w1" }),
+        agent("w2:p1", "blocked", { agent: "claude", workspace_id: "missing" }),
+      ],
+      hostName: "mbp",
+      workspaceLabels: new Map([["w1", "Heeler"]]),
+    });
+    const byPane = Object.fromEntries(plaintextObject.agents.map((entry) => [entry.pane, entry]));
+    assert.equal(byPane["w1:p1"].workspace, "Heeler");
+    assert.equal("workspace" in byPane["w2:p1"], false);
+    assert.deepEqual(Object.keys(byPane["w1:p1"]), ["kind", "pane", "status", "workspace"]);
+  });
+
   test("prefers the stripped title, falls kind back to unknown, and trims host", () => {
     const longHost = "h".repeat(DISPLAY_LIMIT + 5);
     const { plaintextObject } = buildActivityState({

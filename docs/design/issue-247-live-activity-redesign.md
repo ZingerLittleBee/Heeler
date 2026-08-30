@@ -1,9 +1,16 @@
 # Issue #247 Live Activity redesign
 
-Status: Implementation-ready
+Status: Implemented; identity decisions superseded by #260
 Date: 2026-08-27
 Issue: [#247](https://github.com/zingerbee/Heeler/issues/247)
 Scope: widget UI in `Sources/HeelerWidgets/AgentLiveActivityWidget.swift`, Lock Screen row-cap helpers in `Sources/HeelerWidgets/AgentActivityDecryptor.swift`, compiling the existing `Sources/Heeler/Console/AgentStatusPalette.swift` into the widget target, and the `project.yml` / `Heeler.xcodeproj` regeneration that target change requires. Wire contract, encryption, start/update/end, envelope row ordering, and chip enumeration order are unchanged (ADR 0014, `docs/agents/live-activity-contract.md`).
+
+> Issue #260 later superseded this document's row identity, hierarchy, spacing,
+> and Blocked-background decisions. Current Live Activity rows render
+> a colored status dot beside `workspace`, with `friendly kind` underneath,
+> identical leading alignment, and no row background. ADR 0014 and
+> `docs/agents/live-activity-contract.md` are authoritative; the system-color,
+> link, lifecycle, and row-budget decisions below still apply.
 
 This is not a one-line color swap. Light Mode is broken because the banner is a branded dark slab that ignores the system appearance, and the status inks were authored only for that slab. The redesign keeps Heeler's herdr-aligned status language and the existing aggregate list, and makes the Lock Screen presentation native, calm, information-dense, and legible in both appearances.
 

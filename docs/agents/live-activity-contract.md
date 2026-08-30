@@ -43,7 +43,7 @@ opened as an activity envelope, and vice versa.
 Decrypted plaintext (canonical form):
 
 ```json
-{"agents": [{"kind": "claude", "name": "reviewer", "pane": "wV:p1", "status": "blocked", "title": "..."}],
+{"agents": [{"kind": "claude", "name": "reviewer", "pane": "wV:p1", "status": "blocked", "title": "...", "workspace": "Heeler"}],
  "host": "mbp", "v": 1}
 ```
 
@@ -63,8 +63,11 @@ Decrypted plaintext (canonical form):
   graphemes; omitted (not empty) when unavailable. `kind` falls back to
   `"unknown"`.
 - `name` is the herdr agent name (`display_agent ?? name`), trimmed to ≤80
-  graphemes; omitted (not empty) when the agent is unnamed. Agent entry key
-  order stays alphabetical: `kind` < `name` < `pane` < `status` < `title`.
+  graphemes; omitted (not empty) when the agent is unnamed.
+- `workspace` is the herdr workspace label resolved by `workspace_id`, trimmed
+  to ≤80 graphemes and omitted when unavailable. It is additive v1 metadata,
+  so older senders remain readable with a kind-only identity. Agent entry key
+  order is `kind` < `name` < `pane` < `status` < `title` < `workspace`.
 - `host` is the Host machine's short hostname (first DNS label), ≤80
   graphemes.
 - Unknown fields in plaintext or envelope frame are ignored (additive v1
@@ -73,15 +76,15 @@ Decrypted plaintext (canonical form):
   APNs payload stays under 4096. Producers degrade in order: drop all
   `title` fields, then send `agents: []`; counts always fit.
 
-The widget renders no Host identity: an agent renders as two lines
-mirroring the herdr sidebar's hierarchy — the task `title` on top with
-the identity (`name`, falling back to `kind` when unnamed, exactly like
-the TUI) indented beneath; a missing title promotes the identity to the
-top line alone. The lock screen draws a uniform list in envelope order
-(pinned eligible first, then status rank): all four rows when the
-inventory fits, otherwise three rows plus "+N more" (the ~160pt banner
-budget). The `host` field stays in the wire for producers but is not
-displayed.
+The widget renders no Host identity. Every Agent uses identical, leading-aligned
+geometry: a colored status dot beside `workspace`, then the friendly Agent kind
+(for example `Claude`) underneath. There is no status word, status-specific row
+inset, or background. Terminal titles and custom Agent names remain backward-compatible
+encrypted metadata but are not notification identity. The lock screen draws
+the uniform list in envelope order (pinned eligible first, then status rank):
+all four rows when the inventory fits, otherwise four rows plus "+N more"
+within the ~160pt banner budget. The `host` field stays in the wire for
+producers but is not displayed.
 
 ## Relay request (plugin → relay)
 

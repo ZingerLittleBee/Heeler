@@ -126,6 +126,16 @@ struct AgentActivityContentBuilderTests {
         #expect(byPane["w:p2"]?.name == nil)
     }
 
+    @Test func carriesTheWorkspaceLabelAndTrimsItToTheDisplayLimit() throws {
+        let workspace = String(repeating: "锁", count: 81)
+        let desire = try #require(
+            AgentActivityContentBuilder.desire(
+                from: [agent("w:p1", .working, workspace: workspace)], hostName: "mbp"))
+
+        #expect(desire.agents.first?.workspace == String(repeating: "锁", count: 80))
+        #expect(desire.agents.first?.displayIdentity.hasSuffix(" · Claude") == true)
+    }
+
     @Test func omitsEmptyTitlesAndFallsBackToUnknownKind() throws {
         let blankKind = Agent(
             terminalID: "t", kind: "", title: "", status: .done,
@@ -289,12 +299,13 @@ struct AgentActivityContentBuilderTests {
 
     private func agent(
         _ paneID: String, _ status: AgentStatus,
-        kind: String = "claude", title: String = "Task", name: String? = nil
+        kind: String = "claude", title: String = "Task", name: String? = nil,
+        workspace: String? = nil
     ) -> ConsoleAgent {
         ConsoleAgent(
             hostID: hostID, hostName: "mbp",
             agent: Agent(
                 .fixture(paneID: paneID, status: status, kind: kind, title: title, name: name)),
-            workspaceLabel: nil, repositoryCheckout: nil)
+            workspaceLabel: workspace, repositoryCheckout: nil)
     }
 }

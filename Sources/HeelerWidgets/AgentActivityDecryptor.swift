@@ -13,14 +13,13 @@ enum AgentActivityPresentation: Equatable, Sendable {
         }
     }
 
-    /// Headline: the first envelope row's task title (its kind when the
-    /// title is missing), or the generic app name when details are
-    /// unavailable. Host identity is never rendered.
+    /// Fallback headline when a row cannot be drawn. Host identity is never
+    /// rendered.
     var headerTitle: String {
         switch self {
         case .detailed:
             guard let primary = primaryAgent else { return AgentActivityCopy.genericAppName }
-            return primary.title ?? primary.kind
+            return primary.displayIdentity
         case .countsOnly:
             return AgentActivityCopy.genericAppName
         }
@@ -35,8 +34,7 @@ enum AgentActivityPresentation: Equatable, Sendable {
         }
     }
 
-    /// The agent whose task title is the headline: rows arrive in envelope
-    /// order (pinned eligible first, then status rank).
+    /// First Agent in envelope order (pinned eligible first, then status rank).
     var primaryAgent: AgentActivityDetails.AgentDetail? {
         agents.first
     }

@@ -84,6 +84,7 @@ struct LiveActivityVectorFile: Decodable, Sendable {
         let name: String?
         let status: String
         let title: String?
+        let workspace: String?
     }
 
     struct Invalid: Decodable, Sendable, CustomStringConvertible {

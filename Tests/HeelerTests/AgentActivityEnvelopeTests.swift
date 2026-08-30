@@ -36,6 +36,7 @@ struct AgentActivityEnvelopeTests {
             #expect(got.name == expected.name)
             #expect(got.status == expected.status)
             #expect(got.title == expected.title)
+            #expect(got.workspace == expected.workspace)
         }
     }
 
@@ -53,7 +54,8 @@ struct AgentActivityEnvelopeTests {
             hostName: vector.payload.host,
             agents: vector.payload.agents.map {
                 AgentActivityDetails.AgentDetail(
-                    paneID: $0.pane, kind: $0.kind, name: $0.name, status: $0.status,
+                    paneID: $0.pane, kind: $0.kind, name: $0.name,
+                    workspace: $0.workspace, status: $0.status,
                     title: $0.title)
             })
 

@@ -78,10 +78,15 @@ export function parsePinnedPaneIds(value) {
 }
 
 /**
- * @param {{agents: object[], hostName: string, pinnedPaneIds?: unknown}} input
+ * @param {{agents: object[], hostName: string, pinnedPaneIds?: unknown, workspaceLabels?: Map<string, string>}} input
  * @returns {{counts: {working: number, blocked: number, done: number}, plaintextObject: object}}
  */
-export function buildActivityState({ agents, hostName, pinnedPaneIds }) {
+export function buildActivityState({
+  agents,
+  hostName,
+  pinnedPaneIds,
+  workspaceLabels = new Map(),
+}) {
   const counts = { working: 0, blocked: 0, done: 0 };
   const eligible = [];
   for (const agent of Array.isArray(agents) ? agents : []) {
@@ -115,11 +120,15 @@ export function buildActivityState({ agents, hostName, pinnedPaneIds }) {
     const name = forDisplay(
       optionalText(entry.agent.display_agent) ?? optionalText(entry.agent.name),
     );
-    const wire = { kind: optionalText(entry.agent.agent) ?? "unknown" };
+    const wire = {};
+    wire.kind = optionalText(entry.agent.agent) ?? "unknown";
     if (name !== null) wire.name = name;
     wire.pane = entry.pane;
     wire.status = entry.status;
     if (title !== null) wire.title = title;
+    const workspaceId = optionalText(entry.agent.workspace_id);
+    const workspace = forDisplay(workspaceId === null ? null : workspaceLabels.get(workspaceId));
+    if (workspace !== null) wire.workspace = workspace;
     return wire;
   });
   return {

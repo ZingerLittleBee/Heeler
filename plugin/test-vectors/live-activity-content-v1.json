@@ -1,18 +1,19 @@
 {
-  "description": "Shared Live Activity content envelope v1 test vectors (docs/agents/live-activity-contract.md). Single source of truth for the encrypted per-Host agent details carried inside a Live Activity content-state, consumed by both the Node plugin tests (seal direction) and the Swift app tests (open direction, plus seal for app-local updates). Envelopes were generated with raw AES-256-GCM calls, independent of all implementations. AAD is HERDR-ACTIVITY:1 (domain-separated from HERDR-NOTIFY:1; see the cross-AAD invalid vector). Canonical plaintext encoding: compact JSON, object keys in ascending alphabetical order at every level; agents ordered pinned-eligible first by pinned_pane_ids index (most recently pinned first), then blocked > done > working with ties by pane ascending, capped at 5 entries after that sort; name (the herdr agent name) and title are each omitted when absent, <=80 graphemes otherwise; agent entry key order kind < name < pane < status < title. Vectors that carry `inventory` (herdr agent-list shape) and `pinned_pane_ids` pin the sort rule: producers must build `payload` from that input. Producers keep the base64url ct <= ~2800 bytes by dropping titles first, then sending empty agents. `key` is the 32-byte Notification Key and `keyId` its derived id, both unpadded base64url. Non-`decodeOnly` valid vectors must be reproduced byte-for-byte by the seal side; `decodeOnly: true` envelopes must open to `payload` but are not canonical encodings. Invalid vectors must fail with the given typed error.",
+  "description": "Shared Live Activity content envelope v1 test vectors (docs/agents/live-activity-contract.md). Single source of truth for the encrypted per-Host agent details carried inside a Live Activity content-state, consumed by both the Node plugin tests (seal direction) and the Swift app tests (open direction, plus seal for app-local updates). Envelopes were generated with raw AES-256-GCM calls, independent of all implementations. AAD is HERDR-ACTIVITY:1 (domain-separated from HERDR-NOTIFY:1; see the cross-AAD invalid vector). Canonical plaintext encoding: compact JSON, object keys in ascending alphabetical order at every level; agents ordered pinned-eligible first by pinned_pane_ids index (most recently pinned first), then blocked > done > working with ties by pane ascending, capped at 5 entries after that sort; name, title, and workspace are omitted when absent and <=80 graphemes otherwise; agent entry key order kind < name < pane < status < title < workspace. Vectors that carry `inventory` (herdr agent-list shape) and `pinned_pane_ids` pin the sort rule: producers must build `payload` from that input. Producers keep the base64url ct <= ~2800 bytes by dropping titles first, then sending empty agents. `key` is the 32-byte Notification Key and `keyId` its derived id, both unpadded base64url. Non-`decodeOnly` valid vectors must be reproduced byte-for-byte by the seal side; `decodeOnly: true` envelopes must open to `payload` but are not canonical encodings. Invalid vectors must fail with the given typed error.",
   "valid": [
     {
       "name": "single working agent",
       "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
       "keyId": "Yw3NKWbEM2Y",
-      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"AAECAwQFBgcICQoL\",\"ct\":\"PCC3fKCLtmive8zwk4IRA-f0vRaTFz4JXALHqT8ZYdxkMpTe2Jco6EWGU8_780lMmypCt3ihzKhU_kR-Os_XmplIqh_x6wSEsspN4F9mmmndO0aE7t20zEfd_6sdns2tLk_8AhndL5Ao-r4zagh8U5gPDdiX5x-4IJ0n767EGCyBY33V7DKnHtte7AAmCqPqwb7W\"}",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"AAECAwQFBgcICQoL\",\"ct\":\"PCC3fKCLtmive8zwk4IRA-f0vRaTFz4JXALHqT8ZYdxkMpTe2Jco6EWGU8_780lMmypCt3ihzKhU_kR-Os_XmplIqh_x6wSEsspN4F9mmmndO0aE7t20zEfd_6sdns2tLk_8AhndL5Ao-r4zalkDCNUVCdiTpEb_b8V1heeDAmvJcH2bmPWjPHuVapsfty6yFNjBQxcrojcNZwS5VIpvnN0kJjgYmmMb\"}",
       "payload": {
         "agents": [
           {
             "kind": "claude",
             "pane": "wV:p1",
             "status": "working",
-            "title": "实现锁屏显示 agent 工作状态"
+            "title": "实现锁屏显示 agent 工作状态",
+            "workspace": "Heeler"
           }
         ],
         "host": "mbp",

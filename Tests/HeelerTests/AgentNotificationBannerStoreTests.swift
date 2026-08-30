@@ -87,7 +87,8 @@ struct AgentNotificationBannerStoreTests {
             store.banner
                 == AgentNotificationBanner(
                     target: AgentNotificationTarget(hostID: hostID, paneID: "wV:p1"),
-                    alert: AgentNotificationAlert(title: "claude", body: "Blocked · Task")))
+                    alert: AgentNotificationAlert(
+                        title: "Claude", body: "Blocked — waiting for input")))
         #expect(world.soundCount == 1)
     }
 
@@ -104,7 +105,7 @@ struct AgentNotificationBannerStoreTests {
         #expect(
             store.banner?.alert
                 == AgentNotificationAlert(
-                    title: "Caterm · claude", body: "Blocked · Task"))
+                    title: "Caterm · Claude", body: "Blocked — waiting for input"))
     }
 
     @Test func doneTransitionBannersWithTheDoneCopy() async throws {
@@ -117,7 +118,7 @@ struct AgentNotificationBannerStoreTests {
         try await waitUntil("the Done banner should show") { store.banner != nil }
         #expect(
             store.banner?.alert
-                == AgentNotificationAlert(title: "codex", body: "Done · Task"))
+                == AgentNotificationAlert(title: "Codex", body: "Done"))
     }
 
     /// The first sight of a pane is baseline, not a transition: a killed-state

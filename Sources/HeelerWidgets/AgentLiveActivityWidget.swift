@@ -3,11 +3,11 @@ import SwiftUI
 import UIKit
 import WidgetKit
 
-/// Live Activity for one Host. The lock-screen banner gives the leading
-/// agent a full two-line row and packs up to three more agents into compact
-/// rows. Rows arrive in the sender's pin-aware order and are rendered as
-/// given; Host identity is never rendered. Agent rows deep-link to their
-/// detail while the surrounding chrome opens the Console.
+/// Live Activity for one Host. The lock-screen banner gives each visible
+/// Agent the same compact workspace-and-kind row, up to four rows. Rows
+/// arrive in the sender's pin-aware order and are rendered as given; Host
+/// identity is never rendered. Agent rows deep-link to their detail while
+/// the surrounding chrome opens the Console.
 struct AgentLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: AgentActivityAttributes.self) { context in
@@ -130,14 +130,13 @@ struct AgentActivityLockScreenView: View {
             Color(uiColor: AgentActivityLockScreenChrome.backgroundColor)
                 .ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 0) {
                 header
                 ForEach(visibleAgents.dropFirst(), id: \.paneID) { agent in
                     AgentActivityLinkedRow(
                         hostID: hostID,
                         agent: agent,
                         surface: .lockScreen,
-                        density: .compact,
                         minimumHeight: rowMinimumHeight)
                 }
                 if let caption = presentation.lockScreenTrailingCaption(isStale: isStale) {
@@ -167,7 +166,7 @@ struct AgentActivityLockScreenView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .top, spacing: 8) {
             headline
             Spacer(minLength: 8)
             AgentActivityCountChips(counts: presentation.counts, surface: .lockScreen)
@@ -202,14 +201,12 @@ enum AgentActivityIsland {
         DynamicIsland {
             DynamicIslandExpandedRegion(.center) {
                 if let primary = presentation.primaryAgent {
-                    AgentActivityLinked(
+                    AgentActivityLinkedRow(
                         hostID: hostID,
                         agent: primary,
                         surface: .island,
                         minimumHeight: AgentActivityRowMetrics.denseMinimumHeight
-                    ) {
-                        AgentActivityHeadlineView(agent: primary, surface: .island)
-                    }
+                    )
                 } else {
                     Text(presentation.headerTitle)
                         .font(.headline)
@@ -298,11 +295,9 @@ private struct AgentActivityCompactLeading: View {
 
 enum AgentActivityNarration {
     static func rowLabel(for agent: AgentActivityDetails.AgentDetail) -> String {
-        var row = "\(agent.displayName), \(agent.status)"
-        if let title = agent.displayTitle {
-            row += ", \(title)"
-        }
-        return row
+        [agent.displayWorkspace, AgentNotificationIdentity.kindLabel(agent.kind), agent.status]
+            .compactMap { $0 }
+            .joined(separator: ", ")
     }
 }
 
@@ -350,7 +345,6 @@ private struct AgentActivityLinkedRow: View {
     let hostID: String
     let agent: AgentActivityDetails.AgentDetail
     let surface: AgentActivitySurface
-    var density: AgentActivityRowDensity = .full
     let minimumHeight: CGFloat
 
     var body: some View {
@@ -360,14 +354,9 @@ private struct AgentActivityLinkedRow: View {
             surface: surface,
             minimumHeight: minimumHeight
         ) {
-            AgentActivityRowView(agent: agent, surface: surface, density: density)
+            AgentActivityRowView(agent: agent, surface: surface)
         }
     }
-}
-
-private enum AgentActivityRowDensity: Equatable {
-    case full
-    case compact
 }
 
 private struct AgentActivityCountChips: View {
@@ -398,70 +387,17 @@ private struct AgentActivityCountChips: View {
     }
 }
 
-/// The headline: two lines mirroring the herdr sidebar's hierarchy —
-/// status dot plus the task title on top, the agent's identity (its herdr
-/// name, kind when unnamed, exactly like the TUI) indented beneath. A
-/// missing title promotes the identity to the top line alone.
-private struct AgentActivityHeadlineView: View {
-    let agent: AgentActivityDetails.AgentDetail
-    let surface: AgentActivitySurface
-
-    private var ink: Color { AgentActivityStatusStyle.ink(for: agent.status, on: surface) }
-    private var isBlocked: Bool { agent.status == "blocked" }
-
-    var body: some View {
-        let content = VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(ink)
-                    .frame(width: 8, height: 8)
-                    .accessibilityHidden(true)
-                Text(agent.displayTitle ?? agent.displayName)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(
-                        isBlocked ? ink : AgentActivitySemanticStyle.primary(on: surface))
-                    .lineLimit(1)
-            }
-            if agent.displayTitle != nil {
-                Text(agent.displayName)
-                    .font(.footnote)
-                    .foregroundStyle(AgentActivitySemanticStyle.secondary(on: surface))
-                    .lineLimit(1)
-                    .padding(.leading, 15)
-            }
-        }
-        switch surface {
-        case .island:
-            content.accessibilityLabel(AgentActivityNarration.rowLabel(for: agent))
-        case .lockScreen:
-            content
-        }
-    }
-}
-
-/// One agent row. Full density mirrors the headline hierarchy at smaller
-/// type; compact density keeps the title and identity on one line. Status
-/// is painted, not narrated as an event — a done row is the current state,
-/// not "just finished".
+/// One uniform row: a status dot beside the workspace, then the friendly Agent
+/// kind underneath. Every row owns identical geometry; status is color only,
+/// never extra text, inset, or a background that shifts one row from another.
 private struct AgentActivityRowView: View {
     let agent: AgentActivityDetails.AgentDetail
     let surface: AgentActivitySurface
-    var density: AgentActivityRowDensity = .full
 
-    private var isBlocked: Bool { agent.status == "blocked" }
     private var ink: Color { AgentActivityStatusStyle.ink(for: agent.status, on: surface) }
-    private var wash: Color { AgentActivityStatusStyle.wash(for: agent.status, on: surface) }
 
     var body: some View {
         let content = rowContent
-            .padding(.vertical, isBlocked ? blockedVerticalPadding : 0)
-            .padding(.horizontal, isBlocked ? 6 : 0)
-            .background {
-                if isBlocked {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(wash.opacity(0.15))
-                }
-            }
         switch surface {
         case .island:
             content.accessibilityLabel(AgentActivityNarration.rowLabel(for: agent))
@@ -470,57 +406,27 @@ private struct AgentActivityRowView: View {
         }
     }
 
-    @ViewBuilder
     private var rowContent: some View {
-        switch density {
-        case .full:
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 7) {
-                    statusDot
-                    title
-                    Spacer(minLength: 0)
-                }
-                if agent.displayTitle != nil {
-                    Text(agent.displayName)
-                        .font(.caption)
-                        .foregroundStyle(AgentActivitySemanticStyle.secondary(on: surface))
-                        .lineLimit(1)
-                        .padding(.leading, 14)
-                }
-            }
-        case .compact:
+        VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 7) {
-                statusDot
-                title
-                    .layoutPriority(1)
-                if agent.displayTitle != nil {
-                    Text("· \(agent.displayName)")
-                        .font(.caption2)
-                        .foregroundStyle(AgentActivitySemanticStyle.secondary(on: surface))
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
+                Circle()
+                    .fill(ink)
+                    .frame(width: 7, height: 7)
+                    .accessibilityHidden(true)
+                Text(agent.displayWorkspace ?? AgentNotificationIdentity.kindLabel(agent.kind))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AgentActivitySemanticStyle.primary(on: surface))
+                    .lineLimit(1)
+            }
+            if agent.displayWorkspace != nil {
+                Text(AgentNotificationIdentity.kindLabel(agent.kind))
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(AgentActivitySemanticStyle.secondary(on: surface))
+                    .lineLimit(1)
+                    .padding(.leading, 14)
             }
         }
-    }
-
-    private var statusDot: some View {
-        Circle()
-            .fill(ink)
-            .frame(width: 7, height: 7)
-            .accessibilityHidden(true)
-    }
-
-    private var title: some View {
-        Text(agent.displayTitle ?? agent.displayName)
-            .font(.caption.weight(isBlocked ? .semibold : .regular))
-            .foregroundStyle(
-                isBlocked ? ink : AgentActivitySemanticStyle.primary(on: surface))
-            .lineLimit(1)
-    }
-
-    private var blockedVerticalPadding: CGFloat {
-        density == .compact ? 2 : 3
+        .layoutPriority(1)
     }
 }
 
@@ -530,10 +436,12 @@ private struct AgentActivityRowView: View {
 /// live agent. Open this file's canvas in Xcode to review the banner.
 #if DEBUG
     private func previewAgent(
-        _ status: String, kind: String, name: String? = nil, pane: String, title: String? = nil
+        _ status: String, kind: String, workspace: String? = "Heeler", name: String? = nil,
+        pane: String, title: String? = nil
     ) -> AgentActivityDetails.AgentDetail {
         AgentActivityDetails.AgentDetail(
-            paneID: pane, kind: kind, name: name, status: status, title: title)
+            paneID: pane, kind: kind, name: name, workspace: workspace, status: status,
+            title: title)
     }
 
     private enum AgentActivityPreviewFixtures {
@@ -721,7 +629,7 @@ private struct AgentActivityRowView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if let primary = presentation.primaryAgent {
-                AgentActivityHeadlineView(agent: primary, surface: .island)
+                AgentActivityRowView(agent: primary, surface: .island)
             }
             ForEach(presentation.secondaryAgents, id: \.paneID) { agent in
                 AgentActivityRowView(agent: agent, surface: .island)
