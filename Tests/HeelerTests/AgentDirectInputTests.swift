@@ -1493,11 +1493,8 @@ struct AgentDirectInputTests {
     }
 
     private static func accessibleCount(labeled label: String, in root: UIView) -> Int {
-        var seen = Set<ObjectIdentifier>()
         var count = 0
         visitAccessible(in: root) { node in
-            let id = ObjectIdentifier(node)
-            guard seen.insert(id).inserted else { return }
             if node.accessibilityLabel == label {
                 count += 1
             }
