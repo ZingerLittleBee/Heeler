@@ -42,13 +42,16 @@ enum TerminalKeyboardTapTarget {
         minimumHeight: CGFloat = TerminalKeyboardTapTarget.minimumHeight
     ) -> CGRect {
         guard caretRect.height > 0, !bounds.isEmpty else { return .null }
-        let height = max(caretRect.height, minimumHeight)
-        let region = CGRect(
+        let height = min(max(caretRect.height, minimumHeight), bounds.height)
+        let centeredY = caretRect.midY - height / 2
+        let originY = min(
+            max(centeredY, bounds.minY),
+            bounds.maxY - height)
+        return CGRect(
             x: bounds.minX,
-            y: caretRect.midY - height / 2,
+            y: originY,
             width: bounds.width,
             height: height)
-        return region.intersection(bounds)
     }
 }
 

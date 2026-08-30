@@ -46,12 +46,11 @@ struct ContentViewActivityDriverTests {
                 hostStore: HostStore(volatileHosts: [host]),
                 console: console,
                 activity: activity))
-        // A plain UIKit hierarchy is enough: the window needs no connected
-        // scene for SwiftUI to fire appearance, and with it the `.task`
-        // modifiers under test.
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
-        window.rootViewController = controller
-        window.makeKeyAndVisible()
+        // Bind the hosted view to the test app's connected scene so SwiftUI
+        // owns a valid lifecycle for the `.task` modifiers under test.
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
         defer { window.isHidden = true }
 
         // The view's own first `.task` aligns the injected Console with the

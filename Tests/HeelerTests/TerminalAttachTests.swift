@@ -1,4 +1,5 @@
 import Foundation
+import GhosttyTerminal
 import SwiftUI
 import Synchronization
 import Testing
@@ -19,6 +20,93 @@ struct TerminalAttachTests {
 
     private enum FakeAttachChannelError: Error {
         case rejectedWrite
+    }
+
+    private struct ReportedGrid: Equatable {
+        let columns: Int
+        let rows: Int
+    }
+
+    /// A pre-handoff resize can still be inside Ghostty's IO pipeline when the
+    /// keyboard freeze begins, then arrive as if it belonged to the handoff.
+    /// The settled surface grid must replace that stale deferred value.
+    @MainActor
+    @Test func aSettledSurfaceGridOverridesAStaleDeferredResize() async throws {
+        var reportedGrids: [ReportedGrid] = []
+        let bridge = TerminalSessionCallbackBridge(
+            onSizeChanged: { columns, rows in
+                reportedGrids.append(ReportedGrid(columns: columns, rows: rows))
+            },
+            onViewportTextChanged: nil,
+            onSend: nil,
+            onScroll: nil,
+            onPaste: nil)
+        let stale = InMemoryTerminalViewport(columns: 33, rows: 20)
+
+        bridge.beginSizeReportDeferral()
+        await withCheckedContinuation { continuation in
+            bridge.onViewport = { _ in continuation.resume() }
+            bridge.resize(stale)
+        }
+        bridge.onViewport = nil
+        bridge.provideAuthoritativeDeferredSize(columns: 33, rows: 14)
+        bridge.finishSizeReportDeferral()
+        try await waitForGridReportsToSettle { reportedGrids.count }
+        #expect(reportedGrids == [ReportedGrid(columns: 33, rows: 14)])
+    }
+
+    /// Ghostty can publish the engine resize after the surface delegate has
+    /// already supplied the settled fallback. A stale grid is rejected
+    /// against the live surface, and its matching final callback is consumed
+    /// as the fallback's duplicate rather than resizing the Host twice.
+    @MainActor
+    @Test func aSettledFallbackRejectsLateStaleAndDuplicateResizes() async throws {
+        var reportedGrids: [ReportedGrid] = []
+        let bridge = TerminalSessionCallbackBridge(
+            onSizeChanged: { columns, rows in
+                reportedGrids.append(ReportedGrid(columns: columns, rows: rows))
+            },
+            onViewportTextChanged: nil,
+            onSend: nil,
+            onScroll: nil,
+            onPaste: nil)
+        bridge.isSizeReportCurrent = { columns, rows in
+            columns == 33 && rows == 14
+        }
+
+        bridge.beginSizeReportDeferral()
+        bridge.provideAuthoritativeDeferredSize(columns: 33, rows: 14)
+        bridge.finishSizeReportDeferral()
+        try await waitForGridReportsToSettle { reportedGrids.count }
+
+        await withCheckedContinuation { continuation in
+            bridge.onViewport = { _ in continuation.resume() }
+            bridge.resize(InMemoryTerminalViewport(columns: 33, rows: 20))
+            bridge.resize(InMemoryTerminalViewport(columns: 33, rows: 14))
+        }
+        #expect(reportedGrids == [ReportedGrid(columns: 33, rows: 14)])
+    }
+
+    /// Thawing cannot overtake a post-freeze resize whose main-actor delivery
+    /// is still queued, or the deferred final grid is silently lost.
+    @MainActor
+    @Test func aHandoffThawWaitsForItsQueuedResize() async throws {
+        var reportedGrids: [ReportedGrid] = []
+        let bridge = TerminalSessionCallbackBridge(
+            onSizeChanged: { columns, rows in
+                reportedGrids.append(ReportedGrid(columns: columns, rows: rows))
+            },
+            onViewportTextChanged: nil,
+            onSend: nil,
+            onScroll: nil,
+            onPaste: nil)
+        let settled = InMemoryTerminalViewport(columns: 33, rows: 14)
+
+        bridge.beginSizeReportDeferral()
+        bridge.resize(settled)
+        bridge.finishSizeReportDeferral()
+        try await waitForGridReportsToSettle { reportedGrids.count }
+        #expect(reportedGrids == [ReportedGrid(columns: 33, rows: 14)])
     }
 
     @Test func attachOutputPumpWithholdsStartupChatterUntilTheHandshake() async throws {
@@ -845,6 +933,16 @@ struct TerminalAttachTests {
         #expect(region == CGRect(x: 0, y: 344, width: 390, height: 132))
     }
 
+    @Test func keyboardTapTargetKeepsItsMinimumHeightAtTheViewportEdge() {
+        let bounds = CGRect(x: 0, y: 0, width: 390, height: 720)
+        let region = TerminalKeyboardTapTarget.region(
+            caretRect: CGRect(x: 72, y: 700, width: 9, height: 20),
+            in: bounds,
+            minimumHeight: TerminalKeyboardTapTarget.alternateScreenMinimumHeight)
+
+        #expect(region == CGRect(x: 0, y: 588, width: 390, height: 132))
+    }
+
     /// Every chat-style agent TUI pins its input box to the bottom rows, but
     /// each parks the caret somewhere of its own, so the bottom quarter is
     /// the tool-agnostic floor the caret band cannot be.
@@ -933,7 +1031,11 @@ struct TerminalAttachTests {
         #expect(terminal.bounds.contains(region))
         // Reaches the visible prompt above the parked caret (#90), or the
         // single entry point is unhittable in practice.
-        #expect(region.height >= TerminalKeyboardTapTarget.alternateScreenMinimumHeight)
+        // CGRect intersection can round an exact-height band down by one ULP
+        // when Ghostty reports fractional caret metrics.
+        #expect(
+            region.height
+                >= TerminalKeyboardTapTarget.alternateScreenMinimumHeight.nextDown)
         // Full width: the row is the target, not the glyph the cursor sits on.
         #expect(region.width == terminal.bounds.width)
     }
@@ -1353,6 +1455,178 @@ struct TerminalAttachTests {
         #expect(inset.height == 402)
     }
 
+    /// Moving a visible system keyboard between Composer and Direct Input can
+    /// emit a transient hide followed by a smaller frame. Neither may move the
+    /// app-owned chrome before the destination responder settles.
+    @MainActor
+    @Test func responderHandoffKeepsTheKeyboardInsetAtItsSettledHeight() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { frame in
+            frame.height == 436 ? 402 : 365
+        }
+        let completeFrame = CGRect(x: 0, y: 554, width: 440, height: 436)
+        let transientFrame = CGRect(x: 0, y: 591, width: 440, height: 399)
+
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: completeFrame])
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(inset.height == 402)
+
+        let handoffID = inset.beginResponderHandoff()
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        center.post(
+            name: UIResponder.keyboardWillChangeFrameNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: transientFrame])
+
+        #expect(inset.height == 402)
+        #expect(inset.lastPresentedHeight == 402)
+
+        inset.endResponderHandoff(UUID())
+        #expect(inset.isHoldingHandoffHeight)
+        #expect(inset.height == 402)
+
+        inset.endResponderHandoff(handoffID)
+        #expect(!inset.isHoldingHandoffHeight)
+        #expect(inset.height == 402)
+        #expect(inset.lastPresentedHeight == 402)
+    }
+
+    /// A scene transition can emit will-hide without a matching did-frame.
+    /// The safety leash must release the hold, notify its owner, and reconcile
+    /// a hide that never received a destination frame.
+    @MainActor
+    @Test func responderHandoffFallbackReleasesAnUnsettledFreeze() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
+        inset.responderHandoffFallbackDelay = .milliseconds(50)
+
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 554, width: 440, height: 436)])
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(inset.height == 402)
+
+        var ownerHandoffID: UUID?
+        var expiredHandoffID: UUID?
+        let handoffID = inset.beginResponderHandoff(onFallback: { expiredID in
+            expiredHandoffID = expiredID
+            if ownerHandoffID == expiredID {
+                ownerHandoffID = nil
+            }
+        })
+        ownerHandoffID = handoffID
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        try await Task.sleep(for: .milliseconds(80))
+
+        #expect(!inset.isHoldingHandoffHeight)
+        #expect(expiredHandoffID == handoffID)
+        #expect(ownerHandoffID == nil)
+        #expect(inset.height == 0)
+        #expect(inset.lastPresentedHeight == 402)
+    }
+
+    /// Keyboard notifications are process-wide on iPad. A hide from another
+    /// scene must not clear this scene's still-visible keyboard footprint.
+    @MainActor
+    @Test func responderHandoffFallbackUsesTheOwningWindowHeight() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
+        inset.responderHandoffFallbackDelay = .milliseconds(50)
+
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 554, width: 440, height: 436)])
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(inset.height == 402)
+
+        _ = inset.beginResponderHandoff(currentHeight: { 402 })
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        try await Task.sleep(for: .milliseconds(80))
+
+        #expect(!inset.isHoldingHandoffHeight)
+        #expect(inset.height == 402)
+        #expect(inset.lastPresentedHeight == 402)
+    }
+
+    /// Composer-to-Direct already has the destination terminal's bounded
+    /// fallback. A second inset-owned timer starts earlier and can commit a
+    /// transient hide before the terminal gets its final frame.
+    @MainActor
+    @Test func destinationOwnedFallbackKeepsTheInsetFrozen() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
+        inset.responderHandoffFallbackDelay = .milliseconds(50)
+        inset.destinationResponderHandoffFallbackDelay = .milliseconds(200)
+
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 554, width: 440, height: 436)])
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(inset.height == 402)
+
+        let handoffID = inset.beginDestinationOwnedResponderHandoff()
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        try await Task.sleep(for: .milliseconds(80))
+
+        #expect(inset.isHoldingHandoffHeight)
+        #expect(inset.height == 402)
+        inset.endResponderHandoff(handoffID)
+        #expect(!inset.isHoldingHandoffHeight)
+        #expect(inset.height == 402)
+    }
+
+    /// A destination can disappear before its weakly captured terminal timer
+    /// fires. The inset owner has a later watchdog so that loss cannot leave
+    /// the shared handoff token frozen forever.
+    @MainActor
+    @Test func destinationLossFallsBackThroughTheInsetOwner() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
+        inset.destinationResponderHandoffFallbackDelay = .milliseconds(50)
+
+        center.post(
+            name: UIResponder.keyboardWillShowNotification,
+            object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 554, width: 440, height: 436)])
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(inset.height == 402)
+
+        var expiredID: UUID?
+        let handoffID = inset.beginDestinationOwnedResponderHandoff(
+            currentHeight: { nil }
+        ) { expiredID = $0 }
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        try await Task.sleep(for: .milliseconds(80))
+
+        #expect(expiredID == handoffID)
+        #expect(!inset.isHoldingHandoffHeight)
+        #expect(inset.height == 402)
+    }
+
+    @MainActor
+    @Test func responderHandoffCancellationUsesTheOwningWindowHeight() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 554, width: 440, height: 436)])
+        try await Task.sleep(for: .milliseconds(120))
+
+        let handoffID = inset.beginResponderHandoff()
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        inset.cancelResponderHandoff(handoffID, currentHeight: { 402 })
+
+        #expect(!inset.isHoldingHandoffHeight)
+        #expect(inset.height == 402)
+        #expect(inset.lastPresentedHeight == 402)
+    }
+
     @Test func agentKeyboardReplacementKeepsTheTerminalInsetStable() {
         let system = AgentComposerKeyboardLayout(
             currentHeight: 402, lastPresentedHeight: 402,
@@ -1578,18 +1852,20 @@ struct TerminalAttachTests {
     @Test func agentQuickKeysEncodeExpectedBytes() {
         #expect(
             AgentQuickKey.allCases == [
-                .escape, .tab, .shiftTab, .left, .up, .down, .right, .enter,
-                .backspace,
+                .escape, .tab, .shiftTab, .shiftEnter, .left, .up, .down, .right,
+                .enter, .backspace,
             ])
         #expect(AgentQuickKey.escape.bytes(applicationCursor: false) == [0x1B])
         #expect(AgentQuickKey.tab.bytes(applicationCursor: false) == [0x09])
         #expect(AgentQuickKey.shiftTab.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x5A])
+        #expect(AgentQuickKey.shiftEnter.bytes(applicationCursor: false) == [0x0A])
         #expect(AgentQuickKey.left.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x44])
         #expect(AgentQuickKey.up.bytes(applicationCursor: true) == [0x1B, 0x4F, 0x41])
         #expect(AgentQuickKey.down.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x42])
         #expect(AgentQuickKey.right.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x43])
         #expect(AgentQuickKey.enter.bytes(applicationCursor: false) == [0x0D])
         #expect(AgentQuickKey.backspace.bytes(applicationCursor: false) == [0x7F])
+        #expect(AgentQuickKey.shiftEnter.title == "⇧Enter")
         #expect(AgentQuickKey.enter.title == "Enter")
         #expect(AgentQuickKey.backspace.title == "Backspace")
         #expect(AgentQuickKey.enter.systemImageName == nil)
