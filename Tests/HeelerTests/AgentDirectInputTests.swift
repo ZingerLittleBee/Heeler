@@ -408,12 +408,13 @@ struct AgentDirectInputTests {
         keyboardTransitions.reset()
 
         if #available(iOS 27, *) {
-            #expect(
-                Self.firstAccessible(
+            try #require(
+                Self.activateAccessibility(
                     labeled: AgentDirectInputPresentation.hideComposerAccessibilityLabel,
-                    in: controller.view) != nil)
+                    in: controller.view))
+        } else {
+            try #require(interactions.selectInputMode(.direct))
         }
-        try #require(interactions.selectInputMode(.direct))
         // The measured keyboard stays in place while SwiftUI updates the
         // existing terminal and transfers first responder to it.
         #expect(inset.height == keyboardHeight)
@@ -423,7 +424,7 @@ struct AgentDirectInputTests {
             inputMode.mode == AgentInputMode.direct
                 && terminal.isLocalInputEnabled
                 && terminal.isFirstResponder
-                && interactions.isDirectInputChromeMounted
+                && interactions.directInputChromeMountCount == 1
                 && !inset.isHoldingHandoffHeight
                 && keyboardTransitions.observedHandoffWindow()
                 && keyboardTransitions.hasStableTail()
@@ -448,16 +449,18 @@ struct AgentDirectInputTests {
 
         keyboardTransitions.reset()
         if #available(iOS 27, *) {
-            #expect(
-                Self.firstAccessible(
+            try #require(
+                Self.activateAccessibility(
                     labeled: AgentDirectInputPresentation.showComposerAccessibilityLabel,
-                    in: controller.view) != nil)
+                    in: controller.view))
+        } else {
+            try #require(interactions.selectInputMode(.composer))
         }
-        try #require(interactions.selectInputMode(.composer))
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
         try #require(await Self.eventually {
             inputMode.mode == AgentInputMode.composer
+                && interactions.directInputChromeMountCount == 0
                 && !inset.isHoldingHandoffHeight
                 && keyboardTransitions.observedHandoffWindow()
                 && keyboardTransitions.hasStableTail()
@@ -512,7 +515,7 @@ struct AgentDirectInputTests {
         try #require(await Self.eventually {
             owner.terminalStatus == AttachTerminalStore.Status.live
                 && interactions.isConnected
-                && interactions.isDirectInputChromeMounted
+                && interactions.directInputChromeMountCount == 1
         })
 
         let terminal = try #require(Self.terminals(in: controller.view).first)
@@ -595,7 +598,7 @@ struct AgentDirectInputTests {
         try #require(await Self.eventually {
             owner.terminalStatus == AttachTerminalStore.Status.live
                 && interactions.isConnected
-                && interactions.isDirectInputChromeMounted
+                && interactions.directInputChromeMountCount == 1
         })
 
         let terminal = try #require(Self.terminals(in: controller.view).first)
@@ -625,7 +628,14 @@ struct AgentDirectInputTests {
             AgentQuickKey.escape, .tab, .shiftTab, .backspace, .shiftEnter, .enter,
             .up, .down, .left, .right,
         ] {
-            try #require(interactions.sendQuickKey(key))
+            if #available(iOS 27, *) {
+                try #require(
+                    Self.activateAccessibility(
+                        labeled: key.accessibilityLabel,
+                        in: controller.view))
+            } else {
+                try #require(interactions.sendQuickKey(key))
+            }
         }
 
         if #available(iOS 27, *) {
@@ -674,7 +684,7 @@ struct AgentDirectInputTests {
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
         await Task.yield()
-        #expect(interactions.isDirectInputChromeMounted)
+        #expect(interactions.directInputChromeMountCount == 1)
         if #available(iOS 27, *) {
             #expect(Self.firstAccessible(labeled: "Escape", in: controller.view) != nil)
             #expect(Self.accessibleCount(labeled: "Dismiss keyboard", in: controller.view) == 1)
@@ -713,7 +723,7 @@ struct AgentDirectInputTests {
         try #require(await Self.eventually {
             owner.terminalStatus == AttachTerminalStore.Status.live
                 && interactions.isConnected
-                && interactions.isDirectInputChromeMounted
+                && interactions.directInputChromeMountCount == 1
         })
 
         let terminal = try #require(Self.terminals(in: controller.view).first)
@@ -731,13 +741,20 @@ struct AgentDirectInputTests {
         await Task.yield()
         let heightWithSoftwareKeyboard = try #require(
             Self.terminals(in: controller.view).first).frame.height
-        #expect(interactions.isDirectInputChromeMounted)
+        #expect(interactions.directInputChromeMountCount == 1)
 
-        try #require(interactions.switchDirectKeyboard())
+        if #available(iOS 27, *) {
+            try #require(
+                Self.activateAccessibility(
+                    labeled: "Show tools keyboard",
+                    in: controller.view))
+        } else {
+            try #require(interactions.switchDirectKeyboard())
+        }
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
         // Tools replaces the software keyboard without hiding the shortcut row.
-        #expect(interactions.isDirectInputChromeMounted)
+        #expect(interactions.directInputChromeMountCount == 1)
 
         // UIKit tears the software keyboard down while Tools stays first
         // responder — the production hold must keep `.system` once we leave Tools.
@@ -745,7 +762,14 @@ struct AgentDirectInputTests {
         #expect(inset.height == 0)
         #expect(inset.lastPresentedHeight == 336)
 
-        try #require(interactions.switchDirectKeyboard())
+        if #available(iOS 27, *) {
+            try #require(
+                Self.activateAccessibility(
+                    labeled: "Show iOS keyboard",
+                    in: controller.view))
+        } else {
+            try #require(interactions.switchDirectKeyboard())
+        }
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
         await Task.yield()
@@ -754,7 +778,7 @@ struct AgentDirectInputTests {
         // switcher even while measured height is still zero. Two-sided bound:
         // wiring the modifier to the raw zero height expands the terminal by
         // ~lastPresentedHeight and still satisfies a one-sided upper bound.
-        #expect(interactions.isDirectInputChromeMounted)
+        #expect(interactions.directInputChromeMountCount == 1)
         let midSwapTerminal = try #require(Self.terminals(in: controller.view).first)
         #expect(midSwapTerminal.isFirstResponder)
         #expect(abs(heightWithSoftwareKeyboard - midSwapTerminal.frame.height) <= 1)
@@ -771,7 +795,7 @@ struct AgentDirectInputTests {
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
         await Task.yield()
-        #expect(interactions.isDirectInputChromeMounted)
+        #expect(interactions.directInputChromeMountCount == 1)
         let afterShow = try #require(Self.terminals(in: controller.view).first)
         #expect(afterShow.isFirstResponder)
         #expect(abs(afterShow.frame.height - heightWithSoftwareKeyboard) < 1)
@@ -786,7 +810,7 @@ struct AgentDirectInputTests {
         await Task.yield()
         let afterHardwareHide = try #require(Self.terminals(in: controller.view).first)
         #expect(afterHardwareHide.isFirstResponder)
-        #expect(interactions.isDirectInputChromeMounted)
+        #expect(interactions.directInputChromeMountCount == 1)
         #expect(afterHardwareHide.frame.height - heightWithSoftwareKeyboard >= 336)
 
         await owner.leave().value
@@ -819,7 +843,7 @@ struct AgentDirectInputTests {
         try #require(await Self.eventually {
             owner.terminalStatus == AttachTerminalStore.Status.live
                 && interactions.isConnected
-                && interactions.isDirectInputChromeMounted
+                && interactions.directInputChromeMountCount == 1
         })
 
         center.post(
@@ -961,6 +985,8 @@ struct AgentDirectInputTests {
                 composer: composer,
                 inputMode: inputMode,
                 interactionProbe: interactions))
+        // A scene-less hierarchy isolates Attach feed replacement from UIKit's
+        // active software-keyboard reload while retaining responder semantics.
         let window = Self.makeLocalTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)
@@ -971,7 +997,14 @@ struct AgentDirectInputTests {
                 && interactions.isConnected
         })
 
-        try #require(interactions.selectInputMode(.direct))
+        if #available(iOS 27, *) {
+            try #require(
+                Self.activateAccessibility(
+                    labeled: AgentDirectInputPresentation.hideComposerAccessibilityLabel,
+                    in: controller.view))
+        } else {
+            try #require(interactions.selectInputMode(.direct))
+        }
         try #require(await Self.eventually { inputMode.mode == AgentInputMode.direct })
         let first = try #require(Self.terminals(in: controller.view).first)
         try #require(await Self.eventually { first.isFirstResponder })
@@ -1024,6 +1057,8 @@ struct AgentDirectInputTests {
                 inputMode: inputMode,
                 keyboardHandoff: handoff,
                 interactionProbe: interactions))
+        // A scene-less hierarchy isolates Attach feed replacement from UIKit's
+        // active software-keyboard reload while retaining responder semantics.
         let window = Self.makeLocalTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)
@@ -1034,7 +1069,14 @@ struct AgentDirectInputTests {
                 && interactions.isConnected
         })
 
-        try #require(interactions.selectInputMode(.direct))
+        if #available(iOS 27, *) {
+            try #require(
+                Self.activateAccessibility(
+                    labeled: AgentDirectInputPresentation.hideComposerAccessibilityLabel,
+                    in: controller.view))
+        } else {
+            try #require(interactions.selectInputMode(.direct))
+        }
         try #require(await Self.eventually { inputMode.mode == AgentInputMode.direct })
         let first = try #require(Self.terminals(in: controller.view).first)
         try #require(await Self.eventually { first.isFirstResponder })
@@ -1067,9 +1109,16 @@ struct AgentDirectInputTests {
         try #require(await Self.eventually {
             controller.view.setNeedsLayout()
             controller.view.layoutIfNeeded()
-            return interactions.isDirectInputChromeMounted
+            return interactions.directInputChromeMountCount == 1
         })
-        try #require(interactions.toggleDirectKeyboard())
+        if #available(iOS 27, *) {
+            try #require(
+                Self.activateAccessibility(
+                    labeled: "Dismiss keyboard",
+                    in: controller.view))
+        } else {
+            try #require(interactions.toggleDirectKeyboard())
+        }
         try #require(await Self.eventually { !afterFirst.isFirstResponder })
         #expect(!handoff.consume(agent.id))
 
@@ -1512,6 +1561,16 @@ struct AgentDirectInputTests {
 
     private static func firstAccessible(labeled label: String, in root: UIView) -> NSObject? {
         firstAccessible(in: root) { $0.accessibilityLabel == label }
+    }
+
+    @discardableResult
+    private static func activateAccessibility(labeled label: String, in root: UIView) -> Bool {
+        guard let element = firstAccessible(labeled: label, in: root) else { return false }
+        if let control = element as? UIControl {
+            control.sendActions(for: .touchUpInside)
+            return true
+        }
+        return element.accessibilityActivate()
     }
 
     private static func firstAccessibleFrame(labeled label: String, in root: UIView) -> CGRect? {

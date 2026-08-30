@@ -12,10 +12,9 @@ final class AgentTerminalInteractionProbe {
     private var sendQuickKeyAction: ((AgentQuickKey) -> Void)?
     private var toggleDirectKeyboardAction: (() -> Void)?
     private var switchDirectKeyboardAction: (() -> Void)?
-    private var directInputChromeMountCount = 0
+    private(set) var directInputChromeMountCount = 0
 
     var isConnected: Bool { selectInputModeAction != nil }
-    var isDirectInputChromeMounted: Bool { directInputChromeMountCount > 0 }
 
     @discardableResult
     func selectInputMode(_ mode: AgentInputMode) -> Bool {
@@ -82,6 +81,15 @@ final class AgentTerminalInteractionProbe {
     }
 }
 
+@MainActor
+private final class WeakAgentTerminalInteractionProbe {
+    weak var value: AgentTerminalInteractionProbe?
+
+    init(_ value: AgentTerminalInteractionProbe) {
+        self.value = value
+    }
+}
+
 /// The live Ghostty surface used by Agent detail. Composer mode keeps the
 /// terminal display-only and routes authored text through the local draft;
 /// Direct Input (ADR 0016) enables Ghostty local input so the system keyboard
@@ -117,7 +125,7 @@ struct AgentTerminalView: View {
     private let isOpeningTerminal: Bool
     private let openTerminal: () -> Void
     private let composer: AgentComposerStore
-    private let interactionProbe: AgentTerminalInteractionProbe?
+    private let interactionProbe: WeakAgentTerminalInteractionProbe?
     @State private var attach: AgentAttachStore
     /// Nil for agent kinds without a skills source catalog; the Keys
     /// keyboard hides the Skills tab in that case.
@@ -215,7 +223,7 @@ struct AgentTerminalView: View {
         self.isOpeningTerminal = isOpeningTerminal
         self.openTerminal = openTerminal
         self.composer = composer
-        self.interactionProbe = interactionProbe
+        self.interactionProbe = interactionProbe.map(WeakAgentTerminalInteractionProbe.init)
         _attach = State(
             initialValue: attachStore ?? AgentAttachStore(
                 target: agent.agent.paneID,
@@ -518,7 +526,7 @@ struct AgentTerminalView: View {
         // calls must stay synchronous, because the spurious pair can land in
         // one transaction and rejoin() can only undo a leave it can see.
         .onAppear {
-            interactionProbe?.connect(selectInputMode: { mode in selectInputMode(mode) })
+            interactionProbe?.value?.connect(selectInputMode: { mode in selectInputMode(mode) })
             composer.bindAttachInput(attach.input)
             // Arm before rejoin so a full pipeline replacement can claim the
             // keyboard while Direct Input still owns raised intent.
@@ -526,7 +534,7 @@ struct AgentTerminalView: View {
             attach.rejoin()
         }
         .onDisappear {
-            interactionProbe?.disconnect()
+            interactionProbe?.value?.disconnect()
             attach.leave()
             Task { @MainActor in
                 await Task.yield()
@@ -788,14 +796,15 @@ struct AgentTerminalView: View {
                     showComposer: { selectInputMode(.composer) },
                     restoreComposerThen: restoreComposerThen)))
             .onAppear {
-                interactionProbe?.directInputChromeDidAppear(
+                interactionProbe?.value?.directInputChromeDidAppear(
                     sendQuickKey: { key in keyboardControl.sendQuickKey(key) },
                     toggleDirectKeyboard: { toggleDirectKeyboard() },
-                    switchDirectKeyboard: directKeyboardSwitchAction)
+                    switchDirectKeyboard: presentedDirectKeyboardSwitchAction)
             }
-            .onDisappear { interactionProbe?.directInputChromeDidDisappear() }
-            .onChange(of: isDirectKeyboardSwitchAvailable) { _, _ in
-                interactionProbe?.updateSwitchDirectKeyboard(directKeyboardSwitchAction)
+            .onDisappear { interactionProbe?.value?.directInputChromeDidDisappear() }
+            .onChange(of: isDirectKeyboardSwitchPresented) { _, _ in
+                interactionProbe?.value?.updateSwitchDirectKeyboard(
+                    presentedDirectKeyboardSwitchAction)
             }
             .onGeometryChange(for: CGFloat.self) { geometry in
                 geometry.size.height
@@ -850,6 +859,15 @@ struct AgentTerminalView: View {
     private var directKeyboardSwitchAction: (() -> Void)? {
         guard isDirectKeyboardSwitchAvailable else { return nil }
         return { switchDirectKeyboard() }
+    }
+
+    private var presentedDirectKeyboardSwitchAction: (() -> Void)? {
+        guard isDirectKeyboardSwitchPresented else { return nil }
+        return directKeyboardSwitchAction
+    }
+
+    private var isDirectKeyboardSwitchPresented: Bool {
+        directSwitcherKeyboardIsUp && isDirectKeyboardSwitchAvailable
     }
 
     private var isDirectKeyboardSwitchAvailable: Bool {
