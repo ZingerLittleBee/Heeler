@@ -10,7 +10,8 @@ Entries reference the issue that motivated them.
 ### Changed
 
 - Fresh installations use an 8 pt terminal font by default, fitting more of an
-  Agent's TUI on a mobile display while preserving existing saved sizes. (#256)
+  Agent's TUI on a mobile display while preserving existing saved sizes.
+  (#256; PR #257)
 
 ## [0.1.3] - 2026-08-28
 
