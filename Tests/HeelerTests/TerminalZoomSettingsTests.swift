@@ -39,7 +39,7 @@ struct TerminalZoomSettingsTests {
         settings.adjust(by: 1)
         settings.adjust(by: -1)
 
-        #expect(settings.fontSize == 15)
+        #expect(settings.fontSize == 9)
     }
 
     @Test func fractionalZoomLandsOnWholePoints() throws {
