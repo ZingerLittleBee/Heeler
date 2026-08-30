@@ -9,6 +9,11 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- Agent cards consistently lead with the herdr workspace or Agent identity,
+  followed by the launch directory and a shared Agent-type and Host line;
+  terminal-generated titles and TUI metadata no longer compete with that
+  hierarchy. (#259)
+
 - When no size has been saved, Terminal Text Size now defaults to 8 pt instead
   of 14 pt. Existing saved sizes do not change. (#256; PR #257)
 
