@@ -8,9 +8,19 @@ typealias TerminalSessionRunner =
 
 struct TerminalSessionHandler: Sendable {
     private let operation: TerminalSessionOperation
+    private let transportReady: @MainActor @Sendable (UInt64) -> Void
 
-    init(_ operation: @escaping TerminalSessionOperation) {
+    init(
+        transportReady: @escaping @MainActor @Sendable (UInt64) -> Void = { _ in },
+        _ operation: @escaping TerminalSessionOperation
+    ) {
+        self.transportReady = transportReady
         self.operation = operation
+    }
+
+    @MainActor
+    func transportDidBecomeReady(_ generation: UInt64) {
+        transportReady(generation)
     }
 
     @MainActor
@@ -106,6 +116,7 @@ final class AttachTerminalStore {
 
     private var cols: Int?
     private var rows: Int?
+    private(set) var transportGeneration: UInt64?
     private var stopRequested = false
     private var preservesPendingPasteOnStop = false
     private var session: TerminalAttachSession?
@@ -115,6 +126,7 @@ final class AttachTerminalStore {
     init(
         target: TerminalAttachTarget, takeover: Bool = false,
         input: TerminalInputController = TerminalInputController(),
+        transportGeneration: UInt64? = nil,
         observeOutput: @escaping @MainActor @Sendable (Data) -> Void = { _ in },
         finishOutput: @escaping @MainActor @Sendable () -> Void = {},
         runTerminal: @escaping TerminalSessionRunner
@@ -122,6 +134,7 @@ final class AttachTerminalStore {
         self.target = target
         self.takeover = takeover
         self.input = input
+        self.transportGeneration = transportGeneration
         self.observeOutput = observeOutput
         self.finishOutput = finishOutput
         self.runTerminal = runTerminal
@@ -130,6 +143,7 @@ final class AttachTerminalStore {
     convenience init(
         target: String, takeover: Bool = false,
         input: TerminalInputController = TerminalInputController(),
+        transportGeneration: UInt64? = nil,
         observeOutput: @escaping @MainActor @Sendable (Data) -> Void = { _ in },
         finishOutput: @escaping @MainActor @Sendable () -> Void = {},
         runTerminal: @escaping TerminalSessionRunner
@@ -138,6 +152,7 @@ final class AttachTerminalStore {
             target: .agentPane(target),
             takeover: takeover,
             input: input,
+            transportGeneration: transportGeneration,
             observeOutput: observeOutput,
             finishOutput: finishOutput,
             runTerminal: runTerminal)
@@ -225,7 +240,11 @@ final class AttachTerminalStore {
             try await runTerminal(
                 TerminalAttachRequest(
                     target: target, takeover: takeover, cols: cols, rows: rows),
-                TerminalSessionHandler { [weak self] session in
+                TerminalSessionHandler(
+                    transportReady: { [weak self] generation in
+                        self?.transportGeneration = generation
+                    }
+                ) { [weak self] session in
                     guard let self else {
                         await session.end()
                         return

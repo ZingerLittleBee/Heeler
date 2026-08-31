@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import Testing
 import UIKit
 
@@ -453,6 +454,62 @@ struct AttachTerminalStoreTests {
 @MainActor
 @Suite("Agent Attach store")
 struct AgentAttachStoreTests {
+    @Test func foregroundRecoveryAbsorbsItsLaterTransportGeneration() async throws {
+        let transport = ScriptedTransport()
+        let generation = TerminalGenerationSource(1)
+        let runner: TerminalSessionRunner = { request, handler in
+            let readyGeneration = await generation.value
+            await handler.transportDidBecomeReady(readyGeneration)
+            let session = try await transport.attachTerminal(request)
+            try await handler.runEndingSession(session)
+        }
+        let store = makeStore(
+            transport: transport,
+            generation: 1,
+            runTerminal: runner)
+
+        let firstSessionGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachSession(using: firstSessionGate)
+        store.viewDidResize(cols: 80, rows: 24)
+        await firstSessionGate.waitForEntry()
+        var firstStatusChanges = observeStatusChanges(of: store)
+        #expect(await transport.emitAttachOutput(Data("first".utf8)))
+        await firstSessionGate.open()
+        _ = await firstStatusChanges.next()
+        #expect(store.terminalStatus == .live)
+
+        await generation.set(2)
+        let predecessorID = store.terminalID
+        var terminalChanges = observeTerminalChanges(of: store)
+        store.didBecomeActive(afterPossibleSuspension: true)
+        _ = await terminalChanges.next()
+        let recoveryID = store.terminalID
+        #expect(recoveryID != predecessorID)
+        #expect(store.terminalStatus == .waitingForSize)
+
+        // This is the projection edge that used to enqueue a second pipeline
+        // after foreground recovery had already built the one waiting for the
+        // ping-proven Transport.
+        store.transportGenerationDidChange(2)
+        #expect(store.terminalID == recoveryID)
+
+        let secondSessionGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachSession(using: secondSessionGate)
+        store.viewDidResize(cols: 100, rows: 30)
+        await secondSessionGate.waitForEntry()
+        #expect(await transport.attachRequests.count == 2)
+        var secondStatusChanges = observeStatusChanges(of: store)
+        #expect(await transport.emitAttachOutput(Data("second".utf8)))
+        await secondSessionGate.open()
+        _ = await secondStatusChanges.next()
+        #expect(store.terminalStatus == .live)
+
+        await store.leave().value
+        #expect(store.terminalID == recoveryID)
+        #expect(await transport.attachRequests.count == 2)
+        #expect(await !transport.hasLiveAttachSession)
+    }
+
     @Test func productionAttachTakesOverAnExistingRemoteClient() async throws {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
@@ -2167,6 +2224,32 @@ struct AgentAttachStoreTests {
             closePane: close)
     }
 
+    private func observeTerminalChanges(
+        of store: AgentAttachStore
+    ) -> AsyncStream<Void>.Iterator {
+        let (changes, continuation) = AsyncStream.makeStream(of: Void.self)
+        withObservationTracking {
+            _ = store.terminalID
+        } onChange: {
+            continuation.yield()
+            continuation.finish()
+        }
+        return changes.makeAsyncIterator()
+    }
+
+    private func observeStatusChanges(
+        of store: AgentAttachStore
+    ) -> AsyncStream<Void>.Iterator {
+        let (changes, continuation) = AsyncStream.makeStream(of: Void.self)
+        withObservationTracking {
+            _ = store.terminalStatus
+        } onChange: {
+            continuation.yield()
+            continuation.finish()
+        }
+        return changes.makeAsyncIterator()
+    }
+
     private func tinyJPEGData() throws -> Data {
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 16, height: 16))
         let image = renderer.image { context in
@@ -2238,6 +2321,18 @@ struct AgentAttachStoreTests {
             }
             await permit.release()
         }
+    }
+}
+
+private actor TerminalGenerationSource {
+    private(set) var value: UInt64
+
+    init(_ value: UInt64) {
+        self.value = value
+    }
+
+    func set(_ value: UInt64) {
+        self.value = value
     }
 }
 

@@ -102,6 +102,10 @@ final class AgentAttachStore {
     /// ordinary replacement and rejoin transitions keep their existing teardown
     /// semantics.
     private var activationRecoveryOwnsOnStageLifecycle = false
+    /// A foreground replacement already waits at the terminal-ready seam. The
+    /// matching generation publication acknowledges that same pipeline; it
+    /// must not enqueue a second writer behind it.
+    private var activationRecoveryAwaitsTransport = false
 
     init(
         target: String,
@@ -123,7 +127,8 @@ final class AgentAttachStore {
         let linkIndex = AttachLinkIndex()
         self.linkIndex = linkIndex
         terminal = Self.makeTerminal(
-            target: target, input: input, runTerminal: runTerminal, linkIndex: linkIndex)
+            target: target, input: input, transportGeneration: transportGeneration,
+            runTerminal: runTerminal, linkIndex: linkIndex)
         staging = ComposerStagingStore(
             stageImage: stageImage,
             stageFile: stageFile,
@@ -259,7 +264,18 @@ final class AgentAttachStore {
     func didBecomeActive(afterPossibleSuspension: Bool = false) {
         guard lifecycleState == .active, isOnStage() else { return }
         guard !afterPossibleSuspension else {
+            if terminalRecoveryOwner != nil {
+                activationRecoveryOwnsOnStageLifecycle = true
+                activationRecoveryAwaitsTransport = true
+                return
+            }
+            if terminal.transportGeneration == transportGeneration,
+                terminal.status == .waitingForSize || terminal.status == .connecting
+            {
+                return
+            }
             input.detachSessionForReplacement()
+            activationRecoveryAwaitsTransport = true
             replaceTerminal(ownsOnStageLifecycle: true) { [weak self] in
                 guard let self else { return false }
                 return self.lifecycleState == .active && self.isOnStage()
@@ -275,9 +291,21 @@ final class AgentAttachStore {
     /// stager resolves the live Transport per call, so a retryable or
     /// completed upload stays actionable across the reconnect.
     func transportGenerationDidChange(_ generation: UInt64?) {
-        guard let generation, generation != transportGeneration,
-            lifecycleState == .active
-        else { return }
+        guard let generation, lifecycleState == .active else { return }
+        if activationRecoveryAwaitsTransport,
+            terminalRecoveryOwner != nil || terminal.status == .waitingForSize
+                || terminal.status == .connecting
+        {
+            transportGeneration = generation
+            activationRecoveryAwaitsTransport = false
+            return
+        }
+        activationRecoveryAwaitsTransport = false
+        if terminal.transportGeneration == generation {
+            transportGeneration = generation
+            return
+        }
+        guard generation != transportGeneration else { return }
         transportGeneration = generation
         replaceTerminal { [weak self] in
             guard let self else { return false }
@@ -328,6 +356,7 @@ final class AgentAttachStore {
             self.terminal = Self.makeTerminal(
                 target: self.target,
                 input: self.input,
+                transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
                 linkIndex: self.linkIndex)
             self.finishTerminalRecovery(ownedBy: recoveryOwner)
@@ -407,6 +436,7 @@ final class AgentAttachStore {
             self.terminal = Self.makeTerminal(
                 target: self.target,
                 input: self.input,
+                transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
                 linkIndex: self.linkIndex)
             self.finishTerminalRecovery(ownedBy: recoveryOwner)
@@ -425,6 +455,7 @@ final class AgentAttachStore {
             !isOnStage()
         else { return }
         lifecycleState = .rejoinRequired
+        activationRecoveryAwaitsTransport = false
         finishTerminalRecovery(ownedBy: owner)
     }
 
@@ -468,6 +499,7 @@ final class AgentAttachStore {
         lifecycleState = .left
         terminalRecoveryOwner = nil
         activationRecoveryOwnsOnStageLifecycle = false
+        activationRecoveryAwaitsTransport = false
         invalidateAttachLinkOpen()
         attachLinkOpenFailure = nil
         linkIndex.clear()
@@ -515,6 +547,7 @@ final class AgentAttachStore {
     private static func makeTerminal(
         target: String,
         input: TerminalInputController,
+        transportGeneration: UInt64?,
         runTerminal: @escaping TerminalSessionRunner,
         linkIndex: AttachLinkIndex
     ) -> AttachTerminalStore {
@@ -522,6 +555,7 @@ final class AgentAttachStore {
             target: target,
             takeover: true,
             input: input,
+            transportGeneration: transportGeneration,
             observeOutput: { data in linkIndex.receive(data) },
             finishOutput: { linkIndex.finishOutput() },
             runTerminal: runTerminal)

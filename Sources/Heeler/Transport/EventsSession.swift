@@ -128,6 +128,11 @@ actor EventsSession {
     /// `currentLatency` instead of this payload; see that property.
     nonisolated let latencyUpdates: AsyncStream<Duration>
     private let latencyContinuation: AsyncStream<Duration>.Continuation
+    /// Installed, ping-proven Transport generations. Unlike `.connected`, this
+    /// signal does not wait for the events channel, so a visible terminal can
+    /// recover as soon as its own connection prerequisite is ready.
+    nonisolated let terminalTransportGenerations: AsyncStream<UInt64>
+    private let terminalTransportContinuation: AsyncStream<UInt64>.Continuation
     /// The round trip the Host's *current* connection last proved, or nil
     /// while no live connection has proved one.
     ///
@@ -151,6 +156,7 @@ actor EventsSession {
     private let connect: @Sendable () async throws -> any Transport
     private let reconnectPolicy: ReconnectPolicy
     private let keepalive: KeepalivePolicy?
+    private let terminalWaiterDidRegister: (@Sendable () -> Void)?
 
     private var phase: Phase = .suspended
     /// The Host's live Transport. It never escapes this module; consumers
@@ -196,18 +202,26 @@ actor EventsSession {
     private var terminalInUse = false
     private var terminalWaiters: [TerminalWaiter] = []
     private var terminalIdleWaiters: [CheckedContinuation<Void, Never>] = []
+    private var terminalTransportWaiters: [TerminalTransportWaiter] = []
+    /// An action-required connection failure is sticky until the user starts a
+    /// new activation. Requests arriving after the failed run must receive the
+    /// real failure instead of waiting for work that no longer exists.
+    private var terminalTransportFailure: TransportError?
+    private var isWindingDown = false
 
     init(
         subscriptions: [EventSubscription],
         connect: @escaping @Sendable () async throws -> any Transport,
         reconnectPolicy: ReconnectPolicy = .default,
         keepalive: KeepalivePolicy? = .default,
-        updatesBufferLimit: Int = HerdrEventStream.bufferLimit
+        updatesBufferLimit: Int = HerdrEventStream.bufferLimit,
+        terminalWaiterDidRegister: (@Sendable () -> Void)? = nil
     ) {
         self.subscriptions = subscriptions
         self.connect = connect
         self.reconnectPolicy = reconnectPolicy
         self.keepalive = keepalive
+        self.terminalWaiterDidRegister = terminalWaiterDidRegister
         // Bounded (#22): dropping is safe because every drop is surfaced
         // through `yieldUpdate`'s marker; see the actor doc for the policy
         // and HerdrEventStream.bufferLimit for the sizing rationale.
@@ -217,6 +231,10 @@ actor EventsSession {
         (latencyUpdates, latencyContinuation) = AsyncStream.makeStream(
             of: Duration.self,
             bufferingPolicy: .bufferingNewest(1))
+        (terminalTransportGenerations, terminalTransportContinuation) =
+            AsyncStream.makeStream(
+                of: UInt64.self,
+                bufferingPolicy: .bufferingNewest(1))
     }
 
     /// Activates the session (initially, or after `suspend()`): announces
@@ -324,14 +342,23 @@ actor EventsSession {
 
     /// Runs one terminal lifetime with exclusive access to the Host's
     /// terminal channel. The next caller cannot observe a Transport until
-    /// the previous operation, including its teardown, has returned.
+    /// the previous operation, including its teardown, has returned. A caller
+    /// that races foreground recovery waits for this activation's ping-proven
+    /// Transport instead of failing only because installation is still in
+    /// flight; events subscription and snapshot work are not prerequisites.
     func withTerminalTransport<Value: Sendable>(
-        _ operation: @escaping @Sendable (any Transport) async throws -> Value
+        _ operation: @escaping @Sendable (any Transport, UInt64) async throws -> Value
     ) async throws -> Value {
         try await acquireTerminal()
         do {
             try Task.checkCancellation()
-            let value = try await withTransport(operation)
+            let ready = try await awaitTerminalTransport()
+            try Task.checkCancellation()
+            guard terminalTransportIsCurrent(ready) else {
+                throw TransportError.cancelled
+            }
+            let value = try await operation(ready.transport, ready.transportGeneration)
+            noteConnectionActivity()
             releaseTerminal()
             return value
         } catch {
@@ -347,6 +374,7 @@ actor EventsSession {
     private func activate() {
         guard phase == .suspended else { return }
         phase = .active
+        terminalTransportFailure = nil
         activationGeneration &+= 1
         let generation = activationGeneration
         yieldUpdate(.status(.connecting))
@@ -385,6 +413,7 @@ actor EventsSession {
         yieldUpdate(.status(.ended))
         updatesContinuation.finish()
         latencyContinuation.finish()
+        terminalTransportContinuation.finish()
     }
 
     /// The single gate every update leaves through: yields it and, when the
@@ -451,6 +480,8 @@ actor EventsSession {
                     continue
                 }
                 guard failure.isRetryable else {
+                    recordTerminalTransportFailure(failure)
+                    failTerminalTransportWaiters(failure, for: generation)
                     yieldUpdate(.status(.failed(failure)))
                     return
                 }
@@ -511,6 +542,8 @@ actor EventsSession {
                 ?? .channelFailed(detail: "events stream ended unexpectedly")
             pendingKeepaliveFailure = nil
             guard failure.isRetryable else {
+                recordTerminalTransportFailure(failure)
+                failTerminalTransportWaiters(failure, for: generation)
                 yieldUpdate(.status(.failed(failure)))
                 return
             }
@@ -576,6 +609,7 @@ actor EventsSession {
             throw error
         }
         transportSuspect = false
+        terminalTransportFailure = nil
         noteConnectionActivity()
         currentTransport = transport
         if hasEstablishedTransport {
@@ -583,6 +617,11 @@ actor EventsSession {
         } else {
             hasEstablishedTransport = true
         }
+        terminalTransportContinuation.yield(transportGeneration)
+        resumeTerminalTransportWaiters(
+            with: transport,
+            activationGeneration: generation,
+            transportGeneration: transportGeneration)
         return transport
     }
 
@@ -613,6 +652,8 @@ actor EventsSession {
     /// make any late result harmless, while an installed Transport is still
     /// closed explicitly before lifecycle teardown returns.
     private func windDown() async {
+        isWindingDown = true
+        failTerminalTransportWaiters(TransportError.cancelled)
         backoffSleep?.cancel()
         backoffSleep = nil
         backoffGeneration = nil
@@ -634,7 +675,9 @@ actor EventsSession {
         pendingKeepaliveFailure = nil
         resubscribeRequested = false
         lastConnectionActivity = nil
+        terminalTransportFailure = nil
         dropPaneSubscriptions()
+        isWindingDown = false
     }
 
     // MARK: Keepalive
@@ -751,6 +794,22 @@ actor EventsSession {
         let continuation: CheckedContinuation<Void, any Error>
     }
 
+    private struct TerminalTransportReady: Sendable {
+        let transport: any Transport
+        let activationGeneration: UInt64
+        let transportGeneration: UInt64
+    }
+
+    private struct TerminalTransportWaiter {
+        let id: UUID
+        /// Nil means the request arrived while suspended and belongs to the
+        /// next activation. Active requests are pinned to their exact
+        /// activation so retry, Host replacement, and background invalidation
+        /// cannot hand them a later Transport accidentally.
+        let activationGeneration: UInt64?
+        let continuation: CheckedContinuation<TerminalTransportReady, any Error>
+    }
+
     private func acquireTerminal() async throws {
         let id = UUID()
         try Task.checkCancellation()
@@ -775,6 +834,102 @@ actor EventsSession {
     private func cancelTerminalWaiter(id: UUID) {
         guard let index = terminalWaiters.firstIndex(where: { $0.id == id }) else { return }
         let waiter = terminalWaiters.remove(at: index)
+        waiter.continuation.resume(throwing: CancellationError())
+    }
+
+    private func awaitTerminalTransport() async throws -> TerminalTransportReady {
+        let id = UUID()
+        try Task.checkCancellation()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<TerminalTransportReady, any Error>) in
+                if Task.isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                } else if isWindingDown || phase == .ended {
+                    continuation.resume(throwing: TransportError.cancelled)
+                } else if phase == .active, !transportSuspect,
+                    let transport = currentTransport
+                {
+                    continuation.resume(
+                        returning: TerminalTransportReady(
+                            transport: transport,
+                            activationGeneration: activationGeneration,
+                            transportGeneration: transportGeneration))
+                } else if let terminalTransportFailure {
+                    continuation.resume(throwing: terminalTransportFailure)
+                } else {
+                    terminalTransportWaiters.append(
+                        TerminalTransportWaiter(
+                            id: id,
+                            activationGeneration: phase == .active ? activationGeneration : nil,
+                            continuation: continuation))
+                    terminalWaiterDidRegister?()
+                }
+            }
+        } onCancel: {
+            Task { await self.cancelTerminalTransportWaiter(id: id) }
+        }
+    }
+
+    private func terminalTransportIsCurrent(_ ready: TerminalTransportReady) -> Bool {
+        phase == .active
+            && !isWindingDown
+            && !transportSuspect
+            && activationGeneration == ready.activationGeneration
+            && transportGeneration == ready.transportGeneration
+            && currentTransport != nil
+    }
+
+    private func resumeTerminalTransportWaiters(
+        with transport: any Transport,
+        activationGeneration: UInt64,
+        transportGeneration: UInt64
+    ) {
+        let ready = TerminalTransportReady(
+            transport: transport,
+            activationGeneration: activationGeneration,
+            transportGeneration: transportGeneration)
+        let waiters = terminalTransportWaiters
+        terminalTransportWaiters.removeAll()
+        for waiter in waiters {
+            if let expected = waiter.activationGeneration,
+                expected != activationGeneration
+            {
+                waiter.continuation.resume(throwing: TransportError.cancelled)
+            } else {
+                waiter.continuation.resume(returning: ready)
+            }
+        }
+    }
+
+    private func failTerminalTransportWaiters(
+        _ failure: TransportError,
+        for activationGeneration: UInt64? = nil
+    ) {
+        var retained: [TerminalTransportWaiter] = []
+        for waiter in terminalTransportWaiters {
+            if let activationGeneration,
+                waiter.activationGeneration != nil,
+                waiter.activationGeneration != activationGeneration
+            {
+                retained.append(waiter)
+            } else {
+                waiter.continuation.resume(throwing: failure)
+            }
+        }
+        terminalTransportWaiters = retained
+    }
+
+    private func recordTerminalTransportFailure(_ failure: TransportError) {
+        guard currentTransport == nil else { return }
+        terminalTransportFailure = failure
+    }
+
+    private func cancelTerminalTransportWaiter(id: UUID) {
+        guard let index = terminalTransportWaiters.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        let waiter = terminalTransportWaiters.remove(at: index)
         waiter.continuation.resume(throwing: CancellationError())
     }
 
