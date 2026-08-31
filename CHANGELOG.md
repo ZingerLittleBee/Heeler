@@ -7,6 +7,8 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-09-01
+
 ### Changed
 
 - When no size has been saved, Terminal Text Size now defaults to 8 pt instead
