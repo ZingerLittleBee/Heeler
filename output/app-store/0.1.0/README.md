@@ -11,10 +11,16 @@ captures and add deterministic marketing copy over a generated background.
 - iphone-6.9/02-control-without-leaving-the-flow.png
   - Source: docs/images/agent-iphone.png
   - Copy: “Control Without Leaving the Flow”
-- iphone-6.9/03-compose-locally-send-once.png
-  - Source: docs/images/composer-iphone.png
-  - Copy: “Compose Locally. Send Once.”
-- iphone-6.9/04-your-agents-at-a-glance.png
+- iphone-6.9/03-type-directly-stay-in-flow.png
+  - Source: docs/images/live-terminal-iphone.png
+  - Copy: “Type Directly. Stay in Flow.”
+- iphone-6.9/04-your-shell-within-reach.png
+  - Source: docs/images/terminal-iphone.png
+  - Copy: “Your Shell. Within Reach.”
+- iphone-6.9/05-skills-without-breaking-flow.png
+  - Source: docs/images/skills-iphone.png
+  - Copy: “Skills Without Breaking Flow”
+- iphone-6.9/06-your-agents-at-a-glance.png
   - Source: docs/images/live-activity-iphone.png
   - Copy: “Your Agents. At a Glance.”
 

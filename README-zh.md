@@ -27,7 +27,7 @@ Heeler 是一个 **agent 控制台**：把所有机器上正在运行的 coding 
 
 | Agent Console | Composer + 工具键盘 | 实时终端 |
 | --- | --- | --- |
-| ![iPhone 上的 Agent Console](docs/images/console-iphone.png) | ![iPhone 上带工具键盘的 Agent 终端](docs/images/agent-iphone.png) | ![iPhone 上 Composer 上方的 Agent 实时终端](docs/images/composer-iphone.png) |
+| ![iPhone 上的 Agent Console](docs/images/console-iphone.png) | ![iPhone 上带工具键盘的 Agent 终端](docs/images/agent-iphone.png) | ![iPhone 上使用 Direct Input 的 Agent 实时终端](docs/images/live-terminal-iphone.png) |
 
 | Terminal | Skills | 实时活动 |
 | --- | --- | --- |
