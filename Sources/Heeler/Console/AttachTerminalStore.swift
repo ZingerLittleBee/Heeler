@@ -8,10 +8,50 @@ typealias TerminalSessionRunner =
 
 struct TerminalSessionHandler: Sendable {
     private let operation: TerminalSessionOperation
+    private let transportReady: @MainActor @Sendable (UInt64) -> Void
+    #if DEBUG
+    private let traceEvents: AttachRestorationTraceEvents?
+    #endif
 
-    init(_ operation: @escaping TerminalSessionOperation) {
+    init(
+        transportReady: @escaping @MainActor @Sendable (UInt64) -> Void = { _ in },
+        _ operation: @escaping TerminalSessionOperation
+    ) {
+        self.transportReady = transportReady
+        self.operation = operation
+        #if DEBUG
+        traceEvents = nil
+        #endif
+    }
+
+    #if DEBUG
+    init(
+        transportReady: @escaping @MainActor @Sendable (UInt64) -> Void = { _ in },
+        traceEvents: AttachRestorationTraceEvents,
+        _ operation: @escaping TerminalSessionOperation
+    ) {
+        self.transportReady = transportReady
+        self.traceEvents = traceEvents
         self.operation = operation
     }
+    #endif
+
+    @MainActor
+    func transportDidBecomeReady(_ generation: UInt64) {
+        transportReady(generation)
+    }
+
+    #if DEBUG
+    @MainActor
+    func attachRequestDidStart() {
+        traceEvents?.attachRequestDidStart()
+    }
+
+    @MainActor
+    func attachChannelDidOpen() {
+        traceEvents?.attachChannelDidOpen()
+    }
+    #endif
 
     @MainActor
     func run(_ session: TerminalAttachSession) async throws {
@@ -59,6 +99,79 @@ struct TerminalSurfaceID: Hashable, Sendable {
     init() {}
 }
 
+/// Reconciles the two independently scheduled signals that identify a
+/// foreground recovery's Transport. Readiness is projected before terminal
+/// waiters resume, so either signal may arrive first. A decision is made only
+/// after both belong to the same terminal pipeline.
+struct TerminalRecoveryGenerationLatch {
+    enum Decision: Equatable {
+        case pending
+        case acknowledge(UInt64)
+        case replace(UInt64)
+        case retain(UInt64)
+    }
+
+    private(set) var isActive = false
+    private var pipelineID: TerminalSurfaceID?
+    private var acquiredGeneration: UInt64?
+    private var projectedGeneration: UInt64?
+
+    mutating func begin(projectedGeneration: UInt64?) {
+        guard !isActive else { return }
+        isActive = true
+        pipelineID = nil
+        acquiredGeneration = nil
+        self.projectedGeneration = projectedGeneration
+    }
+
+    mutating func bind(to pipelineID: TerminalSurfaceID) {
+        guard isActive else { return }
+        self.pipelineID = pipelineID
+        acquiredGeneration = nil
+    }
+
+    mutating func recordProjection(_ generation: UInt64) -> Decision? {
+        guard isActive else { return nil }
+        projectedGeneration = max(projectedGeneration ?? generation, generation)
+        return reconcile()
+    }
+
+    mutating func recordAcquisition(
+        _ generation: UInt64,
+        by pipelineID: TerminalSurfaceID
+    ) -> Decision? {
+        guard isActive, self.pipelineID == pipelineID else { return nil }
+        acquiredGeneration = generation
+        return reconcile()
+    }
+
+    mutating func clear(boundTo pipelineID: TerminalSurfaceID) {
+        guard self.pipelineID == pipelineID else { return }
+        clear()
+    }
+
+    mutating func clear() {
+        isActive = false
+        pipelineID = nil
+        acquiredGeneration = nil
+        projectedGeneration = nil
+    }
+
+    private mutating func reconcile() -> Decision {
+        guard let acquiredGeneration, let projectedGeneration else {
+            return .pending
+        }
+        defer { clear() }
+        if projectedGeneration == acquiredGeneration {
+            return .acknowledge(acquiredGeneration)
+        }
+        if projectedGeneration > acquiredGeneration {
+            return .replace(projectedGeneration)
+        }
+        return .retain(acquiredGeneration)
+    }
+}
+
 /// The Agent detail screen's session pipeline: a full interactive terminal
 /// over the Host's terminal channel — raw PTY bytes into the view through a
 /// `TerminalByteFeed`, keystrokes back out, geometry changes as SSH
@@ -100,46 +213,76 @@ final class AttachTerminalStore {
     private let input: TerminalInputController
     private let observeOutput: @MainActor @Sendable (Data) -> Void
     private let finishOutput: @MainActor @Sendable () -> Void
+    private let transportReady: @MainActor @Sendable (TerminalSurfaceID, UInt64) -> Void
+    private let runDidFinish: @MainActor @Sendable (TerminalSurfaceID) -> Void
     /// Opens and owns exclusive Host terminal access for one complete run,
     /// including explicit channel teardown.
     private let runTerminal: TerminalSessionRunner
 
     private var cols: Int?
     private var rows: Int?
+    private(set) var transportGeneration: UInt64?
+    /// The Transport generation this pipeline actually acquired from its
+    /// runner. Unlike `transportGeneration`, this is never seeded from a
+    /// projection value before the terminal-ready seam has been crossed.
+    private(set) var acquiredTransportGeneration: UInt64?
     private var stopRequested = false
     private var preservesPendingPasteOnStop = false
     private var session: TerminalAttachSession?
     private var inputGeneration: TerminalInputController.SessionGeneration?
     private var runTask: Task<Void, Never>?
+    #if DEBUG
+    private(set) var restorationTrace = AttachRestorationTrace()
+
+    func adoptRestorationTrace(_ trace: AttachRestorationTrace) {
+        restorationTrace = trace
+    }
+    #endif
 
     init(
         target: TerminalAttachTarget, takeover: Bool = false,
         input: TerminalInputController = TerminalInputController(),
+        transportGeneration: UInt64? = nil,
         observeOutput: @escaping @MainActor @Sendable (Data) -> Void = { _ in },
         finishOutput: @escaping @MainActor @Sendable () -> Void = {},
+        transportReady: @escaping @MainActor @Sendable (TerminalSurfaceID, UInt64) -> Void = {
+            _, _ in
+        },
+        runDidFinish: @escaping @MainActor @Sendable (TerminalSurfaceID) -> Void = { _ in },
         runTerminal: @escaping TerminalSessionRunner
     ) {
         self.target = target
         self.takeover = takeover
         self.input = input
+        self.transportGeneration = transportGeneration
         self.observeOutput = observeOutput
         self.finishOutput = finishOutput
+        self.transportReady = transportReady
+        self.runDidFinish = runDidFinish
         self.runTerminal = runTerminal
     }
 
     convenience init(
         target: String, takeover: Bool = false,
         input: TerminalInputController = TerminalInputController(),
+        transportGeneration: UInt64? = nil,
         observeOutput: @escaping @MainActor @Sendable (Data) -> Void = { _ in },
         finishOutput: @escaping @MainActor @Sendable () -> Void = {},
+        transportReady: @escaping @MainActor @Sendable (TerminalSurfaceID, UInt64) -> Void = {
+            _, _ in
+        },
+        runDidFinish: @escaping @MainActor @Sendable (TerminalSurfaceID) -> Void = { _ in },
         runTerminal: @escaping TerminalSessionRunner
     ) {
         self.init(
             target: .agentPane(target),
             takeover: takeover,
             input: input,
+            transportGeneration: transportGeneration,
             observeOutput: observeOutput,
             finishOutput: finishOutput,
+            transportReady: transportReady,
+            runDidFinish: runDidFinish,
             runTerminal: runTerminal)
     }
 
@@ -152,6 +295,9 @@ final class AttachTerminalStore {
         self.rows = rows
         if runTask == nil {
             if status == .waitingForSize {
+                #if DEBUG
+                restorationTrace.emit(.initialResize, generation: transportGeneration)
+                #endif
                 start()
             }
             // .ended waits for retry(); .stopped is terminal.
@@ -219,20 +365,41 @@ final class AttachTerminalStore {
     /// One session lifetime: open at the current geometry, pump output until
     /// the stream ends, surface how it ended.
     private func run() async {
-        defer { runTask = nil }
+        defer {
+            runTask = nil
+            runDidFinish(surfaceID)
+        }
         guard let cols, let rows else { return }
+        let request = TerminalAttachRequest(
+            target: target, takeover: takeover, cols: cols, rows: rows)
+        let operation: TerminalSessionOperation = { [weak self] session in
+            guard let self else {
+                await session.end()
+                return
+            }
+            try await self.consume(session, initialCols: cols, initialRows: rows)
+        }
+        let transportReady: @MainActor @Sendable (UInt64) -> Void = { [weak self] generation in
+            guard let self else { return }
+            self.transportGeneration = generation
+            self.acquiredTransportGeneration = generation
+            self.transportReady(self.surfaceID, generation)
+            #if DEBUG
+            self.restorationTrace.emit(.transportAcquired, generation: generation)
+            #endif
+        }
+        #if DEBUG
+        let handler = TerminalSessionHandler(
+            transportReady: transportReady,
+            traceEvents: AttachRestorationTraceEvents(
+                trace: restorationTrace,
+                generation: { [weak self] in self?.acquiredTransportGeneration }),
+            operation)
+        #else
+        let handler = TerminalSessionHandler(transportReady: transportReady, operation)
+        #endif
         do {
-            try await runTerminal(
-                TerminalAttachRequest(
-                    target: target, takeover: takeover, cols: cols, rows: rows),
-                TerminalSessionHandler { [weak self] session in
-                    guard let self else {
-                        await session.end()
-                        return
-                    }
-                    try await self.consume(
-                        session, initialCols: cols, initialRows: rows)
-                })
+            try await runTerminal(request, handler)
         } catch {
             guard !stopRequested else { return }
             status = .ended(Self.message(for: error))
@@ -277,6 +444,9 @@ final class AttachTerminalStore {
                 if status == .connecting {
                     status = .live
                 }
+                #if DEBUG
+                restorationTrace.emit(.firstOutputBytes, generation: acquiredTransportGeneration)
+                #endif
                 observeOutput(bytes)
                 feed.write(bytes)
             }

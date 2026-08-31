@@ -73,6 +73,278 @@ struct EventsSessionSubscriptionsTests {
         await session.end()
     }
 
+    @Test func terminalStartsBeforeEventSubscriptionIsReady() async throws {
+        let first = ScriptedTransport(snapshot: .fixture())
+        let replacement = ScriptedTransport(snapshot: .fixture())
+        let firstSnapshotGate = ScriptedTransportCallGate()
+        let subscriptionGate = ScriptedTransportCallGate()
+        let attachGate = ScriptedTransportCallGate()
+        await first.gateNextSnapshot(using: firstSnapshotGate)
+        await replacement.gateNextSubscription(using: subscriptionGate)
+        await replacement.gateNextAttach(using: attachGate)
+        let connector = SequencedTransportConnector([first, replacement])
+        let session = EventsSession(
+            subscriptions: initial,
+            connect: { try await connector.connect() },
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .milliseconds(10), multiplier: 2, maxDelay: .milliseconds(50)),
+            keepalive: nil)
+        let (projection, generationBarrier) = await MainActor.run {
+            let barrier = ProjectionGenerationBarrier()
+            let projection = HostConsoleProjection(
+                host: .fixture(),
+                session: session,
+                snapshotRetryDelay: .milliseconds(10)
+            ) { [barrier] in
+                barrier.record()
+            }
+            barrier.projection = projection
+            return (projection, barrier)
+        }
+        await MainActor.run { projection.start(isActive: true) }
+        await firstSnapshotGate.waitForEntry()
+        let snapshotsBeforeRecovery = await first.snapshotFetchCount
+        await firstSnapshotGate.open()
+        await projection.suspend()
+
+        let terminal = Task { @MainActor in
+            try await projection.terminalRunner()(
+                Self.attachRequest,
+                TerminalSessionHandler { attached in
+                    await attached.end()
+                })
+        }
+        await projection.resume()
+        await subscriptionGate.waitForEntry()
+        await attachGate.waitForEntry()
+        await generationBarrier.wait(for: 1)
+
+        #expect(await replacement.attachRequests == [Self.attachRequest])
+        #expect(await replacement.snapshotFetchCount == 0)
+        #expect(await first.snapshotFetchCount == snapshotsBeforeRecovery)
+        #expect(await MainActor.run { projection.transportGeneration == 1 })
+        await attachGate.open()
+        try await terminal.value
+
+        await subscriptionGate.open()
+        await MainActor.run { projection.end() }
+    }
+
+    @Test func terminalStartsWhileProjectionSnapshotIsStillGated() async throws {
+        let transport = ScriptedTransport(snapshot: .fixture())
+        let snapshotGate = ScriptedTransportCallGate()
+        let attachGate = ScriptedTransportCallGate()
+        await transport.gateNextSnapshot(using: snapshotGate)
+        await transport.gateNextAttach(using: attachGate)
+        let session = makeSession(transport: transport)
+        let projection = await MainActor.run {
+            HostConsoleProjection(
+                host: .fixture(),
+                session: session,
+                snapshotRetryDelay: .milliseconds(10)
+            ) {}
+        }
+        await MainActor.run { projection.start(isActive: true) }
+
+        await snapshotGate.waitForEntry()
+        let terminal = Task { @MainActor in
+            try await projection.terminalRunner()(
+                Self.attachRequest,
+                TerminalSessionHandler { attached in
+                    await attached.end()
+                })
+        }
+        await attachGate.waitForEntry()
+
+        #expect(await transport.attachRequests == [Self.attachRequest])
+        #expect(await snapshotGate.entryCount == 1)
+        await attachGate.open()
+        try await terminal.value
+
+        await snapshotGate.open()
+        await MainActor.run { projection.end() }
+    }
+
+    @Test func terminalWaitsForThePingProvenTransportInstalledAfterItsRequest() async throws {
+        let transport = ScriptedTransport()
+        let pingGate = ScriptedTransportCallGate()
+        let subscriptionGate = ScriptedTransportCallGate()
+        let attachSessionGate = ScriptedTransportCallGate()
+        await transport.gateNextPing(using: pingGate)
+        await transport.gateNextSubscription(using: subscriptionGate)
+        await transport.gateNextAttachSession(using: attachSessionGate)
+        let (registrations, registrationContinuation) = AsyncStream.makeStream(of: Void.self)
+        var registrationIterator = registrations.makeAsyncIterator()
+        let session = EventsSession(
+            subscriptions: initial,
+            connect: { transport },
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .milliseconds(10), multiplier: 2, maxDelay: .milliseconds(50)),
+            keepalive: nil,
+            terminalWaiterDidRegister: { registrationContinuation.yield() })
+        let projection = await MainActor.run {
+            HostConsoleProjection(
+                host: .fixture(),
+                session: session,
+                snapshotRetryDelay: .milliseconds(10)
+            ) {}
+        }
+        let terminal = await MainActor.run {
+            AttachTerminalStore(
+                target: "w1:p1",
+                takeover: true,
+                transportGeneration: 0,
+                runTerminal: projection.terminalRunner())
+        }
+        await MainActor.run { terminal.viewDidResize(cols: 80, rows: 24) }
+        _ = await registrationIterator.next()
+        #expect(await transport.attachRequests.isEmpty)
+        #expect(await MainActor.run { terminal.status == .connecting })
+
+        await session.resume()
+        await pingGate.waitForEntry()
+        #expect(await transport.attachRequests.isEmpty)
+        await pingGate.open()
+        await subscriptionGate.waitForEntry()
+        await attachSessionGate.waitForEntry()
+
+        #expect(await transport.attachRequests == [Self.attachRequest])
+        #expect(await MainActor.run { terminal.status == .connecting })
+        await attachSessionGate.open()
+        #expect(await transport.emitAttachOutput(Data("ready".utf8)))
+        await terminal.stop()
+        #expect(await MainActor.run { terminal.status == .stopped })
+
+        await subscriptionGate.open()
+        await MainActor.run { projection.end() }
+        registrationContinuation.finish()
+    }
+
+    @Test func cancellationRemovesAReadinessWaiterAndReleasesTheTerminalPermit() async throws {
+        let transport = ScriptedTransport()
+        let subscriptionGate = ScriptedTransportCallGate()
+        let attachGate = ScriptedTransportCallGate()
+        await transport.gateNextSubscription(using: subscriptionGate)
+        await transport.gateNextAttach(using: attachGate)
+        let (registrations, registrationContinuation) = AsyncStream.makeStream(of: Void.self)
+        var registrationIterator = registrations.makeAsyncIterator()
+        let session = EventsSession(
+            subscriptions: initial,
+            connect: { transport },
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .milliseconds(10), multiplier: 2, maxDelay: .milliseconds(50)),
+            keepalive: nil,
+            terminalWaiterDidRegister: { registrationContinuation.yield() })
+        let cancelled = Task {
+            try await session.withTerminalTransport { _, _ in
+                Issue.record("a cancelled readiness waiter reached its operation")
+            }
+        }
+
+        _ = await registrationIterator.next()
+        cancelled.cancel()
+        await #expect(throws: CancellationError.self) {
+            try await cancelled.value
+        }
+
+        await session.resume()
+        await subscriptionGate.waitForEntry()
+        let replacement = Task {
+            try await session.withTerminalTransport { transport, generation in
+                let attached = try await transport.attachTerminal(Self.attachRequest)
+                await attached.end()
+                return generation
+            }
+        }
+        await attachGate.waitForEntry()
+        await attachGate.open()
+        #expect(try await replacement.value == 0)
+        #expect(await transport.attachRequests == [Self.attachRequest])
+
+        await subscriptionGate.open()
+        await session.end()
+        registrationContinuation.finish()
+    }
+
+    @Test func aRequestAfterConnectionFailureReceivesTheRealFailure() async throws {
+        let transport = ScriptedTransport()
+        let failure = TransportError.socketNotFound(path: "/remote/herdr.sock")
+        await transport.failPing(atCall: 1, with: failure)
+        let session = makeSession(transport: transport)
+        var updates = session.updates.makeAsyncIterator()
+
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.failed(failure)))
+
+        do {
+            try await session.withTerminalTransport { _, _ in
+                Issue.record("a failed session handed out a terminal Transport")
+            }
+        } catch let error as TransportError {
+            #expect(error == failure)
+        } catch {
+            Issue.record("expected \(failure), got \(error)")
+        }
+
+        await session.end()
+    }
+
+    @Test func aNewActivationInvalidatesTheOldReadinessWaiter() async throws {
+        let first = ScriptedTransport()
+        let second = ScriptedTransport()
+        let firstPingGate = ScriptedTransportCallGate()
+        let secondSubscriptionGate = ScriptedTransportCallGate()
+        let secondAttachGate = ScriptedTransportCallGate()
+        await first.gateNextPing(using: firstPingGate)
+        await second.gateNextSubscription(using: secondSubscriptionGate)
+        await second.gateNextAttach(using: secondAttachGate)
+        let connector = SequencedTransportConnector([first, second])
+        let (registrations, registrationContinuation) = AsyncStream.makeStream(of: Void.self)
+        var registrationIterator = registrations.makeAsyncIterator()
+        let session = EventsSession(
+            subscriptions: initial,
+            connect: { try await connector.connect() },
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .milliseconds(10), multiplier: 2, maxDelay: .milliseconds(50)),
+            keepalive: nil,
+            terminalWaiterDidRegister: { registrationContinuation.yield() })
+
+        await session.resume()
+        await firstPingGate.waitForEntry()
+        let stale = Task {
+            try await session.withTerminalTransport { transport, _ in
+                _ = try await transport.attachTerminal(Self.attachRequest)
+                Issue.record("an older activation handed out its Transport")
+            }
+        }
+        _ = await registrationIterator.next()
+
+        await session.retry()
+        await #expect(throws: TransportError.cancelled) {
+            try await stale.value
+        }
+        await secondSubscriptionGate.waitForEntry()
+
+        let current = Task {
+            try await session.withTerminalTransport { transport, generation in
+                let attached = try await transport.attachTerminal(Self.attachRequest)
+                await attached.end()
+                return generation
+            }
+        }
+        await secondAttachGate.waitForEntry()
+        await secondAttachGate.open()
+        #expect(try await current.value == 0)
+        #expect(await first.attachRequests.isEmpty)
+        #expect(await second.attachRequests == [Self.attachRequest])
+
+        await firstPingGate.open()
+        await secondSubscriptionGate.open()
+        await session.end()
+        registrationContinuation.finish()
+    }
+
     @Test func unchangedSetIsANoOp() async throws {
         let transport = ScriptedTransport()
         let session = makeSession(transport: transport)
@@ -87,6 +359,9 @@ struct EventsSessionSubscriptionsTests {
         #expect(await transport.capturedSubscriptions == [initial])
         await session.end()
     }
+
+    private static let attachRequest = TerminalAttachRequest(
+        target: "w1:p1", takeover: true, cols: 80, rows: 24)
 
     @Test func updateWhileSuspendedTakesEffectOnResume() async throws {
         let transport = ScriptedTransport()
@@ -380,6 +655,32 @@ struct EventsSessionSubscriptionsTests {
             try await Task.sleep(for: .milliseconds(5))
         }
         Issue.record(Comment(rawValue: message))
+    }
+}
+
+@MainActor
+private final class ProjectionGenerationBarrier {
+    weak var projection: HostConsoleProjection?
+    private var waiters: [
+        (generation: UInt64, continuation: CheckedContinuation<Void, Never>)
+    ] = []
+
+    func record() {
+        guard let generation = projection?.transportGeneration else { return }
+        let reached = waiters.filter { generation >= $0.generation }
+        waiters.removeAll { generation >= $0.generation }
+        for waiter in reached {
+            waiter.continuation.resume()
+        }
+    }
+
+    func wait(for generation: UInt64) async {
+        guard let current = projection?.transportGeneration, current < generation else {
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waiters.append((generation, continuation))
+        }
     }
 }
 

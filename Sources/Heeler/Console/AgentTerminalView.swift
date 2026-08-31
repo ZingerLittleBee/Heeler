@@ -263,6 +263,11 @@ struct AgentTerminalView: View {
 
     private var terminalScreen: TerminalScreenView {
         var screen = TerminalScreenView(feed: attach.terminalFeed)
+        #if DEBUG
+        screen.onSurfaceAttached = {
+            attach.terminalSurfaceDidAttach()
+        }
+        #endif
         screen.onSizeChanged = { cols, rows in
             attach.viewDidResize(cols: cols, rows: rows)
         }
@@ -562,6 +567,21 @@ struct AgentTerminalView: View {
             // Arming again leaves a stale one-shot that can raise a dismissed
             // keyboard on a later replacement.
         }
+        #if DEBUG
+        // A fresh terminal ID means a new Attach pipeline, including a
+        // foreground recovery. Mark its visible detail edge separately from
+        // outer SwiftUI appearance, which does not run for that replacement.
+        .onChange(of: attach.terminalID, initial: true) { _, _ in
+            attach.terminalDidBecomeVisible()
+            recordSwitcherAvailabilityIfPossible()
+        }
+        // The switcher consumes this snapshot-derived input. Waiting until the
+        // selected Agent is present avoids treating an empty/stale projection
+        // as availability.
+        .onChange(of: console.agents) { _, _ in
+            recordSwitcherAvailabilityIfPossible()
+        }
+        #endif
         .onChange(of: keyboardControl.isFirstResponder) { _, isUp in
             // Tools→iOS keeps first responder across the coalesce window; a
             // real dismiss resigns and must drop the pre-show `.system` hold.
@@ -590,6 +610,13 @@ struct AgentTerminalView: View {
                 console.togglePin(hostID: id.hostID, paneID: id.paneID)
             })
     }
+
+    #if DEBUG
+    private func recordSwitcherAvailabilityIfPossible() {
+        guard console.agents.contains(where: { $0.id == agent.id }) else { return }
+        attach.agentSnapshotSwitcherDidBecomeAvailable()
+    }
+    #endif
 
     private var terminalKeysContext: TerminalKeysContext {
         TerminalKeysContext(

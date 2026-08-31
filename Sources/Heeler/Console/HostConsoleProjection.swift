@@ -53,6 +53,7 @@ final class HostConsoleProjection {
     private let onChange: @MainActor @Sendable () -> Void
     private var consumeTask: Task<Void, Never>?
     private var latencyTask: Task<Void, Never>?
+    private var terminalTransportTask: Task<Void, Never>?
     private var resyncTask: Task<Void, Never>?
     private var resyncRetryTask: Task<Void, Never>?
     private var resyncPending = false
@@ -107,6 +108,16 @@ final class HostConsoleProjection {
                 guard !Task.isCancelled else { return }
                 self.latency = session.currentLatency
                 self.publish()
+            }
+        }
+        terminalTransportTask = Task { [weak self] in
+            guard let self else { return }
+            for await generation in session.terminalTransportGenerations {
+                guard !Task.isCancelled else { return }
+                // Transport installation is the terminal readiness edge. It
+                // intentionally precedes events subscription and snapshot work.
+                transportGeneration = max(transportGeneration, generation)
+                publish()
             }
         }
         if isActive {
@@ -188,18 +199,27 @@ final class HostConsoleProjection {
         resyncRetryTask?.cancel()
         consumeTask?.cancel()
         latencyTask?.cancel()
+        terminalTransportTask?.cancel()
         resyncTask = nil
         resyncRetryTask = nil
         consumeTask = nil
         latencyTask = nil
+        terminalTransportTask = nil
         Task { await session.end() }
     }
 
     func terminalRunner() -> TerminalSessionRunner {
         let session = session
         return { request, handler in
-            try await session.withTerminalTransport { transport in
+            try await session.withTerminalTransport { transport, generation in
+                await handler.transportDidBecomeReady(generation)
+                #if DEBUG
+                await handler.attachRequestDidStart()
+                #endif
                 let terminal = try await transport.attachTerminal(request)
+                #if DEBUG
+                await handler.attachChannelDidOpen()
+                #endif
                 try await handler.runEndingSession(terminal)
             }
         }
@@ -496,18 +516,6 @@ final class HostConsoleProjection {
             }
             if status == .connected {
                 publish()
-                Task { [weak self] in
-                    guard let self else { return }
-                    let generation = await session.transportGeneration
-                    guard !hasEnded else { return }
-                    // These reads race across quick `.connected` bursts and
-                    // can land out of order; generations only grow, so the
-                    // newest write must win regardless of arrival order — a
-                    // regression here would spuriously replace a healthy
-                    // terminal downstream.
-                    transportGeneration = max(transportGeneration, generation)
-                    publish()
-                }
                 scheduleResync()
             } else {
                 invalidateSnapshot()

@@ -82,6 +82,8 @@ final actor ScriptedTransport: Transport {
     private var nextSubscriptionGate: ScriptedTransportCallGate?
     private var nextAttachID: UInt64 = 0
     private var liveAttachID: UInt64?
+    private var nextAttachGate: ScriptedTransportCallGate?
+    private var nextAttachSessionGate: ScriptedTransportCallGate?
     private var attachContinuation: AsyncThrowingStream<Data, any Error>.Continuation?
     private var attachInputTask: Task<Void, Never>?
     private var nextAttachEndGate: ScriptedTransportCallGate?
@@ -330,6 +332,19 @@ final actor ScriptedTransport: Transport {
         closeGate = gate
     }
 
+    /// Parks the next terminal open after recording its request. Tests use the
+    /// gate's entry edge as a deterministic proof that Attach startup began.
+    func gateNextAttach(using gate: ScriptedTransportCallGate) {
+        nextAttachGate = gate
+    }
+
+    /// Parks the next terminal open after its session exists but before the
+    /// caller receives it. This lets tests drive buffered output without
+    /// polling for actor scheduling.
+    func gateNextAttachSession(using gate: ScriptedTransportCallGate) {
+        nextAttachSessionGate = gate
+    }
+
     /// Scripts panes that no longer exist on the Host. herdr fails an entire
     /// `events.subscribe` when one pane-scoped entry names a pane that has
     /// exited (verified against a live 0.7.5 server), so the fake rejects the
@@ -522,12 +537,17 @@ final actor ScriptedTransport: Transport {
             throw TransportError.terminalChannelAlreadyOpen
         }
         attachRequests.append(request)
+        let gate = nextAttachGate
+        nextAttachGate = nil
+        await gate?.waitUntilOpen()
         nextAttachID += 1
         let attachID = nextAttachID
         let (output, outputContinuation) = AsyncThrowingStream<Data, any Error>.makeStream()
         let input = TerminalAttachInputQueue()
         let endGate = nextAttachEndGate
         nextAttachEndGate = nil
+        let sessionGate = nextAttachSessionGate
+        nextAttachSessionGate = nil
         liveAttachID = attachID
         attachContinuation = outputContinuation
         attachInputTask = Task {
@@ -535,6 +555,7 @@ final actor ScriptedTransport: Transport {
                 self.recordAttachInput(item)
             }
         }
+        await sessionGate?.waitUntilOpen()
         return TerminalAttachSession(output: { output }, input: input) {
             await endGate?.waitUntilOpen()
             await self.endAttach(id: attachID)
@@ -688,12 +709,27 @@ actor SequencedTransportConnector {
 actor ScriptedTransportCallGate {
     private var isOpen = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var entryWaiters: [
+        (count: Int, continuation: CheckedContinuation<Void, Never>)
+    ] = []
     private(set) var entryCount = 0
 
     func waitUntilOpen() async {
         entryCount += 1
+        let reached = entryWaiters.filter { entryCount >= $0.count }
+        entryWaiters.removeAll { entryCount >= $0.count }
+        for waiter in reached {
+            waiter.continuation.resume()
+        }
         if isOpen { return }
         await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func waitForEntry(count: Int = 1) async {
+        guard entryCount < count else { return }
+        await withCheckedContinuation { continuation in
+            entryWaiters.append((count, continuation))
+        }
     }
 
     func open() {
