@@ -8,14 +8,27 @@ struct AttachRestorationTraceTests {
     @Test func phaseGateRecordsEachPhaseOnce() {
         var state = AttachRestorationTraceState()
 
+        let recordedRecovery = state.record(.foregroundRecoveryStarted)
+        let recordedRecoveryAgain = state.record(.foregroundRecoveryStarted)
+        let recordedAbort = state.record(.foregroundRecoveryAborted)
+        let recordedAbortAgain = state.record(.foregroundRecoveryAborted)
         let recordedAppearance = state.record(.agentDetailVisible)
         let recordedAppearanceAgain = state.record(.agentDetailVisible)
         let recordedTransport = state.record(.transportAcquired)
 
+        #expect(recordedRecovery)
+        #expect(!recordedRecoveryAgain)
+        #expect(recordedAbort)
+        #expect(!recordedAbortAgain)
         #expect(recordedAppearance)
         #expect(!recordedAppearanceAgain)
         #expect(recordedTransport)
-        #expect(state.emittedPhases == [.agentDetailVisible, .transportAcquired])
+        #expect(state.emittedPhases == [
+            .foregroundRecoveryStarted,
+            .foregroundRecoveryAborted,
+            .agentDetailVisible,
+            .transportAcquired,
+        ])
     }
 
     @Test func separatePipelinesHaveIndependentPhaseGates() {

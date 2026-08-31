@@ -232,7 +232,11 @@ final class AttachTerminalStore {
     private var inputGeneration: TerminalInputController.SessionGeneration?
     private var runTask: Task<Void, Never>?
     #if DEBUG
-    let restorationTrace = AttachRestorationTrace()
+    private(set) var restorationTrace = AttachRestorationTrace()
+
+    func adoptRestorationTrace(_ trace: AttachRestorationTrace) {
+        restorationTrace = trace
+    }
     #endif
 
     init(

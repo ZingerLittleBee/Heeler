@@ -2447,6 +2447,126 @@ struct AgentAttachStoreTests {
         #expect(await transport.hasLiveAttachSession == false)
     }
 
+    #if DEBUG
+    @Test func foregroundRecoveryTraceAdoptsTheDirectReplacement() async throws {
+        let transport = ScriptedTransport()
+        let endGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachEnd(on: endGate)
+        let store = makeStore(transport: transport, generation: 0)
+        try await goLive(store, transport)
+        let predecessorID = store.terminalID
+
+        store.didBecomeActive(afterPossibleSuspension: true)
+        let trace = try #require(store.pendingForegroundRecoveryTrace)
+        try await waitUntil("recovery should reach predecessor teardown") {
+            await endGate.entryCount == 1
+        }
+        await endGate.open()
+        try await waitUntil("recovery replacement should publish") {
+            store.terminalID != predecessorID
+        }
+
+        #expect(store.terminal.restorationTrace === trace)
+        #expect(store.pendingForegroundRecoveryTrace == nil)
+        await store.leave().value
+    }
+
+    @Test func foregroundRecoveryTraceAdoptsAnAlreadyPendingReplacement() async throws {
+        let transport = ScriptedTransport()
+        let endGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachEnd(on: endGate)
+        let store = makeStore(transport: transport, generation: 0)
+        try await goLive(store, transport)
+        let predecessorID = store.terminalID
+
+        store.transportGenerationDidChange(1)
+        try await waitUntil("ordinary replacement should reach predecessor teardown") {
+            await endGate.entryCount == 1
+        }
+        store.didBecomeActive(afterPossibleSuspension: true)
+        let trace = try #require(store.pendingForegroundRecoveryTrace)
+        await endGate.open()
+        try await waitUntil("pending replacement should publish") {
+            store.terminalID != predecessorID
+        }
+
+        #expect(store.terminal.restorationTrace === trace)
+        #expect(store.pendingForegroundRecoveryTrace == nil)
+        await store.leave().value
+    }
+
+    @Test func repeatedForegroundActivationKeepsOnePendingTrace() async throws {
+        let transport = ScriptedTransport()
+        let endGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachEnd(on: endGate)
+        let store = makeStore(transport: transport, generation: 0)
+        try await goLive(store, transport)
+
+        store.transportGenerationDidChange(1)
+        try await waitUntil("ordinary replacement should reach predecessor teardown") {
+            await endGate.entryCount == 1
+        }
+        store.didBecomeActive(afterPossibleSuspension: true)
+        let trace = try #require(store.pendingForegroundRecoveryTrace)
+        store.didBecomeActive(afterPossibleSuspension: true)
+
+        #expect(store.pendingForegroundRecoveryTrace === trace)
+        #expect(trace.recordedPhases.contains(.foregroundRecoveryStarted))
+        await endGate.open()
+        await store.leave().value
+    }
+
+    @Test func offStageRecoveryAbortRecordsTerminalTraceEventAndClearsPendingTrace() async throws {
+        let transport = ScriptedTransport()
+        let endGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachEnd(on: endGate)
+        var isOnStage = true
+        let store = makeStore(
+            transport: transport, generation: 0, isOnStage: { isOnStage })
+        try await goLive(store, transport)
+
+        store.transportGenerationDidChange(1)
+        try await waitUntil("ordinary replacement should reach predecessor teardown") {
+            await endGate.entryCount == 1
+        }
+        store.didBecomeActive(afterPossibleSuspension: true)
+        let trace = try #require(store.pendingForegroundRecoveryTrace)
+        isOnStage = false
+        await endGate.open()
+        try await waitUntil("off-stage recovery should clear its trace") {
+            store.pendingForegroundRecoveryTrace == nil
+        }
+
+        #expect(trace.recordedPhases.contains(.foregroundRecoveryAborted))
+        await store.leave().value
+    }
+
+    @Test func supersedingOnStageReplacementCarriesPendingForegroundTrace() async throws {
+        let transport = ScriptedTransport()
+        let endGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachEnd(on: endGate)
+        let store = makeStore(transport: transport, generation: 0)
+        try await goLive(store, transport)
+        let predecessorID = store.terminalID
+
+        store.transportGenerationDidChange(1)
+        try await waitUntil("first replacement should reach predecessor teardown") {
+            await endGate.entryCount == 1
+        }
+        store.transportGenerationDidChange(2)
+        store.didBecomeActive(afterPossibleSuspension: true)
+        let trace = try #require(store.pendingForegroundRecoveryTrace)
+        await endGate.open()
+        try await waitUntil("superseding replacement should publish") {
+            store.terminalID != predecessorID
+        }
+
+        #expect(store.terminal.restorationTrace === trace)
+        #expect(store.pendingForegroundRecoveryTrace == nil)
+        await store.leave().value
+    }
+    #endif
+
     private func makeStore(
         transport: ScriptedTransport,
         generation: UInt64?,

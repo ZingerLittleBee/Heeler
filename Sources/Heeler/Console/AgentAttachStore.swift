@@ -105,6 +105,12 @@ final class AgentAttachStore {
     /// Joins the independently scheduled readiness projection and terminal
     /// waiter for the exact foreground-recovery pipeline.
     private var activationRecovery = TerminalRecoveryGenerationLatch()
+    #if DEBUG
+    /// Created at the possible-suspension activation edge and retained until
+    /// the replacement that actually publishes adopts it, or recovery is
+    /// definitively abandoned off stage.
+    private(set) var pendingForegroundRecoveryTrace: AttachRestorationTrace?
+    #endif
 
     init(
         target: String,
@@ -279,6 +285,11 @@ final class AgentAttachStore {
     func didBecomeActive(afterPossibleSuspension: Bool = false) {
         guard lifecycleState == .active, isOnStage() else { return }
         guard !afterPossibleSuspension else {
+            #if DEBUG
+            if !activationRecovery.isActive {
+                beginPendingForegroundRecoveryTrace()
+            }
+            #endif
             if activationRecovery.isActive {
                 activationRecoveryOwnsOnStageLifecycle = true
                 return
@@ -398,6 +409,12 @@ final class AgentAttachStore {
                 }
                 return
             }
+            #if DEBUG
+            if !self.isOnStage(), self.pendingForegroundRecoveryTrace != nil {
+                self.abortTerminalRecoveryOffStage(ownedBy: recoveryOwner)
+                return
+            }
+            #endif
             guard self.terminalRecoveryOwner == recoveryOwner else { return }
             let replacement = Self.makeTerminal(
                 target: self.target,
@@ -412,7 +429,11 @@ final class AgentAttachStore {
                 runDidFinish: { [weak self] pipelineID in
                     self?.activationRecovery.clear(boundTo: pipelineID)
                 })
+            #if DEBUG
+            self.publishReplacement(replacement)
+            #else
             self.terminal = replacement
+            #endif
             self.activationRecovery.bind(to: replacement.surfaceID)
             self.finishTerminalRecovery(ownedBy: recoveryOwner)
         }
@@ -423,6 +444,29 @@ final class AgentAttachStore {
         terminalRecoveryOwner = nil
         activationRecoveryOwnsOnStageLifecycle = false
     }
+
+    #if DEBUG
+    private func beginPendingForegroundRecoveryTrace() {
+        guard pendingForegroundRecoveryTrace == nil else { return }
+        let trace = AttachRestorationTrace()
+        trace.emit(.foregroundRecoveryStarted, generation: transportGeneration)
+        pendingForegroundRecoveryTrace = trace
+    }
+
+    private func publishReplacement(_ replacement: AttachTerminalStore) {
+        if let trace = pendingForegroundRecoveryTrace {
+            replacement.adoptRestorationTrace(trace)
+            pendingForegroundRecoveryTrace = nil
+        }
+        terminal = replacement
+    }
+
+    private func abortPendingForegroundRecoveryTrace() {
+        guard let trace = pendingForegroundRecoveryTrace else { return }
+        trace.emit(.foregroundRecoveryAborted, generation: transportGeneration)
+        pendingForegroundRecoveryTrace = nil
+    }
+    #endif
 
     func retryTerminal() {
         terminal.retry()
@@ -485,6 +529,9 @@ final class AgentAttachStore {
                 }
             }
             guard self.terminal.status == .stopped else {
+                #if DEBUG
+                self.abortPendingForegroundRecoveryTrace()
+                #endif
                 self.finishTerminalRecovery(ownedBy: recoveryOwner)
                 return
             }
@@ -502,7 +549,11 @@ final class AgentAttachStore {
                 runDidFinish: { [weak self] pipelineID in
                     self?.activationRecovery.clear(boundTo: pipelineID)
                 })
+            #if DEBUG
+            self.publishReplacement(replacement)
+            #else
             self.terminal = replacement
+            #endif
             self.activationRecovery.bind(to: replacement.surfaceID)
             self.finishTerminalRecovery(ownedBy: recoveryOwner)
         }
@@ -520,6 +571,9 @@ final class AgentAttachStore {
             !isOnStage()
         else { return }
         lifecycleState = .rejoinRequired
+        #if DEBUG
+        abortPendingForegroundRecoveryTrace()
+        #endif
         activationRecovery.clear()
         finishTerminalRecovery(ownedBy: owner)
     }
@@ -561,6 +615,9 @@ final class AgentAttachStore {
         {
             return lifecycleTask ?? Task {}
         }
+        #if DEBUG
+        abortPendingForegroundRecoveryTrace()
+        #endif
         lifecycleState = .left
         terminalRecoveryOwner = nil
         activationRecoveryOwnsOnStageLifecycle = false

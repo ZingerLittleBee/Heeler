@@ -10,6 +10,8 @@ import os
 @MainActor
 final class AttachRestorationTrace {
     enum Phase: Hashable {
+        case foregroundRecoveryStarted
+        case foregroundRecoveryAborted
         case agentDetailVisible
         case agentSnapshotSwitcherAvailable
         case transportAcquired
@@ -38,6 +40,12 @@ final class AttachRestorationTrace {
         guard state.record(phase) else { return }
         let generation = generation.map { String($0) } ?? "none"
         switch phase {
+        case .foregroundRecoveryStarted:
+            os_signpost(.event, log: Self.log, name: "foreground_recovery_started", signpostID: signpostID,
+                "trace_id=%{public}s generation=%{public}s", traceID, generation)
+        case .foregroundRecoveryAborted:
+            os_signpost(.event, log: Self.log, name: "foreground_recovery_aborted", signpostID: signpostID,
+                "trace_id=%{public}s generation=%{public}s", traceID, generation)
         case .agentDetailVisible:
             os_signpost(.event, log: Self.log, name: "agent_detail_visible", signpostID: signpostID,
                 "trace_id=%{public}s generation=%{public}s", traceID, generation)
@@ -68,6 +76,8 @@ final class AttachRestorationTrace {
                 "trace_id=%{public}s generation=%{public}s", traceID, generation)
         }
     }
+
+    var recordedPhases: Set<Phase> { state.emittedPhases }
 }
 
 /// Debug-only bridge across the Attach runner boundary. It deliberately owns
