@@ -221,6 +221,75 @@ struct ShellTerminalStoreTests {
         #expect(await transport.shellTerminalCreations.count == 1)
     }
 
+    @Test func unchangedGenerationAllowsConsecutiveForegroundRecoveries() async throws {
+        let transport = ScriptedTransport()
+        let generation = ShellTerminalGenerationSource(1)
+        let runner: TerminalSessionRunner = { request, handler in
+            let readyGeneration = await generation.acquire()
+            await handler.transportDidBecomeReady(readyGeneration)
+            let session = try await transport.attachTerminal(request)
+            try await handler.runEndingSession(session)
+        }
+        let store = ShellTerminalStore(
+            identity: ShellTerminalIdentity(
+                paneID: "w1:p-shell",
+                tabID: "w1:t-shell",
+                terminalID: "term-shell"),
+            transportGeneration: 1,
+            isOnStage: { true },
+            runTerminal: runner)
+
+        let initialSessionGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachSession(using: initialSessionGate)
+        store.viewDidResize(cols: 80, rows: 24)
+        await initialSessionGate.waitForEntry()
+        let initialStatusChanges = observeStatusChanges(of: store)
+        #expect(await transport.emitAttachOutput(Data("initial".utf8)))
+        await initialSessionGate.open()
+        await initialStatusChanges.next()
+        #expect(store.terminalStatus == .live)
+
+        let firstRecoveryChanges = observeTerminalChanges(of: store)
+        store.didBecomeActive(afterPossibleSuspension: true)
+        await firstRecoveryChanges.next()
+        let firstRecoveryID = store.terminalID
+
+        let firstRecoveryGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachSession(using: firstRecoveryGate)
+        store.viewDidResize(cols: 100, rows: 30)
+        await firstRecoveryGate.waitForEntry()
+        #expect(await transport.attachRequests.count == 2)
+        let firstRecoveryStatusChanges = observeStatusChanges(of: store)
+        #expect(await transport.emitAttachOutput(Data("first recovery".utf8)))
+        await firstRecoveryGate.open()
+        await firstRecoveryStatusChanges.next()
+        #expect(store.terminalStatus == .live)
+
+        // No second projection is emitted for generation 1. Acquiring the
+        // already-projected generation must still release the recovery latch.
+        let secondRecoveryChanges = observeTerminalChanges(of: store)
+        store.didBecomeActive(afterPossibleSuspension: true)
+        await secondRecoveryChanges.next()
+        let secondRecoveryID = store.terminalID
+        #expect(secondRecoveryID != firstRecoveryID)
+
+        let secondRecoveryGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachSession(using: secondRecoveryGate)
+        store.viewDidResize(cols: 100, rows: 30)
+        await secondRecoveryGate.waitForEntry()
+        #expect(await transport.attachRequests.count == 3)
+        let secondRecoveryStatusChanges = observeStatusChanges(of: store)
+        #expect(await transport.emitAttachOutput(Data("second recovery".utf8)))
+        await secondRecoveryGate.open()
+        await secondRecoveryStatusChanges.next()
+        #expect(store.terminalStatus == .live)
+        #expect(store.terminalID == secondRecoveryID)
+
+        await store.leave().value
+        #expect(await transport.attachRequests.count == 3)
+        #expect(await !transport.hasLiveAttachSession)
+    }
+
     @Test func foregroundRecoveryDoesNotAbsorbANewerTransportGeneration() async throws {
         let transport = ScriptedTransport()
         let generation = ShellTerminalGenerationSource(1)

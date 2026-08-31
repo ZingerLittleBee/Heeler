@@ -350,10 +350,8 @@ final class ShellTerminalStore {
         if afterPossibleSuspension {
             if activationRecovery.isActive { return }
             if isReplacing {
-                activationRecovery.begin()
-                if let transportGeneration {
-                    _ = activationRecovery.recordProjection(transportGeneration)
-                }
+                activationRecovery.begin(
+                    projectedGeneration: transportGeneration)
                 return
             }
             if terminal.transportGeneration == transportGeneration,
@@ -362,7 +360,8 @@ final class ShellTerminalStore {
                 return
             }
             input.detachSessionForReplacement()
-            activationRecovery.begin()
+            activationRecovery.begin(
+                projectedGeneration: transportGeneration)
             replaceTerminal()
         } else {
             terminal.didBecomeActive()

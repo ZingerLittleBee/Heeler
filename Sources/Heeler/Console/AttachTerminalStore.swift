@@ -86,12 +86,12 @@ struct TerminalRecoveryGenerationLatch {
     private var acquiredGeneration: UInt64?
     private var projectedGeneration: UInt64?
 
-    mutating func begin() {
+    mutating func begin(projectedGeneration: UInt64?) {
         guard !isActive else { return }
         isActive = true
         pipelineID = nil
         acquiredGeneration = nil
-        projectedGeneration = nil
+        self.projectedGeneration = projectedGeneration
     }
 
     mutating func bind(to pipelineID: TerminalSurfaceID) {

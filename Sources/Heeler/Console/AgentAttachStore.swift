@@ -269,10 +269,8 @@ final class AgentAttachStore {
             }
             if terminalRecoveryOwner != nil {
                 activationRecoveryOwnsOnStageLifecycle = true
-                activationRecovery.begin()
-                if let transportGeneration {
-                    _ = activationRecovery.recordProjection(transportGeneration)
-                }
+                activationRecovery.begin(
+                    projectedGeneration: transportGeneration)
                 return
             }
             if terminal.transportGeneration == transportGeneration,
@@ -281,7 +279,8 @@ final class AgentAttachStore {
                 return
             }
             input.detachSessionForReplacement()
-            activationRecovery.begin()
+            activationRecovery.begin(
+                projectedGeneration: transportGeneration)
             replaceTerminal(ownsOnStageLifecycle: true) { [weak self] in
                 guard let self else { return false }
                 return self.lifecycleState == .active && self.isOnStage()
