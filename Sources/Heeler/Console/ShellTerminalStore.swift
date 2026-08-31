@@ -283,7 +283,7 @@ final class ShellTerminalStore {
     @ObservationIgnored private var lifecycleID: UInt64 = 0
     @ObservationIgnored private var isReplacing = false
     @ObservationIgnored private var replacementID: UInt64 = 0
-    @ObservationIgnored private var activationRecoveryAwaitsTransport = false
+    @ObservationIgnored private var activationRecovery = TerminalRecoveryGenerationLatch()
 
     init(
         identity: ShellTerminalIdentity,
@@ -348,8 +348,12 @@ final class ShellTerminalStore {
         }
         guard lifecycleState == .active else { return }
         if afterPossibleSuspension {
+            if activationRecovery.isActive { return }
             if isReplacing {
-                activationRecoveryAwaitsTransport = true
+                activationRecovery.begin()
+                if let transportGeneration {
+                    _ = activationRecovery.recordProjection(transportGeneration)
+                }
                 return
             }
             if terminal.transportGeneration == transportGeneration,
@@ -358,7 +362,7 @@ final class ShellTerminalStore {
                 return
             }
             input.detachSessionForReplacement()
-            activationRecoveryAwaitsTransport = true
+            activationRecovery.begin()
             replaceTerminal()
         } else {
             terminal.didBecomeActive()
@@ -367,15 +371,11 @@ final class ShellTerminalStore {
 
     func transportGenerationDidChange(_ generation: UInt64?) {
         guard let generation, lifecycleState == .active else { return }
-        if activationRecoveryAwaitsTransport,
-            isReplacing || terminal.status == .waitingForSize || terminal.status == .connecting,
-            terminal.acquiredTransportGeneration == generation
-        {
-            transportGeneration = generation
-            activationRecoveryAwaitsTransport = false
+        if let decision = activationRecovery.recordProjection(generation) {
+            advanceTransportGeneration(to: generation)
+            applyActivationRecovery(decision)
             return
         }
-        activationRecoveryAwaitsTransport = false
         if terminal.transportGeneration == generation {
             transportGeneration = generation
             return
@@ -383,6 +383,36 @@ final class ShellTerminalStore {
         guard generation != transportGeneration else { return }
         transportGeneration = generation
         replaceTerminal()
+    }
+
+    private func terminalTransportDidBecomeReady(
+        pipelineID: TerminalSurfaceID,
+        generation: UInt64
+    ) {
+        guard
+            let decision = activationRecovery.recordAcquisition(
+                generation, by: pipelineID)
+        else { return }
+        applyActivationRecovery(decision)
+    }
+
+    private func applyActivationRecovery(
+        _ decision: TerminalRecoveryGenerationLatch.Decision
+    ) {
+        switch decision {
+        case .pending:
+            return
+        case .acknowledge(let generation), .retain(let generation):
+            advanceTransportGeneration(to: generation)
+        case .replace(let generation):
+            advanceTransportGeneration(to: generation)
+            replaceTerminal()
+        }
+    }
+
+    private func advanceTransportGeneration(to generation: UInt64) {
+        guard transportGeneration.map({ generation > $0 }) ?? true else { return }
+        transportGeneration = generation
     }
 
     private func replaceTerminal() {
@@ -402,17 +432,27 @@ final class ShellTerminalStore {
                 self.abortReplacementOffStage(replacementID: replacementID)
                 return
             }
-            self.terminal = Self.makeTerminal(
+            let replacement = Self.makeTerminal(
                 terminalID: self.identity.terminalID,
                 input: self.input,
                 transportGeneration: self.transportGeneration,
-                runTerminal: self.runTerminal)
+                runTerminal: self.runTerminal,
+                transportReady: { [weak self] pipelineID, generation in
+                    self?.terminalTransportDidBecomeReady(
+                        pipelineID: pipelineID, generation: generation)
+                },
+                runDidFinish: { [weak self] pipelineID in
+                    self?.activationRecovery.clear(boundTo: pipelineID)
+                })
+            self.terminal = replacement
+            self.activationRecovery.bind(to: replacement.surfaceID)
             self.isReplacing = false
         }
     }
 
     func rejoin() {
         guard lifecycleState != .active, isOnStage() else { return }
+        activationRecovery.clear()
         lifecycleState = .active
         replacementID &+= 1
         let replacementID = replacementID
@@ -436,11 +476,20 @@ final class ShellTerminalStore {
                 self.abortReplacementOffStage(replacementID: replacementID)
                 return
             }
-            self.terminal = Self.makeTerminal(
+            let replacement = Self.makeTerminal(
                 terminalID: self.identity.terminalID,
                 input: self.input,
                 transportGeneration: self.transportGeneration,
-                runTerminal: self.runTerminal)
+                runTerminal: self.runTerminal,
+                transportReady: { [weak self] pipelineID, generation in
+                    self?.terminalTransportDidBecomeReady(
+                        pipelineID: pipelineID, generation: generation)
+                },
+                runDidFinish: { [weak self] pipelineID in
+                    self?.activationRecovery.clear(boundTo: pipelineID)
+                })
+            self.terminal = replacement
+            self.activationRecovery.bind(to: replacement.surfaceID)
             self.isReplacing = false
         }
     }
@@ -452,6 +501,7 @@ final class ShellTerminalStore {
     private func abortReplacementOffStage(replacementID: UInt64) {
         guard self.replacementID == replacementID else { return }
         isReplacing = false
+        activationRecovery.clear()
         guard lifecycleState == .active, !isOnStage() else { return }
         lifecycleState = .rejoinRequired
     }
@@ -464,7 +514,7 @@ final class ShellTerminalStore {
         lifecycleState = .left
         replacementID &+= 1
         isReplacing = false
-        activationRecoveryAwaitsTransport = false
+        activationRecovery.clear()
         input.cancelPaste()
         // The view may disappear immediately after scheduling this work. A
         // temporary strong capture guarantees the PTY and terminal lease are
@@ -498,13 +548,19 @@ final class ShellTerminalStore {
         terminalID: String,
         input: TerminalInputController,
         transportGeneration: UInt64?,
-        runTerminal: @escaping TerminalSessionRunner
+        runTerminal: @escaping TerminalSessionRunner,
+        transportReady: @escaping @MainActor @Sendable (TerminalSurfaceID, UInt64) -> Void = {
+            _, _ in
+        },
+        runDidFinish: @escaping @MainActor @Sendable (TerminalSurfaceID) -> Void = { _ in }
     ) -> AttachTerminalStore {
         AttachTerminalStore(
             target: .terminal(terminalID),
             takeover: true,
             input: input,
             transportGeneration: transportGeneration,
+            transportReady: transportReady,
+            runDidFinish: runDidFinish,
             runTerminal: runTerminal)
     }
 }

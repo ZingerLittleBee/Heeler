@@ -69,6 +69,79 @@ struct TerminalSurfaceID: Hashable, Sendable {
     init() {}
 }
 
+/// Reconciles the two independently scheduled signals that identify a
+/// foreground recovery's Transport. Readiness is projected before terminal
+/// waiters resume, so either signal may arrive first. A decision is made only
+/// after both belong to the same terminal pipeline.
+struct TerminalRecoveryGenerationLatch {
+    enum Decision: Equatable {
+        case pending
+        case acknowledge(UInt64)
+        case replace(UInt64)
+        case retain(UInt64)
+    }
+
+    private(set) var isActive = false
+    private var pipelineID: TerminalSurfaceID?
+    private var acquiredGeneration: UInt64?
+    private var projectedGeneration: UInt64?
+
+    mutating func begin() {
+        guard !isActive else { return }
+        isActive = true
+        pipelineID = nil
+        acquiredGeneration = nil
+        projectedGeneration = nil
+    }
+
+    mutating func bind(to pipelineID: TerminalSurfaceID) {
+        guard isActive else { return }
+        self.pipelineID = pipelineID
+        acquiredGeneration = nil
+    }
+
+    mutating func recordProjection(_ generation: UInt64) -> Decision? {
+        guard isActive else { return nil }
+        projectedGeneration = max(projectedGeneration ?? generation, generation)
+        return reconcile()
+    }
+
+    mutating func recordAcquisition(
+        _ generation: UInt64,
+        by pipelineID: TerminalSurfaceID
+    ) -> Decision? {
+        guard isActive, self.pipelineID == pipelineID else { return nil }
+        acquiredGeneration = generation
+        return reconcile()
+    }
+
+    mutating func clear(boundTo pipelineID: TerminalSurfaceID) {
+        guard self.pipelineID == pipelineID else { return }
+        clear()
+    }
+
+    mutating func clear() {
+        isActive = false
+        pipelineID = nil
+        acquiredGeneration = nil
+        projectedGeneration = nil
+    }
+
+    private mutating func reconcile() -> Decision {
+        guard let acquiredGeneration, let projectedGeneration else {
+            return .pending
+        }
+        defer { clear() }
+        if projectedGeneration == acquiredGeneration {
+            return .acknowledge(acquiredGeneration)
+        }
+        if projectedGeneration > acquiredGeneration {
+            return .replace(projectedGeneration)
+        }
+        return .retain(acquiredGeneration)
+    }
+}
+
 /// The Agent detail screen's session pipeline: a full interactive terminal
 /// over the Host's terminal channel — raw PTY bytes into the view through a
 /// `TerminalByteFeed`, keystrokes back out, geometry changes as SSH
@@ -110,6 +183,8 @@ final class AttachTerminalStore {
     private let input: TerminalInputController
     private let observeOutput: @MainActor @Sendable (Data) -> Void
     private let finishOutput: @MainActor @Sendable () -> Void
+    private let transportReady: @MainActor @Sendable (TerminalSurfaceID, UInt64) -> Void
+    private let runDidFinish: @MainActor @Sendable (TerminalSurfaceID) -> Void
     /// Opens and owns exclusive Host terminal access for one complete run,
     /// including explicit channel teardown.
     private let runTerminal: TerminalSessionRunner
@@ -133,6 +208,10 @@ final class AttachTerminalStore {
         transportGeneration: UInt64? = nil,
         observeOutput: @escaping @MainActor @Sendable (Data) -> Void = { _ in },
         finishOutput: @escaping @MainActor @Sendable () -> Void = {},
+        transportReady: @escaping @MainActor @Sendable (TerminalSurfaceID, UInt64) -> Void = {
+            _, _ in
+        },
+        runDidFinish: @escaping @MainActor @Sendable (TerminalSurfaceID) -> Void = { _ in },
         runTerminal: @escaping TerminalSessionRunner
     ) {
         self.target = target
@@ -141,6 +220,8 @@ final class AttachTerminalStore {
         self.transportGeneration = transportGeneration
         self.observeOutput = observeOutput
         self.finishOutput = finishOutput
+        self.transportReady = transportReady
+        self.runDidFinish = runDidFinish
         self.runTerminal = runTerminal
     }
 
@@ -150,6 +231,10 @@ final class AttachTerminalStore {
         transportGeneration: UInt64? = nil,
         observeOutput: @escaping @MainActor @Sendable (Data) -> Void = { _ in },
         finishOutput: @escaping @MainActor @Sendable () -> Void = {},
+        transportReady: @escaping @MainActor @Sendable (TerminalSurfaceID, UInt64) -> Void = {
+            _, _ in
+        },
+        runDidFinish: @escaping @MainActor @Sendable (TerminalSurfaceID) -> Void = { _ in },
         runTerminal: @escaping TerminalSessionRunner
     ) {
         self.init(
@@ -159,6 +244,8 @@ final class AttachTerminalStore {
             transportGeneration: transportGeneration,
             observeOutput: observeOutput,
             finishOutput: finishOutput,
+            transportReady: transportReady,
+            runDidFinish: runDidFinish,
             runTerminal: runTerminal)
     }
 
@@ -238,7 +325,10 @@ final class AttachTerminalStore {
     /// One session lifetime: open at the current geometry, pump output until
     /// the stream ends, surface how it ended.
     private func run() async {
-        defer { runTask = nil }
+        defer {
+            runTask = nil
+            runDidFinish(surfaceID)
+        }
         guard let cols, let rows else { return }
         do {
             try await runTerminal(
@@ -246,8 +336,10 @@ final class AttachTerminalStore {
                     target: target, takeover: takeover, cols: cols, rows: rows),
                 TerminalSessionHandler(
                     transportReady: { [weak self] generation in
-                        self?.transportGeneration = generation
-                        self?.acquiredTransportGeneration = generation
+                        guard let self else { return }
+                        self.transportGeneration = generation
+                        self.acquiredTransportGeneration = generation
+                        self.transportReady(self.surfaceID, generation)
                     }
                 ) { [weak self] session in
                     guard let self else {
