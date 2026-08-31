@@ -14,6 +14,11 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- HeelerSSH connections negotiate post-quantum hybrid key exchange
+  (`mlkem768x25519-sha256`) against servers that offer it, via a libssh2
+  snapshot that carries upstream ML-KEM support; servers without it keep
+  using `curve25519-sha256`. (#261)
+
 - Agent detail now offers Direct Input, which hides the Composer and routes iOS
   keyboard input directly to the live Attach PTY. A persistent row above the
   Agent switcher provides Esc, Tab, Shift-Tab, arrow keys, Backspace,

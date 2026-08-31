@@ -10,7 +10,7 @@ dependency-maintenance operation, not part of ordinary app or CI builds.
 
 ## Audit and rebuild
 
-`Sources.lock` records the exact upstream release archives, tags, commits, and
+`Sources.lock` records the exact upstream source archives, tags, commits, and
 SHA-256 hashes. `Scripts/build-native.sh` verifies both archives before
 extracting or compiling them. A mismatch is fatal.
 
@@ -36,10 +36,8 @@ make verify-ssh-artifacts
 ```
 
 OpenSSL is built without its legacy provider and without the legacy algorithms
-listed in the provenance record. libssh2 is compiled with its obsolete cipher
-and signature switches disabled; the small reviewed patch in `Patches/`
-removes SHA-1 key exchange and MAC methods that libssh2 1.11.1 otherwise has no
-build switch for.
+listed in the provenance record. The pinned libssh2 snapshot disables obsolete
+algorithms upstream; the build additionally defines `LIBSSH2_NO_AES_CBC`.
 
 ## Session scheduling
 
@@ -151,9 +149,11 @@ package runner asserts only that something executed, not an exact count, so
 machines without the disposable sshd fixture can skip the E2E suite cleanly.
 
 The E2E integration package must update `scripts/run-ci-ios-tests.sh` before
-merge so its package lane expects **43** executed tests and pins these new
+merge so its package lane expects **45** executed tests and pins these
 display names exactly:
 
+- `handshake negotiates post-quantum key exchange`
+- `handshake falls back to Curve25519 key exchange`
 - `outbound backpressure does not livelock a channel open`
 - `cancelling a transport-send owner drains`
 - `cancelling a transport-send owner invalidates`
@@ -172,7 +172,12 @@ display names exactly:
 - `a transport-send owner error with outbound pending invalidates`
 - `a bridge write to a closed peer reports peerClosed`
 
-This core package intentionally does not edit that integration script.
+The post-quantum handshake uses its own ML-KEM-only sshd endpoint. The shared
+resource and timing suites remain on a Curve25519-only baseline so algorithm
+coverage cannot change their fixture behavior.
+
+The package lane treats the count and display names as merge gates, so adding
+E2E behavior requires updating both in the same change.
 
 ## Direct-streamlocal acceptance
 

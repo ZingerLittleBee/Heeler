@@ -132,7 +132,7 @@ openssl_team="$({ codesign -dv --verbose=4 \
 }
 
 for library in "${ARTIFACT_DIR}/CLibSSH2.xcframework"/*/CLibSSH2.framework/CLibSSH2; do
-    forbidden="$({ strings "${library}" || true; } | grep -E '^(ssh-dss|diffie-hellman-group1-sha1|diffie-hellman-group14-sha1|diffie-hellman-group-exchange-sha1|hmac-sha1|hmac-sha1-96|aes(128|192|256)-cbc|3des-cbc|blowfish-cbc|arcfour|cast128-cbc)$' || true)"
+    forbidden="$({ strings "${library}" || true; } | grep -E '^(ssh-dss|diffie-hellman-group1-sha1|diffie-hellman-group14-sha1|diffie-hellman-group-exchange-sha1|hmac-sha1|hmac-sha1-96|hmac-sha1-etm@openssh\.com|hmac-sha1-96-etm@openssh\.com|hmac-md5|hmac-md5-96|hmac-md5-etm@openssh\.com|hmac-ripemd160|hmac-ripemd160-etm@openssh\.com|aes(128|192|256)-cbc|3des-cbc|blowfish-cbc|arcfour|cast128-cbc)$' || true)"
     if [[ -n "${forbidden}" ]]; then
         echo "error: legacy SSH methods found in ${library}:" >&2
         echo "${forbidden}" >&2

@@ -17,6 +17,28 @@ import Testing
     // runner out to the xcodebuild timeout.
     .timeLimit(.minutes(2)))
 struct SessionDriverE2ETests {
+    @Test("handshake negotiates post-quantum key exchange")
+    func handshakeNegotiatesPostQuantumKeyExchange() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let driver = SessionDriver()
+
+        _ = try await driver.handshake(
+            endpoint: environment.postQuantumEndpoint,
+            timeout: .seconds(5))
+        try await driver.close(timeout: .seconds(2))
+    }
+
+    @Test("handshake falls back to Curve25519 key exchange")
+    func handshakeFallsBackToCurve25519KeyExchange() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let driver = SessionDriver()
+
+        _ = try await driver.handshake(
+            endpoint: environment.curve25519Endpoint,
+            timeout: .seconds(5))
+        try await driver.close(timeout: .seconds(2))
+    }
+
     @Test("public connection resolves localhost before authenticating")
     func publicConnectionResolvesLocalhost() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
@@ -2627,6 +2649,8 @@ private enum WeakNetworkProxyFixtureError: Error {
 
 private struct SessionDriverTestEnvironment: Sendable {
     let endpoint: SSHEndpoint
+    let postQuantumEndpoint: SSHEndpoint
+    let curve25519Endpoint: SSHEndpoint
     let username: String
     let privateKey: Curve25519.Signing.PrivateKey
 
@@ -2647,6 +2671,10 @@ private struct SessionDriverTestEnvironment: Sendable {
             let host = environment["HEELER_SSH_E2E_HOST"],
             let portText = environment["HEELER_SSH_E2E_PORT"],
             let port = UInt16(portText),
+            let postQuantumPortText = environment["HEELER_SSH_E2E_PQ_PORT"],
+            let postQuantumPort = UInt16(postQuantumPortText),
+            let curve25519PortText = environment["HEELER_SSH_E2E_RESTRICTED_PORT"],
+            let curve25519Port = UInt16(curve25519PortText),
             let username = environment["HEELER_SSH_E2E_USERNAME"],
             let seed = environment["HEELER_SSH_E2E_DEVICE_KEY_SEED"],
             let seedData = Data(base64Encoded: seed),
@@ -2656,6 +2684,8 @@ private struct SessionDriverTestEnvironment: Sendable {
         }
         return SessionDriverTestEnvironment(
             endpoint: SSHEndpoint(host: host, port: port),
+            postQuantumEndpoint: SSHEndpoint(host: host, port: postQuantumPort),
+            curve25519Endpoint: SSHEndpoint(host: host, port: curve25519Port),
             username: username,
             privateKey: privateKey)
     }()

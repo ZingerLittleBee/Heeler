@@ -39,7 +39,7 @@ esac
 export PYTHONDONTWRITEBYTECODE=1
 
 # Fixture ports are a contiguous block that a run claims at startup rather than
-# twelve fixed numbers every run shares. Fixed numbers made this script a
+# thirteen fixed numbers every run shares. Fixed numbers made this script a
 # machine-wide mutex: whichever run started second failed its port preflight and
 # could only wait for the first to finish.
 #
@@ -49,7 +49,7 @@ export PYTHONDONTWRITEBYTECODE=1
 
 # Must equal the number of ports assign_port_block sets; assign_port_block
 # asserts that itself rather than trusting this comment.
-port_block_size=12
+port_block_size=13
 # The historical block. A run that finds the machine idle still lands exactly
 # here, so the common case is unchanged.
 port_block_base_default=55222
@@ -87,6 +87,7 @@ xcodebuild_test_timeout_seconds="${HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS:-600}"
 fixture_username="$(id -un)"
 fixture_home="$fixture_dir/home"
 modern_pid=""
+post_quantum_pid=""
 legacy_pid=""
 restricted_pid=""
 stall_pid=""
@@ -365,6 +366,7 @@ clear_simulator_environment() {
         HEELER_SSH_E2E_REQUIRED \
         HEELER_SSH_E2E_HOST \
         HEELER_SSH_E2E_PORT \
+        HEELER_SSH_E2E_PQ_PORT \
         HEELER_SSH_E2E_USERNAME \
         HEELER_SSH_E2E_DEVICE_KEY_SEED \
         HEELER_SSH_E2E_WEAK_PORT \
@@ -653,7 +655,7 @@ start_unprivileged_sshd() {
 }
 
 # The single place fixture ports are named. Every other reference in this
-# script, and every port the tests are handed, comes from these twelve
+# script, and every port the tests are handed, comes from these thirteen
 # variables, so moving the base moves the whole fixture.
 assign_port_block() {
     local base=$1
@@ -673,10 +675,13 @@ assign_port_block() {
     # plus the control port the weak-network suite steers it through.
     weak_network_port=$((base + 10))
     weak_network_control_port=$((base + 11))
+    # Post-quantum coverage uses a dedicated endpoint so the established
+    # resource and timing suites keep exercising their Curve25519 baseline.
+    post_quantum_port=$((base + 12))
 
     # Adding a port above without widening port_block_size would overlap the
     # next block, which no test could distinguish from a flaky fixture.
-    highest=$weak_network_control_port
+    highest=$post_quantum_port
     if [[ "$highest" -ne "$((base + port_block_size - 1))" ]]; then
         echo "assign_port_block assigns past port_block_size=$port_block_size" >&2
         exit 1
@@ -909,6 +914,7 @@ chmod 700 "$pairing_home/.ssh"
 chmod 600 "$pairing_authorized_keys"
 
 modern_config="$fixture_dir/sshd-modern.conf"
+post_quantum_config="$fixture_dir/sshd-post-quantum.conf"
 legacy_config="$fixture_dir/sshd-legacy.conf"
 restricted_config="$fixture_dir/sshd-restricted.conf"
 streamlocal_global_policy_config="$fixture_dir/sshd-streamlocal-global-policy.conf"
@@ -965,6 +971,12 @@ write_common_config \
     "$modern_port" \
     "$fixture_dir/host_ed25519" \
     "$fixture_dir/sshd-modern.pid" > "$modern_config"
+printf '%s\n' "KexAlgorithms curve25519-sha256" >> "$modern_config"
+write_common_config \
+    "$post_quantum_port" \
+    "$fixture_dir/host_ed25519" \
+    "$fixture_dir/sshd-post-quantum.pid" > "$post_quantum_config"
+printf '%s\n' "KexAlgorithms mlkem768x25519-sha256" >> "$post_quantum_config"
 write_common_config \
     "$legacy_port" \
     "$fixture_dir/host_rsa" \
@@ -974,7 +986,10 @@ write_common_config \
     "$restricted_port" \
     "$fixture_dir/host_ed25519" \
     "$fixture_dir/sshd-restricted.pid" > "$restricted_config"
-printf '%s\n' "MaxSessions 0" >> "$restricted_config"
+printf '%s\n' \
+    "KexAlgorithms curve25519-sha256" \
+    "MaxSessions 0" \
+    >> "$restricted_config"
 write_common_config \
     "$streamlocal_global_policy_port" \
     "$fixture_dir/host_ed25519" \
@@ -1082,6 +1097,9 @@ weak_network_pid=$!
 
 start_unprivileged_sshd "$modern_config" "$fixture_dir/sshd-modern.log"
 modern_pid=$started_sshd_pid
+start_unprivileged_sshd \
+    "$post_quantum_config" "$fixture_dir/sshd-post-quantum.log"
+post_quantum_pid=$started_sshd_pid
 start_unprivileged_sshd "$legacy_config" "$fixture_dir/sshd-legacy.log"
 legacy_pid=$started_sshd_pid
 start_unprivileged_sshd "$restricted_config" "$fixture_dir/sshd-restricted.log"
@@ -1199,6 +1217,7 @@ stall_pid=$!
 
 fixture_pids=(
     "$modern_pid"
+    "$post_quantum_pid"
     "$legacy_pid"
     "$restricted_pid"
     "$stall_pid"
@@ -1213,6 +1232,7 @@ fixture_pids=(
 )
 fixture_ports=(
     "$modern_port"
+    "$post_quantum_port"
     "$legacy_port"
     "$restricted_port"
     "$stall_port"
@@ -1269,6 +1289,7 @@ fi
 export HEELER_SSH_E2E_REQUIRED=1
 export HEELER_SSH_E2E_HOST=127.0.0.1
 export HEELER_SSH_E2E_PORT="$modern_port"
+export HEELER_SSH_E2E_PQ_PORT="$post_quantum_port"
 export HEELER_SSH_E2E_LEGACY_PORT="$legacy_port"
 export HEELER_SSH_E2E_RESTRICTED_PORT="$restricted_port"
 export HEELER_SSH_E2E_STALL_PORT="$stall_port"
@@ -1788,6 +1809,8 @@ push_simulator_environment \
     HEELER_SSH_E2E_REQUIRED \
     HEELER_SSH_E2E_HOST \
     HEELER_SSH_E2E_PORT \
+    HEELER_SSH_E2E_PQ_PORT \
+    HEELER_SSH_E2E_RESTRICTED_PORT \
     HEELER_SSH_E2E_USERNAME \
     HEELER_SSH_E2E_DEVICE_KEY_SEED \
     HEELER_SSH_E2E_WEAK_PORT \
@@ -1807,7 +1830,13 @@ clear_simulator_environment
 
 if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || grep -q 'skipped:' "$package_e2e_log" \
-    || ! grep -q 'Test run with 43 tests in 2 suites passed' "$package_e2e_log" \
+    || ! grep -q 'Test run with 45 tests in 2 suites passed' "$package_e2e_log" \
+    || ! grep -q \
+        'Test "handshake negotiates post-quantum key exchange" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "handshake falls back to Curve25519 key exchange" passed' \
+        "$package_e2e_log" \
     || ! grep -q 'Test "remote transport loss reclaims every owned native resource" passed' \
         "$package_e2e_log" \
     || ! grep -q 'Test "an abruptly severed weak link reclaims every owned native resource" passed' \
@@ -1892,7 +1921,7 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || ! grep -q \
         'Test "a bridge write to a closed peer reports peerClosed" passed' \
         "$package_e2e_log"; then
-    echo "The mandatory HeelerSSH package suites did not execute all forty-three tests" >&2
+    echo "The mandatory HeelerSSH package suites did not execute all forty-five tests" >&2
     exit 1
 fi
 exit 0

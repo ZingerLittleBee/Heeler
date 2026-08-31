@@ -78,24 +78,24 @@
     {
       "id": "libssh2",
       "displayName": "libssh2",
-      "version": "1.11.1",
-      "source": "Packages/HeelerSSH/Artifacts (tag libssh2-1.11.1)",
+      "version": "c7557852f1b7c0d3b9cffd5390eb33fdf93fb17f",
+      "source": "Packages/HeelerSSH/Artifacts (snapshot c7557852f1b7c0d3b9cffd5390eb33fdf93fb17f)",
       "spdx": "BSD-3-Clause",
       "notice": "libssh2-BSD-3-Clause.txt"
     },
     {
       "id": "libssh2-bcrypt_pbkdf",
       "displayName": "libssh2 bcrypt_pbkdf",
-      "version": "1.11.1",
-      "source": "libssh2-1.11.1/src/bcrypt_pbkdf.c",
+      "version": "c7557852f1b7c0d3b9cffd5390eb33fdf93fb17f",
+      "source": "libssh2 c7557852f1b7c0d3b9cffd5390eb33fdf93fb17f/src/bcrypt_pbkdf.c",
       "spdx": "MIT",
       "notice": "libssh2-bcrypt_pbkdf-MIT.txt"
     },
     {
       "id": "libssh2-cipher-chachapoly",
       "displayName": "libssh2 cipher-chachapoly",
-      "version": "1.11.1",
-      "source": "libssh2-1.11.1/src/cipher-chachapoly.c",
+      "version": "c7557852f1b7c0d3b9cffd5390eb33fdf93fb17f",
+      "source": "libssh2 c7557852f1b7c0d3b9cffd5390eb33fdf93fb17f/src/cipher-chachapoly.c",
       "spdx": "BSD-2-Clause",
       "notice": "libssh2-cipher-chachapoly-BSD-2-Clause.txt"
     }

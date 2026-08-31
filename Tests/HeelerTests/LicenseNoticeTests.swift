@@ -57,8 +57,8 @@ struct LicenseNoticeInventoryTests {
 
         let libssh2 = try #require(byID["libssh2"])
         #expect(libssh2.license == "BSD-3-Clause")
-        #expect(libssh2.version == "1.11.1")
-        #expect(libssh2.text.utf8.count == 1959)
+        #expect(libssh2.version == "c7557852f1b7c0d3b9cffd5390eb33fdf93fb17f")
+        #expect(libssh2.text.utf8.count == 1935)
         #expect(libssh2.text.contains("Redistribution and use in source and binary forms"))
         #expect(libssh2.text.contains("Copyright (C) 2015 Microsoft Corp."))
         #expect(libssh2.text.contains("Redistributions in binary form must reproduce the above"))
