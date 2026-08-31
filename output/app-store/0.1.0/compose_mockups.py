@@ -40,18 +40,18 @@ MOCKUPS = (
         accent=(152, 124, 255),
     ),
     Mockup(
-        output_name="02-control-without-leaving-the-flow.png",
-        source_name="agent-iphone.png",
-        headline="Control Without\nLeaving the Flow",
-        subhead="A live terminal and agent controls, built for iOS.",
-        accent=(88, 214, 198),
-    ),
-    Mockup(
-        output_name="03-type-directly-stay-in-flow.png",
+        output_name="02-type-directly-stay-in-flow.png",
         source_name="live-terminal-iphone.png",
         headline="Type Directly.\nStay in Flow.",
         subhead="Route the iOS keyboard straight to the live Attach terminal.",
         accent=(236, 113, 177),
+    ),
+    Mockup(
+        output_name="03-control-without-leaving-the-flow.png",
+        source_name="agent-iphone.png",
+        headline="Control Without\nLeaving the Flow",
+        subhead="A live terminal and agent controls, built for iOS.",
+        accent=(88, 214, 198),
     ),
     Mockup(
         output_name="04-your-shell-within-reach.png",
