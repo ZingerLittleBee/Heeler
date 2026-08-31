@@ -273,11 +273,6 @@ final class AgentAttachStore {
                     projectedGeneration: transportGeneration)
                 return
             }
-            if terminal.transportGeneration == transportGeneration,
-                terminal.status == .waitingForSize || terminal.status == .connecting
-            {
-                return
-            }
             input.detachSessionForReplacement()
             activationRecovery.begin(
                 projectedGeneration: transportGeneration)
