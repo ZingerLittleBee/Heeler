@@ -29,7 +29,7 @@ Entries reference the issue that motivated them.
 ### Fixed
 
 - Attach terminals begin restoring as soon as a reconnected Host's Transport
-  is ready, without waiting for event subscription and snapshot recovery. (#264)
+  is ready, without waiting for event subscription and snapshot recovery. (#264; PR #265)
 
 ## [0.1.3] - 2026-08-28
 
