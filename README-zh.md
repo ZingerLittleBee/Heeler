@@ -27,11 +27,11 @@ Heeler 是一个 **agent 控制台**：把所有机器上正在运行的 coding 
 
 | Agent Console | 实时终端 | Composer + 工具键盘 |
 | --- | --- | --- |
-| ![iPhone 上的 Agent Console](docs/images/console-iphone.png) | ![iPhone 上使用 Direct Input 的 Agent 实时终端](docs/images/live-terminal-iphone.png) | ![iPhone 上带工具键盘的 Agent 终端](docs/images/agent-iphone.png) |
+| <img src="docs/images/console-iphone.png" width="240" alt="iPhone 上的 Agent Console" /> | <img src="docs/images/live-terminal-iphone.png" width="240" alt="iPhone 上使用 Direct Input 的 Agent 实时终端" /> | <img src="docs/images/agent-iphone.png" width="240" alt="iPhone 上带工具键盘的 Agent 终端" /> |
 
 | Terminal | Skills | 实时活动 |
 | --- | --- | --- |
-| ![iPhone 上带 Text / Keys 的普通 Terminal](docs/images/terminal-iphone.png) | ![iPhone 上 Composer 的 Skills 建议](docs/images/skills-iphone.png) | ![iPhone 锁屏上实时跟踪 Agent 的实时活动](docs/images/live-activity-iphone.png) |
+| <img src="docs/images/terminal-iphone.png" width="240" alt="iPhone 上带 Text / Keys 的普通 Terminal" /> | <img src="docs/images/skills-iphone.png" width="240" alt="iPhone 上 Composer 的 Skills 建议" /> | <img src="docs/images/live-activity-iphone.png" width="240" alt="iPhone 锁屏上实时跟踪 Agent 的实时活动" /> |
 
 ## 功能
 
