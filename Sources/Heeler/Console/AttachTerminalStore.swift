@@ -9,6 +9,9 @@ typealias TerminalSessionRunner =
 struct TerminalSessionHandler: Sendable {
     private let operation: TerminalSessionOperation
     private let transportReady: @MainActor @Sendable (UInt64) -> Void
+    #if DEBUG
+    private let traceEvents: AttachRestorationTraceEvents?
+    #endif
 
     init(
         transportReady: @escaping @MainActor @Sendable (UInt64) -> Void = { _ in },
@@ -16,12 +19,39 @@ struct TerminalSessionHandler: Sendable {
     ) {
         self.transportReady = transportReady
         self.operation = operation
+        #if DEBUG
+        traceEvents = nil
+        #endif
     }
+
+    #if DEBUG
+    init(
+        transportReady: @escaping @MainActor @Sendable (UInt64) -> Void = { _ in },
+        traceEvents: AttachRestorationTraceEvents,
+        _ operation: @escaping TerminalSessionOperation
+    ) {
+        self.transportReady = transportReady
+        self.traceEvents = traceEvents
+        self.operation = operation
+    }
+    #endif
 
     @MainActor
     func transportDidBecomeReady(_ generation: UInt64) {
         transportReady(generation)
     }
+
+    #if DEBUG
+    @MainActor
+    func attachRequestDidStart() {
+        traceEvents?.attachRequestDidStart()
+    }
+
+    @MainActor
+    func attachChannelDidOpen() {
+        traceEvents?.attachChannelDidOpen()
+    }
+    #endif
 
     @MainActor
     func run(_ session: TerminalAttachSession) async throws {
@@ -201,6 +231,9 @@ final class AttachTerminalStore {
     private var session: TerminalAttachSession?
     private var inputGeneration: TerminalInputController.SessionGeneration?
     private var runTask: Task<Void, Never>?
+    #if DEBUG
+    let restorationTrace = AttachRestorationTrace()
+    #endif
 
     init(
         target: TerminalAttachTarget, takeover: Bool = false,
@@ -258,6 +291,9 @@ final class AttachTerminalStore {
         self.rows = rows
         if runTask == nil {
             if status == .waitingForSize {
+                #if DEBUG
+                restorationTrace.emit(.initialResize, generation: transportGeneration)
+                #endif
                 start()
             }
             // .ended waits for retry(); .stopped is terminal.
@@ -330,25 +366,36 @@ final class AttachTerminalStore {
             runDidFinish(surfaceID)
         }
         guard let cols, let rows else { return }
+        let request = TerminalAttachRequest(
+            target: target, takeover: takeover, cols: cols, rows: rows)
+        let operation: TerminalSessionOperation = { [weak self] session in
+            guard let self else {
+                await session.end()
+                return
+            }
+            try await self.consume(session, initialCols: cols, initialRows: rows)
+        }
+        let transportReady: @MainActor @Sendable (UInt64) -> Void = { [weak self] generation in
+            guard let self else { return }
+            self.transportGeneration = generation
+            self.acquiredTransportGeneration = generation
+            self.transportReady(self.surfaceID, generation)
+            #if DEBUG
+            self.restorationTrace.emit(.transportAcquired, generation: generation)
+            #endif
+        }
+        #if DEBUG
+        let handler = TerminalSessionHandler(
+            transportReady: transportReady,
+            traceEvents: AttachRestorationTraceEvents(
+                trace: restorationTrace,
+                generation: { [weak self] in self?.acquiredTransportGeneration }),
+            operation)
+        #else
+        let handler = TerminalSessionHandler(transportReady: transportReady, operation)
+        #endif
         do {
-            try await runTerminal(
-                TerminalAttachRequest(
-                    target: target, takeover: takeover, cols: cols, rows: rows),
-                TerminalSessionHandler(
-                    transportReady: { [weak self] generation in
-                        guard let self else { return }
-                        self.transportGeneration = generation
-                        self.acquiredTransportGeneration = generation
-                        self.transportReady(self.surfaceID, generation)
-                    }
-                ) { [weak self] session in
-                    guard let self else {
-                        await session.end()
-                        return
-                    }
-                    try await self.consume(
-                        session, initialCols: cols, initialRows: rows)
-                })
+            try await runTerminal(request, handler)
         } catch {
             guard !stopRequested else { return }
             status = .ended(Self.message(for: error))
@@ -393,6 +440,9 @@ final class AttachTerminalStore {
                 if status == .connecting {
                     status = .live
                 }
+                #if DEBUG
+                restorationTrace.emit(.firstOutputBytes, generation: acquiredTransportGeneration)
+                #endif
                 observeOutput(bytes)
                 feed.write(bytes)
             }

@@ -213,7 +213,13 @@ final class HostConsoleProjection {
         return { request, handler in
             try await session.withTerminalTransport { transport, generation in
                 await handler.transportDidBecomeReady(generation)
+                #if DEBUG
+                await handler.attachRequestDidStart()
+                #endif
                 let terminal = try await transport.attachTerminal(request)
+                #if DEBUG
+                await handler.attachChannelDidOpen()
+                #endif
                 try await handler.runEndingSession(terminal)
             }
         }

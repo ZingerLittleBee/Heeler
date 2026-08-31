@@ -161,6 +161,22 @@ final class AgentAttachStore {
         terminal.feed
     }
 
+    #if DEBUG
+    func terminalDidBecomeVisible() {
+        terminal.restorationTrace.emit(.agentDetailVisible, generation: terminal.transportGeneration)
+    }
+
+    func agentSnapshotSwitcherDidBecomeAvailable() {
+        terminal.restorationTrace.emit(
+            .agentSnapshotSwitcherAvailable,
+            generation: terminal.transportGeneration)
+    }
+
+    func terminalSurfaceDidAttach() {
+        terminal.restorationTrace.emit(.terminalSurfaceAttached, generation: terminal.transportGeneration)
+    }
+    #endif
+
     var attachLinks: [AttachLink] {
         linkIndex.links
     }
