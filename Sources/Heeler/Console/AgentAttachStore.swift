@@ -102,9 +102,9 @@ final class AgentAttachStore {
     /// ordinary replacement and rejoin transitions keep their existing teardown
     /// semantics.
     private var activationRecoveryOwnsOnStageLifecycle = false
-    /// A foreground replacement already waits at the terminal-ready seam. The
-    /// matching generation publication acknowledges that same pipeline; it
-    /// must not enqueue a second writer behind it.
+    /// A foreground replacement already waits at the terminal-ready seam. Its
+    /// exact acquired generation may acknowledge that same pipeline; a newer
+    /// generation must still enqueue the replacement that owns it.
     private var activationRecoveryAwaitsTransport = false
 
     init(
@@ -294,7 +294,8 @@ final class AgentAttachStore {
         guard let generation, lifecycleState == .active else { return }
         if activationRecoveryAwaitsTransport,
             terminalRecoveryOwner != nil || terminal.status == .waitingForSize
-                || terminal.status == .connecting
+                || terminal.status == .connecting,
+            terminal.acquiredTransportGeneration == generation
         {
             transportGeneration = generation
             activationRecoveryAwaitsTransport = false

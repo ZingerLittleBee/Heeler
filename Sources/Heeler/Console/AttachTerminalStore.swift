@@ -117,6 +117,10 @@ final class AttachTerminalStore {
     private var cols: Int?
     private var rows: Int?
     private(set) var transportGeneration: UInt64?
+    /// The Transport generation this pipeline actually acquired from its
+    /// runner. Unlike `transportGeneration`, this is never seeded from a
+    /// projection value before the terminal-ready seam has been crossed.
+    private(set) var acquiredTransportGeneration: UInt64?
     private var stopRequested = false
     private var preservesPendingPasteOnStop = false
     private var session: TerminalAttachSession?
@@ -243,6 +247,7 @@ final class AttachTerminalStore {
                 TerminalSessionHandler(
                     transportReady: { [weak self] generation in
                         self?.transportGeneration = generation
+                        self?.acquiredTransportGeneration = generation
                     }
                 ) { [weak self] session in
                     guard let self else {

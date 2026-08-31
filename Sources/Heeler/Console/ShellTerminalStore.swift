@@ -368,7 +368,8 @@ final class ShellTerminalStore {
     func transportGenerationDidChange(_ generation: UInt64?) {
         guard let generation, lifecycleState == .active else { return }
         if activationRecoveryAwaitsTransport,
-            isReplacing || terminal.status == .waitingForSize || terminal.status == .connecting
+            isReplacing || terminal.status == .waitingForSize || terminal.status == .connecting,
+            terminal.acquiredTransportGeneration == generation
         {
             transportGeneration = generation
             activationRecoveryAwaitsTransport = false

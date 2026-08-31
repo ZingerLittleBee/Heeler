@@ -26,6 +26,11 @@ Entries reference the issue that motivated them.
   Composer remains the default. Switching modes preserves the draft and keeps
   a visible iOS keyboard in place. (#251; PR #253)
 
+### Fixed
+
+- Attach terminals begin restoring as soon as a reconnected Host's Transport
+  is ready, without waiting for event subscription and snapshot recovery. (#264)
+
 ## [0.1.3] - 2026-08-28
 
 ### Changed

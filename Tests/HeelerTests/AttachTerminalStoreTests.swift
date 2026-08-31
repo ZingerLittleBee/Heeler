@@ -454,7 +454,7 @@ struct AttachTerminalStoreTests {
 @MainActor
 @Suite("Agent Attach store")
 struct AgentAttachStoreTests {
-    @Test func foregroundRecoveryAbsorbsItsLaterTransportGeneration() async throws {
+    @Test func foregroundRecoveryDoesNotAbsorbANewerTransportGeneration() async throws {
         let transport = ScriptedTransport()
         let generation = TerminalGenerationSource(1)
         let runner: TerminalSessionRunner = { request, handler in
@@ -487,21 +487,86 @@ struct AgentAttachStoreTests {
         #expect(recoveryID != predecessorID)
         #expect(store.terminalStatus == .waitingForSize)
 
-        // This is the projection edge that used to enqueue a second pipeline
-        // after foreground recovery had already built the one waiting for the
-        // ping-proven Transport.
-        store.transportGenerationDidChange(2)
-        #expect(store.terminalID == recoveryID)
-
         let secondSessionGate = ScriptedTransportCallGate()
         await transport.gateNextAttachSession(using: secondSessionGate)
         store.viewDidResize(cols: 100, rows: 30)
         await secondSessionGate.waitForEntry()
         #expect(await transport.attachRequests.count == 2)
-        var secondStatusChanges = observeStatusChanges(of: store)
+
+        // Coalesce away the projection edge for generation 2, then publish 3
+        // while pipeline 2 is still connecting. Generation 3 is not an
+        // acknowledgement of pipeline 2 and must replace it.
+        await generation.set(3)
+        let replacementChanges = observeTerminalChanges(of: store)
+        store.transportGenerationDidChange(3)
+        await secondSessionGate.open()
+        await replacementChanges.next()
+        let latestRecoveryID = store.terminalID
+        #expect(latestRecoveryID != recoveryID)
+        #expect(await transport.attachRequests.count == 2)
+
+        let thirdSessionGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachSession(using: thirdSessionGate)
+        store.viewDidResize(cols: 100, rows: 30)
+        await thirdSessionGate.waitForEntry()
+        #expect(await transport.attachRequests.count == 3)
+        let latestStatusChanges = observeStatusChanges(of: store)
+        #expect(await transport.emitAttachOutput(Data("latest".utf8)))
+        await thirdSessionGate.open()
+        await latestStatusChanges.next()
+        #expect(store.terminalStatus == .live)
+
+        await store.leave().value
+        #expect(store.terminalID == latestRecoveryID)
+        #expect(await transport.attachRequests.count == 3)
+        #expect(await !transport.hasLiveAttachSession)
+    }
+
+    @Test func foregroundRecoveryAbsorbsItsAcquiredTransportGeneration() async throws {
+        let transport = ScriptedTransport()
+        let generation = TerminalGenerationSource(1)
+        let runner: TerminalSessionRunner = { request, handler in
+            let readyGeneration = await generation.value
+            await handler.transportDidBecomeReady(readyGeneration)
+            let session = try await transport.attachTerminal(request)
+            try await handler.runEndingSession(session)
+        }
+        let store = makeStore(
+            transport: transport,
+            generation: 1,
+            runTerminal: runner)
+
+        let firstSessionGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachSession(using: firstSessionGate)
+        store.viewDidResize(cols: 80, rows: 24)
+        await firstSessionGate.waitForEntry()
+        let firstStatusChanges = observeStatusChanges(of: store)
+        #expect(await transport.emitAttachOutput(Data("first".utf8)))
+        await firstSessionGate.open()
+        await firstStatusChanges.next()
+        #expect(store.terminalStatus == .live)
+
+        await generation.set(2)
+        let recoveryChanges = observeTerminalChanges(of: store)
+        store.didBecomeActive(afterPossibleSuspension: true)
+        await recoveryChanges.next()
+        let recoveryID = store.terminalID
+
+        let secondSessionGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachSession(using: secondSessionGate)
+        store.viewDidResize(cols: 100, rows: 30)
+        await secondSessionGate.waitForEntry()
+
+        // The exact edge acknowledges this already-acquired pipeline and must
+        // not enqueue a duplicate writer behind it.
+        store.transportGenerationDidChange(2)
+        #expect(store.terminalID == recoveryID)
+        #expect(await transport.attachRequests.count == 2)
+
+        let secondStatusChanges = observeStatusChanges(of: store)
         #expect(await transport.emitAttachOutput(Data("second".utf8)))
         await secondSessionGate.open()
-        _ = await secondStatusChanges.next()
+        await secondStatusChanges.next()
         #expect(store.terminalStatus == .live)
 
         await store.leave().value
@@ -2226,7 +2291,7 @@ struct AgentAttachStoreTests {
 
     private func observeTerminalChanges(
         of store: AgentAttachStore
-    ) -> AsyncStream<Void>.Iterator {
+    ) -> ObservationChangeProbe {
         let (changes, continuation) = AsyncStream.makeStream(of: Void.self)
         withObservationTracking {
             _ = store.terminalID
@@ -2234,12 +2299,12 @@ struct AgentAttachStoreTests {
             continuation.yield()
             continuation.finish()
         }
-        return changes.makeAsyncIterator()
+        return ObservationChangeProbe(changes)
     }
 
     private func observeStatusChanges(
         of store: AgentAttachStore
-    ) -> AsyncStream<Void>.Iterator {
+    ) -> ObservationChangeProbe {
         let (changes, continuation) = AsyncStream.makeStream(of: Void.self)
         withObservationTracking {
             _ = store.terminalStatus
@@ -2247,7 +2312,7 @@ struct AgentAttachStoreTests {
             continuation.yield()
             continuation.finish()
         }
-        return changes.makeAsyncIterator()
+        return ObservationChangeProbe(changes)
     }
 
     private func tinyJPEGData() throws -> Data {
@@ -2321,6 +2386,18 @@ struct AgentAttachStoreTests {
             }
             await permit.release()
         }
+    }
+}
+
+private actor ObservationChangeProbe {
+    private let changes: AsyncStream<Void>
+
+    init(_ changes: AsyncStream<Void>) {
+        self.changes = changes
+    }
+
+    func next() async {
+        for await _ in changes { return }
     }
 }
 

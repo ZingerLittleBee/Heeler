@@ -221,6 +221,134 @@ struct ShellTerminalStoreTests {
         #expect(await transport.shellTerminalCreations.count == 1)
     }
 
+    @Test func foregroundRecoveryDoesNotAbsorbANewerTransportGeneration() async throws {
+        let transport = ScriptedTransport()
+        let generation = ShellTerminalGenerationSource(1)
+        let runner: TerminalSessionRunner = { request, handler in
+            let readyGeneration = await generation.value
+            await handler.transportDidBecomeReady(readyGeneration)
+            let session = try await transport.attachTerminal(request)
+            try await handler.runEndingSession(session)
+        }
+        let store = ShellTerminalStore(
+            identity: ShellTerminalIdentity(
+                paneID: "w1:p-shell",
+                tabID: "w1:t-shell",
+                terminalID: "term-shell"),
+            transportGeneration: 1,
+            isOnStage: { true },
+            runTerminal: runner)
+
+        let firstSessionGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachSession(using: firstSessionGate)
+        store.viewDidResize(cols: 80, rows: 24)
+        await firstSessionGate.waitForEntry()
+        let firstStatusChanges = observeStatusChanges(of: store)
+        #expect(await transport.emitAttachOutput(Data("first".utf8)))
+        await firstSessionGate.open()
+        await firstStatusChanges.next()
+        #expect(store.terminalStatus == .live)
+
+        await generation.set(2)
+        let predecessorID = store.terminalID
+        let recoveryChanges = observeTerminalChanges(of: store)
+        store.didBecomeActive(afterPossibleSuspension: true)
+        await recoveryChanges.next()
+        let recoveryID = store.terminalID
+        #expect(recoveryID != predecessorID)
+        #expect(store.terminalStatus == .waitingForSize)
+
+        let secondSessionGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachSession(using: secondSessionGate)
+        store.viewDidResize(cols: 100, rows: 30)
+        await secondSessionGate.waitForEntry()
+        #expect(await transport.attachRequests.count == 2)
+
+        // Coalesce away the projection edge for generation 2. A later edge
+        // for generation 3 must replace the still-connecting pipeline 2.
+        await generation.set(3)
+        let latestRecoveryChanges = observeTerminalChanges(of: store)
+        store.transportGenerationDidChange(3)
+        await secondSessionGate.open()
+        await latestRecoveryChanges.next()
+        let latestRecoveryID = store.terminalID
+        #expect(latestRecoveryID != recoveryID)
+        #expect(await transport.attachRequests.count == 2)
+
+        let thirdSessionGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachSession(using: thirdSessionGate)
+        store.viewDidResize(cols: 100, rows: 30)
+        await thirdSessionGate.waitForEntry()
+        #expect(await transport.attachRequests.count == 3)
+        let latestStatusChanges = observeStatusChanges(of: store)
+        #expect(await transport.emitAttachOutput(Data("latest".utf8)))
+        await thirdSessionGate.open()
+        await latestStatusChanges.next()
+        #expect(store.terminalStatus == .live)
+
+        await store.leave().value
+        #expect(store.terminalID == latestRecoveryID)
+        #expect(await transport.attachRequests.count == 3)
+        #expect(await !transport.hasLiveAttachSession)
+    }
+
+    @Test func foregroundRecoveryAbsorbsItsAcquiredTransportGeneration() async throws {
+        let transport = ScriptedTransport()
+        let generation = ShellTerminalGenerationSource(1)
+        let runner: TerminalSessionRunner = { request, handler in
+            let readyGeneration = await generation.value
+            await handler.transportDidBecomeReady(readyGeneration)
+            let session = try await transport.attachTerminal(request)
+            try await handler.runEndingSession(session)
+        }
+        let store = ShellTerminalStore(
+            identity: ShellTerminalIdentity(
+                paneID: "w1:p-shell",
+                tabID: "w1:t-shell",
+                terminalID: "term-shell"),
+            transportGeneration: 1,
+            isOnStage: { true },
+            runTerminal: runner)
+
+        let firstSessionGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachSession(using: firstSessionGate)
+        store.viewDidResize(cols: 80, rows: 24)
+        await firstSessionGate.waitForEntry()
+        let firstStatusChanges = observeStatusChanges(of: store)
+        #expect(await transport.emitAttachOutput(Data("first".utf8)))
+        await firstSessionGate.open()
+        await firstStatusChanges.next()
+        #expect(store.terminalStatus == .live)
+
+        await generation.set(2)
+        let recoveryChanges = observeTerminalChanges(of: store)
+        store.didBecomeActive(afterPossibleSuspension: true)
+        await recoveryChanges.next()
+        let recoveryID = store.terminalID
+
+        let secondSessionGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachSession(using: secondSessionGate)
+        store.viewDidResize(cols: 100, rows: 30)
+        await secondSessionGate.waitForEntry()
+
+        // The exact edge belongs to the already-acquired pipeline and does
+        // not create a second writer for generation 2.
+        store.transportGenerationDidChange(2)
+        #expect(store.terminalID == recoveryID)
+        #expect(await transport.attachRequests.count == 2)
+
+        let secondStatusChanges = observeStatusChanges(of: store)
+        #expect(await transport.emitAttachOutput(Data("second".utf8)))
+        await secondSessionGate.open()
+        await secondStatusChanges.next()
+        #expect(store.terminalStatus == .live)
+
+        await store.leave().value
+        #expect(store.terminalID == recoveryID)
+        #expect(await transport.attachRequests.count == 2)
+        #expect(await !transport.hasLiveAttachSession)
+    }
+
     @Test func offStageAbortedReplacementRejoinsOnTheNextActivationSignal() async throws {
         let transport = ScriptedTransport()
         let endGate = ScriptedTransportCallGate()
@@ -507,6 +635,32 @@ struct ShellTerminalStoreTests {
         }
     }
 
+    private func observeTerminalChanges(
+        of store: ShellTerminalStore
+    ) -> ShellObservationChangeProbe {
+        let (changes, continuation) = AsyncStream.makeStream(of: Void.self)
+        withObservationTracking {
+            _ = store.terminalID
+        } onChange: {
+            continuation.yield()
+            continuation.finish()
+        }
+        return ShellObservationChangeProbe(changes)
+    }
+
+    private func observeStatusChanges(
+        of store: ShellTerminalStore
+    ) -> ShellObservationChangeProbe {
+        let (changes, continuation) = AsyncStream.makeStream(of: Void.self)
+        withObservationTracking {
+            _ = store.terminalStatus
+        } onChange: {
+            continuation.yield()
+            continuation.finish()
+        }
+        return ShellObservationChangeProbe(changes)
+    }
+
     private func shell(in store: AgentOpenTerminalStore) async throws -> ShellTerminalStore {
         try #require(await eventually { store.shell != nil })
         return try #require(store.shell)
@@ -552,5 +706,29 @@ struct ShellTerminalStoreTests {
             repoRoot: "/repo",
             checkoutPath: path,
             isLinkedWorktree: isLinked)
+    }
+}
+
+private actor ShellObservationChangeProbe {
+    private let changes: AsyncStream<Void>
+
+    init(_ changes: AsyncStream<Void>) {
+        self.changes = changes
+    }
+
+    func next() async {
+        for await _ in changes { return }
+    }
+}
+
+private actor ShellTerminalGenerationSource {
+    private(set) var value: UInt64
+
+    init(_ value: UInt64) {
+        self.value = value
+    }
+
+    func set(_ value: UInt64) {
+        self.value = value
     }
 }
