@@ -158,10 +158,14 @@ struct StagingPhaseBarrierTests {
         let observer = Task {
             try await gate.waitForEntryWaiterRegistration(count: 1)
         }
+        await gate.waitForRegistrationObserver(count: 1)
+        #expect(await gate.registrationObserverCount == 1)
+
         observer.cancel()
         await #expect(throws: CancellationError.self) {
             try await observer.value
         }
+        #expect(await gate.registrationObserverCount == 0)
     }
 
     @Test("phase gate fails registration observers when released before threshold")
@@ -175,11 +179,15 @@ struct StagingPhaseBarrierTests {
         let observer = Task {
             try await gate.waitForEntryWaiterRegistration(count: 2)
         }
+        await gate.waitForRegistrationObserver(count: 1)
+        #expect(await gate.registrationObserverCount == 1)
+
         await gate.release()
 
         await #expect(throws: PhaseGateError.registrationThresholdUnreachable) {
             try await observer.value
         }
+        #expect(await gate.registrationObserverCount == 0)
         await #expect(throws: PhaseGateError.releasedWithoutEntry) {
             try await waiter.value
         }
@@ -196,6 +204,9 @@ struct StagingPhaseBarrierTests {
         let observer = Task {
             try await gate.waitForEntryWaiterRegistration(count: 2)
         }
+        await gate.waitForRegistrationObserver(count: 1)
+        #expect(await gate.registrationObserverCount == 1)
+
         let hold = Task {
             await gate.enterAndHold()
         }
@@ -204,6 +215,7 @@ struct StagingPhaseBarrierTests {
         await #expect(throws: PhaseGateError.registrationThresholdUnreachable) {
             try await observer.value
         }
+        #expect(await gate.registrationObserverCount == 0)
         await gate.release()
         await hold.value
     }
@@ -258,10 +270,14 @@ struct StagingPhaseBarrierTests {
         let observer = Task {
             try await failures.waitForWaiterRegistration(count: 1)
         }
+        await failures.waitForRegistrationObserver(count: 1)
+        #expect(await failures.registrationObserverCount == 1)
+
         observer.cancel()
         await #expect(throws: CancellationError.self) {
             try await observer.value
         }
+        #expect(await failures.registrationObserverCount == 0)
     }
 
     @Test("failure signal fails registration observers when recorded before threshold")
@@ -275,11 +291,15 @@ struct StagingPhaseBarrierTests {
         let observer = Task {
             try await failures.waitForWaiterRegistration(count: 2)
         }
+        await failures.waitForRegistrationObserver(count: 1)
+        #expect(await failures.registrationObserverCount == 1)
+
         await failures.record(AttachmentStagingError.remoteTemporaryDirectoryFailed)
 
         await #expect(throws: StagingFailureSignalError.registrationThresholdUnreachable) {
             try await observer.value
         }
+        #expect(await failures.registrationObserverCount == 0)
         await #expect(throws: StagingBarrierError.failed(
             phase: "remote staging setup",
             detail: String(describing: AttachmentStagingError.remoteTemporaryDirectoryFailed))
@@ -299,11 +319,15 @@ struct StagingPhaseBarrierTests {
         let observer = Task {
             try await failures.waitForWaiterRegistration(count: 2)
         }
+        await failures.waitForRegistrationObserver(count: 1)
+        #expect(await failures.registrationObserverCount == 1)
+
         await failures.recordSuccess()
 
         await #expect(throws: StagingFailureSignalError.registrationThresholdUnreachable) {
             try await observer.value
         }
+        #expect(await failures.registrationObserverCount == 0)
         await #expect(throws: StagingBarrierError.finishedEarly(
             phase: "severe-profile payload backpressure")
         ) {

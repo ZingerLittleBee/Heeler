@@ -42,8 +42,12 @@ actor CancellablePhaseGate {
     private var holdWaiters: [UUID: CheckedContinuation<Void, any Error>] = [:]
     /// Currently registered entry waiters (not a historical counter).
     private(set) var entryWaiterCount = 0
+    /// Stored registration observers awaiting an active-waiter threshold.
+    private(set) var registrationObserverCount = 0
     private var registrationWaiters: [UUID: (count: Int, continuation: CheckedContinuation<Void, any Error>)] =
         [:]
+    private var registrationObserverBarriers:
+        [UUID: (count: Int, continuation: CheckedContinuation<Void, Never>)] = [:]
 
     private var isRegistrationTerminal: Bool {
         hasEntered || isReleased
@@ -66,10 +70,24 @@ actor CancellablePhaseGate {
                     continuation.resume(throwing: PhaseGateError.registrationThresholdUnreachable)
                 } else {
                     self.registrationWaiters[id] = (count, continuation)
+                    self.noteRegistrationObserversChanged()
                 }
             }
         } onCancel: {
             Task { await self.cancelRegistrationWaiter(id) }
+        }
+    }
+
+    /// Suspends until at least `count` registration observers have stored continuations.
+    func waitForRegistrationObserver(count: Int = 1) async {
+        if registrationObserverCount >= count { return }
+        let id = UUID()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            if self.registrationObserverCount >= count {
+                continuation.resume()
+            } else {
+                self.registrationObserverBarriers[id] = (count, continuation)
+            }
         }
     }
 
@@ -155,6 +173,7 @@ actor CancellablePhaseGate {
         for (id, _) in ready {
             registrationWaiters.removeValue(forKey: id)
         }
+        noteRegistrationObserversChanged()
         for (_, waiter) in ready {
             waiter.continuation.resume()
         }
@@ -165,13 +184,28 @@ actor CancellablePhaseGate {
         resumeRegistrationWaitersIfReady()
         let pending = registrationWaiters
         registrationWaiters.removeAll()
+        noteRegistrationObserversChanged()
         for (_, waiter) in pending {
             waiter.continuation.resume(throwing: PhaseGateError.registrationThresholdUnreachable)
         }
     }
 
+    private func noteRegistrationObserversChanged() {
+        registrationObserverCount = registrationWaiters.count
+        let ready = registrationObserverBarriers.filter {
+            registrationObserverCount >= $0.value.count
+        }
+        for (id, _) in ready {
+            registrationObserverBarriers.removeValue(forKey: id)
+        }
+        for (_, barrier) in ready {
+            barrier.continuation.resume()
+        }
+    }
+
     private func cancelRegistrationWaiter(_ id: UUID) {
         guard let waiter = registrationWaiters.removeValue(forKey: id) else { return }
+        noteRegistrationObserversChanged()
         waiter.continuation.resume(throwing: CancellationError())
     }
 
@@ -203,8 +237,12 @@ actor StagingFailureSignal {
         [:]
     /// Currently registered outcome waiters (not a historical counter).
     private(set) var waiterCount = 0
+    /// Stored registration observers awaiting an active-waiter threshold.
+    private(set) var registrationObserverCount = 0
     private var registrationWaiters: [UUID: (count: Int, continuation: CheckedContinuation<Void, any Error>)] =
         [:]
+    private var registrationObserverBarriers:
+        [UUID: (count: Int, continuation: CheckedContinuation<Void, Never>)] = [:]
 
     private var isRegistrationTerminal: Bool {
         detail != nil || finishedSuccessfully
@@ -227,10 +265,24 @@ actor StagingFailureSignal {
                         throwing: StagingFailureSignalError.registrationThresholdUnreachable)
                 } else {
                     self.registrationWaiters[id] = (count, continuation)
+                    self.noteRegistrationObserversChanged()
                 }
             }
         } onCancel: {
             Task { await self.cancelRegistrationWaiter(id) }
+        }
+    }
+
+    /// Suspends until at least `count` registration observers have stored continuations.
+    func waitForRegistrationObserver(count: Int = 1) async {
+        if registrationObserverCount >= count { return }
+        let id = UUID()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            if self.registrationObserverCount >= count {
+                continuation.resume()
+            } else {
+                self.registrationObserverBarriers[id] = (count, continuation)
+            }
         }
     }
 
@@ -299,6 +351,7 @@ actor StagingFailureSignal {
         for (id, _) in ready {
             registrationWaiters.removeValue(forKey: id)
         }
+        noteRegistrationObserversChanged()
         for (_, waiter) in ready {
             waiter.continuation.resume()
         }
@@ -308,14 +361,29 @@ actor StagingFailureSignal {
         resumeRegistrationWaitersIfReady()
         let pending = registrationWaiters
         registrationWaiters.removeAll()
+        noteRegistrationObserversChanged()
         for (_, waiter) in pending {
             waiter.continuation.resume(
                 throwing: StagingFailureSignalError.registrationThresholdUnreachable)
         }
     }
 
+    private func noteRegistrationObserversChanged() {
+        registrationObserverCount = registrationWaiters.count
+        let ready = registrationObserverBarriers.filter {
+            registrationObserverCount >= $0.value.count
+        }
+        for (id, _) in ready {
+            registrationObserverBarriers.removeValue(forKey: id)
+        }
+        for (_, barrier) in ready {
+            barrier.continuation.resume()
+        }
+    }
+
     private func cancelRegistrationWaiter(_ id: UUID) {
         guard let waiter = registrationWaiters.removeValue(forKey: id) else { return }
+        noteRegistrationObserversChanged()
         waiter.continuation.resume(throwing: CancellationError())
     }
 
