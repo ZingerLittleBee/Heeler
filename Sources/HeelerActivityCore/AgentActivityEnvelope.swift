@@ -12,18 +12,25 @@ struct AgentActivityDetails: Sendable, Equatable {
         var kind: String
         /// The herdr agent name (`display_agent ?? name`); nil when unnamed.
         var name: String? = nil
+        /// The herdr workspace label; nil when an older producer did not
+        /// include one or the workspace is unavailable.
+        var workspace: String? = nil
         var status: String
         var title: String?
 
-        /// The identity a row leads with: the herdr name, else the kind.
-        var displayName: String { name ?? kind }
+        /// Notification surfaces intentionally use one identity everywhere,
+        /// independent of terminal titles and custom Agent names.
+        var displayIdentity: String {
+            AgentNotificationIdentity.title(workspace: workspace, kind: kind)
+        }
 
-        /// The title as rendered: leading agent status glyphs stripped
-        /// (the wire keeps them); nil when nothing remains.
-        var displayTitle: String? {
-            guard let title else { return nil }
-            let stripped = TerminalTitleGlyphs.strip(title)
-            return stripped.isEmpty ? nil : stripped
+        /// The Live Activity's primary label. Older producers may omit it;
+        /// the row then promotes the friendly Agent kind instead.
+        var displayWorkspace: String? { Self.nonEmpty(workspace) }
+
+        private static func nonEmpty(_ text: String?) -> String? {
+            guard let text, !text.isEmpty else { return nil }
+            return text
         }
     }
 }
@@ -140,7 +147,8 @@ enum AgentActivityEnvelope {
             }
             agents.append(
                 AgentActivityDetails.AgentDetail(
-                    paneID: pane, kind: kind, name: nonEmpty(item.name), status: status,
+                    paneID: pane, kind: kind, name: nonEmpty(item.name),
+                    workspace: nonEmpty(item.workspace), status: status,
                     title: nonEmpty(item.title)))
         }
         return AgentActivityDetails(hostName: host, agents: agents)
@@ -154,7 +162,8 @@ enum AgentActivityEnvelope {
         let agents = Array(details.agents.prefix(5)).map { agent in
             OutgoingAgent(
                 kind: agent.kind, name: nonEmpty(agent.name), pane: agent.paneID,
-                status: agent.status, title: nonEmpty(agent.title))
+                status: agent.status, title: nonEmpty(agent.title),
+                workspace: nonEmpty(agent.workspace))
         }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
@@ -181,6 +190,7 @@ enum AgentActivityEnvelope {
         var name: String?
         var status: String?
         var title: String?
+        var workspace: String?
     }
 
     private struct OutgoingPlaintext: Encodable {
@@ -195,5 +205,6 @@ enum AgentActivityEnvelope {
         var pane: String
         var status: String
         var title: String?
+        var workspace: String?
     }
 }

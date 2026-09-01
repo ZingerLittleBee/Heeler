@@ -125,6 +125,7 @@
 		5C68C3082AD5958A28843055 /* TerminalTitleGlyphs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 651D511E8A282C4CB0214098 /* TerminalTitleGlyphs.swift */; };
 		5C79B0EEF08521BF5907D3F2 /* NotificationKeyMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C91F0473741A92D7EFA40CBA /* NotificationKeyMirror.swift */; };
 		5DBC04E1863A4740B3C84F3B /* DemoScreenshotMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B0A5D6A13F3F940E50EDCFD /* DemoScreenshotMode.swift */; };
+		5E04052A267C18A7415B4930 /* AgentNotificationIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 401F5B396F9F00568A4FFF88 /* AgentNotificationIdentity.swift */; };
 		5F19761A75CECE4A6FC80543 /* NotificationKeyStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB05396E5E55060B5A23621C /* NotificationKeyStoreTests.swift */; };
 		5FCC5971328F9D7C5FB80DD5 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCDD3A343C4D08ED707188AF /* NotificationService.swift */; };
 		600145C630EB5F0AC8F11CC2 /* SettingsViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F076778BEA3359D447E78D /* SettingsViewTests.swift */; };
@@ -175,6 +176,7 @@
 		80E28FB88E27A5A8FA516BAA /* IBMPlexMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 48F025CF6E2C3068BF911290 /* IBMPlexMono-Regular.ttf */; };
 		81E0207D8AA28513FEA755B0 /* SkillsPaneStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A9156B9BB51E7A5AD1792D9 /* SkillsPaneStore.swift */; };
 		81F92E9FF8783F2B473DAE5A /* HostTelemetryPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2FDB99BA76C2379B0590B3B /* HostTelemetryPresentationTests.swift */; };
+		8254C70BCD2334725D5F3ED2 /* AgentNotificationIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 401F5B396F9F00568A4FFF88 /* AgentNotificationIdentity.swift */; };
 		82600FB64A99ADAD1C60D451 /* PairingCodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D419158B027AF5F38B73AD8B /* PairingCodeTests.swift */; };
 		836C6CE781A0FE57FBA87727 /* JSONValueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F261A0911D08819AFC013F1E /* JSONValueTests.swift */; };
 		83AAFC996DF32402681F38AB /* HostDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A63EFEB7D00E59949CF331 /* HostDraft.swift */; };
@@ -184,6 +186,7 @@
 		8668C3C60FB9539A7DD1A4EC /* Base64URL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32413805C1AA874DBEE37547 /* Base64URL.swift */; };
 		86EA13918F2EE2103B2DEFB3 /* AgentLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6A9489C21BDCFA7616782BF /* AgentLiveActivityWidget.swift */; };
 		88C55182255106627222F533 /* HostKeyFingerprint.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4EA32065B4A00D219B301CF /* HostKeyFingerprint.swift */; };
+		8911EB7CDDCA09EDE76C721E /* AgentNotificationIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 401F5B396F9F00568A4FFF88 /* AgentNotificationIdentity.swift */; };
 		8985893366A5DA338007D1A0 /* AgentActivityEnvelope.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69EBBC2C99AA84420FDF600A /* AgentActivityEnvelope.swift */; };
 		89A6F9928DC45E4A92CBB1E2 /* AgentNotificationRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB37CBDC9DE0CE539FC476A0 /* AgentNotificationRenderer.swift */; };
 		8B171AB6CB0C087D059631C4 /* ContentViewActivityDriverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7374E36C37E07625B05361AE /* ContentViewActivityDriverTests.swift */; };
@@ -444,6 +447,7 @@
 		3A84F06EC2D4448E5DF72D76 /* TerminalTitleGlyphsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTitleGlyphsTests.swift; sourceTree = "<group>"; };
 		3CB3A0C20671F436B322D0F3 /* SkillFrontmatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillFrontmatter.swift; sourceTree = "<group>"; };
 		3F4858DA258C7032AC64AD52 /* RelayContentStateDecodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayContentStateDecodeTests.swift; sourceTree = "<group>"; };
+		401F5B396F9F00568A4FFF88 /* AgentNotificationIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationIdentity.swift; sourceTree = "<group>"; };
 		414B652A16576BEDEE9AE000 /* ClosePaneStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosePaneStoreTests.swift; sourceTree = "<group>"; };
 		4273AC6F39EB1E015820E614 /* TerminalAppearanceSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAppearanceSettingsView.swift; sourceTree = "<group>"; };
 		427512344847A84699F819A0 /* TerminalFontSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalFontSettingsTests.swift; sourceTree = "<group>"; };
@@ -1201,6 +1205,7 @@
 		D0614D2FA211CC05C8E69C17 /* HeelerNotificationCore */ = {
 			isa = PBXGroup;
 			children = (
+				401F5B396F9F00568A4FFF88 /* AgentNotificationIdentity.swift */,
 				FB37CBDC9DE0CE539FC476A0 /* AgentNotificationRenderer.swift */,
 				F61A04DBA56C56925B594FF1 /* NotificationEnvelope.swift */,
 				C91F0473741A92D7EFA40CBA /* NotificationKeyMirror.swift */,
@@ -1442,6 +1447,7 @@
 				FCCE1492C64201FF221B64A3 /* AgentActivityEnvelope.swift in Sources */,
 				4AF54D36B8F0639880713FD1 /* AgentActivityLink.swift in Sources */,
 				33046B4CC05A07D26F088082 /* AgentLiveActivityWidget.swift in Sources */,
+				8911EB7CDDCA09EDE76C721E /* AgentNotificationIdentity.swift in Sources */,
 				554C1ECECE17B440C8B37A3D /* AgentNotificationRenderer.swift in Sources */,
 				10324EE6A79714E5D12220B6 /* AgentStatusPalette.swift in Sources */,
 				8668C3C60FB9539A7DD1A4EC /* Base64URL.swift in Sources */,
@@ -1483,6 +1489,7 @@
 				72448624659DCDD94EF81DE8 /* AgentNotificationBannerStore.swift in Sources */,
 				143A46DB20266BCCDF1206F6 /* AgentNotificationBannerView.swift in Sources */,
 				0FCA9A08E011A847F31A4B85 /* AgentNotificationCenterDelegate.swift in Sources */,
+				8254C70BCD2334725D5F3ED2 /* AgentNotificationIdentity.swift in Sources */,
 				3286D6FBB12157F2A19A82CE /* AgentNotificationRenderer.swift in Sources */,
 				5B137E763FFACD1AFE5C7E30 /* AgentNotificationRouter.swift in Sources */,
 				541F71DBCA922E84DCA98D5E /* AgentNotificationRouting.swift in Sources */,
@@ -1624,6 +1631,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5E04052A267C18A7415B4930 /* AgentNotificationIdentity.swift in Sources */,
 				89A6F9928DC45E4A92CBB1E2 /* AgentNotificationRenderer.swift in Sources */,
 				A22BF5A22115749857055CED /* Base64URL.swift in Sources */,
 				950179DD8580B71A6BBAF0C2 /* HerdrAPITypes.swift in Sources */,

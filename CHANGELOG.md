@@ -11,6 +11,11 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- Agent alerts consistently identify Agents by workspace plus friendly kind.
+  Live Activities use compact aligned rows with a colored status dot beside the
+  workspace and the friendly kind underneath, without terminal-title,
+  custom-name, workdir, or special Blocked-row background noise. (#260)
+
 - Agent cards consistently lead with the herdr workspace or Agent identity,
   followed by the launch directory and a shared Agent-type and Host line;
   terminal-generated titles and TUI metadata no longer compete with that

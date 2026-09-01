@@ -50,7 +50,8 @@ export function canonicalActivityPlaintext(plaintext) {
   const agents = Array.isArray(plaintext?.agents) ? plaintext.agents : [];
   return JSON.stringify({
     agents: agents.map((agent) => {
-      const entry = { kind: agent.kind };
+      const entry = {};
+      entry.kind = agent.kind;
       if (typeof agent.name === "string" && agent.name.length > 0) {
         entry.name = agent.name;
       }
@@ -58,6 +59,9 @@ export function canonicalActivityPlaintext(plaintext) {
       entry.status = agent.status;
       if (typeof agent.title === "string" && agent.title.length > 0) {
         entry.title = agent.title;
+      }
+      if (typeof agent.workspace === "string" && agent.workspace.length > 0) {
+        entry.workspace = agent.workspace;
       }
       return entry;
     }),
