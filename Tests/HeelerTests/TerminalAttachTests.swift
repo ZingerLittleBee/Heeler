@@ -176,6 +176,37 @@ struct TerminalAttachTests {
         #expect(reportedGrids == [ReportedGrid(columns: 33, rows: 14)])
     }
 
+    /// The barrier every freeze assertion here rests on, held to its own
+    /// contract. The thaw is published by main-actor work that was already
+    /// queued when the wait began, so it lands in the gap between "has it
+    /// happened yet?" and "wake me when it does". A barrier that answers those
+    /// two questions in separate turns loses the transition in that gap and
+    /// waits out its deadline for an event that already happened.
+    @MainActor
+    @Test func aThawPublishedAsTheWaitBeginsIsStillClaimed() async throws {
+        var reportedGrids: [ReportedGrid] = []
+        let bridge = TerminalSessionCallbackBridge(
+            onSizeChanged: { columns, rows in
+                reportedGrids.append(ReportedGrid(columns: columns, rows: rows))
+            },
+            onViewportTextChanged: nil,
+            onSend: nil,
+            onScroll: nil,
+            onPaste: nil)
+        let phases = TerminalGridReportPhaseRecorder(observing: bridge)
+
+        bridge.beginSizeReportDeferral()
+        bridge.provideAuthoritativeDeferredSize(columns: 33, rows: 14)
+        // Queued behind this turn of the main actor: it therefore runs at the
+        // first suspension inside the wait below, which is exactly the gap.
+        Task { @MainActor in bridge.finishSizeReportDeferral() }
+
+        let forwarded = try await phases.thawedGrid()
+        #expect(forwarded == TerminalGridSize(columns: 33, rows: 14))
+        #expect(bridge.gridReportPhase == .live)
+        #expect(reportedGrids == [ReportedGrid(columns: 33, rows: 14)])
+    }
+
     @Test func attachOutputPumpWithholdsStartupChatterUntilTheHandshake() async throws {
         let chatter = Data("ssh rc startup chatter\r\n".utf8)
         let terminalFrame = Data("TUI".utf8)

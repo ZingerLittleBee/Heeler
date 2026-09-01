@@ -29,6 +29,11 @@ struct GridReportPhaseNeverReachedError: Error, CustomStringConvertible {
 /// made the wait runner-speed dependent — reports are Ghostty's to send, on
 /// its own thread, and a terminal whose surface never measured a grid sends
 /// none at all while still thawing perfectly correctly (#263).
+///
+/// Transitions are buffered, so a caller that asks after the fact still gets
+/// its answer, and the buffer check and the waiter's registration happen in
+/// one synchronous main-actor step — a barrier that can drop the very event
+/// it exists to catch is worth less than no barrier at all.
 @MainActor
 final class TerminalGridReportPhaseRecorder {
     private enum Wakeup: Sendable {
@@ -36,9 +41,14 @@ final class TerminalGridReportPhaseRecorder {
         case timedOut
     }
 
+    private struct Waiter {
+        let phase: TerminalGridReportPhase
+        let continuation: CheckedContinuation<Wakeup, Never>
+    }
+
     private let currentPhase: @MainActor () -> TerminalGridReportPhase
-    private var pending: (phase: TerminalGridReportPhase,
-                          continuation: CheckedContinuation<Wakeup, Never>)?
+    /// Keyed so a deadline can only ever resume the wait that armed it.
+    private var waiters: [UUID: Waiter] = [:]
     private var unclaimed: [(phase: TerminalGridReportPhase, forwarded: TerminalGridSize?)] = []
     /// Every transition seen, oldest first — the freeze's history, for a
     /// failure message that can say where it stopped.
@@ -73,27 +83,34 @@ final class TerminalGridReportPhaseRecorder {
         reaching phase: TerminalGridReportPhase,
         within deadline: Duration = .seconds(5)
     ) async throws -> TerminalGridSize? {
-        if let index = unclaimed.firstIndex(where: { $0.phase == phase }) {
-            let claimed = unclaimed[index]
-            unclaimed.removeSubrange(...index)
-            return claimed.forwarded
-        }
-
-        let waiter = Task { @MainActor in
-            await withCheckedContinuation { (continuation: CheckedContinuation<Wakeup, Never>) in
-                self.pending = (phase, continuation)
-            }
-        }
+        let id = UUID()
         let deadlineTask = Task { @MainActor in
             try? await Task.sleep(for: deadline)
-            guard !Task.isCancelled, let waiting = self.pending, waiting.phase == phase
+            guard !Task.isCancelled, let waiter = self.waiters.removeValue(forKey: id)
             else { return }
-            self.pending = nil
-            waiting.continuation.resume(returning: .timedOut)
+            waiter.continuation.resume(returning: .timedOut)
         }
         defer { deadlineTask.cancel() }
 
-        switch await waiter.value {
+        // Claiming the history and registering the waiter are one synchronous
+        // main-actor step. Split across a suspension — a check here, a waiter
+        // installed from a separate task there — a transition published in
+        // between is lost twice over: `record` buffers it because no waiter is
+        // registered yet, and the waiter then registers without looking at the
+        // buffer again. That is a wait that hangs on an event that already
+        // happened, reported as the timeout of a freeze that thawed fine.
+        let wakeup = await withCheckedContinuation {
+            (continuation: CheckedContinuation<Wakeup, Never>) in
+            if let index = self.unclaimed.firstIndex(where: { $0.phase == phase }) {
+                let claimed = self.unclaimed[index]
+                self.unclaimed.removeSubrange(...index)
+                continuation.resume(returning: .reached(claimed.forwarded))
+                return
+            }
+            self.waiters[id] = Waiter(phase: phase, continuation: continuation)
+        }
+
+        switch wakeup {
         case .reached(let forwarded):
             return forwarded
         case .timedOut:
@@ -104,11 +121,12 @@ final class TerminalGridReportPhaseRecorder {
 
     private func record(_ phase: TerminalGridReportPhase, forwarded: TerminalGridSize?) {
         phases.append(phase)
-        guard let waiting = pending, waiting.phase == phase else {
+        guard let id = waiters.first(where: { $0.value.phase == phase })?.key,
+              let waiter = waiters.removeValue(forKey: id)
+        else {
             unclaimed.append((phase, forwarded))
             return
         }
-        pending = nil
-        waiting.continuation.resume(returning: .reached(forwarded))
+        waiter.continuation.resume(returning: .reached(forwarded))
     }
 }
