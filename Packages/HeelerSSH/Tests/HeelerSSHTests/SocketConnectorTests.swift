@@ -227,7 +227,8 @@ private final class CancellationWait: @unchecked Sendable {
 
     func wait() async throws {
         try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, any Error>) in
                 lock.lock()
                 if cancelled {
                     lock.unlock()
