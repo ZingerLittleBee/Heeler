@@ -43,7 +43,8 @@ struct SSHTransportSettings: Sendable {
             "command -v \(kind.executable) >/dev/null 2>&1"
                 + " && printf \"\(agentAvailabilityMarker)%s\\n\" \"\(kind.rawValue)\""
         }
-        return "/bin/sh -c '\(checks.joined(separator: "; ")); exit 0'"
+        return "/bin/sh -c '\(HerdrHostPath.pathExport); "
+            + "\(checks.joined(separator: "; ")); exit 0'"
     }
 
     /// Kinds reported by a Host `command -v` probe. Only marker-prefixed lines
