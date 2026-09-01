@@ -41,6 +41,7 @@ struct TerminalAttachTests {
             onSend: nil,
             onScroll: nil,
             onPaste: nil)
+        let phases = TerminalGridReportPhaseRecorder(observing: bridge)
         let stale = InMemoryTerminalViewport(columns: 33, rows: 20)
 
         bridge.beginSizeReportDeferral()
@@ -51,8 +52,68 @@ struct TerminalAttachTests {
         bridge.onViewport = nil
         bridge.provideAuthoritativeDeferredSize(columns: 33, rows: 14)
         bridge.finishSizeReportDeferral()
-        try await waitForGridReportsToSettle { reportedGrids.count }
+        let forwarded = try await phases.thawedGrid()
+        #expect(forwarded == TerminalGridSize(columns: 33, rows: 14))
         #expect(reportedGrids == [ReportedGrid(columns: 33, rows: 14)])
+    }
+
+    /// A freeze can thaw having learned no grid at all — nothing measured the
+    /// surface while it held. That is a lifecycle outcome, not silence: the
+    /// Host is told nothing and the next ordinary report speaks for it. The
+    /// thaw has to say so, because a caller watching resize reports alone
+    /// cannot tell it from a freeze that never ended (#263).
+    @MainActor
+    @Test func aThawWithNothingMeasuredForwardsNoGridAndSaysSo() async throws {
+        var reportedGrids: [ReportedGrid] = []
+        let bridge = TerminalSessionCallbackBridge(
+            onSizeChanged: { columns, rows in
+                reportedGrids.append(ReportedGrid(columns: columns, rows: rows))
+            },
+            onViewportTextChanged: nil,
+            onSend: nil,
+            onScroll: nil,
+            onPaste: nil)
+        let phases = TerminalGridReportPhaseRecorder(observing: bridge)
+
+        bridge.beginSizeReportDeferral()
+        #expect(bridge.gridReportPhase == .deferring)
+        bridge.finishSizeReportDeferral()
+
+        let forwarded = try await phases.thawedGrid()
+        #expect(forwarded == nil)
+        #expect(bridge.gridReportPhase == .live)
+        #expect(reportedGrids.isEmpty)
+
+        // Live again: the report that arrives next is the Host's first.
+        await withCheckedContinuation { continuation in
+            bridge.onViewport = { _ in continuation.resume() }
+            bridge.resize(InMemoryTerminalViewport(columns: 33, rows: 14))
+        }
+        #expect(reportedGrids == [ReportedGrid(columns: 33, rows: 14)])
+    }
+
+    /// A cancelled freeze forwards nothing: there was no settled grid, only a
+    /// handoff that stopped happening.
+    @MainActor
+    @Test func aCancelledFreezeForwardsNoGrid() async throws {
+        var reportedGrids: [ReportedGrid] = []
+        let bridge = TerminalSessionCallbackBridge(
+            onSizeChanged: { columns, rows in
+                reportedGrids.append(ReportedGrid(columns: columns, rows: rows))
+            },
+            onViewportTextChanged: nil,
+            onSend: nil,
+            onScroll: nil,
+            onPaste: nil)
+        let phases = TerminalGridReportPhaseRecorder(observing: bridge)
+
+        bridge.beginSizeReportDeferral()
+        bridge.provideAuthoritativeDeferredSize(columns: 33, rows: 14)
+        bridge.cancelSizeReportDeferral()
+
+        let forwarded = try await phases.thawedGrid()
+        #expect(forwarded == nil)
+        #expect(reportedGrids.isEmpty)
     }
 
     /// Ghostty can publish the engine resize after the surface delegate has
@@ -70,6 +131,7 @@ struct TerminalAttachTests {
             onSend: nil,
             onScroll: nil,
             onPaste: nil)
+        let phases = TerminalGridReportPhaseRecorder(observing: bridge)
         bridge.isSizeReportCurrent = { columns, rows in
             columns == 33 && rows == 14
         }
@@ -77,7 +139,7 @@ struct TerminalAttachTests {
         bridge.beginSizeReportDeferral()
         bridge.provideAuthoritativeDeferredSize(columns: 33, rows: 14)
         bridge.finishSizeReportDeferral()
-        try await waitForGridReportsToSettle { reportedGrids.count }
+        try await phases.thawedGrid()
 
         await withCheckedContinuation { continuation in
             bridge.onViewport = { _ in continuation.resume() }
@@ -100,13 +162,82 @@ struct TerminalAttachTests {
             onSend: nil,
             onScroll: nil,
             onPaste: nil)
+        let phases = TerminalGridReportPhaseRecorder(observing: bridge)
         let settled = InMemoryTerminalViewport(columns: 33, rows: 14)
 
         bridge.beginSizeReportDeferral()
         bridge.resize(settled)
         bridge.finishSizeReportDeferral()
-        try await waitForGridReportsToSettle { reportedGrids.count }
+        // The queued resize has not landed yet, so the thaw is still waiting
+        // on it — the phase says so rather than the caller having to infer it.
+        #expect(bridge.gridReportPhase == .flushing)
+        let forwarded = try await phases.thawedGrid()
+        #expect(forwarded == TerminalGridSize(columns: 33, rows: 14))
         #expect(reportedGrids == [ReportedGrid(columns: 33, rows: 14)])
+    }
+
+    /// The barrier every freeze assertion here rests on, held to its own
+    /// contract.
+    ///
+    /// A transition can land in the gap between "has it happened yet?" and
+    /// "wake me when it does". `onWaitAboutToRegister` *is* that gap: the
+    /// recorder calls it after the wait has searched its history and before
+    /// the wait's waiter exists, so this thaw is published there by call
+    /// position and not by which job an executor happens to run first.
+    ///
+    /// A recorder that answers the two questions in separate jobs has, by
+    /// construction, registered nothing when this runs — `record` buffers the
+    /// thaw against a waiter that does not exist — and never reads the buffer
+    /// again from behind its registration. That recorder waits the thaw out
+    /// to its deadline and reports a freeze that thawed correctly as a
+    /// timeout, which is the failure this whole barrier exists to end.
+    @MainActor
+    @Test func aThawPublishedAsTheWaitBeginsIsStillClaimed() async throws {
+        var reportedGrids: [ReportedGrid] = []
+        let bridge = TerminalSessionCallbackBridge(
+            onSizeChanged: { columns, rows in
+                reportedGrids.append(ReportedGrid(columns: columns, rows: rows))
+            },
+            onViewportTextChanged: nil,
+            onSend: nil,
+            onScroll: nil,
+            onPaste: nil)
+        let phases = TerminalGridReportPhaseRecorder(observing: bridge)
+
+        bridge.beginSizeReportDeferral()
+        bridge.provideAuthoritativeDeferredSize(columns: 33, rows: 14)
+        phases.onWaitAboutToRegister = { bridge.finishSizeReportDeferral() }
+
+        // The thaw is already history by the time this wait can suspend, and
+        // the wait still has to come back with it rather than with a deadline.
+        let forwarded = try await phases.thawedGrid()
+        #expect(forwarded == TerminalGridSize(columns: 33, rows: 14))
+        #expect(bridge.gridReportPhase == .live)
+        #expect(reportedGrids == [ReportedGrid(columns: 33, rows: 14)])
+    }
+
+    /// The same gap, from the other side: a wait whose phase never comes must
+    /// still end at its deadline, and say which phase the freeze stopped at.
+    /// A barrier that claimed a buffered transition it should not have, or
+    /// resumed twice, shows up here rather than as a hang.
+    @MainActor
+    @Test func aPhaseThatNeverArrivesEndsAtItsDeadlineNamingThePhase() async throws {
+        let bridge = TerminalSessionCallbackBridge(
+            onSizeChanged: nil,
+            onViewportTextChanged: nil,
+            onSend: nil,
+            onScroll: nil,
+            onPaste: nil)
+        let phases = TerminalGridReportPhaseRecorder(observing: bridge)
+
+        bridge.beginSizeReportDeferral()
+        // `.deferring` is in the history and `.live` never follows it, so the
+        // wait below has nothing to claim and nothing to wake it.
+        await #expect(throws: GridReportPhaseNeverReachedError.self) {
+            try await phases.thawedGrid(within: .milliseconds(50))
+        }
+        #expect(phases.phases == [.deferring])
+        #expect(bridge.gridReportPhase == .deferring)
     }
 
     @Test func attachOutputPumpWithholdsStartupChatterUntilTheHandshake() async throws {
@@ -1279,6 +1410,10 @@ struct TerminalAttachTests {
         terminal.removeFromSuperview()
         terminal.raisesKeyboardWhenReady = true
         host.view.addSubview(terminal)
+        // The freeze below belongs to a keyboard this terminal actually
+        // claimed: a refused claim gives it up on the spot, and would leave
+        // the coalescing assertions measuring nothing.
+        #expect(terminal.isFirstResponder)
 
         for height: CGFloat in [440, 520, 600] {
             terminal.frame.size.height = height
@@ -1328,6 +1463,10 @@ struct TerminalAttachTests {
         terminal.removeFromSuperview()
         terminal.raisesKeyboardWhenReady = true
         host.view.addSubview(terminal)
+        // The freeze below belongs to a keyboard this terminal actually
+        // claimed: a refused claim gives it up on the spot, and would leave
+        // the coalescing assertions measuring nothing.
+        #expect(terminal.isFirstResponder)
 
         // A transient height, then a stall longer than the production
         // fallback, then another — the shape of the handoff on the runner
@@ -1381,6 +1520,10 @@ struct TerminalAttachTests {
         terminal.removeFromSuperview()
         terminal.raisesKeyboardWhenReady = true
         host.view.addSubview(terminal)
+        // The freeze below belongs to a keyboard this terminal actually
+        // claimed: a refused claim gives it up on the spot, and would leave
+        // the coalescing assertions measuring nothing.
+        #expect(terminal.isFirstResponder)
 
         terminal.frame.size.height = 600
         terminal.setNeedsLayout()
