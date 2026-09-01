@@ -35,6 +35,8 @@ name: CI
 #   in a comment or assert an in-app URL string, and the `SKILL.md` paths belong
 #   to remote fixtures. `CHANGELOG.md` is included too — scripts/publish.sh
 #   consumes it, but that runs from `make publish`, never from CI.
+# - `output/**` is App Store screenshot export material. No job here reads it;
+#   the files are committed for store listings and local composition only.
 #
 # paths-ignore only skips a run when *every* changed path matches, so a commit
 # touching prose alongside Swift still runs the full suite. A change to this
@@ -47,6 +49,7 @@ on:
       - .github/workflows/landing.yml
       - '**.md'
       - docs/**
+      - output/**
   push:
     branches: [main]
     paths-ignore:
@@ -54,6 +57,7 @@ on:
       - .github/workflows/landing.yml
       - '**.md'
       - docs/**
+      - output/**
 
 # One in-flight run per ref; a new push cancels the previous run.
 concurrency:
@@ -142,7 +146,7 @@ jobs:
           HEELER_CI_MANDATORY: "1"
         run: scripts/run-ci-ios-tests.sh
 
-      - name: Upload iOS timeout diagnostics
+      - name: Upload iOS CI diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -170,7 +174,7 @@ jobs:
           HEELER_CI_MANDATORY: "1"
         run: scripts/run-ci-ios-tests.sh
 
-      - name: Upload package timeout diagnostics
+      - name: Upload package CI diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:

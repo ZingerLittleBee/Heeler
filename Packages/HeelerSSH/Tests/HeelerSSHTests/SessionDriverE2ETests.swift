@@ -326,13 +326,18 @@ struct SessionDriverE2ETests {
             #expect(firstMismatch == nil, Comment(rawValue: firstMismatch ?? "payload matched"))
             #expect(offset == payloadSize)
             #expect(reachedEOF)
-            #expect(try await launched.completedByteCount(using: observer) == payloadSize)
+            let completedBytes = try await runDirectTCPIPFixturePhase("account transferred bytes") {
+                try await launched.completedByteCount(using: observer)
+            }
+            #expect(completedBytes == payloadSize)
 
-            Darwin.close(descriptor)
-            descriptor = -1
-            try await opened.close(timeout: .seconds(5))
-            transport = nil
-            try await driver.close(timeout: .seconds(2))
+            try await runDirectTCPIPFixturePhase("close transport") {
+                Darwin.close(descriptor)
+                descriptor = -1
+                try await opened.close(timeout: .seconds(5))
+                transport = nil
+                try await driver.close(timeout: .seconds(2))
+            }
         } catch {
             await bufferFullHold.release()
             if descriptor >= 0 { Darwin.close(descriptor) }
@@ -348,11 +353,13 @@ struct SessionDriverE2ETests {
         do {
             let cleanupDirectory = directory
             let cleanupObserver = observer
-            try await Task.detached {
-                try await RawTCPWriter.cleanup(
-                    directory: cleanupDirectory,
-                    using: cleanupObserver)
-            }.value
+            try await runDirectTCPIPFixturePhase("cleanup remote writer") {
+                try await Task.detached {
+                    try await RawTCPWriter.cleanup(
+                        directory: cleanupDirectory,
+                        using: cleanupObserver)
+                }.value
+            }
         } catch {
             if primaryError == nil {
                 primaryError = error
@@ -360,7 +367,9 @@ struct SessionDriverE2ETests {
         }
 
         do {
-            try await observer.close(timeout: .seconds(2))
+            try await runDirectTCPIPFixturePhase("close observer") {
+                try await observer.close(timeout: .seconds(2))
+            }
         } catch {
             if primaryError == nil {
                 primaryError = error

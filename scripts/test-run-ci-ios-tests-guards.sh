@@ -50,7 +50,7 @@ trap 'rm -rf "$work"' EXIT
 expected_full_lane_total=864
 expected_full_lane_skips=95
 expected_capture_executed=769
-expected_cases=38
+expected_cases=39
 
 # The lanes run-ci-ios-tests.sh writes, in the order it writes them. The capture
 # is the concatenation of exactly these, so splitting it on the xcodebuild
@@ -93,6 +93,8 @@ extract_shipped_function() {
 extract_shipped_function assert_full_lane_coverage
 extract_shipped_function assert_behavior
 extract_shipped_function run_suite
+extract_shipped_function dump_fixture_logs
+extract_shipped_function preserve_failure_diagnostics
 extract_shipped_function cleanup
 extract_shipped_function clear_simulator_environment
 extract_shipped_function stop_privileged_sshd
@@ -126,6 +128,20 @@ awk '
     END { exit cleared ? 0 : 1 }
 ' "$gate_script" \
     || die "app lane does not clear fixture environment before the full test lane"
+awk '
+    /if \[\[ "\$ci_lane" == "package" \]\]; then/ { in_pkg = 1 }
+    in_pkg && /HeelerSSH package build/ { saw_build_label = 1 }
+    in_pkg && /build-for-testing/ { build = NR }
+    in_pkg && /simctl bootstatus/ { boot = NR }
+    in_pkg && /test-without-building/ { test_action = NR }
+    in_pkg && /^exit 0$/ {
+        ok = (saw_build_label && build && boot && test_action \
+            && build < boot && boot < test_action)
+        exit
+    }
+    END { exit ok ? 0 : 1 }
+' "$gate_script" \
+    || die "package lane does not overlap simulator boot with build-for-testing"
 
 # cleanup reads these ownership slots even when a case never claimed a
 # resource. The real gate initializes them before installing its trap; the
@@ -138,6 +154,10 @@ awk '
     account_lock_dir=""
     run_lock_dir=""
     device_lock_dir=""
+    diagnostic_root=""
+    app_derived_data_path=""
+    package_derived_data_path=""
+    fixture_log_tail_lines=80
 }
 
 # The floor is read out of the gate's own call site rather than restated here.
@@ -937,6 +957,86 @@ else
     printf 'FAIL  exit=%-3s  %s\n          (%s)\n' "$cleanup_exit" \
         "password account deletion failure preserves evidence" "$reason"
     failed=$((failed + 1))
+fi
+
+echo
+echo "== a failed run copies diagnostics then deletes the fixture =="
+case_dir=$(new_case failed-run-diagnostics)
+diagnostic_copy="$work/failed-run-diagnostics-copy"
+printf 'sshd-ready-marker\n' > "$case_dir/sshd-modern.log"
+printf 'weak-proxy-marker\n' > "$case_dir/weak-network.log"
+printf 'BEGIN PRIVATE KEY\nSECRET-KEY-MATERIAL\n' > "$case_dir/device_key"
+mkdir -p "$case_dir/AppDerivedData/Logs/Test/Sample.xcresult"
+printf 'xcresult-marker\n' \
+    > "$case_dir/AppDerivedData/Logs/Test/Sample.xcresult/Info.plist"
+# The extracted cleanup function consumes these variables and command stubs
+# through eval, which static analysis cannot follow.
+# shellcheck disable=SC2034,SC2329
+cleanup_output=$(
+    (
+        fixture_dir="$case_dir"
+        diagnostic_root="$diagnostic_copy"
+        app_derived_data_path="$case_dir/AppDerivedData"
+        package_derived_data_path="$case_dir/PackageDerivedData"
+        fixture_username=ci
+        fixture_home="$case_dir/home"
+        simulator_udid=""
+        stall_pid=""
+        fake_herdr_pid=""
+        weak_network_pid=""
+        unprivileged_sshd_pids=()
+        password_pid=""
+        password_pid_file="$case_dir/sshd-password.pid"
+        password_log="$case_dir/sshd-password.log"
+        password_log_printed=0
+        password_username=heeler-ci-password
+        password_user_cleanup_needed=0
+        password_ssh_sacl_added=0
+        fixture_log_tail_lines=80
+
+        false
+        cleanup
+    ) 2>&1
+)
+cleanup_exit=$?
+reason=""
+if [[ "$cleanup_exit" == 0 ]]; then
+    reason="cleanup succeeded after a failed run"
+elif [[ -d "$case_dir" ]]; then
+    reason="cleanup left the fixture directory after copying diagnostics"
+elif [[ ! -f "$diagnostic_copy/fixture/exit-status.txt" ]]; then
+    reason="cleanup did not record the original nonzero status"
+elif [[ "$(cat "$diagnostic_copy/fixture/exit-status.txt")" != 1 ]]; then
+    reason="cleanup recorded $(cat "$diagnostic_copy/fixture/exit-status.txt") instead of 1"
+elif [[ ! -f "$diagnostic_copy/fixture/logs/sshd-modern.log" ]]; then
+    reason="cleanup did not copy the fixture sshd log"
+elif [[ ! -f "$diagnostic_copy/fixture/logs/weak-network.log" ]]; then
+    reason="cleanup did not copy the weak-network proxy log"
+elif [[ ! -f "$diagnostic_copy/fixture/AppDerivedData-Logs-Test/Sample.xcresult/Info.plist" ]]; then
+    reason="cleanup did not copy the xcresult bundle"
+elif [[ -e "$diagnostic_copy/fixture/device_key" \
+    || -e "$diagnostic_copy/fixture/logs/device_key" ]]; then
+    reason="cleanup copied private-key material into diagnostics"
+elif ! printf '%s\n' "$cleanup_output" | grep -qF "sshd-ready-marker"; then
+    reason="cleanup did not print a bounded sshd log tail"
+elif ! printf '%s\n' "$cleanup_output" | grep -qF "weak-proxy-marker"; then
+    reason="cleanup did not print a bounded weak-network log tail"
+elif printf '%s\n' "$cleanup_output" | grep -qF "SECRET-KEY-MATERIAL"; then
+    reason="cleanup printed private-key material"
+elif printf '%s\n' "$cleanup_output" | grep -qF "BEGIN PRIVATE KEY"; then
+    reason="cleanup printed private-key PEM header"
+fi
+case_labels+=("a failed run copies diagnostics then deletes the fixture")
+ran=$((ran + 1))
+if [[ -z "$reason" ]]; then
+    printf 'ok    expected-pass  exit=%-3s  %s\n' "$cleanup_exit" \
+        "a failed run copies diagnostics then deletes the fixture"
+    passed=$((passed + 1))
+else
+    printf 'FAIL  exit=%-3s  %s\n          (%s)\n' "$cleanup_exit" \
+        "a failed run copies diagnostics then deletes the fixture" "$reason"
+    failed=$((failed + 1))
+    printf '%s\n' "$cleanup_output" | sed 's/^/        | /'
 fi
 
 echo

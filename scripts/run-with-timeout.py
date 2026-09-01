@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run one command with a hard deadline and capture timeout diagnostics."""
+"""Run one command with a hard deadline and preserve useful failure diagnostics."""
 
 from __future__ import annotations
 
@@ -164,6 +164,33 @@ def capture_artifacts(
             print(f"could not preserve {source}: {error}", file=sys.stderr)
 
 
+def record_exit_status(diagnostics_dir: Path, status: int) -> None:
+    diagnostics_dir.mkdir(parents=True, exist_ok=True)
+    (diagnostics_dir / "status.txt").write_text(f"{status}\n", encoding="utf-8")
+
+
+def preserve_nonzero_exit(
+    arguments: argparse.Namespace,
+    status: int,
+) -> None:
+    """Copy requested artifacts for any nonzero child exit. Timeout-only
+    process snapshots stay on the timeout path.
+    """
+    try:
+        record_exit_status(arguments.diagnostics_dir, status)
+    except OSError as error:
+        print(f"could not record exit status: {error}", file=sys.stderr)
+    capture_artifacts(
+        arguments.diagnostics_dir,
+        arguments.artifact_path,
+        arguments.artifact_glob,
+    )
+    print(
+        f"{arguments.label} exited {status}; diagnostics: {arguments.diagnostics_dir}",
+        file=sys.stderr,
+    )
+
+
 def terminate_process_group(process: subprocess.Popen[bytes]) -> None:
     if process.poll() is not None:
         return
@@ -201,10 +228,14 @@ def run(arguments: argparse.Namespace) -> int:
 
     signal.signal(signal.SIGTERM, forward_sigterm)
     try:
-        return shell_exit_status(process.wait(timeout=arguments.timeout_seconds))
+        status = shell_exit_status(process.wait(timeout=arguments.timeout_seconds))
+        if status != 0:
+            preserve_nonzero_exit(arguments, status)
+        return status
     except subprocess.TimeoutExpired:
         arguments.diagnostics_dir.mkdir(parents=True, exist_ok=True)
         try:
+            record_exit_status(arguments.diagnostics_dir, TIMEOUT_EXIT_STATUS)
             (arguments.diagnostics_dir / "timeout.txt").write_text(
                 f"{arguments.label} exceeded {arguments.timeout_seconds:g} seconds\n",
                 encoding="utf-8",

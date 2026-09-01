@@ -129,10 +129,20 @@ run_xcodebuild() {
     local safe_label
     local status
     local started_at=$SECONDS
+    local action
     shift 2
 
     safe_label=$(printf '%s' "$label" | tr -cs 'A-Za-z0-9._-' '-')
     echo "::group::$label"
+    # build-for-testing already resolved packages. Repeating that on
+    # test-without-building is the half-minute of redundant work this flag
+    # removes; it does not skip plugin validation or change the resolved pin.
+    if [[ "${1:-}" == "test-without-building" ]]; then
+        action=$1
+        shift
+        set -- "$action" -disableAutomaticPackageResolution "$@"
+        echo "==> $label: skipping automatic package resolution"
+    fi
     if "$repo_root/scripts/run-with-timeout.py" \
         --timeout-seconds "$timeout_seconds" \
         --label "$label" \
@@ -263,6 +273,70 @@ release_resource_lock() {
     release_claim_guard "$active_claim_guard"
 }
 
+# Last 80 lines of each fixture log. Enough to see an sshd refusal or proxy
+# stall without dumping private keys or a multi-megabyte xcodebuild capture.
+fixture_log_tail_lines=80
+
+dump_fixture_logs() {
+    local log
+    local name
+    [[ -d "$fixture_dir" ]] || return 0
+    # Lane xcodebuild logs already stream through tee into the job. Print
+    # only the fixture process logs that otherwise die with the temp dir.
+    for log in "$fixture_dir"/*.log; do
+        [[ -s "$log" ]] || continue
+        name=$(basename "$log")
+        case "$name" in
+            sshd-*.log | weak-network.log | fake-herdr.log) ;;
+            *) continue ;;
+        esac
+        echo "===== $log (last $fixture_log_tail_lines lines)" >&2
+        tail -n "$fixture_log_tail_lines" "$log" >&2
+    done
+}
+
+# Copy lane logs, sshd logs, the weak-network proxy log, and xcresult
+# bundles out of the disposable fixture directory before cleanup deletes it.
+# Print the same log tails to the job so a later artifact-upload failure
+# still leaves a bounded diagnosis. Never copies key material.
+preserve_failure_diagnostics() {
+    local status=$1
+    local dest
+    local log
+
+    [[ "$status" -ne 0 ]] || return 0
+
+    if [[ -n "${diagnostic_root:-}" ]]; then
+        dest="$diagnostic_root/fixture"
+        mkdir -p "$dest/logs"
+        printf '%s\n' "$status" > "$dest/exit-status.txt"
+        if [[ -d "$fixture_dir" ]]; then
+            for log in "$fixture_dir"/*.log; do
+                [[ -f "$log" ]] || continue
+                cp "$log" "$dest/logs/" 2>/dev/null \
+                    || echo "could not preserve $log" >&2
+            done
+        fi
+        if [[ -n "${app_derived_data_path:-}" \
+            && -d "$app_derived_data_path/Logs/Test" ]]; then
+            mkdir -p "$dest/AppDerivedData-Logs-Test"
+            cp -R "$app_derived_data_path/Logs/Test/." \
+                "$dest/AppDerivedData-Logs-Test/" 2>/dev/null \
+                || echo "could not preserve app test logs" >&2
+        fi
+        if [[ -n "${package_derived_data_path:-}" \
+            && -d "$package_derived_data_path/Logs/Test" ]]; then
+            mkdir -p "$dest/PackageDerivedData-Logs-Test"
+            cp -R "$package_derived_data_path/Logs/Test/." \
+                "$dest/PackageDerivedData-Logs-Test/" 2>/dev/null \
+                || echo "could not preserve package test logs" >&2
+        fi
+        echo "==> Preserved failure diagnostics in $dest (status $status)" >&2
+    fi
+
+    dump_fixture_logs
+}
+
 cleanup() {
     local status=$?
     local preserve_password_fixture=0
@@ -330,6 +404,7 @@ cleanup() {
             fi
         fi
     fi
+    preserve_failure_diagnostics "$status"
     if [[ "$preserve_password_fixture" != "1" && -d "$fixture_dir" ]]; then
         rm -rf -- "$fixture_dir"
     fi
@@ -1257,15 +1332,6 @@ fixture_is_listening() {
     return 0
 }
 
-dump_fixture_logs() {
-    local log
-    for log in "$fixture_dir"/*.log; do
-        [[ -f "$log" ]] || continue
-        echo "===== $log" >&2
-        cat "$log" >&2
-    done
-}
-
 for attempt in $(seq 1 50); do
     if fixture_is_listening; then
         break
@@ -1796,8 +1862,6 @@ assert_behavior "weak-network descriptor reclamation" WeakNetworkE2ETests \
 assert_behavior "disconnect is reported" WeakNetworkE2ETests \
     '"a severed link makes the transport report itself disconnected"'
 
-else
-    xcrun simctl bootstatus "$simulator_udid" -b
 fi
 
 if [[ "$ci_lane" == "app" ]]; then
@@ -1805,6 +1869,21 @@ if [[ "$ci_lane" == "app" ]]; then
 fi
 
 if [[ "$ci_lane" == "package" ]]; then
+# Same overlap as the app lane: compilation needs the destination to exist,
+# not to be booted, so remaining simulator boot runs under the build.
+(
+    cd Packages/HeelerSSH
+    run_xcodebuild "HeelerSSH package build" "$xcodebuild_build_timeout_seconds" \
+        build-for-testing \
+        -scheme HeelerSSH \
+        -derivedDataPath "$package_derived_data_path" \
+        -destination "$simulator_destination" \
+        -collect-test-diagnostics never
+)
+boot_wait_started=$SECONDS
+xcrun simctl bootstatus "$simulator_udid" -b
+echo "==> Simulator boot wait after the build overlap: $((SECONDS - boot_wait_started))s"
+
 push_simulator_environment \
     HEELER_SSH_E2E_REQUIRED \
     HEELER_SSH_E2E_HOST \
@@ -1820,7 +1899,8 @@ push_simulator_environment \
 package_e2e_log="$fixture_dir/package-e2e.log"
 (
     cd Packages/HeelerSSH
-    run_xcodebuild "HeelerSSH package E2E" "$xcodebuild_test_timeout_seconds" test \
+    run_xcodebuild "HeelerSSH package E2E" "$xcodebuild_test_timeout_seconds" \
+        test-without-building \
         -scheme HeelerSSH \
         -derivedDataPath "$package_derived_data_path" \
         -destination "$simulator_destination" \
