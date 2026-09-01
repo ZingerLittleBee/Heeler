@@ -172,6 +172,42 @@ awk '
     echo "package-resolution skip must stay a single run_xcodebuild gate" >&2
     exit 1
 }
+awk '
+    /^run_xcodebuild\(\) \{/ { inside = 1 }
+    inside && /ci_lane" == "app"/ { app_gate = 1 }
+    inside && /clonedSourcePackagesDirPath/ { flag = 1 }
+    inside && /^}$/ { exit (app_gate && flag) ? 0 : 1 }
+    END { exit (app_gate && flag) ? 0 : 1 }
+' "$gate_script" || {
+    echo "app lane must reuse a cached clonedSourcePackagesDirPath" >&2
+    exit 1
+}
+if grep -E '^[[:space:]]*run_xcodebuild "HeelerSSH package' -A 12 "$gate_script" \
+    | grep -q -- '-clonedSourcePackagesDirPath'; then
+    echo "package lane must not take the app SourcePackages cache path" >&2
+    exit 1
+fi
+[[ "$(grep -cF 'Cache SwiftPM checkouts' "$workflow")" == 1 ]] || {
+    echo "the app job must cache SwiftPM checkouts" >&2
+    exit 1
+}
+if grep -qE '^[[:space:]]+xcrun simctl list runtimes' "$workflow"; then
+    echo "CI must not list simulator runtimes on the critical path" >&2
+    exit 1
+fi
+[[ "$(grep -cF 'Show Xcode version' "$workflow")" == 2 ]] || {
+    echo "both macOS jobs must keep the lightweight Xcode version step" >&2
+    exit 1
+}
+awk '
+    /^claim_port_block$/ { ports = NR }
+    /xcrun simctl boot "/ { boot = NR }
+    /ssh-keygen -q -t rsa -b 3072/ { keygen = NR }
+    END { exit (ports && boot && keygen && ports < boot && boot < keygen) ? 0 : 1 }
+' "$gate_script" || {
+    echo "simulator boot must overlap fixture provisioning, not follow it" >&2
+    exit 1
+}
 
 if ! awk '
     /pull_request:/ { in_pr = 1 }
