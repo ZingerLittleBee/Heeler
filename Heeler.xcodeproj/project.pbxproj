@@ -2154,8 +2154,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/lakr233/libghostty-spm.git";
 			requirement = {
-				kind = exactVersion;
-				version = 1.4.0;
+				kind = revision;
+				revision = 356f730bec03281fc7b83666a129b0246137ea26;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

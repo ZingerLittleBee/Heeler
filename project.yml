@@ -19,11 +19,12 @@ packages:
   # checked-in native artifacts. The one SSH backend (ADR 0011).
   HeelerSSH:
     path: Packages/HeelerSSH
-  # Pinned because this package embeds a prebuilt libghostty XCFramework and
-  # libghostty's public API is still evolving independently from Ghostty.
+  # Pin the reviewed 1.4.0 source commit because upstream removed its release
+  # tag. This keeps the same prebuilt libghostty checksum without taking the
+  # much larger, unaudited 1.5.1 source and binary update.
   GhosttyTerminal:
     url: https://github.com/lakr233/libghostty-spm.git
-    exactVersion: "1.4.0"
+    revision: "356f730bec03281fc7b83666a129b0246137ea26"
 
 targets:
   Heeler:
