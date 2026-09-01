@@ -13,6 +13,9 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
 
     let hostID: Host.ID
     let hostName: String
+    /// SSH account name, used only for conservative presentation of standard
+    /// macOS/Linux home paths as `~`. The actual remote path stays unchanged.
+    let hostUsername: String?
     var agent: Agent
     /// Workspace label from the session snapshot; nil when the snapshot did
     /// not carry the workspace.
@@ -33,10 +36,12 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         agent: Agent,
         workspaceLabel: String?,
         repositoryCheckout: RepositoryCheckout?,
-        lastOutputSnippet: String? = nil
+        lastOutputSnippet: String? = nil,
+        hostUsername: String? = nil
     ) {
         self.hostID = hostID
         self.hostName = hostName
+        self.hostUsername = hostUsername
         self.agent = agent
         self.workspaceLabel = workspaceLabel
         self.repositoryCheckout = repositoryCheckout

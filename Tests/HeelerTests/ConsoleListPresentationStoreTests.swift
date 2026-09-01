@@ -169,3 +169,89 @@ struct ConsoleListPresentationStoreTests {
         #expect(section.statusCounts.items.map(\.status) == [.blocked, .working, .done])
     }
 }
+
+@Suite("Agent card presentation")
+struct AgentCardPresentationTests {
+    @Test func everyAgentKindMatchesHerdrNameThenTypeAndDirectory() {
+        let claude = presentation(
+            kind: "claude",
+            title: "Profile photo ethnicity scoring review",
+            cwd: "/Users/developer/swype",
+            workspaceLabel: "swype")
+        let codex = presentation(
+            kind: "codex",
+            title: "Developer",
+            cwd: "/Users/developer/Developer",
+            workspaceLabel: "cw-userscript")
+
+        #expect(claude.headline == "swype")
+        #expect(claude.agentType == "Claude")
+        #expect(claude.context == "~/swype")
+        #expect(codex.headline == "cw-userscript")
+        #expect(codex.agentType == "Codex")
+        #expect(codex.context == "~/Developer")
+    }
+
+    @Test func theAgentNameLeadsWhenNoWorkspaceContextExists() {
+        let presentation = presentation(
+            kind: "claude",
+            name: "reviewer",
+            title: "A terminal-generated title",
+            cwd: "/work/project",
+            workspaceLabel: nil)
+
+        #expect(presentation.headline == "reviewer")
+        #expect(presentation.context == "/work/project")
+        #expect(presentation.agentType == "Claude")
+    }
+
+    @Test func anUnnamedAgentDoesNotRepeatItsKind() {
+        let presentation = presentation(
+            kind: "codex",
+            title: "A terminal-generated title",
+            cwd: "/work/project",
+            workspaceLabel: nil)
+
+        #expect(presentation.headline == "codex")
+        #expect(presentation.agentType == nil)
+    }
+
+    @Test func onlyStandardHomesForTheSSHAccountUseTilde() {
+        #expect(presentation(
+            kind: "codex", title: "", cwd: "/home/developer/project",
+            workspaceLabel: "project").context == "~/project")
+        #expect(presentation(
+            kind: "codex", title: "", cwd: "/Users/someone-else/project",
+            workspaceLabel: "project").context == "/Users/someone-else/project")
+        #expect(presentation(
+            kind: "codex", title: "", cwd: "/Users/developer-other/project",
+            workspaceLabel: "project").context == "/Users/developer-other/project")
+    }
+
+    private func presentation(
+        kind: String,
+        name: String? = nil,
+        title: String,
+        cwd: String,
+        workspaceLabel: String?
+    ) -> AgentCardPresentation {
+        AgentCardPresentation(
+            agent: ConsoleAgent(
+                hostID: UUID(),
+                hostName: "devbox",
+                agent: Agent(
+                    terminalID: "terminal",
+                    kind: kind,
+                    title: title,
+                    status: .idle,
+                    workspaceID: "workspace",
+                    tabID: "tab",
+                    paneID: "pane",
+                    cwd: cwd,
+                    revision: 1,
+                    name: name),
+                workspaceLabel: workspaceLabel,
+                repositoryCheckout: nil,
+                hostUsername: "developer"))
+    }
+}

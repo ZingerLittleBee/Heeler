@@ -637,7 +637,8 @@ final class HostConsoleProjection {
                 agent: agent,
                 workspaceLabel: workspace?.label,
                 repositoryCheckout: workspace?.worktree.map(RepositoryCheckout.init),
-                lastOutputSnippet: agentsByPane[agent.paneID]?.lastOutputSnippet)
+                lastOutputSnippet: agentsByPane[agent.paneID]?.lastOutputSnippet,
+                hostUsername: host.username)
         }
         for (paneID, change) in latestStatusChanges
         where change.revision > snapshotStartRevision {

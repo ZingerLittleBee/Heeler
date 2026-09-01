@@ -1,18 +1,22 @@
 import SwiftUI
 import UIKit
 
-/// One Console card (#8): the project and status up front, Host, agent kind,
-/// and pane address as context, plus the last-output snippet. The project
-/// leads because a console full of agents is usually a console full of
-/// `claude` — the workspace is what tells the rows apart.
+/// One Console card (#8): the same workspace label and Agent kind herdr uses,
+/// plus launch directory, Host, and status. Terminal titles, trailing TUI
+/// output, and opaque pane ids are deliberately absent: none identifies the
+/// Agent in herdr's own Agents pane.
 struct AgentCardView: View {
     let agent: ConsoleAgent
     var isPinned: Bool = false
 
+    private var presentation: AgentCardPresentation {
+        AgentCardPresentation(agent: agent)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
-                Text(headline)
+                Text(presentation.headline)
                     .font(.headline)
                     .lineLimit(1)
                 if isPinned {
@@ -25,66 +29,70 @@ struct AgentCardView: View {
                 Spacer(minLength: 8)
                 AgentStatusBadge(status: agent.agent.status)
             }
-            if !agent.agent.title.isEmpty {
-                Text(agent.agent.title)
-                    .font(.subheadline)
-                    .lineLimit(1)
-            }
-            if let snippet = agent.lastOutputSnippet {
-                Text(snippet)
+            if let context = presentation.context {
+                Text(context)
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
-            HStack(spacing: 6) {
-                if agent.isLinkedWorktree {
-                    HStack(spacing: 3) {
-                        Image(systemName: "arrow.triangle.branch")
-                        Text("Worktree")
-                    }
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(.quaternary, in: Capsule())
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Linked worktree")
+            HStack {
+                if let agentType = presentation.agentType {
+                    Text(agentType)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
-                if let kind = agentKindTag {
-                    Text(kind)
-                        .font(.caption2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(.quaternary, in: Capsule())
-                }
-                Text(agent.agent.paneID)
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.tertiary)
                 Spacer(minLength: 8)
                 Text(agent.hostName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
         }
         .padding(.vertical, 4)
     }
+}
 
-    /// The card's lead line: the project the agent works in, falling back to
-    /// the agent's own name when the snapshot carried no workspace.
-    private var headline: String {
-        workspaceContext ?? agent.agent.displayName
+struct AgentCardPresentation: Equatable {
+    let headline: String
+    let context: String?
+    let agentType: String?
+
+    init(agent: ConsoleAgent) {
+        headline = agent.switcherLabel
+        context = Self.nonEmpty(agent.agent.cwd).map {
+            Self.abbreviatingStandardHome(in: $0, username: agent.hostUsername)
+        }
+
+        let kind = switch SupportedAgentKind(rawValue: agent.agent.kind) {
+        case .some(.claude): "Claude"
+        case let supported?: supported.displayName
+        case nil: agent.agent.kind
+        }
+        agentType = headline.caseInsensitiveCompare(kind) == .orderedSame
+            ? nil
+            : kind
     }
 
-    /// The agent name, tagged at the foot of the card — dropped when the
-    /// headline already fell back to it.
-    private var agentKindTag: String? {
-        workspaceContext == nil ? nil : agent.agent.displayName
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let value, !value.isEmpty else { return nil }
+        return value
     }
 
-    /// The workspace context: label, with the worktree repo when it adds
-    /// information the label does not already carry.
-    private var workspaceContext: String? {
-        agent.workspaceContext
+    /// The snapshot carries an expanded remote path but not `$HOME`. Standard
+    /// macOS/Linux SSH-account homes can still be shortened without guessing
+    /// that an arbitrary path prefix is a home directory.
+    private static func abbreviatingStandardHome(
+        in path: String, username: String?
+    ) -> String {
+        guard let username, !username.isEmpty else { return path }
+        let homes = username == "root"
+            ? ["/root"]
+            : ["/Users/\(username)", "/home/\(username)"]
+        guard let home = homes.first(where: { path == $0 || path.hasPrefix("\($0)/") })
+        else { return path }
+        return path == home ? "~" : "~\(path.dropFirst(home.count))"
     }
 }
 
@@ -129,8 +137,7 @@ struct AgentStatusBadge: View {
                     checkoutPath: "/work/proj-wt",
                     isLinkedWorktree: true),
                 lastOutputSnippet: "Allow Claude to run rm -rf? 1. Yes 2. No"))
-        // No workspace in the snapshot: the agent name takes the lead line
-        // and the foot tag drops.
+        // No workspace in the snapshot: the Agent's own name takes the lead.
         AgentCardView(
             agent: ConsoleAgent(
                 hostID: UUID(),
