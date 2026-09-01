@@ -10,23 +10,23 @@ import Foundation
 /// while the PTY Attach dies (#206).
 ///
 /// Extra prefixes are appended after the session `PATH` so an existing
-/// `herdr` keeps priority. There is no separate discovery probe: those
-/// prefixes already cover the same directories, and a probe would add a
-/// round trip inside attach/wake/session-list deadlines.
+/// `herdr` keeps priority. There is no separate probe to discover the
+/// `herdr` path; the agent-availability probe reuses this export in its
+/// shell body instead of adding another SSH round trip.
 ///
 /// Two ways the prefixes get onto a command, pick by how `herdr` is spelled:
 /// - ``wrappingBareHerdr(_:)`` at the exec site when the command *word* is
 ///   still an unpathed `herdr` (session list, plugin list, and those
 ///   overrides).
-/// - Bake ``pathExport`` into an existing `/bin/sh -c` body when `herdr`
-///   lives inside that body (the default plugin config-dir probe uses
-///   command substitution). Wrapping looks only at the command word, so it
-///   cannot see that inner `herdr`.
+/// - Bake ``pathExport`` into an existing `/bin/sh -c` body when a bare
+///   `herdr` or an agent probe lives inside that body. The default plugin
+///   config-dir and agent-discovery commands use this form. Wrapping looks
+///   only at the command word, so it cannot see an inner `herdr`.
 enum HerdrHostPath: Sendable {
-    /// Directories appended to `PATH` on herdr CLI execs. `$HOME` is
-    /// expanded by the remote `/bin/sh`, not by Swift.
+    /// Directories appended to `PATH` on herdr CLI and Agent discovery
+    /// execs. `$HOME` is expanded by the remote `/bin/sh`, not by Swift.
     static let extraPATH =
-        "$HOME/.local/bin:$HOME/.linuxbrew/bin:$HOME/.cargo/bin:"
+        "$HOME/.local/bin:$HOME/.linuxbrew/bin:$HOME/.cargo/bin:$HOME/.bun/bin:"
         + "/opt/homebrew/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin"
 
     static var pathAssignment: String {
