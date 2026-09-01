@@ -105,22 +105,50 @@ struct WeakNetworkE2ETests {
     func cancellationUnderBackpressureKeepsTheConnectionUsable() async throws {
         let fixture = try #require(WeakNetworkFixture.current)
         try await fixture.control.reset()
-        try await fixture.control.apply(.severe)
+        // Connection and remote staging-directory setup stay on the degraded
+        // profile. Applying `.severe` before that races the setup exec against
+        // the same ~15 s budget the progress waiter used to share, and a loaded
+        // runner fails with `.remoteTemporaryDirectoryFailed` before the
+        // cancellation-under-backpressure behaviour is exercised.
+        try await fixture.control.apply(.degraded)
 
         let prepared = try makePreparedImage(byteCount: 1_024 * 1_024)
         defer { try? FileManager.default.removeItem(at: prepared.image.fileURL) }
         let transport = try await HeelerSSHTransport.connect(settings: fixture.settings())
-        let progressed = ProgressGate()
+
+        // Zero-byte progress is the setup→payload barrier in the production
+        // staging path. Parking there lets this test arm `.severe` before any
+        // SFTP write without a sleep, a polled waiter, or a bypass of `stageImage`.
+        let setupBarrier = ScriptedTransportCallGate()
+        // Pre-opened: first transferred chunk only signals entry, it must not
+        // hold the upload (cancel has to land on genuine link backpressure).
+        let payloadSignal = ScriptedTransportCallGate()
+        await payloadSignal.open()
+
         let staging = Task {
             try await transport.stageImage(prepared.image) { value in
-                if value.transferredBytes > 0 { await progressed.record() }
+                if value.transferredBytes == 0 {
+                    await setupBarrier.waitUntilOpen()
+                } else {
+                    await payloadSignal.waitUntilOpen()
+                }
             }
         }
-        // Cancel while the upload is genuinely blocked on link backpressure,
-        // not before it has written anything.
-        try await waitUntil("the upload should report a transferred chunk") {
-            await progressed.count > 0
-        }
+
+        try await awaitStagingPhase(
+            "remote staging setup",
+            gate: setupBarrier,
+            racing: staging)
+
+        // Arm the cancellation-under-backpressure portion only after setup.
+        try await fixture.control.apply(.severe)
+        await setupBarrier.open()
+
+        try await awaitStagingPhase(
+            "severe-profile payload backpressure",
+            gate: payloadSignal,
+            racing: staging)
+
         // Cancellation itself is honoured promptly even while the write is
         // blocked on the link, and "promptly" is asserted rather than asserted
         // in prose: the compensation path spends at most its two two-second
@@ -363,6 +391,47 @@ struct WeakNetworkE2ETests {
             bytes)
     }
 
+    private func awaitStagingPhase<Success: Sendable>(
+        _ phase: String,
+        gate: ScriptedTransportCallGate,
+        racing staging: Task<Success, any Error>
+    ) async throws {
+        let probe = StagingPhaseProbe(phase: phase)
+        // Unstructured on purpose: awaiting `staging.result` inside the task
+        // group would keep the group alive until staging finishes, and
+        // `staging.value` would cancel the upload when the group tears down.
+        let observer = Task {
+            switch await staging.result {
+            case .success:
+                await probe.reportFinishedEarly()
+            case .failure(let error):
+                await probe.reportFailure(error)
+            }
+        }
+        defer { observer.cancel() }
+
+        do {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    await gate.waitForEntry()
+                }
+                group.addTask {
+                    try await probe.wait()
+                }
+                // Barrier entry wins with a bare return; a staging failure
+                // rethrows from `probe.wait`. Resume the probe waiter before
+                // cancelling the group so a cancelled-but-suspended
+                // continuation cannot deadlock group teardown.
+                try await group.next()
+                await probe.abandon()
+                group.cancelAll()
+            }
+        } catch {
+            await probe.abandon()
+            throw error
+        }
+    }
+
     private func waitUntil(
         _ comment: Comment,
         timeout: Duration = .seconds(15),
@@ -374,12 +443,6 @@ struct WeakNetworkE2ETests {
             try await Task.sleep(for: .milliseconds(20))
         }
         #expect(await condition(), comment)
-    }
-
-    private actor ProgressGate {
-        private(set) var count = 0
-
-        func record() { count += 1 }
     }
 
     private actor StatusRecorder {
@@ -394,6 +457,70 @@ struct WeakNetworkE2ETests {
         var hasReconnected: Bool {
             statuses.contains { if case .reconnecting = $0 { true } else { false } }
         }
+    }
+}
+
+/// Surfaces a staging failure under the phase that was waiting, instead of
+/// letting a parallel progress waiter time out and misreport the cause.
+private enum StagingBarrierError: Error, CustomStringConvertible {
+    case finishedEarly(phase: String)
+    case failed(phase: String, detail: String)
+
+    var description: String {
+        switch self {
+        case .finishedEarly(let phase):
+            "staging finished during \(phase) before the barrier armed"
+        case .failed(let phase, let detail):
+            "staging failed during \(phase): \(detail)"
+        }
+    }
+}
+
+/// One-shot race partner for `awaitStagingPhase`: either the production barrier
+/// fires, or staging fails first and the failure is named by phase.
+private actor StagingPhaseProbe {
+    private let phase: String
+    private var outcome: StagingBarrierError?
+    private var abandoned = false
+    private var waiter: CheckedContinuation<Void, any Error>?
+
+    init(phase: String) {
+        self.phase = phase
+    }
+
+    func reportFinishedEarly() {
+        deliver(.finishedEarly(phase: phase))
+    }
+
+    func reportFailure(_ error: any Error) {
+        deliver(.failed(phase: phase, detail: String(describing: error)))
+    }
+
+    func wait() async throws {
+        if abandoned { return }
+        if let outcome {
+            throw outcome
+        }
+        try await withCheckedThrowingContinuation { continuation in
+            waiter = continuation
+        }
+        if abandoned { return }
+        if let outcome {
+            throw outcome
+        }
+    }
+
+    func abandon() {
+        abandoned = true
+        waiter?.resume()
+        waiter = nil
+    }
+
+    private func deliver(_ error: StagingBarrierError) {
+        guard !abandoned else { return }
+        outcome = error
+        waiter?.resume(throwing: error)
+        waiter = nil
     }
 }
 

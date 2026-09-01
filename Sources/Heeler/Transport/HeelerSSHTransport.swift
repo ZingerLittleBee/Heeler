@@ -1247,9 +1247,14 @@ actor HeelerSSHTransport: Transport {
             throw AttachmentStagingError.transferFailed
         }
 
+        // Zero-byte progress fires only after the remote staging parent exists.
+        // That is the sole production-visible seam between setup and payload
+        // writing: weak-network tests park here to arm `.severe` before any
+        // SFTP write, so connection and directory creation are not starved by
+        // the cancellation-under-backpressure profile.
+        let parentDirectory = try await createStageParentDirectory()
         await progress(
             AttachmentStageProgress(transferredBytes: 0, totalBytes: source.byteCount))
-        let parentDirectory = try await createStageParentDirectory()
         let operationID = UUID()
 
         do {
