@@ -1464,7 +1464,7 @@ actor SessionDriver {
 
             while offset < data.count {
                 await acquireOperation()
-                let progress: (written: Int, wait: SessionWaitPlan)
+                let progress: (written: Int, wait: SessionWaitPlan, parkedOutbound: Bool)
                 do {
                     try checkProgress(deadline: deadline)
                     try await waitForTransportSendAdmission(
@@ -1498,7 +1498,10 @@ actor SessionDriver {
                         throw mappedError
                     }
                     applyTransportSendOwnerDisposition(disposition)
-                    progress = (written, sessionWaitPlan(session))
+                    progress = (
+                        written,
+                        sessionWaitPlan(session),
+                        written == Int(LIBSSH2_ERROR_EAGAIN) && transportSendOwner == owner)
                     releaseOperation()
                 } catch {
                     let normalized = normalize(error)
@@ -1514,6 +1517,11 @@ actor SessionDriver {
                     offset += progress.written
                     await Task.yield()
                 } else {
+#if DEBUG
+                    if progress.parkedOutbound {
+                        await holdOutboundWriteParkForTestingIfNeeded()
+                    }
+#endif
                     do {
                         try await awaitSessionProgress(progress.wait, until: deadline)
                     } catch {

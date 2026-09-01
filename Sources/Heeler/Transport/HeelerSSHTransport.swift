@@ -49,6 +49,15 @@ struct HeelerSSHNotificationFileStateForTesting: Sendable, Equatable {
     let connectionChannelCount: Int
     let writeIsDelayed: Bool
 }
+
+/// Internal staging milestones for deterministic test barriers. Not user-visible
+/// progress — `AttachmentStageProgress` keeps its numeric meaning unchanged.
+enum AttachmentStagingPhaseForTesting: Sendable, Hashable {
+    /// Remote staging parent directory exists; payload transfer has not begun.
+    case remoteParentReady
+    /// About to enter the SFTP payload write loop.
+    case payloadWriteReady
+}
 #endif
 
 private actor HeelerSSHNotificationFileCompletion {
@@ -322,6 +331,10 @@ actor HeelerSSHTransport: Transport {
     private var imageStageClients: [UUID: SSHSFTPClient] = [:]
     private var notificationFileClients: [UUID: SSHSFTPClient] = [:]
     private var notificationTemporaryPaths: [UUID: String] = [:]
+#if DEBUG
+    private var stagingPhaseHoldsForTesting:
+        [AttachmentStagingPhaseForTesting: @Sendable () async -> Void] = [:]
+#endif
 
     /// Establishes the libssh2 Transport through the same app-owned
     /// credentials and TOFU policy as the production connection path.
@@ -1026,6 +1039,19 @@ actor HeelerSSHTransport: Transport {
         await connection.delayNextSFTPWriteForTesting(delay)
     }
 
+    func holdNextOutboundWriteParkForTesting(
+        _ hold: @escaping @Sendable () async -> Void
+    ) async {
+        await connection.holdNextOutboundWriteParkForTesting(hold)
+    }
+
+    func holdStagingPhaseForTesting(
+        _ phase: AttachmentStagingPhaseForTesting,
+        _ hold: @escaping @Sendable () async -> Void
+    ) {
+        stagingPhaseHoldsForTesting[phase] = hold
+    }
+
     func notificationFileStateForTesting() async -> HeelerSSHNotificationFileStateForTesting {
         let admission = await channelAdmission.snapshot()
         return HeelerSSHNotificationFileStateForTesting(
@@ -1247,14 +1273,12 @@ actor HeelerSSHTransport: Transport {
             throw AttachmentStagingError.transferFailed
         }
 
-        // Zero-byte progress fires only after the remote staging parent exists.
-        // That is the sole production-visible seam between setup and payload
-        // writing: weak-network tests park here to arm `.severe` before any
-        // SFTP write, so connection and directory creation are not starved by
-        // the cancellation-under-backpressure profile.
-        let parentDirectory = try await createStageParentDirectory()
         await progress(
             AttachmentStageProgress(transferredBytes: 0, totalBytes: source.byteCount))
+        let parentDirectory = try await createStageParentDirectory()
+#if DEBUG
+        await signalStagingPhaseForTesting(.remoteParentReady)
+#endif
         let operationID = UUID()
 
         do {
@@ -1428,6 +1452,9 @@ actor HeelerSSHTransport: Transport {
             timeout: requestTimeout)
         do {
             try await enforcePermissions(0o600, at: remotePath, over: sftp)
+#if DEBUG
+            await signalStagingPhaseForTesting(.payloadWriteReady)
+#endif
             let chunkSize = 64 * 1_024
             var transferred: Int64 = 0
             while transferred < byteCount {
@@ -1455,6 +1482,13 @@ actor HeelerSSHTransport: Transport {
             throw error
         }
     }
+
+#if DEBUG
+    private func signalStagingPhaseForTesting(_ phase: AttachmentStagingPhaseForTesting) async {
+        guard let hold = stagingPhaseHoldsForTesting.removeValue(forKey: phase) else { return }
+        await hold()
+    }
+#endif
 
     /// Unlinks one abandoned `.part` so the user's attachment bytes do not outlive
     /// the failed operation, on the SFTP client that operation already owns.
