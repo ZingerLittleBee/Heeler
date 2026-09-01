@@ -53,6 +53,15 @@ final class TerminalGridReportPhaseRecorder {
     /// Every transition seen, oldest first — the freeze's history, for a
     /// failure message that can say where it stopped.
     private(set) var phases: [TerminalGridReportPhase] = []
+    /// Runs once, inside a wait's set-up, at the one instant that matters:
+    /// after that wait has searched the history and before its waiter is
+    /// registered. Whatever it publishes therefore lands in the gap between
+    /// "has it happened yet?" and "wake me when it does" — by call position,
+    /// not by which job an executor picks up first. That gap is where a
+    /// recorder that registers from a later job loses the transition, so it
+    /// is the only place a regression test can prove the loss cannot happen
+    /// here. Nothing outside the recorder's own test sets this.
+    var onWaitAboutToRegister: (@MainActor () -> Void)?
 
     init(observing terminal: HeelerTerminalView) {
         currentPhase = { [weak terminal] in terminal?.gridReportPhase ?? .live }
@@ -101,13 +110,22 @@ final class TerminalGridReportPhaseRecorder {
         // happened, reported as the timeout of a freeze that thawed fine.
         let wakeup = await withCheckedContinuation {
             (continuation: CheckedContinuation<Wakeup, Never>) in
-            if let index = self.unclaimed.firstIndex(where: { $0.phase == phase }) {
-                let claimed = self.unclaimed[index]
-                self.unclaimed.removeSubrange(...index)
+            if let claimed = self.claimBuffered(phase) {
                 continuation.resume(returning: .reached(claimed.forwarded))
                 return
             }
+            let beganWaiting = self.onWaitAboutToRegister
+            self.onWaitAboutToRegister = nil
+            beganWaiting?()
             self.waiters[id] = Waiter(phase: phase, continuation: continuation)
+            // Registration alone is not enough, and this is the second half of
+            // the same rule: a transition that landed while this wait was
+            // being set up was buffered against a waiter that did not exist
+            // yet. Read the buffer again from behind the registration, or that
+            // transition is waited out to the deadline.
+            guard let late = self.claimBuffered(phase) else { return }
+            self.waiters.removeValue(forKey: id)
+            continuation.resume(returning: .reached(late.forwarded))
         }
 
         switch wakeup {
@@ -117,6 +135,21 @@ final class TerminalGridReportPhaseRecorder {
             throw GridReportPhaseNeverReachedError(
                 expected: phase, actual: currentPhase(), observed: phases)
         }
+    }
+
+    /// Removes the earliest buffered `phase` transition and returns it, or
+    /// `nil` when none was seen. The transition's own payload is optional, so
+    /// the two kinds of "nothing" stay distinct: no such transition buffered
+    /// at all, versus a thaw that forwarded no grid.
+    private func claimBuffered(
+        _ phase: TerminalGridReportPhase
+    ) -> (phase: TerminalGridReportPhase, forwarded: TerminalGridSize?)? {
+        guard let index = unclaimed.firstIndex(where: { $0.phase == phase }) else {
+            return nil
+        }
+        let claimed = unclaimed[index]
+        unclaimed.removeSubrange(...index)
+        return claimed
     }
 
     private func record(_ phase: TerminalGridReportPhase, forwarded: TerminalGridSize?) {
