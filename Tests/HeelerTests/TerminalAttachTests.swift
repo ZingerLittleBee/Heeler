@@ -41,6 +41,7 @@ struct TerminalAttachTests {
             onSend: nil,
             onScroll: nil,
             onPaste: nil)
+        let phases = TerminalGridReportPhaseRecorder(observing: bridge)
         let stale = InMemoryTerminalViewport(columns: 33, rows: 20)
 
         bridge.beginSizeReportDeferral()
@@ -51,8 +52,68 @@ struct TerminalAttachTests {
         bridge.onViewport = nil
         bridge.provideAuthoritativeDeferredSize(columns: 33, rows: 14)
         bridge.finishSizeReportDeferral()
-        try await waitForGridReportsToSettle { reportedGrids.count }
+        let forwarded = try await phases.thawedGrid()
+        #expect(forwarded == TerminalGridSize(columns: 33, rows: 14))
         #expect(reportedGrids == [ReportedGrid(columns: 33, rows: 14)])
+    }
+
+    /// A freeze can thaw having learned no grid at all — nothing measured the
+    /// surface while it held. That is a lifecycle outcome, not silence: the
+    /// Host is told nothing and the next ordinary report speaks for it. The
+    /// thaw has to say so, because a caller watching resize reports alone
+    /// cannot tell it from a freeze that never ended (#263).
+    @MainActor
+    @Test func aThawWithNothingMeasuredForwardsNoGridAndSaysSo() async throws {
+        var reportedGrids: [ReportedGrid] = []
+        let bridge = TerminalSessionCallbackBridge(
+            onSizeChanged: { columns, rows in
+                reportedGrids.append(ReportedGrid(columns: columns, rows: rows))
+            },
+            onViewportTextChanged: nil,
+            onSend: nil,
+            onScroll: nil,
+            onPaste: nil)
+        let phases = TerminalGridReportPhaseRecorder(observing: bridge)
+
+        bridge.beginSizeReportDeferral()
+        #expect(bridge.gridReportPhase == .deferring)
+        bridge.finishSizeReportDeferral()
+
+        let forwarded = try await phases.thawedGrid()
+        #expect(forwarded == nil)
+        #expect(bridge.gridReportPhase == .live)
+        #expect(reportedGrids.isEmpty)
+
+        // Live again: the report that arrives next is the Host's first.
+        await withCheckedContinuation { continuation in
+            bridge.onViewport = { _ in continuation.resume() }
+            bridge.resize(InMemoryTerminalViewport(columns: 33, rows: 14))
+        }
+        #expect(reportedGrids == [ReportedGrid(columns: 33, rows: 14)])
+    }
+
+    /// A cancelled freeze forwards nothing: there was no settled grid, only a
+    /// handoff that stopped happening.
+    @MainActor
+    @Test func aCancelledFreezeForwardsNoGrid() async throws {
+        var reportedGrids: [ReportedGrid] = []
+        let bridge = TerminalSessionCallbackBridge(
+            onSizeChanged: { columns, rows in
+                reportedGrids.append(ReportedGrid(columns: columns, rows: rows))
+            },
+            onViewportTextChanged: nil,
+            onSend: nil,
+            onScroll: nil,
+            onPaste: nil)
+        let phases = TerminalGridReportPhaseRecorder(observing: bridge)
+
+        bridge.beginSizeReportDeferral()
+        bridge.provideAuthoritativeDeferredSize(columns: 33, rows: 14)
+        bridge.cancelSizeReportDeferral()
+
+        let forwarded = try await phases.thawedGrid()
+        #expect(forwarded == nil)
+        #expect(reportedGrids.isEmpty)
     }
 
     /// Ghostty can publish the engine resize after the surface delegate has
@@ -70,6 +131,7 @@ struct TerminalAttachTests {
             onSend: nil,
             onScroll: nil,
             onPaste: nil)
+        let phases = TerminalGridReportPhaseRecorder(observing: bridge)
         bridge.isSizeReportCurrent = { columns, rows in
             columns == 33 && rows == 14
         }
@@ -77,7 +139,7 @@ struct TerminalAttachTests {
         bridge.beginSizeReportDeferral()
         bridge.provideAuthoritativeDeferredSize(columns: 33, rows: 14)
         bridge.finishSizeReportDeferral()
-        try await waitForGridReportsToSettle { reportedGrids.count }
+        try await phases.thawedGrid()
 
         await withCheckedContinuation { continuation in
             bridge.onViewport = { _ in continuation.resume() }
@@ -100,12 +162,17 @@ struct TerminalAttachTests {
             onSend: nil,
             onScroll: nil,
             onPaste: nil)
+        let phases = TerminalGridReportPhaseRecorder(observing: bridge)
         let settled = InMemoryTerminalViewport(columns: 33, rows: 14)
 
         bridge.beginSizeReportDeferral()
         bridge.resize(settled)
         bridge.finishSizeReportDeferral()
-        try await waitForGridReportsToSettle { reportedGrids.count }
+        // The queued resize has not landed yet, so the thaw is still waiting
+        // on it — the phase says so rather than the caller having to infer it.
+        #expect(bridge.gridReportPhase == .flushing)
+        let forwarded = try await phases.thawedGrid()
+        #expect(forwarded == TerminalGridSize(columns: 33, rows: 14))
         #expect(reportedGrids == [ReportedGrid(columns: 33, rows: 14)])
     }
 
@@ -1279,6 +1346,10 @@ struct TerminalAttachTests {
         terminal.removeFromSuperview()
         terminal.raisesKeyboardWhenReady = true
         host.view.addSubview(terminal)
+        // The freeze below belongs to a keyboard this terminal actually
+        // claimed: a refused claim gives it up on the spot, and would leave
+        // the coalescing assertions measuring nothing.
+        #expect(terminal.isFirstResponder)
 
         for height: CGFloat in [440, 520, 600] {
             terminal.frame.size.height = height
@@ -1328,6 +1399,10 @@ struct TerminalAttachTests {
         terminal.removeFromSuperview()
         terminal.raisesKeyboardWhenReady = true
         host.view.addSubview(terminal)
+        // The freeze below belongs to a keyboard this terminal actually
+        // claimed: a refused claim gives it up on the spot, and would leave
+        // the coalescing assertions measuring nothing.
+        #expect(terminal.isFirstResponder)
 
         // A transient height, then a stall longer than the production
         // fallback, then another — the shape of the handoff on the runner
@@ -1381,6 +1456,10 @@ struct TerminalAttachTests {
         terminal.removeFromSuperview()
         terminal.raisesKeyboardWhenReady = true
         host.view.addSubview(terminal)
+        // The freeze below belongs to a keyboard this terminal actually
+        // claimed: a refused claim gives it up on the spot, and would leave
+        // the coalescing assertions measuring nothing.
+        #expect(terminal.isFirstResponder)
 
         terminal.frame.size.height = 600
         terminal.setNeedsLayout()

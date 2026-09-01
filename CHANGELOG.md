@@ -9,6 +9,11 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- A terminal whose keyboard claim is refused as it appears no longer holds its
+  grid — and its layout — frozen until the half-second safety timeout. It gives
+  the freeze up as soon as the claim fails, so the surface lays out and the
+  Host learns its size right away. (#263)
+
 - New Agent now detects supported Agent CLIs from the Host's standard
   user-local, Bun, Cargo, Homebrew, and Linuxbrew install paths over SSH.
   (#254)

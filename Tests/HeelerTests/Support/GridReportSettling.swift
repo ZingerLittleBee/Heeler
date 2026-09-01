@@ -1,8 +1,23 @@
 import Testing
 
-/// The settle wait ran out of polls with the reports still absent or
-/// still churning; the caller's assertions cannot trust the state.
-struct GridReportsNeverSettledError: Error {}
+/// The settle wait ran out of polls. Which way it ran out matters: no report
+/// ever arrived is a terminal that never measured a grid — or a freeze still
+/// holding one back — while reports that kept changing is a layout that never
+/// came to rest. Reporting them as one error sent #263 looking for a stalled
+/// engine when the freeze itself was the question.
+enum GridReportsNeverSettledError: Error, CustomStringConvertible {
+    case noReportArrived
+    case reportsKeptChanging(count: Int)
+
+    var description: String {
+        switch self {
+        case .noReportArrived:
+            "no grid report ever arrived"
+        case .reportsKeptChanging(let count):
+            "grid reports never went quiet (\(count) so far)"
+        }
+    }
+}
 
 /// Waits until grid reports have arrived *and* gone quiet. Quiet alone is
 /// not settlement: the report a thaw schedules rides two timers, so on a
@@ -11,6 +26,10 @@ struct GridReportsNeverSettledError: Error {}
 /// on exists (#225). Only proven quiet returns; exhausting the poll cap
 /// throws, so a report that never comes or never stops churning fails
 /// loud instead of handing the caller a state it cannot trust.
+///
+/// Prefer ``TerminalGridReportPhaseRecorder`` wherever the freeze's own
+/// lifecycle answers the question: this poll infers a phase from report
+/// timing, which is Ghostty's to decide and no runner's to promise.
 @MainActor
 func waitForGridReportsToSettle(count: () -> Int) async throws {
     var stablePolls = 0
@@ -25,5 +44,7 @@ func waitForGridReportsToSettle(count: () -> Int) async throws {
             stablePolls = 0
         }
     }
-    throw GridReportsNeverSettledError()
+    throw count() == 0
+        ? GridReportsNeverSettledError.noReportArrived
+        : GridReportsNeverSettledError.reportsKeptChanging(count: count())
 }
