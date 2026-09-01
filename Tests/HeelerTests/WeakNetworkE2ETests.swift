@@ -146,7 +146,7 @@ struct WeakNetworkE2ETests {
         }
 
         do {
-            try await awaitPhaseEntry(
+            try await StagingPhaseWait.awaitEntry(
                 "remote staging setup",
                 gate: setupGate,
                 failures: failures)
@@ -163,7 +163,7 @@ struct WeakNetworkE2ETests {
             }
             await setupGate.release()
 
-            try await awaitPhaseEntry(
+            try await StagingPhaseWait.awaitEntry(
                 "severe-profile payload write",
                 gate: payloadReadyGate,
                 failures: failures)
@@ -175,7 +175,7 @@ struct WeakNetworkE2ETests {
             }
             await payloadReadyGate.release()
 
-            try await awaitPhaseEntry(
+            try await StagingPhaseWait.awaitEntry(
                 "severe-profile payload backpressure",
                 gate: backpressureGate,
                 failures: failures)
@@ -429,23 +429,6 @@ struct WeakNetworkE2ETests {
             bytes)
     }
 
-    private func awaitPhaseEntry(
-        _ phase: String,
-        gate: CancellablePhaseGate,
-        failures: StagingFailureSignal
-    ) async throws {
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask {
-                try await gate.waitUntilEntered()
-            }
-            group.addTask {
-                try await failures.wait(phase: phase)
-            }
-            try await group.next()
-            group.cancelAll()
-        }
-    }
-
     private func finishStaging<Success: Sendable>(
         _ staging: Task<Success, any Error>,
         gates: CancellablePhaseGate...
@@ -482,160 +465,6 @@ struct WeakNetworkE2ETests {
         var hasReconnected: Bool {
             statuses.contains { if case .reconnecting = $0 { true } else { false } }
         }
-    }
-}
-
-/// Surfaces a staging failure under the phase that was waiting, instead of
-/// letting a parallel waiter stall until an outer runner limit.
-private enum StagingBarrierError: Error, CustomStringConvertible {
-    case finishedEarly(phase: String)
-    case failed(phase: String, detail: String)
-
-    var description: String {
-        switch self {
-        case .finishedEarly(let phase):
-            "staging finished during \(phase) before the barrier armed"
-        case .failed(let phase, let detail):
-            "staging failed during \(phase): \(detail)"
-        }
-    }
-}
-
-/// Hold/observe gate whose stored continuations always resume via `release()`
-/// or task cancellation — never left pending after the waiter returns.
-private actor CancellablePhaseGate {
-    private var hasEntered = false
-    private var isReleased = false
-    private var entryWaiters: [UUID: CheckedContinuation<Void, any Error>] = [:]
-    private var holdWaiters: [UUID: CheckedContinuation<Void, any Error>] = [:]
-
-    func enterAndHold() async {
-        hasEntered = true
-        resumeEntryWaiters()
-        if isReleased { return }
-        let id = UUID()
-        do {
-            try await withTaskCancellationHandler {
-                try await withCheckedThrowingContinuation {
-                    (continuation: CheckedContinuation<Void, any Error>) in
-                    if self.isReleased {
-                        continuation.resume()
-                    } else {
-                        self.holdWaiters[id] = continuation
-                    }
-                }
-            } onCancel: {
-                Task { await self.resumeHoldWaiter(id, throwing: CancellationError()) }
-            }
-        } catch {
-            return
-        }
-    }
-
-    func waitUntilEntered() async throws {
-        if hasEntered { return }
-        let id = UUID()
-        try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation {
-                (continuation: CheckedContinuation<Void, any Error>) in
-                if self.hasEntered {
-                    continuation.resume()
-                } else {
-                    self.entryWaiters[id] = continuation
-                }
-            }
-        } onCancel: {
-            Task { await self.resumeEntryWaiter(id, throwing: CancellationError()) }
-        }
-    }
-
-    func release() {
-        isReleased = true
-        resumeEntryWaiters()
-        let holds = holdWaiters
-        holdWaiters.removeAll()
-        for (_, waiter) in holds {
-            waiter.resume()
-        }
-    }
-
-    private func resumeEntryWaiters() {
-        let waiters = entryWaiters
-        entryWaiters.removeAll()
-        for (_, waiter) in waiters {
-            waiter.resume()
-        }
-    }
-
-    private func resumeEntryWaiter(_ id: UUID, throwing error: any Error) {
-        guard let waiter = entryWaiters.removeValue(forKey: id) else { return }
-        waiter.resume(throwing: error)
-    }
-
-    private func resumeHoldWaiter(_ id: UUID, throwing error: any Error) {
-        guard let waiter = holdWaiters.removeValue(forKey: id) else { return }
-        waiter.resume(throwing: error)
-    }
-}
-
-/// Staging reports failures here from its own task body so waiters do not
-/// suspend on `Task.result` after the phase has moved on.
-private actor StagingFailureSignal {
-    private var detail: String?
-    private var finishedSuccessfully = false
-    private var waiters: [UUID: (phase: String, continuation: CheckedContinuation<Void, any Error>)] =
-        [:]
-
-    func record(_ error: any Error) {
-        let detail = String(describing: error)
-        self.detail = detail
-        let captured = waiters
-        waiters.removeAll()
-        for (_, waiter) in captured {
-            waiter.continuation.resume(
-                throwing: StagingBarrierError.failed(phase: waiter.phase, detail: detail))
-        }
-    }
-
-    func recordSuccess() {
-        finishedSuccessfully = true
-        let captured = waiters
-        waiters.removeAll()
-        for (_, waiter) in captured {
-            waiter.continuation.resume(
-                throwing: StagingBarrierError.finishedEarly(phase: waiter.phase))
-        }
-    }
-
-    func wait(phase: String) async throws {
-        if let detail {
-            throw StagingBarrierError.failed(phase: phase, detail: detail)
-        }
-        if finishedSuccessfully {
-            throw StagingBarrierError.finishedEarly(phase: phase)
-        }
-        let id = UUID()
-        try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation {
-                (continuation: CheckedContinuation<Void, any Error>) in
-                if let detail {
-                    continuation.resume(
-                        throwing: StagingBarrierError.failed(phase: phase, detail: detail))
-                } else if finishedSuccessfully {
-                    continuation.resume(
-                        throwing: StagingBarrierError.finishedEarly(phase: phase))
-                } else {
-                    waiters[id] = (phase, continuation)
-                }
-            }
-        } onCancel: {
-            Task { await self.cancelWaiter(id) }
-        }
-    }
-
-    private func cancelWaiter(_ id: UUID) {
-        guard let waiter = waiters.removeValue(forKey: id) else { return }
-        waiter.continuation.resume(throwing: CancellationError())
     }
 }
 

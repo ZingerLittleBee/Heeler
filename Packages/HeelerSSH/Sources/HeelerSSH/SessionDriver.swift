@@ -1501,7 +1501,7 @@ actor SessionDriver {
                     progress = (
                         written,
                         sessionWaitPlan(session),
-                        written == Int(LIBSSH2_ERROR_EAGAIN) && transportSendOwner == owner)
+                        written == Int(LIBSSH2_ERROR_EAGAIN))
                     releaseOperation()
                 } catch {
                     let normalized = normalize(error)
