@@ -142,6 +142,40 @@ awk '
     END { exit ok ? 0 : 1 }
 ' "$gate_script" \
     || die "package lane does not overlap simulator boot with build-for-testing"
+# Simulator claim/boot must precede fixture keygen so boot overlaps setup, not
+# only build-for-testing. A late claim puts CoreSimulator wake back on the
+# critical path in front of compilation.
+awk '
+    /^claim_port_block$/ { claimed_ports = NR }
+    /xcrun simctl boot "/ { boot = NR }
+    /host_ed25519"/ && /ssh-keygen/ { keygen = NR }
+    END { exit (claimed_ports && boot && keygen \
+        && claimed_ports < boot && boot < keygen) ? 0 : 1 }
+' "$gate_script" \
+    || die "simulator boot must start before fixture keygen"
+# shellcheck disable=SC2016
+grep -qF 'clonedSourcePackagesDirPath "$source_packages_dir"' "$gate_script" \
+    || die "app lane must pin a stable clonedSourcePackagesDirPath"
+# shellcheck disable=SC2016
+grep -qF 'if [[ "$ci_lane" == "app" ]]; then' "$gate_script" \
+    || die "clonedSourcePackagesDirPath must stay app-lane only"
+awk '
+    /^run_xcodebuild\(\) \{/ { inside = 1 }
+    inside && /ci_lane" == "app"/ { app_gate = 1 }
+    inside && /clonedSourcePackagesDirPath/ { flag = 1 }
+    inside && /^}$/ { exit (app_gate && flag) ? 0 : 1 }
+    END { exit (app_gate && flag) ? 0 : 1 }
+' "$gate_script" \
+    || die "clonedSourcePackagesDirPath must be gated inside run_xcodebuild"
+grep -qF 'Cache SwiftPM checkouts' "$repo_root/.github/workflows/ci.yml" \
+    || die "workflow must cache SwiftPM checkouts for the app job"
+grep -qF '.ci/source-packages' "$repo_root/.github/workflows/ci.yml" \
+    || die "workflow cache must include .ci/source-packages"
+if grep -qE '^[[:space:]]+xcrun simctl list runtimes' "$repo_root/.github/workflows/ci.yml"; then
+    die "workflow must not cold-start CoreSimulator via simctl list runtimes"
+fi
+grep -qF 'Show Xcode version' "$repo_root/.github/workflows/ci.yml" \
+    || die "workflow must keep a lightweight Xcode version step"
 
 # cleanup reads these ownership slots even when a case never claimed a
 # resource. The real gate initializes them before installing its trap; the

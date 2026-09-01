@@ -79,6 +79,10 @@ lock_owner_start="$(ps -o lstart= -p "$$" | sed 's/^ *//; s/ *$//')"
 fixture_dir="$(mktemp -d /tmp/heeler-ci.XXXXXX)"
 app_derived_data_path="$fixture_dir/AppDerivedData"
 package_derived_data_path="$fixture_dir/PackageDerivedData"
+# Stable SourcePackages tree for the app lane. Hosted CI restores this via
+# actions/cache so libghostty's XCFramework is not re-fetched every run.
+# Package-lane builds have no remote SwiftPM deps and leave this unused.
+source_packages_dir="${HEELER_CI_SOURCE_PACKAGES_DIR:-$repo_root/.ci/source-packages}"
 diagnostic_run_id="${GITHUB_RUN_ID:-local-$$}"
 diagnostic_attempt="${GITHUB_RUN_ATTEMPT:-1}"
 diagnostic_root="${RUNNER_TEMP:-/tmp}/heeler-ci-diagnostics-$diagnostic_run_id-$diagnostic_attempt"
@@ -142,6 +146,13 @@ run_xcodebuild() {
         shift
         set -- "$action" -disableAutomaticPackageResolution "$@"
         echo "==> $label: skipping automatic package resolution"
+    fi
+    # Keep remote checkouts outside the disposable DerivedData path so a
+    # restored CI cache survives fixture cleanup. Local path packages such as
+    # HeelerSSH are unaffected.
+    if [[ "$ci_lane" == "app" ]]; then
+        mkdir -p "$source_packages_dir"
+        set -- "$@" -clonedSourcePackagesDirPath "$source_packages_dir"
     fi
     if "$repo_root/scripts/run-with-timeout.py" \
         --timeout-seconds "$timeout_seconds" \
@@ -893,6 +904,106 @@ claim_port_block
 printf 'Claimed fixture port block %s-%s\n' \
     "$modern_port" "$((modern_port + port_block_size - 1))" >&2
 
+# Claim the simulator before fixture keygen/sshd work so boot overlaps that
+# setup as well as build-for-testing. Ports alone are not enough for two runs
+# to coexist: the fixture reaches the tests through `simctl launchctl setenv`,
+# which is per-device state. Two runs sharing one device overwrite each other's
+# HEELER_SSH_E2E_* and one of them tests the other's fixture -- silently,
+# unlike a port clash.
+#
+# Candidates come back last-first, preserving the previous choice of the last
+# matching device for a run that finds the machine idle.
+simulator_candidates=()
+while IFS= read -r candidate; do
+    [[ -n "$candidate" ]] && simulator_candidates+=("$candidate")
+done < <(xcrun simctl list devices available | awk '
+    /iPhone 17 \(/ {
+        candidate = ""
+        for (field = 1; field <= NF; field += 1) {
+            value = $field
+            gsub(/[()]/, "", value)
+            if (value ~ /^[0-9A-F-]{36}$/) {
+                candidate = value
+            }
+        }
+        if (candidate != "") {
+            list[++count] = candidate
+        }
+    }
+    END { for (index_ = count; index_ >= 1; index_ -= 1) print list[index_] }
+')
+if [[ "${#simulator_candidates[@]}" -eq 0 ]]; then
+    echo "No available iPhone 17 Simulator was found" >&2
+    exit 1
+fi
+
+# Reports the live pid holding this device, nothing if it is free.
+simulator_held_by() {
+    local udid=$1
+    local owner
+
+    owner=$(cat "$lock_root/device-$udid/pid" 2>/dev/null)
+    if [[ -n "$owner" ]] && kill -0 "$owner" 2>/dev/null; then
+        printf '%s' "$owner"
+        return 0
+    fi
+    return 1
+}
+
+# The device uses the same token-checked resource claim as a port block. A
+# separate device claim is necessary because its launchctl environment is
+# shared even when the fixture ports are not.
+claim_simulator() {
+    local udid=$1
+    local lock="$lock_root/device-$udid"
+
+    if claim_resource_lock "$lock" "simulator $udid"; then
+        device_lock_dir="$lock"
+        return 0
+    fi
+    return 1
+}
+
+requested_simulator_udid="${HEELER_CI_SIMULATOR_UDID:-}"
+simulator_udid=""
+if [[ -n "$requested_simulator_udid" ]]; then
+    if claim_simulator "$requested_simulator_udid"; then
+        simulator_udid="$requested_simulator_udid"
+    else
+        printf 'Requested simulator %s is claimed by live run pid %s.\n' \
+            "$requested_simulator_udid" \
+            "$(simulator_held_by "$requested_simulator_udid" || printf 'unknown')" >&2
+        echo "Choose a different HEELER_CI_SIMULATOR_UDID or wait for that run." >&2
+        exit 1
+    fi
+else
+    for candidate in "${simulator_candidates[@]}"; do
+        if claim_simulator "$candidate"; then
+            simulator_udid="$candidate"
+            break
+        fi
+    done
+fi
+if [[ -z "$simulator_udid" ]]; then
+    echo "Every available iPhone 17 Simulator is claimed by a live run." >&2
+    for candidate in "${simulator_candidates[@]}"; do
+        printf '  %s: held by pid %s\n' \
+            "$candidate" "$(simulator_held_by "$candidate")" >&2
+    done
+    echo >&2
+    echo "A run needs a device of its own: the fixture is delivered through" >&2
+    echo "per-device launchctl environment, which two runs would overwrite." >&2
+    echo "Create another iPhone 17 with 'xcrun simctl create', or pin one" >&2
+    echo "explicitly with HEELER_CI_SIMULATOR_UDID=<udid>." >&2
+    exit 1
+fi
+printf 'Claimed simulator %s\n' "$simulator_udid" >&2
+simulator_destination="platform=iOS Simulator,id=$simulator_udid"
+# Kick the boot off now and wait for it only after build-for-testing below:
+# compilation needs the destination to exist, not to be booted, so boot
+# happens under fixture provisioning and build instead of in front of them.
+xcrun simctl boot "$simulator_udid" >/dev/null 2>&1 || true
+
 sftp_server=""
 for candidate in /usr/libexec/sftp-server /usr/lib/openssh/sftp-server; do
     if [[ -x "$candidate" ]]; then
@@ -1430,104 +1541,6 @@ if [[ "$ci_lane" == "app" ]]; then
     pairing_fixture_configuration_base64=$(printf \
         '%s' "$pairing_fixture_configuration" | base64)
 fi
-# A disjoint port block is necessary for two runs to coexist but not
-# sufficient: the fixture reaches the tests through `simctl launchctl setenv`,
-# which is per-device state. Two runs sharing one device overwrite each other's
-# HEELER_SSH_E2E_* and one of them tests the other's fixture -- silently, unlike
-# a port clash. So the device is claimed alongside the block.
-#
-# Candidates come back last-first, preserving the previous choice of the last
-# matching device for a run that finds the machine idle.
-simulator_candidates=()
-while IFS= read -r candidate; do
-    [[ -n "$candidate" ]] && simulator_candidates+=("$candidate")
-done < <(xcrun simctl list devices available | awk '
-    /iPhone 17 \(/ {
-        candidate = ""
-        for (field = 1; field <= NF; field += 1) {
-            value = $field
-            gsub(/[()]/, "", value)
-            if (value ~ /^[0-9A-F-]{36}$/) {
-                candidate = value
-            }
-        }
-        if (candidate != "") {
-            list[++count] = candidate
-        }
-    }
-    END { for (index_ = count; index_ >= 1; index_ -= 1) print list[index_] }
-')
-if [[ "${#simulator_candidates[@]}" -eq 0 ]]; then
-    echo "No available iPhone 17 Simulator was found" >&2
-    exit 1
-fi
-
-# Reports the live pid holding this device, nothing if it is free.
-simulator_held_by() {
-    local udid=$1
-    local owner
-
-    owner=$(cat "$lock_root/device-$udid/pid" 2>/dev/null)
-    if [[ -n "$owner" ]] && kill -0 "$owner" 2>/dev/null; then
-        printf '%s' "$owner"
-        return 0
-    fi
-    return 1
-}
-
-# The device uses the same token-checked resource claim as a port block. A
-# separate device claim is necessary because its launchctl environment is
-# shared even when the fixture ports are not.
-claim_simulator() {
-    local udid=$1
-    local lock="$lock_root/device-$udid"
-
-    if claim_resource_lock "$lock" "simulator $udid"; then
-        device_lock_dir="$lock"
-        return 0
-    fi
-    return 1
-}
-
-requested_simulator_udid="${HEELER_CI_SIMULATOR_UDID:-}"
-simulator_udid=""
-if [[ -n "$requested_simulator_udid" ]]; then
-    if claim_simulator "$requested_simulator_udid"; then
-        simulator_udid="$requested_simulator_udid"
-    else
-        printf 'Requested simulator %s is claimed by live run pid %s.\n' \
-            "$requested_simulator_udid" \
-            "$(simulator_held_by "$requested_simulator_udid" || printf 'unknown')" >&2
-        echo "Choose a different HEELER_CI_SIMULATOR_UDID or wait for that run." >&2
-        exit 1
-    fi
-else
-    for candidate in "${simulator_candidates[@]}"; do
-        if claim_simulator "$candidate"; then
-            simulator_udid="$candidate"
-            break
-        fi
-    done
-fi
-if [[ -z "$simulator_udid" ]]; then
-    echo "Every available iPhone 17 Simulator is claimed by a live run." >&2
-    for candidate in "${simulator_candidates[@]}"; do
-        printf '  %s: held by pid %s\n' \
-            "$candidate" "$(simulator_held_by "$candidate")" >&2
-    done
-    echo >&2
-    echo "A run needs a device of its own: the fixture is delivered through" >&2
-    echo "per-device launchctl environment, which two runs would overwrite." >&2
-    echo "Create another iPhone 17 with 'xcrun simctl create', or pin one" >&2
-    echo "explicitly with HEELER_CI_SIMULATOR_UDID=<udid>." >&2
-    exit 1
-fi
-printf 'Claimed simulator %s\n' "$simulator_udid" >&2
-simulator_destination="platform=iOS Simulator,id=$simulator_udid"
-# Kick the boot off now and wait for it only after build-for-testing below:
-# compilation needs the destination to exist, not to be booted, so the minute
-# of boot happens under the minutes of build instead of in front of them.
-xcrun simctl boot "$simulator_udid" >/dev/null 2>&1 || true
 
 # Every lane whose executed count and skip budget this script pins exactly. The
 # full lane's provenance assertion draws its evidence from these, so a lane that
