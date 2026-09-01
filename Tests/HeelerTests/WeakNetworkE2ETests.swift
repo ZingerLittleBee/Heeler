@@ -105,33 +105,99 @@ struct WeakNetworkE2ETests {
     func cancellationUnderBackpressureKeepsTheConnectionUsable() async throws {
         let fixture = try #require(WeakNetworkFixture.current)
         try await fixture.control.reset()
-        try await fixture.control.apply(.severe)
+        // Connection and remote staging-directory setup stay on the degraded
+        // profile. Applying `.severe` before that races the setup exec against
+        // the product's request deadline, and a loaded runner fails with
+        // `.remoteTemporaryDirectoryFailed` before cancellation-under-backpressure
+        // is exercised.
+        try await fixture.control.apply(.degraded)
 
         let prepared = try makePreparedImage(byteCount: 1_024 * 1_024)
         defer { try? FileManager.default.removeItem(at: prepared.image.fileURL) }
         let transport = try await HeelerSSHTransport.connect(settings: fixture.settings())
-        let progressed = ProgressGate()
+
+        let setupGate = CancellablePhaseGate()
+        let payloadReadyGate = CancellablePhaseGate()
+        let backpressureGate = CancellablePhaseGate()
+        let failures = StagingFailureSignal()
+
+        await transport.holdStagingPhaseForTesting(.remoteParentReady) {
+            await setupGate.enterAndHold()
+        }
+        await transport.holdStagingPhaseForTesting(.payloadWriteReady) {
+            await payloadReadyGate.enterAndHold()
+        }
+
         let staging = Task {
-            try await transport.stageImage(prepared.image) { value in
-                if value.transferredBytes > 0 { await progressed.record() }
+            do {
+                let staged = try await transport.stageImage(prepared.image) { _ in }
+                await failures.recordSuccess()
+                await setupGate.release()
+                await payloadReadyGate.release()
+                await backpressureGate.release()
+                return staged
+            } catch {
+                await failures.record(error)
+                await setupGate.release()
+                await payloadReadyGate.release()
+                await backpressureGate.release()
+                throw error
             }
         }
-        // Cancel while the upload is genuinely blocked on link backpressure,
-        // not before it has written anything.
-        try await waitUntil("the upload should report a transferred chunk") {
-            await progressed.count > 0
+
+        do {
+            try await StagingPhaseWait.awaitEntry(
+                "remote staging setup",
+                gate: setupGate,
+                failures: failures)
+
+            do {
+                try await fixture.control.apply(.severe)
+            } catch {
+                await finishStaging(
+                    staging,
+                    gates: setupGate, payloadReadyGate, backpressureGate)
+                throw StagingBarrierError.failed(
+                    phase: "arming severe profile",
+                    detail: String(describing: error))
+            }
+            await setupGate.release()
+
+            try await StagingPhaseWait.awaitEntry(
+                "severe-profile payload write",
+                gate: payloadReadyGate,
+                failures: failures)
+
+            // Arm the park observer only once payload writes are about to
+            // start, so an earlier openSFTP/mkdir park cannot satisfy it.
+            await transport.holdNextOutboundWriteParkForTesting {
+                await backpressureGate.enterAndHold()
+            }
+            await payloadReadyGate.release()
+
+            try await StagingPhaseWait.awaitEntry(
+                "severe-profile payload backpressure",
+                gate: backpressureGate,
+                failures: failures)
+
+            // Cancellation itself is honoured promptly even while the write is
+            // blocked on the link, and "promptly" is asserted rather than asserted
+            // in prose: the compensation path spends at most its two two-second
+            // SFTP closes, so anything approaching ten seconds means the cancel is
+            // waiting on the link instead of abandoning it.
+            let cancelledAt = ContinuousClock.now
+            staging.cancel()
+            await backpressureGate.release()
+            await #expect(throws: AttachmentStagingError.cancelled) {
+                _ = try await staging.value
+            }
+            #expect(cancelledAt.duration(to: .now) < .seconds(10))
+        } catch {
+            await finishStaging(
+                staging,
+                gates: setupGate, payloadReadyGate, backpressureGate)
+            throw error
         }
-        // Cancellation itself is honoured promptly even while the write is
-        // blocked on the link, and "promptly" is asserted rather than asserted
-        // in prose: the compensation path spends at most its two two-second
-        // SFTP closes, so anything approaching ten seconds means the cancel is
-        // waiting on the link instead of abandoning it.
-        let cancelledAt = ContinuousClock.now
-        staging.cancel()
-        await #expect(throws: AttachmentStagingError.cancelled) {
-            _ = try await staging.value
-        }
-        #expect(cancelledAt.duration(to: .now) < .seconds(10))
 
         try await fixture.control.apply(.degraded)
         // The reuse property is what a cancelled upload owes the rest of the
@@ -363,6 +429,17 @@ struct WeakNetworkE2ETests {
             bytes)
     }
 
+    private func finishStaging<Success: Sendable>(
+        _ staging: Task<Success, any Error>,
+        gates: CancellablePhaseGate...
+    ) async {
+        for gate in gates {
+            await gate.release()
+        }
+        staging.cancel()
+        _ = await staging.result
+    }
+
     private func waitUntil(
         _ comment: Comment,
         timeout: Duration = .seconds(15),
@@ -374,12 +451,6 @@ struct WeakNetworkE2ETests {
             try await Task.sleep(for: .milliseconds(20))
         }
         #expect(await condition(), comment)
-    }
-
-    private actor ProgressGate {
-        private(set) var count = 0
-
-        func record() { count += 1 }
     }
 
     private actor StatusRecorder {
