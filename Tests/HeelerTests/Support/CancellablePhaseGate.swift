@@ -44,10 +44,14 @@ actor CancellablePhaseGate {
     private(set) var entryWaiterCount = 0
     /// Stored registration observers awaiting an active-waiter threshold.
     private(set) var registrationObserverCount = 0
+    /// Stored `waitForRegistrationObserver` barriers awaiting an observer threshold.
+    private(set) var registrationObserverBarrierCount = 0
     private var registrationWaiters: [UUID: (count: Int, continuation: CheckedContinuation<Void, any Error>)] =
         [:]
     private var registrationObserverBarriers:
-        [UUID: (count: Int, continuation: CheckedContinuation<Void, Never>)] = [:]
+        [UUID: (count: Int, continuation: CheckedContinuation<Void, any Error>)] = [:]
+    private var registrationObserverBarrierWatchers:
+        [UUID: (count: Int, continuation: CheckedContinuation<Void, any Error>)] = [:]
 
     private var isRegistrationTerminal: Bool {
         hasEntered || isReleased
@@ -79,15 +83,49 @@ actor CancellablePhaseGate {
     }
 
     /// Suspends until at least `count` registration observers have stored continuations.
-    func waitForRegistrationObserver(count: Int = 1) async {
+    func waitForRegistrationObserver(count: Int = 1) async throws {
         if registrationObserverCount >= count { return }
+        if isRegistrationTerminal {
+            throw PhaseGateError.registrationThresholdUnreachable
+        }
         let id = UUID()
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            if self.registrationObserverCount >= count {
-                continuation.resume()
-            } else {
-                self.registrationObserverBarriers[id] = (count, continuation)
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, any Error>) in
+                if self.registrationObserverCount >= count {
+                    continuation.resume()
+                } else if self.hasEntered || self.isReleased {
+                    continuation.resume(throwing: PhaseGateError.registrationThresholdUnreachable)
+                } else {
+                    self.registrationObserverBarriers[id] = (count, continuation)
+                    self.noteRegistrationObserverBarriersChanged()
+                }
             }
+        } onCancel: {
+            Task { await self.cancelRegistrationObserverBarrier(id) }
+        }
+    }
+
+    /// Suspends until at least `count` registration-observer barriers have stored continuations.
+    func waitForRegistrationObserverBarrier(count: Int = 1) async throws {
+        if registrationObserverBarrierCount >= count { return }
+        if isRegistrationTerminal {
+            throw PhaseGateError.registrationThresholdUnreachable
+        }
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, any Error>) in
+                if self.registrationObserverBarrierCount >= count {
+                    continuation.resume()
+                } else if self.hasEntered || self.isReleased {
+                    continuation.resume(throwing: PhaseGateError.registrationThresholdUnreachable)
+                } else {
+                    self.registrationObserverBarrierWatchers[id] = (count, continuation)
+                }
+            }
+        } onCancel: {
+            Task { await self.cancelRegistrationObserverBarrierWatcher(id) }
         }
     }
 
@@ -188,18 +226,64 @@ actor CancellablePhaseGate {
         for (_, waiter) in pending {
             waiter.continuation.resume(throwing: PhaseGateError.registrationThresholdUnreachable)
         }
+        failUnreachableRegistrationObserverBarriers()
     }
 
     private func noteRegistrationObserversChanged() {
         registrationObserverCount = registrationWaiters.count
+        resumeRegistrationObserverBarriersIfReady()
+    }
+
+    private func resumeRegistrationObserverBarriersIfReady() {
         let ready = registrationObserverBarriers.filter {
             registrationObserverCount >= $0.value.count
         }
         for (id, _) in ready {
             registrationObserverBarriers.removeValue(forKey: id)
         }
+        noteRegistrationObserverBarriersChanged()
         for (_, barrier) in ready {
             barrier.continuation.resume()
+        }
+    }
+
+    private func failUnreachableRegistrationObserverBarriers() {
+        resumeRegistrationObserverBarriersIfReady()
+        let pending = registrationObserverBarriers
+        registrationObserverBarriers.removeAll()
+        noteRegistrationObserverBarriersChanged()
+        for (_, barrier) in pending {
+            barrier.continuation.resume(throwing: PhaseGateError.registrationThresholdUnreachable)
+        }
+        failUnreachableRegistrationObserverBarrierWatchers()
+    }
+
+    private func noteRegistrationObserverBarriersChanged() {
+        registrationObserverBarrierCount = registrationObserverBarriers.count
+        let ready = registrationObserverBarrierWatchers.filter {
+            registrationObserverBarrierCount >= $0.value.count
+        }
+        for (id, _) in ready {
+            registrationObserverBarrierWatchers.removeValue(forKey: id)
+        }
+        for (_, watcher) in ready {
+            watcher.continuation.resume()
+        }
+    }
+
+    private func failUnreachableRegistrationObserverBarrierWatchers() {
+        let ready = registrationObserverBarrierWatchers.filter {
+            registrationObserverBarrierCount >= $0.value.count
+        }
+        let unreachable = registrationObserverBarrierWatchers.filter {
+            registrationObserverBarrierCount < $0.value.count
+        }
+        registrationObserverBarrierWatchers.removeAll()
+        for (_, watcher) in ready {
+            watcher.continuation.resume()
+        }
+        for (_, watcher) in unreachable {
+            watcher.continuation.resume(throwing: PhaseGateError.registrationThresholdUnreachable)
         }
     }
 
@@ -207,6 +291,19 @@ actor CancellablePhaseGate {
         guard let waiter = registrationWaiters.removeValue(forKey: id) else { return }
         noteRegistrationObserversChanged()
         waiter.continuation.resume(throwing: CancellationError())
+    }
+
+    private func cancelRegistrationObserverBarrier(_ id: UUID) {
+        guard let barrier = registrationObserverBarriers.removeValue(forKey: id) else { return }
+        noteRegistrationObserverBarriersChanged()
+        barrier.continuation.resume(throwing: CancellationError())
+    }
+
+    private func cancelRegistrationObserverBarrierWatcher(_ id: UUID) {
+        guard let watcher = registrationObserverBarrierWatchers.removeValue(forKey: id) else {
+            return
+        }
+        watcher.continuation.resume(throwing: CancellationError())
     }
 
     private func resumeEntryWaiter(_ id: UUID, throwing error: any Error) {
@@ -239,10 +336,14 @@ actor StagingFailureSignal {
     private(set) var waiterCount = 0
     /// Stored registration observers awaiting an active-waiter threshold.
     private(set) var registrationObserverCount = 0
+    /// Stored `waitForRegistrationObserver` barriers awaiting an observer threshold.
+    private(set) var registrationObserverBarrierCount = 0
     private var registrationWaiters: [UUID: (count: Int, continuation: CheckedContinuation<Void, any Error>)] =
         [:]
     private var registrationObserverBarriers:
-        [UUID: (count: Int, continuation: CheckedContinuation<Void, Never>)] = [:]
+        [UUID: (count: Int, continuation: CheckedContinuation<Void, any Error>)] = [:]
+    private var registrationObserverBarrierWatchers:
+        [UUID: (count: Int, continuation: CheckedContinuation<Void, any Error>)] = [:]
 
     private var isRegistrationTerminal: Bool {
         detail != nil || finishedSuccessfully
@@ -274,15 +375,51 @@ actor StagingFailureSignal {
     }
 
     /// Suspends until at least `count` registration observers have stored continuations.
-    func waitForRegistrationObserver(count: Int = 1) async {
+    func waitForRegistrationObserver(count: Int = 1) async throws {
         if registrationObserverCount >= count { return }
+        if isRegistrationTerminal {
+            throw StagingFailureSignalError.registrationThresholdUnreachable
+        }
         let id = UUID()
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            if self.registrationObserverCount >= count {
-                continuation.resume()
-            } else {
-                self.registrationObserverBarriers[id] = (count, continuation)
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, any Error>) in
+                if self.registrationObserverCount >= count {
+                    continuation.resume()
+                } else if self.detail != nil || self.finishedSuccessfully {
+                    continuation.resume(
+                        throwing: StagingFailureSignalError.registrationThresholdUnreachable)
+                } else {
+                    self.registrationObserverBarriers[id] = (count, continuation)
+                    self.noteRegistrationObserverBarriersChanged()
+                }
             }
+        } onCancel: {
+            Task { await self.cancelRegistrationObserverBarrier(id) }
+        }
+    }
+
+    /// Suspends until at least `count` registration-observer barriers have stored continuations.
+    func waitForRegistrationObserverBarrier(count: Int = 1) async throws {
+        if registrationObserverBarrierCount >= count { return }
+        if isRegistrationTerminal {
+            throw StagingFailureSignalError.registrationThresholdUnreachable
+        }
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, any Error>) in
+                if self.registrationObserverBarrierCount >= count {
+                    continuation.resume()
+                } else if self.detail != nil || self.finishedSuccessfully {
+                    continuation.resume(
+                        throwing: StagingFailureSignalError.registrationThresholdUnreachable)
+                } else {
+                    self.registrationObserverBarrierWatchers[id] = (count, continuation)
+                }
+            }
+        } onCancel: {
+            Task { await self.cancelRegistrationObserverBarrierWatcher(id) }
         }
     }
 
@@ -366,18 +503,66 @@ actor StagingFailureSignal {
             waiter.continuation.resume(
                 throwing: StagingFailureSignalError.registrationThresholdUnreachable)
         }
+        failUnreachableRegistrationObserverBarriers()
     }
 
     private func noteRegistrationObserversChanged() {
         registrationObserverCount = registrationWaiters.count
+        resumeRegistrationObserverBarriersIfReady()
+    }
+
+    private func resumeRegistrationObserverBarriersIfReady() {
         let ready = registrationObserverBarriers.filter {
             registrationObserverCount >= $0.value.count
         }
         for (id, _) in ready {
             registrationObserverBarriers.removeValue(forKey: id)
         }
+        noteRegistrationObserverBarriersChanged()
         for (_, barrier) in ready {
             barrier.continuation.resume()
+        }
+    }
+
+    private func failUnreachableRegistrationObserverBarriers() {
+        resumeRegistrationObserverBarriersIfReady()
+        let pending = registrationObserverBarriers
+        registrationObserverBarriers.removeAll()
+        noteRegistrationObserverBarriersChanged()
+        for (_, barrier) in pending {
+            barrier.continuation.resume(
+                throwing: StagingFailureSignalError.registrationThresholdUnreachable)
+        }
+        failUnreachableRegistrationObserverBarrierWatchers()
+    }
+
+    private func noteRegistrationObserverBarriersChanged() {
+        registrationObserverBarrierCount = registrationObserverBarriers.count
+        let ready = registrationObserverBarrierWatchers.filter {
+            registrationObserverBarrierCount >= $0.value.count
+        }
+        for (id, _) in ready {
+            registrationObserverBarrierWatchers.removeValue(forKey: id)
+        }
+        for (_, watcher) in ready {
+            watcher.continuation.resume()
+        }
+    }
+
+    private func failUnreachableRegistrationObserverBarrierWatchers() {
+        let ready = registrationObserverBarrierWatchers.filter {
+            registrationObserverBarrierCount >= $0.value.count
+        }
+        let unreachable = registrationObserverBarrierWatchers.filter {
+            registrationObserverBarrierCount < $0.value.count
+        }
+        registrationObserverBarrierWatchers.removeAll()
+        for (_, watcher) in ready {
+            watcher.continuation.resume()
+        }
+        for (_, watcher) in unreachable {
+            watcher.continuation.resume(
+                throwing: StagingFailureSignalError.registrationThresholdUnreachable)
         }
     }
 
@@ -385,6 +570,19 @@ actor StagingFailureSignal {
         guard let waiter = registrationWaiters.removeValue(forKey: id) else { return }
         noteRegistrationObserversChanged()
         waiter.continuation.resume(throwing: CancellationError())
+    }
+
+    private func cancelRegistrationObserverBarrier(_ id: UUID) {
+        guard let barrier = registrationObserverBarriers.removeValue(forKey: id) else { return }
+        noteRegistrationObserverBarriersChanged()
+        barrier.continuation.resume(throwing: CancellationError())
+    }
+
+    private func cancelRegistrationObserverBarrierWatcher(_ id: UUID) {
+        guard let watcher = registrationObserverBarrierWatchers.removeValue(forKey: id) else {
+            return
+        }
+        watcher.continuation.resume(throwing: CancellationError())
     }
 
     private func cancelWaiter(_ id: UUID) {

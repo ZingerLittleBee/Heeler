@@ -158,7 +158,7 @@ struct StagingPhaseBarrierTests {
         let observer = Task {
             try await gate.waitForEntryWaiterRegistration(count: 1)
         }
-        await gate.waitForRegistrationObserver(count: 1)
+        try await gate.waitForRegistrationObserver(count: 1)
         #expect(await gate.registrationObserverCount == 1)
 
         observer.cancel()
@@ -179,7 +179,7 @@ struct StagingPhaseBarrierTests {
         let observer = Task {
             try await gate.waitForEntryWaiterRegistration(count: 2)
         }
-        await gate.waitForRegistrationObserver(count: 1)
+        try await gate.waitForRegistrationObserver(count: 1)
         #expect(await gate.registrationObserverCount == 1)
 
         await gate.release()
@@ -204,7 +204,7 @@ struct StagingPhaseBarrierTests {
         let observer = Task {
             try await gate.waitForEntryWaiterRegistration(count: 2)
         }
-        await gate.waitForRegistrationObserver(count: 1)
+        try await gate.waitForRegistrationObserver(count: 1)
         #expect(await gate.registrationObserverCount == 1)
 
         let hold = Task {
@@ -270,7 +270,7 @@ struct StagingPhaseBarrierTests {
         let observer = Task {
             try await failures.waitForWaiterRegistration(count: 1)
         }
-        await failures.waitForRegistrationObserver(count: 1)
+        try await failures.waitForRegistrationObserver(count: 1)
         #expect(await failures.registrationObserverCount == 1)
 
         observer.cancel()
@@ -291,7 +291,7 @@ struct StagingPhaseBarrierTests {
         let observer = Task {
             try await failures.waitForWaiterRegistration(count: 2)
         }
-        await failures.waitForRegistrationObserver(count: 1)
+        try await failures.waitForRegistrationObserver(count: 1)
         #expect(await failures.registrationObserverCount == 1)
 
         await failures.record(AttachmentStagingError.remoteTemporaryDirectoryFailed)
@@ -319,7 +319,7 @@ struct StagingPhaseBarrierTests {
         let observer = Task {
             try await failures.waitForWaiterRegistration(count: 2)
         }
-        await failures.waitForRegistrationObserver(count: 1)
+        try await failures.waitForRegistrationObserver(count: 1)
         #expect(await failures.registrationObserverCount == 1)
 
         await failures.recordSuccess()
@@ -332,6 +332,128 @@ struct StagingPhaseBarrierTests {
             phase: "severe-profile payload backpressure")
         ) {
             try await waiter.value
+        }
+    }
+
+    @Test("registration observer barrier cancellation resumes once")
+    func registrationObserverBarrierCancellationResumesOnce() async throws {
+        let gate = CancellablePhaseGate()
+        let barrier = Task {
+            try await gate.waitForRegistrationObserver(count: 1)
+        }
+        try await gate.waitForRegistrationObserverBarrier(count: 1)
+        #expect(await gate.registrationObserverBarrierCount == 1)
+
+        barrier.cancel()
+        await #expect(throws: CancellationError.self) {
+            try await barrier.value
+        }
+        #expect(await gate.registrationObserverBarrierCount == 0)
+    }
+
+    @Test("registration observer barrier fails when released before threshold")
+    func registrationObserverBarrierFailsBeforeThresholdOnRelease() async throws {
+        let gate = CancellablePhaseGate()
+        let barrier = Task {
+            try await gate.waitForRegistrationObserver(count: 1)
+        }
+        try await gate.waitForRegistrationObserverBarrier(count: 1)
+        #expect(await gate.registrationObserverBarrierCount == 1)
+
+        await gate.release()
+
+        await #expect(throws: PhaseGateError.registrationThresholdUnreachable) {
+            try await barrier.value
+        }
+        #expect(await gate.registrationObserverBarrierCount == 0)
+    }
+
+    @Test("registration observer barrier fails when entered before threshold")
+    func registrationObserverBarrierFailsBeforeThresholdOnEnter() async throws {
+        let gate = CancellablePhaseGate()
+        let barrier = Task {
+            try await gate.waitForRegistrationObserver(count: 1)
+        }
+        try await gate.waitForRegistrationObserverBarrier(count: 1)
+        #expect(await gate.registrationObserverBarrierCount == 1)
+
+        let hold = Task {
+            await gate.enterAndHold()
+        }
+
+        await #expect(throws: PhaseGateError.registrationThresholdUnreachable) {
+            try await barrier.value
+        }
+        #expect(await gate.registrationObserverBarrierCount == 0)
+        await gate.release()
+        await hold.value
+    }
+
+    @Test("registration observer barrier fails when invoked after terminal")
+    func registrationObserverBarrierFailsAfterTerminal() async throws {
+        let gate = CancellablePhaseGate()
+        await gate.release()
+        await #expect(throws: PhaseGateError.registrationThresholdUnreachable) {
+            try await gate.waitForRegistrationObserver(count: 1)
+        }
+    }
+
+    @Test("failure signal registration observer barrier cancellation resumes once")
+    func failureSignalRegistrationObserverBarrierCancellationResumesOnce() async throws {
+        let failures = StagingFailureSignal()
+        let barrier = Task {
+            try await failures.waitForRegistrationObserver(count: 1)
+        }
+        try await failures.waitForRegistrationObserverBarrier(count: 1)
+        #expect(await failures.registrationObserverBarrierCount == 1)
+
+        barrier.cancel()
+        await #expect(throws: CancellationError.self) {
+            try await barrier.value
+        }
+        #expect(await failures.registrationObserverBarrierCount == 0)
+    }
+
+    @Test("failure signal registration observer barrier fails when recorded before threshold")
+    func failureSignalRegistrationObserverBarrierFailsBeforeThresholdOnRecord() async throws {
+        let failures = StagingFailureSignal()
+        let barrier = Task {
+            try await failures.waitForRegistrationObserver(count: 1)
+        }
+        try await failures.waitForRegistrationObserverBarrier(count: 1)
+        #expect(await failures.registrationObserverBarrierCount == 1)
+
+        await failures.record(AttachmentStagingError.remoteTemporaryDirectoryFailed)
+
+        await #expect(throws: StagingFailureSignalError.registrationThresholdUnreachable) {
+            try await barrier.value
+        }
+        #expect(await failures.registrationObserverBarrierCount == 0)
+    }
+
+    @Test("failure signal registration observer barrier fails when success arrives before threshold")
+    func failureSignalRegistrationObserverBarrierFailsBeforeThresholdOnSuccess() async throws {
+        let failures = StagingFailureSignal()
+        let barrier = Task {
+            try await failures.waitForRegistrationObserver(count: 1)
+        }
+        try await failures.waitForRegistrationObserverBarrier(count: 1)
+        #expect(await failures.registrationObserverBarrierCount == 1)
+
+        await failures.recordSuccess()
+
+        await #expect(throws: StagingFailureSignalError.registrationThresholdUnreachable) {
+            try await barrier.value
+        }
+        #expect(await failures.registrationObserverBarrierCount == 0)
+    }
+
+    @Test("failure signal registration observer barrier fails when invoked after terminal")
+    func failureSignalRegistrationObserverBarrierFailsAfterTerminal() async throws {
+        let failures = StagingFailureSignal()
+        await failures.recordSuccess()
+        await #expect(throws: StagingFailureSignalError.registrationThresholdUnreachable) {
+            try await failures.waitForRegistrationObserver(count: 1)
         }
     }
 }
