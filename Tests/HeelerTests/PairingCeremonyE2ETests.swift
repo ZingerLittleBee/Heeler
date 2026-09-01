@@ -286,7 +286,7 @@ struct PairingCeremonyE2ETests {
                 hostKeyFingerprint: pinned,
                 bootstrap: .init(seed: staged.seed, expiresAt: staged.expiresAt))
             let connector = SSHPairingConnector(
-                perAddressTimeout: .seconds(2),
+                perAddressTimeout: Self.perAddressTimeout,
                 enrollTimeout: .milliseconds(150),
                 deviceKeyComment: "heeler-e2e")
 
@@ -412,8 +412,15 @@ struct PairingCeremonyE2ETests {
         }
     }
 
+    /// TCP/handshake budget for ceremony e2e. Matches production
+    /// `SSHPairingConnector.perAddressTimeout` (4s) and stays within the
+    /// 5s host-key-discovery connect budget below. The prior 2s harness
+    /// budget was tighter than production and surfaced raw
+    /// `SSHError.timedOut` on slow hosted runners before Enrollment.
+    private static let perAddressTimeout: Duration = .seconds(4)
+
     private static let connector = SSHPairingConnector(
-        perAddressTimeout: .seconds(2), deviceKeyComment: "heeler-e2e")
+        perAddressTimeout: perAddressTimeout, deviceKeyComment: "heeler-e2e")
 
     /// The fingerprint the localhost sshd actually presents, discovered the
     /// same way the plugin discovers it at code-generation time. Pinning it
