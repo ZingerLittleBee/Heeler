@@ -3,6 +3,12 @@ import CHeelerSSHSupport
 import Darwin
 import Foundation
 
+#if DEBUG
+enum HandshakeFailureObservation {
+    @TaskLocal static var observer: (@Sendable (Int32) -> Void)? = nil
+}
+#endif
+
 actor SessionDriver {
     enum BridgeWriteResult: Equatable {
         case blocked
@@ -2084,6 +2090,9 @@ actor SessionDriver {
             libssh2_session_handshake(createdSession, descriptor)
         }
         guard handshakeResult == 0 else {
+#if DEBUG
+            HandshakeFailureObservation.observer?(handshakeResult)
+#endif
             throw mapSessionError(handshakeResult)
         }
         return try extractHostKey(createdSession)
@@ -4122,12 +4131,16 @@ actor SessionDriver {
     private func mapSessionError(_ code: Int32) -> SSHError {
         switch code {
         case LIBSSH2_ERROR_KEX_FAILURE,
-            LIBSSH2_ERROR_KEY_EXCHANGE_FAILURE,
             LIBSSH2_ERROR_METHOD_NONE,
             LIBSSH2_ERROR_METHOD_NOT_SUPPORTED,
-            LIBSSH2_ERROR_ALGO_UNSUPPORTED,
-            LIBSSH2_ERROR_HOSTKEY_INIT:
+            LIBSSH2_ERROR_ALGO_UNSUPPORTED:
             return .algorithmNegotiationFailed
+        // libssh2 emits KEY_EXCHANGE_FAILURE only after it has selected the
+        // algorithms and entered the chosen method's exchange_keys callback.
+        // That callback's transport, protocol, or crypto error is wrapped by
+        // this code, so it is not evidence that the peers had no common method.
+        case LIBSSH2_ERROR_KEY_EXCHANGE_FAILURE:
+            return .connectionFailed
         case LIBSSH2_ERROR_AUTHENTICATION_FAILED,
             LIBSSH2_ERROR_PASSWORD_EXPIRED:
             return .authenticationFailed
