@@ -9,6 +9,8 @@ DerivedData/
 # SPM
 .build/
 .swiftpm/
+# Hosted CI restores SwiftPM checkouts here between runs.
+.ci/
 
 # Node (pairing plugin)
 plugin/node_modules/

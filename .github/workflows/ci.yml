@@ -35,6 +35,8 @@ name: CI
 #   in a comment or assert an in-app URL string, and the `SKILL.md` paths belong
 #   to remote fixtures. `CHANGELOG.md` is included too — scripts/publish.sh
 #   consumes it, but that runs from `make publish`, never from CI.
+# - `output/**` is App Store screenshot export material. No job here reads it;
+#   the files are committed for store listings and local composition only.
 #
 # paths-ignore only skips a run when *every* changed path matches, so a commit
 # touching prose alongside Swift still runs the full suite. A change to this
@@ -47,6 +49,7 @@ on:
       - .github/workflows/landing.yml
       - '**.md'
       - docs/**
+      - output/**
   push:
     branches: [main]
     paths-ignore:
@@ -54,6 +57,7 @@ on:
       - .github/workflows/landing.yml
       - '**.md'
       - docs/**
+      - output/**
 
 # One in-flight run per ref; a new push cancels the previous run.
 concurrency:
@@ -112,6 +116,20 @@ jobs:
         with:
           node-version: 24
 
+      # libghostty-spm's prebuilt XCFramework dominates cold build-for-testing
+      # wall-clock (~3–4 minutes of "Checking out" on run 33488345559). Cache
+      # the cloned SourcePackages tree and the SwiftPM download cache keyed on
+      # Package.resolved so a pin change still misses and re-fetches.
+      - name: Cache SwiftPM checkouts
+        uses: actions/cache@v4
+        with:
+          path: |
+            .ci/source-packages
+            ~/Library/Caches/org.swift.swiftpm
+          key: spm-${{ runner.os }}-${{ hashFiles('Heeler.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: |
+            spm-${{ runner.os }}-
+
       - name: Test VPS SSH access scripts
         run: scripts/test-vps-ssh-access-scripts.sh
 
@@ -121,10 +139,12 @@ jobs:
       - name: Verify HeelerSSH native artifacts
         run: make verify-ssh-artifacts
 
-      - name: Show Xcode and simulator versions
-        run: |
-          xcodebuild -version
-          xcrun simctl list runtimes
+      # xcodebuild -version is enough to pin the image. Listing every
+      # simulator runtime cold-starts CoreSimulator on the critical path
+      # (~12–29s on hosted macOS-26); the gate's own simctl boot overlaps
+      # that work with the build instead.
+      - name: Show Xcode version
+        run: xcodebuild -version
 
       - name: Test CI watchdog
         run: scripts/test-run-with-timeout.sh
@@ -142,7 +162,7 @@ jobs:
           HEELER_CI_MANDATORY: "1"
         run: scripts/run-ci-ios-tests.sh
 
-      - name: Upload iOS timeout diagnostics
+      - name: Upload iOS CI diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -158,10 +178,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Show Xcode and simulator versions
-        run: |
-          xcodebuild -version
-          xcrun simctl list runtimes
+      # Same rationale as the app job: avoid a critical-path CoreSimulator
+      # cold-start; package-lane boot overlaps with build-for-testing.
+      - name: Show Xcode version
+        run: xcodebuild -version
 
       - name: Run package E2E
         timeout-minutes: 12
@@ -170,7 +190,7 @@ jobs:
           HEELER_CI_MANDATORY: "1"
         run: scripts/run-ci-ios-tests.sh
 
-      - name: Upload package timeout diagnostics
+      - name: Upload package CI diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:

@@ -149,7 +149,7 @@ package runner asserts only that something executed, not an exact count, so
 machines without the disposable sshd fixture can skip the E2E suite cleanly.
 
 The E2E integration package must update `scripts/run-ci-ios-tests.sh` before
-merge so its package lane expects **45** executed tests and pins these
+merge so its package lane expects **48** executed tests and pins these
 display names exactly:
 
 - `handshake negotiates post-quantum key exchange`
