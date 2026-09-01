@@ -38,6 +38,28 @@ actor CancellablePhaseGate {
     private var isReleased = false
     private var entryWaiters: [UUID: CheckedContinuation<Void, any Error>] = [:]
     private var holdWaiters: [UUID: CheckedContinuation<Void, any Error>] = [:]
+    private(set) var entryWaiterCount = 0
+    private var registrationWaiters: [UUID: (count: Int, continuation: CheckedContinuation<Void, any Error>)] =
+        [:]
+
+    /// Suspends until at least `count` entry waiters have registered. Proves an
+    /// active waiter before release/failure injection — not a scheduling hint.
+    func waitForEntryWaiterRegistration(count: Int = 1) async throws {
+        if entryWaiterCount >= count { return }
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, any Error>) in
+                if self.entryWaiterCount >= count {
+                    continuation.resume()
+                } else {
+                    self.registrationWaiters[id] = (count, continuation)
+                }
+            }
+        } onCancel: {
+            Task { await self.cancelRegistrationWaiter(id) }
+        }
+    }
 
     func enterAndHold() async {
         hasEntered = true
@@ -77,6 +99,8 @@ actor CancellablePhaseGate {
                     continuation.resume(throwing: PhaseGateError.releasedWithoutEntry)
                 } else {
                     self.entryWaiters[id] = continuation
+                    self.entryWaiterCount += 1
+                    self.resumeRegistrationWaitersIfReady()
                 }
             }
         } onCancel: {
@@ -110,6 +134,21 @@ actor CancellablePhaseGate {
         }
     }
 
+    private func resumeRegistrationWaitersIfReady() {
+        let ready = registrationWaiters.filter { entryWaiterCount >= $0.value.count }
+        for (id, _) in ready {
+            registrationWaiters.removeValue(forKey: id)
+        }
+        for (_, waiter) in ready {
+            waiter.continuation.resume()
+        }
+    }
+
+    private func cancelRegistrationWaiter(_ id: UUID) {
+        guard let waiter = registrationWaiters.removeValue(forKey: id) else { return }
+        waiter.continuation.resume(throwing: CancellationError())
+    }
+
     private func resumeEntryWaiter(_ id: UUID, throwing error: any Error) {
         guard let waiter = entryWaiters.removeValue(forKey: id) else { return }
         waiter.resume(throwing: error)
@@ -128,6 +167,27 @@ actor StagingFailureSignal {
     private var finishedSuccessfully = false
     private var waiters: [UUID: (phase: String, continuation: CheckedContinuation<Void, any Error>)] =
         [:]
+    private(set) var waiterCount = 0
+    private var registrationWaiters: [UUID: (count: Int, continuation: CheckedContinuation<Void, any Error>)] =
+        [:]
+
+    /// Suspends until at least `count` outcome waiters have registered.
+    func waitForWaiterRegistration(count: Int = 1) async throws {
+        if waiterCount >= count { return }
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, any Error>) in
+                if self.waiterCount >= count {
+                    continuation.resume()
+                } else {
+                    self.registrationWaiters[id] = (count, continuation)
+                }
+            }
+        } onCancel: {
+            Task { await self.cancelRegistrationWaiter(id) }
+        }
+    }
 
     func record(_ error: any Error) {
         let detail = String(describing: error)
@@ -176,11 +236,28 @@ actor StagingFailureSignal {
                         throwing: StagingBarrierError.finishedEarly(phase: phase))
                 } else {
                     waiters[id] = (phase, continuation)
+                    waiterCount += 1
+                    resumeRegistrationWaitersIfReady()
                 }
             }
         } onCancel: {
             Task { await self.cancelWaiter(id) }
         }
+    }
+
+    private func resumeRegistrationWaitersIfReady() {
+        let ready = registrationWaiters.filter { waiterCount >= $0.value.count }
+        for (id, _) in ready {
+            registrationWaiters.removeValue(forKey: id)
+        }
+        for (_, waiter) in ready {
+            waiter.continuation.resume()
+        }
+    }
+
+    private func cancelRegistrationWaiter(_ id: UUID) {
+        guard let waiter = registrationWaiters.removeValue(forKey: id) else { return }
+        waiter.continuation.resume(throwing: CancellationError())
     }
 
     private func cancelWaiter(_ id: UUID) {

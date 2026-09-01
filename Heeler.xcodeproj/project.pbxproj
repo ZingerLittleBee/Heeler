@@ -42,6 +42,7 @@
 		1CF0CDEFC1C46433C1F4CF06 /* IBMPlexMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 6FF0DA87C092E176838C1EF7 /* IBMPlexMono-Bold.ttf */; };
 		1EDDD0227C94C6B7C2586A68 /* ImagePreparerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4889F56EFEFCC5004A55B4C /* ImagePreparerTests.swift */; };
 		20D4C5FBFAE65D07558E684B /* TerminalThemeSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 921CA559141776BD0F02FDA7 /* TerminalThemeSettingsTests.swift */; };
+		210403DB0109B2C3E58A7975 /* StagingPhaseBarrierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37A3D919A216A921D420F00D /* StagingPhaseBarrierTests.swift */; };
 		2148C7A8E3AD93AD1943AD77 /* AppActivityCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFB39D40748D247CC747A83D /* AppActivityCoordinatorTests.swift */; };
 		21EA3C700022C6362774EF1A /* notification-payload-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = EEB863EF2AD319A412DB564A /* notification-payload-v1.json */; };
 		2292C89F605CE42073D49B11 /* Preflight.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0B6961E10487A3AC3547E9 /* Preflight.swift */; };
@@ -261,6 +262,7 @@
 		C345ECAFFFA3CBDC2C4B2BB7 /* NotificationRegistrationFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 297D9D4C1F200A21A2A0AA64 /* NotificationRegistrationFileTests.swift */; };
 		C3A7347C5A4C2219832A9F46 /* SkillsPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 444F11A4450A3CA904B26658 /* SkillsPickerView.swift */; };
 		C3CAE683F15A2DB5866FE702 /* HeelerSSHJumpHostGateE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6F5C337F9BC29D46E48E35E /* HeelerSSHJumpHostGateE2ETests.swift */; };
+		C3D2936548DD57036A1FB254 /* CancellablePhaseGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFD631568D2A021F6DF490B8 /* CancellablePhaseGate.swift */; };
 		C626797B247A8ED6513D2EBB /* HeelerSSHSessionE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1AEA55D1F06B12005DEEE5F /* HeelerSSHSessionE2ETests.swift */; };
 		C6E6E92365F39EDDD50CDE49 /* WeakNetworkE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AB8C5EA497D1094E86F69C4 /* WeakNetworkE2ETests.swift */; };
 		C783E750C9EBBD811D16D150 /* NotificationKeyMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C91F0473741A92D7EFA40CBA /* NotificationKeyMirror.swift */; };
@@ -440,6 +442,7 @@
 		362EF66CE6DA07688C3E5F63 /* AgentComposerStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentComposerStoreTests.swift; sourceTree = "<group>"; };
 		365757614D9876F58A48CEDA /* NotificationConfigFileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationConfigFileTests.swift; sourceTree = "<group>"; };
 		36B41E884E430DCF9BE26B91 /* AgentArgumentsField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentArgumentsField.swift; sourceTree = "<group>"; };
+		37A3D919A216A921D420F00D /* StagingPhaseBarrierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StagingPhaseBarrierTests.swift; sourceTree = "<group>"; };
 		3801638051F3E5F394CF3FBD /* ReconnectPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReconnectPolicyTests.swift; sourceTree = "<group>"; };
 		381B00805D3CDEEE94DAE35B /* RenameStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenameStore.swift; sourceTree = "<group>"; };
 		39AD641EA732307D72698216 /* EventsSessionSubscriptionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsSessionSubscriptionsTests.swift; sourceTree = "<group>"; };
@@ -585,6 +588,7 @@
 		AACC0F2C9582DE0932380D35 /* KnownHostsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnownHostsStoreTests.swift; sourceTree = "<group>"; };
 		AB48C946E14722E93FAAA410 /* TerminalAttach.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAttach.swift; sourceTree = "<group>"; };
 		AD69BB4579A415BE96578319 /* HeelerWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HeelerWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		AFD631568D2A021F6DF490B8 /* CancellablePhaseGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CancellablePhaseGate.swift; sourceTree = "<group>"; };
 		B1AEA55D1F06B12005DEEE5F /* HeelerSSHSessionE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeelerSSHSessionE2ETests.swift; sourceTree = "<group>"; };
 		B2437B1D6B97638031514C0F /* PinnedAgentsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinnedAgentsStore.swift; sourceTree = "<group>"; };
 		B24EF5EA39899292A1907226 /* StartAgentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartAgentStore.swift; sourceTree = "<group>"; };
@@ -823,6 +827,7 @@
 				9F979754410821940D0C4DEC /* SolvingOrbRendererTests.swift */,
 				A579E1DA3F59AFBC3ECAD69C /* SSHChannelAdmissionTests.swift */,
 				65CFDDFD7A676ECD4EF29BDE /* SSHSourcePolicyTests.swift */,
+				37A3D919A216A921D420F00D /* StagingPhaseBarrierTests.swift */,
 				84DA8573DB6A7EBC95A57F2F /* StartAgentStoreTests.swift */,
 				DA59306306EAEAA6DA78E337 /* TerminalAgentSwitcherTests.swift */,
 				07528112F1EC851708049E85 /* TerminalAttachTests.swift */,
@@ -1149,6 +1154,7 @@
 			isa = PBXGroup;
 			children = (
 				52D3780EB6489DF2E1EA1D77 /* AuthorizedKeysTestLock.swift */,
+				AFD631568D2A021F6DF490B8 /* CancellablePhaseGate.swift */,
 				856A8398D8F0FB87F252D193 /* FakeLiveActivityController.swift */,
 				8273181A2428AD3F78FCC27B /* FakePairingConnector.swift */,
 				696C6905D9D6EEFF77A64E2E /* FakeTransportConnector.swift */,
@@ -1404,8 +1410,8 @@
 			targets = (
 				081A3B29EFF2C7B2FCAA3248 /* Heeler */,
 				DFFB82C74B73FA5CBCE6D5D2 /* HeelerNotificationService */,
-				134E6CD1AC1396155DAB93E2 /* HeelerWidgets */,
 				9806EA6C63028F1217417282 /* HeelerTests */,
+				134E6CD1AC1396155DAB93E2 /* HeelerWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -1671,6 +1677,7 @@
 				3776558F9FD16419AC405116 /* AttachRestorationTraceTests.swift in Sources */,
 				E40D1C6F825ABCD68AA5F196 /* AttachTerminalStoreTests.swift in Sources */,
 				5150B659FACE9AFD9ECF9F6D /* AuthorizedKeysTestLock.swift in Sources */,
+				C3D2936548DD57036A1FB254 /* CancellablePhaseGate.swift in Sources */,
 				61F58007C6B81F14D2F6B58B /* ClosePaneStoreTests.swift in Sources */,
 				179292D9C3E605BC46282FE0 /* ComposerAttachmentTests.swift in Sources */,
 				847FCB04EA7913ACB390C978 /* ComposerStagingStoreTests.swift in Sources */,
@@ -1758,6 +1765,7 @@
 				3C887B853B2B6DFAADEAD38E /* SnippetStoreTests.swift in Sources */,
 				9650868D94494A36E70CF651 /* SnippetTests.swift in Sources */,
 				A65D5B9E1A885A8287AD762C /* SolvingOrbRendererTests.swift in Sources */,
+				210403DB0109B2C3E58A7975 /* StagingPhaseBarrierTests.swift in Sources */,
 				3ECC4677BDBD122A9ABF9CAF /* StartAgentStoreTests.swift in Sources */,
 				AFA3583DF83EFBAFEEE91E28 /* TerminalAgentSwitcherTests.swift in Sources */,
 				D5750879A465E0B27C9B4431 /* TerminalAttachTests.swift in Sources */,

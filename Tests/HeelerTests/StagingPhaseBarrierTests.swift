@@ -11,7 +11,7 @@ struct StagingPhaseBarrierTests {
         let waiter = Task {
             try await gate.waitUntilEntered()
         }
-        await Task.yield()
+        try await gate.waitForEntryWaiterRegistration()
         await gate.release()
         await #expect(throws: PhaseGateError.releasedWithoutEntry) {
             try await waiter.value
@@ -31,7 +31,8 @@ struct StagingPhaseBarrierTests {
                 failures: failures,
                 timeout: .seconds(2))
         }
-        await Task.yield()
+        try await gate.waitForEntryWaiterRegistration()
+        try await failures.waitForWaiterRegistration()
 
         // Production order: record the outcome, then release gates.
         await failures.record(AttachmentStagingError.remoteTemporaryDirectoryFailed)
@@ -58,7 +59,8 @@ struct StagingPhaseBarrierTests {
                 failures: failures,
                 timeout: .seconds(2))
         }
-        await Task.yield()
+        try await gate.waitForEntryWaiterRegistration()
+        try await failures.waitForWaiterRegistration()
 
         await failures.recordSuccess()
         await gate.release()
@@ -96,6 +98,7 @@ struct StagingPhaseBarrierTests {
                 failures: failures,
                 timeout: .seconds(2))
         }
+        try await gate.waitForEntryWaiterRegistration()
         let hold = Task {
             await gate.enterAndHold()
         }
