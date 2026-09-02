@@ -60,9 +60,11 @@ final class AttachUserMessageIndex {
     }
 
     /// Bytes the app is about to write to the Attach PTY. Printable content
-    /// accumulates; a carriage return or newline closes the pending line and
-    /// appends an entry. Editing keys (backspace, cursor movement) and control
-    /// sequences must not corrupt the accumulator.
+    /// accumulates; a carriage return closes the pending line and appends an
+    /// entry. Line feed is content (Shift-Enter, and newlines inside a Blocked
+    /// Composer insert), not a submit. A standalone Escape cancels the pending
+    /// line. Editing keys (backspace, cursor movement) and CSI/SS3 must not
+    /// corrupt the accumulator.
     func observeOutgoing(_ data: Data) {
         var bytes: [UInt8]
         if utf8Remainder.isEmpty {
@@ -85,8 +87,9 @@ final class AttachUserMessageIndex {
                     scanState = .ss3
                     offset += 1
                 default:
-                    // Lone ESC (the Escape key) or an unhandled two-byte
-                    // sequence: drop ESC and reprocess this byte as text.
+                    // Lone Escape (the Esc key, ADR 0013's Blocked cancel):
+                    // drop the pending line and reprocess this byte as text.
+                    cancelPending()
                     scanState = .text
                 }
                 continue
@@ -126,8 +129,18 @@ final class AttachUserMessageIndex {
                 offset += 1
                 continue
             }
-            if byte == 0x0D || byte == 0x0A {
+            if byte == 0x0D {
                 closePendingLine()
+                offset += 1
+                continue
+            }
+            if byte == 0x0A {
+                // LF is a newline inside the pending message (Blocked insert,
+                // Shift-Enter), not a submit. A leftover LF after CR is the
+                // second half of CRLF and is dropped.
+                if !pendingText.isEmpty {
+                    pendingText.append("\n")
+                }
                 offset += 1
                 continue
             }
@@ -158,6 +171,13 @@ final class AttachUserMessageIndex {
                 pendingText.append(Character(scalar))
                 offset += width
             }
+        }
+        // ESC as its own write (the Esc key) ends in `.escape` with no
+        // follower. Treat that as a complete Escape, not the start of a
+        // CSI/SS3 split: keyboard sequences arrive in one `Data`.
+        if scanState == .escape {
+            cancelPending()
+            scanState = .text
         }
     }
 
@@ -212,6 +232,11 @@ final class AttachUserMessageIndex {
         let raw = pendingText
         pendingText = ""
         appendEntry(rawText: raw)
+    }
+
+    private func cancelPending() {
+        pendingText = ""
+        utf8Remainder.removeAll(keepingCapacity: false)
     }
 
     private func appendEntry(rawText: String) {

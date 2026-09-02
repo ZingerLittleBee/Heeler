@@ -170,6 +170,14 @@ final class TerminalInputController {
         pasteErrorMessage = nil
     }
 
+    /// Records a Composer `agent.prompt` delivery against `generation`.
+    /// Drops the write if that session is no longer live, so a reconnect
+    /// cannot inherit a predecessor's jump target.
+    func recordSubmitted(_ text: String, generation: SessionGeneration) {
+        guard generation == liveGeneration else { return }
+        userMessageIndex.record(submitted: text)
+    }
+
     private func write(_ data: Data, using writer: (Data) -> Void) {
         userMessageIndex.observeOutgoing(data)
         writer(data)

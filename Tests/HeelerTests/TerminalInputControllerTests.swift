@@ -240,7 +240,22 @@ struct TerminalInputControllerTests {
         _ = controller.beginSession { _ in }
         #expect(controller.userMessageIndex.entries.isEmpty)
         #expect(controller.send(Data("rewrite the matching tests".utf8)))
-        #expect(controller.send(Data([0x0A])))
+        #expect(controller.send(Data([0x0D])))
+        #expect(
+            controller.userMessageIndex.entries.map(\.rawText)
+                == ["rewrite the matching tests"])
+    }
+
+    @Test func recordSubmittedDropsWhenTheGenerationIsNoLongerLive() {
+        let controller = TerminalInputController()
+        let generationA = controller.beginSession { _ in }
+        controller.detachSessionForReplacement()
+        let generationB = controller.beginSession { _ in }
+
+        controller.recordSubmitted("Fix the failing tests", generation: generationA)
+        #expect(controller.userMessageIndex.entries.isEmpty)
+
+        controller.recordSubmitted("rewrite the matching tests", generation: generationB)
         #expect(
             controller.userMessageIndex.entries.map(\.rawText)
                 == ["rewrite the matching tests"])

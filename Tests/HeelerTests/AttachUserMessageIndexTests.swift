@@ -18,7 +18,7 @@ struct AttachUserMessageIndexTests {
         index.observeOutgoing(Data(bytes.suffix(2)))
         #expect(index.entries.isEmpty)
 
-        index.observeOutgoing(Data([0x0A]))
+        index.observeOutgoing(Data([0x0D]))
         #expect(index.entries.map(\.rawText) == [text])
     }
 
@@ -45,7 +45,7 @@ struct AttachUserMessageIndexTests {
         index.observeOutgoing(Data("请实现这个解析器功错".utf8))
         index.observeOutgoing(Data([0x7F]))
         index.observeOutgoing(Data("能".utf8))
-        index.observeOutgoing(Data([0x0A]))
+        index.observeOutgoing(Data([0x0D]))
         #expect(index.entries.map(\.rawText) == ["请实现这个解析器功能"])
     }
 
@@ -68,19 +68,46 @@ struct AttachUserMessageIndexTests {
     @Test func aCSISequenceSplitAcrossChunksIsStillSkipped() {
         let index = AttachUserMessageIndex()
         index.observeOutgoing(Data("please ".utf8))
-        index.observeOutgoing(Data([0x1B]))
-        index.observeOutgoing(Data([0x5B, 0x44]))
+        index.observeOutgoing(Data([0x1B, 0x5B]))
+        index.observeOutgoing(Data([0x44]))
         index.observeOutgoing(Data("implement the parser".utf8))
-        index.observeOutgoing(Data([0x0A]))
+        index.observeOutgoing(Data([0x0D]))
         #expect(index.entries.map(\.rawText) == ["please implement the parser"])
     }
 
-    @Test(arguments: [UInt8(0x0D), UInt8(0x0A)])
-    func carriageReturnAndLineFeedBothCloseALine(_ terminator: UInt8) {
+    @Test func csiIntermediateBytesAreSkipped() {
+        let index = AttachUserMessageIndex()
+        index.observeOutgoing(Data("please ".utf8))
+        // CSI 2 SP q (DECSCUSR): SP is an intermediate byte (0x20).
+        index.observeOutgoing(Data([0x1B, 0x5B, 0x32, 0x20, 0x71]))
+        index.observeOutgoing(Data("implement the parser".utf8))
+        index.observeOutgoing(Data([0x0D]))
+        #expect(index.entries.map(\.rawText) == ["please implement the parser"])
+    }
+
+    @Test func anSS3SequenceSplitAcrossChunksIsStillSkipped() {
+        let index = AttachUserMessageIndex()
+        index.observeOutgoing(Data("please ".utf8))
+        index.observeOutgoing(Data([0x1B, 0x4F]))
+        index.observeOutgoing(Data([0x41]))
+        index.observeOutgoing(Data("implement the parser".utf8))
+        index.observeOutgoing(Data([0x0D]))
+        #expect(index.entries.map(\.rawText) == ["please implement the parser"])
+    }
+
+    @Test func carriageReturnClosesALine() {
         let index = AttachUserMessageIndex()
         index.observeOutgoing(Data("please implement the parser".utf8))
-        index.observeOutgoing(Data([terminator]))
+        index.observeOutgoing(Data([0x0D]))
         #expect(index.entries.map(\.rawText) == ["please implement the parser"])
+    }
+
+    @Test func aMultilineDraftIsOneEntryClosedOnlyOnCarriageReturn() {
+        let index = AttachUserMessageIndex()
+        index.observeOutgoing(Data("please approve\nthen continue".utf8))
+        #expect(index.entries.isEmpty)
+        index.observeOutgoing(Data([0x0D]))
+        #expect(index.entries.map(\.rawText) == ["please approve\nthen continue"])
     }
 
     @Test(arguments: [
@@ -94,14 +121,14 @@ struct AttachUserMessageIndexTests {
     func rejectsEmptyAndShortLines(_ text: String) {
         let index = AttachUserMessageIndex()
         index.observeOutgoing(Data(text.utf8))
-        index.observeOutgoing(Data([0x0A]))
+        index.observeOutgoing(Data([0x0D]))
         #expect(index.entries.isEmpty)
     }
 
     @Test func acceptsALineAtTheMinimumCharacterCount() {
         let index = AttachUserMessageIndex()
         index.observeOutgoing(Data("12345678".utf8))
-        index.observeOutgoing(Data([0x0A]))
+        index.observeOutgoing(Data([0x0D]))
         #expect(index.entries.map(\.rawText) == ["12345678"])
     }
 
@@ -178,8 +205,25 @@ struct AttachUserMessageIndexTests {
         #expect(index.entries.isEmpty)
 
         index.observeOutgoing(Data("please implement the parser".utf8))
-        index.observeOutgoing(Data([0x0A]))
+        index.observeOutgoing(Data([0x0D]))
         #expect(index.entries.map(\.rawText) == ["please implement the parser"])
+    }
+
+    @Test func escapeCancelsPendingTextSoLaterEnterDoesNotRecordIt() {
+        let index = AttachUserMessageIndex()
+        index.observeOutgoing(Data("please approve".utf8))
+        index.observeOutgoing(Data([0x1B]))
+        index.observeOutgoing(Data([0x0D]))
+        #expect(index.entries.isEmpty)
+    }
+
+    @Test func escapeThenANewRequestDoesNotKeepTheCancelledText() {
+        let index = AttachUserMessageIndex()
+        index.observeOutgoing(Data("please approve".utf8))
+        index.observeOutgoing(Data([0x1B]))
+        index.observeOutgoing(Data("new request".utf8))
+        index.observeOutgoing(Data([0x0D]))
+        #expect(index.entries.map(\.rawText) == ["new request"])
     }
 
     @Test func capsEntriesByDroppingTheOldest() {

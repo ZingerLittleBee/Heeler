@@ -563,6 +563,64 @@ struct AgentComposerStoreTests {
                 == ["please approve the refactor"])
     }
 
+    @Test func promptDeliveryDoesNotRecordIntoAReplacementSession() async throws {
+        let transport = ScriptedTransport()
+        let promptGate = ScriptedTransportCallGate()
+        await transport.gateNextAgentPrompt(using: promptGate)
+        let input = TerminalInputController()
+        let generationA = input.beginSession { _ in }
+        let store = AgentComposerStore(target: "w1:p1") { params in
+            try await transport.promptAgent(params)
+        }
+        store.bindAttachInput(input)
+        store.replaceDraft(with: "Fix the failing tests")
+
+        let send = Task { await store.send() }
+        try await waitUntil("the prompt should be waiting for its acknowledgment") {
+            await promptGate.entryCount == 1
+        }
+
+        input.detachSessionForReplacement()
+        input.endSession(generationA, preservingPendingPaste: true)
+        _ = input.beginSession { _ in }
+        #expect(input.userMessageIndex.entries.isEmpty)
+
+        await promptGate.open()
+        let result = await send.value
+
+        #expect(result == .deliveredViaPrompt)
+        #expect(input.userMessageIndex.entries.isEmpty)
+
+        store.replaceDraft(with: "rewrite the matching tests")
+        #expect(await store.send() == .deliveredViaPrompt)
+        #expect(
+            input.userMessageIndex.entries.map(\.rawText)
+                == ["rewrite the matching tests"])
+    }
+
+    @Test func blockedMultilineDraftIsIndexedOnceAtEnter() async {
+        let transport = ScriptedTransport()
+        var writes: [Data] = []
+        let input = TerminalInputController()
+        _ = input.beginSession { writes.append($0) }
+        let store = AgentComposerStore(target: "w1:p1", initialStatus: .blocked) {
+            params in
+            try await transport.promptAgent(params)
+        }
+        store.bindAttachInput(input)
+        let draft = "please approve\nthen continue"
+        store.replaceDraft(with: draft)
+
+        let result = await store.send()
+
+        #expect(result == .deliveredViaAttach)
+        #expect(writes == [Data(draft.utf8)])
+        #expect(input.userMessageIndex.entries.isEmpty)
+
+        #expect(input.send(Data([0x0D])))
+        #expect(input.userMessageIndex.entries.map(\.rawText) == [draft])
+    }
+
     private static func draftOnlyStore() -> AgentComposerStore {
         AgentComposerStore(target: "w1:p1") { _ in
             throw TransportError.timedOut

@@ -195,6 +195,8 @@ final class AgentComposerStore: ComposerDraftOperations {
         if agentStatus == .blocked {
             return deliverThroughAttach(id, text: text)
         }
+        let input = attachInput
+        let generation = input?.liveGeneration
         do {
             _ = try await prompt(AgentPromptParams(target: target, text: text))
             guard let acknowledgedIndex = messages.firstIndex(where: { $0.id == id }) else {
@@ -202,7 +204,9 @@ final class AgentComposerStore: ComposerDraftOperations {
             }
             messages[acknowledgedIndex].state = .delivered(
                 progressAfterAcknowledgment(for: messages[acknowledgedIndex]))
-            attachInput?.userMessageIndex.record(submitted: text)
+            if let input, let generation {
+                input.recordSubmitted(text, generation: generation)
+            }
             return .deliveredViaPrompt
         } catch {
             if Self.isAgentBlocked(error) {
