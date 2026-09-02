@@ -19,7 +19,7 @@ import Foundation
 ///
 /// See `docs/research/agent-attach-message-navigation.md`.
 ///
-/// Contract only. `refs #268`.
+/// `refs #268`.
 @MainActor
 final class TerminalMessageJumpController {
     enum Direction: Equatable {
@@ -86,11 +86,59 @@ final class TerminalMessageJumpController {
     /// interleave two loops.
     private(set) var isRunning = false
 
+    /// Most recent viewport text, including frames delivered while idle.
+    private var latestFrame = ""
+    /// Set by `cancel()` or task cancellation; cleared when a run finishes.
+    private var cancelRequested = false
+
+    /// Whether the current step is accepting `frameDidChange` deliveries.
+    private var isAwaitingFrame = false
+    /// Latest frame that arrived after `step` but before the wait armed.
+    private var bufferedFrame: String?
+    private var pendingFrameWait: CheckedContinuation<FrameWaitResult, Never>?
+    private var activeFrameWaitID: UUID?
+    private var frameTimeoutTask: Task<Void, Never>?
+
+    /// Test seam: awaited at the start of the enclosing-task cancel handler,
+    /// before any wait-id check or shared-state write. Production leaves this
+    /// nil. Tests hold the handler until a later jump's waiter is armed so a
+    /// stale write is observable rather than assumed.
+    var enclosingCancelHandlerBarrier: (@MainActor () async -> Void)?
+
+    /// Test seam: invoked synchronously on the MainActor immediately after the
+    /// cancel handler's wait-id / `cancelRequested` region — including the
+    /// early-return path — so a test can observe that the poison window has
+    /// actually run, not merely that a barrier actor released. Nil in production.
+    var enclosingCancelHandlerDidPassPoisonWindow: (@MainActor () -> Void)?
+
+    private enum FrameWaitResult: Equatable {
+        case frame(String)
+        case timedOut
+        case cancelled
+    }
+
+    /// Edge-walk phases for `jump`. Modelled explicitly so a press that starts
+    /// on a matching frame walks *off* it before hunting the next match.
+    private enum JumpPhase: Equatable {
+        /// Entry frame already matched; keep stepping until it does not.
+        case leavingMatch
+        /// Looking for the next frame that satisfies `matches`.
+        case seekingMatch
+    }
+
     /// Fed from the existing viewport-text tap
     /// (`TerminalScreenView.reportViewportText`). Calling this while no jump
     /// is running is legal and cheap.
     func frameDidChange(_ text: String) {
-        // TODO(#268): implement in package msgnav-loop.
+        latestFrame = text
+        guard isAwaitingFrame else { return }
+        // Always keep the latest paint. A burst resumes the waiter on the first
+        // call, but `waitForFrame` decides on this buffer so later paints in the
+        // same turn are not discarded.
+        bufferedFrame = text
+        if pendingFrameWait != nil {
+            resumeFrameWait(with: .frame(text))
+        }
     }
 
     /// Moves to the neighbouring user message.
@@ -100,19 +148,220 @@ final class TerminalMessageJumpController {
     /// doing so, and only then look for the next frame that does. Always take
     /// at least one step.
     func jump(_ direction: Direction) async -> Outcome {
-        // TODO(#268): implement in package msgnav-loop.
-        .cancelled
+        // Refuse reentrancy: a second call does not cancel or interleave the
+        // in-flight loop. The UI gates on `isRunning`; this is the safety net.
+        guard !isRunning else { return .cancelled }
+        isRunning = true
+        cancelRequested = false
+        defer { finishRun() }
+
+        var phase: JumpPhase = matches(latestFrame) ? .leavingMatch : .seekingMatch
+        var previousFrame = latestFrame
+        var unchangedCount = 0
+
+        for _ in 0..<configuration.maxSteps {
+            if isCancelPending { return .cancelled }
+
+            beginAwaitingFrame()
+            step(direction, configuration.rowsPerStep)
+
+            switch await waitForFrame() {
+            case .cancelled:
+                return .cancelled
+            case .timedOut:
+                unchangedCount += 1
+                if unchangedCount >= configuration.unchangedFramesBeforeEnd {
+                    return .reachedEnd
+                }
+            case .frame(let text):
+                if text == previousFrame {
+                    unchangedCount += 1
+                    if unchangedCount >= configuration.unchangedFramesBeforeEnd {
+                        return .reachedEnd
+                    }
+                } else {
+                    unchangedCount = 0
+                    previousFrame = text
+                    switch phase {
+                    case .leavingMatch:
+                        if !matches(text) {
+                            phase = .seekingMatch
+                        }
+                    case .seekingMatch:
+                        if matches(text) {
+                            return .found
+                        }
+                    }
+                }
+            }
+        }
+        return .exhausted
     }
 
     /// Scrolls forward until the frame stops changing — the live bottom.
     /// Reports `.reachedEnd` on success; `matches` is not consulted.
     func returnToLive() async -> Outcome {
-        // TODO(#268): implement in package msgnav-loop.
-        .cancelled
+        guard !isRunning else { return .cancelled }
+        isRunning = true
+        cancelRequested = false
+        defer { finishRun() }
+
+        var previousFrame = latestFrame
+        var unchangedCount = 0
+
+        for _ in 0..<configuration.maxSteps {
+            if isCancelPending { return .cancelled }
+
+            beginAwaitingFrame()
+            step(.newer, configuration.rowsPerStep)
+
+            switch await waitForFrame() {
+            case .cancelled:
+                return .cancelled
+            case .timedOut:
+                unchangedCount += 1
+                if unchangedCount >= configuration.unchangedFramesBeforeEnd {
+                    return .reachedEnd
+                }
+            case .frame(let text):
+                if text == previousFrame {
+                    unchangedCount += 1
+                    if unchangedCount >= configuration.unchangedFramesBeforeEnd {
+                        return .reachedEnd
+                    }
+                } else {
+                    unchangedCount = 0
+                    previousFrame = text
+                }
+            }
+        }
+        return .exhausted
     }
 
     /// Ends an in-flight jump. The awaiting call returns `.cancelled`.
     func cancel() {
-        // TODO(#268): implement in package msgnav-loop.
+        cancelRequested = true
+        resumeFrameWait(with: .cancelled)
+    }
+
+    private var isCancelPending: Bool {
+        cancelRequested || Task.isCancelled
+    }
+
+    private func finishRun() {
+        isAwaitingFrame = false
+        bufferedFrame = nil
+        frameTimeoutTask?.cancel()
+        frameTimeoutTask = nil
+        // Drop a stranded waiter rather than resume it twice from defer + cancel.
+        if let pending = pendingFrameWait {
+            pendingFrameWait = nil
+            activeFrameWaitID = nil
+            pending.resume(returning: .cancelled)
+        }
+        activeFrameWaitID = nil
+        cancelRequested = false
+        isRunning = false
+    }
+
+    private func beginAwaitingFrame() {
+        isAwaitingFrame = true
+        bufferedFrame = nil
+    }
+
+    private func waitForFrame() async -> FrameWaitResult {
+        if isCancelPending {
+            isAwaitingFrame = false
+            bufferedFrame = nil
+            return .cancelled
+        }
+
+        if let buffered = bufferedFrame {
+            bufferedFrame = nil
+            isAwaitingFrame = false
+            // Cancel wins over a frame that arrived before the wait armed.
+            if isCancelPending { return .cancelled }
+            return .frame(buffered)
+        }
+
+        let waitID = UUID()
+        activeFrameWaitID = waitID
+
+        let result = await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<FrameWaitResult, Never>) in
+                if self.isCancelPending {
+                    continuation.resume(returning: .cancelled)
+                    return
+                }
+                if let buffered = self.bufferedFrame {
+                    self.bufferedFrame = nil
+                    continuation.resume(returning: .frame(buffered))
+                    return
+                }
+                // Exactly one waiter slot — replace would mean a nested wait bug.
+                if let stranded = self.pendingFrameWait {
+                    self.pendingFrameWait = nil
+                    stranded.resume(returning: .cancelled)
+                }
+                self.pendingFrameWait = continuation
+
+                self.frameTimeoutTask?.cancel()
+                self.frameTimeoutTask = Task { @MainActor in
+                    do {
+                        try await self.sleep(self.configuration.frameSettleTimeout)
+                    } catch {
+                        return
+                    }
+                    guard self.activeFrameWaitID == waitID else { return }
+                    self.resumeFrameWait(with: .timedOut)
+                }
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if let barrier = self.enclosingCancelHandlerBarrier {
+                    await barrier()
+                }
+                // The post-window seam must fire even when the guard returns
+                // early, so a test can wait for this region to have run.
+                defer { self.enclosingCancelHandlerDidPassPoisonWindow?() }
+                // Establish ownership before touching shared state. A delayed
+                // handler from a finished run must not set `cancelRequested` on
+                // a later jump that reuses this controller.
+                guard self.activeFrameWaitID == waitID else { return }
+                self.cancelRequested = true
+                self.resumeFrameWait(with: .cancelled)
+            }
+        }
+
+        // Prefer the latest paint observed during this await. The first
+        // `frameDidChange` wakes the waiter; later calls in the same burst only
+        // update `bufferedFrame`, which must still decide the step.
+        let resolved: FrameWaitResult
+        if isCancelPending {
+            // `cancel()` / task cancel wins even when a frame already resumed us.
+            resolved = .cancelled
+        } else if case .frame = result {
+            resolved = .frame(bufferedFrame ?? latestFrame)
+        } else {
+            resolved = result
+        }
+
+        isAwaitingFrame = false
+        bufferedFrame = nil
+        if activeFrameWaitID == waitID {
+            activeFrameWaitID = nil
+        }
+        return resolved
+    }
+
+    /// Resumes the pending frame waiter at most once.
+    private func resumeFrameWait(with result: FrameWaitResult) {
+        guard let pending = pendingFrameWait else { return }
+        pendingFrameWait = nil
+        activeFrameWaitID = nil
+        frameTimeoutTask?.cancel()
+        frameTimeoutTask = nil
+        pending.resume(returning: result)
     }
 }
