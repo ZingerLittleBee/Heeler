@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 import UIKit
 
@@ -58,6 +59,91 @@ struct MessageJumpControlTests {
             MessageJumpNotice.text(for: .exhausted, askingForOlder: true)
                 == "Couldn't find the message")
     }
+
+    @Test func placementKeepsControlAboveTheBottomBandOnShortTerminals() {
+        let height: CGFloat = 160
+        let controlHeight: CGFloat = 72
+        let inset = MessageJumpPlacement.bottomInset(terminalHeight: height)
+        #expect(
+            inset == height * TerminalKeyboardTapTarget.alternateScreenBottomFraction)
+        #expect(
+            MessageJumpPlacement.sitsAboveBottomBand(
+                terminalHeight: height,
+                controlHeight: controlHeight,
+                bottomInset: inset))
+        // Flush to the bottom edge overlaps the keyboard activation band.
+        #expect(
+            !MessageJumpPlacement.sitsAboveBottomBand(
+                terminalHeight: height,
+                controlHeight: controlHeight,
+                bottomInset: 0))
+    }
+
+    @Test func downSequencerSkipsReturnToLiveAfterSessionEnds() async {
+        var live = true
+        var returnToLiveCalls = 0
+        let outcome = await MessageJumpDownSequencer.run(
+            jumpNewer: {
+                live = false
+                return .reachedEnd
+            },
+            returnToLive: {
+                returnToLiveCalls += 1
+                return .reachedEnd
+            },
+            isLive: { live })
+        #expect(outcome == nil)
+        #expect(returnToLiveCalls == 0)
+    }
+
+    @Test func downSequencerReturnsFoundWithoutCallingReturnToLive() async {
+        var returnToLiveCalls = 0
+        let outcome = await MessageJumpDownSequencer.run(
+            jumpNewer: { .found },
+            returnToLive: {
+                returnToLiveCalls += 1
+                return .reachedEnd
+            },
+            isLive: { true })
+        #expect(outcome == .found)
+        #expect(returnToLiveCalls == 0)
+    }
+
+    @Test func resetSessionAdvancesGeneration() {
+        let wiring = AgentMessageJumpWiring()
+        let first = wiring.liveGeneration
+        wiring.resetSession()
+        #expect(!wiring.isLive(first))
+        #expect(wiring.isLive(wiring.liveGeneration))
+    }
+
+    @Test func chromeContainerPassesThroughNonInteractiveHits() {
+        let container = MessageJumpChromeContainer(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 720))
+        let host = UIView()
+        let chrome = UIView(frame: CGRect(x: 0, y: 0, width: 44, height: 80))
+        chrome.isUserInteractionEnabled = true
+        let button = UIButton(type: .system)
+        button.frame = CGRect(x: 0, y: 0, width: 44, height: 36)
+        chrome.addSubview(button)
+        host.addSubview(chrome)
+        container.embed(host)
+        container.layoutIfNeeded()
+
+        let buttonPoint = container.convert(
+            CGPoint(x: button.bounds.midX, y: button.bounds.midY),
+            from: button)
+        #expect(container.hitTest(buttonPoint, with: nil) === button)
+
+        let paddingPoint = container.convert(CGPoint(x: 22, y: 60), from: chrome)
+        #expect(container.hitTest(paddingPoint, with: nil) == nil)
+        #expect(container.hitTest(CGPoint(x: 12, y: 12), with: nil) == nil)
+
+        #expect(
+            MessageJumpChromeContainer.isInteractive(button, stoppingAt: host))
+        #expect(
+            !MessageJumpChromeContainer.isInteractive(chrome, stoppingAt: host))
+    }
 }
 
 @MainActor
@@ -110,16 +196,21 @@ struct TerminalScrollControlTests {
 
     @Test func scrollRowsTakesLocalBranchOnPrimaryScreen() {
         var scrollCalls = 0
+        var bindingActions: [String] = []
         let terminal = TerminalScreenView.makeConfiguredTerminal(
             onScroll: { _, _ in scrollCalls += 1 })
+        terminal.didPerformBindingAction = { bindingActions.append($0) }
         let control = TerminalScrollControl()
         control.terminal = terminal
 
         #expect(!control.isAlternateScreen)
         control.scrollRows(towardOlderContent: true, rows: 4)
-        // Primary screen has no remote sequence; the local binding path does
-        // not call onScroll.
         #expect(scrollCalls == 0)
+        #expect(bindingActions == ["scroll_page_lines:-4"])
+
+        bindingActions.removeAll()
+        control.scrollRows(towardOlderContent: false, rows: 2)
+        #expect(bindingActions == ["scroll_page_lines:2"])
     }
 
     @Test func scrollRowsLeavesTheTouchAccumulatorAlone() {
@@ -159,14 +250,192 @@ struct TerminalScrollControlTests {
         control.terminal = nil
         #expect(!control.isAlternateScreen)
     }
+}
 
-    @Test func wiringFeedsViewportTextToTheJumpController() {
-        let wiring = AgentMessageJumpWiring()
-        // The controller is a stub on this branch; calling frameDidChange must
-        // still be legal and cheap while no jump is running.
-        wiring.controller.frameDidChange("hello")
-        #expect(!wiring.controller.isRunning)
-        wiring.resetSession()
-        #expect(!wiring.controller.isRunning)
+@MainActor
+struct MessageJumpAgentTerminalWiringTests {
+    @Test func agentTerminalViewportFeedsTheJumpController() async throws {
+        let transport = ScriptedTransport()
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            throw TransportError.cancelled
+        }
+        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let (inputMode, cleanup) = try Self.makeInputMode()
+        defer { cleanup() }
+        let interactions = AgentTerminalInteractionProbe()
+
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                attachStore: owner,
+                composer: composer,
+                inputMode: inputMode,
+                interactionProbe: interactions))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+                && interactions.isConnected
+        })
+
+        let terminal = try #require(Self.terminals(in: controller.view).first)
+        terminal.receive(
+            Data("\u{001B}[2J\u{001B}[Hhttps://msgnav.example/viewport\n".utf8))
+        terminal.layoutIfNeeded()
+
+        try #require(await Self.eventually {
+            interactions.messageJumpViewportFrames.contains {
+                $0.contains("https://msgnav.example/viewport")
+            }
+                && interactions.lastMessageJumpViewportFrame?
+                .contains("https://msgnav.example/viewport") == true
+        })
+    }
+
+    @Test func interactionProbeDrivesBothJumpButtons() async throws {
+        let transport = ScriptedTransport()
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            throw TransportError.cancelled
+        }
+        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let (inputMode, cleanup) = try Self.makeInputMode()
+        defer { cleanup() }
+        let interactions = AgentTerminalInteractionProbe()
+
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                attachStore: owner,
+                composer: composer,
+                inputMode: inputMode,
+                interactionProbe: interactions))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        try #require(await Self.eventually { interactions.isConnected })
+
+        // Force alternate-screen visibility so the chrome enables.
+        let terminal = try #require(Self.terminals(in: controller.view).first)
+        terminal.receive(Data("\u{1B}[?1049h".utf8))
+        try await Task.sleep(for: .milliseconds(20))
+
+        #expect(interactions.jumpOlderMessage())
+        #expect(interactions.jumpNewerMessage())
+        // Stub controller returns immediately; both calls must remain connected
+        // after the Tasks settle.
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(interactions.jumpOlderMessage())
+        #expect(interactions.jumpNewerMessage())
+    }
+
+    private static func makeInputMode(
+        initial: AgentInputMode = .composer
+    ) throws -> (AgentInputModeSettings, () -> Void) {
+        let suiteName = "msgnav-mode-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let settings = AgentInputModeSettings(defaults: defaults)
+        if initial != .composer {
+            settings.select(initial)
+        }
+        return (settings, { defaults.removePersistentDomain(forName: suiteName) })
+    }
+
+    private static func makeLiveAttach(
+        transport: ScriptedTransport,
+        composer: AgentComposerStore
+    ) async throws -> AgentAttachStore {
+        let owner = AgentAttachStore(
+            target: "w1:p1",
+            paneTitle: "Claude",
+            transportGeneration: 1,
+            isOnStage: { true },
+            runTerminal: { request, handler in
+                let session = try await transport.attachTerminal(request)
+                try await handler.runEndingSession(session)
+            },
+            stageImage: { _, _ in throw TransportError.cancelled },
+            stageFile: { _, _ in throw TransportError.cancelled },
+            composer: composer,
+            closePane: {})
+        owner.viewDidResize(cols: 80, rows: 24)
+        try #require(await Self.eventually {
+            await transport.attachRequests.count == 1
+        })
+        #expect(await transport.emitAttachOutput(Data("live".utf8)))
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+        })
+        return owner
+    }
+
+    private static func makeDetailView(
+        attachStore: AgentAttachStore,
+        composer: AgentComposerStore,
+        inputMode: AgentInputModeSettings,
+        interactionProbe: AgentTerminalInteractionProbe
+    ) -> AgentTerminalView {
+        let defaults = UserDefaults(suiteName: "msgnav-detail-\(UUID())") ?? .standard
+        let console = ConsoleStore(snapshotRetryDelay: .seconds(30)) { _, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: { throw TransportError.sshUnreachable(detail: "fixture") },
+                reconnectPolicy: .default,
+                keepalive: .default)
+        }
+        let terminal = TerminalSettings(
+            themes: TerminalThemeSettings(defaults: defaults),
+            zoom: TerminalZoomSettings(defaults: defaults),
+            fonts: TerminalFontSettings(defaults: defaults),
+            snippets: SnippetStore(defaults: defaults))
+        return AgentTerminalView(
+            agent: ConsoleAgent(
+                hostID: UUID(),
+                hostName: "devbox",
+                agent: Agent(
+                    terminalID: "term_w1:p1", kind: "claude", title: "",
+                    status: .idle, workspaceID: "w", tabID: "w:t", paneID: "w1:p1",
+                    cwd: "/work", revision: 1, name: nil),
+                workspaceLabel: nil,
+                repositoryCheckout: nil),
+            console: console,
+            terminal: terminal,
+            inputMode: inputMode,
+            hosts: [],
+            activity: AppActivityCoordinator(),
+            keyboardHandoff: TerminalKeyboardHandoff(),
+            keyboardInset: TerminalKeyboardInset(),
+            isOnStage: { true },
+            onSwitch: { _ in },
+            onClosed: {},
+            composer: composer,
+            attachStore: attachStore,
+            interactionProbe: interactionProbe)
+    }
+
+    private static func terminals(in root: UIView) -> [HeelerTerminalView] {
+        var found: [HeelerTerminalView] = []
+        func walk(_ view: UIView) {
+            if let terminal = view as? HeelerTerminalView {
+                found.append(terminal)
+            }
+            view.subviews.forEach(walk)
+        }
+        walk(root)
+        return found
+    }
+
+    private static func eventually(
+        timeout: Duration = .seconds(5),
+        _ condition: @escaping () async -> Bool
+    ) async throws -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if await condition() { return true }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        return await condition()
     }
 }

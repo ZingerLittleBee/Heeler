@@ -60,16 +60,35 @@ final class AgentTerminalInteractionProbe {
         return true
     }
 
+    /// Viewport frames delivered to the jump controller through Agent detail's
+    /// production `onViewportTextChanged` seam.
+    private(set) var messageJumpViewportFrames: [String] = []
+
+    /// Latest frame retained by ``AgentMessageJumpWiring`` after a viewport
+    /// delivery — proves the production path reached the wiring, not only a
+    /// probe tap beside it.
+    private var messageJumpLastViewportFrame: (() -> String?)?
+
+    var lastMessageJumpViewportFrame: String? {
+        messageJumpLastViewportFrame?()
+    }
+
     fileprivate func connect(selectInputMode: @escaping (AgentInputMode) -> Void) {
         selectInputModeAction = selectInputMode
     }
 
     fileprivate func connectMessageJump(
         jumpOlder: @escaping () -> Void,
-        jumpNewer: @escaping () -> Void
+        jumpNewer: @escaping () -> Void,
+        lastViewportFrame: @escaping () -> String?
     ) {
         jumpOlderAction = jumpOlder
         jumpNewerAction = jumpNewer
+        messageJumpLastViewportFrame = lastViewportFrame
+    }
+
+    fileprivate func messageJumpDidReceiveViewportText(_ text: String) {
+        messageJumpViewportFrames.append(text)
     }
 
     fileprivate func directInputChromeDidAppear(
@@ -90,6 +109,8 @@ final class AgentTerminalInteractionProbe {
         switchDirectKeyboardAction = nil
         jumpOlderAction = nil
         jumpNewerAction = nil
+        messageJumpLastViewportFrame = nil
+        messageJumpViewportFrames = []
         directInputChromeMountCount = 0
     }
 
@@ -303,7 +324,8 @@ struct AgentTerminalView: View {
         }
         screen.onViewportTextChanged = { text in
             attach.viewportTextDidChange(text)
-            messageJump.controller.frameDidChange(text)
+            messageJump.deliverViewportText(text)
+            interactionProbe?.value?.messageJumpDidReceiveViewportText(text)
         }
         screen.onSend = { keystrokes in attach.send(keystrokes) }
         screen.onScroll = { sequence, rows in
@@ -574,7 +596,8 @@ struct AgentTerminalView: View {
             interactionProbe?.value?.connect(selectInputMode: { mode in selectInputMode(mode) })
             interactionProbe?.value?.connectMessageJump(
                 jumpOlder: { jumpToOlderMessage() },
-                jumpNewer: { jumpToNewerMessageOrLive() })
+                jumpNewer: { jumpToNewerMessageOrLive() },
+                lastViewportFrame: { messageJump.lastViewportFrame })
             composer.bindAttachInput(attach.input)
             // Arm before rejoin so a full pipeline replacement can claim the
             // keyboard while Direct Input still owns raised intent.
@@ -585,7 +608,7 @@ struct AgentTerminalView: View {
             interactionProbe?.value?.disconnect()
             clearJumpNotice()
             isJumpRunning = false
-            messageJump.controller.cancel()
+            messageJump.resetSession()
             attach.leave()
             Task { @MainActor in
                 await Task.yield()
@@ -761,12 +784,10 @@ struct AgentTerminalView: View {
     private var terminalSurface: some View {
         terminalScreen
             .id(attach.terminalID)
-        // Trailing mid-height sits above alternateScreenBottomRegion (the
-        // bottom quarter), so the control does not fight the agent TUI's
-        // pinned input box. Content-sized only — no full-bleed hit target.
-        .overlay(alignment: .trailing) {
+        // Above alternateScreenBottomRegion; only the buttons take hits —
+        // see MessageJumpChromeContainer.
+        .overlay {
             messageJumpChrome
-                .padding(.trailing, 10)
         }
         .overlay { statusOverlay }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -1259,38 +1280,50 @@ struct AgentTerminalView: View {
 
     @ViewBuilder
     private var messageJumpChrome: some View {
-        MessageJumpControlView(
+        MessageJumpChromeOverlay(
             availability: messageJumpAvailability,
             notice: jumpNotice,
             onOlder: { jumpToOlderMessage() },
             onNewer: { jumpToNewerMessageOrLive() })
+        // The overlay view fills the terminal for placement; hit testing is
+        // owned by MessageJumpChromeContainer and must stay enabled.
+        .allowsHitTesting(messageJumpAvailability.isVisible)
     }
 
     private func jumpToOlderMessage() {
         guard messageJumpAvailability.isEnabled else { return }
         isJumpRunning = true
-        Task { @MainActor in
-            defer { isJumpRunning = false }
-            let outcome = await messageJump.controller.jump(.older)
-            presentJumpNotice(outcome, askingForOlder: true)
+        messageJump.runJump { session in
+            defer {
+                if self.messageJump.isLive(session) {
+                    self.isJumpRunning = false
+                }
+            }
+            let outcome = await self.messageJump.controller.jump(.older)
+            guard self.messageJump.isLive(session) else { return }
+            self.presentJumpNotice(outcome, askingForOlder: true)
         }
     }
 
     /// Walks toward live one user message at a time. When no newer message
     /// remains, finishes the trip with ``returnToLive()`` so the same button
-    /// covers both "next message" and "back to live" (issue #268).
+    /// covers both "next message" and "back to live" (issue #268). The follow-up
+    /// is abandoned if the Attach session was replaced while `jump` was awaited.
     private func jumpToNewerMessageOrLive() {
         guard messageJumpAvailability.isEnabled else { return }
         isJumpRunning = true
-        Task { @MainActor in
-            defer { isJumpRunning = false }
-            let outcome = await messageJump.controller.jump(.newer)
-            if outcome == .reachedEnd {
-                let live = await messageJump.controller.returnToLive()
-                presentJumpNotice(live, askingForOlder: false)
-            } else {
-                presentJumpNotice(outcome, askingForOlder: false)
+        messageJump.runJump { session in
+            defer {
+                if self.messageJump.isLive(session) {
+                    self.isJumpRunning = false
+                }
             }
+            let outcome = await MessageJumpDownSequencer.run(
+                jumpNewer: { await self.messageJump.controller.jump(.newer) },
+                returnToLive: { await self.messageJump.controller.returnToLive() },
+                isLive: { self.messageJump.isLive(session) })
+            guard let outcome, self.messageJump.isLive(session) else { return }
+            self.presentJumpNotice(outcome, askingForOlder: false)
         }
     }
 

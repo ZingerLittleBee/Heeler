@@ -1518,6 +1518,9 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         applyScroll(towardOlderContent: towardOlderContent, rowCount: rowCount)
     }
 
+    /// Test seam observing local Ghostty binding actions from scroll paths.
+    var didPerformBindingAction: ((String) -> Void)?
+
     /// Remote wheel / cursor sequence when the mode tracker supplies one;
     /// otherwise local `scroll_page_lines`. Shared by touch and the jump
     /// control so they cannot drift. `refs #268`.
@@ -1530,7 +1533,9 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
             callbackBridge.scroll(sequence, rows: rowCount)
         } else {
             let localRows = towardOlderContent ? -rowCount : rowCount
-            _ = performBindingAction("scroll_page_lines:\(localRows)")
+            let action = "scroll_page_lines:\(localRows)"
+            _ = performBindingAction(action)
+            didPerformBindingAction?(action)
         }
     }
 
