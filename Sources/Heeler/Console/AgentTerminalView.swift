@@ -1278,6 +1278,7 @@ struct AgentTerminalView: View {
     private var messageJumpAvailability: MessageJumpControlAvailability {
         MessageJumpControlAvailability.evaluate(
             isAlternateScreen: messageJump.scrollControl.isAlternateScreen,
+            canScrollRemoteContent: messageJump.scrollControl.canScrollRemoteContent,
             agentStatus: agent.agent.status,
             isRunning: messageJump.isJumpRunning || messageJump.controller.isRunning)
     }

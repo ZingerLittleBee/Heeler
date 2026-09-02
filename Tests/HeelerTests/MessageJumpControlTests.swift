@@ -24,36 +24,62 @@ struct MessageJumpControlTests {
         #expect(
             MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: false,
+                canScrollRemoteContent: true,
                 agentStatus: .idle,
                 isRunning: false)
                 == MessageJumpControlAvailability(isVisible: false, isEnabled: false))
         #expect(
             MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: true,
+                canScrollRemoteContent: true,
                 agentStatus: .idle,
                 isRunning: false)
                 == MessageJumpControlAvailability(isVisible: true, isEnabled: true))
+    }
+
+    /// `herdr terminal attach` always enters the alternate screen, so that
+    /// flag says nothing about the CLI inside it. Claude Code asks for no
+    /// mouse reporting, which makes a scroll step fall back to cursor keys
+    /// that it reads as composer input. Hide the control rather than offer a
+    /// button that types into the user's prompt. `refs #268`.
+    @Test func availabilityRequiresAScrollableRemoteApplication() {
+        #expect(
+            !MessageJumpControlAvailability.evaluate(
+                isAlternateScreen: true,
+                canScrollRemoteContent: false,
+                agentStatus: .idle,
+                isRunning: false).isVisible)
+        #expect(
+            !MessageJumpControlAvailability.evaluate(
+                isAlternateScreen: true,
+                canScrollRemoteContent: false,
+                agentStatus: .idle,
+                isRunning: false).isEnabled)
     }
 
     @Test func availabilityDisablesWhileWorkingOrRunning() {
         #expect(
             !MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: true,
+                canScrollRemoteContent: true,
                 agentStatus: .working,
                 isRunning: false).isEnabled)
         #expect(
             !MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: true,
+                canScrollRemoteContent: true,
                 agentStatus: .idle,
                 isRunning: true).isEnabled)
         #expect(
             MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: true,
+                canScrollRemoteContent: true,
                 agentStatus: .blocked,
                 isRunning: false).isEnabled)
         #expect(
             MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: true,
+                canScrollRemoteContent: true,
                 agentStatus: .done,
                 isRunning: false).isEnabled)
     }
@@ -267,6 +293,7 @@ struct MessageJumpControlTests {
     @Test func availabilityDisabledMeansOverlayShouldNotHitTest() {
         let disabled = MessageJumpControlAvailability.evaluate(
             isAlternateScreen: true,
+            canScrollRemoteContent: true,
             agentStatus: .working,
             isRunning: false)
         #expect(disabled.isVisible)

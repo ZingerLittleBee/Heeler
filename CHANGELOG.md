@@ -15,7 +15,9 @@ Entries reference the issue that motivated them.
   while the agent is working or a jump is in flight. Any message the Agent's
   own view shows behind a prompt marker is a jump target, so history that was
   sent from a computer, or before the screen was opened, can be walked too.
-  (#268)
+  The controls appear only for Agent CLIs whose own view scrolls on a wheel
+  report — Codex and Grok do, Claude Code does not, and there is no other way
+  to move its history from the phone. (#268)
 
 ### Fixed
 

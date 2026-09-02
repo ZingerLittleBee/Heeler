@@ -25,6 +25,20 @@ final class TerminalScrollControl {
     /// is attached.
     private(set) var isAlternateScreen = false
 
+    /// Whether a scroll step can actually move the remote application's own
+    /// view.
+    ///
+    /// `herdr terminal attach` always puts the client on the alternate screen,
+    /// so `isAlternateScreen` says nothing about the application inside it. A
+    /// ratatui agent (codex, grok) asks for mouse reporting and scrolls on a
+    /// wheel report. Claude Code asks for none — measured: it sets only 1004,
+    /// 2004, 2026, 2031 — so `applyScroll` falls back to cursor keys, which
+    /// Claude Code reads as input and which recall earlier prompts into its
+    /// composer. There is no third channel: herdr's API has no pane-scroll
+    /// method, and the attach client does not scroll its own scrollback on a
+    /// wheel report. `refs #268`.
+    private(set) var canScrollRemoteContent = false
+
     /// One scroll step of `rows` lines. Same branch `scrollTouch` takes
     /// (remote sequence when the mode tracker supplies one, local
     /// `scroll_page_lines` otherwise), without touching the gesture
@@ -38,8 +52,13 @@ final class TerminalScrollControl {
     var viewportRows: Int? { terminal?.viewportRows }
 
     private func syncAlternateScreen() {
-        let next = terminal?.isAlternateScreen ?? false
-        guard isAlternateScreen != next else { return }
-        isAlternateScreen = next
+        let nextAlternate = terminal?.isAlternateScreen ?? false
+        if isAlternateScreen != nextAlternate {
+            isAlternateScreen = nextAlternate
+        }
+        let nextScrollable = terminal?.remoteTracksMouse ?? false
+        if canScrollRemoteContent != nextScrollable {
+            canScrollRemoteContent = nextScrollable
+        }
     }
 }

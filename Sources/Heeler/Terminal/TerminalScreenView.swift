@@ -976,8 +976,11 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
 
     func receive(_ data: Data) {
         let wasAlternateScreen = modeTracker.isAlternateScreen
+        let didTrackMouse = modeTracker.tracksMouse
         modeTracker.receive(data)
-        if modeTracker.isAlternateScreen != wasAlternateScreen {
+        if modeTracker.isAlternateScreen != wasAlternateScreen
+            || modeTracker.tracksMouse != didTrackMouse
+        {
             onAlternateScreenChange?()
         }
         terminalSession.receive(data)
@@ -987,6 +990,12 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// Whether the remote application currently has the alternate screen
     /// active (DECSET 47 / 1047 / 1049). Read by ``TerminalScrollControl``.
     var isAlternateScreen: Bool { modeTracker.isAlternateScreen }
+
+    /// Whether the remote application asked for mouse reporting. Only then can
+    /// a scroll step reach its own history: without it, `applyScroll` falls
+    /// back to cursor keys, which a non-TUI application reads as input rather
+    /// than as scrolling. Read by ``TerminalScrollControl``. `refs #268`.
+    var remoteTracksMouse: Bool { modeTracker.tracksMouse }
 
     /// Rows the grid currently shows, or nil until the surface has reported
     /// real metrics. The jump control sizes its scroll steps from this: a step
