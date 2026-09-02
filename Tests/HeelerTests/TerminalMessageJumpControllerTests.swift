@@ -19,11 +19,16 @@ struct TerminalMessageJumpControllerTests {
         #expect(!harness.controller.isRunning)
     }
 
-    @Test("entry frame already matches walks past it to the next")
+    /// The entry frame's own message must not end the jump, however many
+    /// frames it stays visible for — only a message that was not on screen at
+    /// the press does.
+    @Test("a message already on screen at the press does not end the jump")
     func walksPastEntryMatch() async {
         let harness = JumpHarness(
-            script: ["MSG1-still", "plain", "MSG2"],
-            matches: { $0.contains("MSG") }
+            script: ["MSG1-scrolled", "MSG1-lower", "MSG2"],
+            keys: { frame in
+                frame.hasPrefix("MSG") ? [String(frame.prefix(4))] : []
+            }
         )
         harness.seedFrame("MSG1")
 
@@ -33,6 +38,27 @@ struct TerminalMessageJumpControllerTests {
         #expect(harness.stepCalls.count == 3)
         #expect(harness.lastDeliveredFrame == "MSG2")
         #expect(!harness.controller.isRunning)
+    }
+
+    /// The defect Round 1 of testloop found on a live Grok TUI: several
+    /// messages share the viewport, so requiring the screen to be free of
+    /// messages before hunting the next one scrolled past every one of them.
+    @Test("stops at the neighbour even while earlier messages stay on screen")
+    func stopsAtNeighbourSharingTheViewport() async {
+        let harness = JumpHarness(
+            // Every frame still shows MSG3; MSG2 scrolls in alongside it.
+            script: ["MSG3", "MSG3 MSG2"],
+            keys: { frame in
+                Set(frame.split(separator: " ").map(String.init))
+            }
+        )
+        harness.seedFrame("MSG3")
+
+        let outcome = await harness.controller.jump(.older)
+
+        #expect(outcome == .found)
+        #expect(harness.stepCalls.count == 2)
+        #expect(harness.lastDeliveredFrame == "MSG3 MSG2")
     }
 
     @Test("identical frames reach end at unchangedFramesBeforeEnd")
@@ -135,7 +161,7 @@ struct TerminalMessageJumpControllerTests {
                 ["noise-a", "noise-b", "1"],
                 ["noise-c", "TARGET"],
             ],
-            matches: { $0 == "TARGET" }
+            keys: { $0 == "TARGET" ? ["TARGET"] : [] }
         )
         driver.seedFrame("0")
 
@@ -307,7 +333,7 @@ struct TerminalMessageJumpControllerTests {
         #expect(!harness.controller.isRunning)
     }
 
-    @Test("returnToLive ignores matches and stops on unchanged frames")
+    @Test("returnToLive ignores messages and stops on unchanged frames")
     func returnToLiveIgnoresMatches() async {
         var configuration = TerminalMessageJumpController.Configuration()
         configuration.unchangedFramesBeforeEnd = 2
@@ -318,7 +344,7 @@ struct TerminalMessageJumpControllerTests {
         let harness = JumpHarness(
             script: ["live-1", "live-2", "live-2"],
             configuration: configuration,
-            matches: { _ in true }
+            keys: { [$0] }
         )
         harness.seedFrame("start")
 
@@ -484,14 +510,14 @@ private final class BurstJumpDriver {
 
     init(
         bursts: [[String]],
-        matches: @escaping @MainActor (String) -> Bool
+        keys: @escaping @MainActor (String) -> Set<String>
     ) {
         self.bursts = bursts
         controllerStorage = TerminalMessageJumpController(
             step: { [weak self] _, _ in
                 self?.deliverNextBurst()
             },
-            matches: matches,
+            visibleMessages: keys,
             sleep: { _ in }
         )
     }
@@ -531,19 +557,19 @@ private final class JumpHarness {
         configuration: TerminalMessageJumpController.Configuration = .init(),
         matchExact: String? = nil,
         deliverFrames: Bool = true,
-        matches: (@MainActor (String) -> Bool)? = nil,
+        keys: (@MainActor (String) -> Set<String>)? = nil,
         sleep: @escaping @Sendable (Duration) async throws -> Void = { _ in }
     ) {
         self.script = script
         self.deliverFrames = deliverFrames
 
-        let matchPredicate: @MainActor (String) -> Bool
-        if let matches {
-            matchPredicate = matches
+        let keyProvider: @MainActor (String) -> Set<String>
+        if let keys {
+            keyProvider = keys
         } else if let matchExact {
-            matchPredicate = { $0 == matchExact }
+            keyProvider = { $0 == matchExact ? [matchExact] : [] }
         } else {
-            matchPredicate = { _ in false }
+            keyProvider = { _ in [] }
         }
 
         controllerStorage = TerminalMessageJumpController(
@@ -551,7 +577,7 @@ private final class JumpHarness {
             step: { [weak self] direction, rows in
                 self?.noteStep(direction: direction, rows: rows)
             },
-            matches: matchPredicate,
+            visibleMessages: keyProvider,
             sleep: sleep
         )
     }

@@ -59,26 +59,26 @@ final class TerminalMessageJumpController {
     /// - Parameters:
     ///   - step: Pushes one scroll step at the remote TUI. The `Int` is the
     ///     row count; the implementation is the same path a drag uses.
-    ///   - matches: Whether a frame carries a user message. Supplied by
-    ///     `AttachUserMessageIndex.frameContainsMessage(_:)`.
+    ///   - visibleMessages: Stable identities of the user messages a frame
+    ///     shows. Supplied by `AttachUserMessageIndex.visibleMessageKeys(_:)`.
     ///   - sleep: Injected so tests do not wait in real time.
     init(
         configuration: Configuration = Configuration(),
         step: @escaping @MainActor (Direction, Int) -> Void,
-        matches: @escaping @MainActor (String) -> Bool,
+        visibleMessages: @escaping @MainActor (String) -> Set<String>,
         sleep: @escaping @Sendable (Duration) async throws -> Void = {
             try await Task.sleep(for: $0)
         }
     ) {
         self.configuration = configuration
         self.step = step
-        self.matches = matches
+        self.visibleMessages = visibleMessages
         self.sleep = sleep
     }
 
     let configuration: Configuration
     private let step: @MainActor (Direction, Int) -> Void
-    private let matches: @MainActor (String) -> Bool
+    private let visibleMessages: @MainActor (String) -> Set<String>
     private let sleep: @Sendable (Duration) async throws -> Void
 
     /// True between `jump`/`returnToLive` being called and returning. The UI
@@ -117,15 +117,6 @@ final class TerminalMessageJumpController {
         case cancelled
     }
 
-    /// Edge-walk phases for `jump`. Modelled explicitly so a press that starts
-    /// on a matching frame walks *off* it before hunting the next match.
-    private enum JumpPhase: Equatable {
-        /// Entry frame already matched; keep stepping until it does not.
-        case leavingMatch
-        /// Looking for the next frame that satisfies `matches`.
-        case seekingMatch
-    }
-
     /// Fed from the existing viewport-text tap
     /// (`TerminalScreenView.reportViewportText`). Calling this while no jump
     /// is running is legal and cheap.
@@ -143,10 +134,16 @@ final class TerminalMessageJumpController {
 
     /// Moves to the neighbouring user message.
     ///
-    /// Edge semantics, which is what makes repeated presses walk: if the frame
-    /// on entry already satisfies `matches`, keep stepping until it stops
-    /// doing so, and only then look for the next frame that does. Always take
-    /// at least one step.
+    /// Walk semantics: remember which messages were already on screen when the
+    /// press landed, then step until a message that was *not* among them comes
+    /// into view. Because the loop only ever moves one way, a newly appearing
+    /// message is necessarily the neighbour in that direction, and repeated
+    /// presses walk without any extra bookkeeping.
+    ///
+    /// This replaced an earlier rule that stepped until *no* message matched
+    /// before hunting the next one. On a phone the viewport holds tens of
+    /// rows, so several consecutive messages are on screen together and that
+    /// rule scrolled past all of them (verified on a live agent TUI, #268).
     func jump(_ direction: Direction) async -> Outcome {
         // Refuse reentrancy: a second call does not cancel or interleave the
         // in-flight loop. The UI gates on `isRunning`; this is the safety net.
@@ -155,7 +152,7 @@ final class TerminalMessageJumpController {
         cancelRequested = false
         defer { finishRun() }
 
-        var phase: JumpPhase = matches(latestFrame) ? .leavingMatch : .seekingMatch
+        var seenMessages = visibleMessages(latestFrame)
         var previousFrame = latestFrame
         var unchangedCount = 0
 
@@ -182,16 +179,11 @@ final class TerminalMessageJumpController {
                 } else {
                     unchangedCount = 0
                     previousFrame = text
-                    switch phase {
-                    case .leavingMatch:
-                        if !matches(text) {
-                            phase = .seekingMatch
-                        }
-                    case .seekingMatch:
-                        if matches(text) {
-                            return .found
-                        }
+                    let messages = visibleMessages(text)
+                    if !messages.subtracting(seenMessages).isEmpty {
+                        return .found
                     }
+                    seenMessages.formUnion(messages)
                 }
             }
         }
@@ -199,7 +191,7 @@ final class TerminalMessageJumpController {
     }
 
     /// Scrolls forward until the frame stops changing — the live bottom.
-    /// Reports `.reachedEnd` on success; `matches` is not consulted.
+    /// Reports `.reachedEnd` on success; `visibleMessages` is not consulted.
     func returnToLive() async -> Outcome {
         guard !isRunning else { return .cancelled }
         isRunning = true

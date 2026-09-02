@@ -131,7 +131,7 @@ final class AgentMessageJumpWiring {
                     towardOlderContent: direction == .older,
                     rows: rows)
             },
-            matches: { messageIndex.frameContainsMessage($0) })
+            visibleMessages: { messageIndex.visibleMessageKeys($0) })
     }
 
     /// Feeds the jump controller from `TerminalScreenView.onViewportTextChanged`.

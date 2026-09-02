@@ -203,6 +203,61 @@ struct AttachUserMessageIndexTests {
         #expect(!index.frameContainsMessage(String(repeating: "b", count: 64)))
     }
 
+    /// Round 1 of testloop, against a live Grok TUI at phone width. The TUI
+    /// right-aligns the send time into the message's own first row, so the
+    /// whole-frame join reads `...reply with the 7:49 PM word Charlie...` and
+    /// no 64-character head of the submitted text is a substring of it.
+    @Test func frameContainsMessageSurvivesAGutterTimestampOnTheMessageRow() {
+        let submitted = "Test loop probe Charlie, reply with the word Charlie and change nothing"
+        let frame = """
+            ❯ Test loop probe Charlie, reply with the        7:49 PM
+              word Charlie and change nothing
+            """
+        let index = AttachUserMessageIndex()
+        index.record(submitted: submitted)
+
+        #expect(!AttachUserMessageIndex.normalize(frame).contains(submitted))
+        #expect(index.frameContainsMessage(frame))
+    }
+
+    /// The extension asked for after Round 1: history the user scrolled back
+    /// through is jumpable even though this session submitted none of it.
+    @Test func promptLinesAreTargetsWithoutAnySubmittedMessage() {
+        let index = AttachUserMessageIndex()
+        let keys = index.visibleMessageKeys(
+            """
+            ❯ what does the transport do when preflight fails
+              and the host denies forwarding
+            The answer is in ADR 0011.
+            › a second question from another device
+            """)
+
+        #expect(index.entries.isEmpty)
+        #expect(keys.count == 2)
+    }
+
+    /// A prompt line's key must not change as its message scrolls in a row at
+    /// a time, or the jump loop reads one message as several.
+    @Test func promptLineKeyIsStableAsTheMessageScrollsIn() {
+        let index = AttachUserMessageIndex()
+        let firstRowOnly = index.visibleMessageKeys(
+            "❯ what does the transport do when preflight fails        7:49 PM")
+        let fullyVisible = index.visibleMessageKeys(
+            """
+            ❯ what does the transport do when preflight fails        7:52 PM
+              and the host denies forwarding
+            """)
+
+        #expect(!firstRowOnly.isEmpty)
+        #expect(firstRowOnly == fullyVisible)
+    }
+
+    /// An empty input box is drawn on every frame; it must not be a target.
+    @Test func anEmptyPromptLineIsNotATarget() {
+        let index = AttachUserMessageIndex()
+        #expect(index.visibleMessageKeys("❯\n───────────").isEmpty)
+    }
+
     @Test func recordSubmittedIndexesComposerTextWithoutATerminator() {
         let index = AttachUserMessageIndex()
         index.record(submitted: "please implement the parser")

@@ -12,7 +12,10 @@ Entries reference the issue that motivated them.
 - Agent detail shows compact up/down controls on the Attach alternate screen
   that jump between the user's own messages and return to live output. The
   controls stay hidden on the primary screen, and disable (without vanishing)
-  while the agent is working or a jump is in flight. (#268)
+  while the agent is working or a jump is in flight. Any message the Agent's
+  own view shows behind a prompt marker is a jump target, so history that was
+  sent from a computer, or before the screen was opened, can be walked too.
+  (#268)
 
 ### Fixed
 
