@@ -120,15 +120,34 @@ final class AgentMessageJumpWiring {
     /// reset-before-start race.
     private(set) var jumpInvocationCount = 0
 
+    /// True while the terminal's renderer is pinned for an in-flight jump.
+    private(set) var isDisplayFrozen = false
+
     private var nextGeneration: UInt64 = 0
     private var jumpEpoch: UInt64 = 0
     private var jumpTask: Task<Void, Never>?
+    private var freezeWatchdog: Task<Void, Never>?
+    private let freezeTimeout: Duration
+    private let sleep: @Sendable (Duration) async throws -> Void
 
-    init() {
+    /// - Parameters:
+    ///   - freezeTimeout: How long the frozen image may stand before the walk
+    ///     is presumed stuck. A jump that outlives it thaws mid-walk, so the
+    ///     user sees the remaining scroll — worse than a cut, far better than a
+    ///     screen that looks hung.
+    ///   - sleep: Injected so tests do not wait in real time.
+    init(
+        freezeTimeout: Duration = .seconds(3),
+        sleep: @escaping @Sendable (Duration) async throws -> Void = {
+            try await Task.sleep(for: $0)
+        }
+    ) {
         let scrollControl = TerminalScrollControl()
         let messageIndex = AttachUserMessageIndex()
         self.scrollControl = scrollControl
         self.messageIndex = messageIndex
+        self.freezeTimeout = freezeTimeout
+        self.sleep = sleep
         self.controller = TerminalMessageJumpController(
             step: { direction, rows in
                 scrollControl.scrollRows(
@@ -169,13 +188,42 @@ final class AgentMessageJumpWiring {
             }
             self.jumpInvocationCount &+= 1
             self.isJumpRunning = true
+            // One freeze per press, covering every phase of the body — the
+            // down button's walk and its `returnToLive` finish are one trip.
+            self.beginFreeze()
             defer {
                 if epoch == self.jumpEpoch {
                     self.isJumpRunning = false
+                    self.endFreeze()
                 }
             }
             await body(session)
         }
+    }
+
+    /// Pins the rendered image and arms the watchdog that guarantees a thaw.
+    private func beginFreeze() {
+        freezeWatchdog?.cancel()
+        isDisplayFrozen = true
+        scrollControl.freezeDisplay()
+        freezeWatchdog = Task { @MainActor in
+            do {
+                try await self.sleep(self.freezeTimeout)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            // Deliberately unconditional: whatever the jump is still doing, a
+            // screen frozen this long reads as a hang.
+            self.endFreeze()
+        }
+    }
+
+    private func endFreeze() {
+        freezeWatchdog?.cancel()
+        freezeWatchdog = nil
+        isDisplayFrozen = false
+        scrollControl.thawDisplay()
     }
 
     /// Drops indexed messages, cancels an in-flight jump Task, and advances
@@ -188,6 +236,9 @@ final class AgentMessageJumpWiring {
         nextGeneration &+= 1
         liveGeneration = SessionGeneration(value: nextGeneration)
         isJumpRunning = false
+        // The cancelled task's `defer` sees the advanced epoch and skips its
+        // thaw, so the reset owns it.
+        endFreeze()
         controller.cancel()
         messageIndex.reset()
         lastViewportFrame = nil

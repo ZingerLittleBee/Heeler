@@ -615,6 +615,8 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private var touchScrollMomentumDisplayLink: CADisplayLink?
     private var touchScrollMomentumVelocityY: CGFloat = 0
     private var touchScrollMomentumTimestamp: CFTimeInterval = 0
+    /// Snapshot covering the live surface while a jump walks. Nil when thawed.
+    private var frozenSnapshotView: UIView?
 
     private lazy var touchScrollGesture = UIPanGestureRecognizer(
         target: self,
@@ -1256,6 +1258,10 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         guard !defersLayoutForKeyboardTransition else { return }
         super.layoutSubviews()
         reloadInputViewsAfterWindowResize()
+        if let frozenSnapshotView {
+            frozenSnapshotView.frame = bounds
+            bringSubviewToFront(frozenSnapshotView)
+        }
     }
 
     override func didMoveToWindow() {
@@ -1293,6 +1299,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         _ gestureRecognizer: UIGestureRecognizer
     ) -> Bool {
         if gestureRecognizer === touchScrollGesture {
+            if isDisplayFrozen { return false }
             let velocity = touchScrollGesture.velocity(in: self)
             return abs(velocity.y) > abs(velocity.x)
         }
@@ -1531,6 +1538,61 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         guard rows != 0 else { return 0 }
         applyScroll(towardOlderContent: rows > 0, rowCount: abs(rows))
         return rows
+    }
+
+    /// Whether the rendered image is currently pinned. See ``freezeDisplay()``.
+    private(set) var isDisplayFrozen = false
+
+    /// Holds the on-screen image where it is while a jump walks the remote TUI.
+    ///
+    /// A jump is an open loop of scroll-and-read round trips (see
+    /// ``TerminalMessageJumpController``), so the destination is only reachable
+    /// *through* the frames in between — and drawing every one of them is what
+    /// makes a distant message look like a slow crawl rather than a jump.
+    /// Covering the live surface with a snapshot of the origin frame hides
+    /// that walk. The terminal model keeps advancing underneath, so
+    /// `readViewportText` still reports every intermediate frame. The user
+    /// sees a cut from origin to destination.
+    ///
+    /// libghostty-spm's `setSurfaceVisible` exists only on AppKit, so iOS
+    /// cannot pause the renderer. The snapshot is the freeze. It must always
+    /// be undone — see the caller's watchdog in ``AgentMessageJumpWiring``.
+    /// `refs #268`.
+    func freezeDisplay() {
+        guard !isDisplayFrozen else { return }
+        isDisplayFrozen = true
+        touchScrollGesture.isEnabled = false
+        let snapshot = makeFrozenSnapshot()
+        snapshot.frame = bounds
+        snapshot.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        snapshot.isUserInteractionEnabled = false
+        snapshot.accessibilityElementsHidden = true
+        addSubview(snapshot)
+        frozenSnapshotView = snapshot
+    }
+
+    /// Resumes rendering and repaints at wherever the walk finished.
+    func thawDisplay() {
+        guard isDisplayFrozen else { return }
+        isDisplayFrozen = false
+        touchScrollGesture.isEnabled = true
+        frozenSnapshotView?.removeFromSuperview()
+        frozenSnapshotView = nil
+    }
+
+    /// Last composed frame, or a drawHierarchy fallback if snapshotView
+    /// cannot capture the Ghostty surface.
+    private func makeFrozenSnapshot() -> UIView {
+        if let snapshot = snapshotView(afterScreenUpdates: false) {
+            return snapshot
+        }
+        let renderer = UIGraphicsImageRenderer(bounds: bounds)
+        let image = renderer.image { _ in
+            drawHierarchy(in: bounds, afterScreenUpdates: false)
+        }
+        let imageView = UIImageView(image: image)
+        imageView.contentMode = .scaleToFill
+        return imageView
     }
 
     /// One scroll step of `rowCount` lines for chrome that is not a gesture.
