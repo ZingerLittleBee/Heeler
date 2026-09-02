@@ -290,7 +290,7 @@ struct AgentTerminalView: View {
         _skills = State(initialValue: Self.makeSkillsStore(for: agent, console: console))
         _messageJump = State(
             initialValue: AgentMessageJumpWiring(
-                policy: .forAgentKind(agent.agent.kind)))
+                profile: .forAgentKind(agent.agent.kind)))
     }
 
     /// The Skills pane's store, or nil when this agent's kind has no skills

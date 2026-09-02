@@ -56,6 +56,12 @@ import Foundation
 /// `refs #268`.
 @MainActor
 final class AttachUserMessageIndex {
+    private let promptIndentLimit: Int
+
+    init(maximumPromptIndent: Int = AttachUserMessageIndex.maximumPromptIndent) {
+        self.promptIndentLimit = max(0, maximumPromptIndent)
+    }
+
     /// One submitted message, oldest first in `entries`.
     struct Entry: Identifiable, Equatable {
         let id: UUID
@@ -317,7 +323,7 @@ final class AttachUserMessageIndex {
 
         var keys = Set<String>()
         for line in lines {
-            if let key = Self.promptLineKey(line) {
+            if let key = promptLineKey(line) {
                 keys.insert(key)
             }
         }
@@ -412,7 +418,7 @@ final class AttachUserMessageIndex {
     /// on live panes: claude and codex draw the user's turn in column 0, while
     /// their tool output is indented to column 5 and deeper. A box-drawing
     /// glyph is not whitespace, so a bordered input box still qualifies.
-    static let maximumPromptIndent = 2
+    nonisolated static let maximumPromptIndent = 2
 
     /// One frame line with its leading decorations removed, remembering
     /// whether a prompt glyph was among them and how far the line was indented
@@ -432,13 +438,13 @@ final class AttachUserMessageIndex {
     /// included it would change under the jump loop and read as a different
     /// message. Everything the user typed is a single-spaced run, so cutting
     /// at the gutter keeps the part that identifies the message.
-    private static func promptLineKey(_ line: StrippedLine) -> String? {
-        guard line.hasPromptGlyph, line.indent <= maximumPromptIndent else {
+    private func promptLineKey(_ line: StrippedLine) -> String? {
+        guard line.hasPromptGlyph, line.indent <= promptIndentLimit else {
             return nil
         }
         let body = line.text.components(separatedBy: "  ").first ?? line.text
         let collapsed = body.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        guard weight(of: collapsed) >= minimumEntryWeight else { return nil }
+        guard Self.weight(of: collapsed) >= Self.minimumEntryWeight else { return nil }
         return "line:\(collapsed)"
     }
 

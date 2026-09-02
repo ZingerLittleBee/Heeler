@@ -94,13 +94,21 @@ enum MessageJumpPlacement {
     }
 }
 
-extension TerminalMessageJumpPolicy {
-    /// Grok pins the current prompt at the top of the viewport; every other
-    /// kind, including unknown, keeps the neighbor-appearance walk.
+/// Agent-specific recognition and walking rules for user-message navigation.
+/// Most TUIs draw user prompts flush-left. Grok's pinned prompt is indented
+/// five columns, so it needs a wider recognition window without weakening the
+/// tool-output rejection used by every other Agent kind.
+struct AgentMessageJumpProfile: Equatable {
+    let policy: TerminalMessageJumpPolicy
+    let maximumPromptIndent: Int
+
     static func forAgentKind(_ kind: String) -> Self {
-        kind == SupportedAgentKind.grok.rawValue
-            ? .stickyPromptOvershoot
-            : .neighborAppearance
+        if kind == SupportedAgentKind.grok.rawValue {
+            return Self(policy: .stickyPromptOvershoot, maximumPromptIndent: 5)
+        }
+        return Self(
+            policy: .neighborAppearance,
+            maximumPromptIndent: AttachUserMessageIndex.maximumPromptIndent)
     }
 }
 
@@ -134,9 +142,12 @@ final class AgentMessageJumpWiring {
     private var jumpEpoch: UInt64 = 0
     private var jumpTask: Task<Void, Never>?
 
-    init(policy: TerminalMessageJumpPolicy = .neighborAppearance) {
+    init(
+        policy: TerminalMessageJumpPolicy = .neighborAppearance,
+        maximumPromptIndent: Int = AttachUserMessageIndex.maximumPromptIndent
+    ) {
         let scrollControl = TerminalScrollControl()
-        let messageIndex = AttachUserMessageIndex()
+        let messageIndex = AttachUserMessageIndex(maximumPromptIndent: maximumPromptIndent)
         self.scrollControl = scrollControl
         self.messageIndex = messageIndex
         self.controller = TerminalMessageJumpController(
@@ -148,6 +159,12 @@ final class AgentMessageJumpWiring {
             },
             visibleMessages: { messageIndex.visibleMessageKeys($0) },
             viewportRows: { scrollControl.viewportRows })
+    }
+
+    convenience init(profile: AgentMessageJumpProfile) {
+        self.init(
+            policy: profile.policy,
+            maximumPromptIndent: profile.maximumPromptIndent)
     }
 
     /// Feeds the jump controller from `TerminalScreenView.onViewportTextChanged`.

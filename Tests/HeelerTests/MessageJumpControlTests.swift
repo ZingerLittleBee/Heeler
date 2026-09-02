@@ -196,18 +196,25 @@ struct MessageJumpControlTests {
         #expect(returnToLiveCalls == 0)
     }
 
-    @Test(arguments: [
-        ("grok", TerminalMessageJumpPolicy.stickyPromptOvershoot),
-        ("claude", .neighborAppearance),
-        ("codex", .neighborAppearance),
-        ("cursor", .neighborAppearance),
-        ("", .neighborAppearance),
-        ("unknown", .neighborAppearance),
-    ])
-    func jumpPolicyIsStickyOnlyForGrok(
-        _ kind: String, _ expected: TerminalMessageJumpPolicy
-    ) {
-        #expect(TerminalMessageJumpPolicy.forAgentKind(kind) == expected)
+    @MainActor
+    @Test func grokProfileWidensPromptRecognitionWithoutChangingOtherAgents() {
+        let grok = AgentMessageJumpProfile.forAgentKind("grok")
+        #expect(grok.policy == .stickyPromptOvershoot)
+        #expect(grok.maximumPromptIndent == 5)
+        let grokWiring = AgentMessageJumpWiring(profile: grok)
+        #expect(
+            grokWiring.messageIndex.visibleMessageKeys("     ❯ /handoff")
+                == ["line:/handoff"])
+
+        for kind in ["claude", "codex", "cursor", "", "unknown"] {
+            let profile = AgentMessageJumpProfile.forAgentKind(kind)
+            #expect(profile.policy == .neighborAppearance)
+            #expect(
+                profile.maximumPromptIndent
+                    == AttachUserMessageIndex.maximumPromptIndent)
+            let wiring = AgentMessageJumpWiring(profile: profile)
+            #expect(wiring.messageIndex.visibleMessageKeys("     ❯ /handoff").isEmpty)
+        }
     }
 
     @MainActor

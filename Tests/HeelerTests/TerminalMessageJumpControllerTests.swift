@@ -475,6 +475,46 @@ struct TerminalMessageJumpControllerTests {
         #expect(!harness.controller.isRunning)
     }
 
+    /// The live Grok viewport indents its pinned prompt by five columns.
+    /// This exact shape used to fall outside prompt recognition, so the first
+    /// Up walked to `/resume-claude` instead of returning to `/handoff`.
+    @Test("live Grok indentation still lands first Up on the current turn")
+    func liveGrokIndentationLandsOnCurrentTurn() async {
+        let profile = AgentMessageJumpProfile.forAgentKind("grok")
+        let index = AttachUserMessageIndex(
+            maximumPromptIndent: profile.maximumPromptIndent)
+        let frames = [
+            GrokStickyFrames.frame(
+                prompt: GrokStickyFrames.handoffPrompt,
+                body: "The live bottom.",
+                promptIndent: 5),
+            GrokStickyFrames.frame(
+                prompt: GrokStickyFrames.handoffPrompt,
+                body: "Earlier in the same turn.",
+                promptIndent: 5),
+            GrokStickyFrames.frame(
+                prompt: GrokStickyFrames.resumePrompt,
+                body: "The previous turn.",
+                promptIndent: 5),
+        ]
+        let harness = JumpHarness(
+            script: frames,
+            policy: profile.policy,
+            keys: { index.visibleMessageKeys($0) },
+            bidirectional: true
+        )
+        harness.seedCurrentFrame()
+
+        let outcome = await harness.controller.jump(.older)
+
+        #expect(outcome == .found)
+        #expect(
+            index.visibleMessageKeys(harness.lastDeliveredFrame ?? "")
+                == [GrokStickyFrames.handoffKey])
+        #expect(harness.lastDeliveredFrame != frames.last)
+        #expect(harness.stepCalls.contains { $0.direction == .newer })
+    }
+
     /// The same captured frames under the default policy keep the behavior
     /// that #268's Grok defect exhibited: the already-visible `/handoff` is
     /// ignored and the walk stops on `/resume-claude`.
@@ -951,9 +991,10 @@ private enum GrokStickyFrames {
     static let resumeKey =
         "line:/resume-claude f64ca968-bb43-41f5-a118-28d7b946fea0"
 
-    static func frame(prompt: String, body: String) -> String {
-        """
-        ❯ \(prompt)        2:41 PM
+    static func frame(prompt: String, body: String, promptIndent: Int = 0) -> String {
+        let indentation = String(repeating: " ", count: promptIndent)
+        return """
+        \(indentation)❯ \(prompt)        2:41 PM
           \(body)
         ────────────────────────────────────────────
         ❯
