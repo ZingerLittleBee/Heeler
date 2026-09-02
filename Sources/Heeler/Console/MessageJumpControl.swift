@@ -190,15 +190,18 @@ final class AgentMessageJumpWiring {
 }
 
 /// Down-button orchestration extracted so the stale-continuation guard is
-/// unit-testable without hosting Agent detail. `refs #268`.
+/// unit-testable without hosting Agent detail. Isolated to the main actor
+/// because every caller passes closures that touch MainActor jump state.
+/// `refs #268`.
+@MainActor
 enum MessageJumpDownSequencer {
     /// Walks toward live one user message at a time. When no newer message
     /// remains, finishes with `returnToLive` — but only while `isLive` still
     /// reports the Attach session that started the jump.
     static func run(
-        jumpNewer: () async -> TerminalMessageJumpController.Outcome,
-        returnToLive: () async -> TerminalMessageJumpController.Outcome,
-        isLive: () -> Bool
+        jumpNewer: @MainActor () async -> TerminalMessageJumpController.Outcome,
+        returnToLive: @MainActor () async -> TerminalMessageJumpController.Outcome,
+        isLive: @MainActor () -> Bool
     ) async -> TerminalMessageJumpController.Outcome? {
         let outcome = await jumpNewer()
         guard isLive() else { return nil }

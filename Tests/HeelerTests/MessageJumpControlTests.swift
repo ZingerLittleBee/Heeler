@@ -136,6 +136,7 @@ struct MessageJumpControlTests {
                 bottomInset: MessageJumpPlacement.bottomInset(terminalHeight: 160)))
     }
 
+    @MainActor
     @Test func downSequencerSkipsReturnToLiveAfterSessionEnds() async {
         var live = true
         var returnToLiveCalls = 0
@@ -153,7 +154,9 @@ struct MessageJumpControlTests {
         #expect(returnToLiveCalls == 0)
     }
 
+    @MainActor
     @Test func downSequencerReturnsFoundWithoutCallingReturnToLive() async {
+        var live = true
         var returnToLiveCalls = 0
         let outcome = await MessageJumpDownSequencer.run(
             jumpNewer: { .found },
@@ -161,7 +164,7 @@ struct MessageJumpControlTests {
                 returnToLiveCalls += 1
                 return .reachedEnd
             },
-            isLive: { true })
+            isLive: { live })
         #expect(outcome == .found)
         #expect(returnToLiveCalls == 0)
     }
