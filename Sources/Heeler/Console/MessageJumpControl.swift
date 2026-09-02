@@ -94,6 +94,16 @@ enum MessageJumpPlacement {
     }
 }
 
+extension TerminalMessageJumpPolicy {
+    /// Grok pins the current prompt at the top of the viewport; every other
+    /// kind, including unknown, keeps the neighbor-appearance walk.
+    static func forAgentKind(_ kind: String) -> Self {
+        kind == SupportedAgentKind.grok.rawValue
+            ? .stickyPromptOvershoot
+            : .neighborAppearance
+    }
+}
+
 /// Owns the per-Attach index, scroll handle, and jump loop for Agent detail.
 /// Constructed once per screen; reset when the Attach session is replaced.
 ///
@@ -124,12 +134,13 @@ final class AgentMessageJumpWiring {
     private var jumpEpoch: UInt64 = 0
     private var jumpTask: Task<Void, Never>?
 
-    init() {
+    init(policy: TerminalMessageJumpPolicy = .neighborAppearance) {
         let scrollControl = TerminalScrollControl()
         let messageIndex = AttachUserMessageIndex()
         self.scrollControl = scrollControl
         self.messageIndex = messageIndex
         self.controller = TerminalMessageJumpController(
+            policy: policy,
             step: { direction, rows in
                 scrollControl.scrollRows(
                     towardOlderContent: direction == .older,

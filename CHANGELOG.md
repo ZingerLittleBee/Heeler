@@ -18,7 +18,9 @@ Entries reference the issue that motivated them.
   The controls appear only where a scroll can actually reach that history —
   every agent CLI qualifies; a plain shell, which has no view of its own to
   scroll, does not. Longer trips ramp from fine steps to a full viewport
-  quickly while still scanning every repainted frame. (#268)
+  quickly while still scanning every repainted frame. On Grok, whose TUI pins
+  the current prompt, Up lands on that turn's boundary rather than skipping
+  it for the previous one. (#268)
 
 ### Fixed
 

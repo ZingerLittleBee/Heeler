@@ -196,6 +196,28 @@ struct MessageJumpControlTests {
         #expect(returnToLiveCalls == 0)
     }
 
+    @Test(arguments: [
+        ("grok", TerminalMessageJumpPolicy.stickyPromptOvershoot),
+        ("claude", .neighborAppearance),
+        ("codex", .neighborAppearance),
+        ("cursor", .neighborAppearance),
+        ("", .neighborAppearance),
+        ("unknown", .neighborAppearance),
+    ])
+    func jumpPolicyIsStickyOnlyForGrok(
+        _ kind: String, _ expected: TerminalMessageJumpPolicy
+    ) {
+        #expect(TerminalMessageJumpPolicy.forAgentKind(kind) == expected)
+    }
+
+    @MainActor
+    @Test func wiringForwardsTheJumpPolicy() {
+        let sticky = AgentMessageJumpWiring(policy: .stickyPromptOvershoot)
+        #expect(sticky.controller.policy == .stickyPromptOvershoot)
+        let standard = AgentMessageJumpWiring()
+        #expect(standard.controller.policy == .neighborAppearance)
+    }
+
     @MainActor
     @Test func runJumpAbandonsBodyWhenResetBeforeStart() async {
         let wiring = AgentMessageJumpWiring()

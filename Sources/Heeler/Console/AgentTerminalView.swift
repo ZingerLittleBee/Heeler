@@ -178,7 +178,7 @@ struct AgentTerminalView: View {
     /// keyboard hides the Skills tab in that case.
     @State private var skills: SkillsPaneStore?
     @State private var keyboardControl = TerminalKeyboardControl()
-    @State private var messageJump = AgentMessageJumpWiring()
+    @State private var messageJump: AgentMessageJumpWiring
     @State private var jumpNotice: String?
     @State private var jumpNoticeClearTask: Task<Void, Never>?
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
@@ -288,6 +288,9 @@ struct AgentTerminalView: View {
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
             })
         _skills = State(initialValue: Self.makeSkillsStore(for: agent, console: console))
+        _messageJump = State(
+            initialValue: AgentMessageJumpWiring(
+                policy: .forAgentKind(agent.agent.kind)))
     }
 
     /// The Skills pane's store, or nil when this agent's kind has no skills
