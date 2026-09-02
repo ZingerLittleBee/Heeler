@@ -6,9 +6,10 @@ import UIKit
 /// tests can pin the policy without hosting SwiftUI. `refs #268`.
 struct MessageJumpControlAvailability: Equatable, Sendable {
     /// Shown only on the alternate screen, and only when a scroll step can
-    /// reach the remote application's own history. Without the second
-    /// condition the buttons would appear on an agent whose CLI does not take
-    /// wheel reports, do nothing, and feed cursor keys into its composer.
+    /// reach the remote application's own history. `herdr terminal attach` is
+    /// itself an alternate-screen client, so the first condition alone would
+    /// also put the buttons on a plain shell, where they would do nothing but
+    /// feed it cursor keys.
     var isVisible: Bool
     /// Disabled (not hidden) while a jump is in flight or the agent is
     /// working — a spinner keeps repainting, and the loop's "frame stopped

@@ -252,6 +252,30 @@ struct AttachUserMessageIndexTests {
         #expect(firstRowOnly == fullyVisible)
     }
 
+    /// Captured from a live Claude Code pane scrolled back by wheel reports.
+    /// Its user turns carry `❯`, its own turns `⏺`, and its tool output `⎿` —
+    /// only the first is a jump target. `refs #268`.
+    @Test func aScrolledClaudeFrameYieldsItsUserTurnsOnly() {
+        let index = AttachUserMessageIndex()
+        let keys = index.visibleMessageKeys(
+            """
+            ❯ herdr 没办法动
+
+            ⏺ herdr 不动的话，iOS 这边只剩一条路径，先验证它有没有数据。
+
+            ⎿  $ herdr pane read w2:p3 --source recent --lines 400
+                 > /tmp/out.txt
+
+            ❯ 从 ios 方面想办法
+
+            ────────────────────────────────────────────
+            ❯
+            ────────────────────────────────────────────
+            """)
+
+        #expect(keys == ["line:herdr 没办法动", "line:从 ios 方面想办法"])
+    }
+
     /// The length gate counted characters, so an ordinary Chinese prompt was
     /// silently not a jump target: `安装到我手机上` is seven characters but a
     /// whole sentence. Reported from device use. `refs #268`.

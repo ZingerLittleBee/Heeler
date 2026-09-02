@@ -46,10 +46,12 @@ import Foundation
 ///   Escape, which arrives through Ghostty as anonymous `.keystroke` bytes and
 ///   is otherwise indistinguishable; no current key producer splits a sequence
 ///   that way. Pending text from any other source keeps full split tolerance.
-/// - A prompt glyph is a heuristic. Agent output that begins a line with `>`
-///   (a quoted block, a pasted shell transcript) reads as a user message and
-///   becomes an extra stop on the walk. The cost is one surplus press, which
-///   is preferable to missing the history the user actually wants.
+/// - A prompt glyph is a heuristic, narrowed by two rules taken from live
+///   captures: the glyph must be followed by a space, and it must sit within
+///   ``maximumPromptIndent`` columns. Together those reject a `>_ OpenAI
+///   Codex` banner and an indented `> /tmp/out.txt` shell redirection. What
+///   survives is a flush-left quoted block in agent prose, which costs one
+///   surplus press on the walk.
 ///
 /// `refs #268`.
 @MainActor
@@ -406,11 +408,19 @@ final class AttachUserMessageIndex {
         return String(normalizedText.prefix(length))
     }
 
+    /// Columns of leading whitespace a prompt glyph may sit behind. Measured
+    /// on live panes: claude and codex draw the user's turn in column 0, while
+    /// their tool output is indented to column 5 and deeper. A box-drawing
+    /// glyph is not whitespace, so a bordered input box still qualifies.
+    static let maximumPromptIndent = 2
+
     /// One frame line with its leading decorations removed, remembering
-    /// whether a prompt glyph was among them.
+    /// whether a prompt glyph was among them and how far the line was indented
+    /// before any of them.
     private struct StrippedLine {
         var text: String
         var hasPromptGlyph: Bool
+        var indent: Int
     }
 
     /// Identity for a line that opens a user message, or nil when the line is
@@ -423,7 +433,9 @@ final class AttachUserMessageIndex {
     /// message. Everything the user typed is a single-spaced run, so cutting
     /// at the gutter keeps the part that identifies the message.
     private static func promptLineKey(_ line: StrippedLine) -> String? {
-        guard line.hasPromptGlyph else { return nil }
+        guard line.hasPromptGlyph, line.indent <= maximumPromptIndent else {
+            return nil
+        }
         let body = line.text.components(separatedBy: "  ").first ?? line.text
         let collapsed = body.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         guard weight(of: collapsed) >= minimumEntryWeight else { return nil }
@@ -437,10 +449,14 @@ final class AttachUserMessageIndex {
     private static func strip(_ line: String) -> StrippedLine {
         var text = line
         var sawPrompt = false
+        let indent = line.unicodeScalars.prefix {
+            CharacterSet.whitespaces.contains($0)
+        }.count
         while true {
             text = text.trimmingCharacters(in: .whitespaces)
             guard let first = text.unicodeScalars.first else {
-                return StrippedLine(text: text, hasPromptGlyph: sawPrompt)
+                return StrippedLine(
+                    text: text, hasPromptGlyph: sawPrompt, indent: indent)
             }
             if isPromptGlyph(first) {
                 // A prompt glyph is separated from what the user typed. Without
@@ -449,11 +465,13 @@ final class AttachUserMessageIndex {
                 let rest = text.unicodeScalars.dropFirst()
                 guard rest.first.map({ CharacterSet.whitespaces.contains($0) }) ?? true
                 else {
-                    return StrippedLine(text: text, hasPromptGlyph: sawPrompt)
+                    return StrippedLine(
+                        text: text, hasPromptGlyph: sawPrompt, indent: indent)
                 }
                 sawPrompt = true
             } else if !isBoxGlyph(first) {
-                return StrippedLine(text: text, hasPromptGlyph: sawPrompt)
+                return StrippedLine(
+                    text: text, hasPromptGlyph: sawPrompt, indent: indent)
             }
             text = String(text.unicodeScalars.dropFirst())
         }

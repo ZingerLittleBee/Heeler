@@ -38,10 +38,10 @@ struct MessageJumpControlTests {
     }
 
     /// `herdr terminal attach` always enters the alternate screen, so that
-    /// flag says nothing about the CLI inside it. Claude Code asks for no
-    /// mouse reporting, which makes a scroll step fall back to cursor keys
-    /// that it reads as composer input. Hide the control rather than offer a
-    /// button that types into the user's prompt. `refs #268`.
+    /// flag says nothing about the application inside it. An application that
+    /// never asked for mouse reporting — a plain shell — cannot be scrolled,
+    /// and the fallback would feed it cursor keys. Hide the control rather
+    /// than offer a button that types into the user's line. `refs #268`.
     @Test func availabilityRequiresAScrollableRemoteApplication() {
         #expect(
             !MessageJumpControlAvailability.evaluate(

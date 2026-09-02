@@ -29,14 +29,13 @@ final class TerminalScrollControl {
     /// view.
     ///
     /// `herdr terminal attach` always puts the client on the alternate screen,
-    /// so `isAlternateScreen` says nothing about the application inside it. A
-    /// ratatui agent (codex, grok) asks for mouse reporting and scrolls on a
-    /// wheel report. Claude Code asks for none — measured: it sets only 1004,
-    /// 2004, 2026, 2031 — so `applyScroll` falls back to cursor keys, which
-    /// Claude Code reads as input and which recall earlier prompts into its
-    /// composer. There is no third channel: herdr's API has no pane-scroll
-    /// method, and the attach client does not scroll its own scrollback on a
-    /// wheel report. `refs #268`.
+    /// so `isAlternateScreen` says nothing about the application inside it.
+    /// Every agent CLI measured — claude, codex, grok — asks for mouse
+    /// reporting and scrolls on a wheel report. An application that asks for
+    /// none does not: `applyScroll` falls back to cursor keys, which a shell
+    /// reads as line editing. Nothing else can stand in, because an
+    /// alternate-screen application leaves no herdr-side scrollback for
+    /// `pane.read` to return. `refs #268`.
     private(set) var canScrollRemoteContent = false
 
     /// One scroll step of `rows` lines. Same branch `scrollTouch` takes
