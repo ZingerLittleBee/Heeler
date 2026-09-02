@@ -105,6 +105,12 @@ final class TerminalMessageJumpController {
     /// stale write is observable rather than assumed.
     var enclosingCancelHandlerBarrier: (@MainActor () async -> Void)?
 
+    /// Test seam: invoked synchronously on the MainActor immediately after the
+    /// cancel handler's wait-id / `cancelRequested` region — including the
+    /// early-return path — so a test can observe that the poison window has
+    /// actually run, not merely that a barrier actor released. Nil in production.
+    var enclosingCancelHandlerDidPassPoisonWindow: (@MainActor () -> Void)?
+
     private enum FrameWaitResult: Equatable {
         case frame(String)
         case timedOut
@@ -316,6 +322,9 @@ final class TerminalMessageJumpController {
                 if let barrier = self.enclosingCancelHandlerBarrier {
                     await barrier()
                 }
+                // The post-window seam must fire even when the guard returns
+                // early, so a test can wait for this region to have run.
+                defer { self.enclosingCancelHandlerDidPassPoisonWindow?() }
                 // Establish ownership before touching shared state. A delayed
                 // handler from a finished run must not set `cancelRequested` on
                 // a later jump that reuses this controller.

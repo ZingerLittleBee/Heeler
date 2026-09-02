@@ -253,7 +253,7 @@ struct TerminalMessageJumpControllerTests {
         configuration.frameSettleTimeout = .seconds(60)
 
         let arm = WaitArmSignal()
-        let hold = CancelHandlerHold()
+        let seams = CancelHandlerSeams()
         let harness = JumpHarness(
             script: [],
             configuration: configuration,
@@ -264,10 +264,13 @@ struct TerminalMessageJumpControllerTests {
                 try await Task.sleep(for: duration)
             }
         )
-        // Hold A's cancel handler at the seam until B's waiter is armed, then
-        // release it. Ordering is by call position, not by Task.yield luck.
+        // Seam 1 holds H until B's waiter is armed. Seam 2 fires on the
+        // MainActor only after H has executed the wait-id / flag region.
         harness.controller.enclosingCancelHandlerBarrier = {
-            await hold.waitUntilReleased()
+            await seams.waitUntilReleased()
+        }
+        harness.controller.enclosingCancelHandlerDidPassPoisonWindow = {
+            seams.notePoisonWindowPassed()
         }
         harness.seedFrame("start")
 
@@ -277,7 +280,7 @@ struct TerminalMessageJumpControllerTests {
         await arm.waitUntilArmed()
 
         // Clear A's wait id with a frame, then cancel the enclosing task so its
-        // handler is scheduled against a gone waiter and parks on the barrier.
+        // handler is scheduled against a gone waiter and parks on seam 1.
         harness.controller.frameDidChange("not-the-target")
         jumpA.cancel()
         let outcomeA = await jumpA.value
@@ -291,9 +294,10 @@ struct TerminalMessageJumpControllerTests {
         }
         await arm.waitUntilArmed()
 
-        // B's waiter is live. Release H so it mutates shared state *now*.
-        await hold.release()
-        await hold.waitUntilHandlerPassed()
+        // B's waiter is live. Release seam 1, then wait on seam 2 — which is
+        // call-position proof that H ran the poison window on this MainActor.
+        await seams.release()
+        await seams.waitUntilPoisonWindowPassed()
 
         harness.controller.frameDidChange("TARGET")
         let outcomeB = await jumpB.value
@@ -416,29 +420,27 @@ private actor WaitArmSignal {
     }
 }
 
-/// Holds an enclosing-task cancel handler at the production seam until the
-/// test releases it, then signals that the handler has continued past the gate.
-private actor CancelHandlerHold {
+/// Two call-position seams for the stale cancel-handler regression.
+///
+/// Seam 1 (`waitUntilReleased`) parks H before the poison window. Seam 2
+/// (`notePoisonWindowPassed`) is invoked synchronously from the MainActor
+/// handler *after* that window, so awaiting it proves H ran the guard/write
+/// region — not merely that a barrier actor released.
+@MainActor
+private final class CancelHandlerSeams {
     private var released = false
-    private var handlerPassed = false
+    private var poisonWindowPassed = false
     private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
-    private var passedWaiters: [CheckedContinuation<Void, Never>] = []
+    private var poisonWaiters: [CheckedContinuation<Void, Never>] = []
 
     func waitUntilReleased() async {
-        if !released {
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                if self.released {
-                    continuation.resume()
-                } else {
-                    self.releaseWaiters.append(continuation)
-                }
+        if released { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            if self.released {
+                continuation.resume()
+            } else {
+                self.releaseWaiters.append(continuation)
             }
-        }
-        handlerPassed = true
-        let pending = passedWaiters
-        passedWaiters.removeAll()
-        for waiter in pending {
-            waiter.resume()
         }
     }
 
@@ -451,13 +453,22 @@ private actor CancelHandlerHold {
         }
     }
 
-    func waitUntilHandlerPassed() async {
-        if handlerPassed { return }
+    func notePoisonWindowPassed() {
+        poisonWindowPassed = true
+        let pending = poisonWaiters
+        poisonWaiters.removeAll()
+        for waiter in pending {
+            waiter.resume()
+        }
+    }
+
+    func waitUntilPoisonWindowPassed() async {
+        if poisonWindowPassed { return }
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            if self.handlerPassed {
+            if self.poisonWindowPassed {
                 continuation.resume()
             } else {
-                self.passedWaiters.append(continuation)
+                self.poisonWaiters.append(continuation)
             }
         }
     }
