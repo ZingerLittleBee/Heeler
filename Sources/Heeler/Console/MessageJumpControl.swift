@@ -287,12 +287,12 @@ final class MessageJumpChromeContainer: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         guard let hostedView else { return }
-        let size = hostedView.systemLayoutSizeFitting(
-            CGSize(width: UIView.layoutFittingCompressedSize.width, height: 0),
-            withHorizontalFittingPriority: .fittingSizeLevel,
-            verticalFittingPriority: .fittingSizeLevel)
-        let width = max(size.width, 44)
-        let height = size.height
+        hostedView.setNeedsLayout()
+        hostedView.layoutIfNeeded()
+        let fitting = hostedView.sizeThatFits(
+            CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude))
+        let width = max(fitting.width, 44)
+        let height = max(fitting.height, 0)
         let inset = MessageJumpPlacement.bottomInset(terminalHeight: bounds.height)
         hostedView.frame = CGRect(
             x: bounds.width - width - 10,
