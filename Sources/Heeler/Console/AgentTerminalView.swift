@@ -12,6 +12,8 @@ final class AgentTerminalInteractionProbe {
     private var sendQuickKeyAction: ((AgentQuickKey) -> Void)?
     private var toggleDirectKeyboardAction: (() -> Void)?
     private var switchDirectKeyboardAction: (() -> Void)?
+    private var jumpOlderAction: (() -> Void)?
+    private var jumpNewerAction: (() -> Void)?
     private(set) var directInputChromeMountCount = 0
 
     var isConnected: Bool { selectInputModeAction != nil }
@@ -44,8 +46,49 @@ final class AgentTerminalInteractionProbe {
         return true
     }
 
+    @discardableResult
+    func jumpOlderMessage() -> Bool {
+        guard let jumpOlderAction else { return false }
+        jumpOlderAction()
+        return true
+    }
+
+    @discardableResult
+    func jumpNewerMessage() -> Bool {
+        guard let jumpNewerAction else { return false }
+        jumpNewerAction()
+        return true
+    }
+
+    /// Viewport frames delivered to the jump controller through Agent detail's
+    /// production `onViewportTextChanged` seam.
+    private(set) var messageJumpViewportFrames: [String] = []
+
+    /// Latest frame retained by ``AgentMessageJumpWiring`` after a viewport
+    /// delivery — proves the production path reached the wiring, not only a
+    /// probe tap beside it.
+    private var messageJumpLastViewportFrame: (() -> String?)?
+
+    var lastMessageJumpViewportFrame: String? {
+        messageJumpLastViewportFrame?()
+    }
+
     fileprivate func connect(selectInputMode: @escaping (AgentInputMode) -> Void) {
         selectInputModeAction = selectInputMode
+    }
+
+    fileprivate func connectMessageJump(
+        jumpOlder: @escaping () -> Void,
+        jumpNewer: @escaping () -> Void,
+        lastViewportFrame: @escaping () -> String?
+    ) {
+        jumpOlderAction = jumpOlder
+        jumpNewerAction = jumpNewer
+        messageJumpLastViewportFrame = lastViewportFrame
+    }
+
+    fileprivate func messageJumpDidReceiveViewportText(_ text: String) {
+        messageJumpViewportFrames.append(text)
     }
 
     fileprivate func directInputChromeDidAppear(
@@ -64,6 +107,10 @@ final class AgentTerminalInteractionProbe {
         sendQuickKeyAction = nil
         toggleDirectKeyboardAction = nil
         switchDirectKeyboardAction = nil
+        jumpOlderAction = nil
+        jumpNewerAction = nil
+        messageJumpLastViewportFrame = nil
+        messageJumpViewportFrames = []
         directInputChromeMountCount = 0
     }
 
@@ -131,6 +178,9 @@ struct AgentTerminalView: View {
     /// keyboard hides the Skills tab in that case.
     @State private var skills: SkillsPaneStore?
     @State private var keyboardControl = TerminalKeyboardControl()
+    @State private var messageJump = AgentMessageJumpWiring()
+    @State private var jumpNotice: String?
+    @State private var jumpNoticeClearTask: Task<Void, Never>?
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
     /// Keeps Composer mounted while its visible system keyboard moves to the
     /// terminal. Direct Input becomes the rendered mode only after the
@@ -273,6 +323,8 @@ struct AgentTerminalView: View {
         }
         screen.onViewportTextChanged = { text in
             attach.viewportTextDidChange(text)
+            messageJump.deliverViewportText(text)
+            interactionProbe?.value?.messageJumpDidReceiveViewportText(text)
         }
         screen.onSend = { keystrokes in attach.send(keystrokes) }
         screen.onScroll = { sequence, rows in
@@ -282,6 +334,7 @@ struct AgentTerminalView: View {
             attach.requestPaste(text, bracketedPaste: bracketed)
         }
         screen.keyboardControl = keyboardControl
+        screen.scrollControl = messageJump.scrollControl
         // Agent input is natural-language authored text in both Composer and
         // Direct Input. Matching traits lets UIKit retain one Apple keyboard
         // context across the responder transfer; Shell terminals keep the
@@ -540,6 +593,10 @@ struct AgentTerminalView: View {
         // one transaction and rejoin() can only undo a leave it can see.
         .onAppear {
             interactionProbe?.value?.connect(selectInputMode: { mode in selectInputMode(mode) })
+            interactionProbe?.value?.connectMessageJump(
+                jumpOlder: { jumpToOlderMessage() },
+                jumpNewer: { jumpToNewerMessageOrLive() },
+                lastViewportFrame: { messageJump.lastViewportFrame })
             composer.bindAttachInput(attach.input)
             // Arm before rejoin so a full pipeline replacement can claim the
             // keyboard while Direct Input still owns raised intent.
@@ -548,6 +605,8 @@ struct AgentTerminalView: View {
         }
         .onDisappear {
             interactionProbe?.value?.disconnect()
+            clearJumpNotice()
+            messageJump.resetSession()
             attach.leave()
             Task { @MainActor in
                 await Task.yield()
@@ -556,6 +615,8 @@ struct AgentTerminalView: View {
             }
         }
         .onChange(of: attach.terminalID) { _, _ in
+            messageJump.resetSession()
+            clearJumpNotice()
             cancelKeyboardHandoffs()
             guard isDirectInput else { return }
             usesDirectToolsKeyboard = false
@@ -720,6 +781,11 @@ struct AgentTerminalView: View {
     private var terminalSurface: some View {
         terminalScreen
             .id(attach.terminalID)
+        // Above alternateScreenBottomRegion; only the buttons take hits —
+        // see MessageJumpChromeContainer.
+        .overlay {
+            messageJumpChrome
+        }
         .overlay { statusOverlay }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             attachmentStatus
@@ -1197,6 +1263,74 @@ struct AgentTerminalView: View {
     /// The dialog wears the terminal's theme, not the system's.
     private var themePalette: TerminalThemePalette {
         terminal.themes.selection(for: colorScheme).palette(for: colorScheme)
+    }
+
+    private var messageJumpAvailability: MessageJumpControlAvailability {
+        MessageJumpControlAvailability.evaluate(
+            isAlternateScreen: messageJump.scrollControl.isAlternateScreen,
+            agentStatus: agent.agent.status,
+            isRunning: messageJump.isJumpRunning || messageJump.controller.isRunning)
+    }
+
+    @ViewBuilder
+    private var messageJumpChrome: some View {
+        MessageJumpChromeOverlay(
+            availability: messageJumpAvailability,
+            notice: jumpNotice,
+            onOlder: { jumpToOlderMessage() },
+            onNewer: { jumpToNewerMessageOrLive() })
+        // Hit-test only while enabled. Visible-but-disabled chrome must not
+        // eat terminal drags (Working / in-flight jump). Placement and
+        // pass-through live in MessageJumpChromeContainer.
+        .allowsHitTesting(messageJumpAvailability.isEnabled)
+    }
+
+    private func jumpToOlderMessage() {
+        guard messageJumpAvailability.isEnabled else { return }
+        messageJump.runJump { session in
+            // Entry generation/cancellation already checked inside runJump
+            // before this body is entered.
+            let outcome = await self.messageJump.controller.jump(.older)
+            guard self.messageJump.isLive(session) else { return }
+            self.presentJumpNotice(outcome, askingForOlder: true)
+        }
+    }
+
+    /// Walks toward live one user message at a time. When no newer message
+    /// remains, finishes the trip with ``returnToLive()`` so the same button
+    /// covers both "next message" and "back to live" (issue #268). The follow-up
+    /// is abandoned if the Attach session was replaced while `jump` was awaited.
+    private func jumpToNewerMessageOrLive() {
+        guard messageJumpAvailability.isEnabled else { return }
+        messageJump.runJump { session in
+            let outcome = await MessageJumpDownSequencer.run(
+                jumpNewer: { await self.messageJump.controller.jump(.newer) },
+                returnToLive: { await self.messageJump.controller.returnToLive() },
+                isLive: { self.messageJump.isLive(session) })
+            guard let outcome, self.messageJump.isLive(session) else { return }
+            self.presentJumpNotice(outcome, askingForOlder: false)
+        }
+    }
+
+    private func presentJumpNotice(
+        _ outcome: TerminalMessageJumpController.Outcome,
+        askingForOlder: Bool
+    ) {
+        jumpNoticeClearTask?.cancel()
+        let text = MessageJumpNotice.text(for: outcome, askingForOlder: askingForOlder)
+        jumpNotice = text
+        guard text != nil else { return }
+        jumpNoticeClearTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.6))
+            guard !Task.isCancelled else { return }
+            jumpNotice = nil
+        }
+    }
+
+    private func clearJumpNotice() {
+        jumpNoticeClearTask?.cancel()
+        jumpNoticeClearTask = nil
+        jumpNotice = nil
     }
 
     @ViewBuilder

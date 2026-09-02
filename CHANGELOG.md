@@ -7,6 +7,13 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- Agent detail shows compact up/down controls on the Attach alternate screen
+  that jump between the user's own messages and return to live output. The
+  controls stay hidden on the primary screen, and disable (without vanishing)
+  while the agent is working or a jump is in flight. (#268)
+
 ### Fixed
 
 - A terminal whose keyboard claim is refused as it appears no longer holds its
