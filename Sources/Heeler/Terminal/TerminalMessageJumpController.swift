@@ -213,7 +213,10 @@ final class TerminalMessageJumpController {
     /// "seen" at live bottom, so neighbor appearance would skip it. After the
     /// identity changes, the loop reverses newer in one-row steps until the
     /// original prompt returns, and never walks older again in the same jump
-    /// (one overshoot, one reverse — no oscillation).
+    /// (one overshoot, one reverse — no oscillation). Overshoot and reverse
+    /// share the one ``Configuration/maxSteps`` budget; they also stop on the
+    /// same unchanged-frame end and cancellation rules. Requested row counts
+    /// do not bound the reverse: one step is not one observed frame.
     ///
     /// This replaced an earlier rule that stepped until *no* message matched
     /// before hunting the next one. On a phone the viewport holds tens of
@@ -236,8 +239,9 @@ final class TerminalMessageJumpController {
         return await jumpNeighbor(direction)
     }
 
-    /// One-row reverse after an overshoot. The turn boundary is within the
-    /// last older step, so a one-row walk can find it without skipping it.
+    /// One-row reverse after an overshoot. Actual remote movement is not
+    /// knowable from the request, so reverse stays at one row and runs until
+    /// the original prompt returns or the shared step/end/cancel budget fires.
     private static let stickyReverseRowsPerStep = 1
 
     /// Neighbor-appearance walk. Extracted so sticky overshoot can share the
@@ -279,7 +283,6 @@ final class TerminalMessageJumpController {
         var previousFrame = latestFrame
         var unchangedCount = 0
         var reversing = false
-        var reverseRemaining = 0
         var traveledThroughEntry = false
         var olderStepIndex = 0
 
@@ -315,10 +318,6 @@ final class TerminalMessageJumpController {
                     if !messages.isDisjoint(with: entryMessages) {
                         return .found
                     }
-                    reverseRemaining -= 1
-                    if reverseRemaining <= 0 {
-                        return .exhausted
-                    }
                     continue
                 }
 
@@ -336,7 +335,6 @@ final class TerminalMessageJumpController {
                 }
                 if traveledThroughEntry {
                     reversing = true
-                    reverseRemaining = max(stepRows, 1)
                     continue
                 }
                 return .found

@@ -455,14 +455,11 @@ struct TerminalMessageJumpControllerTests {
         #expect(index.visibleMessageKeys(GrokStickyFrames.resumeClaude)
             == [GrokStickyFrames.resumeKey])
 
-        let harness = BidirectionalJumpHarness(
-            frames: [
-                GrokStickyFrames.liveBottom,
-                GrokStickyFrames.handoffScrolled,
-                GrokStickyFrames.resumeClaude,
-            ],
+        let harness = JumpHarness(
+            script: GrokStickyFrames.liveToResume,
             policy: .stickyPromptOvershoot,
-            visibleMessages: { index.visibleMessageKeys($0) }
+            keys: { index.visibleMessageKeys($0) },
+            bidirectional: true
         )
         harness.seedCurrentFrame()
 
@@ -484,14 +481,11 @@ struct TerminalMessageJumpControllerTests {
     @Test("standard policy still skips the sticky Grok prompt")
     func standardPolicySkipsStickyGrokPrompt() async {
         let index = AttachUserMessageIndex()
-        let harness = BidirectionalJumpHarness(
-            frames: [
-                GrokStickyFrames.liveBottom,
-                GrokStickyFrames.handoffScrolled,
-                GrokStickyFrames.resumeClaude,
-            ],
+        let harness = JumpHarness(
+            script: GrokStickyFrames.liveToResume,
             policy: .neighborAppearance,
-            visibleMessages: { index.visibleMessageKeys($0) }
+            keys: { index.visibleMessageKeys($0) },
+            bidirectional: true
         )
         harness.seedCurrentFrame()
 
@@ -511,15 +505,12 @@ struct TerminalMessageJumpControllerTests {
     @Test("repeated Up from the Grok turn boundary lands on the older prompt")
     func grokStickyRepeatedUpLandsOnOlderTurn() async {
         let index = AttachUserMessageIndex()
-        let harness = BidirectionalJumpHarness(
-            frames: [
-                GrokStickyFrames.liveBottom,
-                GrokStickyFrames.handoffScrolled,
-                GrokStickyFrames.resumeClaude,
-            ],
-            startAt: 1,
+        let harness = JumpHarness(
+            script: GrokStickyFrames.liveToResume,
             policy: .stickyPromptOvershoot,
-            visibleMessages: { index.visibleMessageKeys($0) }
+            keys: { index.visibleMessageKeys($0) },
+            bidirectional: true,
+            startAt: 1
         )
         harness.seedCurrentFrame()
 
@@ -538,15 +529,12 @@ struct TerminalMessageJumpControllerTests {
     @Test("sticky policy Down still stops on a newly appearing prompt")
     func stickyPolicyDownUsesNeighborAppearance() async {
         let index = AttachUserMessageIndex()
-        let harness = BidirectionalJumpHarness(
-            frames: [
-                GrokStickyFrames.liveBottom,
-                GrokStickyFrames.handoffScrolled,
-                GrokStickyFrames.resumeClaude,
-            ],
-            startAt: 2,
+        let harness = JumpHarness(
+            script: GrokStickyFrames.liveToResume,
             policy: .stickyPromptOvershoot,
-            visibleMessages: { index.visibleMessageKeys($0) }
+            keys: { index.visibleMessageKeys($0) },
+            bidirectional: true,
+            startAt: 2
         )
         harness.seedCurrentFrame()
 
@@ -567,15 +555,12 @@ struct TerminalMessageJumpControllerTests {
 
         let index = AttachUserMessageIndex()
         let arm = WaitArmSignal()
-        let harness = BidirectionalJumpHarness(
-            frames: [
-                GrokStickyFrames.liveBottom,
-                GrokStickyFrames.handoffScrolled,
-                GrokStickyFrames.resumeClaude,
-            ],
+        let harness = JumpHarness(
+            script: GrokStickyFrames.liveToResume,
             configuration: configuration,
             policy: .stickyPromptOvershoot,
-            visibleMessages: { index.visibleMessageKeys($0) },
+            keys: { index.visibleMessageKeys($0) },
+            bidirectional: true,
             deliverNewerFrames: false,
             sleep: { duration in
                 await arm.markArmed()
@@ -627,10 +612,52 @@ struct TerminalMessageJumpControllerTests {
         #expect(!harness.controller.isRunning)
     }
 
-    @Test("sticky reverse budget is the last older step and does not oscillate")
-    func stickyReverseExhaustsWithoutOscillating() async {
+    /// One older request is not one observed row. After an 8-row overshoot
+    /// the reverse still has to walk frame-by-frame; it must not stop at 8
+    /// one-row steps if `/handoff` has not come back yet.
+    @Test("sticky reverse keeps going past the overshoot row count until the anchor returns")
+    func stickyReverseFindsAnchorAfterMoreStepsThanOvershootRows() async {
         let index = AttachUserMessageIndex()
-        let extras = (1...10).map { n in
+        let overshootRows = 8
+        let reverseFramesBeforeAnchor = overshootRows + 4
+        let stillOnResume = (1...reverseFramesBeforeAnchor).map { n in
+            GrokStickyFrames.frame(
+                prompt: GrokStickyFrames.resumePrompt,
+                body: "coalesced older paint \(n); the pinned prompt has not returned")
+        }
+        let harness = JumpHarness(
+            script: [GrokStickyFrames.handoffScrolled, GrokStickyFrames.resumeClaude]
+                + stillOnResume
+                + [GrokStickyFrames.handoffScrolled],
+            policy: .stickyPromptOvershoot,
+            keys: { index.visibleMessageKeys($0) }
+        )
+        harness.seedFrame(GrokStickyFrames.liveBottom)
+
+        let outcome = await harness.controller.jump(.older)
+
+        #expect(outcome == .found)
+        #expect(
+            index.visibleMessageKeys(harness.lastDeliveredFrame ?? "")
+                == [GrokStickyFrames.handoffKey])
+        #expect(harness.stepCalls.prefix(2).map(\.direction) == [.older, .older])
+        #expect(harness.stepCalls.prefix(2).map(\.rows) == [overshootRows, overshootRows])
+        let reverse = Array(harness.stepCalls.dropFirst(2))
+        #expect(reverse.count == reverseFramesBeforeAnchor + 1)
+        #expect(reverse.count > overshootRows)
+        #expect(reverse.allSatisfy { $0.direction == .newer && $0.rows == 1 })
+        #expect(!harness.controller.isRunning)
+    }
+
+    /// Reverse that never recovers the anchor is bounded by the remaining
+    /// total step budget, not by the last older request's row count.
+    @Test("sticky reverse exhausts the shared maxSteps budget without oscillating")
+    func stickyReverseExhaustsSharedMaxStepsWithoutOscillating() async {
+        var configuration = TerminalMessageJumpController.Configuration()
+        configuration.maxSteps = 12
+
+        let index = AttachUserMessageIndex()
+        let extras = (1...20).map { n in
             GrokStickyFrames.frame(
                 prompt: GrokStickyFrames.resumePrompt,
                 body: "older body still showing the previous prompt \(n)")
@@ -638,6 +665,7 @@ struct TerminalMessageJumpControllerTests {
         let harness = JumpHarness(
             script: [GrokStickyFrames.handoffScrolled, GrokStickyFrames.resumeClaude]
                 + extras,
+            configuration: configuration,
             policy: .stickyPromptOvershoot,
             keys: { index.visibleMessageKeys($0) }
         )
@@ -646,14 +674,14 @@ struct TerminalMessageJumpControllerTests {
         let outcome = await harness.controller.jump(.older)
 
         #expect(outcome == .exhausted)
-        // Two older fine steps (8 rows each), then 8 one-row reverse steps —
-        // the reverse budget is the last older step's row count.
-        #expect(harness.stepCalls.count == 10)
+        #expect(harness.stepCalls.count == 12)
         #expect(harness.stepCalls.prefix(2).allSatisfy { $0.direction == .older })
         let reverse = harness.stepCalls.dropFirst(2)
-        #expect(reverse.count == 8)
+        #expect(reverse.count == 10)
+        #expect(reverse.count > harness.stepCalls[1].rows)
         #expect(reverse.allSatisfy { $0.direction == .newer && $0.rows == 1 })
         #expect(!harness.stepCalls.dropFirst(2).contains { $0.direction == .older })
+        #expect(!harness.controller.isRunning)
     }
 
     @Test("sticky policy with no entry prompt falls back to neighbor appearance")
@@ -810,7 +838,10 @@ private final class JumpHarness {
     private(set) var lastDeliveredFrame: String?
     private let script: [String]
     private var scriptIndex = 0
-    private let deliverFrames: Bool
+    private var position: Int
+    private let bidirectional: Bool
+    private let deliverOlderFrames: Bool
+    private let deliverNewerFrames: Bool
     private var controllerStorage: TerminalMessageJumpController!
 
     var controller: TerminalMessageJumpController { controllerStorage }
@@ -823,10 +854,20 @@ private final class JumpHarness {
         deliverFrames: Bool = true,
         keys: (@MainActor (String) -> Set<String>)? = nil,
         viewportRows: Int? = nil,
+        bidirectional: Bool = false,
+        startAt: Int = 0,
+        deliverNewerFrames: Bool = true,
         sleep: @escaping @Sendable (Duration) async throws -> Void = { _ in }
     ) {
         self.script = script
-        self.deliverFrames = deliverFrames
+        self.bidirectional = bidirectional
+        self.position = if script.isEmpty {
+            0
+        } else {
+            min(max(startAt, 0), script.count - 1)
+        }
+        self.deliverOlderFrames = deliverFrames
+        self.deliverNewerFrames = deliverFrames && deliverNewerFrames
 
         let keyProvider: @MainActor (String) -> Set<String>
         if let keys {
@@ -853,12 +894,37 @@ private final class JumpHarness {
         controller.frameDidChange(text)
     }
 
+    func seedCurrentFrame() {
+        guard script.indices.contains(position) else { return }
+        lastDeliveredFrame = script[position]
+        controller.frameDidChange(script[position])
+    }
+
     private func noteStep(
         direction: TerminalMessageJumpController.Direction,
         rows: Int
     ) {
         stepCalls.append(StepCall(direction: direction, rows: rows))
-        guard deliverFrames else { return }
+        let shouldDeliver =
+            switch direction {
+            case .older: deliverOlderFrames
+            case .newer: deliverNewerFrames
+            }
+        guard shouldDeliver else { return }
+
+        if bidirectional {
+            guard !script.isEmpty else { return }
+            switch direction {
+            case .older:
+                if position + 1 < script.count { position += 1 }
+            case .newer:
+                if position > 0 { position -= 1 }
+            }
+            lastDeliveredFrame = script[position]
+            controller.frameDidChange(script[position])
+            return
+        }
+
         let frame: String
         if scriptIndex < script.count {
             frame = script[scriptIndex]
@@ -904,83 +970,8 @@ private enum GrokStickyFrames {
     static let resumeClaude = frame(
         prompt: resumePrompt,
         body: "The previous turn. Crossing here changes the pinned prompt.")
-}
 
-/// Scroll-position harness: older advances through `frames`, newer retreats.
-/// Each step moves one frame regardless of row count so the decision rule is
-/// observable independently of ramp size.
-@MainActor
-private final class BidirectionalJumpHarness {
-    struct StepCall {
-        var direction: TerminalMessageJumpController.Direction
-        var rows: Int
-    }
-
-    private(set) var stepCalls: [StepCall] = []
-    private(set) var lastDeliveredFrame: String?
-    private let frames: [String]
-    private(set) var position: Int
-    private let deliverOlderFrames: Bool
-    private let deliverNewerFrames: Bool
-    private var controllerStorage: TerminalMessageJumpController!
-
-    var controller: TerminalMessageJumpController { controllerStorage }
-
-    init(
-        frames: [String],
-        startAt: Int = 0,
-        configuration: TerminalMessageJumpController.Configuration = .init(),
-        policy: TerminalMessageJumpPolicy = .stickyPromptOvershoot,
-        visibleMessages: @escaping @MainActor (String) -> Set<String>,
-        deliverOlderFrames: Bool = true,
-        deliverNewerFrames: Bool = true,
-        sleep: @escaping @Sendable (Duration) async throws -> Void = { _ in }
-    ) {
-        self.frames = frames
-        self.position = if frames.isEmpty {
-            0
-        } else {
-            min(max(startAt, 0), frames.count - 1)
-        }
-        self.deliverOlderFrames = deliverOlderFrames
-        self.deliverNewerFrames = deliverNewerFrames
-        controllerStorage = TerminalMessageJumpController(
-            configuration: configuration,
-            policy: policy,
-            step: { [weak self] direction, rows in
-                self?.noteStep(direction: direction, rows: rows)
-            },
-            visibleMessages: visibleMessages,
-            sleep: sleep
-        )
-    }
-
-    func seedCurrentFrame() {
-        guard frames.indices.contains(position) else { return }
-        lastDeliveredFrame = frames[position]
-        controller.frameDidChange(frames[position])
-    }
-
-    private func noteStep(
-        direction: TerminalMessageJumpController.Direction,
-        rows: Int
-    ) {
-        stepCalls.append(StepCall(direction: direction, rows: rows))
-        let shouldDeliver =
-            switch direction {
-            case .older: deliverOlderFrames
-            case .newer: deliverNewerFrames
-            }
-        guard shouldDeliver, !frames.isEmpty else { return }
-        switch direction {
-        case .older:
-            if position + 1 < frames.count { position += 1 }
-        case .newer:
-            if position > 0 { position -= 1 }
-        }
-        lastDeliveredFrame = frames[position]
-        controller.frameDidChange(frames[position])
-    }
+    static let liveToResume = [liveBottom, handoffScrolled, resumeClaude]
 }
 
 @MainActor
