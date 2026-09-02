@@ -99,6 +99,12 @@ final class TerminalMessageJumpController {
     private var activeFrameWaitID: UUID?
     private var frameTimeoutTask: Task<Void, Never>?
 
+    /// Test seam: awaited at the start of the enclosing-task cancel handler,
+    /// before any wait-id check or shared-state write. Production leaves this
+    /// nil. Tests hold the handler until a later jump's waiter is armed so a
+    /// stale write is observable rather than assumed.
+    var enclosingCancelHandlerBarrier: (@MainActor () async -> Void)?
+
     private enum FrameWaitResult: Equatable {
         case frame(String)
         case timedOut
@@ -307,6 +313,9 @@ final class TerminalMessageJumpController {
         } onCancel: {
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                if let barrier = self.enclosingCancelHandlerBarrier {
+                    await barrier()
+                }
                 // Establish ownership before touching shared state. A delayed
                 // handler from a finished run must not set `cancelRequested` on
                 // a later jump that reuses this controller.

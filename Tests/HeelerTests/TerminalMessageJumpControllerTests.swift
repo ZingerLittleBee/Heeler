@@ -253,6 +253,7 @@ struct TerminalMessageJumpControllerTests {
         configuration.frameSettleTimeout = .seconds(60)
 
         let arm = WaitArmSignal()
+        let hold = CancelHandlerHold()
         let harness = JumpHarness(
             script: [],
             configuration: configuration,
@@ -263,6 +264,11 @@ struct TerminalMessageJumpControllerTests {
                 try await Task.sleep(for: duration)
             }
         )
+        // Hold A's cancel handler at the seam until B's waiter is armed, then
+        // release it. Ordering is by call position, not by Task.yield luck.
+        harness.controller.enclosingCancelHandlerBarrier = {
+            await hold.waitUntilReleased()
+        }
         harness.seedFrame("start")
 
         let jumpA = Task { @MainActor in
@@ -271,7 +277,7 @@ struct TerminalMessageJumpControllerTests {
         await arm.waitUntilArmed()
 
         // Clear A's wait id with a frame, then cancel the enclosing task so its
-        // handler is scheduled after the waiter is gone.
+        // handler is scheduled against a gone waiter and parks on the barrier.
         harness.controller.frameDidChange("not-the-target")
         jumpA.cancel()
         let outcomeA = await jumpA.value
@@ -285,10 +291,9 @@ struct TerminalMessageJumpControllerTests {
         }
         await arm.waitUntilArmed()
 
-        // Flush any delayed cancel handler from A while B's waiter is live.
-        for _ in 0..<32 {
-            await Task.yield()
-        }
+        // B's waiter is live. Release H so it mutates shared state *now*.
+        await hold.release()
+        await hold.waitUntilHandlerPassed()
 
         harness.controller.frameDidChange("TARGET")
         let outcomeB = await jumpB.value
@@ -406,6 +411,53 @@ private actor WaitArmSignal {
                 continuation.resume()
             } else {
                 waiters.append(continuation)
+            }
+        }
+    }
+}
+
+/// Holds an enclosing-task cancel handler at the production seam until the
+/// test releases it, then signals that the handler has continued past the gate.
+private actor CancelHandlerHold {
+    private var released = false
+    private var handlerPassed = false
+    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+    private var passedWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func waitUntilReleased() async {
+        if !released {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                if self.released {
+                    continuation.resume()
+                } else {
+                    self.releaseWaiters.append(continuation)
+                }
+            }
+        }
+        handlerPassed = true
+        let pending = passedWaiters
+        passedWaiters.removeAll()
+        for waiter in pending {
+            waiter.resume()
+        }
+    }
+
+    func release() {
+        released = true
+        let pending = releaseWaiters
+        releaseWaiters.removeAll()
+        for waiter in pending {
+            waiter.resume()
+        }
+    }
+
+    func waitUntilHandlerPassed() async {
+        if handlerPassed { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            if self.handlerPassed {
+                continuation.resume()
+            } else {
+                self.passedWaiters.append(continuation)
             }
         }
     }
