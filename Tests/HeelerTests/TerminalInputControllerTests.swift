@@ -203,4 +203,145 @@ struct TerminalInputControllerTests {
         #expect(writes == [Data("n".utf8)])
         #expect(!writes.contains { $0.contains(0x0D) })
     }
+
+    @Test func sendObservesPrintableBytesAndClosesTheIndexedLineOnEnter() {
+        let controller = TerminalInputController()
+        _ = controller.beginSession { _ in }
+        let text = "please implement the parser"
+
+        #expect(controller.send(Data(text.utf8)))
+        #expect(controller.userMessageIndex.entries.isEmpty)
+
+        #expect(controller.send(Data([0x0D])))
+        #expect(controller.userMessageIndex.entries.map(\.rawText) == [text])
+    }
+
+    @Test func endingASessionClearsTheUserMessageIndex() {
+        let controller = TerminalInputController()
+        let generation = controller.beginSession { _ in }
+        #expect(controller.send(Data("please implement the parser".utf8)))
+        #expect(controller.send(Data([0x0D])))
+        #expect(!controller.userMessageIndex.entries.isEmpty)
+
+        controller.endSession(generation)
+        #expect(controller.userMessageIndex.entries.isEmpty)
+    }
+
+    @Test func aReplacementSessionDoesNotKeepThePredecessorIndex() {
+        let controller = TerminalInputController()
+        _ = controller.beginSession { _ in }
+        #expect(controller.send(Data("please implement the parser".utf8)))
+        #expect(controller.send(Data([0x0D])))
+        #expect(!controller.userMessageIndex.entries.isEmpty)
+
+        controller.detachSessionForReplacement()
+        #expect(controller.userMessageIndex.entries.isEmpty)
+
+        _ = controller.beginSession { _ in }
+        #expect(controller.userMessageIndex.entries.isEmpty)
+        #expect(controller.send(Data("rewrite the matching tests".utf8)))
+        #expect(controller.send(Data([0x0D])))
+        #expect(
+            controller.userMessageIndex.entries.map(\.rawText)
+                == ["rewrite the matching tests"])
+    }
+
+    @Test func recordSubmittedDropsWhenTheGenerationIsNoLongerLive() {
+        let controller = TerminalInputController()
+        let generationA = controller.beginSession { _ in }
+        controller.detachSessionForReplacement()
+        let generationB = controller.beginSession { _ in }
+
+        controller.recordSubmitted("Fix the failing tests", generation: generationA)
+        #expect(controller.userMessageIndex.entries.isEmpty)
+
+        controller.recordSubmitted("rewrite the matching tests", generation: generationB)
+        #expect(
+            controller.userMessageIndex.entries.map(\.rawText)
+                == ["rewrite the matching tests"])
+    }
+
+    @Test func sendClosesTheIndexedLineOnLineFeed() {
+        let controller = TerminalInputController()
+        _ = controller.beginSession { _ in }
+        let text = "please implement the parser"
+
+        #expect(controller.send(Data(text.utf8)))
+        #expect(controller.send(Data([0x0A])))
+        #expect(controller.userMessageIndex.entries.map(\.rawText) == [text])
+    }
+
+    @Test func keystrokeEscapeDoesNotDiscardATypedLine() {
+        let controller = TerminalInputController()
+        _ = controller.beginSession { _ in }
+
+        #expect(controller.send(Data("please implement ".utf8)))
+        #expect(controller.send(Data([0x1B])))
+        #expect(controller.send(Data("the parser".utf8)))
+        #expect(controller.send(Data([0x0D])))
+        #expect(
+            controller.userMessageIndex.entries.map(\.rawText)
+                == ["please implement the parser"])
+    }
+
+    @Test func composerDraftEscapeCancelsPendingText() {
+        let controller = TerminalInputController()
+        _ = controller.beginSession { _ in }
+
+        #expect(controller.insertComposerDraft("please approve"))
+        #expect(controller.userMessageIndex.entries.isEmpty)
+        #expect(controller.sendEscapeKey())
+        #expect(controller.send(Data([0x0D])))
+        #expect(controller.userMessageIndex.entries.isEmpty)
+    }
+
+    @Test func escapeKeyThenABracketRequestDoesNotKeepComposerInsertedText() {
+        let controller = TerminalInputController()
+        _ = controller.beginSession { _ in }
+
+        #expect(controller.insertComposerDraft("please approve"))
+        #expect(controller.sendEscapeKey())
+        #expect(controller.send(Data("[review] do it".utf8)))
+        #expect(controller.send(Data([0x0D])))
+        #expect(
+            controller.userMessageIndex.entries.map(\.rawText) == ["[review] do it"])
+    }
+
+    @Test func bracketedPasteWithCRLFIsOneEntryAtSubmit() {
+        let controller = TerminalInputController()
+        _ = controller.beginSession { _ in }
+        let text = "please approve\r\nthen continue"
+
+        #expect(controller.requestPaste(text, bracketedPaste: true).requiresReview)
+        #expect(controller.confirmPaste())
+        #expect(controller.userMessageIndex.entries.isEmpty)
+
+        #expect(controller.send(Data([0x0D])))
+        #expect(controller.userMessageIndex.entries.map(\.rawText) == [text])
+    }
+
+    @Test func hardwareEscapeAfterComposerInsertCancelsBeforeABracketRequest() {
+        let controller = TerminalInputController()
+        _ = controller.beginSession { _ in }
+
+        #expect(controller.insertComposerDraft("please approve"))
+        #expect(controller.send(Data([0x1B])))
+        #expect(controller.send(Data("[review] do it".utf8)))
+        #expect(controller.send(Data([0x0D])))
+        #expect(
+            controller.userMessageIndex.entries.map(\.rawText) == ["[review] do it"])
+    }
+}
+
+@Suite("Terminal text safety")
+struct TerminalTextSafetyTests {
+    @Test(arguments: [
+        ("please approve", false),
+        ("please\napprove", true),
+        ("please\rapprove", true),
+        ("please approve\r\nthen continue", true),
+    ])
+    func isMultilineUsesUnicodeScalars(_ text: String, _ expected: Bool) {
+        #expect(TerminalTextSafety.isMultiline(text) == expected)
+    }
 }

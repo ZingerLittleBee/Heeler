@@ -32,6 +32,10 @@ final class TerminalInputController {
     private(set) var pendingPaste: PasteReview?
     private(set) var pasteErrorMessage: String?
 
+    /// Submitted messages for this Attach session. Reset whenever the live
+    /// writer is replaced, so entries cannot outlive the session they describe.
+    let userMessageIndex = AttachUserMessageIndex()
+
     private var nextGeneration: UInt64 = 0
     private var writer: ((Data) -> Void)?
     private var scroller: ((Data, Int) -> Void)?
@@ -53,6 +57,7 @@ final class TerminalInputController {
         nextGeneration &+= 1
         let generation = SessionGeneration(value: nextGeneration)
         liveGeneration = generation
+        userMessageIndex.reset()
         self.writer = writer
         self.scroller = scroller
         return generation
@@ -63,6 +68,7 @@ final class TerminalInputController {
         liveGeneration = nil
         writer = nil
         scroller = nil
+        userMessageIndex.reset()
         if !preservingPendingPaste {
             cancelPaste()
         }
@@ -75,6 +81,7 @@ final class TerminalInputController {
         liveGeneration = nil
         writer = nil
         scroller = nil
+        userMessageIndex.reset()
     }
 
     /// Sends ordinary terminal bytes if a live Attach session exists.
@@ -83,7 +90,25 @@ final class TerminalInputController {
     @discardableResult
     func send(_ data: Data) -> Bool {
         guard let writer, !data.isEmpty else { return false }
-        writer(data)
+        write(data, using: writer, source: .keystroke)
+        return true
+    }
+
+    /// Inserts Composer text into the live Attach PTY without submitting.
+    /// Indexed as a composer insertion: embedded newlines are content, and a
+    /// later Escape key cancels this pending line.
+    @discardableResult
+    func insertComposerDraft(_ text: String) -> Bool {
+        guard let writer, !text.isEmpty else { return false }
+        write(Data(text.utf8), using: writer, source: .composerInsert)
+        return true
+    }
+
+    /// The Esc quick key. Distinct from a raw `0x1B` that may start CSI/SS3.
+    @discardableResult
+    func sendEscapeKey() -> Bool {
+        guard let writer else { return false }
+        write(Data([0x1B]), using: writer, source: .escapeKey)
         return true
     }
 
@@ -104,12 +129,14 @@ final class TerminalInputController {
     /// it, and can see it on the button they just tapped.
     @discardableResult
     func insertSnippet(_ text: String, bracketedPaste: Bool) -> Bool {
-        guard writer != nil, !text.isEmpty,
+        guard let writer, !text.isEmpty,
             TerminalTextSafety.containsOnlySafeScalars(text)
         else { return false }
-        writer?(
+        write(
             TerminalBracketedPaste.encode(
-                text, bracketed: bracketedPaste && TerminalTextSafety.isMultiline(text)))
+                text, bracketed: bracketedPaste && TerminalTextSafety.isMultiline(text)),
+            using: writer,
+            source: .snippet)
         return true
     }
 
@@ -123,8 +150,8 @@ final class TerminalInputController {
             return .rejected
         }
         guard TerminalTextSafety.isMultiline(text) else {
-            if !text.isEmpty {
-                writer?(Data(text.utf8))
+            if !text.isEmpty, let writer {
+                write(Data(text.utf8), using: writer, source: .paste)
             }
             return .inserted
         }
@@ -145,7 +172,10 @@ final class TerminalInputController {
         // Reviewed text is still multiline text: without framing its newlines
         // reach the pane as separate key events, which is the very thing the
         // review sheet leaves the user unable to prevent.
-        writer(TerminalBracketedPaste.encode(text, bracketed: pendingPasteIsBracketed))
+        write(
+            TerminalBracketedPaste.encode(text, bracketed: pendingPasteIsBracketed),
+            using: writer,
+            source: .paste)
         cancelPaste()
         return true
     }
@@ -158,6 +188,23 @@ final class TerminalInputController {
 
     func clearPasteError() {
         pasteErrorMessage = nil
+    }
+
+    /// Records a Composer `agent.prompt` delivery against `generation`.
+    /// Drops the write if that session is no longer live, so a reconnect
+    /// cannot inherit a predecessor's jump target.
+    func recordSubmitted(_ text: String, generation: SessionGeneration) {
+        guard generation == liveGeneration else { return }
+        userMessageIndex.record(submitted: text)
+    }
+
+    private func write(
+        _ data: Data,
+        using writer: (Data) -> Void,
+        source: AttachUserMessageIndex.OutgoingSource
+    ) {
+        userMessageIndex.observeOutgoing(data, source: source)
+        writer(data)
     }
 
     private static func lineCount(_ text: String) -> Int {

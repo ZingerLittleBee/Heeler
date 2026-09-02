@@ -812,7 +812,7 @@ struct AgentTerminalView: View {
                 context: terminalKeysContext,
                 height: composerKeyboardLayout.availableToolsHeight,
                 quickKeysEnabled: true,
-                sendQuickKey: keyboardControl.sendQuickKey)
+                sendQuickKey: sendAgentQuickKey)
             .opacity(activeKeyboardPresentation == .tools ? 1 : 0)
             .allowsHitTesting(activeKeyboardPresentation == .tools)
             .accessibilityHidden(activeKeyboardPresentation != .tools)
@@ -893,12 +893,12 @@ struct AgentTerminalView: View {
                     actions: composerActions,
                     toggleKeyboard: toggleDirectKeyboard,
                     switchKeyboard: directKeyboardSwitchAction,
-                    sendQuickKey: keyboardControl.sendQuickKey,
+                    sendQuickKey: sendAgentQuickKey,
                     showComposer: { selectInputMode(.composer) },
                     restoreComposerThen: restoreComposerThen)))
             .onAppear {
                 interactionProbe?.value?.directInputChromeDidAppear(
-                    sendQuickKey: { key in keyboardControl.sendQuickKey(key) },
+                    sendQuickKey: { key in sendAgentQuickKey(key) },
                     toggleDirectKeyboard: { toggleDirectKeyboard() },
                     switchDirectKeyboard: presentedDirectKeyboardSwitchAction)
             }
@@ -975,6 +975,16 @@ struct AgentTerminalView: View {
         composerKeyboardLayout.availableToolsHeight > 0
             || keyboardInset.lastPresentedHeight > 0
             || keyboardControl.isKeyboardUp
+    }
+
+    /// Esc is a known key, not a raw `0x1B` that might start CSI/SS3.
+    private func sendAgentQuickKey(_ key: AgentQuickKey) {
+        if key == .escape {
+            keyboardControl.noteReliableInputBegan()
+            attach.sendEscapeKey()
+            return
+        }
+        keyboardControl.sendQuickKey(key)
     }
 
     private func selectInputMode(_ mode: AgentInputMode) {
