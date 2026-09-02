@@ -19,6 +19,22 @@ import Foundation
 /// are indexed. Messages sent from a desktop herdr, or before the app attached,
 /// are not jump targets.
 ///
+/// Known limits, all of which cost jump-target accuracy rather than correctness
+/// elsewhere. A wrong or missing target means a jump scrolls to the top and
+/// reports that it found nothing.
+///
+/// - Direct Input Shift-Enter is a keystroke LF (`AgentQuickKey.shiftEnter`),
+///   and a keystroke LF closes the pending line, so one multiline Direct Input
+///   message is indexed as its LF-delimited fragments. Making it otherwise would
+///   mean guessing intent from a byte that carries none.
+/// - While a Composer insert is pending, a write ending on an unresolved `ESC`
+///   is read as the Escape *key* and cancels that draft. A CSI or SS3 sequence
+///   split exactly at its introducer would therefore be misread during that
+///   window. This is the deliberate trade for cancelling a hardware-keyboard
+///   Escape, which arrives through Ghostty as anonymous `.keystroke` bytes and
+///   is otherwise indistinguishable; no current key producer splits a sequence
+///   that way. Pending text from any other source keeps full split tolerance.
+///
 /// `refs #268`.
 @MainActor
 final class AttachUserMessageIndex {

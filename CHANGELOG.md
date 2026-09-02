@@ -16,6 +16,11 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Pasting text whose only line breaks are CRLF now goes through the paste review
+  sheet and is framed as a paste, as CR-only and LF text already were. It was
+  classified as a single line, so its newlines reached the Agent as separate
+  Enter presses. (#268)
+
 - A terminal whose keyboard claim is refused as it appears no longer holds its
   grid — and its layout — frozen until the half-second safety timeout. It gives
   the freeze up as soon as the claim fails, so the surface lays out and the
