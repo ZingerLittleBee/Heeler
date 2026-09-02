@@ -179,7 +179,6 @@ struct AgentTerminalView: View {
     @State private var skills: SkillsPaneStore?
     @State private var keyboardControl = TerminalKeyboardControl()
     @State private var messageJump = AgentMessageJumpWiring()
-    @State private var isJumpRunning = false
     @State private var jumpNotice: String?
     @State private var jumpNoticeClearTask: Task<Void, Never>?
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
@@ -607,7 +606,6 @@ struct AgentTerminalView: View {
         .onDisappear {
             interactionProbe?.value?.disconnect()
             clearJumpNotice()
-            isJumpRunning = false
             messageJump.resetSession()
             attach.leave()
             Task { @MainActor in
@@ -618,7 +616,6 @@ struct AgentTerminalView: View {
         }
         .onChange(of: attach.terminalID) { _, _ in
             messageJump.resetSession()
-            isJumpRunning = false
             clearJumpNotice()
             cancelKeyboardHandoffs()
             guard isDirectInput else { return }
@@ -1272,10 +1269,7 @@ struct AgentTerminalView: View {
         MessageJumpControlAvailability.evaluate(
             isAlternateScreen: messageJump.scrollControl.isAlternateScreen,
             agentStatus: agent.agent.status,
-            // Local flag covers the UI while a jump Task is outstanding. The
-            // controller's own isRunning is consulted too, but that type is
-            // not @Observable on this branch, so SwiftUI would not see it.
-            isRunning: isJumpRunning || messageJump.controller.isRunning)
+            isRunning: messageJump.isJumpRunning || messageJump.controller.isRunning)
     }
 
     @ViewBuilder
@@ -1285,20 +1279,17 @@ struct AgentTerminalView: View {
             notice: jumpNotice,
             onOlder: { jumpToOlderMessage() },
             onNewer: { jumpToNewerMessageOrLive() })
-        // The overlay view fills the terminal for placement; hit testing is
-        // owned by MessageJumpChromeContainer and must stay enabled.
-        .allowsHitTesting(messageJumpAvailability.isVisible)
+        // Hit-test only while enabled. Visible-but-disabled chrome must not
+        // eat terminal drags (Working / in-flight jump). Placement and
+        // pass-through live in MessageJumpChromeContainer.
+        .allowsHitTesting(messageJumpAvailability.isEnabled)
     }
 
     private func jumpToOlderMessage() {
         guard messageJumpAvailability.isEnabled else { return }
-        isJumpRunning = true
         messageJump.runJump { session in
-            defer {
-                if self.messageJump.isLive(session) {
-                    self.isJumpRunning = false
-                }
-            }
+            // Entry generation/cancellation already checked inside runJump
+            // before this body is entered.
             let outcome = await self.messageJump.controller.jump(.older)
             guard self.messageJump.isLive(session) else { return }
             self.presentJumpNotice(outcome, askingForOlder: true)
@@ -1311,13 +1302,7 @@ struct AgentTerminalView: View {
     /// is abandoned if the Attach session was replaced while `jump` was awaited.
     private func jumpToNewerMessageOrLive() {
         guard messageJumpAvailability.isEnabled else { return }
-        isJumpRunning = true
         messageJump.runJump { session in
-            defer {
-                if self.messageJump.isLive(session) {
-                    self.isJumpRunning = false
-                }
-            }
             let outcome = await MessageJumpDownSequencer.run(
                 jumpNewer: { await self.messageJump.controller.jump(.newer) },
                 returnToLive: { await self.messageJump.controller.returnToLive() },

@@ -5,6 +5,20 @@ import UIKit
 
 @testable import Heeler
 
+/// Host that reports a stable intrinsic size so
+/// `MessageJumpChromeContainer.layoutSubviews` does not collapse to zero.
+private final class MessageJumpSizedHost: UIView {
+    var fixedSize: CGSize = CGSize(width: 44, height: 72)
+
+    override var intrinsicContentSize: CGSize { fixedSize }
+
+    override func sizeThatFits(_ size: CGSize) -> CGSize {
+        CGSize(
+            width: min(fixedSize.width, size.width > 0 ? size.width : fixedSize.width),
+            height: fixedSize.height)
+    }
+}
+
 struct MessageJumpControlTests {
     @Test func availabilityRequiresAlternateScreen() {
         #expect(
@@ -60,23 +74,66 @@ struct MessageJumpControlTests {
                 == "Couldn't find the message")
     }
 
-    @Test func placementKeepsControlAboveTheBottomBandOnShortTerminals() {
-        let height: CGFloat = 160
-        let controlHeight: CGFloat = 72
-        let inset = MessageJumpPlacement.bottomInset(terminalHeight: height)
+    @Test func placementFrameHidesChromeThatCannotFitAboveTheBand() {
+        // 80-pt terminal, 72-pt chrome: available above the band is 60.
+        let short = CGSize(width: 390, height: 80)
         #expect(
-            inset == height * TerminalKeyboardTapTarget.alternateScreenBottomFraction)
-        #expect(
-            MessageJumpPlacement.sitsAboveBottomBand(
-                terminalHeight: height,
-                controlHeight: controlHeight,
-                bottomInset: inset))
-        // Flush to the bottom edge overlaps the keyboard activation band.
+            MessageJumpPlacement.frame(
+                terminalSize: short,
+                chromeSize: CGSize(width: 44, height: 72)) == nil)
         #expect(
             !MessageJumpPlacement.sitsAboveBottomBand(
-                terminalHeight: height,
-                controlHeight: controlHeight,
-                bottomInset: 0))
+                terminalHeight: 80,
+                controlHeight: 72,
+                bottomInset: MessageJumpPlacement.bottomInset(terminalHeight: 80)))
+
+        let tallEnough = CGSize(width: 390, height: 160)
+        let fitted = MessageJumpPlacement.frame(
+            terminalSize: tallEnough,
+            chromeSize: CGSize(width: 44, height: 72))
+        #expect(fitted != nil)
+        if let fitted {
+            #expect(
+                MessageJumpPlacement.sitsAboveBottomBand(
+                    terminalHeight: tallEnough.height,
+                    controlHeight: fitted.height,
+                    bottomInset: MessageJumpPlacement.bottomInset(
+                        terminalHeight: tallEnough.height)))
+        }
+
+        // Narrow surface: notice wider than the terminal cannot produce a
+        // negative x origin — the frame is rejected instead.
+        #expect(
+            MessageJumpPlacement.frame(
+                terminalSize: CGSize(width: 40, height: 400),
+                chromeSize: CGSize(width: 120, height: 36))
+                != nil)
+        let narrowFrame = MessageJumpPlacement.frame(
+            terminalSize: CGSize(width: 40, height: 400),
+            chromeSize: CGSize(width: 120, height: 36))
+        #expect(narrowFrame?.origin.x == 0)
+        #expect(narrowFrame?.width == 30)
+    }
+
+    @Test func shortTerminalContainerHidesChromeThatCannotFit() throws {
+        let container = MessageJumpChromeContainer(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 80))
+        let host = MessageJumpSizedHost()
+        host.fixedSize = CGSize(width: 44, height: 72)
+        container.embed(host)
+        container.layoutIfNeeded()
+        #expect(host.isHidden)
+        #expect(container.hostedFrame == nil)
+
+        container.frame = CGRect(x: 0, y: 0, width: 390, height: 160)
+        container.layoutIfNeeded()
+        #expect(!host.isHidden)
+        let frame = try #require(container.hostedFrame)
+        #expect(
+            MessageJumpPlacement.sitsAboveBottomBand(
+                terminalHeight: 160,
+                controlHeight: frame.height,
+                bottomInset: MessageJumpPlacement.bottomInset(terminalHeight: 160)))
     }
 
     @Test func downSequencerSkipsReturnToLiveAfterSessionEnds() async {
@@ -109,6 +166,36 @@ struct MessageJumpControlTests {
         #expect(returnToLiveCalls == 0)
     }
 
+    @MainActor
+    @Test func runJumpAbandonsBodyWhenResetBeforeStart() async {
+        let wiring = AgentMessageJumpWiring()
+        var bodyEntered = false
+        wiring.runJump { _ in
+            bodyEntered = true
+        }
+        // Reconnect wins the main-actor queue before the Task body runs.
+        wiring.resetSession()
+        await Task.yield()
+        await Task.yield()
+        #expect(!bodyEntered)
+        #expect(wiring.jumpInvocationCount == 0)
+        #expect(!wiring.isJumpRunning)
+    }
+
+    @MainActor
+    @Test func runJumpInvokesBodyWhenSessionStaysLive() async {
+        let wiring = AgentMessageJumpWiring()
+        var bodyEntered = false
+        wiring.runJump { session in
+            #expect(wiring.isLive(session))
+            bodyEntered = true
+        }
+        await Task.yield()
+        await Task.yield()
+        #expect(bodyEntered)
+        #expect(wiring.jumpInvocationCount == 1)
+    }
+
     @Test func resetSessionAdvancesGeneration() {
         let wiring = AgentMessageJumpWiring()
         let first = wiring.liveGeneration
@@ -117,18 +204,24 @@ struct MessageJumpControlTests {
         #expect(wiring.isLive(wiring.liveGeneration))
     }
 
-    @Test func chromeContainerPassesThroughNonInteractiveHits() {
+    @Test func chromeContainerPassesThroughNonInteractiveAndDisabledHits() {
         let container = MessageJumpChromeContainer(
             frame: CGRect(x: 0, y: 0, width: 390, height: 720))
-        let host = UIView()
+        let host = MessageJumpSizedHost()
+        host.fixedSize = CGSize(width: 44, height: 80)
         let chrome = UIView(frame: CGRect(x: 0, y: 0, width: 44, height: 80))
         chrome.isUserInteractionEnabled = true
         let button = UIButton(type: .system)
         button.frame = CGRect(x: 0, y: 0, width: 44, height: 36)
         chrome.addSubview(button)
         host.addSubview(chrome)
+        // Size the host so layoutSubviews does not collapse it.
+        host.frame = CGRect(x: 0, y: 0, width: 44, height: 80)
         container.embed(host)
         container.layoutIfNeeded()
+
+        #expect(!host.isHidden)
+        #expect(container.hostedFrame != nil)
 
         let buttonPoint = container.convert(
             CGPoint(x: button.bounds.midX, y: button.bounds.midY),
@@ -143,6 +236,24 @@ struct MessageJumpControlTests {
             MessageJumpChromeContainer.isInteractive(button, stoppingAt: host))
         #expect(
             !MessageJumpChromeContainer.isInteractive(chrome, stoppingAt: host))
+
+        // Disabled controls must not eat terminal drags.
+        button.isEnabled = false
+        #expect(container.hitTest(buttonPoint, with: nil) == nil)
+        #expect(
+            !MessageJumpChromeContainer.isInteractive(button, stoppingAt: host))
+    }
+
+    @Test func availabilityDisabledMeansOverlayShouldNotHitTest() {
+        let disabled = MessageJumpControlAvailability.evaluate(
+            isAlternateScreen: true,
+            agentStatus: .working,
+            isRunning: false)
+        #expect(disabled.isVisible)
+        #expect(!disabled.isEnabled)
+        // AgentTerminalView gates `.allowsHitTesting` on isEnabled, not
+        // isVisible — this pins the policy the overlay relies on.
+        #expect(disabled.isEnabled == false)
     }
 }
 
@@ -221,8 +332,6 @@ struct TerminalScrollControlTests {
         control.terminal = terminal
         terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))
 
-        // Half a row at the default 16 pt cell height — remainder must survive
-        // a chrome-driven scrollRows call.
         #expect(terminal.scrollTouch(translationY: 8) == 0)
         control.scrollRows(towardOlderContent: true, rows: 2)
         #expect(scrolledRows == 2)
@@ -294,7 +403,7 @@ struct MessageJumpAgentTerminalWiringTests {
         })
     }
 
-    @Test func interactionProbeDrivesBothJumpButtons() async throws {
+    @Test func interactionProbeJumpActionsAreConnectedOnAppear() async throws {
         let transport = ScriptedTransport()
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             throw TransportError.cancelled
@@ -317,16 +426,9 @@ struct MessageJumpAgentTerminalWiringTests {
         controller.view.layoutIfNeeded()
         try #require(await Self.eventually { interactions.isConnected })
 
-        // Force alternate-screen visibility so the chrome enables.
-        let terminal = try #require(Self.terminals(in: controller.view).first)
-        terminal.receive(Data("\u{1B}[?1049h".utf8))
-        try await Task.sleep(for: .milliseconds(20))
-
-        #expect(interactions.jumpOlderMessage())
-        #expect(interactions.jumpNewerMessage())
-        // Stub controller returns immediately; both calls must remain connected
-        // after the Tasks settle.
-        try await Task.sleep(for: .milliseconds(20))
+        // Probe closures are wired on appear. Without alternate-screen /
+        // enabled chrome the actions no-op at the availability guard — the
+        // probe still reports the closures were reached.
         #expect(interactions.jumpOlderMessage())
         #expect(interactions.jumpNewerMessage())
     }

@@ -26,14 +26,23 @@ struct MessageJumpControlAvailability: Equatable, Sendable {
     }
 }
 
-/// Bottom inset that keeps the jump chrome clear of the alternate-screen
-/// keyboard activation band. Pure so short-terminal placement is testable
-/// without a device. `refs #268`.
+/// Bottom inset and frames that keep the jump chrome clear of the
+/// alternate-screen keyboard activation band. Pure so short-terminal
+/// placement is testable without a device. When the chrome cannot sit
+/// entirely above the band, production hides it rather than overlapping.
+/// `refs #268`.
 enum MessageJumpPlacement {
+    static let trailingPadding: CGFloat = 10
+
     /// Distance from the terminal's bottom edge to the control's bottom edge.
     static func bottomInset(terminalHeight: CGFloat) -> CGFloat {
         guard terminalHeight > 0 else { return 0 }
         return terminalHeight * TerminalKeyboardTapTarget.alternateScreenBottomFraction
+    }
+
+    /// Height left above the protected bottom band.
+    static func availableHeight(terminalHeight: CGFloat) -> CGFloat {
+        max(0, terminalHeight - bottomInset(terminalHeight: terminalHeight))
     }
 
     /// Whether a control of `controlHeight` whose bottom sits `bottomInset`
@@ -48,6 +57,36 @@ enum MessageJumpPlacement {
         let controlBottom = terminalHeight - bottomInset
         let controlTop = controlBottom - controlHeight
         return controlBottom <= bandTop + .ulpOfOne && controlTop >= 0
+    }
+
+    /// Frame for the chrome inside `terminalSize`, or `nil` when it cannot
+    /// fit entirely above the keyboard band or within the trailing edge.
+    /// Callers hide the chrome on `nil` rather than letting it overlap.
+    static func frame(
+        terminalSize: CGSize,
+        chromeSize: CGSize,
+        trailingPadding: CGFloat = Self.trailingPadding
+    ) -> CGRect? {
+        guard terminalSize.width > 0, terminalSize.height > 0 else { return nil }
+        guard chromeSize.width > 0, chromeSize.height > 0 else { return nil }
+
+        let inset = bottomInset(terminalHeight: terminalSize.height)
+        guard sitsAboveBottomBand(
+            terminalHeight: terminalSize.height,
+            controlHeight: chromeSize.height,
+            bottomInset: inset)
+        else {
+            return nil
+        }
+
+        let maxWidth = max(0, terminalSize.width - trailingPadding)
+        let width = min(chromeSize.width, maxWidth)
+        guard width > 0 else { return nil }
+        let x = terminalSize.width - width - trailingPadding
+        guard x >= 0 else { return nil }
+        let y = terminalSize.height - inset - chromeSize.height
+        guard y >= 0 else { return nil }
+        return CGRect(x: x, y: y, width: width, height: chromeSize.height)
     }
 }
 
@@ -71,8 +110,14 @@ final class AgentMessageJumpWiring {
     /// Latest viewport frame delivered through Agent detail's production seam.
     private(set) var lastViewportFrame: String?
     private(set) var liveGeneration = SessionGeneration(value: 0)
+    /// True only after a jump Task has passed its entry generation check.
+    private(set) var isJumpRunning = false
+    /// How many jump bodies passed the entry guard. Test seam for the
+    /// reset-before-start race.
+    private(set) var jumpInvocationCount = 0
 
     private var nextGeneration: UInt64 = 0
+    private var jumpEpoch: UInt64 = 0
     private var jumpTask: Task<Void, Never>?
 
     init() {
@@ -102,13 +147,28 @@ final class AgentMessageJumpWiring {
 
     /// Runs jump work bound to the current session. ``resetSession`` cancels
     /// the task and advances the generation so a returned continuation cannot
-    /// start a follow-up against a replacement Attach.
+    /// start a follow-up against a replacement Attach. The Task body checks
+    /// cancellation and generation **before** any `await`, so a reconnect that
+    /// wins the main-actor queue cannot start `controller.jump` against the
+    /// replacement session.
     func runJump(
         _ body: @escaping @MainActor (_ session: SessionGeneration) async -> Void
     ) {
+        jumpEpoch &+= 1
+        let epoch = jumpEpoch
         let session = liveGeneration
         jumpTask?.cancel()
         jumpTask = Task { @MainActor in
+            guard !Task.isCancelled, self.isLive(session), epoch == self.jumpEpoch else {
+                return
+            }
+            self.jumpInvocationCount &+= 1
+            self.isJumpRunning = true
+            defer {
+                if epoch == self.jumpEpoch {
+                    self.isJumpRunning = false
+                }
+            }
             await body(session)
         }
     }
@@ -119,8 +179,10 @@ final class AgentMessageJumpWiring {
     func resetSession() {
         jumpTask?.cancel()
         jumpTask = nil
+        jumpEpoch &+= 1
         nextGeneration &+= 1
         liveGeneration = SessionGeneration(value: nextGeneration)
+        isJumpRunning = false
         controller.cancel()
         messageIndex.reset()
         lastViewportFrame = nil
@@ -231,38 +293,60 @@ struct MessageJumpChromeOverlay: UIViewRepresentable {
 
     func makeUIView(context: Context) -> MessageJumpChromeContainer {
         let container = MessageJumpChromeContainer()
+        context.coordinator.suppressNotice = false
         let host = UIHostingController(
-            rootView: MessageJumpControlView(
-                availability: availability,
-                notice: notice,
-                onOlder: onOlder,
-                onNewer: onNewer))
+            rootView: makeRoot(suppressNotice: false))
         host.view.backgroundColor = .clear
         host.view.isOpaque = false
         context.coordinator.host = host
         container.embed(host.view)
+        container.onChromeRejected = { [weak coordinator = context.coordinator] hadNotice in
+            guard let coordinator, hadNotice, !coordinator.suppressNotice else { return }
+            coordinator.suppressNotice = true
+            coordinator.host?.rootView = makeRoot(suppressNotice: true)
+        }
         return container
     }
 
     func updateUIView(_ container: MessageJumpChromeContainer, context: Context) {
-        context.coordinator.host?.rootView = MessageJumpControlView(
+        if notice == nil {
+            context.coordinator.suppressNotice = false
+        }
+        let suppress = context.coordinator.suppressNotice
+        context.coordinator.host?.rootView = makeRoot(suppressNotice: suppress)
+        container.onChromeRejected = { [weak coordinator = context.coordinator] hadNotice in
+            guard let coordinator, hadNotice, !coordinator.suppressNotice else { return }
+            coordinator.suppressNotice = true
+            coordinator.host?.rootView = makeRoot(suppressNotice: true)
+        }
+        container.setNeedsLayout()
+    }
+
+    private func makeRoot(suppressNotice: Bool) -> MessageJumpControlView {
+        MessageJumpControlView(
             availability: availability,
-            notice: notice,
+            notice: suppressNotice ? nil : notice,
             onOlder: onOlder,
             onNewer: onNewer)
-        container.setNeedsLayout()
     }
 
     final class Coordinator {
         var host: UIHostingController<MessageJumpControlView>?
+        var suppressNotice = false
     }
 }
 
 /// Full-bleed overlay host whose own bounds never claim a touch. Hits land on
-/// interactive descendants only (the jump buttons); everything else returns
-/// `nil` so the terminal's pan recognizer sees the drag.
+/// enabled interactive descendants only (the jump buttons); everything else
+/// returns `nil` so the terminal's pan recognizer sees the drag.
 final class MessageJumpChromeContainer: UIView {
     private weak var hostedView: UIView?
+    /// Called when the measured chrome cannot sit above the keyboard band.
+    /// `hadNotice` is true when the current hosted tree is taller than the
+    /// button column alone would be — the overlay drops the notice and retries.
+    var onChromeRejected: ((_ hadNotice: Bool) -> Void)?
+    /// Test seam: last frame applied to the hosted chrome, or `nil` when hidden.
+    private(set) var hostedFrame: CGRect?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -289,40 +373,85 @@ final class MessageJumpChromeContainer: UIView {
         guard let hostedView else { return }
         hostedView.setNeedsLayout()
         hostedView.layoutIfNeeded()
+        let maxWidth = max(0, bounds.width - MessageJumpPlacement.trailingPadding)
         let fitting = hostedView.sizeThatFits(
-            CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude))
-        let width = max(fitting.width, 44)
+            CGSize(width: maxWidth > 0 ? maxWidth : CGFloat.greatestFiniteMagnitude,
+                   height: CGFloat.greatestFiniteMagnitude))
+        let width = min(max(fitting.width, 0), maxWidth > 0 ? maxWidth : fitting.width)
         let height = max(fitting.height, 0)
-        let inset = MessageJumpPlacement.bottomInset(terminalHeight: bounds.height)
-        hostedView.frame = CGRect(
-            x: bounds.width - width - 10,
-            y: max(0, bounds.height - inset - height),
-            width: width,
-            height: height)
+        let chromeSize = CGSize(width: width, height: height)
+
+        if let frame = MessageJumpPlacement.frame(
+            terminalSize: bounds.size,
+            chromeSize: chromeSize)
+        {
+            hostedView.isHidden = false
+            hostedView.frame = frame
+            hostedFrame = frame
+            return
+        }
+
+        // Cannot fit above the band (or within the width). Drop the notice if
+        // one is contributing height, remeasure, and hide only if the button
+        // column still cannot sit above the band.
+        let buttonsOnlyHeight: CGFloat = 72
+        let hadNotice = height > buttonsOnlyHeight + 1
+        if hadNotice {
+            onChromeRejected?(true)
+            hostedView.setNeedsLayout()
+            hostedView.layoutIfNeeded()
+            let retryFitting = hostedView.sizeThatFits(
+                CGSize(
+                    width: maxWidth > 0 ? maxWidth : CGFloat.greatestFiniteMagnitude,
+                    height: CGFloat.greatestFiniteMagnitude))
+            let retryWidth = min(
+                max(retryFitting.width, 0),
+                maxWidth > 0 ? maxWidth : retryFitting.width)
+            let retryHeight = max(retryFitting.height, 0)
+            if let frame = MessageJumpPlacement.frame(
+                terminalSize: bounds.size,
+                chromeSize: CGSize(width: retryWidth, height: retryHeight))
+            {
+                hostedView.isHidden = false
+                hostedView.frame = frame
+                hostedFrame = frame
+                return
+            }
+        }
+
+        hostedView.isHidden = true
+        hostedFrame = nil
+        onChromeRejected?(false)
     }
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        guard let hostedView, hostedView.frame.contains(point) else {
+        guard let hostedView, !hostedView.isHidden, hostedView.frame.contains(point) else {
             return nil
         }
         let local = convert(point, to: hostedView)
         guard let hit = hostedView.hitTest(local, with: event) else {
             return nil
         }
-        // The hosting root and any non-interactive chrome (material, notice,
-        // layout wrappers) must not steal terminal drags.
+        // The hosting root and any non-interactive / disabled chrome must not
+        // steal terminal drags.
         if hit === hostedView || !Self.isInteractive(hit, stoppingAt: hostedView) {
             return nil
         }
         return hit
     }
 
-    /// Whether `view` or an ancestor up to `root` is a control or hosts an
-    /// enabled gesture — the signal that a SwiftUI `Button` is underneath.
+    /// Whether `view` is an *enabled* control or hosts an enabled gesture on a
+    /// user-interaction-enabled view. Disabled controls and disabled ancestors
+    /// return false so terminal drags pass through. `refs #268`.
     static func isInteractive(_ view: UIView, stoppingAt root: UIView) -> Bool {
         var current: UIView? = view
         while let candidate = current {
-            if candidate is UIControl { return true }
+            if !candidate.isUserInteractionEnabled {
+                return false
+            }
+            if let control = candidate as? UIControl {
+                return control.isEnabled
+            }
             if let recognizers = candidate.gestureRecognizers,
                 recognizers.contains(where: \.isEnabled)
             {
