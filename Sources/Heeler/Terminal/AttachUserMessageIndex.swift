@@ -51,8 +51,11 @@ final class AttachUserMessageIndex {
         case composerInsert
         /// Snippet body. LF is content; Escape is skipped.
         case snippet
-        /// Reviewed or single-line paste. LF is content; Escape is skipped.
+        /// Reviewed or single-line paste. Newlines are content; Escape is skipped.
         case paste
+        /// The Esc quick key. Cancels a Composer-inserted pending line and
+        /// does not start CSI/SS3 lookahead.
+        case escapeKey
     }
 
     /// Submitted messages, oldest first.
@@ -74,12 +77,19 @@ final class AttachUserMessageIndex {
     }
 
     /// Bytes the app is about to write to the Attach PTY. Printable content
-    /// accumulates; a carriage return or a keystroke line feed closes the
-    /// pending line and appends an entry. Line feed inside a Composer insert,
-    /// Snippet, or Paste is content. A standalone Escape cancels only when the
-    /// pending line came from a Composer insert; from keystrokes it is skipped.
-    /// CSI/SS3 must not land in the text, including when split across writes.
+    /// accumulates; a keystroke carriage return or line feed closes the
+    /// pending line. Newlines inside a Composer insert, Snippet, or Paste are
+    /// content. The Esc quick key cancels only a Composer-inserted pending
+    /// line; raw `0x1B` keeps CSI/SS3 split-tolerant scanning.
     func observeOutgoing(_ data: Data, source: OutgoingSource = .keystroke) {
+        if source == .escapeKey {
+            if pendingSource == .composerInsert {
+                cancelPending()
+            }
+            scanState = .text
+            return
+        }
+
         var bytes: [UInt8]
         if utf8Remainder.isEmpty {
             bytes = Array(data)
@@ -101,11 +111,8 @@ final class AttachUserMessageIndex {
                     scanState = .ss3
                     offset += 1
                 default:
-                    // Lone Escape. Cancel only a Composer-inserted pending
-                    // line (ADR 0013 Blocked); otherwise skip and reprocess.
-                    if pendingSource == .composerInsert {
-                        cancelPending()
-                    }
+                    // Raw ESC that is not CSI/SS3. Skip it; do not infer the
+                    // Esc key. Cancellation is `.escapeKey` provenance.
                     scanState = .text
                 }
                 continue
@@ -146,12 +153,18 @@ final class AttachUserMessageIndex {
                 continue
             }
             if byte == 0x0D {
-                closePendingLine()
+                if Self.newlineIsContent(source) {
+                    if !pendingText.isEmpty {
+                        appendPending("\r", source: source)
+                    }
+                } else {
+                    closePendingLine()
+                }
                 offset += 1
                 continue
             }
             if byte == 0x0A {
-                if Self.lineFeedIsContent(source) {
+                if Self.newlineIsContent(source) {
                     if !pendingText.isEmpty {
                         appendPending("\n", source: source)
                     }
@@ -262,9 +275,9 @@ final class AttachUserMessageIndex {
         pendingText.append(character)
     }
 
-    private static func lineFeedIsContent(_ source: OutgoingSource) -> Bool {
+    private static func newlineIsContent(_ source: OutgoingSource) -> Bool {
         switch source {
-        case .keystroke: false
+        case .keystroke, .escapeKey: false
         case .composerInsert, .snippet, .paste: true
         }
     }

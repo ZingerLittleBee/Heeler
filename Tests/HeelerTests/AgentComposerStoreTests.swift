@@ -634,7 +634,7 @@ struct AgentComposerStoreTests {
 
         #expect(await store.send() == .deliveredViaAttach)
         #expect(input.userMessageIndex.entries.isEmpty)
-        #expect(input.send(Data([0x1B])))
+        #expect(input.sendEscapeKey())
         #expect(input.send(Data([0x0D])))
         #expect(input.userMessageIndex.entries.isEmpty)
     }

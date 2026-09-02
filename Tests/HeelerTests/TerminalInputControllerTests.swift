@@ -290,8 +290,33 @@ struct TerminalInputControllerTests {
 
         #expect(controller.insertComposerDraft("please approve"))
         #expect(controller.userMessageIndex.entries.isEmpty)
-        #expect(controller.send(Data([0x1B])))
+        #expect(controller.sendEscapeKey())
         #expect(controller.send(Data([0x0D])))
         #expect(controller.userMessageIndex.entries.isEmpty)
+    }
+
+    @Test func escapeKeyThenABracketRequestDoesNotKeepComposerInsertedText() {
+        let controller = TerminalInputController()
+        _ = controller.beginSession { _ in }
+
+        #expect(controller.insertComposerDraft("please approve"))
+        #expect(controller.sendEscapeKey())
+        #expect(controller.send(Data("[review] do it".utf8)))
+        #expect(controller.send(Data([0x0D])))
+        #expect(
+            controller.userMessageIndex.entries.map(\.rawText) == ["[review] do it"])
+    }
+
+    @Test func bracketedPasteWithCRLFIsOneEntryAtSubmit() {
+        let controller = TerminalInputController()
+        _ = controller.beginSession { _ in }
+        let text = "please approve\r\nthen continue"
+
+        #expect(controller.requestPaste(text, bracketedPaste: true).requiresReview)
+        #expect(controller.confirmPaste())
+        #expect(controller.userMessageIndex.entries.isEmpty)
+
+        #expect(controller.send(Data([0x0D])))
+        #expect(controller.userMessageIndex.entries.map(\.rawText) == [text])
     }
 }

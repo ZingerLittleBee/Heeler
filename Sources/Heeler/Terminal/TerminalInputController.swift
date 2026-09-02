@@ -95,12 +95,20 @@ final class TerminalInputController {
     }
 
     /// Inserts Composer text into the live Attach PTY without submitting.
-    /// Indexed as a composer insertion: embedded LFs are content, and a
-    /// later Escape cancels this pending line.
+    /// Indexed as a composer insertion: embedded newlines are content, and a
+    /// later Escape key cancels this pending line.
     @discardableResult
     func insertComposerDraft(_ text: String) -> Bool {
         guard let writer, !text.isEmpty else { return false }
         write(Data(text.utf8), using: writer, source: .composerInsert)
+        return true
+    }
+
+    /// The Esc quick key. Distinct from a raw `0x1B` that may start CSI/SS3.
+    @discardableResult
+    func sendEscapeKey() -> Bool {
+        guard let writer else { return false }
+        write(Data([0x1B]), using: writer, source: .escapeKey)
         return true
     }
 
