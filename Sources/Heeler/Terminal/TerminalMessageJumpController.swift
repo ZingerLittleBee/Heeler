@@ -120,11 +120,12 @@ final class TerminalMessageJumpController {
     func frameDidChange(_ text: String) {
         latestFrame = text
         guard isAwaitingFrame else { return }
+        // Always keep the latest paint. A burst resumes the waiter on the first
+        // call, but `waitForFrame` decides on this buffer so later paints in the
+        // same turn are not discarded.
+        bufferedFrame = text
         if pendingFrameWait != nil {
             resumeFrameWait(with: .frame(text))
-        } else {
-            // Keep only the latest — a repaint burst must not queue waiters.
-            bufferedFrame = text
         }
     }
 
@@ -266,6 +267,8 @@ final class TerminalMessageJumpController {
         if let buffered = bufferedFrame {
             bufferedFrame = nil
             isAwaitingFrame = false
+            // Cancel wins over a frame that arrived before the wait armed.
+            if isCancelPending { return .cancelled }
             return .frame(buffered)
         }
 
@@ -310,12 +313,25 @@ final class TerminalMessageJumpController {
             }
         }
 
+        // Prefer the latest paint observed during this await. The first
+        // `frameDidChange` wakes the waiter; later calls in the same burst only
+        // update `bufferedFrame`, which must still decide the step.
+        let resolved: FrameWaitResult
+        if isCancelPending {
+            // `cancel()` / task cancel wins even when a frame already resumed us.
+            resolved = .cancelled
+        } else if case .frame = result {
+            resolved = .frame(bufferedFrame ?? latestFrame)
+        } else {
+            resolved = result
+        }
+
         isAwaitingFrame = false
         bufferedFrame = nil
         if activeFrameWaitID == waitID {
             activeFrameWaitID = nil
         }
-        return result
+        return resolved
     }
 
     /// Resumes the pending frame waiter at most once.

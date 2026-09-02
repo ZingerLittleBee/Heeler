@@ -16,11 +16,15 @@ struct TerminalMessageJumpControllerTests {
         #expect(outcome == .found)
         #expect(harness.stepCalls.count == 4)
         #expect(harness.stepCalls.allSatisfy { $0.direction == .older && $0.rows == 6 })
+        #expect(!harness.controller.isRunning)
     }
 
     @Test("entry frame already matches walks past it to the next")
     func walksPastEntryMatch() async {
-        let harness = JumpHarness(script: ["MSG1-still", "plain", "MSG2"]) { $0.contains("MSG") }
+        let harness = JumpHarness(
+            script: ["MSG1-still", "plain", "MSG2"],
+            matches: { $0.contains("MSG") }
+        )
         harness.seedFrame("MSG1")
 
         let outcome = await harness.controller.jump(.older)
@@ -28,6 +32,7 @@ struct TerminalMessageJumpControllerTests {
         #expect(outcome == .found)
         #expect(harness.stepCalls.count == 3)
         #expect(harness.lastDeliveredFrame == "MSG2")
+        #expect(!harness.controller.isRunning)
     }
 
     @Test("identical frames reach end at unchangedFramesBeforeEnd")
@@ -47,6 +52,7 @@ struct TerminalMessageJumpControllerTests {
 
         #expect(outcome == .reachedEnd)
         #expect(harness.stepCalls.count == 2)
+        #expect(!harness.controller.isRunning)
     }
 
     @Test("exhausts exactly at maxSteps when frames keep changing")
@@ -66,6 +72,7 @@ struct TerminalMessageJumpControllerTests {
 
         #expect(outcome == .exhausted)
         #expect(harness.stepCalls.count == 3)
+        #expect(!harness.controller.isRunning)
     }
 
     @Test("cancel mid-jump returns cancelled and stops stepping")
@@ -118,6 +125,7 @@ struct TerminalMessageJumpControllerTests {
 
         #expect(outcome == .reachedEnd)
         #expect(harness.stepCalls.count == 2)
+        #expect(!harness.controller.isRunning)
     }
 
     @Test("extra frameDidChange calls between steps do not desynchronise")
@@ -135,6 +143,107 @@ struct TerminalMessageJumpControllerTests {
 
         #expect(outcome == .found)
         #expect(driver.stepCount == 2)
+        #expect(!driver.controller.isRunning)
+    }
+
+    @Test("post-arm burst uses the latest frame not the first paint")
+    func postArmBurstUsesLatestFrame() async {
+        var configuration = TerminalMessageJumpController.Configuration()
+        configuration.maxSteps = 5
+        configuration.frameSettleTimeout = .seconds(60)
+
+        let arm = WaitArmSignal()
+        let harness = JumpHarness(
+            script: [],
+            configuration: configuration,
+            matchExact: "TARGET",
+            deliverFrames: false,
+            sleep: { duration in
+                await arm.markArmed()
+                try await Task.sleep(for: duration)
+            }
+        )
+        harness.seedFrame("start")
+
+        let jumpTask = Task { @MainActor in
+            await harness.controller.jump(.older)
+        }
+        await arm.waitUntilArmed()
+
+        // Same MainActor turn: first paint wakes the waiter, second is the real frame.
+        harness.controller.frameDidChange("partial")
+        harness.controller.frameDidChange("TARGET")
+
+        let outcome = await jumpTask.value
+        #expect(outcome == .found)
+        #expect(harness.stepCalls.count == 1)
+        #expect(!harness.controller.isRunning)
+    }
+
+    @Test("frame then cancel returns cancelled not found")
+    func frameThenCancelReturnsCancelled() async {
+        var configuration = TerminalMessageJumpController.Configuration()
+        configuration.maxSteps = 5
+        configuration.frameSettleTimeout = .seconds(60)
+
+        let arm = WaitArmSignal()
+        let harness = JumpHarness(
+            script: [],
+            configuration: configuration,
+            matchExact: "MATCH",
+            deliverFrames: false,
+            sleep: { duration in
+                await arm.markArmed()
+                try await Task.sleep(for: duration)
+            }
+        )
+        harness.seedFrame("start")
+
+        let jumpTask = Task { @MainActor in
+            await harness.controller.jump(.older)
+        }
+        await arm.waitUntilArmed()
+
+        harness.controller.frameDidChange("MATCH")
+        harness.controller.cancel()
+
+        let outcome = await jumpTask.value
+        #expect(outcome == .cancelled)
+        #expect(harness.stepCalls.count == 1)
+        #expect(!harness.controller.isRunning)
+    }
+
+    @Test("cancelling the enclosing task returns cancelled")
+    func enclosingTaskCancelReturnsCancelled() async {
+        var configuration = TerminalMessageJumpController.Configuration()
+        configuration.maxSteps = 5
+        configuration.frameSettleTimeout = .seconds(60)
+
+        let arm = WaitArmSignal()
+        let harness = JumpHarness(
+            script: [],
+            configuration: configuration,
+            matchExact: "never",
+            deliverFrames: false,
+            sleep: { duration in
+                await arm.markArmed()
+                try await Task.sleep(for: duration)
+            }
+        )
+        harness.seedFrame("start")
+
+        let jumpTask = Task { @MainActor in
+            await harness.controller.jump(.older)
+        }
+        await arm.waitUntilArmed()
+        #expect(harness.controller.isRunning)
+
+        jumpTask.cancel()
+        let outcome = await jumpTask.value
+
+        #expect(outcome == .cancelled)
+        #expect(harness.stepCalls.count == 1)
+        #expect(!harness.controller.isRunning)
     }
 
     @Test("returnToLive ignores matches and stops on unchanged frames")
@@ -147,8 +256,9 @@ struct TerminalMessageJumpControllerTests {
         // next step to hit unchangedFramesBeforeEnd=2.
         let harness = JumpHarness(
             script: ["live-1", "live-2", "live-2"],
-            configuration: configuration
-        ) { _ in true }
+            configuration: configuration,
+            matches: { _ in true }
+        )
         harness.seedFrame("start")
 
         let outcome = await harness.controller.returnToLive()
@@ -156,6 +266,7 @@ struct TerminalMessageJumpControllerTests {
         #expect(outcome == .reachedEnd)
         #expect(harness.stepCalls.count == 4)
         #expect(harness.stepCalls.allSatisfy { $0.direction == .newer })
+        #expect(!harness.controller.isRunning)
     }
 
     @Test("isRunning is true during jump and false after including cancel")
@@ -211,10 +322,38 @@ struct TerminalMessageJumpControllerTests {
         harness.controller.cancel()
         let firstOutcome = await first.value
         #expect(firstOutcome == .cancelled)
+        #expect(!harness.controller.isRunning)
     }
 }
 
 // MARK: - Harness
+
+/// Signals when the injected settle-timeout sleep has started — at that point
+/// the frame waiter is armed.
+private actor WaitArmSignal {
+    private var isArmed = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func markArmed() {
+        isArmed = true
+        let pending = waiters
+        waiters.removeAll()
+        for waiter in pending {
+            waiter.resume()
+        }
+    }
+
+    func waitUntilArmed() async {
+        if isArmed { return }
+        await withCheckedContinuation { continuation in
+            if isArmed {
+                continuation.resume()
+            } else {
+                waiters.append(continuation)
+            }
+        }
+    }
+}
 
 @MainActor
 private final class BurstJumpDriver {
@@ -273,8 +412,8 @@ private final class JumpHarness {
         configuration: TerminalMessageJumpController.Configuration = .init(),
         matchExact: String? = nil,
         deliverFrames: Bool = true,
-        sleep: @escaping @Sendable (Duration) async throws -> Void = { _ in },
-        matches: (@MainActor (String) -> Bool)? = nil
+        matches: (@MainActor (String) -> Bool)? = nil,
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { _ in }
     ) {
         self.script = script
         self.deliverFrames = deliverFrames
