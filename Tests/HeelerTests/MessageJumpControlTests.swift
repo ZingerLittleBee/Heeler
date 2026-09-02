@@ -250,6 +250,20 @@ struct MessageJumpControlTests {
             !MessageJumpChromeContainer.isInteractive(button, stoppingAt: host))
     }
 
+    /// SwiftUI does not back a `Button` with its own `UIView`; a hosting view
+    /// answers for its whole interactive area and its gesture recognizers run
+    /// the action. Rejecting a hit that is the hosted root left the buttons
+    /// reachable by VoiceOver but by no actual touch. `refs #268`.
+    @Test func aGestureBackedHostedRootIsInteractive() {
+        let host = UIView(frame: CGRect(x: 0, y: 0, width: 44, height: 80))
+
+        // An inert container still passes terminal drags through.
+        #expect(!MessageJumpChromeContainer.isInteractive(host, stoppingAt: host))
+
+        host.addGestureRecognizer(UITapGestureRecognizer())
+        #expect(MessageJumpChromeContainer.isInteractive(host, stoppingAt: host))
+    }
+
     @Test func availabilityDisabledMeansOverlayShouldNotHitTest() {
         let disabled = MessageJumpControlAvailability.evaluate(
             isAlternateScreen: true,

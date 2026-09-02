@@ -435,9 +435,17 @@ final class MessageJumpChromeContainer: UIView {
         guard let hit = hostedView.hitTest(local, with: event) else {
             return nil
         }
-        // The hosting root and any non-interactive / disabled chrome must not
-        // steal terminal drags.
-        if hit === hostedView || !Self.isInteractive(hit, stoppingAt: hostedView) {
+        // Non-interactive and disabled chrome must not steal terminal drags.
+        //
+        // The hit may legitimately *be* the hosting root: SwiftUI does not back
+        // a `Button` with its own `UIView`, so a hosting view answers for its
+        // whole interactive area and its gesture recognizers are what run the
+        // action. Rejecting that identity outright made the buttons respond to
+        // VoiceOver activation but to no actual touch at all (#268) — the
+        // three-round automated pass never caught it, because computer use
+        // drives the accessibility tree. `isInteractive` still decides, and it
+        // finds no recognizer on an inert container.
+        guard Self.isInteractive(hit, stoppingAt: hostedView) else {
             return nil
         }
         return hit
