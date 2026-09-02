@@ -138,6 +138,9 @@ struct TerminalScreenView: UIViewRepresentable {
     /// Handed the surface once it exists, so the Agent strip's toggle can
     /// raise and lower this terminal's keyboard.
     var keyboardControl: TerminalKeyboardControl?
+    /// Handed the surface once it exists, so the message-jump chrome can
+    /// drive remote scroll without holding the UIKit view itself.
+    var scrollControl: TerminalScrollControl?
     var isLocalInputEnabled = true
     var textInputStyle = TerminalTextInputStyle.terminal
     var theme: TerminalTheme = .default
@@ -163,6 +166,7 @@ struct TerminalScreenView: UIViewRepresentable {
         // terminal's first appearance, not to every state change after it.
         view.raisesKeyboardWhenReady = claimsKeyboard?() ?? false
         keyboardControl?.terminal = view
+        scrollControl?.terminal = view
         view.onKeyboardHandoffEnded = { [weak view, weak keyboardControl] id, outcome in
             guard let view else { return }
             if let keyboardControl, keyboardControl.terminal !== view { return }
@@ -218,6 +222,7 @@ struct TerminalScreenView: UIViewRepresentable {
             onScroll: onScroll,
             onPaste: onPaste)
         keyboardControl?.terminal = view
+        scrollControl?.terminal = view
         view.onKeyboardHandoffEnded = { [weak view, weak keyboardControl] id, outcome in
             guard let view else { return }
             if let keyboardControl, keyboardControl.terminal !== view { return }
@@ -540,6 +545,9 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     var raisesKeyboardWhenReady = false
     /// Notifies ``TerminalKeyboardControl`` when first-responder intent changes.
     var onFirstResponderChange: (() -> Void)?
+    /// Notifies ``TerminalScrollControl`` when DECSET alternate-screen state
+    /// flips. `refs #268`.
+    var onAlternateScreenChange: (() -> Void)?
     /// Completes the app-owned inset freeze for a responder handoff after the
     /// terminal's own keyboard frame has settled.
     var onKeyboardHandoffEnded: ((UUID, TerminalKeyboardHandoffOutcome) -> Void)?
@@ -961,10 +969,18 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     }
 
     func receive(_ data: Data) {
+        let wasAlternateScreen = modeTracker.isAlternateScreen
         modeTracker.receive(data)
+        if modeTracker.isAlternateScreen != wasAlternateScreen {
+            onAlternateScreenChange?()
+        }
         terminalSession.receive(data)
         scheduleViewportSnapshot()
     }
+
+    /// Whether the remote application currently has the alternate screen
+    /// active (DECSET 47 / 1047 / 1049). Read by ``TerminalScrollControl``.
+    var isAlternateScreen: Bool { modeTracker.isAlternateScreen }
 
     /// Viewport reads are supplemental to raw-stream discovery. Ghostty
     /// parses host output off-main, so coalescing briefly lets redraw bursts
@@ -1490,9 +1506,22 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
             for: translationY,
             pointsPerRow: max(8, terminalCellSize.height))
         guard rows != 0 else { return 0 }
+        applyScroll(towardOlderContent: rows > 0, rowCount: abs(rows))
+        return rows
+    }
 
-        let towardOlderContent = rows > 0
-        let rowCount = abs(rows)
+    /// One scroll step of `rowCount` lines for chrome that is not a gesture.
+    /// Shares ``applyScroll(towardOlderContent:rowCount:)`` with
+    /// ``scrollTouch(translationY:)`` and leaves the touch accumulator alone.
+    func scrollRows(towardOlderContent: Bool, rows rowCount: Int) {
+        guard rowCount > 0 else { return }
+        applyScroll(towardOlderContent: towardOlderContent, rowCount: rowCount)
+    }
+
+    /// Remote wheel / cursor sequence when the mode tracker supplies one;
+    /// otherwise local `scroll_page_lines`. Shared by touch and the jump
+    /// control so they cannot drift. `refs #268`.
+    private func applyScroll(towardOlderContent: Bool, rowCount: Int) {
         if let sequence = modeTracker.remoteScrollSequence(
             towardOlderContent: towardOlderContent,
             columns: terminalGridSize.columns,
@@ -1503,7 +1532,6 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
             let localRows = towardOlderContent ? -rowCount : rowCount
             _ = performBindingAction("scroll_page_lines:\(localRows)")
         }
-        return rows
     }
 
     private func installTouchScrolling() {

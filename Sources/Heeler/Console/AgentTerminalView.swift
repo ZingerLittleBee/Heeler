@@ -12,6 +12,8 @@ final class AgentTerminalInteractionProbe {
     private var sendQuickKeyAction: ((AgentQuickKey) -> Void)?
     private var toggleDirectKeyboardAction: (() -> Void)?
     private var switchDirectKeyboardAction: (() -> Void)?
+    private var jumpOlderAction: (() -> Void)?
+    private var jumpNewerAction: (() -> Void)?
     private(set) var directInputChromeMountCount = 0
 
     var isConnected: Bool { selectInputModeAction != nil }
@@ -44,8 +46,30 @@ final class AgentTerminalInteractionProbe {
         return true
     }
 
+    @discardableResult
+    func jumpOlderMessage() -> Bool {
+        guard let jumpOlderAction else { return false }
+        jumpOlderAction()
+        return true
+    }
+
+    @discardableResult
+    func jumpNewerMessage() -> Bool {
+        guard let jumpNewerAction else { return false }
+        jumpNewerAction()
+        return true
+    }
+
     fileprivate func connect(selectInputMode: @escaping (AgentInputMode) -> Void) {
         selectInputModeAction = selectInputMode
+    }
+
+    fileprivate func connectMessageJump(
+        jumpOlder: @escaping () -> Void,
+        jumpNewer: @escaping () -> Void
+    ) {
+        jumpOlderAction = jumpOlder
+        jumpNewerAction = jumpNewer
     }
 
     fileprivate func directInputChromeDidAppear(
@@ -64,6 +88,8 @@ final class AgentTerminalInteractionProbe {
         sendQuickKeyAction = nil
         toggleDirectKeyboardAction = nil
         switchDirectKeyboardAction = nil
+        jumpOlderAction = nil
+        jumpNewerAction = nil
         directInputChromeMountCount = 0
     }
 
@@ -131,6 +157,10 @@ struct AgentTerminalView: View {
     /// keyboard hides the Skills tab in that case.
     @State private var skills: SkillsPaneStore?
     @State private var keyboardControl = TerminalKeyboardControl()
+    @State private var messageJump = AgentMessageJumpWiring()
+    @State private var isJumpRunning = false
+    @State private var jumpNotice: String?
+    @State private var jumpNoticeClearTask: Task<Void, Never>?
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
     /// Keeps Composer mounted while its visible system keyboard moves to the
     /// terminal. Direct Input becomes the rendered mode only after the
@@ -273,6 +303,7 @@ struct AgentTerminalView: View {
         }
         screen.onViewportTextChanged = { text in
             attach.viewportTextDidChange(text)
+            messageJump.controller.frameDidChange(text)
         }
         screen.onSend = { keystrokes in attach.send(keystrokes) }
         screen.onScroll = { sequence, rows in
@@ -282,6 +313,7 @@ struct AgentTerminalView: View {
             attach.requestPaste(text, bracketedPaste: bracketed)
         }
         screen.keyboardControl = keyboardControl
+        screen.scrollControl = messageJump.scrollControl
         // Agent input is natural-language authored text in both Composer and
         // Direct Input. Matching traits lets UIKit retain one Apple keyboard
         // context across the responder transfer; Shell terminals keep the
@@ -540,6 +572,9 @@ struct AgentTerminalView: View {
         // one transaction and rejoin() can only undo a leave it can see.
         .onAppear {
             interactionProbe?.value?.connect(selectInputMode: { mode in selectInputMode(mode) })
+            interactionProbe?.value?.connectMessageJump(
+                jumpOlder: { jumpToOlderMessage() },
+                jumpNewer: { jumpToNewerMessageOrLive() })
             composer.bindAttachInput(attach.input)
             // Arm before rejoin so a full pipeline replacement can claim the
             // keyboard while Direct Input still owns raised intent.
@@ -548,6 +583,9 @@ struct AgentTerminalView: View {
         }
         .onDisappear {
             interactionProbe?.value?.disconnect()
+            clearJumpNotice()
+            isJumpRunning = false
+            messageJump.controller.cancel()
             attach.leave()
             Task { @MainActor in
                 await Task.yield()
@@ -556,6 +594,9 @@ struct AgentTerminalView: View {
             }
         }
         .onChange(of: attach.terminalID) { _, _ in
+            messageJump.resetSession()
+            isJumpRunning = false
+            clearJumpNotice()
             cancelKeyboardHandoffs()
             guard isDirectInput else { return }
             usesDirectToolsKeyboard = false
@@ -720,6 +761,13 @@ struct AgentTerminalView: View {
     private var terminalSurface: some View {
         terminalScreen
             .id(attach.terminalID)
+        // Trailing mid-height sits above alternateScreenBottomRegion (the
+        // bottom quarter), so the control does not fight the agent TUI's
+        // pinned input box. Content-sized only — no full-bleed hit target.
+        .overlay(alignment: .trailing) {
+            messageJumpChrome
+                .padding(.trailing, 10)
+        }
         .overlay { statusOverlay }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             attachmentStatus
@@ -1197,6 +1245,74 @@ struct AgentTerminalView: View {
     /// The dialog wears the terminal's theme, not the system's.
     private var themePalette: TerminalThemePalette {
         terminal.themes.selection(for: colorScheme).palette(for: colorScheme)
+    }
+
+    private var messageJumpAvailability: MessageJumpControlAvailability {
+        MessageJumpControlAvailability.evaluate(
+            isAlternateScreen: messageJump.scrollControl.isAlternateScreen,
+            agentStatus: agent.agent.status,
+            // Local flag covers the UI while a jump Task is outstanding. The
+            // controller's own isRunning is consulted too, but that type is
+            // not @Observable on this branch, so SwiftUI would not see it.
+            isRunning: isJumpRunning || messageJump.controller.isRunning)
+    }
+
+    @ViewBuilder
+    private var messageJumpChrome: some View {
+        MessageJumpControlView(
+            availability: messageJumpAvailability,
+            notice: jumpNotice,
+            onOlder: { jumpToOlderMessage() },
+            onNewer: { jumpToNewerMessageOrLive() })
+    }
+
+    private func jumpToOlderMessage() {
+        guard messageJumpAvailability.isEnabled else { return }
+        isJumpRunning = true
+        Task { @MainActor in
+            defer { isJumpRunning = false }
+            let outcome = await messageJump.controller.jump(.older)
+            presentJumpNotice(outcome, askingForOlder: true)
+        }
+    }
+
+    /// Walks toward live one user message at a time. When no newer message
+    /// remains, finishes the trip with ``returnToLive()`` so the same button
+    /// covers both "next message" and "back to live" (issue #268).
+    private func jumpToNewerMessageOrLive() {
+        guard messageJumpAvailability.isEnabled else { return }
+        isJumpRunning = true
+        Task { @MainActor in
+            defer { isJumpRunning = false }
+            let outcome = await messageJump.controller.jump(.newer)
+            if outcome == .reachedEnd {
+                let live = await messageJump.controller.returnToLive()
+                presentJumpNotice(live, askingForOlder: false)
+            } else {
+                presentJumpNotice(outcome, askingForOlder: false)
+            }
+        }
+    }
+
+    private func presentJumpNotice(
+        _ outcome: TerminalMessageJumpController.Outcome,
+        askingForOlder: Bool
+    ) {
+        jumpNoticeClearTask?.cancel()
+        let text = MessageJumpNotice.text(for: outcome, askingForOlder: askingForOlder)
+        jumpNotice = text
+        guard text != nil else { return }
+        jumpNoticeClearTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.6))
+            guard !Task.isCancelled else { return }
+            jumpNotice = nil
+        }
+    }
+
+    private func clearJumpNotice() {
+        jumpNoticeClearTask?.cancel()
+        jumpNoticeClearTask = nil
+        jumpNotice = nil
     }
 
     @ViewBuilder
