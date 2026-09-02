@@ -307,8 +307,11 @@ final class TerminalMessageJumpController {
         } onCancel: {
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                self.cancelRequested = true
+                // Establish ownership before touching shared state. A delayed
+                // handler from a finished run must not set `cancelRequested` on
+                // a later jump that reuses this controller.
                 guard self.activeFrameWaitID == waitID else { return }
+                self.cancelRequested = true
                 self.resumeFrameWait(with: .cancelled)
             }
         }

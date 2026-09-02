@@ -246,6 +246,58 @@ struct TerminalMessageJumpControllerTests {
         #expect(!harness.controller.isRunning)
     }
 
+    @Test("stale enclosing-task cancel does not poison the next jump")
+    func staleTaskCancelDoesNotPoisonNextJump() async {
+        var configuration = TerminalMessageJumpController.Configuration()
+        configuration.maxSteps = 5
+        configuration.frameSettleTimeout = .seconds(60)
+
+        let arm = WaitArmSignal()
+        let harness = JumpHarness(
+            script: [],
+            configuration: configuration,
+            matchExact: "TARGET",
+            deliverFrames: false,
+            sleep: { duration in
+                await arm.markArmed()
+                try await Task.sleep(for: duration)
+            }
+        )
+        harness.seedFrame("start")
+
+        let jumpA = Task { @MainActor in
+            await harness.controller.jump(.older)
+        }
+        await arm.waitUntilArmed()
+
+        // Clear A's wait id with a frame, then cancel the enclosing task so its
+        // handler is scheduled after the waiter is gone.
+        harness.controller.frameDidChange("not-the-target")
+        jumpA.cancel()
+        let outcomeA = await jumpA.value
+        #expect(outcomeA == .cancelled)
+        #expect(!harness.controller.isRunning)
+
+        await arm.reset()
+
+        let jumpB = Task { @MainActor in
+            await harness.controller.jump(.older)
+        }
+        await arm.waitUntilArmed()
+
+        // Flush any delayed cancel handler from A while B's waiter is live.
+        for _ in 0..<32 {
+            await Task.yield()
+        }
+
+        harness.controller.frameDidChange("TARGET")
+        let outcomeB = await jumpB.value
+
+        #expect(outcomeB == .found)
+        #expect(harness.stepCalls.count == 2)
+        #expect(!harness.controller.isRunning)
+    }
+
     @Test("returnToLive ignores matches and stops on unchanged frames")
     func returnToLiveIgnoresMatches() async {
         var configuration = TerminalMessageJumpController.Configuration()
@@ -341,6 +393,10 @@ private actor WaitArmSignal {
         for waiter in pending {
             waiter.resume()
         }
+    }
+
+    func reset() {
+        isArmed = false
     }
 
     func waitUntilArmed() async {
