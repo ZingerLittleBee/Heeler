@@ -90,7 +90,17 @@ final class TerminalInputController {
     @discardableResult
     func send(_ data: Data) -> Bool {
         guard let writer, !data.isEmpty else { return false }
-        write(data, using: writer)
+        write(data, using: writer, source: .keystroke)
+        return true
+    }
+
+    /// Inserts Composer text into the live Attach PTY without submitting.
+    /// Indexed as a composer insertion: embedded LFs are content, and a
+    /// later Escape cancels this pending line.
+    @discardableResult
+    func insertComposerDraft(_ text: String) -> Bool {
+        guard let writer, !text.isEmpty else { return false }
+        write(Data(text.utf8), using: writer, source: .composerInsert)
         return true
     }
 
@@ -117,7 +127,8 @@ final class TerminalInputController {
         write(
             TerminalBracketedPaste.encode(
                 text, bracketed: bracketedPaste && TerminalTextSafety.isMultiline(text)),
-            using: writer)
+            using: writer,
+            source: .snippet)
         return true
     }
 
@@ -132,7 +143,7 @@ final class TerminalInputController {
         }
         guard TerminalTextSafety.isMultiline(text) else {
             if !text.isEmpty, let writer {
-                write(Data(text.utf8), using: writer)
+                write(Data(text.utf8), using: writer, source: .paste)
             }
             return .inserted
         }
@@ -155,7 +166,8 @@ final class TerminalInputController {
         // review sheet leaves the user unable to prevent.
         write(
             TerminalBracketedPaste.encode(text, bracketed: pendingPasteIsBracketed),
-            using: writer)
+            using: writer,
+            source: .paste)
         cancelPaste()
         return true
     }
@@ -178,8 +190,12 @@ final class TerminalInputController {
         userMessageIndex.record(submitted: text)
     }
 
-    private func write(_ data: Data, using writer: (Data) -> Void) {
-        userMessageIndex.observeOutgoing(data)
+    private func write(
+        _ data: Data,
+        using writer: (Data) -> Void,
+        source: AttachUserMessageIndex.OutgoingSource
+    ) {
+        userMessageIndex.observeOutgoing(data, source: source)
         writer(data)
     }
 

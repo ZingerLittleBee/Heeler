@@ -621,6 +621,24 @@ struct AgentComposerStoreTests {
         #expect(input.userMessageIndex.entries.map(\.rawText) == [draft])
     }
 
+    @Test func blockedDraftEscapeCancelsTheIndexedLine() async {
+        let transport = ScriptedTransport()
+        let input = TerminalInputController()
+        _ = input.beginSession { _ in }
+        let store = AgentComposerStore(target: "w1:p1", initialStatus: .blocked) {
+            params in
+            try await transport.promptAgent(params)
+        }
+        store.bindAttachInput(input)
+        store.replaceDraft(with: "please approve the refactor")
+
+        #expect(await store.send() == .deliveredViaAttach)
+        #expect(input.userMessageIndex.entries.isEmpty)
+        #expect(input.send(Data([0x1B])))
+        #expect(input.send(Data([0x0D])))
+        #expect(input.userMessageIndex.entries.isEmpty)
+    }
+
     private static func draftOnlyStore() -> AgentComposerStore {
         AgentComposerStore(target: "w1:p1") { _ in
             throw TransportError.timedOut

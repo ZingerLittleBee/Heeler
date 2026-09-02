@@ -42,10 +42,24 @@ final class AttachUserMessageIndex {
     /// is still long enough to be a distinctive jump target.
     static let matchPrefixCharacterCount = 64
 
+    /// Where a PTY write originated. LF and Escape mean different things
+    /// depending on the source, not on the byte alone.
+    enum OutgoingSource: Sendable, Equatable {
+        /// Direct Input and tools-keyboard `send`. LF submits; Escape is skipped.
+        case keystroke
+        /// Blocked Composer insert. LF is content; Escape cancels this pending line.
+        case composerInsert
+        /// Snippet body. LF is content; Escape is skipped.
+        case snippet
+        /// Reviewed or single-line paste. LF is content; Escape is skipped.
+        case paste
+    }
+
     /// Submitted messages, oldest first.
     private(set) var entries: [Entry] = []
 
     private var pendingText = ""
+    private var pendingSource: OutgoingSource = .keystroke
     private var utf8Remainder: [UInt8] = []
     private var scanState = ScanState.text
 
@@ -60,12 +74,12 @@ final class AttachUserMessageIndex {
     }
 
     /// Bytes the app is about to write to the Attach PTY. Printable content
-    /// accumulates; a carriage return closes the pending line and appends an
-    /// entry. Line feed is content (Shift-Enter, and newlines inside a Blocked
-    /// Composer insert), not a submit. A standalone Escape cancels the pending
-    /// line. Editing keys (backspace, cursor movement) and CSI/SS3 must not
-    /// corrupt the accumulator.
-    func observeOutgoing(_ data: Data) {
+    /// accumulates; a carriage return or a keystroke line feed closes the
+    /// pending line and appends an entry. Line feed inside a Composer insert,
+    /// Snippet, or Paste is content. A standalone Escape cancels only when the
+    /// pending line came from a Composer insert; from keystrokes it is skipped.
+    /// CSI/SS3 must not land in the text, including when split across writes.
+    func observeOutgoing(_ data: Data, source: OutgoingSource = .keystroke) {
         var bytes: [UInt8]
         if utf8Remainder.isEmpty {
             bytes = Array(data)
@@ -87,9 +101,11 @@ final class AttachUserMessageIndex {
                     scanState = .ss3
                     offset += 1
                 default:
-                    // Lone Escape (the Esc key, ADR 0013's Blocked cancel):
-                    // drop the pending line and reprocess this byte as text.
-                    cancelPending()
+                    // Lone Escape. Cancel only a Composer-inserted pending
+                    // line (ADR 0013 Blocked); otherwise skip and reprocess.
+                    if pendingSource == .composerInsert {
+                        cancelPending()
+                    }
                     scanState = .text
                 }
                 continue
@@ -135,11 +151,12 @@ final class AttachUserMessageIndex {
                 continue
             }
             if byte == 0x0A {
-                // LF is a newline inside the pending message (Blocked insert,
-                // Shift-Enter), not a submit. A leftover LF after CR is the
-                // second half of CRLF and is dropped.
-                if !pendingText.isEmpty {
-                    pendingText.append("\n")
+                if Self.lineFeedIsContent(source) {
+                    if !pendingText.isEmpty {
+                        appendPending("\n", source: source)
+                    }
+                } else {
+                    closePendingLine()
                 }
                 offset += 1
                 continue
@@ -147,6 +164,9 @@ final class AttachUserMessageIndex {
             if byte == 0x08 || byte == 0x7F {
                 if !pendingText.isEmpty {
                     pendingText.removeLast()
+                    if pendingText.isEmpty {
+                        pendingSource = .keystroke
+                    }
                 }
                 offset += 1
                 continue
@@ -156,7 +176,7 @@ final class AttachUserMessageIndex {
                 continue
             }
             if byte < 0x80 {
-                pendingText.append(Character(Unicode.Scalar(byte)))
+                appendPending(Character(Unicode.Scalar(byte)), source: source)
                 offset += 1
                 continue
             }
@@ -168,16 +188,9 @@ final class AttachUserMessageIndex {
             case .invalid:
                 offset += 1
             case .scalar(let scalar, let width):
-                pendingText.append(Character(scalar))
+                appendPending(Character(scalar), source: source)
                 offset += width
             }
-        }
-        // ESC as its own write (the Esc key) ends in `.escape` with no
-        // follower. Treat that as a complete Escape, not the start of a
-        // CSI/SS3 split: keyboard sequences arrive in one `Data`.
-        if scanState == .escape {
-            cancelPending()
-            scanState = .text
         }
     }
 
@@ -192,6 +205,7 @@ final class AttachUserMessageIndex {
     func reset() {
         entries.removeAll(keepingCapacity: false)
         pendingText = ""
+        pendingSource = .keystroke
         utf8Remainder.removeAll(keepingCapacity: false)
         scanState = .text
     }
@@ -231,12 +245,28 @@ final class AttachUserMessageIndex {
     private func closePendingLine() {
         let raw = pendingText
         pendingText = ""
+        pendingSource = .keystroke
         appendEntry(rawText: raw)
     }
 
     private func cancelPending() {
         pendingText = ""
+        pendingSource = .keystroke
         utf8Remainder.removeAll(keepingCapacity: false)
+    }
+
+    private func appendPending(_ character: Character, source: OutgoingSource) {
+        if pendingText.isEmpty || source == .composerInsert {
+            pendingSource = source
+        }
+        pendingText.append(character)
+    }
+
+    private static func lineFeedIsContent(_ source: OutgoingSource) -> Bool {
+        switch source {
+        case .keystroke: false
+        case .composerInsert, .snippet, .paste: true
+        }
     }
 
     private func appendEntry(rawText: String) {

@@ -224,7 +224,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         guard TerminalTextSafety.containsOnlySafeScalars(text) else {
             return fail(id, message: Self.unsafeTextMessage)
         }
-        guard let attachInput, attachInput.send(Data(text.utf8)) else {
+        guard let attachInput, attachInput.insertComposerDraft(text) else {
             return fail(id, message: Self.missingAttachMessage)
         }
         guard let deliveredIndex = messages.firstIndex(where: { $0.id == id }) else {

@@ -260,4 +260,38 @@ struct TerminalInputControllerTests {
             controller.userMessageIndex.entries.map(\.rawText)
                 == ["rewrite the matching tests"])
     }
+
+    @Test func sendClosesTheIndexedLineOnLineFeed() {
+        let controller = TerminalInputController()
+        _ = controller.beginSession { _ in }
+        let text = "please implement the parser"
+
+        #expect(controller.send(Data(text.utf8)))
+        #expect(controller.send(Data([0x0A])))
+        #expect(controller.userMessageIndex.entries.map(\.rawText) == [text])
+    }
+
+    @Test func keystrokeEscapeDoesNotDiscardATypedLine() {
+        let controller = TerminalInputController()
+        _ = controller.beginSession { _ in }
+
+        #expect(controller.send(Data("please implement ".utf8)))
+        #expect(controller.send(Data([0x1B])))
+        #expect(controller.send(Data("the parser".utf8)))
+        #expect(controller.send(Data([0x0D])))
+        #expect(
+            controller.userMessageIndex.entries.map(\.rawText)
+                == ["please implement the parser"])
+    }
+
+    @Test func composerDraftEscapeCancelsPendingText() {
+        let controller = TerminalInputController()
+        _ = controller.beginSession { _ in }
+
+        #expect(controller.insertComposerDraft("please approve"))
+        #expect(controller.userMessageIndex.entries.isEmpty)
+        #expect(controller.send(Data([0x1B])))
+        #expect(controller.send(Data([0x0D])))
+        #expect(controller.userMessageIndex.entries.isEmpty)
+    }
 }
