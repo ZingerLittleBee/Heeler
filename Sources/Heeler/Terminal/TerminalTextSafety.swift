@@ -29,8 +29,13 @@ enum TerminalTextSafety {
             .replacingOccurrences(of: "\r", with: "\n")
     }
 
+    /// True when `text` contains a CR or LF scalar. Compared on unicode
+    /// scalars because Swift treats `"\r\n"` as one `Character`, so a
+    /// grapheme `contains("\n")` misses CRLF.
     static func isMultiline(_ text: String) -> Bool {
-        text.contains("\n") || text.contains("\r")
+        text.unicodeScalars.contains { scalar in
+            scalar.value == 0x0A || scalar.value == 0x0D
+        }
     }
 }
 

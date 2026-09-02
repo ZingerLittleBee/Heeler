@@ -73,6 +73,12 @@ final class TerminalKeyboardControl {
         terminal?.sendQuickKey(key)
     }
 
+    /// Stops inertial remote scroll, matching `sendQuickKey`'s reliable-input
+    /// side effect, for routes that do not go through Ghostty `sendInput`.
+    func noteReliableInputBegan() {
+        terminal?.noteReliableInputBegan()
+    }
+
     func setKeyboardMode(_ mode: TerminalKeyboardMode) {
         terminal?.setKeyboardMode(mode)
     }
@@ -1688,6 +1694,12 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private func reliableInputDidBegin() {
         stopTouchScrollMomentum()
         touchScrollAccumulator.reset()
+    }
+
+    /// Stops inertial remote scroll. App-owned Esc no longer goes through
+    /// Ghostty `sendInput`, so it calls this instead of relying on that hook.
+    func noteReliableInputBegan() {
+        reliableInputDidBegin()
     }
 }
 

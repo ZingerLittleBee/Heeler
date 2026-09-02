@@ -79,8 +79,10 @@ final class AttachUserMessageIndex {
     /// Bytes the app is about to write to the Attach PTY. Printable content
     /// accumulates; a keystroke carriage return or line feed closes the
     /// pending line. Newlines inside a Composer insert, Snippet, or Paste are
-    /// content. The Esc quick key cancels only a Composer-inserted pending
-    /// line; raw `0x1B` keeps CSI/SS3 split-tolerant scanning.
+    /// content. The Esc quick key cancels a Composer-inserted pending line.
+    /// A keystroke write that ends on an unresolved ESC does the same when
+    /// that pending line is a Composer insert (hardware Esc); keystroke
+    /// pending keeps CSI/SS3 split-tolerant scanning.
     func observeOutgoing(_ data: Data, source: OutgoingSource = .keystroke) {
         if source == .escapeKey {
             if pendingSource == .composerInsert {
@@ -204,6 +206,12 @@ final class AttachUserMessageIndex {
                 appendPending(Character(scalar), source: source)
                 offset += width
             }
+        }
+        // Hardware Esc arrives as a keystroke write of `0x1B`. If the pending
+        // line is a Composer insert, that is cancel, not CSI lookahead.
+        if scanState == .escape, pendingSource == .composerInsert {
+            cancelPending()
+            scanState = .text
         }
     }
 

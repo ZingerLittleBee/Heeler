@@ -914,6 +914,7 @@ struct AgentTerminalView: View {
     /// Esc is a known key, not a raw `0x1B` that might start CSI/SS3.
     private func sendAgentQuickKey(_ key: AgentQuickKey) {
         if key == .escape {
+            keyboardControl.noteReliableInputBegan()
             attach.sendEscapeKey()
             return
         }

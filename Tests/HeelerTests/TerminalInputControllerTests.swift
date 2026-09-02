@@ -319,4 +319,29 @@ struct TerminalInputControllerTests {
         #expect(controller.send(Data([0x0D])))
         #expect(controller.userMessageIndex.entries.map(\.rawText) == [text])
     }
+
+    @Test func hardwareEscapeAfterComposerInsertCancelsBeforeABracketRequest() {
+        let controller = TerminalInputController()
+        _ = controller.beginSession { _ in }
+
+        #expect(controller.insertComposerDraft("please approve"))
+        #expect(controller.send(Data([0x1B])))
+        #expect(controller.send(Data("[review] do it".utf8)))
+        #expect(controller.send(Data([0x0D])))
+        #expect(
+            controller.userMessageIndex.entries.map(\.rawText) == ["[review] do it"])
+    }
+}
+
+@Suite("Terminal text safety")
+struct TerminalTextSafetyTests {
+    @Test(arguments: [
+        ("please approve", false),
+        ("please\napprove", true),
+        ("please\rapprove", true),
+        ("please approve\r\nthen continue", true),
+    ])
+    func isMultilineUsesUnicodeScalars(_ text: String, _ expected: Bool) {
+        #expect(TerminalTextSafety.isMultiline(text) == expected)
+    }
 }

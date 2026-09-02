@@ -248,6 +248,15 @@ struct AttachUserMessageIndexTests {
         #expect(index.entries.map(\.rawText) == ["[review] do it"])
     }
 
+    @Test func keystrokeEscapeAfterComposerInsertCancelsBeforeABracketRequest() {
+        let index = AttachUserMessageIndex()
+        index.observeOutgoing(Data("please approve".utf8), source: .composerInsert)
+        index.observeOutgoing(Data([0x1B]))
+        index.observeOutgoing(Data("[review] do it".utf8))
+        index.observeOutgoing(Data([0x0D]))
+        #expect(index.entries.map(\.rawText) == ["[review] do it"])
+    }
+
     @Test func keystrokeEscapePreservesPendingText() {
         let index = AttachUserMessageIndex()
         index.observeOutgoing(Data("please implement ".utf8))
