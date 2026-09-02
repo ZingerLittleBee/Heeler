@@ -63,8 +63,34 @@ final class AttachUserMessageIndex {
         let normalizedText: String
     }
 
-    /// Jump targets shorter than this match almost any frame (`y`, `ok`).
-    static let minimumEntryCharacterCount = 8
+    /// Minimum ``weight(of:)`` for a message to be a jump target.
+    ///
+    /// The gate exists because a very short message is a bad target: `y`,
+    /// `ok`, `继续` recur, and since keys are the message's own text, two
+    /// identical short messages collide into one target.
+    static let minimumEntryWeight = 8
+
+    /// How much a character contributes to the length gate. A CJK ideograph,
+    /// kana, or hangul syllable is a word, not a letter, so counting
+    /// characters flatly excluded ordinary Chinese prompts — `安装到我手机上`
+    /// is seven characters and was silently not a jump target. `refs #268`.
+    static func weight(of text: String) -> Int {
+        text.unicodeScalars.reduce(0) { total, scalar in
+            total + (isIdeographic(scalar) ? 2 : 1)
+        }
+    }
+
+    private static func isIdeographic(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x3040...0x30FF: true  // Hiragana + Katakana
+        case 0x3400...0x4DBF: true  // CJK Unified Extension A
+        case 0x4E00...0x9FFF: true  // CJK Unified
+        case 0xAC00...0xD7AF: true  // Hangul Syllables
+        case 0xF900...0xFAFF: true  // CJK Compatibility Ideographs
+        case 0x20000...0x3FFFF: true  // CJK Unified Extensions B and beyond
+        default: false
+        }
+    }
 
     /// Oldest entries are dropped past this so a long session stays bounded.
     static let maximumEntryCount = 200
@@ -367,7 +393,7 @@ final class AttachUserMessageIndex {
 
     private func appendEntry(rawText: String) {
         let normalized = Self.normalize(rawText)
-        guard normalized.count >= Self.minimumEntryCharacterCount else { return }
+        guard Self.weight(of: normalized) >= Self.minimumEntryWeight else { return }
         entries.append(
             Entry(id: UUID(), rawText: rawText, normalizedText: normalized))
         if entries.count > Self.maximumEntryCount {
@@ -400,7 +426,7 @@ final class AttachUserMessageIndex {
         guard line.hasPromptGlyph else { return nil }
         let body = line.text.components(separatedBy: "  ").first ?? line.text
         let collapsed = body.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        guard collapsed.count >= minimumEntryCharacterCount else { return nil }
+        guard weight(of: collapsed) >= minimumEntryWeight else { return nil }
         return "line:\(collapsed)"
     }
 

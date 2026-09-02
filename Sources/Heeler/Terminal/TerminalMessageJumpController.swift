@@ -42,11 +42,23 @@ final class TerminalMessageJumpController {
     }
 
     struct Configuration: Equatable {
-        /// Rows requested per step. Larger means fewer round trips and
-        /// coarser landing.
+        /// Rows requested by the opening steps. Small, so a message just above
+        /// the fold lands near the top of the screen instead of wherever a
+        /// page-sized jump happens to drop it.
         var rowsPerStep: Int = 6
+        /// How many steps stay at `rowsPerStep` before the ramp starts.
+        var fineSteps: Int = 3
+        /// Multiplier applied to the step size once the ramp starts. Doubling
+        /// turns a crawl into a page-per-step within a few round trips, which
+        /// is what makes a distant message reachable in one press.
+        var stepGrowth: Int = 2
+        /// Ceiling on a single step when the viewport height is unknown.
+        /// A step must never exceed the viewport, or rows scroll past without
+        /// ever being rendered and a message in the gap is missed. This is the
+        /// conservative stand-in for a short grid.
+        var maximumRowsPerStep: Int = 16
         /// Upper bound on steps in one jump.
-        var maxSteps: Int = 40
+        var maxSteps: Int = 60
         /// How long to wait for a repainted frame before treating the step as
         /// having produced nothing.
         var frameSettleTimeout: Duration = .milliseconds(600)
@@ -61,11 +73,14 @@ final class TerminalMessageJumpController {
     ///     row count; the implementation is the same path a drag uses.
     ///   - visibleMessages: Stable identities of the user messages a frame
     ///     shows. Supplied by `AttachUserMessageIndex.visibleMessageKeys(_:)`.
+    ///   - viewportRows: Rows the grid shows, or nil when unknown. Caps the
+    ///     ramp so no row scrolls past unrendered.
     ///   - sleep: Injected so tests do not wait in real time.
     init(
         configuration: Configuration = Configuration(),
         step: @escaping @MainActor (Direction, Int) -> Void,
         visibleMessages: @escaping @MainActor (String) -> Set<String>,
+        viewportRows: @escaping @MainActor () -> Int? = { nil },
         sleep: @escaping @Sendable (Duration) async throws -> Void = {
             try await Task.sleep(for: $0)
         }
@@ -73,13 +88,40 @@ final class TerminalMessageJumpController {
         self.configuration = configuration
         self.step = step
         self.visibleMessages = visibleMessages
+        self.viewportRows = viewportRows
         self.sleep = sleep
     }
 
     let configuration: Configuration
     private let step: @MainActor (Direction, Int) -> Void
     private let visibleMessages: @MainActor (String) -> Set<String>
+    private let viewportRows: @MainActor () -> Int?
     private let sleep: @Sendable (Duration) async throws -> Void
+
+    /// Rows to request on step `index` (0-based).
+    ///
+    /// Flat for the first `fineSteps`, then geometric up to the ceiling. The
+    /// ceiling is the live viewport when it is known — a full page is the
+    /// largest step that still renders every row exactly once — and
+    /// `maximumRowsPerStep` when it is not. Two rows of margin absorb a remote
+    /// TUI that scrolls slightly more than it was asked for.
+    func rows(forStep index: Int) -> Int {
+        let ceiling: Int
+        if let rows = viewportRows(), rows > 0 {
+            ceiling = max(configuration.rowsPerStep, rows - 2)
+        } else {
+            ceiling = configuration.maximumRowsPerStep
+        }
+        guard index >= configuration.fineSteps, configuration.stepGrowth > 1 else {
+            return min(configuration.rowsPerStep, ceiling)
+        }
+        var size = configuration.rowsPerStep
+        for _ in 0..<(index - configuration.fineSteps + 1) {
+            if size >= ceiling { break }
+            size *= configuration.stepGrowth
+        }
+        return min(size, ceiling)
+    }
 
     /// True between `jump`/`returnToLive` being called and returning. The UI
     /// uses it to disable its controls; a second call while running must not
@@ -156,11 +198,11 @@ final class TerminalMessageJumpController {
         var previousFrame = latestFrame
         var unchangedCount = 0
 
-        for _ in 0..<configuration.maxSteps {
+        for index in 0..<configuration.maxSteps {
             if isCancelPending { return .cancelled }
 
             beginAwaitingFrame()
-            step(direction, configuration.rowsPerStep)
+            step(direction, rows(forStep: index))
 
             switch await waitForFrame() {
             case .cancelled:
@@ -201,11 +243,11 @@ final class TerminalMessageJumpController {
         var previousFrame = latestFrame
         var unchangedCount = 0
 
-        for _ in 0..<configuration.maxSteps {
+        for index in 0..<configuration.maxSteps {
             if isCancelPending { return .cancelled }
 
             beginAwaitingFrame()
-            step(.newer, configuration.rowsPerStep)
+            step(.newer, rows(forStep: index))
 
             switch await waitForFrame() {
             case .cancelled:

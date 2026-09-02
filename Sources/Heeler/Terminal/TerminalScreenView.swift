@@ -988,6 +988,14 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// active (DECSET 47 / 1047 / 1049). Read by ``TerminalScrollControl``.
     var isAlternateScreen: Bool { modeTracker.isAlternateScreen }
 
+    /// Rows the grid currently shows, or nil until the surface has reported
+    /// real metrics. The jump control sizes its scroll steps from this: a step
+    /// larger than the viewport would move content past without it ever being
+    /// rendered, and a message in that gap would be skipped. `refs #268`.
+    var viewportRows: Int? {
+        hasTerminalGridMetrics ? terminalGridSize.rows : nil
+    }
+
     /// Viewport reads are supplemental to raw-stream discovery. Ghostty
     /// parses host output off-main, so coalescing briefly lets redraw bursts
     /// settle without making terminal rendering wait on link collection.

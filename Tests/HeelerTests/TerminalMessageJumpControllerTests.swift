@@ -15,8 +15,37 @@ struct TerminalMessageJumpControllerTests {
 
         #expect(outcome == .found)
         #expect(harness.stepCalls.count == 4)
-        #expect(harness.stepCalls.allSatisfy { $0.direction == .older && $0.rows == 6 })
+        #expect(harness.stepCalls.allSatisfy { $0.direction == .older })
+        // Three fine steps, then the ramp opens up on the fourth.
+        #expect(harness.stepCalls.map(\.rows) == [6, 6, 6, 12])
         #expect(!harness.controller.isRunning)
+    }
+
+    /// A message far above must be reachable in one press, not a crawl. The
+    /// step grows geometrically once the fine steps are spent, and never
+    /// exceeds the viewport -- a larger step would scroll rows past without
+    /// rendering them, and a message in that gap would be missed.
+    @Test("step size ramps up to the viewport and stops there")
+    func stepSizeRampsToTheViewport() async {
+        let harness = JumpHarness(script: [], deliverFrames: false, viewportRows: 34)
+
+        #expect((0..<9).map { harness.controller.rows(forStep: $0) }
+            == [6, 6, 6, 12, 24, 32, 32, 32, 32])
+
+        // Reach of one press, versus 240 rows before the ramp existed.
+        let reach = (0..<harness.controller.configuration.maxSteps)
+            .reduce(0) { $0 + harness.controller.rows(forStep: $1) }
+        #expect(reach > 1700)
+    }
+
+    /// Before the surface reports metrics there is no viewport to size from,
+    /// so the ramp stops at a ceiling short enough for any plausible grid.
+    @Test("unknown viewport caps the ramp conservatively")
+    func unknownViewportCapsTheRamp() async {
+        let harness = JumpHarness(script: [], deliverFrames: false)
+
+        #expect((0..<7).map { harness.controller.rows(forStep: $0) }
+            == [6, 6, 6, 12, 16, 16, 16])
     }
 
     /// The entry frame's own message must not end the jump, however many
@@ -558,6 +587,7 @@ private final class JumpHarness {
         matchExact: String? = nil,
         deliverFrames: Bool = true,
         keys: (@MainActor (String) -> Set<String>)? = nil,
+        viewportRows: Int? = nil,
         sleep: @escaping @Sendable (Duration) async throws -> Void = { _ in }
     ) {
         self.script = script
@@ -578,6 +608,7 @@ private final class JumpHarness {
                 self?.noteStep(direction: direction, rows: rows)
             },
             visibleMessages: keyProvider,
+            viewportRows: { viewportRows },
             sleep: sleep
         )
     }

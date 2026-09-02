@@ -252,6 +252,29 @@ struct AttachUserMessageIndexTests {
         #expect(firstRowOnly == fullyVisible)
     }
 
+    /// The length gate counted characters, so an ordinary Chinese prompt was
+    /// silently not a jump target: `安装到我手机上` is seven characters but a
+    /// whole sentence. Reported from device use. `refs #268`.
+    @Test func aShortChineseMessageIsStillAJumpTarget() {
+        let index = AttachUserMessageIndex()
+        #expect(!index.visibleMessageKeys("❯ 安装到我手机上").isEmpty)
+
+        index.record(submitted: "安装到我手机上")
+        #expect(index.entries.count == 1)
+    }
+
+    /// The gate still has to drop the messages it exists for: keys are the
+    /// message's own text, so two identical short replies collide into one
+    /// target.
+    @Test func aTwoCharacterReplyIsNotAJumpTarget() {
+        let index = AttachUserMessageIndex()
+        #expect(index.visibleMessageKeys("❯ 继续").isEmpty)
+        #expect(index.visibleMessageKeys("> ok").isEmpty)
+
+        index.record(submitted: "继续")
+        #expect(index.entries.isEmpty)
+    }
+
     /// An empty input box is drawn on every frame; it must not be a target.
     @Test func anEmptyPromptLineIsNotATarget() {
         let index = AttachUserMessageIndex()

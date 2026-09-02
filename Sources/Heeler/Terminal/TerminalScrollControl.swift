@@ -33,6 +33,10 @@ final class TerminalScrollControl {
         terminal?.scrollRows(towardOlderContent: towardOlderContent, rows: rows)
     }
 
+    /// Rows the live grid shows, or nil when unknown. Bounds the jump loop's
+    /// step size so no row can pass by unrendered.
+    var viewportRows: Int? { terminal?.viewportRows }
+
     private func syncAlternateScreen() {
         let next = terminal?.isAlternateScreen ?? false
         guard isAlternateScreen != next else { return }
