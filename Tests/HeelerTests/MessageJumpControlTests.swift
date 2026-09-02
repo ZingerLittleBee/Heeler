@@ -115,6 +115,7 @@ struct MessageJumpControlTests {
         #expect(narrowFrame?.width == 30)
     }
 
+    @MainActor
     @Test func shortTerminalContainerHidesChromeThatCannotFit() throws {
         let container = MessageJumpChromeContainer(
             frame: CGRect(x: 0, y: 0, width: 390, height: 80))
@@ -199,6 +200,7 @@ struct MessageJumpControlTests {
         #expect(wiring.jumpInvocationCount == 1)
     }
 
+    @MainActor
     @Test func resetSessionAdvancesGeneration() {
         let wiring = AgentMessageJumpWiring()
         let first = wiring.liveGeneration
@@ -207,6 +209,7 @@ struct MessageJumpControlTests {
         #expect(wiring.isLive(wiring.liveGeneration))
     }
 
+    @MainActor
     @Test func chromeContainerPassesThroughNonInteractiveAndDisabledHits() {
         let container = MessageJumpChromeContainer(
             frame: CGRect(x: 0, y: 0, width: 390, height: 720))
