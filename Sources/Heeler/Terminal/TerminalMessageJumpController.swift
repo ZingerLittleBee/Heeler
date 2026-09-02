@@ -1,5 +1,26 @@
 import Foundation
 
+/// How ``TerminalMessageJumpController/jump(_:)`` decides it has reached the
+/// neighbouring user message.
+///
+/// The controller never inspects agent kind. Callers pick a policy when the
+/// wiring is constructed.
+enum TerminalMessageJumpPolicy: Equatable, Sendable {
+    /// Remember the identities on screen at the press and stop when a
+    /// different one appears. The walk only ever moves one way, so that new
+    /// identity is the neighbour.
+    case neighborAppearance
+
+    /// A TUI that pins the current turn's prompt at the top of the viewport.
+    /// That identity is already on screen at live bottom, so neighbor
+    /// appearance walks past it. Walk older until the identity changes, then
+    /// reverse newer in one-row steps until it returns — but only if the jump
+    /// first traveled through frames that still showed it. Without that
+    /// travel, the press already sat on the turn boundary and the new
+    /// identity is the neighbour (repeated Up).
+    case stickyPromptOvershoot
+}
+
 /// Walks the Attach viewport between user messages by scrolling the *remote*
 /// TUI and reading the frames it repaints.
 ///
@@ -69,6 +90,7 @@ final class TerminalMessageJumpController {
     }
 
     /// - Parameters:
+    ///   - policy: Walk rule for one jump. Default is neighbor appearance.
     ///   - step: Pushes one scroll step at the remote TUI. The `Int` is the
     ///     row count; the implementation is the same path a drag uses.
     ///   - visibleMessages: Stable identities of the user messages a frame
@@ -78,6 +100,7 @@ final class TerminalMessageJumpController {
     ///   - sleep: Injected so tests do not wait in real time.
     init(
         configuration: Configuration = Configuration(),
+        policy: TerminalMessageJumpPolicy = .neighborAppearance,
         step: @escaping @MainActor (Direction, Int) -> Void,
         visibleMessages: @escaping @MainActor (String) -> Set<String>,
         viewportRows: @escaping @MainActor () -> Int? = { nil },
@@ -86,6 +109,7 @@ final class TerminalMessageJumpController {
         }
     ) {
         self.configuration = configuration
+        self.policy = policy
         self.step = step
         self.visibleMessages = visibleMessages
         self.viewportRows = viewportRows
@@ -93,6 +117,7 @@ final class TerminalMessageJumpController {
     }
 
     let configuration: Configuration
+    let policy: TerminalMessageJumpPolicy
     private let step: @MainActor (Direction, Int) -> Void
     private let visibleMessages: @MainActor (String) -> Set<String>
     private let viewportRows: @MainActor () -> Int?
@@ -176,11 +201,19 @@ final class TerminalMessageJumpController {
 
     /// Moves to the neighbouring user message.
     ///
-    /// Walk semantics: remember which messages were already on screen when the
-    /// press landed, then step until a message that was *not* among them comes
-    /// into view. Because the loop only ever moves one way, a newly appearing
-    /// message is necessarily the neighbour in that direction, and repeated
-    /// presses walk without any extra bookkeeping.
+    /// Default walk (``TerminalMessageJumpPolicy/neighborAppearance``):
+    /// remember which messages were already on screen when the press landed,
+    /// then step until a message that was *not* among them comes into view.
+    /// Because the loop only ever moves one way, a newly appearing message is
+    /// necessarily the neighbour in that direction, and repeated presses walk
+    /// without any extra bookkeeping.
+    ///
+    /// Sticky-prompt walk (``TerminalMessageJumpPolicy/stickyPromptOvershoot``)
+    /// applies only when moving older: a pinned current-turn prompt is already
+    /// "seen" at live bottom, so neighbor appearance would skip it. After the
+    /// identity changes, the loop reverses newer in one-row steps until the
+    /// original prompt returns, and never walks older again in the same jump
+    /// (one overshoot, one reverse — no oscillation).
     ///
     /// This replaced an earlier rule that stepped until *no* message matched
     /// before hunting the next one. On a phone the viewport holds tens of
@@ -194,6 +227,22 @@ final class TerminalMessageJumpController {
         cancelRequested = false
         defer { finishRun() }
 
+        if policy == .stickyPromptOvershoot, direction == .older {
+            let entryMessages = visibleMessages(latestFrame)
+            if !entryMessages.isEmpty {
+                return await jumpOlderStickyPrompt(entryMessages: entryMessages)
+            }
+        }
+        return await jumpNeighbor(direction)
+    }
+
+    /// One-row reverse after an overshoot. The turn boundary is within the
+    /// last older step, so a one-row walk can find it without skipping it.
+    private static let stickyReverseRowsPerStep = 1
+
+    /// Neighbor-appearance walk. Extracted so sticky overshoot can share the
+    /// same frame-wait helper without changing this loop's decision rule.
+    private func jumpNeighbor(_ direction: Direction) async -> Outcome {
         var seenMessages = visibleMessages(latestFrame)
         var previousFrame = latestFrame
         var unchangedCount = 0
@@ -201,35 +250,140 @@ final class TerminalMessageJumpController {
         for index in 0..<configuration.maxSteps {
             if isCancelPending { return .cancelled }
 
-            beginAwaitingFrame()
-            step(direction, rows(forStep: index))
-
-            switch await waitForFrame() {
+            switch await observeStep(
+                direction,
+                rows: rows(forStep: index),
+                previousFrame: &previousFrame,
+                unchangedCount: &unchangedCount)
+            {
             case .cancelled:
                 return .cancelled
-            case .timedOut:
+            case .reachedEnd:
+                return .reachedEnd
+            case .unchanged:
+                continue
+            case .moved(let text):
+                let messages = visibleMessages(text)
+                if !messages.subtracting(seenMessages).isEmpty {
+                    return .found
+                }
+                seenMessages.formUnion(messages)
+            }
+        }
+        return .exhausted
+    }
+
+    /// Older walk for a pinned current-turn prompt. See
+    /// ``TerminalMessageJumpPolicy/stickyPromptOvershoot``.
+    private func jumpOlderStickyPrompt(entryMessages: Set<String>) async -> Outcome {
+        var previousFrame = latestFrame
+        var unchangedCount = 0
+        var reversing = false
+        var reverseRemaining = 0
+        var traveledThroughEntry = false
+        var olderStepIndex = 0
+
+        for _ in 0..<configuration.maxSteps {
+            if isCancelPending { return .cancelled }
+
+            let stepDirection: Direction
+            let stepRows: Int
+            if reversing {
+                stepDirection = .newer
+                stepRows = Self.stickyReverseRowsPerStep
+            } else {
+                stepDirection = .older
+                stepRows = rows(forStep: olderStepIndex)
+                olderStepIndex += 1
+            }
+
+            switch await observeStep(
+                stepDirection,
+                rows: stepRows,
+                previousFrame: &previousFrame,
+                unchangedCount: &unchangedCount)
+            {
+            case .cancelled:
+                return .cancelled
+            case .reachedEnd:
+                return .reachedEnd
+            case .unchanged:
+                continue
+            case .moved(let text):
+                let messages = visibleMessages(text)
+                if reversing {
+                    if !messages.isDisjoint(with: entryMessages) {
+                        return .found
+                    }
+                    reverseRemaining -= 1
+                    if reverseRemaining <= 0 {
+                        return .exhausted
+                    }
+                    continue
+                }
+
+                let newMessages = messages.subtracting(entryMessages)
+                let entryStillVisible = !messages.isDisjoint(with: entryMessages)
+                if entryStillVisible {
+                    if !newMessages.isEmpty {
+                        return .found
+                    }
+                    traveledThroughEntry = true
+                    continue
+                }
+                if messages.isEmpty {
+                    continue
+                }
+                if traveledThroughEntry {
+                    reversing = true
+                    reverseRemaining = max(stepRows, 1)
+                    continue
+                }
+                return .found
+            }
+        }
+        return .exhausted
+    }
+
+    private enum StepObservation: Equatable {
+        case cancelled
+        case reachedEnd
+        case unchanged
+        case moved(String)
+    }
+
+    /// Pushes one scroll step and classifies the resulting frame. Timeouts
+    /// and identical frames count toward ``Configuration/unchangedFramesBeforeEnd``
+    /// the same way in every walk.
+    private func observeStep(
+        _ direction: Direction,
+        rows: Int,
+        previousFrame: inout String,
+        unchangedCount: inout Int
+    ) async -> StepObservation {
+        beginAwaitingFrame()
+        step(direction, rows)
+        switch await waitForFrame() {
+        case .cancelled:
+            return .cancelled
+        case .timedOut:
+            unchangedCount += 1
+            if unchangedCount >= configuration.unchangedFramesBeforeEnd {
+                return .reachedEnd
+            }
+            return .unchanged
+        case .frame(let text):
+            if text == previousFrame {
                 unchangedCount += 1
                 if unchangedCount >= configuration.unchangedFramesBeforeEnd {
                     return .reachedEnd
                 }
-            case .frame(let text):
-                if text == previousFrame {
-                    unchangedCount += 1
-                    if unchangedCount >= configuration.unchangedFramesBeforeEnd {
-                        return .reachedEnd
-                    }
-                } else {
-                    unchangedCount = 0
-                    previousFrame = text
-                    let messages = visibleMessages(text)
-                    if !messages.subtracting(seenMessages).isEmpty {
-                        return .found
-                    }
-                    seenMessages.formUnion(messages)
-                }
+                return .unchanged
             }
+            unchangedCount = 0
+            previousFrame = text
+            return .moved(text)
         }
-        return .exhausted
     }
 
     /// Scrolls forward until the frame stops changing — the live bottom.
