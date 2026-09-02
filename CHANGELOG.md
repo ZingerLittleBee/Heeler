@@ -20,7 +20,7 @@ Entries reference the issue that motivated them.
   scroll, does not. Longer trips ramp from fine steps to a full viewport
   quickly while still scanning every repainted frame. On Grok, whose TUI pins
   the current prompt, Up lands on that turn's boundary rather than skipping
-  it for the previous one. (#268)
+  it for the previous one. (#268; PR #272)
 
 ### Fixed
 
