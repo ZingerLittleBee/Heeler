@@ -13,9 +13,6 @@ import Observation
 final class TerminalScrollControl {
     weak var terminal: HeelerTerminalView? {
         didSet {
-            // A terminal handed off mid-jump must not be left with its
-            // renderer stopped: nothing else would ever thaw it.
-            oldValue?.thawDisplay()
             oldValue?.onAlternateScreenChange = nil
             terminal?.onAlternateScreenChange = { [weak self] in
                 self?.syncAlternateScreen()
@@ -52,18 +49,6 @@ final class TerminalScrollControl {
     /// Rows the live grid shows, or nil when unknown. Bounds the jump loop's
     /// step size so no row can pass by unrendered.
     var viewportRows: Int? { terminal?.viewportRows }
-
-    /// Pins a snapshot of the origin frame so a jump's intermediate frames
-    /// never reach the screen. See ``HeelerTerminalView/freezeDisplay()``.
-    /// `refs #268`.
-    func freezeDisplay() {
-        terminal?.freezeDisplay()
-    }
-
-    /// Resumes rendering. Safe to call when no freeze is in effect.
-    func thawDisplay() {
-        terminal?.thawDisplay()
-    }
 
     private func syncAlternateScreen() {
         let nextAlternate = terminal?.isAlternateScreen ?? false

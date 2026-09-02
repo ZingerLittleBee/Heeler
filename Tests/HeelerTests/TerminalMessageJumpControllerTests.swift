@@ -16,8 +16,8 @@ struct TerminalMessageJumpControllerTests {
         #expect(outcome == .found)
         #expect(harness.stepCalls.count == 4)
         #expect(harness.stepCalls.allSatisfy { $0.direction == .older })
-        // Three fine steps, then the ramp opens up on the fourth.
-        #expect(harness.stepCalls.map(\.rows) == [6, 6, 6, 12])
+        // Two fine steps, then the ramp opens up on the third.
+        #expect(harness.stepCalls.map(\.rows) == [8, 8, 16, 16])
         #expect(!harness.controller.isRunning)
     }
 
@@ -30,7 +30,7 @@ struct TerminalMessageJumpControllerTests {
         let harness = JumpHarness(script: [], deliverFrames: false, viewportRows: 34)
 
         #expect((0..<9).map { harness.controller.rows(forStep: $0) }
-            == [6, 6, 6, 12, 24, 32, 32, 32, 32])
+            == [8, 8, 16, 32, 32, 32, 32, 32, 32])
 
         // Reach of one press, versus 240 rows before the ramp existed.
         let reach = (0..<harness.controller.configuration.maxSteps)
@@ -45,7 +45,7 @@ struct TerminalMessageJumpControllerTests {
         let harness = JumpHarness(script: [], deliverFrames: false)
 
         #expect((0..<7).map { harness.controller.rows(forStep: $0) }
-            == [6, 6, 6, 12, 16, 16, 16])
+            == [8, 8, 16, 16, 16, 16, 16])
     }
 
     /// The entry frame's own message must not end the jump, however many

@@ -17,8 +17,8 @@ Entries reference the issue that motivated them.
   sent from a computer, or before the screen was opened, can be walked too.
   The controls appear only where a scroll can actually reach that history —
   every agent CLI qualifies; a plain shell, which has no view of its own to
-  scroll, does not. A jump holds the origin frame until the walk finishes, so
-  a distant message is a cut rather than a crawl. (#268)
+  scroll, does not. Longer trips ramp from fine steps to a full viewport
+  quickly while still scanning every repainted frame. (#268)
 
 ### Fixed
 

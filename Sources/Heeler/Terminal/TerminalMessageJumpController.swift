@@ -45,9 +45,9 @@ final class TerminalMessageJumpController {
         /// Rows requested by the opening steps. Small, so a message just above
         /// the fold lands near the top of the screen instead of wherever a
         /// page-sized jump happens to drop it.
-        var rowsPerStep: Int = 6
+        var rowsPerStep: Int = 8
         /// How many steps stay at `rowsPerStep` before the ramp starts.
-        var fineSteps: Int = 3
+        var fineSteps: Int = 2
         /// Multiplier applied to the step size once the ramp starts. Doubling
         /// turns a crawl into a page-per-step within a few round trips, which
         /// is what makes a distant message reachable in one press.

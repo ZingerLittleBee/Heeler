@@ -19,38 +19,6 @@ private final class MessageJumpSizedHost: UIView {
     }
 }
 
-/// Gate that holds a jump body — or its freeze watchdog — suspended until the
-/// test opens it. Opening releases every waiter and stays open.
-private final class MessageJumpFreezeGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var isOpen = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-
-    func wait() async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            lock.lock()
-            if isOpen {
-                lock.unlock()
-                continuation.resume()
-                return
-            }
-            waiters.append(continuation)
-            lock.unlock()
-        }
-    }
-
-    func open() {
-        lock.lock()
-        isOpen = true
-        let pending = waiters
-        waiters = []
-        lock.unlock()
-        for continuation in pending {
-            continuation.resume()
-        }
-    }
-}
-
 struct MessageJumpControlTests {
     @Test func availabilityRequiresAlternateScreen() {
         #expect(
@@ -256,58 +224,6 @@ struct MessageJumpControlTests {
         await Task.yield()
         #expect(bodyEntered)
         #expect(wiring.jumpInvocationCount == 1)
-    }
-
-    @MainActor
-    @Test func runJumpFreezesTheDisplayForTheWholeBody() async {
-        let wiring = AgentMessageJumpWiring()
-        var frozenInsideBody = false
-        wiring.runJump { _ in
-            frozenInsideBody = wiring.isDisplayFrozen
-        }
-        await Task.yield()
-        await Task.yield()
-        #expect(frozenInsideBody)
-        #expect(!wiring.isDisplayFrozen)
-    }
-
-    @MainActor
-    @Test func aStuckJumpThawsOnTheWatchdog() async {
-        let watchdogGate = MessageJumpFreezeGate()
-        let bodyGate = MessageJumpFreezeGate()
-        let wiring = AgentMessageJumpWiring(
-            freezeTimeout: .seconds(3),
-            sleep: { _ in await watchdogGate.wait() })
-        // The body never finishes on its own, so only the watchdog can thaw.
-        wiring.runJump { _ in await bodyGate.wait() }
-        await Task.yield()
-        await Task.yield()
-        #expect(wiring.isDisplayFrozen)
-
-        watchdogGate.open()
-        for _ in 0..<10 { await Task.yield() }
-        #expect(!wiring.isDisplayFrozen)
-        // Thawed *while still walking* — that is the point of the watchdog.
-        #expect(wiring.isJumpRunning)
-
-        bodyGate.open()
-        for _ in 0..<10 { await Task.yield() }
-    }
-
-    @MainActor
-    @Test func resetSessionThawsAnInFlightFreeze() async {
-        let released = MessageJumpFreezeGate()
-        let wiring = AgentMessageJumpWiring()
-        wiring.runJump { _ in
-            await released.wait()
-        }
-        await Task.yield()
-        await Task.yield()
-        #expect(wiring.isDisplayFrozen)
-
-        wiring.resetSession()
-        #expect(!wiring.isDisplayFrozen)
-        released.open()
     }
 
     @MainActor
