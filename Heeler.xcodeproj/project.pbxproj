@@ -241,6 +241,7 @@
 		B3C490CC3562CC5B4B2EB993 /* PairingCodeVectorFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7461B7A0FD2A4CDF34352D45 /* PairingCodeVectorFile.swift */; };
 		B4720B610754009B9E30565F /* HeelerWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB43ADC71539AC324F155DD0 /* HeelerWidgetsBundle.swift */; };
 		B577EA28AB0BD24EB1ECA036 /* HeelerNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 59A749D2AF2390BCACBADED3 /* HeelerNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B5BF158F1DCA20F1B7AA12B0 /* TerminalMessageJumpController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 698E712B4BE15626800C366F /* TerminalMessageJumpController.swift */; };
 		B71854386F1CF79B863F15FE /* HostOnboardingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E9D993852C5C7BFE8515A46 /* HostOnboardingStore.swift */; };
 		B787DA8CB25A81E3914F8638 /* AttachmentStaging.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB47B059A9FC5B8A63C834F2 /* AttachmentStaging.swift */; };
 		B7C3D46ED9FE621924D10C7D /* HostListViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEABDC4E573B0F9EA67F64F1 /* HostListViewTests.swift */; };
@@ -274,6 +275,7 @@
 		CA857FDF64629FD0B3C4D8ED /* HeelerWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AD69BB4579A415BE96578319 /* HeelerWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CAEA10BC9AF3498E5FD73478 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 915C9462A4A8AA91C0B91498 /* PrivacyInfo.xcprivacy */; };
 		CBAEF7D1E91053F0B15E2F31 /* PairingCeremonyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F0763484EE05424146492C1 /* PairingCeremonyTests.swift */; };
+		CCEBF66BA9AFE64EDD371A78 /* AttachUserMessageIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85BEE99E7BEFA0D0D985162C /* AttachUserMessageIndex.swift */; };
 		D08663BD250210835FE7ED49 /* PhotosPickerImageSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A3BD235B5209892137FCAF9 /* PhotosPickerImageSelection.swift */; };
 		D20C025851965986547FAAB5 /* ClosePaneStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D46328CE795C513FE11AD04 /* ClosePaneStore.swift */; };
 		D2405D8443F085D4E3CD1810 /* NotificationKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC6D0361E0EB15681156D5C7 /* NotificationKeyStore.swift */; };
@@ -506,6 +508,7 @@
 		6876069E2B641D09FF1520E6 /* NotificationRelayEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRelayEndpoint.swift; sourceTree = "<group>"; };
 		6908778391053E855ED67E36 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		696C6905D9D6EEFF77A64E2E /* FakeTransportConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeTransportConnector.swift; sourceTree = "<group>"; };
+		698E712B4BE15626800C366F /* TerminalMessageJumpController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalMessageJumpController.swift; sourceTree = "<group>"; };
 		69EBBC2C99AA84420FDF600A /* AgentActivityEnvelope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentActivityEnvelope.swift; sourceTree = "<group>"; };
 		6A9156B9BB51E7A5AD1792D9 /* SkillsPaneStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillsPaneStore.swift; sourceTree = "<group>"; };
 		6CAC72199BF308E484F37439 /* HostTelemetryPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostTelemetryPresentation.swift; sourceTree = "<group>"; };
@@ -544,6 +547,7 @@
 		84DA8573DB6A7EBC95A57F2F /* StartAgentStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartAgentStoreTests.swift; sourceTree = "<group>"; };
 		856A8398D8F0FB87F252D193 /* FakeLiveActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeLiveActivityController.swift; sourceTree = "<group>"; };
 		856C56B29DCF048C09AF7C1C /* TerminalStatusDialogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalStatusDialogTests.swift; sourceTree = "<group>"; };
+		85BEE99E7BEFA0D0D985162C /* AttachUserMessageIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachUserMessageIndex.swift; sourceTree = "<group>"; };
 		86642A7BA9C1F1E3456D64E3 /* SSHChannelAdmission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHChannelAdmission.swift; sourceTree = "<group>"; };
 		86CF5F0136C3ED0B1F7F4EED /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		86F44B0C95580FC88ED880FD /* ConsoleDetailPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleDetailPresentationTests.swift; sourceTree = "<group>"; };
@@ -871,12 +875,14 @@
 		23D5C6183A096C45A39B385E /* Terminal */ = {
 			isa = PBXGroup;
 			children = (
+				85BEE99E7BEFA0D0D985162C /* AttachUserMessageIndex.swift */,
 				DD8509C4FD5C50A0D7AFEC1A /* TerminalAgentSwitcher.swift */,
 				C681336687D32709DA583BCC /* TerminalByteFeed.swift */,
 				A1E30B96F852EFC3C322C9EB /* TerminalInputController.swift */,
 				247FF74AD248F26A072EA263 /* TerminalKeyboard.swift */,
 				7CF0F9F0EDF8757DC1D275D2 /* TerminalKeyboardInset.swift */,
 				BC019B4A164A7B01F1D46344 /* TerminalKeysKeyboard.swift */,
+				698E712B4BE15626800C366F /* TerminalMessageJumpController.swift */,
 				4997A79DA8D98F7BA97E60F6 /* TerminalMouseReporting.swift */,
 				7EA83366C03C1D15B1DE8D1E /* TerminalOrphanSurfaceLayers.swift */,
 				847A1406F4AAEBF2F1EDFA1F /* TerminalScreenView.swift */,
@@ -1511,6 +1517,7 @@
 				3C5AFE8D3844A13198DDBEEA /* AttachLinkIndex.swift in Sources */,
 				A25418700A3D7FCCC08026BF /* AttachRestorationTrace.swift in Sources */,
 				052916002C06699B9F2F1A4B /* AttachTerminalStore.swift in Sources */,
+				CCEBF66BA9AFE64EDD371A78 /* AttachUserMessageIndex.swift in Sources */,
 				B787DA8CB25A81E3914F8638 /* AttachmentStaging.swift in Sources */,
 				35205050C9CB8E473D8A28C0 /* Base64URL.swift in Sources */,
 				D20C025851965986547FAAB5 /* ClosePaneStore.swift in Sources */,
@@ -1614,6 +1621,7 @@
 				8F91EAC7F32AA058E7F23394 /* TerminalKeyboard.swift in Sources */,
 				DB28307A5B8386139CA7EDEE /* TerminalKeyboardInset.swift in Sources */,
 				3ABBA2BF9C6B51EF1E0C7314 /* TerminalKeysKeyboard.swift in Sources */,
+				B5BF158F1DCA20F1B7AA12B0 /* TerminalMessageJumpController.swift in Sources */,
 				A236FAB25CBCB58BDDDBA00C /* TerminalMouseReporting.swift in Sources */,
 				558112530B864897BAE6900A /* TerminalOrphanSurfaceLayers.swift in Sources */,
 				289D5FF53D330E3C7CA81707 /* TerminalScreenView.swift in Sources */,
