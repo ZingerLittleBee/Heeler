@@ -417,6 +417,14 @@ final class AttachUserMessageIndex {
                 return StrippedLine(text: text, hasPromptGlyph: sawPrompt)
             }
             if isPromptGlyph(first) {
+                // A prompt glyph is separated from what the user typed. Without
+                // this, a banner like `>_ OpenAI Codex (v0.152.0)` reads as a
+                // user message and becomes a stop on the walk.
+                let rest = text.unicodeScalars.dropFirst()
+                guard rest.first.map({ CharacterSet.whitespaces.contains($0) }) ?? true
+                else {
+                    return StrippedLine(text: text, hasPromptGlyph: sawPrompt)
+                }
                 sawPrompt = true
             } else if !isBoxGlyph(first) {
                 return StrippedLine(text: text, hasPromptGlyph: sawPrompt)

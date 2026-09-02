@@ -258,6 +258,14 @@ struct AttachUserMessageIndexTests {
         #expect(index.visibleMessageKeys("❯\n───────────").isEmpty)
     }
 
+    /// Codex opens its session with `>_ OpenAI Codex (v0.152.0)`, which the
+    /// walk stopped on until a prompt glyph had to be followed by a space.
+    @Test func aGlyphNotFollowedByASpaceIsNotAPrompt() {
+        let index = AttachUserMessageIndex()
+        #expect(index.visibleMessageKeys(">_ OpenAI Codex (v0.152.0)").isEmpty)
+        #expect(!index.visibleMessageKeys("> a genuine question from the user").isEmpty)
+    }
+
     @Test func recordSubmittedIndexesComposerTextWithoutATerminator() {
         let index = AttachUserMessageIndex()
         index.record(submitted: "please implement the parser")
