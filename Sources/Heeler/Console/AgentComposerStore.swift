@@ -202,6 +202,7 @@ final class AgentComposerStore: ComposerDraftOperations {
             }
             messages[acknowledgedIndex].state = .delivered(
                 progressAfterAcknowledgment(for: messages[acknowledgedIndex]))
+            attachInput?.userMessageIndex.record(submitted: text)
             return .deliveredViaPrompt
         } catch {
             if Self.isAgentBlocked(error) {
@@ -213,6 +214,8 @@ final class AgentComposerStore: ComposerDraftOperations {
 
     /// Types the draft into the live Attach PTY without submitting. Matches
     /// tools-keyboard writes: UTF-8 bytes, no bracketed paste, no Enter.
+    /// Those bytes already cross `TerminalInputController`'s writer, which
+    /// indexes them; do not also `record(submitted:)` here.
     private func deliverThroughAttach(_ id: Message.ID, text: String) -> SendResult {
         guard TerminalTextSafety.containsOnlySafeScalars(text) else {
             return fail(id, message: Self.unsafeTextMessage)

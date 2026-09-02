@@ -297,6 +297,7 @@
 		DC580B52C0F6509F92BB289C /* PinnedAgentsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 768235F2FBD7790800281BC3 /* PinnedAgentsStoreTests.swift */; };
 		DDD5A27BA1126296E5AF7EAA /* PinnedAgentsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2437B1D6B97638031514C0F /* PinnedAgentsStore.swift */; };
 		DE020395E7459D508F0CC401 /* NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDC98A5038CD109556BE903F /* NotificationSettingsView.swift */; };
+		DED05CBB7CDC71B3D92B7B36 /* AttachUserMessageIndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE9AF5C6F7066900959E7E10 /* AttachUserMessageIndexTests.swift */; };
 		DF1D75FBECE8FABC8E3A093D /* AppForegroundRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B248F9372687FDBE3AD24A1 /* AppForegroundRecoveryTests.swift */; };
 		DF88C6F619C253A98F0EC3F6 /* NotificationDisclosureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5416AE7B7A89E2987620E65E /* NotificationDisclosureView.swift */; };
 		DFB9F3DD64996FFAF4E519EC /* pairing-code-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = F9EF9F515ABC98C4B0B483C0 /* pairing-code-v1.json */; };
@@ -594,6 +595,7 @@
 		AACC0F2C9582DE0932380D35 /* KnownHostsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnownHostsStoreTests.swift; sourceTree = "<group>"; };
 		AB48C946E14722E93FAAA410 /* TerminalAttach.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAttach.swift; sourceTree = "<group>"; };
 		AD69BB4579A415BE96578319 /* HeelerWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HeelerWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		AE9AF5C6F7066900959E7E10 /* AttachUserMessageIndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachUserMessageIndexTests.swift; sourceTree = "<group>"; };
 		AFD631568D2A021F6DF490B8 /* CancellablePhaseGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CancellablePhaseGate.swift; sourceTree = "<group>"; };
 		B1AEA55D1F06B12005DEEE5F /* HeelerSSHSessionE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeelerSSHSessionE2ETests.swift; sourceTree = "<group>"; };
 		B2437B1D6B97638031514C0F /* PinnedAgentsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinnedAgentsStore.swift; sourceTree = "<group>"; };
@@ -758,6 +760,7 @@
 				93417EFE29FA2DC3DD3FAF9F /* AsyncDeadlineTests.swift */,
 				D6BD5F61844F525B628AB358 /* AttachRestorationTraceTests.swift */,
 				8C5A562F5A01AE08691B8479 /* AttachTerminalStoreTests.swift */,
+				AE9AF5C6F7066900959E7E10 /* AttachUserMessageIndexTests.swift */,
 				414B652A16576BEDEE9AE000 /* ClosePaneStoreTests.swift */,
 				F4616CECA2722086A6B8B490 /* ComposerAttachmentTests.swift */,
 				239FD696B72E804AE3D85D72 /* ComposerStagingStoreTests.swift */,
@@ -1687,6 +1690,7 @@
 				969C4D0D24CCCE445C85D0AC /* AsyncDeadlineTests.swift in Sources */,
 				3776558F9FD16419AC405116 /* AttachRestorationTraceTests.swift in Sources */,
 				E40D1C6F825ABCD68AA5F196 /* AttachTerminalStoreTests.swift in Sources */,
+				DED05CBB7CDC71B3D92B7B36 /* AttachUserMessageIndexTests.swift in Sources */,
 				5150B659FACE9AFD9ECF9F6D /* AuthorizedKeysTestLock.swift in Sources */,
 				C3D2936548DD57036A1FB254 /* CancellablePhaseGate.swift in Sources */,
 				61F58007C6B81F14D2F6B58B /* ClosePaneStoreTests.swift in Sources */,

@@ -203,4 +203,46 @@ struct TerminalInputControllerTests {
         #expect(writes == [Data("n".utf8)])
         #expect(!writes.contains { $0.contains(0x0D) })
     }
+
+    @Test func sendObservesPrintableBytesAndClosesTheIndexedLineOnEnter() {
+        let controller = TerminalInputController()
+        _ = controller.beginSession { _ in }
+        let text = "please implement the parser"
+
+        #expect(controller.send(Data(text.utf8)))
+        #expect(controller.userMessageIndex.entries.isEmpty)
+
+        #expect(controller.send(Data([0x0D])))
+        #expect(controller.userMessageIndex.entries.map(\.rawText) == [text])
+    }
+
+    @Test func endingASessionClearsTheUserMessageIndex() {
+        let controller = TerminalInputController()
+        let generation = controller.beginSession { _ in }
+        #expect(controller.send(Data("please implement the parser".utf8)))
+        #expect(controller.send(Data([0x0D])))
+        #expect(!controller.userMessageIndex.entries.isEmpty)
+
+        controller.endSession(generation)
+        #expect(controller.userMessageIndex.entries.isEmpty)
+    }
+
+    @Test func aReplacementSessionDoesNotKeepThePredecessorIndex() {
+        let controller = TerminalInputController()
+        _ = controller.beginSession { _ in }
+        #expect(controller.send(Data("please implement the parser".utf8)))
+        #expect(controller.send(Data([0x0D])))
+        #expect(!controller.userMessageIndex.entries.isEmpty)
+
+        controller.detachSessionForReplacement()
+        #expect(controller.userMessageIndex.entries.isEmpty)
+
+        _ = controller.beginSession { _ in }
+        #expect(controller.userMessageIndex.entries.isEmpty)
+        #expect(controller.send(Data("rewrite the matching tests".utf8)))
+        #expect(controller.send(Data([0x0A])))
+        #expect(
+            controller.userMessageIndex.entries.map(\.rawText)
+                == ["rewrite the matching tests"])
+    }
 }

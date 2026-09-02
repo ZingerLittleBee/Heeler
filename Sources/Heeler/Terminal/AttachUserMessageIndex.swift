@@ -19,7 +19,7 @@ import Foundation
 /// are indexed. Messages sent from a desktop herdr, or before the app attached,
 /// are not jump targets.
 ///
-/// Contract only. `refs #268`.
+/// `refs #268`.
 @MainActor
 final class AttachUserMessageIndex {
     /// One submitted message, oldest first in `entries`.
@@ -31,27 +31,149 @@ final class AttachUserMessageIndex {
         let normalizedText: String
     }
 
+    /// Jump targets shorter than this match almost any frame (`y`, `ok`).
+    static let minimumEntryCharacterCount = 8
+
+    /// Oldest entries are dropped past this so a long session stays bounded.
+    static let maximumEntryCount = 200
+
+    /// TUIs may truncate or reflow a long message; matching the whole
+    /// normalised entry would miss those frames. This many leading characters
+    /// is still long enough to be a distinctive jump target.
+    static let matchPrefixCharacterCount = 64
+
     /// Submitted messages, oldest first.
     private(set) var entries: [Entry] = []
+
+    private var pendingText = ""
+    private var utf8Remainder: [UInt8] = []
+    private var scanState = ScanState.text
+
+    private enum ScanState {
+        case text
+        /// Saw ESC (`0x1B`); waiting to learn whether a CSI or SS3 follows.
+        case escape
+        /// CSI: ESC `[` or C1 `0x9B`, skipped until a final byte `0x40...0x7E`.
+        case csi
+        /// SS3: ESC `O` or C1 `0x8F`, skipped for one payload byte.
+        case ss3
+    }
 
     /// Bytes the app is about to write to the Attach PTY. Printable content
     /// accumulates; a carriage return or newline closes the pending line and
     /// appends an entry. Editing keys (backspace, cursor movement) and control
     /// sequences must not corrupt the accumulator.
     func observeOutgoing(_ data: Data) {
-        // TODO(#268): implement in package msgnav-index.
+        var bytes: [UInt8]
+        if utf8Remainder.isEmpty {
+            bytes = Array(data)
+        } else {
+            bytes = utf8Remainder
+            bytes.append(contentsOf: data)
+            utf8Remainder.removeAll(keepingCapacity: true)
+        }
+
+        var offset = 0
+        while offset < bytes.count {
+            switch scanState {
+            case .escape:
+                switch bytes[offset] {
+                case 0x5B:
+                    scanState = .csi
+                    offset += 1
+                case 0x4F:
+                    scanState = .ss3
+                    offset += 1
+                default:
+                    // Lone ESC (the Escape key) or an unhandled two-byte
+                    // sequence: drop ESC and reprocess this byte as text.
+                    scanState = .text
+                }
+                continue
+
+            case .csi:
+                let byte = bytes[offset]
+                offset += 1
+                if (0x40...0x7E).contains(byte) {
+                    scanState = .text
+                } else if byte == 0x1B {
+                    scanState = .escape
+                }
+                continue
+
+            case .ss3:
+                offset += 1
+                scanState = .text
+                continue
+
+            case .text:
+                break
+            }
+
+            let byte = bytes[offset]
+            if byte == 0x1B {
+                scanState = .escape
+                offset += 1
+                continue
+            }
+            if byte == 0x9B {
+                scanState = .csi
+                offset += 1
+                continue
+            }
+            if byte == 0x8F {
+                scanState = .ss3
+                offset += 1
+                continue
+            }
+            if byte == 0x0D || byte == 0x0A {
+                closePendingLine()
+                offset += 1
+                continue
+            }
+            if byte == 0x08 || byte == 0x7F {
+                if !pendingText.isEmpty {
+                    pendingText.removeLast()
+                }
+                offset += 1
+                continue
+            }
+            if byte < 0x20 {
+                offset += 1
+                continue
+            }
+            if byte < 0x80 {
+                pendingText.append(Character(Unicode.Scalar(byte)))
+                offset += 1
+                continue
+            }
+
+            switch Self.utf8Step(bytes, at: offset) {
+            case .incomplete:
+                utf8Remainder = Array(bytes[offset...])
+                return
+            case .invalid:
+                offset += 1
+            case .scalar(let scalar, let width):
+                pendingText.append(Character(scalar))
+                offset += width
+            }
+        }
     }
 
     /// A message delivered out of band — the Composer's `agent.prompt` path,
     /// which never crosses the PTY.
     func record(submitted text: String) {
-        // TODO(#268): implement in package msgnav-index.
+        appendEntry(rawText: text)
     }
 
     /// Drops everything. Called when the Attach session is replaced, because
     /// entries describe one session's scrollback and must not outlive it.
     func reset() {
-        // TODO(#268): implement in package msgnav-index.
+        entries.removeAll(keepingCapacity: false)
+        pendingText = ""
+        utf8Remainder.removeAll(keepingCapacity: false)
+        scanState = .text
     }
 
     /// Whether `frameText` appears to contain any indexed message.
@@ -60,8 +182,13 @@ final class AttachUserMessageIndex {
     /// with. It normalises both sides before comparing, so a message the TUI
     /// soft-wrapped, indented, or drew inside a box still matches.
     func frameContainsMessage(_ frameText: String) -> Bool {
-        // TODO(#268): implement in package msgnav-index.
-        false
+        guard !entries.isEmpty else { return false }
+        let frame = Self.normalize(frameText)
+        guard !frame.isEmpty else { return false }
+        return entries.contains { entry in
+            let key = Self.matchKey(for: entry.normalizedText)
+            return !key.isEmpty && frame.contains(key)
+        }
     }
 
     /// Collapses a terminal frame or a submitted line to a comparable form:
@@ -73,7 +200,90 @@ final class AttachUserMessageIndex {
     /// per-line glyph strip is what makes a message inside a TUI's bordered
     /// input box match.
     static func normalize(_ text: String) -> String {
-        // TODO(#268): implement in package msgnav-index.
-        text
+        let strippedLines = text.split(
+            omittingEmptySubsequences: false,
+            whereSeparator: \.isNewline
+        ).map { stripLeadingDecorations(String($0)) }
+        let joined = strippedLines.joined(separator: " ")
+        return joined.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    private func closePendingLine() {
+        let raw = pendingText
+        pendingText = ""
+        appendEntry(rawText: raw)
+    }
+
+    private func appendEntry(rawText: String) {
+        let normalized = Self.normalize(rawText)
+        guard normalized.count >= Self.minimumEntryCharacterCount else { return }
+        entries.append(
+            Entry(id: UUID(), rawText: rawText, normalizedText: normalized))
+        if entries.count > Self.maximumEntryCount {
+            entries.removeFirst(entries.count - Self.maximumEntryCount)
+        }
+    }
+
+    private static func matchKey(for normalizedText: String) -> String {
+        if normalizedText.count <= matchPrefixCharacterCount {
+            return normalizedText
+        }
+        return String(normalizedText.prefix(matchPrefixCharacterCount))
+    }
+
+    private static func stripLeadingDecorations(_ line: String) -> String {
+        var text = line
+        while true {
+            text = text.trimmingCharacters(in: .whitespaces)
+            guard let first = text.unicodeScalars.first,
+                isLeadingDecoration(first)
+            else { return text }
+            text = String(text.unicodeScalars.dropFirst())
+        }
+    }
+
+    /// Prompt / box glyphs actually observed in agent TUI captures, plus the
+    /// surrounding Box Drawing and Block Elements ranges (`▎` is U+258E).
+    private static func isLeadingDecoration(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x003E: true  // >
+        case 0x203A: true  // ›
+        case 0x276F: true  // ❯
+        case 0x2500...0x259F: true  // Box Drawing + Block Elements
+        default: false
+        }
+    }
+
+    private enum UTF8Step {
+        case scalar(Unicode.Scalar, width: Int)
+        case incomplete
+        case invalid
+    }
+
+    private static func utf8Step(_ bytes: [UInt8], at offset: Int) -> UTF8Step {
+        let lead = bytes[offset]
+        let available = bytes.count - offset
+        let width: Int
+        switch lead {
+        case 0xC2...0xDF:
+            width = 2
+        case 0xE0...0xEF:
+            width = 3
+        case 0xF0...0xF4:
+            width = 4
+        default:
+            return .invalid
+        }
+        if available < width {
+            return .incomplete
+        }
+        let slice = Data(bytes[offset..<(offset + width)])
+        guard let decoded = String(data: slice, encoding: .utf8),
+            let scalar = decoded.unicodeScalars.first,
+            decoded.unicodeScalars.count == 1
+        else {
+            return .invalid
+        }
+        return .scalar(scalar, width: width)
     }
 }

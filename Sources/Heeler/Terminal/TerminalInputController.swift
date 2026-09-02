@@ -32,6 +32,10 @@ final class TerminalInputController {
     private(set) var pendingPaste: PasteReview?
     private(set) var pasteErrorMessage: String?
 
+    /// Submitted messages for this Attach session. Reset whenever the live
+    /// writer is replaced, so entries cannot outlive the session they describe.
+    let userMessageIndex = AttachUserMessageIndex()
+
     private var nextGeneration: UInt64 = 0
     private var writer: ((Data) -> Void)?
     private var scroller: ((Data, Int) -> Void)?
@@ -53,6 +57,7 @@ final class TerminalInputController {
         nextGeneration &+= 1
         let generation = SessionGeneration(value: nextGeneration)
         liveGeneration = generation
+        userMessageIndex.reset()
         self.writer = writer
         self.scroller = scroller
         return generation
@@ -63,6 +68,7 @@ final class TerminalInputController {
         liveGeneration = nil
         writer = nil
         scroller = nil
+        userMessageIndex.reset()
         if !preservingPendingPaste {
             cancelPaste()
         }
@@ -75,6 +81,7 @@ final class TerminalInputController {
         liveGeneration = nil
         writer = nil
         scroller = nil
+        userMessageIndex.reset()
     }
 
     /// Sends ordinary terminal bytes if a live Attach session exists.
@@ -83,7 +90,7 @@ final class TerminalInputController {
     @discardableResult
     func send(_ data: Data) -> Bool {
         guard let writer, !data.isEmpty else { return false }
-        writer(data)
+        write(data, using: writer)
         return true
     }
 
@@ -104,12 +111,13 @@ final class TerminalInputController {
     /// it, and can see it on the button they just tapped.
     @discardableResult
     func insertSnippet(_ text: String, bracketedPaste: Bool) -> Bool {
-        guard writer != nil, !text.isEmpty,
+        guard let writer, !text.isEmpty,
             TerminalTextSafety.containsOnlySafeScalars(text)
         else { return false }
-        writer?(
+        write(
             TerminalBracketedPaste.encode(
-                text, bracketed: bracketedPaste && TerminalTextSafety.isMultiline(text)))
+                text, bracketed: bracketedPaste && TerminalTextSafety.isMultiline(text)),
+            using: writer)
         return true
     }
 
@@ -123,8 +131,8 @@ final class TerminalInputController {
             return .rejected
         }
         guard TerminalTextSafety.isMultiline(text) else {
-            if !text.isEmpty {
-                writer?(Data(text.utf8))
+            if !text.isEmpty, let writer {
+                write(Data(text.utf8), using: writer)
             }
             return .inserted
         }
@@ -145,7 +153,9 @@ final class TerminalInputController {
         // Reviewed text is still multiline text: without framing its newlines
         // reach the pane as separate key events, which is the very thing the
         // review sheet leaves the user unable to prevent.
-        writer(TerminalBracketedPaste.encode(text, bracketed: pendingPasteIsBracketed))
+        write(
+            TerminalBracketedPaste.encode(text, bracketed: pendingPasteIsBracketed),
+            using: writer)
         cancelPaste()
         return true
     }
@@ -158,6 +168,11 @@ final class TerminalInputController {
 
     func clearPasteError() {
         pasteErrorMessage = nil
+    }
+
+    private func write(_ data: Data, using writer: (Data) -> Void) {
+        userMessageIndex.observeOutgoing(data)
+        writer(data)
     }
 
     private static func lineCount(_ text: String) -> Int {
