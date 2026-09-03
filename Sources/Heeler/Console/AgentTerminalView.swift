@@ -1291,7 +1291,7 @@ struct AgentTerminalView: View {
             canScrollRemoteContent: messageJump.scrollControl.canScrollRemoteContent,
             reach: messageJump.reach,
             agentStatus: agent.agent.status,
-            isRunning: messageJump.isJumpRunning || messageJump.controller.isRunning)
+            runningDirection: messageJump.runningDirection)
     }
 
     @ViewBuilder
@@ -1303,9 +1303,9 @@ struct AgentTerminalView: View {
             palette: themePalette,
             onOlder: { jumpToOlderMessage() },
             onNewer: { jumpToNewerMessageOrLive() })
-        // Hit-test only while enabled. Visible-but-disabled chrome must not
-        // eat terminal drags (Working / in-flight jump). Placement and
-        // pass-through live in MessageJumpChromeContainer.
+        // Hit-test only while enabled. The in-flight spinner must not eat
+        // terminal drags. Placement and pass-through live in
+        // MessageJumpChromeContainer.
         .allowsHitTesting(messageJumpAvailability.isEnabled)
     }
 

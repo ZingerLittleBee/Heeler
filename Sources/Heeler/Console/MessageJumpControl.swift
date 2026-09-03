@@ -84,17 +84,19 @@ struct MessageJumpControlAvailability: Equatable, Sendable {
     var showsOlder: Bool
     /// Down is offered: the viewport is known to have left live output.
     var showsNewer: Bool
-    /// Disabled (not hidden) while a jump is in flight or the agent is
-    /// working — a spinner keeps repainting, and the loop's "frame stopped
-    /// changing" terminator cannot survive that.
+    /// False while a jump is in flight: the remaining button shows that
+    /// walk's spinner and takes no hit.
     var isEnabled: Bool
 
     /// Shown only on the alternate screen, only when a scroll step can reach
     /// the remote application's own history, and only for a direction that
-    /// still has somewhere to go. `herdr terminal attach` is itself an
-    /// alternate-screen client, so the first condition alone would also put
-    /// the buttons on a plain shell, where they would do nothing but feed it
-    /// cursor keys.
+    /// still has somewhere to go *right now*. `herdr terminal attach` is
+    /// itself an alternate-screen client, so the first condition alone would
+    /// also put the buttons on a plain shell, where they would do nothing but
+    /// feed it cursor keys. A working agent hides everything rather than
+    /// greying it out: its spinner keeps repainting, and the loop's "frame
+    /// stopped changing" terminator cannot survive that. A jump in flight
+    /// hides the other direction and keeps its own button as progress.
     var isVisible: Bool { showsOlder || showsNewer }
 
     static let hidden = Self(showsOlder: false, showsNewer: false, isEnabled: false)
@@ -104,14 +106,14 @@ struct MessageJumpControlAvailability: Equatable, Sendable {
         canScrollRemoteContent: Bool,
         reach: MessageJumpReach = MessageJumpReach(),
         agentStatus: AgentStatus,
-        isRunning: Bool
+        runningDirection: TerminalMessageJumpController.Direction? = nil
     ) -> Self {
-        let canScroll = isAlternateScreen && canScrollRemoteContent
+        let canScroll = isAlternateScreen && canScrollRemoteContent && agentStatus != .working
         let showsOlder = canScroll && reach.canJumpOlder
+            && (runningDirection == nil || runningDirection == .older)
         let showsNewer = canScroll && reach.canJumpNewer
-        let isEnabled = (showsOlder || showsNewer)
-            && agentStatus != .working
-            && !isRunning
+            && (runningDirection == nil || runningDirection == .newer)
+        let isEnabled = (showsOlder || showsNewer) && runningDirection == nil
         return Self(showsOlder: showsOlder, showsNewer: showsNewer, isEnabled: isEnabled)
     }
 }
@@ -483,10 +485,11 @@ struct MessageJumpControlView: View {
     /// The terminal's background lifted toward its foreground, with a hairline
     /// and a soft shadow so the pill separates from the grid it floats over.
     /// Lifted further than the status dialog's card: a 44-point pill over
-    /// dense text needs more contrast than a full-width card does.
+    /// dense text needs more contrast than a full-width card does. Slightly
+    /// translucent so the rows underneath stay readable through it.
     private func chromeBackground<S: InsettableShape>(in shape: S) -> some View {
         shape
-            .fill(palette.background.mix(with: palette.foreground, by: 0.16))
+            .fill(palette.background.mix(with: palette.foreground, by: 0.16).opacity(0.82))
             .overlay {
                 shape.strokeBorder(palette.foreground.opacity(0.2), lineWidth: 1)
             }
@@ -518,10 +521,7 @@ struct MessageJumpControlView: View {
                 }
             }
         }
-        .buttonStyle(
-            MessageJumpButtonStyle(
-                highlight: palette.foreground,
-                isWalking: runningDirection == direction))
+        .buttonStyle(MessageJumpButtonStyle(highlight: palette.foreground))
         .hoverEffect(.highlight)
         .accessibilityLabel(label)
         .accessibilityHint(hint)
@@ -529,14 +529,11 @@ struct MessageJumpControlView: View {
 }
 
 /// Press feedback for a jump button: a brief scale-down with a soft fill
-/// behind the glyph, and a dimmed glyph while disabled — except the button
-/// whose walk is in flight, whose spinner stays at full strength. The whole
-/// 44-point square is the hit area; the fill stays inset so the pill's edge
-/// reads as one shape.
+/// behind the glyph. The whole 44-point square is the hit area; the fill
+/// stays inset so the pill's edge reads as one shape. There is no disabled
+/// look — a button that cannot act is hidden, not greyed.
 private struct MessageJumpButtonStyle: ButtonStyle {
-    @Environment(\.isEnabled) private var isEnabled
     let highlight: Color
-    let isWalking: Bool
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -548,7 +545,6 @@ private struct MessageJumpButtonStyle: ButtonStyle {
                     .fill(highlight.opacity(configuration.isPressed ? 0.16 : 0))
                     .padding(4)
             }
-            .opacity(isEnabled || isWalking ? 1 : 0.4)
             .scaleEffect(configuration.isPressed ? 0.9 : 1)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
             .contentShape(.rect)

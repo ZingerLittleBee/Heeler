@@ -25,16 +25,14 @@ struct MessageJumpControlTests {
             MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: false,
                 canScrollRemoteContent: true,
-                agentStatus: .idle,
-                isRunning: false)
+                agentStatus: .idle)
                 == .hidden)
         // At live output only Up has somewhere to go.
         #expect(
             MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: true,
                 canScrollRemoteContent: true,
-                agentStatus: .idle,
-                isRunning: false)
+                agentStatus: .idle)
                 == MessageJumpControlAvailability(
                     showsOlder: true, showsNewer: false, isEnabled: true))
     }
@@ -53,8 +51,7 @@ struct MessageJumpControlTests {
                 isAlternateScreen: true,
                 canScrollRemoteContent: true,
                 reach: reach,
-                agentStatus: .idle,
-                isRunning: false)
+                agentStatus: .idle)
                 == MessageJumpControlAvailability(
                     showsOlder: true, showsNewer: true, isEnabled: true))
 
@@ -64,8 +61,7 @@ struct MessageJumpControlTests {
                 isAlternateScreen: true,
                 canScrollRemoteContent: true,
                 reach: reach,
-                agentStatus: .idle,
-                isRunning: false)
+                agentStatus: .idle)
                 == MessageJumpControlAvailability(
                     showsOlder: false, showsNewer: true, isEnabled: true))
 
@@ -75,8 +71,7 @@ struct MessageJumpControlTests {
                 isAlternateScreen: true,
                 canScrollRemoteContent: true,
                 reach: reach,
-                agentStatus: .idle,
-                isRunning: false)
+                agentStatus: .idle)
                 == MessageJumpControlAvailability(
                     showsOlder: true, showsNewer: false, isEnabled: true))
     }
@@ -95,8 +90,7 @@ struct MessageJumpControlTests {
                 isAlternateScreen: true,
                 canScrollRemoteContent: true,
                 reach: reach,
-                agentStatus: .idle,
-                isRunning: false).isVisible)
+                agentStatus: .idle).isVisible)
 
         reach.noteConversationGrew()
         #expect(reach.canJumpOlder)
@@ -144,41 +138,56 @@ struct MessageJumpControlTests {
             !MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: true,
                 canScrollRemoteContent: false,
-                agentStatus: .idle,
-                isRunning: false).isVisible)
+                agentStatus: .idle).isVisible)
         #expect(
             !MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: true,
                 canScrollRemoteContent: false,
-                agentStatus: .idle,
-                isRunning: false).isEnabled)
+                agentStatus: .idle).isEnabled)
     }
 
-    @Test func availabilityDisablesWhileWorkingOrRunning() {
+    /// A button that cannot act is hidden, never greyed: a working agent
+    /// hides the chrome outright, and a jump in flight keeps only its own
+    /// direction, as a spinner that takes no hit.
+    @Test func availabilityHidesWhileWorkingAndKeepsOnlyTheWalkingDirection() {
         #expect(
-            !MessageJumpControlAvailability.evaluate(
+            MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: true,
                 canScrollRemoteContent: true,
-                agentStatus: .working,
-                isRunning: false).isEnabled)
+                agentStatus: .working)
+                == .hidden)
+
+        var displaced = MessageJumpReach()
+        displaced.noteOlderJump(.found, movedViewport: true)
         #expect(
-            !MessageJumpControlAvailability.evaluate(
+            MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: true,
                 canScrollRemoteContent: true,
+                reach: displaced,
                 agentStatus: .idle,
-                isRunning: true).isEnabled)
+                runningDirection: .newer)
+                == MessageJumpControlAvailability(
+                    showsOlder: false, showsNewer: true, isEnabled: false))
         #expect(
             MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: true,
                 canScrollRemoteContent: true,
-                agentStatus: .blocked,
-                isRunning: false).isEnabled)
+                reach: displaced,
+                agentStatus: .idle,
+                runningDirection: .older)
+                == MessageJumpControlAvailability(
+                    showsOlder: true, showsNewer: false, isEnabled: false))
+
         #expect(
             MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: true,
                 canScrollRemoteContent: true,
-                agentStatus: .done,
-                isRunning: false).isEnabled)
+                agentStatus: .blocked).isEnabled)
+        #expect(
+            MessageJumpControlAvailability.evaluate(
+                isAlternateScreen: true,
+                canScrollRemoteContent: true,
+                agentStatus: .done).isEnabled)
     }
 
     /// Reaching an end is conveyed by the direction's button disappearing,
@@ -451,16 +460,15 @@ struct MessageJumpControlTests {
     }
 
     @Test func availabilityDisabledMeansOverlayShouldNotHitTest() {
-        let disabled = MessageJumpControlAvailability.evaluate(
+        let walking = MessageJumpControlAvailability.evaluate(
             isAlternateScreen: true,
             canScrollRemoteContent: true,
-            agentStatus: .working,
-            isRunning: false)
-        #expect(disabled.isVisible)
-        #expect(!disabled.isEnabled)
+            agentStatus: .idle,
+            runningDirection: .older)
+        #expect(walking.isVisible)
         // AgentTerminalView gates `.allowsHitTesting` on isEnabled, not
         // isVisible — this pins the policy the overlay relies on.
-        #expect(disabled.isEnabled == false)
+        #expect(walking.isEnabled == false)
     }
 }
 
