@@ -7,6 +7,8 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-09-04
+
 ### Added
 
 - Agent detail now has up/down buttons for jumping between your messages and
