@@ -10,7 +10,8 @@ struct SSHTransportSettings: Sendable {
     static let defaultWakeCommand = "herdr remote-client-bridge"
     static let defaultAttachCommand = "herdr agent attach"
     static let defaultTerminalAttachCommand = "herdr terminal attach"
-    static let defaultHomeCommand = "printf '__HEELER_HOME__=%s\\n' \"$HOME\""
+    static let defaultHomeCommand =
+        "/bin/sh -c 'printf \"__HEELER_HOME__=%s\\n\" \"$HOME\"'"
     static let defaultPluginListCommand = "herdr plugin list --json"
     static let agentAvailabilityMarker = "__HEELER_AGENT_KIND__="
 
@@ -104,8 +105,11 @@ struct SSHTransportSettings: Sendable {
     /// fixtures can exercise command selection without teaching UI code how
     /// herdr spells either attach command.
     var terminalAttachCommand: String = Self.defaultTerminalAttachCommand
-    /// Command used to print a marker-delimited remote home directory. It is
-    /// injectable only at the environment boundary for real-SSH tests.
+    /// Command used to print a marker-delimited remote home directory. Runs
+    /// under POSIX sh because login shells do not share substitution syntax
+    /// (#275: nushell never expands `$HOME` inside double quotes); the marker
+    /// makes login-shell noise harmless. Injectable only at the environment
+    /// boundary for real-SSH tests.
     var homeCommand: String = Self.defaultHomeCommand
     /// Creates one private directory beneath the Host operating system's
     /// selected temporary root. The marker makes login-shell noise harmless;
