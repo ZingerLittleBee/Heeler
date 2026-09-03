@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+#
+# commit-msg hook: strip "Co-authored-by:" trailers so no co-author / bot
+# identity is ever recorded in this repository's history.
+#
+# Enabled via `git config core.hooksPath .githooks` (done in .cursor/environment.json
+# for Cloud Agents; run it once manually in other clones).
+#
+set -euo pipefail
+
+msg_file="$1"
+
+awk '
+  tolower($0) ~ /^[[:space:]]*co-authored-by:/ { next }
+  { buf[++n] = $0 }
+  END {
+    while (n > 0 && buf[n] ~ /^[[:space:]]*$/) n--
+    for (i = 1; i <= n; i++) print buf[i]
+  }
+' "$msg_file" > "$msg_file.tmp"
+
+mv "$msg_file.tmp" "$msg_file"
