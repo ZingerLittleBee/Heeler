@@ -617,6 +617,13 @@ struct AgentTerminalView: View {
                 cancelKeyboardHandoffs()
             }
         }
+        .onChange(of: agent.agent.status) { _, status in
+            // A new turn may have pushed the conversation past the screen;
+            // re-offer Up if an earlier walk had found nothing above.
+            if status == .working {
+                messageJump.noteConversationGrew()
+            }
+        }
         .onChange(of: attach.terminalID) { _, _ in
             messageJump.resetSession()
             clearJumpNotice()
@@ -1282,6 +1289,7 @@ struct AgentTerminalView: View {
         MessageJumpControlAvailability.evaluate(
             isAlternateScreen: messageJump.scrollControl.isAlternateScreen,
             canScrollRemoteContent: messageJump.scrollControl.canScrollRemoteContent,
+            reach: messageJump.reach,
             agentStatus: agent.agent.status,
             isRunning: messageJump.isJumpRunning || messageJump.controller.isRunning)
     }
@@ -1290,7 +1298,9 @@ struct AgentTerminalView: View {
     private var messageJumpChrome: some View {
         MessageJumpChromeOverlay(
             availability: messageJumpAvailability,
+            runningDirection: messageJump.runningDirection,
             notice: jumpNotice,
+            palette: themePalette,
             onOlder: { jumpToOlderMessage() },
             onNewer: { jumpToNewerMessageOrLive() })
         // Hit-test only while enabled. Visible-but-disabled chrome must not
@@ -1300,13 +1310,15 @@ struct AgentTerminalView: View {
     }
 
     private func jumpToOlderMessage() {
-        guard messageJumpAvailability.isEnabled else { return }
-        messageJump.runJump { session in
+        let availability = messageJumpAvailability
+        guard availability.isEnabled, availability.showsOlder else { return }
+        messageJump.runJump(.older) { session in
             // Entry generation/cancellation already checked inside runJump
             // before this body is entered.
-            let outcome = await self.messageJump.controller.jump(.older)
-            guard self.messageJump.isLive(session) else { return }
-            self.presentJumpNotice(outcome, askingForOlder: true)
+            guard let outcome = await self.messageJump.jumpOlder(in: session) else {
+                return
+            }
+            self.presentJumpNotice(outcome)
         }
     }
 
@@ -1315,23 +1327,19 @@ struct AgentTerminalView: View {
     /// covers both "next message" and "back to live" (issue #268). The follow-up
     /// is abandoned if the Attach session was replaced while `jump` was awaited.
     private func jumpToNewerMessageOrLive() {
-        guard messageJumpAvailability.isEnabled else { return }
-        messageJump.runJump { session in
-            let outcome = await MessageJumpDownSequencer.run(
-                jumpNewer: { await self.messageJump.controller.jump(.newer) },
-                returnToLive: { await self.messageJump.controller.returnToLive() },
-                isLive: { self.messageJump.isLive(session) })
-            guard let outcome, self.messageJump.isLive(session) else { return }
-            self.presentJumpNotice(outcome, askingForOlder: false)
+        let availability = messageJumpAvailability
+        guard availability.isEnabled, availability.showsNewer else { return }
+        messageJump.runJump(.newer) { session in
+            guard let outcome = await self.messageJump.jumpNewerOrLive(in: session) else {
+                return
+            }
+            self.presentJumpNotice(outcome)
         }
     }
 
-    private func presentJumpNotice(
-        _ outcome: TerminalMessageJumpController.Outcome,
-        askingForOlder: Bool
-    ) {
+    private func presentJumpNotice(_ outcome: TerminalMessageJumpController.Outcome) {
         jumpNoticeClearTask?.cancel()
-        let text = MessageJumpNotice.text(for: outcome, askingForOlder: askingForOlder)
+        let text = MessageJumpNotice.text(for: outcome)
         jumpNotice = text
         guard text != nil else { return }
         jumpNoticeClearTask = Task { @MainActor in

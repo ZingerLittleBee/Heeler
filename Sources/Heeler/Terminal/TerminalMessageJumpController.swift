@@ -153,6 +153,13 @@ final class TerminalMessageJumpController {
     /// interleave two loops.
     private(set) var isRunning = false
 
+    /// Whether the most recent `jump`/`returnToLive` observed at least one
+    /// repainted frame that differed from the one before it. False after a
+    /// run whose every step timed out or repeated the same frame — the
+    /// viewport did not move, so the caller's idea of where it sits still
+    /// holds. `refs #268`.
+    private(set) var lastRunMovedViewport = false
+
     /// Most recent viewport text, including frames delivered while idle.
     private var latestFrame = ""
     /// Set by `cancel()` or task cancellation; cleared when a run finishes.
@@ -227,6 +234,7 @@ final class TerminalMessageJumpController {
         // in-flight loop. The UI gates on `isRunning`; this is the safety net.
         guard !isRunning else { return .cancelled }
         isRunning = true
+        lastRunMovedViewport = false
         cancelRequested = false
         defer { finishRun() }
 
@@ -380,6 +388,7 @@ final class TerminalMessageJumpController {
             }
             unchangedCount = 0
             previousFrame = text
+            lastRunMovedViewport = true
             return .moved(text)
         }
     }
@@ -389,6 +398,7 @@ final class TerminalMessageJumpController {
     func returnToLive() async -> Outcome {
         guard !isRunning else { return .cancelled }
         isRunning = true
+        lastRunMovedViewport = false
         cancelRequested = false
         defer { finishRun() }
 
@@ -418,6 +428,7 @@ final class TerminalMessageJumpController {
                 } else {
                     unchangedCount = 0
                     previousFrame = text
+                    lastRunMovedViewport = true
                 }
             }
         }

@@ -554,6 +554,10 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// Notifies ``TerminalScrollControl`` when DECSET alternate-screen state
     /// flips. `refs #268`.
     var onAlternateScreenChange: (() -> Void)?
+    /// Notifies ``TerminalScrollControl`` that a touch (drag or momentum)
+    /// scrolled by at least one row, and in which direction. Programmatic
+    /// steps through ``scrollRows(towardOlderContent:rows:)`` do not fire it.
+    var onTouchScroll: ((_ towardOlderContent: Bool) -> Void)?
     /// Completes the app-owned inset freeze for a responder handoff after the
     /// terminal's own keyboard frame has settled.
     var onKeyboardHandoffEnded: ((UUID, TerminalKeyboardHandoffOutcome) -> Void)?
@@ -1530,6 +1534,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
             pointsPerRow: max(8, terminalCellSize.height))
         guard rows != 0 else { return 0 }
         applyScroll(towardOlderContent: rows > 0, rowCount: abs(rows))
+        onTouchScroll?(rows > 0)
         return rows
     }
 

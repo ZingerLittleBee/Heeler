@@ -14,12 +14,24 @@ final class TerminalScrollControl {
     weak var terminal: HeelerTerminalView? {
         didSet {
             oldValue?.onAlternateScreenChange = nil
+            oldValue?.onTouchScroll = nil
             terminal?.onAlternateScreenChange = { [weak self] in
                 self?.syncAlternateScreen()
+            }
+            terminal?.onTouchScroll = { [weak self] towardOlderContent in
+                guard let self, self.canScrollRemoteContent else { return }
+                self.onTouchScroll?(towardOlderContent)
             }
             syncAlternateScreen()
         }
     }
+
+    /// A drag or its momentum moved the remote application's view. Fires only
+    /// while ``canScrollRemoteContent`` is true, so primary-screen scrollback
+    /// never reaches a listener that reasons about the remote TUI's position.
+    /// The jump chrome uses it to learn that the viewport has left live
+    /// output (or may have left the oldest message) without a jump. `refs #268`.
+    var onTouchScroll: ((_ towardOlderContent: Bool) -> Void)?
 
     /// Mirrors the surface's DECSET 1049/47/1047 state. False when no terminal
     /// is attached.

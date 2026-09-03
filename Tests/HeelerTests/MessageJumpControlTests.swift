@@ -27,14 +27,111 @@ struct MessageJumpControlTests {
                 canScrollRemoteContent: true,
                 agentStatus: .idle,
                 isRunning: false)
-                == MessageJumpControlAvailability(isVisible: false, isEnabled: false))
+                == .hidden)
+        // At live output only Up has somewhere to go.
         #expect(
             MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: true,
                 canScrollRemoteContent: true,
                 agentStatus: .idle,
                 isRunning: false)
-                == MessageJumpControlAvailability(isVisible: true, isEnabled: true))
+                == MessageJumpControlAvailability(
+                    showsOlder: true, showsNewer: false, isEnabled: true))
+    }
+
+    /// A direction with no valid destination is hidden, not disabled
+    /// (issue #268): Down appears once the viewport has left live output and
+    /// Up disappears once an older walk has run out of history. `refs #268`.
+    @Test func availabilityOffersOnlyDirectionsWithSomewhereToGo() {
+        var reach = MessageJumpReach()
+        #expect(reach.canJumpOlder)
+        #expect(!reach.canJumpNewer)
+
+        reach.noteOlderJump(.found, movedViewport: true)
+        #expect(
+            MessageJumpControlAvailability.evaluate(
+                isAlternateScreen: true,
+                canScrollRemoteContent: true,
+                reach: reach,
+                agentStatus: .idle,
+                isRunning: false)
+                == MessageJumpControlAvailability(
+                    showsOlder: true, showsNewer: true, isEnabled: true))
+
+        reach.noteOlderJump(.reachedEnd, movedViewport: true)
+        #expect(
+            MessageJumpControlAvailability.evaluate(
+                isAlternateScreen: true,
+                canScrollRemoteContent: true,
+                reach: reach,
+                agentStatus: .idle,
+                isRunning: false)
+                == MessageJumpControlAvailability(
+                    showsOlder: false, showsNewer: true, isEnabled: true))
+
+        reach.noteNewerJump(.reachedEnd, movedViewport: true)
+        #expect(
+            MessageJumpControlAvailability.evaluate(
+                isAlternateScreen: true,
+                canScrollRemoteContent: true,
+                reach: reach,
+                agentStatus: .idle,
+                isRunning: false)
+                == MessageJumpControlAvailability(
+                    showsOlder: true, showsNewer: false, isEnabled: true))
+    }
+
+    /// A conversation that fits the screen: Up finds nothing and moves
+    /// nothing, so the viewport is still live and *both* buttons go. A new
+    /// turn re-offers Up; one that lands while the viewport sits at the
+    /// oldest message does not, because it arrives below. `refs #268`.
+    @Test func reachHidesEverythingWhenNothingScrollsAndReoffersUpOnGrowth() {
+        var reach = MessageJumpReach()
+        reach.noteOlderJump(.reachedEnd, movedViewport: false)
+        #expect(!reach.canJumpOlder)
+        #expect(!reach.canJumpNewer)
+        #expect(
+            !MessageJumpControlAvailability.evaluate(
+                isAlternateScreen: true,
+                canScrollRemoteContent: true,
+                reach: reach,
+                agentStatus: .idle,
+                isRunning: false).isVisible)
+
+        reach.noteConversationGrew()
+        #expect(reach.canJumpOlder)
+        #expect(!reach.canJumpNewer)
+
+        var displaced = MessageJumpReach()
+        displaced.noteOlderJump(.reachedEnd, movedViewport: true)
+        displaced.noteConversationGrew()
+        #expect(!displaced.canJumpOlder)
+        #expect(displaced.canJumpNewer)
+    }
+
+    @Test func reachFollowsTouchScrollsAndKeepsExhaustedWalksOpen() {
+        var reach = MessageJumpReach()
+        reach.noteTouchScroll(towardOlderContent: true)
+        #expect(reach.canJumpNewer)
+        #expect(reach.canJumpOlder)
+
+        reach.noteOlderJump(.reachedEnd, movedViewport: true)
+        #expect(!reach.canJumpOlder)
+        reach.noteTouchScroll(towardOlderContent: false)
+        #expect(reach.canJumpOlder)
+
+        // Running out of step budget proves nothing about either end.
+        reach.noteOlderJump(.exhausted, movedViewport: true)
+        #expect(reach.canJumpOlder)
+        #expect(reach.canJumpNewer)
+        reach.noteNewerJump(.exhausted, movedViewport: true)
+        #expect(reach.canJumpOlder)
+        #expect(reach.canJumpNewer)
+
+        // A cancelled walk leaves the verdicts alone.
+        var untouched = MessageJumpReach()
+        untouched.noteOlderJump(.cancelled, movedViewport: false)
+        #expect(untouched == MessageJumpReach())
     }
 
     /// `herdr terminal attach` always enters the alternate screen, so that
@@ -84,20 +181,13 @@ struct MessageJumpControlTests {
                 isRunning: false).isEnabled)
     }
 
-    @Test func noticeCopyStaysQuietForFoundAndCancelled() {
-        #expect(
-            MessageJumpNotice.text(for: .found, askingForOlder: true) == nil)
-        #expect(
-            MessageJumpNotice.text(for: .cancelled, askingForOlder: false) == nil)
-        #expect(
-            MessageJumpNotice.text(for: .reachedEnd, askingForOlder: true)
-                == "No earlier message")
-        #expect(
-            MessageJumpNotice.text(for: .reachedEnd, askingForOlder: false)
-                == "Back at live output")
-        #expect(
-            MessageJumpNotice.text(for: .exhausted, askingForOlder: true)
-                == "Couldn't find the message")
+    /// Reaching an end is conveyed by the direction's button disappearing,
+    /// not by a caption. Only a walk that ran out of budget says anything.
+    @Test func noticeCopySpeaksOnlyForAnExhaustedWalk() {
+        #expect(MessageJumpNotice.text(for: .found) == nil)
+        #expect(MessageJumpNotice.text(for: .cancelled) == nil)
+        #expect(MessageJumpNotice.text(for: .reachedEnd) == nil)
+        #expect(MessageJumpNotice.text(for: .exhausted) == "Couldn't find the message")
     }
 
     @Test func placementFrameHidesChromeThatCannotFitAboveTheBand() {
@@ -229,7 +319,7 @@ struct MessageJumpControlTests {
     @Test func runJumpAbandonsBodyWhenResetBeforeStart() async {
         let wiring = AgentMessageJumpWiring()
         var bodyEntered = false
-        wiring.runJump { _ in
+        wiring.runJump(.older) { _ in
             bodyEntered = true
         }
         // Reconnect wins the main-actor queue before the Task body runs.
@@ -245,14 +335,55 @@ struct MessageJumpControlTests {
     @Test func runJumpInvokesBodyWhenSessionStaysLive() async {
         let wiring = AgentMessageJumpWiring()
         var bodyEntered = false
-        wiring.runJump { session in
+        wiring.runJump(.newer) { session in
             #expect(wiring.isLive(session))
+            #expect(wiring.isJumpRunning)
+            #expect(wiring.runningDirection == .newer)
             bodyEntered = true
         }
         await Task.yield()
         await Task.yield()
         #expect(bodyEntered)
         #expect(wiring.jumpInvocationCount == 1)
+        #expect(!wiring.isJumpRunning)
+        #expect(wiring.runningDirection == nil)
+    }
+
+    /// The wiring's Down press folds movement from *both* legs into reach:
+    /// a newer walk that finds nothing but does move, followed by a return
+    /// to live, still counts as having moved. `refs #268`.
+    @MainActor
+    @Test func wiringReachFollowsJumpOutcomes() async {
+        let wiring = AgentMessageJumpWiring()
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        wiring.scrollControl.terminal = terminal
+        terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))
+        #expect(wiring.reach == MessageJumpReach())
+
+        // Nothing ever repaints: an older walk reaches the end without moving.
+        let session = wiring.liveGeneration
+        let older = await wiring.jumpOlder(in: session)
+        #expect(older == .reachedEnd)
+        #expect(!wiring.reach.canJumpOlder)
+        #expect(!wiring.reach.canJumpNewer)
+
+        wiring.resetSession()
+        #expect(wiring.reach == MessageJumpReach())
+    }
+
+    @MainActor
+    @Test func wiringLearnsDisplacementFromTouchScrolls() {
+        let wiring = AgentMessageJumpWiring()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(onScroll: { _, _ in })
+        wiring.scrollControl.terminal = terminal
+
+        // Primary screen: local scrollback, not a remote position change.
+        _ = terminal.scrollTouch(translationY: 40)
+        #expect(!wiring.reach.canJumpNewer)
+
+        terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))
+        _ = terminal.scrollTouch(translationY: 40)
+        #expect(wiring.reach.canJumpNewer)
     }
 
     @MainActor

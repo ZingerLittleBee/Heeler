@@ -12,7 +12,12 @@ Entries reference the issue that motivated them.
 - Agent detail shows compact up/down controls on the Attach alternate screen
   that jump between the user's own messages and return to live output. The
   controls stay hidden on the primary screen, and disable (without vanishing)
-  while the agent is working or a jump is in flight. Any message the Agent's
+  while the agent is working or a jump is in flight. Each direction is offered
+  only while it has somewhere to go: Down appears once the view has left live
+  output, and Up goes away once a walk has run out of earlier messages, so
+  reaching an end no longer needs a caption. The pill follows the terminal
+  theme, shows a spinner in the direction being walked, and gives a light tap
+  on press. Any message the Agent's
   own view shows behind a prompt marker is a jump target, so history that was
   sent from a computer, or before the screen was opened, can be walked too.
   The controls appear only where a scroll can actually reach that history —
