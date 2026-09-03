@@ -1290,7 +1290,6 @@ struct AgentTerminalView: View {
             isAlternateScreen: messageJump.scrollControl.isAlternateScreen,
             canScrollRemoteContent: messageJump.scrollControl.canScrollRemoteContent,
             reach: messageJump.reach,
-            agentStatus: agent.agent.status,
             runningDirection: messageJump.runningDirection)
     }
 

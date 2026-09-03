@@ -24,15 +24,13 @@ struct MessageJumpControlTests {
         #expect(
             MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: false,
-                canScrollRemoteContent: true,
-                agentStatus: .idle)
+                canScrollRemoteContent: true)
                 == .hidden)
         // At live output only Up has somewhere to go.
         #expect(
             MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: true,
-                canScrollRemoteContent: true,
-                agentStatus: .idle)
+                canScrollRemoteContent: true)
                 == MessageJumpControlAvailability(
                     showsOlder: true, showsNewer: false, isEnabled: true))
     }
@@ -50,8 +48,7 @@ struct MessageJumpControlTests {
             MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: true,
                 canScrollRemoteContent: true,
-                reach: reach,
-                agentStatus: .idle)
+                reach: reach)
                 == MessageJumpControlAvailability(
                     showsOlder: true, showsNewer: true, isEnabled: true))
 
@@ -60,8 +57,7 @@ struct MessageJumpControlTests {
             MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: true,
                 canScrollRemoteContent: true,
-                reach: reach,
-                agentStatus: .idle)
+                reach: reach)
                 == MessageJumpControlAvailability(
                     showsOlder: false, showsNewer: true, isEnabled: true))
 
@@ -70,8 +66,7 @@ struct MessageJumpControlTests {
             MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: true,
                 canScrollRemoteContent: true,
-                reach: reach,
-                agentStatus: .idle)
+                reach: reach)
                 == MessageJumpControlAvailability(
                     showsOlder: true, showsNewer: false, isEnabled: true))
     }
@@ -89,8 +84,7 @@ struct MessageJumpControlTests {
             !MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: true,
                 canScrollRemoteContent: true,
-                reach: reach,
-                agentStatus: .idle).isVisible)
+                reach: reach).isVisible)
 
         reach.noteConversationGrew()
         #expect(reach.canJumpOlder)
@@ -137,26 +131,18 @@ struct MessageJumpControlTests {
         #expect(
             !MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: true,
-                canScrollRemoteContent: false,
-                agentStatus: .idle).isVisible)
+                canScrollRemoteContent: false).isVisible)
         #expect(
             !MessageJumpControlAvailability.evaluate(
                 isAlternateScreen: true,
-                canScrollRemoteContent: false,
-                agentStatus: .idle).isEnabled)
+                canScrollRemoteContent: false).isEnabled)
     }
 
-    /// A button that cannot act is hidden, never greyed: a working agent
-    /// hides the chrome outright, and a jump in flight keeps only its own
-    /// direction, as a spinner that takes no hit.
-    @Test func availabilityHidesWhileWorkingAndKeepsOnlyTheWalkingDirection() {
-        #expect(
-            MessageJumpControlAvailability.evaluate(
-                isAlternateScreen: true,
-                canScrollRemoteContent: true,
-                agentStatus: .working)
-                == .hidden)
-
+    /// A button that cannot act is hidden, never greyed: a jump in flight
+    /// keeps only its own direction, as a spinner that takes no hit. The
+    /// agent's status plays no part — a working agent can still be walked,
+    /// it only makes the end of history harder to detect.
+    @Test func availabilityKeepsOnlyTheWalkingDirectionWhileAJumpRuns() {
         var displaced = MessageJumpReach()
         displaced.noteOlderJump(.found, movedViewport: true)
         #expect(
@@ -164,7 +150,6 @@ struct MessageJumpControlTests {
                 isAlternateScreen: true,
                 canScrollRemoteContent: true,
                 reach: displaced,
-                agentStatus: .idle,
                 runningDirection: .newer)
                 == MessageJumpControlAvailability(
                     showsOlder: false, showsNewer: true, isEnabled: false))
@@ -173,21 +158,9 @@ struct MessageJumpControlTests {
                 isAlternateScreen: true,
                 canScrollRemoteContent: true,
                 reach: displaced,
-                agentStatus: .idle,
                 runningDirection: .older)
                 == MessageJumpControlAvailability(
                     showsOlder: true, showsNewer: false, isEnabled: false))
-
-        #expect(
-            MessageJumpControlAvailability.evaluate(
-                isAlternateScreen: true,
-                canScrollRemoteContent: true,
-                agentStatus: .blocked).isEnabled)
-        #expect(
-            MessageJumpControlAvailability.evaluate(
-                isAlternateScreen: true,
-                canScrollRemoteContent: true,
-                agentStatus: .done).isEnabled)
     }
 
     /// Reaching an end is conveyed by the direction's button disappearing,
@@ -463,7 +436,6 @@ struct MessageJumpControlTests {
         let walking = MessageJumpControlAvailability.evaluate(
             isAlternateScreen: true,
             canScrollRemoteContent: true,
-            agentStatus: .idle,
             runningDirection: .older)
         #expect(walking.isVisible)
         // AgentTerminalView gates `.allowsHitTesting` on isEnabled, not

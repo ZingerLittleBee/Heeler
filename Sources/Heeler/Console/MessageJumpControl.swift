@@ -93,10 +93,14 @@ struct MessageJumpControlAvailability: Equatable, Sendable {
     /// still has somewhere to go *right now*. `herdr terminal attach` is
     /// itself an alternate-screen client, so the first condition alone would
     /// also put the buttons on a plain shell, where they would do nothing but
-    /// feed it cursor keys. A working agent hides everything rather than
-    /// greying it out: its spinner keeps repainting, and the loop's "frame
-    /// stopped changing" terminator cannot survive that. A jump in flight
-    /// hides the other direction and keeps its own button as progress.
+    /// feed it cursor keys. A jump in flight hides the other direction and
+    /// keeps its own button as progress.
+    ///
+    /// The agent's status is deliberately not an input. A working agent is
+    /// still scrollable, and reading earlier messages while it works is the
+    /// point; the cost is that its spinner keeps repainting, so a walk that
+    /// reaches the end of history cannot see the frame settle and instead
+    /// runs out its step budget (``MessageJumpNotice``).
     var isVisible: Bool { showsOlder || showsNewer }
 
     static let hidden = Self(showsOlder: false, showsNewer: false, isEnabled: false)
@@ -105,10 +109,9 @@ struct MessageJumpControlAvailability: Equatable, Sendable {
         isAlternateScreen: Bool,
         canScrollRemoteContent: Bool,
         reach: MessageJumpReach = MessageJumpReach(),
-        agentStatus: AgentStatus,
         runningDirection: TerminalMessageJumpController.Direction? = nil
     ) -> Self {
-        let canScroll = isAlternateScreen && canScrollRemoteContent && agentStatus != .working
+        let canScroll = isAlternateScreen && canScrollRemoteContent
         let showsOlder = canScroll && reach.canJumpOlder
             && (runningDirection == nil || runningDirection == .older)
         let showsNewer = canScroll && reach.canJumpNewer
