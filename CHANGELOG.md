@@ -9,26 +9,14 @@ Entries reference the issue that motivated them.
 
 ### Added
 
-- Agent detail shows compact up/down controls on the Attach alternate screen
-  that jump between the user's own messages and return to live output. The
-  controls stay hidden on the primary screen. Each direction is offered only
-  while it can act: Down appears once the view has left live output, Up goes
-  away once a walk has run out of earlier messages, and during a jump only
-  the direction being walked stays, as a spinner. Nothing is ever shown
-  greyed out, and jump outcomes never add a caption that shifts the buttons.
-  The controls work while the agent is working too; its spinner keeps the
-  screen repainting, so a walk that hits the end of history in that state
-  runs out its step budget silently. A manual scroll cancels any automatic
-  jump already in progress. The translucent pill follows the terminal theme
-  and gives a light tap on press. Any message the Agent's
-  own view shows behind a prompt marker is a jump target, so history that was
-  sent from a computer, or before the screen was opened, can be walked too.
-  The controls appear only where a scroll can actually reach that history —
-  every agent CLI qualifies; a plain shell, which has no view of its own to
-  scroll, does not. Longer trips ramp from fine steps to a full viewport
-  quickly while still scanning every repainted frame. On Grok, whose TUI pins
-  the current prompt, Up lands on that turn's boundary rather than skipping
-  it for the previous one. (#268; PR #272)
+- Agent detail now shows compact, theme-aware up/down controls on scrollable
+  Agent Attach screens. They jump between the user's messages, including
+  messages sent elsewhere or before the screen opened, and Down returns to
+  live output. Directions hide when they have no destination, the controls
+  remain available while the Agent is working, and manual scrolling cancels
+  an in-progress jump. The controls stay fixed in place without result
+  captions, and Grok's pinned prompt is handled as a turn boundary.
+  (#268; PR #272)
 
 ### Fixed
 
