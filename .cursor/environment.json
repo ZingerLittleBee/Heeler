@@ -1,0 +1,10 @@
+{
+  "name": "Heeler (Node subprojects)",
+  "install": "npm ci --prefix plugin && npm ci --prefix landing",
+  "terminals": [
+    {
+      "name": "landing-dev",
+      "command": "npm --prefix landing run dev -- --host 127.0.0.1 --port 4321"
+    }
+  ]
+}
