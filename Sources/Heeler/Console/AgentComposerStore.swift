@@ -195,6 +195,8 @@ final class AgentComposerStore: ComposerDraftOperations {
         if agentStatus == .blocked {
             return deliverThroughAttach(id, text: text)
         }
+        let input = attachInput
+        let generation = input?.liveGeneration
         do {
             _ = try await prompt(AgentPromptParams(target: target, text: text))
             guard let acknowledgedIndex = messages.firstIndex(where: { $0.id == id }) else {
@@ -202,6 +204,9 @@ final class AgentComposerStore: ComposerDraftOperations {
             }
             messages[acknowledgedIndex].state = .delivered(
                 progressAfterAcknowledgment(for: messages[acknowledgedIndex]))
+            if let input, let generation {
+                input.recordSubmitted(text, generation: generation)
+            }
             return .deliveredViaPrompt
         } catch {
             if Self.isAgentBlocked(error) {
@@ -213,11 +218,13 @@ final class AgentComposerStore: ComposerDraftOperations {
 
     /// Types the draft into the live Attach PTY without submitting. Matches
     /// tools-keyboard writes: UTF-8 bytes, no bracketed paste, no Enter.
+    /// Those bytes already cross `TerminalInputController`'s writer, which
+    /// indexes them; do not also `record(submitted:)` here.
     private func deliverThroughAttach(_ id: Message.ID, text: String) -> SendResult {
         guard TerminalTextSafety.containsOnlySafeScalars(text) else {
             return fail(id, message: Self.unsafeTextMessage)
         }
-        guard let attachInput, attachInput.send(Data(text.utf8)) else {
+        guard let attachInput, attachInput.insertComposerDraft(text) else {
             return fail(id, message: Self.missingAttachMessage)
         }
         guard let deliveredIndex = messages.firstIndex(where: { $0.id == id }) else {

@@ -7,16 +7,21 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- Agent detail now has up/down buttons for jumping between your messages and
+  returning to the latest output. You can use them while the Agent is working,
+  and manual scrolling stops a jump. (#268; PR #272)
+
 ### Fixed
 
-- A terminal whose keyboard claim is refused as it appears no longer holds its
-  grid — and its layout — frozen until the half-second safety timeout. It gives
-  the freeze up as soon as the claim fails, so the surface lays out and the
-  Host learns its size right away. (#263)
+- Pasting text with Windows-style line breaks now opens the paste review sheet
+  instead of submitting each line separately. (#268)
 
-- New Agent now detects supported Agent CLIs from the Host's standard
-  user-local, Bun, Cargo, Homebrew, and Linuxbrew install paths over SSH.
-  (#254)
+- Terminal layout now updates immediately when the keyboard cannot open. (#263)
+
+- New Agent now finds Agent CLIs installed with Bun, Cargo, Homebrew, or
+  Linuxbrew, as well as standard user-local installs. (#254)
 
 ## [0.1.4] - 2026-09-01
 
