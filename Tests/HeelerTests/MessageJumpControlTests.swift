@@ -163,15 +163,6 @@ struct MessageJumpControlTests {
                     showsOlder: true, showsNewer: false, isEnabled: false))
     }
 
-    /// Reaching an end is conveyed by the direction's button disappearing,
-    /// not by a caption. Only a walk that ran out of budget says anything.
-    @Test func noticeCopySpeaksOnlyForAnExhaustedWalk() {
-        #expect(MessageJumpNotice.text(for: .found) == nil)
-        #expect(MessageJumpNotice.text(for: .cancelled) == nil)
-        #expect(MessageJumpNotice.text(for: .reachedEnd) == nil)
-        #expect(MessageJumpNotice.text(for: .exhausted) == "Couldn't find the message")
-    }
-
     @Test func placementFrameHidesChromeThatCannotFitAboveTheBand() {
         // 80-pt terminal, 72-pt chrome: available above the band is 60.
         let short = CGSize(width: 390, height: 80)
@@ -368,6 +359,38 @@ struct MessageJumpControlTests {
         #expect(wiring.reach.canJumpNewer)
     }
 
+    /// A touch-driven row is fresh viewport intent. The production touch-scroll
+    /// seam cancels the jump loop before it can emit another automatic step.
+    /// `refs #268`.
+    @MainActor
+    @Test func touchScrollCancelsAnInFlightJump() async {
+        let started = MessageJumpScrollProbe()
+        let finished = MessageJumpScrollProbe()
+        let wiring = AgentMessageJumpWiring()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(onScroll: { _, _ in
+            started.record()
+        })
+        wiring.scrollControl.terminal = terminal
+        terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))
+
+        var outcome: TerminalMessageJumpController.Outcome?
+        wiring.runJump(.older) { session in
+            outcome = await wiring.jumpOlder(in: session)
+            finished.record()
+        }
+        await started.waitForFirstRecord()
+        #expect(wiring.isJumpRunning)
+        #expect(wiring.controller.isRunning)
+
+        _ = terminal.scrollTouch(translationY: 40)
+        await finished.waitForFirstRecord()
+
+        #expect(outcome == .cancelled)
+        #expect(!wiring.isJumpRunning)
+        #expect(!wiring.controller.isRunning)
+        #expect(wiring.runningDirection == nil)
+    }
+
     @MainActor
     @Test func resetSessionAdvancesGeneration() {
         let wiring = AgentMessageJumpWiring()
@@ -441,6 +464,32 @@ struct MessageJumpControlTests {
         // AgentTerminalView gates `.allowsHitTesting` on isEnabled, not
         // isVisible — this pins the policy the overlay relies on.
         #expect(walking.isEnabled == false)
+    }
+}
+
+@MainActor
+private final class MessageJumpScrollProbe {
+    private var recordCount = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func record() {
+        recordCount += 1
+        let pending = waiters
+        waiters.removeAll()
+        for waiter in pending {
+            waiter.resume()
+        }
+    }
+
+    func waitForFirstRecord() async {
+        if recordCount > 0 { return }
+        await withCheckedContinuation { continuation in
+            if self.recordCount > 0 {
+                continuation.resume()
+            } else {
+                self.waiters.append(continuation)
+            }
+        }
     }
 }
 

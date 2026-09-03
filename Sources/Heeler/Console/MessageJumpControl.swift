@@ -100,7 +100,7 @@ struct MessageJumpControlAvailability: Equatable, Sendable {
     /// still scrollable, and reading earlier messages while it works is the
     /// point; the cost is that its spinner keeps repainting, so a walk that
     /// reaches the end of history cannot see the frame settle and instead
-    /// runs out its step budget (``MessageJumpNotice``).
+    /// runs out its step budget.
     var isVisible: Bool { showsOlder || showsNewer }
 
     static let hidden = Self(showsOlder: false, showsNewer: false, isEnabled: false)
@@ -293,18 +293,19 @@ final class AgentMessageJumpWiring {
         let session = liveGeneration
         jumpTask?.cancel()
         jumpTask = Task { @MainActor in
+            defer {
+                if epoch == self.jumpEpoch {
+                    self.jumpTask = nil
+                    self.isJumpRunning = false
+                    self.runningDirection = nil
+                }
+            }
             guard !Task.isCancelled, self.isLive(session), epoch == self.jumpEpoch else {
                 return
             }
             self.jumpInvocationCount &+= 1
             self.isJumpRunning = true
             self.runningDirection = direction
-            defer {
-                if epoch == self.jumpEpoch {
-                    self.isJumpRunning = false
-                    self.runningDirection = nil
-                }
-            }
             await body(session)
         }
     }
@@ -355,6 +356,14 @@ final class AgentMessageJumpWiring {
     }
 
     private func noteTouchScroll(towardOlderContent: Bool) {
+        // A drag expresses fresh viewport intent. Stop both the enclosing task
+        // and the controller's current frame wait before recording where the
+        // user's movement may have taken the remote view. Programmatic jump
+        // steps use `scrollRows` and never enter this callback. `refs #268`.
+        if jumpTask != nil {
+            jumpTask?.cancel()
+            controller.cancel()
+        }
         // Drags report every row; only a real change may touch observed state.
         var next = reach
         next.noteTouchScroll(towardOlderContent: towardOlderContent)
@@ -415,8 +424,8 @@ enum MessageJumpDownSequencer {
 /// Down walks toward live one user message at a time; when no newer message
 /// remains, the same button finishes the trip with
 /// ``TerminalMessageJumpController/returnToLive()``. Only the buttons take
-/// hits — notice, background, padding, and inter-button gaps pass through to
-/// the terminal underneath.
+/// hits — background, padding, and inter-button gaps pass through to the
+/// terminal underneath.
 ///
 /// Drawn in the terminal's own colours, like ``TerminalStatusDialog``: a
 /// system material would follow the appearance, not the theme, and read as a
@@ -425,7 +434,6 @@ struct MessageJumpControlView: View {
     let availability: MessageJumpControlAvailability
     /// Direction whose walk is in flight, shown as a spinner in its button.
     var runningDirection: TerminalMessageJumpController.Direction?
-    let notice: String?
     var palette: TerminalThemePalette = .system
     let onOlder: () -> Void
     let onNewer: () -> Void
@@ -434,52 +442,36 @@ struct MessageJumpControlView: View {
 
     var body: some View {
         if availability.isVisible {
-            VStack(alignment: .trailing, spacing: 8) {
-                if let notice {
-                    Text(notice)
-                        .font(.caption)
-                        .foregroundStyle(palette.foreground.opacity(0.85))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background {
-                            chromeBackground(in: Capsule())
-                        }
+            VStack(spacing: 0) {
+                if availability.showsOlder {
+                    jumpButton(
+                        .older,
+                        systemImage: "chevron.up",
+                        label: "Earlier message",
+                        hint: "Scrolls the Agent to the previous message you sent",
+                        action: onOlder)
+                }
+                if availability.showsOlder, availability.showsNewer {
+                    Rectangle()
+                        .fill(palette.foreground.opacity(0.14))
+                        .frame(width: 18, height: 1)
                         .allowsHitTesting(false)
-                        .accessibilityAddTraits(.updatesFrequently)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
-                VStack(spacing: 0) {
-                    if availability.showsOlder {
-                        jumpButton(
-                            .older,
-                            systemImage: "chevron.up",
-                            label: "Earlier message",
-                            hint: "Scrolls the Agent to the previous message you sent",
-                            action: onOlder)
-                    }
-                    if availability.showsOlder, availability.showsNewer {
-                        Rectangle()
-                            .fill(palette.foreground.opacity(0.14))
-                            .frame(width: 18, height: 1)
-                            .allowsHitTesting(false)
-                    }
-                    if availability.showsNewer {
-                        jumpButton(
-                            .newer,
-                            systemImage: "chevron.down",
-                            label: "Newer message",
-                            hint: "Scrolls the Agent to the next message you sent, then back to live output",
-                            action: onNewer)
-                    }
+                if availability.showsNewer {
+                    jumpButton(
+                        .newer,
+                        systemImage: "chevron.down",
+                        label: "Newer message",
+                        hint: "Scrolls the Agent to the next message you sent, then back to live output",
+                        action: onNewer)
                 }
-                .background {
-                    chromeBackground(in: Capsule())
-                }
-                .transition(.scale(scale: 0.85).combined(with: .opacity))
             }
+            .background {
+                chromeBackground(in: Capsule())
+            }
+            .transition(.scale(scale: 0.85).combined(with: .opacity))
             .foregroundStyle(palette.foreground)
             .animation(.snappy(duration: 0.22), value: availability)
-            .animation(.easeInOut(duration: 0.15), value: notice)
             .disabled(!availability.isEnabled)
             .accessibilityElement(children: .contain)
         }
@@ -559,7 +551,6 @@ private struct MessageJumpButtonStyle: ButtonStyle {
 struct MessageJumpChromeOverlay: UIViewRepresentable {
     var availability: MessageJumpControlAvailability
     var runningDirection: TerminalMessageJumpController.Direction?
-    var notice: String?
     var palette: TerminalThemePalette = .system
     var onOlder: () -> Void
     var onNewer: () -> Void
@@ -570,43 +561,23 @@ struct MessageJumpChromeOverlay: UIViewRepresentable {
 
     func makeUIView(context: Context) -> MessageJumpChromeContainer {
         let container = MessageJumpChromeContainer()
-        context.coordinator.suppressNotice = false
-        let host = UIHostingController(
-            rootView: makeRoot(suppressNotice: false))
+        let host = UIHostingController(rootView: makeRoot())
         host.view.backgroundColor = .clear
         host.view.isOpaque = false
         context.coordinator.host = host
         container.embed(host.view)
-        container.hasNotice = notice != nil
-        container.onChromeRejected = { [weak coordinator = context.coordinator] hadNotice in
-            guard let coordinator, hadNotice, !coordinator.suppressNotice else { return }
-            coordinator.suppressNotice = true
-            coordinator.host?.rootView = makeRoot(suppressNotice: true)
-        }
         return container
     }
 
     func updateUIView(_ container: MessageJumpChromeContainer, context: Context) {
-        if notice == nil {
-            context.coordinator.suppressNotice = false
-        }
-        let suppress = context.coordinator.suppressNotice
-        context.coordinator.host?.rootView = makeRoot(suppressNotice: suppress)
-        container.hasNotice = notice != nil && !suppress
-        container.onChromeRejected = { [weak coordinator = context.coordinator, weak container] hadNotice in
-            guard let coordinator, hadNotice, !coordinator.suppressNotice else { return }
-            coordinator.suppressNotice = true
-            coordinator.host?.rootView = makeRoot(suppressNotice: true)
-            container?.hasNotice = false
-        }
+        context.coordinator.host?.rootView = makeRoot()
         container.setNeedsLayout()
     }
 
-    private func makeRoot(suppressNotice: Bool) -> MessageJumpControlView {
+    private func makeRoot() -> MessageJumpControlView {
         MessageJumpControlView(
             availability: availability,
             runningDirection: runningDirection,
-            notice: suppressNotice ? nil : notice,
             palette: palette,
             onOlder: onOlder,
             onNewer: onNewer)
@@ -614,7 +585,6 @@ struct MessageJumpChromeOverlay: UIViewRepresentable {
 
     final class Coordinator {
         var host: UIHostingController<MessageJumpControlView>?
-        var suppressNotice = false
     }
 }
 
@@ -623,14 +593,6 @@ struct MessageJumpChromeOverlay: UIViewRepresentable {
 /// returns `nil` so the terminal's pan recognizer sees the drag.
 final class MessageJumpChromeContainer: UIView {
     private weak var hostedView: UIView?
-    /// Called when the measured chrome cannot sit above the keyboard band.
-    /// `hadNotice` is true when a notice was contributing height — the overlay
-    /// drops the notice and retries with the button column alone.
-    var onChromeRejected: ((_ hadNotice: Bool) -> Void)?
-    /// Whether the hosted tree currently includes a notice above the buttons.
-    /// Set by the overlay; the button column itself varies in height (one or
-    /// two buttons), so height alone cannot tell the two apart.
-    var hasNotice = false
     /// Test seam: last frame applied to the hosted chrome, or `nil` when hidden.
     private(set) var hostedFrame: CGRect?
 
@@ -677,36 +639,8 @@ final class MessageJumpChromeContainer: UIView {
             return
         }
 
-        // Cannot fit above the band (or within the width). Drop the notice if
-        // one is contributing height, remeasure, and hide only if the button
-        // column still cannot sit above the band.
-        if hasNotice {
-            hasNotice = false
-            onChromeRejected?(true)
-            hostedView.setNeedsLayout()
-            hostedView.layoutIfNeeded()
-            let retryFitting = hostedView.sizeThatFits(
-                CGSize(
-                    width: maxWidth > 0 ? maxWidth : CGFloat.greatestFiniteMagnitude,
-                    height: CGFloat.greatestFiniteMagnitude))
-            let retryWidth = min(
-                max(retryFitting.width, 0),
-                maxWidth > 0 ? maxWidth : retryFitting.width)
-            let retryHeight = max(retryFitting.height, 0)
-            if let frame = MessageJumpPlacement.frame(
-                terminalSize: bounds.size,
-                chromeSize: CGSize(width: retryWidth, height: retryHeight))
-            {
-                hostedView.isHidden = false
-                hostedView.frame = frame
-                hostedFrame = frame
-                return
-            }
-        }
-
         hostedView.isHidden = true
         hostedFrame = nil
-        onChromeRejected?(false)
     }
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
@@ -754,19 +688,5 @@ final class MessageJumpChromeContainer: UIView {
             current = candidate.superview
         }
         return false
-    }
-}
-
-enum MessageJumpNotice {
-    /// Quiet, non-modal copy for a walk that ran out of budget. Reaching an
-    /// end says nothing: the direction's button disappears instead
-    /// (``MessageJumpReach``).
-    static func text(for outcome: TerminalMessageJumpController.Outcome) -> String? {
-        switch outcome {
-        case .found, .cancelled, .reachedEnd:
-            return nil
-        case .exhausted:
-            return "Couldn't find the message"
-        }
     }
 }

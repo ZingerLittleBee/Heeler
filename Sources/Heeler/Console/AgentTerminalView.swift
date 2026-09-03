@@ -179,8 +179,6 @@ struct AgentTerminalView: View {
     @State private var skills: SkillsPaneStore?
     @State private var keyboardControl = TerminalKeyboardControl()
     @State private var messageJump: AgentMessageJumpWiring
-    @State private var jumpNotice: String?
-    @State private var jumpNoticeClearTask: Task<Void, Never>?
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
     /// Keeps Composer mounted while its visible system keyboard moves to the
     /// terminal. Direct Input becomes the rendered mode only after the
@@ -608,7 +606,6 @@ struct AgentTerminalView: View {
         }
         .onDisappear {
             interactionProbe?.value?.disconnect()
-            clearJumpNotice()
             messageJump.resetSession()
             attach.leave()
             Task { @MainActor in
@@ -626,7 +623,6 @@ struct AgentTerminalView: View {
         }
         .onChange(of: attach.terminalID) { _, _ in
             messageJump.resetSession()
-            clearJumpNotice()
             cancelKeyboardHandoffs()
             guard isDirectInput else { return }
             usesDirectToolsKeyboard = false
@@ -1298,7 +1294,6 @@ struct AgentTerminalView: View {
         MessageJumpChromeOverlay(
             availability: messageJumpAvailability,
             runningDirection: messageJump.runningDirection,
-            notice: jumpNotice,
             palette: themePalette,
             onOlder: { jumpToOlderMessage() },
             onNewer: { jumpToNewerMessageOrLive() })
@@ -1314,10 +1309,7 @@ struct AgentTerminalView: View {
         messageJump.runJump(.older) { session in
             // Entry generation/cancellation already checked inside runJump
             // before this body is entered.
-            guard let outcome = await self.messageJump.jumpOlder(in: session) else {
-                return
-            }
-            self.presentJumpNotice(outcome)
+            _ = await self.messageJump.jumpOlder(in: session)
         }
     }
 
@@ -1329,29 +1321,8 @@ struct AgentTerminalView: View {
         let availability = messageJumpAvailability
         guard availability.isEnabled, availability.showsNewer else { return }
         messageJump.runJump(.newer) { session in
-            guard let outcome = await self.messageJump.jumpNewerOrLive(in: session) else {
-                return
-            }
-            self.presentJumpNotice(outcome)
+            _ = await self.messageJump.jumpNewerOrLive(in: session)
         }
-    }
-
-    private func presentJumpNotice(_ outcome: TerminalMessageJumpController.Outcome) {
-        jumpNoticeClearTask?.cancel()
-        let text = MessageJumpNotice.text(for: outcome)
-        jumpNotice = text
-        guard text != nil else { return }
-        jumpNoticeClearTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(1.6))
-            guard !Task.isCancelled else { return }
-            jumpNotice = nil
-        }
-    }
-
-    private func clearJumpNotice() {
-        jumpNoticeClearTask?.cancel()
-        jumpNoticeClearTask = nil
-        jumpNotice = nil
     }
 
     @ViewBuilder

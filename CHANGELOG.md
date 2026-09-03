@@ -15,11 +15,12 @@ Entries reference the issue that motivated them.
   while it can act: Down appears once the view has left live output, Up goes
   away once a walk has run out of earlier messages, and during a jump only
   the direction being walked stays, as a spinner. Nothing is ever shown
-  greyed out, and reaching an end needs no caption. The controls work while
-  the agent is working too; its spinner keeps the screen repainting, so a
-  walk that hits the end of history in that state runs out its step budget
-  and says so. The translucent pill follows the terminal theme and gives a
-  light tap on press. Any message the Agent's
+  greyed out, and jump outcomes never add a caption that shifts the buttons.
+  The controls work while the agent is working too; its spinner keeps the
+  screen repainting, so a walk that hits the end of history in that state
+  runs out its step budget silently. A manual scroll cancels any automatic
+  jump already in progress. The translucent pill follows the terminal theme
+  and gives a light tap on press. Any message the Agent's
   own view shows behind a prompt marker is a jump target, so history that was
   sent from a computer, or before the screen was opened, can be walked too.
   The controls appear only where a scroll can actually reach that history —
