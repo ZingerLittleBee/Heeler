@@ -86,7 +86,9 @@ struct SidebarLayoutVectorTests {
     private func layout(from snapshot: SidebarLayoutVectorFile.Snapshot) throws -> AgentRowLayout {
         func row(_ tokens: [SidebarLayoutVectorFile.Snapshot.Token]) throws -> AgentRow {
             try tokens.map { token in
-                let name = try #require(AgentRowToken(rawValue: token.token), token.token)
+                let name = try #require(
+                    AgentRowToken(rawValue: token.token),
+                    Comment(rawValue: token.token))
                 return AgentRowStyledToken(
                     name, fg: token.fg.flatMap(HexColor.init), bold: token.bold, dim: token.dim)
             }
