@@ -627,10 +627,21 @@ final class HostConsoleProjection {
     ) {
         let workspaceByID = Dictionary(
             snapshot.workspaces.map { ($0.workspaceID, $0) }) { first, _ in first }
+        let tabByID = Dictionary(
+            snapshot.tabs.map { ($0.tabID, $0) }) { first, _ in first }
+        var tabCounts: [String: Int] = [:]
+        var tabPositions: [String: Int] = [:]
+        for tab in snapshot.tabs where tabPositions[tab.tabID] == nil {
+            tabCounts[tab.workspaceID, default: 0] += 1
+            tabPositions[tab.tabID] = tabCounts[tab.workspaceID]
+        }
         var nextAgents: [String: ConsoleAgent] = [:]
-        for info in snapshot.agents {
+        for (snapshotOrder, info) in snapshot.agents.enumerated() {
             let agent = Agent(info)
             let workspace = workspaceByID[agent.workspaceID]
+            let tab = tabByID[agent.tabID].flatMap {
+                $0.workspaceID == agent.workspaceID ? $0 : nil
+            }
             nextAgents[agent.paneID] = ConsoleAgent(
                 hostID: host.id,
                 hostName: host.displayName,
@@ -638,7 +649,11 @@ final class HostConsoleProjection {
                 workspaceLabel: workspace?.label,
                 repositoryCheckout: workspace?.worktree.map(RepositoryCheckout.init),
                 lastOutputSnippet: agentsByPane[agent.paneID]?.lastOutputSnippet,
-                hostUsername: host.username)
+                hostUsername: host.username,
+                tabLabel: tab?.label,
+                tabPosition: tab.flatMap { tabPositions[$0.tabID] },
+                workspaceTabCount: max(workspace?.tabCount ?? 0, tabCounts[agent.workspaceID] ?? 0),
+                snapshotOrder: snapshotOrder)
         }
         for (paneID, change) in latestStatusChanges
         where change.revision > snapshotStartRevision {

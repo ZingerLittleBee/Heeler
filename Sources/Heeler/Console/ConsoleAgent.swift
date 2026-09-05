@@ -20,6 +20,13 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     /// Workspace label from the session snapshot; nil when the snapshot did
     /// not carry the workspace.
     let workspaceLabel: String?
+    let tabLabel: String?
+    /// One-based position within the snapshot's workspace tabs. herdr's
+    /// automatic label uses position, not TabInfo.number's stable identity.
+    let tabPosition: Int?
+    let workspaceTabCount: Int
+    /// Collection order from session.snapshot.agents for the `spaces` sort.
+    let snapshotOrder: Int?
     /// Snapshot git metadata when the workspace reported any. Presence does
     /// not mean this is removable: the main checkout is reported with
     /// `isLinkedWorktree == false` too.
@@ -37,18 +44,35 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         workspaceLabel: String?,
         repositoryCheckout: RepositoryCheckout?,
         lastOutputSnippet: String? = nil,
-        hostUsername: String? = nil
+        hostUsername: String? = nil,
+        tabLabel: String? = nil,
+        tabPosition: Int? = nil,
+        workspaceTabCount: Int = 0,
+        snapshotOrder: Int? = nil
     ) {
         self.hostID = hostID
         self.hostName = hostName
         self.hostUsername = hostUsername
         self.agent = agent
         self.workspaceLabel = workspaceLabel
+        self.tabLabel = tabLabel
+        self.tabPosition = tabPosition
+        self.workspaceTabCount = workspaceTabCount
+        self.snapshotOrder = snapshotOrder
         self.repositoryCheckout = repositoryCheckout
         self.lastOutputSnippet = lastOutputSnippet
     }
 
     var repoName: String? { repositoryCheckout?.repoName }
+
+    /// Protocol 20 has no custom-name bit. A manual name equal to the
+    /// automatic position cannot be distinguished from an automatic name.
+    var showsTabLabel: Bool {
+        guard let tabLabel, !tabLabel.isEmpty else { return false }
+        if workspaceTabCount > 1 { return true }
+        guard let tabPosition else { return true }
+        return tabLabel != String(tabPosition)
+    }
 
     var checkoutPath: String? { repositoryCheckout?.checkoutPath }
 

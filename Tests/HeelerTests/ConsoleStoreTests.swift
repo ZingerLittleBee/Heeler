@@ -165,6 +165,64 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    @Test func snapshotProjectionJoinsTabsAndPreservesSidebarFacts() async throws {
+        func tab(_ workspace: String, label: String, number: Int, suffix: String = "t1") -> TabInfo {
+            TabInfo(agentStatus: .idle, focused: false, label: label, number: number,
+                    paneCount: 1, tabID: "\(workspace):\(suffix)", workspaceID: workspace)
+        }
+        let host = Host.fixture()
+        let single = tab("single", label: "1", number: 42)
+        let snapshot = SessionSnapshot(
+            agents: [
+                AgentInfo(agentStatus: .working, focused: false, paneID: "single:p", revision: 1,
+                          tabID: "single:t1", terminalID: "terminal", workspaceID: "single", agent: "claude",
+                          stateChangeSeq: 7, stateLabels: ["working": "Busy"], terminalTitle: "◑ Task",
+                          terminalTitleStripped: "Task", title: "Pane title", tokens: ["pin_icon": "📌"]),
+                .fixture(paneID: "multi:p", workspaceID: "multi"),
+                .fixture(paneID: "named:p", workspaceID: "named"),
+                .fixture(paneID: "missing:p", workspaceID: "missing"),
+            ], layouts: [], panes: [], protocolVersion: 20,
+            tabs: [single, single, tab("multi", label: "1", number: 8),
+                   tab("named", label: "2", number: 2),
+                   tab("multi", label: "Shell", number: 9, suffix: "shell")],
+            version: "0.8.2-fake", workspaces: [
+                .fixture(workspaceID: "single", label: "Single"),
+                .fixture(workspaceID: "multi", label: "Multi"),
+                .fixture(workspaceID: "named", label: "Named"),
+            ])
+        let transport = ScriptedTransport(snapshot: snapshot)
+        let session = EventsSession(subscriptions: [], connect: { transport }, keepalive: nil)
+        let changes = AsyncStream<Void>.makeStream()
+        let projection = HostConsoleProjection(
+            host: host, session: session, snapshotRetryDelay: .seconds(1),
+            onChange: { changes.continuation.yield(()) })
+        defer {
+            projection.end()
+            changes.continuation.finish()
+        }
+        projection.start(isActive: false)
+        await projection.resume()
+        // Observe production publication, not a sleep or a polling barrier.
+        for await _ in changes.stream {
+            if !projection.isAwaitingSnapshot { break }
+        }
+
+        let row = try #require(projection.agentsByPane["single:p"])
+        #expect(row.tabLabel == "1" && row.tabPosition == 1 && row.workspaceTabCount == 1)
+        #expect(!row.showsTabLabel) // Stable tab number 42 is not its display position.
+        #expect(row.snapshotOrder == 0 && row.agent.stateChangeSeq == 7)
+        #expect(row.agent.tokens == ["pin_icon": "📌"])
+        #expect(row.agent.stateLabels == ["working": "Busy"])
+        #expect(row.agent.terminalTitle == "◑ Task" && row.agent.terminalTitleStripped == "Task")
+        #expect(row.agent.paneTitle == "Pane title" && row.agent.title == "Task")
+        let multi = try #require(projection.agentsByPane["multi:p"])
+        #expect(multi.workspaceTabCount == 2 && multi.showsTabLabel) // Count the shell-only tab too.
+        #expect(multi.snapshotOrder == 1)
+        #expect(projection.agentsByPane["named:p"]?.showsTabLabel == true)
+        #expect(projection.agentsByPane["missing:p"]?.tabLabel == nil)
+        #expect(projection.agentsByPane["missing:p"]?.showsTabLabel == false)
+    }
+
     @Test func togglePinResortsThePublishedListImmediately() async throws {
         let (defaults, cleanup) = try makePinDefaults()
         defer { cleanup() }
