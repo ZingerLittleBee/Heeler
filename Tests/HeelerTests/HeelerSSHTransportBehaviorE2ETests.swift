@@ -1286,6 +1286,15 @@ struct HeelerSSHTransportBehaviorE2ETests {
 
         #expect(try await transport.readNotificationRegistration() == nil)
         #expect(try await transport.readNotificationConfig() == nil)
+        #expect(try await transport.readSidebarLayout() == nil)
+
+        let snapshot = Data(
+            #"{"v":1,"agent_panel_sort":"priority","sidebar":{"agents":{"row_gap":0,"rows":[[{"token":"agent"}]],"rows_by_agent":{}}}}"#
+                .utf8)
+        try await transport.replacePluginConfigFileForTesting(
+            named: HeelerSSHTransport.sidebarLayoutFileName,
+            contents: snapshot)
+        #expect(try await transport.readSidebarLayout() == snapshot)
 
         let firstRegistration = Data(
             #"{"v":1,"devices":[{"token":"private-device-token","key":"private-notification-key"}]}"#.utf8)

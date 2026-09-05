@@ -189,6 +189,13 @@ protocol Transport: Sendable {
     /// registration write.
     func replaceNotificationConfig(_ contents: Data) async throws
 
+    /// Reads the plugin's `sidebar.json` snapshot (v1, `plugin/README.md`)
+    /// from this Host's Heeler plugin config dir; nil when the file is
+    /// absent, including Hosts whose plugin predates the snapshot. Throws
+    /// `NotificationRegistrationError.pluginNotInstalled` when the plugin
+    /// itself is absent, matching the other plugin-config reads.
+    func readSidebarLayout() async throws -> Data?
+
     /// Lists the skills / custom slash commands installed for a kind on this
     /// Host: global sources under the remote home plus project sources under
     /// the query's project root, per `SkillSourceCatalog`. Kinds without a
@@ -270,6 +277,10 @@ extension Transport {
     func replaceNotificationConfig(_ contents: Data) async throws {
         throw NotificationRegistrationError.pluginNotInstalled
     }
+
+    /// Test doubles and alternative transports without a Host-side plugin
+    /// report an absent snapshot rather than emulating the plugin CLI.
+    func readSidebarLayout() async throws -> Data? { nil }
 
     func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
         throw TransportError.channelFailed(
