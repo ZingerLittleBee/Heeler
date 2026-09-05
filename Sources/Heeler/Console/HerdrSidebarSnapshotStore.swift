@@ -68,6 +68,20 @@ final class HerdrSidebarSnapshotStore {
         await waitForPendingReads()
     }
 
+    /// Sync from plugin: re-reads one Host on its current connection and
+    /// returns the resulting state, or nil when the Host has no connection
+    /// to borrow. A read superseded by reconciliation reports that newer state.
+    func refresh(
+        _ hostID: Host.ID,
+        transports: any NotificationTransportProvider,
+        didChange: @escaping @MainActor @Sendable () -> Void
+    ) async -> HostState? {
+        guard connections[hostID] != nil else { return nil }
+        startRead(hostID, transports: transports, clear: false, didChange: didChange)
+        while let task = tasks[hostID] { await task.value }
+        return states[hostID]
+    }
+
     func waitForPendingReads() async {
         while !tasks.isEmpty {
             let pending = Array(tasks.values)

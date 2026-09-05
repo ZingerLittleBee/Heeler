@@ -541,6 +541,14 @@ final class ConsoleStore {
         }
     }
 
+    /// Settings' Sync from plugin: one Host's layout file, on its current
+    /// connection. nil means the Host has no connection to read from.
+    func refreshSidebarLayout(for hostID: Host.ID) async -> HerdrSidebarSnapshotStore.HostState? {
+        await sidebarSnapshots.refresh(hostID, transports: self) { [weak self] in
+            self?.rebuildAgentOrder()
+        }
+    }
+
     private func rebuildAgentOrder() {
         let unsorted = projections.values.flatMap { $0.agentsByPane.values }
         let sorts = Dictionary(uniqueKeysWithValues: projections.keys.compactMap { id in

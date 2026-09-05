@@ -401,8 +401,9 @@ older installations have no `sidebar.json`, which the app treats as nil
 without a version gate.
 
 Swift readers ignore unknown fields and drop individual unknown token names.
-The app resolves whole layouts in this order: per-Host user layout, global
-user layout, plugin snapshot, Heeler default. Rows are never merged across
+The app resolves whole layouts in this order: the Host's saved user layout,
+the Host's plugin snapshot, Heeler default. There is no global user layout,
+and the default is never offered as a choice. Rows are never merged across
 sources. Its renderer skips `state_icon` and `state_text` because the status
 column already shows Agent Status; `$name` resolves as plain text from
 `AgentInfo.tokens["name"]`. Heeler's Pin is independent. Styles are retained

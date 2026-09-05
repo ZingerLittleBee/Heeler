@@ -89,9 +89,8 @@ struct SidebarConsoleIntegrationTests {
         } onChange: {
             observed.withLock { $0 = true }
         }
-        try store.rowLayouts.setGlobalLayout(AgentRowLayout(rows: [[.init(.agent)]]))
+        try store.rowLayouts.setLayouts([alpha.id: AgentRowLayout(rows: []), beta.id: AgentRowLayout(rows: [[.init(.agent)]])])
         #expect(observed.withLock { $0 })
-        try store.rowLayouts.setLayout(AgentRowLayout(rows: []), for: alpha.id)
         #expect(store.rowLayout(for: alpha.id).rows.isEmpty)
         #expect(store.rowLayout(for: beta.id).rows == [[.init(.agent)]])
         #expect(store.agents.map(\.agent.paneID) == ["a0", "a1", "b1", "b0"])
@@ -161,9 +160,9 @@ struct SidebarConsoleIntegrationTests {
         try await transport.waitForLiveSubscription(containing: [.pane(.agentStatusChanged, paneID: "a")])
         await store.refreshSidebarLayouts()
         #expect(store.agents.map(\.agent.paneID) == ["b", "a"])
-        try store.rowLayouts.setGlobalLayout(.init(rows: [
+        try store.rowLayouts.setLayout(.init(rows: [
             [.init(.terminalTitleStripped)], [.init(.custom("note")), .init(.terminalTitle)],
-        ]))
+        ]), for: host.id)
 
         let firstRead = ScriptedTransportCallGate()
         await transport.setSnapshot(.fixture(agents: [

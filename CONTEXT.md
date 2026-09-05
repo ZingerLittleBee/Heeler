@@ -89,8 +89,10 @@ _Avoid_: dashboard, home
 
 **Agent Row Layout**:
 The ordered rows of fields that identify an Agent in the Console and its
-switcher, chosen for a Host or for all Hosts. Agent Status and Heeler Pin
-remain independent of those fields.
+switcher. Each Host follows its herdr plugin's fields until the user saves
+that Host's own layout, which may start from a Sync from plugin copy. There
+is no user-facing default layout. Agent Status and Heeler Pin remain
+independent of those fields.
 _Avoid_: card template, sidebar format
 
 **Pin**:

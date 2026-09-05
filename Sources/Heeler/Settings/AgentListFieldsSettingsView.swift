@@ -1,57 +1,159 @@
 import SwiftUI
 import Observation
 
-/// Each edit commits one complete layout, preserving styles and kind overrides
-/// that were not edited. Failed writes leave the persisted choice untouched.
+/// Read-only until Edit. Every change, including a Sync from plugin fill,
+/// lands in a per-Host draft that only Save persists; Cancel and leaving the
+/// screen discard drafts. Hosts without a saved choice show their herdr
+/// fields, or Heeler's fallback when the plugin has none.
 @MainActor
 @Observable
 final class AgentListFieldsEditor {
+    enum SyncState: Equatable {
+        case syncing
+        case filled(String)
+        case failed(String)
+
+        var message: String? {
+            switch self {
+            case .syncing: nil
+            case .filled(let message), .failed(let message): message
+            }
+        }
+    }
+
+    enum LayoutSource: Equatable {
+        case draft, saved, plugin, pluginDefaults, loading, missing, unavailable
+    }
+
+    typealias Fetch = @MainActor (Host.ID) async -> HerdrSidebarSnapshotStore.HostState?
+
     let layouts: AgentRowLayoutStore
     let snapshots: HerdrSidebarSnapshotStore
-    var hostID: Host.ID?
+    private let fetch: Fetch
+    private(set) var isEditing = false
+    private(set) var drafts: [Host.ID: AgentRowLayout] = [:]
+    private(set) var syncStates: [Host.ID: SyncState] = [:]
     var errorMessage: String?
+    @ObservationIgnored private var syncRequests: [Host.ID: UUID] = [:]
 
-    init(layouts: AgentRowLayoutStore, snapshots: HerdrSidebarSnapshotStore) {
+    init(layouts: AgentRowLayoutStore, snapshots: HerdrSidebarSnapshotStore, fetch: @escaping Fetch) {
         self.layouts = layouts
         self.snapshots = snapshots
+        self.fetch = fetch
     }
 
-    var layout: AgentRowLayout {
-        if let hostID {
-            return layouts.resolvedLayout(for: hostID, pluginSnapshot: snapshots.snapshot(for: hostID))
+    /// The Console's layout for this Host, or its draft while editing.
+    func layout(for hostID: Host.ID) -> AgentRowLayout {
+        if isEditing, let draft = drafts[hostID] { return draft }
+        return layouts.resolvedLayout(for: hostID, pluginSnapshot: snapshots.snapshot(for: hostID))
+    }
+
+    func source(for hostID: Host.ID) -> LayoutSource {
+        if isEditing, drafts[hostID] != nil { return .draft }
+        if layouts.hostLayouts[hostID] != nil { return .saved }
+        switch snapshots.states[hostID] {
+        case .loading: return .loading
+        case .loaded(let snapshot?): return snapshot.diagnostics.isEmpty ? .plugin : .pluginDefaults
+        case .loaded(nil): return .missing
+        case .unavailable, nil: return .unavailable
         }
-        return layouts.globalLayout ?? .heelerDefault
     }
 
-    var resetTitle: String {
-        hostID != nil && layouts.globalLayout != nil ? "Use Global Layout" : "Follow herdr"
+    /// True when Save would change the persisted catalog.
+    var hasUnsavedChanges: Bool {
+        drafts.contains { $0.value != layouts.hostLayouts[$0.key] }
     }
 
-    func update(_ edit: (inout AgentRowLayout) -> Void) {
-        var next = layout
+    func beginEditing() {
+        isEditing = true
+        clearDrafts()
+    }
+
+    func cancel() {
+        isEditing = false
+        clearDrafts()
+    }
+
+    /// All changed Hosts are written in one validated step; a failed write
+    /// keeps the drafts and stays in edit mode.
+    func save() {
+        guard isEditing else { return }
+        let changes = drafts.filter { $0.value != layouts.hostLayouts[$0.key] }
+            .mapValues { Optional($0) }
+        do {
+            try layouts.setLayouts(changes)
+            errorMessage = nil
+            isEditing = false
+            clearDrafts()
+        } catch {
+            report(error)
+        }
+    }
+
+    func update(_ hostID: Host.ID, _ edit: (inout AgentRowLayout) -> Void) {
+        guard isEditing else { return }
+        var next = layout(for: hostID)
         edit(&next)
-        save(next)
+        do {
+            try next.validate()
+        } catch {
+            report(error)
+            return
+        }
+        drafts[hostID] = next
+        // A later edit wins over an in-flight or finished sync.
+        syncRequests[hostID] = nil
+        syncStates[hostID] = nil
+        errorMessage = nil
     }
 
-    func reset() { save(nil) }
-
-    func setRows(_ rows: [AgentRow], kind: String?) {
-        update {
+    func setRows(_ rows: [AgentRow], kind: String?, for hostID: Host.ID) {
+        update(hostID) {
             if let kind { $0.rowsByAgent[kind] = rows }
             else { $0.rows = rows }
         }
     }
 
-    private func save(_ layout: AgentRowLayout?) {
-        do {
-            if let hostID { try layouts.setLayout(layout, for: hostID) }
-            else { try layouts.setGlobalLayout(layout) }
-            errorMessage = nil
-        } catch {
-            errorMessage = error is AgentRowLayoutStoreError
-                ? "The saved Agent List Fields could not be read. Nothing was changed."
-                : "This layout could not be saved. Use at most 16 rows and 16 fields per row, with valid field names."
+    /// Fetches the Host's plugin snapshot and fills its draft. A missing
+    /// snapshot fills Heeler's fallback fields; a failed read changes nothing.
+    /// Results are dropped once editing ended or the draft was edited since.
+    func syncFromPlugin(_ hostID: Host.ID) async {
+        guard isEditing else { return }
+        let request = UUID()
+        syncRequests[hostID] = request
+        syncStates[hostID] = .syncing
+        let state = await fetch(hostID)
+        guard isEditing, syncRequests[hostID] == request else { return }
+        syncRequests[hostID] = nil
+        switch state {
+        case .loaded(let snapshot?):
+            drafts[hostID] = snapshot.layout
+            syncStates[hostID] = .filled(snapshot.diagnostics.isEmpty
+                ? "Filled from the herdr plugin. Save to keep these fields."
+                : "herdr reported a configuration problem, so its default fields were filled. Save to keep them.")
+        case .loaded(nil):
+            drafts[hostID] = .heelerDefault
+            syncStates[hostID] = .filled(
+                "The herdr plugin on this Host has no fields snapshot, so Heeler's fallback fields were filled. Save to keep them.")
+        case .unavailable:
+            syncStates[hostID] = .failed("herdr fields could not be read from this Host. Nothing was changed.")
+        case .loading, nil:
+            syncStates[hostID] = .failed("This Host is not connected. Nothing was changed.")
         }
+        errorMessage = nil
+    }
+
+    private func clearDrafts() {
+        drafts = [:]
+        syncStates = [:]
+        syncRequests = [:]
+        errorMessage = nil
+    }
+
+    private func report(_ error: any Error) {
+        errorMessage = error is AgentRowLayoutStoreError
+            ? "The saved Agent List Fields could not be read. Nothing was changed."
+            : "This layout could not be saved. Use at most 16 rows and 16 fields per row, with valid field names."
     }
 }
 
@@ -59,74 +161,47 @@ struct AgentListFieldsSettingsView: View {
     let console: ConsoleStore
     let hosts: [Host]
     @State private var editor: AgentListFieldsEditor
-    @State private var newKind = ""
+    @State private var expandedHosts: Set<Host.ID> = []
+    @State private var confirmingDiscard = false
 
     init(console: ConsoleStore, hosts: [Host]) {
         self.console = console
         self.hosts = hosts
         _editor = State(initialValue: AgentListFieldsEditor(
-            layouts: console.rowLayouts, snapshots: console.sidebarSnapshots))
+            layouts: console.rowLayouts, snapshots: console.sidebarSnapshots,
+            fetch: { [console] hostID in await console.refreshSidebarLayout(for: hostID) }))
     }
 
     var body: some View {
-        @Bindable var editor = editor
         Form {
             Section {
-                Picker("Apply to", selection: $editor.hostID) {
-                    Text("All Hosts").tag(Host.ID?.none)
-                    ForEach(hosts) { host in
-                        Text(verbatim: host.displayName).tag(Optional(host.id))
-                    }
-                }
-                Button(editor.resetTitle) { editor.reset() }
-            } footer: {
-                Text("Host fields take precedence over All Hosts. Follow herdr removes the selected override; Hosts with no override use their herdr fields or Heeler defaults.")
-            }
-            Section {
-                NavigationLink("Default Rows") {
-                    AgentLayoutRowsView(editor: editor, kind: nil)
-                }
-                Stepper("Extra spacing: \(editor.layout.rowGap)", value: Binding(
-                    get: { editor.layout.rowGap },
-                    set: { value in editor.update { $0.rowGap = value } }), in: 0...65535)
-            } footer: {
-                Text("The first nonempty row labels the Agent and its switcher. Empty layouts use the Agent name. Extra spacing between cards is limited to three steps on iOS.")
-            }
-            Section {
-                ForEach(editor.layout.rowsByAgent.keys.sorted(), id: \.self) { kind in
-                    NavigationLink {
-                        AgentLayoutRowsView(editor: editor, kind: kind)
-                    } label: {
-                        Text(verbatim: kind)
-                    }
-                }
-                .onDelete { offsets in
-                    let keys = editor.layout.rowsByAgent.keys.sorted()
-                    editor.update { layout in
-                        for index in offsets { layout.rowsByAgent[keys[index]] = nil }
-                    }
-                }
-                TextField("Agent kind, e.g. claude", text: $newKind)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                Button("Add Agent Override") {
-                    let kind = newKind.trimmingCharacters(in: .whitespacesAndNewlines)
-                    editor.update { $0.rowsByAgent[kind] = $0.rows }
-                    if editor.errorMessage == nil { newKind = "" }
-                }
-                .disabled(newKind.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    || editor.layout.rowsByAgent[newKind.trimmingCharacters(in: .whitespacesAndNewlines)] != nil)
-            } header: {
-                Text("Rows by Agent Kind")
-            } footer: {
-                Text("An Agent kind uses its entire replacement layout. Other Agents use Default Rows. Status and Heeler Pin remain separate; field colors and emphasis are retained but use Heeler's appearance.")
-            }
-            if let hostID = editor.hostID {
-                Section {
-                    Text(snapshotDescription(for: hostID))
+                if hosts.isEmpty {
+                    Text("Add a Host to arrange its Agent list fields.")
                         .foregroundStyle(.secondary)
-                    Button("Refresh herdr Fields") {
-                        Task { await console.refreshSidebarLayouts() }
+                }
+            } footer: {
+                Text(editor.isEditing
+                    ? "Changes stay unsaved until you tap the checkmark. Sync from plugin fills a Host with its herdr fields."
+                    : "Each Host shows its herdr fields until you save your own. Tap Edit to arrange fields or sync them from the herdr plugin.")
+            }
+            ForEach(hosts) { host in
+                Section {
+                    DisclosureGroup(isExpanded: expansion(for: host.id)) {
+                        AgentListHostFieldsView(editor: editor, hostID: host.id)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(verbatim: host.displayName)
+                            Text(verbatim: sourceDescription(editor.source(for: host.id)))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .accessibilityIdentifier("settings.agentList.host.\(host.id.uuidString)")
+                } footer: {
+                    if let message = editor.syncStates[host.id]?.message {
+                        Text(verbatim: message)
+                            .foregroundStyle(syncFailed(host.id) ? .red : .secondary)
+                            .accessibilityIdentifier("settings.agentList.syncTip.\(host.id.uuidString)")
                     }
                 }
             }
@@ -134,74 +209,250 @@ struct AgentListFieldsSettingsView: View {
         }
         .navigationTitle("Agent List Fields")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { EditButton() }
+        .navigationBarBackButtonHidden(editor.isEditing)
+        .toolbar {
+            if editor.isEditing {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        if editor.hasUnsavedChanges { confirmingDiscard = true } else { editor.cancel() }
+                    }
+                    .accessibilityIdentifier("settings.agentList.cancel")
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button { editor.save() } label: {
+                        Label("Save", systemImage: "checkmark")
+                    }
+                    .labelStyle(.iconOnly)
+                    .accessibilityLabel("Save")
+                    .accessibilityIdentifier("settings.agentList.save")
+                }
+            } else {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Edit") { editor.beginEditing() }
+                        .accessibilityIdentifier("settings.agentList.edit")
+                }
+            }
+        }
+        .confirmationDialog("Discard unsaved changes?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
+            Button("Discard Changes", role: .destructive) { editor.cancel() }
+        }
         .refreshable { await console.refreshSidebarLayouts() }
     }
 
-    private func snapshotDescription(for id: Host.ID) -> String {
-        switch console.sidebarSnapshots.states[id] {
+    private func expansion(for hostID: Host.ID) -> Binding<Bool> {
+        Binding(
+            get: { expandedHosts.contains(hostID) },
+            set: { expanded in
+                if expanded { expandedHosts.insert(hostID) } else { expandedHosts.remove(hostID) }
+            })
+    }
+
+    private func syncFailed(_ hostID: Host.ID) -> Bool {
+        if case .failed = editor.syncStates[hostID] { return true }
+        return false
+    }
+
+    private func sourceDescription(_ source: AgentListFieldsEditor.LayoutSource) -> String {
+        switch source {
+        case .draft: "Unsaved changes"
+        case .saved: "Your fields"
+        case .plugin: "herdr fields"
+        case .pluginDefaults: "herdr default fields (configuration problem reported)"
         case .loading: "Reading herdr fields…"
-        case .loaded(let snapshot?):
-            snapshot.diagnostics.isEmpty ? "herdr fields are available."
-                : "herdr reported a configuration problem and supplied its default fields."
-        case .loaded(nil): "No herdr fields snapshot. Heeler defaults are available."
-        case .unavailable, nil: "herdr fields are unavailable. Local fields or Heeler defaults apply."
+        case .missing: "No herdr fields snapshot"
+        case .unavailable: "herdr fields unavailable"
+        }
+    }
+}
+
+/// One Host's rows, kind overrides and Sync from plugin, inside
+/// its disclosure group.
+private struct AgentListHostFieldsView: View {
+    let editor: AgentListFieldsEditor
+    let hostID: Host.ID
+    @State private var newKind = ""
+
+    private var layout: AgentRowLayout { editor.layout(for: hostID) }
+    private var trimmedKind: String { newKind.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var isSyncing: Bool { editor.syncStates[hostID] == .syncing }
+
+    var body: some View {
+        AgentLayoutRowsContent(editor: editor, hostID: hostID, kind: nil, inlineActions: true)
+        kindRows
+        if editor.isEditing {
+            addKindRows
+            syncButton
+        }
+    }
+
+    private var kindRows: some View {
+        ForEach(layout.rowsByAgent.keys.sorted(), id: \.self) { kind in
+            NavigationLink {
+                AgentLayoutRowsView(editor: editor, hostID: hostID, kind: kind)
+            } label: {
+                VStack(alignment: .leading) {
+                    Text(verbatim: kind)
+                    Text("Replacement rows for this Agent kind")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .onDelete(perform: deleteKindsHandler)
+    }
+
+    private var deleteKindsHandler: ((IndexSet) -> Void)? {
+        editor.isEditing ? { offsets in deleteKinds(at: offsets) } : nil
+    }
+
+    @ViewBuilder
+    private var addKindRows: some View {
+        TextField("Agent kind, e.g. claude", text: $newKind)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+        Button("Add Agent Override") {
+            let kind = trimmedKind
+            editor.update(hostID) { $0.rowsByAgent[kind] = $0.rows }
+            if editor.errorMessage == nil { newKind = "" }
+        }
+        .disabled(trimmedKind.isEmpty || layout.rowsByAgent[trimmedKind] != nil)
+    }
+
+    private var syncButton: some View {
+        Button {
+            Task { await editor.syncFromPlugin(hostID) }
+        } label: {
+            if isSyncing {
+                HStack {
+                    Text("Syncing from plugin…")
+                    Spacer()
+                    ProgressView()
+                }
+            } else {
+                Label("Sync from plugin", systemImage: "arrow.triangle.2.circlepath")
+            }
+        }
+        .disabled(isSyncing)
+        .accessibilityIdentifier("settings.agentList.sync.\(hostID.uuidString)")
+    }
+
+    private func deleteKinds(at offsets: IndexSet) {
+        let keys = layout.rowsByAgent.keys.sorted()
+        editor.update(hostID) { layout in
+            for index in offsets { layout.rowsByAgent[keys[index]] = nil }
         }
     }
 }
 
 private struct AgentLayoutRowsView: View {
     let editor: AgentListFieldsEditor
-    let kind: String?
-
-    private var rows: [AgentRow] { kind.map { editor.layout.rowsByAgent[$0] ?? [] } ?? editor.layout.rows }
+    let hostID: Host.ID
+    let kind: String
 
     var body: some View {
         List {
             Section {
-                ForEach(Array(rows.indices), id: \.self) { index in
-                    NavigationLink {
-                        AgentLayoutTokensView(editor: editor, kind: kind, rowIndex: index)
-                    } label: {
-                        VStack(alignment: .leading) {
-                            Text("Row \(index + 1)")
-                            Text(verbatim: rows[index].isEmpty ? "Empty row" : rows[index].map(\.token.rawValue).joined(separator: " · "))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .onDelete { offsets in
-                    var next = rows
-                    next.remove(atOffsets: offsets)
-                    editor.setRows(next, kind: kind)
-                }
-                .onMove { offsets, destination in
-                    var next = rows
-                    next.move(fromOffsets: offsets, toOffset: destination)
-                    editor.setRows(next, kind: kind)
-                }
-                Button("Add Row", systemImage: "plus") {
-                    editor.setRows(rows + [[]], kind: kind)
-                }
-                .disabled(rows.count >= AgentRowLayout.maximumRows)
+                AgentLayoutRowsContent(editor: editor, hostID: hostID, kind: kind)
             } footer: {
-                Text("Empty fields and rows are omitted when displayed. Edit to delete or reorder rows.")
+                Text(editor.isEditing
+                    ? "Empty fields and rows are omitted when displayed. Edit to delete or reorder rows."
+                    : "Empty fields and rows are omitted when displayed. Tap Edit on Agent List Fields to change rows.")
             }
             AgentLayoutErrorView(editor: editor)
         }
-        .navigationTitle(kind ?? "Default Rows")
-        .toolbar { EditButton() }
+        .navigationTitle(kind)
+        .toolbar {
+            if editor.isEditing { EditButton() }
+        }
+    }
+}
+
+private struct AgentLayoutRowsContent: View {
+    let editor: AgentListFieldsEditor
+    let hostID: Host.ID
+    let kind: String?
+    var inlineActions = false
+
+    private var rows: [AgentRow] {
+        let layout = editor.layout(for: hostID)
+        return kind.map { layout.rowsByAgent[$0] ?? [] } ?? layout.rows
+    }
+
+    var body: some View {
+        ForEach(Array(rows.indices), id: \.self) { index in
+            HStack {
+                NavigationLink {
+                    AgentLayoutTokensView(editor: editor, hostID: hostID, kind: kind, rowIndex: index)
+                } label: {
+                    VStack(alignment: .leading) {
+                        Text("Row \(index + 1)")
+                        Text(verbatim: rows[index].isEmpty ? "Empty row" : rows[index].map(\.token.rawValue).joined(separator: " · "))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if inlineActions && editor.isEditing {
+                    Menu {
+                        Button("Move Up", systemImage: "arrow.up") {
+                            moveHandler?(IndexSet(integer: index), index - 1)
+                        }
+                        .disabled(index == 0)
+                        Button("Move Down", systemImage: "arrow.down") {
+                            moveHandler?(IndexSet(integer: index), index + 2)
+                        }
+                        .disabled(index == rows.count - 1)
+                        Button("Delete Row", systemImage: "trash", role: .destructive) {
+                            deleteHandler?(IndexSet(integer: index))
+                        }
+                    } label: {
+                        Label("Row \(index + 1) actions", systemImage: "ellipsis.circle")
+                            .labelStyle(.iconOnly)
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+        }
+        .onDelete(perform: deleteHandler)
+        .onMove(perform: moveHandler)
+        if editor.isEditing {
+            Button("Add Row", systemImage: "plus") {
+                editor.setRows(rows + [[]], kind: kind, for: hostID)
+            }
+            .disabled(rows.count >= AgentRowLayout.maximumRows)
+        }
+    }
+
+    private var deleteHandler: ((IndexSet) -> Void)? {
+        guard editor.isEditing else { return nil }
+        return { offsets in
+            var next = rows
+            next.remove(atOffsets: offsets)
+            editor.setRows(next, kind: kind, for: hostID)
+        }
+    }
+
+    private var moveHandler: ((IndexSet, Int) -> Void)? {
+        guard editor.isEditing else { return nil }
+        return { offsets, destination in
+            var next = rows
+            next.move(fromOffsets: offsets, toOffset: destination)
+            editor.setRows(next, kind: kind, for: hostID)
+        }
     }
 }
 
 private struct AgentLayoutTokensView: View {
     let editor: AgentListFieldsEditor
+    let hostID: Host.ID
     let kind: String?
     let rowIndex: Int
     @State private var customName = ""
 
-    private var rows: [AgentRow] { kind.map { editor.layout.rowsByAgent[$0] ?? [] } ?? editor.layout.rows }
+    private var rows: [AgentRow] {
+        let layout = editor.layout(for: hostID)
+        return kind.map { layout.rowsByAgent[$0] ?? [] } ?? layout.rows
+    }
     private var tokens: AgentRow { rows.indices.contains(rowIndex) ? rows[rowIndex] : [] }
 
     var body: some View {
@@ -210,38 +461,40 @@ private struct AgentLayoutTokensView: View {
                 ForEach(Array(tokens.indices), id: \.self) { index in
                     Text(verbatim: tokens[index].token.rawValue)
                 }
-                .onDelete { offsets in mutate { $0.remove(atOffsets: offsets) } }
-                .onMove { offsets, destination in
-                    mutate { $0.move(fromOffsets: offsets, toOffset: destination) }
-                }
+                .onDelete(perform: deleteHandler)
+                .onMove(perform: moveHandler)
             } header: {
                 Text("Fields")
             } footer: {
                 Text("Status fields are accepted but shown in the status column. Edit to delete or reorder fields.")
             }
-            Section {
-                Menu("Add Field", systemImage: "plus") {
-                    ForEach(AgentRowToken.builtins, id: \.self) { token in
-                        Button(token.rawValue) { mutate { $0.append(.init(token)) } }
+            if editor.isEditing {
+                Section {
+                    Menu("Add Field", systemImage: "plus") {
+                        ForEach(AgentRowToken.builtins, id: \.self) { token in
+                            Button(token.rawValue) { mutate { $0.append(.init(token)) } }
+                        }
                     }
+                    TextField("$custom_name", text: $customName)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Button("Add Custom Field") {
+                        guard let token = customToken else { return }
+                        mutate { $0.append(.init(token)) }
+                        if editor.errorMessage == nil { customName = "" }
+                    }
+                    .disabled(customToken == nil)
+                } footer: {
+                    Text("Custom names start with $ and contain 1–32 letters, digits, underscores or hyphens. Values come from herdr plugins and display as plain text.")
                 }
-                TextField("$custom_name", text: $customName)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                Button("Add Custom Field") {
-                    guard let token = customToken else { return }
-                    mutate { $0.append(.init(token)) }
-                    if editor.errorMessage == nil { customName = "" }
-                }
-                .disabled(customToken == nil)
-            } footer: {
-                Text("Custom names start with $ and contain 1–32 letters, digits, underscores or hyphens. Values come from herdr plugins and display as plain text.")
+                .disabled(tokens.count >= AgentRowLayout.maximumTokensPerRow || !rows.indices.contains(rowIndex))
             }
-            .disabled(tokens.count >= AgentRowLayout.maximumTokensPerRow || !rows.indices.contains(rowIndex))
             AgentLayoutErrorView(editor: editor)
         }
         .navigationTitle("Row \(rowIndex + 1)")
-        .toolbar { EditButton() }
+        .toolbar {
+            if editor.isEditing { EditButton() }
+        }
     }
 
     private var customToken: AgentRowToken? {
@@ -249,11 +502,21 @@ private struct AgentLayoutTokensView: View {
         return AgentRowToken(rawValue: customName)
     }
 
+    private var deleteHandler: ((IndexSet) -> Void)? {
+        guard editor.isEditing else { return nil }
+        return { offsets in mutate { $0.remove(atOffsets: offsets) } }
+    }
+
+    private var moveHandler: ((IndexSet, Int) -> Void)? {
+        guard editor.isEditing else { return nil }
+        return { offsets, destination in mutate { $0.move(fromOffsets: offsets, toOffset: destination) } }
+    }
+
     private func mutate(_ change: (inout AgentRow) -> Void) {
         var next = rows
         guard next.indices.contains(rowIndex) else { return }
         change(&next[rowIndex])
-        editor.setRows(next, kind: kind)
+        editor.setRows(next, kind: kind, for: hostID)
     }
 }
 

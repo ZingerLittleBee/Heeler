@@ -5,7 +5,7 @@ enum AgentRowLayoutStoreError: Error, Equatable {
     case catalogUnreadable
 }
 
-/// Local whole-layout overrides. Plugin snapshots belong to the connection
+/// Per-Host whole-layout choices. Plugin snapshots belong to the connection
 /// that fetched them and are deliberately not persisted in this catalog.
 @MainActor
 @Observable
@@ -13,14 +13,15 @@ final class AgentRowLayoutStore {
     private static let defaultsKey = "agent-row-layouts"
     private static let catalogVersion = 1
 
+    /// Earlier version-1 catalogs also carried a `globalLayout`. It is
+    /// ignored on load and dropped by the next write, so a hidden legacy
+    /// choice can never override a Host's herdr fields.
     private struct PersistedCatalog: Codable {
         let version: Int
         let hostLayouts: [Host.ID: AgentRowLayout]
-        let globalLayout: AgentRowLayout?
     }
 
     private(set) var hostLayouts: [Host.ID: AgentRowLayout] = [:]
-    private(set) var globalLayout: AgentRowLayout?
     private(set) var catalogLoadError: AgentRowLayoutStoreError?
     @ObservationIgnored private nonisolated(unsafe) let defaults: UserDefaults
 
@@ -33,37 +34,34 @@ final class AgentRowLayoutStore {
                 throw AgentRowLayoutStoreError.catalogUnreadable
             }
             hostLayouts = catalog.hostLayouts
-            globalLayout = catalog.globalLayout
         } catch {
             catalogLoadError = .catalogUnreadable
         }
     }
 
-    /// nil removes only this Host's override and restores inheritance.
+    /// nil removes this Host's choice so its herdr fields apply again.
     func setLayout(_ layout: AgentRowLayout?, for hostID: Host.ID) throws {
+        try setLayouts([hostID: layout])
+    }
+
+    /// One validated write for every Host in `changes`; either all of them
+    /// are saved or none is.
+    func setLayouts(_ changes: [Host.ID: AgentRowLayout?]) throws {
         var updated = hostLayouts
-        updated[hostID] = layout
-        try persist(hostLayouts: updated, globalLayout: globalLayout)
+        for (hostID, layout) in changes { updated[hostID] = layout }
+        try persist(hostLayouts: updated)
         hostLayouts = updated
     }
 
-    /// nil restores plugin/default inheritance for Hosts without overrides.
-    func setGlobalLayout(_ layout: AgentRowLayout?) throws {
-        try persist(hostLayouts: hostLayouts, globalLayout: layout)
-        globalLayout = layout
-    }
-
     func resolvedLayout(for hostID: Host.ID, pluginSnapshot: AgentRowLayoutSnapshot?) -> AgentRowLayout {
-        AgentRowLayoutResolver.resolve(
-            hostLayout: hostLayouts[hostID], globalLayout: globalLayout, pluginSnapshot: pluginSnapshot)
+        AgentRowLayoutResolver.resolve(hostLayout: hostLayouts[hostID], pluginSnapshot: pluginSnapshot)
     }
 
-    private func persist(hostLayouts: [Host.ID: AgentRowLayout], globalLayout: AgentRowLayout?) throws {
+    private func persist(hostLayouts: [Host.ID: AgentRowLayout]) throws {
         guard catalogLoadError == nil else { throw AgentRowLayoutStoreError.catalogUnreadable }
-        try globalLayout?.validate()
         for layout in hostLayouts.values { try layout.validate() }
         let encoded = try JSONEncoder().encode(PersistedCatalog(
-            version: Self.catalogVersion, hostLayouts: hostLayouts, globalLayout: globalLayout))
+            version: Self.catalogVersion, hostLayouts: hostLayouts))
         defaults.set(encoded, forKey: Self.defaultsKey)
     }
 }

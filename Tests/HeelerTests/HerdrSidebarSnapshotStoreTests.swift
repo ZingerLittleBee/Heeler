@@ -33,6 +33,28 @@ struct HerdrSidebarSnapshotStoreTests {
         #expect(await transport.isClosed == false)
     }
 
+    @Test func singleHostRefreshReturnsThatHostsStateOrNilWithoutAConnection() async {
+        let transport = ScriptedTransport()
+        let other = ScriptedTransport()
+        await transport.setSidebarLayout(first)
+        let otherID = UUID()
+        let provider = ScriptedTransportProvider(transports: [hostID: transport, otherID: other])
+        let store = HerdrSidebarSnapshotStore()
+        #expect(await store.refresh(hostID, transports: provider, didChange: {}) == nil)
+        #expect(await transport.sidebarLayoutReads == 0)
+        store.reconcile([hostID: .init(generation: 1, revision: 0), otherID: .init(generation: 1, revision: 0)],
+                        transports: provider, didChange: {})
+        await store.waitForPendingReads()
+        await transport.setSidebarLayout(second)
+        #expect(await store.refresh(hostID, transports: provider, didChange: {})
+            == .loaded(AgentRowLayoutSnapshot.decode(second)))
+        #expect(await transport.sidebarLayoutReads == 2)
+        #expect(await other.sidebarLayoutReads == 1)
+        await transport.setSidebarLayoutReadFailure(NotificationRegistrationError.pluginNotInstalled)
+        #expect(await store.refresh(hostID, transports: provider, didChange: {}) == .unavailable)
+        #expect(store.states[otherID] == .loaded(nil))
+    }
+
     @Test func generationChangeRejectsAnOldReadEvenWhenItIgnoresCancellation() async {
         let transport = ScriptedTransport()
         await transport.setSidebarLayout(first)
