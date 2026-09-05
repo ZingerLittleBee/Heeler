@@ -318,6 +318,8 @@ struct ConsoleStoreTests {
                 .contains(.pane(.agentStatusChanged, paneID: "w2:p1")) == true
         }
 
+        await transports[hostB.id]?.setSnapshot(
+            .fixture(agents: [.fixture(paneID: "w2:p1", status: .blocked)]))
         let start = ContinuousClock.now
         let emitted = await transports[hostB.id]?.emit(
             .agentStatusChanged(paneID: "w2:p1", status: .blocked))
@@ -359,6 +361,10 @@ struct ConsoleStoreTests {
             await snapshotGate.entryCount == 1
         }
 
+        // The held response stays idle; the follow-up authoritative read
+        // must represent the Host after it emitted the Blocked event.
+        await transport.setSnapshot(
+            .fixture(agents: [.fixture(paneID: "w1:p1", status: .blocked)]))
         #expect(
             await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .blocked))
                 == true)
@@ -745,6 +751,8 @@ struct ConsoleStoreTests {
         let followUpReadGate = ScriptedTransportCallGate()
         await transport.setPaneText("Allow this command?", paneID: "w1:p1")
         await transport.gateNextPaneRead(using: followUpReadGate)
+        await transport.setSnapshot(
+            .fixture(agents: [.fixture(paneID: "w1:p1", status: .blocked)]))
         #expect(
             await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .blocked))
                 == true)

@@ -54,6 +54,27 @@ struct EventsSessionSubscriptionsTests {
         await session.end()
     }
 
+    @Test func reconnectDropsProtocolDependentSubscriptionUntilFreshSnapshot() async throws {
+        let first = ScriptedTransport()
+        let replacement = ScriptedTransport()
+        let connector = SequencedTransportConnector([first, replacement])
+        let session = EventsSession(subscriptions: initial, connect: { try await connector.connect() }, keepalive: nil)
+        var updates = session.updates.makeAsyncIterator()
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+        await session.updateSubscriptions(updated + [.global(.workspaceReordered)])
+        #expect(await updates.next() == .status(.connected))
+        #expect(await first.capturedSubscriptions.last == updated + [.global(.workspaceReordered)])
+        await session.suspend()
+        #expect(await updates.next() == .status(.suspended))
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+        #expect(await replacement.capturedSubscriptions == [initial])
+        await session.end()
+    }
+
     @Test func successfulConnectPingPublishesRoundTripLatency() async throws {
         let transport = ScriptedTransport()
         let session = makeSession(transport: transport)

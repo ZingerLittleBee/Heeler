@@ -530,6 +530,12 @@ final class ConsoleStore {
     }
 
     func refreshSidebarLayouts() async {
+        let current = Array(projections.values)
+        await withTaskGroup(of: Void.self) { group in
+            for projection in current {
+                group.addTask { await projection.refreshSidebarMetadata() }
+            }
+        }
         await sidebarSnapshots.refresh(transports: self) { [weak self] in
             self?.rebuildAgentOrder()
         }

@@ -79,6 +79,7 @@ final actor ScriptedTransport: Transport {
     private var nextStreamID: UInt64 = 0
     private var liveStreamID: UInt64?
     private var eventContinuation: AsyncThrowingStream<HerdrEvent, any Error>.Continuation?
+    private var subscriptionObservers: [UUID: AsyncStream<[EventSubscription]>.Continuation] = [:]
     private var nextSubscriptionGate: ScriptedTransportCallGate?
     private var nextAttachID: UInt64 = 0
     private var liveAttachID: UInt64?
@@ -250,6 +251,25 @@ final actor ScriptedTransport: Transport {
     /// Pauses the next events subscription after recording its requested set.
     func gateNextSubscription(using gate: ScriptedTransportCallGate) {
         nextSubscriptionGate = gate
+    }
+
+    /// Wait for actual stream installation, not merely a captured request.
+    /// AsyncStream cancellation ends the wait if the test is canceled.
+    func waitForLiveSubscription(containing expected: [EventSubscription]) async throws {
+        if liveStreamID != nil, let current = capturedSubscriptions.last,
+            expected.allSatisfy(current.contains)
+        { return }
+        let id = UUID()
+        let updates = AsyncStream<[EventSubscription]>.makeStream()
+        subscriptionObservers[id] = updates.continuation
+        defer {
+            subscriptionObservers[id] = nil
+            updates.continuation.finish()
+        }
+        for await current in updates.stream {
+            if expected.allSatisfy(current.contains) { return }
+        }
+        throw CancellationError()
     }
 
     /// Pushes one event onto the live stream; false if none is live.
@@ -543,6 +563,7 @@ final actor ScriptedTransport: Transport {
         let (events, continuation) = AsyncThrowingStream<HerdrEvent, any Error>.makeStream()
         liveStreamID = streamID
         eventContinuation = continuation
+        for observer in subscriptionObservers.values { observer.yield(subscriptions) }
         return HerdrEventStream(events: events) {
             await self.endStream(id: streamID)
         }
@@ -775,10 +796,10 @@ actor ScriptedTransportCallGate {
 
 extension SessionSnapshot {
     static func fixture(
-        agents: [AgentInfo] = [], workspaces: [WorkspaceInfo] = []
+        agents: [AgentInfo] = [], workspaces: [WorkspaceInfo] = [], protocolVersion: Int = 17
     ) -> SessionSnapshot {
         SessionSnapshot(
-            agents: agents, layouts: [], panes: [], protocolVersion: 17, tabs: [],
+            agents: agents, layouts: [], panes: [], protocolVersion: protocolVersion, tabs: [],
             version: "0.7.5-fake", workspaces: workspaces)
     }
 }

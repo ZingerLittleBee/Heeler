@@ -60,8 +60,8 @@ struct SidebarConsoleIntegrationTests {
         let b = ScriptedTransport(snapshot: .fixture(agents: [
             .fixture(paneID: "b0", status: .idle), .fixture(paneID: "b1", status: .blocked),
         ]))
-        await a.setSidebarLayout(snapshot(sort: "spaces"))
-        await b.setSidebarLayout(snapshot(sort: "priority"))
+        await a.setSidebarLayout(try snapshot(sort: "spaces"))
+        await b.setSidebarLayout(try snapshot(sort: "priority"))
         let connects = Mutex(0)
         let transports = [alpha.id: a, beta.id: b]
         let store = ConsoleStore(
@@ -76,7 +76,7 @@ struct SidebarConsoleIntegrationTests {
         defer { store.setHosts([]) }
         store.setHosts([alpha, beta])
         await store.resume()
-        await waitForSnapshots(store, hosts: [alpha.id, beta.id])
+        try await waitForSnapshots(store, hosts: [alpha.id, beta.id])
         #expect(store.agents.map(\.agent.paneID) == ["a0", "a1", "b1", "b0"])
         #expect(connects.withLock { $0 } == 2)
         let plugin = store.rowLayout(for: alpha.id)
@@ -104,7 +104,7 @@ struct SidebarConsoleIntegrationTests {
             == [["a0", "a1"], ["b1", "b0"]])
         store.togglePin(hostID: beta.id, paneID: "b0")
         #expect(store.agents.first?.agent.paneID == "b0")
-        await a.setSidebarLayout(snapshot(sort: "priority"))
+        await a.setSidebarLayout(try snapshot(sort: "priority"))
         await store.refreshSidebarLayouts()
         #expect(store.agents.map(\.agent.paneID) == ["b0", "a1", "b1", "a0"])
         #expect(connects.withLock { $0 } == 2)
@@ -117,7 +117,7 @@ struct SidebarConsoleIntegrationTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let host = Host.fixture()
         let transport = ScriptedTransport(snapshot: .fixture(agents: [.fixture(paneID: "p")]))
-        await transport.setSidebarLayout(snapshot(sort: "spaces"))
+        await transport.setSidebarLayout(try snapshot(sort: "spaces"))
         let store = ConsoleStore(
             pins: PinnedAgentsStore(defaults: defaults), rowLayouts: AgentRowLayoutStore(defaults: defaults)
         ) { _, subscriptions in
@@ -126,10 +126,14 @@ struct SidebarConsoleIntegrationTests {
         defer { store.setHosts([]) }
         store.setHosts([host])
         await store.resume()
-        await waitForSnapshots(store, hosts: [host.id])
+        try await waitForSnapshots(store, hosts: [host.id])
         let gate = ScriptedTransportCallGate()
         await transport.gateNextSidebarLayoutRead(gate)
-        let refresh = Task { await store.refreshSidebarLayouts() }
+        // Hold the layout store's own borrowed read; the Settings action now
+        // also refreshes Agent metadata before reading the layout file.
+        let refresh = Task {
+            await store.sidebarSnapshots.refresh(transports: store, didChange: {})
+        }
         await gate.waitForEntry()
         await store.suspend()
         #expect(store.sidebarSnapshots.states.isEmpty)
@@ -139,10 +143,194 @@ struct SidebarConsoleIntegrationTests {
         #expect(store.rowLayout(for: host.id) == .heelerDefault)
     }
 
-    private func snapshot(sort: String) -> Data {
-        Data("""
-            {"v":1,"agent_panel_sort":"\(sort)","sidebar":{"agents":{"rows":[[{"token":"workspace"}]],"rows_by_agent":{"claude":[[{"token":"terminal_title_stripped"}]]}}}
+    @Test func statusEventsRefreshRecencyAndLiteralRowsWithOneCoalescedFollowUp() async throws {
+        let suite = "sidebar-live-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let host = Host.fixture()
+        let b = metadata(pane: "b", status: .done, sequence: 2, title: "Other task", note: "other")
+        let transport = ScriptedTransport(snapshot: .fixture(agents: [
+            metadata(pane: "a", status: .done, sequence: 1, title: "Task A", note: "old"), b,
+        ]))
+        await transport.setSidebarLayout(try snapshot(sort: "priority"))
+        let store = liveStore(defaults: defaults, connect: { transport })
+        defer { store.setHosts([]) }
+        store.setHosts([host])
+        await store.resume()
+        try await waitForSnapshots(store, hosts: [host.id])
+        try await transport.waitForLiveSubscription(containing: [.pane(.agentStatusChanged, paneID: "a")])
+        await store.refreshSidebarLayouts()
+        #expect(store.agents.map(\.agent.paneID) == ["b", "a"])
+        try store.rowLayouts.setGlobalLayout(.init(rows: [
+            [.init(.terminalTitleStripped)], [.init(.custom("note")), .init(.terminalTitle)],
+        ]))
+
+        let firstRead = ScriptedTransportCallGate()
+        await transport.setSnapshot(.fixture(agents: [
+            metadata(pane: "a", status: .working, sequence: 3, title: "In progress", note: "pending"), b,
+        ]))
+        await transport.gateNextSnapshot(using: firstRead)
+        #expect(await transport.emit(.agentStatusChanged(paneID: "a", status: .working)))
+        await firstRead.waitForEntry()
+        let countAtEntry = await transport.snapshotFetchCount
+        try await waitForConsole(store) { store.agents.first(where: { $0.agent.paneID == "a" })?.agent.status == .working }
+
+        await transport.setSnapshot(.fixture(agents: [
+            metadata(pane: "a", status: .done, sequence: 4, title: "Task B", note: "**literal** [link](url)"), b,
+        ]))
+        #expect(await transport.emit(.agentStatusChanged(paneID: "a", status: .done)))
+        try await waitForConsole(store) { store.agents.first(where: { $0.agent.paneID == "a" })?.agent.status == .done }
+        #expect(await transport.snapshotFetchCount == countAtEntry)
+        await firstRead.open()
+        try await waitForConsole(store) { store.agents.first?.agent.stateChangeSeq == 4 }
+        #expect(await transport.snapshotFetchCount == countAtEntry + 1)
+        #expect(store.agents.map(\.agent.paneID) == ["a", "b"])
+        let agent = try #require(store.agents.first)
+        let layout = store.rowLayout(for: host.id)
+        let card = AgentCardPresentation(agent: agent, layout: layout)
+        #expect(card.headline == "Task B")
+        #expect(card.additionalRows == ["**literal** [link](url) · ◑ Task B"])
+        #expect(TerminalAgentSwitcherItem(agent: agent, pins: store.pins, layout: layout).title == "Task B")
+        store.togglePin(hostID: host.id, paneID: "b")
+        #expect(store.agents.first?.agent.paneID == "b")
+
+        // The explicit Settings refresh also refreshes values when no event
+        // has occurred, not just the layout file's field names.
+        await transport.setSnapshot(.fixture(agents: [
+            metadata(pane: "a", status: .done, sequence: 5, title: "Task C", note: "manual"), b,
+        ]))
+        await store.refreshSidebarLayouts()
+        let refreshed = try #require(store.agents.first(where: { $0.agent.paneID == "a" }))
+        #expect(AgentCardPresentation(agent: refreshed, layout: layout).headline == "Task C")
+        #expect(store.agents.first?.agent.paneID == "b")
+    }
+
+    @Test func subscriptionsAddReorderedOnlyAfterCurrentProtocolSupport() {
+        for version in [nil, 17, 18] as [Int?] {
+            let subscriptions = HostConsoleProjection.subscriptions(paneIDs: ["a"], protocolVersion: version)
+            #expect(!subscriptions.contains(.global(.workspaceReordered)))
+            #expect(subscriptions.contains(.global(.workspaceMoved)))
+            #expect(subscriptions.contains(.pane(.agentStatusChanged, paneID: "a")))
+        }
+        for version in [19, 20] {
+            #expect(HostConsoleProjection.subscriptions(paneIDs: ["a"], protocolVersion: version)
+                .contains(.global(.workspaceReordered)))
+        }
+    }
+
+    @Test func workspaceOrderEventsRefreshSpacesOrderThroughTheSubscribedStream() async throws {
+        let suite = "sidebar-order-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let host = Host.fixture()
+        let a = AgentInfo.fixture(paneID: "a", workspaceID: "wa")
+        let b = AgentInfo.fixture(paneID: "b", workspaceID: "wb")
+        let transport = ScriptedTransport(snapshot: .fixture(agents: [a, b], protocolVersion: 20))
+        await transport.setSidebarLayout(try snapshot(sort: "spaces"))
+        let store = liveStore(defaults: defaults, connect: { transport })
+        defer { store.setHosts([]) }
+        store.setHosts([host])
+        await store.resume()
+        try await waitForSnapshots(store, hosts: [host.id])
+        try await transport.waitForLiveSubscription(containing: [.pane(.agentStatusChanged, paneID: "a")])
+        await store.refreshSidebarLayouts()
+        let subscriptions = try #require(await transport.capturedSubscriptions.last)
+        #expect(subscriptions.contains(.global(.workspaceReordered)))
+        #expect(subscriptions.contains(.global(.workspaceMoved)))
+        #expect(!subscriptions.contains(.global(.paneUpdated)))
+        for (kind, remote) in [(GlobalEventKind.workspaceReordered, [b, a]), (.workspaceMoved, [a, b])] {
+            await transport.setSnapshot(.fixture(agents: remote, protocolVersion: 20))
+            #expect(await transport.emit(HerdrEvent(kind: kind.kind, data: .object([:]))))
+            try await waitForConsole(store) { store.agents.map(\.agent.paneID) == remote.map(\.paneID) }
+            #expect(store.agents.map(\.snapshotOrder) == [0, 1])
+        }
+    }
+
+    @Test func statusDrivenSnapshotFromAnOldConnectionCannotPublishMetadataAfterResume() async throws {
+        let suite = "sidebar-generation-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let host = Host.fixture()
+        let old = ScriptedTransport(snapshot: .fixture(agents: [
+            metadata(pane: "a", status: .done, sequence: 1, title: "Initial", note: "old"),
+        ]))
+        let fresh = ScriptedTransport(snapshot: .fixture(agents: [
+            metadata(pane: "a", status: .done, sequence: 10, title: "Fresh", note: "new"),
+        ]))
+        await old.setSidebarLayout(try snapshot(sort: "priority"))
+        await fresh.setSidebarLayout(try snapshot(sort: "priority"))
+        let sequence = SequencedTransportConnector([old, fresh])
+        let store = liveStore(defaults: defaults, connect: { try await sequence.connect() })
+        defer { store.setHosts([]) }
+        store.setHosts([host])
+        await store.resume()
+        try await waitForSnapshots(store, hosts: [host.id])
+        try await old.waitForLiveSubscription(containing: [.pane(.agentStatusChanged, paneID: "a")])
+        await store.refreshSidebarLayouts()
+        let generation = try #require(store.hostConnectionGenerations[host.id])
+        let oldRead = ScriptedTransportCallGate()
+        await old.setSnapshot(.fixture(agents: [
+            metadata(pane: "a", status: .working, sequence: 2, title: "Stale", note: "stale"),
+        ]))
+        await old.gateNextSnapshot(using: oldRead)
+        #expect(await old.emit(.agentStatusChanged(paneID: "a", status: .working)))
+        await oldRead.waitForEntry()
+        await store.suspend()
+        let freshRead = ScriptedTransportCallGate()
+        await fresh.gateNextSnapshot(using: freshRead)
+        await store.resume()
+        try await waitForConsole(store) { (store.hostConnectionGenerations[host.id] ?? 0) > generation }
+        await oldRead.open()
+        await freshRead.waitForEntry()
+        // Entering the next read proves the old response has crossed the
+        // production epoch guard; it did not repopulate the empty projection.
+        #expect(store.agents.isEmpty)
+        await freshRead.open()
+        try await waitForConsole(store) { store.agents.first?.agent.stateChangeSeq == 10 }
+        #expect(store.agents.first?.agent.terminalTitleStripped == "Fresh")
+        #expect(store.agents.first?.agent.tokens["note"] == "new")
+    }
+
+    private func liveStore(
+        defaults: UserDefaults,
+        connect: @escaping @Sendable () async throws -> any Transport
+    ) -> ConsoleStore {
+        ConsoleStore(pins: PinnedAgentsStore(defaults: defaults), rowLayouts: AgentRowLayoutStore(defaults: defaults)) {
+            _, subscriptions in
+            EventsSession(subscriptions: subscriptions, connect: connect, keepalive: nil)
+        }
+    }
+
+    private func metadata(pane: String, status: AgentStatus, sequence: Int, title: String, note: String) -> AgentInfo {
+        AgentInfo(agentStatus: status, focused: false, paneID: pane, revision: sequence,
+                  tabID: "w:t1", terminalID: "term_\(pane)", workspaceID: "w", agent: "claude",
+                  stateChangeSeq: sequence, terminalTitle: "◑ \(title)", terminalTitleStripped: title,
+                  tokens: ["note": note])
+    }
+
+    private func waitForConsole(_ store: ConsoleStore, until ready: () -> Bool) async throws {
+        while !ready() {
+            try Task.checkCancellation()
+            let changes = AsyncStream<Void>.makeStream()
+            withObservationTracking {
+                _ = store.agents
+                _ = store.hostConnectionGenerations
+            } onChange: {
+                changes.continuation.yield(())
+            }
+            var iterator = changes.stream.makeAsyncIterator()
+            let change = await iterator.next()
+            changes.continuation.finish()
+            guard change != nil else { throw CancellationError() }
+        }
+    }
+
+    private func snapshot(sort: String) throws -> Data {
+        let data = Data("""
+            {"v":1,"agent_panel_sort":"\(sort)","sidebar":{"agents":{"rows":[[{"token":"workspace"}]],"rows_by_agent":{"claude":[[{"token":"terminal_title_stripped"}]]}}}}
             """.utf8)
+        _ = try #require(AgentRowLayoutSnapshot.decode(data))
+        return data
     }
 
     private func row(_ host: Host, pane: String, status: AgentStatus, order: Int, sequence: Int = 0) -> ConsoleAgent {
@@ -153,17 +341,29 @@ struct SidebarConsoleIntegrationTests {
                      workspaceLabel: nil, repositoryCheckout: nil, snapshotOrder: order)
     }
 
-    /// Await actual observable publication; no sleeps, yields or polling.
-    private func waitForSnapshots(_ store: ConsoleStore, hosts: [Host.ID]) async {
-        while hosts.contains(where: { store.sidebarSnapshots.snapshot(for: $0) == nil }) {
+    /// Await terminal publication, then require a usable snapshot. Missing or
+    /// invalid data is a diagnostic failure, never an unbounded success wait.
+    private func waitForSnapshots(_ store: ConsoleStore, hosts: [Host.ID]) async throws {
+        while hosts.contains(where: { id in
+            switch store.sidebarSnapshots.states[id] {
+            case nil, .loading: true
+            default: false
+            }
+        }) {
+            try Task.checkCancellation()
             let changes = AsyncStream<Void>.makeStream()
             withObservationTracking {
                 _ = store.sidebarSnapshots.states
             } onChange: {
                 changes.continuation.yield(())
             }
-            for await _ in changes.stream { break }
+            var iterator = changes.stream.makeAsyncIterator()
+            let change = await iterator.next()
             changes.continuation.finish()
+            guard change != nil else { throw CancellationError() }
+        }
+        for id in hosts {
+            _ = try #require(store.sidebarSnapshots.snapshot(for: id), "Host must publish a valid sidebar fixture")
         }
     }
 }

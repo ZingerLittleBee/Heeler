@@ -524,15 +524,24 @@ final class HostConsoleProjection {
             }
         case .event(let event):
             if event.kind == PaneEventKind.agentStatusChanged.kind {
-                if applyStatusChange(event.data) == .unknown {
-                    // A released Agent can leave its Pane alive as a normal
-                    // shell. Unknown is therefore not only a status delta: it
-                    // may mean the Agent no longer belongs in the snapshot.
+                if applyStatusChange(event.data) != nil {
+                    // Status deltas keep badges responsive; the authoritative
+                    // snapshot also supplies recency, titles and plugin values.
+                    // Unknown can additionally mean the Agent left its Pane.
                     scheduleResync()
                 }
             } else if Self.resyncEventKinds.contains(event.kind) {
                 scheduleResync()
             }
+        }
+    }
+
+    /// An explicit fields refresh converges Agent values as well as the
+    /// separate sidebar file. It shares the event-driven coalescing owner.
+    func refreshSidebarMetadata() async {
+        scheduleResync()
+        while let task = resyncTask {
+            await task.value
         }
     }
 
@@ -578,7 +587,7 @@ final class HostConsoleProjection {
                 preservingStatusChangesAfter: statusRevisionBeforeSnapshot,
                 requestGeneration: requestGeneration)
             await session.updateSubscriptions(
-                Self.subscriptions(paneIDs: agentsByPane.keys))
+                Self.subscriptions(paneIDs: agentsByPane.keys, protocolVersion: snapshot.protocolVersion))
             refreshSnippets()
         } catch {
             guard
@@ -727,7 +736,6 @@ final class HostConsoleProjection {
         else { return nil }
         let status = AgentStatus(rawValue: rawStatus)
         statusChangeRevision &+= 1
-        sidebarRevision &+= 1
         latestStatusChanges[paneID] = (statusChangeRevision, status)
         guard var row = agentsByPane[paneID] else { return status }
         row.agent.status = status
@@ -801,18 +809,24 @@ final class HostConsoleProjection {
         }
     }
 
-    private static let membershipKinds: [GlobalEventKind] = [
+    private static let snapshotChangeKinds: [GlobalEventKind] = [
         .paneAgentDetected, .paneClosed, .paneExited,
         .workspaceCreated, .workspaceRenamed, .workspaceMetadataUpdated, .workspaceClosed,
+        .workspaceMoved, .workspaceReordered,
+        .tabCreated, .tabClosed, .tabRenamed, .tabMoved, .paneMoved,
     ]
 
     private static let resyncEventKinds =
-        Set(membershipKinds.map(\.kind)).union([HerdrEventKind.eventsDropped])
+        Set(snapshotChangeKinds.map(\.kind)).union([HerdrEventKind.eventsDropped])
 
     static func subscriptions(
-        paneIDs: some Sequence<String>
+        paneIDs: some Sequence<String>, protocolVersion: Int? = nil
     ) -> [EventSubscription] {
-        membershipKinds.map(EventSubscription.global)
+        // The first subscription precedes session.snapshot. Only opt into
+        // protocol-19 events after this connection reports support.
+        snapshotChangeKinds.filter {
+            $0 != .workspaceReordered || (protocolVersion ?? 0) >= 19
+        }.map(EventSubscription.global)
             + paneIDs.sorted().map { EventSubscription.pane(.agentStatusChanged, paneID: $0) }
     }
 }

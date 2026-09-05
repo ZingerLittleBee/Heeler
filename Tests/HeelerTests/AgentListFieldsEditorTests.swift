@@ -14,12 +14,16 @@ struct AgentListFieldsEditorTests {
         let snapshots = HerdrSidebarSnapshotStore()
         let hostID = UUID()
         let transport = ScriptedTransport()
-        await transport.setSidebarLayout(Data(##"{"v":1,"sidebar":{"agents":{"row_gap":2,"rows":[[{"token":"workspace","fg":"#abc","bold":false,"dim":true}]],"rows_by_agent":{"claude":[[{"token":"terminal_title_stripped"}]]}}}"##.utf8))
+        let data = Data(##"{"v":1,"sidebar":{"agents":{"row_gap":2,"rows":[[{"token":"workspace","fg":"#abc","bold":false,"dim":true}]],"rows_by_agent":{"claude":[[{"token":"terminal_title_stripped"}]]}}}}"##.utf8)
+        let decoded = try #require(AgentRowLayoutSnapshot.decode(data))
+        #expect(decoded.layout.rowGap == 2)
+        await transport.setSidebarLayout(data)
         snapshots.reconcile([hostID: .init(generation: 1, revision: 0)],
                             transports: ScriptedTransportProvider(transports: [hostID: transport]), didChange: {})
         await snapshots.waitForPendingReads()
         let editor = AgentListFieldsEditor(layouts: layouts, snapshots: snapshots)
         editor.hostID = hostID
+        #expect(snapshots.snapshot(for: hostID) == decoded)
         let inherited = editor.layout
         editor.setRows(inherited.rows + [[]], kind: nil)
         #expect(layouts.hostLayouts[hostID]?.rows == inherited.rows + [[]])
