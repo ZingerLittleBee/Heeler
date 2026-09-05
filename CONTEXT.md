@@ -84,8 +84,14 @@ survives. Snapshot worktree metadata also describes the main checkout; only
 _Avoid_: sandbox, branch copy, checkout folder
 
 **Console**:
-The native dashboard surface: Agents across Hosts as either a flat status-sorted list or a by-Host grouped list with collapsible sections, plus the Agent detail screen.
+The native dashboard surface: Agents across Hosts as either a flat list or a by-Host grouped list with collapsible sections, plus the Agent detail screen. Grouping is independent of Agent ordering and Pin priority.
 _Avoid_: dashboard, home
+
+**Agent Row Layout**:
+The ordered rows of fields that identify an Agent in the Console and its
+switcher, chosen for a Host or for all Hosts. Agent Status and Heeler Pin
+remain independent of those fields.
+_Avoid_: card template, sidebar format
 
 **Pin**:
 A user-chosen Console marker on an Agent's pane slot (`hostID` + `paneID`).

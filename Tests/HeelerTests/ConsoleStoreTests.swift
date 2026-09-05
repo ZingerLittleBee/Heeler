@@ -181,7 +181,12 @@ struct ConsoleStoreTests {
                 .fixture(paneID: "multi:p", workspaceID: "multi"),
                 .fixture(paneID: "named:p", workspaceID: "named"),
                 .fixture(paneID: "missing:p", workspaceID: "missing"),
-            ], layouts: [], panes: [], protocolVersion: 20,
+            ], layouts: [], panes: [
+                PaneInfo(agentStatus: .idle, focused: false, paneID: "multi:p", revision: 1,
+                         tabID: "multi:t1", terminalID: "term", workspaceID: "multi", label: "Manual label"),
+                PaneInfo(agentStatus: .working, focused: false, paneID: "single:p", revision: 1,
+                         tabID: "single:t1", terminalID: "term", workspaceID: "single", label: "Fallback"),
+            ], protocolVersion: 20,
             tabs: [single, single, tab("multi", label: "1", number: 8),
                    tab("named", label: "2", number: 2),
                    tab("multi", label: "Shell", number: 9, suffix: "shell")],
@@ -218,6 +223,9 @@ struct ConsoleStoreTests {
         let multi = try #require(projection.agentsByPane["multi:p"])
         #expect(multi.workspaceTabCount == 2 && multi.showsTabLabel) // Count the shell-only tab too.
         #expect(multi.snapshotOrder == 1)
+        let paneLayout = AgentRowLayout(rows: [[.init(.pane)]])
+        #expect(AgentRowRenderer.render(layout: paneLayout, agent: multi).first?.first?.text == "Manual label")
+        #expect(AgentRowRenderer.render(layout: paneLayout, agent: row).first?.first?.text == "Pane title")
         #expect(projection.agentsByPane["named:p"]?.showsTabLabel == true)
         #expect(projection.agentsByPane["missing:p"]?.tabLabel == nil)
         #expect(projection.agentsByPane["missing:p"]?.showsTabLabel == false)
@@ -310,6 +318,8 @@ struct ConsoleStoreTests {
                 .contains(.pane(.agentStatusChanged, paneID: "w2:p1")) == true
         }
 
+        await transports[hostB.id]?.setSnapshot(
+            .fixture(agents: [.fixture(paneID: "w2:p1", status: .blocked)]))
         let start = ContinuousClock.now
         let emitted = await transports[hostB.id]?.emit(
             .agentStatusChanged(paneID: "w2:p1", status: .blocked))
@@ -351,6 +361,10 @@ struct ConsoleStoreTests {
             await snapshotGate.entryCount == 1
         }
 
+        // The held response stays idle; the follow-up authoritative read
+        // must represent the Host after it emitted the Blocked event.
+        await transport.setSnapshot(
+            .fixture(agents: [.fixture(paneID: "w1:p1", status: .blocked)]))
         #expect(
             await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .blocked))
                 == true)
@@ -737,6 +751,8 @@ struct ConsoleStoreTests {
         let followUpReadGate = ScriptedTransportCallGate()
         await transport.setPaneText("Allow this command?", paneID: "w1:p1")
         await transport.gateNextPaneRead(using: followUpReadGate)
+        await transport.setSnapshot(
+            .fixture(agents: [.fixture(paneID: "w1:p1", status: .blocked)]))
         #expect(
             await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .blocked))
                 == true)

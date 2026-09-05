@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 /// The Console aggregate: reconciles the Host catalog and publishes one
-/// pin-then-status-sorted Agent list across every Host. Each HostConsoleProjection
+/// Agent list with independent Pin and per-Host sidebar ordering. Each HostConsoleProjection
 /// owns its own convergence, retry, snippets and Host-scoped RPC behavior.
 @MainActor
 @Observable
@@ -76,15 +76,19 @@ final class ConsoleStore {
     /// Shared with the Console list: a pin toggle must re-sort `agents` in
     /// the same turn, so the store lives here rather than only on the view.
     let pins: PinnedAgentsStore
+    let rowLayouts: AgentRowLayoutStore
+    let sidebarSnapshots = HerdrSidebarSnapshotStore()
 
     init(
         snapshotRetryDelay: Duration = .seconds(2),
         pins: PinnedAgentsStore = PinnedAgentsStore(),
+        rowLayouts: AgentRowLayoutStore = AgentRowLayoutStore(),
         makeSession: @escaping @Sendable (Host, [EventSubscription]) -> EventsSession =
             ConsoleStore.sshSessionFactory()
     ) {
         self.snapshotRetryDelay = snapshotRetryDelay
         self.pins = pins
+        self.rowLayouts = rowLayouts
         self.makeSession = makeSession
     }
 
@@ -101,6 +105,7 @@ final class ConsoleStore {
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
         composerStores = composerStores.filter { incoming[$0.key.hostID] != nil }
         for (id, projection) in projections where incoming[id] != projection.host {
+            sidebarSnapshots.invalidate(id)
             projection.end()
             projections[id] = nil
         }
@@ -161,6 +166,8 @@ final class ConsoleStore {
     func suspend() async {
         await enqueueLifecycleTransition { [self] in
             isActive = false
+            sidebarSnapshots.invalidateAll()
+            rebuild()
             for projection in projections.values {
                 await projection.suspend()
             }
@@ -467,12 +474,6 @@ final class ConsoleStore {
 
     private func rebuild() {
         let current = Array(projections.values)
-        let unsorted = current.flatMap { $0.agentsByPane.values }
-        let pinRanks = Dictionary(uniqueKeysWithValues: unsorted.compactMap { agent in
-            pins.pinRank(hostID: agent.hostID, paneID: agent.agent.paneID)
-                .map { (agent.id, $0) }
-        })
-        agents = unsorted.consoleSorted { pinRanks[$0.id] }
         hostStatuses = Dictionary(
             uniqueKeysWithValues: current.compactMap { projection in
                 projection.status.map { (projection.host.id, $0) }
@@ -508,7 +509,48 @@ final class ConsoleStore {
         if removedWorktreesByAgent != nextRemovedWorktreesByAgent {
             removedWorktreesByAgent = nextRemovedWorktreesByAgent
         }
+        let sidebarConnections = Dictionary(uniqueKeysWithValues: current.compactMap { projection
+            -> (Host.ID, HerdrSidebarSnapshotStore.Connection)? in
+            guard isActive, projection.status == .connected, !projection.isAwaitingSnapshot,
+                let generation = hostConnectionGenerations[projection.host.id]
+            else { return nil }
+            return (projection.host.id, HerdrSidebarSnapshotStore.Connection(
+                generation: generation, revision: projection.sidebarRevision))
+        })
+        sidebarSnapshots.reconcile(sidebarConnections, transports: self) { [weak self] in
+            self?.rebuildAgentOrder()
+        }
+        rebuildAgentOrder()
         publishAgentStatuses()
+    }
+
+    func rowLayout(for hostID: Host.ID) -> AgentRowLayout {
+        rowLayouts.resolvedLayout(
+            for: hostID, pluginSnapshot: sidebarSnapshots.snapshot(for: hostID))
+    }
+
+    func refreshSidebarLayouts() async {
+        let current = Array(projections.values)
+        await withTaskGroup(of: Void.self) { group in
+            for projection in current {
+                group.addTask { await projection.refreshSidebarMetadata() }
+            }
+        }
+        await sidebarSnapshots.refresh(transports: self) { [weak self] in
+            self?.rebuildAgentOrder()
+        }
+    }
+
+    private func rebuildAgentOrder() {
+        let unsorted = projections.values.flatMap { $0.agentsByPane.values }
+        let sorts = Dictionary(uniqueKeysWithValues: projections.keys.compactMap { id in
+            sidebarSnapshots.snapshot(for: id).map { (id, $0.agentPanelSort) }
+        })
+        let pinRanks = Dictionary(uniqueKeysWithValues: unsorted.compactMap { agent in
+            pins.pinRank(hostID: agent.hostID, paneID: agent.agent.paneID)
+                .map { (agent.id, $0) }
+        })
+        agents = unsorted.consoleSorted(sortByHost: sorts) { pinRanks[$0.id] }
     }
 
     private func publishAgentStatuses() {

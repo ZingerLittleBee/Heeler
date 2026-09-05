@@ -36,7 +36,7 @@ enum AgentRowRenderer {
         case .stateIcon, .stateText: nil // The status column owns both.
         case .workspace: row.workspaceLabel
         case .tab: row.showsTabLabel ? row.tabLabel : nil
-        case .pane: row.agent.paneTitle
+        case .pane: row.agent.paneTitle ?? row.paneLabel
         case .agent: row.agent.displayName
         case .terminalTitle: row.agent.terminalTitle
         case .terminalTitleStripped: row.agent.terminalTitleStripped

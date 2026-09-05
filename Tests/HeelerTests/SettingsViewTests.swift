@@ -4,6 +4,13 @@ import Testing
 
 @Suite("Settings view")
 struct SettingsViewTests {
+    @Test func agentListRouteConstructsTheFieldsEditor() {
+        let destination = SettingsView.agentListDestination
+        #expect(destination.rawValue == "settings.agentList.fields")
+        #expect(destination.destinationTypeName == String(reflecting: AgentListFieldsSettingsView.self))
+        #expect(ConsoleListPresentationMode.flat.title == "All Agents")
+    }
+
     @Test func repositoryLinkTargetsTheProject() throws {
         let repositoryURL = try #require(SettingsView.repositoryURL)
 

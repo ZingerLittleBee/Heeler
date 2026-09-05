@@ -315,7 +315,7 @@ actor EventsSession {
     /// effect on the next subscribe. No-op when the set is unchanged.
     ///
     /// Pane-scoped entries survive only as long as the subscription that
-    /// carries them: any disconnect drops them (see `dropPaneSubscriptions`),
+    /// carries them: any disconnect drops them (see `dropSnapshotSubscriptions`),
     /// so callers must reinstall the set after every `.connected` rather than
     /// assume the last one is still in force.
     func updateSubscriptions(_ subscriptions: [EventSubscription]) async {
@@ -476,7 +476,7 @@ actor EventsSession {
                 // subscription set and this subscribe is an ordinary race,
                 // not a connection problem: retry it straight away with the
                 // global set rather than showing the user a failure.
-                if Self.namesAMissingPane(failure), dropPaneSubscriptions() {
+                if Self.namesAMissingPane(failure), dropSnapshotSubscriptions() {
                     continue
                 }
                 guard failure.isRetryable else {
@@ -485,7 +485,7 @@ actor EventsSession {
                     yieldUpdate(.status(.failed(failure)))
                     return
                 }
-                dropPaneSubscriptions()
+                dropSnapshotSubscriptions()
                 attempt += 1
                 await emitReconnectingAndBackOff(
                     attempt: attempt, failure: failure, generation: generation)
@@ -547,14 +547,16 @@ actor EventsSession {
                 yieldUpdate(.status(.failed(failure)))
                 return
             }
-            dropPaneSubscriptions()
+            dropSnapshotSubscriptions()
             attempt += 1
             await emitReconnectingAndBackOff(
                 attempt: attempt, failure: failure, generation: generation)
         }
     }
 
-    /// Discards the pane-scoped subscriptions, keeping the global ones.
+    /// Discards snapshot-derived subscriptions, keeping baseline global ones.
+    /// workspace.reordered requires protocol 19; a new connection must prove
+    /// that capability again before it is included alongside its Pane set.
     /// Returns whether the set actually changed.
     ///
     /// Pane-scoped entries are derived from a snapshot, and herdr rejects an
@@ -566,9 +568,12 @@ actor EventsSession {
     /// already obliges the consumer to re-snapshot, and that resync
     /// reinstalls the pane set through `updateSubscriptions`.
     @discardableResult
-    private func dropPaneSubscriptions() -> Bool {
+    private func dropSnapshotSubscriptions() -> Bool {
         let globalsOnly = subscriptions.filter { subscription in
-            if case .global = subscription { true } else { false }
+            switch subscription {
+            case .global(.workspaceReordered), .pane: false
+            case .global: true
+            }
         }
         guard globalsOnly.count != subscriptions.count else { return false }
         subscriptions = globalsOnly
@@ -676,7 +681,7 @@ actor EventsSession {
         resubscribeRequested = false
         lastConnectionActivity = nil
         terminalTransportFailure = nil
-        dropPaneSubscriptions()
+        dropSnapshotSubscriptions()
         isWindingDown = false
     }
 

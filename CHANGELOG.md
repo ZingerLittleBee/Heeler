@@ -7,6 +7,13 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- Agent cards and the keyboard switcher follow herdr's sidebar fields and
+  Agent order, including terminal titles and plugin fields. Settings now offers
+  Agent List Fields with global and per-Host row editing and Follow herdr reset.
+  (#277, #281)
+
 ## [0.1.5] - 2026-09-04
 
 ### Added
