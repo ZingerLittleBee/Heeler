@@ -12,8 +12,9 @@ Entries reference the issue that motivated them.
 - Agent cards and the keyboard switcher follow herdr's sidebar fields and
   Agent order, including terminal titles and plugin fields. Settings now offers
   Agent List Fields: a read-only per-Host view with rows directly under each
-  Host, an Edit mode, Sync from plugin, and one checkmark that saves every
-  Host. (#277, #281)
+  Host, per-Host summaries, grouped Agent override and sync controls, swipe
+  actions for row arrangement, and one checkmark that saves every Host.
+  (#277, #281)
 
 ## [0.1.5] - 2026-09-04
 

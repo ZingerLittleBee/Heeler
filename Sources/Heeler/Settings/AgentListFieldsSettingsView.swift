@@ -180,29 +180,28 @@ struct AgentListFieldsSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             } footer: {
-                Text(editor.isEditing
-                    ? "Changes stay unsaved until you tap the checkmark. Sync from plugin fills a Host with its herdr fields."
-                    : "Each Host shows its herdr fields until you save your own. Tap Edit to arrange fields or sync them from the herdr plugin.")
+                if !hosts.isEmpty {
+                    Text(editor.isEditing
+                        ? "Open a row to edit its fields, swipe to arrange rows or remove overrides, and tap the checkmark to save."
+                        : "Each Host follows its herdr fields until you save your own rows. Tap Edit to change them.")
+                }
             }
             ForEach(hosts) { host in
                 Section {
                     DisclosureGroup(isExpanded: expansion(for: host.id)) {
                         AgentListHostFieldsView(editor: editor, hostID: host.id)
                     } label: {
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 4) {
                             Text(verbatim: host.displayName)
                             Text(verbatim: sourceDescription(editor.source(for: host.id)))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            Text(verbatim: hostSummary(for: host.id))
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
                         }
                     }
                     .accessibilityIdentifier("settings.agentList.host.\(host.id.uuidString)")
-                } footer: {
-                    if let message = editor.syncStates[host.id]?.message {
-                        Text(verbatim: message)
-                            .foregroundStyle(syncFailed(host.id) ? .red : .secondary)
-                            .accessibilityIdentifier("settings.agentList.syncTip.\(host.id.uuidString)")
-                    }
                 }
             }
             AgentLayoutErrorView(editor: editor)
@@ -247,9 +246,13 @@ struct AgentListFieldsSettingsView: View {
             })
     }
 
-    private func syncFailed(_ hostID: Host.ID) -> Bool {
-        if case .failed = editor.syncStates[hostID] { return true }
-        return false
+    private func hostSummary(for hostID: Host.ID) -> String {
+        let layout = editor.layout(for: hostID)
+        let rows = layout.rows.count
+        let overrides = layout.rowsByAgent.count
+        let rowsLabel = rows == 1 ? "1 row" : "\(rows) rows"
+        let overridesLabel = overrides == 1 ? "1 override" : "\(overrides) overrides"
+        return "\(rowsLabel), \(overridesLabel)"
     }
 
     private func sourceDescription(_ source: AgentListFieldsEditor.LayoutSource) -> String {
@@ -275,34 +278,47 @@ private struct AgentListHostFieldsView: View {
     private var layout: AgentRowLayout { editor.layout(for: hostID) }
     private var trimmedKind: String { newKind.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var isSyncing: Bool { editor.syncStates[hostID] == .syncing }
+    private var hasOverrides: Bool { !layout.rowsByAgent.isEmpty }
 
     var body: some View {
-        AgentLayoutRowsContent(editor: editor, hostID: hostID, kind: nil, inlineActions: true)
-        kindRows
+        AgentLayoutRowsContent(editor: editor, hostID: hostID, kind: nil)
+        if hasOverrides || editor.isEditing {
+            Text("Agent Overrides")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 0, trailing: 20))
+            kindRows
+            if editor.isEditing {
+                addKindRows
+            }
+        }
         if editor.isEditing {
-            addKindRows
-            syncButton
+            syncSection
+        }
+        if let message = editor.syncStates[hostID]?.message {
+            Text(verbatim: message)
+                .font(.footnote)
+                .foregroundStyle(syncFailed ? .red : .secondary)
+                .accessibilityIdentifier("settings.agentList.syncTip.\(hostID.uuidString)")
         }
     }
 
     private var kindRows: some View {
         ForEach(layout.rowsByAgent.keys.sorted(), id: \.self) { kind in
-            NavigationLink {
-                AgentLayoutRowsView(editor: editor, hostID: hostID, kind: kind)
-            } label: {
-                VStack(alignment: .leading) {
-                    Text(verbatim: kind)
-                    Text("Replacement rows for this Agent kind")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+            if editor.isEditing {
+                overrideLink(for: kind)
+                    .accessibilityAction(named: "Delete Override") {
+                        editor.update(hostID) { $0.rowsByAgent[kind] = nil }
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button("Delete", role: .destructive) {
+                            editor.update(hostID) { $0.rowsByAgent[kind] = nil }
+                        }
+                    }
+            } else {
+                overrideLink(for: kind)
             }
         }
-        .onDelete(perform: deleteKindsHandler)
-    }
-
-    private var deleteKindsHandler: ((IndexSet) -> Void)? {
-        editor.isEditing ? { offsets in deleteKinds(at: offsets) } : nil
     }
 
     @ViewBuilder
@@ -310,15 +326,17 @@ private struct AgentListHostFieldsView: View {
         TextField("Agent kind, e.g. claude", text: $newKind)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
-        Button("Add Agent Override") {
+        Button {
             let kind = trimmedKind
             editor.update(hostID) { $0.rowsByAgent[kind] = $0.rows }
             if editor.errorMessage == nil { newKind = "" }
+        } label: {
+            Label("Add Agent Override", systemImage: "plus")
         }
         .disabled(trimmedKind.isEmpty || layout.rowsByAgent[trimmedKind] != nil)
     }
 
-    private var syncButton: some View {
+    private var syncSection: some View {
         Button {
             Task { await editor.syncFromPlugin(hostID) }
         } label: {
@@ -336,10 +354,29 @@ private struct AgentListHostFieldsView: View {
         .accessibilityIdentifier("settings.agentList.sync.\(hostID.uuidString)")
     }
 
-    private func deleteKinds(at offsets: IndexSet) {
-        let keys = layout.rowsByAgent.keys.sorted()
-        editor.update(hostID) { layout in
-            for index in offsets { layout.rowsByAgent[keys[index]] = nil }
+    private var syncFailed: Bool {
+        if case .failed = editor.syncStates[hostID] { return true }
+        return false
+    }
+
+    private func rowsSummary(_ rows: [AgentRow]) -> String {
+        guard !rows.isEmpty else { return "No rows" }
+        let rowCount = rows.count == 1 ? "1 row" : "\(rows.count) rows"
+        let fieldCount = rows.reduce(0) { $0 + $1.count }
+        let fieldLabel = fieldCount == 1 ? "1 field" : "\(fieldCount) fields"
+        return "\(rowCount), \(fieldLabel)"
+    }
+
+    private func overrideLink(for kind: String) -> some View {
+        NavigationLink {
+            AgentLayoutRowsView(editor: editor, hostID: hostID, kind: kind)
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(verbatim: kind)
+                Text(verbatim: rowsSummary(layout.rowsByAgent[kind] ?? []))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }
@@ -354,16 +391,11 @@ private struct AgentLayoutRowsView: View {
             Section {
                 AgentLayoutRowsContent(editor: editor, hostID: hostID, kind: kind)
             } footer: {
-                Text(editor.isEditing
-                    ? "Empty fields and rows are omitted when displayed. Edit to delete or reorder rows."
-                    : "Empty fields and rows are omitted when displayed. Tap Edit on Agent List Fields to change rows.")
+                Text("Empty fields and rows are omitted when displayed.")
             }
             AgentLayoutErrorView(editor: editor)
         }
         .navigationTitle(kind)
-        .toolbar {
-            if editor.isEditing { EditButton() }
-        }
     }
 }
 
@@ -371,7 +403,6 @@ private struct AgentLayoutRowsContent: View {
     let editor: AgentListFieldsEditor
     let hostID: Host.ID
     let kind: String?
-    var inlineActions = false
 
     private var rows: [AgentRow] {
         let layout = editor.layout(for: hostID)
@@ -380,44 +411,45 @@ private struct AgentLayoutRowsContent: View {
 
     var body: some View {
         ForEach(Array(rows.indices), id: \.self) { index in
-            HStack {
-                NavigationLink {
-                    AgentLayoutTokensView(editor: editor, hostID: hostID, kind: kind, rowIndex: index)
-                } label: {
-                    VStack(alignment: .leading) {
-                        Text("Row \(index + 1)")
-                        Text(verbatim: rows[index].isEmpty ? "Empty row" : rows[index].map(\.token.rawValue).joined(separator: " · "))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+            if editor.isEditing {
+                rowLink(at: index)
+                    .accessibilityAction(named: "Delete Row") {
+                        deleteHandler?(IndexSet(integer: index))
                     }
-                }
-                if inlineActions && editor.isEditing {
-                    Menu {
-                        Button("Move Up", systemImage: "arrow.up") {
-                            moveHandler?(IndexSet(integer: index), index - 1)
+                    .accessibilityAction(named: "Move Row Up") {
+                        guard index > 0 else { return }
+                        moveHandler?(IndexSet(integer: index), index - 1)
+                    }
+                    .accessibilityAction(named: "Move Row Down") {
+                        guard index < rows.count - 1 else { return }
+                        moveHandler?(IndexSet(integer: index), index + 2)
+                    }
+                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                        if index > 0 {
+                            Button("Move Up") {
+                                moveHandler?(IndexSet(integer: index), index - 1)
+                            }
                         }
-                        .disabled(index == 0)
-                        Button("Move Down", systemImage: "arrow.down") {
-                            moveHandler?(IndexSet(integer: index), index + 2)
+                        if index < rows.count - 1 {
+                            Button("Move Down") {
+                                moveHandler?(IndexSet(integer: index), index + 2)
+                            }
                         }
-                        .disabled(index == rows.count - 1)
-                        Button("Delete Row", systemImage: "trash", role: .destructive) {
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button("Delete Row", role: .destructive) {
                             deleteHandler?(IndexSet(integer: index))
                         }
-                    } label: {
-                        Label("Row \(index + 1) actions", systemImage: "ellipsis.circle")
-                            .labelStyle(.iconOnly)
-                            .frame(minWidth: 44, minHeight: 44)
                     }
-                    .buttonStyle(.borderless)
-                }
+            } else {
+                rowLink(at: index)
             }
         }
-        .onDelete(perform: deleteHandler)
-        .onMove(perform: moveHandler)
         if editor.isEditing {
-            Button("Add Row", systemImage: "plus") {
+            Button {
                 editor.setRows(rows + [[]], kind: kind, for: hostID)
+            } label: {
+                Label("Add Row", systemImage: "plus")
             }
             .disabled(rows.count >= AgentRowLayout.maximumRows)
         }
@@ -438,6 +470,33 @@ private struct AgentLayoutRowsContent: View {
             var next = rows
             next.move(fromOffsets: offsets, toOffset: destination)
             editor.setRows(next, kind: kind, for: hostID)
+        }
+    }
+
+    private func rowPreview(_ row: AgentRow) -> String {
+        if row.isEmpty { return "No fields yet" }
+        return row.map(\.token.rawValue).joined(separator: " · ")
+    }
+
+    private func rowMetadata(_ row: AgentRow) -> String {
+        let count = row.count
+        return count == 1 ? "1 field" : "\(count) fields"
+    }
+
+    private func rowLink(at index: Int) -> some View {
+        NavigationLink {
+            AgentLayoutTokensView(editor: editor, hostID: hostID, kind: kind, rowIndex: index)
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Row \(index + 1)")
+                Text(verbatim: rowPreview(rows[index]))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                Text(verbatim: rowMetadata(rows[index]))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
         }
     }
 }
