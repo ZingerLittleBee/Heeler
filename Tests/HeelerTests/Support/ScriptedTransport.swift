@@ -112,6 +112,7 @@ final actor ScriptedTransport: Transport {
     /// so layout precedence can fall through.
     private(set) var sidebarLayout: Data?
     private(set) var sidebarLayoutReads = 0
+    private var nextSidebarLayoutGate: ScriptedTransportCallGate?
     private var sidebarLayoutReadFailure: (any Error)?
 
     init(
@@ -643,10 +644,19 @@ final actor ScriptedTransport: Transport {
         replacedNotificationConfigs.append(contents)
     }
 
+    func gateNextSidebarLayoutRead(_ gate: ScriptedTransportCallGate) {
+        nextSidebarLayoutGate = gate
+    }
+
     func readSidebarLayout() async throws -> Data? {
         sidebarLayoutReads += 1
-        if let failure = sidebarLayoutReadFailure { throw failure }
-        return sidebarLayout
+        let data = sidebarLayout
+        let failure = sidebarLayoutReadFailure
+        let gate = nextSidebarLayoutGate
+        nextSidebarLayoutGate = nil
+        if let gate { await gate.waitUntilOpen() }
+        if let failure { throw failure }
+        return data
     }
 
     var isConnected: Bool {

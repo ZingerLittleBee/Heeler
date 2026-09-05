@@ -41,7 +41,7 @@ struct TerminalAgentSwitcherTests {
         _ agent: ConsoleAgent, status: AgentStatus? = nil, isPinned: Bool = false
     ) -> TerminalAgentSwitcherItem {
         TerminalAgentSwitcherItem(
-            id: agent.id, title: agent.switcherLabel,
+            id: agent.id, title: AgentCardPresentation(agent: agent).switcherTitle,
             status: status ?? agent.agent.status, isPinned: isPinned)
     }
 
@@ -52,14 +52,15 @@ struct TerminalAgentSwitcherTests {
         }
     }
 
-    /// The project is what tells a console full of `claude` apart, so it
-    /// leads; the agent's own name is the fallback when nothing named the
-    /// workspace.
-    @Test func chipLabelsPreferTheProject() {
-        #expect(Self.makeAgent(pane: "p1", workspace: "proj", repo: "repo").switcherLabel == "proj")
-        #expect(Self.makeAgent(pane: "p2", repo: "repo").switcherLabel == "repo")
-        #expect(Self.makeAgent(pane: "p3", name: "reviewer").switcherLabel == "reviewer")
-        #expect(Self.makeAgent(pane: "p4").switcherLabel == "claude")
+    @Test func chipLabelsUseTheSharedFirstRowAndBoundLongText() {
+        let project = Self.makeAgent(pane: "p1", workspace: "proj", repo: "repo")
+        #expect(AgentCardPresentation(agent: project).switcherTitle == "proj")
+        let fallback = Self.makeAgent(pane: "p2", repo: "repo", name: "reviewer")
+        #expect(AgentCardPresentation(agent: fallback).switcherTitle == "reviewer")
+        let long = Self.makeAgent(pane: "p3", workspace: String(repeating: "👨‍👩‍👧‍👦", count: 70))
+        let title = AgentCardPresentation(agent: long).switcherTitle
+        #expect(title.count == 48 && title.hasSuffix("…"))
+        #expect(AgentCardPresentation(agent: project, layout: .init(rows: [])).switcherTitle == "claude")
     }
 
     @MainActor
@@ -189,6 +190,11 @@ struct TerminalAgentSwitcherTests {
         let pinned = TerminalAgentSwitcherItem(agent: agent, pins: pins)
         #expect(pinned.id == agent.id)
         #expect(pinned.isPinned)
+        let layout = AgentRowLayout(rows: [[.init(.agent)], [.init(.workspace)]])
+        let custom = TerminalAgentSwitcherItem(agent: agent, pins: pins, layout: layout)
+        #expect(custom.title == AgentCardPresentation(agent: agent, layout: layout).switcherTitle)
+        #expect(custom.title == "claude" && custom.isPinned)
+        #expect(custom.status == .blocked)
     }
 
     /// Long-press is Pin / Unpin, matching the Console row, so the user can

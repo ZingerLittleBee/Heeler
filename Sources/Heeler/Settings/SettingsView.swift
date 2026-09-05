@@ -27,7 +27,19 @@ enum SettingsAboutDestination: String, Equatable, CaseIterable, Sendable {
     }
 }
 
-/// The settings sheet root: a shallow menu into the two settings domains.
+/// Uses the same identity/metatype/destination convention as About routes.
+enum SettingsAgentListDestination: String, Sendable {
+    case fields = "settings.agentList.fields"
+
+    var destinationTypeName: String { String(reflecting: AgentListFieldsSettingsView.self) }
+
+    @MainActor
+    func destinationView(console: ConsoleStore, hosts: [Host]) -> AgentListFieldsSettingsView {
+        AgentListFieldsSettingsView(console: console, hosts: hosts)
+    }
+}
+
+/// The settings sheet root: a shallow menu into Agent fields, appearance and notifications.
 /// Keeping it a menu means the per-Host notification rows can grow without
 /// pushing the appearance controls out of reach, and vice versa.
 struct SettingsView: View {
@@ -37,6 +49,10 @@ struct SettingsView: View {
     let notificationPreferences: NotificationPreferencesStore
     let relaySettings: NotificationRelaySettings
     let liveActivities: HostLiveActivityCoordinator
+    let console: ConsoleStore
+    let hosts: [Host]
+
+    static let agentListDestination = SettingsAgentListDestination.fields
     @Environment(\.dismiss) private var dismiss
 
     static let repositoryURL = URL(string: "https://github.com/ZingerLittleBee/Heeler")
@@ -96,6 +112,12 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
+                    NavigationLink {
+                        Self.agentListDestination.destinationView(console: console, hosts: hosts)
+                    } label: {
+                        Label("Agent List Fields", systemImage: "list.bullet.rectangle")
+                    }
+                    .accessibilityIdentifier(Self.agentListDestination.rawValue)
                     NavigationLink {
                         NotificationSettingsView(
                             pushRegistration: pushRegistration,

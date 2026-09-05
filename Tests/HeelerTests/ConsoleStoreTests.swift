@@ -181,7 +181,12 @@ struct ConsoleStoreTests {
                 .fixture(paneID: "multi:p", workspaceID: "multi"),
                 .fixture(paneID: "named:p", workspaceID: "named"),
                 .fixture(paneID: "missing:p", workspaceID: "missing"),
-            ], layouts: [], panes: [], protocolVersion: 20,
+            ], layouts: [], panes: [
+                PaneInfo(agentStatus: .idle, focused: false, paneID: "multi:p", revision: 1,
+                         tabID: "multi:t1", terminalID: "term", workspaceID: "multi", label: "Manual label"),
+                PaneInfo(agentStatus: .working, focused: false, paneID: "single:p", revision: 1,
+                         tabID: "single:t1", terminalID: "term", workspaceID: "single", label: "Fallback"),
+            ], protocolVersion: 20,
             tabs: [single, single, tab("multi", label: "1", number: 8),
                    tab("named", label: "2", number: 2),
                    tab("multi", label: "Shell", number: 9, suffix: "shell")],
@@ -218,6 +223,9 @@ struct ConsoleStoreTests {
         let multi = try #require(projection.agentsByPane["multi:p"])
         #expect(multi.workspaceTabCount == 2 && multi.showsTabLabel) // Count the shell-only tab too.
         #expect(multi.snapshotOrder == 1)
+        let paneLayout = AgentRowLayout(rows: [[.init(.pane)]])
+        #expect(AgentRowRenderer.render(layout: paneLayout, agent: multi).first?.first?.text == "Manual label")
+        #expect(AgentRowRenderer.render(layout: paneLayout, agent: row).first?.first?.text == "Pane title")
         #expect(projection.agentsByPane["named:p"]?.showsTabLabel == true)
         #expect(projection.agentsByPane["missing:p"]?.tabLabel == nil)
         #expect(projection.agentsByPane["missing:p"]?.showsTabLabel == false)

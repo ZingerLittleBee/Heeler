@@ -22,6 +22,7 @@ final class HostConsoleProjection {
     private(set) var latency: Duration?
     private(set) var syncError: String?
     private(set) var transportGeneration: UInt64 = 0
+    private(set) var sidebarRevision: UInt64 = 0
     /// Whether the Host's current connection generation has produced a
     /// snapshot. `.connected` arrives before that request completes, so an
     /// empty projection in this window means "unknown", not "no Agents".
@@ -625,6 +626,8 @@ final class HostConsoleProjection {
         preservingStatusChangesAfter snapshotStartRevision: UInt64,
         requestGeneration: UInt64
     ) {
+        sidebarRevision &+= 1
+        let paneByID = Dictionary(snapshot.panes.map { ($0.paneID, $0) }) { first, _ in first }
         let workspaceByID = Dictionary(
             snapshot.workspaces.map { ($0.workspaceID, $0) }) { first, _ in first }
         let tabByID = Dictionary(
@@ -653,7 +656,10 @@ final class HostConsoleProjection {
                 tabLabel: tab?.label,
                 tabPosition: tab.flatMap { tabPositions[$0.tabID] },
                 workspaceTabCount: max(workspace?.tabCount ?? 0, tabCounts[agent.workspaceID] ?? 0),
-                snapshotOrder: snapshotOrder)
+                snapshotOrder: snapshotOrder,
+                paneLabel: paneByID[agent.paneID].flatMap {
+                    $0.tabID == agent.tabID && $0.workspaceID == agent.workspaceID ? $0.label : nil
+                })
         }
         for (paneID, change) in latestStatusChanges
         where change.revision > snapshotStartRevision {
@@ -721,6 +727,7 @@ final class HostConsoleProjection {
         else { return nil }
         let status = AgentStatus(rawValue: rawStatus)
         statusChangeRevision &+= 1
+        sidebarRevision &+= 1
         latestStatusChanges[paneID] = (statusChangeRevision, status)
         guard var row = agentsByPane[paneID] else { return status }
         row.agent.status = status
