@@ -108,6 +108,11 @@ final actor ScriptedTransport: Transport {
     /// Every `notify.json` replace received, in order.
     private(set) var replacedNotificationConfigs: [Data] = []
     private(set) var notificationConfigReads = 0
+    /// The Host's current `sidebar.json` bytes; nil scripts "no snapshot yet"
+    /// so layout precedence can fall through.
+    private(set) var sidebarLayout: Data?
+    private(set) var sidebarLayoutReads = 0
+    private var sidebarLayoutReadFailure: (any Error)?
 
     init(
         snapshot: SessionSnapshot = .fixture(),
@@ -310,6 +315,16 @@ final actor ScriptedTransport: Transport {
     /// Scripts the `notify.json` config the Host currently holds.
     func setNotificationConfig(_ data: Data?) {
         notificationConfig = data
+    }
+
+    /// Scripts the `sidebar.json` snapshot the Host currently holds.
+    func setSidebarLayout(_ data: Data?) {
+        sidebarLayout = data
+    }
+
+    /// Makes every subsequent sidebar layout read throw `failure`.
+    func setSidebarLayoutReadFailure(_ failure: (any Error)?) {
+        sidebarLayoutReadFailure = failure
     }
 
     /// Makes the `ordinal`-th `ping` on this transport throw `failure`. A real
@@ -626,6 +641,12 @@ final actor ScriptedTransport: Transport {
         if let failure = notificationRegistrationWriteFailure { throw failure }
         notificationConfig = contents
         replacedNotificationConfigs.append(contents)
+    }
+
+    func readSidebarLayout() async throws -> Data? {
+        sidebarLayoutReads += 1
+        if let failure = sidebarLayoutReadFailure { throw failure }
+        return sidebarLayout
     }
 
     var isConnected: Bool {
