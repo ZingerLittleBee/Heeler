@@ -18,6 +18,10 @@ alerts; the activity hook pushes the Host's eligible-agent snapshot to any
 device that has registered a Live Activity token. See
 [Notify hook](#notify-hook) and [Activity hook](#activity-hook).
 
+Starting with plugin 0.4.0, a startup hook also exports the Host's herdr
+sidebar layout for Heeler. Both event hooks refresh it before their notification
+gates. See [Sidebar layout snapshot (v1)](#sidebar-layout-snapshot-v1).
+
 ## Requirements
 
 - Node.js >= 20 on `PATH`
@@ -300,6 +304,119 @@ revokes that device.
 
 Readers ignore unknown fields (additive v1 metadata); breaking changes bump
 `v`, honored by plugin and app together.
+
+## Sidebar layout snapshot (v1)
+
+`src/sidebar-hook.js` runs through `[[startup]]` at server start and live
+handoff. It needs only `HERDR_PLUGIN_CONFIG_DIR`; startup has no
+`HERDR_PLUGIN_EVENT_JSON`. Startup hooks are supported by herdr 0.7.5, so the
+minimum herdr version stays 0.7.5.
+
+The hook reads the config using the server environment inherited by plugin
+processes, in this order:
+
+1. `HERDR_CONFIG_PATH`, when set, is the exact source path.
+2. Otherwise, `XDG_CONFIG_HOME/herdr/config.toml`, when `XDG_CONFIG_HOME` is set.
+3. Otherwise, `HOME/.config/herdr/config.toml` (the system temporary directory
+   replaces `HOME/.config` when `HOME` is unset).
+
+Named sessions share this source; they do not add a session directory to its
+path. The plugin parses TOML with `smol-toml`, validates the sidebar agent
+layout and sort, then writes **`HERDR_PLUGIN_CONFIG_DIR/sidebar.json`**, next
+to `notify.json`. It never writes this snapshot to `HERDR_PLUGIN_STATE_DIR`.
+Writes use an exclusive mode **0600** temporary file followed by atomic rename;
+a newly created plugin config directory has mode **0700**.
+
+```json
+{
+  "v": 1,
+  "generated_at": 1757040000,
+  "source": {
+    "path": "/home/u/.config/herdr/config.toml",
+    "found": true,
+    "mtime_ms": 1757039000123
+  },
+  "agent_panel_sort": "priority",
+  "sidebar": {"agents": {
+    "row_gap": 0,
+    "rows": [
+      [{"token":"state_icon"},{"token":"terminal_title_stripped","fg":"#6c7086","dim":false}],
+      [{"token":"$pin_icon"},{"token":"workspace","dim":true},{"token":"agent"}]
+    ],
+    "rows_by_agent": {"claude":[[{"token":"terminal_title_stripped"}]]}
+  }},
+  "diagnostics": []
+}
+```
+
+| Field | Type | Meaning |
+| ----- | ---- | ------- |
+| `v` | integer | Snapshot version, currently `1`. Swift treats any other version as absent. |
+| `generated_at` | integer | Unix seconds when the snapshot was written. Unchanged sources retain their previous snapshot and timestamp. |
+| `source.path` | string | Resolved herdr config path. |
+| `source.found` | boolean | Whether the source was found. Missing source is `false`; a source that can be statted but cannot be read is `true` with a diagnostic. |
+| `source.mtime_ms` | number or null | Source `mtimeMs`, including fractional milliseconds; `null` when the source cannot be statted. |
+| `agent_panel_sort` | string | `spaces` (default) or `priority`; the input alias `workspaces` normalizes to `spaces`. Independent of Heeler's flat / by-Host grouping. |
+| `sidebar.agents.row_gap` | integer | `0..65535`, default `0`. herdr's blank terminal rows between Agent entries, not between lines of one entry. |
+| `sidebar.agents.rows` | token[][] | Whole default layout, at most 16 rows and 16 tokens per row. Empty layouts and rows are valid. |
+| `sidebar.agents.rows_by_agent` | object | Canonical Agent id to whole replacement rows; default `{}`. Unlisted Agents use `rows`. |
+| `diagnostics` | string[] | Empty on success or a missing source. Otherwise `parse_error`, `invalid_token`, `invalid_schema`, or `read_error`. Raw config values and parser excerpts are never included. |
+
+Every token is an object, including TOML string tokens. Builtins are
+`state_icon`, `state_text`, `workspace`, `tab`, `pane`, `agent`,
+`terminal_title`, and `terminal_title_stripped`. Custom names must match
+`^\$[A-Za-z0-9_-]{1,32}$` and retain their `$` in the snapshot. A styled TOML
+table accepts only `token`, `fg`, `bold`, and `dim`: `fg` must be `#RGB` or
+`#RRGGBB`; `bold` and `dim` must be booleans. Optional style fields appear
+only when explicitly provided, preserving `false` and the original hex case.
+Other config fields are ignored. This is validation of the exported subset,
+not a substitute for `herdr config check` for unrelated herdr settings.
+
+`rows_by_agent` accepts the canonical ids verified against herdr v0.8.2:
+`pi`, `claude`, `codex`, `gemini`, `cursor`, `devin`, `agy`, `cline`, `omp`,
+`mastracode`, `opencode`, `copilot`, `kimi`, `kiro`, `droid`, `amp`, `grok`,
+`hermes`, `kilo`, `qodercli`, `qwen`, and `maki`. Aliases, case variations,
+and unknown ids are invalid. A future herdr release adding canonical ids
+requires updating this validation list and the shared vectors.
+
+Missing files or fields use herdr defaults: sort `spaces`, `row_gap: 0`,
+`rows: [[{"token":"state_icon"},{"token":"workspace"},{"token":"tab"}],
+[{"token":"agent"}]]`, and `rows_by_agent: {}`. TOML parse errors, invalid
+tokens, or invalid schema revert the **entire layout and sort** to those
+defaults with a diagnostic. Read errors also produce defaults with a
+diagnostic and are retried at the next invocation.
+
+Both `notify-hook.js` and `activity-hook.js` refresh at the beginning of
+`main()`, before debounce, dedupe, or no-device exits. An unchanged source
+path, existence, and `mtimeMs` reuses the snapshot without reparsing or
+rewriting. A missing/corrupt snapshot is rebuilt. Changes that preserve the
+source mtime are not detected. Snapshot write failures are logged but do not
+prevent the event hooks from delivering notifications.
+
+There is no watcher and config reload does not run startup hooks. A config
+edit with no Agent Status transition is picked up at the next transition or
+server start. The snapshot reflects the file on disk, not any live TUI
+`agent.view.set` sort override. Heeler never installs or updates this plugin;
+older installations have no `sidebar.json`, which the app treats as nil
+without a version gate.
+
+Swift readers ignore unknown fields and drop individual unknown token names.
+The app resolves whole layouts in this order: per-Host user layout, global
+user layout, plugin snapshot, Heeler default. Rows are never merged across
+sources. Its renderer skips `state_icon` and `state_text` because the status
+column already shows Agent Status; `$name` resolves as plain text from
+`AgentInfo.tokens["name"]`. Heeler's Pin is independent. Styles are retained
+in the Swift model; rendering may ignore them (color is ignored by default).
+
+### Shared test vectors
+
+`test-vectors/sidebar-layout-v1.json` is shared by the Node parser tests and
+the Swift snapshot decoder tests, and registered as a `HeelerTests` resource.
+Its `valid` and `invalid` arrays contain `name`, `toml`, and a full expected
+`snapshot`; invalid entries also contain the expected `error` diagnostic.
+Node asserts normalized layout equality and whole-layout fallback. Swift
+consumes the structured snapshots to assert decoded layout, defaults, and
+diagnostics; it does not parse TOML. Change the contract and vectors together.
 
 ## Notify hook
 

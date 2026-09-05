@@ -27,6 +27,7 @@ import {
   shortHostName,
 } from "./activity-state.js";
 import { readNotificationConfig } from "./notification-config.js";
+import { refreshSidebarSnapshotForEvent } from "./sidebar-config.js";
 import { optionalText } from "./display-text.js";
 
 const SEND_ATTEMPTS = 3;
@@ -371,9 +372,10 @@ async function deliver(config, device, plaintextObject, request) {
 }
 
 async function main() {
+  const configDir = requireEnv("HERDR_PLUGIN_CONFIG_DIR");
+  refreshSidebarSnapshotForEvent(configDir);
   const eventJson = requireEnv("HERDR_PLUGIN_EVENT_JSON");
   const stateDir = requireEnv("HERDR_PLUGIN_STATE_DIR");
-  const configDir = requireEnv("HERDR_PLUGIN_CONFIG_DIR");
   const binPath = requireEnv("HERDR_BIN_PATH");
 
   const event = parseStatusEvent(eventJson);
