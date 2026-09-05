@@ -199,6 +199,9 @@ targets:
       # Shared Live Activity details envelope vectors, same arrangement.
       - path: plugin/test-vectors/live-activity-content-v1.json
         buildPhase: resources
+      # Shared sidebar layout snapshot vectors, consumed by Node and Swift.
+      - path: plugin/test-vectors/sidebar-layout-v1.json
+        buildPhase: resources
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
