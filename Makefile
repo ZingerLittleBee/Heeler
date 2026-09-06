@@ -9,12 +9,16 @@ ARCHIVE := build/Heeler.xcarchive
 DERIVED := build/DerivedData
 APP_ID  := dev.bybee.heeler
 SIM     ?= iPhone 17
+SIM_DESTINATION ?= platform=iOS Simulator,name=$(SIM)
+SIMULATOR_UDID ?=
+TEST_FLAGS ?=
+BUILD_FLAGS ?=
 IOS_WATCH_DEBOUNCE ?= 1s
 
 # First physical device paired with devicectl; override with `make install DEVICE=<uuid>`.
 DEVICE ?= $(shell xcrun devicectl list devices 2>/dev/null | awk '/physical[a-z]* *$$/ { for (i = 1; i <= NF; i++) if ($$i ~ /^[0-9A-Fa-f-]{36}$$/) { print $$i; exit } }')
 
-.PHONY: help generate build test install watch-ios-device sim archive upload testflight bump publish clean check-device ssh-artifacts verify-ssh-artifacts
+.PHONY: help generate resolve build test test-app test-ci-app install watch-ios-device sim build-sim sim-id archive upload testflight bump publish clean check-device ssh-artifacts verify-ssh-artifacts
 
 help: ## Show available targets
 	@awk -F':.*## ' '/^[a-z-]+:.*## / { printf "  make %-20s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -28,15 +32,26 @@ verify-ssh-artifacts: ## Verify HeelerSSH artifact hashes, slices, and policy
 generate: ## Regenerate the Xcode project from project.yml (XcodeGen)
 	xcodegen generate
 
+resolve: generate ## Resolve pinned Swift packages into .ci/source-packages
+	xcodebuild -resolvePackageDependencies -project $(PROJECT) -scheme $(SCHEME) \
+		-clonedSourcePackagesDirPath .ci/source-packages
+
 build: generate ## Build Debug for a physical device without installing
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \
 		-destination 'generic/platform=iOS' -derivedDataPath $(DERIVED) \
 		-allowProvisioningUpdates build
 
-test: generate ## Run the app and HeelerSSH unit test suites on a simulator
+test-app: generate ## Run the app test suite (SIM_DESTINATION, TEST_FLAGS)
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) \
-		-destination 'platform=iOS Simulator,name=iPhone 17' test
-	scripts/run-heelerssh-package-tests.sh 'platform=iOS Simulator,name=iPhone 17'
+		-destination '$(SIM_DESTINATION)' -derivedDataPath $(DERIVED) \
+		$(TEST_FLAGS) test
+
+test: test-app ## Run the app and HeelerSSH unit test suites on a simulator
+	scripts/run-heelerssh-package-tests.sh '$(SIM_DESTINATION)'
+
+test-ci-app: ## Run the committed-project CI app lane (no generate)
+	HEELER_CI_LANE=app HEELER_CI_SIMULATOR_UDID='$(or $(SIMULATOR_UDID),$(HEELER_CI_SIMULATOR_UDID))' \
+		scripts/run-ci-ios-tests.sh
 
 check-device:
 	@test -n "$(DEVICE)" || { echo "No physical device found; pass DEVICE=<devicectl uuid>"; exit 1; }
@@ -66,6 +81,23 @@ sim: generate ## Build Debug and run it on the simulator (override with SIM=<nam
 	open -a Simulator
 	xcrun simctl install booted $(DERIVED)/Build/Products/Debug-iphonesimulator/Heeler.app
 	xcrun simctl launch --terminate-running-process booted $(APP_ID)
+
+build-sim: generate ## Build Debug for SIM_DESTINATION using .ci/source-packages
+	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \
+		-destination '$(SIM_DESTINATION)' -derivedDataPath $(DERIVED) \
+		-clonedSourcePackagesDirPath .ci/source-packages $(BUILD_FLAGS) build
+
+sim-id: build-sim ## Install and launch the app on SIMULATOR_UDID only
+	@test -n "$(SIMULATOR_UDID)" || { echo "SIMULATOR_UDID is required; pass SIMULATOR_UDID=<uuid>"; exit 1; }
+	@case '$(SIM_DESTINATION)' in \
+	  *booted*) echo "sim-id refuses a generic booted destination"; exit 1 ;; \
+	  *id=$(SIMULATOR_UDID)*) ;; \
+	  *) echo "SIM_DESTINATION must include id=$(SIMULATOR_UDID) (got '$(SIM_DESTINATION)')"; exit 1 ;; \
+	esac
+	xcrun simctl boot '$(SIMULATOR_UDID)' 2>/dev/null || true
+	xcrun simctl bootstatus '$(SIMULATOR_UDID)' -b
+	xcrun simctl install '$(SIMULATOR_UDID)' $(DERIVED)/Build/Products/Debug-iphonesimulator/Heeler.app
+	xcrun simctl launch --terminate-running-process '$(SIMULATOR_UDID)' $(APP_ID)
 
 archive: generate ## Archive a Release build for distribution
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release \
