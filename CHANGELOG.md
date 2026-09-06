@@ -11,10 +11,9 @@ Entries reference the issue that motivated them.
 
 - Agent cards and the keyboard switcher follow herdr's sidebar fields and
   Agent order, including terminal titles and plugin fields. Settings now offers
-  Agent List Fields: a read-only per-Host view with rows directly under each
-  Host, a Console preview, native reorder handles and two-step delete, a Field
-  Editor per row, per-Host Agent overrides, and one checkmark that saves every
-  Host. (#277, #281)
+  Agent List Fields: a Host list that opens a Host detail with a Console
+  preview, native reorder handles and two-step delete, a Field Editor per row,
+  per-Host Agent overrides, and a checkmark that saves that Host. (#277, #281)
 
 ### Fixed
 
@@ -23,6 +22,9 @@ Entries reference the issue that motivated them.
 
 - Agent List Fields keeps each Host on one card, with a compact Console
   preview, wrapping field chips, and Sync inside the Host. (#281)
+
+- Agent List Fields no longer shows Edit on the Host list. Open a Host to
+  edit its rows. (#281)
 
 ## [0.1.5] - 2026-09-04
 

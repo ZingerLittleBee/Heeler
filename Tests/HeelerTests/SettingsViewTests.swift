@@ -98,17 +98,23 @@ struct AgentListFieldsSettingsTests {
         #expect(
             AgentListFieldsCopy.noOverrides
                 == "No overrides. Every Agent uses the rows above.")
+        #expect(!AgentListFieldsCopy.listIntro.localizedCaseInsensitiveContains("edit"))
+        #expect(AgentListFieldsCopy.listIntro.contains("Open a Host"))
+        #expect(AgentListFieldsCopy.detailIntro == "Tap Edit to change this Host's rows.")
+        #expect(AgentListFieldsCopy.editingIntro.contains("this Host's draft"))
     }
 
     @Test func hostHeaderLabelOmitsUnsavedLanguage() {
         let label = AgentListFieldsHostHeader.accessibilityLabel(
-            name: "Studio Mac", caption: "Following herdr plugin", isExpanded: false)
-        #expect(label == "Studio Mac, Following herdr plugin, collapsed")
+            name: "Studio Mac", caption: "Following herdr plugin")
+        #expect(label == "Studio Mac, Following herdr plugin")
         #expect(!label.localizedCaseInsensitiveContains("unsaved"))
+        #expect(!label.localizedCaseInsensitiveContains("collapsed"))
+        #expect(!label.localizedCaseInsensitiveContains("expanded"))
         #expect(
             AgentListFieldsHostHeader.accessibilityLabel(
-                name: "Build Server", caption: "Your fields", isExpanded: true)
-                == "Build Server, Your fields, expanded")
+                name: "Build Server", caption: "Your fields")
+                == "Build Server, Your fields")
     }
 
     @Test func otherValidationTrimsAndRejectsEmptyAndCaseInsensitiveDuplicates() {
