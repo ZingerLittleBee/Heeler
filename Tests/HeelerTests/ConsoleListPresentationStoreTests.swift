@@ -172,86 +172,50 @@ struct ConsoleListPresentationStoreTests {
 
 @Suite("Agent card presentation")
 struct AgentCardPresentationTests {
-    @Test func everyAgentKindMatchesHerdrNameThenTypeAndDirectory() {
-        let claude = presentation(
-            kind: "claude",
-            title: "Profile photo ethnicity scoring review",
-            cwd: "/Users/developer/swype",
-            workspaceLabel: "swype")
-        let codex = presentation(
-            kind: "codex",
-            title: "Developer",
-            cwd: "/Users/developer/Developer",
-            workspaceLabel: "cw-userscript")
-
-        #expect(claude.headline == "swype")
-        #expect(claude.agentType == "Claude")
-        #expect(claude.context == "~/swype")
-        #expect(codex.headline == "cw-userscript")
-        #expect(codex.agentType == "Codex")
-        #expect(codex.context == "~/Developer")
+    @Test func defaultsShowWorkspaceThenAgentWithoutTheOldDirectoryRow() {
+        let card = AgentCardPresentation(agent: agent(workspace: "Project"))
+        #expect(card.headline == "Project")
+        #expect(card.additionalRows == ["reviewer"])
     }
 
-    @Test func theAgentNameLeadsWhenNoWorkspaceContextExists() {
-        let presentation = presentation(
-            kind: "claude",
-            name: "reviewer",
-            title: "A terminal-generated title",
-            cwd: "/work/project",
-            workspaceLabel: nil)
-
-        #expect(presentation.headline == "reviewer")
-        #expect(presentation.context == "/work/project")
-        #expect(presentation.agentType == "Claude")
+    @Test func configuredTitlesAndPluginTextStayLiteralAndRetainStyles() throws {
+        let layout = AgentRowLayout(rows: [
+            [.init(.stateIcon), .init(.terminalTitleStripped, fg: HexColor("#abc"), bold: true)],
+            [.init(.custom("note")), .init(.agent)],
+        ])
+        let card = AgentCardPresentation(agent: agent(), layout: layout)
+        #expect(card.headline == "Task title")
+        #expect(card.additionalRows == ["**literal** [link](url) · reviewer"])
+        let first = try #require(card.rows.first?.first)
+        #expect(first.fg == HexColor("#abc") && first.bold == true)
     }
 
-    @Test func anUnnamedAgentDoesNotRepeatItsKind() {
-        let presentation = presentation(
-            kind: "codex",
-            title: "A terminal-generated title",
-            cwd: "/work/project",
-            workspaceLabel: nil)
-
-        #expect(presentation.headline == "codex")
-        #expect(presentation.agentType == nil)
+    @Test func kindOverridesReplaceAllRowsAndSkipEmptyStatusRows() {
+        let layout = AgentRowLayout(rows: [[.init(.workspace)]], rowsByAgent: [
+            "claude": [[.init(.stateText)], [.init(.terminalTitle)], [.init(.custom("missing"))]],
+        ])
+        let card = AgentCardPresentation(agent: agent(), layout: layout)
+        #expect(card.headline == "◑ Task title")
+        #expect(card.additionalRows.isEmpty)
     }
 
-    @Test func onlyStandardHomesForTheSSHAccountUseTilde() {
-        #expect(presentation(
-            kind: "codex", title: "", cwd: "/home/developer/project",
-            workspaceLabel: "project").context == "~/project")
-        #expect(presentation(
-            kind: "codex", title: "", cwd: "/Users/someone-else/project",
-            workspaceLabel: "project").context == "/Users/someone-else/project")
-        #expect(presentation(
-            kind: "codex", title: "", cwd: "/Users/developer-other/project",
-            workspaceLabel: "project").context == "/Users/developer-other/project")
+    @Test func emptyLayoutsAndMissingValuesKeepAnIdentifiableAgent() {
+        for layout in [AgentRowLayout(rows: []), AgentRowLayout(rows: [[], [.init(.custom("absent"))]])] {
+            let card = AgentCardPresentation(agent: agent(), layout: layout)
+            #expect(card.headline == "reviewer")
+            #expect(card.additionalRows.isEmpty)
+        }
+        #expect(AgentCardPresentation(agent: agent()).headline == "reviewer")
     }
 
-    private func presentation(
-        kind: String,
-        name: String? = nil,
-        title: String,
-        cwd: String,
-        workspaceLabel: String?
-    ) -> AgentCardPresentation {
-        AgentCardPresentation(
-            agent: ConsoleAgent(
-                hostID: UUID(),
-                hostName: "devbox",
-                agent: Agent(
-                    terminalID: "terminal",
-                    kind: kind,
-                    title: title,
-                    status: .idle,
-                    workspaceID: "workspace",
-                    tabID: "tab",
-                    paneID: "pane",
-                    cwd: cwd,
-                    revision: 1,
-                    name: name),
-                workspaceLabel: workspaceLabel,
-                repositoryCheckout: nil,
-                hostUsername: "developer"))
+    private func agent(workspace: String? = nil) -> ConsoleAgent {
+        ConsoleAgent(
+            hostID: UUID(), hostName: "devbox",
+            agent: Agent(
+                terminalID: "terminal", kind: "claude", title: "Old title", status: .blocked,
+                workspaceID: "w", tabID: "t", paneID: "p", cwd: "/work/project", revision: 1,
+                name: "reviewer", terminalTitle: "◑ Task title", terminalTitleStripped: "Task title",
+                tokens: ["note": "**literal** [link](url)"]),
+            workspaceLabel: workspace, repositoryCheckout: nil)
     }
 }

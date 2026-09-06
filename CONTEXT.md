@@ -84,8 +84,18 @@ survives. Snapshot worktree metadata also describes the main checkout; only
 _Avoid_: sandbox, branch copy, checkout folder
 
 **Console**:
-The native dashboard surface: Agents across Hosts as either a flat status-sorted list or a by-Host grouped list with collapsible sections, plus the Agent detail screen.
+The native dashboard surface: Agents across Hosts as either a flat list or a by-Host grouped list with collapsible sections, plus the Agent detail screen. Grouping is independent of Agent ordering and Pin priority.
 _Avoid_: dashboard, home
+
+**Agent Row Layout**:
+The ordered rows of fields that identify an Agent in the Console and its
+switcher. Each Host follows its herdr plugin's fields until the user saves
+that Host's own layout, which may start from a Sync from plugin copy. There
+is no user-facing default layout. A saved layout may also include Heeler-only
+fields herdr does not define: Host name, Agent Status as text, and working
+directory. Agent Status and Heeler Pin remain independent chrome; choosing
+status as a field repeats it in the row.
+_Avoid_: card template, sidebar format
 
 **Pin**:
 A user-chosen Console marker on an Agent's pane slot (`hostID` + `paneID`).

@@ -1,22 +1,22 @@
 import SwiftUI
 import UIKit
 
-/// One Console card (#8): the same workspace label and Agent kind herdr uses,
-/// plus launch directory, Host, and status. Terminal titles, trailing TUI
-/// output, and opaque pane ids are deliberately absent: none identifies the
-/// Agent in herdr's own Agents pane.
+/// The shared Agent Row Layout leads each card; status, Host and Heeler Pin
+/// retain their own columns. Fields retain their emphasis using accessible
+/// semantic colors; plugin colors and weights do not replace app typography.
 struct AgentCardView: View {
     let agent: ConsoleAgent
+    var layout: AgentRowLayout = .heelerDefault
     var isPinned: Bool = false
 
     private var presentation: AgentCardPresentation {
-        AgentCardPresentation(agent: agent)
+        AgentCardPresentation(agent: agent, layout: layout)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
-                Text(presentation.headline)
+                AgentRowText(tokens: presentation.rows.first ?? [])
                     .font(.headline)
                     .lineLimit(1)
                 if isPinned {
@@ -29,70 +29,73 @@ struct AgentCardView: View {
                 Spacer(minLength: 8)
                 AgentStatusBadge(status: agent.agent.status)
             }
-            if let context = presentation.context {
-                Text(context)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            HStack {
-                if let agentType = presentation.agentType {
-                    Text(agentType)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 8)
-                Text(agent.hostName)
+            ForEach(Array(presentation.rows.dropFirst().enumerated()), id: \.offset) { _, row in
+                AgentRowText(tokens: row, isSecondary: true)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .truncationMode(.tail)
             }
+            Text(verbatim: agent.hostName)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(.vertical, 4)
+        // Terminal blank rows become bounded extra card spacing on a phone.
+        .padding(.bottom, CGFloat(min(layout.rowGap, 3)) * 8)
     }
 }
 
-struct AgentCardPresentation: Equatable {
-    let headline: String
-    let context: String?
-    let agentType: String?
+/// Keep per-field emphasis through the final Text instead of flattening the
+/// rendered tokens into a String. Separators retain the row's base emphasis.
+struct AgentRowText: View {
+    let tokens: [RenderedToken]
+    var isSecondary = false
 
-    init(agent: ConsoleAgent) {
-        headline = agent.switcherLabel
-        context = Self.nonEmpty(agent.agent.cwd).map {
-            Self.abbreviatingStandardHome(in: $0, username: agent.hostUsername)
-        }
-
-        let kind = switch SupportedAgentKind(rawValue: agent.agent.kind) {
-        case .some(.claude): "Claude"
-        case let supported?: supported.displayName
-        case nil: agent.agent.kind
-        }
-        agentType = headline.caseInsensitiveCompare(kind) == .orderedSame
-            ? nil
-            : kind
+    var body: some View {
+        Text(attributedText)
     }
 
-    private static func nonEmpty(_ value: String?) -> String? {
-        guard let value, !value.isEmpty else { return nil }
-        return value
+    private var attributedText: AttributedString {
+        var result = AttributedString()
+        for token in tokens {
+            var span = AttributedString(token.text)
+            let color: UIColor = if token.dim == true {
+                isSecondary ? .tertiaryLabel : .secondaryLabel
+            } else {
+                isSecondary ? .secondaryLabel : .label
+            }
+            span.foregroundColor = Color(uiColor: color)
+            result.append(span)
+        }
+        return result
+    }
+}
+
+struct AgentCardPresentation: Equatable, Sendable {
+    let rows: [[RenderedToken]]
+
+    var headline: String { rows.first?.map(\.text).joined() ?? "Agent" }
+    var additionalRows: [String] { rows.dropFirst().map { $0.map(\.text).joined() } }
+
+    init(agent: ConsoleAgent, layout: AgentRowLayout = .heelerDefault) {
+        let rendered = AgentRowRenderer.render(layout: layout, agent: agent)
+        if rendered.isEmpty {
+            let name = agent.agent.displayName
+            rows = [[RenderedToken(
+                token: .agent,
+                text: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Agent" : name,
+                fg: nil, bold: nil, dim: nil)]]
+        } else {
+            rows = rendered
+        }
     }
 
-    /// The snapshot carries an expanded remote path but not `$HOME`. Standard
-    /// macOS/Linux SSH-account homes can still be shortened without guessing
-    /// that an arbitrary path prefix is a home directory.
-    private static func abbreviatingStandardHome(
-        in path: String, username: String?
-    ) -> String {
-        guard let username, !username.isEmpty else { return path }
-        let homes = username == "root"
-            ? ["/root"]
-            : ["/Users/\(username)", "/home/\(username)"]
-        guard let home = homes.first(where: { path == $0 || path.hasPrefix("\($0)/") })
-        else { return path }
-        return path == home ? "~" : "~\(path.dropFirst(home.count))"
+    /// Bound by graphemes, preserving literal plugin text and whole emoji.
+    var switcherTitle: String {
+        let singleLine = headline.components(separatedBy: .newlines).joined(separator: " ")
+        return singleLine.count > 48 ? String(singleLine.prefix(47)) + "…" : singleLine
     }
 }
 

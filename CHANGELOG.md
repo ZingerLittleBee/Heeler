@@ -7,6 +7,30 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- Agent cards and the keyboard switcher follow herdr's sidebar fields and
+  Agent order, including terminal titles and plugin fields. Settings now offers
+  Agent List Fields: a Host list that opens a Host detail with a Console
+  preview, native reorder handles and two-step delete, a Field Editor per row,
+  per-Host Agent overrides, and a checkmark that saves that Host. A row can
+  also include Heeler-only fields: Host name, Agent Status, and working
+  directory. (#277, #281)
+
+### Fixed
+
+- Saving a field's Secondary style now updates its appearance in Agent cards
+  and the Agent List Fields preview. (#281)
+
+- Agent List Fields keeps each Host on one card, with a compact Console
+  preview, wrapping field chips, and Sync inside the Host. (#281)
+
+- Agent List Fields no longer shows Edit on the Host list. Open a Host to
+  edit its rows. (#281)
+
+- The Agent List Fields preview now uses the same Agent card as Console,
+  including the status badge and Host name. (#281)
+
 ## [0.1.5] - 2026-09-04
 
 ### Added

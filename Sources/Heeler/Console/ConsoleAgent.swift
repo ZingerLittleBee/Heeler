@@ -20,6 +20,14 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     /// Workspace label from the session snapshot; nil when the snapshot did
     /// not carry the workspace.
     let workspaceLabel: String?
+    let tabLabel: String?
+    let paneLabel: String?
+    /// One-based position within the snapshot's workspace tabs. herdr's
+    /// automatic label uses position, not TabInfo.number's stable identity.
+    let tabPosition: Int?
+    let workspaceTabCount: Int
+    /// Collection order from session.snapshot.agents for the `spaces` sort.
+    let snapshotOrder: Int?
     /// Snapshot git metadata when the workspace reported any. Presence does
     /// not mean this is removable: the main checkout is reported with
     /// `isLinkedWorktree == false` too.
@@ -37,18 +45,37 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         workspaceLabel: String?,
         repositoryCheckout: RepositoryCheckout?,
         lastOutputSnippet: String? = nil,
-        hostUsername: String? = nil
+        hostUsername: String? = nil,
+        tabLabel: String? = nil,
+        tabPosition: Int? = nil,
+        workspaceTabCount: Int = 0,
+        snapshotOrder: Int? = nil,
+        paneLabel: String? = nil
     ) {
         self.hostID = hostID
         self.hostName = hostName
         self.hostUsername = hostUsername
         self.agent = agent
         self.workspaceLabel = workspaceLabel
+        self.tabLabel = tabLabel
+        self.paneLabel = paneLabel
+        self.tabPosition = tabPosition
+        self.workspaceTabCount = workspaceTabCount
+        self.snapshotOrder = snapshotOrder
         self.repositoryCheckout = repositoryCheckout
         self.lastOutputSnippet = lastOutputSnippet
     }
 
     var repoName: String? { repositoryCheckout?.repoName }
+
+    /// Protocol 20 has no custom-name bit. A manual name equal to the
+    /// automatic position cannot be distinguished from an automatic name.
+    var showsTabLabel: Bool {
+        guard let tabLabel, !tabLabel.isEmpty else { return false }
+        if workspaceTabCount > 1 { return true }
+        guard let tabPosition else { return true }
+        return tabLabel != String(tabPosition)
+    }
 
     var checkoutPath: String? { repositoryCheckout?.checkoutPath }
 
@@ -63,14 +90,6 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         case (nil, let repo?): repo
         case (let label?, let repo?): label == repo ? label : "\(label) · \(repo)"
         }
-    }
-
-    /// The keyboard switcher's chip label. The project leads, as it does on
-    /// the card, but without the card's `label · repo` pairing: a chip has
-    /// room for one word, and a console full of `claude` is told apart by
-    /// where each one is working.
-    var switcherLabel: String {
-        workspaceLabel ?? repoName ?? agent.displayName
     }
 
     /// The directory the skills probe treats as the agent's project root:
@@ -144,13 +163,18 @@ extension AgentStatus {
 }
 
 extension [ConsoleAgent] {
-    /// The Console order: pinned agents first by pin rank (0 = most recently
-    /// pinned), then the unpinned remainder by status bucket and stable
-    /// Host/workspace/pane keys so rows never jitter between equal statuses.
+    /// Pins always lead by recency. Snapshot policy controls each Host's
+    /// remaining Agents; absent snapshots retain the legacy priority order.
+    /// Space order uses stable Host blocks even in the flat presentation.
     func consoleSorted(
+        sortByHost: [Host.ID: AgentPanelSort] = [:],
         pinRank: (ConsoleAgent) -> Int? = { _ in nil }
     ) -> [ConsoleAgent] {
-        sorted { lhs, rhs in
+        // Space order is meaningful only within a Host. If any Host uses it,
+        // compare Host identities before local policy; selecting a comparator
+        // from just one operand would violate transitivity across mixed Hosts.
+        let usesSpaceOrder = contains { sortByHost[$0.hostID] == .spaces }
+        return sorted { lhs, rhs in
             let lhsRank = pinRank(lhs)
             let rhsRank = pinRank(rhs)
             switch (lhsRank, rhsRank) {
@@ -163,12 +187,30 @@ extension [ConsoleAgent] {
             case (nil, nil):
                 break
             }
-            let lhsBucket = lhs.agent.status.consoleSortBucket
-            let rhsBucket = rhs.agent.status.consoleSortBucket
-            if lhsBucket != rhsBucket { return lhsBucket < rhsBucket }
+            if usesSpaceOrder && lhs.hostID != rhs.hostID {
+                if lhs.hostName != rhs.hostName { return lhs.hostName < rhs.hostName }
+                return lhs.hostID.uuidString < rhs.hostID.uuidString
+            }
+            let policy = sortByHost[lhs.hostID] ?? .priority
+            if !usesSpaceOrder || policy == .priority {
+                let lhsBucket = lhs.agent.status.consoleSortBucket
+                let rhsBucket = rhs.agent.status.consoleSortBucket
+                if lhsBucket != rhsBucket { return lhsBucket < rhsBucket }
+            }
             if lhs.hostName != rhs.hostName { return lhs.hostName < rhs.hostName }
             if lhs.hostID != rhs.hostID {
                 return lhs.hostID.uuidString < rhs.hostID.uuidString
+            }
+            if sortByHost[lhs.hostID] != nil {
+                // State sequences are comparable only within their Host.
+                if policy == .priority {
+                    let lhsSequence = lhs.agent.stateChangeSeq ?? 0
+                    let rhsSequence = rhs.agent.stateChangeSeq ?? 0
+                    if lhsSequence != rhsSequence { return lhsSequence > rhsSequence }
+                }
+                let lhsOrder = lhs.snapshotOrder ?? Int.max
+                let rhsOrder = rhs.snapshotOrder ?? Int.max
+                if lhsOrder != rhsOrder { return lhsOrder < rhsOrder }
             }
             let lhsWorkspace = lhs.workspaceLabel ?? ""
             let rhsWorkspace = rhs.workspaceLabel ?? ""

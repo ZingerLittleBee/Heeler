@@ -34,6 +34,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { encryptNotificationEnvelope } from "./notification-envelope.js";
 import { readNotificationConfig } from "./notification-config.js";
+import { refreshSidebarSnapshotForEvent } from "./sidebar-config.js";
 import { forDisplay, optionalText } from "./display-text.js";
 
 // Statuses that notify (ADR 0008: Working/Idle transitions never do), keyed
@@ -271,9 +272,10 @@ function requireEnv(name) {
 }
 
 async function main() {
+  const configDir = requireEnv("HERDR_PLUGIN_CONFIG_DIR");
+  refreshSidebarSnapshotForEvent(configDir);
   const eventJson = requireEnv("HERDR_PLUGIN_EVENT_JSON");
   const stateDir = requireEnv("HERDR_PLUGIN_STATE_DIR");
-  const configDir = requireEnv("HERDR_PLUGIN_CONFIG_DIR");
   const binPath = requireEnv("HERDR_BIN_PATH");
 
   const event = parseStatusEvent(eventJson);

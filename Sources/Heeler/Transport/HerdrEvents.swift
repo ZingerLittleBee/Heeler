@@ -49,12 +49,9 @@ enum GlobalEventKind: String, CaseIterable, Sendable {
     case workspaceMetadataUpdated = "workspace.metadata_updated"
     case workspaceRenamed = "workspace.renamed"
     case workspaceMoved = "workspace.moved"
-    /// Added in protocol 19 (#140). Declared here so it decodes canonically
-    /// rather than passing through as an unmapped wire name, and deliberately
-    /// left out of `HostConsoleProjection.membershipKinds`: reordering changes
-    /// no membership and no label, and the Console projects Agents by pane
-    /// rather than rendering workspace order. `workspace.moved` is the
-    /// precedent — same category, present here, equally unsubscribed.
+    /// Added in protocol 19 (#140). Console sidebar ordering consumes these
+    /// changes through its bounded snapshot refresh, alongside workspace.moved.
+    /// Subscribe only after a current-connection snapshot reports protocol 19+.
     case workspaceReordered = "workspace.reordered"
     case workspaceClosed = "workspace.closed"
     case workspaceFocused = "workspace.focused"
