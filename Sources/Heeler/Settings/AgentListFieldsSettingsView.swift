@@ -369,6 +369,7 @@ struct AgentListFieldsSettingsView: View {
                     Button("Add") { submitOtherOverride(on: host) }
                         .disabled(!canMutate)
                 }
+                .buttonStyle(.borderless)
             }
         } else {
             Menu {
