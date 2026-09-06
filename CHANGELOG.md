@@ -16,6 +16,11 @@ Entries reference the issue that motivated them.
   Editor per row, per-Host Agent overrides, and one checkmark that saves every
   Host. (#277, #281)
 
+### Fixed
+
+- Agent List Fields keeps each Host on one card, with a compact Console
+  preview, wrapping field chips, and Sync inside the Host. (#281)
+
 ## [0.1.5] - 2026-09-04
 
 ### Added
