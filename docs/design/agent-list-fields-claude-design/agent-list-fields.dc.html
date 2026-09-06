@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  body { margin: 0; background: #E8E8EC; }
+  a { color: #007AFF; text-decoration: none; }
+  a:hover { color: #0060DF; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</helmet>
+
+<div style="min-height:100vh;box-sizing:border-box;padding:36px 24px 64px;display:flex;flex-direction:column;align-items:center;gap:24px;font-family:-apple-system,'SF Pro Text',system-ui,sans-serif;color:#1C1C1E">
+
+  <div style="max-width:760px;display:flex;flex-direction:column;gap:6px;text-align:center">
+    <div style="font-size:19px;font-weight:600;letter-spacing:-0.3px">Heeler · Settings · Agent List Fields</div>
+    <div style="font-size:13px;color:#6C6C70;line-height:1.5;text-wrap:pretty">Read-only by default. One draft edit session for the whole screen; only the checkmark saves. Two Hosts, each independent.</div>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:900px">
+    <sc-for list="{{ states }}" as="s" hint-placeholder-count="20">
+      <button onClick="{{ s.go }}" style="appearance:none;cursor:pointer;font-family:inherit;font-size:12px;letter-spacing:-0.1px;padding:6px 11px;border-radius:999px;border:1px solid {{ s.border }};background:{{ s.bg }};color:{{ s.color }}">{{ s.label }}</button>
+    </sc-for>
+  </div>
+
+  <x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" width="393px" height="852px" hint-size="393px,852px">
+
+    <div style="position:relative;box-sizing:border-box;height:852px;padding-top:54px;display:flex;flex-direction:column;overflow:hidden;background:#F2F2F7;font-family:-apple-system,'SF Pro Text',system-ui,sans-serif;color:#000">
+
+      <sc-if value="{{ isMain }}" hint-placeholder-val="{{ true }}">
+        <div style="flex-shrink:0;background:#F2F2F7">
+          <div style="height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 12px 0 8px">
+            <sc-if value="{{ readOnly }}" hint-placeholder-val="{{ true }}">
+              <button aria-label="Back to Settings" style="appearance:none;border:0;background:none;cursor:pointer;display:flex;align-items:center;gap:2px;padding:6px 8px;color:#007AFF;font-family:inherit;font-size:17px">
+                <svg width="11" height="18" viewBox="0 0 11 18" aria-hidden="true"><path d="M9.5 1L2 9l7.5 8" fill="none" stroke="#007AFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                <span>Settings</span>
+              </button>
+              <button onClick="{{ startEdit }}" style="appearance:none;border:0;background:none;cursor:pointer;padding:6px 6px;color:#007AFF;font-family:inherit;font-size:17px">Edit</button>
+            </sc-if>
+            <sc-if value="{{ editing }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ cancel }}" style="appearance:none;border:0;background:none;cursor:pointer;padding:6px 8px;color:#007AFF;font-family:inherit;font-size:17px">Cancel</button>
+              <button onClick="{{ save }}" aria-label="Save changes" style="appearance:none;border:0;cursor:pointer;width:32px;height:32px;border-radius:999px;background:#007AFF;display:flex;align-items:center;justify-content:center">
+                <svg width="17" height="13" viewBox="0 0 17 13" aria-hidden="true"><path d="M1.5 6.8l4.6 4.6L15.5 2" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </button>
+            </sc-if>
+          </div>
+          <div style="padding:2px 16px 10px;display:flex;flex-direction:column;gap:1px">
+            <div style="font-size:33px;font-weight:700;letter-spacing:-0.9px;line-height:1.1">Agent List Fields</div>
+            <sc-if value="{{ showSubtitle }}" hint-placeholder-val="{{ false }}">
+              <div style="font-size:13px;letter-spacing:-0.1px;color:{{ subtitleColor }}">{{ subtitleText }}</div>
+            </sc-if>
+          </div>
+        </div>
+
+        <div style="flex:1;overflow:auto;padding:4px 16px 48px;display:flex;flex-direction:column;gap:18px">
+
+          <sc-if value="{{ hasHosts }}" hint-placeholder-val="{{ true }}">
+            <div style="font-size:13px;line-height:1.45;color:#6C6C70;padding:0 4px;text-wrap:pretty">{{ intro }}</div>
+          </sc-if>
+
+          <sc-for list="{{ hosts }}" as="host" hint-placeholder-count="2">
+            <div style="background:#fff;border-radius:12px;overflow:hidden">
+
+              <button onClick="{{ host.toggle }}" aria-label="{{ host.aria }}" style="appearance:none;border:0;background:none;width:100%;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:10px;padding:13px 16px;text-align:left;font-family:inherit">
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+                  <div style="display:flex;align-items:center;gap:7px">
+                    <span style="font-size:17px;letter-spacing:-0.4px;color:#000">{{ host.name }}</span>
+                    <span aria-label="Unsaved changes on this Host" style="width:7px;height:7px;border-radius:999px;background:{{ host.dot }}"></span>
+                  </div>
+                  <div style="font-size:13px;color:{{ host.captionColor }};letter-spacing:-0.1px">{{ host.caption }}</div>
+                </div>
+                <svg width="13" height="8" viewBox="0 0 13 8" aria-hidden="true" style="transform:rotate({{ host.chevron }}deg);transition:transform .18s ease;color:#8E8E93"><path d="M1 1l5.5 5.5L12 1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </button>
+
+              <sc-if value="{{ host.expanded }}" hint-placeholder-val="{{ false }}">
+                <div style="border-top:0.5px solid #E5E5EA">
+
+                  <div style="padding:12px 16px 14px;background:#FAFAFC;border-bottom:0.5px solid #E5E5EA;display:flex;flex-direction:column;gap:7px">
+                    <div style="font-size:10.5px;font-weight:600;letter-spacing:0.5px;color:#8E8E93">CONSOLE PREVIEW</div>
+                    <div style="display:flex;align-items:flex-start;gap:10px">
+                      <span aria-hidden="true" style="width:8px;height:8px;border-radius:999px;background:#34C759;margin-top:6px;flex-shrink:0"></span>
+                      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+                        <sc-for list="{{ host.preview }}" as="line" hint-placeholder-count="2">
+                          <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:6px">
+                            <sc-for list="{{ line.parts }}" as="part" hint-placeholder-count="2">
+                              <span style="font-size:{{ part.size }}px;font-weight:{{ part.weight }};color:{{ part.color }};font-family:{{ part.family }};letter-spacing:-0.2px">{{ part.text }}</span>
+                            </sc-for>
+                          </div>
+                        </sc-for>
+                        <sc-if value="{{ host.previewEmpty }}" hint-placeholder-val="{{ false }}">
+                          <div style="font-size:15px;color:#8E8E93">Status only</div>
+                        </sc-if>
+                      </div>
+                    </div>
+                  </div>
+
+                  <sc-for list="{{ host.rows }}" as="row" hint-placeholder-count="2">
+                    <div onClick="{{ row.open }}" style="cursor:pointer;display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:0.5px solid #E5E5EA;background:{{ row.bg }};box-shadow:{{ row.shadow }};transform:{{ row.transform }};opacity:{{ row.opacity }};position:relative;z-index:{{ row.z }}">
+                      <sc-if value="{{ row.editing }}" hint-placeholder-val="{{ false }}">
+                        <button onClick="{{ row.armDelete }}" aria-label="Delete {{ row.label }}" style="appearance:none;border:0;cursor:pointer;flex-shrink:0;width:22px;height:22px;border-radius:999px;background:#FF3B30;display:flex;align-items:center;justify-content:center">
+                          <span aria-hidden="true" style="width:11px;height:2px;border-radius:2px;background:#fff;display:block"></span>
+                        </button>
+                      </sc-if>
+                      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px">
+                        <div style="font-size:16px;letter-spacing:-0.3px;color:#000">{{ row.label }}</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:5px">
+                          <sc-for list="{{ row.chips }}" as="chip" hint-placeholder-count="2">
+                            <span aria-label="{{ chip.aria }}" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:#3C3C43;background:#F2F2F7;border:0.5px solid #DEDEE3;border-radius:5px;padding:2px 6px">{{ chip.key }}</span>
+                          </sc-for>
+                          <sc-if value="{{ row.empty }}" hint-placeholder-val="{{ false }}">
+                            <span style="font-size:13px;color:#8E8E93">No fields yet</span>
+                          </sc-if>
+                        </div>
+                      </div>
+                      <sc-if value="{{ row.armed }}" hint-placeholder-val="{{ false }}">
+                        <button onClick="{{ row.confirmDelete }}" style="appearance:none;border:0;cursor:pointer;font-family:inherit;font-size:15px;color:#fff;background:#FF3B30;border-radius:7px;padding:6px 13px">Delete</button>
+                      </sc-if>
+                      <sc-if value="{{ row.showHandle }}" hint-placeholder-val="{{ false }}">
+                        <button onClick="{{ row.move }}" aria-label="Reorder {{ row.label }}" style="appearance:none;border:0;background:none;cursor:grab;flex-shrink:0;display:flex;flex-direction:column;gap:3.5px;padding:6px 2px">
+                          <span aria-hidden="true" style="width:17px;height:1.5px;background:#B0B0B6;display:block;border-radius:2px"></span>
+                          <span aria-hidden="true" style="width:17px;height:1.5px;background:#B0B0B6;display:block;border-radius:2px"></span>
+                          <span aria-hidden="true" style="width:17px;height:1.5px;background:#B0B0B6;display:block;border-radius:2px"></span>
+                        </button>
+                      </sc-if>
+                      <sc-if value="{{ row.showChevron }}" hint-placeholder-val="{{ true }}">
+                        <svg width="8" height="13" viewBox="0 0 8 13" aria-hidden="true" style="flex-shrink:0;color:#C4C4C8"><path d="M1 1l5.5 5.5L1 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+
+                  <sc-if value="{{ host.rowsEmpty }}" hint-placeholder-val="{{ false }}">
+                    <div style="padding:14px 16px;border-bottom:0.5px solid #E5E5EA;font-size:14px;line-height:1.45;color:#8E8E93">No rows. Agents show only their status.</div>
+                  </sc-if>
+
+                  <sc-if value="{{ host.showAddRow }}" hint-placeholder-val="{{ false }}">
+                    <button onClick="{{ host.addRow }}" style="appearance:none;border:0;background:none;width:100%;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:0.5px solid #E5E5EA;font-family:inherit;font-size:16px;color:#007AFF;text-align:left">
+                        <svg width="17" height="17" viewBox="0 0 17 17" aria-hidden="true"><path d="M8.5 1.5v14M1.5 8.5h14" fill="none" stroke="#007AFF" stroke-width="2" stroke-linecap="round"></path></svg>
+                        <span>Add Row</span>
+                    </button>
+                  </sc-if>
+
+                  <div style="padding:14px 16px 4px;display:flex;flex-direction:column;gap:10px">
+                    <div style="font-size:11.5px;font-weight:600;letter-spacing:0.4px;color:#8E8E93">AGENT OVERRIDES</div>
+
+                    <sc-for list="{{ host.overrides }}" as="ov" hint-placeholder-count="0">
+                      <div style="border:0.5px solid #E5E5EA;border-radius:10px;overflow:hidden">
+                        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#FAFAFC">
+                          <sc-if value="{{ ov.editing }}" hint-placeholder-val="{{ false }}">
+                            <button onClick="{{ ov.armDelete }}" aria-label="Remove {{ ov.kind }} override" style="appearance:none;border:0;cursor:pointer;flex-shrink:0;width:22px;height:22px;border-radius:999px;background:#FF3B30;display:flex;align-items:center;justify-content:center">
+                              <span aria-hidden="true" style="width:11px;height:2px;border-radius:2px;background:#fff;display:block"></span>
+                            </button>
+                          </sc-if>
+                          <button onClick="{{ ov.toggle }}" style="appearance:none;border:0;background:none;flex:1;min-width:0;cursor:pointer;display:flex;align-items:center;gap:8px;padding:0;text-align:left;font-family:inherit">
+                            <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;color:#000">{{ ov.kind }}</span>
+                            <span style="flex:1;font-size:13px;color:#8E8E93">{{ ov.meta }}</span>
+                            <svg width="12" height="7.5" viewBox="0 0 13 8" aria-hidden="true" style="transform:rotate({{ ov.chevron }}deg);color:#8E8E93"><path d="M1 1l5.5 5.5L12 1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                          </button>
+                          <sc-if value="{{ ov.armed }}" hint-placeholder-val="{{ false }}">
+                            <button onClick="{{ ov.confirmDelete }}" style="appearance:none;border:0;cursor:pointer;font-family:inherit;font-size:15px;color:#fff;background:#FF3B30;border-radius:7px;padding:5px 12px">Remove</button>
+                          </sc-if>
+                        </div>
+                        <sc-if value="{{ ov.custom }}" hint-placeholder-val="{{ false }}">
+                          <input value="{{ ov.kind }}" onChange="{{ ov.rename }}" placeholder="Agent kind, e.g. aider" style="width:100%;box-sizing:border-box;border:0;border-top:0.5px solid #E5E5EA;padding:11px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;color:#000;outline:none" />
+                        </sc-if>
+                        <sc-if value="{{ ov.expanded }}" hint-placeholder-val="{{ false }}">
+                          <div style="border-top:0.5px solid #E5E5EA">
+                            <sc-for list="{{ ov.rows }}" as="row" hint-placeholder-count="1">
+                              <div onClick="{{ row.open }}" style="cursor:pointer;display:flex;align-items:center;gap:12px;padding:9px 12px;border-bottom:0.5px solid #F0F0F3">
+                                <sc-if value="{{ row.editing }}" hint-placeholder-val="{{ false }}">
+                                  <button onClick="{{ row.armDelete }}" aria-label="Delete {{ row.label }}" style="appearance:none;border:0;cursor:pointer;flex-shrink:0;width:20px;height:20px;border-radius:999px;background:#FF3B30;display:flex;align-items:center;justify-content:center">
+                                    <span aria-hidden="true" style="width:10px;height:2px;border-radius:2px;background:#fff;display:block"></span>
+                                  </button>
+                                </sc-if>
+                                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+                                  <div style="font-size:15px;letter-spacing:-0.2px;color:#000">{{ row.label }}</div>
+                                  <div style="display:flex;flex-wrap:wrap;gap:5px">
+                                    <sc-for list="{{ row.chips }}" as="chip" hint-placeholder-count="1">
+                                      <span aria-label="{{ chip.aria }}" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:#3C3C43;background:#F2F2F7;border:0.5px solid #DEDEE3;border-radius:5px;padding:2px 6px">{{ chip.key }}</span>
+                                    </sc-for>
+                                    <sc-if value="{{ row.empty }}" hint-placeholder-val="{{ false }}">
+                                      <span style="font-size:13px;color:#8E8E93">No fields yet</span>
+                                    </sc-if>
+                                  </div>
+                                </div>
+                                <sc-if value="{{ row.armed }}" hint-placeholder-val="{{ false }}">
+                                  <button onClick="{{ row.confirmDelete }}" style="appearance:none;border:0;cursor:pointer;font-family:inherit;font-size:14px;color:#fff;background:#FF3B30;border-radius:7px;padding:5px 11px">Delete</button>
+                                </sc-if>
+                                <sc-if value="{{ row.showHandle }}" hint-placeholder-val="{{ false }}">
+                                  <button onClick="{{ row.move }}" aria-label="Reorder {{ row.label }}" style="appearance:none;border:0;background:none;cursor:grab;flex-shrink:0;display:flex;flex-direction:column;gap:3px;padding:6px 2px">
+                                    <span aria-hidden="true" style="width:16px;height:1.5px;background:#B0B0B6;display:block;border-radius:2px"></span>
+                                    <span aria-hidden="true" style="width:16px;height:1.5px;background:#B0B0B6;display:block;border-radius:2px"></span>
+                                    <span aria-hidden="true" style="width:16px;height:1.5px;background:#B0B0B6;display:block;border-radius:2px"></span>
+                                  </button>
+                                </sc-if>
+                                <sc-if value="{{ row.showChevron }}" hint-placeholder-val="{{ true }}">
+                                  <svg width="7.5" height="12" viewBox="0 0 8 13" aria-hidden="true" style="flex-shrink:0;color:#C4C4C8"><path d="M1 1l5.5 5.5L1 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                                </sc-if>
+                              </div>
+                            </sc-for>
+                            <sc-if value="{{ ov.showAddRow }}" hint-placeholder-val="{{ false }}">
+                              <button onClick="{{ ov.addRow }}" style="appearance:none;border:0;background:none;width:100%;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:9px;padding:10px 12px;font-family:inherit;font-size:15px;color:#007AFF;text-align:left">
+                                <svg width="15" height="15" viewBox="0 0 17 17" aria-hidden="true"><path d="M8.5 1.5v14M1.5 8.5h14" fill="none" stroke="#007AFF" stroke-width="2" stroke-linecap="round"></path></svg>
+                                <span>Add Row</span>
+                              </button>
+                            </sc-if>
+                          </div>
+                        </sc-if>
+                      </div>
+                    </sc-for>
+
+                    <sc-if value="{{ host.noOverrides }}" hint-placeholder-val="{{ true }}">
+                      <div style="font-size:14px;color:#8E8E93">No overrides. Every Agent uses the rows above.</div>
+                    </sc-if>
+
+                    <sc-if value="{{ host.editing }}" hint-placeholder-val="{{ false }}">
+                      <div style="position:relative">
+                        <button onClick="{{ host.toggleOvMenu }}" style="appearance:none;border:0;background:none;cursor:pointer;display:flex;align-items:center;gap:9px;padding:4px 0;font-family:inherit;font-size:16px;color:{{ host.addOvColor }}">
+                          <svg width="16" height="16" viewBox="0 0 17 17" aria-hidden="true"><path d="M8.5 1.5v14M1.5 8.5h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>
+                          <span>Add Override</span>
+                        </button>
+                        <sc-if value="{{ host.ovMenuOpen }}" hint-placeholder-val="{{ false }}">
+                          <div style="position:absolute;top:32px;left:0;width:236px;z-index:30;background:rgba(250,250,252,0.98);border-radius:13px;box-shadow:0 10px 30px rgba(0,0,0,0.18),0 0 0 0.5px rgba(0,0,0,0.06);overflow:hidden">
+                            <div style="padding:9px 14px;font-size:12px;color:#8E8E93;border-bottom:0.5px solid #E5E5EA">Agent kinds seen on this Host</div>
+                            <sc-for list="{{ host.ovMenuItems }}" as="item" hint-placeholder-count="4">
+                              <button onClick="{{ item.pick }}" style="appearance:none;border:0;background:none;width:100%;box-sizing:border-box;cursor:pointer;text-align:left;padding:11px 14px;border-bottom:0.5px solid #E5E5EA;font-family:{{ item.family }};font-size:15px;color:#000">{{ item.label }}</button>
+                            </sc-for>
+                          </div>
+                        </sc-if>
+                      </div>
+                    </sc-if>
+
+                    <sc-if value="{{ host.editing }}" hint-placeholder-val="{{ false }}">
+                      <div style="border-top:0.5px solid #E5E5EA;margin-top:4px;padding:12px 0 14px;display:flex;flex-direction:column;gap:8px">
+                        <sc-if value="{{ host.syncIdle }}" hint-placeholder-val="{{ true }}">
+                          <button onClick="{{ host.sync }}" style="appearance:none;border:0;background:none;cursor:pointer;display:flex;align-items:center;gap:9px;padding:0;font-family:inherit;font-size:16px;color:{{ host.syncColor }};text-align:left">
+                            <svg width="17" height="17" viewBox="0 0 18 18" aria-hidden="true"><path d="M15.5 8A6.5 6.5 0 0 0 3.6 4.4M2.5 10A6.5 6.5 0 0 0 14.4 13.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path><path d="M3.4 1.2v3.4h3.4M14.6 16.8v-3.4h-3.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                            <span>Sync from plugin</span>
+                          </button>
+                        </sc-if>
+                        <sc-if value="{{ host.syncPending }}" hint-placeholder-val="{{ false }}">
+                          <div style="display:flex;align-items:center;gap:9px;font-size:16px;color:#8E8E93">
+                            <span aria-hidden="true" style="width:15px;height:15px;border-radius:999px;border:2px solid #D1D1D6;border-top-color:#8E8E93;animation:spin .8s linear infinite;display:block"></span>
+                            <span>Syncing…</span>
+                          </div>
+                        </sc-if>
+                        <sc-if value="{{ host.syncSuccess }}" hint-placeholder-val="{{ false }}">
+                          <div style="font-size:14px;line-height:1.45;color:#1E7B34">Filled from plugin. Unsaved until you save.</div>
+                        </sc-if>
+                        <sc-if value="{{ host.syncFailure }}" hint-placeholder-val="{{ false }}">
+                          <div style="display:flex;flex-direction:column;gap:5px">
+                            <div style="font-size:14px;line-height:1.45;color:#D70015">{{ host.syncError }}</div>
+                            <button onClick="{{ host.sync }}" style="appearance:none;border:0;background:none;cursor:pointer;padding:0;font-family:inherit;font-size:15px;color:#007AFF;text-align:left">Retry</button>
+                          </div>
+                        </sc-if>
+                      </div>
+                    </sc-if>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+
+          <sc-if value="{{ noHosts }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:110px 34px 0;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">
+              <div style="font-size:20px;font-weight:600;letter-spacing:-0.4px;color:#3C3C43">No Hosts</div>
+              <div style="font-size:15px;line-height:1.45;color:#8E8E93;text-wrap:pretty">Add a Host to configure its Agent rows.</div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isFe }}" hint-placeholder-val="{{ false }}">
+        <div style="flex-shrink:0;background:#F2F2F7">
+          <div style="height:44px;display:flex;align-items:center;padding:0 12px 0 8px">
+            <button onClick="{{ fe.back }}" style="appearance:none;border:0;background:none;cursor:pointer;display:flex;align-items:center;gap:2px;padding:6px 8px;color:#007AFF;font-family:inherit;font-size:17px">
+              <svg width="11" height="18" viewBox="0 0 11 18" aria-hidden="true"><path d="M9.5 1L2 9l7.5 8" fill="none" stroke="#007AFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              <span>Agent List Fields</span>
+            </button>
+          </div>
+          <div style="padding:2px 16px 10px;display:flex;flex-direction:column;gap:1px">
+            <div style="font-size:33px;font-weight:700;letter-spacing:-0.9px;line-height:1.1">{{ fe.title }}</div>
+            <div style="font-size:13px;color:#8E8E93;letter-spacing:-0.1px">{{ fe.sub }}</div>
+          </div>
+        </div>
+
+        <div style="flex:1;overflow:auto;padding:4px 16px 48px;display:flex;flex-direction:column;gap:8px">
+          <div style="font-size:11.5px;font-weight:600;letter-spacing:0.4px;color:#8E8E93;padding:0 4px">FIELDS IN THIS ROW</div>
+          <div style="background:#fff;border-radius:12px;overflow:visible">
+            <sc-for list="{{ fe.fields }}" as="f" hint-placeholder-count="2">
+              <div style="position:relative;display:flex;align-items:center;gap:12px;padding:11px 14px;border-bottom:0.5px solid #E5E5EA">
+                <button onClick="{{ f.remove }}" aria-label="Remove field {{ f.key }}" style="appearance:none;border:0;cursor:pointer;flex-shrink:0;width:22px;height:22px;border-radius:999px;background:#FF3B30;display:flex;align-items:center;justify-content:center">
+                  <span aria-hidden="true" style="width:11px;height:2px;border-radius:2px;background:#fff;display:block"></span>
+                </button>
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+                  <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;color:#000">{{ f.key }}</span>
+                  <span style="font-size:12.5px;color:#8E8E93">{{ f.desc }}</span>
+                </div>
+                <button onClick="{{ f.openMenu }}" aria-label="Style for {{ f.key }}: {{ f.styleLabel }}" style="appearance:none;border:0;background:none;cursor:pointer;display:flex;align-items:center;gap:4px;padding:4px 2px;font-family:inherit;font-size:15px;color:#8E8E93">
+                  <span>{{ f.styleLabel }}</span>
+                  <svg width="10" height="14" viewBox="0 0 10 14" aria-hidden="true"><path d="M2 5.5L5 2.5l3 3M2 8.5l3 3 3-3" fill="none" stroke="#8E8E93" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                </button>
+                <button onClick="{{ f.move }}" aria-label="Reorder {{ f.key }}" style="appearance:none;border:0;background:none;cursor:grab;flex-shrink:0;display:flex;flex-direction:column;gap:3.5px;padding:6px 2px">
+                  <span aria-hidden="true" style="width:17px;height:1.5px;background:#B0B0B6;display:block;border-radius:2px"></span>
+                  <span aria-hidden="true" style="width:17px;height:1.5px;background:#B0B0B6;display:block;border-radius:2px"></span>
+                  <span aria-hidden="true" style="width:17px;height:1.5px;background:#B0B0B6;display:block;border-radius:2px"></span>
+                </button>
+                <sc-if value="{{ f.menuOpen }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute;right:44px;top:38px;width:170px;z-index:30;background:rgba(250,250,252,0.98);border-radius:13px;box-shadow:0 10px 30px rgba(0,0,0,0.18),0 0 0 0.5px rgba(0,0,0,0.06);overflow:hidden">
+                    <sc-for list="{{ f.styleOptions }}" as="opt" hint-placeholder-count="3">
+                      <button onClick="{{ opt.pick }}" style="appearance:none;border:0;background:{{ opt.bg }};width:100%;box-sizing:border-box;cursor:pointer;text-align:left;padding:11px 14px;border-bottom:0.5px solid #E5E5EA;font-family:inherit;font-size:15px;color:#000">{{ opt.label }}</button>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+            <sc-if value="{{ fe.empty }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:14px;border-bottom:0.5px solid #E5E5EA;font-size:14px;color:#8E8E93">No fields. This row renders nothing.</div>
+            </sc-if>
+            <button onClick="{{ fe.openSheet }}" style="appearance:none;border:0;background:none;width:100%;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 14px;font-family:inherit;font-size:16px;color:#007AFF;text-align:left">
+              <svg width="17" height="17" viewBox="0 0 17 17" aria-hidden="true"><path d="M8.5 1.5v14M1.5 8.5h14" fill="none" stroke="#007AFF" stroke-width="2" stroke-linecap="round"></path></svg>
+              <span>Add Field</span>
+            </button>
+          </div>
+          <div style="font-size:13px;line-height:1.45;color:#6C6C70;padding:6px 4px">Fields render left to right in this row. Changes stay in the draft until you save on the previous screen.</div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ sheetOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;inset:0;z-index:60;background:rgba(0,0,0,0.35);display:flex;flex-direction:column;justify-content:flex-end">
+          <div onClick="{{ closeSheet }}" style="flex:1;cursor:pointer"></div>
+          <div style="background:#F2F2F7;border-radius:14px 14px 0 0;padding:8px 0 26px;max-height:560px;overflow:auto">
+            <div style="display:flex;justify-content:center;padding:2px 0 12px"><span aria-hidden="true" style="width:36px;height:5px;border-radius:999px;background:#C7C7CC;display:block"></span></div>
+            <div style="padding:0 16px 12px;display:flex;flex-direction:column;gap:2px">
+              <div style="font-size:20px;font-weight:600;letter-spacing:-0.4px">Add Field</div>
+              <div style="font-size:13px;color:#8E8E93">{{ fe.availNote }}</div>
+            </div>
+            <div style="margin:0 16px;background:#fff;border-radius:12px;overflow:hidden">
+              <sc-for list="{{ fe.avail }}" as="a" hint-placeholder-count="4">
+                <button onClick="{{ a.add }}" style="appearance:none;border:0;background:none;width:100%;box-sizing:border-box;cursor:pointer;text-align:left;padding:11px 14px;border-bottom:0.5px solid #E5E5EA;display:flex;flex-direction:column;gap:2px;font-family:inherit">
+                  <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;color:#000">{{ a.key }}</span>
+                  <span style="font-size:12.5px;color:#8E8E93">{{ a.desc }}</span>
+                </button>
+              </sc-for>
+              <sc-if value="{{ fe.availEmpty }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:14px;font-size:14px;color:#8E8E93">Every available field is already in this row.</div>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ dialogOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;inset:0;z-index:70;background:rgba(0,0,0,0.35);display:flex;flex-direction:column;justify-content:flex-end;padding:0 10px 12px;gap:8px">
+          <div onClick="{{ keepEditing }}" style="flex:1;cursor:pointer"></div>
+          <div style="background:rgba(250,250,252,0.96);border-radius:14px;overflow:hidden">
+            <div style="padding:14px 20px;text-align:center;font-size:13px;line-height:1.4;color:#6C6C70;border-bottom:0.5px solid #DEDEE3">Discard changes?<br />Your unsaved rows will be lost.</div>
+            <button onClick="{{ discard }}" style="appearance:none;border:0;background:none;width:100%;cursor:pointer;padding:16px;font-family:inherit;font-size:19px;color:#FF3B30">Discard Changes</button>
+          </div>
+          <button onClick="{{ keepEditing }}" style="appearance:none;border:0;cursor:pointer;background:rgba(250,250,252,0.96);border-radius:14px;padding:16px;font-family:inherit;font-size:19px;font-weight:600;color:#007AFF">Keep Editing</button>
+        </div>
+      </sc-if>
+    </div>
+  </x-import>
+
+  <div style="max-width:600px;display:flex;flex-direction:column;gap:7px;font-size:12.5px;line-height:1.5;color:#6C6C70;text-wrap:pretty">
+    <div><strong style="color:#3C3C43;font-weight:600">State {{ stateNum }} · {{ stateName }}</strong></div>
+    <div>{{ stateNote }}</div>
+    <div style="border-top:1px solid #D8D8DE;padding-top:7px">iPad: identical structure in a wider column, with the inset grouped lists capped at a readable max width (~640pt) and centred, so rows never stretch edge to edge.</div>
+    <div>Accessibility: every edit action is a button (no swipe-only actions), field chips carry VoiceOver labels such as “Field 1 of 2: workspace, default style”, and all type scales with Dynamic Type.</div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:900,&quot;height&quot;:1200}}">
+const FIELDS = [
+  { key: 'workspace', desc: 'Workspace or repo folder name', sample: 'heeler' },
+  { key: 'terminal_title', desc: 'Current terminal window title', sample: 'fix sidebar sync' },
+  { key: 'agent', desc: 'Agent kind reported by herdr', sample: 'claude' },
+  { key: 'branch', desc: 'Active git branch', sample: 'fix/sidebar' },
+  { key: 'cwd', desc: 'Working directory of the session', sample: '~/src/heeler' },
+  { key: 'host', desc: 'Host this Agent runs on', sample: 'Studio Mac' },
+];
+const FIELD_BY_KEY = {};
+FIELDS.forEach(f => { FIELD_BY_KEY[f.key] = f; });
+
+const STYLE_LABEL = { default: 'Default', secondary: 'Secondary', monospace: 'Monospace' };
+
+const PLUGIN_ROWS = () => ([
+  { id: 'p1', fields: [{ key: 'workspace', style: 'default' }, { key: 'agent', style: 'secondary' }] },
+  { id: 'p2', fields: [{ key: 'terminal_title', style: 'secondary' }] },
+  { id: 'p3', fields: [{ key: 'branch', style: 'monospace' }] },
+]);
+
+const BASE_HOSTS = () => ([
+  {
+    id: 'studio', name: 'Studio Mac', saved: false, kinds: ['claude', 'codex', 'grok'],
+    rows: [
+      { id: 's1', fields: [{ key: 'workspace', style: 'default' }, { key: 'agent', style: 'secondary' }] },
+      { id: 's2', fields: [{ key: 'terminal_title', style: 'secondary' }] },
+    ],
+    overrides: [],
+  },
+  {
+    id: 'build', name: 'Build Server', saved: true, kinds: ['codex', 'grok'],
+    rows: [
+      { id: 'b1', fields: [{ key: 'workspace', style: 'default' }, { key: 'branch', style: 'monospace' }] },
+      { id: 'b2', fields: [{ key: 'terminal_title', style: 'secondary' }] },
+    ],
+    overrides: [],
+  },
+]);
+
+const STATES = [
+  ['1', 'Read-only, collapsed', 'Every Host is collapsed on open. Caption tells you whether the Host follows its herdr plugin or your own saved fields.'],
+  ['2', 'Read-only, expanded', 'Expanding shows the Console preview first, then the rows that produce it. Read-only: no handles, no minus controls.'],
+  ['3', 'Edit mode', 'One draft session for the whole screen: Cancel on the left, blue checkmark on the right. Rows gain reorder handles, a red minus, and Add Row.'],
+  ['4', 'Reorder in progress', 'The lifted row follows the handle; the rest dim. Order change marks the Host dirty.'],
+  ['5', 'Delete row', 'Tapping the red minus reveals the confirming Delete button on that row. No swipe required.'],
+  ['6', 'Add row', 'Add Row appends an empty row at the end of the list, ready for its first field.'],
+  ['7', 'Add override menu', 'Add Override opens a menu of Agent kinds seen on this Host, plus Other… for free text.'],
+  ['8', 'Override added', 'The new override is its own collapsible sub-block seeded from the Host rows. Hosts never share state.'],
+  ['9', 'Remove override', 'The override minus reveals a Remove confirmation in place.'],
+  ['10', 'Sync pending', 'Sync from plugin shows a spinner and disables the rest of that Host while it fetches.'],
+  ['11', 'Sync success', 'The plugin fields fill the draft. Nothing is written until you tap the checkmark.'],
+  ['12', 'Sync failure', 'Failure is reported inline in red with a Retry link. The draft is untouched.'],
+  ['13', 'Offline', 'Offline is its own message so the user knows retrying now will not help.'],
+  ['14', 'Unsaved changes', 'The navigation title carries an “Unsaved changes” subtitle, and each changed Host header shows an orange dot.'],
+  ['15', 'Cancel confirmation', 'Cancel with a dirty draft asks first: destructive Discard Changes, or Keep Editing.'],
+  ['16', 'Saved', 'After saving, a brief “Saved” caption appears and the Host caption flips to “Your fields”.'],
+  ['17', 'Empty rows', 'A Host with no rows explains what Agents will look like, and offers Add Row in edit mode.'],
+  ['18', 'No Hosts', 'ContentUnavailableView-style empty state for an account with no Hosts yet.'],
+  ['19', 'Field Editor', 'A pushed screen: the row’s fields as a reorderable list with red minus controls and a per-field style menu.'],
+  ['20', 'Add Field sheet', 'A picker sheet lists the fields still available on this Host, each with a short description.'],
+];
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = this.preset(1);
+  }
+
+  preset(n) {
+    const hosts = BASE_HOSTS();
+    const s = {
+      n, editing: false, screen: 'main', fe: null, sheet: null, dialog: null,
+      ovMenu: null, armed: null, drag: null, justSaved: false, sync: {},
+      hosts, expanded: {}, styleMenu: null,
+      baseline: JSON.stringify(hosts),
+    };
+    const studio = s.hosts[0];
+    const build = s.hosts[1];
+    const clone = o => JSON.parse(JSON.stringify(o));
+    const mkOverride = kind => ({ kind, expanded: true, rows: clone(studio.rows).map((r, i) => Object.assign(r, { id: kind + i })) });
+
+    if (n >= 2) s.expanded.studio = true;
+    if (n >= 3) s.editing = true;
+    if (n === 1 || n === 2 || n === 16 || n === 18) s.editing = false;
+
+    if (n === 4) { s.hosts[0].rows = [studio.rows[1], studio.rows[0]]; s.drag = { host: 'studio', id: 's2' }; }
+    if (n === 5) s.armed = { kind: 'row', host: 'studio', id: 's1' };
+    if (n === 6) s.hosts[0].rows = studio.rows.concat([{ id: 's3', fields: [] }]);
+    if (n === 7) s.ovMenu = 'studio';
+    if (n === 8 || n === 9) s.hosts[0].overrides = [mkOverride('claude')];
+    if (n === 9) s.armed = { kind: 'ov', host: 'studio', id: 'claude' };
+    if (n === 10) s.sync = { studio: { status: 'pending' } };
+    if (n === 11) { s.sync = { studio: { status: 'success' } }; s.hosts[0].rows = PLUGIN_ROWS(); }
+    if (n === 12) s.sync = { studio: { status: 'failure', message: 'Couldn’t reach Studio Mac. Draft unchanged.' } };
+    if (n === 13) s.sync = { studio: { status: 'failure', message: 'You’re offline. Draft unchanged.' } };
+    if (n === 14 || n === 15) s.hosts[0].rows[1].fields.push({ key: 'branch', style: 'monospace' });
+    if (n === 15) s.dialog = 'discard';
+    if (n === 16) { s.hosts[0].saved = true; s.justSaved = true; s.baseline = JSON.stringify(s.hosts); }
+    if (n === 17) { s.expanded = { build: true }; s.hosts[1].rows = []; }
+    if (n === 18) s.hosts = [];
+    if (n === 19 || n === 20) { s.screen = 'fieldEditor'; s.fe = { host: 'studio', ov: null, row: 's1' }; }
+    if (n === 20) s.sheet = 'addField';
+    return s;
+  }
+
+  go(n) { if (this.timer) clearTimeout(this.timer); this.setState(this.preset(n)); }
+
+  patch(fn) {
+    this.setState(st => {
+      const next = Object.assign({}, st);
+      next.hosts = JSON.parse(JSON.stringify(st.hosts));
+      fn(next);
+      return next;
+    });
+  }
+
+  host(st, id) { return st.hosts.find(h => h.id === id); }
+  bag(st, hostId, ovKind) {
+    const h = this.host(st, hostId);
+    if (!h) return null;
+    if (!ovKind) return h;
+    return h.overrides.find(o => o.kind === ovKind) || null;
+  }
+
+  dirtyHosts() {
+    const base = JSON.parse(this.state.baseline || '[]');
+    const map = {};
+    this.state.hosts.forEach(h => {
+      const b = base.find(x => x.id === h.id);
+      map[h.id] = !b || JSON.stringify(b) !== JSON.stringify(h);
+    });
+    return map;
+  }
+
+  startEdit() { this.patch(st => { st.editing = true; st.baseline = JSON.stringify(st.hosts); st.justSaved = false; }); }
+
+  cancel() {
+    const d = this.dirtyHosts();
+    if (Object.keys(d).some(k => d[k])) this.patch(st => { st.dialog = 'discard'; });
+    else this.exit();
+  }
+
+  exit() {
+    this.patch(st => {
+      st.editing = false; st.dialog = null; st.armed = null; st.ovMenu = null;
+      st.drag = null; st.sync = {}; st.screen = 'main'; st.fe = null; st.sheet = null; st.styleMenu = null;
+    });
+  }
+
+  discard() {
+    this.patch(st => {
+      st.hosts = JSON.parse(st.baseline);
+      st.editing = false; st.dialog = null; st.armed = null; st.ovMenu = null;
+      st.drag = null; st.sync = {}; st.screen = 'main'; st.fe = null; st.sheet = null;
+    });
+  }
+
+  save() {
+    const d = this.dirtyHosts();
+    this.patch(st => {
+      st.hosts.forEach(h => { if (d[h.id]) h.saved = true; });
+      st.baseline = JSON.stringify(st.hosts);
+      st.editing = false; st.justSaved = true; st.armed = null; st.ovMenu = null;
+      st.drag = null; st.sync = {}; st.screen = 'main'; st.fe = null; st.sheet = null;
+    });
+    this.timer = setTimeout(() => this.patch(st => { st.justSaved = false; }), 2600);
+  }
+
+  sync(hostId) {
+    this.patch(st => { st.sync = Object.assign({}, st.sync, { [hostId]: { status: 'pending' } }); st.armed = null; st.ovMenu = null; });
+    this.timer = setTimeout(() => this.patch(st => {
+      const h = this.host(st, hostId);
+      if (h) h.rows = PLUGIN_ROWS();
+      st.sync = Object.assign({}, st.sync, { [hostId]: { status: 'success' } });
+    }), 1300);
+  }
+
+  previewFor(bag) {
+    const lines = [];
+    (bag.rows || []).forEach(r => {
+      const parts = r.fields.map(f => {
+        const meta = FIELD_BY_KEY[f.key] || { sample: f.key };
+        if (f.style === 'monospace') return { text: meta.sample, size: 13, weight: 400, color: '#3C3C43', family: 'ui-monospace,SFMono-Regular,Menlo,monospace' };
+        if (f.style === 'secondary') return { text: meta.sample, size: 14, weight: 400, color: '#8E8E93', family: 'inherit' };
+        return { text: meta.sample, size: 17, weight: 590, color: '#000', family: 'inherit' };
+      });
+      if (parts.length) lines.push({ parts });
+    });
+    return lines;
+  }
+
+  rowViews(hostId, ovKind, bag, editing, disabled) {
+    const st = this.state;
+    return (bag.rows || []).map((r, i) => {
+      const armed = st.armed && st.armed.kind === 'row' && st.armed.host === hostId && st.armed.id === r.id;
+      const dragging = st.drag && st.drag.host === hostId && st.drag.id === r.id;
+      const dim = st.drag && st.drag.host === hostId && !dragging;
+      return {
+        id: r.id,
+        label: 'Row ' + (i + 1),
+        empty: r.fields.length === 0,
+        editing: editing && !disabled,
+        armed: !!armed,
+        showHandle: editing && !armed && !disabled,
+        showChevron: !editing || disabled,
+        bg: dragging ? '#FFFFFF' : 'transparent',
+        shadow: dragging ? '0 10px 22px rgba(0,0,0,0.16)' : 'none',
+        transform: dragging ? 'scale(1.015)' : 'none',
+        opacity: dim ? '0.45' : '1',
+        z: dragging ? 5 : 1,
+        chips: r.fields.map((f, j) => ({
+          key: f.key,
+          aria: 'Field ' + (j + 1) + ' of ' + r.fields.length + ': ' + f.key + ', ' + STYLE_LABEL[f.style].toLowerCase() + ' style',
+        })),
+        open: () => { if (disabled) return; this.patch(s2 => { s2.editing = s2.editing || false; s2.screen = 'fieldEditor'; s2.fe = { host: hostId, ov: ovKind, row: r.id }; s2.armed = null; s2.ovMenu = null; s2.styleMenu = null; }); },
+        armDelete: e => {
+          if (e && e.stopPropagation) e.stopPropagation();
+          this.patch(s2 => { s2.armed = armed ? null : { kind: 'row', host: hostId, id: r.id }; });
+        },
+        confirmDelete: e => {
+          if (e && e.stopPropagation) e.stopPropagation();
+          this.patch(s2 => {
+            const b = this.bag(s2, hostId, ovKind);
+            b.rows = b.rows.filter(x => x.id !== r.id);
+            s2.armed = null;
+          });
+        },
+        move: e => {
+          if (e && e.stopPropagation) e.stopPropagation();
+          this.patch(s2 => {
+            const b = this.bag(s2, hostId, ovKind);
+            const idx = b.rows.findIndex(x => x.id === r.id);
+            const to = (idx + 1) % b.rows.length;
+            const moved = b.rows.splice(idx, 1)[0];
+            b.rows.splice(to, 0, moved);
+            s2.drag = null;
+          });
+        },
+      };
+    });
+  }
+
+  renderVals() {
+    const st = this.state;
+    const dirtyMap = this.dirtyHosts();
+    const dirty = st.editing && Object.keys(dirtyMap).some(k => dirtyMap[k]);
+    const meta = STATES.find(s => s[0] === String(st.n)) || STATES[0];
+
+    const hosts = st.hosts.map(h => {
+      const sync = st.sync[h.id] || { status: 'idle' };
+      const pending = sync.status === 'pending';
+      const editing = st.editing;
+      const ovMenuOpen = st.ovMenu === h.id;
+      return {
+        id: h.id,
+        name: h.name,
+        aria: h.name + ', ' + (h.saved ? 'your fields' : 'following herdr plugin') + ', ' + (st.expanded[h.id] ? 'expanded' : 'collapsed'),
+        caption: h.saved ? 'Your fields' : 'Following herdr plugin',
+        captionColor: h.saved ? '#6C6C70' : '#8E8E93',
+        dot: (editing && dirtyMap[h.id]) ? '#FF9500' : 'transparent',
+        expanded: !!st.expanded[h.id],
+        chevron: st.expanded[h.id] ? 180 : 0,
+        editing,
+        toggle: () => this.patch(s2 => { s2.expanded = Object.assign({}, s2.expanded, { [h.id]: !s2.expanded[h.id] }); s2.armed = null; s2.ovMenu = null; }),
+        preview: this.previewFor(h),
+        previewEmpty: this.previewFor(h).length === 0,
+        rows: this.rowViews(h.id, null, h, editing, pending),
+        rowsEmpty: h.rows.length === 0,
+        showAddRow: editing && !pending,
+        overrides: h.overrides.map(o => {
+          const armed = st.armed && st.armed.kind === 'ov' && st.armed.host === h.id && st.armed.id === o.kind;
+          return {
+            kind: o.kind || 'new override',
+            custom: !!o.custom,
+            meta: o.rows.length + (o.rows.length === 1 ? ' row' : ' rows'),
+            expanded: !!o.expanded,
+            chevron: o.expanded ? 180 : 0,
+            editing: editing && !pending,
+            armed: !!armed,
+            rows: this.rowViews(h.id, o.kind, o, editing, pending),
+            showAddRow: editing && !pending,
+            toggle: () => this.patch(s2 => {
+              const ov = this.bag(s2, h.id, o.kind);
+              ov.expanded = !ov.expanded;
+            }),
+            rename: e => {
+              const v = e.target.value;
+              this.patch(s2 => { const ov = this.host(s2, h.id).overrides.find(x => x.kind === o.kind); ov.kind = v; });
+            },
+            armDelete: () => this.patch(s2 => { s2.armed = armed ? null : { kind: 'ov', host: h.id, id: o.kind }; }),
+            confirmDelete: () => this.patch(s2 => {
+              const host = this.host(s2, h.id);
+              host.overrides = host.overrides.filter(x => x.kind !== o.kind);
+              s2.armed = null;
+            }),
+          };
+        }),
+        noOverrides: h.overrides.length === 0,
+        addOvColor: pending ? '#B0B0B6' : '#007AFF',
+        ovMenuOpen,
+        toggleOvMenu: () => { if (pending) return; this.patch(s2 => { s2.ovMenu = ovMenuOpen ? null : h.id; s2.armed = null; }); },
+        ovMenuItems: h.kinds.filter(k => !h.overrides.some(o => o.kind === k)).map(k => ({
+          label: k,
+          family: 'ui-monospace,SFMono-Regular,Menlo,monospace',
+          pick: () => this.patch(s2 => {
+            const host = this.host(s2, h.id);
+            host.overrides.push({ kind: k, expanded: true, rows: JSON.parse(JSON.stringify(host.rows)).map((r, i) => Object.assign(r, { id: k + i })) });
+            s2.ovMenu = null;
+          }),
+        })).concat([{
+          label: 'Other…', family: 'inherit',
+          pick: () => this.patch(s2 => {
+            const host = this.host(s2, h.id);
+            host.overrides.push({ kind: '', custom: true, expanded: true, rows: JSON.parse(JSON.stringify(host.rows)).map((r, i) => Object.assign(r, { id: 'x' + i })) });
+            s2.ovMenu = null;
+          }),
+        }]),
+        syncIdle: sync.status === 'idle',
+        syncPending: pending,
+        syncSuccess: sync.status === 'success',
+        syncFailure: sync.status === 'failure',
+        syncError: sync.message || '',
+        syncColor: '#007AFF',
+        sync: () => this.sync(h.id),
+      };
+    });
+
+    let fe = { fields: [], avail: [], title: '', sub: '', empty: false, availEmpty: false, availNote: '', back: () => {}, openSheet: () => {} };
+    if (st.screen === 'fieldEditor' && st.fe) {
+      const h = this.host(st, st.fe.host);
+      const bag = this.bag(st, st.fe.host, st.fe.ov);
+      const row = bag ? bag.rows.find(r => r.id === st.fe.row) : null;
+      const idx = bag ? bag.rows.findIndex(r => r.id === st.fe.row) : 0;
+      if (row) {
+        const used = row.fields.map(f => f.key);
+        fe = {
+          title: 'Row ' + (idx + 1),
+          sub: h.name + (st.fe.ov ? ' · ' + st.fe.ov + ' override' : ''),
+          empty: row.fields.length === 0,
+          fields: row.fields.map((f, i) => ({
+            key: f.key,
+            desc: (FIELD_BY_KEY[f.key] || {}).desc || '',
+            styleLabel: STYLE_LABEL[f.style],
+            menuOpen: st.styleMenu === i,
+            openMenu: () => this.patch(s2 => { s2.styleMenu = s2.styleMenu === i ? null : i; }),
+            styleOptions: ['default', 'secondary', 'monospace'].map(k => ({
+              label: STYLE_LABEL[k],
+              bg: f.style === k ? 'rgba(0,122,255,0.10)' : 'transparent',
+              pick: () => this.patch(s2 => {
+                const b = this.bag(s2, st.fe.host, st.fe.ov);
+                b.rows.find(r => r.id === st.fe.row).fields[i].style = k;
+                s2.styleMenu = null;
+              }),
+            })),
+            remove: () => this.patch(s2 => {
+              const b = this.bag(s2, st.fe.host, st.fe.ov);
+              const r = b.rows.find(x => x.id === st.fe.row);
+              r.fields.splice(i, 1);
+              s2.styleMenu = null;
+            }),
+            move: () => this.patch(s2 => {
+              const b = this.bag(s2, st.fe.host, st.fe.ov);
+              const r = b.rows.find(x => x.id === st.fe.row);
+              const to = (i + 1) % r.fields.length;
+              const moved = r.fields.splice(i, 1)[0];
+              r.fields.splice(to, 0, moved);
+              s2.styleMenu = null;
+            }),
+          })),
+          avail: FIELDS.filter(f => used.indexOf(f.key) === -1).map(f => ({
+            key: f.key, desc: f.desc,
+            add: () => this.patch(s2 => {
+              const b = this.bag(s2, st.fe.host, st.fe.ov);
+              b.rows.find(r => r.id === st.fe.row).fields.push({ key: f.key, style: 'default' });
+              s2.sheet = null;
+            }),
+          })),
+          availEmpty: FIELDS.filter(f => used.indexOf(f.key) === -1).length === 0,
+          availNote: 'Fields reported by ' + h.name,
+          back: () => this.patch(s2 => { s2.screen = 'main'; s2.fe = null; s2.styleMenu = null; s2.expanded = Object.assign({}, s2.expanded, { [st.fe.host]: true }); }),
+          openSheet: () => this.patch(s2 => { s2.sheet = 'addField'; s2.styleMenu = null; }),
+        };
+      }
+    }
+
+    return {
+      states: STATES.map(s => ({
+        label: s[0] + '. ' + s[1],
+        bg: String(st.n) === s[0] ? '#007AFF' : '#FBFBFD',
+        color: String(st.n) === s[0] ? '#FFFFFF' : '#3C3C43',
+        border: String(st.n) === s[0] ? '#007AFF' : '#D8D8DE',
+        go: () => this.go(Number(s[0])),
+      })),
+      stateNum: meta[0], stateName: meta[1], stateNote: meta[2],
+      isMain: st.screen === 'main',
+      isFe: st.screen === 'fieldEditor',
+      editing: st.editing,
+      readOnly: !st.editing,
+      hasHosts: st.hosts.length > 0,
+      noHosts: st.hosts.length === 0,
+      showSubtitle: dirty || st.justSaved,
+      subtitleText: dirty ? 'Unsaved changes' : 'Saved',
+      subtitleColor: dirty ? '#FF9500' : '#1E7B34',
+      intro: st.editing
+        ? 'Changes stay in a draft until you tap the checkmark. Sync fills one Host’s draft without saving it.'
+        : 'Each Host decides which fields appear on its Agent rows in Console. Tap Edit to change them.',
+      hosts,
+      fe,
+      sheetOpen: st.sheet === 'addField',
+      closeSheet: () => this.patch(s2 => { s2.sheet = null; }),
+      dialogOpen: st.dialog === 'discard',
+      discard: () => this.discard(),
+      keepEditing: () => this.patch(s2 => { s2.dialog = null; }),
+      startEdit: () => this.startEdit(),
+      cancel: () => this.cancel(),
+      save: () => this.save(),
+    };
+  }
+}
+</script>
+</body>
+</html>
