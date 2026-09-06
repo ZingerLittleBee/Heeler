@@ -25,3 +25,19 @@ Verbatim prompt submitted on 2026-09-06 with the four reference screenshots of t
 > - iPad: same layout in a wider column; note in the prototype that lists get a readable max width. Accessibility: all edit actions are buttons (no swipe-only actions), Dynamic Type friendly, VoiceOver labels on chips.
 >
 > Deliverable: one interactive prototype inside an iPhone 15 Pro frame with a small state switcher outside the frame that jumps to these states: 1 read-only collapsed, 2 read-only expanded, 3 edit mode, 4 reorder in progress, 5 delete row, 6 add row, 7 add override menu, 8 override added, 9 remove override, 10 sync pending, 11 sync success, 12 sync failure, 13 offline, 14 unsaved changes, 15 cancel confirmation, 16 saved, 17 empty rows, 18 no Hosts, 19 Field Editor, 20 Add Field sheet. Make the in-frame controls actually work where practical (expand/collapse, Edit/Cancel/checkmark, opening the Field Editor). Use two Hosts: "Studio Mac" and "Build Server".
+
+## Correction pass
+
+Verbatim follow-up prompt submitted in the same project after review, asking for one focused correction. The export in this directory is the source served after this pass.
+
+> One focused correction pass on the existing prototype. Keep every one of the 20 states, all copy, layout, and the state switcher exactly as they are. Fix only these four defects in Agent List Fields.dc.html:
+>
+> 1. Add Row is dead. The template binds host.addRow and ov.addRow but renderVals() never defines them. Implement both: append an empty row ({ fields: [] }, unique id) to that Host's rows or to that override's rows, so the draft becomes dirty, the Console preview and row list update, the checkmark saves it, and Discard removes it again.
+>
+> 2. Overrides need stable identity independent of their display name. Give every override an internal id (for example a counter) and use that id, never the kind string, for bag() lookups, armed state, remove, rename, and row operations. For "Other…", do not create an override with an empty name: show an inline text field with an Add button, trim the input, reject empty and duplicate kinds (case-insensitive) with a short hint, and only then create the override. No name grammar beyond trim and non-duplicate. Row operations inside an unnamed or renamed override must never touch the Host's own rows.
+>
+> 3. The Field Editor must be truly read-only outside an edit session. When editing is false: hide the red minus, reorder handle, style menu, and Add Field; show the style as plain text; make row.open still work; guard every mutation handler (remove, move, style pick, add field) so it is a no-op when not editing; footer reads "Tap Edit on the previous screen to change fields." States 19 and 20 stay as they are (editing).
+>
+> 4. Dirty tracking must ignore presentation state: expanding or collapsing an override sub-block must not mark the Host dirty, so keep the expanded flag out of the baseline comparison. Also render the orange "Unsaved changes on this Host" dot only when that Host is dirty, and do not render an aria-labelled element at all for a clean Host.
+>
+> Do not change anything else.

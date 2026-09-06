@@ -2,16 +2,16 @@
 
 Status: Design only, proposed for review
 Date: 2026-09-06
-Issue: [#281](https://github.com/zingerbee/Heeler/issues/281)
+Issue: [#281](https://github.com/ZingerLittleBee/Heeler/issues/281)
 Scope: interaction design for the Settings screen `AgentListFieldsSettingsView`. No Swift, store, transport, test, or project changes are part of this document.
 
 ## Provenance
 
 - Tool: the Claude Design web app, driven by Claude through the user's signed-in browser session. The `claude_design` MCP could not be authorized from Claude Code 2.1.261, so the design was produced in the product's own editor.
 - Project: <https://claude.ai/design/p/365934e6-2d44-44a0-8248-6790784db71d> (private, owner's account, title "Agent List Fields", file `Agent List Fields.dc.html`). Sharing settings were not changed.
-- Inputs: the brief in [`agent-list-fields-claude-design/brief.md`](agent-list-fields-claude-design/brief.md) plus the four simulator screenshots of the current implementation. Design system: None. Model: Opus 5, High.
+- Inputs: the brief in [`agent-list-fields-claude-design/brief.md`](agent-list-fields-claude-design/brief.md) plus the four simulator screenshots of the current implementation. Design system: None. Model: Opus 5, High. After review, one focused correction prompt (also recorded in `brief.md`) asked Claude Design to implement Add Row, give overrides an identity independent of their name with empty and duplicate kinds rejected, make the Field Editor read-only outside an edit session, and keep presentation state out of dirty tracking. Claude Design applied those four changes and nothing else.
 - Export: [`agent-list-fields-claude-design/agent-list-fields.dc.html`](agent-list-fields-claude-design/agent-list-fields.dc.html) is the prototype's source as served by Claude Design, with only the editor-injected runtime block removed. It is a Claude Design component file (`x-dc`, `sc-if`, `sc-for`, `x-import ./ios-frame.jsx`, `./support.js`) and does not run standalone; open the project link to interact with it. It carries no credentials.
-- Verification: every one of the 20 states in the prototype's state switcher was selected programmatically inside the served prototype and its rendered text captured; the in-frame Host header, Edit, and Cancel controls were exercised the same way. The live editor window could not be screenshotted during that pass, so this document has no images of the finished prototype; reviewers should open the project link.
+- Verification: every one of the 20 states in the prototype's state switcher was selected programmatically inside the served prototype and its rendered text captured; the in-frame Host header, Edit, and Cancel controls were exercised the same way. After the correction pass the same method confirmed: Add Row on a Host and inside an override (host rows untouched, draft dirty, Discard removes the row, the checkmark keeps it); "Other…" rejects an empty kind ("Enter an Agent kind.") and a duplicate ("This Host already has a CLAUDE override.") and creates a named one whose reorder and delete never touch the Host's rows; a row opened outside an edit session shows a read-only Field Editor (no minus, handle, style menu, or Add Field; footer "Tap Edit on the previous screen to change fields."); collapsing an override sub-block after saving leaves the draft clean; and a clean Host renders no "Unsaved changes on this Host" element. The live editor window could not be screenshotted during that pass, so this document has no images of the finished prototype; reviewers should open the project link.
 
 ## Why redesign
 
@@ -22,9 +22,9 @@ The current screen makes every edit a swipe: Move Up, Move Down, and Delete hide
 ### Read-only (default)
 
 - Large-title screen "Agent List Fields" with a one-line intro: "Each Host decides which fields appear on its Agent rows in Console. Tap Edit to change them." Top-right "Edit".
-- One inset-grouped section per Host, all collapsed on open. The header shows the Host name, a caption ("Following herdr plugin" or "Your fields"), and a chevron. The header is a single button with an accessibility label such as "Studio Mac, following herdr plugin, collapsed".
+- One inset-grouped section per Host, all collapsed on open. The header shows the Host name, a caption, and a chevron. The caption states the layout source truthfully and never exposes a fallback configuration: "Your fields" (saved layout), "Following herdr plugin" (clean snapshot), "herdr default fields (plugin reported a problem)" (snapshot with diagnostics), "Reading herdr fields…" (snapshot loading), "No herdr fields snapshot" (Host has none, Console uses the internal fallback), and "herdr fields unavailable" (Host offline or unreadable). These map one-to-one onto the existing `LayoutSource` cases. The prototype renders only the first two. The header is a single button with an accessibility label such as "Studio Mac, following herdr plugin, collapsed".
 - Expanding a Host shows, in order: a "Console preview" block rendering one sample Agent row exactly as the Console will draw it from the current rows (sample data: workspace "heeler", agent "claude", title "fix sidebar sync"); the row list ("Row 1", "Row 2", …) where each row shows its fields as small monospace chips in render order and a chevron; an "Agent overrides" group listing per-kind overrides or "No overrides. Every Agent uses the rows above."
-- Tapping a row pushes the Field Editor in read-only form. No handles, no minus controls, no Add buttons, no Sync button outside edit mode.
+- Tapping a row pushes the Field Editor in read-only form: field keys, descriptions, and the style as plain text, with the footer "Tap Edit on the previous screen to change fields." No handles, no minus controls, no Add buttons, no Sync button outside edit mode.
 - A Host with zero rows shows a "Status only" preview and "No rows. Agents show only their status." With no Hosts at all, the screen shows a `ContentUnavailableView`-style "No Hosts" with "Add a Host to configure its Agent rows."
 
 ### Edit session
@@ -33,8 +33,8 @@ The current screen makes every edit a swipe: Move Up, Move Down, and Delete hide
 - Rows gain a reorder handle on the trailing edge and a red minus on the leading edge. Rows stay tappable to open the Field Editor. "Add Row" appends an empty row ("No fields yet") at the end of that Host's list.
 - Delete is two-step in place: the minus arms the row and reveals a red "Delete" button on that row; tapping elsewhere disarms. No swipe is required for any action, and every action is a button for VoiceOver.
 - Reorder: dragging the handle lifts the row and dims the others; dropping commits the new order and marks the Host dirty.
-- "Add Override" opens a menu of Agent kinds seen on that Host (for example claude, codex, grok) plus "Other…" for free text. A new override is its own collapsible sub-block under "Agent overrides", seeded from the Host's rows, with the same row list, handles, minus, and Add Row. Its minus reveals an in-place "Remove" confirmation.
-- "Sync from plugin" sits under each Host's rows in edit mode. States: idle button; pending ("Syncing…" with a spinner, and the rest of that Host's controls disabled); success ("Filled from plugin. Unsaved until you save."); failure in red with a "Retry" link ("Couldn't reach Studio Mac. Draft unchanged." or "You're offline. Draft unchanged."). Sync never persists.
+- "Add Override" opens a menu of Agent kinds seen on that Host (for example claude, codex, grok) plus "Other…", which shows an inline text field with Add and Cancel; the input is trimmed, and an empty or duplicate kind is refused with a short red hint before anything is created. A new override is its own collapsible sub-block under "Agent overrides", seeded from the Host's rows, with the same row list, handles, minus, and Add Row. Its minus reveals an in-place "Remove" confirmation.
+- "Sync from plugin" sits under each Host's rows in edit mode. It replaces that Host's entire draft layout with the plugin snapshot, per-kind override rows included, exactly as `syncFromPlugin` does today. States: idle button; pending ("Syncing…" with a spinner, and the rest of that Host's controls disabled); success; failure in red with a "Retry" link. Success has three truthful variants matching the editor's outcomes: a clean snapshot ("Filled from plugin. Unsaved until you save."), a snapshot with diagnostics ("herdr reported a configuration problem, so its default fields were filled. Unsaved until you save."), and no snapshot at all ("This Host has no plugin fields snapshot, so Heeler's fallback fields were filled. Unsaved until you save."). The fallback is still never shown as a configuration of its own. Failure copy: "Couldn't reach Studio Mac. Draft unchanged." when the snapshot cannot be read and "You're offline. Draft unchanged." when the Host is not connected. Sync never persists.
 - Dirty state: the title gains an orange "Unsaved changes" subtitle and each changed Host header shows an orange dot. Hosts never share drafts; Build Server stays clean while Studio Mac is dirty.
 - Cancel with a dirty draft shows a confirmation dialog "Discard changes?" / "Your unsaved rows will be lost." with destructive "Discard Changes" and "Keep Editing". Cancel with a clean draft exits immediately.
 - The checkmark saves every dirty Host, returns to read-only, shows a brief green "Saved" subtitle, and flips saved Hosts' captions to "Your fields".
@@ -42,8 +42,8 @@ The current screen makes every edit a swipe: Move Up, Move Down, and Delete hide
 ### Field Editor (pushed screen)
 
 - Title "Row N", subtitle with the Host name and, for overrides, "· claude override". Back returns to the Settings screen with the Host still expanded.
-- Section "Fields in this row": one row per field with its key in monospace, a one-line description ("Workspace or repo folder name"), and a style control (Default, Secondary, Monospace) shown as a menu. In edit mode fields also get a red minus and a reorder handle.
-- "Add Field" opens a sheet "Fields reported by <Host>" listing only fields not yet in the row, each with its description. Picking one appends it with the Default style and closes the sheet.
+- Section "Fields in this row": one row per field with its key in monospace, a one-line description ("Workspace or repo folder name"), and a style control shown as a menu. Native scope offers Default and Secondary, where Secondary is the existing `dim` flag on `AgentRowStyledToken` and Default clears it; `bold` and `fg` stay untouched by this screen. The prototype's third option, Monospace, is a visual concept with no field in the model and is excluded from native scope. In edit mode fields also get a red minus and a reorder handle; outside an edit session the editor is read-only and shows the style as plain text.
+- "Add Field" opens a sheet listing the built-in `AgentRowToken` fields not yet in the row, each with a short description, plus a "Custom field" entry that keeps today's `$name` plugin-token path (1–32 letters, digits, underscores or hyphens; values come from herdr plugins and display as plain text). Picking one appends it with the Default style and closes the sheet. The prototype's "Fields reported by <Host>" list is illustrative sample data.
 - Footer: "Fields render left to right in this row. Changes stay in the draft until you save on the previous screen."
 
 ### iPad and accessibility
@@ -67,7 +67,7 @@ The prototype's state switcher jumps to each state; the table records what each 
 | 8 | Override added | "claude · 2 rows" sub-block with its own rows and Add Row |
 | 9 | Remove override | Override armed, in-place Remove |
 | 10 | Sync pending | "Syncing…", Add Row hidden, Host controls disabled |
-| 11 | Sync success | Rows replaced by plugin rows (adds branch), "Filled from plugin. Unsaved until you save." |
+| 11 | Sync success | Host rows replaced by plugin rows (adds branch), "Filled from plugin. Unsaved until you save." (the prototype replaces rows only; the spec replaces the whole layout, overrides included) |
 | 12 | Sync failure | Red "Couldn't reach Studio Mac. Draft unchanged." with Retry |
 | 13 | Offline | Red "You're offline. Draft unchanged." with Retry |
 | 14 | Unsaved changes | Orange subtitle and Host dot after adding a field |
@@ -88,19 +88,21 @@ This is guidance for a later, separately requested implementation unit. The data
 - Use one `List` with `.environment(\.editMode, .constant(isEditing ? .active : .inactive))` on the List itself so `.onMove` and `.onDelete` render native handles and minus controls. The earlier trap (edit mode applied only to embedded row content disabled `NavigationLink`s) is avoided by opening the Field Editor with a `Button` plus `navigationDestination(item:)` instead of `NavigationLink`, and by marking non-row items (Host headers, previews, Add buttons, Sync) `.moveDisabled(true)` and `.deleteDisabled(true)`.
 - Model each Host as a `Section` whose header is a `Button` toggling expansion, with content shown only when expanded. Overrides are nested `Section`s within the Host's group, or a `DisclosureGroup` when the flatter hierarchy reads better on iPhone.
 - Two-step delete: SwiftUI's native minus already reveals a Delete button in place, which is the intended behavior. Do not add swipe actions; keep `accessibilityAction`s for move and delete so VoiceOver has explicit verbs.
-- Add Override: a `Menu` listing kinds from that Host's Agent Inventory (`ConsoleStore`) minus kinds already overridden, plus "Other…" presenting an alert with a text field validated by `agent.rename`'s name rule.
+- Add Override: a `Menu` listing kinds from that Host's Agent Inventory (`ConsoleStore`) minus kinds already overridden, plus "Other…" presenting an alert with a text field. Kinds are herdr's supported-agent identifiers, not Agent names, so apply no name grammar: trim, reject empty, and reject case-insensitive duplicates, as the current view does. Give each override a stable identity in view state so renaming never re-routes its row operations.
 - Sync: render `SyncState` under the Host's rows with `ProgressView` for pending, a secondary caption for success, and a red caption plus "Retry" for failure. Disable that Host's controls while pending. Keep `settings.agentList.sync.<hostID>` and `settings.agentList.syncTip.<hostID>` identifiers.
-- Title subtitle: iOS has no navigation subtitle API on `.inline` titles, so render "Unsaved changes" / "Saved" as a caption directly under the large title inside the first list section, tinted orange or green.
-- Cancel confirmation: `confirmationDialog` with a destructive "Discard Changes" role; keep `settings.agentList.cancel`, `.edit`, `.save`, `.error`, and `.host.<hostID>` identifiers so existing tests continue to locate controls.
+- Title subtitle: at the project's iOS 18 deployment target there is no navigation subtitle API, so render "Unsaved changes" / "Saved" as a caption directly under the large title inside the first list section, tinted orange or green. Show the per-Host orange dot only for dirty Hosts and give clean Hosts no dot element at all, so VoiceOver never announces "Unsaved changes" on a clean Host. Dirty means the draft differs from the baseline; expansion state is presentation and must not count.
+- Cancel confirmation: `confirmationDialog` with a destructive "Discard Changes" role; keep `settings.agentList.fields`, `.cancel`, `.edit`, `.save`, `.error`, and `.host.<hostID>` identifiers so existing tests continue to locate controls.
 - Console preview: reuse the Console row view with sample values per token so the preview and the real list cannot drift.
 - Empty states: `ContentUnavailableView` for "No Hosts"; a plain caption row for a Host with no rows.
-- Field Editor: a pushed `List` in the same edit mode with `.onMove`/`.onDelete`, a `Menu` for style, and a `.sheet` for Add Field that lists `AgentRowToken` cases not yet present in the row.
+- Field Editor: a pushed `List` in the same edit mode with `.onMove`/`.onDelete`, a `Menu` for style (Default / Secondary → `dim`), and a `.sheet` for Add Field that lists `AgentRowToken` cases not yet present in the row plus the custom `$name` entry. Outside an edit session the screen is read-only: no move, delete, style, or add controls, and mutation handlers are not wired.
 
 ## Limitations
 
 - The prototype's reorder is a tap-to-move stand-in (the handle moves the row one position); the native implementation should use real drag reordering.
 - The exported `.dc.html` depends on Claude Design's runtime (`support.js`, `ios-frame.jsx`) and only renders inside the project. No standalone HTML, PDF, or image export was available from the product for this file type.
 - No screenshots of the finished prototype could be captured in this session; the project link is the visual reference.
-- The field list (workspace, terminal_title, agent, branch, cwd, host) and the "kinds seen on this Host" list are illustrative sample data, not the app's `AgentRowToken` set.
+- The field list (workspace, terminal_title, agent, branch, cwd, host) and the "kinds seen on this Host" list are illustrative sample data, not the app's `AgentRowToken` set, and the prototype has no custom `$name` entry.
+- The prototype's Sync replaces only the Host's rows and always succeeds after a delay; the failure, offline, diagnostics, and no-snapshot outcomes exist as switcher presets or as spec text only. It also renders only the two main source captions.
+- The prototype's Monospace style option is a concept only; native scope maps Default / Secondary onto the existing `dim` flag.
 - iPad and Dynamic Type are described, not rendered, and nothing was run on a device or simulator.
 - "Other…" custom override naming is modeled as a free-text sub-block; validation and duplicate handling are left to the implementation.

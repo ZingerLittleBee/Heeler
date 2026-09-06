@@ -72,7 +72,9 @@
                 <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
                   <div style="display:flex;align-items:center;gap:7px">
                     <span style="font-size:17px;letter-spacing:-0.4px;color:#000">{{ host.name }}</span>
-                    <span aria-label="Unsaved changes on this Host" style="width:7px;height:7px;border-radius:999px;background:{{ host.dot }}"></span>
+                    <sc-if value="{{ host.showDot }}" hint-placeholder-val="{{ false }}">
+                      <span aria-label="Unsaved changes on this Host" style="width:7px;height:7px;border-radius:999px;background:#FF9500"></span>
+                    </sc-if>
                   </div>
                   <div style="font-size:13px;color:{{ host.captionColor }};letter-spacing:-0.1px">{{ host.caption }}</div>
                 </div>
@@ -166,9 +168,6 @@
                             <button onClick="{{ ov.confirmDelete }}" style="appearance:none;border:0;cursor:pointer;font-family:inherit;font-size:15px;color:#fff;background:#FF3B30;border-radius:7px;padding:5px 12px">Remove</button>
                           </sc-if>
                         </div>
-                        <sc-if value="{{ ov.custom }}" hint-placeholder-val="{{ false }}">
-                          <input value="{{ ov.kind }}" onChange="{{ ov.rename }}" placeholder="Agent kind, e.g. aider" style="width:100%;box-sizing:border-box;border:0;border-top:0.5px solid #E5E5EA;padding:11px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;color:#000;outline:none" />
-                        </sc-if>
                         <sc-if value="{{ ov.expanded }}" hint-placeholder-val="{{ false }}">
                           <div style="border-top:0.5px solid #E5E5EA">
                             <sc-for list="{{ ov.rows }}" as="row" hint-placeholder-count="1">
@@ -236,6 +235,19 @@
                       </div>
                     </sc-if>
 
+                    <sc-if value="{{ host.pendingOpen }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;flex-direction:column;gap:7px">
+                        <div style="display:flex;align-items:center;gap:8px">
+                          <input value="{{ host.pendingValue }}" onChange="{{ host.pendingChange }}" placeholder="Agent kind, e.g. aider" style="flex:1;min-width:0;box-sizing:border-box;border:0.5px solid #D8D8DE;border-radius:8px;padding:9px 10px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;color:#000;background:#FAFAFC;outline:none" />
+                          <button onClick="{{ host.pendingAdd }}" style="appearance:none;border:0;background:none;cursor:pointer;padding:6px 2px;font-family:inherit;font-size:16px;color:#007AFF">Add</button>
+                          <button onClick="{{ host.pendingCancel }}" style="appearance:none;border:0;background:none;cursor:pointer;padding:6px 2px;font-family:inherit;font-size:16px;color:#8E8E93">Cancel</button>
+                        </div>
+                        <sc-if value="{{ host.pendingHasHint }}" hint-placeholder-val="{{ false }}">
+                          <div style="font-size:13px;color:#D70015">{{ host.pendingHint }}</div>
+                        </sc-if>
+                      </div>
+                    </sc-if>
+
                     <sc-if value="{{ host.editing }}" hint-placeholder-val="{{ false }}">
                       <div style="border-top:0.5px solid #E5E5EA;margin-top:4px;padding:12px 0 14px;display:flex;flex-direction:column;gap:8px">
                         <sc-if value="{{ host.syncIdle }}" hint-placeholder-val="{{ true }}">
@@ -295,22 +307,31 @@
           <div style="background:#fff;border-radius:12px;overflow:visible">
             <sc-for list="{{ fe.fields }}" as="f" hint-placeholder-count="2">
               <div style="position:relative;display:flex;align-items:center;gap:12px;padding:11px 14px;border-bottom:0.5px solid #E5E5EA">
+                <sc-if value="{{ f.editing }}" hint-placeholder-val="{{ true }}">
                 <button onClick="{{ f.remove }}" aria-label="Remove field {{ f.key }}" style="appearance:none;border:0;cursor:pointer;flex-shrink:0;width:22px;height:22px;border-radius:999px;background:#FF3B30;display:flex;align-items:center;justify-content:center">
                   <span aria-hidden="true" style="width:11px;height:2px;border-radius:2px;background:#fff;display:block"></span>
                 </button>
+                </sc-if>
                 <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
                   <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;color:#000">{{ f.key }}</span>
                   <span style="font-size:12.5px;color:#8E8E93">{{ f.desc }}</span>
                 </div>
+                <sc-if value="{{ f.readOnly }}" hint-placeholder-val="{{ false }}">
+                  <span aria-label="Style: {{ f.styleLabel }}" style="font-size:15px;color:#8E8E93">{{ f.styleLabel }}</span>
+                </sc-if>
+                <sc-if value="{{ f.editing }}" hint-placeholder-val="{{ true }}">
                 <button onClick="{{ f.openMenu }}" aria-label="Style for {{ f.key }}: {{ f.styleLabel }}" style="appearance:none;border:0;background:none;cursor:pointer;display:flex;align-items:center;gap:4px;padding:4px 2px;font-family:inherit;font-size:15px;color:#8E8E93">
                   <span>{{ f.styleLabel }}</span>
                   <svg width="10" height="14" viewBox="0 0 10 14" aria-hidden="true"><path d="M2 5.5L5 2.5l3 3M2 8.5l3 3 3-3" fill="none" stroke="#8E8E93" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
                 </button>
+                </sc-if>
+                <sc-if value="{{ f.editing }}" hint-placeholder-val="{{ true }}">
                 <button onClick="{{ f.move }}" aria-label="Reorder {{ f.key }}" style="appearance:none;border:0;background:none;cursor:grab;flex-shrink:0;display:flex;flex-direction:column;gap:3.5px;padding:6px 2px">
                   <span aria-hidden="true" style="width:17px;height:1.5px;background:#B0B0B6;display:block;border-radius:2px"></span>
                   <span aria-hidden="true" style="width:17px;height:1.5px;background:#B0B0B6;display:block;border-radius:2px"></span>
                   <span aria-hidden="true" style="width:17px;height:1.5px;background:#B0B0B6;display:block;border-radius:2px"></span>
                 </button>
+                </sc-if>
                 <sc-if value="{{ f.menuOpen }}" hint-placeholder-val="{{ false }}">
                   <div style="position:absolute;right:44px;top:38px;width:170px;z-index:30;background:rgba(250,250,252,0.98);border-radius:13px;box-shadow:0 10px 30px rgba(0,0,0,0.18),0 0 0 0.5px rgba(0,0,0,0.06);overflow:hidden">
                     <sc-for list="{{ f.styleOptions }}" as="opt" hint-placeholder-count="3">
@@ -323,12 +344,19 @@
             <sc-if value="{{ fe.empty }}" hint-placeholder-val="{{ false }}">
               <div style="padding:14px;border-bottom:0.5px solid #E5E5EA;font-size:14px;color:#8E8E93">No fields. This row renders nothing.</div>
             </sc-if>
+            <sc-if value="{{ fe.editing }}" hint-placeholder-val="{{ true }}">
             <button onClick="{{ fe.openSheet }}" style="appearance:none;border:0;background:none;width:100%;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 14px;font-family:inherit;font-size:16px;color:#007AFF;text-align:left">
               <svg width="17" height="17" viewBox="0 0 17 17" aria-hidden="true"><path d="M8.5 1.5v14M1.5 8.5h14" fill="none" stroke="#007AFF" stroke-width="2" stroke-linecap="round"></path></svg>
               <span>Add Field</span>
             </button>
+            </sc-if>
           </div>
-          <div style="font-size:13px;line-height:1.45;color:#6C6C70;padding:6px 4px">Fields render left to right in this row. Changes stay in the draft until you save on the previous screen.</div>
+          <sc-if value="{{ fe.editing }}" hint-placeholder-val="{{ true }}">
+            <div style="font-size:13px;line-height:1.45;color:#6C6C70;padding:6px 4px">Fields render left to right in this row. Changes stay in the draft until you save on the previous screen.</div>
+          </sc-if>
+          <sc-if value="{{ fe.readOnly }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:13px;line-height:1.45;color:#6C6C70;padding:6px 4px">Tap Edit on the previous screen to change fields.</div>
+          </sc-if>
         </div>
       </sc-if>
 
@@ -450,13 +478,13 @@ class Component extends DCLogic {
     const s = {
       n, editing: false, screen: 'main', fe: null, sheet: null, dialog: null,
       ovMenu: null, armed: null, drag: null, justSaved: false, sync: {},
-      hosts, expanded: {}, styleMenu: null,
+      hosts, expanded: {}, styleMenu: null, ovSeq: 0, rowSeq: 0, pending: null,
       baseline: JSON.stringify(hosts),
     };
     const studio = s.hosts[0];
     const build = s.hosts[1];
     const clone = o => JSON.parse(JSON.stringify(o));
-    const mkOverride = kind => ({ kind, expanded: true, rows: clone(studio.rows).map((r, i) => Object.assign(r, { id: kind + i })) });
+    const mkOverride = kind => { const oid = 'ov' + (++s.ovSeq); return { oid, kind, expanded: true, rows: clone(studio.rows).map((r, i) => Object.assign(r, { id: oid + '-' + i })) }; };
 
     if (n >= 2) s.expanded.studio = true;
     if (n >= 3) s.editing = true;
@@ -467,7 +495,7 @@ class Component extends DCLogic {
     if (n === 6) s.hosts[0].rows = studio.rows.concat([{ id: 's3', fields: [] }]);
     if (n === 7) s.ovMenu = 'studio';
     if (n === 8 || n === 9) s.hosts[0].overrides = [mkOverride('claude')];
-    if (n === 9) s.armed = { kind: 'ov', host: 'studio', id: 'claude' };
+    if (n === 9) s.armed = { kind: 'ov', host: 'studio', id: s.hosts[0].overrides[0].oid };
     if (n === 10) s.sync = { studio: { status: 'pending' } };
     if (n === 11) { s.sync = { studio: { status: 'success' } }; s.hosts[0].rows = PLUGIN_ROWS(); }
     if (n === 12) s.sync = { studio: { status: 'failure', message: 'Couldn’t reach Studio Mac. Draft unchanged.' } };
@@ -494,19 +522,34 @@ class Component extends DCLogic {
   }
 
   host(st, id) { return st.hosts.find(h => h.id === id); }
-  bag(st, hostId, ovKind) {
+  bag(st, hostId, oid) {
     const h = this.host(st, hostId);
     if (!h) return null;
-    if (!ovKind) return h;
-    return h.overrides.find(o => o.kind === ovKind) || null;
+    if (!oid) return h;
+    return h.overrides.find(o => o.oid === oid) || null;
+  }
+
+  newRowId(st) { st.rowSeq = (st.rowSeq || 0) + 1; return 'r' + st.rowSeq; }
+
+  addRowTo(hostId, oid) {
+    this.patch(st => {
+      const b = this.bag(st, hostId, oid);
+      if (!b) return;
+      b.rows = (b.rows || []).concat([{ id: this.newRowId(st), fields: [] }]);
+      st.armed = null; st.ovMenu = null;
+    });
   }
 
   dirtyHosts() {
+    const norm = h => JSON.stringify({
+      id: h.id, saved: h.saved, rows: h.rows,
+      overrides: (h.overrides || []).map(o => ({ oid: o.oid, kind: o.kind, rows: o.rows })),
+    });
     const base = JSON.parse(this.state.baseline || '[]');
     const map = {};
     this.state.hosts.forEach(h => {
       const b = base.find(x => x.id === h.id);
-      map[h.id] = !b || JSON.stringify(b) !== JSON.stringify(h);
+      map[h.id] = !b || norm(b) !== norm(h);
     });
     return map;
   }
@@ -522,7 +565,7 @@ class Component extends DCLogic {
   exit() {
     this.patch(st => {
       st.editing = false; st.dialog = null; st.armed = null; st.ovMenu = null;
-      st.drag = null; st.sync = {}; st.screen = 'main'; st.fe = null; st.sheet = null; st.styleMenu = null;
+      st.drag = null; st.sync = {}; st.screen = 'main'; st.fe = null; st.sheet = null; st.styleMenu = null; st.pending = null;
     });
   }
 
@@ -530,7 +573,7 @@ class Component extends DCLogic {
     this.patch(st => {
       st.hosts = JSON.parse(st.baseline);
       st.editing = false; st.dialog = null; st.armed = null; st.ovMenu = null;
-      st.drag = null; st.sync = {}; st.screen = 'main'; st.fe = null; st.sheet = null;
+      st.drag = null; st.sync = {}; st.screen = 'main'; st.fe = null; st.sheet = null; st.pending = null;
     });
   }
 
@@ -540,7 +583,7 @@ class Component extends DCLogic {
       st.hosts.forEach(h => { if (d[h.id]) h.saved = true; });
       st.baseline = JSON.stringify(st.hosts);
       st.editing = false; st.justSaved = true; st.armed = null; st.ovMenu = null;
-      st.drag = null; st.sync = {}; st.screen = 'main'; st.fe = null; st.sheet = null;
+      st.drag = null; st.sync = {}; st.screen = 'main'; st.fe = null; st.sheet = null; st.pending = null;
     });
     this.timer = setTimeout(() => this.patch(st => { st.justSaved = false; }), 2600);
   }
@@ -636,7 +679,7 @@ class Component extends DCLogic {
         aria: h.name + ', ' + (h.saved ? 'your fields' : 'following herdr plugin') + ', ' + (st.expanded[h.id] ? 'expanded' : 'collapsed'),
         caption: h.saved ? 'Your fields' : 'Following herdr plugin',
         captionColor: h.saved ? '#6C6C70' : '#8E8E93',
-        dot: (editing && dirtyMap[h.id]) ? '#FF9500' : 'transparent',
+        showDot: !!(editing && dirtyMap[h.id]),
         expanded: !!st.expanded[h.id],
         chevron: st.expanded[h.id] ? 180 : 0,
         editing,
@@ -645,31 +688,28 @@ class Component extends DCLogic {
         previewEmpty: this.previewFor(h).length === 0,
         rows: this.rowViews(h.id, null, h, editing, pending),
         rowsEmpty: h.rows.length === 0,
+        addRow: () => { if (pending || !editing) return; this.addRowTo(h.id, null); },
         showAddRow: editing && !pending,
         overrides: h.overrides.map(o => {
-          const armed = st.armed && st.armed.kind === 'ov' && st.armed.host === h.id && st.armed.id === o.kind;
+          const armed = st.armed && st.armed.kind === 'ov' && st.armed.host === h.id && st.armed.id === o.oid;
           return {
-            kind: o.kind || 'new override',
-            custom: !!o.custom,
+            kind: o.kind,
             meta: o.rows.length + (o.rows.length === 1 ? ' row' : ' rows'),
             expanded: !!o.expanded,
             chevron: o.expanded ? 180 : 0,
             editing: editing && !pending,
             armed: !!armed,
-            rows: this.rowViews(h.id, o.kind, o, editing, pending),
+            rows: this.rowViews(h.id, o.oid, o, editing, pending),
             showAddRow: editing && !pending,
+            addRow: () => { if (pending || !editing) return; this.addRowTo(h.id, o.oid); },
             toggle: () => this.patch(s2 => {
-              const ov = this.bag(s2, h.id, o.kind);
-              ov.expanded = !ov.expanded;
+              const ov = this.bag(s2, h.id, o.oid);
+              if (ov) ov.expanded = !ov.expanded;
             }),
-            rename: e => {
-              const v = e.target.value;
-              this.patch(s2 => { const ov = this.host(s2, h.id).overrides.find(x => x.kind === o.kind); ov.kind = v; });
-            },
-            armDelete: () => this.patch(s2 => { s2.armed = armed ? null : { kind: 'ov', host: h.id, id: o.kind }; }),
+            armDelete: () => this.patch(s2 => { s2.armed = armed ? null : { kind: 'ov', host: h.id, id: o.oid }; }),
             confirmDelete: () => this.patch(s2 => {
               const host = this.host(s2, h.id);
-              host.overrides = host.overrides.filter(x => x.kind !== o.kind);
+              host.overrides = host.overrides.filter(x => x.oid !== o.oid);
               s2.armed = null;
             }),
           };
@@ -678,21 +718,39 @@ class Component extends DCLogic {
         addOvColor: pending ? '#B0B0B6' : '#007AFF',
         ovMenuOpen,
         toggleOvMenu: () => { if (pending) return; this.patch(s2 => { s2.ovMenu = ovMenuOpen ? null : h.id; s2.armed = null; }); },
+        pendingOpen: !!(st.pending && st.pending.host === h.id),
+        pendingValue: (st.pending && st.pending.host === h.id) ? st.pending.value : '',
+        pendingHint: (st.pending && st.pending.host === h.id) ? (st.pending.hint || '') : '',
+        pendingHasHint: !!(st.pending && st.pending.host === h.id && st.pending.hint),
+        pendingChange: e => { const v = e.target.value; this.patch(s2 => { s2.pending = { host: h.id, value: v, hint: '' }; }); },
+        pendingCancel: () => this.patch(s2 => { s2.pending = null; }),
+        pendingAdd: () => {
+          const raw = (st.pending && st.pending.value) || '';
+          const kind = raw.trim();
+          if (!kind) { this.patch(s2 => { s2.pending = { host: h.id, value: raw, hint: 'Enter an Agent kind.' }; }); return; }
+          if (h.overrides.some(o => (o.kind || '').toLowerCase() === kind.toLowerCase())) {
+            this.patch(s2 => { s2.pending = { host: h.id, value: raw, hint: 'This Host already has a ' + kind + ' override.' }; });
+            return;
+          }
+          this.patch(s2 => {
+            const host = this.host(s2, h.id);
+            const oid = 'ov' + (s2.ovSeq = (s2.ovSeq || 0) + 1);
+            host.overrides.push({ oid, kind, expanded: true, rows: JSON.parse(JSON.stringify(host.rows)).map((r, i) => Object.assign(r, { id: oid + '-' + i })) });
+            s2.pending = null;
+          });
+        },
         ovMenuItems: h.kinds.filter(k => !h.overrides.some(o => o.kind === k)).map(k => ({
           label: k,
           family: 'ui-monospace,SFMono-Regular,Menlo,monospace',
           pick: () => this.patch(s2 => {
             const host = this.host(s2, h.id);
-            host.overrides.push({ kind: k, expanded: true, rows: JSON.parse(JSON.stringify(host.rows)).map((r, i) => Object.assign(r, { id: k + i })) });
-            s2.ovMenu = null;
+            const oid = 'ov' + (s2.ovSeq = (s2.ovSeq || 0) + 1);
+            host.overrides.push({ oid, kind: k, expanded: true, rows: JSON.parse(JSON.stringify(host.rows)).map((r, i) => Object.assign(r, { id: oid + '-' + i })) });
+            s2.ovMenu = null; s2.pending = null;
           }),
         })).concat([{
           label: 'Other…', family: 'inherit',
-          pick: () => this.patch(s2 => {
-            const host = this.host(s2, h.id);
-            host.overrides.push({ kind: '', custom: true, expanded: true, rows: JSON.parse(JSON.stringify(host.rows)).map((r, i) => Object.assign(r, { id: 'x' + i })) });
-            s2.ovMenu = null;
-          }),
+          pick: () => this.patch(s2 => { s2.ovMenu = null; s2.pending = { host: h.id, value: '', hint: '' }; }),
         }]),
         syncIdle: sync.status === 'idle',
         syncPending: pending,
@@ -704,7 +762,7 @@ class Component extends DCLogic {
       };
     });
 
-    let fe = { fields: [], avail: [], title: '', sub: '', empty: false, availEmpty: false, availNote: '', back: () => {}, openSheet: () => {} };
+    let fe = { fields: [], avail: [], title: '', sub: '', empty: false, availEmpty: false, availNote: '', editing: false, readOnly: true, back: () => {}, openSheet: () => {} };
     if (st.screen === 'fieldEditor' && st.fe) {
       const h = this.host(st, st.fe.host);
       const bag = this.bag(st, st.fe.host, st.fe.ov);
@@ -714,50 +772,54 @@ class Component extends DCLogic {
         const used = row.fields.map(f => f.key);
         fe = {
           title: 'Row ' + (idx + 1),
-          sub: h.name + (st.fe.ov ? ' · ' + st.fe.ov + ' override' : ''),
+          sub: h.name + (st.fe.ov ? ' · ' + (bag.kind || 'override') + ' override' : ''),
           empty: row.fields.length === 0,
+          editing: st.editing,
+          readOnly: !st.editing,
           fields: row.fields.map((f, i) => ({
             key: f.key,
             desc: (FIELD_BY_KEY[f.key] || {}).desc || '',
             styleLabel: STYLE_LABEL[f.style],
-            menuOpen: st.styleMenu === i,
-            openMenu: () => this.patch(s2 => { s2.styleMenu = s2.styleMenu === i ? null : i; }),
+            editing: st.editing,
+            readOnly: !st.editing,
+            menuOpen: st.editing && st.styleMenu === i,
+            openMenu: () => { if (!this.state.editing) return; this.patch(s2 => { s2.styleMenu = s2.styleMenu === i ? null : i; }); },
             styleOptions: ['default', 'secondary', 'monospace'].map(k => ({
               label: STYLE_LABEL[k],
               bg: f.style === k ? 'rgba(0,122,255,0.10)' : 'transparent',
-              pick: () => this.patch(s2 => {
+              pick: () => { if (!this.state.editing) return; this.patch(s2 => {
                 const b = this.bag(s2, st.fe.host, st.fe.ov);
                 b.rows.find(r => r.id === st.fe.row).fields[i].style = k;
                 s2.styleMenu = null;
-              }),
+              }); },
             })),
-            remove: () => this.patch(s2 => {
+            remove: () => { if (!this.state.editing) return; this.patch(s2 => {
               const b = this.bag(s2, st.fe.host, st.fe.ov);
               const r = b.rows.find(x => x.id === st.fe.row);
               r.fields.splice(i, 1);
               s2.styleMenu = null;
-            }),
-            move: () => this.patch(s2 => {
+            }); },
+            move: () => { if (!this.state.editing) return; this.patch(s2 => {
               const b = this.bag(s2, st.fe.host, st.fe.ov);
               const r = b.rows.find(x => x.id === st.fe.row);
               const to = (i + 1) % r.fields.length;
               const moved = r.fields.splice(i, 1)[0];
               r.fields.splice(to, 0, moved);
               s2.styleMenu = null;
-            }),
+            }); },
           })),
           avail: FIELDS.filter(f => used.indexOf(f.key) === -1).map(f => ({
             key: f.key, desc: f.desc,
-            add: () => this.patch(s2 => {
+            add: () => { if (!this.state.editing) return; this.patch(s2 => {
               const b = this.bag(s2, st.fe.host, st.fe.ov);
               b.rows.find(r => r.id === st.fe.row).fields.push({ key: f.key, style: 'default' });
               s2.sheet = null;
-            }),
+            }); },
           })),
           availEmpty: FIELDS.filter(f => used.indexOf(f.key) === -1).length === 0,
           availNote: 'Fields reported by ' + h.name,
           back: () => this.patch(s2 => { s2.screen = 'main'; s2.fe = null; s2.styleMenu = null; s2.expanded = Object.assign({}, s2.expanded, { [st.fe.host]: true }); }),
-          openSheet: () => this.patch(s2 => { s2.sheet = 'addField'; s2.styleMenu = null; }),
+          openSheet: () => { if (!this.state.editing) return; this.patch(s2 => { s2.sheet = 'addField'; s2.styleMenu = null; }); },
         };
       }
     }
