@@ -24,56 +24,96 @@ struct AgentLayoutTokensView: View {
     }
 
     var body: some View {
-        List {
-            Section {
-                ForEach(Array(tokens.indices), id: \.self) { index in
-                    tokenRow(tokens[index], at: index)
-                }
-                .onDelete(perform: canMutate ? deleteTokens : nil)
-                .onMove(perform: canMutate ? moveTokens : nil)
-                if tokens.isEmpty && AgentLayoutTokensEditing.isValidRow(rowIndex, in: rows) {
-                    Text("No fields. This row renders nothing.")
-                        .foregroundStyle(.secondary)
-                        .moveDisabled(true)
-                        .deleteDisabled(true)
-                }
-                if editor.isEditing {
-                    Button {
-                        customName = ""
-                        showingAddField = true
-                    } label: {
-                        Label("Add Field", systemImage: "plus")
-                    }
-                    .disabled(!canAddField)
-                    .moveDisabled(true)
-                    .deleteDisabled(true)
-                }
-            } header: {
-                VStack(alignment: .leading, spacing: 4) {
-                    if !subtitle.isEmpty {
-                        Text(verbatim: subtitle)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    Text("Fields in this row")
-                }
-                .textCase(nil)
-            } footer: {
-                Text(editor.isEditing
-                    ? "Fields render left to right in this row. Changes stay in the draft until you save on the previous screen."
-                    : "Tap Edit on the previous screen to change fields.")
+        fieldsList
+            .environment(\.editMode, listEditMode)
+            .navigationTitle("Row \(rowIndex + 1)")
+            .navigationBarTitleDisplayMode(.large)
+            .sheet(isPresented: $showingAddField) { addFieldSheet }
+            .onChange(of: canAddField) { _, canAdd in
+                if !canAdd { showingAddField = false }
             }
+    }
+
+    /// Matches `EnvironmentValues.editMode` (`Binding<EditMode>?`). A non-optional
+    /// `Binding<EditMode>` makes `environment` overload resolution fail to diagnose.
+    private var listEditMode: Binding<EditMode>? {
+        Binding<EditMode>.constant(editor.isEditing ? EditMode.active : EditMode.inactive)
+    }
+
+    private var fieldsList: some View {
+        List {
+            fieldsSection
             AgentLayoutErrorView(editor: editor)
         }
-        .environment(
-            \.editMode,
-            Binding<EditMode>.constant(editor.isEditing ? EditMode.active : EditMode.inactive))
-        .navigationTitle("Row \(rowIndex + 1)")
-        .navigationBarTitleDisplayMode(.large)
-        .sheet(isPresented: $showingAddField) { addFieldSheet }
-        .onChange(of: canAddField) { _, canAdd in
-            if !canAdd { showingAddField = false }
+    }
+
+    private var fieldsSection: some View {
+        Section {
+            ForEach(Array(tokens.indices), id: \.self) { index in
+                tokenRow(tokens[index], at: index)
+            }
+            .onDelete(perform: deleteHandler)
+            .onMove(perform: moveHandler)
+            if tokens.isEmpty && AgentLayoutTokensEditing.isValidRow(rowIndex, in: rows) {
+                emptyFieldsCaption
+            }
+            if editor.isEditing {
+                addFieldButton
+            }
+        } header: {
+            fieldsHeader
+        } footer: {
+            Text(fieldsFooter)
         }
+    }
+
+    /// Typed optionals, not `canMutate ? deleteTokens : nil`. A method-reference
+    /// ternary is not `((IndexSet) -> Void)?` without exploding `onDelete`/`onMove`.
+    private var deleteHandler: ((IndexSet) -> Void)? {
+        guard canMutate else { return nil }
+        return { offsets in deleteTokens(offsets) }
+    }
+
+    private var moveHandler: ((IndexSet, Int) -> Void)? {
+        guard canMutate else { return nil }
+        return { offsets, destination in moveTokens(offsets, destination) }
+    }
+
+    private var emptyFieldsCaption: some View {
+        Text("No fields. This row renders nothing.")
+            .foregroundStyle(.secondary)
+            .moveDisabled(true)
+            .deleteDisabled(true)
+    }
+
+    private var addFieldButton: some View {
+        Button {
+            customName = ""
+            showingAddField = true
+        } label: {
+            Label("Add Field", systemImage: "plus")
+        }
+        .disabled(!canAddField)
+        .moveDisabled(true)
+        .deleteDisabled(true)
+    }
+
+    private var fieldsHeader: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if !subtitle.isEmpty {
+                Text(verbatim: subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Text("Fields in this row")
+        }
+        .textCase(nil)
+    }
+
+    private var fieldsFooter: String {
+        editor.isEditing
+            ? "Fields render left to right in this row. Changes stay in the draft until you save on the previous screen."
+            : "Tap Edit on the previous screen to change fields."
     }
 
     private var addFieldSheet: some View {
