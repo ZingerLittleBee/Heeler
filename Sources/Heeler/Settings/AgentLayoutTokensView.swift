@@ -65,7 +65,9 @@ struct AgentLayoutTokensView: View {
             }
             AgentLayoutErrorView(editor: editor)
         }
-        .environment(\.editMode, .constant(editor.isEditing ? .active : .inactive))
+        .environment(
+            \.editMode,
+            Binding<EditMode>.constant(editor.isEditing ? EditMode.active : EditMode.inactive))
         .navigationTitle("Row \(rowIndex + 1)")
         .navigationBarTitleDisplayMode(.large)
         .sheet(isPresented: $showingAddField) { addFieldSheet }
@@ -296,7 +298,9 @@ enum AgentLayoutTokensEditing {
     }
 
     static func customToken(from raw: String, alreadyIn row: AgentRow) -> AgentRowToken? {
-        guard let token = AgentRowToken(rawValue: raw) else { return nil }
+        guard raw.hasPrefix("$"), let token = AgentRowToken(rawValue: raw), case .custom = token else {
+            return nil
+        }
         guard !row.contains(where: { $0.token == token }) else { return nil }
         return token
     }

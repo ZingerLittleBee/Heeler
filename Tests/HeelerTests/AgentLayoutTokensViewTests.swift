@@ -40,6 +40,9 @@ struct AgentLayoutTokensViewTests {
         #expect(AgentLayoutTokensEditing.customToken(from: "$pin_icon", alreadyIn: []) == .custom("pin_icon"))
         #expect(AgentLayoutTokensEditing.customToken(from: "$pin_icon", alreadyIn: present) == nil)
         #expect(AgentLayoutTokensEditing.customToken(from: "workspace", alreadyIn: []) == nil)
+        #expect(AgentLayoutTokensEditing.customToken(from: "state_icon", alreadyIn: []) == nil)
+        #expect(AgentLayoutTokensEditing.customToken(from: "agent", alreadyIn: []) == nil)
+        #expect(AgentLayoutTokensEditing.customToken(from: "terminal_title", alreadyIn: []) == nil)
         #expect(AgentLayoutTokensEditing.customToken(from: "$", alreadyIn: []) == nil)
         #expect(AgentLayoutTokensEditing.customToken(from: "$a b", alreadyIn: []) == nil)
         let sixteen = (0..<AgentRowLayout.maximumTokensPerRow).map {
