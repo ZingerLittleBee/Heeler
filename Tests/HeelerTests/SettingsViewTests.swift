@@ -263,6 +263,11 @@ struct AgentListFieldsSettingsTests {
         #expect(AgentListFieldsRowLabel.accessibilityLabel(index: 2, row: []) == "Row 3, No fields yet")
     }
 
+    @Test func pendingSyncBlocksFieldEditorNavigation() {
+        #expect(AgentListFieldsRowNavigation.canOpenFieldEditor(isSyncing: false))
+        #expect(!AgentListFieldsRowNavigation.canOpenFieldEditor(isSyncing: true))
+    }
+
     @Test func accessibilityMoveDestinationsMatchListMoveOffsets() throws {
         #expect(AgentListFieldsRowOrder.moveUpDestination(index: 0) == nil)
         #expect(AgentListFieldsRowOrder.moveUpDestination(index: 2) == 1)

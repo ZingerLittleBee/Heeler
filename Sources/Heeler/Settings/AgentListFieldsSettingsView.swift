@@ -63,7 +63,7 @@ struct AgentListFieldsSettingsView: View {
             AgentLayoutErrorView(editor: editor)
         }
         .listStyle(.insetGrouped)
-        .environment(\.editMode, .constant(editor.isEditing ? .active : .inactive))
+        .environment(\.editMode, fieldsEditMode)
         .navigationDestination(item: $openedRow) { destination in
             AgentListFieldsRowDestination(
                 editor: editor, presentation: presentation, destination: destination,
@@ -145,10 +145,14 @@ struct AgentListFieldsSettingsView: View {
         }
     }
 
+    private var fieldsEditMode: Binding<EditMode> {
+        Binding<EditMode>.constant(editor.isEditing ? EditMode.active : EditMode.inactive)
+    }
+
     private func hostHeader(_ host: Host, expanded: Bool) -> some View {
         let caption = AgentListFieldsSourceCaption.text(editor.underlyingSource(for: host.id))
         let isDirty = editor.dirtyHostIDs.contains(host.id)
-        Button {
+        return Button {
             toggle(host.id, in: &expandedHosts)
         } label: {
             HStack(alignment: .center, spacing: 8) {
@@ -202,12 +206,13 @@ struct AgentListFieldsSettingsView: View {
     ) -> some View {
         let layoutRows = rows(hostID: host.id, kind: kind)
         let canMutate = editor.isEditing && !isSyncing
+        let canOpen = AgentListFieldsRowNavigation.canOpenFieldEditor(isSyncing: isSyncing)
         return Section {
             ForEach(Array(zip(rowIDs, layoutRows)), id: \.0) { rowID, row in
                 let index = rowIDs.firstIndex(of: rowID) ?? 0
                 AgentListFieldsRowButton(
                     index: index, row: row,
-                    canMutate: canMutate, rowCount: layoutRows.count,
+                    canOpen: canOpen, canMutate: canMutate, rowCount: layoutRows.count,
                     onOpen: {
                         openedRow = AgentListFieldsEditorDestination(
                             rowID: rowID, hostID: host.id, kind: kind)
@@ -243,6 +248,7 @@ struct AgentListFieldsSettingsView: View {
     private func overridesSection(_ host: Host, isSyncing: Bool) -> some View {
         let overrides = presentation.overrides(for: host.id)
         let canMutate = editor.isEditing && !isSyncing
+        let canOpen = AgentListFieldsRowNavigation.canOpenFieldEditor(isSyncing: isSyncing)
         return Section {
             if overrides.isEmpty {
                 Text(AgentListFieldsCopy.noOverrides)
@@ -256,7 +262,7 @@ struct AgentListFieldsSettingsView: View {
                     ForEach(Array(zip(override.rowIDs, overrideRows)), id: \.0) { rowID, row in
                         overrideRow(
                             host: host, override: override, rowID: rowID, row: row,
-                            canMutate: canMutate)
+                            canOpen: canOpen, canMutate: canMutate)
                     }
                     .onMove(perform: canMutate
                         ? { offsets, destination in
@@ -303,12 +309,12 @@ struct AgentListFieldsSettingsView: View {
 
     private func overrideRow(
         host: Host, override: AgentListFieldsOverrideRecord, rowID: UUID, row: AgentRow,
-        canMutate: Bool
+        canOpen: Bool, canMutate: Bool
     ) -> some View {
         let index = override.rowIDs.firstIndex(of: rowID) ?? 0
         return AgentListFieldsRowButton(
             index: index, row: row,
-            canMutate: canMutate, rowCount: override.rowIDs.count,
+            canOpen: canOpen, canMutate: canMutate, rowCount: override.rowIDs.count,
             onOpen: {
                 openedRow = AgentListFieldsEditorDestination(
                     rowID: rowID, hostID: host.id, kind: override.kind)
@@ -600,6 +606,7 @@ private struct AgentListFieldsRowDestination: View {
 private struct AgentListFieldsRowButton: View {
     let index: Int
     let row: AgentRow
+    let canOpen: Bool
     let canMutate: Bool
     let rowCount: Int
     let onOpen: () -> Void
@@ -607,7 +614,10 @@ private struct AgentListFieldsRowButton: View {
     let onMove: (Int) -> Void
 
     var body: some View {
-        Button(action: onOpen) {
+        Button {
+            guard canOpen else { return }
+            onOpen()
+        } label: {
             HStack(alignment: .center, spacing: 8) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Row \(index + 1)")
@@ -622,6 +632,7 @@ private struct AgentListFieldsRowButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(!canOpen)
         .accessibilityLabel(AgentListFieldsRowLabel.accessibilityLabel(index: index, row: row))
         .accessibilityAction(named: "Delete Row") {
             guard canMutate else { return }
@@ -926,4 +937,10 @@ enum AgentListFieldsRowOrder {
         guard index < count - 1 else { return nil }
         return index + 2
     }
+}
+
+enum AgentListFieldsRowNavigation {
+    /// Pending Sync blocks pushing the Field Editor. Read-only and edit
+    /// navigation stay available once that Host is not syncing.
+    static func canOpenFieldEditor(isSyncing: Bool) -> Bool { !isSyncing }
 }
