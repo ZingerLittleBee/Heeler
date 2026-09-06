@@ -32,6 +32,20 @@ struct AgentListFieldsPreviewTests {
         #expect(try pixels(AgentListFieldsPreview(layout: before, hostName: "Host"))
             != pixels(AgentListFieldsPreview(layout: after, hostName: "Host")),
             "The settings preview must show the saved field style")
+        #expect(try pixels(AgentListFieldsPreview(layout: after, hostName: "Host"))
+            == pixels(AgentCardView(agent: agent, layout: after)),
+            "The settings preview must match the Agent card")
+    }
+
+    @MainActor
+    @Test func previewMatchesTheConsoleAgentCard() throws {
+        let agent = AgentListFieldsPreview.sampleAgent(hostName: "Studio Mac")
+        let layout = AgentRowLayout(rows: [
+            [.init(.workspace), .init(.agent)],
+            [.init(.terminalTitle)],
+        ])
+        #expect(try pixels(AgentListFieldsPreview(layout: layout, hostName: "Studio Mac"))
+            == pixels(AgentCardView(agent: agent, layout: layout)))
     }
 
     @MainActor

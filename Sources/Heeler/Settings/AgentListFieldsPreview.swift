@@ -1,40 +1,20 @@
 import SwiftUI
 
-/// Compact Console preview body for a Host's current rows.
+/// Console preview for a Host's current rows.
 ///
-/// Reuses `AgentCardPresentation` / `AgentRowRenderer` so resolved text and
-/// the empty-layout Agent-name fallback stay truthful. The Host section owns
-/// the strip label, tint, and padding; this view does not draw Agent card
-/// chrome (Idle badge, Host footer) or a Section of its own.
+/// Draws the same `AgentCardView` the Agent list uses, with sample values, so
+/// typography, status, Host footer, and field emphasis cannot drift. The Host
+/// section owns the strip label, tint, and padding.
 struct AgentListFieldsPreview: View {
     let layout: AgentRowLayout
     let hostName: String
 
     var body: some View {
-        let presentation = Self.presentation(layout: layout, hostName: hostName)
-        let agent = Self.sampleAgent(hostName: hostName)
-        HStack(alignment: .top, spacing: 10) {
-            Circle()
-                .fill(Color(agent.agent.status.inkUIColor))
-                .frame(width: 8, height: 8)
-                .padding(.top, 6)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                AgentRowText(tokens: presentation.rows.first ?? [])
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
-                ForEach(Array(presentation.rows.dropFirst().enumerated()), id: \.offset) { _, row in
-                    AgentRowText(tokens: row, isSecondary: true)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .allowsHitTesting(false)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isStaticText)
-        .accessibilityRespondsToUserInteraction(false)
+        AgentCardView(agent: Self.sampleAgent(hostName: hostName), layout: layout)
+            .allowsHitTesting(false)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isStaticText)
+            .accessibilityRespondsToUserInteraction(false)
     }
 
     /// Same presentation the Console card uses for this sample.

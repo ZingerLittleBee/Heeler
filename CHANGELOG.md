@@ -26,6 +26,9 @@ Entries reference the issue that motivated them.
 - Agent List Fields no longer shows Edit on the Host list. Open a Host to
   edit its rows. (#281)
 
+- The Agent List Fields preview now uses the same Agent card as Console,
+  including the status badge and Host name. (#281)
+
 ## [0.1.5] - 2026-09-04
 
 ### Added
