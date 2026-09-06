@@ -119,23 +119,30 @@ struct AgentLayoutTokensView: View {
     private var addFieldSheet: some View {
         NavigationStack {
             List {
-                Section {
-                    if availableBuiltins.isEmpty {
+                if availableHerdrFields.isEmpty && availableHeelerFields.isEmpty {
+                    Section {
                         Text("Every built-in field is already in this row.")
                             .foregroundStyle(.secondary)
                     }
-                    ForEach(availableBuiltins, id: \.self) { token in
-                        Button {
-                            add(token)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(verbatim: token.rawValue)
-                                    .fontDesign(.monospaced)
-                                    .foregroundStyle(.primary)
-                                Text(AgentLayoutTokensEditing.description(for: token))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                } else {
+                    if !availableHerdrFields.isEmpty {
+                        Section {
+                            ForEach(availableHerdrFields, id: \.self) { token in
+                                addFieldButton(for: token)
                             }
+                        } header: {
+                            Text("herdr fields")
+                        }
+                    }
+                    if !availableHeelerFields.isEmpty {
+                        Section {
+                            ForEach(availableHeelerFields, id: \.self) { token in
+                                addFieldButton(for: token)
+                            }
+                        } header: {
+                            Text("Heeler fields")
+                        } footer: {
+                            Text("These fields exist only in Heeler.")
                         }
                     }
                 }
@@ -170,8 +177,27 @@ struct AgentLayoutTokensView: View {
         }
     }
 
-    private var availableBuiltins: [AgentRowToken] {
-        AgentLayoutTokensEditing.availableBuiltins(in: tokens)
+    private var availableHerdrFields: [AgentRowToken] {
+        AgentLayoutTokensEditing.availableBuiltins(in: tokens, from: AgentRowToken.herdrBuiltins)
+    }
+
+    private var availableHeelerFields: [AgentRowToken] {
+        AgentLayoutTokensEditing.availableBuiltins(in: tokens, from: AgentRowToken.heelerBuiltins)
+    }
+
+    private func addFieldButton(for token: AgentRowToken) -> some View {
+        Button {
+            add(token)
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: token.rawValue)
+                    .fontDesign(.monospaced)
+                    .foregroundStyle(.primary)
+                Text(AgentLayoutTokensEditing.description(for: token))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     private func tokenRow(_ styled: AgentRowStyledToken, at index: Int) -> some View {
@@ -310,6 +336,12 @@ enum AgentLayoutTokensEditing {
             "Current terminal window title"
         case .terminalTitleStripped:
             "Terminal title without the Agent prefix"
+        case .host:
+            "Host name"
+        case .status:
+            "Agent Status as text"
+        case .directory:
+            "Working directory"
         case .custom:
             "Plugin field. Values come from herdr plugins and display as plain text."
         }
@@ -332,9 +364,11 @@ enum AgentLayoutTokensEditing {
         return next
     }
 
-    static func availableBuiltins(in row: AgentRow) -> [AgentRowToken] {
+    static func availableBuiltins(
+        in row: AgentRow, from tokens: [AgentRowToken] = AgentRowToken.builtins
+    ) -> [AgentRowToken] {
         let present = Set(row.map(\.token))
-        return AgentRowToken.builtins.filter { !present.contains($0) }
+        return tokens.filter { !present.contains($0) }
     }
 
     static func customToken(from raw: String, alreadyIn row: AgentRow) -> AgentRowToken? {

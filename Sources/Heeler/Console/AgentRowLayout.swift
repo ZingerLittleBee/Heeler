@@ -1,16 +1,24 @@
 import Foundation
 
-/// Names in sidebar.json. Custom names are stored without `$` in the enum
-/// and retain the prefix when encoded; Agent metadata keys have no prefix.
+/// Field names. herdr sidebar.json builtins and `$custom` plugin keys, plus
+/// Heeler-only names (`host`, `status`, `directory`) that exist in the app
+/// layout, not as authored plugin fields.
 enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
     case stateIcon, stateText, workspace, tab, pane, agent
     case terminalTitle, terminalTitleStripped
+    case host, status, directory
     case custom(String)
 
-    static let builtins: [Self] = [
+    static let herdrBuiltins: [Self] = [
         .stateIcon, .stateText, .workspace, .tab, .pane, .agent,
         .terminalTitle, .terminalTitleStripped,
     ]
+
+    static let heelerBuiltins: [Self] = [
+        .host, .status, .directory,
+    ]
+
+    static let builtins: [Self] = herdrBuiltins + heelerBuiltins
 
     init?(rawValue: String) {
         switch rawValue {
@@ -22,6 +30,9 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
         case "agent": self = .agent
         case "terminal_title": self = .terminalTitle
         case "terminal_title_stripped": self = .terminalTitleStripped
+        case "host": self = .host
+        case "status": self = .status
+        case "directory": self = .directory
         default:
             guard rawValue.first == "$" else { return nil }
             let name = rawValue.dropFirst()
@@ -43,6 +54,9 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
         case .agent: "agent"
         case .terminalTitle: "terminal_title"
         case .terminalTitleStripped: "terminal_title_stripped"
+        case .host: "host"
+        case .status: "status"
+        case .directory: "directory"
         case .custom(let name): "$\(name)"
         }
     }

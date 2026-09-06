@@ -84,6 +84,20 @@ struct AgentLayoutTokensViewTests {
         #expect(statusIcon.contains("status column"))
         #expect(statusText.contains("status column"))
         #expect(AgentLayoutTokensEditing.description(for: .workspace) == "Workspace or repo folder name")
+        #expect(AgentLayoutTokensEditing.description(for: .host) == "Host name")
+        #expect(AgentLayoutTokensEditing.description(for: .status) == "Agent Status as text")
+        #expect(AgentLayoutTokensEditing.description(for: .directory) == "Working directory")
+        #expect(
+            AgentLayoutTokensEditing.availableBuiltins(in: [], from: AgentRowToken.heelerBuiltins)
+                == [.host, .status, .directory])
+        #expect(
+            AgentLayoutTokensEditing.availableBuiltins(
+                in: [.init(.host)], from: AgentRowToken.heelerBuiltins)
+                == [.status, .directory])
+        #expect(AgentRowToken(rawValue: "host") == .host)
+        #expect(AgentRowToken(rawValue: "status") == .status)
+        #expect(AgentRowToken(rawValue: "directory") == .directory)
+        #expect(AgentRowToken(rawValue: "$host") == .custom("host"))
     }
 
     @Test func mutationsStayInTheDraftAndTargetOnlyThatHostAndKind() throws {

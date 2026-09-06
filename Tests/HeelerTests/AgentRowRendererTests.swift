@@ -72,6 +72,29 @@ struct AgentRowRendererTests {
         #expect(AgentRowRenderer.render(layout: emptyOverride, agent: agent()).isEmpty)
     }
 
+    @Test func heelerOnlyFieldsRenderHostStatusAndDirectory() {
+        let withCwd = ConsoleAgent(
+            hostID: UUID(), hostName: "Studio Mac",
+            agent: Agent(
+                terminalID: "term", kind: "claude", title: "Fix", status: .idle,
+                workspaceID: "w", tabID: "t", paneID: "p", cwd: "/work/heeler", revision: 1),
+            workspaceLabel: nil, repositoryCheckout: nil)
+        let layout = AgentRowLayout(rows: [[.init(.host), .init(.status), .init(.directory)]])
+        #expect(AgentRowRenderer.render(layout: layout, agent: withCwd).map { $0.map(\.text).joined() }
+                == ["Studio Mac · Idle · /work/heeler"])
+        #expect(AgentRowRenderer.render(layout: layout, agent: withCwd).flatMap { $0.compactMap(\.token) }
+                == [.host, .status, .directory])
+
+        let empty = ConsoleAgent(
+            hostID: UUID(), hostName: "  ",
+            agent: Agent(
+                terminalID: "term", kind: "claude", title: "Fix", status: .working,
+                workspaceID: "w", tabID: "t", paneID: "p", cwd: " \n", revision: 1),
+            workspaceLabel: nil, repositoryCheckout: nil)
+        #expect(AgentRowRenderer.render(layout: layout, agent: empty).map { $0.map(\.text).joined() }
+                == ["Working"])
+    }
+
     @Test func missingTitlesAndWorkspaceNeverRenderOpaqueIDs() {
         let row = ConsoleAgent(hostID: UUID(), hostName: "Host", agent: Agent(
             terminalID: "terminal", kind: "codex", title: "Legacy title", status: .idle,

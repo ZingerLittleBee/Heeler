@@ -40,7 +40,15 @@ enum AgentRowRenderer {
         case .agent: row.agent.displayName
         case .terminalTitle: row.agent.terminalTitle
         case .terminalTitleStripped: row.agent.terminalTitleStripped
+        case .host: nonempty(row.hostName)
+        case .status: nonempty(row.agent.status.rawValue.capitalized)
+        case .directory: nonempty(row.agent.cwd)
         case .custom(let name): row.agent.tokens[name]
         }
+    }
+
+    private static func nonempty(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

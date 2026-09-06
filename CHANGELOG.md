@@ -13,7 +13,9 @@ Entries reference the issue that motivated them.
   Agent order, including terminal titles and plugin fields. Settings now offers
   Agent List Fields: a Host list that opens a Host detail with a Console
   preview, native reorder handles and two-step delete, a Field Editor per row,
-  per-Host Agent overrides, and a checkmark that saves that Host. (#277, #281)
+  per-Host Agent overrides, and a checkmark that saves that Host. A row can
+  also include Heeler-only fields: Host name, Agent Status, and working
+  directory. (#277, #281)
 
 ### Fixed
 
