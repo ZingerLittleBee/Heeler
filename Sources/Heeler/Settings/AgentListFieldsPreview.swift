@@ -20,11 +20,11 @@ struct AgentListFieldsPreview: View {
                 .padding(.top, 6)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: presentation.headline)
+                AgentRowText(tokens: presentation.rows.first ?? [])
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.primary)
-                ForEach(Array(presentation.additionalRows.enumerated()), id: \.offset) { _, line in
-                    Text(verbatim: line)
+                ForEach(Array(presentation.rows.dropFirst().enumerated()), id: \.offset) { _, row in
+                    AgentRowText(tokens: row, isSecondary: true)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }

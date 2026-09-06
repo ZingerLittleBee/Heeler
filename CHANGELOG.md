@@ -18,6 +18,9 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Saving a field's Secondary style now updates its appearance in Agent cards
+  and the Agent List Fields preview. (#281)
+
 - Agent List Fields keeps each Host on one card, with a compact Console
   preview, wrapping field chips, and Sync inside the Host. (#281)
 

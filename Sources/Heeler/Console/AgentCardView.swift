@@ -2,8 +2,8 @@ import SwiftUI
 import UIKit
 
 /// The shared Agent Row Layout leads each card; status, Host and Heeler Pin
-/// retain their own columns. Snapshot styles are retained in presentation but
-/// use the app's accessible semantic typography and colors on both surfaces.
+/// retain their own columns. Fields retain their emphasis using accessible
+/// semantic colors; plugin colors and weights do not replace app typography.
 struct AgentCardView: View {
     let agent: ConsoleAgent
     var layout: AgentRowLayout = .heelerDefault
@@ -16,7 +16,7 @@ struct AgentCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
-                Text(verbatim: presentation.headline)
+                AgentRowText(tokens: presentation.rows.first ?? [])
                     .font(.headline)
                     .lineLimit(1)
                 if isPinned {
@@ -29,8 +29,8 @@ struct AgentCardView: View {
                 Spacer(minLength: 8)
                 AgentStatusBadge(status: agent.agent.status)
             }
-            ForEach(Array(presentation.additionalRows.enumerated()), id: \.offset) { _, row in
-                Text(verbatim: row)
+            ForEach(Array(presentation.rows.dropFirst().enumerated()), id: \.offset) { _, row in
+                AgentRowText(tokens: row, isSecondary: true)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -44,6 +44,32 @@ struct AgentCardView: View {
         .padding(.vertical, 4)
         // Terminal blank rows become bounded extra card spacing on a phone.
         .padding(.bottom, CGFloat(min(layout.rowGap, 3)) * 8)
+    }
+}
+
+/// Keep per-field emphasis through the final Text instead of flattening the
+/// rendered tokens into a String. Separators retain the row's base emphasis.
+struct AgentRowText: View {
+    let tokens: [RenderedToken]
+    var isSecondary = false
+
+    var body: some View {
+        Text(attributedText)
+    }
+
+    private var attributedText: AttributedString {
+        var result = AttributedString()
+        for token in tokens {
+            var span = AttributedString(token.text)
+            let color: UIColor = if token.dim == true {
+                isSecondary ? .tertiaryLabel : .secondaryLabel
+            } else {
+                isSecondary ? .secondaryLabel : .label
+            }
+            span.foregroundColor = Color(uiColor: color)
+            result.append(span)
+        }
+        return result
     }
 }
 

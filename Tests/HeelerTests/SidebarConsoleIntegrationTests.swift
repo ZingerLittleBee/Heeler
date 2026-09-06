@@ -2,12 +2,92 @@ import Foundation
 import Observation
 import Synchronization
 import Testing
+import SwiftUI
+import UIKit
 
 @testable import Heeler
 
 @MainActor
 @Suite("Sidebar Console integration", .timeLimit(.minutes(1)))
 struct SidebarConsoleIntegrationTests {
+    @Test func savingFieldsUpdatesTheMountedConsoleWithoutRefreshingAgents() async throws {
+        let composition = DemoScreenshotComposition.make()
+        let store = composition.console
+        store.setHosts(composition.hosts.hosts)
+        await store.resume()
+        defer { store.setHosts([]) }
+        let deadline = ContinuousClock.now + .seconds(3)
+        while store.agents.isEmpty, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let agent = try #require(store.agents.first)
+        let view = ConsoleView(
+            hosts: composition.hosts, console: store,
+            terminal: TerminalSettings(
+                themes: composition.terminalThemes, zoom: composition.terminalZoom,
+                fonts: composition.terminalFonts, snippets: composition.snippets),
+            inputMode: composition.inputMode, appearance: composition.appearance,
+            pushRegistration: composition.pushRegistration,
+            notificationPreferences: composition.notificationPreferences,
+            relaySettings: composition.relaySettings,
+            notificationRouter: composition.notificationRouter,
+            bannerStore: composition.bannerStore, liveActivities: composition.liveActivities,
+            activity: composition.activity)
+        let controller = UIHostingController(rootView: view)
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        let initial = AgentCardPresentation(agent: agent, layout: store.rowLayout(for: agent.hostID)).headline
+        let mountDeadline = ContinuousClock.now + .seconds(2)
+        while !Self.labels(in: controller.view).contains(where: { $0.contains(initial) }),
+              ContinuousClock.now < mountDeadline {
+            try await Task.sleep(for: .milliseconds(10))
+            controller.view.layoutIfNeeded()
+        }
+        try #require(Self.labels(in: controller.view).contains(where: { $0.contains(initial) }))
+        let editor = AgentListFieldsEditor(
+            layouts: store.rowLayouts, snapshots: store.sidebarSnapshots, fetch: { _ in nil })
+        let expected = Array(repeating: agent.agent.displayName, count: 3).joined(separator: " · ")
+        try #require(!Self.labels(in: controller.view).contains(where: { $0.contains(expected) }))
+        editor.beginEditing()
+        editor.update(agent.hostID) {
+            $0 = AgentRowLayout(rows: [[.init(.agent), .init(.agent), .init(.agent)]])
+        }
+        editor.save()
+        #expect(!editor.isEditing)
+        #expect(AgentCardPresentation(agent: agent, layout: store.rowLayout(for: agent.hostID)).headline == expected)
+        let updateDeadline = ContinuousClock.now + .seconds(2)
+        while !Self.labels(in: controller.view).contains(where: { $0.contains(expected) }),
+              ContinuousClock.now < updateDeadline {
+            try await Task.sleep(for: .milliseconds(10))
+            controller.view.layoutIfNeeded()
+        }
+        #expect(Self.labels(in: controller.view).contains(where: { $0.contains(expected) }),
+                "Saved headline must reach the mounted Console without a snapshot refresh")
+    }
+
+    private static func labels(in root: UIView) -> [String] {
+        var visited = Set<ObjectIdentifier>()
+        var labels: [String] = []
+        func visit(_ node: NSObject) {
+            guard visited.insert(ObjectIdentifier(node)).inserted else { return }
+            if let label = node.accessibilityLabel { labels.append(label) }
+            for element in node.accessibilityElements ?? [] {
+                if let object = element as? NSObject { visit(object) }
+            }
+            let count = node.accessibilityElementCount()
+            if count > 0, count != NSNotFound {
+                for index in 0..<count {
+                    if let object = node.accessibilityElement(at: index) as? NSObject { visit(object) }
+                }
+            }
+            if let view = node as? UIView { view.subviews.forEach { visit($0) } }
+        }
+        visit(root)
+        return labels
+    }
+
     @Test func priorityUsesRecencyThenSnapshotOrderAndPinStillLeads() {
         let host = Host.fixture()
         let old = row(host, pane: "old", status: .done, order: 0, sequence: 1)
