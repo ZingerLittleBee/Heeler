@@ -64,7 +64,7 @@ struct AgentListFieldsSettingsView: View {
         }
         .listStyle(.insetGrouped)
         .listSectionSpacing(AgentListFieldsChrome.hostSpacing)
-        .listSectionMargins(.horizontal, AgentListFieldsChrome.pageInset)
+        .modifier(AgentListFieldsHostListInsets())
         .environment(\.editMode, fieldsEditMode)
         .navigationDestination(item: $openedRow) { destination in
             AgentListFieldsRowDestination(
@@ -767,6 +767,8 @@ private struct AgentListFieldsChipRow: View {
                     Text(verbatim: token.token.rawValue)
                         .font(.system(.caption2, design: .monospaced))
                         .foregroundStyle(AgentListFieldsChrome.chipInk)
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(
@@ -818,7 +820,7 @@ private struct AgentListFieldsChipWrap: Layout {
         var usedWidth: CGFloat = 0
         var frames: [(offset: Int, frame: CGRect)] = []
         for (offset, subview) in subviews.enumerated() {
-            let size = subview.sizeThatFits(.unspecified)
+            let size = fittedSize(of: subview, maxWidth: maxWidth)
             if x > 0, x + size.width > maxWidth {
                 y += rowHeight + spacing
                 x = 0
@@ -832,6 +834,16 @@ private struct AgentListFieldsChipWrap: Layout {
         let height = subviews.isEmpty ? 0 : y + rowHeight
         let width = maxWidth.isFinite ? maxWidth : usedWidth
         return (CGSize(width: width, height: height), frames)
+    }
+
+    /// A chip wider than the line is measured at `maxWidth` so its `Text` can
+    /// wrap; tokens stay in source order.
+    private func fittedSize(of subview: LayoutSubview, maxWidth: CGFloat) -> CGSize {
+        let unconstrained = subview.sizeThatFits(.unspecified)
+        guard maxWidth.isFinite, maxWidth > 0, unconstrained.width > maxWidth else {
+            return unconstrained
+        }
+        return subview.sizeThatFits(ProposedViewSize(width: maxWidth, height: nil))
     }
 }
 
@@ -882,14 +894,34 @@ private struct AgentListFieldsNestedBlockBackground: View {
     }
 }
 
+/// iOS 26 can set grouped section margins directly. iOS 18 uses the
+/// scroll-content margin so the 16pt page inset is not dropped.
+private struct AgentListFieldsHostListInsets: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.listSectionMargins(.horizontal, AgentListFieldsChrome.pageInset)
+        } else {
+            content.contentMargins(.horizontal, AgentListFieldsChrome.pageInset, for: .scrollContent)
+        }
+    }
+}
+
 private enum AgentListFieldsChrome {
     static let pageInset: CGFloat = 16
     static let hostSpacing: CGFloat = 18
     static let chipRadius: CGFloat = 5
     static let nestedRadius: CGFloat = 10
     static let dirtyDot: CGFloat = 7
-    static let previewFill = Color(uiColor: .tertiarySystemGroupedBackground)
-    static let nestedFill = Color(uiColor: .tertiarySystemGroupedBackground)
+    /// In-card wash: original `#FAFAFC` on white. Do not use
+    /// `tertiarySystemGroupedBackground` in light — that token is the page.
+    static let previewFill = Color(uiColor: UIColor { traits in
+        if traits.userInterfaceStyle == .dark {
+            return .tertiarySystemGroupedBackground
+        }
+        return UIColor(red: 250 / 255, green: 250 / 255, blue: 252 / 255, alpha: 1)
+    })
+    static let nestedFill = previewFill
     static let cardFill = Color(uiColor: .secondarySystemGroupedBackground)
     static let chipFill = Color(uiColor: .tertiarySystemFill)
     static let chipStroke = Color(uiColor: .separator)
