@@ -489,7 +489,9 @@ struct AgentListFieldsSettingsView: View {
             addRow(hostID: hostID, kind: kind)
         } label: {
             Label("Add Row", systemImage: "plus")
+                .foregroundStyle(.tint)
         }
+        .buttonStyle(.borderless)
         .disabled(!canMutate || count >= AgentRowLayout.maximumRows)
         .moveDisabled(true)
         .deleteDisabled(true)
@@ -611,7 +613,9 @@ struct AgentListFieldsSettingsView: View {
                         Task { await sync(host.id) }
                     } label: {
                         Label("Sync from plugin", systemImage: "arrow.triangle.2.circlepath")
+                            .foregroundStyle(.tint)
                     }
+                    .buttonStyle(.borderless)
                     .disabled(isSyncing)
                     .accessibilityIdentifier(identifier)
                 }
