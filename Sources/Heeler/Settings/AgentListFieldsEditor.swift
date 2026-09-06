@@ -53,7 +53,7 @@ final class AgentListFieldsEditor {
         return underlyingSource(for: hostID)
     }
 
-    /// Saved or snapshot provenance, ignoring an in-memory draft.
+    /// Saved or snapshot provenance, ignoring an in-memory draft. Never `.draft`.
     func underlyingSource(for hostID: Host.ID) -> LayoutSource {
         if layouts.hostLayouts[hostID] != nil { return .saved }
         switch snapshots.states[hostID] {
@@ -64,7 +64,9 @@ final class AgentListFieldsEditor {
         }
     }
 
-    /// Hosts whose draft would be written by Save, using the same comparison.
+    /// Hosts whose draft would be written by Save. Compared to the optional
+    /// saved layout, not to effective plugin rows: syncing a plugin copy onto
+    /// a Host with no saved choice stays dirty.
     var dirtyHostIDs: Set<Host.ID> {
         Set(drafts.compactMap { hostID, layout in
             layout != layouts.hostLayouts[hostID] ? hostID : nil
@@ -126,10 +128,14 @@ final class AgentListFieldsEditor {
         }
     }
 
-    /// Fetches the Host's plugin snapshot and fills its draft. A missing
-    /// snapshot fills Heeler's fallback fields; a failed read changes nothing.
-    /// Results are dropped once editing ended or the draft was edited since.
-    func syncFromPlugin(_ hostID: Host.ID) async {
+    /// Fetches the Host's plugin snapshot and fills its draft, including
+    /// overrides, row gap, and token styles. A missing snapshot fills Heeler's
+    /// fallback fields; a failed read leaves the draft unchanged. Results are
+    /// dropped once editing ended or the draft was edited since.
+    ///
+    /// `hostName` is only interpolated into the unread-snapshot failure copy.
+    /// The one-argument call stays valid and uses "this Host".
+    func syncFromPlugin(_ hostID: Host.ID, hostName: String = "this Host") async {
         guard isEditing else { return }
         let request = UUID()
         syncRequests[hostID] = request
@@ -141,16 +147,16 @@ final class AgentListFieldsEditor {
         case .loaded(let snapshot?):
             drafts[hostID] = snapshot.layout
             syncStates[hostID] = .filled(snapshot.diagnostics.isEmpty
-                ? "Filled from the herdr plugin. Save to keep these fields."
-                : "herdr reported a configuration problem, so its default fields were filled. Save to keep them.")
+                ? "Filled from plugin. Unsaved until you save."
+                : "herdr reported a configuration problem, so its default fields were filled. Unsaved until you save.")
         case .loaded(nil):
             drafts[hostID] = .heelerDefault
             syncStates[hostID] = .filled(
-                "The herdr plugin on this Host has no fields snapshot, so Heeler's fallback fields were filled. Save to keep them.")
+                "This Host has no plugin fields snapshot, so Heeler's fallback fields were filled. Unsaved until you save.")
         case .unavailable:
-            syncStates[hostID] = .failed("herdr fields could not be read from this Host. Nothing was changed.")
+            syncStates[hostID] = .failed("Couldn't reach \(hostName). Draft unchanged.")
         case .loading, nil:
-            syncStates[hostID] = .failed("This Host is not connected. Nothing was changed.")
+            syncStates[hostID] = .failed("You're offline. Draft unchanged.")
         }
         errorMessage = nil
     }
