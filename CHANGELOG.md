@@ -11,6 +11,13 @@ Entries reference the issue that motivated them.
 
 - Relicensed the Heeler suite from AGPL-3.0 to Apache License 2.0. (#282)
 
+### Fixed
+
+- Connecting to a Host whose login shell is nushell or another non-POSIX shell
+  no longer fails with "The remote home directory could not be resolved". The
+  home probe now runs under POSIX sh, matching the other setup probes. (#275;
+  PR #276)
+
 ## [0.1.5] - 2026-09-04
 
 ### Added
