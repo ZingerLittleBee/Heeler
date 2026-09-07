@@ -37,9 +37,11 @@ on:
       - Sources/Heeler/Transport/Generated/**
       - .github/workflows/ci-node.yml
 
-# Shared with ci.yml so a new push on this ref cancels a stale iOS run.
+# Per-workflow group so this can run alongside ci.yml on the same SHA
+# (plugin/test-vectors starts both). A new push still cancels a stale
+# Node run on this ref.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-node-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

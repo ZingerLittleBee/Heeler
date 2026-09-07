@@ -63,9 +63,11 @@ on:
       - plugin/test-vectors/**
       - .github/workflows/ci.yml
 
-# Shared with ci-node.yml so a new push on this ref cancels a stale iOS run.
+# Per-workflow group: sharing `ci-${{ github.ref }}` with ci-node.yml made
+# the two workflows cancel each other on the same SHA (plugin/test-vectors
+# and this file both start both workflows).
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-ios-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
