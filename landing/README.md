@@ -5,9 +5,10 @@ JavaScript, deployed as a static asset bundle on Cloudflare Workers — the same
 Cloudflare account that serves `relay/`.
 
 It is self-contained on purpose: nothing outside this directory imports from
-it, and no other workflow in the repo depends on it. `ci.yml` excludes
-`landing/**` and `.github/workflows/landing.yml` only runs for it, so a copy
-edit here never starts an iOS build.
+it, and no other workflow in the repo depends on it. `ci.yml` (iOS) and
+`ci-node.yml` (plugin / relay / codegen) do not include `landing/**`, and
+`.github/workflows/landing.yml` only runs for it, so a copy edit here never
+starts an iOS build.
 
 ## Commands
 
