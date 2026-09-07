@@ -209,28 +209,51 @@ awk '
     exit 1
 }
 
-if ! awk '
-    /pull_request:/ { in_pr = 1 }
-    in_pr && /output\/\*\*/ { found = 1 }
-    in_pr && /^  push:/ { exit found ? 0 : 1 }
-    END { exit found ? 0 : 1 }
-' "$workflow"; then
-    echo "pull_request paths-ignore must include output/**" >&2
+# iOS CI uses positive `paths`, not all-or-nothing `paths-ignore`. The old
+# pin required `output/**` on both ignore lists; omitting it from a positive
+# list is what keeps screenshot export material off macos-26 (#286).
+if grep -qE '^[[:space:]]+paths-ignore:' "$workflow"; then
+    echo "ci.yml must use positive paths, not paths-ignore" >&2
     exit 1
 fi
-if ! awk '
-    /^  push:/ { in_push = 1 }
-    in_push && /output\/\*\*/ { found = 1 }
-    in_push && /^# One in-flight/ { exit found ? 0 : 1 }
-    END { exit found ? 0 : 1 }
-' "$workflow"; then
-    echo "push paths-ignore must include output/**" >&2
+for required in \
+    'Sources/**' \
+    'Tests/**' \
+    'Heeler.xcodeproj/**' \
+    'Packages/**' \
+    'project.yml' \
+    'Makefile' \
+    'scripts/**' \
+    'plugin/test-vectors/**' \
+    '.github/workflows/ci.yml'
+do
+    escaped="$(printf '%s' "$required" | sed 's/[.[*^$()+?{|]/\\&/g')"
+    [[ "$(grep -cE "^[[:space:]]+- ${escaped}$" "$workflow")" == 2 ]] || {
+        echo "pull_request and push paths must both include $required" >&2
+        exit 1
+    }
+done
+if grep -qE '^[[:space:]]+- output/\*\*' "$workflow"; then
+    echo "output/** must not be an iOS trigger path" >&2
     exit 1
 fi
-[[ "$(grep -cE '^[[:space:]]+- output/\*\*' "$workflow")" == 2 ]] || {
-    echo "output/** must appear once per paths-ignore list" >&2
+if grep -qE '^[[:space:]]+- landing/\*\*' "$workflow"; then
+    echo "landing/** must not be an iOS trigger path" >&2
+    exit 1
+fi
+if grep -qE '^  (plugin-test|relay-test|codegen-drift):' "$workflow"; then
+    echo "plugin, relay, and codegen jobs belong in ci-node.yml" >&2
+    exit 1
+fi
+node_workflow="$repo_root/.github/workflows/ci-node.yml"
+[[ -f "$node_workflow" ]] || {
+    echo "ci-node.yml is missing" >&2
     exit 1
 }
+if ! grep -qE '^  plugin-test:' "$node_workflow"; then
+    echo "ci-node.yml must keep the pairing plugin job" >&2
+    exit 1
+fi
 
 # The `$$`/`$1` below belong to the child shell, deliberately unexpanded.
 # shellcheck disable=SC2016
