@@ -1,11 +1,14 @@
-# Headless build + test suite for every PR (User Story 12, refs #23).
+# Headless iOS Simulator build + test (User Story 12, refs #23).
 #
-# Runs the full XCTest suite on an iOS simulator. Kept deliberately minimal:
+# Runs the XCTest suite on an iOS simulator. Kept deliberately minimal:
 # no signing certificates, no archive, no xcodegen. Simulator builds use free
 # ad-hoc signing ("Sign to Run Locally"), so no certificate or provisioning
 # profile is needed. We must NOT pass CODE_SIGNING_ALLOWED=NO: it strips the
 # app's signature and with it the keychain-access entitlement, which breaks the
 # tests that run against the real simulator keychain (errSecMissingEntitlement).
+#
+# Plugin tests, the push relay, and wire-type codegen live in ci-node.yml.
+# The marketing site lives in landing.yml.
 #
 # Notes:
 # - The committed Heeler.xcodeproj (project + shared Heeler scheme)
@@ -17,93 +20,55 @@
 #   test count and the named test behind every mandatory behaviour. Only the
 #   real-password fixture needs sudo, because macOS cannot verify an account
 #   password without root.
-# - Wire-type codegen drift is checked against a committed schema snapshot
-#   (scripts/herdr-schema.json), captured from herdr 0.8.2 via
-#   `herdr api schema --json`. CI has no herdr binary, so `--schema` feeds the
-#   snapshot instead of shelling out. The snapshot also pins the exact schema
-#   version the generated types were built from.
+#
+# Positive `paths` (not paths-ignore): this workflow starts only when a
+# changed path can affect the simulator jobs. One matching path is enough, so
+# a commit that also edits markdown still runs. A change to this file always
+# runs: the old triggers decide the run that introduces the new ones.
+#
+# - Sources, Tests, the committed Xcode project, Packages/HeelerSSH,
+#   project.yml, and Makefile are the app.
+# - scripts/** is the CI gate, fixtures, and helpers. Broad on purpose so a
+#   new CI script cannot be missed; generate-wire-types.py and
+#   herdr-schema.json therefore start iOS as well as ci-node.yml.
+# - plugin/test-vectors/** is shared with the Node plugin suite; both
+#   workflows must run.
+# - landing/**, LICENSE, prose, plugin/src, plugin/package.json, and
+#   relay/** do not match, so they never spend a macos-26 runner.
 
 name: CI
 
-# Ignored paths build nothing this workflow can verify:
-#
-# - `landing/**` and its workflow are the marketing site (Astro on Cloudflare),
-#   which shares no code with the app, the plugin, or the relay. It has its own
-#   workflow, landing.yml.
-# - Markdown anywhere, and `docs/**` for the images beside it, is prose. No job
-#   here reads a repository `.md` file: the suites that name one either quote it
-#   in a comment or assert an in-app URL string, and the `SKILL.md` paths belong
-#   to remote fixtures. `CHANGELOG.md` is included too — scripts/publish.sh
-#   consumes it, but that runs from `make publish`, never from CI.
-# - `output/**` is App Store screenshot export material. No job here reads it;
-#   the files are committed for store listings and local composition only.
-#
-# paths-ignore only skips a run when *every* changed path matches, so a commit
-# touching prose alongside Swift still runs the full suite. A change to this
-# file also always runs: the old triggers decide the run that introduces the
-# new ones.
 on:
   pull_request:
-    paths-ignore:
-      - landing/**
-      - .github/workflows/landing.yml
-      - '**.md'
-      - docs/**
-      - output/**
+    paths:
+      - Sources/**
+      - Tests/**
+      - Heeler.xcodeproj/**
+      - Packages/**
+      - project.yml
+      - Makefile
+      - scripts/**
+      - plugin/test-vectors/**
+      - .github/workflows/ci.yml
   push:
     branches: [main]
-    paths-ignore:
-      - landing/**
-      - .github/workflows/landing.yml
-      - '**.md'
-      - docs/**
-      - output/**
+    paths:
+      - Sources/**
+      - Tests/**
+      - Heeler.xcodeproj/**
+      - Packages/**
+      - project.yml
+      - Makefile
+      - scripts/**
+      - plugin/test-vectors/**
+      - .github/workflows/ci.yml
 
-# One in-flight run per ref; a new push cancels the previous run.
+# Shared with ci-node.yml so a new push on this ref cancels a stale iOS run.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  plugin-test:
-    name: Pairing plugin (Node)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: plugin
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-      - name: Install dependencies
-        run: npm ci
-      - name: Run plugin tests
-        run: npm test
-
-  relay-test:
-    name: Push relay (Node)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: relay
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-      # The relay has zero dependencies, so there is no install step.
-      - name: Run relay tests
-        run: npm test
-
-  codegen-drift:
-    name: Wire-type codegen drift
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - name: Check generated wire types are up to date
-        run: scripts/generate-wire-types.py --check --schema scripts/herdr-schema.json
-
   build-test:
     name: Build & test (iOS Simulator)
     # macos-26 ships Xcode 26.x and the iOS 26 simulator runtimes. Pinned
