@@ -7,6 +7,10 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Changed
+
+- Relicensed the Heeler suite from AGPL-3.0 to Apache License 2.0. (#282)
+
 ## [0.1.5] - 2026-09-04
 
 ### Added

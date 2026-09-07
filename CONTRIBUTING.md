@@ -76,5 +76,5 @@ prefer a private report over a public issue.
 
 ## License
 
-Heeler is licensed under AGPL-3.0 ([LICENSE](LICENSE)); contributions land
-under the same license.
+Heeler is licensed under the Apache License 2.0 ([LICENSE](LICENSE));
+contributions land under the same license.
