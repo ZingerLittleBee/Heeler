@@ -663,12 +663,15 @@ actor EventsSession {
         task?.cancel()
         let stream = liveStream
         liveStream = nil
+        if let stream {
+            // End the events channel before closing the transport it rides on.
+            // Otherwise close can queue behind the still-running reader on the
+            // same SSH session and turn a bounded teardown into an unbounded one.
+            await stream.end()
+        }
         if let transport = currentTransport {
             currentTransport = nil
             try? await transport.close()
-        }
-        if let stream {
-            await stream.end()
         }
         await waitForTerminalIdle()
         transportSuspect = false

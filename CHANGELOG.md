@@ -7,6 +7,10 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Changed
+
+- Relicensed the Heeler suite from AGPL-3.0 to Apache License 2.0. (#282)
+
 ### Fixed
 
 - Connecting to a Host whose login shell is nushell or another non-POSIX shell

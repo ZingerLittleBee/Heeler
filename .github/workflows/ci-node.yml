@@ -1,0 +1,85 @@
+# Ubuntu jobs that used to live in ci.yml: the pairing plugin, the push
+# relay, and wire-type codegen drift (refs #286).
+#
+# Split out so a plugin/relay/LICENSE change cannot start the macos-26
+# simulator jobs. iOS CI stays in ci.yml; the marketing site stays in
+# landing.yml.
+#
+# Wire-type codegen drift is checked against a committed schema snapshot
+# (scripts/herdr-schema.json), captured from herdr 0.8.2 via
+# `herdr api schema --json`. CI has no herdr binary, so `--schema` feeds the
+# snapshot instead of shelling out. The snapshot also pins the exact schema
+# version the generated types were built from.
+#
+# Positive `paths`: one matching path starts every job here. Ubuntu is cheap,
+# so a plugin-only PR may also run relay + codegen. plugin/test-vectors/**
+# is under plugin/**, so those edits also start ci.yml (the Swift suites
+# consume the same vectors). A change to this file always runs.
+
+name: CI (Node)
+
+on:
+  pull_request:
+    paths:
+      - plugin/**
+      - relay/**
+      - scripts/generate-wire-types.py
+      - scripts/herdr-schema.json
+      - Sources/Heeler/Transport/Generated/**
+      - .github/workflows/ci-node.yml
+  push:
+    branches: [main]
+    paths:
+      - plugin/**
+      - relay/**
+      - scripts/generate-wire-types.py
+      - scripts/herdr-schema.json
+      - Sources/Heeler/Transport/Generated/**
+      - .github/workflows/ci-node.yml
+
+# Per-workflow group so this can run alongside ci.yml on the same SHA
+# (plugin/test-vectors starts both). A new push still cancels a stale
+# Node run on this ref.
+concurrency:
+  group: ci-node-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plugin-test:
+    name: Pairing plugin (Node)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugin
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Install dependencies
+        run: npm ci
+      - name: Run plugin tests
+        run: npm test
+
+  relay-test:
+    name: Push relay (Node)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: relay
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      # The relay has zero dependencies, so there is no install step.
+      - name: Run relay tests
+        run: npm test
+
+  codegen-drift:
+    name: Wire-type codegen drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check generated wire types are up to date
+        run: scripts/generate-wire-types.py --check --schema scripts/herdr-schema.json
