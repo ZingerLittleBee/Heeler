@@ -1425,7 +1425,8 @@ struct AgentTerminalView: View {
     }
 
     static func displayTitle(for agent: ConsoleAgent) -> String {
-        agent.agent.title.isEmpty ? agent.agent.displayName : agent.agent.title
+        if let paneName = agent.paneName { return paneName }
+        return agent.agent.title.isEmpty ? agent.agent.displayName : agent.agent.title
     }
 }
 

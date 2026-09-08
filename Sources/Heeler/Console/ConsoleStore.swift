@@ -76,16 +76,32 @@ final class ConsoleStore {
     /// Shared with the Console list: a pin toggle must re-sort `agents` in
     /// the same turn, so the store lives here rather than only on the view.
     let pins: PinnedAgentsStore
+    /// Local per-pane session names (#290). Shared with the list like `pins`
+    /// because a name change must republish rows in the same turn.
+    let paneNames: PaneNameStore
 
     init(
         snapshotRetryDelay: Duration = .seconds(2),
         pins: PinnedAgentsStore = PinnedAgentsStore(),
+        paneNames: PaneNameStore = PaneNameStore(),
         makeSession: @escaping @Sendable (Host, [EventSubscription]) -> EventsSession =
             ConsoleStore.sshSessionFactory()
     ) {
         self.snapshotRetryDelay = snapshotRetryDelay
         self.pins = pins
+        self.paneNames = paneNames
         self.makeSession = makeSession
+    }
+
+    /// Names (or, with an empty name, un-names) one pane session and
+    /// republishes the list immediately — a name change must not wait on a
+    /// snapshot round-trip.
+    func setPaneName(_ name: String, paneID: String, on hostID: Host.ID) {
+        paneNames.set(name, hostID: hostID, paneID: paneID)
+        for projection in projections.values {
+            projection.restampPaneNames()
+        }
+        rebuild()
     }
 
     /// Pins or unpins the Agent and re-sorts the published list in the same
@@ -457,7 +473,10 @@ final class ConsoleStore {
         let projection = HostConsoleProjection(
             host: host,
             session: session,
-            snapshotRetryDelay: snapshotRetryDelay
+            snapshotRetryDelay: snapshotRetryDelay,
+            paneName: { [weak self] hostID, paneID in
+                self?.paneNames.name(hostID: hostID, paneID: paneID)
+            }
         ) { [weak self] in
             self?.rebuild()
         }

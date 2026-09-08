@@ -23,6 +23,7 @@ struct ConsoleView: View {
     /// pauses its work on real suspensions only.
     let activity: AppActivityCoordinator
     @State private var hostSheet: HostSheet?
+    @State private var paneNameSheet: PaneNameSheetIdentity?
     @State private var isStartingAgent = false
     @State private var isShowingSettings = false
     /// Hosts whose Host-detail Reconnect request is in flight, including the
@@ -395,6 +396,19 @@ struct ConsoleView: View {
                 console.togglePin(
                     hostID: agent.hostID, paneID: agent.agent.paneID)
             }
+            Button("Name Session", systemImage: "tag") {
+                paneNameSheet = PaneNameSheetIdentity(
+                    hostID: agent.hostID, paneID: agent.agent.paneID)
+            }
+        }
+        .sheet(item: $paneNameSheet) { identity in
+            PaneNameSheetView(
+                currentName: console.paneNames.name(
+                    hostID: identity.hostID, paneID: identity.paneID)
+            ) { name in
+                console.setPaneName(
+                    name, paneID: identity.paneID, on: identity.hostID)
+            }
         }
     }
 
@@ -450,6 +464,12 @@ struct ConsoleView: View {
     private struct HostSheet: Identifiable {
         let id = UUID()
         let hostID: Host.ID?
+    }
+
+    private struct PaneNameSheetIdentity: Identifiable {
+        let id = UUID()
+        let hostID: Host.ID
+        let paneID: String
     }
 
     /// One actionable status per Host. A disconnected session takes priority;

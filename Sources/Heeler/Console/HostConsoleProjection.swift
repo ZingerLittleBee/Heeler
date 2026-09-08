@@ -11,6 +11,10 @@ final class HostConsoleProjection {
 
     private(set) var agentsByPane: [String: ConsoleAgent] = [:]
     private(set) var workspaces: [ConsoleWorkspace] = []
+    /// Resolves the user-set local name for a pane session (`PaneNameStore`);
+    /// nil until the user names the session.
+    private let paneName: @MainActor (Host.ID, String) -> String?
+
     private(set) var status: EventsSessionStatus?
     /// The failure that last stopped automatic recovery, retained after the
     /// next activation begins and discarded when that activation resolves.
@@ -81,11 +85,13 @@ final class HostConsoleProjection {
         host: Host,
         session: EventsSession,
         snapshotRetryDelay: Duration,
+        paneName: @escaping @MainActor (Host.ID, String) -> String? = { _, _ in nil },
         onChange: @escaping @MainActor @Sendable () -> Void
     ) {
         self.host = host
         self.session = session
         self.snapshotRetryDelay = snapshotRetryDelay
+        self.paneName = paneName
         self.onChange = onChange
     }
 
@@ -591,6 +597,20 @@ final class HostConsoleProjection {
         }
     }
 
+    /// Reapplies pane names from the store without a resync, so a name
+    /// change lands in the list on the same turn it is saved — mirroring the
+    /// in-place row mutation `lastOutputSnippet` already uses.
+    func restampPaneNames() {
+        for paneID in agentsByPane.keys {
+            guard var row = agentsByPane[paneID] else { continue }
+            let name = paneName(row.hostID, paneID)
+            if row.paneName != name {
+                row.paneName = name
+                agentsByPane[paneID] = row
+            }
+        }
+    }
+
     private func scheduleSnapshotRetry() {
         guard resyncRetryTask == nil, !hasEnded, status == .connected else { return }
         resyncRetryTask = Task { [weak self] in
@@ -638,7 +658,8 @@ final class HostConsoleProjection {
                 workspaceLabel: workspace?.label,
                 repositoryCheckout: workspace?.worktree.map(RepositoryCheckout.init),
                 lastOutputSnippet: agentsByPane[agent.paneID]?.lastOutputSnippet,
-                hostUsername: host.username)
+                hostUsername: host.username,
+                paneName: paneName(host.id, agent.paneID))
         }
         for (paneID, change) in latestStatusChanges
         where change.revision > snapshotStartRevision {

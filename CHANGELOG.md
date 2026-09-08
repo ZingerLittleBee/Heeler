@@ -7,6 +7,13 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- Agent sessions can now carry a device-local name, set from the row's
+  context menu in the Agent list, so multiple sessions in one workspace are
+  distinguishable. Unset names fall back to the workspace label as before.
+  (#290; PR #291)
+
 ### Changed
 
 - Relicensed the Heeler suite from AGPL-3.0 to Apache License 2.0. (#282)

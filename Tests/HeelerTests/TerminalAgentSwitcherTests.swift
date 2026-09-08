@@ -15,6 +15,7 @@ struct TerminalAgentSwitcherTests {
         workspace: String? = nil,
         repo: String? = nil,
         name: String? = nil,
+        paneName: String? = nil,
         status: AgentStatus = .idle,
         host: UUID = UUID()
     ) -> ConsoleAgent {
@@ -34,7 +35,8 @@ struct TerminalAgentSwitcherTests {
                     checkoutPath: "/work/\($0)",
                     isLinkedWorktree: false)
             },
-            lastOutputSnippet: nil)
+            lastOutputSnippet: nil,
+            paneName: paneName)
     }
 
     private static func makeItem(
@@ -60,6 +62,15 @@ struct TerminalAgentSwitcherTests {
         #expect(Self.makeAgent(pane: "p2", repo: "repo").switcherLabel == "repo")
         #expect(Self.makeAgent(pane: "p3", name: "reviewer").switcherLabel == "reviewer")
         #expect(Self.makeAgent(pane: "p4").switcherLabel == "claude")
+    }
+
+    /// A user-set pane name is the session's own identity (#290): it leads
+    /// the workspace label so two Agents in one workspace are
+    /// distinguishable, and unset names leave the fallback chain intact.
+    @Test func aSetPaneNameLeadsEverything() {
+        #expect(
+            Self.makeAgent(pane: "p5", workspace: "proj", paneName: "backend fix")
+                .switcherLabel == "backend fix")
     }
 
     @MainActor

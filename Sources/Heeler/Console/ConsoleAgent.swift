@@ -27,6 +27,11 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     /// Trailing terminal output (`pane.read`, ANSI stripped), fetched after
     /// snapshots and status changes; nil until the first read lands.
     var lastOutputSnippet: String?
+    /// A user-set local name for this pane session (`PaneNameStore`), applied
+    /// when the row is built; nil until the user names the session. Wins
+    /// wherever the session is named, mirroring how herdr's own sidebar shows
+    /// the agent name ahead of the workspace.
+    var paneName: String?
 
     var id: ID { ID(hostID: hostID, paneID: agent.paneID) }
 
@@ -37,7 +42,8 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         workspaceLabel: String?,
         repositoryCheckout: RepositoryCheckout?,
         lastOutputSnippet: String? = nil,
-        hostUsername: String? = nil
+        hostUsername: String? = nil,
+        paneName: String? = nil
     ) {
         self.hostID = hostID
         self.hostName = hostName
@@ -46,6 +52,7 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         self.workspaceLabel = workspaceLabel
         self.repositoryCheckout = repositoryCheckout
         self.lastOutputSnippet = lastOutputSnippet
+        self.paneName = paneName
     }
 
     var repoName: String? { repositoryCheckout?.repoName }
@@ -65,12 +72,13 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         }
     }
 
-    /// The keyboard switcher's chip label. The project leads, as it does on
-    /// the card, but without the card's `label · repo` pairing: a chip has
-    /// room for one word, and a console full of `claude` is told apart by
-    /// where each one is working.
+    /// The keyboard switcher's chip label and card headline. A user-set pane
+    /// name leads; otherwise the project leads, as it does on the card, but
+    /// without the card's `label · repo` pairing: a chip has room for one
+    /// word, and a console full of `claude` is told apart by where each one
+    /// is working.
     var switcherLabel: String {
-        workspaceLabel ?? repoName ?? agent.displayName
+        paneName ?? workspaceLabel ?? repoName ?? agent.displayName
     }
 
     /// The directory the skills probe treats as the agent's project root:
