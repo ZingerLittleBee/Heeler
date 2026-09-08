@@ -63,26 +63,18 @@ struct AgentListFieldsSettingsView: View {
         .listSectionSeparator(.hidden)
     }
 
+    /// Name only; the Host detail states where its fields come from.
     private func hostRow(_ host: Host) -> some View {
-        let caption = AgentListFieldsSourceCaption.text(editor.underlyingSource(for: host.id))
-        return Section {
+        Section {
             NavigationLink {
                 AgentListFieldsHostDetailView(host: host, console: console, hosts: hosts, editor: editor)
             } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: host.displayName)
-                        .font(.body)
-                        .foregroundStyle(.primary)
-                    Text(verbatim: caption)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
+                Text(verbatim: host.displayName)
+                    .font(.body)
+                    .foregroundStyle(.primary)
             }
             .listRowInsets(AgentListFieldsChrome.headerInsets)
             .agentListHostSurface(isFirst: true, isLast: true)
-            .accessibilityLabel(
-                AgentListFieldsHostHeader.accessibilityLabel(
-                    name: host.displayName, caption: caption))
             .accessibilityIdentifier("settings.agentList.host.\(host.id.uuidString)")
         }
         .listSectionSeparator(.hidden)
@@ -543,12 +535,6 @@ enum AgentListFieldsCopy {
         "Row 1 and Row 2 start from herdr's sidebar fields; Sync from plugin refills them. "
         + "Row 3 is Heeler's own row. Any row can use herdr and Heeler fields. "
         + "The status badge always ends Row 1."
-}
-
-enum AgentListFieldsHostHeader {
-    static func accessibilityLabel(name: String, caption: String) -> String {
-        "\(name), \(caption)"
-    }
 }
 
 enum AgentListFieldsChipLabel {

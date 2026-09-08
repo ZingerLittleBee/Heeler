@@ -83,19 +83,6 @@ struct AgentListFieldsSettingsTests {
         #expect(AgentListFieldsCopy.syncConfirmation.contains("saved right away"))
     }
 
-    @Test func hostHeaderLabelOmitsUnsavedLanguage() {
-        let label = AgentListFieldsHostHeader.accessibilityLabel(
-            name: "Studio Mac", caption: "Following herdr plugin")
-        #expect(label == "Studio Mac, Following herdr plugin")
-        #expect(!label.localizedCaseInsensitiveContains("unsaved"))
-        #expect(!label.localizedCaseInsensitiveContains("collapsed"))
-        #expect(!label.localizedCaseInsensitiveContains("expanded"))
-        #expect(
-            AgentListFieldsHostHeader.accessibilityLabel(
-                name: "Build Server", caption: "Your fields")
-                == "Build Server, Your fields")
-    }
-
     @Test func destinationsAreKeyedByFixedSlotIndexAndHost() {
         let hostA = UUID(), hostB = UUID()
         let hostSlot = AgentListFieldsEditorDestination(hostID: hostA, rowIndex: 1)
