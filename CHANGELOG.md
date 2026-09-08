@@ -7,12 +7,35 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- Agent cards and the keyboard switcher use herdr's sidebar fields and Agent
+  order. Customize each Host's card layout in Settings > Agent List Fields:
+  add, style, move, or remove herdr, Heeler, and plugin fields across up to
+  three rows, with a Console preview and automatic saving. Sync from plugin
+  refreshes the first two rows; the third defaults to `directory` and keeps
+  your edits when syncing. (#277, #281)
+
+- Live Activities follow each Host's Agent List Fields, including directory
+  and plugin fields, on the Lock Screen and expanded Dynamic Island. Update
+  the Heeler plugin on each Host to use these fields in background updates.
+  (#281)
+
 ### Changed
 
 - Relicensed the Heeler suite from AGPL-3.0 to Apache License 2.0. (#282)
 
 ### Fixed
 
+- Hiding Composer keeps terminal links available through a floating link button
+  above the latency indicator. It matches the scroll controls, opens the same
+  link list, and does not reduce the terminal's height. (PR #284)
+
+- Secondary field styles now render correctly in Agent cards and previews. (#281)
+
+- Agent List Fields groups each Host's controls in one card, wraps field
+  chips, and uses the Console card for its preview, including the status
+  badge and Host name. (#281)
 - Connecting to a Host whose login shell is nushell or another non-POSIX shell
   no longer fails with "The remote home directory could not be resolved". The
   home probe now runs under POSIX sh, matching the other setup probes. (#275;

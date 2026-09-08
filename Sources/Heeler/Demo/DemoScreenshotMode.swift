@@ -263,9 +263,17 @@
             return UserDefaults(suiteName: suiteName) ?? UserDefaults()
         }
 
+        static let sidebarLayoutData = Data(
+            #"{"v":1,"agent_panel_sort":"priority","sidebar":{"agents":{"rows":[[{"token":"workspace"}],[{"token":"terminal_title_stripped"}],[{"token":"agent"}]]}}}"#.utf8)
+
         @MainActor
         static func makeConsoleStore() -> ConsoleStore {
-            ConsoleStore(snapshotRetryDelay: .seconds(30)) { host, subscriptions in
+            let defaults = makeDefaults()
+            return ConsoleStore(
+                snapshotRetryDelay: .seconds(30),
+                pins: PinnedAgentsStore(defaults: defaults),
+                rowLayouts: AgentRowLayoutStore(defaults: defaults)
+            ) { host, subscriptions in
                 EventsSession(
                     subscriptions: subscriptions,
                     connect: {
@@ -368,6 +376,10 @@
 
         func availableAgentKinds() async throws -> [SupportedAgentKind] {
             [.claude, .codex, .gemini, .opencode]
+        }
+
+        func readSidebarLayout() async throws -> Data? {
+            DemoScreenshotFixture.sidebarLayoutData
         }
 
         func sessionSnapshot() async throws -> SessionSnapshot {

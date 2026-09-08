@@ -1,11 +1,12 @@
 #if DEBUG && targetEnvironment(simulator)
     import Foundation
+    import Observation
     import Testing
 
     @testable import Heeler
 
     @MainActor
-    @Suite("Demo screenshot mode")
+    @Suite("Demo screenshot mode", .timeLimit(.minutes(1)))
     struct DemoScreenshotModeTests {
         @Test func launchArgumentIsExactAndOptIn() {
             #expect(!DemoScreenshotMode.isEnabled(arguments: []))
@@ -38,10 +39,22 @@
             let composition = DemoScreenshotComposition.make()
             composition.console.setHosts(composition.hosts.hosts)
             await composition.console.resume()
+            defer { composition.console.setHosts([]) }
 
-            let deadline = ContinuousClock.now + .seconds(5)
-            while composition.console.agents.count != 5, ContinuousClock.now < deadline {
-                try await Task.sleep(for: .milliseconds(10))
+            while composition.console.agents.count != 5
+                || composition.hosts.hosts.contains(where: {
+                    composition.console.sidebarSnapshots.snapshot(for: $0.id) == nil
+                })
+            {
+                let changes = AsyncStream<Void>.makeStream()
+                withObservationTracking {
+                    _ = composition.console.agents
+                    _ = composition.console.sidebarSnapshots.states
+                } onChange: {
+                    changes.continuation.yield(())
+                }
+                for await _ in changes.stream { break }
+                changes.continuation.finish()
             }
 
             #expect(composition.console.agents.count == 5)
@@ -49,7 +62,20 @@
             #expect(composition.console.agents.first?.hostName == "Build Server")
             #expect(composition.console.hostStatuses.values.allSatisfy { $0 == .connected })
 
-            composition.console.setHosts([])
+            for host in composition.hosts.hosts {
+                let bytes = try await composition.console.withNotificationTransport(for: host.id) {
+                    try await $0.readSidebarLayout()
+                }
+                #expect(bytes == DemoScreenshotFixture.sidebarLayoutData)
+                #expect(composition.console.rowLayout(for: host.id)
+                    == AgentRowLayout(rows: [
+                        [.init(.workspace)], [.init(.terminalTitleStripped)], [.init(.directory)],
+                    ]))
+            }
+            let row = try #require(composition.console.agents.first)
+            let card = AgentCardPresentation(agent: row, layout: composition.console.rowLayout(for: row.hostID))
+            #expect(card.headline == row.workspaceLabel)
+            #expect(card.additionalRows.first == row.agent.terminalTitleStripped)
         }
     }
 #endif

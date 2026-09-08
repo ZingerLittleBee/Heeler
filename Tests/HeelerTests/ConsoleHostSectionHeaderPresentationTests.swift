@@ -150,7 +150,7 @@ struct ConsoleListPresentationRoutingTests {
     }
 
     @Test func presentationModeTitlesAreStableForTheSwitcher() {
-        #expect(ConsoleListPresentationMode.flat.title == "Status order")
+        #expect(ConsoleListPresentationMode.flat.title == "All Agents")
         #expect(ConsoleListPresentationMode.grouped.title == "By Host")
     }
 }

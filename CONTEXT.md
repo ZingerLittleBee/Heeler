@@ -84,8 +84,30 @@ survives. Snapshot worktree metadata also describes the main checkout; only
 _Avoid_: sandbox, branch copy, checkout folder
 
 **Console**:
-The native dashboard surface: Agents across Hosts as either a flat status-sorted list or a by-Host grouped list with collapsible sections, plus the Agent detail screen.
+The native dashboard surface: Agents across Hosts as either a flat list or a by-Host grouped list with collapsible sections, plus the Agent detail screen. Grouping is independent of Agent ordering and Pin priority.
 _Avoid_: dashboard, home
+
+**Agent Row Layout**:
+The ordered rows of fields that identify an Agent in the Console and its
+switcher. Each Host follows its herdr plugin's fields until the user saves
+that Host's own layout, which may start from a Sync from plugin copy. There
+is no user-facing default layout. The Console shows at most three rows, as
+three fixed Row Slots, and every Agent on a Host shares them: herdr's
+per-kind `rows_by_agent` overrides are decoded but never applied. herdr's
+`state_icon` never appears as a field; the status badge at the end of Row 1
+owns it. Agent Status and Heeler Pin remain independent chrome; choosing
+status as a field repeats it in the row.
+_Avoid_: card template, sidebar format
+
+**Row Slot**:
+One of the three fixed positions in an Agent Row Layout. Row 1 and Row 2 are
+herdr rows: they start from herdr's sidebar fields and are what Sync from
+plugin refills. Row 3 is Heeler's row, which Sync fills only when herdr
+defines a third row. Every slot accepts herdr fields and the Heeler-only
+fields herdr does not define (Host name, Agent Status as text, working
+directory). Slots are never added, moved, or deleted; an empty slot renders
+nothing.
+_Avoid_: extra row, custom row
 
 **Pin**:
 A user-chosen Console marker on an Agent's pane slot (`hostID` + `paneID`).

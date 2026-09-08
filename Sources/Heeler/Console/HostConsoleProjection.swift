@@ -22,6 +22,7 @@ final class HostConsoleProjection {
     private(set) var latency: Duration?
     private(set) var syncError: String?
     private(set) var transportGeneration: UInt64 = 0
+    private(set) var sidebarRevision: UInt64 = 0
     /// Whether the Host's current connection generation has produced a
     /// snapshot. `.connected` arrives before that request completes, so an
     /// empty projection in this window means "unknown", not "no Agents".
@@ -523,15 +524,24 @@ final class HostConsoleProjection {
             }
         case .event(let event):
             if event.kind == PaneEventKind.agentStatusChanged.kind {
-                if applyStatusChange(event.data) == .unknown {
-                    // A released Agent can leave its Pane alive as a normal
-                    // shell. Unknown is therefore not only a status delta: it
-                    // may mean the Agent no longer belongs in the snapshot.
+                if applyStatusChange(event.data) != nil {
+                    // Status deltas keep badges responsive; the authoritative
+                    // snapshot also supplies recency, titles and plugin values.
+                    // Unknown can additionally mean the Agent left its Pane.
                     scheduleResync()
                 }
             } else if Self.resyncEventKinds.contains(event.kind) {
                 scheduleResync()
             }
+        }
+    }
+
+    /// An explicit fields refresh converges Agent values as well as the
+    /// separate sidebar file. It shares the event-driven coalescing owner.
+    func refreshSidebarMetadata() async {
+        scheduleResync()
+        while let task = resyncTask {
+            await task.value
         }
     }
 
@@ -577,7 +587,7 @@ final class HostConsoleProjection {
                 preservingStatusChangesAfter: statusRevisionBeforeSnapshot,
                 requestGeneration: requestGeneration)
             await session.updateSubscriptions(
-                Self.subscriptions(paneIDs: agentsByPane.keys))
+                Self.subscriptions(paneIDs: agentsByPane.keys, protocolVersion: snapshot.protocolVersion))
             refreshSnippets()
         } catch {
             guard
@@ -625,12 +635,25 @@ final class HostConsoleProjection {
         preservingStatusChangesAfter snapshotStartRevision: UInt64,
         requestGeneration: UInt64
     ) {
+        sidebarRevision &+= 1
+        let paneByID = Dictionary(snapshot.panes.map { ($0.paneID, $0) }) { first, _ in first }
         let workspaceByID = Dictionary(
             snapshot.workspaces.map { ($0.workspaceID, $0) }) { first, _ in first }
+        let tabByID = Dictionary(
+            snapshot.tabs.map { ($0.tabID, $0) }) { first, _ in first }
+        var tabCounts: [String: Int] = [:]
+        var tabPositions: [String: Int] = [:]
+        for tab in snapshot.tabs where tabPositions[tab.tabID] == nil {
+            tabCounts[tab.workspaceID, default: 0] += 1
+            tabPositions[tab.tabID] = tabCounts[tab.workspaceID]
+        }
         var nextAgents: [String: ConsoleAgent] = [:]
-        for info in snapshot.agents {
+        for (snapshotOrder, info) in snapshot.agents.enumerated() {
             let agent = Agent(info)
             let workspace = workspaceByID[agent.workspaceID]
+            let tab = tabByID[agent.tabID].flatMap {
+                $0.workspaceID == agent.workspaceID ? $0 : nil
+            }
             nextAgents[agent.paneID] = ConsoleAgent(
                 hostID: host.id,
                 hostName: host.displayName,
@@ -638,7 +661,14 @@ final class HostConsoleProjection {
                 workspaceLabel: workspace?.label,
                 repositoryCheckout: workspace?.worktree.map(RepositoryCheckout.init),
                 lastOutputSnippet: agentsByPane[agent.paneID]?.lastOutputSnippet,
-                hostUsername: host.username)
+                hostUsername: host.username,
+                tabLabel: tab?.label,
+                tabPosition: tab.flatMap { tabPositions[$0.tabID] },
+                workspaceTabCount: max(workspace?.tabCount ?? 0, tabCounts[agent.workspaceID] ?? 0),
+                snapshotOrder: snapshotOrder,
+                paneLabel: paneByID[agent.paneID].flatMap {
+                    $0.tabID == agent.tabID && $0.workspaceID == agent.workspaceID ? $0.label : nil
+                })
         }
         for (paneID, change) in latestStatusChanges
         where change.revision > snapshotStartRevision {
@@ -779,18 +809,24 @@ final class HostConsoleProjection {
         }
     }
 
-    private static let membershipKinds: [GlobalEventKind] = [
+    private static let snapshotChangeKinds: [GlobalEventKind] = [
         .paneAgentDetected, .paneClosed, .paneExited,
         .workspaceCreated, .workspaceRenamed, .workspaceMetadataUpdated, .workspaceClosed,
+        .workspaceMoved, .workspaceReordered,
+        .tabCreated, .tabClosed, .tabRenamed, .tabMoved, .paneMoved,
     ]
 
     private static let resyncEventKinds =
-        Set(membershipKinds.map(\.kind)).union([HerdrEventKind.eventsDropped])
+        Set(snapshotChangeKinds.map(\.kind)).union([HerdrEventKind.eventsDropped])
 
     static func subscriptions(
-        paneIDs: some Sequence<String>
+        paneIDs: some Sequence<String>, protocolVersion: Int? = nil
     ) -> [EventSubscription] {
-        membershipKinds.map(EventSubscription.global)
+        // The first subscription precedes session.snapshot. Only opt into
+        // protocol-19 events after this connection reports support.
+        snapshotChangeKinds.filter {
+            $0 != .workspaceReordered || (protocolVersion ?? 0) >= 19
+        }.map(EventSubscription.global)
             + paneIDs.sorted().map { EventSubscription.pane(.agentStatusChanged, paneID: $0) }
     }
 }

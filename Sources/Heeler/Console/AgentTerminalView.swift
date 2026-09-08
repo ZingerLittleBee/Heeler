@@ -669,7 +669,8 @@ struct AgentTerminalView: View {
     private var agentSwitcher: TerminalAgentSwitcher {
         TerminalAgentSwitcher(
             items: console.agents.map {
-                TerminalAgentSwitcherItem(agent: $0, pins: console.pins)
+                TerminalAgentSwitcherItem(
+                    agent: $0, pins: console.pins, layout: console.rowLayout(for: $0.hostID))
             },
             selectedID: agent.id,
             onSelect: switchToAgent,
@@ -791,6 +792,9 @@ struct AgentTerminalView: View {
         // see MessageJumpChromeContainer.
         .overlay {
             messageJumpChrome
+        }
+        .overlay(alignment: .bottomTrailing) {
+            attachLinksChrome
         }
         .overlay { statusOverlay }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -1290,11 +1294,37 @@ struct AgentTerminalView: View {
     }
 
     @ViewBuilder
+    private var attachLinksChrome: some View {
+        if isDirectInput,
+           let links = AgentComposerLinkPresentation(count: attach.attachLinks.count)
+        {
+            Button {
+                isShowingAttachLinks = true
+            } label: {
+                Image(systemName: "link")
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .buttonStyle(TerminalFloatingButtonStyle(highlight: themePalette.foreground))
+            .background {
+                TerminalFloatingControlBackground(palette: themePalette)
+            }
+            .foregroundStyle(themePalette.foreground)
+            .hoverEffect(.highlight)
+            .accessibilityLabel("Attach Links")
+            .accessibilityValue(links.accessibilityValue)
+            .padding(.trailing, MessageJumpPlacement.trailingPadding)
+            .padding(.bottom, 8)
+        }
+    }
+
+    @ViewBuilder
     private var messageJumpChrome: some View {
         MessageJumpChromeOverlay(
             availability: messageJumpAvailability,
             runningDirection: messageJump.runningDirection,
             palette: themePalette,
+            minimumBottomInset: isDirectInput && !attach.attachLinks.isEmpty
+                ? MessageJumpControlView.buttonSize + 16 : 0,
             onOlder: { jumpToOlderMessage() },
             onNewer: { jumpToNewerMessageOrLive() })
         // Hit-test only while enabled. The in-flight spinner must not eat

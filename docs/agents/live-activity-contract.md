@@ -67,24 +67,43 @@ Decrypted plaintext (canonical form):
 - `workspace` is the herdr workspace label resolved by `workspace_id`, trimmed
   to ≤80 graphemes and omitted when unavailable. It is additive v1 metadata,
   so older senders remain readable with a kind-only identity. Agent entry key
-  order is `kind` < `name` < `pane` < `status` < `title` < `workspace`.
+  order is `kind` < `name` < `pane` < `rows` < `status` < `title` < `workspace`.
+- Optional `rows` carries the Agent's rendered Agent List Fields, using this
+  device's resolved `live_activity.row_layout`. It contains at most three
+  nonempty rows, each an array of plain-text spans:
+  `[{"bold":true,"dim":false,"fg":"#AbC","text":"Heeler"},{"text":" · "},{"text":"reviewer"}]`.
+  Span keys are ordered `bold` < `dim` < `fg` < `text`; styles are optional,
+  `fg` accepts only `#RGB` or `#RRGGBB`, and text keeps the first 80 graphemes without adding an ellipsis.
+  Separators are separate unstyled spans. Empty fields and rows are omitted;
+  plugin text is never interpreted as Markdown. An absent or malformed layout
+  omits `rows`, preserving the legacy workspace/kind identity. An explicitly
+  empty layout produces `rows: []`.
+- Field values match the Console: workspace label; tab label (hide the sole
+  tab when its label equals its 1-based position); AgentInfo `title`, falling
+  back to the matching pane label only when absent; Agent display name
+  (`display_agent`, then `name`, then raw kind); raw terminal title; stripped terminal title (an absent value falls back
+  to the raw title with one leading activity glyph removed only at a whitespace
+  boundary, while an explicitly empty value stays empty); configured Host display name; capitalized status;
+  trimmed `cwd` for directory; and `tokens` values for `$custom` fields.
+  `state_icon` and `state_text` render no text because the status indicator
+  owns that information. Missing context suppresses that field only.
 - `host` is the Host machine's short hostname (first DNS label), ≤80
   graphemes.
 - Unknown fields in plaintext or envelope frame are ignored (additive v1
   metadata); breaking changes bump `v` on both ends together.
 - Size budget: the base64url `ct` should stay ≤ ~2800 bytes so the full
   APNs payload stays under 4096. Producers degrade in order: drop all
-  `title` fields, then send `agents: []`; counts always fit.
+  `title` and legacy `name` fields, then `rows`, then send `agents: []`;
+  workspace/kind identity remains after rows are dropped; counts always fit.
 
-The widget renders no Host identity. Every Agent uses identical, leading-aligned
-geometry: a colored status dot beside `workspace`, then the friendly Agent kind
-(for example `Claude`) underneath. There is no status word, status-specific row
-inset, or background. Terminal titles and custom Agent names remain backward-compatible
-encrypted metadata but are not notification identity. The lock screen draws
-the uniform list in envelope order (pinned eligible first, then status rank):
-all four rows when the inventory fits, otherwise four rows plus "+N more"
-within the ~160pt banner budget. The `host` field stays in the wire for
-producers but is not displayed.
+The widget renders the configured rows beside each Agent's colored status dot.
+It preserves field colors, bold and dim styles. When `rows` is absent it uses
+workspace and friendly Agent kind as the legacy identity. Agent order remains
+unchanged. The lock-screen list fits as many complete Agent entries as the
+banner budget allows, followed by "+N more" when needed. The compact Dynamic
+Island continues to use status counts; the expanded view uses configured rows.
+The envelope's `host` is not a separate heading, but a configured `host` field
+can display the per-device Host name.
 
 ## Relay request (plugin → relay)
 
@@ -138,7 +157,12 @@ event:
 ```json
 "live_activity": {"token": "<hex per-activity push token>",
                   "started_at": "<ISO 8601>",
-                  "pinned_pane_ids": ["wV:p7X", "wV:p1"]}
+                  "pinned_pane_ids": ["wV:p7X", "wV:p1"],
+                  "host_name": "My Mac",
+                  "row_layout": {"rows": [[{"token":"workspace"}],
+                                          [{"token":"agent"}],
+                                          [{"token":"directory"}]],
+                                 "row_gap": 0, "rows_by_agent": {}}}
 ```
 
 Missing field = send nothing (fail closed; `notify` flags do not gate this
@@ -155,6 +179,19 @@ non-array, or any non-string entry is treated as an empty list (older
 apps never write the field). Empty
 string entries are still strings and are kept. The field is additive v1
 metadata; unknown sibling keys on `live_activity` must survive a rewrite.
+
+`row_layout` is the app's resolved per-Host Agent List Fields layout: at most
+three rows, at most 16 fields per row, no per-kind overrides. Each field has
+`token` and optional `fg`, `bold`, and `dim`, matching the Console layout JSON.
+`row_gap` and `rows_by_agent` are accepted for structural compatibility but do
+not change activity rendering. The app writes this layout and optional
+`host_name` on registration, layout edits, Host name changes, and plugin sync.
+The plugin falls back to the short hostname when `host_name` is absent.
+Registration preferences participate in duplicate-update suppression, so the
+next status hook can send changed layout or pin preferences even if statuses
+are unchanged. The hook reads tab/pane context only when configured fields
+need it, once per workspace rather than once per Agent. Foreground app updates
+use the same resolved layout; background delivery still follows status events.
 
 ## Shared vectors
 

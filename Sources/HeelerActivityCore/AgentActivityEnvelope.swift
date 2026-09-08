@@ -7,6 +7,13 @@ struct AgentActivityDetails: Sendable, Equatable {
     var hostName: String
     var agents: [AgentDetail]
 
+    struct Field: Codable, Sendable, Equatable {
+        var text: String
+        var fg: String? = nil
+        var bold: Bool? = nil
+        var dim: Bool? = nil
+    }
+
     struct AgentDetail: Sendable, Equatable {
         var paneID: String
         var kind: String
@@ -17,6 +24,8 @@ struct AgentActivityDetails: Sendable, Equatable {
         var workspace: String? = nil
         var status: String
         var title: String?
+        /// Rendered Agent List Fields. Nil retains the legacy identity layout.
+        var rows: [[Field]]? = nil
 
         /// Notification surfaces intentionally use one identity everywhere,
         /// independent of terminal titles and custom Agent names.
@@ -149,7 +158,7 @@ enum AgentActivityEnvelope {
                 AgentActivityDetails.AgentDetail(
                     paneID: pane, kind: kind, name: nonEmpty(item.name),
                     workspace: nonEmpty(item.workspace), status: status,
-                    title: nonEmpty(item.title)))
+                    title: nonEmpty(item.title), rows: item.rows))
         }
         return AgentActivityDetails(hostName: host, agents: agents)
     }
@@ -162,7 +171,7 @@ enum AgentActivityEnvelope {
         let agents = Array(details.agents.prefix(5)).map { agent in
             OutgoingAgent(
                 kind: agent.kind, name: nonEmpty(agent.name), pane: agent.paneID,
-                status: agent.status, title: nonEmpty(agent.title),
+                rows: agent.rows, status: agent.status, title: nonEmpty(agent.title),
                 workspace: nonEmpty(agent.workspace))
         }
         let encoder = JSONEncoder()
@@ -191,6 +200,7 @@ enum AgentActivityEnvelope {
         var status: String?
         var title: String?
         var workspace: String?
+        var rows: [[AgentActivityDetails.Field]]?
     }
 
     private struct OutgoingPlaintext: Encodable {
@@ -203,6 +213,7 @@ enum AgentActivityEnvelope {
         var kind: String
         var name: String?
         var pane: String
+        var rows: [[AgentActivityDetails.Field]]?
         var status: String
         var title: String?
         var workspace: String?

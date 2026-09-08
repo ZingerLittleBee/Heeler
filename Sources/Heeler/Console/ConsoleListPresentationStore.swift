@@ -13,7 +13,7 @@ enum ConsoleListPresentationMode: String, CaseIterable, Identifiable, Sendable {
     /// Toolbar / picker label for the presentation switcher.
     var title: String {
         switch self {
-        case .flat: "Status order"
+        case .flat: "All Agents"
         case .grouped: "By Host"
         }
     }
@@ -140,7 +140,7 @@ final class ConsoleListPresentationStore {
     }
 
     /// Projects one section per catalog Host, in catalog order. `agents` is
-    /// already pin/status sorted by ConsoleStore; filtering it in-place keeps
+    /// already sorted by ConsoleStore; filtering it in-place keeps
     /// that exact relative order within every Host section.
     func sections(
         hosts: [Host],

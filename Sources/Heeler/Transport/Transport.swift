@@ -189,6 +189,13 @@ protocol Transport: Sendable {
     /// registration write.
     func replaceNotificationConfig(_ contents: Data) async throws
 
+    /// Reads the plugin's `sidebar.json` snapshot (v1, `plugin/README.md`)
+    /// from this Host's Heeler plugin config dir; nil when the file is
+    /// absent, including Hosts whose plugin predates the snapshot. Throws
+    /// `NotificationRegistrationError.pluginNotInstalled` when the plugin
+    /// itself is absent, matching the other plugin-config reads.
+    func readSidebarLayout() async throws -> Data?
+
     /// Lists the skills / custom slash commands installed for a kind on this
     /// Host: global sources under the remote home plus project sources under
     /// the query's project root, per `SkillSourceCatalog`. Kinds without a
@@ -270,6 +277,10 @@ extension Transport {
     func replaceNotificationConfig(_ contents: Data) async throws {
         throw NotificationRegistrationError.pluginNotInstalled
     }
+
+    /// Test doubles and alternative transports without a Host-side plugin
+    /// report an absent snapshot rather than emulating the plugin CLI.
+    func readSidebarLayout() async throws -> Data? { nil }
 
     func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
         throw TransportError.channelFailed(
@@ -545,6 +556,16 @@ struct Agent: Sendable, Equatable {
     let name: String?
     /// Terminal title with spinner/status glyphs stripped.
     let title: String
+    /// Raw OSC title, kept separately from the legacy `title` presentation.
+    let terminalTitle: String?
+    /// herdr's stripped title; an explicitly empty wire value stays empty.
+    let terminalTitleStripped: String?
+    /// Pane presentation/manual title (`AgentInfo.title`), not a pane id.
+    let paneTitle: String?
+    let tokens: [String: String]
+    let stateLabels: [String: String]
+    /// Snapshot ordering metadata for Agent panel sort consumers.
+    let stateChangeSeq: Int?
     /// Mutable: the Console applies `pane.agent_status_changed` deltas in
     /// place between snapshots.
     var status: AgentStatus
@@ -562,12 +583,22 @@ struct Agent: Sendable, Equatable {
     init(
         terminalID: String, kind: String, title: String, status: AgentStatus,
         workspaceID: String, tabID: String, paneID: String, cwd: String, revision: Int,
-        name: String? = nil
+        name: String? = nil,
+        terminalTitle: String? = nil, terminalTitleStripped: String? = nil,
+        paneTitle: String? = nil, tokens: [String: String] = [:],
+        stateLabels: [String: String] = [:], stateChangeSeq: Int? = nil
     ) {
         self.terminalID = terminalID
         self.kind = kind
         self.name = name
         self.title = title
+        self.terminalTitle = terminalTitle
+        self.terminalTitleStripped = terminalTitleStripped
+            ?? terminalTitle.map(Self.strippedSidebarTitle)
+        self.paneTitle = paneTitle
+        self.tokens = tokens
+        self.stateLabels = stateLabels
+        self.stateChangeSeq = stateChangeSeq
         self.status = status
         self.workspaceID = workspaceID
         self.tabID = tabID
@@ -591,8 +622,30 @@ struct Agent: Sendable, Equatable {
             paneID: info.paneID,
             cwd: info.cwd ?? "",
             revision: info.revision,
-            name: Self.nonEmpty(info.displayAgent) ?? Self.nonEmpty(info.name)
+            name: Self.nonEmpty(info.displayAgent) ?? Self.nonEmpty(info.name),
+            terminalTitle: info.terminalTitle,
+            terminalTitleStripped: info.terminalTitleStripped,
+            paneTitle: info.title,
+            tokens: info.tokens ?? [:],
+            stateLabels: info.stateLabels ?? [:],
+            stateChangeSeq: info.stateChangeSeq
         )
+    }
+
+    /// herdr 0.8.2 removes one activity glyph only when followed by whitespace
+    /// or end-of-title. Keep legacy `title` consumers on TerminalTitleGlyphs.
+    private static func strippedSidebarTitle(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let first = trimmed.unicodeScalars.first,
+            (0x2800...0x28ff).contains(first.value) || "·✢✳✶✻✽◐◓◑◒".unicodeScalars.contains(first)
+        else { return trimmed }
+        let rest = String(trimmed.unicodeScalars.dropFirst())
+        let startsWithWhitespace = rest.unicodeScalars.first.map {
+            CharacterSet.whitespacesAndNewlines.contains($0)
+        } ?? false
+        guard rest.isEmpty || startsWithWhitespace
+        else { return trimmed }
+        return rest.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// An empty wire string carries no name; treating it as missing keeps the

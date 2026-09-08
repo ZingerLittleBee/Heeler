@@ -1,5 +1,7 @@
 import Foundation
 
+@testable import Heeler
+
 /// The shared Live Activity content envelope v1 vectors from
 /// `plugin/test-vectors/`, the single source of truth for the encrypted
 /// per-Host agent details across the Node plugin and this app. The JSON
@@ -85,6 +87,7 @@ struct LiveActivityVectorFile: Decodable, Sendable {
         let status: String
         let title: String?
         let workspace: String?
+        let rows: [[AgentActivityDetails.Field]]?
     }
 
     struct Invalid: Decodable, Sendable, CustomStringConvertible {

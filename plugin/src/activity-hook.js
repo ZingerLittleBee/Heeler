@@ -12,6 +12,7 @@
 // Devices without a plausible `live_activity` registration send nothing;
 // `notify` flags do not gate this path. APNs 410 clears only that field.
 
+import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -26,7 +27,9 @@ import {
   sameStatusMap,
   shortHostName,
 } from "./activity-state.js";
+import { parseActivityRowLayout } from "./activity-rows.js";
 import { readNotificationConfig } from "./notification-config.js";
+import { refreshSidebarSnapshotForEvent } from "./sidebar-config.js";
 import { optionalText } from "./display-text.js";
 
 const SEND_ATTEMPTS = 3;
@@ -89,6 +92,8 @@ function readActivityDevices(configDir) {
       env,
       key,
       pinnedPaneIds: live.pinned_pane_ids,
+      rowLayout: parseActivityRowLayout(live.row_layout),
+      rowHostName: optionalText(live.host_name),
     });
   }
   return devices;
@@ -222,12 +227,50 @@ async function listWorkspaceLabels(binPath) {
   }
 }
 
+/** Read presentation context once per workspace, only for configured fields. */
+async function listRowContext(binPath, agents, devices) {
+  const tokens = new Set(devices.flatMap((device) =>
+    device.rowLayout?.rows.flatMap((row) => row.map((field) => field.token)) ?? []));
+  const tabs = new Map();
+  const panes = new Map();
+  const workspaces = new Set(agents.filter((agent) => typeof agent?.agent_status === "string" && ELIGIBLE_STATUSES.has(agent.agent_status.toLowerCase()))
+    .map((agent) => optionalText(agent.workspace_id)).filter(Boolean));
+  for (const workspace of workspaces) {
+    for (const kind of ["tab", "pane"]) {
+      if (!tokens.has(kind)) continue;
+      try {
+        const result = await runHerdr(binPath, [kind, "list", "--workspace", workspace]);
+        if (result.code !== 0) continue;
+        const entries = JSON.parse(result.stdout)?.result?.[`${kind}s`];
+        if (!Array.isArray(entries)) continue;
+        const matching = entries.filter((entry) => entry?.workspace_id === workspace);
+        const unique = [...new Map(matching.map((entry) => [entry[`${kind}_id`], entry])).values()];
+        unique.forEach((entry, index) => {
+          if (kind === "tab") tabs.set(entry.tab_id, { ...entry, position: index + 1, count: unique.length });
+          else panes.set(entry.pane_id, entry);
+        });
+      } catch {
+        // Missing context suppresses only that field, never the activity.
+      }
+    }
+  }
+  return { tabs, panes };
+}
+
+function devicePreferences(devices) {
+  return createHash("sha256").update(JSON.stringify(devices.map((device) => ({
+    token: device.token, env: device.env, pins: device.pinnedPaneIds,
+    layout: device.rowLayout, host: device.rowHostName,
+  })).sort((left, right) => left.token.localeCompare(right.token)))).digest("hex");
+}
+
 function dropTitles(plaintextObject) {
   return {
     agents: plaintextObject.agents.map((agent) => {
       const entry = {};
       entry.kind = agent.kind;
       entry.pane = agent.pane;
+      if (Array.isArray(agent.rows)) entry.rows = agent.rows;
       entry.status = agent.status;
       if (typeof agent.workspace === "string" && agent.workspace.length > 0) {
         entry.workspace = agent.workspace;
@@ -246,6 +289,11 @@ function emptyAgents(plaintextObject) {
 function plaintextAtStep(plaintextObject, step) {
   if (step <= 0) return plaintextObject;
   if (step === 1) return dropTitles(plaintextObject);
+  if (step === 2) {
+    const content = dropTitles(plaintextObject);
+    content.agents = content.agents.map(({ rows, ...agent }) => agent);
+    return content;
+  }
   return emptyAgents(plaintextObject);
 }
 
@@ -296,7 +344,7 @@ function sealFitting(plaintextObject, device, request) {
   let step = 0;
   let envelope = encryptActivityEnvelope(plaintextAtStep(plaintextObject, step), device.key);
   const sized = { ...request, device };
-  while (step < 2 && !envelopeFits(envelope, sized)) {
+  while (step < 3 && !envelopeFits(envelope, sized)) {
     step += 1;
     envelope = encryptActivityEnvelope(plaintextAtStep(plaintextObject, step), device.key);
   }
@@ -361,7 +409,7 @@ async function deliver(config, device, plaintextObject, request) {
       config.retryDelayMs,
     );
     if (outcome === "ok" || outcome === "pruned") return outcome;
-    if (outcome === "too_large" && step < 2) {
+    if (outcome === "too_large" && step < 3) {
       step += 1;
       envelope = encryptActivityEnvelope(plaintextAtStep(plaintextObject, step), device.key);
       continue;
@@ -371,9 +419,10 @@ async function deliver(config, device, plaintextObject, request) {
 }
 
 async function main() {
+  const configDir = requireEnv("HERDR_PLUGIN_CONFIG_DIR");
+  refreshSidebarSnapshotForEvent(configDir);
   const eventJson = requireEnv("HERDR_PLUGIN_EVENT_JSON");
   const stateDir = requireEnv("HERDR_PLUGIN_STATE_DIR");
-  const configDir = requireEnv("HERDR_PLUGIN_CONFIG_DIR");
   const binPath = requireEnv("HERDR_BIN_PATH");
 
   const event = parseStatusEvent(eventJson);
@@ -395,12 +444,15 @@ async function main() {
   const agents = await listAgents(binPath);
   const statuses = eligibleStatusMap(agents);
   const previous = lastState?.statuses ?? null;
-  if (previous !== null && sameStatusMap(statuses, previous)) return;
+  const preferences = devicePreferences(devices);
+  if (previous !== null && sameStatusMap(statuses, previous)
+      && lastState?.preferences === preferences) return;
 
   const empty = Object.keys(statuses).length === 0;
   if (empty && lastState?.ended === true) return;
 
   const workspaceLabels = empty ? new Map() : await listWorkspaceLabels(binPath);
+  const rowContext = empty ? {} : await listRowContext(binPath, agents, devices);
   const pushEvent = empty ? "end" : "update";
   const priority = hasNewlyBlocked(statuses, previous) ? 10 : 5;
   const timestamp = Math.floor(Date.now() / 1000);
@@ -415,6 +467,9 @@ async function main() {
       hostName,
       pinnedPaneIds: device.pinnedPaneIds,
       workspaceLabels,
+      rowLayout: device.rowLayout,
+      rowHostName: device.rowHostName,
+      ...rowContext,
     });
     const content =
       pushEvent === "end"
@@ -442,6 +497,7 @@ async function main() {
     writeLastState(stateDir, {
       sent_at_ms: Date.now(),
       statuses,
+      preferences,
       ended: pushEvent === "end",
     });
   }

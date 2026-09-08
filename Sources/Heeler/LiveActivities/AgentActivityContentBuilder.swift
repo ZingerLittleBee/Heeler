@@ -25,7 +25,8 @@ enum AgentActivityContentBuilder {
     static func desire(
         from agents: [ConsoleAgent],
         hostName: String,
-        pinnedPaneIDs: [String] = []
+        pinnedPaneIDs: [String] = [],
+        layout: AgentRowLayout? = nil
     ) -> AgentActivityDesire? {
         let eligible = agents.filter { isEligible($0.agent.status) }
         guard !eligible.isEmpty else { return nil }
@@ -41,7 +42,7 @@ enum AgentActivityContentBuilder {
             }
         }
         let details = Array(sorted(eligible, pinnedPaneIDs: pinnedPaneIDs).prefix(maxAgents))
-            .map(detail(from:))
+            .map { detail(from: $0, layout: layout) }
         return AgentActivityDesire(
             counts: .init(working: working, blocked: blocked, done: done),
             hostName: prefixGraphemes(hostName, max: maxHostGraphemes),
@@ -49,8 +50,8 @@ enum AgentActivityContentBuilder {
     }
 
     /// Seals `desire` under the Host's Notification Key. Degrades in contract
-    /// order when `ct` exceeds the budget: drop every title, then empty
-    /// `agents`. `nonce` is injectable so tests can pin the ciphertext.
+    /// order when `ct` exceeds the budget: drop titles and names, then
+    /// configured rows, then empty `agents`. Tests can pin the nonce.
     static func content(
         for desire: AgentActivityDesire,
         key: Data,
@@ -61,12 +62,20 @@ enum AgentActivityContentBuilder {
         withoutTitles.agents = desire.agents.map { agent in
             var stripped = agent
             stripped.title = nil
+            stripped.name = nil
             return stripped
         }
         if withoutTitles != desire { candidates.append(withoutTitles) }
+        var withoutRows = withoutTitles
+        withoutRows.agents = withoutTitles.agents.map { agent in
+            var stripped = agent
+            stripped.rows = nil
+            return stripped
+        }
+        if withoutRows != withoutTitles { candidates.append(withoutRows) }
         var emptyAgents = desire
         emptyAgents.agents = []
-        if emptyAgents != withoutTitles { candidates.append(emptyAgents) }
+        if emptyAgents != withoutRows { candidates.append(emptyAgents) }
 
         for candidate in candidates {
             guard let sealed = try? AgentActivityEnvelope.seal(
@@ -90,10 +99,11 @@ enum AgentActivityContentBuilder {
         hostName: String,
         key: Data,
         nonce: Data? = nil,
-        pinnedPaneIDs: [String] = []
+        pinnedPaneIDs: [String] = [],
+        layout: AgentRowLayout? = nil
     ) -> AgentActivityAttributes.ContentState? {
         guard let desire = desire(
-            from: agents, hostName: hostName, pinnedPaneIDs: pinnedPaneIDs)
+            from: agents, hostName: hostName, pinnedPaneIDs: pinnedPaneIDs, layout: layout)
         else { return nil }
         return content(for: desire, key: key, nonce: nonce)
     }
@@ -128,7 +138,7 @@ enum AgentActivityContentBuilder {
         }
     }
 
-    private static func detail(from agent: ConsoleAgent) -> AgentActivityDetails.AgentDetail {
+    private static func detail(from agent: ConsoleAgent, layout: AgentRowLayout?) -> AgentActivityDetails.AgentDetail {
         let kind = agent.agent.kind.isEmpty ? "unknown" : agent.agent.kind
         let trimmed = prefixGraphemes(agent.agent.title, max: maxTitleGraphemes)
         let name = agent.agent.name.map { prefixGraphemes($0, max: maxTitleGraphemes) }
@@ -141,7 +151,16 @@ enum AgentActivityContentBuilder {
             name: name?.isEmpty == false ? name : nil,
             workspace: workspace?.isEmpty == false ? workspace : nil,
             status: agent.agent.status.rawValue,
-            title: trimmed.isEmpty ? nil : trimmed)
+            title: trimmed.isEmpty ? nil : trimmed,
+            rows: layout.map { layout in
+                AgentRowRenderer.render(layout: layout.normalizedForConsole(), agent: agent).map { row in
+                    row.map { field in
+                        AgentActivityDetails.Field(
+                            text: prefixGraphemes(field.text, max: maxTitleGraphemes),
+                            fg: field.fg?.rawValue, bold: field.bold, dim: field.dim)
+                    }
+                }
+            })
     }
 
     static func prefixGraphemes(_ text: String, max: Int) -> String {

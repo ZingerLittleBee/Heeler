@@ -46,7 +46,9 @@ import Testing
             tabID: "w3:t2",
             paneID: "w3:pB",
             cwd: "/Users/u/GoDrop",
-            revision: 5
+            revision: 5,
+            terminalTitle: "✳ GoDrop",
+            terminalTitleStripped: "GoDrop"
         )
         #expect(result.agents.map(Agent.init) == [expected])
     }
@@ -62,6 +64,8 @@ import Testing
         #expect(agent.name == nil)
         #expect(agent.displayName == "unknown")
         #expect(agent.title == "")
+        #expect(agent.terminalTitle == nil && agent.terminalTitleStripped == nil && agent.paneTitle == nil)
+        #expect(agent.tokens.isEmpty && agent.stateLabels.isEmpty && agent.stateChangeSeq == nil)
         #expect(agent.cwd == "")
         // An unrecognized status survives with its raw value intact.
         #expect(agent.status == AgentStatus(rawValue: "haunted"))
@@ -110,6 +114,43 @@ import Testing
         // The raw terminal title still backfills a missing stripped title,
         // but agent spinner glyphs are shaved off either way.
         #expect(agent.title == "Fix")
+        #expect(agent.terminalTitle == "⠐ Fix")
+        #expect(agent.terminalTitleStripped == "Fix")
+    }
+
+    @Test func agentMappingPreservesSidebarMetadataAndLegacyTitleBehavior() throws {
+        let json = #"""
+            {"terminal_id":"t","agent":"claude","terminal_title":"◑ ✳ Fix",
+             "terminal_title_stripped":"✳ Fix","title":"Manual pane title",
+             "tokens":{"pin_icon":"📌","custom":"**literal**"},"state_labels":{"working":"Busy"},
+             "state_change_seq":42,"agent_status":"working","workspace_id":"w",
+             "tab_id":"w:t","pane_id":"opaque-pane","focused":true,"revision":1}
+            """#
+        let agent = Agent(try JSONDecoder().decode(AgentInfo.self, from: Data(json.utf8)))
+        #expect(agent.title == "Fix")
+        #expect(agent.terminalTitle == "◑ ✳ Fix")
+        #expect(agent.terminalTitleStripped == "✳ Fix")
+        #expect(agent.paneTitle == "Manual pane title")
+        #expect(agent.tokens == ["pin_icon": "📌", "custom": "**literal**"])
+        #expect(agent.stateLabels == ["working": "Busy"])
+        #expect(agent.stateChangeSeq == 42)
+    }
+
+    @Test func sidebarTitleFallbackStripsOneSeparatedGlyphOnly() {
+        for (raw, expected) in [
+            ("◑ ✳ Fix", "✳ Fix"), ("◑Fix", "◑Fix"), (" ● Fix ", "● Fix"),
+            ("⠋ Fix", "Fix"), ("◑", ""), ("  Fix  ", "Fix"),
+        ] {
+            let info = AgentInfo(agentStatus: .idle, focused: false, paneID: "p", revision: 0,
+                                 tabID: "t", terminalID: "terminal", workspaceID: "w", terminalTitle: raw)
+            #expect(Agent(info).terminalTitle == raw)
+            #expect(Agent(info).terminalTitleStripped == expected)
+        }
+        let empty = AgentInfo(agentStatus: .idle, focused: false, paneID: "p", revision: 0,
+                              tabID: "t", terminalID: "terminal", workspaceID: "w",
+                              terminalTitle: "◑ Fix", terminalTitleStripped: "")
+        #expect(Agent(empty).terminalTitleStripped == "")
+        #expect(Agent(empty).title == "")
     }
 
     @Test func errorEnvelopeThrowsHerdrAPIError() throws {

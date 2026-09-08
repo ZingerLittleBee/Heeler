@@ -12,6 +12,40 @@ struct AgentActivityContentBuilderTests {
     private let hostID = UUID()
     private let key = Data(0..<32)
 
+    @Test func configuredRowsKeepDirectoryPluginTextAndStylesInsideEncryption() throws {
+        let row = ConsoleAgent(
+            hostID: hostID, hostName: "Studio Mac",
+            agent: Agent(terminalID: "terminal", kind: "claude", title: "task", status: .working,
+                         workspaceID: "workspace", tabID: "tab", paneID: "w1:p1", cwd: "/work/heeler",
+                         revision: 1, tokens: ["branch": "**literal**"]),
+            workspaceLabel: "Heeler", repositoryCheckout: nil)
+        let layout = AgentRowLayout(rows: [
+            [.init(.workspace, bold: true), .init(.custom("branch"), fg: HexColor("#abc"))],
+            [.init(.host, dim: true)], [.init(.directory)],
+        ])
+        let content = try #require(AgentActivityContentBuilder.make(
+            agents: [row], hostName: "Studio Mac", key: key, layout: layout))
+        let details = try opened(content)
+        #expect(details.agents.first?.rows == [
+            [.init(text: "Heeler", bold: true), .init(text: " · "), .init(text: "**literal**", fg: "#abc")],
+            [.init(text: "Studio Mac", dim: true)], [.init(text: "/work/heeler")],
+        ])
+        let wire = String(decoding: try JSONEncoder().encode(content), as: UTF8.self)
+        #expect(!wire.contains("/work/heeler") && !wire.contains("**literal**"))
+    }
+
+    @Test func oversizedConfiguredRowsFallBackToIdentityBeforeDroppingAgents() throws {
+        var desired = try #require(AgentActivityContentBuilder.desire(
+            from: [agent("w1:p1", .working, workspace: "Heeler")], hostName: "mbp"))
+        desired.agents[0].rows = [[.init(text: String(repeating: "界", count: 3000))]]
+        let state = try #require(AgentActivityContentBuilder.content(for: desired, key: key))
+        let details = try opened(state)
+        #expect(details.agents.count == 1)
+        #expect(details.agents[0].rows == nil)
+        #expect(details.agents[0].workspace == "Heeler")
+        #expect(try #require(state.envelope).ct.count <= AgentActivityContentBuilder.maxCiphertextBytes)
+    }
+
     @Test func countsCoverTheFullEligibleInventoryNotTheCap() throws {
         var agents: [ConsoleAgent] = [
             agent("w:p-block", .blocked),
@@ -164,7 +198,7 @@ struct AgentActivityContentBuilderTests {
 
         let state = try #require(
             AgentActivityContentBuilder.make(
-                agents: [agent("w:p1", .working, title: huge)],
+                agents: [agent("w:p1", .working, title: huge, name: "reviewer")],
                 hostName: "mbp",
                 key: key))
 
@@ -174,6 +208,7 @@ struct AgentActivityContentBuilderTests {
         let details = try opened(state)
         #expect(details.agents.count == 1)
         #expect(details.agents.first?.title == nil)
+        #expect(details.agents.first?.name == nil)
         #expect(details.agents.first?.paneID == "w:p1")
         #expect(details.hostName == "mbp")
     }

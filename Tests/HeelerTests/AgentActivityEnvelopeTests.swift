@@ -37,6 +37,7 @@ struct AgentActivityEnvelopeTests {
             #expect(got.status == expected.status)
             #expect(got.title == expected.title)
             #expect(got.workspace == expected.workspace)
+            #expect(got.rows == expected.rows)
         }
     }
 
@@ -56,7 +57,7 @@ struct AgentActivityEnvelopeTests {
                 AgentActivityDetails.AgentDetail(
                     paneID: $0.pane, kind: $0.kind, name: $0.name,
                     workspace: $0.workspace, status: $0.status,
-                    title: $0.title)
+                    title: $0.title, rows: $0.rows)
             })
 
         let sealed = try AgentActivityEnvelope.seal(details, using: key, nonce: nonce)

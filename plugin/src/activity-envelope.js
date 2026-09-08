@@ -56,6 +56,16 @@ export function canonicalActivityPlaintext(plaintext) {
         entry.name = agent.name;
       }
       entry.pane = agent.pane;
+      if (Array.isArray(agent.rows)) {
+        entry.rows = agent.rows.map((row) => row.map((span) => {
+          const field = {};
+          if (typeof span.bold === "boolean") field.bold = span.bold;
+          if (typeof span.dim === "boolean") field.dim = span.dim;
+          if (typeof span.fg === "string") field.fg = span.fg;
+          field.text = span.text;
+          return field;
+        }));
+      }
       entry.status = agent.status;
       if (typeof agent.title === "string" && agent.title.length > 0) {
         entry.title = agent.title;

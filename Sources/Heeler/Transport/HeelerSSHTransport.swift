@@ -807,6 +807,7 @@ actor HeelerSSHTransport: Transport {
 
     static let notificationRegistrationFileName = "notifications.json"
     static let notificationConfigFileName = "notify.json"
+    static let sidebarLayoutFileName = "sidebar.json"
 
     func readNotificationRegistration() async throws -> Data? {
         try await readPluginConfigFile(named: Self.notificationRegistrationFileName)
@@ -826,6 +827,10 @@ actor HeelerSSHTransport: Transport {
         try await replacePluginConfigFile(
             named: Self.notificationConfigFileName,
             contents: contents)
+    }
+
+    func readSidebarLayout() async throws -> Data? {
+        try await readPluginConfigFile(named: Self.sidebarLayoutFileName)
     }
 
     private func readPluginConfigFile(named name: String) async throws -> Data? {
@@ -1076,6 +1081,10 @@ actor HeelerSSHTransport: Transport {
                 throw error
             }
         }
+    }
+
+    func replacePluginConfigFileForTesting(named name: String, contents: Data) async throws {
+        try await replacePluginConfigFile(named: name, contents: contents)
     }
 #endif
 

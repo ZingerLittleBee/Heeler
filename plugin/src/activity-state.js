@@ -8,6 +8,8 @@
 
 import os from "node:os";
 
+import { parseActivityRowLayout, renderActivityRows } from "./activity-rows.js";
+
 import { forDisplay, optionalText } from "./display-text.js";
 
 export const ELIGIBLE_STATUSES = new Set(["working", "blocked", "done"]);
@@ -86,6 +88,10 @@ export function buildActivityState({
   hostName,
   pinnedPaneIds,
   workspaceLabels = new Map(),
+  rowLayout,
+  rowHostName,
+  tabs = new Map(),
+  panes = new Map(),
 }) {
   const counts = { working: 0, blocked: 0, done: 0 };
   const eligible = [];
@@ -113,6 +119,7 @@ export function buildActivityState({
     return 0;
   });
   const host = forDisplay(hostName) ?? "";
+  const layout = parseActivityRowLayout(rowLayout);
   const selected = eligible.slice(0, AGENT_CAP).map((entry) => {
     const title = forDisplay(
       optionalText(entry.agent.terminal_title_stripped) ?? optionalText(entry.agent.terminal_title),
@@ -124,6 +131,8 @@ export function buildActivityState({
     wire.kind = optionalText(entry.agent.agent) ?? "unknown";
     if (name !== null) wire.name = name;
     wire.pane = entry.pane;
+    const rows = renderActivityRows(layout, entry.agent, { hostName: rowHostName ?? host, workspaceLabels, tabs, panes });
+    if (rows !== null) wire.rows = rows;
     wire.status = entry.status;
     if (title !== null) wire.title = title;
     const workspaceId = optionalText(entry.agent.workspace_id);

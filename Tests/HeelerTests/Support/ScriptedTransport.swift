@@ -79,6 +79,7 @@ final actor ScriptedTransport: Transport {
     private var nextStreamID: UInt64 = 0
     private var liveStreamID: UInt64?
     private var eventContinuation: AsyncThrowingStream<HerdrEvent, any Error>.Continuation?
+    private var subscriptionObservers: [UUID: AsyncStream<[EventSubscription]>.Continuation] = [:]
     private var nextSubscriptionGate: ScriptedTransportCallGate?
     private var nextAttachID: UInt64 = 0
     private var liveAttachID: UInt64?
@@ -108,6 +109,12 @@ final actor ScriptedTransport: Transport {
     /// Every `notify.json` replace received, in order.
     private(set) var replacedNotificationConfigs: [Data] = []
     private(set) var notificationConfigReads = 0
+    /// The Host's current `sidebar.json` bytes; nil scripts "no snapshot yet"
+    /// so layout precedence can fall through.
+    private(set) var sidebarLayout: Data?
+    private(set) var sidebarLayoutReads = 0
+    private var nextSidebarLayoutGate: ScriptedTransportCallGate?
+    private var sidebarLayoutReadFailure: (any Error)?
 
     init(
         snapshot: SessionSnapshot = .fixture(),
@@ -246,6 +253,25 @@ final actor ScriptedTransport: Transport {
         nextSubscriptionGate = gate
     }
 
+    /// Wait for actual stream installation, not merely a captured request.
+    /// AsyncStream cancellation ends the wait if the test is canceled.
+    func waitForLiveSubscription(containing expected: [EventSubscription]) async throws {
+        if liveStreamID != nil, let current = capturedSubscriptions.last,
+            expected.allSatisfy(current.contains)
+        { return }
+        let id = UUID()
+        let updates = AsyncStream<[EventSubscription]>.makeStream()
+        subscriptionObservers[id] = updates.continuation
+        defer {
+            subscriptionObservers[id] = nil
+            updates.continuation.finish()
+        }
+        for await current in updates.stream {
+            if expected.allSatisfy(current.contains) { return }
+        }
+        throw CancellationError()
+    }
+
     /// Pushes one event onto the live stream; false if none is live.
     @discardableResult
     func emit(_ event: HerdrEvent) -> Bool {
@@ -310,6 +336,16 @@ final actor ScriptedTransport: Transport {
     /// Scripts the `notify.json` config the Host currently holds.
     func setNotificationConfig(_ data: Data?) {
         notificationConfig = data
+    }
+
+    /// Scripts the `sidebar.json` snapshot the Host currently holds.
+    func setSidebarLayout(_ data: Data?) {
+        sidebarLayout = data
+    }
+
+    /// Makes every subsequent sidebar layout read throw `failure`.
+    func setSidebarLayoutReadFailure(_ failure: (any Error)?) {
+        sidebarLayoutReadFailure = failure
     }
 
     /// Makes the `ordinal`-th `ping` on this transport throw `failure`. A real
@@ -527,6 +563,7 @@ final actor ScriptedTransport: Transport {
         let (events, continuation) = AsyncThrowingStream<HerdrEvent, any Error>.makeStream()
         liveStreamID = streamID
         eventContinuation = continuation
+        for observer in subscriptionObservers.values { observer.yield(subscriptions) }
         return HerdrEventStream(events: events) {
             await self.endStream(id: streamID)
         }
@@ -626,6 +663,21 @@ final actor ScriptedTransport: Transport {
         if let failure = notificationRegistrationWriteFailure { throw failure }
         notificationConfig = contents
         replacedNotificationConfigs.append(contents)
+    }
+
+    func gateNextSidebarLayoutRead(_ gate: ScriptedTransportCallGate) {
+        nextSidebarLayoutGate = gate
+    }
+
+    func readSidebarLayout() async throws -> Data? {
+        sidebarLayoutReads += 1
+        let data = sidebarLayout
+        let failure = sidebarLayoutReadFailure
+        let gate = nextSidebarLayoutGate
+        nextSidebarLayoutGate = nil
+        if let gate { await gate.waitUntilOpen() }
+        if let failure { throw failure }
+        return data
     }
 
     var isConnected: Bool {
@@ -744,10 +796,10 @@ actor ScriptedTransportCallGate {
 
 extension SessionSnapshot {
     static func fixture(
-        agents: [AgentInfo] = [], workspaces: [WorkspaceInfo] = []
+        agents: [AgentInfo] = [], workspaces: [WorkspaceInfo] = [], protocolVersion: Int = 17
     ) -> SessionSnapshot {
         SessionSnapshot(
-            agents: agents, layouts: [], panes: [], protocolVersion: 17, tabs: [],
+            agents: agents, layouts: [], panes: [], protocolVersion: protocolVersion, tabs: [],
             version: "0.7.5-fake", workspaces: workspaces)
     }
 }

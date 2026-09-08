@@ -20,6 +20,22 @@ private final class MessageJumpSizedHost: UIView {
 }
 
 struct MessageJumpControlTests {
+    @Test func shortTerminalKeepsJumpControlsAboveFloatingLinks() throws {
+        let terminalSize = CGSize(width: 390, height: 180)
+        let linksTop = terminalSize.height - 8 - MessageJumpControlView.buttonSize
+        let frame = try #require(MessageJumpPlacement.frame(
+            terminalSize: terminalSize,
+            chromeSize: CGSize(width: 44, height: 89),
+            minimumBottomInset: MessageJumpControlView.buttonSize + 16))
+        #expect(frame.maxY <= linksTop - 8)
+        #expect(frame.minY >= 0)
+
+        #expect(MessageJumpPlacement.frame(
+            terminalSize: CGSize(width: 390, height: 100),
+            chromeSize: CGSize(width: 44, height: 89),
+            minimumBottomInset: MessageJumpControlView.buttonSize + 16) == nil)
+    }
+
     @Test func availabilityRequiresAlternateScreen() {
         #expect(
             MessageJumpControlAvailability.evaluate(

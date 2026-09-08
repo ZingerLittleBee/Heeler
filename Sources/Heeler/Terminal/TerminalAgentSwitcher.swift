@@ -14,10 +14,10 @@ extension TerminalAgentSwitcherItem {
     /// Maps a Console row through the same pin store the list uses, so a pin
     /// made on either surface shows up on the other.
     @MainActor
-    init(agent: ConsoleAgent, pins: PinnedAgentsStore) {
+    init(agent: ConsoleAgent, pins: PinnedAgentsStore, layout: AgentRowLayout = .heelerDefault) {
         self.init(
             id: agent.id,
-            title: agent.switcherLabel,
+            title: AgentCardPresentation(agent: agent, layout: layout).switcherTitle,
             status: agent.agent.status,
             isPinned: pins.isPinned(hostID: agent.hostID, paneID: agent.agent.paneID))
     }
