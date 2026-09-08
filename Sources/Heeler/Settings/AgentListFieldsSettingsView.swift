@@ -668,7 +668,8 @@ private struct AgentListFieldsOverrideDisclosureStyle: DisclosureGroupStyle {
     }
 }
 
-/// One fixed row slot: title, provenance tag, and its field chips.
+/// One fixed row slot: title and its field chips. Provenance is explained
+/// once by the note under the rows, not tagged per row.
 private struct AgentListFieldsRowButton: View {
     let index: Int
     let row: AgentRow
@@ -685,14 +686,9 @@ private struct AgentListFieldsRowButton: View {
         } label: {
             HStack(alignment: .center, spacing: 8) {
                 VStack(alignment: .leading, spacing: 5) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("Row \(index + 1)")
-                            .font(compact ? .subheadline : .callout)
-                            .foregroundStyle(.primary)
-                        if let slot {
-                            AgentListFieldsSlotTag(slot: slot)
-                        }
-                    }
+                    Text("Row \(index + 1)")
+                        .font(compact ? .subheadline : .callout)
+                        .foregroundStyle(.primary)
                     AgentListFieldsChipRow(row: row, slot: slot)
                 }
                 Spacer(minLength: 8)
@@ -705,20 +701,6 @@ private struct AgentListFieldsRowButton: View {
         .buttonStyle(.plain)
         .disabled(!canOpen)
         .accessibilityLabel(AgentListFieldsRowLabel.accessibilityLabel(index: index, row: row))
-    }
-}
-
-private struct AgentListFieldsSlotTag: View {
-    let slot: AgentRowSlot
-
-    var body: some View {
-        Text(verbatim: slot.label)
-            .font(.caption2.weight(.medium))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1.5)
-            .background(Capsule().fill(AgentListFieldsChrome.tagFill))
-            .accessibilityHidden(true)
     }
 }
 
@@ -935,7 +917,6 @@ private enum AgentListFieldsChrome {
     static let nestedFill = previewFill
     static let cardFill = Color(uiColor: .secondarySystemGroupedBackground)
     static let chipFill = Color(uiColor: .tertiarySystemFill)
-    static let tagFill = Color(uiColor: .quaternarySystemFill)
     static let chipStroke = Color(uiColor: .separator)
     static let chipInk = Color.primary.opacity(0.75)
     static let success = Color(uiColor: .systemGreen)
