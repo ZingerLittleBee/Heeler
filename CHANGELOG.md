@@ -12,7 +12,7 @@ Entries reference the issue that motivated them.
 - Agent sessions can now carry a device-local name, set from the row's
   context menu in the Agent list, so multiple sessions in one workspace are
   distinguishable. Unset names fall back to the workspace label as before.
-  (#290)
+  (#290; PR #291)
 
 ### Changed
 
