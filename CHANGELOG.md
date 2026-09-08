@@ -10,13 +10,10 @@ Entries reference the issue that motivated them.
 ### Added
 
 - Agent cards and the keyboard switcher use herdr's sidebar fields and Agent
-  order, including terminal titles and plugin fields. Cards show up to three
-  rows, with one layout per Host. (#277, #281)
-
-- Agent List Fields in Settings lets you add, style, move, and remove fields
-  for each Host, with a Console preview and automatic saving. Sync from plugin
-  refreshes the first two rows; the third is managed in Heeler. All rows
-  support herdr, Heeler, and custom plugin fields. (#277, #281)
+  order. Customize each Host's card layout in Settings > Agent List Fields:
+  add, style, move, or remove herdr, Heeler, and plugin fields across up to
+  three rows, with a Console preview and automatic saving. Sync from plugin
+  refreshes the first two rows; the third is managed in Heeler. (#277, #281)
 
 ### Fixed
 
