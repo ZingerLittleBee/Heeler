@@ -16,7 +16,9 @@ struct AgentCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
+            // Centered, not baseline-aligned: the status capsule is smaller
+            // type with padding, so baseline alignment drops it below Row 1.
+            HStack(alignment: .center) {
                 AgentRowText(tokens: presentation.rows.first ?? [])
                     .font(.headline)
                     .lineLimit(1)
