@@ -1,8 +1,8 @@
 # Build and deploy the landing page (landing/) to Cloudflare Workers.
 #
-# This is the only workflow a landing-only change runs: ci.yml ignores
-# `landing/**`, and this one only fires when `landing/**` (or this file)
-# changes, so marketing-site edits never spend a macOS runner.
+# This is the only workflow a landing-only change runs. ci.yml (iOS) and
+# ci-node.yml (plugin / relay / codegen) use positive path filters that do
+# not include landing/**, so a copy edit never spends a macOS runner.
 #
 # A pull request builds and typechecks; a push to main also deploys. The deploy
 # needs two repository secrets:
