@@ -17,7 +17,9 @@ Entries reference the issue that motivated them.
   your edits when syncing. (#277, #281)
 
 - Live Activities follow each Host's Agent List Fields, including directory
-  and plugin fields, on the Lock Screen and expanded Dynamic Island. (#281)
+  and plugin fields, on the Lock Screen and expanded Dynamic Island. Update
+  the Heeler plugin on each Host to use these fields in background updates.
+  (#281)
 
 ### Fixed
 
