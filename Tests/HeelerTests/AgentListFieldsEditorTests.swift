@@ -33,7 +33,7 @@ struct AgentListFieldsEditorTests {
         let transport = ScriptedTransport()
         await transport.setSidebarLayout(pluginData)
         let (snapshots, fetch) = await makeSnapshots(hostID: hostID, transport: transport)
-        let plugin = try #require(AgentRowLayoutSnapshot.decode(pluginData)).layout
+        let plugin = try #require(AgentRowLayoutSnapshot.decode(pluginData)).layout.normalizedForConsole()
         let editor = AgentListFieldsEditor(layouts: layouts, snapshots: snapshots, fetch: fetch)
         #expect(editor.isEditing == false)
         #expect(editor.layout(for: hostID) == plugin)
@@ -119,7 +119,7 @@ struct AgentListFieldsEditorTests {
 
         await transport.setSidebarLayout(pluginData)
         await editor.syncFromPlugin(hostID)
-        let plugin = try #require(AgentRowLayoutSnapshot.decode(pluginData)).layout
+        let plugin = try #require(AgentRowLayoutSnapshot.decode(pluginData)).layout.normalizedForConsole()
         #expect(editor.syncStates[hostID] == .filled("Replaced with plugin fields."))
         #expect(editor.layout(for: hostID) == plugin)
         #expect(layouts.hostLayouts[hostID] == saved)
@@ -197,7 +197,7 @@ struct AgentListFieldsEditorTests {
         let transport = ScriptedTransport()
         await transport.setSidebarLayout(pluginData)
         let (snapshots, fetch) = await makeSnapshots(hostID: unsavedID, transport: transport)
-        let plugin = try #require(AgentRowLayoutSnapshot.decode(pluginData)).layout
+        let plugin = try #require(AgentRowLayoutSnapshot.decode(pluginData)).layout.normalizedForConsole()
         let saved = AgentRowLayout(rows: [[.init(.pane)]], rowGap: 1)
         try layouts.setLayout(saved, for: savedID)
         let editor = AgentListFieldsEditor(layouts: layouts, snapshots: snapshots, fetch: fetch)
@@ -332,8 +332,8 @@ struct AgentListFieldsEditorTests {
 
         fetchState.value = .loaded(snapshot)
         await editor.syncFromPlugin(hostID)
-        #expect(editor.layout(for: hostID) == snapshot.layout)
-        #expect(editor.layout(for: hostID).rowsByAgent == snapshot.layout.rowsByAgent)
+        #expect(editor.layout(for: hostID) == snapshot.layout.normalizedForConsole())
+        #expect(editor.layout(for: hostID).rowsByAgent.isEmpty)
         #expect(editor.layout(for: hostID).rowGap == 2)
         #expect(editor.layout(for: hostID).rows[0][0].fg == HexColor("#abc"))
         #expect(editor.layout(for: hostID).rows[0][0].bold == false)
@@ -345,7 +345,7 @@ struct AgentListFieldsEditorTests {
         fetchState.value = .loaded(AgentRowLayoutSnapshot(layout: snapshot.layout))
         await editor.syncFromPlugin(hostID)
         #expect(editor.syncStates[hostID] == .filled("Replaced with plugin fields."))
-        #expect(editor.layout(for: hostID) == snapshot.layout)
+        #expect(editor.layout(for: hostID) == snapshot.layout.normalizedForConsole())
         #expect(layouts.hostLayouts.isEmpty)
     }
 
@@ -421,14 +421,14 @@ struct AgentListFieldsInlineEditingTests {
         #expect(editor.errorMessage?.contains("at most 3 rows") == true)
 
         // The next good change clears the message.
-        #expect(editor.commit(hostID) { $0.rowsByAgent["claude"] = [[.init(.tab)]] })
+        #expect(editor.commit(hostID) { $0.rowGap = 2 })
         #expect(editor.errorMessage == nil)
-        #expect(layouts.hostLayouts[hostID]?.rowsByAgent["claude"] == [[.init(.tab)]])
+        #expect(layouts.hostLayouts[hostID]?.rowGap == 2)
 
         // Inside an open draft session the change joins the session and saves it.
         editor.beginEditing()
         editor.setRows([[.init(.agent)]], kind: nil, for: hostID)
-        #expect(editor.commit(hostID) { $0.rowsByAgent["claude"] = nil })
+        #expect(editor.commit(hostID) { $0.rowGap = 0 })
         #expect(!editor.isEditing)
         #expect(layouts.hostLayouts[hostID] == AgentRowLayout(rows: [[.init(.agent)]]))
     }

@@ -70,12 +70,8 @@ struct AgentLayoutTokensEditingTests {
     }
 
     @Test func subtitleAndStatusDescriptionsMatchHostKindAndStatusColumn() {
-        #expect(AgentLayoutTokensEditing.navigationSubtitle(hostName: "Studio Mac", kind: nil) == "Studio Mac")
-        #expect(
-            AgentLayoutTokensEditing.navigationSubtitle(hostName: "Studio Mac", kind: "claude")
-                == "Studio Mac · claude override")
-        #expect(AgentLayoutTokensEditing.navigationSubtitle(hostName: "", kind: "claude") == "claude override")
-        #expect(AgentLayoutTokensEditing.navigationSubtitle(hostName: "", kind: nil).isEmpty)
+        #expect(AgentLayoutTokensEditing.navigationSubtitle(hostName: "Studio Mac") == "Studio Mac")
+        #expect(AgentLayoutTokensEditing.navigationSubtitle(hostName: "").isEmpty)
         let statusIcon = AgentLayoutTokensEditing.description(for: .stateIcon)
         let statusText = AgentLayoutTokensEditing.description(for: .stateText)
         #expect(statusIcon.contains("status column"))
@@ -109,37 +105,34 @@ struct AgentLayoutTokensEditingTests {
                     .init(.workspace, fg: colored, bold: false, dim: true),
                     .init(.custom("pin_icon")),
                     .init(.agent),
-                ]],
-                rowsByAgent: ["claude": [[.init(.pane)]]]),
+                ]]),
             otherID: AgentRowLayout(rows: [[.init(.tab)]]),
         ])
 
         #expect(AgentLayoutTokensEditing.add(
-            .terminalTitle, editor: editor, hostID: hostID, kind: nil, rowIndex: 0))
+            .terminalTitle, editor: editor, hostID: hostID, rowIndex: 0))
         #expect(AgentLayoutTokensEditing.add(
-            .custom("build_status"), editor: editor, hostID: hostID, kind: nil, rowIndex: 0))
+            .custom("build_status"), editor: editor, hostID: hostID, rowIndex: 0))
         #expect(
-            AgentLayoutTokensEditing.add(.workspace, editor: editor, hostID: hostID, kind: nil, rowIndex: 0)
+            AgentLayoutTokensEditing.add(.workspace, editor: editor, hostID: hostID, rowIndex: 0)
                 == false)
         #expect(AgentLayoutTokensEditing.delete(
-            IndexSet(integer: 2), editor: editor, hostID: hostID, kind: nil, rowIndex: 0))
+            IndexSet(integer: 2), editor: editor, hostID: hostID, rowIndex: 0))
         #expect(AgentLayoutTokensEditing.move(
-            IndexSet(integer: 0), to: 3, editor: editor, hostID: hostID, kind: nil, rowIndex: 0))
+            IndexSet(integer: 0), to: 3, editor: editor, hostID: hostID, rowIndex: 0))
         #expect(AgentLayoutTokensEditing.setStyle(
-            .default, at: 2, editor: editor, hostID: hostID, kind: nil, rowIndex: 0))
-        #expect(AgentLayoutTokensEditing.setStyle(
-            .secondary, at: 0, editor: editor, hostID: hostID, kind: "claude", rowIndex: 0))
+            .default, at: 2, editor: editor, hostID: hostID, rowIndex: 0))
         // Shift swaps neighbours; the ends stay put.
         #expect(AgentLayoutTokensEditing.shift(
-            3, by: -1, editor: editor, hostID: hostID, kind: nil, rowIndex: 0))
+            3, by: -1, editor: editor, hostID: hostID, rowIndex: 0))
         #expect(
-            AgentLayoutTokensEditing.shift(0, by: -1, editor: editor, hostID: hostID, kind: nil, rowIndex: 0)
+            AgentLayoutTokensEditing.shift(0, by: -1, editor: editor, hostID: hostID, rowIndex: 0)
                 == false)
         #expect(
-            AgentLayoutTokensEditing.shift(3, by: 1, editor: editor, hostID: hostID, kind: nil, rowIndex: 0)
+            AgentLayoutTokensEditing.shift(3, by: 1, editor: editor, hostID: hostID, rowIndex: 0)
                 == false)
         #expect(
-            AgentLayoutTokensEditing.shift(1, by: 2, editor: editor, hostID: hostID, kind: nil, rowIndex: 0)
+            AgentLayoutTokensEditing.shift(1, by: 2, editor: editor, hostID: hostID, rowIndex: 0)
                 == false)
 
         let saved = try #require(layouts.hostLayouts[hostID])
@@ -148,7 +141,6 @@ struct AgentLayoutTokensEditingTests {
         #expect(hostRow[3].token == .workspace && hostRow[3].fg == colored && hostRow[3].bold == false)
         #expect(hostRow[3].dim == nil)
         #expect(hostRow[1].dim == nil && hostRow[2].dim == nil)
-        #expect(saved.rowsByAgent["claude"] == [[.init(.pane, dim: true)]])
         #expect(layouts.hostLayouts[otherID]?.rows == [[.init(.tab)]])
         #expect(editor.layout(for: hostID) == saved)
         #expect(!editor.isEditing && editor.drafts.isEmpty)
@@ -164,42 +156,38 @@ struct AgentLayoutTokensEditingTests {
         let before = editor.layout(for: hostID)
         #expect(before == .consoleDefault)
 
-        #expect(AgentLayoutTokensEditing.add(.directory, editor: editor, hostID: hostID, kind: nil, rowIndex: 2))
+        #expect(AgentLayoutTokensEditing.add(.directory, editor: editor, hostID: hostID, rowIndex: 2))
         let saved = try #require(layouts.hostLayouts[hostID])
         #expect(saved.rows == before.rows + [[.init(.directory)]])
         #expect(saved.rowGap == before.rowGap && saved.rowsByAgent == before.rowsByAgent)
         #expect(editor.underlyingSource(for: hostID) == .saved)
     }
 
-    @Test func staleIndexMissingOverrideAndCapacityGuardsWriteNothing() throws {
+    @Test func staleIndexAndCapacityGuardsWriteNothing() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
         let (editor, layouts) = makeEditor(defaults: defaults)
         let hostID = UUID()
         let twoRows: [AgentRow] = [[.init(.workspace), .init(.agent)], [.init(.pane)]]
-        let before = AgentRowLayout(rows: twoRows, rowsByAgent: ["claude": [[.init(.tab)]]])
+        let before = AgentRowLayout(rows: twoRows, rowGap: 1)
         try layouts.setLayout(before, for: hostID)
 
         #expect(
-            AgentLayoutTokensEditing.add(.terminalTitle, editor: editor, hostID: hostID, kind: nil, rowIndex: 3)
-                == false)
-        #expect(
-            AgentLayoutTokensEditing.add(.terminalTitle, editor: editor, hostID: hostID, kind: "codex", rowIndex: 0)
+            AgentLayoutTokensEditing.add(.terminalTitle, editor: editor, hostID: hostID, rowIndex: 3)
                 == false)
         #expect(
             AgentLayoutTokensEditing.delete(
-                IndexSet(integer: 0), editor: editor, hostID: hostID, kind: nil, rowIndex: 5)
+                IndexSet(integer: 0), editor: editor, hostID: hostID, rowIndex: 5)
                 == false)
         #expect(
             AgentLayoutTokensEditing.move(
-                IndexSet(integer: 0), to: 1, editor: editor, hostID: hostID, kind: nil, rowIndex: 3)
+                IndexSet(integer: 0), to: 1, editor: editor, hostID: hostID, rowIndex: 3)
                 == false)
         #expect(
             AgentLayoutTokensEditing.setStyle(
-                .secondary, at: 0, editor: editor, hostID: hostID, kind: nil, rowIndex: 3)
+                .secondary, at: 0, editor: editor, hostID: hostID, rowIndex: 3)
                 == false)
         #expect(layouts.hostLayouts[hostID] == before)
-        #expect(editor.layout(for: hostID).rowsByAgent["codex"] == nil)
         #expect(!editor.isEditing && editor.errorMessage == nil)
 
         let sixteen = (0..<AgentRowLayout.maximumTokensPerRow).map {
@@ -207,7 +195,7 @@ struct AgentLayoutTokensEditingTests {
         }
         try layouts.setLayout(AgentRowLayout(rows: [sixteen, [.init(.pane)]]), for: hostID)
         #expect(
-            AgentLayoutTokensEditing.add(.workspace, editor: editor, hostID: hostID, kind: nil, rowIndex: 0)
+            AgentLayoutTokensEditing.add(.workspace, editor: editor, hostID: hostID, rowIndex: 0)
                 == false)
         #expect(layouts.hostLayouts[hostID]?.rows[0].count == AgentRowLayout.maximumTokensPerRow)
         #expect(layouts.hostLayouts[hostID]?.rows[1] == [.init(.pane)])

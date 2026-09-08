@@ -10,9 +10,7 @@ struct AgentListFieldsAddFieldSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var customName = ""
 
-    private var rows: [AgentRow] {
-        AgentLayoutTokensEditing.rows(in: editor.layout(for: destination.hostID), kind: destination.kind)
-    }
+    private var rows: [AgentRow] { editor.layout(for: destination.hostID).rows }
     private var tokens: AgentRow { AgentLayoutTokensEditing.row(destination.rowIndex, in: rows) }
     private var slot: AgentRowSlot? { AgentRowSlot.forRow(destination.rowIndex) }
     private var canAddField: Bool {
@@ -26,8 +24,7 @@ struct AgentListFieldsAddFieldSheet: View {
         AgentLayoutTokensEditing.availableHeelerFields(in: tokens, rowIndex: destination.rowIndex)
     }
     private var subtitle: String {
-        AgentLayoutTokensEditing.navigationSubtitle(
-            hostName: hostName, kind: destination.kind, rowIndex: destination.rowIndex)
+        AgentLayoutTokensEditing.navigationSubtitle(hostName: hostName, rowIndex: destination.rowIndex)
     }
 
     var body: some View {
@@ -130,8 +127,7 @@ struct AgentListFieldsAddFieldSheet: View {
 
     private func add(_ token: AgentRowToken) {
         if AgentLayoutTokensEditing.add(
-            token, editor: editor, hostID: destination.hostID, kind: destination.kind,
-            rowIndex: destination.rowIndex)
+            token, editor: editor, hostID: destination.hostID, rowIndex: destination.rowIndex)
         {
             dismiss()
         }

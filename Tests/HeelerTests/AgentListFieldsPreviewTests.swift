@@ -22,7 +22,7 @@ struct AgentListFieldsPreviewTests {
         let before = layouts.resolvedLayout(for: agent.hostID, pluginSnapshot: nil)
         editor.beginEditing()
         AgentLayoutTokensEditing.setStyle(
-            .secondary, at: 0, editor: editor, hostID: agent.hostID, kind: nil, rowIndex: rowIndex)
+            .secondary, at: 0, editor: editor, hostID: agent.hostID, rowIndex: rowIndex)
         editor.save()
         let after = layouts.resolvedLayout(for: agent.hostID, pluginSnapshot: nil)
         #expect(after.rows[rowIndex][0].dim == true)

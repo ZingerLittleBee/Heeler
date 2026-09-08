@@ -92,19 +92,15 @@ struct AgentListFieldsSettingsView: View {
 /// One Host's rows as three fixed slots, edited in place. Row 1 and Row 2
 /// carry herdr's sidebar fields; Row 3 is Heeler's own row. Slots are never
 /// added, moved, or deleted, so a row's index is its identity everywhere on
-/// this screen. Every change saves immediately through the editor.
+/// this screen. Every change saves immediately through the editor. Every
+/// Agent on the Host shares these rows; there are no per-kind overrides.
 struct AgentListFieldsHostDetailView: View {
     let host: Host
     let console: ConsoleStore
     let hosts: [Host]
     var editor: AgentListFieldsEditor
-    @State private var expandedOverrides: Set<String> = []
     @State private var addingField: AgentListFieldsEditorDestination?
     @State private var confirmingSync = false
-    @State private var showingOther = false
-    @State private var otherKind = ""
-    @State private var otherHint: String?
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         hostList
@@ -127,7 +123,6 @@ struct AgentListFieldsHostDetailView: View {
     }
 
     private var layout: AgentRowLayout { editor.layout(for: host.id) }
-    private var overrideKinds: [String] { layout.rowsByAgent.keys.sorted() }
     private var isSyncing: Bool { editor.syncStates[host.id] == .syncing }
 
     private var hostList: some View {
@@ -137,7 +132,6 @@ struct AgentListFieldsHostDetailView: View {
                 previewRow
                 hostRows
                 slotsNote
-                overridesBlock
                 syncRow
             }
             .listSectionSeparator(.hidden)
@@ -172,15 +166,6 @@ struct AgentListFieldsHostDetailView: View {
         .listSectionSeparator(.hidden)
     }
 
-    private enum NestedBottom: Equatable {
-        case header
-        case row(Int)
-    }
-
-    private func nestedBottom(for kind: String) -> NestedBottom {
-        expandedOverrides.contains(kind) ? .row(AgentRowLayout.maximumConsoleRows - 1) : .header
-    }
-
     private var previewRow: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("Console Preview")
@@ -203,12 +188,11 @@ struct AgentListFieldsHostDetailView: View {
             AgentListFieldsRowEditor(
                 index: index, row: row, isEnabled: !isSyncing,
                 onAdd: {
-                    addingField = AgentListFieldsEditorDestination(
-                        hostID: host.id, kind: nil, rowIndex: index)
+                    addingField = AgentListFieldsEditorDestination(hostID: host.id, rowIndex: index)
                 },
-                onToggleStyle: { fieldIndex in toggleStyle(fieldIndex, kind: nil, rowIndex: index) },
-                onShift: { fieldIndex, delta in shift(fieldIndex, by: delta, kind: nil, rowIndex: index) },
-                onRemove: { fieldIndex in remove(fieldIndex, kind: nil, rowIndex: index) })
+                onToggleStyle: { fieldIndex in toggleStyle(fieldIndex, rowIndex: index) },
+                onShift: { fieldIndex, delta in shift(fieldIndex, by: delta, rowIndex: index) },
+                onRemove: { fieldIndex in remove(fieldIndex, rowIndex: index) })
                 .listRowInsets(AgentListFieldsChrome.rowInsets)
                 .agentListHostSurface(isFirst: false, isLast: false)
         }
@@ -223,198 +207,6 @@ struct AgentListFieldsHostDetailView: View {
             .listRowInsets(AgentListFieldsChrome.slotsNoteInsets)
             .listRowSeparator(.hidden)
             .agentListHostSurface(isFirst: false, isLast: false)
-    }
-
-    @ViewBuilder
-    private var overridesBlock: some View {
-        let kinds = overrideKinds
-        if kinds.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                overridesHeadingLabel
-                Text(AgentListFieldsCopy.noOverrides)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                addOverrideControls(host)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .listRowInsets(AgentListFieldsChrome.overridesChromeInsets)
-            .listRowSeparator(.hidden)
-            .agentListHostSurface(isFirst: false, isLast: false)
-        } else {
-            overridesHeadingLabel
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .listRowInsets(AgentListFieldsChrome.overridesHeadingInsets)
-                .listRowSeparator(.hidden)
-                .agentListHostSurface(isFirst: false, isLast: false)
-            ForEach(kinds, id: \.self) { kind in
-                overrideGroup(kind: kind)
-            }
-            addOverrideControls(host)
-                .listRowInsets(AgentListFieldsChrome.overridesActionInsets)
-                .listRowSeparator(.hidden)
-                .agentListHostSurface(isFirst: false, isLast: false)
-        }
-    }
-
-    private var overridesHeadingLabel: some View {
-        Text("Agent overrides")
-            .font(.caption2.weight(.semibold))
-            .tracking(0.4)
-            .foregroundStyle(.secondary)
-            .textCase(.uppercase)
-    }
-
-    private func overrideGroup(kind: String) -> some View {
-        let expanded = expandedOverrides.contains(kind)
-        let nestedEnd = nestedBottom(for: kind)
-        return DisclosureGroup(isExpanded: overrideExpansion(kind)) {
-            overrideRowsContent(kind: kind)
-        } label: {
-            overrideLabel(kind, expanded: expanded)
-        }
-        .disclosureGroupStyle(AgentListFieldsOverrideDisclosureStyle())
-        .listRowInsets(AgentListFieldsChrome.overrideHeaderInsets)
-        .listRowBackground(
-            AgentListFieldsOverrideRowChrome(
-                hostIsLast: false,
-                nestedIsFirst: true,
-                nestedIsLast: nestedEnd == .header,
-                fill: AgentListFieldsChrome.nestedFill,
-                showChildDivider: nestedEnd != .header))
-        .listRowSeparator(.hidden)
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .destructive) {
-                removeOverride(kind: kind)
-            } label: {
-                Label("Remove", systemImage: "trash")
-            }
-            .disabled(isSyncing)
-        }
-        .accessibilityAction(named: "Remove Override") {
-            removeOverride(kind: kind)
-        }
-    }
-
-    @ViewBuilder
-    private func overrideRowsContent(kind: String) -> some View {
-        let slotRows = AgentRowSlot.slotRows(layout.rowsByAgent[kind] ?? [])
-        let nestedEnd = nestedBottom(for: kind)
-        ForEach(Array(slotRows.enumerated()), id: \.offset) { index, row in
-            let isNestedLast = nestedEnd == .row(index)
-            AgentListFieldsRowEditor(
-                index: index, row: row, compact: true, isEnabled: !isSyncing,
-                onAdd: {
-                    addingField = AgentListFieldsEditorDestination(
-                        hostID: host.id, kind: kind, rowIndex: index)
-                },
-                onToggleStyle: { fieldIndex in toggleStyle(fieldIndex, kind: kind, rowIndex: index) },
-                onShift: { fieldIndex, delta in shift(fieldIndex, by: delta, kind: kind, rowIndex: index) },
-                onRemove: { fieldIndex in remove(fieldIndex, kind: kind, rowIndex: index) })
-                .listRowInsets(AgentListFieldsChrome.overrideRowInsets)
-                .listRowBackground(
-                    AgentListFieldsOverrideRowChrome(
-                        hostIsLast: false,
-                        nestedIsFirst: false,
-                        nestedIsLast: isNestedLast,
-                        fill: AgentListFieldsChrome.cardFill,
-                        showChildDivider: !isNestedLast))
-                .listRowSeparator(.hidden)
-        }
-    }
-
-    private func overrideLabel(_ kind: String, expanded: Bool) -> some View {
-        let count = (layout.rowsByAgent[kind] ?? []).filter { !$0.isEmpty }.count
-        let rowsLabel = count == 1 ? "1 row" : "\(count) rows"
-        return HStack(alignment: .center, spacing: 8) {
-            Text(verbatim: kind)
-                .font(.system(.subheadline, design: .monospaced))
-                .foregroundStyle(.primary)
-            Text(verbatim: rowsLabel)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Image(systemName: "chevron.down")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
-                .rotationEffect(.degrees(expanded ? 180 : 0))
-        }
-    }
-
-    @ViewBuilder
-    private func addOverrideControls(_ host: Host) -> some View {
-        let existing = overrideKinds
-        if showingOther {
-            otherOverrideForm
-        } else {
-            Menu {
-                ForEach(
-                    AgentListFieldsOverrideProposal.menuKinds(
-                        seen: seenKinds(on: host.id), existing: existing),
-                    id: \.self
-                ) { kind in
-                    Button(kind) { addOverride(kind) }
-                }
-                Button("Other…") { showingOther = true }
-            } label: {
-                Label("Add Override", systemImage: "plus")
-            }
-            .disabled(isSyncing)
-        }
-    }
-
-    @ViewBuilder
-    private var otherOverrideForm: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: 7) {
-                    otherKindField
-                    otherKindActions
-                }
-            } else {
-                HStack(alignment: .center, spacing: 8) {
-                    otherKindField
-                    otherKindActions
-                }
-            }
-            if let otherHint {
-                Text(verbatim: otherHint)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
-        }
-    }
-
-    private var otherKindField: some View {
-        TextField(
-            "Agent kind",
-            text: Binding(
-                get: { otherKind },
-                set: {
-                    otherKind = $0
-                    otherHint = nil
-                }))
-            .font(.system(.subheadline, design: .monospaced))
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .disabled(isSyncing)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 9)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(AgentListFieldsChrome.previewFill))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Color(uiColor: .separator), lineWidth: 0.5)
-            }
-    }
-
-    private var otherKindActions: some View {
-        HStack(spacing: 12) {
-            Button("Add") { submitOtherOverride() }
-                .disabled(isSyncing)
-            Button("Cancel") { hideOther() }
-        }
-        .buttonStyle(.borderless)
     }
 
     @ViewBuilder
@@ -478,86 +270,25 @@ struct AgentListFieldsHostDetailView: View {
     }
 
     private func sync() async {
-        hideOther()
         await editor.replaceWithPluginFields(host.id, hostName: host.displayName)
     }
 
-    private func toggleStyle(_ fieldIndex: Int, kind: String?, rowIndex: Int) {
-        let row = AgentLayoutTokensEditing.row(rowIndex, in: AgentLayoutTokensEditing.rows(in: layout, kind: kind))
+    private func toggleStyle(_ fieldIndex: Int, rowIndex: Int) {
+        let row = AgentLayoutTokensEditing.row(rowIndex, in: layout.rows)
         guard row.indices.contains(fieldIndex) else { return }
         let next = AgentLayoutTokensEditing.style(of: row[fieldIndex]).toggled
         AgentLayoutTokensEditing.setStyle(
-            next, at: fieldIndex, editor: editor, hostID: host.id, kind: kind, rowIndex: rowIndex)
+            next, at: fieldIndex, editor: editor, hostID: host.id, rowIndex: rowIndex)
     }
 
-    private func shift(_ fieldIndex: Int, by delta: Int, kind: String?, rowIndex: Int) {
+    private func shift(_ fieldIndex: Int, by delta: Int, rowIndex: Int) {
         AgentLayoutTokensEditing.shift(
-            fieldIndex, by: delta, editor: editor, hostID: host.id, kind: kind, rowIndex: rowIndex)
+            fieldIndex, by: delta, editor: editor, hostID: host.id, rowIndex: rowIndex)
     }
 
-    private func remove(_ fieldIndex: Int, kind: String?, rowIndex: Int) {
+    private func remove(_ fieldIndex: Int, rowIndex: Int) {
         AgentLayoutTokensEditing.delete(
-            IndexSet(integer: fieldIndex), editor: editor, hostID: host.id, kind: kind, rowIndex: rowIndex)
-    }
-
-    private func addOverride(_ kind: String) {
-        guard !isSyncing else { return }
-        let proposal = AgentListFieldsOverrideProposal.validate(kind, existing: overrideKinds)
-        guard case .valid(let resolved) = proposal else { return }
-        let seed = layout.rows
-        guard editor.commit(host.id, { $0.rowsByAgent[resolved] = seed }) else { return }
-        expandedOverrides.insert(resolved)
-        hideOther()
-    }
-
-    private func submitOtherOverride() {
-        let proposal = AgentListFieldsOverrideProposal.validate(otherKind, existing: overrideKinds)
-        if case .valid(let kind) = proposal {
-            addOverride(kind)
-        } else {
-            otherHint = proposal.message
-        }
-    }
-
-    private func removeOverride(kind: String) {
-        guard !isSyncing else { return }
-        if let addingField, addingField.kind == kind { self.addingField = nil }
-        guard editor.commit(host.id, { $0.rowsByAgent[kind] = nil }) else { return }
-        expandedOverrides.remove(kind)
-    }
-
-    private func seenKinds(on hostID: Host.ID) -> [String] {
-        console.agents.filter { $0.hostID == hostID }.map(\.agent.kind)
-    }
-
-    private func hideOther() {
-        showingOther = false
-        otherKind = ""
-        otherHint = nil
-    }
-
-    private func overrideExpansion(_ kind: String) -> Binding<Bool> {
-        Binding(
-            get: { expandedOverrides.contains(kind) },
-            set: { expanded in
-                if expanded { expandedOverrides.insert(kind) } else { expandedOverrides.remove(kind) }
-            })
-    }
-}
-
-/// Emits the override header and its rows as sibling list rows, while the
-/// header uses a down/up chevron instead of the system disclosure accessory.
-private struct AgentListFieldsOverrideDisclosureStyle: DisclosureGroupStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        Button {
-            configuration.isExpanded.toggle()
-        } label: {
-            configuration.label
-        }
-        .buttonStyle(.plain)
-        if configuration.isExpanded {
-            configuration.content
-        }
+            IndexSet(integer: fieldIndex), editor: editor, hostID: host.id, rowIndex: rowIndex)
     }
 }
 
@@ -567,7 +298,6 @@ private struct AgentListFieldsOverrideDisclosureStyle: DisclosureGroupStyle {
 private struct AgentListFieldsRowEditor: View {
     let index: Int
     let row: AgentRow
-    var compact: Bool = false
     let isEnabled: Bool
     let onAdd: () -> Void
     let onToggleStyle: (Int) -> Void
@@ -579,7 +309,7 @@ private struct AgentListFieldsRowEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Row \(index + 1)")
-                .font(compact ? .subheadline : .callout)
+                .font(.callout)
                 .foregroundStyle(.primary)
             AgentListFieldsChipWrap(spacing: 5) {
                 ForEach(Array(row.enumerated()), id: \.offset) { offset, token in
@@ -736,82 +466,6 @@ private struct AgentListFieldsHostSurface: View {
     }
 }
 
-private struct AgentListFieldsOverrideRowChrome: View {
-    var hostIsLast: Bool
-    var nestedIsFirst: Bool
-    var nestedIsLast: Bool
-    var fill: Color
-    var showChildDivider: Bool
-
-    var body: some View {
-        ZStack {
-            AgentListFieldsHostSurface(
-                isFirst: false, isLast: hostIsLast, fill: AgentListFieldsChrome.cardFill)
-            AgentListFieldsNestedWell(
-                isFirst: nestedIsFirst,
-                isLast: nestedIsLast,
-                fill: fill,
-                showChildDivider: showChildDivider)
-                .padding(.horizontal, AgentListFieldsChrome.pageInset)
-                .padding(.bottom, hostIsLast ? 4 : 0)
-        }
-    }
-}
-
-private struct AgentListFieldsNestedWell: View {
-    var isFirst: Bool
-    var isLast: Bool
-    var fill: Color
-    var showChildDivider: Bool
-
-    var body: some View {
-        let radius = AgentListFieldsChrome.nestedRadius
-        let shape = UnevenRoundedRectangle(
-            topLeadingRadius: isFirst ? radius : 0,
-            bottomLeadingRadius: isLast ? radius : 0,
-            bottomTrailingRadius: isLast ? radius : 0,
-            topTrailingRadius: isFirst ? radius : 0,
-            style: .continuous)
-        let line = Color(uiColor: .separator)
-        ZStack {
-            shape.fill(fill)
-            if isFirst && isLast {
-                shape.strokeBorder(line, lineWidth: 0.5)
-            } else {
-                HStack(spacing: 0) {
-                    Rectangle().fill(line).frame(width: 0.5)
-                    Spacer(minLength: 0)
-                    Rectangle().fill(line).frame(width: 0.5)
-                }
-                .clipShape(shape)
-                if isFirst {
-                    VStack(spacing: 0) {
-                        Rectangle().fill(line).frame(height: 0.5)
-                        Spacer(minLength: 0)
-                    }
-                    .clipShape(shape)
-                }
-                if isLast {
-                    VStack(spacing: 0) {
-                        Spacer(minLength: 0)
-                        Rectangle().fill(line).frame(height: 0.5)
-                    }
-                    .clipShape(shape)
-                }
-                if showChildDivider {
-                    VStack(spacing: 0) {
-                        Spacer(minLength: 0)
-                        Rectangle()
-                            .fill(Color(uiColor: .separator).opacity(0.55))
-                            .frame(height: 0.5)
-                            .padding(.horizontal, 0.5)
-                    }
-                }
-            }
-        }
-    }
-}
-
 private extension View {
     func agentListHostSurface(
         isFirst: Bool, isLast: Bool, fill: Color = AgentListFieldsChrome.cardFill
@@ -825,7 +479,6 @@ private enum AgentListFieldsChrome {
     static let hostSpacing: CGFloat = 18
     static let hostCornerRadius: CGFloat = 12
     static let chipRadius: CGFloat = 5
-    static let nestedRadius: CGFloat = 10
     /// In-card wash: original `#FAFAFC` on white. Do not use
     /// `tertiarySystemGroupedBackground` in light — that token is the page.
     static let previewFill = Color(uiColor: UIColor { traits in
@@ -834,7 +487,6 @@ private enum AgentListFieldsChrome {
         }
         return UIColor(red: 250 / 255, green: 250 / 255, blue: 252 / 255, alpha: 1)
     })
-    static let nestedFill = previewFill
     static let cardFill = Color(uiColor: .secondarySystemGroupedBackground)
     static let chipFill = Color(uiColor: .tertiarySystemFill)
     static let chipStroke = Color(uiColor: .separator)
@@ -846,22 +498,16 @@ private enum AgentListFieldsChrome {
     static let previewInsets = EdgeInsets(top: 12, leading: 16, bottom: 14, trailing: 16)
     static let rowInsets = EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16)
     static let slotsNoteInsets = EdgeInsets(top: 10, leading: 16, bottom: 6, trailing: 16)
-    static let overridesChromeInsets = EdgeInsets(top: 14, leading: 16, bottom: 8, trailing: 16)
-    static let overridesHeadingInsets = EdgeInsets(top: 14, leading: 16, bottom: 4, trailing: 16)
-    static let overridesActionInsets = EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16)
-    static let overrideHeaderInsets = EdgeInsets(top: 10, leading: 28, bottom: 10, trailing: 28)
-    static let overrideRowInsets = EdgeInsets(top: 9, leading: 28, bottom: 9, trailing: 28)
     static let syncInsets = EdgeInsets(top: 8, leading: 16, bottom: 14, trailing: 16)
 }
 
 /// Identity for an Add Field sheet. Row slots are fixed, so the slot index
-/// is stable across every edit and sync; an override is named by its kind.
+/// is stable across every edit and sync.
 struct AgentListFieldsEditorDestination: Hashable, Identifiable {
     let hostID: Host.ID
-    let kind: String?
     let rowIndex: Int
 
-    var id: String { "\(hostID.uuidString):\(kind ?? "_"):\(rowIndex)" }
+    var id: String { "\(hostID.uuidString):\(rowIndex)" }
 }
 
 enum AgentListFieldsSourceCaption {
@@ -878,58 +524,15 @@ enum AgentListFieldsSourceCaption {
     }
 }
 
-enum AgentListFieldsOverrideProposal: Equatable {
-    case valid(String)
-    case empty
-    case duplicate(String)
-
-    var message: String? {
-        switch self {
-        case .valid: nil
-        case .empty: "Enter an Agent kind."
-        case .duplicate(let existing): "This Host already has a \(existing.uppercased()) override."
-        }
-    }
-
-    /// Trim, reject empty, and reject case-insensitive duplicates. The stored
-    /// kind keeps the typed spelling; `rowsByAgent` lookup stays case-sensitive.
-    static func validate(_ raw: String, existing: [String]) -> Self {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return .empty }
-        if let match = existing.first(where: {
-            $0.compare(trimmed, options: .caseInsensitive) == .orderedSame
-        }) {
-            return .duplicate(match)
-        }
-        return .valid(trimmed)
-    }
-
-    /// Unique kinds from this Host's Console agents, omitting overrides.
-    static func menuKinds(seen: [String], existing: [String]) -> [String] {
-        let existingKeys = Set(existing.map { $0.lowercased() })
-        var used = Set<String>()
-        var result: [String] = []
-        for kind in seen {
-            let trimmed = kind.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { continue }
-            let key = trimmed.lowercased()
-            guard !existingKeys.contains(key), used.insert(key).inserted else { continue }
-            result.append(trimmed)
-        }
-        return result.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-    }
-}
-
 enum AgentListFieldsCopy {
     static let readableWidth: CGFloat = 640
     static let noHosts = "Add a Host to configure its Agent rows."
-    static let noOverrides = "No overrides. Every Agent uses the rows above."
     static let listIntro =
         "Each Host decides which fields appear on its Agent rows in Console. Open a Host to change them."
     static let detailIntro =
         "Tap a field to change its style, move it, or remove it. Tap + to add one. Changes save right away."
     static let syncConfirmation =
-        "Rows and Agent overrides are replaced with this Host's herdr fields and saved right away."
+        "This Host's rows are replaced with its herdr fields and saved right away."
     static let rowSlots =
         "Row 1 and Row 2 follow herdr's sidebar fields; Sync from plugin refills them. "
         + "Row 3 is Heeler's row and can also use Heeler fields. "

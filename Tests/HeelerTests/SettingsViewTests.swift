@@ -76,9 +76,6 @@ struct AgentListFieldsSettingsTests {
     @Test func settingsCopyStaysReadOnlyOutsideEditAndNamesNoStatusOnlyRow() {
         #expect(!AgentListFieldsCopy.rowSlots.localizedCaseInsensitiveContains("status only"))
         #expect(AgentListFieldsCopy.noHosts == "Add a Host to configure its Agent rows.")
-        #expect(
-            AgentListFieldsCopy.noOverrides
-                == "No overrides. Every Agent uses the rows above.")
         #expect(!AgentListFieldsCopy.listIntro.localizedCaseInsensitiveContains("edit"))
         #expect(AgentListFieldsCopy.listIntro.contains("Open a Host"))
         #expect(!AgentListFieldsCopy.detailIntro.localizedCaseInsensitiveContains("tap edit"))
@@ -99,43 +96,13 @@ struct AgentListFieldsSettingsTests {
                 == "Build Server, Your fields")
     }
 
-    @Test func otherValidationTrimsAndRejectsEmptyAndCaseInsensitiveDuplicates() {
-        #expect(AgentListFieldsOverrideProposal.validate("", existing: ["claude"]) == .empty)
-        #expect(AgentListFieldsOverrideProposal.validate("   ", existing: []) == .empty)
-        #expect(AgentListFieldsOverrideProposal.validate("", existing: []).message == "Enter an Agent kind.")
-        #expect(
-            AgentListFieldsOverrideProposal.validate("CLAUDE", existing: ["claude"])
-                == .duplicate("claude"))
-        #expect(
-            AgentListFieldsOverrideProposal.validate("claude", existing: ["Claude"])
-                == .duplicate("Claude"))
-        #expect(
-            AgentListFieldsOverrideProposal.validate("CLAUDE", existing: ["claude"]).message
-                == "This Host already has a CLAUDE override.")
-        #expect(AgentListFieldsOverrideProposal.validate("  Grok ", existing: ["claude"]) == .valid("Grok"))
-        #expect(AgentListFieldsOverrideProposal.validate("codex", existing: ["claude"]) == .valid("codex"))
-    }
-
-    @Test func addOverrideMenuUsesSeenKindsAndOmitsExistingCaseInsensitively() {
-        let seen = ["claude", "codex", "grok", "claude", " Codex "]
-        #expect(
-            AgentListFieldsOverrideProposal.menuKinds(seen: seen, existing: ["Claude"])
-                == ["codex", "grok"])
-        #expect(
-            AgentListFieldsOverrideProposal.menuKinds(seen: ["codex", "claude"], existing: [])
-                == ["claude", "codex"])
-        #expect(AgentListFieldsOverrideProposal.menuKinds(seen: ["", "  "], existing: []) == [])
-    }
-
-    @Test func destinationsAreKeyedByFixedSlotIndexHostAndKind() {
+    @Test func destinationsAreKeyedByFixedSlotIndexAndHost() {
         let hostA = UUID(), hostB = UUID()
-        let hostSlot = AgentListFieldsEditorDestination(hostID: hostA, kind: nil, rowIndex: 1)
-        #expect(hostSlot == AgentListFieldsEditorDestination(hostID: hostA, kind: nil, rowIndex: 1))
-        #expect(hostSlot != AgentListFieldsEditorDestination(hostID: hostA, kind: nil, rowIndex: 0))
-        #expect(hostSlot != AgentListFieldsEditorDestination(hostID: hostA, kind: "claude", rowIndex: 1))
-        #expect(hostSlot != AgentListFieldsEditorDestination(hostID: hostB, kind: nil, rowIndex: 1))
-        #expect(hostSlot.id != AgentListFieldsEditorDestination(hostID: hostA, kind: "claude", rowIndex: 1).id)
-        #expect(hostSlot.id != AgentListFieldsEditorDestination(hostID: hostB, kind: nil, rowIndex: 1).id)
+        let hostSlot = AgentListFieldsEditorDestination(hostID: hostA, rowIndex: 1)
+        #expect(hostSlot == AgentListFieldsEditorDestination(hostID: hostA, rowIndex: 1))
+        #expect(hostSlot != AgentListFieldsEditorDestination(hostID: hostA, rowIndex: 0))
+        #expect(hostSlot != AgentListFieldsEditorDestination(hostID: hostB, rowIndex: 1))
+        #expect(hostSlot.id != AgentListFieldsEditorDestination(hostID: hostB, rowIndex: 1).id)
     }
 
     @Test func rowSlotCopyNamesHerdrRowsAndHeelersRow() {

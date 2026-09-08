@@ -92,9 +92,11 @@ The ordered rows of fields that identify an Agent in the Console and its
 switcher. Each Host follows its herdr plugin's fields until the user saves
 that Host's own layout, which may start from a Sync from plugin copy. There
 is no user-facing default layout. The Console shows at most three rows, as
-three fixed Row Slots. herdr's `state_icon` never appears as a field; the
-status badge at the end of Row 1 owns it. Agent Status and Heeler Pin remain
-independent chrome; choosing status as a field repeats it in the row.
+three fixed Row Slots, and every Agent on a Host shares them: herdr's
+per-kind `rows_by_agent` overrides are decoded but never applied. herdr's
+`state_icon` never appears as a field; the status badge at the end of Row 1
+owns it. Agent Status and Heeler Pin remain independent chrome; choosing
+status as a field repeats it in the row.
 _Avoid_: card template, sidebar format
 
 **Row Slot**:

@@ -12,15 +12,17 @@ Entries reference the issue that motivated them.
 - Agent cards and the keyboard switcher follow herdr's sidebar fields and
   Agent order, including terminal titles and plugin fields. Settings now offers
   Agent List Fields: a Host list that opens a Host detail with a Console
-  preview, three fixed rows edited in place, per-Host Agent overrides, and
-  Sync from plugin. Row 1 and Row 2 carry herdr's sidebar fields and are what
+  preview, three fixed rows edited in place, and Sync from plugin. Row 1 and
+  Row 2 carry herdr's sidebar fields and are what
   Sync from plugin refills; Row 3 is Heeler's own row and the only place the
   Heeler-only fields (Host name, Agent Status, working directory) can be
   added. Tapping a field offers its style, moving it, and removing it; the +
   chip at the end of a row adds one; every change saves right away. Agent
   cards show at most those three rows, `state_icon` is neither offered nor
-  rendered as a field because the status badge always ends Row 1, and the
-  Host name shares the line of the card's last row. (#277, #281)
+  rendered as a field because the status badge always ends Row 1, every Agent
+  on a Host shares the same rows (herdr's per-kind `rows_by_agent` is read
+  but not applied), and the Host name shares the line of the card's last
+  row. (#277, #281)
 
 ### Fixed
 

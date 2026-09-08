@@ -34,7 +34,9 @@ struct AgentRowLayoutTests {
             [.init(.agent)], [.init(.directory)],
         ])
         #expect(console.rowGap == 2)
-        #expect(console.rowsByAgent == ["claude": [[], [], [.init(.host)]]])
+        // herdr's per-kind overrides decode but never reach the Console.
+        #expect(console.rowsByAgent.isEmpty)
+        #expect(console.rows(forAgentKind: "claude") == console.rows)
         #expect(console.normalizedForConsole() == console)
         #expect(throws: AgentRowLayoutError.tooManyRows) { try wide.validateForConsole() }
         try console.validateForConsole()

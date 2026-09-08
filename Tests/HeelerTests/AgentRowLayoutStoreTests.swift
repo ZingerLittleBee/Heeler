@@ -26,7 +26,8 @@ struct AgentRowLayoutStoreTests {
 
         let reloaded = AgentRowLayoutStore(defaults: defaults)
         #expect(reloaded.hostLayouts == [first: custom, second: AgentRowLayout(rows: [])])
-        #expect(reloaded.resolvedLayout(for: first, pluginSnapshot: plugin) == custom)
+        #expect(reloaded.resolvedLayout(for: first, pluginSnapshot: plugin) == custom.normalizedForConsole())
+        #expect(reloaded.resolvedLayout(for: first, pluginSnapshot: plugin).rows == custom.rows)
         #expect(reloaded.resolvedLayout(for: second, pluginSnapshot: plugin).rows.isEmpty)
         #expect(reloaded.resolvedLayout(for: third, pluginSnapshot: plugin) == plugin.layout)
         #expect(reloaded.resolvedLayout(for: third, pluginSnapshot: nil) == .consoleDefault)

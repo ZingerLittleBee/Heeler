@@ -37,16 +37,12 @@ enum AgentLayoutTokenStyle: Equatable {
 
 /// Field mutations over the Console's three row slots, each persisted at
 /// once through `AgentListFieldsEditor.commit`. A row index outside those
-/// slots, or a kind with no override, is a no-op: it never inserts a row,
-/// creates an override, or writes another Host. Editing an empty slot beyond
-/// the layout's last row pads the layout with empty rows up to it.
+/// slots is a no-op: it never inserts a row or writes another Host. Editing
+/// an empty slot beyond the layout's last row pads the layout with empty
+/// rows up to it.
 enum AgentLayoutTokensEditing {
     static let heelerFieldsUnavailable =
         "Row 1 and Row 2 follow herdr. Add Heeler fields in Row 3."
-
-    static func rows(in layout: AgentRowLayout, kind: String?) -> [AgentRow] {
-        kind.map { layout.rowsByAgent[$0] ?? [] } ?? layout.rows
-    }
 
     /// True for every Console row slot, whether or not `rows` reaches it.
     static func isValidRow(_ rowIndex: Int, in rows: [AgentRow]) -> Bool {
@@ -58,10 +54,9 @@ enum AgentLayoutTokensEditing {
         rows.indices.contains(rowIndex) ? rows[rowIndex] : []
     }
 
-    static func navigationSubtitle(hostName: String, kind: String?, rowIndex: Int? = nil) -> String {
+    static func navigationSubtitle(hostName: String, rowIndex: Int? = nil) -> String {
         var parts: [String] = []
         if !hostName.isEmpty { parts.append(hostName) }
-        if let kind { parts.append("\(kind) override") }
         if let rowIndex, let slot = AgentRowSlot.forRow(rowIndex) { parts.append("\(slot.label) row") }
         return parts.joined(separator: " · ")
     }
@@ -174,10 +169,9 @@ enum AgentLayoutTokensEditing {
         _ token: AgentRowToken,
         editor: AgentListFieldsEditor,
         hostID: Host.ID,
-        kind: String?,
         rowIndex: Int
     ) -> Bool {
-        apply(editor: editor, hostID: hostID, kind: kind, rowIndex: rowIndex) { row in
+        apply(editor: editor, hostID: hostID, rowIndex: rowIndex) { row in
             guard row.count < AgentRowLayout.maximumTokensPerRow else { return }
             guard !row.contains(where: { $0.token == token }) else { return }
             row.append(AgentRowStyledToken(token))
@@ -190,10 +184,9 @@ enum AgentLayoutTokensEditing {
         _ offsets: IndexSet,
         editor: AgentListFieldsEditor,
         hostID: Host.ID,
-        kind: String?,
         rowIndex: Int
     ) -> Bool {
-        apply(editor: editor, hostID: hostID, kind: kind, rowIndex: rowIndex) { row in
+        apply(editor: editor, hostID: hostID, rowIndex: rowIndex) { row in
             let valid = IndexSet(offsets.filter { row.indices.contains($0) })
             guard !valid.isEmpty else { return }
             row.remove(atOffsets: valid)
@@ -207,10 +200,9 @@ enum AgentLayoutTokensEditing {
         to destination: Int,
         editor: AgentListFieldsEditor,
         hostID: Host.ID,
-        kind: String?,
         rowIndex: Int
     ) -> Bool {
-        apply(editor: editor, hostID: hostID, kind: kind, rowIndex: rowIndex) { row in
+        apply(editor: editor, hostID: hostID, rowIndex: rowIndex) { row in
             guard offsets.allSatisfy({ row.indices.contains($0) }) else { return }
             guard (0...row.count).contains(destination) else { return }
             row.move(fromOffsets: offsets, toOffset: destination)
@@ -225,7 +217,6 @@ enum AgentLayoutTokensEditing {
         by delta: Int,
         editor: AgentListFieldsEditor,
         hostID: Host.ID,
-        kind: String?,
         rowIndex: Int
     ) -> Bool {
         guard delta == -1 || delta == 1 else { return false }
@@ -234,7 +225,7 @@ enum AgentLayoutTokensEditing {
         guard destination >= 0 else { return false }
         return move(
             IndexSet(integer: index), to: destination,
-            editor: editor, hostID: hostID, kind: kind, rowIndex: rowIndex)
+            editor: editor, hostID: hostID, rowIndex: rowIndex)
     }
 
     @MainActor
@@ -244,35 +235,28 @@ enum AgentLayoutTokensEditing {
         at index: Int,
         editor: AgentListFieldsEditor,
         hostID: Host.ID,
-        kind: String?,
         rowIndex: Int
     ) -> Bool {
-        apply(editor: editor, hostID: hostID, kind: kind, rowIndex: rowIndex) { row in
+        apply(editor: editor, hostID: hostID, rowIndex: rowIndex) { row in
             guard row.indices.contains(index) else { return }
             row[index] = applying(style, to: row[index])
         }
     }
 
     /// Persists one row change through `editor.commit`. False when the slot
-    /// or override does not exist, the change is a no-op, or saving failed.
+    /// does not exist, the change is a no-op, or saving failed.
     @MainActor
     @discardableResult
     static func apply(
         editor: AgentListFieldsEditor,
         hostID: Host.ID,
-        kind: String?,
         rowIndex: Int,
         change: (inout AgentRow) -> Void
     ) -> Bool {
-        let layout = editor.layout(for: hostID)
-        // Slots pad an existing override; they never create a missing one.
-        if let kind, layout.rowsByAgent[kind] == nil { return false }
-        let rows = Self.rows(in: layout, kind: kind)
+        let rows = editor.layout(for: hostID).rows
         guard let next = replacingRow(in: rows, at: rowIndex, change: change), next != rows else {
             return false
         }
-        return editor.commit(hostID) { layout in
-            if let kind { layout.rowsByAgent[kind] = next } else { layout.rows = next }
-        }
+        return editor.commit(hostID) { $0.rows = next }
     }
 }

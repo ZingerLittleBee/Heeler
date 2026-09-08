@@ -160,7 +160,9 @@ struct SidebarConsoleIntegrationTests {
         #expect(store.agents.map(\.agent.paneID) == ["a0", "a1", "b1", "b0"])
         #expect(connects.withLock { $0 } == 2)
         let plugin = store.rowLayout(for: alpha.id)
-        #expect(plugin.rowsByAgent["claude"] == [[.init(.terminalTitleStripped)]])
+        // herdr's rows_by_agent is decoded but never applied in the Console.
+        #expect(plugin.rows == [[.init(.terminalTitleStripped)]])
+        #expect(plugin.rowsByAgent.isEmpty)
         let first = try #require(store.agents.first)
         #expect(AgentCardPresentation(agent: first, layout: plugin).headline == "Task")
         let observed = Mutex(false)
@@ -406,7 +408,7 @@ struct SidebarConsoleIntegrationTests {
 
     private func snapshot(sort: String) throws -> Data {
         let data = Data("""
-            {"v":1,"agent_panel_sort":"\(sort)","sidebar":{"agents":{"rows":[[{"token":"workspace"}]],"rows_by_agent":{"claude":[[{"token":"terminal_title_stripped"}]]}}}}
+            {"v":1,"agent_panel_sort":"\(sort)","sidebar":{"agents":{"rows":[[{"token":"terminal_title_stripped"}]],"rows_by_agent":{"claude":[[{"token":"workspace"}]]}}}}
             """.utf8)
         _ = try #require(AgentRowLayoutSnapshot.decode(data))
         return data

@@ -171,25 +171,23 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
         rowsByAgent[kind] ?? rows
     }
 
-    /// The Console shape: at most `maximumConsoleRows` rows per Agent kind
-    /// and no `state_icon`, which the status badge at the end of Row 1 owns.
-    /// Row gap and every other field style stay as they are.
+    /// The Console shape: at most `maximumConsoleRows` rows, no `state_icon`
+    /// (the status badge at the end of Row 1 owns it), and no per-kind
+    /// overrides: every Agent on a Host shares the same rows, so herdr's
+    /// `rows_by_agent` is decoded but never applied. Row gap and every other
+    /// field style stay as they are.
     func normalizedForConsole() -> AgentRowLayout {
-        func normalize(_ layoutRows: [AgentRow]) -> [AgentRow] {
-            layoutRows.prefix(Self.maximumConsoleRows).map { row in
+        AgentRowLayout(
+            rows: rows.prefix(Self.maximumConsoleRows).map { row in
                 row.filter { $0.token != .stateIcon }
-            }
-        }
-        return AgentRowLayout(
-            rows: normalize(rows), rowGap: rowGap, rowsByAgent: rowsByAgent.mapValues(normalize))
+            },
+            rowGap: rowGap)
     }
 
-    /// Console layouts hold at most `maximumConsoleRows` rows per Agent kind.
+    /// Console layouts hold at most `maximumConsoleRows` rows.
     func validateForConsole() throws {
-        for layoutRows in [rows] + Array(rowsByAgent.values) {
-            guard layoutRows.count <= Self.maximumConsoleRows else {
-                throw AgentRowLayoutError.tooManyRows
-            }
+        guard rows.count <= Self.maximumConsoleRows else {
+            throw AgentRowLayoutError.tooManyRows
         }
     }
 
