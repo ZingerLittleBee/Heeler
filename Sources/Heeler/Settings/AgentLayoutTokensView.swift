@@ -224,12 +224,12 @@ struct AgentLayoutTokensView: View {
                     Button("Default") { setStyle(.default, at: index) }
                     Button("Secondary") { setStyle(.secondary, at: index) }
                 } label: {
-                    Text(style.label)
+                    Text(style.menuLabel)
                         .foregroundStyle(.secondary)
                 }
                 .disabled(!canMutate)
-            } else {
-                Text(style.label)
+            } else if let badge = style.badge {
+                Text(badge)
                     .foregroundStyle(.secondary)
             }
         }
@@ -303,6 +303,22 @@ enum AgentLayoutTokenStyle: Equatable {
     var label: String {
         switch self {
         case .default: "Default"
+        case .secondary: "Secondary"
+        }
+    }
+
+    /// Read-only marker. Default is the unmarked state, so only Secondary shows.
+    var badge: String? {
+        switch self {
+        case .default: nil
+        case .secondary: "Secondary"
+        }
+    }
+
+    /// Menu title while editing: the chosen style, or a neutral entry point.
+    var menuLabel: String {
+        switch self {
+        case .default: "Style"
         case .secondary: "Secondary"
         }
     }

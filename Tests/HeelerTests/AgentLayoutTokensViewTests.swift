@@ -69,6 +69,10 @@ struct AgentLayoutTokensViewTests {
         #expect(promoted.fg == colored && promoted.bold == true && promoted.dim == true)
         #expect(AgentLayoutTokensEditing.style(of: secondary) == .secondary)
         #expect(AgentLayoutTokensEditing.style(of: cleared) == .default)
+        #expect(AgentLayoutTokenStyle.default.badge == nil)
+        #expect(AgentLayoutTokenStyle.secondary.badge == "Secondary")
+        #expect(AgentLayoutTokenStyle.default.menuLabel == "Style")
+        #expect(AgentLayoutTokenStyle.secondary.menuLabel == "Secondary")
         #expect(
             AgentLayoutTokensEditing.style(of: AgentRowStyledToken(.agent, dim: false)) == .default)
     }
