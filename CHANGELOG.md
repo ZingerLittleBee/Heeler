@@ -21,6 +21,8 @@ Entries reference the issue that motivated them.
   Heeler's own row and is the only place Heeler fields can be added. Agent
   cards show at most those three rows, and `state_icon` is no longer offered
   or rendered as a field because the status badge always ends Row 1.
+  The Host name now shares the line of the card's last row instead of
+  taking a line of its own.
 
 ### Fixed
 

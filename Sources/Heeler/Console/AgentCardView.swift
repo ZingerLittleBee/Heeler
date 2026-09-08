@@ -1,8 +1,9 @@
 import SwiftUI
 import UIKit
 
-/// The shared Agent Row Layout leads each card; status, Host and Heeler Pin
-/// retain their own columns. Fields retain their emphasis using accessible
+/// The shared Agent Row Layout leads each card; status and Heeler Pin end
+/// Row 1, and the Host name ends the last additional row (or its own line
+/// when Row 1 is the only row). Fields retain their emphasis using accessible
 /// semantic colors; plugin colors and weights do not replace app typography.
 struct AgentCardView: View {
     let agent: ConsoleAgent
@@ -29,21 +30,35 @@ struct AgentCardView: View {
                 Spacer(minLength: 8)
                 AgentStatusBadge(status: agent.agent.status)
             }
-            ForEach(Array(presentation.rows.dropFirst().enumerated()), id: \.offset) { _, row in
-                AgentRowText(tokens: row, isSecondary: true)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+            let additionalRows = Array(presentation.rows.dropFirst())
+            ForEach(Array(additionalRows.enumerated()), id: \.offset) { index, row in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    AgentRowText(tokens: row, isSecondary: true)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    // The Host shares the last row's line and keeps its width;
+                    // the row's fields truncate first.
+                    if index == additionalRows.count - 1 {
+                        Spacer(minLength: 8)
+                        hostText.layoutPriority(1)
+                    }
+                }
             }
-            Text(verbatim: agent.hostName)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .trailing)
+            if additionalRows.isEmpty {
+                hostText.frame(maxWidth: .infinity, alignment: .trailing)
+            }
         }
         .padding(.vertical, 4)
         // Terminal blank rows become bounded extra card spacing on a phone.
         .padding(.bottom, CGFloat(min(layout.rowGap, 3)) * 8)
+    }
+
+    private var hostText: some View {
+        Text(verbatim: agent.hostName)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
     }
 }
 
