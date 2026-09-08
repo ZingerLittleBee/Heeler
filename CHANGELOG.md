@@ -7,6 +7,8 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-09-09
+
 ### Added
 
 - Agent cards and the keyboard switcher use herdr's sidebar fields and Agent
