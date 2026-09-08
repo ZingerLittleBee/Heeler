@@ -30,15 +30,6 @@ struct AgentListFieldsAddFieldSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                if !subtitle.isEmpty {
-                    Section {
-                        Text(verbatim: subtitle)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
-                }
                 if availableHerdrFields.isEmpty && availableHeelerFields.isEmpty {
                     Section {
                         Text("Every built-in field is already in this row.")
@@ -99,30 +90,59 @@ struct AgentListFieldsAddFieldSheet: View {
                     Text(AgentLayoutTokensEditing.addFieldFooter(rowIndex: destination.rowIndex))
                 }
             }
+            .listSectionSpacing(.compact)
             .navigationTitle("Add to Row \(destination.rowIndex + 1)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
+                // Host and slot context under the title, not as a list section
+                // that would push the fields down the page.
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 1) {
+                        Text("Add to Row \(destination.rowIndex + 1)")
+                            .font(.headline)
+                        if !subtitle.isEmpty {
+                            Text(verbatim: subtitle)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                }
             }
             .disabled(!canAddField)
         }
     }
 
+    /// Plain, not tinted: the row reads as content with one blue affordance.
     private func fieldButton(for token: AgentRowToken) -> some View {
         Button {
             add(token)
         } label: {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: token.rawValue)
-                    .fontDesign(.monospaced)
-                    .foregroundStyle(.primary)
-                Text(AgentLayoutTokensEditing.description(for: token))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: token.rawValue)
+                        .fontDesign(.monospaced)
+                        .foregroundStyle(Color.primary)
+                    Text(AgentLayoutTokensEditing.description(for: token))
+                        .font(.caption)
+                        .foregroundStyle(Color.secondary)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "plus.circle.fill")
+                    .foregroundStyle(.tint)
+                    .imageScale(.large)
+                    .accessibilityHidden(true)
             }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            "\(token.rawValue), \(AgentLayoutTokensEditing.description(for: token))")
+        .accessibilityAddTraits(.isButton)
     }
 
     private func add(_ token: AgentRowToken) {
