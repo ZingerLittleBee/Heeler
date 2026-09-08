@@ -26,6 +26,7 @@ struct HostLiveActivityCoordinatorTests {
         var awaitingSnapshot: Set<UUID> = []
         var statuses: [UUID: EventsSessionStatus] = [:]
         var deviceToken: APNSDeviceToken?
+        var layout: AgentRowLayout?
     }
 
     private func makeDefaults() throws -> (UserDefaults, cleanup: () -> Void) {
@@ -54,6 +55,7 @@ struct HostLiveActivityCoordinatorTests {
             isAwaitingSnapshot: { world.awaitingSnapshot.contains($0) },
             connectionStatus: { world.statuses[$0] },
             pinnedPaneIDs: { pinStore?.pinnedPaneIDs(for: $0) ?? [] },
+            rowLayout: { _ in world.layout },
             settleDuration: .milliseconds(20))
         if enable {
             coordinator.setEnabled(true, for: host.id)
@@ -470,6 +472,44 @@ struct HostLiveActivityCoordinatorTests {
         }
         try await waitPastSettle()
         #expect(controller.requested.count == 1, "the same desire must not restart")
+    }
+
+    @Test func layoutChangesUpdateActivityAndRetryBackgroundRegistration() async throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        try await registerDevice()
+        armWorld()
+        world.layout = AgentRowLayout(rows: [[.init(.host)]])
+        let coordinator = makeCoordinator(defaults: defaults)
+        coordinator.start()
+        coordinator.agentsDidChange([agent(observedPaneID, .working)])
+        try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+        let activityID = try #require(controller.requestedHandles.first?.id)
+        controller.emitToken(id: activityID, Data([0xab]))
+        try await waitUntil("the initial layout should be registered") {
+            let file = try NotificationRegistrationFile.decode(await transport.notificationRegistration)
+            return file.devices.first?["live_activity"]?["row_layout"] != nil
+        }
+        let initialFile = try NotificationRegistrationFile.decode(await transport.notificationRegistration)
+        #expect(initialFile.devices.first?["live_activity"]?["host_name"] == .string("mbp"))
+
+        await transport.setNotificationRegistrationWriteFailure(.writeFailed(detail: "offline"))
+        world.layout = AgentRowLayout(rows: [[.init(.status, dim: true)]])
+        coordinator.layoutsDidChange()
+        try await waitUntil("layout-only edits should refresh the activity") { !controller.updates.isEmpty }
+        let envelope = try #require(controller.updates.last?.content.envelope)
+        let details = try AgentActivityEnvelope.open(
+            try JSONEncoder().encode(envelope), using: notificationKey())
+        #expect(details.agents.first?.rows == [[.init(text: "Working", dim: true)]])
+        await transport.setNotificationRegistrationWriteFailure(nil)
+        coordinator.connectionsDidChange()
+        try await waitUntil("reconnection should retry the latest layout") {
+            let file = try NotificationRegistrationFile.decode(await transport.notificationRegistration)
+            guard case .array(let rows)? = file.devices.first?["live_activity"]?["row_layout"]?["rows"],
+                  case .array(let fields)? = rows.first else { return false }
+            return fields.first?["token"] == .string("status")
+        }
+        #expect(try await liveActivityToken() == "ab")
     }
 
     // MARK: Pins

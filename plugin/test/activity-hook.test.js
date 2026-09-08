@@ -84,9 +84,11 @@ async function startFakeRelay(respond = () => ({ status: 200, body: { apnsId: "x
 function writeHerdrStub(
   agents,
   workspaces = [{ workspace_id: "w1", label: "Heeler" }],
+  tabs = [],
+  panes = [],
 ) {
   const binPath = join(stubDir, "herdr");
-  writeFileSync(join(stubDir, "response.json"), JSON.stringify({ agents, workspaces }));
+  writeFileSync(join(stubDir, "response.json"), JSON.stringify({ agents, workspaces, tabs, panes }));
   writeFileSync(
     binPath,
     [
@@ -104,6 +106,9 @@ function writeHerdrStub(
       '  process.stdout.write(JSON.stringify({ id: "cli:agent:list", result: { agents: response.agents, type: "agent_list" } }));',
       '} else if (args[0] === "workspace" && args[1] === "list") {',
       '  process.stdout.write(JSON.stringify({ id: "cli:workspace:list", result: { workspaces: response.workspaces, type: "workspace_list" } }));',
+      '} else if (["tab", "pane"].includes(args[0]) && args[1] === "list") {',
+      '  const key = args[0] + "s";',
+      '  process.stdout.write(JSON.stringify({ result: { [key]: response[key] } }));',
       '} else {',
       '  process.stderr.write(`stub: unexpected subcommand ${args.join(" ")}`);',
       "  process.exit(64);",
@@ -471,5 +476,60 @@ suite("activity-hook: relay failures", () => {
     assert.equal(second.payload.agents[0].workspace, "Heeler");
     assert.equal(second.payload.agents[0].pane, PANE_ID);
     assert.equal(second.payload.agents[0].status, "working");
+  });
+});
+
+
+suite("activity-hook: registered Agent List Fields", () => {
+  test("devices render separate layouts and a preference change bypasses unchanged status suppression", async () => {
+    await startFakeRelay();
+    writeConfig();
+    const live = { token: ACTIVITY_TOKEN_A, host_name: "My Mac", row_layout: { rows: [[{ token: "host" }], [{ token: "directory", dim: true }]] } };
+    writeRegistration([device({ liveActivity: live }), device({ token: "b".repeat(64), key: KEY_B, activityToken: ACTIVITY_TOKEN_B })]);
+    writeHerdrStub([{ ...listedAgent(), cwd: "/work/Heeler" }]);
+    let result = await runHook(statusEvent("working"));
+    assert.equal(result.status, 0, result.stderr);
+    const first = decryptEnvelope(relay.requests[0].body.envelope, KEY_A).payload;
+    assert.deepEqual(first.agents[0].rows, [[{ text: "My Mac" }], [{ dim: true, text: "/work/Heeler" }]]);
+    assert.equal("rows" in decryptEnvelope(relay.requests[1].body.envelope, KEY_B).payload.agents[0], false);
+    live.row_layout.rows = [[{ token: "agent" }]];
+    writeRegistration([device({ liveActivity: live })]);
+    result = await runHook(statusEvent("working"));
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(relay.requests.length, 3);
+    assert.deepEqual(decryptEnvelope(relay.requests[2].body.envelope, KEY_A).payload.agents[0].rows,
+      [[{ text: "claude" }]]);
+  });
+
+  test("fetches tab and pane context once per workspace for configured fields", async () => {
+    await startFakeRelay();
+    writeConfig();
+    writeRegistration([device({ liveActivity: { token: ACTIVITY_TOKEN_A, row_layout: { rows: [[{ token: "tab" }, { token: "pane" }]] } } })]);
+    writeHerdrStub([{ ...listedAgent(), workspace_id: "w1", tab_id: "tab" }], undefined,
+      [{ workspace_id: "w1", tab_id: "tab", label: "review" }],
+      [{ workspace_id: "w1", tab_id: "tab", pane_id: PANE_ID, label: "pane label" }]);
+    const result = await runHook(statusEvent("working"));
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(decryptEnvelope(relay.requests[0].body.envelope, KEY_A).payload.agents[0].rows,
+      [[{ text: "review" }, { text: " · " }, { text: "pane label" }]]);
+    assert.deepEqual(stubInvocations().filter((entry) => ["tab", "pane"].includes(entry.args[0])).map((entry) => entry.args),
+      [["tab", "list", "--workspace", "w1"], ["pane", "list", "--workspace", "w1"]]);
+  });
+
+  test("payload degradation removes titles, then rows, then agents", async () => {
+    await startFakeRelay((request, index) => index < 3 ? { status: 413, body: { error: "payload_too_large" } } : { status: 200, body: {} });
+    writeConfig();
+    writeRegistration([device({ liveActivity: { token: ACTIVITY_TOKEN_A, row_layout: { rows: [[{ token: "directory" }]] } } })]);
+    writeHerdrStub([{ ...listedAgent(), workspace_id: "w1", cwd: "/work/Heeler" }]);
+    const result = await runHook(statusEvent("working"));
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(relay.requests.length, 4);
+    const contents = relay.requests.map((request) => decryptEnvelope(request.body.envelope, KEY_A).payload);
+    assert.ok(contents[0].agents[0].title);
+    assert.equal("title" in contents[1].agents[0], false);
+    assert.ok(contents[1].agents[0].rows);
+    assert.equal("rows" in contents[2].agents[0], false);
+    assert.equal(contents[2].agents[0].workspace, "Heeler");
+    assert.deepEqual(contents[3].agents, []);
   });
 });

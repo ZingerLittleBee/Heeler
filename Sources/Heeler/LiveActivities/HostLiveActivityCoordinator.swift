@@ -21,6 +21,7 @@ final class HostLiveActivityCoordinator {
     @ObservationIgnored private let isAwaitingSnapshot: @MainActor (Host.ID) -> Bool
     @ObservationIgnored private let connectionStatus: @MainActor (Host.ID) -> EventsSessionStatus?
     @ObservationIgnored private let pinnedPaneIDs: @MainActor (Host.ID) -> [String]
+    @ObservationIgnored private let rowLayout: @MainActor (Host.ID) -> AgentRowLayout?
     @ObservationIgnored private let settleDuration: Duration
     @ObservationIgnored private let now: @MainActor () -> Date
 
@@ -50,6 +51,7 @@ final class HostLiveActivityCoordinator {
         isAwaitingSnapshot: @escaping @MainActor (Host.ID) -> Bool,
         connectionStatus: @escaping @MainActor (Host.ID) -> EventsSessionStatus?,
         pinnedPaneIDs: @escaping @MainActor (Host.ID) -> [String] = { _ in [] },
+        rowLayout: @escaping @MainActor (Host.ID) -> AgentRowLayout? = { _ in nil },
         settleDuration: Duration = .seconds(3),
         now: @escaping @MainActor () -> Date = { Date() }
     ) {
@@ -64,6 +66,7 @@ final class HostLiveActivityCoordinator {
         self.isAwaitingSnapshot = isAwaitingSnapshot
         self.connectionStatus = connectionStatus
         self.pinnedPaneIDs = pinnedPaneIDs
+        self.rowLayout = rowLayout
         self.settleDuration = settleDuration
         self.now = now
     }
@@ -181,8 +184,18 @@ final class HostLiveActivityCoordinator {
         for hostID in hosts {
             scheduleSettle(for: hostID)
             if sessions[hostID] != nil, connectionStatus(hostID) == .connected {
-                enqueue(.setPins, for: hostID)
+                enqueue(.setPreferences, for: hostID)
             }
+        }
+    }
+
+    /// Rebuild visible content and queue the same layout for background pushes.
+    /// Offline writes stay dirty and retry on reconnect through the token pipe.
+    func layoutsDidChange() {
+        guard didStart else { return }
+        for hostID in Set(latestAgents.keys).union(sessions.keys) {
+            scheduleSettle(for: hostID)
+            if sessions[hostID] != nil { enqueue(.setPreferences, for: hostID) }
         }
     }
 
@@ -280,7 +293,7 @@ final class HostLiveActivityCoordinator {
         return AgentActivityContentBuilder.desire(
             from: agents,
             hostName: resolvedHostName(hostID, agents: agents),
-            pinnedPaneIDs: pinnedPaneIDs(hostID))
+            pinnedPaneIDs: pinnedPaneIDs(hostID), layout: rowLayout(hostID))
     }
 
     private func isUnchanged(hostID: Host.ID, desired: AgentActivityDesire?) -> Bool {
@@ -406,7 +419,7 @@ final class HostLiveActivityCoordinator {
 
     private enum TokenJob: Equatable {
         case set(hex: String, startedAt: Date)
-        case setPins
+        case setPreferences
         case clear
     }
 
@@ -419,7 +432,7 @@ final class HostLiveActivityCoordinator {
     private func enqueue(_ job: TokenJob, for hostID: Host.ID) {
         var pipe = pipes[hostID] ?? TokenPipe()
         switch (pipe.pending, job) {
-        case (.some(.set), .setPins), (.some(.clear), .setPins):
+        case (.some(.set), .setPreferences), (.some(.clear), .setPreferences):
             // A pending token write already includes current pins at
             // perform time; a pending clear drops live_activity entirely.
             break
@@ -459,17 +472,19 @@ final class HostLiveActivityCoordinator {
     private func perform(_ job: TokenJob, hostID: Host.ID) async -> Bool {
         guard let token = deviceToken() else { return false }
         let pins = pinnedPaneIDs(hostID)
+        let layout = rowLayout(hostID)
+        let hostName = resolvedHostName(hostID, agents: latestAgents[hostID] ?? [])
         do {
             try await transports.withNotificationTransport(for: hostID) { [ceremony] transport in
                 switch job {
                 case .set(let hex, let startedAt):
                     try await ceremony.setLiveActivityToken(
                         tokenHex: hex, startedAt: startedAt, deviceToken: token,
-                        pinnedPaneIDs: pins,
+                        pinnedPaneIDs: pins, rowLayout: layout, hostName: hostName,
                         over: transport)
-                case .setPins:
+                case .setPreferences:
                     try await ceremony.setLiveActivityPinnedPaneIDs(
-                        pins, deviceToken: token, over: transport)
+                        pins, rowLayout: layout, hostName: hostName, deviceToken: token, over: transport)
                 case .clear:
                     try await ceremony.clearLiveActivityToken(
                         deviceToken: token, over: transport)

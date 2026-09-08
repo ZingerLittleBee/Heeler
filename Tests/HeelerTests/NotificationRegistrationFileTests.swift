@@ -13,6 +13,26 @@ struct NotificationRegistrationFileTests {
             notify: NotificationTriggerPreferences(blocked: true, done: false))
     }
 
+    @Test func liveActivityLayoutUpdatesPreserveTokensPinsAndOtherDevices() throws {
+        let original = NotificationRegistrationFile().upserting(entry).settingLiveActivity(
+            token: "abcd", startedAt: Date(timeIntervalSince1970: 0), forDeviceToken: entry.token.hex,
+            pinnedPaneIDs: ["w1:p1"])
+        let layout = AgentRowLayout(rows: [[.init(.workspace, bold: false)], [], [.init(.directory, dim: true)]])
+        let updated = original.settingLiveActivityRowLayout(
+            layout, hostName: "Studio Mac", forDeviceToken: entry.token.hex)
+        let reloaded = try NotificationRegistrationFile.decode(updated.encoded())
+        #expect(reloaded.liveActivity(forDeviceToken: entry.token.hex)
+            == original.liveActivity(forDeviceToken: entry.token.hex))
+        #expect(reloaded.preferences(token: entry.token.hex) == entry.notify)
+        let live = try #require(reloaded.devices.first?["live_activity"])
+        #expect(live["host_name"] == .string("Studio Mac"))
+        #expect(live["row_layout"]?["rows"] == .array([
+            .array([.object(["token": .string("workspace"), "bold": .bool(false)])]), .array([]),
+            .array([.object(["token": .string("directory"), "dim": .bool(true)])]),
+        ]))
+        #expect(original.settingLiveActivityRowLayout(layout, forDeviceToken: "other") == original)
+    }
+
     @Test func absentFileDecodesAsEmpty() throws {
         let file = try NotificationRegistrationFile.decode(nil)
 

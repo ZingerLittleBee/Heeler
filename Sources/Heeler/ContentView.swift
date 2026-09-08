@@ -85,7 +85,8 @@ struct ContentView: View {
                 },
                 pinnedPaneIDs: { [weak console] id in
                     console?.pins.pinnedPaneIDs(for: id) ?? []
-                }))
+                },
+                rowLayout: { [weak console] id in console?.rowLayout(for: id) }))
     }
 
     private var terminal: TerminalSettings {
@@ -119,6 +120,7 @@ struct ContentView: View {
         .onChange(of: hostStore.hosts) {
             console.setHosts(hostStore.hosts)
             notificationPreferences.setHosts(hostStore.hosts)
+            liveActivities.layoutsDidChange()
         }
         // Feeds the Console's Agent list to the router — so a notification
         // tap that arrived before the Hosts synced (killed-state launch)
@@ -128,6 +130,12 @@ struct ContentView: View {
             notificationRouter.agentsDidChange(console.agents)
             bannerStore.agentsDidChange(console.agents)
             liveActivities.agentsDidChange(console.agents)
+        }
+        .onChange(of: console.rowLayouts.hostLayouts) {
+            liveActivities.layoutsDidChange()
+        }
+        .onChange(of: console.sidebarSnapshots.states) {
+            liveActivities.layoutsDidChange()
         }
         .onChange(of: console.pins.revision) {
             liveActivities.pinsDidChange()

@@ -42,7 +42,18 @@ enum AgentActivityPresentation: Equatable, Sendable {
     /// Rows drawn below the headline (the headline consumes the first
     /// agent).
     var secondaryAgents: [AgentActivityDetails.AgentDetail] {
-        Array(agents.dropFirst().prefix(AgentActivityCopy.rowLimit - 1))
+        Array(expandedAgents.dropFirst())
+    }
+
+    private var expandedAgents: [AgentActivityDetails.AgentDetail] {
+        let candidates = Array(agents.prefix(AgentActivityCopy.rowLimit))
+        for shown in stride(from: candidates.count, through: 1, by: -1) {
+            let prefix = Array(candidates.prefix(shown))
+            let rowHeight = prefix.reduce(0) { $0 + AgentActivityRowMetrics.minimumHeight(for: $1) }
+            let captionHeight = counts.total > shown ? 12 : 0
+            if rowHeight + CGFloat(captionHeight + 24 + shown * 4) <= 160 { return prefix }
+        }
+        return Array(candidates.prefix(1))
     }
 
     /// Remaining eligible agents beyond the headline and drawn rows, using
@@ -54,14 +65,23 @@ enum AgentActivityPresentation: Equatable, Sendable {
         return max(0, counts.total - shown)
     }
 
-    /// Lock-screen rows. Four is the largest set whose independent tap
-    /// targets and overflow/stale caption stay inside ActivityKit's 160 pt
-    /// presentation budget.
+    /// Keep configured rows, independent tap targets, padding, and the
+    /// overflow/stale caption within the 160 pt lock-screen budget.
     func lockScreenAgents(isStale: Bool) -> [AgentActivityDetails.AgentDetail] {
         let total = counts.total
         guard total > 0 else { return [] }
-        let visible = min(total, 4)
-        return Array(agents.prefix(visible))
+        let candidates = Array(agents.prefix(min(total, 4)))
+        guard !candidates.isEmpty else { return [] }
+        for shown in stride(from: candidates.count, through: 1, by: -1) {
+            let prefix = Array(candidates.prefix(shown))
+            let target = AgentActivityRowMetrics.lockScreenMinimumHeight(agentCount: shown)
+            let rowHeight = prefix.reduce(0) {
+                $0 + max(target, AgentActivityRowMetrics.minimumHeight(for: $1))
+            }
+            let captionHeight = isStale || total > shown ? 12 : 0
+            if rowHeight + CGFloat(16 + captionHeight) <= 160 { return prefix }
+        }
+        return Array(candidates.prefix(1))
     }
 
     /// Inventory beyond the drawn lock-screen rows. Zero in counts-only.

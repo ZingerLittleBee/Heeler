@@ -4,9 +4,9 @@ import UIKit
 import WidgetKit
 
 /// Live Activity for one Host. The lock-screen banner gives each visible
-/// Agent the same compact workspace-and-kind row, up to four rows. Rows
-/// arrive in the sender's pin-aware order and are rendered as given; Host
-/// identity is never rendered. Agent rows deep-link to their detail while
+/// Agent its configured fields, with a height-limited set of Agent cards. Rows
+/// arrive in the sender's pin-aware order and are rendered as given.
+/// Agent rows deep-link to their detail while
 /// the surrounding chrome opens the Console.
 struct AgentLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
@@ -205,7 +205,7 @@ enum AgentActivityIsland {
                         hostID: hostID,
                         agent: primary,
                         surface: .island,
-                        minimumHeight: AgentActivityRowMetrics.denseMinimumHeight
+                        minimumHeight: AgentActivityRowMetrics.minimumHeight(for: primary)
                     )
                 } else {
                     Text(presentation.headerTitle)
@@ -221,7 +221,7 @@ enum AgentActivityIsland {
                             hostID: hostID,
                             agent: agent,
                             surface: .island,
-                            minimumHeight: AgentActivityRowMetrics.denseMinimumHeight)
+                            minimumHeight: AgentActivityRowMetrics.minimumHeight(for: agent))
                     }
                     if presentation.overflowCount > 0 {
                         Text("+\(presentation.overflowCount) more")
@@ -295,9 +295,8 @@ private struct AgentActivityCompactLeading: View {
 
 enum AgentActivityNarration {
     static func rowLabel(for agent: AgentActivityDetails.AgentDetail) -> String {
-        [agent.displayWorkspace, AgentNotificationIdentity.kindLabel(agent.kind), agent.status]
-            .compactMap { $0 }
-            .joined(separator: ", ")
+        let rows = AgentActivityFields.rows(for: agent).map { $0.map(\.text).joined() }
+        return (rows.filter { !$0.isEmpty } + [agent.status]).joined(separator: ", ")
     }
 }
 
@@ -311,6 +310,10 @@ enum AgentActivityRowMetrics {
 
     static func lockScreenMinimumHeight(agentCount: Int) -> CGFloat {
         agentCount <= 3 ? comfortableMinimumHeight : denseMinimumHeight
+    }
+
+    static func minimumHeight(for agent: AgentActivityDetails.AgentDetail) -> CGFloat {
+        AgentActivityFields.rows(for: agent).count > 2 ? 48 : denseMinimumHeight
     }
 }
 
@@ -352,7 +355,7 @@ private struct AgentActivityLinkedRow: View {
             hostID: hostID,
             agent: agent,
             surface: surface,
-            minimumHeight: minimumHeight
+            minimumHeight: max(minimumHeight, AgentActivityRowMetrics.minimumHeight(for: agent))
         ) {
             AgentActivityRowView(agent: agent, surface: surface)
         }
@@ -387,46 +390,90 @@ private struct AgentActivityCountChips: View {
     }
 }
 
-/// One uniform row: a status dot beside the workspace, then the friendly Agent
-/// kind underneath. Every row owns identical geometry; status is color only,
-/// never extra text, inset, or a background that shifts one row from another.
-private struct AgentActivityRowView: View {
+/// The same rendered field rows used by the Console, with a status dot that
+/// remains visible even when every configured field is empty.
+enum AgentActivityFields {
+    static func rows(for agent: AgentActivityDetails.AgentDetail) -> [[AgentActivityDetails.Field]] {
+        if let configured = agent.rows { return Array(configured.prefix(3)) }
+        let kind = AgentNotificationIdentity.kindLabel(agent.kind)
+        if let workspace = agent.displayWorkspace {
+            return [[.init(text: workspace)], [.init(text: kind)]]
+        }
+        return [[.init(text: kind)]]
+    }
+
+    static func attributedText(
+        _ fields: [AgentActivityDetails.Field], rowIndex: Int, surface: AgentActivitySurface
+    ) -> AttributedString {
+        var result = AttributedString()
+        for field in fields {
+            var span = AttributedString(field.text)
+            let font: Font = rowIndex == 0 ? .caption : .caption2
+            let weight: Font.Weight = if let bold = field.bold {
+                bold ? .bold : .regular
+            } else {
+                rowIndex == 0 ? .semibold : .medium
+            }
+            span.font = font.weight(weight)
+            span.foregroundColor = foreground(for: field, rowIndex: rowIndex, surface: surface)
+            result.append(span)
+        }
+        return result
+    }
+
+    static func foreground(
+        for field: AgentActivityDetails.Field, rowIndex: Int, surface: AgentActivitySurface
+    ) -> Color {
+        if let hex = field.fg, let color = hexColor(hex) {
+            return Color(uiColor: color).opacity(field.dim == true ? 0.6 : 1)
+        }
+        if field.dim == true {
+            let color: UIColor = rowIndex == 0 ? .secondaryLabel : .tertiaryLabel
+            return Color(uiColor: surface == .island
+                ? color.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark)) : color)
+        }
+        return rowIndex == 0
+            ? AgentActivitySemanticStyle.primary(on: surface)
+            : AgentActivitySemanticStyle.secondary(on: surface)
+    }
+
+    private static func hexColor(_ value: String) -> UIColor? {
+        guard value.first == "#", value.utf8.count == 4 || value.utf8.count == 7 else { return nil }
+        let digits = value.dropFirst()
+        guard digits.utf8.allSatisfy({
+            (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0)
+        }) else { return nil }
+        let expanded = digits.count == 3 ? digits.map { "\($0)\($0)" }.joined() : String(digits)
+        guard let rgb = UInt32(expanded, radix: 16) else { return nil }
+        return UIColor(
+            red: CGFloat((rgb >> 16) & 0xff) / 255,
+            green: CGFloat((rgb >> 8) & 0xff) / 255,
+            blue: CGFloat(rgb & 0xff) / 255, alpha: 1)
+    }
+}
+
+struct AgentActivityRowView: View {
     let agent: AgentActivityDetails.AgentDetail
     let surface: AgentActivitySurface
 
-    private var ink: Color { AgentActivityStatusStyle.ink(for: agent.status, on: surface) }
-
     var body: some View {
-        let content = rowContent
-        switch surface {
-        case .island:
-            content.accessibilityLabel(AgentActivityNarration.rowLabel(for: agent))
-        case .lockScreen:
-            content
-        }
-    }
-
-    private var rowContent: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(ink)
-                    .frame(width: 7, height: 7)
-                    .accessibilityHidden(true)
-                Text(agent.displayWorkspace ?? AgentNotificationIdentity.kindLabel(agent.kind))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(AgentActivitySemanticStyle.primary(on: surface))
-                    .lineLimit(1)
-            }
-            if agent.displayWorkspace != nil {
-                Text(AgentNotificationIdentity.kindLabel(agent.kind))
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(AgentActivitySemanticStyle.secondary(on: surface))
-                    .lineLimit(1)
-                    .padding(.leading, 14)
+        HStack(alignment: .top, spacing: 7) {
+            Circle()
+                .fill(AgentActivityStatusStyle.ink(for: agent.status, on: surface))
+                .frame(width: 7, height: 7)
+                .padding(.top, 4)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(AgentActivityFields.rows(for: agent).enumerated()), id: \.offset) { index, row in
+                    Text(AgentActivityFields.attributedText(row, rowIndex: index, surface: surface))
+                        .lineLimit(1)
+                }
             }
         }
+        .padding(.vertical, agent.rows == nil ? 0 : 2)
         .layoutPriority(1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(AgentActivityNarration.rowLabel(for: agent))
     }
 }
 
@@ -447,6 +494,21 @@ private struct AgentActivityRowView: View {
     private enum AgentActivityPreviewFixtures {
         static let longGraphemeTitle = String(repeating: "锁", count: 80)
         static let longGraphemeName = String(repeating: "屏", count: 80)
+
+        static var configuredFields: AgentActivityPresentation {
+            let agents = (1...4).map { index in
+                AgentActivityDetails.AgentDetail(
+                    paneID: "w1:p\(index)", kind: "claude", workspace: "Heeler",
+                    status: index == 1 ? "blocked" : "working", title: nil,
+                    rows: [
+                        [.init(text: "Heeler"), .init(text: " · "), .init(text: "Claude", dim: true)],
+                        [.init(text: "Review sidebar fields")],
+                        [.init(text: "~/Projects/Heeler", dim: true)],
+                    ])
+            }
+            return .detailed(details: .init(hostName: "mbp", agents: agents),
+                counts: .init(working: 3, blocked: 1, done: 0))
+        }
 
         static var mixedOverflow: AgentActivityPresentation {
             .detailed(
@@ -646,6 +708,19 @@ private struct AgentActivityRowView: View {
         .background(Color.black)
         .environment(\.colorScheme, colorScheme)
         .padding()
+    }
+
+    #Preview("Configured fields (Light)") {
+        previewLockScreenBanner(AgentActivityPreviewFixtures.configuredFields, colorScheme: .light)
+    }
+
+    #Preview("Configured fields (Dark, stale)") {
+        previewLockScreenBanner(
+            AgentActivityPreviewFixtures.configuredFields, colorScheme: .dark, isStale: true)
+    }
+
+    #Preview("Configured fields (Expanded island)") {
+        previewIslandExpanded(AgentActivityPreviewFixtures.configuredFields)
     }
 
     #Preview("P1 Mixed + overflow (Light)") {

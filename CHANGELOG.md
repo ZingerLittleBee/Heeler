@@ -16,6 +16,9 @@ Entries reference the issue that motivated them.
   refreshes the first two rows; the third defaults to `directory` and keeps
   your edits when syncing. (#277, #281)
 
+- Live Activities follow each Host's Agent List Fields, including directory
+  and plugin fields, on the Lock Screen and expanded Dynamic Island. (#281)
+
 ### Fixed
 
 - Secondary field styles now render correctly in Agent cards and previews. (#281)

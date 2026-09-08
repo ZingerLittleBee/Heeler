@@ -143,13 +143,17 @@ struct NotificationRegistrationFile: Sendable, Equatable {
         token: String,
         startedAt: Date,
         forDeviceToken deviceToken: String,
-        pinnedPaneIDs: [String] = []
+        pinnedPaneIDs: [String] = [],
+        rowLayout: AgentRowLayout? = nil,
+        hostName: String? = nil
     ) -> NotificationRegistrationFile {
         mutatingDevice(token: deviceToken) { entry in
             var live = objectValue(entry["live_activity"]) ?? .object([:])
             live.setKey("token", to: .string(token))
             live.setKey("started_at", to: .string(Self.iso8601String(from: startedAt)))
             live.setKey("pinned_pane_ids", to: .array(pinnedPaneIDs.map { .string($0) }))
+            if let rowLayout { live.setKey("row_layout", to: rowLayout.activityRegistrationValue) }
+            if let hostName { live.setKey("host_name", to: .string(hostName)) }
             entry.setKey("live_activity", to: live)
         }
     }
@@ -163,6 +167,18 @@ struct NotificationRegistrationFile: Sendable, Equatable {
         mutatingDevice(token: deviceToken) { entry in
             guard var live = objectValue(entry["live_activity"]) else { return }
             live.setKey("pinned_pane_ids", to: .array(pinnedPaneIDs.map { .string($0) }))
+            entry.setKey("live_activity", to: live)
+        }
+    }
+
+    /// Updates the layout without replacing tokens, pins, or unknown fields.
+    func settingLiveActivityRowLayout(
+        _ layout: AgentRowLayout, hostName: String? = nil, forDeviceToken deviceToken: String
+    ) -> NotificationRegistrationFile {
+        mutatingDevice(token: deviceToken) { entry in
+            guard var live = objectValue(entry["live_activity"]) else { return }
+            live.setKey("row_layout", to: layout.activityRegistrationValue)
+            if let hostName { live.setKey("host_name", to: .string(hostName)) }
             entry.setKey("live_activity", to: live)
         }
     }
@@ -277,5 +293,23 @@ extension JSONValue {
             fields.removeValue(forKey: key)
         }
         self = .object(fields)
+    }
+}
+
+private extension AgentRowLayout {
+    var activityRegistrationValue: JSONValue {
+        .object([
+            "rows": .array(normalizedForConsole().rows.map { row in
+                .array(row.map { field in
+                    var value: [String: JSONValue] = ["token": .string(field.token.rawValue)]
+                    if let fg = field.fg { value["fg"] = .string(fg.rawValue) }
+                    if let bold = field.bold { value["bold"] = .bool(bold) }
+                    if let dim = field.dim { value["dim"] = .bool(dim) }
+                    return .object(value)
+                })
+            }),
+            "row_gap": .number(Double(rowGap)),
+            "rows_by_agent": .object([:]),
+        ])
     }
 }

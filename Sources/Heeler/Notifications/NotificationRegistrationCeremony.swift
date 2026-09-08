@@ -88,6 +88,8 @@ struct NotificationRegistrationCeremony: Sendable {
         startedAt: Date,
         deviceToken: APNSDeviceToken,
         pinnedPaneIDs: [String] = [],
+        rowLayout: AgentRowLayout? = nil,
+        hostName: String? = nil,
         over transport: any Transport
     ) async throws {
         let file = try NotificationRegistrationFile.decode(
@@ -98,7 +100,7 @@ struct NotificationRegistrationCeremony: Sendable {
         try await transport.replaceNotificationRegistration(
             try file.settingLiveActivity(
                 token: tokenHex, startedAt: startedAt, forDeviceToken: deviceToken.hex,
-                pinnedPaneIDs: pinnedPaneIDs
+                pinnedPaneIDs: pinnedPaneIDs, rowLayout: rowLayout, hostName: hostName
             ).encoded())
     }
 
@@ -106,13 +108,19 @@ struct NotificationRegistrationCeremony: Sendable {
     /// object. No-op when the device is unregistered or the field is absent.
     func setLiveActivityPinnedPaneIDs(
         _ pinnedPaneIDs: [String],
+        rowLayout: AgentRowLayout? = nil,
+        hostName: String? = nil,
         deviceToken: APNSDeviceToken,
         over transport: any Transport
     ) async throws {
         guard let data = try await transport.readNotificationRegistration() else { return }
         let file = try NotificationRegistrationFile.decode(data)
-        let updated = file.settingLiveActivityPinnedPaneIDs(
+        var updated = file.settingLiveActivityPinnedPaneIDs(
             pinnedPaneIDs, forDeviceToken: deviceToken.hex)
+        if let rowLayout {
+            updated = updated.settingLiveActivityRowLayout(
+                rowLayout, hostName: hostName, forDeviceToken: deviceToken.hex)
+        }
         guard updated != file else { return }
         try await transport.replaceNotificationRegistration(try updated.encoded())
     }

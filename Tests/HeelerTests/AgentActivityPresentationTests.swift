@@ -224,6 +224,130 @@ struct AgentActivityPresentationTests {
                 == rgba(AgentStatus.unknown.tintUIColor, .dark))
     }
 
+    @Test func configuredRowsNarrateLiteralFieldsAndStatus() {
+        var agent = agentDetail(paneID: "w1:p1", status: "blocked")
+        agent.rows = [
+            [.init(text: "**Task**"), .init(text: " · "), .init(text: "feature/one")],
+            [.init(text: "/src/Heeler")],
+        ]
+        #expect(AgentActivityNarration.rowLabel(for: agent)
+            == "**Task** · feature/one, /src/Heeler, blocked")
+        #expect(String(AgentActivityFields.attributedText(
+            agent.rows?[0] ?? [], rowIndex: 0, surface: .lockScreen).characters)
+            == "**Task** · feature/one")
+    }
+
+    @Test func intentionallyEmptyFieldsKeepOnlyTheStatus() {
+        var agent = agentDetail(paneID: "w1:p1", status: "blocked")
+        agent.rows = []
+        #expect(AgentActivityFields.rows(for: agent).isEmpty)
+        #expect(AgentActivityNarration.rowLabel(for: agent) == "blocked")
+    }
+
+    @Test func configuredFieldsShowAtMostThreeRows() {
+        var agent = agentDetail(paneID: "w1:p1")
+        agent.rows = (1...4).map { [.init(text: "Row \($0)")] }
+        #expect(AgentActivityFields.rows(for: agent).count == 3)
+        #expect(AgentActivityNarration.rowLabel(for: agent) == "Row 1, Row 2, Row 3, working")
+    }
+
+    @Test func threeRowCardsReserveSpaceForOverflowAndStaleness() {
+        let presentation = configuredPresentation(agentCount: 5)
+        #expect(presentation.lockScreenAgents(isStale: false).map(\.paneID) == ["w1:p0", "w1:p1"])
+        #expect(presentation.lockScreenTrailingCaption(isStale: true)
+            == "+3 more · May be out of date")
+        #expect(presentation.secondaryAgents.count == 1)
+        #expect(presentation.overflowCount == 3)
+        let three = configuredPresentation(agentCount: 3)
+        #expect(three.lockScreenAgents(isStale: false).count == 3)
+        #expect(three.lockScreenAgents(isStale: true).count == 2)
+    }
+
+    @Test func styledFieldsPreserveHexColorAndSecondarySemantics() {
+        for hex in ["#abc", "#aabbcc"] {
+            #expect(rgba(UIColor(AgentActivityFields.foreground(
+                for: .init(text: "branch", fg: hex), rowIndex: 0, surface: .lockScreen)), .light)
+                == [170, 187, 204])
+        }
+        for invalid in ["red", "#ggg", "#1234", "#12345678"] {
+            #expect(rgba(UIColor(AgentActivityFields.foreground(
+                for: .init(text: "branch", fg: invalid), rowIndex: 0, surface: .lockScreen)), .light)
+                == rgba(.label, .light))
+        }
+        #expect(rgba(UIColor(AgentActivityFields.foreground(
+            for: .init(text: "directory", dim: true), rowIndex: 0, surface: .lockScreen)), .light)
+            == rgba(.secondaryLabel, .light))
+        #expect(rgba(UIColor(AgentActivityFields.foreground(
+            for: .init(text: "directory", dim: true), rowIndex: 2, surface: .lockScreen)), .light)
+            == rgba(.tertiaryLabel, .light))
+        #expect(rgba(UIColor(AgentActivityFields.foreground(
+            for: .init(text: "directory", dim: true), rowIndex: 2, surface: .island)), .light)
+            == rgba(.tertiaryLabel, .dark))
+    }
+
+    @MainActor
+    @Test func styledFieldsChangeRenderedPixelsOnBothSurfaces() throws {
+        let plain = AgentActivityDetails.Field(text: "Feature branch")
+        for surface in [AgentActivitySurface.lockScreen, .island] {
+            let baseline = try rowPixels(field: plain, surface: surface)
+            for styled in [
+                AgentActivityDetails.Field(text: plain.text, fg: "#f00"),
+                .init(text: plain.text, bold: true),
+                .init(text: plain.text, dim: true),
+            ] {
+                #expect(try rowPixels(field: styled, surface: surface) != baseline)
+            }
+        }
+    }
+
+    @MainActor
+    @Test func threeRowBannersFitTheLockScreenHeightBudget() throws {
+        for count in [3, 5] {
+            for stale in [false, true] {
+                let view = AgentActivityLockScreenView(
+                    presentation: configuredPresentation(agentCount: count),
+                    hostID: "host", isStale: stale)
+                let controller = UIHostingController(rootView: view)
+                let size = controller.sizeThatFits(in: CGSize(width: 360, height: 0))
+                #expect(size.height <= 160, "\(count) Agents, stale=\(stale): \(size.height) pt")
+                #expect(size.height > 0)
+                let renderer = ImageRenderer(content: view
+                    .frame(width: 360, height: size.height)
+                    .environment(\.colorScheme, .light))
+                renderer.scale = 2
+                let image = try #require(renderer.uiImage)
+                Attachment.record(image,
+                    named: "activity-fields-\(count)-agents-stale-\(stale)", as: .png)
+            }
+        }
+    }
+
+    private func configuredPresentation(agentCount: Int) -> AgentActivityPresentation {
+        let agents = (0..<agentCount).map { index in
+            var agent = agentDetail(paneID: "w1:p\(index)")
+            agent.rows = [
+                [.init(text: "Heeler · Claude", bold: true)],
+                [.init(text: "Fix the sidebar")],
+                [.init(text: "/Users/developer/Heeler", dim: true)],
+            ]
+            return agent
+        }
+        return .detailed(details: .init(hostName: "mbp", agents: agents),
+            counts: .init(working: agentCount, blocked: 0, done: 0))
+    }
+
+    @MainActor
+    private func rowPixels(field: AgentActivityDetails.Field, surface: AgentActivitySurface) throws -> Data {
+        var agent = agentDetail(paneID: "w1:p1")
+        agent.rows = [[field]]
+        let renderer = ImageRenderer(content: AgentActivityRowView(agent: agent, surface: surface)
+            .frame(width: 300, height: 50)
+            .background(surface == .lockScreen ? Color.white : Color.black)
+            .environment(\.colorScheme, surface == .lockScreen ? .light : .dark))
+        renderer.scale = 1
+        return try #require(renderer.uiImage?.pngData())
+    }
+
     private func rgba(_ color: UIColor, _ style: UIUserInterfaceStyle) -> [Int] {
         rgba(color.resolvedColor(with: UITraitCollection(userInterfaceStyle: style)))
     }
