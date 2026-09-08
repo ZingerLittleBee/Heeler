@@ -9,31 +9,22 @@ Entries reference the issue that motivated them.
 
 ### Added
 
-- Agent cards and the keyboard switcher follow herdr's sidebar fields and
-  Agent order, including terminal titles and plugin fields. A card shows at
-  most three rows; the status badge always ends Row 1 and the Host name shares
-  the line of the last row. `state_icon` is never rendered as a field, and
-  every Agent on a Host shares the same rows: herdr's per-kind `rows_by_agent`
-  is read but not applied. (#277, #281)
+- Agent cards and the keyboard switcher use herdr's sidebar fields and Agent
+  order, including terminal titles and plugin fields. Cards show up to three
+  rows, with one layout per Host. (#277, #281)
 
-- Settings now offers Agent List Fields. Each Host has a Console preview and
-  three fixed rows edited in place: tap a field to change its style, move it,
-  or remove it, tap + at the end of a row to add one, and every change saves
-  right away. Row 1 and Row 2 start from herdr's sidebar fields and are what
-  Sync from plugin refills; Row 3 is Heeler's own row. Any row can take herdr
-  fields, the Heeler-only fields (Host name, Agent Status, working directory),
-  and custom plugin fields. (#277, #281)
+- Agent List Fields in Settings lets you add, style, move, and remove fields
+  for each Host, with a Console preview and automatic saving. Sync from plugin
+  refreshes the first two rows; the third is managed in Heeler. All rows
+  support herdr, Heeler, and custom plugin fields. (#277, #281)
 
 ### Fixed
 
-- Saving a field's Secondary style now updates its appearance in Agent cards
-  and the Agent List Fields preview. (#281)
+- Secondary field styles now render correctly in Agent cards and previews. (#281)
 
-- Agent List Fields keeps each Host on one card, with a compact Console
-  preview, wrapping field chips, and Sync inside the Host. (#281)
-
-- The Agent List Fields preview now uses the same Agent card as Console,
-  including the status badge and Host name. (#281)
+- Agent List Fields groups each Host's controls in one card, wraps field
+  chips, and uses the Console card for its preview, including the status
+  badge and Host name. (#281)
 
 ## [0.1.5] - 2026-09-04
 
