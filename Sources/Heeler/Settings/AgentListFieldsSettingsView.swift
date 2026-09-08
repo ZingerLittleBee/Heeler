@@ -261,8 +261,14 @@ struct AgentListFieldsHostDetailView: View {
         Button {
             confirmingSync = true
         } label: {
-            Label("Sync from plugin", systemImage: "arrow.triangle.2.circlepath")
-                .foregroundStyle(.tint)
+            // A plain HStack, not a Label: the list Label style reserves an
+            // icon column and renders the symbol larger than the text.
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.subheadline.weight(.medium))
+                Text("Sync from plugin")
+            }
+            .foregroundStyle(.tint)
         }
         .buttonStyle(.borderless)
         .disabled(isSyncing)
