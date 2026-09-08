@@ -219,7 +219,7 @@ struct SidebarConsoleIntegrationTests {
         await gate.open()
         await refresh.value
         #expect(store.sidebarSnapshots.states.isEmpty)
-        #expect(store.rowLayout(for: host.id) == .heelerDefault)
+        #expect(store.rowLayout(for: host.id) == .consoleDefault)
     }
 
     @Test func statusEventsRefreshRecencyAndLiteralRowsWithOneCoalescedFollowUp() async throws {

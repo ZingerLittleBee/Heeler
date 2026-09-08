@@ -3,14 +3,19 @@ import Foundation
 /// Field names. herdr sidebar.json builtins and `$custom` plugin keys, plus
 /// Heeler-only names (`host`, `status`, `directory`) that exist in the app
 /// layout, not as authored plugin fields.
+///
+/// `state_icon` still parses so herdr snapshots and older saved layouts keep
+/// decoding, but Console layouts drop it (`normalizedForConsole`) and the
+/// Field Editor never offers it: the status badge at the end of Row 1 owns it.
 enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
     case stateIcon, stateText, workspace, tab, pane, agent
     case terminalTitle, terminalTitleStripped
     case host, status, directory
     case custom(String)
 
+    /// herdr fields the Field Editor offers. Excludes `state_icon`.
     static let herdrBuiltins: [Self] = [
-        .stateIcon, .stateText, .workspace, .tab, .pane, .agent,
+        .stateText, .workspace, .tab, .pane, .agent,
         .terminalTitle, .terminalTitleStripped,
     ]
 
@@ -134,12 +139,23 @@ enum AgentRowLayoutError: Error, Equatable {
 
 /// One complete choice of rows, including per-kind replacements. Row gap is
 /// the gap between Agent entries, never between rows within an entry.
+///
+/// `maximumRows` bounds what the wire and the persisted catalog accept, so
+/// herdr snapshots and older saves still decode. The Console itself shows
+/// three fixed row slots (`AgentRowSlot`); `normalizedForConsole` reduces any
+/// layout to that shape.
 struct AgentRowLayout: Codable, Equatable, Sendable {
     static let maximumRows = 16
     static let maximumTokensPerRow = 16
+    /// Console row slots: Row 1 and Row 2 follow herdr, Row 3 is Heeler's.
+    static let maximumConsoleRows = 3
+    /// Wire-faithful copy of herdr's default sidebar rows, used when a Host
+    /// has no snapshot. Still carries `state_icon`; the Console never does.
     static let heelerDefault = AgentRowLayout(rows: [
         [.init(.stateIcon), .init(.workspace), .init(.tab)], [.init(.agent)],
     ])
+    /// `heelerDefault` as the Console and the Field Editor see it.
+    static let consoleDefault = heelerDefault.normalizedForConsole()
 
     var rowGap: Int
     var rows: [AgentRow]
@@ -153,6 +169,28 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
 
     func rows(forAgentKind kind: String) -> [AgentRow] {
         rowsByAgent[kind] ?? rows
+    }
+
+    /// The Console shape: at most `maximumConsoleRows` rows per Agent kind
+    /// and no `state_icon`, which the status badge at the end of Row 1 owns.
+    /// Row gap and every other field style stay as they are.
+    func normalizedForConsole() -> AgentRowLayout {
+        func normalize(_ layoutRows: [AgentRow]) -> [AgentRow] {
+            layoutRows.prefix(Self.maximumConsoleRows).map { row in
+                row.filter { $0.token != .stateIcon }
+            }
+        }
+        return AgentRowLayout(
+            rows: normalize(rows), rowGap: rowGap, rowsByAgent: rowsByAgent.mapValues(normalize))
+    }
+
+    /// Console layouts hold at most `maximumConsoleRows` rows per Agent kind.
+    func validateForConsole() throws {
+        for layoutRows in [rows] + Array(rowsByAgent.values) {
+            guard layoutRows.count <= Self.maximumConsoleRows else {
+                throw AgentRowLayoutError.tooManyRows
+            }
+        }
     }
 
     func validate() throws {
@@ -180,6 +218,37 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
         rows = try container.decodeIfPresent([AgentRow].self, forKey: .rows) ?? Self.heelerDefault.rows
         rowsByAgent = try container.decodeIfPresent([String: [AgentRow]].self, forKey: .rowsByAgent) ?? [:]
         try validate()
+    }
+}
+
+/// Which of the three Console row slots a row index names. Rows 1 and 2 hold
+/// herdr's sidebar fields, which Sync from plugin refills; Row 3 is Heeler's
+/// own row and may also use Heeler fields.
+enum AgentRowSlot: Equatable, Sendable {
+    case herdr, heeler
+
+    static let herdrRowCount = 2
+
+    /// nil outside the Console's row slots.
+    static func forRow(_ index: Int) -> AgentRowSlot? {
+        guard (0..<AgentRowLayout.maximumConsoleRows).contains(index) else { return nil }
+        return index < herdrRowCount ? .herdr : .heeler
+    }
+
+    /// Provenance label shown beside the row title.
+    var label: String {
+        switch self {
+        case .herdr: "herdr"
+        case .heeler: "Heeler"
+        }
+    }
+
+    /// Heeler-only fields (Host name, Agent Status, directory) belong in Row 3.
+    var allowsHeelerFields: Bool { self == .heeler }
+
+    /// `rows` padded with empty rows to the Console's slot count.
+    static func slotRows(_ rows: [AgentRow]) -> [AgentRow] {
+        rows + Array(repeating: [], count: max(0, AgentRowLayout.maximumConsoleRows - rows.count))
     }
 }
 

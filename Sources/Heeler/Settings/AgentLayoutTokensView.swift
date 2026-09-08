@@ -13,14 +13,15 @@ struct AgentLayoutTokensView: View {
         AgentLayoutTokensEditing.rows(in: editor.layout(for: hostID), kind: kind)
     }
     private var tokens: AgentRow {
-        AgentLayoutTokensEditing.isValidRow(rowIndex, in: rows) ? rows[rowIndex] : []
+        AgentLayoutTokensEditing.row(rowIndex, in: rows)
     }
+    private var slot: AgentRowSlot? { AgentRowSlot.forRow(rowIndex) }
     private var canMutate: Bool { editor.isEditing && AgentLayoutTokensEditing.isValidRow(rowIndex, in: rows) }
     private var canAddField: Bool {
         editor.isEditing && AgentLayoutTokensEditing.canAddField(to: tokens, rows: rows, rowIndex: rowIndex)
     }
     private var subtitle: String {
-        AgentLayoutTokensEditing.navigationSubtitle(hostName: hostName, kind: kind)
+        AgentLayoutTokensEditing.navigationSubtitle(hostName: hostName, kind: kind, rowIndex: rowIndex)
     }
 
     var body: some View {
@@ -111,9 +112,7 @@ struct AgentLayoutTokensView: View {
     }
 
     private var fieldsFooter: String {
-        editor.isEditing
-            ? "Fields render left to right in this row. Changes stay in the draft until you save on the previous screen."
-            : "Tap Edit on the previous screen to change fields."
+        AgentLayoutTokensEditing.fieldsFooter(isEditing: editor.isEditing, rowIndex: rowIndex)
     }
 
     private var addFieldSheet: some View {
@@ -143,6 +142,14 @@ struct AgentLayoutTokensView: View {
                             Text("Heeler fields")
                         } footer: {
                             Text("These fields exist only in Heeler.")
+                        }
+                    } else if slot?.allowsHeelerFields == false {
+                        Section {
+                            Text(AgentLayoutTokensEditing.heelerFieldsUnavailable)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        } header: {
+                            Text("Heeler fields")
                         }
                     }
                 }
@@ -181,8 +188,9 @@ struct AgentLayoutTokensView: View {
         AgentLayoutTokensEditing.availableBuiltins(in: tokens, from: AgentRowToken.herdrBuiltins)
     }
 
+    /// Empty for Row 1 and Row 2: Heeler fields belong in Row 3.
     private var availableHeelerFields: [AgentRowToken] {
-        AgentLayoutTokensEditing.availableBuiltins(in: tokens, from: AgentRowToken.heelerBuiltins)
+        AgentLayoutTokensEditing.availableHeelerFields(in: tokens, rowIndex: rowIndex)
     }
 
     private func addFieldButton(for token: AgentRowToken) -> some View {
@@ -300,28 +308,56 @@ enum AgentLayoutTokenStyle: Equatable {
     }
 }
 
-/// Field-editor mutations. A stale `rowIndex` is a no-op: it never inserts a
-/// row, deletes a different row, or writes another Host or override.
+/// Field-editor mutations over the Console's three row slots. A row index
+/// outside those slots is a no-op: it never inserts a row, deletes a
+/// different row, or writes another Host or override. Editing an empty slot
+/// beyond the layout's last row pads the layout with empty rows up to it.
 enum AgentLayoutTokensEditing {
+    static let heelerFieldsUnavailable =
+        "Row 1 and Row 2 follow herdr. Add Heeler fields in Row 3."
+
     static func rows(in layout: AgentRowLayout, kind: String?) -> [AgentRow] {
         kind.map { layout.rowsByAgent[$0] ?? [] } ?? layout.rows
     }
 
+    /// True for every Console row slot, whether or not `rows` reaches it.
     static func isValidRow(_ rowIndex: Int, in rows: [AgentRow]) -> Bool {
-        rows.indices.contains(rowIndex)
+        AgentRowSlot.forRow(rowIndex) != nil
     }
 
-    static func navigationSubtitle(hostName: String, kind: String?) -> String {
-        if let kind {
-            return hostName.isEmpty ? "\(kind) override" : "\(hostName) · \(kind) override"
+    /// The slot's fields; empty when the layout has no row there yet.
+    static func row(_ rowIndex: Int, in rows: [AgentRow]) -> AgentRow {
+        rows.indices.contains(rowIndex) ? rows[rowIndex] : []
+    }
+
+    static func navigationSubtitle(hostName: String, kind: String?, rowIndex: Int? = nil) -> String {
+        var parts: [String] = []
+        if !hostName.isEmpty { parts.append(hostName) }
+        if let kind { parts.append("\(kind) override") }
+        if let rowIndex, let slot = AgentRowSlot.forRow(rowIndex) { parts.append("\(slot.label) row") }
+        return parts.joined(separator: " · ")
+    }
+
+    static func fieldsFooter(isEditing: Bool, rowIndex: Int) -> String {
+        guard isEditing else { return "Tap Edit on the previous screen to change fields." }
+        let slotNote = switch AgentRowSlot.forRow(rowIndex) {
+        case .herdr?: " This row follows herdr, so it offers herdr fields; Sync from plugin refills it."
+        case .heeler?: " This is Heeler's row: it can mix herdr and Heeler fields."
+        case nil: ""
         }
-        return hostName
+        return "Fields render left to right in this row. Changes stay in the draft until you save on the previous screen."
+            + slotNote
+    }
+
+    static func availableHeelerFields(in row: AgentRow, rowIndex: Int) -> [AgentRowToken] {
+        guard AgentRowSlot.forRow(rowIndex)?.allowsHeelerFields == true else { return [] }
+        return availableBuiltins(in: row, from: AgentRowToken.heelerBuiltins)
     }
 
     static func description(for token: AgentRowToken) -> String {
         switch token {
         case .stateIcon:
-            "Status icon. Shown in the status column, not as a field in this row."
+            "Status icon. Heeler's status column at the end of Row 1 always shows it; it is not offered as a field."
         case .stateText:
             "Status text. Shown in the status column, not as a field in this row."
         case .workspace:
@@ -383,13 +419,23 @@ enum AgentLayoutTokensEditing {
         isValidRow(rowIndex, in: rows) && row.count < AgentRowLayout.maximumTokensPerRow
     }
 
-    /// `nil` when `rowIndex` does not name a row in `rows`.
+    /// `nil` when `rowIndex` is outside the Console's row slots. A slot past
+    /// the layout's last row is reached by padding with empty rows.
     static func replacingRow(
         in rows: [AgentRow], at rowIndex: Int, change: (inout AgentRow) -> Void
     ) -> [AgentRow]? {
         guard isValidRow(rowIndex, in: rows) else { return nil }
+        var row = self.row(rowIndex, in: rows)
+        change(&row)
         var next = rows
-        change(&next[rowIndex])
+        if rows.indices.contains(rowIndex) {
+            next[rowIndex] = row
+        } else {
+            // A rejected change on an empty slot must not pad the layout.
+            guard !row.isEmpty else { return rows }
+            while next.count < rowIndex { next.append([]) }
+            next.append(row)
+        }
         return next
     }
 
@@ -468,7 +514,10 @@ enum AgentLayoutTokensEditing {
         change: (inout AgentRow) -> Void
     ) -> Bool {
         guard editor.isEditing else { return false }
-        let rows = Self.rows(in: editor.layout(for: hostID), kind: kind)
+        let layout = editor.layout(for: hostID)
+        // Slots pad an existing override; they never create a missing one.
+        if let kind, layout.rowsByAgent[kind] == nil { return false }
+        let rows = Self.rows(in: layout, kind: kind)
         guard let next = replacingRow(in: rows, at: rowIndex, change: change), next != rows else {
             return false
         }

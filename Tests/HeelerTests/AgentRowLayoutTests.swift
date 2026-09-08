@@ -16,6 +16,39 @@ struct AgentRowLayoutTests {
                 == [[.stateIcon, .workspace, .tab], [.agent]])
     }
 
+    @Test func consoleShapeDropsStateIconAndKeepsThreeRowSlots() throws {
+        #expect(AgentRowLayout.maximumConsoleRows == 3)
+        #expect(AgentRowLayout.consoleDefault.rows.map { $0.map(\.token) } == [[.workspace, .tab], [.agent]])
+        #expect(AgentRowLayout.consoleDefault.rowGap == 0 && AgentRowLayout.consoleDefault.rowsByAgent.isEmpty)
+        let color = try #require(HexColor("#abc"))
+        let wide = AgentRowLayout(
+            rows: [
+                [.init(.stateIcon), .init(.workspace, fg: color, bold: true, dim: true), .init(.stateText)],
+                [.init(.agent)], [.init(.directory)], [.init(.pane)],
+            ],
+            rowGap: 2,
+            rowsByAgent: ["claude": [[.init(.stateIcon)], [], [.init(.host)], [.init(.tab)]]])
+        let console = wide.normalizedForConsole()
+        #expect(console.rows == [
+            [.init(.workspace, fg: color, bold: true, dim: true), .init(.stateText)],
+            [.init(.agent)], [.init(.directory)],
+        ])
+        #expect(console.rowGap == 2)
+        #expect(console.rowsByAgent == ["claude": [[], [], [.init(.host)]]])
+        #expect(console.normalizedForConsole() == console)
+        #expect(throws: AgentRowLayoutError.tooManyRows) { try wide.validateForConsole() }
+        try console.validateForConsole()
+        #expect(AgentRowSlot.slotRows([[.init(.agent)]]) == [[.init(.agent)], [], []])
+        #expect(AgentRowSlot.slotRows(console.rows) == console.rows)
+        #expect(AgentRowLayoutResolver.resolve(hostLayout: wide, pluginSnapshot: nil) == console)
+        #expect(
+            AgentRowLayoutResolver.resolve(
+                hostLayout: nil, pluginSnapshot: AgentRowLayoutSnapshot(layout: wide)) == console)
+        #expect(AgentRowToken(rawValue: "state_icon") == .stateIcon)
+        #expect(!AgentRowToken.herdrBuiltins.contains(.stateIcon))
+        #expect(AgentRowToken.herdrBuiltins.contains(.stateText))
+    }
+
     @Test func snapshotRetainsSortStylesOverridesAndDiagnostics() throws {
         let data = Data(#"""
             {"v":1,"generated_at":1757040000,"source":{"found":true},"future":true,

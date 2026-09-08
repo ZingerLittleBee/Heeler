@@ -11,7 +11,7 @@ struct AgentRowLayoutResolverTests {
             rowsByAgent: ["claude": [[.init(.custom("pin_icon"))]]]), agentPanelSort: .priority)
         #expect(AgentRowLayoutResolver.resolve(hostLayout: host, pluginSnapshot: plugin) == host)
         #expect(AgentRowLayoutResolver.resolve(hostLayout: nil, pluginSnapshot: plugin) == plugin.layout)
-        #expect(AgentRowLayoutResolver.resolve(hostLayout: nil, pluginSnapshot: nil) == .heelerDefault)
+        #expect(AgentRowLayoutResolver.resolve(hostLayout: nil, pluginSnapshot: nil) == .consoleDefault)
         // An empty override is still a whole-layout choice, not inheritance.
         #expect(AgentRowLayoutResolver.resolve(hostLayout: AgentRowLayout(rows: []), pluginSnapshot: plugin).rows.isEmpty)
     }

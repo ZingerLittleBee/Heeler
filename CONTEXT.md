@@ -91,11 +91,20 @@ _Avoid_: dashboard, home
 The ordered rows of fields that identify an Agent in the Console and its
 switcher. Each Host follows its herdr plugin's fields until the user saves
 that Host's own layout, which may start from a Sync from plugin copy. There
-is no user-facing default layout. A saved layout may also include Heeler-only
-fields herdr does not define: Host name, Agent Status as text, and working
-directory. Agent Status and Heeler Pin remain independent chrome; choosing
-status as a field repeats it in the row.
+is no user-facing default layout. The Console shows at most three rows, as
+three fixed Row Slots. herdr's `state_icon` never appears as a field; the
+status badge at the end of Row 1 owns it. Agent Status and Heeler Pin remain
+independent chrome; choosing status as a field repeats it in the row.
 _Avoid_: card template, sidebar format
+
+**Row Slot**:
+One of the three fixed positions in an Agent Row Layout. Row 1 and Row 2 are
+herdr rows: they carry herdr's sidebar fields and are what Sync from plugin
+refills. Row 3 is Heeler's row: it may mix herdr fields with the Heeler-only
+fields herdr does not define (Host name, Agent Status as text, working
+directory). Slots are never added, moved, or deleted; an empty slot renders
+nothing.
+_Avoid_: extra row, custom row
 
 **Pin**:
 A user-chosen Console marker on an Agent's pane slot (`hostID` + `paneID`).

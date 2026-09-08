@@ -51,7 +51,8 @@ struct AgentLayoutTokensViewTests {
         #expect(
             AgentLayoutTokensEditing.canAddField(to: sixteen, rows: [sixteen], rowIndex: 0) == false)
         #expect(AgentLayoutTokensEditing.canAddField(to: present, rows: [present], rowIndex: 0))
-        #expect(AgentLayoutTokensEditing.canAddField(to: present, rows: [present], rowIndex: 1) == false)
+        #expect(AgentLayoutTokensEditing.canAddField(to: present, rows: [present], rowIndex: 1))
+        #expect(AgentLayoutTokensEditing.canAddField(to: [], rows: [present], rowIndex: 3) == false)
     }
 
     @Test func defaultClearsDimAndSecondarySetsTrueWithoutTouchingOtherStyle() throws {
@@ -149,6 +150,52 @@ struct AgentLayoutTokensViewTests {
         #expect(layouts.hostLayouts[otherID]?.rows == [[.init(.tab)]])
     }
 
+    @Test func rowSlotsGateHeelerFieldsAndPadEmptySlotsOnlyWhenAFieldLands() throws {
+        #expect(AgentRowSlot.forRow(0) == .herdr && AgentRowSlot.forRow(1) == .herdr)
+        #expect(AgentRowSlot.forRow(2) == .heeler && AgentRowSlot.forRow(3) == nil)
+        #expect(AgentLayoutTokensEditing.availableHeelerFields(in: [], rowIndex: 0).isEmpty)
+        #expect(AgentLayoutTokensEditing.availableHeelerFields(in: [], rowIndex: 1).isEmpty)
+        #expect(
+            AgentLayoutTokensEditing.availableHeelerFields(in: [.init(.host)], rowIndex: 2)
+                == [.status, .directory])
+        #expect(!AgentRowToken.herdrBuiltins.contains(.stateIcon))
+        #expect(
+            AgentLayoutTokensEditing.navigationSubtitle(hostName: "Studio Mac", kind: nil, rowIndex: 0)
+                == "Studio Mac · herdr row")
+        #expect(
+            AgentLayoutTokensEditing.navigationSubtitle(hostName: "", kind: "claude", rowIndex: 2)
+                == "claude override · Heeler row")
+        #expect(AgentLayoutTokensEditing.fieldsFooter(isEditing: true, rowIndex: 0).contains("herdr"))
+        #expect(AgentLayoutTokensEditing.fieldsFooter(isEditing: true, rowIndex: 2).contains("Heeler"))
+
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let (editor, _) = makeEditor(defaults: defaults)
+        let hostID = UUID()
+        let twoRows: [AgentRow] = [[.init(.workspace)], [.init(.agent)]]
+        editor.beginEditing()
+        editor.setRows(twoRows, kind: nil, for: hostID)
+
+        // A rejected duplicate on the empty Row 3 leaves the layout at two rows.
+        #expect(
+            AgentLayoutTokensEditing.delete(
+                IndexSet(integer: 0), editor: editor, hostID: hostID, kind: nil, rowIndex: 2) == false)
+        #expect(editor.layout(for: hostID).rows == twoRows)
+        #expect(AgentLayoutTokensEditing.add(.directory, editor: editor, hostID: hostID, kind: nil, rowIndex: 2))
+        #expect(editor.layout(for: hostID).rows == twoRows + [[.init(.directory)]])
+        #expect(AgentLayoutTokensEditing.row(2, in: editor.layout(for: hostID).rows) == [.init(.directory)])
+        #expect(AgentLayoutTokensEditing.row(3, in: editor.layout(for: hostID).rows).isEmpty)
+
+        // An override with no rows reaches Row 3 through two empty rows.
+        editor.setRows([], kind: "claude", for: hostID)
+        #expect(AgentLayoutTokensEditing.add(.host, editor: editor, hostID: hostID, kind: "claude", rowIndex: 2))
+        #expect(editor.layout(for: hostID).rowsByAgent["claude"] == [[], [], [.init(.host)]])
+        #expect(
+            AgentLayoutTokensEditing.add(.host, editor: editor, hostID: hostID, kind: "claude", rowIndex: 3)
+                == false)
+        #expect(editor.layout(for: hostID).rowsByAgent["claude"] == [[], [], [.init(.host)]])
+    }
+
     @Test func staleIndexReadOnlyAndCapacityGuardsNeverRetargetAnotherRow() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
@@ -168,7 +215,7 @@ struct AgentLayoutTokensViewTests {
         let before = editor.layout(for: hostID)
 
         #expect(
-            AgentLayoutTokensEditing.add(.terminalTitle, editor: editor, hostID: hostID, kind: nil, rowIndex: 2)
+            AgentLayoutTokensEditing.add(.terminalTitle, editor: editor, hostID: hostID, kind: nil, rowIndex: 3)
                 == false)
         #expect(
             AgentLayoutTokensEditing.add(.terminalTitle, editor: editor, hostID: hostID, kind: "codex", rowIndex: 0)
@@ -179,11 +226,11 @@ struct AgentLayoutTokensViewTests {
                 == false)
         #expect(
             AgentLayoutTokensEditing.move(
-                IndexSet(integer: 0), to: 1, editor: editor, hostID: hostID, kind: nil, rowIndex: 2)
+                IndexSet(integer: 0), to: 1, editor: editor, hostID: hostID, kind: nil, rowIndex: 3)
                 == false)
         #expect(
             AgentLayoutTokensEditing.setStyle(
-                .secondary, at: 0, editor: editor, hostID: hostID, kind: nil, rowIndex: 2)
+                .secondary, at: 0, editor: editor, hostID: hostID, kind: nil, rowIndex: 3)
                 == false)
         #expect(editor.layout(for: hostID) == before)
         #expect(editor.layout(for: hostID).rowsByAgent["codex"] == nil)

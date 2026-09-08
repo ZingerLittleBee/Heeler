@@ -16,6 +16,11 @@ Entries reference the issue that motivated them.
   per-Host Agent overrides, and a checkmark that saves that Host. A row can
   also include Heeler-only fields: Host name, Agent Status, and working
   directory. (#277, #281)
+- Agent List Fields now edits three fixed rows per Host. Row 1 and Row 2
+  carry herdr's sidebar fields and are what Sync from plugin refills; Row 3 is
+  Heeler's own row and is the only place Heeler fields can be added. Agent
+  cards show at most those three rows, and `state_icon` is no longer offered
+  or rendered as a field because the status badge always ends Row 1.
 
 ### Fixed
 

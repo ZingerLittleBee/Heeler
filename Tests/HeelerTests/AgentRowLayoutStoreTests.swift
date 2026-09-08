@@ -29,7 +29,7 @@ struct AgentRowLayoutStoreTests {
         #expect(reloaded.resolvedLayout(for: first, pluginSnapshot: plugin) == custom)
         #expect(reloaded.resolvedLayout(for: second, pluginSnapshot: plugin).rows.isEmpty)
         #expect(reloaded.resolvedLayout(for: third, pluginSnapshot: plugin) == plugin.layout)
-        #expect(reloaded.resolvedLayout(for: third, pluginSnapshot: nil) == .heelerDefault)
+        #expect(reloaded.resolvedLayout(for: third, pluginSnapshot: nil) == .consoleDefault)
         #expect(reloaded.catalogLoadError == nil)
     }
 
@@ -51,7 +51,7 @@ struct AgentRowLayoutStoreTests {
         #expect(store.resolvedLayout(for: host, pluginSnapshot: plugin) == plugin.layout)
         let reloaded = AgentRowLayoutStore(defaults: defaults)
         #expect(reloaded.hostLayouts == [other: custom])
-        #expect(reloaded.resolvedLayout(for: host, pluginSnapshot: nil) == .heelerDefault)
+        #expect(reloaded.resolvedLayout(for: host, pluginSnapshot: nil) == .consoleDefault)
     }
 
     @Test func legacyGlobalLayoutIsIgnoredAndDroppedOnNextWrite() throws {
@@ -65,7 +65,7 @@ struct AgentRowLayoutStoreTests {
         let store = AgentRowLayoutStore(defaults: defaults)
         #expect(store.catalogLoadError == nil)
         #expect(store.resolvedLayout(for: host, pluginSnapshot: plugin) == plugin.layout)
-        #expect(store.resolvedLayout(for: host, pluginSnapshot: nil) == .heelerDefault)
+        #expect(store.resolvedLayout(for: host, pluginSnapshot: nil) == .consoleDefault)
         try store.setLayout(custom, for: host)
         let data = try #require(defaults.data(forKey: "agent-row-layouts"))
         let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])

@@ -110,6 +110,7 @@ final class AgentListFieldsEditor {
         edit(&next)
         do {
             try next.validate()
+            try next.validateForConsole()
         } catch {
             report(error)
             return
@@ -129,9 +130,10 @@ final class AgentListFieldsEditor {
     }
 
     /// Fetches the Host's plugin snapshot and fills its draft, including
-    /// overrides, row gap, and token styles. A missing snapshot fills Heeler's
-    /// fallback fields; a failed read leaves the draft unchanged. Results are
-    /// dropped once editing ended or the draft was edited since.
+    /// overrides, row gap, and token styles, reduced to the Console's three
+    /// row slots. A missing snapshot fills Heeler's fallback fields; a failed
+    /// read leaves the draft unchanged. Results are dropped once editing
+    /// ended or the draft was edited since.
     ///
     /// `hostName` is only interpolated into the unread-snapshot failure copy.
     /// The one-argument call stays valid and uses "this Host".
@@ -145,12 +147,12 @@ final class AgentListFieldsEditor {
         syncRequests[hostID] = nil
         switch state {
         case .loaded(let snapshot?):
-            drafts[hostID] = snapshot.layout
+            drafts[hostID] = snapshot.layout.normalizedForConsole()
             syncStates[hostID] = .filled(snapshot.diagnostics.isEmpty
                 ? "Filled from plugin. Unsaved until you save."
                 : "herdr reported a configuration problem, so its default fields were filled. Unsaved until you save.")
         case .loaded(nil):
-            drafts[hostID] = .heelerDefault
+            drafts[hostID] = .consoleDefault
             syncStates[hostID] = .filled(
                 "This Host has no plugin fields snapshot, so Heeler's fallback fields were filled. Unsaved until you save.")
         case .unavailable:
@@ -171,6 +173,6 @@ final class AgentListFieldsEditor {
     private func report(_ error: any Error) {
         errorMessage = error is AgentRowLayoutStoreError
             ? "The saved Agent List Fields could not be read. Nothing was changed."
-            : "This layout could not be saved. Use at most 16 rows and 16 fields per row, with valid field names."
+            : "This layout could not be saved. Use at most 3 rows and 16 fields per row, with valid field names."
     }
 }

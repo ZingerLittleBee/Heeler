@@ -37,7 +37,7 @@ struct AgentListFieldsEditorTests {
         let editor = AgentListFieldsEditor(layouts: layouts, snapshots: snapshots, fetch: fetch)
         #expect(editor.isEditing == false)
         #expect(editor.layout(for: hostID) == plugin)
-        #expect(editor.layout(for: otherID) == .heelerDefault)
+        #expect(editor.layout(for: otherID) == .consoleDefault)
         #expect(editor.source(for: hostID) == .plugin)
         #expect(editor.source(for: otherID) == .unavailable)
 
@@ -58,7 +58,7 @@ struct AgentListFieldsEditorTests {
         editor.setRows([[.init(.custom("build_status"))], []], kind: "claude", for: hostID)
         #expect(editor.layout(for: hostID).rowsByAgent["claude"] == [[.init(.custom("build_status"))], []])
         #expect(layouts.hostLayouts.isEmpty)
-        #expect(editor.layout(for: otherID) == .heelerDefault && editor.source(for: otherID) == .unavailable)
+        #expect(editor.layout(for: otherID) == .consoleDefault && editor.source(for: otherID) == .unavailable)
 
         editor.cancel()
         #expect(editor.isEditing == false && editor.drafts.isEmpty && !editor.hasUnsavedChanges)
@@ -72,7 +72,7 @@ struct AgentListFieldsEditorTests {
         #expect(editor.isEditing == false && editor.drafts.isEmpty)
         #expect(layouts.hostLayouts[hostID]?.rows == [[.init(.pane)]])
         #expect(layouts.hostLayouts[hostID]?.rowsByAgent == plugin.rowsByAgent)
-        #expect(layouts.hostLayouts[otherID] == AgentRowLayout(rows: AgentRowLayout.heelerDefault.rows, rowGap: 3))
+        #expect(layouts.hostLayouts[otherID] == AgentRowLayout(rows: AgentRowLayout.consoleDefault.rows, rowGap: 3))
         #expect(editor.source(for: hostID) == .saved)
 
         // Reopening shows the saved choice, and an untouched edit session saves nothing new.
@@ -115,7 +115,7 @@ struct AgentListFieldsEditorTests {
         await editor.syncFromPlugin(hostID)
         #expect(editor.syncStates[hostID] == .filled(
             "This Host has no plugin fields snapshot, so Heeler's fallback fields were filled. Unsaved until you save."))
-        #expect(editor.layout(for: hostID) == .heelerDefault)
+        #expect(editor.layout(for: hostID) == .consoleDefault)
 
         await transport.setSidebarLayout(pluginData)
         await editor.syncFromPlugin(hostID)
@@ -219,7 +219,7 @@ struct AgentListFieldsEditorTests {
         editor.setRows(saved.rows, kind: nil, for: savedID)
         #expect(editor.layout(for: savedID) == saved)
         #expect(editor.dirtyHostIDs == Set([unsavedID]))
-        #expect(editor.layout(for: otherID) == .heelerDefault)
+        #expect(editor.layout(for: otherID) == .consoleDefault)
         #expect(!editor.dirtyHostIDs.contains(otherID))
     }
 
@@ -326,7 +326,7 @@ struct AgentListFieldsEditorTests {
 
         fetchState.value = .loaded(nil)
         await editor.syncFromPlugin(hostID)
-        #expect(editor.layout(for: hostID) == .heelerDefault)
+        #expect(editor.layout(for: hostID) == .consoleDefault)
         #expect(editor.syncStates[hostID] == .filled(
             "This Host has no plugin fields snapshot, so Heeler's fallback fields were filled. Unsaved until you save."))
 
