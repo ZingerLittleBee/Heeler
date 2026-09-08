@@ -18,7 +18,7 @@ struct AgentRowLayoutTests {
 
     @Test func consoleShapeDropsStateIconAndKeepsThreeRowSlots() throws {
         #expect(AgentRowLayout.maximumConsoleRows == 3)
-        #expect(AgentRowLayout.consoleDefault.rows.map { $0.map(\.token) } == [[.workspace, .tab], [.agent]])
+        #expect(AgentRowLayout.consoleDefault.rows.map { $0.map(\.token) } == [[.workspace, .tab], [.agent], [.directory]])
         #expect(AgentRowLayout.consoleDefault.rowGap == 0 && AgentRowLayout.consoleDefault.rowsByAgent.isEmpty)
         let color = try #require(HexColor("#abc"))
         let wide = AgentRowLayout(

@@ -13,7 +13,8 @@ Entries reference the issue that motivated them.
   order. Customize each Host's card layout in Settings > Agent List Fields:
   add, style, move, or remove herdr, Heeler, and plugin fields across up to
   three rows, with a Console preview and automatic saving. Sync from plugin
-  refreshes the first two rows; the third is managed in Heeler. (#277, #281)
+  refreshes the first two rows; the third defaults to `directory` and keeps
+  your edits when syncing. (#277, #281)
 
 ### Fixed
 

@@ -154,8 +154,8 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
     static let heelerDefault = AgentRowLayout(rows: [
         [.init(.stateIcon), .init(.workspace), .init(.tab)], [.init(.agent)],
     ])
-    /// `heelerDefault` as the Console and the Field Editor see it.
-    static let consoleDefault = heelerDefault.normalizedForConsole()
+    /// Fallback sidebar fields with Heeler's default directory row.
+    static let consoleDefault = heelerDefault.withHeelerRow()
 
     var rowGap: Int
     var rows: [AgentRow]
@@ -182,6 +182,15 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
                 row.filter { $0.token != .stateIcon }
             },
             rowGap: rowGap)
+    }
+
+    /// Import only herdr's first two rows. The third belongs to Heeler;
+    /// new layouts show the directory, while sync supplies the user's row.
+    func withHeelerRow(_ thirdRow: AgentRow = [.init(.directory)]) -> AgentRowLayout {
+        var imported = normalizedForConsole()
+        imported.rows = Array(AgentRowSlot.slotRows(imported.rows).prefix(AgentRowSlot.herdrRowCount))
+            + [thirdRow]
+        return imported
     }
 
     /// Console layouts hold at most `maximumConsoleRows` rows.

@@ -156,9 +156,9 @@ struct AgentLayoutTokensEditingTests {
         let before = editor.layout(for: hostID)
         #expect(before == .consoleDefault)
 
-        #expect(AgentLayoutTokensEditing.add(.directory, editor: editor, hostID: hostID, rowIndex: 2))
+        #expect(AgentLayoutTokensEditing.add(.host, editor: editor, hostID: hostID, rowIndex: 2))
         let saved = try #require(layouts.hostLayouts[hostID])
-        #expect(saved.rows == before.rows + [[.init(.directory)]])
+        #expect(saved.rows == Array(before.rows.prefix(2)) + [[.init(.directory), .init(.host)]])
         #expect(saved.rowGap == before.rowGap && saved.rowsByAgent == before.rowsByAgent)
         #expect(editor.underlyingSource(for: hostID) == .saved)
     }

@@ -33,7 +33,7 @@ struct AgentListFieldsEditorTests {
         let transport = ScriptedTransport()
         await transport.setSidebarLayout(pluginData)
         let (snapshots, fetch) = await makeSnapshots(hostID: hostID, transport: transport)
-        let plugin = try #require(AgentRowLayoutSnapshot.decode(pluginData)).layout.normalizedForConsole()
+        let plugin = try #require(AgentRowLayoutSnapshot.decode(pluginData)).layout.withHeelerRow()
         let editor = AgentListFieldsEditor(layouts: layouts, snapshots: snapshots, fetch: fetch)
         #expect(editor.isEditing == false)
         #expect(editor.layout(for: hostID) == plugin)
@@ -47,10 +47,10 @@ struct AgentListFieldsEditorTests {
         #expect(layouts.hostLayouts.isEmpty)
 
         editor.beginEditing()
-        editor.setRows(plugin.rows + [[]], kind: nil, for: hostID)
+        editor.setRows(Array(plugin.rows.prefix(2)) + [[.init(.host)]], kind: nil, for: hostID)
         #expect(editor.source(for: hostID) == .draft)
         #expect(editor.hasUnsavedChanges)
-        #expect(editor.layout(for: hostID).rows == plugin.rows + [[]])
+        #expect(editor.layout(for: hostID).rows == Array(plugin.rows.prefix(2)) + [[.init(.host)]])
         #expect(editor.layout(for: hostID).rowsByAgent == plugin.rowsByAgent)
         #expect(editor.layout(for: hostID).rowGap == 2)
         #expect(editor.layout(for: hostID).rows[0][0].fg == HexColor("#abc"))
@@ -115,11 +115,11 @@ struct AgentListFieldsEditorTests {
         await editor.syncFromPlugin(hostID)
         #expect(editor.syncStates[hostID] == .filled(
             "This Host has no plugin fields snapshot, so Heeler's fallback fields were used."))
-        #expect(editor.layout(for: hostID) == .consoleDefault)
+        #expect(editor.layout(for: hostID) == AgentRowLayout.heelerDefault.withHeelerRow([]))
 
         await transport.setSidebarLayout(pluginData)
         await editor.syncFromPlugin(hostID)
-        let plugin = try #require(AgentRowLayoutSnapshot.decode(pluginData)).layout.normalizedForConsole()
+        let plugin = try #require(AgentRowLayoutSnapshot.decode(pluginData)).layout.withHeelerRow([])
         #expect(editor.syncStates[hostID] == .filled("Replaced with plugin fields."))
         #expect(editor.layout(for: hostID) == plugin)
         #expect(layouts.hostLayouts[hostID] == saved)
@@ -197,7 +197,7 @@ struct AgentListFieldsEditorTests {
         let transport = ScriptedTransport()
         await transport.setSidebarLayout(pluginData)
         let (snapshots, fetch) = await makeSnapshots(hostID: unsavedID, transport: transport)
-        let plugin = try #require(AgentRowLayoutSnapshot.decode(pluginData)).layout.normalizedForConsole()
+        let plugin = try #require(AgentRowLayoutSnapshot.decode(pluginData)).layout.withHeelerRow()
         let saved = AgentRowLayout(rows: [[.init(.pane)]], rowGap: 1)
         try layouts.setLayout(saved, for: savedID)
         let editor = AgentListFieldsEditor(layouts: layouts, snapshots: snapshots, fetch: fetch)
@@ -326,13 +326,13 @@ struct AgentListFieldsEditorTests {
 
         fetchState.value = .loaded(nil)
         await editor.syncFromPlugin(hostID)
-        #expect(editor.layout(for: hostID) == .consoleDefault)
+        #expect(editor.layout(for: hostID) == AgentRowLayout.heelerDefault.withHeelerRow([]))
         #expect(editor.syncStates[hostID] == .filled(
             "This Host has no plugin fields snapshot, so Heeler's fallback fields were used."))
 
         fetchState.value = .loaded(snapshot)
         await editor.syncFromPlugin(hostID)
-        #expect(editor.layout(for: hostID) == snapshot.layout.normalizedForConsole())
+        #expect(editor.layout(for: hostID) == snapshot.layout.withHeelerRow([]))
         #expect(editor.layout(for: hostID).rowsByAgent.isEmpty)
         #expect(editor.layout(for: hostID).rowGap == 2)
         #expect(editor.layout(for: hostID).rows[0][0].fg == HexColor("#abc"))
@@ -345,7 +345,7 @@ struct AgentListFieldsEditorTests {
         fetchState.value = .loaded(AgentRowLayoutSnapshot(layout: snapshot.layout))
         await editor.syncFromPlugin(hostID)
         #expect(editor.syncStates[hostID] == .filled("Replaced with plugin fields."))
-        #expect(editor.layout(for: hostID) == snapshot.layout.normalizedForConsole())
+        #expect(editor.layout(for: hostID) == snapshot.layout.withHeelerRow([]))
         #expect(layouts.hostLayouts.isEmpty)
     }
 
@@ -391,6 +391,27 @@ struct AgentListFieldsEditorTests {
 @MainActor
 @Suite("Agent List Fields inline editing")
 struct AgentListFieldsInlineEditingTests {
+    @Test func syncPreservesDefaultCustomizedAndEmptyThirdRowsAcrossReloads() async throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let layouts = AgentRowLayoutStore(defaults: defaults)
+        let hostID = UUID()
+        let snapshot = AgentRowLayoutSnapshot(layout: AgentRowLayout(
+            rows: [[.init(.workspace)], [.init(.custom("branch"))], [.init(.tab)]]))
+        let editor = AgentListFieldsEditor(
+            layouts: layouts, snapshots: HerdrSidebarSnapshotStore(), fetch: { _ in .loaded(snapshot) })
+
+        for thirdRow: AgentRow in [[.init(.directory)], [.init(.host, dim: true)], []] {
+            if thirdRow != [.init(.directory)] {
+                #expect(editor.commit(hostID) { $0.rows[2] = thirdRow })
+            }
+            await editor.replaceWithPluginFields(hostID)
+            let reloaded = AgentRowLayoutStore(defaults: defaults)
+            #expect(reloaded.resolvedLayout(for: hostID, pluginSnapshot: snapshot).rows
+                == [[.init(.workspace)], [.init(.custom("branch"))], thirdRow])
+        }
+    }
+
     private func makeDefaults() throws -> (UserDefaults, cleanup: () -> Void) {
         let suite = "fields-inline-\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -462,7 +483,7 @@ struct AgentListFieldsInlineEditingTests {
         await state.set(.loaded(snapshot))
         await editor.replaceWithPluginFields(hostID)
         #expect(editor.syncStates[hostID] == .filled("Replaced with plugin fields."))
-        #expect(layouts.hostLayouts[hostID] == snapshot.layout.normalizedForConsole())
+        #expect(layouts.hostLayouts[hostID] == snapshot.layout.withHeelerRow([]))
         #expect(layouts.hostLayouts[hostID]?.rows.count == 3)
         #expect(!editor.isEditing && editor.drafts.isEmpty)
 
@@ -472,7 +493,7 @@ struct AgentListFieldsInlineEditingTests {
 
         await state.set(.loaded(nil))
         await editor.replaceWithPluginFields(hostID)
-        #expect(layouts.hostLayouts[hostID] == .consoleDefault)
+        #expect(layouts.hostLayouts[hostID] == AgentRowLayout.heelerDefault.withHeelerRow([]))
         #expect(editor.syncStates[hostID] == .filled(
             "This Host has no plugin fields snapshot, so Heeler's fallback fields were used."))
     }

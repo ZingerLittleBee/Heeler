@@ -161,7 +161,7 @@ struct SidebarConsoleIntegrationTests {
         #expect(connects.withLock { $0 } == 2)
         let plugin = store.rowLayout(for: alpha.id)
         // herdr's rows_by_agent is decoded but never applied in the Console.
-        #expect(plugin.rows == [[.init(.terminalTitleStripped)]])
+        #expect(plugin.rows == [[.init(.terminalTitleStripped)], [], [.init(.directory)]])
         #expect(plugin.rowsByAgent.isEmpty)
         let first = try #require(store.agents.first)
         #expect(AgentCardPresentation(agent: first, layout: plugin).headline == "Task")

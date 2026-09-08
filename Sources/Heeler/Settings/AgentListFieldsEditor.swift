@@ -173,9 +173,8 @@ final class AgentListFieldsEditor {
         syncStates[hostID] = state
     }
 
-    /// Fetches the Host's plugin snapshot and fills its draft, including
-    /// overrides, row gap, and token styles, reduced to the Console's three
-    /// row slots. A missing snapshot fills Heeler's fallback fields; a failed
+    /// Fetches the Host's first two plugin rows, row gap, and token styles,
+    /// preserving its Heeler row. A missing snapshot fills fallback fields; a failed
     /// read leaves the draft unchanged. Results are dropped once editing
     /// ended or the draft was edited since. Draft-only; the screen uses
     /// `replaceWithPluginFields`.
@@ -187,17 +186,18 @@ final class AgentListFieldsEditor {
         let request = UUID()
         syncRequests[hostID] = request
         syncStates[hostID] = .syncing
+        let thirdRow = AgentRowSlot.slotRows(layout(for: hostID).rows)[AgentRowSlot.herdrRowCount]
         let state = await fetch(hostID)
         guard isEditing, syncRequests[hostID] == request else { return }
         syncRequests[hostID] = nil
         switch state {
         case .loaded(let snapshot?):
-            drafts[hostID] = snapshot.layout.normalizedForConsole()
+            drafts[hostID] = snapshot.layout.withHeelerRow(thirdRow)
             syncStates[hostID] = .filled(snapshot.diagnostics.isEmpty
                 ? "Replaced with plugin fields."
                 : "herdr reported a configuration problem, so its default fields were used.")
         case .loaded(nil):
-            drafts[hostID] = .consoleDefault
+            drafts[hostID] = AgentRowLayout.heelerDefault.withHeelerRow(thirdRow)
             syncStates[hostID] = .filled(
                 "This Host has no plugin fields snapshot, so Heeler's fallback fields were used.")
         case .unavailable:
