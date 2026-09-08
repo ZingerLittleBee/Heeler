@@ -1,5 +1,6 @@
 import Foundation
 import GhosttyTerminal
+import Observation
 import Testing
 import SwiftUI
 import UIKit
@@ -978,15 +979,24 @@ struct TerminalAgentSwitcherTests {
     /// destination frame ever arrives, timing out must release the hold
     /// without treating a transient hide as proof that the keyboard left.
     @MainActor
-    @Test func aTerminalTimeoutPreservesItsDestinationOwnedInset() async throws {
+    @Test(.timeLimit(.minutes(1)))
+    func aTerminalTimeoutPreservesItsDestinationOwnedInset() async throws {
         let center = NotificationCenter()
         let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
+        let presentation = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        defer { presentation.continuation.finish() }
+        withObservationTracking {
+            _ = inset.height
+        } onChange: {
+            presentation.continuation.yield(())
+        }
         center.post(
             name: UIResponder.keyboardWillShowNotification, object: nil,
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
                 x: 0, y: 554, width: 440, height: 436)])
-        try await Task.sleep(for: .milliseconds(120))
-        #expect(inset.height == 402)
+        var presentationEvents = presentation.stream.makeAsyncIterator()
+        _ = await presentationEvents.next()
+        try #require(inset.height == 402)
 
         let terminal = TerminalScreenView.makeConfiguredTerminal(
             notificationCenter: center)
@@ -1004,20 +1014,23 @@ struct TerminalAgentSwitcherTests {
         window.layoutIfNeeded()
 
         let handoffID = inset.beginDestinationOwnedResponderHandoff()
-        var endedOutcome: TerminalKeyboardHandoffOutcome?
+        let ended = AsyncStream<TerminalKeyboardHandoffOutcome>.makeStream(
+            bufferingPolicy: .bufferingNewest(1))
+        defer { ended.continuation.finish() }
         terminal.onKeyboardHandoffEnded = { endedID, outcome in
             guard endedID == handoffID else { return }
-            endedOutcome = outcome
             switch outcome {
             case .settled, .timedOut:
                 inset.endResponderHandoff(endedID)
             case .cancelled:
                 inset.cancelResponderHandoff(endedID, currentHeight: { 0 })
             }
+            ended.continuation.yield(outcome)
         }
-        #expect(terminal.requestKeyboardHandoff(id: handoffID))
+        try #require(terminal.requestKeyboardHandoff(id: handoffID))
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
-        try await Task.sleep(for: .milliseconds(80))
+        var handoffEvents = ended.stream.makeAsyncIterator()
+        let endedOutcome = await handoffEvents.next()
 
         #expect(endedOutcome == .timedOut)
         #expect(!inset.isHoldingHandoffHeight)

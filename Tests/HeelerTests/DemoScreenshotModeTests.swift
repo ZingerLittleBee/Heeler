@@ -39,6 +39,7 @@
             let composition = DemoScreenshotComposition.make()
             composition.console.setHosts(composition.hosts.hosts)
             await composition.console.resume()
+            defer { composition.console.setHosts([]) }
 
             while composition.console.agents.count != 5
                 || composition.hosts.hosts.contains(where: {
@@ -67,13 +68,14 @@
                 }
                 #expect(bytes == DemoScreenshotFixture.sidebarLayoutData)
                 #expect(composition.console.rowLayout(for: host.id)
-                    == AgentRowLayoutSnapshot.decode(DemoScreenshotFixture.sidebarLayoutData)?.layout)
+                    == AgentRowLayout(rows: [
+                        [.init(.workspace)], [.init(.terminalTitleStripped)], [.init(.directory)],
+                    ]))
             }
             let row = try #require(composition.console.agents.first)
             let card = AgentCardPresentation(agent: row, layout: composition.console.rowLayout(for: row.hostID))
             #expect(card.headline == row.workspaceLabel)
             #expect(card.additionalRows.first == row.agent.terminalTitleStripped)
-            composition.console.setHosts([])
         }
     }
 #endif

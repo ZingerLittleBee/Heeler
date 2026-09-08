@@ -39,32 +39,56 @@ struct SidebarConsoleIntegrationTests {
         defer { window.isHidden = true }
         controller.view.layoutIfNeeded()
         let initial = AgentCardPresentation(agent: agent, layout: store.rowLayout(for: agent.hostID)).headline
-        let mountDeadline = ContinuousClock.now + .seconds(2)
-        while !Self.labels(in: controller.view).contains(where: { $0.contains(initial) }),
-              ContinuousClock.now < mountDeadline {
-            try await Task.sleep(for: .milliseconds(10))
-            controller.view.layoutIfNeeded()
+        let expected = Array(repeating: agent.agent.displayName, count: 3).joined(separator: " · ")
+        // iOS 26 does not materialize hosted SwiftUI accessibility without an
+        // assistive client. AX rendering is verified only on iOS 27+; every
+        // runtime still mounts the Console and checks Save and Observation.
+        if #available(iOS 27, *) {
+            let mountDeadline = ContinuousClock.now + .seconds(2)
+            while !Self.labels(in: controller.view).contains(where: { $0.contains(initial) }),
+                  ContinuousClock.now < mountDeadline {
+                try await Task.sleep(for: .milliseconds(10))
+                controller.view.layoutIfNeeded()
+            }
+            try #require(Self.labels(in: controller.view).contains(where: { $0.contains(initial) }))
+            try #require(!Self.labels(in: controller.view).contains(where: { $0.contains(expected) }))
         }
-        try #require(Self.labels(in: controller.view).contains(where: { $0.contains(initial) }))
+        let agents = store.agents
+        let snapshots = store.sidebarSnapshots.states
+        let rowInvalidated = Mutex(false)
+        // Track the same production read used by ConsoleView's AgentCardView.
+        let beforeSave = withObservationTracking {
+            AgentCardPresentation(agent: agent, layout: store.rowLayout(for: agent.hostID)).headline
+        } onChange: {
+            rowInvalidated.withLock { $0 = true }
+        }
+        try #require(beforeSave != expected)
         let editor = AgentListFieldsEditor(
             layouts: store.rowLayouts, snapshots: store.sidebarSnapshots, fetch: { _ in nil })
-        let expected = Array(repeating: agent.agent.displayName, count: 3).joined(separator: " · ")
-        try #require(!Self.labels(in: controller.view).contains(where: { $0.contains(expected) }))
         editor.beginEditing()
         editor.update(agent.hostID) {
             $0 = AgentRowLayout(rows: [[.init(.agent), .init(.agent), .init(.agent)]])
         }
+        #expect(!rowInvalidated.withLock { $0 })
+        #expect(AgentCardPresentation(agent: agent, layout: store.rowLayout(for: agent.hostID)).headline == beforeSave)
         editor.save()
         #expect(!editor.isEditing)
+        #expect(editor.errorMessage == nil)
+        #expect(rowInvalidated.withLock { $0 }, "Save must invalidate the Console's observed row layout")
         #expect(AgentCardPresentation(agent: agent, layout: store.rowLayout(for: agent.hostID)).headline == expected)
-        let updateDeadline = ContinuousClock.now + .seconds(2)
-        while !Self.labels(in: controller.view).contains(where: { $0.contains(expected) }),
-              ContinuousClock.now < updateDeadline {
-            try await Task.sleep(for: .milliseconds(10))
-            controller.view.layoutIfNeeded()
+        // No suspension or refresh separates the draft, Save, and these reads.
+        #expect(store.agents == agents)
+        #expect(store.sidebarSnapshots.states == snapshots)
+        if #available(iOS 27, *) {
+            let updateDeadline = ContinuousClock.now + .seconds(2)
+            while !Self.labels(in: controller.view).contains(where: { $0.contains(expected) }),
+                  ContinuousClock.now < updateDeadline {
+                try await Task.sleep(for: .milliseconds(10))
+                controller.view.layoutIfNeeded()
+            }
+            #expect(Self.labels(in: controller.view).contains(where: { $0.contains(expected) }),
+                    "Saved headline must reach the mounted Console without a snapshot refresh")
         }
-        #expect(Self.labels(in: controller.view).contains(where: { $0.contains(expected) }),
-                "Saved headline must reach the mounted Console without a snapshot refresh")
     }
 
     private static func labels(in root: UIView) -> [String] {
