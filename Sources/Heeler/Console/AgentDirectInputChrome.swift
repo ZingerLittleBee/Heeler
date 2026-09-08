@@ -34,7 +34,7 @@ struct AgentDirectInputChromeContext {
 
 /// Compact Agent-detail chrome for Direct Input: status, a persistent shortcut
 /// row, and the Agent switcher.
-/// Bottom-up order: system keyboard, switcher, shortcut row, status, links. The
+/// Bottom-up order: system keyboard, switcher, shortcut row, status. The
 /// shortcut row sits immediately above the persistent Agent strip. App content
 /// rather than a keyboard accessory, so UIKit's candidate-row teardown cannot
 /// tear it down or leave a hollow gap.
@@ -60,19 +60,6 @@ struct AgentDirectInputChrome: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
-                if let links = AgentComposerLinkPresentation(
-                    count: interactions.actions.attachLinkCount)
-                {
-                    HStack {
-                        Spacer(minLength: 0)
-                        AgentAttachLinksButton(
-                            links: links,
-                            action: interactions.actions.showAttachLinks)
-                    }
-                    .padding(.horizontal, 16)
-                    .environment(\.colorScheme, presentation.chromeColorScheme)
-                }
-
                 AgentDetailStatusChrome(
                     status: presentation.status,
                     hostTelemetry: presentation.hostTelemetry,

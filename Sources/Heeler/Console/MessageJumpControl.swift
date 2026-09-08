@@ -160,12 +160,13 @@ enum MessageJumpPlacement {
     static func frame(
         terminalSize: CGSize,
         chromeSize: CGSize,
-        trailingPadding: CGFloat = Self.trailingPadding
+        trailingPadding: CGFloat = Self.trailingPadding,
+        minimumBottomInset: CGFloat = 0
     ) -> CGRect? {
         guard terminalSize.width > 0, terminalSize.height > 0 else { return nil }
         guard chromeSize.width > 0, chromeSize.height > 0 else { return nil }
 
-        let inset = bottomInset(terminalHeight: terminalSize.height)
+        let inset = max(bottomInset(terminalHeight: terminalSize.height), minimumBottomInset)
         guard sitsAboveBottomBand(
             terminalHeight: terminalSize.height,
             controlHeight: chromeSize.height,
@@ -467,7 +468,7 @@ struct MessageJumpControlView: View {
                 }
             }
             .background {
-                chromeBackground(in: Capsule())
+                TerminalFloatingControlBackground(palette: palette)
             }
             .transition(.scale(scale: 0.85).combined(with: .opacity))
             .foregroundStyle(palette.foreground)
@@ -475,21 +476,6 @@ struct MessageJumpControlView: View {
             .disabled(!availability.isEnabled)
             .accessibilityElement(children: .contain)
         }
-    }
-
-    /// The terminal's background lifted toward its foreground, with a hairline
-    /// and a soft shadow so the pill separates from the grid it floats over.
-    /// Lifted further than the status dialog's card: a 44-point pill over
-    /// dense text needs more contrast than a full-width card does. Slightly
-    /// translucent so the rows underneath stay readable through it.
-    private func chromeBackground<S: InsettableShape>(in shape: S) -> some View {
-        shape
-            .fill(palette.background.mix(with: palette.foreground, by: 0.16).opacity(0.82))
-            .overlay {
-                shape.strokeBorder(palette.foreground.opacity(0.2), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.3), radius: 12, y: 4)
-            .allowsHitTesting(false)
     }
 
     private func jumpButton(
@@ -516,7 +502,7 @@ struct MessageJumpControlView: View {
                 }
             }
         }
-        .buttonStyle(MessageJumpButtonStyle(highlight: palette.foreground))
+        .buttonStyle(TerminalFloatingButtonStyle(highlight: palette.foreground))
         .hoverEffect(.highlight)
         .accessibilityLabel(label)
         .accessibilityHint(hint)
@@ -527,7 +513,7 @@ struct MessageJumpControlView: View {
 /// behind the glyph. The whole 44-point square is the hit area; the fill
 /// stays inset so the pill's edge reads as one shape. There is no disabled
 /// look — a button that cannot act is hidden, not greyed.
-private struct MessageJumpButtonStyle: ButtonStyle {
+struct TerminalFloatingButtonStyle: ButtonStyle {
     let highlight: Color
 
     func makeBody(configuration: Configuration) -> some View {
@@ -546,12 +532,28 @@ private struct MessageJumpButtonStyle: ButtonStyle {
     }
 }
 
+/// Shared translucent terminal-theme surface for floating controls.
+struct TerminalFloatingControlBackground: View {
+    let palette: TerminalThemePalette
+
+    var body: some View {
+        Capsule()
+            .fill(palette.background.mix(with: palette.foreground, by: 0.16).opacity(0.82))
+            .overlay {
+                Capsule().strokeBorder(palette.foreground.opacity(0.2), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.3), radius: 12, y: 4)
+            .allowsHitTesting(false)
+    }
+}
+
 /// Positions the jump chrome above the alternate-screen bottom band and
 /// passes every non-button hit through to the terminal. `refs #268`.
 struct MessageJumpChromeOverlay: UIViewRepresentable {
     var availability: MessageJumpControlAvailability
     var runningDirection: TerminalMessageJumpController.Direction?
     var palette: TerminalThemePalette = .system
+    var minimumBottomInset: CGFloat = 0
     var onOlder: () -> Void
     var onNewer: () -> Void
 
@@ -561,6 +563,7 @@ struct MessageJumpChromeOverlay: UIViewRepresentable {
 
     func makeUIView(context: Context) -> MessageJumpChromeContainer {
         let container = MessageJumpChromeContainer()
+        container.minimumBottomInset = minimumBottomInset
         let host = UIHostingController(rootView: makeRoot())
         host.view.backgroundColor = .clear
         host.view.isOpaque = false
@@ -571,6 +574,7 @@ struct MessageJumpChromeOverlay: UIViewRepresentable {
 
     func updateUIView(_ container: MessageJumpChromeContainer, context: Context) {
         context.coordinator.host?.rootView = makeRoot()
+        container.minimumBottomInset = minimumBottomInset
         container.setNeedsLayout()
     }
 
@@ -593,6 +597,8 @@ struct MessageJumpChromeOverlay: UIViewRepresentable {
 /// returns `nil` so the terminal's pan recognizer sees the drag.
 final class MessageJumpChromeContainer: UIView {
     private weak var hostedView: UIView?
+    /// Keeps lower floating actions clear without consuming terminal space.
+    var minimumBottomInset: CGFloat = 0
     /// Test seam: last frame applied to the hosted chrome, or `nil` when hidden.
     private(set) var hostedFrame: CGRect?
 
@@ -631,7 +637,8 @@ final class MessageJumpChromeContainer: UIView {
 
         if let frame = MessageJumpPlacement.frame(
             terminalSize: bounds.size,
-            chromeSize: chromeSize)
+            chromeSize: chromeSize,
+            minimumBottomInset: minimumBottomInset)
         {
             hostedView.isHidden = false
             hostedView.frame = frame
