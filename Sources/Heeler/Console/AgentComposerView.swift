@@ -74,6 +74,29 @@ struct AgentComposerLinkPresentation: Equatable {
     }
 }
 
+/// Shared link action for Composer and the chrome shown while it is hidden.
+struct AgentAttachLinksButton: View {
+    let links: AgentComposerLinkPresentation
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 3) {
+                Image(systemName: "link")
+                Text("\(links.count)")
+                    .monospacedDigit()
+            }
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .tint(Color(uiColor: .label).opacity(0.72))
+        .font(.footnote.weight(.semibold))
+        .frame(minWidth: 44, minHeight: 44)
+        .accessibilityLabel("Attach Links")
+        .accessibilityValue(links.accessibilityValue)
+    }
+}
+
 /// The native, local-first input surface beneath the live terminal. Drafting
 /// stays on device; Send emits one `agent.prompt` request except when Agent
 /// Status is Blocked, in which case it inserts the draft into Attach without
@@ -213,22 +236,8 @@ struct AgentComposerView: View {
                             .accessibilityHint("Opens Agent actions")
 
                             if let links = linkPresentation {
-                                Button {
-                                    actions.showAttachLinks()
-                                } label: {
-                                    HStack(spacing: 3) {
-                                        Image(systemName: "link")
-                                        Text("\(links.count)")
-                                            .monospacedDigit()
-                                    }
-                                }
-                                .buttonStyle(.bordered)
-                                .buttonBorderShape(.capsule)
-                                .tint(secondaryActionTint)
-                                .font(.footnote.weight(.semibold))
-                                .frame(minHeight: 44)
-                                .accessibilityLabel("Attach Links")
-                                .accessibilityValue(links.accessibilityValue)
+                                AgentAttachLinksButton(
+                                    links: links, action: actions.showAttachLinks)
                             }
 
                             Spacer(minLength: 0)

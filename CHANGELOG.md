@@ -23,6 +23,9 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Terminal links remain accessible above the latency indicator when Composer
+  is hidden.
+
 - Secondary field styles now render correctly in Agent cards and previews. (#281)
 
 - Agent List Fields groups each Host's controls in one card, wraps field
