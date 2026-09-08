@@ -163,6 +163,52 @@ struct AgentLayoutTokensEditingTests {
         #expect(editor.underlyingSource(for: hostID) == .saved)
     }
 
+    @Test func rowSlotsOfferHeelerFieldsEverywhereAndPadEmptySlotsOnlyWhenAFieldLands() throws {
+        #expect(AgentRowSlot.forRow(0) == .herdr && AgentRowSlot.forRow(1) == .herdr)
+        #expect(AgentRowSlot.forRow(2) == .heeler && AgentRowSlot.forRow(3) == nil)
+        #expect(AgentRowSlot.slotRows([]) == [[], [], []])
+        #expect(AgentLayoutTokensEditing.availableHeelerFields(in: []) == [.host, .status, .directory])
+        #expect(AgentLayoutTokensEditing.availableHeelerFields(in: [.init(.host)]) == [.status, .directory])
+        #expect(!AgentRowToken.herdrBuiltins.contains(.stateIcon))
+        #expect(
+            AgentLayoutTokensEditing.navigationSubtitle(hostName: "Studio Mac", rowIndex: 0)
+                == "Studio Mac · herdr row")
+        #expect(AgentLayoutTokensEditing.navigationSubtitle(hostName: "", rowIndex: 2) == "Heeler row")
+        #expect(AgentLayoutTokensEditing.navigationSubtitle(hostName: "", rowIndex: 3).isEmpty)
+        #expect(AgentLayoutTokensEditing.addFieldFooter(rowIndex: 0).contains("herdr"))
+        #expect(AgentLayoutTokensEditing.addFieldFooter(rowIndex: 0).contains("Heeler fields are welcome"))
+        #expect(AgentLayoutTokensEditing.addFieldFooter(rowIndex: 2).contains("Heeler's row"))
+        #expect(AgentLayoutTokensEditing.addFieldFooter(rowIndex: 3).isEmpty)
+
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let (editor, layouts) = makeEditor(defaults: defaults)
+        let hostID = UUID()
+        let twoRows: [AgentRow] = [[.init(.workspace)], [.init(.agent)]]
+        try layouts.setLayout(AgentRowLayout(rows: twoRows), for: hostID)
+
+        // A rejected change on the empty Row 3 leaves the layout at two rows.
+        #expect(
+            AgentLayoutTokensEditing.delete(
+                IndexSet(integer: 0), editor: editor, hostID: hostID, rowIndex: 2) == false)
+        #expect(layouts.hostLayouts[hostID]?.rows == twoRows)
+        // Heeler fields land in a herdr row as well as in Row 3.
+        #expect(AgentLayoutTokensEditing.add(.host, editor: editor, hostID: hostID, rowIndex: 0))
+        #expect(AgentLayoutTokensEditing.add(.directory, editor: editor, hostID: hostID, rowIndex: 2))
+        #expect(layouts.hostLayouts[hostID]?.rows
+            == [[.init(.workspace), .init(.host)], [.init(.agent)], [.init(.directory)]])
+        #expect(AgentLayoutTokensEditing.row(2, in: editor.layout(for: hostID).rows) == [.init(.directory)])
+        #expect(AgentLayoutTokensEditing.row(3, in: editor.layout(for: hostID).rows).isEmpty)
+
+        // An empty layout reaches Row 3 through two empty rows.
+        try layouts.setLayout(AgentRowLayout(rows: []), for: hostID)
+        #expect(AgentLayoutTokensEditing.add(.host, editor: editor, hostID: hostID, rowIndex: 2))
+        #expect(layouts.hostLayouts[hostID]?.rows == [[], [], [.init(.host)]])
+        #expect(AgentLayoutTokensEditing.add(.host, editor: editor, hostID: hostID, rowIndex: 3) == false)
+        #expect(layouts.hostLayouts[hostID]?.rows == [[], [], [.init(.host)]])
+        #expect(!editor.isEditing)
+    }
+
     @Test func staleIndexAndCapacityGuardsWriteNothing() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }

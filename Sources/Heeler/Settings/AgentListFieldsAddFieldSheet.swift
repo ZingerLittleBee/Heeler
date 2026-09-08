@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// Picks one field for a row slot and saves it at once. Row 1 and Row 2 offer
-/// herdr fields; Row 3 also offers Heeler fields. Custom `$` plugin fields
-/// are available in every row.
+/// Picks one field for a row slot and saves it at once. Every row offers
+/// herdr fields, Heeler fields, and custom `$` plugin fields.
 struct AgentListFieldsAddFieldSheet: View {
     let editor: AgentListFieldsEditor
     let destination: AgentListFieldsEditorDestination
@@ -12,7 +11,6 @@ struct AgentListFieldsAddFieldSheet: View {
 
     private var rows: [AgentRow] { editor.layout(for: destination.hostID).rows }
     private var tokens: AgentRow { AgentLayoutTokensEditing.row(destination.rowIndex, in: rows) }
-    private var slot: AgentRowSlot? { AgentRowSlot.forRow(destination.rowIndex) }
     private var canAddField: Bool {
         editor.syncStates[destination.hostID] != .syncing
             && AgentLayoutTokensEditing.canAddField(to: tokens, rows: rows, rowIndex: destination.rowIndex)
@@ -21,7 +19,7 @@ struct AgentListFieldsAddFieldSheet: View {
         AgentLayoutTokensEditing.availableBuiltins(in: tokens, from: AgentRowToken.herdrBuiltins)
     }
     private var availableHeelerFields: [AgentRowToken] {
-        AgentLayoutTokensEditing.availableHeelerFields(in: tokens, rowIndex: destination.rowIndex)
+        AgentLayoutTokensEditing.availableHeelerFields(in: tokens)
     }
     private var subtitle: String {
         AgentLayoutTokensEditing.navigationSubtitle(hostName: hostName, rowIndex: destination.rowIndex)
@@ -54,14 +52,6 @@ struct AgentListFieldsAddFieldSheet: View {
                             Text("Heeler fields")
                         } footer: {
                             Text("These fields exist only in Heeler.")
-                        }
-                    } else if slot?.allowsHeelerFields == false {
-                        Section {
-                            Text(AgentLayoutTokensEditing.heelerFieldsUnavailable)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        } header: {
-                            Text("Heeler fields")
                         }
                     }
                 }

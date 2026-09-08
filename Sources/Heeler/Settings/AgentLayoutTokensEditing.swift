@@ -41,9 +41,6 @@ enum AgentLayoutTokenStyle: Equatable {
 /// an empty slot beyond the layout's last row pads the layout with empty
 /// rows up to it.
 enum AgentLayoutTokensEditing {
-    static let heelerFieldsUnavailable =
-        "Row 1 and Row 2 follow herdr. Add Heeler fields in Row 3."
-
     /// True for every Console row slot, whether or not `rows` reaches it.
     static func isValidRow(_ rowIndex: Int, in rows: [AgentRow]) -> Bool {
         AgentRowSlot.forRow(rowIndex) != nil
@@ -65,17 +62,16 @@ enum AgentLayoutTokensEditing {
     static func addFieldFooter(rowIndex: Int) -> String {
         switch AgentRowSlot.forRow(rowIndex) {
         case .herdr?:
-            "This row follows herdr, so it offers herdr fields; Sync from plugin refills it."
+            "This row starts from herdr's sidebar fields; Sync from plugin refills it. Heeler fields are welcome here too."
         case .heeler?:
-            "This is Heeler's row: it can mix herdr and Heeler fields."
+            "This is Heeler's row. Sync from plugin fills it only when herdr defines a third row."
         case nil:
             ""
         }
     }
 
-    static func availableHeelerFields(in row: AgentRow, rowIndex: Int) -> [AgentRowToken] {
-        guard AgentRowSlot.forRow(rowIndex)?.allowsHeelerFields == true else { return [] }
-        return availableBuiltins(in: row, from: AgentRowToken.heelerBuiltins)
+    static func availableHeelerFields(in row: AgentRow) -> [AgentRowToken] {
+        availableBuiltins(in: row, from: AgentRowToken.heelerBuiltins)
     }
 
     static func description(for token: AgentRowToken) -> String {

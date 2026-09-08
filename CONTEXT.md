@@ -101,8 +101,9 @@ _Avoid_: card template, sidebar format
 
 **Row Slot**:
 One of the three fixed positions in an Agent Row Layout. Row 1 and Row 2 are
-herdr rows: they carry herdr's sidebar fields and are what Sync from plugin
-refills. Row 3 is Heeler's row: it may mix herdr fields with the Heeler-only
+herdr rows: they start from herdr's sidebar fields and are what Sync from
+plugin refills. Row 3 is Heeler's row, which Sync fills only when herdr
+defines a third row. Every slot accepts herdr fields and the Heeler-only
 fields herdr does not define (Host name, Agent Status as text, working
 directory). Slots are never added, moved, or deleted; an empty slot renders
 nothing.

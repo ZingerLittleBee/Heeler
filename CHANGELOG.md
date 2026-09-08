@@ -13,10 +13,10 @@ Entries reference the issue that motivated them.
   Agent order, including terminal titles and plugin fields. Settings now offers
   Agent List Fields: a Host list that opens a Host detail with a Console
   preview, three fixed rows edited in place, and Sync from plugin. Row 1 and
-  Row 2 carry herdr's sidebar fields and are what
-  Sync from plugin refills; Row 3 is Heeler's own row and the only place the
-  Heeler-only fields (Host name, Agent Status, working directory) can be
-  added. Tapping a field offers its style, moving it, and removing it; the +
+  Row 2 start from herdr's sidebar fields and are what Sync from plugin
+  refills; Row 3 is Heeler's own row. Any row can take herdr fields, the
+  Heeler-only fields (Host name, Agent Status, working directory), and custom
+  plugin fields. Tapping a field offers its style, moving it, and removing it; the +
   chip at the end of a row adds one; every change saves right away. Agent
   cards show at most those three rows, `state_icon` is neither offered nor
   rendered as a field because the status badge always ends Row 1, every Agent

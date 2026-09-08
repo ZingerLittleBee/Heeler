@@ -219,9 +219,9 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
     }
 }
 
-/// Which of the three Console row slots a row index names. Rows 1 and 2 hold
-/// herdr's sidebar fields, which Sync from plugin refills; Row 3 is Heeler's
-/// own row and may also use Heeler fields.
+/// Which of the three Console row slots a row index names. Rows 1 and 2
+/// start from herdr's sidebar fields, which Sync from plugin refills; Row 3
+/// is Heeler's own row. Every slot accepts herdr and Heeler fields alike.
 enum AgentRowSlot: Equatable, Sendable {
     case herdr, heeler
 
@@ -240,9 +240,6 @@ enum AgentRowSlot: Equatable, Sendable {
         case .heeler: "Heeler"
         }
     }
-
-    /// Heeler-only fields (Host name, Agent Status, directory) belong in Row 3.
-    var allowsHeelerFields: Bool { self == .heeler }
 
     /// `rows` padded with empty rows to the Console's slot count.
     static func slotRows(_ rows: [AgentRow]) -> [AgentRow] {

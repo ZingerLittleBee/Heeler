@@ -90,7 +90,7 @@ struct AgentListFieldsSettingsView: View {
 }
 
 /// One Host's rows as three fixed slots, edited in place. Row 1 and Row 2
-/// carry herdr's sidebar fields; Row 3 is Heeler's own row. Slots are never
+/// start from herdr's sidebar fields; Row 3 is Heeler's own row. Slots are never
 /// added, moved, or deleted, so a row's index is its identity everywhere on
 /// this screen. Every change saves immediately through the editor. Every
 /// Agent on the Host shares these rows; there are no per-kind overrides.
@@ -540,8 +540,8 @@ enum AgentListFieldsCopy {
     static let syncConfirmation =
         "This Host's rows are replaced with its herdr fields and saved right away."
     static let rowSlots =
-        "Row 1 and Row 2 follow herdr's sidebar fields; Sync from plugin refills them. "
-        + "Row 3 is Heeler's row and can also use Heeler fields. "
+        "Row 1 and Row 2 start from herdr's sidebar fields; Sync from plugin refills them. "
+        + "Row 3 is Heeler's own row. Any row can use herdr and Heeler fields. "
         + "The status badge always ends Row 1."
 }
 
