@@ -23,8 +23,9 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
-- Terminal links remain accessible through a floating button above the latency
-  indicator when Composer is hidden, without reducing the terminal's height.
+- Hiding Composer keeps terminal links available through a floating link button
+  above the latency indicator. It matches the scroll controls, opens the same
+  link list, and does not reduce the terminal's height.
 
 - Secondary field styles now render correctly in Agent cards and previews. (#281)
 
