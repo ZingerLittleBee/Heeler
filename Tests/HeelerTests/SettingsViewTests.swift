@@ -73,24 +73,6 @@ struct AgentListFieldsSettingsTests {
         #expect(AgentListFieldsSourceCaption.text(editor.underlyingSource(for: hostID)) == "Your fields")
     }
 
-    @Test func savedBannerAppearsOnlyAfterASuccessfulDirtySave() {
-        #expect(
-            AgentListFieldsSessionStatus.current(
-                isEditing: true, isDirty: true, didSucceedSave: false) == .unsaved)
-        #expect(
-            AgentListFieldsSessionStatus.current(
-                isEditing: true, isDirty: false, didSucceedSave: false) == nil)
-        #expect(
-            AgentListFieldsSessionStatus.current(
-                isEditing: false, isDirty: false, didSucceedSave: true) == .saved)
-        #expect(
-            AgentListFieldsSessionStatus.current(
-                isEditing: false, isDirty: false, didSucceedSave: false) == nil)
-        #expect(
-            AgentListFieldsSessionStatus.current(
-                isEditing: true, isDirty: true, didSucceedSave: true) == .unsaved)
-    }
-
     @Test func settingsCopyStaysReadOnlyOutsideEditAndNamesNoStatusOnlyRow() {
         #expect(!AgentListFieldsCopy.rowSlots.localizedCaseInsensitiveContains("status only"))
         #expect(AgentListFieldsCopy.noHosts == "Add a Host to configure its Agent rows.")
@@ -99,8 +81,9 @@ struct AgentListFieldsSettingsTests {
                 == "No overrides. Every Agent uses the rows above.")
         #expect(!AgentListFieldsCopy.listIntro.localizedCaseInsensitiveContains("edit"))
         #expect(AgentListFieldsCopy.listIntro.contains("Open a Host"))
-        #expect(AgentListFieldsCopy.detailIntro == "Tap Edit to change this Host's rows.")
-        #expect(AgentListFieldsCopy.editingIntro.contains("this Host's draft"))
+        #expect(!AgentListFieldsCopy.detailIntro.localizedCaseInsensitiveContains("tap edit"))
+        #expect(AgentListFieldsCopy.detailIntro.contains("save right away"))
+        #expect(AgentListFieldsCopy.syncConfirmation.contains("saved right away"))
     }
 
     @Test func hostHeaderLabelOmitsUnsavedLanguage() {

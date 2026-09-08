@@ -89,18 +89,18 @@ struct AgentListFieldsSettingsView: View {
     }
 }
 
-/// One Host's rows as three fixed slots. Row 1 and Row 2 carry herdr's
-/// sidebar fields; Row 3 is Heeler's own row. Slots are never added, moved,
-/// or deleted, so a row's index is its identity everywhere on this screen.
+/// One Host's rows as three fixed slots, edited in place. Row 1 and Row 2
+/// carry herdr's sidebar fields; Row 3 is Heeler's own row. Slots are never
+/// added, moved, or deleted, so a row's index is its identity everywhere on
+/// this screen. Every change saves immediately through the editor.
 struct AgentListFieldsHostDetailView: View {
     let host: Host
     let console: ConsoleStore
     let hosts: [Host]
     var editor: AgentListFieldsEditor
     @State private var expandedOverrides: Set<String> = []
-    @State private var openedRow: AgentListFieldsEditorDestination?
-    @State private var confirmingDiscard = false
-    @State private var didSucceedSave = false
+    @State private var addingField: AgentListFieldsEditorDestination?
+    @State private var confirmingSync = false
     @State private var showingOther = false
     @State private var otherKind = ""
     @State private var otherHint: String?
@@ -112,40 +112,33 @@ struct AgentListFieldsHostDetailView: View {
             .frame(maxWidth: .infinity)
             .navigationTitle(host.displayName)
             .navigationBarTitleDisplayMode(.large)
-            .navigationBarBackButtonHidden(editor.isEditing)
-            .toolbar { toolbarContent }
             .confirmationDialog(
-                "Discard changes?", isPresented: $confirmingDiscard, titleVisibility: .visible
+                "Replace rows with herdr's fields?", isPresented: $confirmingSync, titleVisibility: .visible
             ) {
-                Button("Discard Changes", role: .destructive) { discardDrafts() }
-                Button("Keep Editing", role: .cancel) {}
+                Button("Replace Rows") { Task { await sync() } }
+                Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Your unsaved rows will be lost.")
+                Text(AgentListFieldsCopy.syncConfirmation)
             }
-            .onChange(of: overrideKinds) { _, kinds in
-                // A removed override closes its pushed Field Editor.
-                if let openedRow, let kind = openedRow.kind, !kinds.contains(kind) {
-                    self.openedRow = nil
-                }
+            .sheet(item: $addingField) { destination in
+                AgentListFieldsAddFieldSheet(
+                    editor: editor, destination: destination, hostName: host.displayName)
             }
     }
 
     private var layout: AgentRowLayout { editor.layout(for: host.id) }
     private var overrideKinds: [String] { layout.rowsByAgent.keys.sorted() }
+    private var isSyncing: Bool { editor.syncStates[host.id] == .syncing }
 
     private var hostList: some View {
-        let isSyncing = editor.syncStates[host.id] == .syncing
-        let bottom = hostBottom
-        return List {
+        List {
             sessionSection
             Section {
                 previewRow
-                hostRows(isSyncing: isSyncing)
+                hostRows
                 slotsNote
-                overridesBlock(isSyncing: isSyncing, bottom: bottom)
-                if editor.isEditing {
-                    syncRow(isSyncing: isSyncing)
-                }
+                overridesBlock
+                syncRow
             }
             .listSectionSeparator(.hidden)
             AgentLayoutErrorView(editor: editor)
@@ -156,61 +149,18 @@ struct AgentListFieldsHostDetailView: View {
         .scrollContentBackground(.hidden)
         .background(Color(uiColor: .systemGroupedBackground))
         .listRowSeparatorTint(Color(uiColor: .separator))
-        .environment(\.editMode, fieldsEditMode)
-        .navigationDestination(item: $openedRow) { destination in
-            AgentLayoutTokensView(
-                editor: editor, hostID: destination.hostID, kind: destination.kind,
-                rowIndex: destination.rowIndex, hostName: hostName(for: destination.hostID))
-        }
         .refreshable {
             await console.refreshSidebarLayouts()
-        }
-    }
-
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        if editor.isEditing {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") {
-                    if editor.hasUnsavedChanges { confirmingDiscard = true } else { discardDrafts() }
-                }
-                .accessibilityIdentifier("settings.agentList.cancel")
-            }
-            ToolbarItem(placement: .confirmationAction) {
-                Button {
-                    saveDrafts()
-                } label: {
-                    Label("Save changes", systemImage: "checkmark")
-                }
-                .labelStyle(.iconOnly)
-                .accessibilityLabel("Save changes")
-                .accessibilityIdentifier("settings.agentList.save")
-            }
-        } else {
-            ToolbarItem(placement: .primaryAction) {
-                Button("Edit") { beginDrafts() }
-                    .accessibilityIdentifier("settings.agentList.edit")
-            }
         }
     }
 
     private var sessionSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 8) {
-                if let status = AgentListFieldsSessionStatus.current(
-                    isEditing: editor.isEditing, isDirty: editor.hasUnsavedChanges,
-                    didSucceedSave: didSucceedSave)
-                {
-                    Text(status.title)
-                        .font(.footnote)
-                        .foregroundStyle(status == .unsaved ? Color.orange : Color.green)
-                }
                 Text(verbatim: AgentListFieldsSourceCaption.text(editor.underlyingSource(for: host.id)))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                Text(editor.isEditing
-                    ? AgentListFieldsCopy.editingIntro
-                    : AgentListFieldsCopy.detailIntro)
+                Text(AgentListFieldsCopy.detailIntro)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -220,20 +170,6 @@ struct AgentListFieldsHostDetailView: View {
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
         .listSectionSeparator(.hidden)
-        .moveDisabled(true)
-        .deleteDisabled(true)
-    }
-
-    /// Edit mode only drives the native minus on Agent overrides; row slots
-    /// are fixed and never expose reorder or delete affordances.
-    private var fieldsEditMode: Binding<EditMode> {
-        Binding<EditMode>.constant(editor.isEditing ? EditMode.active : EditMode.inactive)
-    }
-
-    private enum HostBottom: Equatable {
-        case noOverrides
-        case override(String)
-        case sync
     }
 
     private enum NestedBottom: Equatable {
@@ -241,24 +177,8 @@ struct AgentListFieldsHostDetailView: View {
         case row(Int)
     }
 
-    private var hostBottom: HostBottom {
-        if editor.isEditing { return .sync }
-        if let last = overrideKinds.last { return .override(last) }
-        return .noOverrides
-    }
-
     private func nestedBottom(for kind: String) -> NestedBottom {
         expandedOverrides.contains(kind) ? .row(AgentRowLayout.maximumConsoleRows - 1) : .header
-    }
-
-    private func isHostLastOverrideHeader(bottom: HostBottom, kind: String) -> Bool {
-        guard case .override(let last) = bottom, last == kind else { return false }
-        return nestedBottom(for: kind) == .header
-    }
-
-    private func isHostLastOverrideRow(bottom: HostBottom, kind: String, index: Int) -> Bool {
-        guard case .override(let last) = bottom, last == kind else { return false }
-        return nestedBottom(for: kind) == .row(index)
     }
 
     private var previewRow: some View {
@@ -273,25 +193,24 @@ struct AgentListFieldsHostDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .listRowInsets(AgentListFieldsChrome.previewInsets)
         .agentListHostSurface(isFirst: true, isLast: false, fill: AgentListFieldsChrome.previewFill)
-        .moveDisabled(true)
-        .deleteDisabled(true)
         .allowsHitTesting(false)
     }
 
     @ViewBuilder
-    private func hostRows(isSyncing: Bool) -> some View {
+    private var hostRows: some View {
         let slotRows = AgentRowSlot.slotRows(layout.rows)
         ForEach(Array(slotRows.enumerated()), id: \.offset) { index, row in
-            AgentListFieldsRowButton(
-                index: index, row: row, canOpen: !isSyncing,
-                onOpen: {
-                    openedRow = AgentListFieldsEditorDestination(
+            AgentListFieldsRowEditor(
+                index: index, row: row, isEnabled: !isSyncing,
+                onAdd: {
+                    addingField = AgentListFieldsEditorDestination(
                         hostID: host.id, kind: nil, rowIndex: index)
-                })
+                },
+                onToggleStyle: { fieldIndex in toggleStyle(fieldIndex, kind: nil, rowIndex: index) },
+                onShift: { fieldIndex, delta in shift(fieldIndex, by: delta, kind: nil, rowIndex: index) },
+                onRemove: { fieldIndex in remove(fieldIndex, kind: nil, rowIndex: index) })
                 .listRowInsets(AgentListFieldsChrome.rowInsets)
                 .agentListHostSurface(isFirst: false, isLast: false)
-                .moveDisabled(true)
-                .deleteDisabled(true)
         }
     }
 
@@ -304,51 +223,36 @@ struct AgentListFieldsHostDetailView: View {
             .listRowInsets(AgentListFieldsChrome.slotsNoteInsets)
             .listRowSeparator(.hidden)
             .agentListHostSurface(isFirst: false, isLast: false)
-            .moveDisabled(true)
-            .deleteDisabled(true)
     }
 
     @ViewBuilder
-    private func overridesBlock(isSyncing: Bool, bottom: HostBottom) -> some View {
+    private var overridesBlock: some View {
         let kinds = overrideKinds
-        let canMutate = editor.isEditing && !isSyncing
         if kinds.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 overridesHeadingLabel
                 Text(AgentListFieldsCopy.noOverrides)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                if editor.isEditing {
-                    addOverrideControls(host, canMutate: canMutate)
-                }
+                addOverrideControls(host)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .listRowInsets(AgentListFieldsChrome.overridesChromeInsets)
             .listRowSeparator(.hidden)
-            .agentListHostSurface(isFirst: false, isLast: bottom == .noOverrides)
-            .moveDisabled(true)
-            .deleteDisabled(true)
+            .agentListHostSurface(isFirst: false, isLast: false)
         } else {
             overridesHeadingLabel
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .listRowInsets(AgentListFieldsChrome.overridesHeadingInsets)
                 .listRowSeparator(.hidden)
                 .agentListHostSurface(isFirst: false, isLast: false)
-                .moveDisabled(true)
-                .deleteDisabled(true)
             ForEach(kinds, id: \.self) { kind in
-                overrideGroup(kind: kind, isSyncing: isSyncing, canMutate: canMutate, bottom: bottom)
+                overrideGroup(kind: kind)
             }
-            .onDelete(perform: canMutate
-                ? { offsets in removeOverrides(at: offsets) } : nil)
-            if editor.isEditing {
-                addOverrideControls(host, canMutate: canMutate)
-                    .listRowInsets(AgentListFieldsChrome.overridesActionInsets)
-                    .listRowSeparator(.hidden)
-                    .agentListHostSurface(isFirst: false, isLast: false)
-                    .moveDisabled(true)
-                    .deleteDisabled(true)
-            }
+            addOverrideControls(host)
+                .listRowInsets(AgentListFieldsChrome.overridesActionInsets)
+                .listRowSeparator(.hidden)
+                .agentListHostSurface(isFirst: false, isLast: false)
         }
     }
 
@@ -360,13 +264,11 @@ struct AgentListFieldsHostDetailView: View {
             .textCase(.uppercase)
     }
 
-    private func overrideGroup(
-        kind: String, isSyncing: Bool, canMutate: Bool, bottom: HostBottom
-    ) -> some View {
+    private func overrideGroup(kind: String) -> some View {
         let expanded = expandedOverrides.contains(kind)
         let nestedEnd = nestedBottom(for: kind)
         return DisclosureGroup(isExpanded: overrideExpansion(kind)) {
-            overrideRowsContent(kind: kind, isSyncing: isSyncing, bottom: bottom)
+            overrideRowsContent(kind: kind)
         } label: {
             overrideLabel(kind, expanded: expanded)
         }
@@ -374,43 +276,49 @@ struct AgentListFieldsHostDetailView: View {
         .listRowInsets(AgentListFieldsChrome.overrideHeaderInsets)
         .listRowBackground(
             AgentListFieldsOverrideRowChrome(
-                hostIsLast: isHostLastOverrideHeader(bottom: bottom, kind: kind),
+                hostIsLast: false,
                 nestedIsFirst: true,
                 nestedIsLast: nestedEnd == .header,
                 fill: AgentListFieldsChrome.nestedFill,
                 showChildDivider: nestedEnd != .header))
         .listRowSeparator(.hidden)
-        .moveDisabled(true)
-        .deleteDisabled(!canMutate)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                removeOverride(kind: kind)
+            } label: {
+                Label("Remove", systemImage: "trash")
+            }
+            .disabled(isSyncing)
+        }
         .accessibilityAction(named: "Remove Override") {
-            guard canMutate else { return }
             removeOverride(kind: kind)
         }
     }
 
     @ViewBuilder
-    private func overrideRowsContent(kind: String, isSyncing: Bool, bottom: HostBottom) -> some View {
+    private func overrideRowsContent(kind: String) -> some View {
         let slotRows = AgentRowSlot.slotRows(layout.rowsByAgent[kind] ?? [])
         let nestedEnd = nestedBottom(for: kind)
         ForEach(Array(slotRows.enumerated()), id: \.offset) { index, row in
             let isNestedLast = nestedEnd == .row(index)
-            AgentListFieldsRowButton(
-                index: index, row: row, compact: true, canOpen: !isSyncing,
-                onOpen: {
-                    openedRow = AgentListFieldsEditorDestination(
+            AgentListFieldsRowEditor(
+                index: index, row: row, compact: true, isEnabled: !isSyncing,
+                onAdd: {
+                    addingField = AgentListFieldsEditorDestination(
                         hostID: host.id, kind: kind, rowIndex: index)
-                })
+                },
+                onToggleStyle: { fieldIndex in toggleStyle(fieldIndex, kind: kind, rowIndex: index) },
+                onShift: { fieldIndex, delta in shift(fieldIndex, by: delta, kind: kind, rowIndex: index) },
+                onRemove: { fieldIndex in remove(fieldIndex, kind: kind, rowIndex: index) })
                 .listRowInsets(AgentListFieldsChrome.overrideRowInsets)
                 .listRowBackground(
                     AgentListFieldsOverrideRowChrome(
-                        hostIsLast: isHostLastOverrideRow(bottom: bottom, kind: kind, index: index),
+                        hostIsLast: false,
                         nestedIsFirst: false,
                         nestedIsLast: isNestedLast,
                         fill: AgentListFieldsChrome.cardFill,
                         showChildDivider: !isNestedLast))
                 .listRowSeparator(.hidden)
-                .moveDisabled(true)
-                .deleteDisabled(true)
         }
     }
 
@@ -433,10 +341,10 @@ struct AgentListFieldsHostDetailView: View {
     }
 
     @ViewBuilder
-    private func addOverrideControls(_ host: Host, canMutate: Bool) -> some View {
+    private func addOverrideControls(_ host: Host) -> some View {
         let existing = overrideKinds
         if showingOther {
-            otherOverrideForm(canMutate: canMutate)
+            otherOverrideForm
         } else {
             Menu {
                 ForEach(
@@ -450,22 +358,22 @@ struct AgentListFieldsHostDetailView: View {
             } label: {
                 Label("Add Override", systemImage: "plus")
             }
-            .disabled(!canMutate)
+            .disabled(isSyncing)
         }
     }
 
     @ViewBuilder
-    private func otherOverrideForm(canMutate: Bool) -> some View {
+    private var otherOverrideForm: some View {
         VStack(alignment: .leading, spacing: 7) {
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: 7) {
-                    otherKindField(canMutate: canMutate)
-                    otherKindActions(canMutate: canMutate)
+                    otherKindField
+                    otherKindActions
                 }
             } else {
                 HStack(alignment: .center, spacing: 8) {
-                    otherKindField(canMutate: canMutate)
-                    otherKindActions(canMutate: canMutate)
+                    otherKindField
+                    otherKindActions
                 }
             }
             if let otherHint {
@@ -476,7 +384,7 @@ struct AgentListFieldsHostDetailView: View {
         }
     }
 
-    private func otherKindField(canMutate: Bool) -> some View {
+    private var otherKindField: some View {
         TextField(
             "Agent kind",
             text: Binding(
@@ -488,7 +396,7 @@ struct AgentListFieldsHostDetailView: View {
             .font(.system(.subheadline, design: .monospaced))
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
-            .disabled(!canMutate)
+            .disabled(isSyncing)
             .padding(.horizontal, 10)
             .padding(.vertical, 9)
             .background(
@@ -500,17 +408,17 @@ struct AgentListFieldsHostDetailView: View {
             }
     }
 
-    private func otherKindActions(canMutate: Bool) -> some View {
+    private var otherKindActions: some View {
         HStack(spacing: 12) {
             Button("Add") { submitOtherOverride() }
-                .disabled(!canMutate)
+                .disabled(isSyncing)
             Button("Cancel") { hideOther() }
         }
         .buttonStyle(.borderless)
     }
 
     @ViewBuilder
-    private func syncRow(isSyncing: Bool) -> some View {
+    private var syncRow: some View {
         let identifier = "settings.agentList.sync.\(host.id.uuidString)"
         let tipIdentifier = "settings.agentList.syncTip.\(host.id.uuidString)"
         VStack(alignment: .leading, spacing: 8) {
@@ -528,31 +436,26 @@ struct AgentListFieldsHostDetailView: View {
                     }
                     .accessibilityIdentifier(identifier)
                 case .filled(let message):
-                    Text(verbatim: message)
-                        .font(.footnote)
-                        .foregroundStyle(AgentListFieldsChrome.success)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier(tipIdentifier)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(verbatim: message)
+                            .font(.footnote)
+                            .foregroundStyle(AgentListFieldsChrome.success)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier(tipIdentifier)
+                        syncButton(identifier: identifier)
+                    }
                 case .failed(let message):
                     VStack(alignment: .leading, spacing: 5) {
                         Text(verbatim: message)
                             .font(.footnote)
                             .foregroundStyle(.red)
                             .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier(tipIdentifier)
                         Button("Retry") { Task { await sync() } }
-                            .disabled(isSyncing)
+                            .buttonStyle(.borderless)
                     }
-                    .accessibilityIdentifier(tipIdentifier)
                 case nil:
-                    Button {
-                        Task { await sync() }
-                    } label: {
-                        Label("Sync from plugin", systemImage: "arrow.triangle.2.circlepath")
-                            .foregroundStyle(.tint)
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(isSyncing)
-                    .accessibilityIdentifier(identifier)
+                    syncButton(identifier: identifier)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -560,43 +463,49 @@ struct AgentListFieldsHostDetailView: View {
         .listRowInsets(AgentListFieldsChrome.syncInsets)
         .listRowSeparator(.hidden)
         .agentListHostSurface(isFirst: false, isLast: true)
-        .moveDisabled(true)
-        .deleteDisabled(true)
     }
 
-    private func beginDrafts() {
-        didSucceedSave = false
-        editor.beginEditing()
-    }
-
-    private func discardDrafts() {
-        editor.cancel()
-        didSucceedSave = false
-        hideOther()
-    }
-
-    private func saveDrafts() {
-        let dirty = editor.hasUnsavedChanges
-        editor.save()
-        guard !editor.isEditing else { return }
-        didSucceedSave = dirty
-        hideOther()
+    private func syncButton(identifier: String) -> some View {
+        Button {
+            confirmingSync = true
+        } label: {
+            Label("Sync from plugin", systemImage: "arrow.triangle.2.circlepath")
+                .foregroundStyle(.tint)
+        }
+        .buttonStyle(.borderless)
+        .disabled(isSyncing)
+        .accessibilityIdentifier(identifier)
     }
 
     private func sync() async {
-        await editor.syncFromPlugin(host.id, hostName: host.displayName)
-        if case .filled = editor.syncStates[host.id] {
-            hideOther()
-        }
+        hideOther()
+        await editor.replaceWithPluginFields(host.id, hostName: host.displayName)
+    }
+
+    private func toggleStyle(_ fieldIndex: Int, kind: String?, rowIndex: Int) {
+        let row = AgentLayoutTokensEditing.row(rowIndex, in: AgentLayoutTokensEditing.rows(in: layout, kind: kind))
+        guard row.indices.contains(fieldIndex) else { return }
+        let next = AgentLayoutTokensEditing.style(of: row[fieldIndex]).toggled
+        AgentLayoutTokensEditing.setStyle(
+            next, at: fieldIndex, editor: editor, hostID: host.id, kind: kind, rowIndex: rowIndex)
+    }
+
+    private func shift(_ fieldIndex: Int, by delta: Int, kind: String?, rowIndex: Int) {
+        AgentLayoutTokensEditing.shift(
+            fieldIndex, by: delta, editor: editor, hostID: host.id, kind: kind, rowIndex: rowIndex)
+    }
+
+    private func remove(_ fieldIndex: Int, kind: String?, rowIndex: Int) {
+        AgentLayoutTokensEditing.delete(
+            IndexSet(integer: fieldIndex), editor: editor, hostID: host.id, kind: kind, rowIndex: rowIndex)
     }
 
     private func addOverride(_ kind: String) {
-        guard editor.isEditing, editor.syncStates[host.id] != .syncing else { return }
+        guard !isSyncing else { return }
         let proposal = AgentListFieldsOverrideProposal.validate(kind, existing: overrideKinds)
         guard case .valid(let resolved) = proposal else { return }
         let seed = layout.rows
-        editor.update(host.id) { $0.rowsByAgent[resolved] = seed }
-        guard editor.errorMessage == nil else { return }
+        guard editor.commit(host.id, { $0.rowsByAgent[resolved] = seed }) else { return }
         expandedOverrides.insert(resolved)
         hideOther()
     }
@@ -610,30 +519,15 @@ struct AgentListFieldsHostDetailView: View {
         }
     }
 
-    private func removeOverrides(at offsets: IndexSet) {
-        guard editor.isEditing, editor.syncStates[host.id] != .syncing else { return }
-        let kinds = overrideKinds
-        let removed = offsets.compactMap { kinds.indices.contains($0) ? kinds[$0] : nil }
-        editor.update(host.id) { layout in
-            for kind in removed { layout.rowsByAgent[kind] = nil }
-        }
-        guard editor.errorMessage == nil else { return }
-        expandedOverrides.subtract(removed)
-    }
-
     private func removeOverride(kind: String) {
-        guard editor.isEditing, editor.syncStates[host.id] != .syncing else { return }
-        editor.update(host.id) { $0.rowsByAgent[kind] = nil }
-        guard editor.errorMessage == nil else { return }
+        guard !isSyncing else { return }
+        if let addingField, addingField.kind == kind { self.addingField = nil }
+        guard editor.commit(host.id, { $0.rowsByAgent[kind] = nil }) else { return }
         expandedOverrides.remove(kind)
     }
 
     private func seenKinds(on hostID: Host.ID) -> [String] {
         console.agents.filter { $0.hostID == hostID }.map(\.agent.kind)
-    }
-
-    private func hostName(for hostID: Host.ID) -> String {
-        hosts.first { $0.id == hostID }?.displayName ?? ""
     }
 
     private func hideOther() {
@@ -651,9 +545,8 @@ struct AgentListFieldsHostDetailView: View {
     }
 }
 
-/// Emits the override header and its rows as sibling list rows so the native
-/// minus stays on the header, while the header uses a down/up chevron instead
-/// of the system disclosure accessory.
+/// Emits the override header and its rows as sibling list rows, while the
+/// header uses a down/up chevron instead of the system disclosure accessory.
 private struct AgentListFieldsOverrideDisclosureStyle: DisclosureGroupStyle {
     func makeBody(configuration: Configuration) -> some View {
         Button {
@@ -668,76 +561,103 @@ private struct AgentListFieldsOverrideDisclosureStyle: DisclosureGroupStyle {
     }
 }
 
-/// One fixed row slot: title and its field chips. Provenance is explained
-/// once by the note under the rows, not tagged per row.
-private struct AgentListFieldsRowButton: View {
+/// One fixed row slot edited in place: the title, one menu chip per field,
+/// and a trailing add chip. Provenance is explained once by the note under
+/// the rows, not tagged per row.
+private struct AgentListFieldsRowEditor: View {
     let index: Int
     let row: AgentRow
     var compact: Bool = false
-    let canOpen: Bool
-    let onOpen: () -> Void
+    let isEnabled: Bool
+    let onAdd: () -> Void
+    let onToggleStyle: (Int) -> Void
+    let onShift: (Int, Int) -> Void
+    let onRemove: (Int) -> Void
 
-    private var slot: AgentRowSlot? { AgentRowSlot.forRow(index) }
+    private var canAdd: Bool { isEnabled && row.count < AgentRowLayout.maximumTokensPerRow }
 
     var body: some View {
-        Button {
-            guard canOpen else { return }
-            onOpen()
-        } label: {
-            HStack(alignment: .center, spacing: 8) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Row \(index + 1)")
-                        .font(compact ? .subheadline : .callout)
-                        .foregroundStyle(.primary)
-                    AgentListFieldsChipRow(row: row, slot: slot)
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Row \(index + 1)")
+                .font(compact ? .subheadline : .callout)
+                .foregroundStyle(.primary)
+            AgentListFieldsChipWrap(spacing: 5) {
+                ForEach(Array(row.enumerated()), id: \.offset) { offset, token in
+                    fieldChip(token, at: offset)
                 }
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                addChip
             }
-            .contentShape(Rectangle())
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(AgentListFieldsRowLabel.accessibilityLabel(index: index, row: row))
+    }
+
+    private func fieldChip(_ token: AgentRowStyledToken, at offset: Int) -> some View {
+        let style = AgentLayoutTokensEditing.style(of: token)
+        return Menu {
+            Button(style.toggleActionTitle) { onToggleStyle(offset) }
+            if offset > 0 {
+                Button("Move Left", systemImage: "arrow.left") { onShift(offset, -1) }
+            }
+            if offset < row.count - 1 {
+                Button("Move Right", systemImage: "arrow.right") { onShift(offset, 1) }
+            }
+            Button("Remove", systemImage: "trash", role: .destructive) { onRemove(offset) }
+        } label: {
+            AgentListFieldsChip(text: token.token.rawValue, isSecondary: style == .secondary)
+        }
+        .disabled(!isEnabled)
+        .accessibilityLabel(
+            AgentListFieldsChipLabel.text(index: offset, count: row.count, token: token))
+        .accessibilityHint("Opens field actions")
+    }
+
+    private var addChip: some View {
+        Button(action: onAdd) {
+            HStack(spacing: 3) {
+                Image(systemName: "plus")
+                    .font(.system(.caption2, design: .rounded).weight(.semibold))
+                if row.isEmpty {
+                    Text("Add field")
+                        .font(.caption2)
+                }
+            }
+            .foregroundStyle(.tint)
+            .padding(.horizontal, row.isEmpty ? 7 : 6)
+            .padding(.vertical, 2)
+            .frame(minHeight: AgentListFieldsChrome.chipMinHeight)
+            .background(
+                RoundedRectangle(cornerRadius: AgentListFieldsChrome.chipRadius, style: .continuous)
+                    .strokeBorder(
+                        AgentListFieldsChrome.chipStroke, style: StrokeStyle(lineWidth: 0.5, dash: [3, 2])))
         }
         .buttonStyle(.plain)
-        .disabled(!canOpen)
-        .accessibilityLabel(AgentListFieldsRowLabel.accessibilityLabel(index: index, row: row))
+        .disabled(!canAdd)
+        .accessibilityLabel("Add field to Row \(index + 1)")
     }
 }
 
-private struct AgentListFieldsChipRow: View {
-    let row: AgentRow
-    let slot: AgentRowSlot?
+private struct AgentListFieldsChip: View {
+    let text: String
+    let isSecondary: Bool
 
     var body: some View {
-        if row.isEmpty {
-            Text(AgentListFieldsRowLabel.emptyText(slot: slot))
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        } else {
-            AgentListFieldsChipWrap(spacing: 5) {
-                ForEach(Array(row.enumerated()), id: \.offset) { offset, token in
-                    Text(verbatim: token.token.rawValue)
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(AgentListFieldsChrome.chipInk)
-                        .lineLimit(nil)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            RoundedRectangle(
-                                cornerRadius: AgentListFieldsChrome.chipRadius, style: .continuous)
-                                .fill(AgentListFieldsChrome.chipFill))
-                        .overlay {
-                            RoundedRectangle(
-                                cornerRadius: AgentListFieldsChrome.chipRadius, style: .continuous)
-                                .strokeBorder(AgentListFieldsChrome.chipStroke, lineWidth: 0.5)
-                        }
-                        .accessibilityLabel(
-                            AgentListFieldsChipLabel.text(
-                                index: offset, count: row.count, token: token))
-                }
+        Text(verbatim: text)
+            .font(.system(.caption2, design: .monospaced))
+            .foregroundStyle(isSecondary ? AgentListFieldsChrome.chipInkSecondary : AgentListFieldsChrome.chipInk)
+            .lineLimit(nil)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .frame(minHeight: AgentListFieldsChrome.chipMinHeight)
+            .background(
+                RoundedRectangle(cornerRadius: AgentListFieldsChrome.chipRadius, style: .continuous)
+                    .fill(AgentListFieldsChrome.chipFill))
+            .overlay {
+                RoundedRectangle(cornerRadius: AgentListFieldsChrome.chipRadius, style: .continuous)
+                    .strokeBorder(AgentListFieldsChrome.chipStroke, lineWidth: 0.5)
             }
-        }
     }
 }
 
@@ -919,6 +839,8 @@ private enum AgentListFieldsChrome {
     static let chipFill = Color(uiColor: .tertiarySystemFill)
     static let chipStroke = Color(uiColor: .separator)
     static let chipInk = Color.primary.opacity(0.75)
+    static let chipInkSecondary = Color.primary.opacity(0.42)
+    static let chipMinHeight: CGFloat = 20
     static let success = Color(uiColor: .systemGreen)
     static let headerInsets = EdgeInsets(top: 13, leading: 16, bottom: 13, trailing: 16)
     static let previewInsets = EdgeInsets(top: 12, leading: 16, bottom: 14, trailing: 16)
@@ -932,7 +854,7 @@ private enum AgentListFieldsChrome {
     static let syncInsets = EdgeInsets(top: 8, leading: 16, bottom: 14, trailing: 16)
 }
 
-/// Identity for a Field Editor push. Row slots are fixed, so the slot index
+/// Identity for an Add Field sheet. Row slots are fixed, so the slot index
 /// is stable across every edit and sync; an override is named by its kind.
 struct AgentListFieldsEditorDestination: Hashable, Identifiable {
     let hostID: Host.ID
@@ -953,22 +875,6 @@ enum AgentListFieldsSourceCaption {
         case .missing: "No herdr fields snapshot"
         case .unavailable: "herdr fields unavailable"
         }
-    }
-}
-
-enum AgentListFieldsSessionStatus: Equatable {
-    case unsaved, saved
-
-    var title: String {
-        switch self {
-        case .unsaved: "Unsaved changes"
-        case .saved: "Saved"
-        }
-    }
-
-    static func current(isEditing: Bool, isDirty: Bool, didSucceedSave: Bool) -> Self? {
-        if isEditing { return isDirty ? .unsaved : nil }
-        return didSucceedSave ? .saved : nil
     }
 }
 
@@ -1020,9 +926,10 @@ enum AgentListFieldsCopy {
     static let noOverrides = "No overrides. Every Agent uses the rows above."
     static let listIntro =
         "Each Host decides which fields appear on its Agent rows in Console. Open a Host to change them."
-    static let detailIntro = "Tap Edit to change this Host's rows."
-    static let editingIntro =
-        "Changes stay in a draft until you tap the checkmark. Sync fills this Host's draft without saving it."
+    static let detailIntro =
+        "Tap a field to change its style, move it, or remove it. Tap + to add one. Changes save right away."
+    static let syncConfirmation =
+        "Rows and Agent overrides are replaced with this Host's herdr fields and saved right away."
     static let rowSlots =
         "Row 1 and Row 2 follow herdr's sidebar fields; Sync from plugin refills them. "
         + "Row 3 is Heeler's row and can also use Heeler fields. "

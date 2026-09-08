@@ -103,24 +103,24 @@ struct AgentListFieldsEditorTests {
 
         editor.beginEditing()
         await editor.syncFromPlugin(offlineID)
-        #expect(editor.syncStates[offlineID] == .failed("You're offline. Draft unchanged."))
+        #expect(editor.syncStates[offlineID] == .failed("You're offline. Rows unchanged."))
         #expect(editor.drafts[offlineID] == nil)
 
         await transport.setSidebarLayoutReadFailure(NotificationRegistrationError.pluginNotInstalled)
         await editor.syncFromPlugin(hostID, hostName: "Studio Mac")
-        #expect(editor.syncStates[hostID] == .failed("Couldn't reach Studio Mac. Draft unchanged."))
+        #expect(editor.syncStates[hostID] == .failed("Couldn't reach Studio Mac. Rows unchanged."))
         #expect(editor.layout(for: hostID) == saved && editor.drafts[hostID] == nil)
 
         await transport.setSidebarLayoutReadFailure(nil)
         await editor.syncFromPlugin(hostID)
         #expect(editor.syncStates[hostID] == .filled(
-            "This Host has no plugin fields snapshot, so Heeler's fallback fields were filled. Unsaved until you save."))
+            "This Host has no plugin fields snapshot, so Heeler's fallback fields were used."))
         #expect(editor.layout(for: hostID) == .consoleDefault)
 
         await transport.setSidebarLayout(pluginData)
         await editor.syncFromPlugin(hostID)
         let plugin = try #require(AgentRowLayoutSnapshot.decode(pluginData)).layout
-        #expect(editor.syncStates[hostID] == .filled("Filled from plugin. Unsaved until you save."))
+        #expect(editor.syncStates[hostID] == .filled("Replaced with plugin fields."))
         #expect(editor.layout(for: hostID) == plugin)
         #expect(layouts.hostLayouts[hostID] == saved)
         editor.save()
@@ -312,23 +312,23 @@ struct AgentListFieldsEditorTests {
         fetchState.value = .unavailable
         await editor.syncFromPlugin(hostID, hostName: "Studio Mac")
         #expect(editor.layout(for: hostID) == prior)
-        #expect(editor.syncStates[hostID] == .failed("Couldn't reach Studio Mac. Draft unchanged."))
+        #expect(editor.syncStates[hostID] == .failed("Couldn't reach Studio Mac. Rows unchanged."))
 
         fetchState.value = nil
         await editor.syncFromPlugin(hostID)
         #expect(editor.layout(for: hostID) == prior)
-        #expect(editor.syncStates[hostID] == .failed("You're offline. Draft unchanged."))
+        #expect(editor.syncStates[hostID] == .failed("You're offline. Rows unchanged."))
 
         fetchState.value = .loading
         await editor.syncFromPlugin(hostID)
         #expect(editor.layout(for: hostID) == prior)
-        #expect(editor.syncStates[hostID] == .failed("You're offline. Draft unchanged."))
+        #expect(editor.syncStates[hostID] == .failed("You're offline. Rows unchanged."))
 
         fetchState.value = .loaded(nil)
         await editor.syncFromPlugin(hostID)
         #expect(editor.layout(for: hostID) == .consoleDefault)
         #expect(editor.syncStates[hostID] == .filled(
-            "This Host has no plugin fields snapshot, so Heeler's fallback fields were filled. Unsaved until you save."))
+            "This Host has no plugin fields snapshot, so Heeler's fallback fields were used."))
 
         fetchState.value = .loaded(snapshot)
         await editor.syncFromPlugin(hostID)
@@ -339,12 +339,12 @@ struct AgentListFieldsEditorTests {
         #expect(editor.layout(for: hostID).rows[0][0].bold == false)
         #expect(editor.layout(for: hostID).rows[0][0].dim == true)
         #expect(editor.syncStates[hostID] == .filled(
-            "herdr reported a configuration problem, so its default fields were filled. Unsaved until you save."))
+            "herdr reported a configuration problem, so its default fields were used."))
         #expect(layouts.hostLayouts.isEmpty)
 
         fetchState.value = .loaded(AgentRowLayoutSnapshot(layout: snapshot.layout))
         await editor.syncFromPlugin(hostID)
-        #expect(editor.syncStates[hostID] == .filled("Filled from plugin. Unsaved until you save."))
+        #expect(editor.syncStates[hostID] == .filled("Replaced with plugin fields."))
         #expect(editor.layout(for: hostID) == snapshot.layout)
         #expect(layouts.hostLayouts.isEmpty)
     }
@@ -386,4 +386,99 @@ struct AgentListFieldsEditorTests {
             self.value = value
         }
     }
+}
+
+@MainActor
+@Suite("Agent List Fields inline editing")
+struct AgentListFieldsInlineEditingTests {
+    private func makeDefaults() throws -> (UserDefaults, cleanup: () -> Void) {
+        let suite = "fields-inline-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        return (defaults, { defaults.removePersistentDomain(forName: suite) })
+    }
+
+    @Test func commitValidatesAndPersistsOneChangeWithoutLeavingASessionOpen() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let layouts = AgentRowLayoutStore(defaults: defaults)
+        let editor = AgentListFieldsEditor(
+            layouts: layouts, snapshots: HerdrSidebarSnapshotStore(), fetch: { _ in nil })
+        let hostID = UUID()
+
+        // A no-op never writes a plugin-following Host as its own layout.
+        #expect(editor.commit(hostID) { _ in } == false)
+        #expect(layouts.hostLayouts[hostID] == nil && !editor.isEditing)
+
+        #expect(editor.commit(hostID) { $0.rows = [[.init(.pane)]] })
+        #expect(layouts.hostLayouts[hostID] == AgentRowLayout(rows: [[.init(.pane)]]))
+        #expect(!editor.isEditing && editor.drafts.isEmpty && editor.errorMessage == nil)
+        #expect(editor.layout(for: hostID) == AgentRowLayout(rows: [[.init(.pane)]]))
+
+        // An invalid change writes nothing, ends the session, and keeps its message.
+        #expect(editor.commit(hostID) { $0.rows = Array(repeating: [], count: 4) } == false)
+        #expect(layouts.hostLayouts[hostID] == AgentRowLayout(rows: [[.init(.pane)]]))
+        #expect(!editor.isEditing)
+        #expect(editor.errorMessage?.contains("at most 3 rows") == true)
+
+        // The next good change clears the message.
+        #expect(editor.commit(hostID) { $0.rowsByAgent["claude"] = [[.init(.tab)]] })
+        #expect(editor.errorMessage == nil)
+        #expect(layouts.hostLayouts[hostID]?.rowsByAgent["claude"] == [[.init(.tab)]])
+
+        // Inside an open draft session the change joins the session and saves it.
+        editor.beginEditing()
+        editor.setRows([[.init(.agent)]], kind: nil, for: hostID)
+        #expect(editor.commit(hostID) { $0.rowsByAgent["claude"] = nil })
+        #expect(!editor.isEditing)
+        #expect(layouts.hostLayouts[hostID] == AgentRowLayout(rows: [[.init(.agent)]]))
+    }
+
+    @Test func replaceWithPluginFieldsSavesAtOnceAndKeepsItsMessage() async throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let layouts = AgentRowLayoutStore(defaults: defaults)
+        let hostID = UUID()
+        let saved = AgentRowLayout(rows: [[.init(.pane)]], rowGap: 1)
+        try layouts.setLayout(saved, for: hostID)
+        let snapshot = AgentRowLayoutSnapshot(layout: AgentRowLayout(
+            rows: [[.init(.stateIcon), .init(.workspace)], [.init(.agent)], [.init(.tab)], [.init(.pane)]],
+            rowGap: 2, rowsByAgent: ["claude": [[.init(.terminalTitle)]]]))
+        let state = AsyncFetchState()
+
+        let editor = AgentListFieldsEditor(
+            layouts: layouts, snapshots: HerdrSidebarSnapshotStore(),
+            fetch: { _ in await state.value })
+
+        await state.set(.unavailable)
+        await editor.replaceWithPluginFields(hostID, hostName: "Studio Mac")
+        #expect(editor.syncStates[hostID] == .failed("Couldn't reach Studio Mac. Rows unchanged."))
+        #expect(layouts.hostLayouts[hostID] == saved && !editor.isEditing)
+
+        await state.set(nil)
+        await editor.replaceWithPluginFields(hostID)
+        #expect(editor.syncStates[hostID] == .failed("You're offline. Rows unchanged."))
+        #expect(layouts.hostLayouts[hostID] == saved && !editor.isEditing)
+
+        await state.set(.loaded(snapshot))
+        await editor.replaceWithPluginFields(hostID)
+        #expect(editor.syncStates[hostID] == .filled("Replaced with plugin fields."))
+        #expect(layouts.hostLayouts[hostID] == snapshot.layout.normalizedForConsole())
+        #expect(layouts.hostLayouts[hostID]?.rows.count == 3)
+        #expect(!editor.isEditing && editor.drafts.isEmpty)
+
+        // The next inline change clears the sync message.
+        #expect(editor.commit(hostID) { $0.rows = [[.init(.agent)]] })
+        #expect(editor.syncStates[hostID] == nil)
+
+        await state.set(.loaded(nil))
+        await editor.replaceWithPluginFields(hostID)
+        #expect(layouts.hostLayouts[hostID] == .consoleDefault)
+        #expect(editor.syncStates[hostID] == .filled(
+            "This Host has no plugin fields snapshot, so Heeler's fallback fields were used."))
+    }
+}
+
+private actor AsyncFetchState {
+    var value: HerdrSidebarSnapshotStore.HostState?
+    func set(_ next: HerdrSidebarSnapshotStore.HostState?) { value = next }
 }

@@ -1,10 +1,12 @@
 import Foundation
 import Observation
 
-/// Read-only until Edit. Every change, including a Sync from plugin fill,
-/// lands in a per-Host draft that only Save persists; Cancel and leaving the
-/// screen discard drafts. Hosts without a saved choice show their herdr
-/// fields, or Heeler's fallback when the plugin has none.
+/// Per-Host layout edits. The draft session (`beginEditing`, `update`,
+/// `save`, `cancel`) validates a batch and writes it in one step; `commit`
+/// and `replaceWithPluginFields` wrap that session around a single change so
+/// the Agent List Fields screen can edit inline and persist immediately.
+/// Hosts without a saved choice show their herdr fields, or Heeler's
+/// fallback when the plugin has none.
 @MainActor
 @Observable
 final class AgentListFieldsEditor {
@@ -129,11 +131,54 @@ final class AgentListFieldsEditor {
         }
     }
 
+    /// One inline change, validated and persisted at once. A no-op or invalid
+    /// change writes nothing and returns false; an invalid one keeps its
+    /// message in `errorMessage`. Inside an open draft session the change
+    /// joins that session and `save` writes every dirty Host.
+    @discardableResult
+    func commit(_ hostID: Host.ID, _ edit: (inout AgentRowLayout) -> Void) -> Bool {
+        let wasEditing = isEditing
+        if !wasEditing { beginEditing() }
+        let before = layout(for: hostID)
+        update(hostID, edit)
+        if errorMessage != nil {
+            if !wasEditing { discardKeepingError() }
+            return false
+        }
+        guard layout(for: hostID) != before else {
+            if !wasEditing { cancel() }
+            return false
+        }
+        save()
+        return !isEditing
+    }
+
+    /// Inline Sync from plugin: fills the Host from its plugin snapshot and
+    /// saves immediately. The resulting `syncStates` entry survives the save
+    /// so the screen can report what happened; the next change clears it.
+    func replaceWithPluginFields(_ hostID: Host.ID, hostName: String = "this Host") async {
+        let wasEditing = isEditing
+        if !wasEditing { beginEditing() }
+        await syncFromPlugin(hostID, hostName: hostName)
+        guard let state = syncStates[hostID] else {
+            // Dropped: a later edit or an ended session won.
+            if !wasEditing && isEditing { cancel() }
+            return
+        }
+        if case .filled = state {
+            save()
+        } else if !wasEditing {
+            cancel()
+        }
+        syncStates[hostID] = state
+    }
+
     /// Fetches the Host's plugin snapshot and fills its draft, including
     /// overrides, row gap, and token styles, reduced to the Console's three
     /// row slots. A missing snapshot fills Heeler's fallback fields; a failed
     /// read leaves the draft unchanged. Results are dropped once editing
-    /// ended or the draft was edited since.
+    /// ended or the draft was edited since. Draft-only; the screen uses
+    /// `replaceWithPluginFields`.
     ///
     /// `hostName` is only interpolated into the unread-snapshot failure copy.
     /// The one-argument call stays valid and uses "this Host".
@@ -149,18 +194,24 @@ final class AgentListFieldsEditor {
         case .loaded(let snapshot?):
             drafts[hostID] = snapshot.layout.normalizedForConsole()
             syncStates[hostID] = .filled(snapshot.diagnostics.isEmpty
-                ? "Filled from plugin. Unsaved until you save."
-                : "herdr reported a configuration problem, so its default fields were filled. Unsaved until you save.")
+                ? "Replaced with plugin fields."
+                : "herdr reported a configuration problem, so its default fields were used.")
         case .loaded(nil):
             drafts[hostID] = .consoleDefault
             syncStates[hostID] = .filled(
-                "This Host has no plugin fields snapshot, so Heeler's fallback fields were filled. Unsaved until you save.")
+                "This Host has no plugin fields snapshot, so Heeler's fallback fields were used.")
         case .unavailable:
-            syncStates[hostID] = .failed("Couldn't reach \(hostName). Draft unchanged.")
+            syncStates[hostID] = .failed("Couldn't reach \(hostName). Rows unchanged.")
         case .loading, nil:
-            syncStates[hostID] = .failed("You're offline. Draft unchanged.")
+            syncStates[hostID] = .failed("You're offline. Rows unchanged.")
         }
         errorMessage = nil
+    }
+
+    private func discardKeepingError() {
+        let message = errorMessage
+        cancel()
+        errorMessage = message
     }
 
     private func clearDrafts() {
