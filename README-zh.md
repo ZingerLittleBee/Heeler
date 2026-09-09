@@ -16,7 +16,7 @@
 <a href="https://trendshift.io/repositories/151670?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-151670" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/151670/daily?language=Swift" alt="ZingerLittleBee%2FHeeler | Trendshift" width="250" height="55"/></a>
 
 [![加入 beta](https://img.shields.io/badge/TestFlight-加入_beta-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://testflight.apple.com/join/aXSxRn4r)
-[![下载](https://img.shields.io/badge/App_Store-下载-000000?style=for-the-badge&logo=apple&logoColor=white)](https://apps.apple.com/us/app/heeler-for-herdr/id6797263135)
+<a href="https://apps.apple.com/us/app/heeler-for-herdr/id6797263135"><img src="https://toolbox.marketingtools.apple.com/api/badges/download-on-the-app-store/black/zh-cn?size=250x83" alt="在 App Store 下载" height="40" /></a>
 
 [English](./README.md) | 简体中文
 
