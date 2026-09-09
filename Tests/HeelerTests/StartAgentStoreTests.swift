@@ -735,6 +735,60 @@ struct StartAgentStoreTests {
         #expect(store.state == .failed("herdr rejected the command: no such workspace"))
     }
 
+    @Test func submitKeepsGenericCopyWhenNonMuseKindIsUnsupported() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        recorder.error = HerdrAPIError(
+            code: "unsupported_agent_kind",
+            message: "unsupported interactive agent kind qwen")
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            agentKinds: { _ in [.qwen] },
+            recorder: recorder)
+        await store.discoverAgents()
+
+        await store.submit()
+
+        #expect(
+            store.state
+                == .failed("herdr rejected the command: unsupported interactive agent kind qwen"))
+        #expect(recorder.params.map(\.kind) == ["qwen"])
+    }
+
+    @Test func unsupportedMuseAdviceUsesTheCapturedLaunchKind() async throws {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let gate = ScriptedTransportCallGate()
+        recorder.gate = gate
+        recorder.error = HerdrAPIError(
+            code: "unsupported_agent_kind",
+            message: "unsupported interactive agent kind muse")
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            agentKinds: { _ in [.muse, .qwen] },
+            recorder: recorder)
+        await store.discoverAgents()
+        #expect(store.selectedAgentKind == .muse)
+
+        let submit = Task { await store.submit() }
+        try await waitUntil("the Muse start should reach the gate") {
+            await gate.entryCount == 1
+        }
+        store.selectedAgentKind = .qwen
+        await gate.open()
+        await submit.value
+
+        #expect(
+            store.state
+                == .failed(
+                    "herdr rejected the command: unsupported interactive agent kind muse. "
+                        + "Update herdr on this Host to v0.9.0 or later for Muse support, "
+                        + "or choose another supported Agent."))
+        #expect(recorder.params.map(\.kind) == ["muse"])
+    }
+
     /// Launching from an agent's own screen: Host, workspace, and directory
     /// come from that agent, so the new tab lands beside it rather than at
     /// the workspace root.
