@@ -25,7 +25,6 @@ struct ConsoleView: View {
     @State private var hostSheet: HostSheet?
     @State private var isStartingAgent = false
     @State private var isShowingSettings = false
-    @State private var paneToRename: ConsoleAgent?
     /// Hosts whose Host-detail Reconnect request is in flight, including the
     /// 1.2 s visual-feedback hold after `retryHost` returns. Distinct from
     /// `EventsSessionStatus.reconnecting`.
@@ -147,17 +146,6 @@ struct ConsoleView: View {
         } detail: {
             detail
         }
-        .sheet(item: $paneToRename) { agent in
-            RenameSheetView(
-                title: "Rename Pane",
-                store: RenameStore(
-                    subject: .pane,
-                    currentValue: agent.agent.paneTitle ?? agent.paneLabel ?? ""
-                ) { [console] label in
-                    try await console.renamePane(
-                        agent.agent.paneID, label: label, on: agent.hostID)
-                })
-        }
         .modifier(
             ConsoleStatusBarModifier(
                 scheme: terminalStatusBarColorScheme
@@ -184,7 +172,6 @@ struct ConsoleView: View {
             hostSheet = nil
             isStartingAgent = false
             isShowingSettings = false
-            paneToRename = nil
         }
         // A filter pointing at a removed Host would silently hide every
         // Agent; fall back to All Hosts instead.
@@ -404,9 +391,6 @@ struct ConsoleView: View {
         .contextMenu {
             let pinned = console.pins.isPinned(
                 hostID: agent.hostID, paneID: agent.agent.paneID)
-            Button("Rename Pane", systemImage: "pencil") {
-                paneToRename = agent
-            }
             Button(
                 pinned ? "Unpin" : "Pin",
                 systemImage: pinned ? "pin.slash" : "pin"

@@ -7,11 +7,11 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
-### Added
+### Changed
 
-- Agent list rows can rename a Pane using herdr's server-side pane title, so
-  the title is shared with other clients and can be shown with the `pane`
-  Agent List Field. (#290)
+- Agent cards show a server-provided Pane title before the Agent name on the
+  second row, making Agents in the same Workspace easier to distinguish.
+  (#290)
 
 ### Fixed
 

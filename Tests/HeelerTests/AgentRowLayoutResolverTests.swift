@@ -17,7 +17,8 @@ struct AgentRowLayoutResolverTests {
         let saved = AgentRowLayout(rows: [first, second, []])
         #expect(AgentRowLayoutResolver.resolve(hostLayout: saved, pluginSnapshot: plugin) == saved)
         #expect(AgentRowLayoutResolver.resolve(hostLayout: nil, pluginSnapshot: nil).rows
-            == [[.init(.workspace), .init(.tab)], [.init(.agent)], [.init(.directory)]])
+            == [[.init(.workspace), .init(.tab)], [.init(.pane), .init(.agent)],
+                [.init(.directory)]])
     }
 
     @Test func savedLayoutsTakePrecedenceOverInitializedPluginRows() {

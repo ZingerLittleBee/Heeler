@@ -1245,48 +1245,6 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
-    @Test func renamePaneForwardsItsParamsAndResnapshots() async throws {
-        let host = Host.fixture()
-        let transport = ScriptedTransport(
-            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
-        let store = makeStore(transports: [host.id: transport])
-
-        store.setHosts([host])
-        await store.resume()
-        try await waitUntil("the agent should arrive") { store.agents.count == 1 }
-        let snapshotsBefore = await transport.snapshotFetchCount
-
-        await transport.setSnapshot(.fixture(agents: [
-            .fixture(paneID: "w1:p1", paneTitle: "Review API")
-        ]))
-        try await store.renamePane("w1:p1", label: "Review API", on: host.id)
-
-        #expect(await transport.paneRenames == [
-            PaneRenameParams(paneID: "w1:p1", label: "Review API")
-        ])
-        try await waitUntil("the resync should surface the pane title") {
-            store.agents.map(\.agent.paneTitle) == ["Review API"]
-        }
-        #expect(await transport.snapshotFetchCount > snapshotsBefore)
-
-        store.setHosts([])
-    }
-
-    @Test func renamePaneForwardsNilAsTheClear() async throws {
-        let host = Host.fixture()
-        let transport = ScriptedTransport(snapshot: .fixture())
-        let store = makeStore(transports: [host.id: transport])
-
-        store.setHosts([host])
-        await store.resume()
-        try await store.renamePane("w1:p1", label: nil, on: host.id)
-
-        #expect(await transport.paneRenames == [
-            PaneRenameParams(paneID: "w1:p1", label: nil)
-        ])
-        store.setHosts([])
-    }
-
     @Test func renameWorkspaceForwardsItsParamsAndResnapshots() async throws {
         // workspace.rename (#98): the params reach the Host's transport and
         // the relabeled workspace lands via one explicit resync rather than
@@ -1321,9 +1279,6 @@ struct ConsoleStoreTests {
 
         await #expect(throws: TransportError.self) {
             try await store.renameAgent("w1:p1", name: "x", on: host.id)
-        }
-        await #expect(throws: TransportError.self) {
-            try await store.renamePane("w1:p1", label: "x", on: host.id)
         }
         await #expect(throws: TransportError.self) {
             try await store.renameWorkspace("w1", label: "x", on: host.id)

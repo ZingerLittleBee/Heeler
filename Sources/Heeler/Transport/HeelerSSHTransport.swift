@@ -796,13 +796,6 @@ actor HeelerSSHTransport: Transport {
             decoding: AgentInfoResponse.self)
     }
 
-    func renamePane(_ params: PaneRenameParams) async throws {
-        _ = try await request(
-            method: "pane.rename",
-            params: params,
-            decoding: PaneInfoResponse.self)
-    }
-
     func renameWorkspace(_ params: WorkspaceRenameParams) async throws {
         _ = try await request(
             method: "workspace.rename",

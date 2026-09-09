@@ -143,24 +143,6 @@ import Testing
             SubscriptionStartedResponse.self, fromResponseLine: Data(line.utf8), requestID: "fix-1")
     }
 
-    @Test func paneRenameParamsEncodeNilLabelAsNull() throws {
-        let data = try JSONEncoder().encode(PaneRenameParams(paneID: "w1:p1", label: nil))
-        let object = try #require(
-            JSONSerialization.jsonObject(with: data) as? [String: Any])
-
-        #expect(object["pane_id"] as? String == "w1:p1")
-        #expect(object["label"] is NSNull)
-    }
-
-    @Test func paneInfoResponseRoundTripsRenameShape() throws {
-        let json = #"{"type":"pane_info","pane":{"pane_id":"w1:p1","terminal_id":"term","workspace_id":"w1","tab_id":"w1:t1","focused":false,"agent_status":"idle","revision":2,"label":"Review API"}}"#
-
-        let response = try roundTrip(PaneInfoResponse.self, json)
-
-        #expect(response.pane.paneID == "w1:p1")
-        #expect(response.pane.label == "Review API")
-    }
-
     @Test func workspaceInfoResponseRoundTripsLiveCapture() throws {
         // `workspace.rename` live capture (herdr 0.7.5, sanitized).
         let json = #"{"type":"workspace_info","workspace":{"workspace_id":"w9","number":12,"label":"Proj","focused":false,"pane_count":1,"tab_count":1,"active_tab_id":"w9:t1","agent_status":"unknown"}}"#

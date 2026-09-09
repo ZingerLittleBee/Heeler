@@ -10,7 +10,10 @@ const defaultConfig = {
   agent_panel_sort: "spaces",
   sidebar: { agents: {
     row_gap: 0,
-    rows: [[{ token: "state_icon" }, { token: "workspace" }, { token: "tab" }], [{ token: "agent" }]],
+    rows: [
+      [{ token: "state_icon" }, { token: "workspace" }, { token: "tab" }],
+      [{ token: "pane" }, { token: "agent" }],
+    ],
     rows_by_agent: {},
   } },
   diagnostics: [],

@@ -5,7 +5,10 @@ import Testing
 
 @Suite("Agent row renderer")
 struct AgentRowRendererTests {
-    private func agent(tabLabel: String? = "1", tabPosition: Int? = 1, tabCount: Int = 1) -> ConsoleAgent {
+    private func agent(
+        tabLabel: String? = "1", tabPosition: Int? = 1, tabCount: Int = 1,
+        paneTitle: String? = "Manual pane"
+    ) -> ConsoleAgent {
         ConsoleAgent(
             hostID: UUID(), hostName: "Host",
             agent: Agent(AgentInfo(
@@ -13,7 +16,7 @@ struct AgentRowRendererTests {
                 tabID: "opaque-tab", terminalID: "term", workspaceID: "workspace",
                 agent: "claude", displayAgent: "Reviewer", name: "fallback",
                 stateLabels: ["working": "busy"], terminalTitle: "◑ Fix the build",
-                terminalTitleStripped: "Fix the build", title: "Manual pane",
+                terminalTitleStripped: "Fix the build", title: paneTitle,
                 tokens: ["pin_icon": "📌", "markup": "**literal**", "empty": "", "spaces": " \n"])),
             workspaceLabel: "Heeler", repositoryCheckout: nil,
             tabLabel: tabLabel, tabPosition: tabPosition, workspaceTabCount: tabCount)
@@ -21,6 +24,13 @@ struct AgentRowRendererTests {
 
     @Test func defaultElidesAutomaticSingleTabAndStatusFields() {
         let rows = AgentRowRenderer.render(layout: .heelerDefault, agent: agent())
+        #expect(rows.map { $0.map(\.text).joined() } == ["Heeler", "Manual pane · Reviewer"])
+        #expect(rows.map { $0.compactMap(\.token) } == [[.workspace], [.pane, .agent]])
+    }
+
+    @Test func defaultKeepsAgentNameWhenPaneTitleIsMissing() {
+        let rows = AgentRowRenderer.render(
+            layout: .heelerDefault, agent: agent(paneTitle: nil))
         #expect(rows.map { $0.map(\.text).joined() } == ["Heeler", "Reviewer"])
         #expect(rows.map { $0.compactMap(\.token) } == [[.workspace], [.agent]])
     }

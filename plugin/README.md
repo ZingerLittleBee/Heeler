@@ -379,9 +379,11 @@ not a substitute for `herdr config check` for unrelated herdr settings.
 and unknown ids are invalid. A future herdr release adding canonical ids
 requires updating this validation list and the shared vectors.
 
-Missing files or fields use herdr defaults: sort `spaces`, `row_gap: 0`,
+Missing files or fields use Heeler's defaults: sort `spaces`, `row_gap: 0`,
 `rows: [[{"token":"state_icon"},{"token":"workspace"},{"token":"tab"}],
-[{"token":"agent"}]]`, and `rows_by_agent: {}`. TOML parse errors, invalid
+[{"token":"pane"},{"token":"agent"}]]`, and `rows_by_agent: {}`. Pane titles
+therefore lead the second row when the server supplies one, while the Agent
+name remains visible. TOML parse errors, invalid
 tokens, or invalid schema revert the **entire layout and sort** to those
 defaults with a diagnostic. Read errors also produce defaults with a
 diagnostic and are retried at the next invocation.

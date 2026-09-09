@@ -38,10 +38,9 @@ final actor ScriptedTransport: Transport {
     private var worktreeRemoveFailure: (any Error)?
     private var worktreeRemoveResponsePath: String?
     private var nextWorktreeAuthorizationGate: ScriptedTransportCallGate?
-    /// Every rename received, in order; rename-flow tests assert on the
-    /// params forwarded to the transport.
+    /// Every `agent.rename` / `workspace.rename` received, in order; the
+    /// rename flows (#98) assert on the params they forwarded.
     private(set) var agentRenames: [AgentRenameParams] = []
-    private(set) var paneRenames: [PaneRenameParams] = []
     private(set) var workspaceRenames: [WorkspaceRenameParams] = []
     private var renameFailure: TransportError?
     private var startFailure: TransportError?
@@ -532,11 +531,6 @@ final actor ScriptedTransport: Transport {
         agentRenames.append(params)
     }
 
-    func renamePane(_ params: PaneRenameParams) async throws {
-        if let renameFailure { throw renameFailure }
-        paneRenames.append(params)
-    }
-
     func renameWorkspace(_ params: WorkspaceRenameParams) async throws {
         if let renameFailure { throw renameFailure }
         workspaceRenames.append(params)
@@ -818,14 +812,13 @@ extension AgentInfo {
         kind: String = "claude",
         title: String = "Task",
         revision: Int = 1,
-        name: String? = nil,
-        paneTitle: String? = nil
+        name: String? = nil
     ) -> AgentInfo {
         AgentInfo(
             agentStatus: status, focused: false, paneID: paneID, revision: revision,
             tabID: "\(workspaceID):t1", terminalID: "term_\(paneID)",
             workspaceID: workspaceID, agent: kind, cwd: "/work/\(workspaceID)",
-            name: name, terminalTitleStripped: title, title: paneTitle)
+            name: name, terminalTitleStripped: title)
     }
 }
 

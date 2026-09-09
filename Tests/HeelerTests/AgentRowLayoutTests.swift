@@ -5,7 +5,7 @@ import Testing
 
 @Suite("Agent row layout")
 struct AgentRowLayoutTests {
-    @Test func missingFieldsUseHerdrDefaults() throws {
+    @Test func missingFieldsUseHeelerDefaults() throws {
         for json in [#"{"v":1}"#, #"{"v":1,"sidebar":{"agents":{}}}"#] {
             let snapshot = try #require(AgentRowLayoutSnapshot.decode(Data(json.utf8)))
             #expect(snapshot.layout == .heelerDefault)
@@ -13,12 +13,13 @@ struct AgentRowLayoutTests {
             #expect(snapshot.diagnostics.isEmpty)
         }
         #expect(AgentRowLayout.heelerDefault.rows.map { $0.map(\.token) }
-                == [[.stateIcon, .workspace, .tab], [.agent]])
+                == [[.stateIcon, .workspace, .tab], [.pane, .agent]])
     }
 
     @Test func consoleShapeDropsStateIconAndKeepsThreeRowSlots() throws {
         #expect(AgentRowLayout.maximumConsoleRows == 3)
-        #expect(AgentRowLayout.consoleDefault.rows.map { $0.map(\.token) } == [[.workspace, .tab], [.agent], [.directory]])
+        #expect(AgentRowLayout.consoleDefault.rows.map { $0.map(\.token) }
+                == [[.workspace, .tab], [.pane, .agent], [.directory]])
         #expect(AgentRowLayout.consoleDefault.rowGap == 0 && AgentRowLayout.consoleDefault.rowsByAgent.isEmpty)
         let color = try #require(HexColor("#abc"))
         let wide = AgentRowLayout(

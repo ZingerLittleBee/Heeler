@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 /// The Console rename actions' form logic (#98): one store per presented
-/// rename sheet, covering `agent.rename`, `pane.rename`, and `workspace.rename`. The
+/// rename sheet, covering both `agent.rename` and `workspace.rename`. The
 /// new name lands in the Console through the store's normal snapshot/delta
 /// machinery — this store only fires the RPC and reports its outcome; the
 /// sheet dismisses itself on `.renamed`.
@@ -32,9 +32,6 @@ final class RenameStore {
         /// omitted name as "clear back to the detected kind" — so an empty
         /// input is a valid submit meaning "clear".
         case agent(detectedKind: String)
-        /// `pane.rename`: the server accepts a free-form label, and nil
-        /// clears the manual title.
-        case pane
         /// `workspace.rename`: the server accepts any label, including an
         /// empty one. An empty submit is withheld client-side anyway: it
         /// would silently blank the Console's grouping label, which is only
@@ -77,27 +74,21 @@ final class RenameStore {
         case .agent:
             guard let value = submittedValue else { return nil }
             return AgentName.validationError(value)
-        case .pane, .workspace:
+        case .workspace:
             return nil
         }
     }
 
-    /// The clear-semantics hint for forms that accept an empty submit.
+    /// The clear-semantics hint for the agent form; nil for workspaces.
     var clearHint: String? {
-        switch subject {
-        case .agent(let detectedKind):
-            "Leave empty to fall back to the detected kind (\(detectedKind))."
-        case .pane:
-            "Leave empty to clear the pane title."
-        case .workspace:
-            nil
-        }
+        guard case .agent(let detectedKind) = subject else { return nil }
+        return "Leave empty to fall back to the detected kind (\(detectedKind))."
     }
 
     var canSubmit: Bool {
         guard state != .renaming, validationMessage == nil else { return false }
         switch subject {
-        case .agent, .pane:
+        case .agent:
             return true
         case .workspace:
             return submittedValue != nil

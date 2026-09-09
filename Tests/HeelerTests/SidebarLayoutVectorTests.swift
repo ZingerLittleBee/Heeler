@@ -15,7 +15,7 @@ struct SidebarLayoutVectorTests {
         "parse_error", "invalid_token", "invalid_schema", "read_error",
     ]
     private static let defaultTokenNames = [
-        ["state_icon", "workspace", "tab"], ["agent"],
+        ["state_icon", "workspace", "tab"], ["pane", "agent"],
     ]
 
     /// Guards against silently loading an empty or truncated vector file;
@@ -80,7 +80,7 @@ struct SidebarLayoutVectorTests {
         expectTokens(snapshot.layout.rows, match: vector.snapshot.sidebar.agents.rows)
         #expect(
             snapshot.layout.rows.map { $0.map(\.token) }
-                == [[.stateIcon, .workspace, .tab], [.agent]])
+                == [[.stateIcon, .workspace, .tab], [.pane, .agent]])
     }
 
     private func layout(from snapshot: SidebarLayoutVectorFile.Snapshot) throws -> AgentRowLayout {
