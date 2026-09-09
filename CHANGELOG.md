@@ -9,7 +9,7 @@ Entries reference the issue that motivated them.
 
 ### Added
 
-- Muse appears in Start Agent when the Host has `muse` on PATH. (#289)
+- Muse appears in Start Agent when the Host has `muse` on PATH. (#297)
 
 ### Fixed
 
