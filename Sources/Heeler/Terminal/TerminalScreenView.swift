@@ -38,17 +38,25 @@ struct TerminalClipboard {
 final class TerminalKeyboardControl {
     weak var terminal: HeelerTerminalView? {
         didSet {
+            guard oldValue !== terminal else { return }
             oldValue?.onFirstResponderChange = nil
+            oldValue?.setStickyModifierChangeHandler(nil)
+            oldValue?.resetModifiers()
             terminal?.onFirstResponderChange = { [weak self] in
                 self?.syncFirstResponder()
             }
+            terminal?.setStickyModifierChangeHandler { [weak self] in
+                self?.syncModifiers()
+            }
             syncFirstResponder()
+            syncModifiers()
         }
     }
 
     /// Ghostty first-responder intent. Distinct from software-keyboard inset:
     /// a hardware keyboard can keep this true with a zero footprint.
     private(set) var isFirstResponder = false
+    private(set) var activeModifiers: Set<TerminalModifier> = []
 
     var isKeyboardUp: Bool { isFirstResponder }
 
@@ -87,6 +95,25 @@ final class TerminalKeyboardControl {
         terminal?.sendControlKey(key)
     }
 
+    func toggleModifier(_ modifier: TerminalModifier) {
+        guard let terminal else { return }
+        if activeModifiers.contains(modifier) {
+            let remaining = activeModifiers.subtracting([modifier])
+            terminal.resetModifiers()
+            for remainingModifier in TerminalModifier.allCases
+                where remaining.contains(remainingModifier)
+            {
+                terminal.toggleModifier(remainingModifier)
+            }
+        } else {
+            terminal.toggleModifier(modifier)
+        }
+    }
+
+    func resetModifiers() {
+        terminal?.resetModifiers()
+    }
+
     func sendNewLine() {
         terminal?.sendNewLine()
     }
@@ -99,6 +126,16 @@ final class TerminalKeyboardControl {
         let next = terminal?.isFirstResponder ?? false
         guard isFirstResponder != next else { return }
         isFirstResponder = next
+    }
+
+    private func syncModifiers() {
+        guard let terminal else {
+            activeModifiers = []
+            return
+        }
+        activeModifiers = Set(TerminalModifier.allCases.filter {
+            terminal.stickyActivation(for: $0.ghosttyModifier) != .inactive
+        })
     }
 }
 
@@ -1099,6 +1136,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         guard isLocalInputEnabled != isEnabled else { return }
         isLocalInputEnabled = isEnabled
         if !isEnabled {
+            resetStickyModifiers()
             cancelKeyboardTransitionLayoutDeferral()
         }
         if !isEnabled, isFirstResponder {

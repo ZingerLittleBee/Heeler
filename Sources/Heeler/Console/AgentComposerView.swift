@@ -714,6 +714,9 @@ struct AgentToolsKeyboard: View {
     let height: CGFloat
     let quickKeysEnabled: Bool
     let sendQuickKey: (AgentQuickKey) -> Void
+    var activeModifiers: Set<TerminalModifier> = []
+    var sendControlKey: (TerminalControlKey) -> Void = { _ in }
+    var toggleModifier: (TerminalModifier) -> Void = { _ in }
     @State private var selectedTab: TerminalKeysTab = .controls
 
     private var tabs: [TerminalKeysTab] {
@@ -725,9 +728,16 @@ struct AgentToolsKeyboard: View {
             Group {
                 switch selectedTab {
                 case .controls:
-                    AgentQuickKeyPad(
-                        isEnabled: quickKeysEnabled,
-                        send: sendQuickKey)
+                    if context.includesDraftTools {
+                        AgentQuickKeyPad(
+                            isEnabled: quickKeysEnabled,
+                            send: sendQuickKey)
+                    } else {
+                        TerminalControlPadRepresentable(
+                            activeModifiers: activeModifiers,
+                            send: sendControlKey,
+                            toggleModifier: toggleModifier)
+                    }
                 case .skills:
                     if let skills = context.skills {
                         SkillsKeyboardPane(

@@ -114,7 +114,9 @@ struct ShellTerminalView: View {
                 ShellTerminalKeysDock(
                     settings: terminal,
                     height: keyboardLayout.availableToolsHeight,
-                    sendControlKey: { keyboardControl.sendControlKey($0) })
+                    activeModifiers: keyboardControl.activeModifiers,
+                    sendControlKey: { keyboardControl.sendControlKey($0) },
+                    toggleModifier: { keyboardControl.toggleModifier($0) })
                 .opacity(isKeysDockPresented ? 1 : 0)
                 .allowsHitTesting(isKeysDockPresented)
                 .accessibilityHidden(!isKeysDockPresented)
@@ -347,7 +349,9 @@ struct ShellTerminalInputRow: View {
 struct ShellTerminalKeysDock: View {
     let settings: TerminalSettings
     let height: CGFloat
+    let activeModifiers: Set<TerminalModifier>
     let sendControlKey: (TerminalControlKey) -> Void
+    let toggleModifier: (TerminalModifier) -> Void
     @State private var selectedTab: TerminalKeysTab = .controls
 
     static let tabs: [TerminalKeysTab] = [.controls, .appearance]
@@ -357,7 +361,10 @@ struct ShellTerminalKeysDock: View {
             Group {
                 switch selectedTab {
                 case .controls:
-                    TerminalControlPadRepresentable(send: sendControlKey)
+                    TerminalControlPadRepresentable(
+                        activeModifiers: activeModifiers,
+                        send: sendControlKey,
+                        toggleModifier: toggleModifier)
                 case .appearance:
                     TerminalAppearancePane(
                         themes: settings.themes,
@@ -399,14 +406,18 @@ struct ShellTerminalKeysDock: View {
 
 /// Hosts the UIKit control pad — key repeat and touch handling included —
 /// inside the SwiftUI dock.
-private struct TerminalControlPadRepresentable: UIViewRepresentable {
+struct TerminalControlPadRepresentable: UIViewRepresentable {
+    let activeModifiers: Set<TerminalModifier>
     let send: (TerminalControlKey) -> Void
+    let toggleModifier: (TerminalModifier) -> Void
 
     func makeUIView(context _: Context) -> TerminalControlPadView {
-        TerminalControlPadView(send: send)
+        TerminalControlPadView(send: send, toggleModifier: toggleModifier)
     }
 
-    func updateUIView(_: TerminalControlPadView, context _: Context) {}
+    func updateUIView(_ view: TerminalControlPadView, context _: Context) {
+        view.setActiveModifiers(activeModifiers)
+    }
 }
 
 private struct ShellTerminalEdgeBackGesture: View {

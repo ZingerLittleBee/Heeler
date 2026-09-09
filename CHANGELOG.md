@@ -7,6 +7,12 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- Terminal keyboards now include one-shot Ctrl and Option modifiers, Insert,
+  Forward Delete, and F1–F12. Ctrl and Option can be combined with typed text
+  and control-pad keys through Ghostty's mode-aware key encoder. (#270)
+
 ### Fixed
 
 - New Agent now discovers agents installed through mise. The discovery PATH

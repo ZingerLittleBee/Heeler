@@ -71,11 +71,27 @@ struct TerminalKeysKeyboardTests {
         #expect(sent == [.escape])
     }
 
-    @Test func controlPadCoversEveryControlKey() {
+    @Test func controlPadCoversEveryControlKeyAcrossItsTwoPages() throws {
         let pad = TerminalControlPadView { _ in }
-        let labels = Set(Self.buttons(in: pad).compactMap(\.accessibilityLabel))
+        var labels = Set(Self.buttons(in: pad).compactMap(\.accessibilityLabel))
 
-        #expect(labels == Set(TerminalControlKey.allCases.map(\.accessibilityLabel)))
+        let functionPage = try #require(Self.button(labelled: "Function Keys", in: pad))
+        functionPage.sendActions(for: .touchUpInside)
+        labels.formUnion(Self.buttons(in: pad).compactMap(\.accessibilityLabel))
+
+        #expect(labels.isSuperset(of: TerminalControlKey.allCases.map(\.accessibilityLabel)))
+        #expect(labels.isSuperset(of: TerminalModifier.allCases.map(\.accessibilityLabel)))
+    }
+
+    @Test func modifierButtonsExposeSelectedState() throws {
+        let pad = TerminalControlPadView { _ in }
+        let control = try #require(Self.button(labelled: "Control", in: pad))
+        #expect(!control.accessibilityTraits.contains(.selected))
+
+        pad.setActiveModifiers([.control])
+
+        #expect(control.accessibilityTraits.contains(.selected))
+        #expect(control.accessibilityValue == "Selected")
     }
 
     /// Skills sits right beside the control keys when the agent has a skills

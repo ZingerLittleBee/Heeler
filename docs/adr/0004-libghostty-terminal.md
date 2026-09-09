@@ -31,9 +31,10 @@ the native text-selection presentation requested by Ghostty's iOS delegate.
   verification, and review supply-chain changes before every update.
 - libghostty's embedding API is still evolving. Keep all package-specific code
   behind `HeelerTerminalView` and the terminal selection presenter.
-- The custom control keyboard sends raw terminal sequences. A small incremental
-  DEC cursor-mode tracker preserves application-cursor sequences because the
-  wrapper does not expose its internal synthetic-key path publicly.
+- The custom control keyboard sends non-text keys through libghostty-spm's
+  public synthetic-key path, preserving application-cursor and enhanced
+  keyboard protocols. The app still tracks DEC modes for touch scrolling and
+  Composer quick keys that deliberately bypass local terminal input.
 - Long-press selection is intentionally presented in a native selectable text
   sheet. The wrapper supplies a viewport snapshot and anchor range; it does not
   present selection handles on behalf of the host app.

@@ -344,7 +344,8 @@ struct AgentTerminalView: View {
         // Keep the destination terminal enabled until Composer-to-Direct has
         // fully settled. The reverse handoff must disable this outgoing
         // terminal as soon as Composer accepts first responder.
-        screen.isLocalInputEnabled = isDirectInput || composerToDirectHandoffID != nil
+        screen.isLocalInputEnabled = attach.terminalStatus.allowsLocalInput
+            && (isDirectInput || composerToDirectHandoffID != nil)
         screen.claimsKeyboard = {
             [
                 keyboardHandoff,
@@ -822,7 +823,10 @@ struct AgentTerminalView: View {
                 context: terminalKeysContext,
                 height: composerKeyboardLayout.availableToolsHeight,
                 quickKeysEnabled: true,
-                sendQuickKey: sendAgentQuickKey)
+                sendQuickKey: sendAgentQuickKey,
+                activeModifiers: keyboardControl.activeModifiers,
+                sendControlKey: { keyboardControl.sendControlKey($0) },
+                toggleModifier: { keyboardControl.toggleModifier($0) })
             .opacity(activeKeyboardPresentation == .tools ? 1 : 0)
             .allowsHitTesting(activeKeyboardPresentation == .tools)
             .accessibilityHidden(activeKeyboardPresentation != .tools)
@@ -987,13 +991,7 @@ struct AgentTerminalView: View {
             || keyboardControl.isKeyboardUp
     }
 
-    /// Esc is a known key, not a raw `0x1B` that might start CSI/SS3.
     private func sendAgentQuickKey(_ key: AgentQuickKey) {
-        if key == .escape {
-            keyboardControl.noteReliableInputBegan()
-            attach.sendEscapeKey()
-            return
-        }
         keyboardControl.sendQuickKey(key)
     }
 

@@ -19,12 +19,12 @@ packages:
   # checked-in native artifacts. The one SSH backend (ADR 0011).
   HeelerSSH:
     path: Packages/HeelerSSH
-  # Pin the reviewed 1.4.0 source commit because upstream removed its release
-  # tag. This keeps the same prebuilt libghostty checksum without taking the
-  # much larger, unaudited 1.5.1 source and binary update.
+  # Pin the reviewed 1.4.0 source plus the host-keyboard API needed to route
+  # synthetic keys through Ghostty's mode-aware encoder. The prebuilt
+  # libghostty checksum is unchanged.
   GhosttyTerminal:
-    url: https://github.com/lakr233/libghostty-spm.git
-    revision: "356f730bec03281fc7b83666a129b0246137ea26"
+    url: https://github.com/brettinternet/libghostty-spm.git
+    revision: "6bd236ef88d2a706bd93c1ff88ed2d3b6365a680"
 
 targets:
   Heeler:

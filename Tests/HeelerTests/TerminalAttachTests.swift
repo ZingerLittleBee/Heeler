@@ -605,6 +605,17 @@ struct TerminalAttachTests {
     }
 
     @MainActor
+    private static func firstControl(in root: UIView, labeled label: String) -> UIControl? {
+        if let control = root as? UIControl, control.accessibilityLabel == label {
+            return control
+        }
+        for subview in root.subviews {
+            if let control = firstControl(in: subview, labeled: label) { return control }
+        }
+        return nil
+    }
+
+    @MainActor
     private static func firstAccessibleFrame(in root: UIView, labeled label: String) -> CGRect? {
         // SwiftUI hosting nests accessibility containers arbitrarily deep, and
         // which runtime wraps a control in how many containers varies by OS
@@ -1958,22 +1969,42 @@ struct TerminalAttachTests {
         #expect(TerminalKeyboardInset.insetHeight(covered: 20, bottomSafeArea: 34) == 0)
     }
 
-    @Test func terminalControlKeyboardContainsOnlyUsefulMobileKeys() {
-        #expect(
-            TerminalControlKey.rows == [
-                [.escape, .tab, .controlC, .controlD, .backspace],
-                [.home, .pageUp, .up, .pageDown, .end],
-                [.controlZ, .left, .down, .right, .enter],
-            ])
-        // Every row is the same width, so no key ends up wider than its
-        // neighbours just because a row was left short.
-        #expect(Set(TerminalControlKey.rows.map(\.count)).count == 1)
-        // Rearranging the rows must not quietly drop a key on the floor.
-        let placed = TerminalControlKey.rows.flatMap { $0 }
-        #expect(placed.count == TerminalControlKey.allCases.count)
-        for key in TerminalControlKey.allCases {
-            #expect(placed.contains(key), "\(key) fell off the keyboard")
+    @Test func terminalControlKeyboardContainsEveryKeyAndModifier() {
+        #expect(Set(TerminalControlKey.primaryRows.map(\.count)) == [5])
+
+        let items = (TerminalControlKey.primaryRows + TerminalControlKey.functionRows).flatMap { $0 }
+        let placedKeys = items.compactMap { item -> TerminalControlKey? in
+            if case .key(let key) = item { key } else { nil }
         }
+        let placedModifiers = items.compactMap { item -> TerminalModifier? in
+            if case .modifier(let modifier) = item { modifier } else { nil }
+        }
+        #expect(Set(placedKeys) == Set(TerminalControlKey.allCases))
+        #expect(Set(placedModifiers) == Set(TerminalModifier.allCases))
+    }
+
+    @MainActor
+    @Test func cancelledControlPadTouchDoesNotReactivateOnReentry() throws {
+        var toggled: [TerminalModifier] = []
+        let pad = TerminalControlPadView(
+            send: { _ in },
+            toggleModifier: { toggled.append($0) })
+        let control = try #require(Self.firstControl(in: pad, labeled: "Control"))
+
+        control.sendActions(for: .touchDown)
+        control.sendActions(for: .touchDragExit)
+        control.sendActions(for: .touchDragEnter)
+        control.sendActions(for: .touchUpInside)
+
+        #expect(toggled.isEmpty)
+    }
+
+    @MainActor
+    @Test func functionPageToggleAnnouncesItsCurrentDestination() throws {
+        let pad = TerminalControlPadView(send: { _ in })
+        let functions = try #require(Self.firstControl(in: pad, labeled: "Function Keys"))
+        functions.sendActions(for: .touchUpInside)
+        #expect(Self.firstControl(in: pad, labeled: "Standard Keys") != nil)
     }
 
     @Test func terminalControlKeysEncodeExpectedBytes() {
@@ -2032,20 +2063,153 @@ struct TerminalAttachTests {
     }
 
     @MainActor
-    @Test func terminalControlKeysFlowThroughTheGhosttySession() async {
+    @Test func terminalControlKeysFlowThroughTheGhosttySession() async throws {
         var sent = Data()
         let terminal = TerminalScreenView.makeConfiguredTerminal(
             onSend: { sent.append($0) })
+        let window = try await Self.host(terminal)
+        defer { window.isHidden = true }
 
         terminal.sendControlKey(.controlC)
-        await Task.yield()
+        try await Task.sleep(for: .milliseconds(20))
         #expect(sent == Data([0x03]))
 
         sent.removeAll()
         terminal.receive(Data("\u{1B}[?1h".utf8))
         terminal.sendControlKey(.up)
-        await Task.yield()
+        try await Task.sleep(for: .milliseconds(20))
         #expect(sent == Data([0x1B, 0x4F, 0x41]))
+    }
+
+    @MainActor
+    @Test func softwareModifiersApplyToTypedTextAndCombine() async throws {
+        var sent = Data()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSend: { sent.append($0) })
+        let window = try await Self.host(terminal)
+        defer { window.isHidden = true }
+        let control = TerminalKeyboardControl()
+        control.terminal = terminal
+
+        control.toggleModifier(.control)
+        terminal.insertText("a")
+        control.toggleModifier(.control)
+        terminal.insertText(" ")
+        control.toggleModifier(.option)
+        terminal.insertText("b")
+        control.toggleModifier(.control)
+        control.toggleModifier(.option)
+        terminal.insertText("c")
+        control.toggleModifier(.control)
+        control.sendQuickKey(.escape)
+        terminal.insertText("d")
+        let textDeadline = ContinuousClock.now + .seconds(1)
+        while sent.count < 8, ContinuousClock.now < textDeadline {
+            await Task.yield()
+        }
+
+        #expect(
+            sent == Data([0x01, 0x00, 0x1B, 0x62, 0x1B, 0x03, 0x1B, 0x64]),
+            "sent \(Array(sent))")
+        #expect(control.activeModifiers.isEmpty)
+    }
+
+    @MainActor
+    @Test func enhancedKeyboardReportingReceivesPressAndRelease() async throws {
+        var sent = Data()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSend: { sent.append($0) })
+        let window = try await Self.host(terminal)
+        defer { window.isHidden = true }
+        let control = TerminalKeyboardControl()
+        control.terminal = terminal
+
+        terminal.receive(Data("\u{1B}[>11u".utf8))
+        try await Task.sleep(for: .milliseconds(20))
+        control.toggleModifier(.control)
+        terminal.insertText("c")
+        let deadline = ContinuousClock.now + .seconds(1)
+        while sent.count < 17, ContinuousClock.now < deadline {
+            await Task.yield()
+        }
+
+        #expect(
+            sent == Data("\u{1B}[99;5u\u{1B}[99;5:3u".utf8),
+            "sent \(String(decoding: sent, as: UTF8.self).debugDescription)")
+    }
+
+    @MainActor
+    @Test func softwareModifiersApplyToSpecialAndFunctionKeys() async throws {
+        var sent = Data()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSend: { sent.append($0) })
+        let window = try await Self.host(terminal)
+        defer { window.isHidden = true }
+        let control = TerminalKeyboardControl()
+        control.terminal = terminal
+
+        control.toggleModifier(.control)
+        control.sendControlKey(.up)
+        control.toggleModifier(.option)
+        control.sendControlKey(.left)
+        control.toggleModifier(.control)
+        control.toggleModifier(.option)
+        control.sendControlKey(.right)
+        control.sendControlKey(.insert)
+        control.sendControlKey(.forwardDelete)
+        control.sendControlKey(.f1)
+        control.sendControlKey(.f12)
+        let keyDeadline = ContinuousClock.now + .seconds(1)
+        while sent.count < 30, ContinuousClock.now < keyDeadline {
+            await Task.yield()
+        }
+
+        #expect(
+            sent == Data(
+                [0x1B, 0x5B, 0x31, 0x3B, 0x35, 0x41]
+                    // Ghostty's default Alt-Left binding is backward-word.
+                    + [0x1B, 0x62]
+                    + [0x1B, 0x5B, 0x31, 0x3B, 0x37, 0x43]
+                    + [0x1B, 0x5B, 0x32, 0x7E]
+                    + [0x1B, 0x5B, 0x33, 0x7E]
+                    + [0x1B, 0x4F, 0x50]
+                    + [0x1B, 0x5B, 0x32, 0x34, 0x7E]),
+            "sent \(Array(sent))")
+        #expect(control.activeModifiers.isEmpty)
+    }
+
+    @MainActor
+    @Test func modifierSelectionCancelsIndividuallyAndResetsWithInput() {
+        let first = TerminalScreenView.makeConfiguredTerminal()
+        let replacement = TerminalScreenView.makeConfiguredTerminal()
+        let control = TerminalKeyboardControl()
+        control.terminal = first
+
+        control.toggleModifier(.control)
+        control.toggleModifier(.option)
+        #expect(control.activeModifiers == [.control, .option])
+
+        control.toggleModifier(.control)
+        #expect(control.activeModifiers == [.option])
+
+        first.setLocalInputEnabled(false)
+        #expect(control.activeModifiers.isEmpty)
+
+        first.setLocalInputEnabled(true)
+        control.toggleModifier(.control)
+        control.terminal = first
+        #expect(control.activeModifiers == [.control])
+
+        control.terminal = replacement
+        #expect(control.activeModifiers.isEmpty)
+    }
+
+    @Test func endedAttachDoesNotAllowStickyInputToSurviveRetry() {
+        #expect(AttachTerminalStore.Status.waitingForSize.allowsLocalInput)
+        #expect(AttachTerminalStore.Status.connecting.allowsLocalInput)
+        #expect(AttachTerminalStore.Status.live.allowsLocalInput)
+        #expect(!AttachTerminalStore.Status.ended("Disconnected").allowsLocalInput)
+        #expect(!AttachTerminalStore.Status.stopped.allowsLocalInput)
     }
 
     @Test func terminalModeTrackerHandlesSplitAndRepeatedModeChanges() {
@@ -2324,6 +2488,16 @@ struct TerminalAttachTests {
         await session?.end()
         let inputs = await transport.attachInputs
         #expect(inputs == [.keystrokes(Data("x".utf8))])
+    }
+
+    @MainActor
+    private static func host(_ terminal: HeelerTerminalView) async throws -> UIWindow {
+        let controller = UIViewController()
+        controller.view.addSubview(terminal)
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 600)
+        return try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 844),
+            rootViewController: controller)
     }
 }
 
