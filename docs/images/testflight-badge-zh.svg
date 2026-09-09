@@ -1,8 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="40" viewBox="0 0 128 40" role="img" aria-label="加入 beta 测试 TestFlight">
-  <rect x="0.5" y="0.5" width="127" height="39" rx="5" fill="#000" stroke="#a6a6a6"/>
-  <path d="M26.5 9.5 L8 17.2 L15.4 20.4 L22.8 14.4 L17.6 21.2 L17.6 29.5 L21.2 24.3 L25 26 Z" fill="#fff"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="108" height="40" viewBox="0 0 108 40" role="img" aria-label="TestFlight 下载">
+  <rect x="0.5" y="0.5" width="107" height="39" rx="5" fill="#000" stroke="#a6a6a6"/>
   <g fill="#fff" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'PingFang SC', 'Segoe UI', Arial, sans-serif">
-    <text x="33" y="20" font-size="17" font-weight="600" letter-spacing="-0.2">TestFlight</text>
-    <text x="33" y="32" font-size="9">加入 beta 测试</text>
+    <text x="12" y="20" font-size="17" font-weight="600" letter-spacing="-0.2">TestFlight</text>
+    <text x="12" y="32" font-size="9">下载</text>
   </g>
 </svg>
