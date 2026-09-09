@@ -177,11 +177,13 @@ struct StartAgentStoreTests {
             "pi", "claude", "codex", "gemini", "cursor", "devin", "agy",
             "cline", "omp", "mastracode", "opencode", "copilot", "kimi",
             "kiro", "droid", "amp", "grok", "hermes", "kilo", "qodercli",
-            "maki", "qwen",
+            "maki", "qwen", "muse",
         ])
         #expect(SupportedAgentKind.qwen.rawValue == "qwen")
         #expect(SupportedAgentKind.qwen.displayName == "Qwen Code")
         #expect(SupportedAgentKind.qwen.executable == "qwen")
+        #expect(SupportedAgentKind.muse.displayName == "Muse")
+        #expect(SupportedAgentKind.muse.executable == "muse")
         #expect(SupportedAgentKind.cursor.executable == "cursor-agent")
         #expect(SupportedAgentKind.kiro.executable == "kiro-cli")
         #expect(

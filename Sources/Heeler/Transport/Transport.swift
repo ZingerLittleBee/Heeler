@@ -326,6 +326,7 @@ enum SupportedAgentKind: String, CaseIterable, Identifiable, Sendable, Equatable
     case qodercli
     case maki
     case qwen
+    case muse
 
     var id: String { rawValue }
 
@@ -353,6 +354,7 @@ enum SupportedAgentKind: String, CaseIterable, Identifiable, Sendable, Equatable
         case .qodercli: "Qoder CLI"
         case .maki: "Maki"
         case .qwen: "Qwen Code"
+        case .muse: "Muse"
         }
     }
 

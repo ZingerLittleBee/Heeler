@@ -7,6 +7,12 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- New Agent now offers Muse. herdr 0.9.0 reports the canonical kind and
+  executable as `muse` (`herdr agent start --kind` lists it; detection
+  manifest `id = "muse"`). (#289)
+
 ### Fixed
 
 - New Agent now discovers agents installed through mise. The discovery PATH
