@@ -11,7 +11,7 @@ Entries reference the issue that motivated them.
 
 - Terminal keyboards now include one-shot Ctrl and Option modifiers, Insert,
   Forward Delete, and F1–F12. Ctrl and Option can be combined with typed text
-  and control-pad keys through Ghostty's mode-aware key encoder. (#270)
+  and control-pad keys through Ghostty's mode-aware key encoder. (#298)
 
 ### Fixed
 
