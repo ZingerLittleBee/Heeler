@@ -711,6 +711,7 @@ final class AgentComposerUITextView: UITextView {
 struct AgentToolsKeyboard: View {
     let store: AgentComposerStore
     let context: TerminalKeysContext
+    let keyboardControl: TerminalKeyboardControl
     let height: CGFloat
     let quickKeysEnabled: Bool
     let sendQuickKey: (AgentQuickKey) -> Void
@@ -727,6 +728,7 @@ struct AgentToolsKeyboard: View {
                 case .controls:
                     AgentQuickKeyPad(
                         isEnabled: quickKeysEnabled,
+                        keyboardControl: keyboardControl,
                         send: sendQuickKey)
                 case .skills:
                     if let skills = context.skills {
@@ -789,6 +791,7 @@ struct AgentToolsKeyboard: View {
 
 private struct AgentQuickKeyPad: View {
     let isEnabled: Bool
+    let keyboardControl: TerminalKeyboardControl
     let send: (AgentQuickKey) -> Void
 
     private static let rows: [[AgentQuickKey]] = [
@@ -799,6 +802,7 @@ private struct AgentQuickKeyPad: View {
 
     var body: some View {
         VStack(spacing: 8) {
+            modifierRow
             ForEach(Self.rows.indices, id: \.self) { rowIndex in
                 HStack(spacing: 8) {
                     ForEach(Self.rows[rowIndex], id: \.self) { key in
@@ -823,6 +827,51 @@ private struct AgentQuickKeyPad: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
+    }
+
+    /// One-shot sticky ⌃/⌥ modifiers (#270). Each cap arms its modifier for
+    /// the next key's bytes; the armed state consumes on send and highlights
+    /// until then, matching the Shell pad's caps.
+    private var modifierRow: some View {
+        HStack(spacing: 8) {
+            modifierCap(
+                title: "⌃",
+                label: "Control modifier",
+                armed: keyboardControl.pendingModifiers.contains(.control)
+            ) {
+                keyboardControl.toggleModifier(.control)
+            }
+            modifierCap(
+                title: "⌥",
+                label: "Option modifier",
+                armed: keyboardControl.pendingModifiers.contains(.option)
+            ) {
+                keyboardControl.toggleModifier(.option)
+            }
+        }
+    }
+
+    private func modifierCap(
+        title: String,
+        label: String,
+        armed: Bool,
+        toggle: @escaping () -> Void
+    ) -> some View {
+        Button {
+            toggle()
+        } label: {
+            Text(title)
+                .font(.title3)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .background(
+            armed ? Color.accentColor : Color(uiColor: .secondarySystemFill),
+            in: .rect(cornerRadius: 8))
+        .foregroundStyle(armed ? Color.white : Color.primary)
+        .accessibilityLabel(label)
+        .accessibilityValue(armed ? "Armed" : "Not armed")
     }
 
     @ViewBuilder

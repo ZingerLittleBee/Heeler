@@ -69,8 +69,33 @@ final class TerminalKeyboardControl {
         _ = terminal?.dismissKeyboard()
     }
 
+    /// One-shot sticky modifiers for the ⌃/⌥ caps on the terminal key
+    /// surfaces (#270). Tapping a modifier arms it for the next key only;
+    /// firing any key consumes and clears it, and tapping the armed
+    /// modifier again disarms it. No lock mode. Shared here so the Shell
+    /// Controls pad and the Agent quick-key rows behave identically.
+    private(set) var pendingModifiers = TerminalKeyModifiers()
+
+    func isModifierArmed(_ modifier: TerminalKeyModifiers) -> Bool {
+        pendingModifiers.contains(modifier)
+    }
+
+    func setModifierArmed(_ modifier: TerminalKeyModifiers, armed: Bool) {
+        if armed {
+            pendingModifiers.insert(modifier)
+        } else {
+            pendingModifiers.remove(modifier)
+        }
+    }
+
+    func toggleModifier(_ modifier: TerminalKeyModifiers) {
+        setModifierArmed(modifier, armed: !isModifierArmed(modifier))
+    }
+
     func sendQuickKey(_ key: AgentQuickKey) {
-        terminal?.sendQuickKey(key)
+        guard let terminal else { return }
+        terminal.sendQuickKey(key, modifiers: pendingModifiers)
+        pendingModifiers = []
     }
 
     /// Stops inertial remote scroll, matching `sendQuickKey`'s reliable-input
@@ -84,7 +109,11 @@ final class TerminalKeyboardControl {
     }
 
     func sendControlKey(_ key: TerminalControlKey) {
-        terminal?.sendControlKey(key)
+        guard let terminal else { return }
+        // Consume the armed modifiers only on an actual send: a send
+        // dropped by the local-input gate leaves them armed for the next key.
+        guard terminal.sendControlKey(key, modifiers: pendingModifiers) else { return }
+        pendingModifiers = []
     }
 
     func sendNewLine() {

@@ -15,6 +15,11 @@ Entries reference the issue that motivated them.
 - Direct Input's shortcut row gains a Paste key after ⇧Enter, so pasting into
   an Agent no longer needs a hardware keyboard. The text goes through the
   same paste review as ⌘V. (#307)
+- Sticky one-shot Ctrl and Option modifier keys on the terminal key surfaces
+  (Shell Controls pad, Agent quick-key rows, Direct Input shortcut row).
+  Tap ⌃ or ⌥ to arm it for the next key, which sends xterm modifier
+  sequences; the armed state consumes on send, and tapping again disarms.
+  Tab-panel shortcuts stay deferred as follow-up work. (#270)
 
 ### Fixed
 
