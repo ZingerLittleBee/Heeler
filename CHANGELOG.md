@@ -9,6 +9,10 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- New Agent now discovers agents installed through mise. The discovery PATH
+  includes mise's shims directory, resolved from `MISE_DATA_DIR` or
+  `XDG_DATA_HOME` when either reaches the non-interactive SSH environment,
+  otherwise `~/.local/share/mise/shims`. (#293)
 - The Lock Screen Live Activity shows three Agents with three-row Agent List
   Fields instead of two before "+N more". The row budget overestimated card
   height and its test measured only frame minimums, not the rendered text.
