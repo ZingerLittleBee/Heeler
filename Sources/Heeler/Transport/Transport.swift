@@ -136,11 +136,13 @@ protocol Transport: Sendable {
     /// explicitly. One events channel per Host: a second call while one is
     /// live throws `.eventsChannelAlreadyOpen`.
     ///
-    /// Subscribing does not replay existing *state*, but herdr 0.7.5
-    /// replays recently buffered *events* on subscribe (verified live;
-    /// 0.7.4 replayed nothing). Neither replaces initial sync: fetch a
-    /// snapshot alongside subscribing, and treat replayed events as
-    /// ordinary change signals.
+    /// Await subscription acknowledgement before requesting the initial
+    /// snapshot, and consume events throughout the snapshot request. Repeat
+    /// this sequence after reconnect or subscription replacement. herdr 0.9.0
+    /// lifecycle subscriptions are live-only (version-tagged source review);
+    /// they do not replay retained events from before request acceptance.
+    /// The live-observed replay on 0.7.5 (absent on 0.7.4) is historical, not
+    /// a recovery guarantee. Use snapshots for authoritative convergence.
     func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream
 
     /// Opens this Host's dedicated terminal channel as a full interactive
