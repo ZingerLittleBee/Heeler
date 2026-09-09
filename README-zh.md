@@ -93,7 +93,7 @@ host key 指纹和 SSH 密钥注册全部由配对码承载。在应用里为该
 - 仓库内 `Packages/HeelerSSH`（libssh2 + OpenSSL）负责 SSH
 - [libghostty-spm](https://github.com/lakr233/libghostty-spm) 负责终端仿真与 Metal 渲染
 
-选型缘由见 `docs/adr/`（传输层的故事尤其不直观）。
+选型依据见 `docs/adr/`，其中传输层方案经过多轮验证后才最终确定。
 
 ## 参与贡献
 
