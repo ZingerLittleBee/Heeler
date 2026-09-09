@@ -7,6 +7,13 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Changed
+
+- The committed herdr API snapshot is now v0.9.0 (protocol 22): 102 request
+  methods with 11 additions and no removals, regenerated wire types, and the
+  generated-protocol advisory baseline moves to 22. The admission floor stays
+  at 17, so older Hosts keep connecting. (#288)
+
 ### Fixed
 
 - New Agent now discovers agents installed through mise. The discovery PATH

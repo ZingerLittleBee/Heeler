@@ -39,13 +39,15 @@ import Testing
     }
 
     @Test func pongResponseRoundTripsProtocolTwentyShape() throws {
+        // The 0.8.2 shape still decodes after the 0.9.0 refresh: older Hosts
+        // stay connectable under the protocol-17 floor.
         let pong = try roundTrip(
             PongResponse.self,
             #"{"type":"pong","version":"0.8.2","protocol":20,"capabilities":{"live_handoff":true,"detached_server_daemon":true}}"#)
 
         #expect(pong.version == "0.8.2")
         #expect(pong.protocolVersion == 20)
-        #expect(pong.protocolVersion == HeelerSSHTransport.generatedProtocolVersion)
+        #expect(pong.protocolVersion < HeelerSSHTransport.generatedProtocolVersion)
     }
 
     @Test func agentListResponseRoundTripsLiveCapture() throws {
@@ -349,9 +351,9 @@ import Testing
         #expect(labeled?["label"] as? String == "app")
     }
 
-    @Test func workspaceTargetEncodesSnakeCase() throws {
+    @Test func workspaceCloseParamsEncodeSnakeCase() throws {
         let fields = try JSONSerialization.jsonObject(
-            with: JSONEncoder().encode(WorkspaceTarget(workspaceID: "wN"))
+            with: JSONEncoder().encode(WorkspaceCloseParams(workspaceID: "wN"))
         ) as? [String: Any]
         #expect(fields?.keys.sorted() == ["workspace_id"])
         #expect(fields?["workspace_id"] as? String == "wN")

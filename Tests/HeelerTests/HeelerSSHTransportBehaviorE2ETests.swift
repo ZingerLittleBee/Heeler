@@ -18,7 +18,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
     @Test("the protocol floor admits newer servers and refuses older ones")
     func protocolFloorAdmitsNewerAndRefusesOlder() throws {
         #expect(HeelerSSHTransport.minimumProtocolVersion == 17)
-        #expect(HeelerSSHTransport.generatedProtocolVersion == 20)
+        #expect(HeelerSSHTransport.generatedProtocolVersion == 22)
 
         // Below the floor: refused, because methods this app calls may be absent.
         #expect(
@@ -28,9 +28,9 @@ struct HeelerSSHTransportBehaviorE2ETests {
                 from: PongResponse(protocolVersion: 16, version: "ancient"))
         }
 
-        // Floor through generated (17–20): usable, no notice. 18 and 19 stay
+        // Floor through generated (17–22): usable, no notice. 18 and 19 stay
         // connectable after the snapshot bump; the live fake-herdr fixture
-        // still speaks 17 and is not rewritten to require 20 at runtime.
+        // still speaks 17 and is not rewritten to require 22 at runtime.
         for version in [
             HeelerSSHTransport.minimumProtocolVersion,
             18,
@@ -72,21 +72,23 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(!info.exceedsGeneratedProtocol)
     }
 
-    /// Protocol 20 is the committed snapshot. A 0.8.2-shaped pong must not
-    /// raise the "newer than this app was built against" notice.
-    @Test("a protocol 20 pong does not set the generated-protocol notice")
-    func protocolTwentyPongDoesNotExceedGenerated() throws {
+    /// Protocol 22 is the committed snapshot. A 0.9.0-schema-shaped pong must
+    /// not raise the "newer than this app was built against" notice. The
+    /// payload below is schema-derived, not a live capture: no live 0.9.0
+    /// pong has been recorded yet.
+    @Test("a protocol 22 pong does not set the generated-protocol notice")
+    func protocolTwentyTwoPongDoesNotExceedGenerated() throws {
         let pong = try JSONDecoder().decode(
             PongResponse.self,
             from: Data(
                 #"""
-                {"type":"pong","version":"0.8.2","protocol":20,
+                {"type":"pong","version":"0.9.0","protocol":22,
                  "capabilities":{"live_handoff":true,"detached_server_daemon":true}}
                 """#.utf8))
         let info = try HeelerSSHTransport.serverInfo(from: pong)
 
-        #expect(info.version == "0.8.2")
-        #expect(info.protocolVersion == 20)
+        #expect(info.version == "0.9.0")
+        #expect(info.protocolVersion == 22)
         #expect(!info.exceedsGeneratedProtocol)
     }
 
