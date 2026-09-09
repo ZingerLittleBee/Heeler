@@ -6,12 +6,12 @@
 
 **[herdr](https://herdr.dev) 的原生 iOS 伴侣应用 —— herdr 是一个 agent 优先的终端运行时。**
 
-[![CI](https://github.com/ZingerLittleBee/Heeler/actions/workflows/ci.yml/badge.svg)](https://github.com/ZingerLittleBee/Heeler/actions/workflows/ci.yml)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/ZingerLittleBee/Heeler?style=flat)](https://github.com/ZingerLittleBee/Heeler/stargazers)
-[![Swift](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)](https://www.swift.org)
-[![iOS](https://img.shields.io/badge/iOS-18%2B-000000?logo=apple&logoColor=white)](https://developer.apple.com/ios/)
-[![App Store](https://img.shields.io/badge/App_Store-available-0D96F6?logo=apple&logoColor=white)](https://apps.apple.com/us/app/heeler-for-herdr/id6797263135)
+[![GitHub stars](https://img.shields.io/github/stars/ZingerLittleBee/Heeler?style=flat-square)](https://github.com/ZingerLittleBee/Heeler/stargazers)
+[![CI](https://img.shields.io/github/actions/workflow/status/ZingerLittleBee/Heeler/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/ZingerLittleBee/Heeler/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square)](LICENSE)
+[![Swift](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white&style=flat-square)](https://www.swift.org)
+[![iOS](https://img.shields.io/badge/iOS-18%2B-000000?logo=apple&logoColor=white&style=flat-square)](https://developer.apple.com/ios/)
+[![App Store](https://img.shields.io/badge/App_Store-available-0D96F6?logo=apple&logoColor=white&style=flat-square)](https://apps.apple.com/us/app/heeler-for-herdr/id6797263135)
 
 <a href="https://trendshift.io/repositories/151670?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-151670" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/151670/daily?language=Swift" alt="ZingerLittleBee%2FHeeler | Trendshift" width="250" height="55"/></a>
 
