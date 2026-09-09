@@ -2076,6 +2076,10 @@ struct TerminalAttachTests {
 
         sent.removeAll()
         terminal.receive(Data("\u{1B}[?1h".utf8))
+        let modeDeadline = ContinuousClock.now + .seconds(1)
+        while !terminal.usesApplicationCursorKeys, ContinuousClock.now < modeDeadline {
+            await Task.yield()
+        }
         terminal.sendControlKey(.up)
         try await Task.sleep(for: .milliseconds(20))
         #expect(sent == Data([0x1B, 0x4F, 0x41]))

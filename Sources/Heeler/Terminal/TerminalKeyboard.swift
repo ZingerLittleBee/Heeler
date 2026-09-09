@@ -91,8 +91,7 @@ enum AgentQuickKey: CaseIterable, Hashable {
         }
     }
 
-    var ghosttyInput: (key: TerminalPublicInputKey,
-                       modifiers: Set<TerminalPublicInputModifier>) {
+    var ghosttyInput: (key: TerminalKey, modifiers: TerminalInputModifiers) {
         switch self {
         case .escape: (.escape, [])
         case .tab: (.tab, [])
@@ -303,7 +302,7 @@ enum TerminalControlKey: Equatable, CaseIterable, Hashable {
         }
     }
 
-    var ghosttyKey: TerminalPublicInputKey? {
+    var ghosttyKey: TerminalKey? {
         switch self {
         case .controlC, .controlD, .controlZ: nil
         case .escape: .escape
@@ -315,7 +314,7 @@ enum TerminalControlKey: Equatable, CaseIterable, Hashable {
         case .end: .end
         case .backspace: .backspace
         case .insert: .insert
-        case .forwardDelete: .forwardDelete
+        case .forwardDelete: .delete
         case .left: .arrowLeft
         case .down: .arrowDown
         case .right: .arrowRight
@@ -680,7 +679,7 @@ extension HeelerTerminalView {
             sendFixedControlCharacter("z")
         default:
             guard let ghosttyKey = key.ghosttyKey else { return }
-            sendInputKey(ghosttyKey)
+            sendKey(ghosttyKey)
         }
     }
 
@@ -696,7 +695,7 @@ extension HeelerTerminalView {
     func sendQuickKey(_ key: AgentQuickKey) {
         resetStickyModifiers()
         let input = key.ghosttyInput
-        if !sendInputKey(input.key, modifiers: input.modifiers) {
+        if !sendKey(input.key, modifiers: input.modifiers) {
             terminalSession.sendInput(
                 Data(key.bytes(applicationCursor: usesApplicationCursorKeys)))
         }
