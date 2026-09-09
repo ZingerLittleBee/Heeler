@@ -417,6 +417,65 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    @Test func initialAndReconnectSnapshotsFollowSubscriptionAcknowledgement() async throws {
+        let host = Host.fixture()
+        // Empty membership avoids a pane-subscription replacement obscuring
+        // the initial and reconnect boundaries under test.
+        let transport = ScriptedTransport(snapshot: .fixture(agents: []))
+        let store = makeStore(transports: [host.id: transport])
+        defer { store.setHosts([]) }
+
+        let initialGate = ScriptedTransportCallGate()
+        await transport.gateNextSubscription(using: initialGate)
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the first subscription should await acknowledgement") {
+            await initialGate.entryCount == 1
+        }
+        #expect(await transport.snapshotFetchCount == 0)
+        await initialGate.open()
+        try await waitUntil("the first acknowledged stream should bootstrap the Console") {
+            await transport.snapshotFetchCount == 1
+        }
+
+        let reconnectGate = ScriptedTransportCallGate()
+        await transport.gateNextSubscription(using: reconnectGate)
+        await transport.failEventStream(.channelFailed(detail: "scripted reconnect"))
+        try await waitUntil("the replacement subscription should await acknowledgement") {
+            await reconnectGate.entryCount == 1
+        }
+        #expect(await transport.snapshotFetchCount == 1)
+        await reconnectGate.open()
+        try await waitUntil("the replacement stream should trigger a fresh snapshot") {
+            await transport.snapshotFetchCount == 2
+        }
+        #expect(await transport.snapshotHadLiveSubscription == [true, true])
+    }
+
+    @Test func lifecycleEventDuringInitialSnapshotSchedulesAuthoritativeFollowup() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(snapshot: .fixture(agents: []))
+        let snapshotGate = ScriptedTransportCallGate()
+        await transport.gateNextSnapshot(using: snapshotGate)
+        let store = makeStore(transports: [host.id: transport])
+        defer { store.setHosts([]) }
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the empty initial response should be held in flight") {
+            await snapshotGate.entryCount == 1
+        }
+
+        await transport.setSnapshot(.fixture(agents: [.fixture(paneID: "w1:p-new")]))
+        #expect(await transport.emit(HerdrEvent(
+            kind: GlobalEventKind.paneAgentDetected.kind,
+            data: .object(["pane_id": .string("w1:p-new")]))) == true)
+        await snapshotGate.open()
+        try await waitUntil("the live-only event should converge past the stale empty snapshot") {
+            store.agents.map(\.agent.paneID) == ["w1:p-new"]
+        }
+        #expect(await transport.snapshotFetchCount >= 2)
+    }
+
     @Test func snapshotPushesPaneSubscriptionsIntoTheSession() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(
