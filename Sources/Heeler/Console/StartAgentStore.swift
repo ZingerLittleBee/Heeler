@@ -580,6 +580,13 @@ final class StartAgentStore {
             "This workspace is not inside a Git repository, so no worktree can be created from it."
         case let apiError as HerdrAPIError where apiError.code == "worktree_create_failed":
             "Creating the worktree failed: \(apiError.message)"
+        case let apiError as HerdrAPIError where apiError.code == "unsupported_agent_kind":
+            // Executable discovery does not prove the Host's herdr supports
+            // the kind (#289). Keep the server reason and tell the user how
+            // to recover without inventing a capability signal.
+            "herdr rejected the command: \(apiError.message). "
+                + "Update herdr on this Host to v0.9.0 or later for Muse support, "
+                + "or choose another supported Agent."
         case let apiError as HerdrAPIError:
             "herdr rejected the command: \(apiError.message)"
         default:

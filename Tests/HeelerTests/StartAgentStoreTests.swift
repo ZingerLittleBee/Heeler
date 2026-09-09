@@ -694,12 +694,13 @@ struct StartAgentStoreTests {
         #expect(recorder.params.first?.kind == "muse")
     }
 
-    @Test func submitSurfacesUnsupportedMuseKindFromOlderHerdr() async {
+    @Test func submitSurfacesUnsupportedMuseKindWithRecoveryAdvice() async {
         let host = Host.fixture()
         let recorder = StartRecorder()
+        // herdr v0.8.2 / v0.9.0: code unsupported_agent_kind, message without a colon.
         recorder.error = HerdrAPIError(
-            code: "unsupported_interactive_agent_kind",
-            message: "unsupported interactive agent kind: muse")
+            code: "unsupported_agent_kind",
+            message: "unsupported interactive agent kind muse")
         let store = makeStore(
             hosts: [host],
             workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
@@ -711,8 +712,27 @@ struct StartAgentStoreTests {
 
         #expect(
             store.state
-                == .failed("herdr rejected the command: unsupported interactive agent kind: muse"))
+                == .failed(
+                    "herdr rejected the command: unsupported interactive agent kind muse. "
+                        + "Update herdr on this Host to v0.9.0 or later for Muse support, "
+                        + "or choose another supported Agent."))
         #expect(recorder.params.map(\.kind) == ["muse"])
+    }
+
+    @Test func submitKeepsGenericCopyForUnrelatedAgentStartErrors() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        recorder.error = HerdrAPIError(code: "400", message: "no such workspace")
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            agentKinds: { _ in [.muse] },
+            recorder: recorder)
+        await store.discoverAgents()
+
+        await store.submit()
+
+        #expect(store.state == .failed("herdr rejected the command: no such workspace"))
     }
 
     /// Launching from an agent's own screen: Host, workspace, and directory
