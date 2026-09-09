@@ -15,7 +15,8 @@
 
 <a href="https://trendshift.io/repositories/151670?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-151670" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/151670/daily?language=Swift" alt="ZingerLittleBee%2FHeeler | Trendshift" width="250" height="55"/></a>
 
-**[Join the beta on TestFlight](https://testflight.apple.com/join/aXSxRn4r)**
+[![Join the beta](https://img.shields.io/badge/TestFlight-Join_the_beta-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://testflight.apple.com/join/aXSxRn4r)
+[![Download](https://img.shields.io/badge/App_Store-Download-000000?style=for-the-badge&logo=apple&logoColor=white)](https://apps.apple.com/us/app/heeler-for-herdr/id6797263135)
 
 English | [简体中文](./README-zh.md)
 
@@ -109,6 +110,8 @@ layout, build/test, and conventions.
 
 ## Status
 
-Beta, on [TestFlight](https://testflight.apple.com/join/aXSxRn4r). Built for
-personal use first and shaped by daily driving, so expect rough edges and
+Released on the [App Store](https://apps.apple.com/us/app/heeler-for-herdr/id6797263135).
+It is not yet available in every country or region; where it is missing, the
+[TestFlight](https://testflight.apple.com/join/aXSxRn4r) beta stays open. Built
+for personal use first and shaped by daily driving, so expect rough edges and
 fast iteration. Not affiliated with the herdr project.

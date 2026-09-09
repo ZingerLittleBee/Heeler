@@ -15,7 +15,8 @@
 
 <a href="https://trendshift.io/repositories/151670?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-151670" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/151670/daily?language=Swift" alt="ZingerLittleBee%2FHeeler | Trendshift" width="250" height="55"/></a>
 
-**[通过 TestFlight 加入 beta](https://testflight.apple.com/join/aXSxRn4r)**
+[![加入 beta](https://img.shields.io/badge/TestFlight-加入_beta-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://testflight.apple.com/join/aXSxRn4r)
+[![下载](https://img.shields.io/badge/App_Store-下载-000000?style=for-the-badge&logo=apple&logoColor=white)](https://apps.apple.com/us/app/heeler-for-herdr/id6797263135)
 
 [English](./README.md) | 简体中文
 
@@ -100,4 +101,4 @@ host key 指纹和 SSH 密钥注册全部由配对码承载。在应用里为该
 
 ## 状态
 
-Beta，已上 [TestFlight](https://testflight.apple.com/join/aXSxRn4r)。以个人日常使用打磨为先，仍有粗糙之处，迭代较快。与 herdr 项目无隶属关系。
+已在 [App Store](https://apps.apple.com/us/app/heeler-for-herdr/id6797263135) 上发布；部分国家和地区尚未上架，可以继续使用 [TestFlight](https://testflight.apple.com/join/aXSxRn4r)。以个人日常使用打磨为先，仍有粗糙之处，迭代较快。与 herdr 项目无隶属关系。
