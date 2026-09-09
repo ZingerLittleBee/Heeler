@@ -122,6 +122,11 @@ protocol Transport: Sendable {
     /// or waiting on a delta.
     func renameAgent(_ params: AgentRenameParams) async throws
 
+    /// Renames a Pane (`pane.rename`). A nil label clears its manual title.
+    /// As with Agent names, the update does not arrive on a useful event, so
+    /// consumers re-snapshot after the call instead of mutating local state.
+    func renamePane(_ params: PaneRenameParams) async throws
+
     /// Renames a workspace (`workspace.rename`): the Console management
     /// action (#98). The server accepts any label — empty, whitespace, and
     /// very long labels all pass (verified live against herdr 0.7.5); the

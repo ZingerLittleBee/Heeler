@@ -60,6 +60,7 @@ METHODS = [
     "tab.create",
     "pane.read",
     "pane.close",
+    "pane.rename",
     "session.snapshot",
     "workspace.create",
     "workspace.rename",
@@ -90,6 +91,7 @@ RESULT_TAGS = [
     "agent_prompted",  # agent.prompt
     "agent_started",  # agent.start
     "agent_list",  # agent.list
+    "pane_info",  # pane.rename
     "pane_read",  # pane.read, agent.read
     "session_snapshot",  # session.snapshot
     "subscription_started",  # events.subscribe ack
@@ -283,7 +285,19 @@ def emit_struct(name: str, doc: str, fields: list[Field]) -> str:
         lines.append(f"        self.{field.name} = {field.name}")
     lines.append("    }")
 
-    if any(field.name != field.wire_name for field in fields):
+    needs_coding_keys = any(field.name != field.wire_name for field in fields)
+    # pane.rename distinguishes JSON null (clear) from an omitted label.
+    # Swift's synthesized Optional encoding omits nil, so preserve null here.
+    if name == "PaneRenameParams":
+        lines.append("")
+        lines.append("    func encode(to encoder: any Encoder) throws {")
+        lines.append("        var container = encoder.container(keyedBy: CodingKeys.self)")
+        lines.append("        try container.encode(label, forKey: .label)")
+        lines.append("        try container.encode(paneID, forKey: .paneID)")
+        lines.append("    }")
+        needs_coding_keys = True
+
+    if needs_coding_keys:
         lines.append("")
         lines.append("    private enum CodingKeys: String, CodingKey {")
         for field in fields:

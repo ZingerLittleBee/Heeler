@@ -502,6 +502,11 @@ class Server:
             }
         if method == "agent.rename":
             return {"type": "agent_info", "agent": self._agent()}
+        if method == "pane.rename":
+            return {
+                "type": "pane_info",
+                "pane": self._pane("pane-1", "tab-1", "workspace-1"),
+            }
         if method == "workspace.rename":
             return {"type": "workspace_info", "workspace": self._workspace()}
         return {"type": "ok"}

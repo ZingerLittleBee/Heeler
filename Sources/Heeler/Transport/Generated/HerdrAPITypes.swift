@@ -417,6 +417,15 @@ struct PaneInfo: Codable, Equatable, Sendable {
     }
 }
 
+/// The `"type":"pane_info"` result payload of herdr's success_response schema.
+struct PaneInfoResponse: Codable, Equatable, Sendable {
+    let pane: PaneInfo
+
+    init(pane: PaneInfo) {
+        self.pane = pane
+    }
+}
+
 /// herdr schema `$defs/PaneLayoutPane`.
 struct PaneLayoutPane: Codable, Equatable, Sendable {
     let focused: Bool
@@ -585,6 +594,28 @@ struct PaneReadResult: Codable, Equatable, Sendable {
         case text
         case truncated
         case workspaceID = "workspace_id"
+    }
+}
+
+/// herdr schema `$defs/PaneRenameParams`.
+struct PaneRenameParams: Codable, Equatable, Sendable {
+    let label: String?
+    let paneID: String
+
+    init(paneID: String, label: String? = nil) {
+        self.paneID = paneID
+        self.label = label
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(label, forKey: .label)
+        try container.encode(paneID, forKey: .paneID)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case label
+        case paneID = "pane_id"
     }
 }
 

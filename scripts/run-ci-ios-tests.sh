@@ -1801,6 +1801,10 @@ assert_behavior "agent rename params" HeelerSSHTransportBehaviorE2ETests \
     '"agent rename sends its custom name and target exactly"'
 assert_behavior "agent rename clear omission" HeelerSSHTransportBehaviorE2ETests \
     '"agent rename omits name when clearing a custom name"'
+assert_behavior "pane rename params" HeelerSSHTransportBehaviorE2ETests \
+    '"pane rename sends its label and pane id exactly"'
+assert_behavior "pane rename clear null" HeelerSSHTransportBehaviorE2ETests \
+    '"pane rename sends null when clearing its title"'
 assert_behavior "workspace rename params" HeelerSSHTransportBehaviorE2ETests \
     '"workspace rename sends its label and workspace id exactly"'
 assert_behavior "pane read params and result" HeelerSSHTransportBehaviorE2ETests \

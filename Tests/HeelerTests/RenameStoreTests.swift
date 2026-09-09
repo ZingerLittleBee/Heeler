@@ -19,6 +19,13 @@ struct RenameStoreTests {
             rename: rename)
     }
 
+    private func paneStore(
+        current: String = "Review API",
+        rename: @escaping (String?) async throws -> Void = { _ in }
+    ) -> RenameStore {
+        RenameStore(subject: .pane, currentValue: current, rename: rename)
+    }
+
     private func workspaceStore(
         current: String = "Proj",
         rename: @escaping (String) async throws -> Void = { _ in }
@@ -58,6 +65,31 @@ struct RenameStoreTests {
 
         #expect(store.state == .renamed)
         #expect(recorder.values == ["reviewer-2"])
+    }
+
+    @Test func paneSubmitAcceptsFreeFormLabels() async {
+        let recorder = RenameRecorder()
+        let store = paneStore { value in recorder.record(value) }
+        store.input = " 修复登录流程 "
+
+        #expect(store.validationMessage == nil)
+        await store.submit()
+
+        #expect(store.state == .renamed)
+        #expect(recorder.values == ["修复登录流程"])
+    }
+
+    @Test func emptyPaneInputMeansClear() async {
+        let recorder = RenameRecorder()
+        let store = paneStore { value in recorder.record(value) }
+        store.input = "  "
+
+        #expect(store.canSubmit)
+        #expect(store.clearHint == "Leave empty to clear the pane title.")
+        await store.submit()
+
+        #expect(store.state == .renamed)
+        #expect(recorder.values == [nil])
     }
 
     // MARK: Workspace labels (server enforces nothing, verified live; the

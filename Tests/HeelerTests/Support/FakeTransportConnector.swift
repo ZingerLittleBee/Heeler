@@ -79,6 +79,10 @@ final actor FakeTransport: Transport {
         throw TransportError.channelFailed(detail: "FakeTransport does not script renames")
     }
 
+    func renamePane(_ params: PaneRenameParams) async throws {
+        throw TransportError.channelFailed(detail: "FakeTransport does not script renames")
+    }
+
     func renameWorkspace(_ params: WorkspaceRenameParams) async throws {
         throw TransportError.channelFailed(detail: "FakeTransport does not script renames")
     }

@@ -7,6 +7,12 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- Agent list rows can rename a Pane using herdr's server-side pane title, so
+  the title is shared with other clients and can be shown with the `pane`
+  Agent List Field. (#290)
+
 ### Fixed
 
 - New Agent now discovers agents installed through mise. The discovery PATH

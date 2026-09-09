@@ -482,6 +482,15 @@ final class HostConsoleProjection {
         scheduleResync()
     }
 
+    /// Renames a Pane (#290). Pane title changes do not have a useful
+    /// subscribed event, so the post-RPC resync surfaces the server value.
+    func renamePane(_ paneID: String, label: String?) async throws {
+        try await session.withTransport { transport in
+            try await transport.renamePane(PaneRenameParams(paneID: paneID, label: label))
+        }
+        scheduleResync()
+    }
+
     /// Renames a workspace (#98). `workspace.renamed` is already a
     /// membership event, so renames from other clients converge too; the
     /// post-RPC resync just makes our own rename land without waiting on the

@@ -1054,6 +1054,34 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(recorded == [#"agent.rename {"target":"\#(token)"}"#])
     }
 
+    @Test("pane rename sends its label and pane id exactly")
+    func paneRenameSendsItsLabelAndPaneIDExactly() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("wire")
+        try await transport.renamePane(PaneRenameParams(paneID: token, label: "Review API"))
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        #expect(recorded == [#"pane.rename {"label":"Review API","pane_id":"\#(token)"}"#])
+    }
+
+    @Test("pane rename sends null when clearing its title")
+    func paneRenameSendsNullWhenClearingItsTitle() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("wire")
+        try await transport.renamePane(PaneRenameParams(paneID: token, label: nil))
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        #expect(recorded == [#"pane.rename {"label":null,"pane_id":"\#(token)"}"#])
+    }
+
     /// Workspace labels accept a wider grammar than Agent names. Pin both the
     /// label and snake-cased workspace id at the real Transport boundary.
     @Test("workspace rename sends its label and workspace id exactly")
@@ -1220,6 +1248,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
             AgentSendKeysParams(keys: ["ctrl+c", "enter"], target: "pane-1"))
         try await transport.closePane(PaneTarget(paneID: "pane-1"))
         try await transport.renameAgent(AgentRenameParams(target: "pane-1", name: "fixture"))
+        try await transport.renamePane(PaneRenameParams(paneID: "pane-1", label: "Fixture"))
         try await transport.renameWorkspace(
             WorkspaceRenameParams(label: "Fixture", workspaceID: "workspace-1"))
         #expect(
