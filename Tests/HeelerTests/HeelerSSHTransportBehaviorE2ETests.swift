@@ -18,7 +18,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
     @Test("the protocol floor admits newer servers and refuses older ones")
     func protocolFloorAdmitsNewerAndRefusesOlder() throws {
         #expect(HeelerSSHTransport.minimumProtocolVersion == 17)
-        #expect(HeelerSSHTransport.generatedProtocolVersion == 20)
+        #expect(HeelerSSHTransport.generatedProtocolVersion == 22)
 
         // Below the floor: refused, because methods this app calls may be absent.
         #expect(
@@ -28,13 +28,15 @@ struct HeelerSSHTransportBehaviorE2ETests {
                 from: PongResponse(protocolVersion: 16, version: "ancient"))
         }
 
-        // Floor through generated (17–20): usable, no notice. 18 and 19 stay
+        // Floor through generated (17–22): usable, no notice. 18 and 19 stay
         // connectable after the snapshot bump; the live fake-herdr fixture
-        // still speaks 17 and is not rewritten to require 20 at runtime.
+        // still speaks 17 and is not rewritten to require 22 at runtime.
         for version in [
             HeelerSSHTransport.minimumProtocolVersion,
             18,
             19,
+            20,
+            21,
             HeelerSSHTransport.generatedProtocolVersion,
         ] {
             let info = try HeelerSSHTransport.serverInfo(
@@ -72,7 +74,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(!info.exceedsGeneratedProtocol)
     }
 
-    /// Protocol 20 is the committed snapshot. A 0.8.2-shaped pong must not
+    /// Protocol 20 remains supported. A 0.8.2-shaped pong must not
     /// raise the "newer than this app was built against" notice.
     @Test("a protocol 20 pong does not set the generated-protocol notice")
     func protocolTwentyPongDoesNotExceedGenerated() throws {
