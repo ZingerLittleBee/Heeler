@@ -7,6 +7,10 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- Muse appears in Start Agent when the Host has `muse` on PATH. (#289)
+
 ### Fixed
 
 - New Agent now discovers agents installed through mise. The discovery PATH
