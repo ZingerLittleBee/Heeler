@@ -24,10 +24,22 @@ import Foundation
 ///   only at the command word, so it cannot see an inner `herdr`.
 enum HerdrHostPath: Sendable {
     /// Directories appended to `PATH` on herdr CLI and Agent discovery
-    /// execs. `$HOME` is expanded by the remote `/bin/sh`, not by Swift.
+    /// execs. `$HOME` and the parameter expansions are evaluated by the
+    /// remote `/bin/sh`, not by Swift.
+    ///
+    /// mise exposes its tools to non-interactive shells through its shims
+    /// directory (#293); `mise activate` lives in interactive rc files the
+    /// probe never reads. The expansion follows mise's own resolution order,
+    /// `MISE_DATA_DIR`, then `XDG_DATA_HOME/mise`, then
+    /// `~/.local/share/mise`, but only sees a value that reaches the
+    /// non-interactive environment. One set solely in `.zshrc` or `.bashrc`
+    /// still resolves to the default.
     static let extraPATH =
-        "$HOME/.local/bin:$HOME/.linuxbrew/bin:$HOME/.cargo/bin:$HOME/.bun/bin:"
+        "$HOME/.local/bin:\(miseShims):$HOME/.linuxbrew/bin:$HOME/.cargo/bin:$HOME/.bun/bin:"
         + "/opt/homebrew/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin"
+
+    /// POSIX sh expansion of mise's shims directory.
+    static let miseShims = "${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}/shims"
 
     static var pathAssignment: String {
         "PATH=\"$PATH:\(extraPATH)\""

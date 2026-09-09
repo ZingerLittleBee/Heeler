@@ -13,6 +13,10 @@ struct HerdrHostPathTests {
         #expect(HerdrHostPath.extraPATH.contains("$HOME/.cargo/bin"))
         #expect(HerdrHostPath.extraPATH.contains("$HOME/.bun/bin"))
         #expect(HerdrHostPath.extraPATH.contains("/usr/local/bin"))
+        // mise shims resolve the data dir the way mise does, default last (#293).
+        #expect(
+            HerdrHostPath.extraPATH.contains(
+                "${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}/shims"))
         // Existing PATH entries keep priority over the extra prefixes.
         #expect(HerdrHostPath.pathExport.hasPrefix("export PATH=\"$PATH:"))
     }
