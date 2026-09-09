@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="108" height="40" viewBox="0 0 108 40" role="img" aria-label="TestFlight 下载">
+  <rect x="0.5" y="0.5" width="107" height="39" rx="5" fill="#000" stroke="#a6a6a6"/>
+  <g fill="#fff" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'PingFang SC', 'Segoe UI', Arial, sans-serif">
+    <text x="12" y="20" font-size="17" font-weight="600" letter-spacing="-0.2">TestFlight</text>
+    <text x="12" y="32" font-size="9">下载</text>
+  </g>
+</svg>
