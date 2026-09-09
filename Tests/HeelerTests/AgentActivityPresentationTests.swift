@@ -253,14 +253,28 @@ struct AgentActivityPresentationTests {
 
     @Test func threeRowCardsReserveSpaceForOverflowAndStaleness() {
         let presentation = configuredPresentation(agentCount: 5)
-        #expect(presentation.lockScreenAgents(isStale: false).map(\.paneID) == ["w1:p0", "w1:p1"])
+        #expect(
+            presentation.lockScreenAgents(isStale: false).map(\.paneID)
+                == ["w1:p0", "w1:p1", "w1:p2"])
+        #expect(presentation.lockScreenAgents(isStale: true).count == 3)
         #expect(presentation.lockScreenTrailingCaption(isStale: true)
-            == "+3 more · May be out of date")
+            == "+2 more · May be out of date")
         #expect(presentation.secondaryAgents.count == 1)
         #expect(presentation.overflowCount == 3)
         let three = configuredPresentation(agentCount: 3)
         #expect(three.lockScreenAgents(isStale: false).count == 3)
-        #expect(three.lockScreenAgents(isStale: true).count == 2)
+        #expect(three.lockScreenAgents(isStale: true).count == 3)
+        let four = configuredPresentation(agentCount: 4)
+        #expect(four.lockScreenAgents(isStale: false).count == 3)
+        #expect(four.lockScreenTrailingCaption(isStale: false) == "+1 more")
+    }
+
+    @Test func threeRowCardsUseTheComfortableTargetHeight() {
+        var agent = agentDetail(paneID: "w1:p1")
+        agent.rows = [[.init(text: "1")], [.init(text: "2")], [.init(text: "3")]]
+        #expect(AgentActivityRowMetrics.minimumHeight(for: agent) == 44)
+        agent.rows = [[.init(text: "1")], [.init(text: "2")]]
+        #expect(AgentActivityRowMetrics.minimumHeight(for: agent) == 28)
     }
 
     @Test func styledFieldsPreserveHexColorAndSecondarySemantics() {
@@ -300,22 +314,26 @@ struct AgentActivityPresentationTests {
         }
     }
 
+    /// Measures the rendered banner, not `sizeThatFits`: a hosting
+    /// controller reports only the row frames' minimum heights and misses
+    /// the text, which is what let three-row cards overrun the budget.
     @MainActor
     @Test func threeRowBannersFitTheLockScreenHeightBudget() throws {
-        for count in [3, 5] {
+        for count in [3, 4, 5] {
             for stale in [false, true] {
                 let view = AgentActivityLockScreenView(
                     presentation: configuredPresentation(agentCount: count),
                     hostID: "host", isStale: stale)
-                let controller = UIHostingController(rootView: view)
-                let size = controller.sizeThatFits(in: CGSize(width: 360, height: 0))
-                #expect(size.height <= 160, "\(count) Agents, stale=\(stale): \(size.height) pt")
-                #expect(size.height > 0)
                 let renderer = ImageRenderer(content: view
-                    .frame(width: 360, height: size.height)
+                    .frame(width: 360)
                     .environment(\.colorScheme, .light))
                 renderer.scale = 2
                 let image = try #require(renderer.uiImage)
+                let height = image.size.height
+                #expect(height <= 160, "\(count) Agents, stale=\(stale): \(height) pt")
+                // Three three-row cards are drawn, so the banner is far
+                // taller than the two-card layout (about 104 pt).
+                #expect(height > 140, "\(count) Agents, stale=\(stale): \(height) pt")
                 Attachment.record(image,
                     named: "activity-fields-\(count)-agents-stale-\(stale)", as: .png)
             }
