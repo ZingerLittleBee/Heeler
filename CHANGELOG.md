@@ -7,6 +7,14 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Fixed
+
+- The Lock Screen Live Activity shows three Agents with three-row Agent List
+  Fields instead of two before "+N more". The row budget overestimated card
+  height and its test measured only frame minimums, not the rendered text.
+  Four three-row cards exceed ActivityKit's 160 pt limit, so four rows remain
+  only for two-row layouts. (#281)
+
 ## [0.1.6] - 2026-09-09
 
 ### Added

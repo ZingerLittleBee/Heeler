@@ -66,7 +66,10 @@ enum AgentActivityPresentation: Equatable, Sendable {
     }
 
     /// Keep configured rows, independent tap targets, padding, and the
-    /// overflow/stale caption within the 160 pt lock-screen budget.
+    /// overflow/stale caption within the 160 pt lock-screen budget. The
+    /// estimate mirrors the rendered layout: three three-row cards plus the
+    /// caption fit (about 158 pt), a fourth never does, and four two-row
+    /// cards still fit as before.
     func lockScreenAgents(isStale: Bool) -> [AgentActivityDetails.AgentDetail] {
         let total = counts.total
         guard total > 0 else { return [] }
@@ -78,8 +81,12 @@ enum AgentActivityPresentation: Equatable, Sendable {
             let rowHeight = prefix.reduce(0) {
                 $0 + max(target, AgentActivityRowMetrics.minimumHeight(for: $1))
             }
-            let captionHeight = isStale || total > shown ? 12 : 0
-            if rowHeight + CGFloat(16 + captionHeight) <= 160 { return prefix }
+            let captionHeight = isStale || total > shown
+                ? AgentActivityRowMetrics.lockScreenCaptionHeight : 0
+            let padding = AgentActivityRowMetrics.lockScreenBannerVerticalPadding * 2
+            if rowHeight + padding + captionHeight <= AgentActivityRowMetrics.lockScreenHeightBudget {
+                return prefix
+            }
         }
         return Array(candidates.prefix(1))
     }

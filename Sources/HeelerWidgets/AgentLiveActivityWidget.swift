@@ -156,7 +156,7 @@ struct AgentActivityLockScreenView: View {
                 #endif
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .padding(.vertical, AgentActivityRowMetrics.lockScreenBannerVerticalPadding)
         }
         .widgetURL(AgentActivityLink.consoleURL(hostID: hostID))
     }
@@ -312,8 +312,20 @@ enum AgentActivityRowMetrics {
         agentCount <= 3 ? comfortableMinimumHeight : denseMinimumHeight
     }
 
+    /// Three configured rows render at about 43.5 pt (caption + 2 x caption2
+    /// plus the card's vertical padding), so a three-row card is held to the
+    /// comfortable 44 pt target; two rows or fewer fit the dense target.
+    static let threeRowMinimumHeight: CGFloat = comfortableMinimumHeight
+
+    /// Vertical padding of the whole lock-screen banner.
+    static let lockScreenBannerVerticalPadding: CGFloat = 6
+    /// Rendered height of the trailing caption2 line (overflow / stale).
+    static let lockScreenCaptionHeight: CGFloat = 14
+    /// ActivityKit's lock-screen presentation height limit.
+    static let lockScreenHeightBudget: CGFloat = 160
+
     static func minimumHeight(for agent: AgentActivityDetails.AgentDetail) -> CGFloat {
-        AgentActivityFields.rows(for: agent).count > 2 ? 48 : denseMinimumHeight
+        AgentActivityFields.rows(for: agent).count > 2 ? threeRowMinimumHeight : denseMinimumHeight
     }
 }
 
@@ -470,7 +482,7 @@ struct AgentActivityRowView: View {
                 }
             }
         }
-        .padding(.vertical, agent.rows == nil ? 0 : 2)
+        .padding(.vertical, agent.rows == nil ? 0 : 1)
         .layoutPriority(1)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(AgentActivityNarration.rowLabel(for: agent))
