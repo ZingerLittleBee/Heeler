@@ -188,7 +188,7 @@ struct AgentDirectInputChrome: View {
         case .left, .up, .down, .right:
             30
         case .backspace:
-            64
+            72
         }
     }
 
