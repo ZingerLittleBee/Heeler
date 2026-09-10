@@ -104,6 +104,7 @@ struct AgentDirectInputChrome: View {
                     ForEach(Self.shortcutKeys, id: \.self) { key in
                         shortcutKeyButton(key)
                     }
+                    pasteKeyButton
                 }
                 .padding(.leading, 8)
                 .padding(.trailing, 6)
@@ -122,20 +123,6 @@ struct AgentDirectInputChrome: View {
 
     private var fixedShortcutButtons: some View {
         HStack(spacing: 0) {
-            PasteButton(payloadType: String.self) { strings in
-                guard let text = strings.first else { return }
-                UIDevice.current.playInputClick()
-                interactions.paste(text)
-            }
-            .labelStyle(.iconOnly)
-            .buttonBorderShape(.capsule)
-            // The system default is an accent-tinted tile, which shouts next
-            // to the key caps. Painting the fill with the row's own
-            // background leaves the glyph reading as a bare icon.
-            .tint(Color(uiColor: .secondarySystemBackground))
-            .frame(width: 44, height: 44)
-            .accessibilityLabel("Paste")
-            .accessibilityHint("Pastes the clipboard into the Agent")
             shortcutKeyButton(.enter)
 
             moreMenu
@@ -169,6 +156,24 @@ struct AgentDirectInputChrome: View {
         .buttonStyle(.plain)
         .accessibilityLabel(key.accessibilityLabel)
         .accessibilityHint("Sends this key directly to the Agent")
+    }
+
+    private var pasteKeyButton: some View {
+        Button {
+            guard let text = UIPasteboard.general.string, !text.isEmpty else { return }
+            UIDevice.current.playInputClick()
+            interactions.paste(text)
+        } label: {
+            shortcutKeyCap(minWidth: 30) {
+                Image(systemName: "doc.on.clipboard")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+        }
+        .frame(height: 44)
+        .contentShape(.rect)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Paste")
+        .accessibilityHint("Pastes the clipboard into the Agent")
     }
 
     private func keyCapWidth(for key: AgentQuickKey) -> CGFloat {
