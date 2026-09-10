@@ -158,23 +158,45 @@ struct AgentDirectInputChrome: View {
         .accessibilityHint("Sends this key directly to the Agent")
     }
 
+    /// A system paste control, so a tap needs no Allow Paste prompt. It will
+    /// not lay out smaller than about 41x34 pt, so it is scaled to the key
+    /// caps' height; scaled much further, iOS stops trusting the tap and falls
+    /// back to the prompt.
     private var pasteKeyButton: some View {
-        Button {
-            guard let text = UIPasteboard.general.string, !text.isEmpty else { return }
+        PasteButton(payloadType: String.self) { strings in
+            guard let text = strings.first, !text.isEmpty else { return }
             UIDevice.current.playInputClick()
             interactions.paste(text)
-        } label: {
-            shortcutKeyCap(minWidth: 30) {
-                Image(systemName: "doc.on.clipboard")
-                    .font(.system(size: 12, weight: .semibold))
-            }
         }
-        .frame(height: 44)
-        .contentShape(.rect)
-        .buttonStyle(.plain)
-        .accessibilityLabel("Paste")
+        .labelStyle(.iconOnly)
+        .buttonBorderShape(.roundedRectangle(radius: 7))
+        .tint(Self.pasteKeyTint)
+        .scaleEffect(30.0 / 34.0)
+        .frame(width: 36, height: 44)
         .accessibilityHint("Pastes the clipboard into the Agent")
     }
+
+    /// The key caps' translucent fill flattened onto the row, because the
+    /// paste control paints its tint opaque. Its glyph is always white, so in
+    /// light mode iOS darkens this to a mid gray to keep the glyph legible.
+    private static let pasteKeyTint = Color(uiColor: UIColor { traits in
+        let fill = UIColor.secondarySystemFill.resolvedColor(with: traits)
+        let base = UIColor.secondarySystemBackground.resolvedColor(with: traits)
+        var (fillRed, fillGreen, fillBlue, fillAlpha): (CGFloat, CGFloat, CGFloat, CGFloat) =
+            (0, 0, 0, 0)
+        var (baseRed, baseGreen, baseBlue, baseAlpha): (CGFloat, CGFloat, CGFloat, CGFloat) =
+            (0, 0, 0, 0)
+        fill.getRed(&fillRed, green: &fillGreen, blue: &fillBlue, alpha: &fillAlpha)
+        base.getRed(&baseRed, green: &baseGreen, blue: &baseBlue, alpha: &baseAlpha)
+        let blend = { (top: CGFloat, bottom: CGFloat) in
+            top * fillAlpha + bottom * (1 - fillAlpha)
+        }
+        return UIColor(
+            red: blend(fillRed, baseRed),
+            green: blend(fillGreen, baseGreen),
+            blue: blend(fillBlue, baseBlue),
+            alpha: 1)
+    })
 
     private func keyCapWidth(for key: AgentQuickKey) -> CGFloat {
         switch key {
