@@ -23,6 +23,7 @@ struct AgentDirectInputChromeContext {
         let toggleKeyboard: () -> Void
         let switchKeyboard: (() -> Void)?
         let sendQuickKey: (AgentQuickKey) -> Void
+        let paste: (String) -> Void
         let showComposer: () -> Void
         /// Routes More / Add actions that own the draft: restore Composer first.
         let restoreComposerThen: (@escaping () -> Void) -> Void
@@ -121,6 +122,20 @@ struct AgentDirectInputChrome: View {
 
     private var fixedShortcutButtons: some View {
         HStack(spacing: 0) {
+            PasteButton(payloadType: String.self) { strings in
+                guard let text = strings.first else { return }
+                UIDevice.current.playInputClick()
+                interactions.paste(text)
+            }
+            .labelStyle(.iconOnly)
+            .buttonBorderShape(.capsule)
+            // The system default is an accent-tinted tile, which shouts next
+            // to the key caps. Painting the fill with the row's own
+            // background leaves the glyph reading as a bare icon.
+            .tint(Color(uiColor: .secondarySystemBackground))
+            .frame(width: 44, height: 44)
+            .accessibilityLabel("Paste")
+            .accessibilityHint("Pastes the clipboard into the Agent")
             shortcutKeyButton(.enter)
 
             moreMenu

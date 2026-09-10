@@ -7,6 +7,14 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- Long-press text selection in the terminal copies the highlighted text
+  automatically once the highlight settles, and Direct Input gains a system
+  Paste control beside Enter so pasting no longer needs hardware ⌘V. Drag
+  selection is still owned by GhosttyTerminal, so the copy lands in the
+  Select Text sheet rather than in the pane. (#239)
+
 ### Fixed
 
 - New Agent now discovers agents installed through mise. The discovery PATH
