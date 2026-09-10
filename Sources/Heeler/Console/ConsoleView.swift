@@ -371,6 +371,12 @@ struct ConsoleView: View {
         ForEach(filteredAgents) { agent in
             agentRow(agent)
         }
+        if !visibleStaleAgents.isEmpty {
+            staleNoticeRow
+            ForEach(visibleStaleAgents) { cached in
+                staleAgentRow(cached)
+            }
+        }
     }
 
     @ViewBuilder
@@ -380,6 +386,12 @@ struct ConsoleView: View {
                 if !section.isCollapsed {
                     ForEach(section.agents) { agent in
                         agentRow(agent)
+                    }
+                    if let stale = visibleStaleAgentsByHost[section.hostID], !stale.isEmpty {
+                        staleNoticeRow
+                        ForEach(stale) { cached in
+                            staleAgentRow(cached)
+                        }
                     }
                 }
             } header: {
@@ -413,6 +425,49 @@ struct ConsoleView: View {
             }
         }
     }
+    /// Last-known rows (#237): plain disabled rows, never NavigationLinks,
+    /// so a tap no-ops instead of pushing detail for an ended Agent. No
+    /// contextMenu either: pinning a stale row would write pins for panes
+    /// that may never return.
+    private func staleAgentRow(_ cached: LastKnownAgentsStore.CachedAgent) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(cached.displayName)
+                .font(.headline)
+            Text(cached.statusLabel)
+                .font(.subheadline)
+            if let workspace = cached.workspaceLabel, !workspace.isEmpty {
+                Text(workspace)
+                    .font(.caption)
+            }
+        }
+        .foregroundStyle(.secondary)
+        .opacity(0.6)
+        .accessibilityLabel("\(cached.displayName), last known status \(cached.statusLabel)")
+    }
+
+    /// Non-blocking staleness notice: informational text above the stale
+    /// rows, never a modal or an empty-state replacement.
+    private var staleNoticeRow: some View {
+        Label(
+            "Last known agents — waiting for an update.",
+            systemImage: "clock.arrow.circlepath"
+        )
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+        .accessibilityHint("These agents may no longer exist. Pull to refresh.")
+    }
+
+    /// Stale rows filtered like the live list: a filtered Console shows only
+    /// the filtered Host's cache.
+    private var visibleStaleAgentsByHost: [Host.ID: [LastKnownAgentsStore.CachedAgent]] {
+        guard let hostFilter else { return console.staleAgentsByHost }
+        guard let rows = console.staleAgentsByHost[hostFilter] else { return [:] }
+        return rows.isEmpty ? [:] : [hostFilter: rows]
+    }
+
+    private var visibleStaleAgents: [LastKnownAgentsStore.CachedAgent] {
+        visibleStaleAgentsByHost.values.flatMap { $0 }
+    }
 
     private var agentsSurface: ConsoleAgentsSurface {
         ConsoleAgentsSurface(
@@ -422,7 +477,8 @@ struct ConsoleView: View {
             visibleIssueCount: visibleHostIssues.count,
             presentationMode: listPresentation.mode,
             projectedSectionCount: hostSections.count,
-            searchQuery: searchText)
+            searchQuery: searchText,
+            staleAgentCount: visibleStaleAgents.count)
     }
 
     private var hostSections: [ConsoleHostSection] {
