@@ -35,6 +35,7 @@ enum AgentNotificationIdentity {
         case "kilo": "Kilo Code"
         case "qodercli": "Qoder CLI"
         case "maki": "Maki"
+        case "muse": "Muse"
         case "qwen": "Qwen Code"
         case "unknown": "Unknown"
         default: rawValue

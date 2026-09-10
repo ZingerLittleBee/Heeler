@@ -70,6 +70,20 @@ struct AgentNotificationRendererTests {
         #expect(alert == AgentNotificationAlert(title: "Heeler · Codex", body: "Done"))
     }
 
+    @Test func namesMuseFriendly() {
+        let alert = AgentNotificationRenderer.alert(
+            workspace: "Heeler", agentKind: "muse", status: .done)
+
+        #expect(alert.title == "Heeler · Muse")
+    }
+
+    /// Every kind New Agent can launch gets an explicit label; the raw
+    /// protocol id is only the fallback for kinds Heeler does not know.
+    @Test(arguments: SupportedAgentKind.allCases)
+    func labelsEverySupportedKind(kind: SupportedAgentKind) {
+        #expect(AgentNotificationIdentity.kindLabel(kind.rawValue) != kind.rawValue)
+    }
+
     /// Best-effort fields: whitespace-only is the same as absent, so a Host
     /// that resolved a blank never renders a dangling separator.
     @Test func treatsBlankDisplayFieldsAsAbsent() {
