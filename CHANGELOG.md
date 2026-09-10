@@ -31,6 +31,11 @@ Entries reference the issue that motivated them.
   height and its test measured only frame minimums, not the rendered text.
   Four three-row cards exceed ActivityKit's 160 pt limit, so four rows remain
   only for two-row layouts. (#281)
+- Console rows show a standard home directory as `~` again: an Agent launched
+  in `/Users/aliefe/Code/bitbucket/opinnate-python` prints
+  `~/Code/bitbucket/opinnate-python`. Only the SSH account's own `/root`,
+  `/Users/<user>`, and `/home/<user>` homes are shortened, so a path that
+  merely shares a prefix with a longer account name is left alone. (#311)
 
 ## [0.1.6] - 2026-09-09
 

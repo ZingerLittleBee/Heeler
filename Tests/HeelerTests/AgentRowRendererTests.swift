@@ -37,6 +37,51 @@ struct AgentRowRendererTests {
         #expect(AgentRowRenderer.render(layout: layout, agent: agent(tabLabel: nil, tabCount: 2)).isEmpty)
     }
 
+    /// A CLI Agent whose launch directory and SSH account are the only things
+    /// a directory row depends on.
+    private func directoryAgent(cwd: String, hostUsername: String?) -> ConsoleAgent {
+        ConsoleAgent(
+            hostID: UUID(), hostName: "Host",
+            agent: Agent(AgentInfo(
+                agentStatus: .working, focused: false, paneID: "opaque-pane", revision: 1,
+                tabID: "opaque-tab", terminalID: "term", workspaceID: "workspace",
+                agent: "claude", cwd: cwd)),
+            workspaceLabel: "Heeler", repositoryCheckout: nil, hostUsername: hostUsername)
+    }
+
+    @Test func directoryShortensOnlyTheAccountsStandardHome() {
+        let layout = AgentRowLayout(rows: [[.init(.directory)]])
+        for (cwd, username, expected) in [
+            ("/Users/aliefe/Code/bitbucket/opinnate-python", "aliefe",
+             "~/Code/bitbucket/opinnate-python"),
+            ("/home/dev/app", "dev", "~/app"),
+            ("/root/work", "root", "~/work"),
+            ("/Users/aliefe", "aliefe", "~"),
+            ("/Users/aliefesh/Code", "aliefe", "/Users/aliefesh/Code"),
+            ("/Users/someone/Code", "aliefe", "/Users/someone/Code"),
+            ("/private/tmp", "aliefe", "/private/tmp"),
+            ("/private/tmp", nil, "/private/tmp"),
+        ] as [(String, String?, String)] {
+            let rows = AgentRowRenderer.render(
+                layout: layout, agent: directoryAgent(cwd: cwd, hostUsername: username))
+            #expect(
+                rows.map { $0.map(\.text).joined() } == [expected],
+                "\(cwd) for user \(username ?? "none")")
+        }
+    }
+
+    @Test func directoryStaysAbsentWhenTheLaunchPathIsBlank() {
+        let layout = AgentRowLayout(rows: [[.init(.directory)]])
+        #expect(
+            AgentRowRenderer.render(
+                layout: layout, agent: directoryAgent(cwd: "", hostUsername: "aliefe")
+            ).isEmpty)
+        #expect(
+            AgentRowRenderer.render(
+                layout: layout, agent: directoryAgent(cwd: " \n", hostUsername: "aliefe")
+            ).isEmpty)
+    }
+
     @Test func allTitleTokensStayDistinctAndPluginTextIsLiteral() {
         let layout = AgentRowLayout(rows: [[
             .init(.stateIcon), .init(.pane), .init(.terminalTitle), .init(.terminalTitleStripped),

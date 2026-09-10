@@ -123,6 +123,21 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
             return field.range(of: needle, options: .caseInsensitive) != nil
         }
     }
+
+    /// The launch directory as a Console row should print it. The snapshot
+    /// carries the expanded remote path but not `$HOME`, so only the
+    /// account's conventional macOS/Linux homes are shortened to `~`; every
+    /// other path stays exactly as the Agent reported it.
+    var displayCwd: String {
+        guard let hostUsername, !hostUsername.isEmpty else { return agent.cwd }
+        let homes =
+            hostUsername == "root"
+            ? ["/root"]
+            : ["/Users/\(hostUsername)", "/home/\(hostUsername)"]
+        guard let home = homes.first(where: { agent.cwd == $0 || agent.cwd.hasPrefix("\($0)/") })
+        else { return agent.cwd }
+        return agent.cwd == home ? "~" : "~\(agent.cwd.dropFirst(home.count))"
+    }
 }
 
 /// The snapshot's exact git checkout identity for one workspace. Workspace
