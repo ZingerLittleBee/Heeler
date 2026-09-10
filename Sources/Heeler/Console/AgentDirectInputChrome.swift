@@ -43,6 +43,7 @@ struct AgentDirectInputChrome: View {
     let context: AgentDirectInputChromeContext
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.colorScheme) private var colorScheme
 
     private static let shortcutKeys: [AgentQuickKey] = [
         .escape, .tab, .shiftTab,
@@ -158,45 +159,21 @@ struct AgentDirectInputChrome: View {
         .accessibilityHint("Sends this key directly to the Agent")
     }
 
-    /// A system paste control, so a tap needs no Allow Paste prompt. It will
-    /// not lay out smaller than about 41x34 pt, so it is scaled to the key
-    /// caps' height; scaled much further, iOS stops trusting the tap and falls
-    /// back to the prompt.
+    /// A system paste control, so a tap needs no Allow Paste prompt. Below
+    /// 34 pt tall it disables itself, so it is laid out at 34 pt and scaled
+    /// to the key caps' 30 pt.
     private var pasteKeyButton: some View {
-        PasteButton(payloadType: String.self) { strings in
-            guard let text = strings.first, !text.isEmpty else { return }
+        KeyCapPasteControl { text in
             UIDevice.current.playInputClick()
             interactions.paste(text)
         }
-        .labelStyle(.iconOnly)
-        .buttonBorderShape(.roundedRectangle(radius: 7))
-        .tint(Self.pasteKeyTint)
+        // The control resolves its colors once, when it is created.
+        .id(colorScheme)
+        .frame(width: 34, height: 34)
         .scaleEffect(30.0 / 34.0)
-        .frame(width: 36, height: 44)
+        .frame(width: 30, height: 44)
         .accessibilityHint("Pastes the clipboard into the Agent")
     }
-
-    /// The key caps' translucent fill flattened onto the row, because the
-    /// paste control paints its tint opaque. Its glyph is always white, so in
-    /// light mode iOS darkens this to a mid gray to keep the glyph legible.
-    private static let pasteKeyTint = Color(uiColor: UIColor { traits in
-        let fill = UIColor.secondarySystemFill.resolvedColor(with: traits)
-        let base = UIColor.secondarySystemBackground.resolvedColor(with: traits)
-        var (fillRed, fillGreen, fillBlue, fillAlpha): (CGFloat, CGFloat, CGFloat, CGFloat) =
-            (0, 0, 0, 0)
-        var (baseRed, baseGreen, baseBlue, baseAlpha): (CGFloat, CGFloat, CGFloat, CGFloat) =
-            (0, 0, 0, 0)
-        fill.getRed(&fillRed, green: &fillGreen, blue: &fillBlue, alpha: &fillAlpha)
-        base.getRed(&baseRed, green: &baseGreen, blue: &baseBlue, alpha: &baseAlpha)
-        let blend = { (top: CGFloat, bottom: CGFloat) in
-            top * fillAlpha + bottom * (1 - fillAlpha)
-        }
-        return UIColor(
-            red: blend(fillRed, baseRed),
-            green: blend(fillGreen, baseGreen),
-            blue: blend(fillBlue, baseBlue),
-            alpha: 1)
-    })
 
     private func keyCapWidth(for key: AgentQuickKey) -> CGFloat {
         switch key {
@@ -254,5 +231,83 @@ struct AgentDirectInputChrome: View {
         .buttonStyle(.plain)
         .accessibilityLabel("More")
         .accessibilityHint("Opens Agent actions")
+    }
+}
+
+/// UIKit's paste control dressed as a Direct Input key cap. SwiftUI's
+/// `PasteButton` cannot be: its glyph is always white, and in light mode iOS
+/// darkens a light tint behind it.
+private struct KeyCapPasteControl: UIViewRepresentable {
+    let paste: (String) -> Void
+
+    func makeUIView(context: Context) -> KeyCapPasteView {
+        KeyCapPasteView(paste: paste)
+    }
+
+    func updateUIView(_ view: KeyCapPasteView, context: Context) {
+        view.onPaste = paste
+    }
+}
+
+private final class KeyCapPasteView: UIView {
+    var onPaste: (String) -> Void
+
+    /// The key caps' translucent `secondarySystemFill` flattened onto the
+    /// row's `secondarySystemBackground`, because the control paints its
+    /// background opaque.
+    private static let keyCapFill = UIColor { traits in
+        let fill = UIColor.secondarySystemFill.resolvedColor(with: traits)
+        let base = UIColor.secondarySystemBackground.resolvedColor(with: traits)
+        var (fillRed, fillGreen, fillBlue, fillAlpha): (CGFloat, CGFloat, CGFloat, CGFloat) =
+            (0, 0, 0, 0)
+        var (baseRed, baseGreen, baseBlue, baseAlpha): (CGFloat, CGFloat, CGFloat, CGFloat) =
+            (0, 0, 0, 0)
+        fill.getRed(&fillRed, green: &fillGreen, blue: &fillBlue, alpha: &fillAlpha)
+        base.getRed(&baseRed, green: &baseGreen, blue: &baseBlue, alpha: &baseAlpha)
+        let blend = { (top: CGFloat, bottom: CGFloat) in
+            top * fillAlpha + bottom * (1 - fillAlpha)
+        }
+        return UIColor(
+            red: blend(fillRed, baseRed),
+            green: blend(fillGreen, baseGreen),
+            blue: blend(fillBlue, baseBlue),
+            alpha: 1)
+    }
+
+    init(paste: @escaping (String) -> Void) {
+        onPaste = paste
+        super.init(frame: .zero)
+        pasteConfiguration = UIPasteConfiguration(forAccepting: NSString.self)
+
+        let configuration = UIPasteControl.Configuration()
+        configuration.displayMode = .iconOnly
+        configuration.cornerStyle = .fixed
+        configuration.cornerRadius = 7
+        configuration.baseForegroundColor = .label
+        configuration.baseBackgroundColor = Self.keyCapFill
+        let control = UIPasteControl(configuration: configuration)
+        control.target = self
+        control.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(control)
+        NSLayoutConstraint.activate([
+            control.topAnchor.constraint(equalTo: topAnchor),
+            control.leadingAnchor.constraint(equalTo: leadingAnchor),
+            control.trailingAnchor.constraint(equalTo: trailingAnchor),
+            control.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is unavailable")
+    }
+
+    override func paste(itemProviders: [NSItemProvider]) {
+        guard let provider = itemProviders.first(where: { $0.canLoadObject(ofClass: String.self) })
+        else { return }
+        _ = provider.loadObject(ofClass: String.self) { [weak self] text, _ in
+            guard let text, !text.isEmpty else { return }
+            Task { @MainActor in self?.onPaste(text) }
+        }
     }
 }
