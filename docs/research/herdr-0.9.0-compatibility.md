@@ -78,10 +78,11 @@ and dead-pane recovery (`ConsoleStoreTests` and
 `EventsSessionSubscriptionsTests`). Scripted streams do not replay history.
 These tests describe client behavior, not real SSH or server proof.
 
-Builds, tests, dependency resolution, xcodegen and make: **NOT RUN**, explicitly
-reserved for the fleet's serial checkers. Run the repository-documented focused
-`ConsoleStoreTests` and `EventsSessionSubscriptionsTests` suites there. Wire
-codegen drift and lower-version/advisory tests remain the wire package's checks.
+This review itself ran no builds or tests. CI on PR #297 at `b43c69e`
+(workflow run 34382600676) later executed the full `HeelerTests` plan: 1,563
+tests in 149 suites passed, including both tests above. Wire codegen drift and
+lower-version/advisory tests belong to the wire package and passed in the same
+PR's CI.
 
 ## Physical-device report and architectural limits
 
