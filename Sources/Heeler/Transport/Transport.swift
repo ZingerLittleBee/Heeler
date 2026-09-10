@@ -130,6 +130,18 @@ protocol Transport: Sendable {
     /// themselves.
     func renameWorkspace(_ params: WorkspaceRenameParams) async throws
 
+    /// Names a pane (`pane.rename`): the Console management action (#290).
+    /// `label` is herdr's own pane name — the same field the sidebar shows —
+    /// so a name set here follows the session to every attached client
+    /// instead of living in a device-local store. The schema types the label
+    /// as string-or-null and requires only `pane_id`, so a nil label omits the
+    /// key and clears the name — the same shape `agent.rename` uses, since a
+    /// synthesized `Codable` never emits an explicit null for a nil optional.
+    /// herdr documents no grammar for the label, so callers pass free text.
+    /// The label does not ride a resync-triggering event, so consumers
+    /// re-snapshot after the call the way they do for `agent.rename`.
+    func renamePane(_ params: PaneRenameParams) async throws
+
     /// Opens this Host's dedicated long-lived events channel and subscribes.
     /// Returns once the server acknowledges the subscription; the stream then
     /// carries events in canonical naming until `end()` closes the channel

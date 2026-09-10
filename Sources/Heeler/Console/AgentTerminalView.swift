@@ -213,6 +213,7 @@ struct AgentTerminalView: View {
     @State private var isManagingSnippets = false
     @State private var isShowingSkillsPicker = false
     @State private var isRenamingAgent = false
+    @State private var isRenamingPane = false
     /// The skill whose full document is on screen; set from the Skills
     /// pane's long-press menu.
     @State private var viewingSkill: AgentSkill?
@@ -487,6 +488,17 @@ struct AgentTerminalView: View {
                         agent.agent.workspaceID, label: label, on: agent.hostID)
                 })
         }
+        .sheet(isPresented: $isRenamingPane) {
+            RenameSheetView(
+                title: "Rename Pane",
+                store: RenameStore(
+                    subject: .pane,
+                    currentValue: agent.paneLabel ?? ""
+                ) { [console, agent] label in
+                    try await console.renamePane(
+                        agent.agent.paneID, label: label, on: agent.hostID)
+                })
+        }
         .sheet(isPresented: $isShowingWorktree) {
             if let worktreeStore {
                 WorktreeDetailView(store: worktreeStore) { _ in
@@ -755,6 +767,7 @@ struct AgentTerminalView: View {
                     }
                 } : nil,
             renameAgent: { isRenamingAgent = true },
+            renamePane: { isRenamingPane = true },
             renameWorkspace: { isRenamingWorkspace = true },
             closeAgent: { isConfirmingClose = true })
     }
@@ -1455,8 +1468,12 @@ struct AgentTerminalView: View {
         Self.displayTitle(for: agent)
     }
 
+    /// The pane's own label (#290) when the session has one, else today's
+    /// terminal-title-then-display-name chain. The label is the name the user
+    /// gave the session, so it outranks a title the agent program reports.
     static func displayTitle(for agent: ConsoleAgent) -> String {
-        agent.agent.title.isEmpty ? agent.agent.displayName : agent.agent.title
+        agent.sessionLabel
+            ?? (agent.agent.title.isEmpty ? agent.agent.displayName : agent.agent.title)
     }
 }
 
