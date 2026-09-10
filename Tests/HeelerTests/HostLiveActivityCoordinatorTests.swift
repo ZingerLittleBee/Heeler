@@ -84,12 +84,13 @@ struct HostLiveActivityCoordinatorTests {
     }
 
     private func agent(
-        _ paneID: String, _ status: AgentStatus, title: String = "Task"
+        _ paneID: String, _ status: AgentStatus, title: String = "Task",
+        hostID: Host.ID? = nil, hostName: String = "mbp", showsMachine: Bool = false
     ) -> ConsoleAgent {
         ConsoleAgent(
-            hostID: host.id, hostName: "mbp",
+            hostID: hostID ?? host.id, hostName: hostName,
             agent: Agent(.fixture(paneID: paneID, status: status, title: title)),
-            workspaceLabel: nil, repositoryCheckout: nil)
+            workspaceLabel: nil, repositoryCheckout: nil, showsMachine: showsMachine)
     }
 
     private func waitUntil(
@@ -122,11 +123,16 @@ struct HostLiveActivityCoordinatorTests {
         try #require(try NotificationKeyStore(secrets: secrets).record(forHost: host.id)?.key)
     }
 
-    private func openedPaneIDs(_ state: AgentActivityAttributes.ContentState) throws -> [String] {
+    private func openedDetails(
+        _ state: AgentActivityAttributes.ContentState
+    ) throws -> AgentActivityDetails {
         let envelope = try #require(state.envelope)
-        let details = try AgentActivityEnvelope.open(
+        return try AgentActivityEnvelope.open(
             try JSONEncoder().encode(envelope), using: notificationKey())
-        return details.agents.map(\.paneID)
+    }
+
+    private func openedPaneIDs(_ state: AgentActivityAttributes.ContentState) throws -> [String] {
+        try openedDetails(state).agents.map(\.paneID)
     }
 
     // MARK: Start / settle / flap
@@ -510,6 +516,43 @@ struct HostLiveActivityCoordinatorTests {
             return fields.first?["token"] == .string("status")
         }
         #expect(try await liveActivityToken() == "ab")
+    }
+
+    /// The Console turns herdr's machine label on once it lists Agents from
+    /// more than one Host, and that flag arrives here on every row. One card
+    /// is one Host, so a card must not print a Host name its own header
+    /// already carries.
+    @Test func aPerHostCardDoesNotRepeatItsHostAsAMachineLabel() async throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        try await registerDevice()
+        armWorld()
+        // The machine row is the one the Console turns on for this card; the
+        // title row under it proves the payload still carries its other rows.
+        world.layout = AgentRowLayout(rows: [[.init(.machine)], [.init(.terminalTitleStripped)]])
+        let coordinator = makeCoordinator(defaults: defaults)
+        coordinator.start()
+
+        let otherHostID = UUID()
+        coordinator.agentsDidChange([
+            agent(observedPaneID, .working, showsMachine: true),
+            agent("wS:p1", .working, hostID: otherHostID, hostName: "studio", showsMachine: true),
+        ])
+        try await waitUntil("the first Host's activity should start") {
+            !controller.requestedHandles.isEmpty
+        }
+
+        let details = try openedDetails(try #require(controller.requested.first))
+        #expect(details.hostName == "mbp", "the card's header names the Host")
+        #expect(
+            details.agents.map(\.paneID) == [observedPaneID],
+            "the card under test belongs to the Host that owns the pane")
+        let rows = try #require(
+            details.agents.first?.rows,
+            "the configured rows should still reach the card's payload")
+        #expect(
+            rows.map { $0.map(\.text).joined() } == ["Task"],
+            "a per-Host card already names its Host: the machine row is blank while its other rows render")
     }
 
     // MARK: Pins

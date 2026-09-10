@@ -8,14 +8,14 @@ import Foundation
 /// decoding, but Console layouts drop it (`normalizedForConsole`) and the
 /// Field Editor never offers it: the status badge at the end of Row 1 owns it.
 enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
-    case stateIcon, stateText, workspace, tab, pane, agent
+    case stateIcon, stateText, machine, workspace, tab, pane, agent
     case terminalTitle, terminalTitleStripped
     case host, status, directory
     case custom(String)
 
     /// herdr fields the Field Editor offers. Excludes `state_icon`.
     static let herdrBuiltins: [Self] = [
-        .stateText, .workspace, .tab, .pane, .agent,
+        .stateText, .machine, .workspace, .tab, .pane, .agent,
         .terminalTitle, .terminalTitleStripped,
     ]
 
@@ -29,6 +29,7 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
         switch rawValue {
         case "state_icon": self = .stateIcon
         case "state_text": self = .stateText
+        case "machine": self = .machine
         case "workspace": self = .workspace
         case "tab": self = .tab
         case "pane": self = .pane
@@ -53,6 +54,7 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
         switch self {
         case .stateIcon: "state_icon"
         case .stateText: "state_text"
+        case .machine: "machine"
         case .workspace: "workspace"
         case .tab: "tab"
         case .pane: "pane"

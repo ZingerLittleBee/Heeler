@@ -41,6 +41,9 @@ enum AgentRowRenderer {
         case .terminalTitle: row.agent.terminalTitle
         case .terminalTitleStripped: row.agent.terminalTitleStripped
         case .host: nonempty(row.hostName)
+        // herdr prints the machine label only when more than one machine is
+        // present, so a Console listing a single Host shows no machine text.
+        case .machine: row.showsMachine ? nonempty(row.hostName) : nil
         case .status: nonempty(row.agent.status.rawValue.capitalized)
         case .directory: nonempty(row.agent.cwd)
         case .custom(let name): row.agent.tokens[name]

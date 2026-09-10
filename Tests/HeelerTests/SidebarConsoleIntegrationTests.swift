@@ -183,6 +183,15 @@ struct SidebarConsoleIntegrationTests {
         try await waitForSnapshots(store, hosts: [alpha.id, beta.id])
         #expect(store.agents.map(\.agent.paneID) == ["a0", "a1", "b1", "b0"])
         #expect(connects.withLock { $0 } == 2)
+        // herdr's `machine` token is host-count dependent, and only the
+        // flattened Console list knows the count, so the flag is read off the
+        // store's rows rather than set by hand.
+        let machineRow = AgentRowLayout(rows: [[.init(.machine)]])
+        #expect(!store.agents.isEmpty)
+        #expect(store.agents.allSatisfy { row in
+            AgentRowRenderer.render(layout: machineRow, agent: row).map { $0.map(\.text).joined() }
+                == [row.hostName]
+        }, "A Console listing more than one Host shows each row's machine name")
         let plugin = store.rowLayout(for: alpha.id)
         // herdr's rows_by_agent is decoded but never applied in the Console.
         #expect(plugin.rows == [[.init(.terminalTitleStripped)], [], [.init(.directory)]])
@@ -214,6 +223,29 @@ struct SidebarConsoleIntegrationTests {
         #expect(store.agents.map(\.agent.paneID) == ["b0", "a1", "b1", "a0"])
         #expect(connects.withLock { $0 } == 2)
         #expect(store.rowLayout(for: alpha.id).rows.isEmpty)
+    }
+
+    @Test func machineLabelStaysUnrenderedForASingleHost() async throws {
+        let suite = "sidebar-machine-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let host = Host.fixture(name: "alpha")
+        let transport = ScriptedTransport(snapshot: .fixture(agents: [
+            .fixture(paneID: "a0", status: .idle), .fixture(paneID: "a1", status: .blocked),
+        ]))
+        await transport.setSidebarLayout(try snapshot(sort: "spaces"))
+        let store = liveStore(defaults: defaults, connect: { transport })
+        defer { store.setHosts([]) }
+        store.setHosts([host])
+        await store.resume()
+        try await waitForSnapshots(store, hosts: [host.id])
+        // One Host is one machine, so the flattened rows carry no machine
+        // text even though the Host has a name to show.
+        #expect(!store.agents.isEmpty)
+        let machineRow = AgentRowLayout(rows: [[.init(.machine)]])
+        #expect(store.agents.allSatisfy { row in
+            AgentRowRenderer.render(layout: machineRow, agent: row).isEmpty
+        }, "A Console listing a single Host renders no machine row")
     }
 
     @Test func consoleSuspensionRejectsAnInFlightSnapshot() async throws {

@@ -551,6 +551,14 @@ final class ConsoleStore {
 
     private func rebuildAgentOrder() {
         let unsorted = projections.values.flatMap { $0.agentsByPane.values }
+        // herdr labels the machine only while the client spans more than one
+        // machine, so only a Console listing more than one Host shows it.
+        let showsMachine = Set(unsorted.map(\.hostID)).count > 1
+        let rows = unsorted.map { row in
+            var row = row
+            row.showsMachine = showsMachine
+            return row
+        }
         let sorts = Dictionary(uniqueKeysWithValues: projections.keys.compactMap { id in
             sidebarSnapshots.snapshot(for: id).map { (id, $0.agentPanelSort) }
         })
@@ -558,7 +566,7 @@ final class ConsoleStore {
             pins.pinRank(hostID: agent.hostID, paneID: agent.agent.paneID)
                 .map { (agent.id, $0) }
         })
-        agents = unsorted.consoleSorted(sortByHost: sorts) { pinRanks[$0.id] }
+        agents = rows.consoleSorted(sortByHost: sorts) { pinRanks[$0.id] }
     }
 
     private func publishAgentStatuses() {

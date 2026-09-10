@@ -9,6 +9,10 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Agent List Fields keep herdr's machine field. A layout synced from herdr
+  dropped the built-in while decoding, so the row no longer matched herdr's
+  sidebar row for the same Agent. Like herdr, the field shows the machine
+  only when the Console spans more than one Host. (#310)
 - New Agent now discovers agents installed through mise. The discovery PATH
   includes mise's shims directory, resolved from `MISE_DATA_DIR` or
   `XDG_DATA_HOME` when either reaches the non-interactive SSH environment,

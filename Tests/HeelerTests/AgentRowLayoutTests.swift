@@ -16,6 +16,21 @@ struct AgentRowLayoutTests {
                 == [[.stateIcon, .workspace, .tab], [.agent]])
     }
 
+    @Test func herdrMachineFieldDecodesFromSnapshotsAndRoundTrips() throws {
+        let snapshot = try #require(AgentRowLayoutSnapshot.decode(Data(#"""
+            {"v":1,"sidebar":{"agents":{"rows":[[{"token":"machine"},
+              {"token":"agent","bold":true}]]}}}
+            """#.utf8)))
+        #expect(snapshot.layout.rows == [[.init(.machine), .init(.agent, bold: true)]])
+        #expect(AgentRowToken(rawValue: "machine") == .machine)
+        #expect(AgentRowToken.machine.rawValue == "machine")
+        #expect(AgentRowToken(rawValue: AgentRowToken.machine.rawValue) == .machine)
+        #expect(AgentRowToken.herdrBuiltins.contains(.machine))
+        let encoded = try JSONEncoder().encode(snapshot.layout)
+        #expect(try JSONDecoder().decode(AgentRowLayout.self, from: encoded) == snapshot.layout)
+        #expect(String(decoding: encoded, as: UTF8.self).contains("\"machine\""))
+    }
+
     @Test func consoleShapeDropsStateIconAndKeepsThreeRowSlots() throws {
         #expect(AgentRowLayout.maximumConsoleRows == 3)
         #expect(AgentRowLayout.consoleDefault.rows.map { $0.map(\.token) } == [[.workspace, .tab], [.agent], [.directory]])

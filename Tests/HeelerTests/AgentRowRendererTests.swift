@@ -5,9 +5,12 @@ import Testing
 
 @Suite("Agent row renderer")
 struct AgentRowRendererTests {
-    private func agent(tabLabel: String? = "1", tabPosition: Int? = 1, tabCount: Int = 1) -> ConsoleAgent {
+    private func agent(
+        hostName: String = "Host", tabLabel: String? = "1", tabPosition: Int? = 1, tabCount: Int = 1,
+        showsMachine: Bool = false
+    ) -> ConsoleAgent {
         ConsoleAgent(
-            hostID: UUID(), hostName: "Host",
+            hostID: UUID(), hostName: hostName,
             agent: Agent(AgentInfo(
                 agentStatus: .working, focused: false, paneID: "opaque-pane", revision: 1,
                 tabID: "opaque-tab", terminalID: "term", workspaceID: "workspace",
@@ -16,7 +19,8 @@ struct AgentRowRendererTests {
                 terminalTitleStripped: "Fix the build", title: "Manual pane",
                 tokens: ["pin_icon": "📌", "markup": "**literal**", "empty": "", "spaces": " \n"])),
             workspaceLabel: "Heeler", repositoryCheckout: nil,
-            tabLabel: tabLabel, tabPosition: tabPosition, workspaceTabCount: tabCount)
+            tabLabel: tabLabel, tabPosition: tabPosition, workspaceTabCount: tabCount,
+            showsMachine: showsMachine)
     }
 
     @Test func defaultElidesAutomaticSingleTabAndStatusFields() {
@@ -93,6 +97,21 @@ struct AgentRowRendererTests {
             workspaceLabel: nil, repositoryCheckout: nil)
         #expect(AgentRowRenderer.render(layout: layout, agent: empty).map { $0.map(\.text).joined() }
                 == ["Working"])
+    }
+
+    @Test func herdrMachineFieldRendersOnlyWhenTheConsoleSpansMultipleHosts() {
+        let layout = AgentRowLayout(rows: [[.init(.machine)]])
+        // One Host: herdr prints no machine label, so nothing renders.
+        #expect(AgentRowRenderer.render(layout: layout, agent: agent()).isEmpty)
+        let rendered = AgentRowRenderer.render(layout: layout, agent: agent(showsMachine: true))
+        #expect(rendered.map { $0.map(\.text).joined() } == ["Host"])
+        #expect(rendered.flatMap { $0.compactMap(\.token) } == [.machine])
+    }
+
+    @Test func herdrMachineFieldRendersNothingForABlankHostName() {
+        let layout = AgentRowLayout(rows: [[.init(.machine), .init(.workspace)]])
+        #expect(AgentRowRenderer.render(layout: layout, agent: agent(hostName: " \n", showsMachine: true))
+                .map { $0.map(\.text).joined() } == ["Heeler"])
     }
 
     @Test func missingTitlesAndWorkspaceNeverRenderOpaqueIDs() {

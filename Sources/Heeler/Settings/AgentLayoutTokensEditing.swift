@@ -94,6 +94,8 @@ enum AgentLayoutTokensEditing {
             "Terminal title without the Agent prefix"
         case .host:
             "Host name"
+        case .machine:
+            "Machine the Agent runs on, which Heeler names the Host"
         case .status:
             "Agent Status as text"
         case .directory:

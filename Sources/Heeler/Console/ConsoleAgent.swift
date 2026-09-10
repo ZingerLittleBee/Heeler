@@ -26,6 +26,12 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     /// automatic label uses position, not TabInfo.number's stable identity.
     let tabPosition: Int?
     let workspaceTabCount: Int
+    /// herdr labels the machine only when the client spans more than one
+    /// machine, so the Console sets this when it lists Agents from more than
+    /// one Host. Mirrors `showsTabLabel`: it is presentation context, not
+    /// snapshot data — one Host's snapshot cannot say how many Hosts are on
+    /// screen, and the flattened Console list is the only place that can.
+    var showsMachine: Bool
     /// Collection order from session.snapshot.agents for the `spaces` sort.
     let snapshotOrder: Int?
     /// Snapshot git metadata when the workspace reported any. Presence does
@@ -49,6 +55,7 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         tabLabel: String? = nil,
         tabPosition: Int? = nil,
         workspaceTabCount: Int = 0,
+        showsMachine: Bool = false,
         snapshotOrder: Int? = nil,
         paneLabel: String? = nil
     ) {
@@ -61,6 +68,7 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         self.paneLabel = paneLabel
         self.tabPosition = tabPosition
         self.workspaceTabCount = workspaceTabCount
+        self.showsMachine = showsMachine
         self.snapshotOrder = snapshotOrder
         self.repositoryCheckout = repositoryCheckout
         self.lastOutputSnippet = lastOutputSnippet

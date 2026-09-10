@@ -118,7 +118,19 @@ final class HostLiveActivityCoordinator {
     /// launch with already-working Agents should start an activity once the
     /// settle elapses. Newer input cancels an in-flight settle.
     func agentsDidChange(_ agents: [ConsoleAgent]) {
-        let grouped = Dictionary(grouping: agents, by: \.hostID)
+        // The Console sets herdr's machine label once it lists more than one
+        // Host, and the flag rides along on every row it hands us. Each
+        // activity below is one Host's card, though, and its header already
+        // names that Host, so the label would only repeat it and eat the row
+        // budget (#281). This is the one surface that departs from herdr's
+        // host-count rule; the Console and the switcher chips keep it.
+        let grouped = Dictionary(grouping: agents, by: \.hostID).mapValues { rows in
+            rows.map { row in
+                var perHostRow = row
+                perHostRow.showsMachine = false
+                return perHostRow
+            }
+        }
         var hosts = Set(latestAgents.keys)
         hosts.formUnion(grouped.keys)
         hosts.formUnion(sessions.keys)

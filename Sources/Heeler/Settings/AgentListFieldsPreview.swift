@@ -23,6 +23,8 @@ struct AgentListFieldsPreview: View {
     }
 
     /// Deterministic sample values for built-in and custom tokens; not a live Agent.
+    /// It stands in for a Console spanning more than one Host, so a field
+    /// being added previews as it renders: the machine label is conditional.
     static func sampleAgent(hostName: String) -> ConsoleAgent {
         ConsoleAgent(
             hostID: sampleHostID,
@@ -46,7 +48,8 @@ struct AgentListFieldsPreview: View {
             repositoryCheckout: nil,
             tabLabel: "1",
             tabPosition: 1,
-            workspaceTabCount: 2)
+            workspaceTabCount: 2,
+            showsMachine: true)
     }
 
     private static let sampleHostID = UUID(uuid: (
