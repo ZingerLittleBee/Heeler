@@ -2118,31 +2118,6 @@ struct TerminalAttachTests {
                 == NSRange(location: 0, length: 8))
     }
 
-    @MainActor
-    @Test func terminalSelectionAutoCopySkipsEmptyAndWholeBufferRanges() {
-        #expect(
-            TerminalTextSelectionViewController.copyableRange(
-                NSRange(location: 2, length: 3), textLength: 8)
-                == NSRange(location: 2, length: 3))
-        #expect(
-            TerminalTextSelectionViewController.copyableRange(
-                NSRange(location: 2, length: 0), textLength: 8)
-                == nil)
-        // The sheet's whole-buffer fallback must never overwrite the clipboard.
-        #expect(
-            TerminalTextSelectionViewController.copyableRange(
-                NSRange(location: 0, length: 8), textLength: 8)
-                == nil)
-        #expect(
-            TerminalTextSelectionViewController.copyableRange(
-                NSRange(location: 6, length: 4), textLength: 8)
-                == nil)
-        #expect(
-            TerminalTextSelectionViewController.copyableRange(
-                NSRange(location: NSNotFound, length: 0), textLength: 8)
-                == nil)
-    }
-
     @Test func injectableAttachCommandRidesThrough() throws {
         // Tests substitute a script at the environment boundary, like the
         // wake command.

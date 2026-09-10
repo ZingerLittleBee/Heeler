@@ -1,17 +1,6 @@
 import GhosttyTerminal
 import UIKit
 
-/// The selection sheet writes the highlighted text straight to the system
-/// pasteboard. Keep that IPC behind a seam so unit tests never depend on the
-/// Simulator pasteboard service being responsive.
-@MainActor
-struct TerminalTextSelectionCopy {
-    let write: (String) -> Void
-
-    static let system = TerminalTextSelectionCopy(
-        write: { UIPasteboard.general.string = $0 })
-}
-
 @MainActor
 enum TerminalTextSelectionPresenter {
     static func present(_ request: TerminalTextSelectionRequest, from sourceView: UIView) {
@@ -21,8 +10,7 @@ enum TerminalTextSelectionPresenter {
 
         let selection = TerminalTextSelectionViewController(
             text: request.text,
-            anchorRange: request.anchorRange,
-            copy: .system)
+            anchorRange: request.anchorRange)
         let navigation = UINavigationController(rootViewController: selection)
         navigation.modalPresentationStyle = .pageSheet
         navigation.sheetPresentationController?.detents = [.large()]
@@ -30,46 +18,21 @@ enum TerminalTextSelectionPresenter {
     }
 }
 
-/// Long-press selection sheet over a snapshot of the terminal buffer. The
-/// highlight copies itself once it settles, so selecting text here behaves
-/// like the pane's own copy-on-select instead of needing a second tap.
 @MainActor
 final class TerminalTextSelectionViewController: UIViewController {
     private let text: String
     private let anchorRange: NSRange?
-    private let copy: TerminalTextSelectionCopy
     private let textView = UITextView()
-    private var lastCopied: String?
-    private var pendingCopy: Task<Void, Never>?
 
-    init(text: String, anchorRange: NSRange?, copy: TerminalTextSelectionCopy) {
+    init(text: String, anchorRange: NSRange?) {
         self.text = text
         self.anchorRange = anchorRange
-        self.copy = copy
         super.init(nibName: nil, bundle: nil)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is unavailable")
-    }
-
-    /// Dragging the selection handles fires the delegate continuously; wait
-    /// for the highlight to settle before copying, the same debounce shape
-    /// the keyboard inset uses to coalesce its own bursts.
-    private static let copySettleDelay = Duration.milliseconds(350)
-
-    /// The sheet falls back to selecting the whole buffer when the long-press
-    /// anchor is unusable. Auto-copying that would silently replace the user's
-    /// clipboard with the entire scrollback, so only a strict subrange copies.
-    static func copyableRange(_ selection: NSRange, textLength: Int) -> NSRange? {
-        guard selection.location != NSNotFound,
-            selection.length > 0,
-            selection.location <= textLength,
-            selection.length <= textLength - selection.location,
-            selection.length < textLength
-        else { return nil }
-        return selection
     }
 
     override func viewDidLoad() {
@@ -100,11 +63,9 @@ final class TerminalTextSelectionViewController: UIViewController {
             textView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
 
-        textView.delegate = self
         textView.selectedRange = Self.normalizedSelectionRange(
             anchorRange,
             textLength: (text as NSString).length)
-        copyInitialSelection()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -122,49 +83,8 @@ final class TerminalTextSelectionViewController: UIViewController {
         return range
     }
 
-    /// The long-press anchor already names the word under the press, so copy
-    /// it right away instead of waiting for a settle delay that never comes.
-    private func copyInitialSelection() {
-        guard let anchorRange,
-            anchorRange.location != NSNotFound,
-            anchorRange.location <= (text as NSString).length,
-            anchorRange.length <= (text as NSString).length - anchorRange.location
-        else { return }
-        copyCurrentSelection()
-    }
-
-    private func scheduleCopy() {
-        pendingCopy?.cancel()
-        pendingCopy = Task { [weak self] in
-            try? await Task.sleep(for: Self.copySettleDelay)
-            guard !Task.isCancelled, let self else { return }
-            self.copyCurrentSelection()
-        }
-    }
-
-    private func copyCurrentSelection() {
-        guard let range = Self.copyableRange(
-            textView.selectedRange,
-            textLength: (text as NSString).length)
-        else { return }
-        let selected = (text as NSString).substring(with: range)
-        guard selected != lastCopied else { return }
-        lastCopied = selected
-        copy.write(selected)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        navigationItem.prompt = "Copied"
-        UIAccessibility.post(notification: .announcement, argument: "Copied")
-    }
-
     @objc private func dismissSelection() {
         dismiss(animated: true)
-    }
-}
-
-extension TerminalTextSelectionViewController: UITextViewDelegate {
-    func textViewDidChangeSelection(_ textView: UITextView) {
-        navigationItem.prompt = nil
-        scheduleCopy()
     }
 }
 
