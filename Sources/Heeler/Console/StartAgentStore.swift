@@ -381,7 +381,7 @@ final class StartAgentStore {
             await awaitAgentVisible(startedID)
             state = .started(startedID)
         } catch {
-            state = .failed(Self.message(for: error))
+            state = .failed(Self.message(for: error, launchedKind: kind))
         }
     }
 
@@ -567,7 +567,9 @@ final class StartAgentStore {
         }
     }
 
-    private static func message(for error: any Error) -> String {
+    private static func message(
+        for error: any Error, launchedKind: SupportedAgentKind
+    ) -> String {
         switch error {
         case TransportError.sshUnreachable:
             "The Host is not connected."
@@ -580,6 +582,14 @@ final class StartAgentStore {
             "This workspace is not inside a Git repository, so no worktree can be created from it."
         case let apiError as HerdrAPIError where apiError.code == "worktree_create_failed":
             "Creating the worktree failed: \(apiError.message)"
+        case let apiError as HerdrAPIError
+            where apiError.code == "unsupported_agent_kind" && launchedKind == .muse:
+            // Kind captured at submit, not the picker after await. Discovery
+            // does not prove herdr supports Muse (#289); keep the server
+            // reason and tell the user how to recover.
+            "herdr rejected the command: \(apiError.message). "
+                + "Update herdr on this Host to v0.9.0 or later for Muse support, "
+                + "or choose another supported Agent."
         case let apiError as HerdrAPIError:
             "herdr rejected the command: \(apiError.message)"
         default:

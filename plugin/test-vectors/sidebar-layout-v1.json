@@ -480,8 +480,8 @@
       }
     },
     {
-      "name": "canonical herdr 0.8.2 agent override keys",
-      "toml": "[ui.sidebar.agents.rows_by_agent]\npi = [[\"agent\"]]\nclaude = [[\"agent\"]]\ncodex = [[\"agent\"]]\ngemini = [[\"agent\"]]\ncursor = [[\"agent\"]]\ndevin = [[\"agent\"]]\nagy = [[\"agent\"]]\ncline = [[\"agent\"]]\nomp = [[\"agent\"]]\nmastracode = [[\"agent\"]]\nopencode = [[\"agent\"]]\ncopilot = [[\"agent\"]]\nkimi = [[\"agent\"]]\nkiro = [[\"agent\"]]\ndroid = [[\"agent\"]]\namp = [[\"agent\"]]\ngrok = [[\"agent\"]]\nhermes = [[\"agent\"]]\nkilo = [[\"agent\"]]\nqodercli = [[\"agent\"]]\nqwen = [[\"agent\"]]\nmaki = [[\"agent\"]]\n",
+      "name": "canonical herdr 0.9.0 agent override keys",
+      "toml": "[ui.sidebar.agents.rows_by_agent]\npi = [[\"agent\"]]\nclaude = [[\"agent\"]]\ncodex = [[\"agent\"]]\ngemini = [[\"agent\"]]\ncursor = [[\"agent\"]]\ndevin = [[\"agent\"]]\nagy = [[\"agent\"]]\ncline = [[\"agent\"]]\nomp = [[\"agent\"]]\nmastracode = [[\"agent\"]]\nopencode = [[\"agent\"]]\ncopilot = [[\"agent\"]]\nkimi = [[\"agent\"]]\nkiro = [[\"agent\"]]\ndroid = [[\"agent\"]]\namp = [[\"agent\"]]\ngrok = [[\"agent\"]]\nhermes = [[\"agent\"]]\nkilo = [[\"agent\"]]\nqodercli = [[\"agent\"]]\nqwen = [[\"agent\"]]\nmaki = [[\"agent\"]]\nmuse = [[\"agent\"]]\n",
       "snapshot": {
         "v": 1,
         "generated_at": 1757040000,
@@ -661,6 +661,13 @@
                 ]
               ],
               "maki": [
+                [
+                  {
+                    "token": "agent"
+                  }
+                ]
+              ],
+              "muse": [
                 [
                   {
                     "token": "agent"

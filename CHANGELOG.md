@@ -7,6 +7,12 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- Muse appears in Start Agent when the Host has `muse` on PATH. Notifications
+  and Live Activities name it Muse, and the Heeler plugin accepts `muse`
+  sidebar row overrides. (#297)
+
 ### Fixed
 
 - New Agent now discovers agents installed through mise. The discovery PATH

@@ -45,7 +45,52 @@ import Testing
 
         #expect(pong.version == "0.8.2")
         #expect(pong.protocolVersion == 20)
+    }
+
+    // Synthetic schema fixtures, not live 0.9.0 captures. Keep admission
+    // coverage ungated so it runs without disposable SSH credentials.
+    @Test func protocolFloorRejectsOlderHosts() throws {
+        #expect(HeelerSSHTransport.minimumProtocolVersion == 17)
+        #expect(HeelerSSHTransport.generatedProtocolVersion == 22)
+        #expect(throws: TransportError.protocolVersionMismatch(server: 16, supported: 17)) {
+            let pong = try roundTrip(PongResponse.self,
+                #"{"version":"older","protocol":16}"#)
+            _ = try HeelerSSHTransport.serverInfo(from: pong)
+        }
+    }
+
+    @Test(arguments: 17...23)
+    func protocolAdmissionAndAdvisoryRemainIndependent(version: Int) throws {
+        let pong = try roundTrip(PongResponse.self,
+            "{\"version\":\"synthetic\",\"protocol\":\(version),\"future_field\":true}")
+        let info = try HeelerSSHTransport.serverInfo(from: pong)
+        #expect(info.protocolVersion == version)
+        #expect(info.version == "synthetic")
+        #expect(info.exceedsGeneratedProtocol == (version > 22))
+    }
+
+    @Test func protocolTwentyTwoCapabilitiesRoundTrip() throws {
+        let pong = try roundTrip(PongResponse.self,
+            #"{"type":"pong","version":"0.9.0","protocol":22,"capabilities":{"live_handoff":true,"detached_server_daemon":true,"endpoint_protocol_generation":1,"health_check":true,"surface_interest":false,"future_capability":true}}"#)
+        let capabilities = try #require(pong.capabilities)
+        #expect(capabilities.endpointProtocolGeneration == 1)
+        #expect(capabilities.healthCheck == true)
+        #expect(capabilities.surfaceInterest == false)
         #expect(pong.protocolVersion == HeelerSSHTransport.generatedProtocolVersion)
+        let info = try HeelerSSHTransport.serverInfo(from: pong)
+        #expect(!info.exceedsGeneratedProtocol)
+    }
+
+    @Test func olderCapabilitiesOmitNewFields() throws {
+        let capabilities = try roundTrip(ServerCapabilities.self, #"{"live_handoff":true}"#)
+        #expect(capabilities.endpointProtocolGeneration == nil)
+        #expect(capabilities.healthCheck == nil)
+        #expect(capabilities.surfaceInterest == nil)
+        let nullGeneration = try roundTrip(ServerCapabilities.self,
+            #"{"live_handoff":true,"endpoint_protocol_generation":null,"health_check":false,"surface_interest":false}"#)
+        #expect(nullGeneration.endpointProtocolGeneration == nil)
+        #expect(nullGeneration.healthCheck == false)
+        #expect(nullGeneration.surfaceInterest == false)
     }
 
     @Test func agentListResponseRoundTripsLiveCapture() throws {
@@ -308,6 +353,19 @@ import Testing
         #expect(fields?["focus"] as? Bool == false)
     }
 
+    @Test func worktreeRequestsOmitRepositoryTrustByDefault() throws {
+        let payloads = try [
+            JSONEncoder().encode(WorktreeListParams(workspaceID: "w1")),
+            JSONEncoder().encode(WorktreeRemoveParams(workspaceID: "w1")),
+        ]
+        for payload in payloads {
+            let fields = try #require(
+                JSONSerialization.jsonObject(with: payload) as? [String: Any])
+            #expect(fields.keys.sorted() == ["workspace_id"])
+            #expect(fields["workspace_id"] as? String == "w1")
+        }
+    }
+
     @Test func agentRenameParamsOmitNilNameToClearIt() throws {
         // Verified live (herdr 0.7.5): omitting `name` clears the custom
         // name back to the detected kind, so nil must drop the key, not
@@ -349,9 +407,9 @@ import Testing
         #expect(labeled?["label"] as? String == "app")
     }
 
-    @Test func workspaceTargetEncodesSnakeCase() throws {
+    @Test func workspaceCloseOmitsGroupForOlderHosts() throws {
         let fields = try JSONSerialization.jsonObject(
-            with: JSONEncoder().encode(WorkspaceTarget(workspaceID: "wN"))
+            with: JSONEncoder().encode(WorkspaceCloseParams(workspaceID: "wN"))
         ) as? [String: Any]
         #expect(fields?.keys.sorted() == ["workspace_id"])
         #expect(fields?["workspace_id"] as? String == "wN")

@@ -516,6 +516,10 @@ final class HostConsoleProjection {
                 break
             }
             if status == .connected {
+                // Subscription acknowledgement precedes this signal, including
+                // replacement subscriptions. Keep consuming events while the
+                // snapshot runs: lifecycle signals request a follow-up, and
+                // status revisions survive an older snapshot response.
                 publish()
                 scheduleResync()
             } else {
