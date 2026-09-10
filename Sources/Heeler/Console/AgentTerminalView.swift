@@ -904,6 +904,7 @@ struct AgentTerminalView: View {
                     toggleKeyboard: toggleDirectKeyboard,
                     switchKeyboard: directKeyboardSwitchAction,
                     sendQuickKey: sendAgentQuickKey,
+                    paste: { text in keyboardControl.paste(text) },
                     showComposer: { selectInputMode(.composer) },
                     restoreComposerThen: restoreComposerThen)))
             .onAppear {

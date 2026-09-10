@@ -12,6 +12,9 @@ Entries reference the issue that motivated them.
 - Muse appears in Start Agent when the Host has `muse` on PATH. Notifications
   and Live Activities name it Muse, and the Heeler plugin accepts `muse`
   sidebar row overrides. (#297)
+- Direct Input's shortcut row gains a Paste key after ⇧Enter, so pasting into
+  an Agent no longer needs a hardware keyboard. The text goes through the
+  same paste review as ⌘V. (#307)
 
 ### Fixed
 
