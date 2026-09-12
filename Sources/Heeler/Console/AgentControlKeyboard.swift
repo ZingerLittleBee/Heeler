@@ -107,9 +107,9 @@ private struct AgentQuickKeyPad: View {
     let send: (AgentQuickKey) -> Void
 
     private static let rows: [[AgentQuickKey]] = [
-        [.escape, .tab, .shiftTab],
+        [.escape, .tab, .backspace],
         [.left, .up, .right],
-        [.backspace, .down, .enter],
+        [.shiftTab, .down, .enter],
     ]
 
     var body: some View {

@@ -25,7 +25,8 @@ Entries reference the issue that motivated them.
   iOS keyboard height and leave the Composer draft unchanged. The Direct Input
   shortcut row omits duplicate Ctrl/Alt buttons. Skills and Snippets remain
   available in Direct Input and insert into the active input surface without
-  adding Enter. (#302)
+  adding Enter. Agent controls place Backspace at the top right and Shift+Tab
+  at the bottom left. (#302)
 
 ### Fixed
 
