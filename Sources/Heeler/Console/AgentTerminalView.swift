@@ -825,6 +825,7 @@ struct AgentTerminalView: View {
                 insertText: insertToolsText,
                 context: terminalKeysContext,
                 keyboardControl: keyboardControl,
+                inputMode: inputMode.mode,
                 height: composerKeyboardLayout.availableToolsHeight,
                 quickKeysEnabled: true,
                 sendQuickKey: sendAgentQuickKey)

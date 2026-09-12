@@ -713,6 +713,7 @@ struct AgentToolsKeyboard: View {
     let insertText: (String) -> Void
     let context: TerminalKeysContext
     let keyboardControl: TerminalKeyboardControl
+    let inputMode: AgentInputMode
     let height: CGFloat
     let quickKeysEnabled: Bool
     let sendQuickKey: (AgentQuickKey) -> Void
@@ -727,10 +728,17 @@ struct AgentToolsKeyboard: View {
             Group {
                 switch selectedTab {
                 case .controls:
-                    AgentControlKeyboard(
-                        isEnabled: quickKeysEnabled,
-                        keyboardControl: keyboardControl,
-                        send: sendQuickKey)
+                    if inputMode == .direct {
+                        TerminalFullKeyboard(
+                            isEnabled: quickKeysEnabled,
+                            keyboardControl: keyboardControl,
+                            send: sendQuickKey)
+                    } else {
+                        AgentControlKeyboard(
+                            isEnabled: quickKeysEnabled,
+                            keyboardControl: keyboardControl,
+                            send: sendQuickKey)
+                    }
                 case .skills:
                     if let skills = context.skills {
                         SkillsKeyboardPane(

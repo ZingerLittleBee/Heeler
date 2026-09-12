@@ -188,9 +188,10 @@ keys), both sending directly to the pane without changing the Composer draft.
 Paging and key layers always share the measured iOS keyboard height;
 they never resize the dock or the Composer. Skills and Snippets insert into the
 Composer draft or directly into Attach in Direct Input, without adding Enter;
-appearance changes only the terminal rendering. Direct Input reuses the same
-measured footprint for
-an optional tools dock, but its primary shortcuts persist in an app-content
+appearance changes only the terminal rendering. Direct Input shows only the
+full Terminal keyboard in the controls tab, without the Agent page or pager.
+It reuses the same measured footprint for an optional tools dock, but its
+primary shortcuts persist in an app-content
 row above the Agent switcher strip rather than replacing the system keyboard.
 _Avoid_: desktop keyboard, reply keyboard, Keys mode (the direct-input predecessor)
 

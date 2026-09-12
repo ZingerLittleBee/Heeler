@@ -1906,7 +1906,7 @@ struct TerminalAttachTests {
 
     @MainActor
     private static func makeToolsKeyboardController(
-        size: CGSize, defaults: UserDefaults
+        size: CGSize, defaults: UserDefaults, inputMode: AgentInputMode = .composer
     ) -> UIViewController {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             throw TransportError.cancelled
@@ -1922,6 +1922,7 @@ struct TerminalAttachTests {
                         snippets: SnippetStore(defaults: defaults)),
                     manageSnippets: {}),
                 keyboardControl: TerminalKeyboardControl(),
+                inputMode: inputMode,
                 height: size.height,
                 quickKeysEnabled: true,
                 sendQuickKey: { _ in }
@@ -2032,6 +2033,48 @@ struct TerminalAttachTests {
                         "\(label) escaped the dock horizontally: \(frame) at \(size)")
                 #expect(frame.minY >= header.maxY - 1 && frame.maxY <= footer.minY + 1,
                         "\(label) escaped the available key region: \(frame) at \(size)")
+            }
+        }
+    }
+
+    @MainActor
+    @Test(.serialized, arguments: [
+        CGSize(width: 402, height: 224),
+        CGSize(width: 402, height: 336),
+        CGSize(width: 768, height: 402),
+    ])
+    func directToolsShowOnlyTheFullKeyboardWithinTheMeasuredFootprint(size: CGSize) async throws {
+        let suiteName = "direct-tools-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let controller = Self.makeToolsKeyboardController(
+            size: size, defaults: defaults, inputMode: .direct)
+        let bounds = CGRect(origin: .zero, size: size)
+        let window = try await makeTestWindow(frame: bounds, rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        #expect(controller.view.bounds == bounds)
+        guard #available(iOS 27, *) else { return }
+
+        let footerLabel = "Control Keys"
+        let labels = [footerLabel, "q", "Space", "Backspace", "Enter", "Control modifier", "Function key layer"]
+        let initial = try await Self.waitForToolsFrames(
+            in: controller.view, labels: labels, selectedPage: footerLabel)
+        let footer = try #require(initial[footerLabel])
+        for tab in ["Snippets", "Terminal Appearance"] {
+            try Self.activateToolsControl(labeled: tab, in: controller.view)
+            _ = try await Self.waitForToolsFrames(in: controller.view, labels: [tab], selectedPage: tab)
+            try Self.activateToolsControl(labeled: footerLabel, in: controller.view)
+            let frames = try await Self.waitForToolsFrames(
+                in: controller.view, labels: labels, selectedPage: footerLabel)
+            #expect(Self.firstAccessible(in: controller.view, labeled: "Agent controls page") == nil)
+            #expect(Self.firstAccessible(in: controller.view, labeled: "Terminal keyboard page") == nil)
+            #expect(controller.view.bounds == bounds)
+            #expect(frames[footerLabel] == footer)
+            for key in labels.dropFirst() {
+                let frame = try #require(frames[key])
+                #expect(frame.minX >= -1 && frame.maxX <= size.width + 1)
+                #expect(frame.minY >= -1 && frame.maxY <= footer.minY + 1)
             }
         }
     }

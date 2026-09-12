@@ -33,6 +33,8 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- Direct Input's tools dock opens the full Terminal keyboard without the
+  Agent controls page, since those keys are already in the toolbar. (PR #302)
 - Agent, Terminal, and Direct Input toolbar keys use a soft gray highlight
   and light haptic feedback when tapped. Agent controls put Backspace at the
   top right and Shift+Tab at the bottom left. The Direct Input shortcut row
