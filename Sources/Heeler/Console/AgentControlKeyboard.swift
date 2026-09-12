@@ -135,7 +135,7 @@ private struct AgentQuickKeyPad: View {
                             .font(.system(size: 13, weight: .medium))
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
-                        .buttonStyle(AgentQuickKeyButtonStyle())
+                        .buttonStyle(TerminalKeyboardButtonStyle())
                         .disabled(!isEnabled)
                         .opacity(isEnabled ? 1 : 0.45)
                         .accessibilityLabel(key.accessibilityLabel)
@@ -148,24 +148,5 @@ private struct AgentQuickKeyPad: View {
         .padding(.horizontal, 10)
         .padding(.top, 4)
         .padding(.bottom, 8)
-    }
-}
-
-/// Immediate press feedback with a short release, without changing layout or
-/// installing a gesture that competes with the keyboard's horizontal pager.
-private struct AgentQuickKeyButtonStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(Color.primary)
-            .background(
-                Color(uiColor: configuration.isPressed ? .systemGray3 : .secondarySystemFill),
-                in: .rect(cornerRadius: 7))
-            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
-            .animation(
-                configuration.isPressed || reduceMotion ? nil : .easeOut(duration: 0.1),
-                value: configuration.isPressed)
-            .contentShape(.rect)
     }
 }

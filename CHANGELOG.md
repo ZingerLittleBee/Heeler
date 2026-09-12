@@ -31,7 +31,8 @@ Entries reference the issue that motivated them.
   available in Direct Input and insert into the active input surface without
   adding Enter. Agent controls place Backspace at the top right and Shift+Tab
   at the bottom left, with a soft gray pressed highlight and light haptic
-  feedback. Open Terminal uses the same full keyboard in Keys mode. (#302)
+  feedback. The full Terminal keyboard shares this press feedback in both
+  Agent tools and Open Terminal's Keys mode. (#302)
 
 ### Fixed
 

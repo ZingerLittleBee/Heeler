@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The shared full keyboard used by Agent tools and Open Terminal's Keys dock.
 /// Its six rows always fit the height supplied by the measured keyboard dock.
@@ -143,7 +144,10 @@ private struct TerminalKeyboardKeyCap: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        } label: {
             Group {
                 if let systemImage {
                     Image(systemName: systemImage)
@@ -157,14 +161,31 @@ private struct TerminalKeyboardKeyCap: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(.rect)
         }
-        .buttonStyle(.plain)
-        .background(
-            isSelected ? Color.accentColor : Color(uiColor: .secondarySystemFill),
-            in: .rect(cornerRadius: 7))
-        .foregroundStyle(isSelected ? Color.white : .primary)
+        .buttonStyle(TerminalKeyboardButtonStyle(isSelected: isSelected))
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1 : 0.45)
         .accessibilityLabel(label)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+/// Immediate press feedback with a short release, without changing layout or
+/// installing a gesture that competes with the keyboard's horizontal pager.
+struct TerminalKeyboardButtonStyle: ButtonStyle {
+    var isSelected = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(isSelected && !configuration.isPressed ? Color.white : .primary)
+            .background(
+                configuration.isPressed ? Color(uiColor: .systemGray3)
+                    : (isSelected ? Color.accentColor : Color(uiColor: .secondarySystemFill)),
+                in: .rect(cornerRadius: 7))
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .animation(
+                configuration.isPressed || reduceMotion ? nil : .easeOut(duration: 0.1),
+                value: configuration.isPressed)
+            .contentShape(.rect)
     }
 }
