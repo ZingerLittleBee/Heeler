@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Both pages live inside the tools dock's measured system-keyboard footprint.
 /// Page changes never update the keyboard inset or recreate the Composer.
@@ -117,10 +118,28 @@ private struct AgentQuickKeyPad: View {
             ForEach(Self.rows.indices, id: \.self) { row in
                 HStack(spacing: 8) {
                     ForEach(Self.rows[row], id: \.self) { key in
-                        AgentTerminalKeyCap(
-                            title: key.title ?? "", systemImage: key.systemImageName,
-                            label: key.accessibilityLabel, isEnabled: isEnabled
-                        ) { send(key) }
+                        Button {
+                            // A cancelled swipe must never confirm a key press.
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            send(key)
+                        } label: {
+                            Group {
+                                if let image = key.systemImageName {
+                                    Image(systemName: image)
+                                } else {
+                                    Text(key.title ?? "")
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.7)
+                                }
+                            }
+                            .font(.system(size: 13, weight: .medium))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                        .buttonStyle(AgentQuickKeyButtonStyle())
+                        .disabled(!isEnabled)
+                        .opacity(isEnabled ? 1 : 0.45)
+                        .accessibilityLabel(key.accessibilityLabel)
+                        .accessibilityHint("Sends this key directly to the Agent")
                     }
                 }
                 .frame(maxHeight: .infinity)
@@ -129,6 +148,25 @@ private struct AgentQuickKeyPad: View {
         .padding(.horizontal, 10)
         .padding(.top, 4)
         .padding(.bottom, 8)
+    }
+}
+
+/// Immediate press feedback with a short release, without changing layout or
+/// installing a gesture that competes with the keyboard's horizontal pager.
+private struct AgentQuickKeyButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(configuration.isPressed ? Color.white : .primary)
+            .background(
+                configuration.isPressed ? Color.accentColor : Color(uiColor: .secondarySystemFill),
+                in: .rect(cornerRadius: 7))
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .animation(
+                configuration.isPressed || reduceMotion ? nil : .easeOut(duration: 0.1),
+                value: configuration.isPressed)
+            .contentShape(.rect)
     }
 }
 
