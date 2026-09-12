@@ -19,25 +19,26 @@ Entries reference the issue that motivated them.
   directory or title text, combines with the Host filter, and hides empty
   Host sections in grouped mode only while their Host is nominal; a
   reconnecting or failed Host keeps its section. (#292)
-- Sticky one-shot Ctrl and Option modifier keys on the terminal key surfaces
-  (Shell and Agent Terminal keyboards).
-  Tap ⌃ or ⌥ to arm it for the next key, which sends xterm modifier
-  sequences; the armed state consumes on send, and tapping again disarms.
-  Tab-panel shortcuts stay deferred as follow-up work. (#270)
-- Swipe between large Agent controls and a full terminal keyboard with letters,
-  numbers, symbols, Ctrl/Alt/Shift, and F1–F12. Both pages keep the measured
-  iOS keyboard height and leave the Composer draft unchanged. The Direct Input
-  shortcut row omits duplicate Ctrl/Alt buttons. Skills and Snippets remain
-  available in Direct Input and insert into the active input surface without
-  adding Enter. Agent controls place Backspace at the top right and Shift+Tab
-  at the bottom left, with a soft gray pressed highlight and light haptic
-  feedback. The full Terminal keyboard shares this press feedback in both
-  Agent tools and Open Terminal's Keys mode. (#302)
+- Swipe between Agent controls and a full Terminal keyboard with letters,
+  numbers, symbols, Ctrl/Alt/Shift, and F1–F12. The same keyboard is available
+  in Open Terminal's Keys mode. Both pages match the iOS keyboard height and
+  preserve the Composer draft. Tap a modifier to apply it to the next key;
+  tap it again to cancel. (#270; PR #302)
+- Skills and Snippets are available in Direct Input as well as Compose.
+  Selecting one inserts it into the active input without pressing Enter.
+  (PR #302)
+
+### Changed
+
+- Agent and Terminal keys use a soft gray highlight and light haptic feedback
+  when tapped. Agent controls put Backspace at the top right and Shift+Tab at
+  the bottom left. The Direct Input shortcut row no longer duplicates the
+  Terminal keyboard's Ctrl/Alt buttons. (PR #302)
 
 ### Fixed
 
-- Terminal controls near the left edge respond across their full button area
-  instead of losing taps to the swipe-back gesture. (#302)
+- Fixed missed taps on terminal controls near the left edge, where the
+  swipe-back gesture could intercept them. (PR #302)
 - New Agent now discovers agents installed through mise. The discovery PATH
   includes mise's shims directory, resolved from `MISE_DATA_DIR` or
   `XDG_DATA_HOME` when either reaches the non-interactive SSH environment,
