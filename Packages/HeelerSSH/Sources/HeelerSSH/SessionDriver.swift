@@ -1368,6 +1368,225 @@ actor SessionDriver {
         }
     }
 
+    /// Lists the directories directly inside one remote directory, sorted by
+    /// name. Regular files are dropped, `.` and `..` are dropped, and the
+    /// result is capped at `SSHSFTPDirectoryListing.maximumEntries` with
+    /// `truncated` set when more directories exist. A missing directory
+    /// surfaces as `SSHError.sftpFailure`; every other failure maps the same
+    /// way file-operation failures do.
+    func listSFTPDirectories(
+        id: UInt64,
+        path: String,
+        timeout: Duration
+    ) async throws -> SSHSFTPDirectoryListing {
+        guard Self.isValidSFTPPath(path) else { throw SSHError.channelFailed }
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        return try await withSFTPUse(id: id, deadline: deadline) {
+            guard
+                let dirID = try await openSFTPDirIfPresent(
+                    sftpID: id,
+                    path: path,
+                    deadline: deadline)
+            else {
+                throw SSHError.sftpFailure(
+                    status: UInt64(LIBSSH2_FX_NO_SUCH_FILE))
+            }
+            do {
+                var rawEntries: [(name: String, isDirectory: Bool)] = []
+                while
+                    let entry = try await readSFTPDirEntry(
+                        sftpID: id,
+                        fileID: dirID,
+                        deadline: deadline)
+                {
+                    rawEntries.append((entry.name, entry.isDirectory))
+                }
+                try await closeSFTPFileWithinUse(
+                    sftpID: id,
+                    fileID: dirID,
+                    timeout: timeout)
+                return SSHSFTPDirectoryListing(rawEntries: rawEntries)
+            } catch {
+                try? await closeSFTPFileWithinUse(
+                    sftpID: id,
+                    fileID: dirID,
+                    timeout: .seconds(2))
+                throw normalize(error)
+            }
+        }
+    }
+
+    private func openSFTPDirIfPresent(
+        sftpID: UInt64,
+        path: String,
+        deadline: ContinuousClock.Instant
+    ) async throws -> UInt64? {
+        let owner = allocateTransportSendOwner()
+        await acquireOperation()
+        defer { releaseOperation() }
+        do {
+        while true {
+            try checkProgress(deadline: deadline)
+            try await waitForTransportSendAdmission(
+                owner: owner,
+                deadline: deadline,
+                cancellable: true)
+            let session = try requireSession()
+            guard let sftp = sftpClients[sftpID]?.handle else {
+                throw SSHError.connectionInvalidated
+            }
+            let dir = path.withCString { pathPointer in
+                libssh2_sftp_open_ex(
+                    sftp,
+                    pathPointer,
+                    UInt32(path.utf8.count),
+                    0,
+                    0,
+                    Int32(LIBSSH2_SFTP_OPENDIR))
+            }
+            if let dir {
+                let disposition = notePacketProducingResult(
+                    0,
+                    owner: owner,
+                    session: session)
+                applyTransportSendOwnerDisposition(disposition)
+                nextSFTPFileID &+= 1
+                let fileID = nextSFTPFileID
+                sftpClients[sftpID]?.files[fileID] = dir
+                return fileID
+            }
+            let error = libssh2_session_last_errno(session)
+            let disposition = notePacketProducingResult(
+                error,
+                owner: owner,
+                session: session)
+            if error == LIBSSH2_ERROR_EAGAIN {
+                try await waitForSession(session, deadline: deadline)
+                continue
+            }
+            if Self.isConnectionLoss(error) {
+                invalidateResources()
+                throw SSHError.connectionInvalidated
+            }
+            let status = UInt64(libssh2_sftp_last_error(sftp))
+            applyTransportSendOwnerDisposition(disposition)
+            if disposition == .invalidate { throw SSHError.connectionInvalidated }
+            if status == UInt64(LIBSSH2_FX_NO_SUCH_FILE) { return nil }
+            throw SSHError.sftpFailure(status: status)
+        }
+        } catch {
+            if transportSendOwner == owner { invalidateResources() }
+            throw error
+        }
+    }
+
+    /// Reads one readdir entry from an open directory handle. Returns `nil`
+    /// at end of directory.
+    private func readSFTPDirEntry(
+        sftpID: UInt64,
+        fileID: UInt64,
+        deadline: ContinuousClock.Instant
+    ) async throws -> SSHSFTPDirectoryEntry? {
+        let owner = allocateTransportSendOwner()
+        await acquireOperation()
+        defer { releaseOperation() }
+        do {
+        while true {
+            try checkProgress(deadline: deadline)
+            try await waitForTransportSendAdmission(
+                owner: owner,
+                deadline: deadline,
+                cancellable: true)
+            let session = try requireSession()
+            guard
+                let state = sftpClients[sftpID],
+                let dir = state.files[fileID]
+            else {
+                throw SSHError.connectionInvalidated
+            }
+            var nameBuffer = [CChar](repeating: 0, count: 512)
+            var longBuffer = [CChar](repeating: 0, count: 512)
+            var attributes = LIBSSH2_SFTP_ATTRIBUTES()
+            let count: Int32 = nameBuffer.withUnsafeMutableBufferPointer {
+                namePointer in
+                longBuffer.withUnsafeMutableBufferPointer { longPointer in
+                    withUnsafeMutablePointer(to: &attributes) {
+                        attributesPointer in
+                        libssh2_sftp_readdir_ex(
+                            dir,
+                            namePointer.baseAddress,
+                            namePointer.count,
+                            longPointer.baseAddress,
+                            longPointer.count,
+                            attributesPointer)
+                    }
+                }
+            }
+            if count == LIBSSH2_ERROR_EAGAIN {
+                let disposition = notePacketProducingResult(
+                    count,
+                    owner: owner,
+                    session: session)
+                applyTransportSendOwnerDisposition(disposition)
+                try await waitForSession(session, deadline: deadline)
+                continue
+            }
+            if count < 0 {
+                let error = libssh2_session_last_errno(session)
+                let disposition = notePacketProducingResult(
+                    count,
+                    owner: owner,
+                    session: session)
+                if Self.isConnectionLoss(error) {
+                    invalidateResources()
+                    throw SSHError.connectionInvalidated
+                }
+                let status = UInt64(libssh2_sftp_last_error(state.handle))
+                applyTransportSendOwnerDisposition(disposition)
+                if disposition == .invalidate {
+                    throw SSHError.connectionInvalidated
+                }
+                throw SSHError.sftpFailure(status: status)
+            }
+            let disposition = notePacketProducingResult(
+                0,
+                owner: owner,
+                session: session)
+            applyTransportSendOwnerDisposition(disposition)
+            if count == 0 { return nil }
+            let nameBytes = nameBuffer.prefix(Int(count)).map {
+                UInt8(bitPattern: $0)
+            }
+            let nameData = Data(nameBytes)
+            let name =
+                String(data: nameData, encoding: .utf8)
+                ?? String(decoding: nameData, as: UTF8.self)
+            return SSHSFTPDirectoryEntry(
+                name: name,
+                isDirectory: isSFTPDirectory(
+                    attributes: attributes,
+                    longEntry: longBuffer))
+        }
+        } catch {
+            if transportSendOwner == owner { invalidateResources() }
+            throw error
+        }
+    }
+
+    /// Directory test for one readdir entry. SFTP servers normally fill in
+    /// the permissions bits; when they do not, fall back to the `ls -l`
+    /// style long entry, whose first character is `d` for directories.
+    private func isSFTPDirectory(
+        attributes: LIBSSH2_SFTP_ATTRIBUTES,
+        longEntry: [CChar]
+    ) -> Bool {
+        if attributes.flags & UInt(LIBSSH2_SFTP_ATTR_PERMISSIONS) != 0 {
+            return attributes.permissions & UInt(LIBSSH2_SFTP_S_IFMT)
+                == UInt(LIBSSH2_SFTP_S_IFDIR)
+        }
+        return longEntry.first == CChar(UInt8(ascii: "d"))
+    }
+
     func openSFTPFileForWriting(
         sftpID: UInt64,
         path: String,

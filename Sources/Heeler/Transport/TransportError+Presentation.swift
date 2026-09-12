@@ -92,6 +92,11 @@ extension TransportError {
                 summary: "The remote home directory could not be resolved",
                 detail: detail,
                 recoverySuggestion: nil)
+        case .invalidDirectoryPath(let path):
+            TransportErrorPresentation(
+                summary: "That folder path cannot be opened",
+                detail: path,
+                recoverySuggestion: "Pick a folder from the list instead of typing a path.")
         case .eventsChannelAlreadyOpen, .terminalChannelAlreadyOpen:
             TransportErrorPresentation(
                 summary: "The connection is busy",

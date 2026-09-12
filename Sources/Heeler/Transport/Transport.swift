@@ -544,6 +544,14 @@ enum RemoteShellPath {
     }
 }
 
+/// Directories-only listing of one remote directory, for the remote
+/// directory browser (#280). Names are sorted; `truncated` reports that more
+/// directories exist than fit in the surfaced cap.
+struct RemoteDirectoryListing: Sendable, Equatable {
+    let directories: [String]
+    let truncated: Bool
+}
+
 /// A coding agent process running inside a herdr Pane.
 ///
 /// The domain view of the generated wire type `AgentInfo`: only the fields
@@ -729,6 +737,10 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// The remote home directory could not be resolved, so a home-relative
     /// socket location has no path.
     case homeDirectoryUnresolvable(detail: String)
+    /// A directory-browsing request carried a path that cannot be passed to
+    /// the Host's login shell: empty, relative, or holding NUL, quote,
+    /// backslash, or control characters. Rejected before any channel opens.
+    case invalidDirectoryPath(path: String)
     /// A second events channel was requested while one is live; each Host
     /// keeps exactly one dedicated events channel (ADR 0011 headroom).
     case eventsChannelAlreadyOpen
@@ -769,7 +781,8 @@ indirect enum TransportError: Error, Sendable, Equatable {
             .deviceKeyCorrupt, .hostKeyRejected, .hostKeyMismatch,
             .socketNotFound, .herdrBinaryNotFound, .protocolVersionMismatch,
             .streamLocalOpenFailed,
-            .homeDirectoryUnresolvable, .eventsChannelAlreadyOpen,
+            .homeDirectoryUnresolvable, .invalidDirectoryPath,
+            .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse:
             false
         // A Jump Host is retryable exactly when the failure behind it is: a
