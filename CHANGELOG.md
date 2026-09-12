@@ -40,6 +40,8 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Backspace keeps its full touch area while pressed and tolerates small finger
+  movements, so holding near an edge no longer cancels deletion. (PR #302)
 - Holding Backspace also repeats in the Agent tools' Terminal page, where
   the swipe gesture previously blocked it. (PR #302)
 - Modifier and keyboard layer keys keep their selection color while pressed,

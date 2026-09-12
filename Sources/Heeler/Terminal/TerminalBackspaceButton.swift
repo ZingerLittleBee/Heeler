@@ -80,12 +80,32 @@ final class TerminalRepeatingBackspaceButton: UIButton {
     override var isHighlighted: Bool {
         didSet {
             let transform = isHighlighted && !reduceMotion
-                ? CGAffineTransform(scaleX: 0.97, y: 0.97) : .identity
-            UIView.animate(withDuration: isHighlighted || reduceMotion ? 0 : 0.1,
-                           delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
-                self.transform = transform
+                ? CATransform3DMakeScale(0.97, 0.97, 1) : CATransform3DIdentity
+            // Transform only the painted contents. Scaling the UIButton itself
+            // shrinks its hit area and drops touches along all four edges.
+            let previous = layer.presentation()?.sublayerTransform ?? layer.sublayerTransform
+            layer.removeAnimation(forKey: "keyPressFeedback")
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            layer.sublayerTransform = transform
+            CATransaction.commit()
+            if !isHighlighted && !reduceMotion {
+                let animation = CABasicAnimation(keyPath: "sublayerTransform")
+                animation.fromValue = NSValue(caTransform3D: previous)
+                animation.toValue = NSValue(caTransform3D: transform)
+                animation.duration = 0.1
+                animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                layer.add(animation, forKey: "keyPressFeedback")
             }
         }
+    }
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        // Only an existing hold gets drift tolerance; initial touches must
+        // still land inside this key so neighbouring keys keep their hit areas.
+        let isHolding = holdState == .pressed || holdState == .repeating
+        let hitBounds = isHolding ? bounds.insetBy(dx: -8, dy: -8) : bounds
+        return hitBounds.contains(point)
     }
 
     override func didMoveToWindow() {

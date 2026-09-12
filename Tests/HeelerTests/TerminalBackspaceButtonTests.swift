@@ -31,6 +31,45 @@ struct TerminalBackspaceButtonTests {
         #expect(count == 2)
     }
 
+    @Test func pressFeedbackKeepsAllFourEdgesHittable() async throws {
+        let (button, window) = try await host {}
+        defer { window.isHidden = true }
+        let parent = try #require(button.superview)
+        let restingFrame = button.frame
+        let edgePoints = [
+            CGPoint(x: restingFrame.minX + 0.1, y: restingFrame.midY),
+            CGPoint(x: restingFrame.maxX - 0.1, y: restingFrame.midY),
+            CGPoint(x: restingFrame.midX, y: restingFrame.minY + 0.1),
+            CGPoint(x: restingFrame.midX, y: restingFrame.maxY - 0.1),
+        ]
+        func hitsButton(_ point: CGPoint) -> Bool {
+            guard let hit = parent.hitTest(point, with: nil) else { return false }
+            return hit === button || hit.isDescendant(of: button)
+        }
+        for point in edgePoints { #expect(hitsButton(point)) }
+        button.isHighlighted = true
+        #expect(button.frame == restingFrame)
+        for point in edgePoints { #expect(hitsButton(point), "Press feedback lost the edge at \(point)") }
+        button.isHighlighted = false
+        for point in edgePoints { #expect(hitsButton(point)) }
+    }
+
+    @Test func onlyAnExistingHoldToleratesSmallMovementPastTheEdge() async throws {
+        let (button, window) = try await host {}
+        defer { window.isHidden = true }
+        let nearEdges = [
+            CGPoint(x: -4, y: 22), CGPoint(x: 104, y: 22),
+            CGPoint(x: 50, y: -4), CGPoint(x: 50, y: 48),
+        ]
+        for point in nearEdges { #expect(!button.point(inside: point, with: nil)) }
+        button.sendActions(for: .touchDown)
+        button.isHighlighted = true
+        for point in nearEdges { #expect(button.point(inside: point, with: nil)) }
+        #expect(!button.point(inside: CGPoint(x: 116, y: 22), with: nil))
+        button.sendActions(for: .touchCancel)
+        for point in nearEdges { #expect(!button.point(inside: point, with: nil)) }
+    }
+
     @Test func holdStartsBeforeHalfASecondAndStopsWithoutAnExtraRelease() async throws {
         var count = 0
         let (button, window) = try await host { count += 1 }
