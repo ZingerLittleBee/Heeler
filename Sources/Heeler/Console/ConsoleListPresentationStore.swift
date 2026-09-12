@@ -127,7 +127,8 @@ final class ConsoleListPresentationStore {
     func sections(
         hosts: [Host],
         console: ConsoleStore,
-        filteredHostID: Host.ID? = nil
+        filteredHostID: Host.ID? = nil,
+        searchQuery: String = ""
     ) -> [ConsoleHostSection] {
         sections(
             hosts: hosts,
@@ -136,7 +137,8 @@ final class ConsoleListPresentationStore {
             hostStandingFailures: console.hostStandingFailures,
             hostsAwaitingSnapshot: console.hostsAwaitingSnapshot,
             hostSyncErrors: console.hostSyncErrors,
-            filteredHostID: filteredHostID)
+            filteredHostID: filteredHostID,
+            searchQuery: searchQuery)
     }
 
     /// Projects one section per catalog Host, in catalog order. `agents` is
@@ -149,9 +151,12 @@ final class ConsoleListPresentationStore {
         hostStandingFailures: [Host.ID: TransportError] = [:],
         hostsAwaitingSnapshot: Set<Host.ID> = [],
         hostSyncErrors: [Host.ID: String] = [:],
-        filteredHostID: Host.ID? = nil
+        filteredHostID: Host.ID? = nil,
+        searchQuery: String = ""
     ) -> [ConsoleHostSection] {
-        let agentsByHost = Dictionary(grouping: agents, by: \.hostID)
+        let trimmedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let searchedAgents = trimmedQuery.isEmpty ? agents : agents.filter { $0.matchesAgentSearch(trimmedQuery) }
+        let agentsByHost = Dictionary(grouping: searchedAgents, by: \.hostID)
         var projectedHostIDs: Set<Host.ID> = []
 
         return hosts.compactMap { host in
@@ -160,17 +165,29 @@ final class ConsoleListPresentationStore {
 
             let hostAgents = agentsByHost[host.id] ?? []
             let isAwaitingSnapshot = hostsAwaitingSnapshot.contains(host.id)
+            let statusPresentation = ConsoleHostStatusPresentation(
+                host: host,
+                status: hostStatuses[host.id],
+                standingFailure: hostStandingFailures[host.id],
+                isAwaitingSnapshot: isAwaitingSnapshot,
+                syncError: hostSyncErrors[host.id])
+            // While searching, an empty section leaves the list only while its
+            // Host is nominal (#292). A reconnecting or failed Host reports
+            // itself through its status row alone, so that row outranks the
+            // empty-section tidy-up and holds the section open; an absent
+            // presentation, or one carrying informational text only (paused,
+            // connecting, loading Agents), still leaves. Without a query every
+            // catalog Host stays visible, including empty ones.
+            if !trimmedQuery.isEmpty && hostAgents.isEmpty {
+                guard let severity = statusPresentation?.severity, severity != .informational
+                else { return nil }
+            }
             return ConsoleHostSection(
                 hostID: host.id,
                 hostDisplayName: host.displayName,
                 connectionStatus: hostStatuses[host.id],
                 isAwaitingSnapshot: isAwaitingSnapshot,
-                statusPresentation: ConsoleHostStatusPresentation(
-                    host: host,
-                    status: hostStatuses[host.id],
-                    standingFailure: hostStandingFailures[host.id],
-                    isAwaitingSnapshot: isAwaitingSnapshot,
-                    syncError: hostSyncErrors[host.id]),
+                statusPresentation: statusPresentation,
                 agents: hostAgents,
                 isCollapsed: isCollapsed(host.id),
                 statusCounts: ConsoleHostAgentStatusCounts(agents: hostAgents))

@@ -32,6 +32,9 @@ struct ConsoleView: View {
     /// Narrows the Agent list to one Host; nil shows every Host. This is a
     /// filter in both presentations, not a second grouping mechanism.
     @State private var hostFilter: Host.ID?
+    /// Client-side Agents search text (#292). Applied after `hostFilter` in
+    /// both presentations; the Host filter is untouched.
+    @State private var searchText = ""
     /// Owns flat/grouped mode and per-Host collapsed state (#245).
     @State private var listPresentation = ConsoleListPresentationStore()
     /// Outlives the detail column's rebuilds, which is the whole point: it
@@ -56,6 +59,7 @@ struct ConsoleView: View {
         NavigationSplitView {
             content
                 .navigationTitle("Agents")
+                .searchable(text: $searchText, prompt: "Search Agents")
                 .navigationSplitViewColumnWidth(min: 320, ideal: 380)
                 .toolbar {
                     // A filter is meaningless with a single Host.
@@ -330,6 +334,15 @@ struct ConsoleView: View {
             } actions: {
                 Button("Show All Hosts") { hostFilter = nil }
             }
+        case .noSearchResults:
+            ContentUnavailableView {
+                Label("No Results", systemImage: "magnifyingglass")
+            } description: {
+                Text("No agents match \"\(searchText)\".")
+            } actions: {
+                Button("Clear Search") { searchText = "" }
+                    .buttonStyle(.borderedProminent)
+            }
         case .rows:
             List(selection: selectedAgent) {
                 if listPresentation.mode == .flat {
@@ -408,14 +421,16 @@ struct ConsoleView: View {
             filteredAgentCount: filteredAgents.count,
             visibleIssueCount: visibleHostIssues.count,
             presentationMode: listPresentation.mode,
-            projectedSectionCount: hostSections.count)
+            projectedSectionCount: hostSections.count,
+            searchQuery: searchText)
     }
 
     private var hostSections: [ConsoleHostSection] {
         listPresentation.sections(
             hosts: hosts.hosts,
             console: console,
-            filteredHostID: hostFilter)
+            filteredHostID: hostFilter,
+            searchQuery: searchText)
     }
 
     private var presentationModeBinding: Binding<ConsoleListPresentationMode> {
@@ -435,8 +450,15 @@ struct ConsoleView: View {
     }
 
     private var filteredAgents: [ConsoleAgent] {
-        guard let hostFilter else { return console.agents }
-        return console.agents.filter { $0.hostID == hostFilter }
+        let hostFiltered: [ConsoleAgent]
+        if let hostFilter {
+            hostFiltered = console.agents.filter { $0.hostID == hostFilter }
+        } else {
+            hostFiltered = console.agents
+        }
+        let needle = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return hostFiltered }
+        return hostFiltered.filter { $0.matchesAgentSearch(needle) }
     }
 
     /// Host issues shown in the list: all of them, or the filtered Host's

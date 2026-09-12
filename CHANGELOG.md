@@ -15,6 +15,10 @@ Entries reference the issue that motivated them.
 - Direct Input's shortcut row gains a Paste key after ⇧Enter, so pasting into
   an Agent no longer needs a hardware keyboard. The text goes through the
   same paste review as ⌘V. (#307)
+- The Agents list has a search field. Typing filters Agents by working
+  directory or title text, combines with the Host filter, and hides empty
+  Host sections in grouped mode only while their Host is nominal; a
+  reconnecting or failed Host keeps its section. (#292)
 
 ### Fixed
 
