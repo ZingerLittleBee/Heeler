@@ -1,3 +1,5 @@
+import Foundation
+
 /// One Console list row for a Host's connection or snapshot condition.
 ///
 /// Quiet rows (Paused, Connecting, Loading Agents) are informational and
@@ -111,6 +113,7 @@ enum ConsoleAgentsSurface: Equatable {
     case noHosts
     case noAgents
     case noAgentsOnHost(String)
+    case noSearchResults
     case rows
 
     init(
@@ -119,14 +122,24 @@ enum ConsoleAgentsSurface: Equatable {
         filteredAgentCount: Int,
         visibleIssueCount: Int,
         presentationMode: ConsoleListPresentationMode = .flat,
-        projectedSectionCount: Int = 0
+        projectedSectionCount: Int = 0,
+        searchQuery: String = ""
     ) {
+        let isSearching = !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if hostCount == 0 {
             self = .noHosts
         } else if presentationMode == .grouped {
-            self = projectedSectionCount > 0 ? .rows : .noHosts
+            if projectedSectionCount > 0 {
+                self = .rows
+            } else if isSearching {
+                self = .noSearchResults
+            } else {
+                self = .noHosts
+            }
         } else if filteredAgentCount == 0 && visibleIssueCount == 0 {
-            if let filteredHostName {
+            if isSearching {
+                self = .noSearchResults
+            } else if let filteredHostName {
                 self = .noAgentsOnHost(filteredHostName)
             } else {
                 self = .noAgents

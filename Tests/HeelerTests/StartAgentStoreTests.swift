@@ -177,8 +177,11 @@ struct StartAgentStoreTests {
             "pi", "claude", "codex", "gemini", "cursor", "devin", "agy",
             "cline", "omp", "mastracode", "opencode", "copilot", "kimi",
             "kiro", "droid", "amp", "grok", "hermes", "kilo", "qodercli",
-            "maki", "qwen",
+            "maki", "muse", "qwen",
         ])
+        #expect(SupportedAgentKind.muse.rawValue == "muse")
+        #expect(SupportedAgentKind.muse.displayName == "Muse")
+        #expect(SupportedAgentKind.muse.executable == "muse")
         #expect(SupportedAgentKind.qwen.rawValue == "qwen")
         #expect(SupportedAgentKind.qwen.displayName == "Qwen Code")
         #expect(SupportedAgentKind.qwen.executable == "qwen")
@@ -190,24 +193,25 @@ struct StartAgentStoreTests {
                 .allSatisfy { $0.executable == $0.rawValue })
     }
 
-    @Test func agentDiscoveryCommandPrintsQwenWhenOnPath() {
+    @Test func agentDiscoveryCommandPrintsMuseWhenOnPath() {
         let command = SSHTransportSettings.defaultAgentDiscoveryCommand
         #expect(
             command.contains(
-                "command -v qwen >/dev/null 2>&1"
-                    + " && printf \"__HEELER_AGENT_KIND__=%s\\n\" \"qwen\""))
+                "command -v muse >/dev/null 2>&1"
+                    + " && printf \"__HEELER_AGENT_KIND__=%s\\n\" \"muse\""))
     }
 
-    @Test func agentDiscoveryParsesQwenAndDropsUnknownKinds() {
+    @Test func agentDiscoveryParsesMuseInStableOrderAndDropsUnknownKinds() {
         let output = """
             Welcome to the Host
             gemini
             __HEELER_AGENT_KIND__=qwen
+            __HEELER_AGENT_KIND__=muse
             __HEELER_AGENT_KIND__=notarealagent
-            __HEELER_AGENT_KIND__=qwen
+            __HEELER_AGENT_KIND__=muse
             last login: never
             """
-        #expect(SSHTransportSettings.discoveredAgentKinds(from: output) == [.qwen])
+        #expect(SSHTransportSettings.discoveredAgentKinds(from: output) == [.muse, .qwen])
     }
 
     @Test func preSelectsTheOnlyHost() {
@@ -671,6 +675,118 @@ struct StartAgentStoreTests {
 
         #expect(store.state == started(on: host))
         #expect(recorder.params.first?.kind == "qwen")
+    }
+
+    @Test func submitDispatchesAgentStartWithMuseKind() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            agentKinds: { _ in [.muse] },
+            recorder: recorder)
+        await store.discoverAgents()
+        #expect(store.selectedAgentKind == .muse)
+
+        await store.submit()
+
+        #expect(store.state == started(on: host))
+        #expect(recorder.params.first?.kind == "muse")
+    }
+
+    @Test func submitSurfacesUnsupportedMuseKindWithRecoveryAdvice() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        // herdr v0.8.2 / v0.9.0: code unsupported_agent_kind, message without a colon.
+        recorder.error = HerdrAPIError(
+            code: "unsupported_agent_kind",
+            message: "unsupported interactive agent kind muse")
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            agentKinds: { _ in [.muse] },
+            recorder: recorder)
+        await store.discoverAgents()
+
+        await store.submit()
+
+        #expect(
+            store.state
+                == .failed(
+                    "herdr rejected the command: unsupported interactive agent kind muse. "
+                        + "Update herdr on this Host to v0.9.0 or later for Muse support, "
+                        + "or choose another supported Agent."))
+        #expect(recorder.params.map(\.kind) == ["muse"])
+    }
+
+    @Test func submitKeepsGenericCopyForUnrelatedAgentStartErrors() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        recorder.error = HerdrAPIError(code: "400", message: "no such workspace")
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            agentKinds: { _ in [.muse] },
+            recorder: recorder)
+        await store.discoverAgents()
+
+        await store.submit()
+
+        #expect(store.state == .failed("herdr rejected the command: no such workspace"))
+    }
+
+    @Test func submitKeepsGenericCopyWhenNonMuseKindIsUnsupported() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        recorder.error = HerdrAPIError(
+            code: "unsupported_agent_kind",
+            message: "unsupported interactive agent kind qwen")
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            agentKinds: { _ in [.qwen] },
+            recorder: recorder)
+        await store.discoverAgents()
+
+        await store.submit()
+
+        #expect(
+            store.state
+                == .failed("herdr rejected the command: unsupported interactive agent kind qwen"))
+        #expect(recorder.params.map(\.kind) == ["qwen"])
+    }
+
+    @Test func unsupportedMuseAdviceUsesTheCapturedLaunchKind() async throws {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let gate = ScriptedTransportCallGate()
+        recorder.gate = gate
+        recorder.error = HerdrAPIError(
+            code: "unsupported_agent_kind",
+            message: "unsupported interactive agent kind muse")
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            agentKinds: { _ in [.muse, .qwen] },
+            recorder: recorder)
+        await store.discoverAgents()
+        #expect(store.selectedAgentKind == .muse)
+
+        let submit = Task { await store.submit() }
+        try await waitUntil("the Muse start should reach the gate") {
+            await gate.entryCount == 1
+        }
+        store.selectedAgentKind = .qwen
+        await gate.open()
+        await submit.value
+
+        #expect(
+            store.state
+                == .failed(
+                    "herdr rejected the command: unsupported interactive agent kind muse. "
+                        + "Update herdr on this Host to v0.9.0 or later for Muse support, "
+                        + "or choose another supported Agent."))
+        #expect(recorder.params.map(\.kind) == ["muse"])
     }
 
     /// Launching from an agent's own screen: Host, workspace, and directory

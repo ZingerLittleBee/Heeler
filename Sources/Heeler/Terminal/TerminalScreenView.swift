@@ -38,25 +38,17 @@ struct TerminalClipboard {
 final class TerminalKeyboardControl {
     weak var terminal: HeelerTerminalView? {
         didSet {
-            guard oldValue !== terminal else { return }
             oldValue?.onFirstResponderChange = nil
-            oldValue?.setStickyModifierChangeHandler(nil)
-            oldValue?.resetModifiers()
             terminal?.onFirstResponderChange = { [weak self] in
                 self?.syncFirstResponder()
             }
-            terminal?.setStickyModifierChangeHandler { [weak self] in
-                self?.syncModifiers()
-            }
             syncFirstResponder()
-            syncModifiers()
         }
     }
 
     /// Ghostty first-responder intent. Distinct from software-keyboard inset:
     /// a hardware keyboard can keep this true with a zero footprint.
     private(set) var isFirstResponder = false
-    private(set) var activeModifiers: Set<TerminalModifier> = []
 
     var isKeyboardUp: Bool { isFirstResponder }
 
@@ -77,8 +69,39 @@ final class TerminalKeyboardControl {
         _ = terminal?.dismissKeyboard()
     }
 
+    /// One-shot sticky modifiers for the ⌃/⌥ caps on the terminal key
+    /// surfaces (#270). Tapping a modifier arms it for the next key only;
+    /// firing any key consumes and clears it, and tapping the armed
+    /// modifier again disarms it. No lock mode. Shared here so the Shell
+    /// Controls pad and the Agent quick-key rows behave identically.
+    private(set) var pendingModifiers = TerminalKeyModifiers()
+
+    func isModifierArmed(_ modifier: TerminalKeyModifiers) -> Bool {
+        pendingModifiers.contains(modifier)
+    }
+
+    func setModifierArmed(_ modifier: TerminalKeyModifiers, armed: Bool) {
+        if armed {
+            pendingModifiers.insert(modifier)
+        } else {
+            pendingModifiers.remove(modifier)
+        }
+    }
+
+    func toggleModifier(_ modifier: TerminalKeyModifiers) {
+        setModifierArmed(modifier, armed: !isModifierArmed(modifier))
+    }
+
     func sendQuickKey(_ key: AgentQuickKey) {
-        terminal?.sendQuickKey(key)
+        guard let terminal, terminal.sendQuickKey(key, modifiers: pendingModifiers) else { return }
+        pendingModifiers = []
+    }
+
+    /// Open Terminal uses the same key encoding while retaining the Shell's
+    /// local-input gate. A blocked key must not consume pending modifiers.
+    func sendTerminalKey(_ key: AgentQuickKey) {
+        guard let terminal, terminal.isLocalInputEnabled else { return }
+        sendQuickKey(key)
     }
 
     /// Stops inertial remote scroll, matching `sendQuickKey`'s reliable-input
@@ -89,29 +112,6 @@ final class TerminalKeyboardControl {
 
     func setKeyboardMode(_ mode: TerminalKeyboardMode) {
         terminal?.setKeyboardMode(mode)
-    }
-
-    func sendControlKey(_ key: TerminalControlKey) {
-        terminal?.sendControlKey(key)
-    }
-
-    func toggleModifier(_ modifier: TerminalModifier) {
-        guard let terminal else { return }
-        if activeModifiers.contains(modifier) {
-            let remaining = activeModifiers.subtracting([modifier])
-            terminal.resetModifiers()
-            for remainingModifier in TerminalModifier.allCases
-                where remaining.contains(remainingModifier)
-            {
-                terminal.toggleModifier(remainingModifier)
-            }
-        } else {
-            terminal.toggleModifier(modifier)
-        }
-    }
-
-    func resetModifiers() {
-        terminal?.resetModifiers()
     }
 
     func sendNewLine() {
@@ -126,16 +126,6 @@ final class TerminalKeyboardControl {
         let next = terminal?.isFirstResponder ?? false
         guard isFirstResponder != next else { return }
         isFirstResponder = next
-    }
-
-    private func syncModifiers() {
-        guard let terminal else {
-            activeModifiers = []
-            return
-        }
-        activeModifiers = Set(TerminalModifier.allCases.filter {
-            terminal.stickyActivation(for: $0.ghosttyModifier) != .inactive
-        })
     }
 }
 
@@ -185,6 +175,8 @@ struct TerminalScreenView: UIViewRepresentable {
     /// drive remote scroll without holding the UIKit view itself.
     var scrollControl: TerminalScrollControl?
     var isLocalInputEnabled = true
+    /// Applied before the first focus claim, including Agent tools handoffs.
+    var initialKeyboardMode = TerminalKeyboardMode.text
     var textInputStyle = TerminalTextInputStyle.terminal
     var theme: TerminalTheme = .default
     var fontSize: Float = TerminalZoomSettings.defaultFontSize
@@ -207,6 +199,7 @@ struct TerminalScreenView: UIViewRepresentable {
         view.onOpenLink = { url in openURL(url) }
         // Only here, never in updateUIView: the intent belongs to this
         // terminal's first appearance, not to every state change after it.
+        view.setKeyboardMode(initialKeyboardMode)
         view.raisesKeyboardWhenReady = claimsKeyboard?() ?? false
         keyboardControl?.terminal = view
         scrollControl?.terminal = view
@@ -913,7 +906,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         let clampedFontSize = TerminalZoomSettings.clamped(fontSize)
         terminalController = TerminalController(
             theme: theme,
-            terminalConfiguration: Self.fontConfiguration(
+            terminalConfiguration: Self.terminalConfiguration(
                 size: clampedFontSize, family: fontFamily))
         appliedTheme = theme
         appliedFontSize = clampedFontSize
@@ -973,7 +966,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         let clamped = TerminalZoomSettings.clamped(fontSize)
         guard clamped != appliedFontSize,
             terminalController.setTerminalConfiguration(
-                TerminalConfiguration().fontSize(clamped))
+                Self.terminalConfiguration(size: clamped, family: appliedFontFamily))
         else {
             return false
         }
@@ -985,7 +978,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     func applyFontFamily(_ family: String?) -> Bool {
         guard family != appliedFontFamily,
             terminalController.setTerminalConfiguration(
-                Self.fontConfiguration(size: nil, family: family))
+                Self.terminalConfiguration(size: appliedFontSize, family: family))
         else {
             return false
         }
@@ -996,12 +989,14 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// ghostty treats `font-family` as a set that repeated values append to,
     /// so switching fonts has to clear it with an empty value first or the
     /// old family stays in the fallback chain ahead of the new one.
-    private static func fontConfiguration(size: Float?, family: String?) -> TerminalConfiguration {
+    private static func terminalConfiguration(size: Float, family: String?) -> TerminalConfiguration {
+        // These surfaces forward keys to a remote application. Host shortcuts
+        // (paste, zoom, selection) are handled by UIKit/Heeler, so Ghostty's
+        // desktop bindings must not intercept the shared keyboard's chords.
         var configuration = TerminalConfiguration()
-        if let size {
-            configuration = configuration.fontSize(size)
-        }
-        configuration = configuration.fontFamily("")
+            .custom("keybind", "clear")
+            .fontSize(size)
+            .fontFamily("")
         if let family {
             configuration = configuration.fontFamily(family)
         }
@@ -1136,7 +1131,6 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         guard isLocalInputEnabled != isEnabled else { return }
         isLocalInputEnabled = isEnabled
         if !isEnabled {
-            resetStickyModifiers()
             cancelKeyboardTransitionLayoutDeferral()
         }
         if !isEnabled, isFirstResponder {
@@ -1176,7 +1170,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
 
     /// Soft-keyboard Return arrives here as `"\n"` (UIKeyInput). Direct Input
     /// and Shell treat Enter as PTY CR (`0x0D`), matching shortcut Enter and
-    /// `TerminalControlKey.enter` — not LF.
+    /// `AgentQuickKey.enter` — not LF.
     override func insertText(_ text: String) {
         guard isLocalInputEnabled else { return }
         if text == "\n" {

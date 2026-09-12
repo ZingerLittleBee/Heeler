@@ -52,6 +52,8 @@ final actor ScriptedTransport: Transport {
     private var shellTerminalCreationFailure: (any Error)?
     private var nextShellTerminalCreationGate: ScriptedTransportCallGate?
     private(set) var snapshotFetchCount = 0
+    /// Records acknowledgement readiness at each snapshot's request boundary.
+    private(set) var snapshotHadLiveSubscription: [Bool] = []
     /// Every attach request received, in order; the Attach store's
     /// open-once behavior asserts on this.
     private(set) var attachRequests: [TerminalAttachRequest] = []
@@ -413,6 +415,7 @@ final actor ScriptedTransport: Transport {
 
     func sessionSnapshot() async throws -> SessionSnapshot {
         snapshotFetchCount += 1
+        snapshotHadLiveSubscription.append(liveStreamID != nil)
         let response = snapshot
         let failure = snapshotFailure
         let gate = nextSnapshotGate

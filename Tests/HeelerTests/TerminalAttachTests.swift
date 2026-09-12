@@ -22,6 +22,12 @@ struct TerminalAttachTests {
         case rejectedWrite
     }
 
+    @MainActor
+    private final class KeyboardFinger: UITouch {
+        var point = CGPoint.zero
+        override func location(in view: UIView?) -> CGPoint { point }
+    }
+
     private struct ReportedGrid: Equatable {
         let columns: Int
         let rows: Int
@@ -605,53 +611,50 @@ struct TerminalAttachTests {
     }
 
     @MainActor
-    private static func firstControl(in root: UIView, labeled label: String) -> UIControl? {
-        if let control = root as? UIControl, control.accessibilityLabel == label {
-            return control
-        }
-        for subview in root.subviews {
-            if let control = firstControl(in: subview, labeled: label) { return control }
-        }
-        return nil
+    private static func firstAccessibleFrame(in root: UIView, labeled label: String) -> CGRect? {
+        guard let element = firstAccessible(in: root, labeled: label) else { return nil }
+        return accessibleFrame(of: element, in: root)
     }
 
     @MainActor
-    private static func firstAccessibleFrame(in root: UIView, labeled label: String) -> CGRect? {
-        // SwiftUI hosting nests accessibility containers arbitrarily deep, and
-        // which runtime wraps a control in how many containers varies by OS
-        // release — recurse through every container shape, not just UIViews.
-        func visit(_ node: NSObject) -> CGRect? {
-            if let view = node as? UIView {
-                if view.accessibilityLabel == label, view.bounds.width > 0, view.bounds.height > 0 {
-                    return view.convert(view.bounds, to: root)
-                }
-            } else if node.accessibilityLabel == label {
-                let frame = node.accessibilityFrame
-                if frame.width > 0, frame.height > 0 {
-                    return root.convert(frame, from: nil)
-                }
+    private static func accessibleFrame(of element: NSObject, in root: UIView) -> CGRect {
+        if let view = element as? UIView {
+            return view.convert(view.bounds, to: root)
+        }
+        return root.convert(element.accessibilityFrame, from: nil)
+    }
+
+    @MainActor
+    private static func firstAccessible(in root: UIView, labeled label: String) -> NSObject? {
+        // Hosted SwiftUI can expose different children through its array and
+        // indexed accessibility APIs. Visit both, without revisiting objects.
+        var visited = Set<ObjectIdentifier>()
+        func visit(_ node: NSObject) -> NSObject? {
+            guard visited.insert(ObjectIdentifier(node)).inserted,
+                  !node.accessibilityElementsHidden else { return nil }
+            if node.accessibilityLabel == label {
+                let frame = accessibleFrame(of: node, in: root)
+                if frame.width > 0, frame.height > 0 { return node }
             }
             if let elements = node.accessibilityElements {
                 for element in elements {
-                    if let object = element as? NSObject, let frame = visit(object) {
-                        return frame
+                    if let object = element as? NSObject, let match = visit(object) {
+                        return match
                     }
                 }
-            } else {
-                let count = node.accessibilityElementCount()
-                if count > 0, count != NSNotFound {
-                    for index in 0..<count {
-                        if let object = node.accessibilityElement(at: index) as? NSObject,
-                            let frame = visit(object)
-                        {
-                            return frame
-                        }
+            }
+            let count = node.accessibilityElementCount()
+            if count > 0, count != NSNotFound {
+                for index in 0..<count {
+                    if let object = node.accessibilityElement(at: index) as? NSObject,
+                       let match = visit(object) {
+                        return match
                     }
                 }
             }
             if let view = node as? UIView {
                 for subview in view.subviews {
-                    if let frame = visit(subview) { return frame }
+                    if let match = visit(subview) { return match }
                 }
             }
             return nil
@@ -786,23 +789,22 @@ struct TerminalAttachTests {
         var sent = Data()
         let terminal = TerminalScreenView.makeConfiguredTerminal(
             onSend: { sent.append($0) })
+        let window = try await Self.host(terminal)
+        defer { window.isHidden = true }
         let control = TerminalKeyboardControl()
         control.terminal = terminal
 
         control.sendNewLine()
-        await Task.yield()
-        #expect(sent == Data([0x0A]))
+        await Self.expectOutput(Data([0x0A]), received: { sent })
 
         sent.removeAll()
         terminal.setKeyboardMode(.controls)
         control.sendNewLine()
-        await Task.yield()
-        #expect(sent == Data([0x0A]))
+        await Self.expectOutput(Data([0x0A]), received: { sent })
 
         terminal.setLocalInputEnabled(false)
         control.sendNewLine()
-        await Task.yield()
-        #expect(sent == Data([0x0A]))
+        await Self.expectOutput(Data([0x0A]), received: { sent })
     }
 
     @MainActor
@@ -921,13 +923,17 @@ struct TerminalAttachTests {
     }
 
     @MainActor
-    @Test func pausedTerminalControlsDoNotEmitInput() async {
+    @Test func pausedTerminalControlsDoNotEmitInput() async throws {
         var sent = Data()
         let terminal = TerminalScreenView.makeConfiguredTerminal(
             onSend: { sent.append($0) })
 
+        let window = try await Self.host(terminal)
+        defer { window.isHidden = true }
         terminal.setLocalInputEnabled(false)
-        terminal.sendControlKey(.enter)
+        terminal.sendNewLine()
+        terminal.insertText("\n")
+        terminal.terminalSession.waitForPendingOutput()
         await Task.yield()
 
         #expect(sent.isEmpty)
@@ -1868,25 +1874,8 @@ struct TerminalAttachTests {
         let suiteName = "cold-tools-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
-        let composer = AgentComposerStore(target: "w1:p1") { _ in
-            throw TransportError.cancelled
-        }
-        let controller = UIHostingController(
-            rootView: AgentToolsKeyboard(
-                store: composer,
-                context: TerminalKeysContext(
-                    settings: TerminalSettings(
-                        themes: TerminalThemeSettings(defaults: defaults),
-                        zoom: TerminalZoomSettings(defaults: defaults),
-                        fonts: TerminalFontSettings(defaults: defaults),
-                        snippets: SnippetStore(defaults: defaults)),
-                    manageSnippets: {}),
-                height: height,
-                quickKeysEnabled: true,
-                sendQuickKey: { _ in }
-            )
-            .frame(width: width, height: height)
-            .ignoresSafeArea())
+        let controller = Self.makeToolsKeyboardController(
+            size: CGSize(width: width, height: height), defaults: defaults)
         let bounds = CGRect(x: 0, y: 0, width: width, height: height)
         controller.view.frame = bounds
         let window = try await makeTestWindow(
@@ -1922,6 +1911,283 @@ struct TerminalAttachTests {
             #expect(visible.height >= 44, "\(label) frame was \(frame)")
             #expect(visible.width >= 44, "\(label) frame was \(frame)")
         }
+    }
+
+    @MainActor
+    private static func makeToolsKeyboardController(
+        size: CGSize, defaults: UserDefaults, inputMode: AgentInputMode = .composer
+    ) -> UIViewController {
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            throw TransportError.cancelled
+        }
+        let controller = UIHostingController(
+            rootView: AgentToolsKeyboard(
+                insertText: composer.insertIntoDraft,
+                context: TerminalKeysContext(
+                    settings: TerminalSettings(
+                        themes: TerminalThemeSettings(defaults: defaults),
+                        zoom: TerminalZoomSettings(defaults: defaults),
+                        fonts: TerminalFontSettings(defaults: defaults),
+                        snippets: SnippetStore(defaults: defaults)),
+                    manageSnippets: {}),
+                keyboardControl: TerminalKeyboardControl(),
+                inputMode: inputMode,
+                height: size.height,
+                quickKeysEnabled: true,
+                sendQuickKey: { _ in }
+            )
+            .frame(width: size.width, height: size.height)
+            .transaction { transaction in
+                transaction.animation = nil
+                transaction.disablesAnimations = true
+            }
+            .ignoresSafeArea())
+        controller.view.frame = CGRect(origin: .zero, size: size)
+        return controller
+    }
+
+    @MainActor
+    private static func waitForToolsFrames(
+        in root: UIView, labels: [String], selectedPage: String
+    ) async throws -> [String: CGRect] {
+        for _ in 0..<40 {
+            root.layoutIfNeeded()
+            let selected = firstAccessible(in: root, labeled: selectedPage)?
+                .accessibilityTraits.contains(.selected) == true
+            var frames: [String: CGRect] = [:]
+            if selected {
+                for label in labels {
+                    if let frame = firstAccessibleFrame(in: root, labeled: label),
+                       root.bounds.intersection(frame).width > 0,
+                       root.bounds.intersection(frame).height > 0 {
+                        frames[label] = frame
+                    }
+                }
+                if frames.count == labels.count { return frames }
+            }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        Issue.record("Tools keyboard did not present \(labels) on \(selectedPage)")
+        return [:]
+    }
+
+    @MainActor
+    private static func activateToolsControl(labeled label: String, in root: UIView) throws {
+        let element = try #require(firstAccessible(in: root, labeled: label))
+        if element.accessibilityActivate() {
+            return
+        } else if let control = element as? UIControl {
+            control.sendActions(for: .touchUpInside)
+        } else {
+            Issue.record("Could not activate \(label)")
+        }
+    }
+
+    /// Both pages and their terminal layers must fit the measured keyboard
+    /// footprint, including a compact landscape keyboard below the fallback.
+    @MainActor
+    @Test(.serialized, arguments: [
+        CGSize(width: 402, height: 224),
+        CGSize(width: 402, height: 260),
+        CGSize(width: 402, height: 336),
+        CGSize(width: 700, height: 224),
+        CGSize(width: 768, height: 402),
+    ])
+    func toolsKeyboardPagesAndLayersKeepTheMeasuredFootprint(size: CGSize) async throws {
+        let suiteName = "tools-paging-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let controller = Self.makeToolsKeyboardController(size: size, defaults: defaults)
+        let bounds = CGRect(origin: .zero, size: size)
+        let window = try await makeTestWindow(frame: bounds, rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        #expect(controller.view.bounds == bounds)
+        // As with the cold-dock probe, hosted AX only materializes reliably
+        // on iOS 27. Older runtimes still check the supplied dock footprint.
+        guard #available(iOS 27, *) else { return }
+
+        let agentPage = "Agent controls page"
+        let terminalPage = "Terminal keyboard page"
+        let footerLabel = "Control Keys"
+        let initial = try await Self.waitForToolsFrames(
+            in: controller.view,
+            labels: [footerLabel, agentPage, terminalPage, "Escape", "Enter"],
+            selectedPage: agentPage)
+        let footer = try #require(initial[footerLabel])
+        let header = try #require(initial[agentPage])
+        let dockFrame = controller.view.frame
+
+        let stages: [(action: String, page: String, keys: [String])] = [
+            (terminalPage, terminalPage, ["q", "a", "z", "Space", "Enter", "Backspace", "Function key layer", "Symbol key layer"]),
+            ("Function key layer", terminalPage, ["F1", "F12", "a", "Space", "Enter", "Symbol key layer"]),
+            ("Symbol key layer", terminalPage, ["F12", "/", "[", "Space", "Enter", "Function key layer"]),
+            ("Function key layer", terminalPage, ["Insert", "/", "[", "Space", "Enter"]),
+            (agentPage, agentPage, ["Escape", "Tab", "Shift Tab", "Backspace", "Enter"]),
+        ]
+        for stage in stages {
+            try Self.activateToolsControl(labeled: stage.action, in: controller.view)
+            let frames = try await Self.waitForToolsFrames(
+                in: controller.view, labels: [footerLabel, stage.page] + stage.keys,
+                selectedPage: stage.page)
+            #expect(controller.view.bounds == bounds)
+            #expect(controller.view.frame == dockFrame)
+            #expect(frames[footerLabel] == footer, "\(stage.action) moved or resized the footer at \(size)")
+            #expect(frames[stage.page]?.minY == header.minY)
+            #expect(frames[stage.page]?.height == header.height)
+            for label in stage.keys {
+                let frame = try #require(frames[label], "\(label) is missing at \(size)")
+                #expect(frame.width > 0 && frame.height > 0)
+                #expect(frame.minX >= bounds.minX - 1 && frame.maxX <= bounds.maxX + 1,
+                        "\(label) escaped the dock horizontally: \(frame) at \(size)")
+                #expect(frame.minY >= header.maxY - 1 && frame.maxY <= footer.minY + 1,
+                        "\(label) escaped the available key region: \(frame) at \(size)")
+            }
+        }
+    }
+
+    @MainActor
+    @Test(.serialized, arguments: [
+        CGSize(width: 402, height: 224),
+        CGSize(width: 402, height: 336),
+        CGSize(width: 768, height: 402),
+    ])
+    func directToolsShowOnlyTheFullKeyboardWithinTheMeasuredFootprint(size: CGSize) async throws {
+        let suiteName = "direct-tools-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let controller = Self.makeToolsKeyboardController(
+            size: size, defaults: defaults, inputMode: .direct)
+        let bounds = CGRect(origin: .zero, size: size)
+        let window = try await makeTestWindow(frame: bounds, rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        #expect(controller.view.bounds == bounds)
+        guard #available(iOS 27, *) else { return }
+
+        let footerLabel = "Control Keys"
+        let labels = [footerLabel, "q", "Space", "Backspace", "Enter", "Control modifier", "Function key layer"]
+        let initial = try await Self.waitForToolsFrames(
+            in: controller.view, labels: labels, selectedPage: footerLabel)
+        let footer = try #require(initial[footerLabel])
+        for tab in ["Snippets", "Terminal Appearance"] {
+            try Self.activateToolsControl(labeled: tab, in: controller.view)
+            _ = try await Self.waitForToolsFrames(in: controller.view, labels: [tab], selectedPage: tab)
+            try Self.activateToolsControl(labeled: footerLabel, in: controller.view)
+            let frames = try await Self.waitForToolsFrames(
+                in: controller.view, labels: labels, selectedPage: footerLabel)
+            #expect(Self.firstAccessible(in: controller.view, labeled: "Agent controls page") == nil)
+            #expect(Self.firstAccessible(in: controller.view, labeled: "Terminal keyboard page") == nil)
+            #expect(controller.view.bounds == bounds)
+            #expect(frames[footerLabel] == footer)
+            for key in labels.dropFirst() {
+                let frame = try #require(frames[key])
+                #expect(frame.minX >= -1 && frame.maxX <= size.width + 1)
+                #expect(frame.minY >= -1 && frame.maxY <= footer.minY + 1)
+            }
+        }
+    }
+
+    @MainActor
+    @Test(.serialized, arguments: [
+        CGSize(width: 402, height: 224),
+        CGSize(width: 402, height: 336),
+        CGSize(width: 768, height: 402),
+    ])
+    func shellKeysUseTheFullKeyboardWithinTheMeasuredFootprint(size: CGSize) async throws {
+        let suiteName = "shell-full-keys-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settings = TerminalSettings(
+            themes: TerminalThemeSettings(defaults: defaults),
+            zoom: TerminalZoomSettings(defaults: defaults),
+            fonts: TerminalFontSettings(defaults: defaults),
+            snippets: SnippetStore(defaults: defaults))
+        var sent = Data()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(onSend: { sent.append($0) })
+        terminal.setLocalInputEnabled(true)
+        let control = TerminalKeyboardControl()
+        control.terminal = terminal
+        let controller = UIHostingController(rootView:
+            ShellTerminalKeysDock(settings: settings, height: size.height, control: control)
+                .frame(width: size.width, height: size.height)
+                .ignoresSafeArea())
+        let bounds = CGRect(origin: .zero, size: size)
+        // The key API needs a live Ghostty surface. Keep it behind the dock
+        // so the fixture still measures only the existing keyboard layout.
+        terminal.frame = bounds
+        terminal.isUserInteractionEnabled = false
+        terminal.accessibilityElementsHidden = true
+        controller.view.insertSubview(terminal, at: 0)
+        let window = try await makeTestWindow(frame: bounds, rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        try await waitForGhosttyContentLayer(in: terminal)
+        #expect(controller.view.bounds == bounds)
+        guard #available(iOS 27, *) else { return }
+
+        let footerLabel = "Control Keys"
+        let initial = try await Self.waitForToolsFrames(
+            in: controller.view,
+            labels: [footerLabel, "q", "a", "z", "Space", "Enter", "Control modifier",
+                     "Option modifier", "Shift modifier", "Function key layer", "Symbol key layer"],
+            selectedPage: footerLabel)
+        let footer = try #require(initial[footerLabel])
+        for label in ["Control modifier", "c", "Shift modifier", "A", "Function key layer",
+                      "Option modifier", "F12", "Symbol key layer", "[", "Backspace", "Enter"] {
+            _ = try await Self.waitForToolsFrames(
+                in: controller.view, labels: [label], selectedPage: footerLabel)
+            try Self.activateToolsControl(labeled: label, in: controller.view)
+            let frames = try await Self.waitForToolsFrames(
+                in: controller.view, labels: [footerLabel, "Space", "Enter", "Backspace"], selectedPage: footerLabel)
+            #expect(controller.view.bounds == bounds)
+            #expect(frames[footerLabel] == footer)
+            for key in ["Space", "Enter", "Backspace"] {
+                let frame = try #require(frames[key])
+                #expect(frame.minX >= -1 && frame.maxX <= size.width + 1)
+                #expect(frame.minY >= -1 && frame.maxY <= footer.minY + 1)
+            }
+        }
+        let expected = Data([3, 65]) + Data("\u{1B}[24;3~[\u{7F}\r".utf8)
+        for _ in 0..<40 where sent != expected {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(sent == expected)
+        #expect(control.pendingModifiers.isEmpty)
+
+        // A held key must continue reaching Ghostty after the first send
+        // updates the keyboard's one-shot modifier state.
+        sent.removeAll()
+        let backspace = try #require(
+            Self.firstAccessible(in: controller.view, labeled: "Backspace")
+                as? TerminalRepeatingBackspaceButton)
+        let finger = KeyboardFinger()
+        finger.point = CGPoint(x: backspace.bounds.midX, y: backspace.bounds.midY)
+        let event = UIEvent()
+        for recognizer in backspace.gestureRecognizers ?? [] {
+            recognizer.touchesBegan([finger], with: event)
+        }
+        let repeatDeadline = ContinuousClock.now + .seconds(1)
+        while sent.count < 3, ContinuousClock.now < repeatDeadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(backspace.isHighlighted)
+        #expect(sent.count >= 3)
+        #expect(sent.allSatisfy { $0 == 0x7F })
+        for recognizer in backspace.gestureRecognizers ?? [] {
+            recognizer.touchesEnded([finger], with: event)
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        let releasedOutput = sent
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(sent == releasedOutput)
+        #expect(!backspace.isHighlighted)
+
+        try Self.activateToolsControl(labeled: "Terminal Appearance", in: controller.view)
+        let appearance = try await Self.waitForToolsFrames(
+            in: controller.view, labels: ["Terminal Appearance"], selectedPage: "Terminal Appearance")
+        #expect(appearance["Terminal Appearance"]?.minY == footer.minY)
+        #expect(controller.view.bounds == bounds)
     }
 
     /// UIKit measures the input accessory after the keyboard itself, so a
@@ -1969,76 +2235,69 @@ struct TerminalAttachTests {
         #expect(TerminalKeyboardInset.insetHeight(covered: 20, bottomSafeArea: 34) == 0)
     }
 
-    @Test func terminalControlKeyboardContainsEveryKeyAndModifier() {
-        #expect(Set(TerminalControlKey.primaryRows.map(\.count)) == [5])
-
-        let items = (TerminalControlKey.primaryRows + TerminalControlKey.functionRows).flatMap { $0 }
-        let placedKeys = items.compactMap { item -> TerminalControlKey? in
-            if case .key(let key) = item { key } else { nil }
-        }
-        let placedModifiers = items.compactMap { item -> TerminalModifier? in
-            if case .modifier(let modifier) = item { modifier } else { nil }
-        }
-        #expect(Set(placedKeys) == Set(TerminalControlKey.allCases))
-        #expect(Set(placedModifiers) == Set(TerminalModifier.allCases))
+    @MainActor
+    private static func host(_ terminal: HeelerTerminalView) async throws -> UIWindow {
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
+        let controller = UIViewController()
+        controller.view = terminal
+        let window = try await makeTestWindow(
+            frame: terminal.bounds, rootViewController: controller)
+        try await waitForGhosttyContentLayer(in: terminal)
+        return window
     }
 
     @MainActor
-    @Test func cancelledControlPadTouchDoesNotReactivateOnReentry() throws {
-        var toggled: [TerminalModifier] = []
-        let pad = TerminalControlPadView(
-            send: { _ in },
-            toggleModifier: { toggled.append($0) })
-        let control = try #require(Self.firstControl(in: pad, labeled: "Control"))
-
-        control.sendActions(for: .touchDown)
-        control.sendActions(for: .touchDragExit)
-        control.sendActions(for: .touchDragEnter)
-        control.sendActions(for: .touchUpInside)
-
-        #expect(toggled.isEmpty)
+    private static func expectOutput(
+        _ expected: Data, received: () -> Data
+    ) async {
+        let deadline = ContinuousClock.now + .seconds(1)
+        while received() != expected, ContinuousClock.now < deadline {
+            await Task.yield()
+        }
+        #expect(received() == expected)
     }
 
+    /// These are observed session bytes, rather than a second implementation
+    /// of the encoder. Both Agent and Shell controls use this key path.
     @MainActor
-    @Test func functionPageToggleAnnouncesItsCurrentDestination() throws {
-        let pad = TerminalControlPadView(send: { _ in })
-        let functions = try #require(Self.firstControl(in: pad, labeled: "Function Keys"))
-        functions.sendActions(for: .touchUpInside)
-        #expect(Self.firstControl(in: pad, labeled: "Standard Keys") != nil)
+    @Test func terminalQuickKeysFlowThroughTheGhosttySession() async throws {
+        var sent = Data()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSend: { sent.append($0) })
+        let window = try await Self.host(terminal)
+        defer { window.isHidden = true }
+        let cases: [(AgentQuickKey, TerminalKeyModifiers, Data)] = [
+            (.escape, [], Data([0x1B])),
+            (.tab, [], Data([0x09])),
+            (.shiftTab, [], Data("\u{1B}[Z".utf8)),
+            (.shiftEnter, [], Data([0x0A])),
+            (.character("c"), .control, Data([0x03])),
+            (.character("d"), .control, Data([0x04])),
+            (.character("z"), .control, Data([0x1A])),
+            (.backspace, [], Data([0x7F])),
+            (.enter, [], Data([0x0D])),
+            (.left, [], Data("\u{1B}[D".utf8)),
+            (.up, [], Data("\u{1B}[A".utf8)),
+            (.down, [], Data("\u{1B}[B".utf8)),
+            (.right, [], Data("\u{1B}[C".utf8)),
+            (.pageUp, [], Data("\u{1B}[5~".utf8)),
+            (.character("a"), .shift, Data("A".utf8)),
+            (.function(.f12), .option, Data("\u{1B}[24;3~".utf8)),
+        ]
+        for (key, modifiers, expected) in cases {
+            sent.removeAll()
+            terminal.sendQuickKey(key, modifiers: modifiers)
+            await Self.expectOutput(expected, received: { sent })
+        }
+
+        sent.removeAll()
+        terminal.receive(Data("\u{1B}[?1h".utf8))
+        terminal.terminalSession.waitForPendingOutput()
+        terminal.sendQuickKey(.up)
+        await Self.expectOutput(Data("\u{1B}OA".utf8), received: { sent })
     }
 
-    @Test func terminalControlKeysEncodeExpectedBytes() {
-        #expect(TerminalControlKey.escape.bytes(applicationCursor: false) == [0x1B])
-        #expect(TerminalControlKey.tab.bytes(applicationCursor: false) == [0x09])
-        #expect(TerminalControlKey.controlC.bytes(applicationCursor: false) == [0x03])
-        #expect(TerminalControlKey.controlD.bytes(applicationCursor: false) == [0x04])
-        #expect(TerminalControlKey.controlZ.bytes(applicationCursor: false) == [0x1A])
-        #expect(TerminalControlKey.backspace.bytes(applicationCursor: false) == [0x7F])
-        #expect(TerminalControlKey.enter.bytes(applicationCursor: false) == [0x0D])
-        #expect(TerminalControlKey.up.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x41])
-        #expect(TerminalControlKey.up.bytes(applicationCursor: true) == [0x1B, 0x4F, 0x41])
-        #expect(
-            TerminalControlKey.pageUp.bytes(applicationCursor: false) == [
-                0x1B, 0x5B, 0x35, 0x7E,
-            ])
-    }
-
-    @Test func agentQuickKeysEncodeExpectedBytes() {
-        #expect(
-            AgentQuickKey.allCases == [
-                .escape, .tab, .shiftTab, .shiftEnter, .left, .up, .down, .right,
-                .enter, .backspace,
-            ])
-        #expect(AgentQuickKey.escape.bytes(applicationCursor: false) == [0x1B])
-        #expect(AgentQuickKey.tab.bytes(applicationCursor: false) == [0x09])
-        #expect(AgentQuickKey.shiftTab.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x5A])
-        #expect(AgentQuickKey.shiftEnter.bytes(applicationCursor: false) == [0x0A])
-        #expect(AgentQuickKey.left.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x44])
-        #expect(AgentQuickKey.up.bytes(applicationCursor: true) == [0x1B, 0x4F, 0x41])
-        #expect(AgentQuickKey.down.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x42])
-        #expect(AgentQuickKey.right.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x43])
-        #expect(AgentQuickKey.enter.bytes(applicationCursor: false) == [0x0D])
-        #expect(AgentQuickKey.backspace.bytes(applicationCursor: false) == [0x7F])
+    @Test func agentQuickKeysKeepTheirLabels() {
         #expect(AgentQuickKey.shiftEnter.title == "⇧Enter")
         #expect(AgentQuickKey.enter.title == "Enter")
         #expect(AgentQuickKey.backspace.title == "Backspace")
@@ -2047,173 +2306,23 @@ struct TerminalAttachTests {
     }
 
     @MainActor
-    @Test func agentQuickKeysBypassDisplayOnlyInputWithoutEnablingTyping() async {
+    @Test func agentQuickKeysBypassDisplayOnlyInputWithoutEnablingTyping() async throws {
         var sent = Data()
         let terminal = TerminalScreenView.makeConfiguredTerminal(
             onSend: { sent.append($0) })
+        let window = try await Self.host(terminal)
+        defer { window.isHidden = true }
         terminal.setLocalInputEnabled(false)
 
-        terminal.sendControlKey(.enter)
+        terminal.insertText("\n")
         terminal.sendQuickKey(.shiftTab)
+        await Self.expectOutput(Data("\u{1B}[Z".utf8), received: { sent })
         terminal.receive(Data("\u{1B}[?1h".utf8))
+        terminal.terminalSession.waitForPendingOutput()
         terminal.sendQuickKey(.up)
-        await Task.yield()
-
-        #expect(sent == Data([0x1B, 0x5B, 0x5A, 0x1B, 0x4F, 0x41]))
-    }
-
-    @MainActor
-    @Test func terminalControlKeysFlowThroughTheGhosttySession() async throws {
-        var sent = Data()
-        let terminal = TerminalScreenView.makeConfiguredTerminal(
-            onSend: { sent.append($0) })
-        let window = try await Self.host(terminal)
-        defer { window.isHidden = true }
-
-        terminal.sendControlKey(.controlC)
-        try await Task.sleep(for: .milliseconds(20))
-        #expect(sent == Data([0x03]))
-
-        sent.removeAll()
-        terminal.receive(Data("\u{1B}[?1h".utf8))
-        let modeDeadline = ContinuousClock.now + .seconds(1)
-        while !terminal.usesApplicationCursorKeys, ContinuousClock.now < modeDeadline {
-            await Task.yield()
-        }
-        terminal.sendControlKey(.up)
-        try await Task.sleep(for: .milliseconds(20))
-        #expect(sent == Data([0x1B, 0x4F, 0x41]))
-    }
-
-    @MainActor
-    @Test func softwareModifiersApplyToTypedTextAndCombine() async throws {
-        var sent = Data()
-        let terminal = TerminalScreenView.makeConfiguredTerminal(
-            onSend: { sent.append($0) })
-        let window = try await Self.host(terminal)
-        defer { window.isHidden = true }
-        let control = TerminalKeyboardControl()
-        control.terminal = terminal
-
-        control.toggleModifier(.control)
-        terminal.insertText("a")
-        control.toggleModifier(.control)
-        terminal.insertText(" ")
-        control.toggleModifier(.option)
-        terminal.insertText("b")
-        control.toggleModifier(.control)
-        control.toggleModifier(.option)
-        terminal.insertText("c")
-        control.toggleModifier(.control)
-        control.sendQuickKey(.escape)
-        terminal.insertText("d")
-        let textDeadline = ContinuousClock.now + .seconds(1)
-        while sent.count < 8, ContinuousClock.now < textDeadline {
-            await Task.yield()
-        }
-
-        #expect(
-            sent == Data([0x01, 0x00, 0x1B, 0x62, 0x1B, 0x03, 0x1B, 0x64]),
-            "sent \(Array(sent))")
-        #expect(control.activeModifiers.isEmpty)
-    }
-
-    @MainActor
-    @Test func enhancedKeyboardReportingReceivesPressAndRelease() async throws {
-        var sent = Data()
-        let terminal = TerminalScreenView.makeConfiguredTerminal(
-            onSend: { sent.append($0) })
-        let window = try await Self.host(terminal)
-        defer { window.isHidden = true }
-        let control = TerminalKeyboardControl()
-        control.terminal = terminal
-
-        terminal.receive(Data("\u{1B}[>11u".utf8))
-        try await Task.sleep(for: .milliseconds(20))
-        control.toggleModifier(.control)
-        terminal.insertText("c")
-        let deadline = ContinuousClock.now + .seconds(1)
-        while sent.count < 17, ContinuousClock.now < deadline {
-            await Task.yield()
-        }
-
-        #expect(
-            sent == Data("\u{1B}[99;5u\u{1B}[99;5:3u".utf8),
-            "sent \(String(decoding: sent, as: UTF8.self).debugDescription)")
-    }
-
-    @MainActor
-    @Test func softwareModifiersApplyToSpecialAndFunctionKeys() async throws {
-        var sent = Data()
-        let terminal = TerminalScreenView.makeConfiguredTerminal(
-            onSend: { sent.append($0) })
-        let window = try await Self.host(terminal)
-        defer { window.isHidden = true }
-        let control = TerminalKeyboardControl()
-        control.terminal = terminal
-
-        control.toggleModifier(.control)
-        control.sendControlKey(.up)
-        control.toggleModifier(.option)
-        control.sendControlKey(.left)
-        control.toggleModifier(.control)
-        control.toggleModifier(.option)
-        control.sendControlKey(.right)
-        control.sendControlKey(.insert)
-        control.sendControlKey(.forwardDelete)
-        control.sendControlKey(.f1)
-        control.sendControlKey(.f12)
-        let keyDeadline = ContinuousClock.now + .seconds(1)
-        while sent.count < 30, ContinuousClock.now < keyDeadline {
-            await Task.yield()
-        }
-
-        #expect(
-            sent == Data(
-                [0x1B, 0x5B, 0x31, 0x3B, 0x35, 0x41]
-                    // Ghostty's default Alt-Left binding is backward-word.
-                    + [0x1B, 0x62]
-                    + [0x1B, 0x5B, 0x31, 0x3B, 0x37, 0x43]
-                    + [0x1B, 0x5B, 0x32, 0x7E]
-                    + [0x1B, 0x5B, 0x33, 0x7E]
-                    + [0x1B, 0x4F, 0x50]
-                    + [0x1B, 0x5B, 0x32, 0x34, 0x7E]),
-            "sent \(Array(sent))")
-        #expect(control.activeModifiers.isEmpty)
-    }
-
-    @MainActor
-    @Test func modifierSelectionCancelsIndividuallyAndResetsWithInput() {
-        let first = TerminalScreenView.makeConfiguredTerminal()
-        let replacement = TerminalScreenView.makeConfiguredTerminal()
-        let control = TerminalKeyboardControl()
-        control.terminal = first
-
-        control.toggleModifier(.control)
-        control.toggleModifier(.option)
-        #expect(control.activeModifiers == [.control, .option])
-
-        control.toggleModifier(.control)
-        #expect(control.activeModifiers == [.option])
-
-        first.setLocalInputEnabled(false)
-        #expect(control.activeModifiers.isEmpty)
-
-        first.setLocalInputEnabled(true)
-        control.toggleModifier(.control)
-        control.terminal = first
-        #expect(control.activeModifiers == [.control])
-
-        control.terminal = replacement
-        #expect(control.activeModifiers.isEmpty)
-    }
-
-    @Test func endedAttachDoesNotAllowStickyInputToSurviveRetry() {
-        #expect(AttachTerminalStore.Status.waitingForSize.allowsLocalInput)
-        #expect(AttachTerminalStore.Status.connecting.allowsLocalInput)
-        #expect(AttachTerminalStore.Status.live.allowsLocalInput)
-        #expect(!AttachTerminalStore.Status.ended("Disconnected").allowsLocalInput)
-        #expect(!AttachTerminalStore.Status.stopped.allowsLocalInput)
+        await Self.expectOutput(Data("\u{1B}[Z\u{1B}OA".utf8), received: { sent })
+        #expect(!terminal.isLocalInputEnabled)
+        #expect(!terminal.isFirstResponder)
     }
 
     @Test func terminalModeTrackerHandlesSplitAndRepeatedModeChanges() {
@@ -2492,16 +2601,6 @@ struct TerminalAttachTests {
         await session?.end()
         let inputs = await transport.attachInputs
         #expect(inputs == [.keystrokes(Data("x".utf8))])
-    }
-
-    @MainActor
-    private static func host(_ terminal: HeelerTerminalView) async throws -> UIWindow {
-        let controller = UIViewController()
-        controller.view.addSubview(terminal)
-        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 600)
-        return try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 390, height: 844),
-            rootViewController: controller)
     }
 }
 

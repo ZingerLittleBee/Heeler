@@ -336,7 +336,9 @@ struct AgentDirectInputTests {
         let terminal = try #require(Self.terminals(in: controller.view).first)
         #expect(!terminal.isLocalInputEnabled)
         terminal.requestKeyboard()
-        terminal.sendControlKey(TerminalControlKey.enter)
+        let keyboard = TerminalKeyboardControl()
+        keyboard.terminal = terminal
+        keyboard.sendTerminalKey(.enter)
         await Task.yield()
         #expect(!terminal.isFirstResponder)
         #expect(
@@ -483,6 +485,151 @@ struct AgentDirectInputTests {
         await owner.leave().value
     }
 
+    @Test func toolsPreserveTheEditorAndSendShortcutsWithoutChangingTheDraft() async throws {
+        // Real SwiftUI actions require the hosted accessibility support in iOS 27.
+        guard #available(iOS 27, *) else { return }
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
+        let transport = ScriptedTransport()
+        let composer = AgentComposerStore(target: "w1:p1") { params in
+            try await transport.promptAgent(params)
+        }
+        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let (inputMode, cleanup) = try Self.makeInputMode()
+        defer { cleanup() }
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                attachStore: owner, composer: composer, inputMode: inputMode,
+                keyboardInset: inset))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        let editor = try #require(Self.firstView(in: controller.view) {
+            $0 is UITextView && $0.accessibilityLabel == "Message the Agent"
+        } as? UITextView)
+        editor.becomeFirstResponder()
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey:
+                CGRect(x: 0, y: 500, width: 402, height: 370)])
+        try #require(await Self.eventually { editor.isFirstResponder && inset.height == 336 })
+        try #require(try await Self.activateControl(
+            labeled: "Show tools keyboard", in: controller.view, probe: { false }))
+        try #require(try await Self.activateControl(
+            labeled: "Terminal keyboard page", in: controller.view, probe: { false }))
+        try #require(await Self.eventually {
+            Self.firstAccessible(labeled: "a", in: controller.view) != nil
+                && Self.firstAccessible(labeled: "Send", in: controller.view) != nil
+        })
+        #expect(editor.isFirstResponder)
+        #expect(Self.firstView(in: controller.view) {
+            $0 is UITextView && $0.accessibilityLabel == "Message the Agent"
+        } === editor)
+
+        composer.replaceDraft(with: "keep this local")
+        try #require(await Self.eventually {
+            editor.text == "keep this local"
+                && Self.firstAccessible(labeled: "Send", in: controller.view) != nil
+        })
+        #expect(editor.isFirstResponder)
+        #expect(Self.firstView(in: controller.view) {
+            $0 is UITextView && $0.accessibilityLabel == "Message the Agent"
+        } === editor)
+        try #require(try await Self.activateControl(
+            labeled: "Control modifier", in: controller.view, probe: { false }))
+        try #require(try await Self.activateControl(
+            labeled: "a", in: controller.view, probe: { false }))
+        try #require(await Self.eventually {
+            await transport.attachInputs.contains(.keystrokes(Data([0x01])))
+        })
+        #expect(composer.draft == "keep this local")
+        #expect(await transport.agentPromptParams.isEmpty)
+        await owner.leave().value
+    }
+
+    @Test(arguments: [AgentInputMode.composer, .direct], [false, true])
+    func toolsSnippetsInsertIntoTheActiveInputWithoutSubmitting(
+        mode: AgentInputMode, bracketed: Bool
+    ) async throws {
+        guard #available(iOS 27, *) else { return }
+        let suiteName = "tools-insertion-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let snippets = SnippetStore(defaults: defaults)
+        let snippet = try Snippet.make(title: "Insert test phrase", body: "first\nsecond")
+        try snippets.add(snippet)
+        let settings = TerminalSettings(
+            themes: TerminalThemeSettings(defaults: defaults),
+            zoom: TerminalZoomSettings(defaults: defaults),
+            fonts: TerminalFontSettings(defaults: defaults), snippets: snippets)
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
+        let transport = ScriptedTransport()
+        let composer = AgentComposerStore(target: "w1:p1") { params in
+            try await transport.promptAgent(params)
+        }
+        composer.replaceDraft(with: "keep this local: ")
+        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let (inputMode, cleanup) = try Self.makeInputMode(initial: mode)
+        defer { cleanup() }
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                attachStore: owner, composer: composer, inputMode: inputMode,
+                keyboardInset: inset, terminalSettings: settings))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        let terminal = try #require(Self.terminals(in: controller.view).first)
+        terminal.receive(Data((bracketed ? "\u{1B}[?2004h" : "\u{1B}[?2004l").utf8))
+        #expect(terminal.usesBracketedPaste == bracketed)
+        if mode == .direct {
+            terminal.requestKeyboard()
+        } else {
+            let editor = try #require(Self.firstView(in: controller.view) {
+                $0 is UITextView && $0.accessibilityLabel == "Message the Agent"
+            } as? UITextView)
+            editor.becomeFirstResponder()
+        }
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey:
+                CGRect(x: 0, y: 500, width: 402, height: 370)])
+        try #require(await Self.eventually { inset.height == 336 })
+        try #require(try await Self.activateControl(
+            labeled: "Show tools keyboard", in: controller.view, probe: { false }))
+        for label in ["Skills", "Snippets", "Terminal Appearance"] {
+            try #require(try await Self.waitForAccessible(labeled: label, in: controller.view) != nil)
+        }
+        try #require(try await Self.activateControl(
+            labeled: "Snippets", in: controller.view, probe: { false }))
+        try #require(try await Self.activateControl(
+            labeled: snippet.displayTitle, in: controller.view, probe: { false }))
+        if mode == .composer {
+            try #require(await Self.eventually { composer.draft == "keep this local: " + snippet.body })
+        } else {
+            let expected = Data((bracketed ? "\u{1B}[200~first\nsecond\u{1B}[201~" : snippet.body).utf8)
+            try #require(await Self.eventually {
+                await transport.attachInputs.contains(.keystrokes(expected))
+            })
+            #expect(composer.draft == "keep this local: ")
+        }
+        let bytes = await transport.attachInputs.reduce(into: Data()) { output, input in
+            if case .keystrokes(let data) = input { output.append(data) }
+        }
+        let expected = mode == .composer ? Data() :
+            Data((bracketed ? "\u{1B}[200~first\nsecond\u{1B}[201~" : snippet.body).utf8)
+        #expect(bytes == expected)
+        #expect(inputMode.mode == mode)
+        #expect(inset.lastPresentedHeight == 336)
+        #expect(owner.pendingPaste == nil)
+        #expect(await transport.agentPromptParams.isEmpty)
+        await owner.leave().value
+    }
+
     @Test func coldPersistedDirectDoesNotRaiseKeyboard() async throws {
         let center = NotificationCenter()
         let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
@@ -545,6 +692,182 @@ struct AgentDirectInputTests {
         await owner.leave().value
     }
 
+    @Test func coldDirectEntryResumesPausedHeightCapture() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
+        center.post(
+            name: UIResponder.keyboardWillShowNotification,
+            object: nil,
+            userInfo: [
+                UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                    x: 0, y: 500, width: 402, height: 370)
+            ])
+        try await Task.sleep(for: .milliseconds(70))
+        #expect(inset.height == 336)
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        #expect(inset.height == 0)
+        #expect(inset.lastPresentedHeight == 336)
+        inset.pauseHeightCapture()
+
+        let transport = ScriptedTransport()
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
+        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
+        defer { cleanup() }
+        let interactions = AgentTerminalInteractionProbe()
+
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                attachStore: owner,
+                composer: composer,
+                inputMode: inputMode,
+                keyboardInset: inset,
+                interactionProbe: interactions))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+                && interactions.isConnected
+                && interactions.directInputChromeMountCount == 1
+        })
+
+        let terminal = try #require(Self.terminals(in: controller.view).first)
+        #expect(terminal.isLocalInputEnabled)
+        #expect(!terminal.isFirstResponder)
+        if #available(iOS 27, *) {
+            try #require(
+                try await Self.waitForAccessible(
+                    labeled: "Escape",
+                    in: controller.view) != nil)
+            #expect(
+                Self.firstAccessible(
+                    labeled: "Show tools keyboard",
+                    in: controller.view) == nil)
+        } else {
+            #expect(!interactions.switchDirectKeyboard())
+        }
+
+        terminal.requestKeyboard()
+        try #require(await Self.eventually { terminal.isFirstResponder })
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [
+                UIResponder.keyboardFrameEndUserInfoKey:
+                    CGRect(x: 0, y: 500, width: 402, height: 370)
+            ])
+        #expect(try await Self.eventually { inset.height == 336 })
+        await owner.leave().value
+    }
+
+    @Test func returningFromListDoesNotRestoreKeyboard() async throws {
+        let transport = ScriptedTransport()
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
+        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
+        defer { cleanup() }
+        let probe = AgentTerminalInteractionProbe()
+        var onStage = true
+        let detail = UIHostingController(rootView: Self.makeDetailView(
+            attachStore: owner, composer: composer, inputMode: inputMode,
+            interactionProbe: probe, isOnStage: { onStage }))
+        let navigation = UINavigationController(rootViewController: UIViewController())
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: navigation)
+        defer { window.isHidden = true }
+        navigation.pushViewController(detail, animated: false)
+        try #require(await Self.eventually { probe.isConnected })
+        let terminal = try #require(Self.terminals(in: detail.view).first)
+        #expect(probe.toggleDirectKeyboard())
+        try #require(await Self.eventually { terminal.isFirstResponder })
+        onStage = false
+        navigation.popViewController(animated: false)
+        try #require(await Self.eventually { !probe.isConnected })
+        // Wait for the production leave cleanup, rather than assuming a
+        // Task.yield orders it before the next navigation transaction.
+        try #require(await Self.eventually { !terminal.canBecomeFirstResponder })
+        // Keep the hosting controller alive: a cached destination must clear
+        // intent on a real leave, even when SwiftUI retains its @State.
+        onStage = true
+        navigation.pushViewController(detail, animated: false)
+        try #require(await Self.eventually { probe.isConnected })
+        let returned = try #require(Self.terminals(in: detail.view).first)
+        #expect(!returned.isFirstResponder)
+        await owner.leave().value
+    }
+
+    @Test func toolsKeyboardSurvivesAgentHandoffAndResumesSystemInset() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
+        let handoff = TerminalKeyboardHandoff()
+        let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
+        defer { cleanup() }
+        let firstAgent = Self.makeAgent(status: .idle)
+        let secondAgent = Self.makeAgent(status: .idle)
+        var selectedID = firstAgent.id
+        let firstComposer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
+        let secondComposer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
+        let firstOwner = try await Self.makeLiveAttach(
+            transport: ScriptedTransport(), composer: firstComposer)
+        let secondOwner = try await Self.makeLiveAttach(
+            transport: ScriptedTransport(), composer: secondComposer)
+        let firstProbe = AgentTerminalInteractionProbe()
+        let secondProbe = AgentTerminalInteractionProbe()
+        let controller = UIHostingController(rootView: AnyView(Self.makeDetailView(
+            agent: firstAgent, attachStore: firstOwner, composer: firstComposer,
+            inputMode: inputMode, keyboardHandoff: handoff, keyboardInset: inset,
+            interactionProbe: firstProbe, isOnStage: { selectedID == firstAgent.id },
+            onSwitch: { selectedID = $0 }).id(firstAgent.id)))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        try #require(await Self.eventually { firstProbe.isConnected })
+        let firstTerminal = try #require(Self.terminals(in: controller.view).first)
+        #expect(firstProbe.toggleDirectKeyboard())
+        try #require(await Self.eventually { firstTerminal.isFirstResponder })
+        let frame: [AnyHashable: Any] = [
+            UIResponder.keyboardFrameEndUserInfoKey:
+                CGRect(x: 0, y: 500, width: 402, height: 370)
+        ]
+        center.post(name: UIResponder.keyboardWillShowNotification, object: nil, userInfo: frame)
+        try #require(await Self.eventually { inset.height == 336 })
+        try #require(await Self.eventually { firstProbe.switchDirectKeyboard() })
+        #expect(firstTerminal.keyboardMode == .controls)
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        #expect(firstProbe.switchAgent(secondAgent.id))
+        #expect(selectedID == secondAgent.id)
+        controller.rootView = AnyView(Self.makeDetailView(
+            agent: secondAgent, attachStore: secondOwner, composer: secondComposer,
+            inputMode: inputMode, keyboardHandoff: handoff, keyboardInset: inset,
+            interactionProbe: secondProbe, isOnStage: { selectedID == secondAgent.id })
+            .id(secondAgent.id))
+        controller.view.layoutIfNeeded()
+        try #require(await Self.eventually { secondProbe.isConnected })
+        let secondTerminal = try #require(Self.terminals(in: controller.view).first)
+        try #require(await Self.eventually { secondTerminal.isFirstResponder })
+        #expect(secondTerminal.keyboardMode == .controls)
+        #expect(!handoff.consume(secondAgent.id))
+        #expect(inset.lastPresentedHeight == 336)
+        try #require(await Self.eventually { secondProbe.switchDirectKeyboard() })
+        #expect(secondTerminal.keyboardMode == .text)
+        center.post(name: UIResponder.keyboardWillShowNotification, object: nil, userInfo: frame)
+        #expect(try await Self.eventually { inset.height == 336 })
+        await firstOwner.leave().value
+        await secondOwner.leave().value
+    }
+
     @Test func ghosttyReturnSendsPtyCRWithoutComposerPrompt() async throws {
         let transport = ScriptedTransport()
         let composer = AgentComposerStore(target: "w1:p1") { _ in
@@ -575,7 +898,7 @@ struct AgentDirectInputTests {
         try #require(await Self.eventually { terminal.isFirstResponder })
 
         // Soft-keyboard Return enters through UIKeyInput.insertText("\n"),
-        // not sendControlKey / sendQuickKey. Production maps that to PTY CR.
+        // not sendQuickKey. Production maps that to PTY CR.
         (terminal as UIKeyInput).insertText("\n")
         try #require(await Self.eventually {
             await transport.attachInputs.contains(
@@ -1183,7 +1506,7 @@ struct AgentDirectInputTests {
         await owner.leave().value
     }
 
-    @Test func directToolsContextHidesDraftInsertTabs() throws {
+    @Test func toolsContextExposesInsertTabsWhenSkillsAreSupported() throws {
         let suiteName = "direct-tabs-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -1194,19 +1517,11 @@ struct AgentDirectInputTests {
             snippets: SnippetStore(defaults: defaults))
         let skills = TerminalSkillsContext(
             store: SkillsPaneStore(commandPrefixes: ["/"]) { _ in [] })
-        let direct = TerminalKeysContext(
-            settings: settings,
-            skills: skills,
-            includesDraftTools: false,
-            manageSnippets: {})
-        #expect(direct.tabs == [.controls, .appearance])
-
-        let composer = TerminalKeysContext(
-            settings: settings,
-            skills: skills,
-            includesDraftTools: true,
-            manageSnippets: {})
-        #expect(composer.tabs == [.controls, .skills, .snippets, .appearance])
+        let context = TerminalKeysContext(
+            settings: settings, skills: skills, manageSnippets: {})
+        #expect(context.tabs == [.controls, .skills, .snippets, .appearance])
+        let withoutSkills = TerminalKeysContext(settings: settings, manageSnippets: {})
+        #expect(withoutSkills.tabs == [.controls, .snippets, .appearance])
     }
 
     private static func makeInputMode(
@@ -1259,7 +1574,10 @@ struct AgentDirectInputTests {
         inputMode: AgentInputModeSettings,
         keyboardHandoff: TerminalKeyboardHandoff = TerminalKeyboardHandoff(),
         keyboardInset: TerminalKeyboardInset = TerminalKeyboardInset(),
-        interactionProbe: AgentTerminalInteractionProbe? = nil
+        interactionProbe: AgentTerminalInteractionProbe? = nil,
+        terminalSettings: TerminalSettings? = nil,
+        isOnStage: @escaping () -> Bool = { true },
+        onSwitch: @escaping (ConsoleAgent.ID) -> Void = { _ in }
     ) -> AgentTerminalView {
         let defaults = UserDefaults(suiteName: "direct-detail-\(UUID())") ?? .standard
         let console = ConsoleStore(snapshotRetryDelay: .seconds(30)) { _, subscriptions in
@@ -1269,7 +1587,7 @@ struct AgentDirectInputTests {
                 reconnectPolicy: .default,
                 keepalive: .default)
         }
-        let terminal = TerminalSettings(
+        let terminal = terminalSettings ?? TerminalSettings(
             themes: TerminalThemeSettings(defaults: defaults),
             zoom: TerminalZoomSettings(defaults: defaults),
             fonts: TerminalFontSettings(defaults: defaults),
@@ -1283,8 +1601,8 @@ struct AgentDirectInputTests {
             activity: AppActivityCoordinator(),
             keyboardHandoff: keyboardHandoff,
             keyboardInset: keyboardInset,
-            isOnStage: { true },
-            onSwitch: { _ in },
+            isOnStage: isOnStage,
+            onSwitch: onSwitch,
             onClosed: {},
             composer: composer,
             attachStore: attachStore,
@@ -1563,6 +1881,9 @@ struct AgentDirectInputTests {
         guard #available(iOS 27, *) else { return probe() }
         guard let element = try await waitForAccessible(labeled: label, in: root) else {
             return false
+        }
+        if let backspace = element as? TerminalRepeatingBackspaceButton {
+            return backspace.accessibilityActivate()
         }
         if let control = element as? UIControl {
             control.sendActions(for: .touchUpInside)

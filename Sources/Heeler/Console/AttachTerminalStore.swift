@@ -198,13 +198,6 @@ final class AttachTerminalStore {
         case ended(String)
         /// `stop()` was called; terminal.
         case stopped
-
-        var allowsLocalInput: Bool {
-            switch self {
-            case .waitingForSize, .connecting, .live: true
-            case .ended, .stopped: false
-            }
-        }
     }
 
     private(set) var status: Status = .waitingForSize

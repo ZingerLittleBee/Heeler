@@ -9,12 +9,58 @@ Entries reference the issue that motivated them.
 
 ### Added
 
-- Terminal keyboards now include one-shot Ctrl and Option modifiers, Insert,
-  Forward Delete, and F1–F12. Ctrl and Option can be combined with typed text
-  and control-pad keys through Ghostty's mode-aware key encoder. (#298)
+- Muse appears in Start Agent when the Host has `muse` on PATH. Notifications
+  and Live Activities name it Muse, and the Heeler plugin accepts `muse`
+  sidebar row overrides. (#297)
+- Direct Input's shortcut row gains a Paste key after ⇧Enter, so pasting into
+  an Agent no longer needs a hardware keyboard. The text goes through the
+  same paste review as ⌘V. (#307)
+- The Agents list has a search field. Typing filters Agents by working
+  directory or title text, combines with the Host filter, and hides empty
+  Host sections in grouped mode only while their Host is nominal; a
+  reconnecting or failed Host keeps its section. (#292)
+- In Compose, swipe between Agent controls and a full Terminal keyboard with
+  letters, numbers, symbols, Ctrl/Alt/Shift, and F1–F12. The same keyboard is
+  available in Open Terminal's Keys mode. Both pages match the iOS keyboard
+  height and preserve the Composer draft. Tap a modifier to apply it to the
+  next key; tap it again to cancel. (#270; PR #302)
+- Skills and Snippets are available in Direct Input as well as Compose.
+  Selecting one inserts it into the active input without pressing Enter.
+  (PR #302)
+- Hold Backspace for 0.3 seconds to keep deleting; release to stop. This works
+  in the Agent controls, Direct Input shortcut row, and full Terminal keyboard.
+  (PR #302)
+
+### Changed
+
+- Custom keyboards now use Ghostty's key encoding, which distinguishes more
+  Ctrl/Shift combinations and supports enhanced keyboard reporting. Layouts
+  and controls stay the same. (PR #298)
+
+- Terminal character keys use larger labels and uppercase letter keycaps.
+  Function key labels keep their existing size. (PR #302)
+- Direct Input's tools dock opens the full Terminal keyboard without the
+  Agent controls page, since those keys are already in the toolbar. (PR #302)
+- Agent, Terminal, and Direct Input toolbar keys use a soft gray highlight
+  and light haptic feedback when tapped. Agent controls put Backspace at the
+  top right and Shift+Tab at the bottom left. The Direct Input shortcut row
+  no longer duplicates the Terminal keyboard's Ctrl/Alt buttons. (PR #302)
 
 ### Fixed
 
+- Switching Agents keeps the Terminal tools keyboard selected instead of opening
+  the iOS keyboard over the controls. Returning from the Agent list no longer
+  restores stale keyboard focus, and keyboard height tracking resumes correctly.
+  (PR #302)
+- Backspace keeps its full touch area while pressed and tolerates small finger
+  movements, so holding near an edge no longer cancels deletion. (PR #302)
+- Backspace highlights and repeats while held, even when surrounding gestures
+  delay button events until release. This applies to Agent controls, the
+  Direct Input shortcut row, and the Terminal keyboard. (PR #302)
+- Modifier and keyboard layer keys keep their selection color while pressed,
+  without flashing gray or shrinking. (PR #302)
+- Fixed missed taps on terminal controls near the left edge, where the
+  swipe-back gesture could intercept them. (PR #302)
 - New Agent now discovers agents installed through mise. The discovery PATH
   includes mise's shims directory, resolved from `MISE_DATA_DIR` or
   `XDG_DATA_HOME` when either reaches the non-interactive SSH environment,

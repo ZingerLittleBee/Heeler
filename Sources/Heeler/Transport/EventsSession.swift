@@ -50,11 +50,12 @@ enum EventsSessionStatus: Sendable, Equatable {
     /// outside the automatic retry loop. Emitted synchronously from
     /// `activate()` before `run` is spawned.
     case connecting
-    /// The events channel is live. Emitted on every (re)connect — herdr does
-    /// not replay state on subscribe (#4), so each `.connected` is the
-    /// consumer's signal to re-snapshot via `listAgents()`. A deliberate
-    /// same-Transport subscription reinstall stays `.connected` through its
-    /// brief stream gap.
+    /// The server acknowledged the events subscription. Every emission,
+    /// including a same-Transport subscription reinstall, requires a fresh
+    /// `sessionSnapshot()` while consuming events. herdr 0.9.0 lifecycle
+    /// subscriptions do not replay pre-subscription events. A deliberate
+    /// reinstall stays `.connected` through its brief stream gap; the next
+    /// emission triggers a snapshot that covers changes during that gap.
     case connected
     /// Automatic recovery after a retryable failure; covers the announced
     /// backoff and the dial that follows. Observable only while that cycle
