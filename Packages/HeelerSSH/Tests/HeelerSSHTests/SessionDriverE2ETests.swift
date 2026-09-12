@@ -931,6 +931,48 @@ struct SessionDriverE2ETests {
         try await connection.close(timeout: .seconds(2))
     }
 
+    @Test("SFTP directory listings return only sorted directories")
+    func sftpDirectoryListingsReturnOnlySortedDirectories() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        let rootResult = try await connection.execute(
+            "mktemp -d /tmp/heeler-sftp-dirs.XXXXXXXX",
+            timeout: .seconds(5))
+        let root = String(decoding: rootResult.stdout, as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let sftp = try await connection.openSFTP(timeout: .seconds(5))
+        try await sftp.createDirectory(
+            at: "\(root)/bravo",
+            permissions: 0o700,
+            timeout: .seconds(5))
+        try await sftp.createDirectory(
+            at: "\(root)/alpha",
+            permissions: 0o700,
+            timeout: .seconds(5))
+        let file = try await sftp.openFileForWriting(
+            at: "\(root)/notes.txt",
+            permissions: 0o600,
+            timeout: .seconds(5))
+        try await file.write(Data("notes".utf8), timeout: .seconds(5))
+        try await file.close(timeout: .seconds(5))
+
+        let listing = try await sftp.listDirectories(
+            at: root,
+            timeout: .seconds(5))
+        #expect(listing.entries.map(\.name) == ["alpha", "bravo"])
+        #expect(!listing.truncated)
+        await #expect(throws: SSHError.sftpFailure(status: 2)) {
+            _ = try await sftp.listDirectories(
+                at: "\(root)/absent",
+                timeout: .seconds(5))
+        }
+
+        try await sftp.close(timeout: .seconds(5))
+        _ = try await connection.execute("rm -rf -- '\(root)'", timeout: .seconds(5))
+        try await connection.close(timeout: .seconds(2))
+    }
+
     @Test("SFTP status errors never include remote paths")
     func sftpStatusErrorsArePathFree() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)

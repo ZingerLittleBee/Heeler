@@ -19,6 +19,10 @@ Entries reference the issue that motivated them.
   directory or title text, combines with the Host filter, and hides empty
   Host sections in grouped mode only while their Host is nominal; a
   reconnecting or failed Host keeps its section. (#292)
+- The New Workspace Directory field has a Browse control that opens a
+  remote-directory browser sheet. It starts at the Host's home directory,
+  lists one level of subdirectories at a time with a filter, and writes the
+  picked directory into the field without starting anything. (#280)
 
 ### Fixed
 

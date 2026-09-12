@@ -8,7 +8,10 @@ import SwiftUI
 /// launch lands in its terminal instead of back on the list.
 struct StartAgentView: View {
     @State private var store: StartAgentStore
+    @State private var directoryBrowser: RemoteDirectoryBrowser?
+    @State private var isBrowsingDirectories = false
     private let onStarted: (ConsoleAgent.ID) -> Void
+    private let console: ConsoleStore
     @Environment(\.dismiss) private var dismiss
 
     init(
@@ -17,6 +20,7 @@ struct StartAgentView: View {
         onStarted: @escaping (ConsoleAgent.ID) -> Void
     ) {
         self.onStarted = onStarted
+        self.console = console
         _store = State(
             initialValue: StartAgentStore(
                 hosts: hosts,
@@ -108,6 +112,14 @@ struct StartAgentView: View {
                                 .font(.callout.monospaced())
                                 .autocorrectionDisabled()
                                 .textInputAutocapitalization(.never)
+                            Button("Browse…") {
+                                guard let hostID = store.selectedHostID else { return }
+                                directoryBrowser = RemoteDirectoryBrowser(
+                                    resolveHome: { try await console.remoteHomeDirectory(on: hostID) },
+                                    list: { try await console.listRemoteDirectories(at: $0, on: hostID) })
+                                isBrowsingDirectories = true
+                            }
+                            .disabled(store.selectedHostID == nil)
                         } header: {
                             Text("Directory")
                         } footer: {
@@ -265,6 +277,14 @@ struct StartAgentView: View {
             }
             .task(id: store.selectedHostID) {
                 await store.discoverAgents()
+            }
+            .sheet(isPresented: $isBrowsingDirectories) {
+                if let directoryBrowser {
+                    RemoteDirectoryBrowserView(browser: directoryBrowser) { path in
+                        store.applyBrowsedDirectory(path)
+                        isBrowsingDirectories = false
+                    }
+                }
             }
             .interactiveDismissDisabled(!store.canDismiss)
         }

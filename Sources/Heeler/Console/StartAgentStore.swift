@@ -165,6 +165,11 @@ final class StartAgentStore {
     /// Remote directory for a New Workspace launch. Required once that
     /// target is selected; trimmed at submit.
     var newWorkspaceDirectory: String = ""
+    /// Records a remote-directory browser pick (#280) into the Directory
+    /// field. It never starts anything; Start stays a separate tap.
+    func applyBrowsedDirectory(_ path: String) {
+        newWorkspaceDirectory = path
+    }
     /// Optional label for a New Workspace launch. Empty or whitespace
     /// becomes nil so herdr applies its default.
     var newWorkspaceLabel: String = ""

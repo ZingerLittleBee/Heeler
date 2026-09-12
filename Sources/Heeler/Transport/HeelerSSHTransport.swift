@@ -1088,6 +1088,42 @@ actor HeelerSSHTransport: Transport {
     }
 #endif
 
+    /// Directories-only listing of one absolute quotable remote path, for
+    /// the remote directory browser (#280). Paths that cannot be passed to
+    /// the Host's login shell throw `TransportError.invalidDirectoryPath`
+    /// before any channel opens.
+    func listDirectories(at path: String) async throws -> RemoteDirectoryListing {
+        guard Self.validatedDirectoryPath(path) != nil else {
+            throw TransportError.invalidDirectoryPath(path: path)
+        }
+        return try await channelAdmission.withChannel(.ordinarySession) {
+            let sftp = try await self.connection.openSFTP(timeout: self.requestTimeout)
+            do {
+                let listing = try await sftp.listDirectories(
+                    at: path,
+                    timeout: self.requestTimeout)
+                try? await sftp.close(timeout: .seconds(2))
+                return RemoteDirectoryListing(
+                    directories: listing.entries.map(\.name),
+                    truncated: listing.truncated)
+            } catch {
+                try? await sftp.close(timeout: .seconds(2))
+                throw error
+            }
+        }
+    }
+
+    /// The path when it is absolute and quotable for the Host's login
+    /// shell, nil otherwise. `RemoteShellPath` refuses empty and relative
+    /// paths plus quote, backslash, and control characters; NUL (`\0`)
+    /// arrives as a control character and is refused the same way.
+    static func validatedDirectoryPath(_ path: String) -> String? {
+        guard !path.isEmpty, RemoteShellPath.isQuotableAbsolute(path) else {
+            return nil
+        }
+        return path
+    }
+
     private func notificationPluginConfigDirectory() async throws -> String {
         try await notificationConfigDirectory.value {
             try await self.resolveNotificationConfigDirectory()
@@ -1684,7 +1720,7 @@ actor HeelerSSHTransport: Transport {
         return socketLocation.path(homeDirectory: try await remoteHomeDirectory())
     }
 
-    private func remoteHomeDirectory() async throws -> String {
+    func remoteHomeDirectory() async throws -> String {
         try await withRequestDeadline {
             try await self.homeDirectory.value {
                 let result = try await self.runExec(Self.cLocaleCommand(self.homeCommand))

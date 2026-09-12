@@ -266,6 +266,30 @@ final class ConsoleStore {
     func availableAgentKinds(on hostID: Host.ID) async throws -> [SupportedAgentKind] {
         try await projection(for: hostID).availableAgentKinds()
     }
+    /// Resolves the Host's remote home directory for the New Workspace
+    /// directory browser (#280). Throws the error's own presentation,
+    /// including homeDirectoryUnresolvable when the probe fails.
+    func remoteHomeDirectory(on hostID: Host.ID) async throws -> String {
+        try await projection(for: hostID).session.withTransport { transport in
+            guard let ssh = transport as? HeelerSSHTransport else {
+                throw TransportError.sshUnreachable(
+                    detail: "This Host cannot list remote directories.")
+            }
+            return try await ssh.remoteHomeDirectory()
+        }
+    }
+
+    /// Lists one absolute remote path's subdirectories for the New Workspace
+    /// directory browser (#280).
+    func listRemoteDirectories(at path: String, on hostID: Host.ID) async throws -> RemoteDirectoryListing {
+        try await projection(for: hostID).session.withTransport { transport in
+            guard let ssh = transport as? HeelerSSHTransport else {
+                throw TransportError.sshUnreachable(
+                    detail: "This Host cannot list remote directories.")
+            }
+            return try await ssh.listDirectories(at: path)
+        }
+    }
 
     private struct SkillsCacheKey: Hashable {
         let hostID: Host.ID

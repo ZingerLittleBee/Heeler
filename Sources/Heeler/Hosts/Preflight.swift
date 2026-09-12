@@ -96,6 +96,9 @@ struct PreflightReport: Equatable, Sendable {
             hint =
                 "Could not resolve the remote home directory, so the herdr socket "
                 + "path is unknown. (\(detail))"
+        case .invalidDirectoryPath(let path):
+            check = .remoteEnvironment
+            hint = "That folder path cannot be opened: \(path)."
         case .streamLocalOpenFailed(let path):
             check = .serverRunning
             hint =
