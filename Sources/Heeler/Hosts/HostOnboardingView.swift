@@ -233,12 +233,12 @@ struct HostOnboardingView: View {
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
-                            if isSelected(session) {
+                            if HerdrSessionSelection.isSelected(session, currentSessionName: store.host.sessionName) {
                                 Image(systemName: "checkmark")
                             }
                         }
                     }
-                    .disabled(isSelected(session) || (!session.isDefault && !session.isRunning))
+                    .disabled(!HerdrSessionSelection.isSelectable(session, currentSessionName: store.host.sessionName))
                 }
                 if let error = store.sessionDiscoveryError {
                     Label(error, systemImage: "exclamationmark.triangle")
@@ -251,10 +251,6 @@ struct HostOnboardingView: View {
                 Text("Stopped named sessions must be started on the Host before selection.")
             }
         }
-    }
-
-    private func isSelected(_ session: HerdrSession) -> Bool {
-        session.isDefault ? store.host.sessionName.isEmpty : store.host.sessionName == session.name
     }
 
     private func select(_ session: HerdrSession) {
