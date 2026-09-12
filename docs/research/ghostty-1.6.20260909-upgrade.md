@@ -60,15 +60,34 @@ make test-app \
   TEST_FLAGS='-clonedSourcePackagesDirPath .ci/source-packages -disableAutomaticPackageResolution -skipPackageUpdates -parallel-testing-enabled NO -collect-test-diagnostics never'
 ```
 
-The completed xcresult reports 1,486 passed, 116 skipped by the existing suite
-conditions, and one failed test (1,603 total). The failure is
-`AgentDirectInputTests.composerAndDirectInputTransferVisibleKeyboardWithoutReloading`,
-which times out before switching modes while waiting for a visible software
-keyboard. The Simulator has Connect Hardware Keyboard enabled. This same failure
-occurred with the dependency-only candidate before the input migration. The test
-and Simulator preference were not weakened or disabled to produce a pass.
+The final simulator rerun on source commit `c86be45` reports **1,487 passed,
+116 skipped by existing suite conditions, and zero failures** (1,603 total).
+`make test-app` exited successfully. The result bundle is
+`Test-Heeler-2026.09.12_21-39-06-+0800.xcresult` in the worktree's
+`build/DerivedData/Logs/Test/` directory.
 
-The key-routing, layout, Backspace-repeat, appearance, and input-gate tests passed.
-Physical-device keyboard handoff and hardware Cmd+C/V were not exercised in this
-run; the paired iPhone was offline. No real-SSH test evidence is claimed from the
-skipped suites.
+The initial run had one failure in
+`AgentDirectInputTests.composerAndDirectInputTransferVisibleKeyboardWithoutReloading`,
+which timed out waiting for a visible software keyboard. The rerun passed this
+unchanged test after configuring the Simulator for software-keyboard testing.
+Connect Hardware Keyboard was temporarily disabled with user permission and
+restored to enabled afterward. No application-code change or weaker assertion
+was needed.
+
+Manual checks on the iPhone 17 Pro, iOS 27.0 Simulator also verified:
+
+- Entering Agent detail did not open a keyboard over the toolbar.
+- Compose's Agent/Terminal pages switched with a horizontal swipe. In the tested
+  portrait layout, the tools dock and system keyboard had aligned top edges.
+- Shift+A typed uppercase A remotely and consumed Shift. Alt could be armed and
+  cancelled. Ctrl+U cleared the remote input while the Compose draft stayed empty.
+- The Fn layer exposed F1-F12. Direct Input exposed only the Terminal keyboard,
+  with Skills and Snippets tabs still available.
+- Open Terminal connected to a shell and used the same full keyboard. Its Text
+  and Keys modes also kept their top edges aligned in the tested portrait layout.
+
+Backspace hold/release, small finger drift, delayed UIKit control events, and
+view updates passed the hosted automated touch tests. Manual CUA drag actions
+were not used as proof of a sustained hold because they expose no hold duration.
+Physical-device behavior, haptic strength, and hardware Cmd+C/V were not exercised
+in this run. No real-SSH test evidence is claimed from the skipped suites.
