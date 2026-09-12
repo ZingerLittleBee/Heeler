@@ -19,11 +19,11 @@ Entries reference the issue that motivated them.
   directory or title text, combines with the Host filter, and hides empty
   Host sections in grouped mode only while their Host is nominal; a
   reconnecting or failed Host keeps its section. (#292)
-- Swipe between Agent controls and a full Terminal keyboard with letters,
-  numbers, symbols, Ctrl/Alt/Shift, and F1–F12. The same keyboard is available
-  in Open Terminal's Keys mode. Both pages match the iOS keyboard height and
-  preserve the Composer draft. Tap a modifier to apply it to the next key;
-  tap it again to cancel. (#270; PR #302)
+- In Compose, swipe between Agent controls and a full Terminal keyboard with
+  letters, numbers, symbols, Ctrl/Alt/Shift, and F1–F12. The same keyboard is
+  available in Open Terminal's Keys mode. Both pages match the iOS keyboard
+  height and preserve the Composer draft. Tap a modifier to apply it to the
+  next key; tap it again to cancel. (#270; PR #302)
 - Skills and Snippets are available in Direct Input as well as Compose.
   Selecting one inserts it into the active input without pressing Enter.
   (PR #302)
