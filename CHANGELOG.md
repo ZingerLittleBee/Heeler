@@ -33,6 +33,8 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- Terminal character keys use larger labels and uppercase letter keycaps.
+  Function key labels keep their existing size. (PR #302)
 - Direct Input's tools dock opens the full Terminal keyboard without the
   Agent controls page, since those keys are already in the toolbar. (PR #302)
 - Agent, Terminal, and Direct Input toolbar keys use a soft gray highlight

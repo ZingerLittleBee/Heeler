@@ -116,9 +116,10 @@ struct TerminalFullKeyboard: View {
 
     private func characterKey(_ character: Character, title: String? = nil) -> some View {
         TerminalKeyboardKeyCap(
-            title: title ?? modifiers.characterText(character),
+            title: title ?? modifiers.characterText(character).uppercased(),
             label: character == " " ? "Space" : modifiers.characterText(character),
-            isEnabled: isEnabled
+            isEnabled: isEnabled,
+            fontSize: title == nil ? 15 : 13
         ) { send(.character(character)) }
     }
 
@@ -147,6 +148,7 @@ private struct TerminalKeyboardKeyCap: View {
     let label: String
     let isEnabled: Bool
     var isSelected: Bool? = nil
+    var fontSize: CGFloat = 13
     let action: () -> Void
 
     var body: some View {
@@ -163,7 +165,7 @@ private struct TerminalKeyboardKeyCap: View {
                         .minimumScaleFactor(0.7)
                 }
             }
-            .font(.system(size: 13, weight: .medium))
+            .font(.system(size: fontSize, weight: .medium))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(.rect)
         }
