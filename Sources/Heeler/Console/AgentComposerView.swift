@@ -111,23 +111,9 @@ struct AgentComposerView: View {
     /// An explicit dismissal hides suggestions for the current trigger token;
     /// removing the token arms them again.
     @State private var isSuggestionsDismissed = false
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var isToolsKeyboardPresented: Bool {
         keyboardPresentation == .tools
-    }
-
-    private var isCompactComposer: Bool {
-        isToolsKeyboardPresented && store.draft.isEmpty && latestFailure == nil
-            && linkPresentation == nil && !dynamicTypeSize.isAccessibilitySize
-    }
-
-    // Switching layout preserves the UITextView and its first responder,
-    // including while the tools keyboard replaces the system keyboard.
-    private var draftLayout: AnyLayout {
-        isCompactComposer
-            ? AnyLayout(HStackLayout(spacing: 8))
-            : AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
     }
 
     var body: some View {
@@ -139,7 +125,7 @@ struct AgentComposerView: View {
                     chromeColorScheme: chromeColorScheme)
 
                 VStack(spacing: 0) {
-                    draftLayout {
+                    VStack(alignment: .leading, spacing: 8) {
                         if let skills, let trigger = suggestionTrigger,
                             isInputFocused, !isSuggestionsDismissed
                         {
@@ -170,7 +156,7 @@ struct AgentComposerView: View {
                                     .allowsHitTesting(false)
                             }
                         }
-                        .frame(maxWidth: .infinity, minHeight: 36, alignment: .topLeading)
+                        .frame(minHeight: 36, alignment: .topLeading)
                         .accessibilityElement(children: .contain)
 
                         if let failure = latestFailure {
@@ -245,17 +231,14 @@ struct AgentComposerView: View {
                                 .accessibilityValue(links.accessibilityValue)
                             }
 
-                            if !isCompactComposer {
-                                Spacer(minLength: 0)
-                                AgentComposerSendButton(isEnabled: store.canSend) {
-                                    Task { await deliverDraft { await store.send() } }
-                                }
+                            Spacer(minLength: 0)
+                            AgentComposerSendButton(isEnabled: store.canSend) {
+                                Task { await deliverDraft { await store.send() } }
                             }
                         }
-                        .fixedSize(horizontal: isCompactComposer, vertical: false)
                     }
                     .padding(.horizontal, 12)
-                    .padding(.top, isCompactComposer ? 8 : 12)
+                    .padding(.top, 12)
                     .padding(.bottom, 8)
 
                     TerminalAgentSwitcherRow(

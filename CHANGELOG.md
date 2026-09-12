@@ -22,7 +22,7 @@ Entries reference the issue that motivated them.
   Tab-panel shortcuts stay deferred as follow-up work. (#270)
 - Agent tools group Ctrl/Alt with navigation keys and add Ctrl+C, Ctrl+A,
   Ctrl+E, Home, and End. More remote keys includes Insert, Forward Delete,
-  and F1–F12. The empty Composer stays compact while tools are open. (#302)
+  and F1–F12. (#302)
 
 ### Fixed
 

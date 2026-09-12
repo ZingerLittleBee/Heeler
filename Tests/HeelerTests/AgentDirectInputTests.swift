@@ -483,7 +483,7 @@ struct AgentDirectInputTests {
         await owner.leave().value
     }
 
-    @Test func compactToolsPreserveTheEditorAndSendShortcutsWithoutChangingTheDraft() async throws {
+    @Test func toolsPreserveTheEditorAndSendShortcutsWithoutChangingTheDraft() async throws {
         // Real SwiftUI actions require the hosted accessibility support in iOS 27.
         guard #available(iOS 27, *) else { return }
         let center = NotificationCenter()
@@ -517,7 +517,7 @@ struct AgentDirectInputTests {
             labeled: "Show tools keyboard", in: controller.view, probe: { false }))
         try #require(await Self.eventually {
             Self.firstAccessible(labeled: "Control A", in: controller.view) != nil
-                && Self.firstAccessible(labeled: "Send", in: controller.view) == nil
+                && Self.firstAccessible(labeled: "Send", in: controller.view) != nil
         })
         #expect(editor.isFirstResponder)
         #expect(Self.firstView(in: controller.view) {
