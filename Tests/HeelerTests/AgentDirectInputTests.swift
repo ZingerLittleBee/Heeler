@@ -690,6 +690,182 @@ struct AgentDirectInputTests {
         await owner.leave().value
     }
 
+    @Test func coldDirectEntryResumesPausedHeightCapture() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
+        center.post(
+            name: UIResponder.keyboardWillShowNotification,
+            object: nil,
+            userInfo: [
+                UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                    x: 0, y: 500, width: 402, height: 370)
+            ])
+        try await Task.sleep(for: .milliseconds(70))
+        #expect(inset.height == 336)
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        #expect(inset.height == 0)
+        #expect(inset.lastPresentedHeight == 336)
+        inset.pauseHeightCapture()
+
+        let transport = ScriptedTransport()
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
+        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
+        defer { cleanup() }
+        let interactions = AgentTerminalInteractionProbe()
+
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                attachStore: owner,
+                composer: composer,
+                inputMode: inputMode,
+                keyboardInset: inset,
+                interactionProbe: interactions))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+                && interactions.isConnected
+                && interactions.directInputChromeMountCount == 1
+        })
+
+        let terminal = try #require(Self.terminals(in: controller.view).first)
+        #expect(terminal.isLocalInputEnabled)
+        #expect(!terminal.isFirstResponder)
+        if #available(iOS 27, *) {
+            try #require(
+                try await Self.waitForAccessible(
+                    labeled: "Escape",
+                    in: controller.view) != nil)
+            #expect(
+                Self.firstAccessible(
+                    labeled: "Show tools keyboard",
+                    in: controller.view) == nil)
+        } else {
+            #expect(!interactions.switchDirectKeyboard())
+        }
+
+        terminal.requestKeyboard()
+        try #require(await Self.eventually { terminal.isFirstResponder })
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [
+                UIResponder.keyboardFrameEndUserInfoKey:
+                    CGRect(x: 0, y: 500, width: 402, height: 370)
+            ])
+        #expect(try await Self.eventually { inset.height == 336 })
+        await owner.leave().value
+    }
+
+    @Test func returningFromListDoesNotRestoreKeyboard() async throws {
+        let transport = ScriptedTransport()
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
+        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
+        defer { cleanup() }
+        let probe = AgentTerminalInteractionProbe()
+        var onStage = true
+        let detail = UIHostingController(rootView: Self.makeDetailView(
+            attachStore: owner, composer: composer, inputMode: inputMode,
+            interactionProbe: probe, isOnStage: { onStage }))
+        let navigation = UINavigationController(rootViewController: UIViewController())
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: navigation)
+        defer { window.isHidden = true }
+        navigation.pushViewController(detail, animated: false)
+        try #require(await Self.eventually { probe.isConnected })
+        let terminal = try #require(Self.terminals(in: detail.view).first)
+        #expect(probe.toggleDirectKeyboard())
+        try #require(await Self.eventually { terminal.isFirstResponder })
+        onStage = false
+        navigation.popViewController(animated: false)
+        try #require(await Self.eventually { !probe.isConnected })
+        // Wait for the production leave cleanup, rather than assuming a
+        // Task.yield orders it before the next navigation transaction.
+        try #require(await Self.eventually { !terminal.canBecomeFirstResponder })
+        // Keep the hosting controller alive: a cached destination must clear
+        // intent on a real leave, even when SwiftUI retains its @State.
+        onStage = true
+        navigation.pushViewController(detail, animated: false)
+        try #require(await Self.eventually { probe.isConnected })
+        let returned = try #require(Self.terminals(in: detail.view).first)
+        #expect(!returned.isFirstResponder)
+        await owner.leave().value
+    }
+
+    @Test func toolsKeyboardSurvivesAgentHandoffAndResumesSystemInset() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
+        let handoff = TerminalKeyboardHandoff()
+        let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
+        defer { cleanup() }
+        let firstAgent = Self.makeAgent(status: .idle)
+        let secondAgent = Self.makeAgent(status: .idle)
+        var selectedID = firstAgent.id
+        let firstComposer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
+        let secondComposer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
+        let firstOwner = try await Self.makeLiveAttach(
+            transport: ScriptedTransport(), composer: firstComposer)
+        let secondOwner = try await Self.makeLiveAttach(
+            transport: ScriptedTransport(), composer: secondComposer)
+        let firstProbe = AgentTerminalInteractionProbe()
+        let secondProbe = AgentTerminalInteractionProbe()
+        let controller = UIHostingController(rootView: AnyView(Self.makeDetailView(
+            agent: firstAgent, attachStore: firstOwner, composer: firstComposer,
+            inputMode: inputMode, keyboardHandoff: handoff, keyboardInset: inset,
+            interactionProbe: firstProbe, isOnStage: { selectedID == firstAgent.id },
+            onSwitch: { selectedID = $0 }).id(firstAgent.id)))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        try #require(await Self.eventually { firstProbe.isConnected })
+        let firstTerminal = try #require(Self.terminals(in: controller.view).first)
+        #expect(firstProbe.toggleDirectKeyboard())
+        try #require(await Self.eventually { firstTerminal.isFirstResponder })
+        let frame: [AnyHashable: Any] = [
+            UIResponder.keyboardFrameEndUserInfoKey:
+                CGRect(x: 0, y: 500, width: 402, height: 370)
+        ]
+        center.post(name: UIResponder.keyboardWillShowNotification, object: nil, userInfo: frame)
+        try #require(await Self.eventually { inset.height == 336 })
+        try #require(await Self.eventually { firstProbe.switchDirectKeyboard() })
+        #expect(firstTerminal.keyboardMode == .controls)
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        #expect(firstProbe.switchAgent(secondAgent.id))
+        #expect(selectedID == secondAgent.id)
+        controller.rootView = AnyView(Self.makeDetailView(
+            agent: secondAgent, attachStore: secondOwner, composer: secondComposer,
+            inputMode: inputMode, keyboardHandoff: handoff, keyboardInset: inset,
+            interactionProbe: secondProbe, isOnStage: { selectedID == secondAgent.id })
+            .id(secondAgent.id))
+        controller.view.layoutIfNeeded()
+        try #require(await Self.eventually { secondProbe.isConnected })
+        let secondTerminal = try #require(Self.terminals(in: controller.view).first)
+        try #require(await Self.eventually { secondTerminal.isFirstResponder })
+        #expect(secondTerminal.keyboardMode == .controls)
+        #expect(!handoff.consume(secondAgent.id))
+        #expect(inset.lastPresentedHeight == 336)
+        try #require(await Self.eventually { secondProbe.switchDirectKeyboard() })
+        #expect(secondTerminal.keyboardMode == .text)
+        center.post(name: UIResponder.keyboardWillShowNotification, object: nil, userInfo: frame)
+        #expect(try await Self.eventually { inset.height == 336 })
+        await firstOwner.leave().value
+        await secondOwner.leave().value
+    }
+
     @Test func ghosttyReturnSendsPtyCRWithoutComposerPrompt() async throws {
         let transport = ScriptedTransport()
         let composer = AgentComposerStore(target: "w1:p1") { _ in
@@ -1397,7 +1573,9 @@ struct AgentDirectInputTests {
         keyboardHandoff: TerminalKeyboardHandoff = TerminalKeyboardHandoff(),
         keyboardInset: TerminalKeyboardInset = TerminalKeyboardInset(),
         interactionProbe: AgentTerminalInteractionProbe? = nil,
-        terminalSettings: TerminalSettings? = nil
+        terminalSettings: TerminalSettings? = nil,
+        isOnStage: @escaping () -> Bool = { true },
+        onSwitch: @escaping (ConsoleAgent.ID) -> Void = { _ in }
     ) -> AgentTerminalView {
         let defaults = UserDefaults(suiteName: "direct-detail-\(UUID())") ?? .standard
         let console = ConsoleStore(snapshotRetryDelay: .seconds(30)) { _, subscriptions in
@@ -1421,8 +1599,8 @@ struct AgentDirectInputTests {
             activity: AppActivityCoordinator(),
             keyboardHandoff: keyboardHandoff,
             keyboardInset: keyboardInset,
-            isOnStage: { true },
-            onSwitch: { _ in },
+            isOnStage: isOnStage,
+            onSwitch: onSwitch,
             onClosed: {},
             composer: composer,
             attachStore: attachStore,

@@ -44,6 +44,10 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Switching Agents keeps the Terminal tools keyboard selected instead of opening
+  the iOS keyboard over the controls. Returning from the Agent list no longer
+  restores stale keyboard focus, and keyboard height tracking resumes correctly.
+  (PR #302)
 - Backspace keeps its full touch area while pressed and tolerates small finger
   movements, so holding near an edge no longer cancels deletion. (PR #302)
 - Backspace highlights and repeats while held, even when surrounding gestures

@@ -184,6 +184,8 @@ struct TerminalScreenView: UIViewRepresentable {
     /// drive remote scroll without holding the UIKit view itself.
     var scrollControl: TerminalScrollControl?
     var isLocalInputEnabled = true
+    /// Applied before the first focus claim, including Agent tools handoffs.
+    var initialKeyboardMode = TerminalKeyboardMode.text
     var textInputStyle = TerminalTextInputStyle.terminal
     var theme: TerminalTheme = .default
     var fontSize: Float = TerminalZoomSettings.defaultFontSize
@@ -206,6 +208,7 @@ struct TerminalScreenView: UIViewRepresentable {
         view.onOpenLink = { url in openURL(url) }
         // Only here, never in updateUIView: the intent belongs to this
         // terminal's first appearance, not to every state change after it.
+        view.setKeyboardMode(initialKeyboardMode)
         view.raisesKeyboardWhenReady = claimsKeyboard?() ?? false
         keyboardControl?.terminal = view
         scrollControl?.terminal = view

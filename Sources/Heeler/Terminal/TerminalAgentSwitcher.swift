@@ -39,9 +39,17 @@ struct TerminalAgentSwitcher {
 @MainActor
 final class TerminalKeyboardHandoff {
     private var armedID: ConsoleAgent.ID?
+    private var armedMode: TerminalKeyboardMode = .text
 
-    func arm(for id: ConsoleAgent.ID) {
+    func arm(for id: ConsoleAgent.ID, mode: TerminalKeyboardMode = .text) {
         armedID = id
+        armedMode = mode
+    }
+
+    /// Read before the destination builds its input view. Consuming focus
+    /// later must not briefly present the Apple keyboard for a tools handoff.
+    func mode(for id: ConsoleAgent.ID) -> TerminalKeyboardMode? {
+        armedID == id ? armedMode : nil
     }
 
     func cancel(for id: ConsoleAgent.ID) {

@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 /// without an assistive client; button wiring remains UI-test coverage.
 @MainActor
 final class AgentTerminalInteractionProbe {
+    private var switchAgentAction: ((ConsoleAgent.ID) -> Void)?
     private var selectInputModeAction: ((AgentInputMode) -> Void)?
     private var sendQuickKeyAction: ((AgentQuickKey) -> Void)?
     private var toggleDirectKeyboardAction: (() -> Void)?
@@ -73,8 +74,19 @@ final class AgentTerminalInteractionProbe {
         messageJumpLastViewportFrame?()
     }
 
-    fileprivate func connect(selectInputMode: @escaping (AgentInputMode) -> Void) {
+    @discardableResult
+    func switchAgent(_ id: ConsoleAgent.ID) -> Bool {
+        guard let switchAgentAction else { return false }
+        switchAgentAction(id)
+        return true
+    }
+
+    fileprivate func connect(
+        selectInputMode: @escaping (AgentInputMode) -> Void,
+        switchAgent: @escaping (ConsoleAgent.ID) -> Void
+    ) {
         selectInputModeAction = selectInputMode
+        switchAgentAction = switchAgent
     }
 
     fileprivate func connectMessageJump(
@@ -104,6 +116,7 @@ final class AgentTerminalInteractionProbe {
 
     fileprivate func disconnect() {
         selectInputModeAction = nil
+        switchAgentAction = nil
         sendQuickKeyAction = nil
         toggleDirectKeyboardAction = nil
         switchDirectKeyboardAction = nil
@@ -264,6 +277,8 @@ struct AgentTerminalView: View {
         self.activity = activity
         self.keyboardHandoff = keyboardHandoff
         self.keyboardInset = keyboardInset
+        _usesDirectToolsKeyboard = State(
+            initialValue: inputMode.isDirect && keyboardHandoff.mode(for: agent.id) == .controls)
         self.isOnStage = isOnStage
         self.onSwitch = onSwitch
         self.onClosed = onClosed
@@ -341,6 +356,7 @@ struct AgentTerminalView: View {
         // context across the responder transfer; Shell terminals keep the
         // command-oriented defaults.
         screen.textInputStyle = .naturalLanguage
+        screen.initialKeyboardMode = usesDirectToolsKeyboard ? .controls : .text
         // Keep the destination terminal enabled until Composer-to-Direct has
         // fully settled. The reverse handoff must disable this outgoing
         // terminal as soon as Composer accepts first responder.
@@ -352,11 +368,20 @@ struct AgentTerminalView: View {
                 inputMode,
                 directKeyboardIntent,
                 composerToDirectHandoffID,
+                keyboardInset,
+                usesDirectToolsKeyboard,
             ] in
             if composerToDirectHandoffID != nil {
                 return directKeyboardIntent.wantsKeyboard
             }
             guard inputMode.isDirect else { return false }
+            // The shared inset can still be paused by the outgoing Agent.
+            // Adopt this surface's mode before UIKit sends its first frame.
+            if usesDirectToolsKeyboard {
+                keyboardInset.pauseHeightCapture()
+            } else {
+                keyboardInset.resumeHeightCapture()
+            }
             if keyboardHandoff.consume(agent.id) {
                 directKeyboardIntent.setWantsKeyboard(true)
                 return true
@@ -593,7 +618,9 @@ struct AgentTerminalView: View {
         // calls must stay synchronous, because the spurious pair can land in
         // one transaction and rejoin() can only undo a leave it can see.
         .onAppear {
-            interactionProbe?.value?.connect(selectInputMode: { mode in selectInputMode(mode) })
+            interactionProbe?.value?.connect(
+                selectInputMode: { mode in selectInputMode(mode) },
+                switchAgent: { id in switchToAgent(id) })
             interactionProbe?.value?.connectMessageJump(
                 jumpOlder: { jumpToOlderMessage() },
                 jumpNewer: { jumpToNewerMessageOrLive() },
@@ -601,7 +628,13 @@ struct AgentTerminalView: View {
             composer.bindAttachInput(attach.input)
             // Arm before rejoin so a full pipeline replacement can claim the
             // keyboard while Direct Input still owns raised intent.
-            armDirectKeyboardClaimIfNeeded()
+            if isOnStage() {
+                prepareComposerKeyboardPresentation(
+                    isDirectInput
+                        ? (usesDirectToolsKeyboard ? .tools : .hidden)
+                        : composerKeyboardPresentation)
+                armDirectKeyboardClaimIfNeeded()
+            }
             attach.rejoin()
         }
         .onDisappear {
@@ -611,6 +644,11 @@ struct AgentTerminalView: View {
             Task { @MainActor in
                 await Task.yield()
                 guard !isOnStage() else { return }
+                directKeyboardIntent.setWantsKeyboard(false)
+                keyboardControl.dismissKeyboard()
+                usesDirectToolsKeyboard = false
+                expectsDirectSystemKeyboard = false
+                keyboardHandoff.cancel(for: agent.id)
                 cancelKeyboardHandoffs()
             }
         }
@@ -625,10 +663,9 @@ struct AgentTerminalView: View {
             messageJump.resetSession()
             cancelKeyboardHandoffs()
             guard isDirectInput else { return }
-            usesDirectToolsKeyboard = false
             expectsDirectSystemKeyboard = false
-            keyboardControl.setKeyboardMode(.text)
-            keyboardInset.resumeHeightCapture()
+            keyboardControl.setKeyboardMode(usesDirectToolsKeyboard ? .controls : .text)
+            prepareComposerKeyboardPresentation(usesDirectToolsKeyboard ? .tools : .hidden)
             // Do not re-arm TerminalKeyboardHandoff here: claimsKeyboard already
             // consumed any pre-armed token or reclaimed via same-screen intent.
             // Arming again leaves a stale one-shot that can raise a dismissed
@@ -1099,6 +1136,7 @@ struct AgentTerminalView: View {
             if !keyboardControl.isFirstResponder {
                 Task { @MainActor in
                     await Task.yield()
+                    guard isOnStage(), isDirectInput else { return }
                     directKeyboardIntent.setWantsKeyboard(true)
                     keyboardControl.requestKeyboard()
                 }
@@ -1182,6 +1220,7 @@ struct AgentTerminalView: View {
     }
 
     private func toggleDirectKeyboard() {
+        guard isOnStage() else { return }
         if usesDirectToolsKeyboard {
             var transaction = Transaction()
             transaction.disablesAnimations = true
@@ -1204,6 +1243,7 @@ struct AgentTerminalView: View {
     }
 
     private func switchDirectKeyboard() {
+        guard isOnStage() else { return }
         let enteringTools = !usesDirectToolsKeyboard
         var transaction = Transaction()
         transaction.disablesAnimations = true
@@ -1236,8 +1276,9 @@ struct AgentTerminalView: View {
             usesToolsKeyboard: usesDirectToolsKeyboard,
             softwareKeyboardHeight: keyboardInset.height)
         else { return }
+        // Same-screen replacements read this intent directly. Arming another
+        // one-shot here would survive consumption and reopen a later visit.
         directKeyboardIntent.setWantsKeyboard(true)
-        keyboardHandoff.arm(for: agent.id)
     }
 
     private func handleActivation() {
@@ -1287,7 +1328,8 @@ struct AgentTerminalView: View {
                 softwareKeyboardHeight: keyboardInset.height)
             : keyboardInset.height > 0
         if keyboardIsUp {
-            keyboardHandoff.arm(for: id)
+            keyboardHandoff.arm(
+                for: id, mode: isDirectInput && usesDirectToolsKeyboard ? .controls : .text)
         }
         onSwitch(id)
     }
