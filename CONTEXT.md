@@ -162,7 +162,9 @@ terminal attach with takeover. libghostty renders it, and direct keyboard
 input and PTY resize go straight to the remote terminal — no Composer, no
 Agent semantics, no notification routing. It replaces Agent detail while open
 so the Host's single terminal lifetime hands off cleanly; Back detaches and
-leaves the remote tab alive for desktop handoff.
+leaves the remote tab alive for desktop handoff. Its Keys mode reuses the
+full Terminal keyboard from Agent tools, including characters, modifiers,
+symbols, and function keys, inside the measured iOS keyboard footprint.
 _Avoid_: Attach (that's the Agent-specific display surface), shell console,
 terminal pane view
 

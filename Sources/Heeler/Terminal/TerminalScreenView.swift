@@ -98,6 +98,13 @@ final class TerminalKeyboardControl {
         pendingModifiers = []
     }
 
+    /// Open Terminal uses the same key encoding while retaining the Shell's
+    /// local-input gate. A blocked key must not consume pending modifiers.
+    func sendTerminalKey(_ key: AgentQuickKey) {
+        guard let terminal, terminal.isLocalInputEnabled else { return }
+        sendQuickKey(key)
+    }
+
     /// Stops inertial remote scroll, matching `sendQuickKey`'s reliable-input
     /// side effect, for routes that do not go through Ghostty `sendInput`.
     func noteReliableInputBegan() {

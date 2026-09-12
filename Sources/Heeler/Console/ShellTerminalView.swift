@@ -121,7 +121,6 @@ struct ShellTerminalView: View {
                 ShellTerminalKeysDock(
                     settings: terminal,
                     height: keyboardLayout.availableToolsHeight,
-                    sendControlKey: { keyboardControl.sendControlKey($0) },
                     control: keyboardControl)
                 .opacity(isKeysDockPresented ? 1 : 0)
                 .allowsHitTesting(isKeysDockPresented)
@@ -345,12 +344,11 @@ struct ShellTerminalInputRow: View {
     }
 }
 
-/// The shell terminal's Keys dock: the full control pad and the Appearance
-/// pane. No Snippets or Skills — those belong to the Agent Composer.
+/// The shell terminal's Keys dock shares its full keyboard with Agent tools.
+/// Appearance is available alongside it; Skills and Snippets stay Agent-specific.
 struct ShellTerminalKeysDock: View {
     let settings: TerminalSettings
     let height: CGFloat
-    let sendControlKey: (TerminalControlKey) -> Void
     let control: TerminalKeyboardControl
     @State private var selectedTab: TerminalKeysTab = .controls
 
@@ -361,7 +359,9 @@ struct ShellTerminalKeysDock: View {
             Group {
                 switch selectedTab {
                 case .controls:
-                    TerminalControlPadRepresentable(send: sendControlKey, control: control)
+                    TerminalFullKeyboard(
+                        isEnabled: true, keyboardControl: control,
+                        send: control.sendTerminalKey)
                 case .appearance:
                     TerminalAppearancePane(
                         themes: settings.themes,
@@ -397,23 +397,8 @@ struct ShellTerminalKeysDock: View {
             .padding(.vertical, 2)
         }
         .frame(height: height)
+        .clipped()
         .background(Color(uiColor: .systemBackground).ignoresSafeArea(edges: .bottom))
-    }
-}
-
-private struct TerminalControlPadRepresentable: UIViewRepresentable {
-    let send: (TerminalControlKey) -> Void
-    let control: TerminalKeyboardControl?
-
-    func makeUIView(context _: Context) -> TerminalControlPadView {
-        TerminalControlPadView(
-            send: send,
-            toggleModifier: { [weak control] in control?.toggleModifier($0) }
-        )
-    }
-
-    func updateUIView(_ uiView: TerminalControlPadView, context _: Context) {
-        uiView.armedModifiers = control?.pendingModifiers ?? []
     }
 }
 

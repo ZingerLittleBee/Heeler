@@ -206,6 +206,34 @@ struct TerminalKeyModifiersTests {
         #expect(sent == Data("\u{1B}[1;7P\u{1B}[24~".utf8))
     }
 
+    @Test func shellKeysRespectLocalInputAndFollowTerminalReplacement() async {
+        let control = TerminalKeyboardControl()
+        control.toggleModifier(.control)
+        control.sendTerminalKey(.character("c"))
+        #expect(control.pendingModifiers == .control)
+
+        var firstSent = Data()
+        let first = TerminalScreenView.makeConfiguredTerminal(onSend: { firstSent.append($0) })
+        first.setLocalInputEnabled(false)
+        control.terminal = first
+        control.sendTerminalKey(.character("c"))
+        #expect(control.pendingModifiers == .control)
+        first.setLocalInputEnabled(true)
+        control.sendTerminalKey(.character("c"))
+        #expect(control.pendingModifiers.isEmpty)
+
+        var replacementSent = Data()
+        let replacement = TerminalScreenView.makeConfiguredTerminal(onSend: { replacementSent.append($0) })
+        control.terminal = replacement
+        replacement.setLocalInputEnabled(true)
+        control.toggleModifier(.shift)
+        control.sendTerminalKey(.character("a"))
+        await Task.yield()
+        #expect(firstSent == Data([3]))
+        #expect(replacementSent == Data("A".utf8))
+        #expect(control.pendingModifiers.isEmpty)
+    }
+
     @Test func sendingAQuickKeyConsumesTheArmedModifiers() {
         let terminal = TerminalScreenView.makeConfiguredTerminal(
             notificationCenter: NotificationCenter())

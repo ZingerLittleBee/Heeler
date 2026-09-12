@@ -2034,6 +2034,72 @@ struct TerminalAttachTests {
         }
     }
 
+    @MainActor
+    @Test(.serialized, arguments: [
+        CGSize(width: 402, height: 224),
+        CGSize(width: 402, height: 336),
+        CGSize(width: 768, height: 402),
+    ])
+    func shellKeysUseTheFullKeyboardWithinTheMeasuredFootprint(size: CGSize) async throws {
+        let suiteName = "shell-full-keys-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settings = TerminalSettings(
+            themes: TerminalThemeSettings(defaults: defaults),
+            zoom: TerminalZoomSettings(defaults: defaults),
+            fonts: TerminalFontSettings(defaults: defaults),
+            snippets: SnippetStore(defaults: defaults))
+        var sent = Data()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(onSend: { sent.append($0) })
+        terminal.setLocalInputEnabled(true)
+        let control = TerminalKeyboardControl()
+        control.terminal = terminal
+        let controller = UIHostingController(rootView:
+            ShellTerminalKeysDock(settings: settings, height: size.height, control: control)
+                .frame(width: size.width, height: size.height)
+                .ignoresSafeArea())
+        let bounds = CGRect(origin: .zero, size: size)
+        let window = try await makeTestWindow(frame: bounds, rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        #expect(controller.view.bounds == bounds)
+        guard #available(iOS 27, *) else { return }
+
+        let footerLabel = "Control Keys"
+        let initial = try await Self.waitForToolsFrames(
+            in: controller.view,
+            labels: [footerLabel, "q", "a", "z", "Space", "Enter", "Control modifier",
+                     "Option modifier", "Shift modifier", "Function key layer", "Symbol key layer"],
+            selectedPage: footerLabel)
+        let footer = try #require(initial[footerLabel])
+        for label in ["Control modifier", "c", "Shift modifier", "A", "Function key layer",
+                      "Option modifier", "F12", "Symbol key layer", "[", "Enter"] {
+            _ = try await Self.waitForToolsFrames(
+                in: controller.view, labels: [label], selectedPage: footerLabel)
+            try Self.activateToolsControl(labeled: label, in: controller.view)
+            let frames = try await Self.waitForToolsFrames(
+                in: controller.view, labels: [footerLabel, "Space", "Enter"], selectedPage: footerLabel)
+            #expect(controller.view.bounds == bounds)
+            #expect(frames[footerLabel] == footer)
+            for key in ["Space", "Enter"] {
+                let frame = try #require(frames[key])
+                #expect(frame.minX >= -1 && frame.maxX <= size.width + 1)
+                #expect(frame.minY >= -1 && frame.maxY <= footer.minY + 1)
+            }
+        }
+        let expected = Data([3, 65]) + Data("\u{1B}[24;3~[\r".utf8)
+        for _ in 0..<40 where sent != expected {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(sent == expected)
+        #expect(control.pendingModifiers.isEmpty)
+        try Self.activateToolsControl(labeled: "Terminal Appearance", in: controller.view)
+        let appearance = try await Self.waitForToolsFrames(
+            in: controller.view, labels: ["Terminal Appearance"], selectedPage: "Terminal Appearance")
+        #expect(appearance["Terminal Appearance"]?.minY == footer.minY)
+        #expect(controller.view.bounds == bounds)
+    }
+
     /// UIKit measures the input accessory after the keyboard itself, so a
     /// presentation can arrive as two frames. The terminal must not resize
     /// twice on the way up either.
@@ -2077,24 +2143,6 @@ struct TerminalAttachTests {
         #expect(TerminalKeyboardInset.insetHeight(covered: 436, bottomSafeArea: 34) == 402)
         #expect(TerminalKeyboardInset.insetHeight(covered: 436, bottomSafeArea: 0) == 436)
         #expect(TerminalKeyboardInset.insetHeight(covered: 20, bottomSafeArea: 34) == 0)
-    }
-
-    @Test func terminalControlKeyboardContainsOnlyUsefulMobileKeys() {
-        #expect(
-            TerminalControlKey.rows == [
-                [.escape, .tab, .controlC, .controlD, .backspace],
-                [.home, .pageUp, .up, .pageDown, .end],
-                [.controlZ, .left, .down, .right, .enter],
-            ])
-        // Every row is the same width, so no key ends up wider than its
-        // neighbours just because a row was left short.
-        #expect(Set(TerminalControlKey.rows.map(\.count)).count == 1)
-        // Rearranging the rows must not quietly drop a key on the floor.
-        let placed = TerminalControlKey.rows.flatMap { $0 }
-        #expect(placed.count == TerminalControlKey.allCases.count)
-        for key in TerminalControlKey.allCases {
-            #expect(placed.contains(key), "\(key) fell off the keyboard")
-        }
     }
 
     @Test func terminalControlKeysEncodeExpectedBytes() {

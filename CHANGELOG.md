@@ -16,7 +16,7 @@ Entries reference the issue that motivated them.
   an Agent no longer needs a hardware keyboard. The text goes through the
   same paste review as ⌘V. (#307)
 - Sticky one-shot Ctrl and Option modifier keys on the terminal key surfaces
-  (Shell Controls pad and Agent Terminal keyboard).
+  (Shell and Agent Terminal keyboards).
   Tap ⌃ or ⌥ to arm it for the next key, which sends xterm modifier
   sequences; the armed state consumes on send, and tapping again disarms.
   Tab-panel shortcuts stay deferred as follow-up work. (#270)
@@ -26,7 +26,8 @@ Entries reference the issue that motivated them.
   shortcut row omits duplicate Ctrl/Alt buttons. Skills and Snippets remain
   available in Direct Input and insert into the active input surface without
   adding Enter. Agent controls place Backspace at the top right and Shift+Tab
-  at the bottom left, with a soft gray pressed highlight and light haptic feedback. (#302)
+  at the bottom left, with a soft gray pressed highlight and light haptic
+  feedback. Open Terminal uses the same full keyboard in Keys mode. (#302)
 
 ### Fixed
 
