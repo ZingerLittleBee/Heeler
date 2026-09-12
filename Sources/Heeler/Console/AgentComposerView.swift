@@ -709,8 +709,11 @@ final class AgentComposerUITextView: UITextView {
 }
 
 struct AgentToolsKeyboard: View {
-    let store: AgentComposerStore
+    /// The screen routes authored text according to the active input mode.
+    let insertText: (String) -> Void
     let context: TerminalKeysContext
+    let keyboardControl: TerminalKeyboardControl
+    let inputMode: AgentInputMode
     let height: CGFloat
     let quickKeysEnabled: Bool
     let sendQuickKey: (AgentQuickKey) -> Void
@@ -725,15 +728,23 @@ struct AgentToolsKeyboard: View {
             Group {
                 switch selectedTab {
                 case .controls:
-                    AgentQuickKeyPad(
-                        isEnabled: quickKeysEnabled,
-                        send: sendQuickKey)
+                    if inputMode == .direct {
+                        TerminalFullKeyboard(
+                            isEnabled: quickKeysEnabled,
+                            keyboardControl: keyboardControl,
+                            send: sendQuickKey)
+                    } else {
+                        AgentControlKeyboard(
+                            isEnabled: quickKeysEnabled,
+                            keyboardControl: keyboardControl,
+                            send: sendQuickKey)
+                    }
                 case .skills:
                     if let skills = context.skills {
                         SkillsKeyboardPane(
                             store: skills.store,
                             onInsert: { skill in
-                                store.insertIntoDraft(skill.insertionText)
+                                insertText(skill.insertionText)
                                 selectedTab = .controls
                             },
                             onViewContent: skills.viewContent)
@@ -742,7 +753,7 @@ struct AgentToolsKeyboard: View {
                     SnippetsKeyboardPane(
                         store: context.settings.snippets,
                         onSend: { snippet in
-                            store.insertIntoDraft(snippet.body)
+                            insertText(snippet.body)
                             selectedTab = .controls
                         },
                         onManage: context.manageSnippets)
@@ -779,60 +790,11 @@ struct AgentToolsKeyboard: View {
             .padding(.vertical, 2)
         }
         .frame(height: height)
+        .clipped()
         .background(Color(uiColor: .systemBackground).ignoresSafeArea(edges: .bottom))
         .onChange(of: selectedTab) { _, tab in
             guard tab == .skills, let skills = context.skills else { return }
             Task { await skills.store.loadIfNeeded() }
-        }
-    }
-}
-
-private struct AgentQuickKeyPad: View {
-    let isEnabled: Bool
-    let send: (AgentQuickKey) -> Void
-
-    private static let rows: [[AgentQuickKey]] = [
-        [.escape, .tab, .shiftTab],
-        [.left, .up, .right],
-        [.backspace, .down, .enter],
-    ]
-
-    var body: some View {
-        VStack(spacing: 8) {
-            ForEach(Self.rows.indices, id: \.self) { rowIndex in
-                HStack(spacing: 8) {
-                    ForEach(Self.rows[rowIndex], id: \.self) { key in
-                        Button {
-                            send(key)
-                        } label: {
-                            keyLabel(for: key)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .contentShape(.rect)
-                        }
-                        .buttonStyle(.plain)
-                        .background(
-                            Color(uiColor: .secondarySystemFill),
-                            in: .rect(cornerRadius: 8))
-                        .disabled(!isEnabled)
-                        .opacity(isEnabled ? 1 : 0.45)
-                        .accessibilityLabel(key.accessibilityLabel)
-                        .accessibilityHint("Sends this key directly to the Agent")
-                    }
-                }
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-    }
-
-    @ViewBuilder
-    private func keyLabel(for key: AgentQuickKey) -> some View {
-        if let systemImageName = key.systemImageName {
-            Image(systemName: systemImageName)
-                .font(.system(size: 13, weight: .medium))
-        } else if let title = key.title {
-            Text(title)
-                .font(.caption.weight(.medium))
         }
     }
 }

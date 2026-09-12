@@ -69,8 +69,40 @@ final class TerminalKeyboardControl {
         _ = terminal?.dismissKeyboard()
     }
 
+    /// One-shot sticky modifiers for the ⌃/⌥ caps on the terminal key
+    /// surfaces (#270). Tapping a modifier arms it for the next key only;
+    /// firing any key consumes and clears it, and tapping the armed
+    /// modifier again disarms it. No lock mode. Shared here so the Shell
+    /// Controls pad and the Agent quick-key rows behave identically.
+    private(set) var pendingModifiers = TerminalKeyModifiers()
+
+    func isModifierArmed(_ modifier: TerminalKeyModifiers) -> Bool {
+        pendingModifiers.contains(modifier)
+    }
+
+    func setModifierArmed(_ modifier: TerminalKeyModifiers, armed: Bool) {
+        if armed {
+            pendingModifiers.insert(modifier)
+        } else {
+            pendingModifiers.remove(modifier)
+        }
+    }
+
+    func toggleModifier(_ modifier: TerminalKeyModifiers) {
+        setModifierArmed(modifier, armed: !isModifierArmed(modifier))
+    }
+
     func sendQuickKey(_ key: AgentQuickKey) {
-        terminal?.sendQuickKey(key)
+        guard let terminal else { return }
+        terminal.sendQuickKey(key, modifiers: pendingModifiers)
+        pendingModifiers = []
+    }
+
+    /// Open Terminal uses the same key encoding while retaining the Shell's
+    /// local-input gate. A blocked key must not consume pending modifiers.
+    func sendTerminalKey(_ key: AgentQuickKey) {
+        guard let terminal, terminal.isLocalInputEnabled else { return }
+        sendQuickKey(key)
     }
 
     /// Stops inertial remote scroll, matching `sendQuickKey`'s reliable-input
@@ -84,7 +116,11 @@ final class TerminalKeyboardControl {
     }
 
     func sendControlKey(_ key: TerminalControlKey) {
-        terminal?.sendControlKey(key)
+        guard let terminal else { return }
+        // Consume the armed modifiers only on an actual send: a send
+        // dropped by the local-input gate leaves them armed for the next key.
+        guard terminal.sendControlKey(key, modifiers: pendingModifiers) else { return }
+        pendingModifiers = []
     }
 
     func sendNewLine() {
@@ -148,6 +184,8 @@ struct TerminalScreenView: UIViewRepresentable {
     /// drive remote scroll without holding the UIKit view itself.
     var scrollControl: TerminalScrollControl?
     var isLocalInputEnabled = true
+    /// Applied before the first focus claim, including Agent tools handoffs.
+    var initialKeyboardMode = TerminalKeyboardMode.text
     var textInputStyle = TerminalTextInputStyle.terminal
     var theme: TerminalTheme = .default
     var fontSize: Float = TerminalZoomSettings.defaultFontSize
@@ -170,6 +208,7 @@ struct TerminalScreenView: UIViewRepresentable {
         view.onOpenLink = { url in openURL(url) }
         // Only here, never in updateUIView: the intent belongs to this
         // terminal's first appearance, not to every state change after it.
+        view.setKeyboardMode(initialKeyboardMode)
         view.raisesKeyboardWhenReady = claimsKeyboard?() ?? false
         keyboardControl?.terminal = view
         scrollControl?.terminal = view

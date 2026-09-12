@@ -91,6 +91,13 @@ struct ShellTerminalView: View {
         terminalScreen
             .id(store.terminalID)
             .overlay { statusOverlay }
+            // The input row and controls dock must stay above the edge
+            // gesture's hit region, including their leftmost buttons.
+            .overlay(alignment: .leading) {
+                ShellTerminalEdgeBackGesture(isEnabled: !isReturning) {
+                    await onBack()
+                }
+            }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if keyboardPresentation != .hidden {
                     ShellTerminalInputRow(
@@ -114,7 +121,7 @@ struct ShellTerminalView: View {
                 ShellTerminalKeysDock(
                     settings: terminal,
                     height: keyboardLayout.availableToolsHeight,
-                    sendControlKey: { keyboardControl.sendControlKey($0) })
+                    control: keyboardControl)
                 .opacity(isKeysDockPresented ? 1 : 0)
                 .allowsHitTesting(isKeysDockPresented)
                 .accessibilityHidden(!isKeysDockPresented)
@@ -165,11 +172,6 @@ struct ShellTerminalView: View {
                 Text(
                     "This closes the tab on the Host, ending anything running in it. "
                         + "Going Back instead leaves it for desktop handoff.")
-            }
-            .overlay(alignment: .leading) {
-                ShellTerminalEdgeBackGesture(isEnabled: !isReturning) {
-                    await onBack()
-                }
             }
             .sheet(
                 isPresented: Binding(
@@ -342,12 +344,12 @@ struct ShellTerminalInputRow: View {
     }
 }
 
-/// The shell terminal's Keys dock: the full control pad and the Appearance
-/// pane. No Snippets or Skills — those belong to the Agent Composer.
+/// The shell terminal's Keys dock shares its full keyboard with Agent tools.
+/// Appearance is available alongside it; Skills and Snippets stay Agent-specific.
 struct ShellTerminalKeysDock: View {
     let settings: TerminalSettings
     let height: CGFloat
-    let sendControlKey: (TerminalControlKey) -> Void
+    let control: TerminalKeyboardControl
     @State private var selectedTab: TerminalKeysTab = .controls
 
     static let tabs: [TerminalKeysTab] = [.controls, .appearance]
@@ -357,7 +359,9 @@ struct ShellTerminalKeysDock: View {
             Group {
                 switch selectedTab {
                 case .controls:
-                    TerminalControlPadRepresentable(send: sendControlKey)
+                    TerminalFullKeyboard(
+                        isEnabled: true, keyboardControl: control,
+                        send: control.sendTerminalKey)
                 case .appearance:
                     TerminalAppearancePane(
                         themes: settings.themes,
@@ -393,20 +397,9 @@ struct ShellTerminalKeysDock: View {
             .padding(.vertical, 2)
         }
         .frame(height: height)
+        .clipped()
         .background(Color(uiColor: .systemBackground).ignoresSafeArea(edges: .bottom))
     }
-}
-
-/// Hosts the UIKit control pad — key repeat and touch handling included —
-/// inside the SwiftUI dock.
-private struct TerminalControlPadRepresentable: UIViewRepresentable {
-    let send: (TerminalControlKey) -> Void
-
-    func makeUIView(context _: Context) -> TerminalControlPadView {
-        TerminalControlPadView(send: send)
-    }
-
-    func updateUIView(_: TerminalControlPadView, context _: Context) {}
 }
 
 private struct ShellTerminalEdgeBackGesture: View {

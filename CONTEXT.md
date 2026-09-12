@@ -119,9 +119,10 @@ _Avoid_: favorite, star, bookmark
 **Composer**:
 The local input control below the Agent's live terminal: a native draft field
 that composes a message entirely on device and delivers it in one piece. Its
-tools keyboard sends explicit terminal controls directly to the Agent without
-editing the draft, while its Snippet and Skill tools insert into that draft. A
-draft insertion edits the draft and nothing more; delivery is a separate,
+tools keyboard sends explicit keys, including characters on its Terminal page,
+directly to the Agent without editing the draft, while its Snippet and Skill
+tools insert into that draft. A draft insertion edits the draft and nothing
+more; delivery is a separate,
 explicit act.
 Authored delivery is one `agent.prompt` request, except when Agent Status is
 Blocked: Send then inserts the draft into Attach without Enter, and the tools
@@ -161,15 +162,18 @@ terminal attach with takeover. libghostty renders it, and direct keyboard
 input and PTY resize go straight to the remote terminal — no Composer, no
 Agent semantics, no notification routing. It replaces Agent detail while open
 so the Host's single terminal lifetime hands off cleanly; Back detaches and
-leaves the remote tab alive for desktop handoff.
+leaves the remote tab alive for desktop handoff. Its Keys mode reuses the
+full Terminal keyboard from Agent tools, including characters, modifiers,
+symbols, and function keys, inside the measured iOS keyboard footprint.
 _Avoid_: Attach (that's the Agent-specific display surface), shell console,
 terminal pane view
 
 **Direct Input**:
 The opt-in Agent-detail mode that hides the Composer card and routes the
 system keyboard plus a compact app-owned shortcut row (Esc, Tab, Shift-Tab,
-Enter) into the live Attach PTY. The draft stays in `AgentComposerStore`
-untouched. Mode preference is app-wide, default off. Distinct from Shell
+Enter) into the live Attach PTY. Its tools keyboard also exposes Skills and
+Snippets, inserting their text into Attach without adding Enter. The draft
+stays in `AgentComposerStore` untouched. Mode preference is app-wide, default off. Distinct from Shell
 Terminal (ordinary shell, no Agent semantics) and from Terminal Keyboard (the
 iOS/tools swap under Composer).
 _Avoid_: Keys mode, terminal mode, raw input, Attach mode
@@ -178,10 +182,16 @@ _Avoid_: Keys mode, terminal mode, raw input, Attach mode
 The two keyboard modes below Composer, swapped in place at one shared measured
 height. The standard iOS keyboard edits the draft with composition,
 autocorrection, dictation, and language switching. The tools keyboard replaces
-it with a tabbed pad: Agent controls send key sequences directly to the pane,
-while Skills, Snippets, and terminal appearance edit the draft or the terminal
-and never touch the pane. Direct Input reuses the same measured footprint for
-an optional tools dock, but its primary shortcuts persist in an app-content
+it with a tabbed pad. Its controls tab pages horizontally between large Agent
+controls and a full Terminal keyboard (characters, Ctrl/Alt/Shift, and function
+keys), both sending directly to the pane without changing the Composer draft.
+Paging and key layers always share the measured iOS keyboard height;
+they never resize the dock or the Composer. Skills and Snippets insert into the
+Composer draft or directly into Attach in Direct Input, without adding Enter;
+appearance changes only the terminal rendering. Direct Input shows only the
+full Terminal keyboard in the controls tab, without the Agent page or pager.
+It reuses the same measured footprint for an optional tools dock, but its
+primary shortcuts persist in an app-content
 row above the Agent switcher strip rather than replacing the system keyboard.
 _Avoid_: desktop keyboard, reply keyboard, Keys mode (the direct-input predecessor)
 

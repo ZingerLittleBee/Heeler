@@ -143,20 +143,31 @@ struct AgentDirectInputChrome: View {
         }
     }
 
+    @ViewBuilder
     private func shortcutKeyButton(_ key: AgentQuickKey) -> some View {
-        Button {
-            UIDevice.current.playInputClick()
-            interactions.sendQuickKey(key)
-        } label: {
-            shortcutKeyCap(minWidth: keyCapWidth(for: key)) {
-                shortcutKeyLabel(key)
+        if key == .backspace {
+            TerminalBackspaceButton(isToolbar: true) { sendShortcutKey(key) }
+                .frame(width: keyCapWidth(for: key), height: 44)
+        } else {
+            Button {
+                sendShortcutKey(key)
+            } label: {
+                shortcutKeyCap(minWidth: keyCapWidth(for: key)) {
+                    shortcutKeyLabel(key)
+                }
             }
+            .frame(height: 44)
+            .contentShape(.rect)
+            .buttonStyle(TerminalKeyboardButtonStyle())
+            .accessibilityLabel(key.accessibilityLabel)
+            .accessibilityHint("Sends this key directly to the Agent")
         }
-        .frame(height: 44)
-        .contentShape(.rect)
-        .buttonStyle(.plain)
-        .accessibilityLabel(key.accessibilityLabel)
-        .accessibilityHint("Sends this key directly to the Agent")
+    }
+
+    private func sendShortcutKey(_ key: AgentQuickKey) {
+        UIDevice.current.playInputClick()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        interactions.sendQuickKey(key)
     }
 
     /// A system paste control, so a tap needs no Allow Paste prompt. Below
@@ -165,6 +176,7 @@ struct AgentDirectInputChrome: View {
     private var pasteKeyButton: some View {
         KeyCapPasteControl { text in
             UIDevice.current.playInputClick()
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
             interactions.paste(text)
         }
         // The control resolves its colors once, when it is created.
@@ -189,6 +201,9 @@ struct AgentDirectInputChrome: View {
             30
         case .backspace:
             72
+        case .home, .end, .pageUp, .pageDown,
+            .insert, .forwardDelete, .function, .character:
+            72
         }
     }
 
@@ -209,9 +224,6 @@ struct AgentDirectInputChrome: View {
     ) -> some View {
         content()
             .frame(minWidth: minWidth, minHeight: 30)
-            .background(
-                Color(uiColor: .secondarySystemFill),
-                in: .rect(cornerRadius: 7))
     }
 
     private var moreMenu: some View {
@@ -225,10 +237,10 @@ struct AgentDirectInputChrome: View {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 12, weight: .semibold))
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(.rect)
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(.rect)
+        .buttonStyle(TerminalKeyboardButtonStyle())
         .accessibilityLabel("More")
         .accessibilityHint("Opens Agent actions")
     }

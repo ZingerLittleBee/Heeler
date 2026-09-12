@@ -1,11 +1,12 @@
 import Foundation
+import SwiftUI
 import Testing
 import UIKit
 
 @testable import Heeler
 
 @MainActor
-@Suite("Keys keyboard")
+@Suite("Keys keyboard", .serialized)
 struct TerminalKeysKeyboardTests {
     @Test func composerSuppressesTheSystemKeyboardBehindTheToolsDock() throws {
         let textView = AgentComposerUITextView()
@@ -51,31 +52,6 @@ struct TerminalKeysKeyboardTests {
         terminal.setKeyboardMode(.text)
         #expect(terminal.inputView == nil)
         #expect(terminal.keyboardMode == .text)
-    }
-
-    @Test func controlPadKeysFireTheClosureWhenTheFingerLifts() throws {
-        var sent: [TerminalControlKey] = []
-        let pad = TerminalControlPadView { sent.append($0) }
-        let escape = try #require(Self.button(labelled: "Escape", in: pad))
-
-        // A key fires on release, not on touch down: the pad's ancestor may
-        // claim the gesture, and a swipe that starts on a key must not also
-        // send an Esc down the wire.
-        escape.sendActions(for: .touchDown)
-        #expect(sent.isEmpty)
-        escape.sendActions(for: .touchUpInside)
-        #expect(sent == [.escape])
-
-        escape.sendActions(for: .touchDown)
-        escape.sendActions(for: .touchDragExit)
-        #expect(sent == [.escape])
-    }
-
-    @Test func controlPadCoversEveryControlKey() {
-        let pad = TerminalControlPadView { _ in }
-        let labels = Set(Self.buttons(in: pad).compactMap(\.accessibilityLabel))
-
-        #expect(labels == Set(TerminalControlKey.allCases.map(\.accessibilityLabel)))
     }
 
     /// Skills sits right beside the control keys when the agent has a skills
@@ -134,14 +110,4 @@ struct TerminalKeysKeyboardTests {
         }
     }
 
-    private static func buttons(in view: UIView) -> [UIButton] {
-        view.subviews.flatMap { subview -> [UIButton] in
-            if let button = subview as? UIButton { return [button] }
-            return buttons(in: subview)
-        }
-    }
-
-    private static func button(labelled label: String, in view: UIView) -> UIButton? {
-        buttons(in: view).first { $0.accessibilityLabel == label }
-    }
 }
