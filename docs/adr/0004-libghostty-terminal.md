@@ -31,9 +31,17 @@ the native text-selection presentation requested by Ghostty's iOS delegate.
   verification, and review supply-chain changes before every update.
 - libghostty's embedding API is still evolving. Keep all package-specific code
   behind `HeelerTerminalView` and the terminal selection presenter.
-- The custom control keyboard sends raw terminal sequences. A small incremental
-  DEC cursor-mode tracker preserves application-cursor sequences because the
-  wrapper does not expose its internal synthetic-key path publicly.
+- The custom keyboards use the public `UITerminalView.sendKey` API introduced
+  in libghostty-spm 1.6.20260909. Ghostty encodes keys for the active terminal
+  mode, including enhanced keyboard protocols. Ghostty's default fixterms
+  encoding distinguishes combinations such as Ctrl-I/Tab and Ctrl-M/Enter;
+  these no longer collapse to the same bytes as in the old app encoder.
+  Desktop keybindings are cleared so custom keys reach the remote application;
+  UIKit and Heeler retain local paste, selection, and zoom actions.
+  Heeler retains only the UI's
+  one-shot modifier selection; it does not also arm Ghostty's sticky modifiers.
+  The multiline action remains Ctrl-J (LF in legacy mode). The incremental DEC
+  mode tracker remains necessary for touch-scroll routing, not key encoding.
 - Long-press selection is intentionally presented in a native selectable text
   sheet. The wrapper supplies a viewport snapshot and anchor range; it does not
   present selection handles on behalf of the host app.

@@ -336,7 +336,9 @@ struct AgentDirectInputTests {
         let terminal = try #require(Self.terminals(in: controller.view).first)
         #expect(!terminal.isLocalInputEnabled)
         terminal.requestKeyboard()
-        terminal.sendControlKey(TerminalControlKey.enter)
+        let keyboard = TerminalKeyboardControl()
+        keyboard.terminal = terminal
+        keyboard.sendTerminalKey(.enter)
         await Task.yield()
         #expect(!terminal.isFirstResponder)
         #expect(
@@ -896,7 +898,7 @@ struct AgentDirectInputTests {
         try #require(await Self.eventually { terminal.isFirstResponder })
 
         // Soft-keyboard Return enters through UIKeyInput.insertText("\n"),
-        // not sendControlKey / sendQuickKey. Production maps that to PTY CR.
+        // not sendQuickKey. Production maps that to PTY CR.
         (terminal as UIKeyInput).insertText("\n")
         try #require(await Self.eventually {
             await transport.attachInputs.contains(
@@ -1879,6 +1881,9 @@ struct AgentDirectInputTests {
         guard #available(iOS 27, *) else { return probe() }
         guard let element = try await waitForAccessible(labeled: label, in: root) else {
             return false
+        }
+        if let backspace = element as? TerminalRepeatingBackspaceButton {
+            return backspace.accessibilityActivate()
         }
         if let control = element as? UIControl {
             control.sendActions(for: .touchUpInside)

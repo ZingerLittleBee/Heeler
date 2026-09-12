@@ -1,248 +1,321 @@
 import Foundation
 import Testing
+import UIKit
 
 @testable import Heeler
 
-/// Sticky one-shot Ctrl/Alt/Shift modifier keys for the terminal key surfaces (#270).
+/// Exercises the keyboard controls through a live Ghostty surface and its output callback.
 @MainActor
-@Suite("Terminal key modifiers")
+@Suite("Terminal key modifiers", .serialized)
 struct TerminalKeyModifiersTests {
-    private static let esc: UInt8 = 0x1B
-
-    @Test func controlLeftSendsXtermModifierFive() {
-        let bytes = AgentQuickKey.left.bytes(
-            applicationCursor: false, modifiers: .control)
-        #expect(bytes == [Self.esc, 0x5B, 0x31, 0x3B, 0x35, 0x44])
-    }
-
-    @Test func optionLeftSendsXtermModifierThree() {
-        let bytes = AgentQuickKey.left.bytes(
-            applicationCursor: false, modifiers: .option)
-        #expect(bytes == [Self.esc, 0x5B, 0x31, 0x3B, 0x33, 0x44])
-    }
-
-    @Test func bothModifiersCombineToModifierSeven() {
-        let bytes = AgentQuickKey.left.bytes(
-            applicationCursor: false, modifiers: [.control, .option])
-        #expect(bytes == [Self.esc, 0x5B, 0x31, 0x3B, 0x37, 0x44])
-    }
-
-    @Test func optionBackspacePrefixesEscapeBeforeTheBareBytes() {
-        let bare = AgentQuickKey.backspace.bytes(applicationCursor: false)
-        let modified = AgentQuickKey.backspace.bytes(
-            applicationCursor: false, modifiers: .option)
-        #expect(modified == [Self.esc] + bare)
-    }
-
-    @Test func enterAndTabAreUnchangedUnderControl() {
-        for key in [AgentQuickKey.enter, AgentQuickKey.tab] {
-            let bare = key.bytes(applicationCursor: false)
-            let modified = key.bytes(
-                applicationCursor: false, modifiers: .control)
-            #expect(modified == bare)
+    @Test func characterKeysSendTextAndShiftedUSCaps() async throws {
+        let fixture = try await Fixture.make()
+        defer { fixture.close() }
+        let characters = "abcdefghijklmnopqrstuvwxyz0123456789`-=[]\\;',./ "
+        for character in characters {
+            fixture.control.sendQuickKey(.character(character))
         }
+        #expect(try await fixture.drain() == Data(characters.utf8))
+
+        let unshifted = "abcdefghijklmnopqrstuvwxyz`1234567890-=[]\\;',./ "
+        let shifted = "ABCDEFGHIJKLMNOPQRSTUVWXYZ~!@#$%^&*()_+{}|:\"<>? "
+        for character in unshifted {
+            fixture.send(.character(character), modifiers: .shift)
+        }
+        #expect(try await fixture.drain() == Data(shifted.utf8))
     }
 
-    @Test func characterKeysSendTextAndShiftedUSCaps() {
-        for character in "abcdefghijklmnopqrstuvwxyz0123456789`-=[]\\;',./ " {
-            #expect(AgentQuickKey.character(character).bytes(applicationCursor: false)
-                == Array(String(character).utf8))
+    @Test func controlLettersUseGhosttyEncodingAndPreserveShift() async throws {
+        let fixture = try await Fixture.make()
+        defer { fixture.close() }
+        for character in "abcdefghijklmnopqrstuvwxyz" {
+            fixture.send(.character(character), modifiers: .control)
         }
-        for (base, shifted) in zip("abcdefghijklmnopqrstuvwxyz`1234567890-=[]\\;',./",
-                                   "ABCDEFGHIJKLMNOPQRSTUVWXYZ~!@#$%^&*()_+{}|:\"<>?") {
-            let key = AgentQuickKey.character(base)
-            #expect(key.bytes(applicationCursor: false, modifiers: .shift)
-                == Array(String(shifted).utf8))
-            #expect(TerminalKeyModifiers.shift.characterText(base) == String(shifted))
-        }
-        #expect(AgentQuickKey.character("é").bytes(applicationCursor: false) == Array("é".utf8))
-        #expect(AgentQuickKey.character(" ").bytes(applicationCursor: false, modifiers: .shift) == [32])
+        // Ghostty's default fixterms encoding distinguishes Ctrl-I from Tab
+        // and Ctrl-M from Enter, even before Kitty reporting is requested.
+        let expected = Data([1, 2, 3, 4, 5, 6, 7, 8])
+            + Data("\u{1B}[105;5u".utf8) + Data([10, 11, 12])
+            + Data("\u{1B}[109;5u".utf8) + Data(14...26)
+        #expect(try await fixture.drain() == expected)
+
+        fixture.send(.character("c"), modifiers: [.control, .shift])
+        fixture.send(.character("c"), modifiers: [.control, .option, .shift])
+        fixture.send(.character("j"), modifiers: [.control, .shift])
+        #expect(try await fixture.drain() == Data(
+            "\u{1B}[99;6u\u{1B}[99;8u\u{1B}[106;6u".utf8))
+        #expect(fixture.control.pendingModifiers.isEmpty)
     }
 
-    @Test func controlLettersSendC0BytesWithOrWithoutShiftAndAlt() {
-        for (index, character) in "abcdefghijklmnopqrstuvwxyz".enumerated() {
-            let key = AgentQuickKey.character(character)
-            let expected = UInt8(index + 1)
-            #expect(key.bytes(applicationCursor: false, modifiers: .control) == [expected])
-            #expect(key.bytes(applicationCursor: false, modifiers: [.control, .shift]) == [expected])
-            #expect(key.bytes(applicationCursor: false, modifiers: [.control, .option, .shift])
-                == [Self.esc, expected])
-        }
-    }
-
-    @Test func controlSpaceAndPunctuationSendConventionalControlAliases() {
+    @Test func controlSpaceAndPunctuationUseGhosttyAliasesAndFixterms() async throws {
+        let fixture = try await Fixture.make()
+        defer { fixture.close() }
         let aliases: [(Character, UInt8)] = [
-            (" ", 0), ("@", 0), ("`", 0), ("2", 0),
-            ("[", 27), ("{", 27), ("3", 27), ("\\", 28), ("|", 28), ("4", 28),
-            ("]", 29), ("}", 29), ("5", 29), ("^", 30), ("~", 30), ("6", 30),
+            (" ", 0), ("2", 0), ("3", 27), ("\\", 28), ("4", 28),
+            ("]", 29), ("5", 29), ("^", 30), ("~", 30), ("6", 30),
             ("_", 31), ("/", 31), ("7", 31), ("?", 127), ("8", 127),
         ]
-        for (character, byte) in aliases {
-            #expect(AgentQuickKey.character(character).bytes(applicationCursor: false, modifiers: .control)
-                == [byte])
+        for (character, expected) in aliases {
+            fixture.send(.character(character), modifiers: .control)
+            let actual = try await fixture.drain()
+            #expect(Array(actual) == [expected], "Ctrl+\(character)")
         }
-        #expect(AgentQuickKey.character("2").bytes(applicationCursor: false, modifiers: [.control, .shift])
-            == [0])
-        #expect(AgentQuickKey.character("/").bytes(applicationCursor: false, modifiers: [.control, .shift])
-            == [127])
-        #expect(AgentQuickKey.character("1").bytes(applicationCursor: false, modifiers: .control)
-            == Array("1".utf8))
+        // These combinations retain their identity instead of collapsing
+        // to the legacy NUL, Escape, or bracket control aliases.
+        for character in "@`[{|}" {
+            fixture.send(.character(character), modifiers: .control)
+        }
+        #expect(try await fixture.drain() == Data(
+            "\u{1B}[64;5u\u{1B}[96;5u\u{1B}[91;5u\u{1B}[123;5u\u{1B}[124;5u\u{1B}[125;5u".utf8))
+        fixture.send(.character("2"), modifiers: [.control, .shift])
+        fixture.send(.character("/"), modifiers: [.control, .shift])
+        #expect(try await fixture.drain() == Data("\u{1B}[64;5u".utf8) + Data([127]))
     }
 
-    @Test func optionPrefixesCharacterAfterApplyingShift() {
-        #expect(AgentQuickKey.character("b").bytes(applicationCursor: false, modifiers: .option)
-            == Array("\u{1B}b".utf8))
-        #expect(AgentQuickKey.character("1").bytes(applicationCursor: false, modifiers: [.option, .shift])
-            == Array("\u{1B}!".utf8))
+    @Test func optionPrefixesCharactersAndBackspace() async throws {
+        let fixture = try await Fixture.make()
+        defer { fixture.close() }
+        fixture.send(.character("b"), modifiers: .option)
+        fixture.send(.character("1"), modifiers: [.option, .shift])
+        fixture.send(.backspace, modifiers: .option)
+        #expect(try await fixture.drain() == Data([0x1B, 98, 0x1B, 33, 0x1B, 127]))
     }
 
-    @Test func shiftCombinesWithCursorEditingAndFunctionKeyModifiers() {
-        for applicationCursor in [false, true] {
-            #expect(AgentQuickKey.up.bytes(applicationCursor: applicationCursor, modifiers: .shift)
-                == Array("\u{1B}[1;2A".utf8))
-            #expect(AgentQuickKey.left.bytes(applicationCursor: applicationCursor,
-                                           modifiers: [.control, .option, .shift])
-                == Array("\u{1B}[1;8D".utf8))
-        }
-        #expect(AgentQuickKey.pageUp.bytes(applicationCursor: false, modifiers: [.control, .shift])
-            == Array("\u{1B}[5;6~".utf8))
-        #expect(AgentQuickKey.pageDown.bytes(applicationCursor: false) == Array("\u{1B}[6~".utf8))
-        #expect(AgentQuickKey.function(.f1).bytes(applicationCursor: false, modifiers: [.option, .shift])
-            == Array("\u{1B}[1;4P".utf8))
-        #expect(AgentQuickKey.function(.f12).bytes(applicationCursor: false, modifiers: .shift)
-            == Array("\u{1B}[24;2~".utf8))
-    }
-
-    @Test func reverseTabIncludesShiftExactlyOnceAndEnterPreservesMultilineAction() {
-        #expect(AgentQuickKey.tab.bytes(applicationCursor: false, modifiers: .shift)
-            == Array("\u{1B}[Z".utf8))
-        for key in [AgentQuickKey.tab, .shiftTab] {
-            #expect(key.bytes(applicationCursor: false, modifiers: [.control, .shift])
-                == Array("\u{1B}[1;6Z".utf8))
-            #expect(key.bytes(applicationCursor: false, modifiers: [.control, .option, .shift])
-                == Array("\u{1B}[1;8Z".utf8))
-        }
-        #expect(AgentQuickKey.shiftTab.bytes(applicationCursor: false, modifiers: .control)
-            == Array("\u{1B}[1;6Z".utf8))
-        for key in [AgentQuickKey.enter, .shiftEnter] {
-            #expect(key.bytes(applicationCursor: false, modifiers: .shift) == [10])
-            #expect(key.bytes(applicationCursor: false, modifiers: [.option, .shift]) == [Self.esc, 10])
+    @Test func cursorKeysFollowApplicationCursorModeAndModifiers() async throws {
+        let fixture = try await Fixture.make()
+        defer { fixture.close() }
+        for (mode, bare) in [("\u{1B}[?1l", "\u{1B}[D\u{1B}[A\u{1B}[H\u{1B}[F"),
+                             ("\u{1B}[?1h", "\u{1B}OD\u{1B}OA\u{1B}OH\u{1B}OF")] {
+            fixture.receive(mode)
+            for key: AgentQuickKey in [.left, .up, .home, .end] {
+                fixture.control.sendQuickKey(key)
+            }
+            #expect(try await fixture.drain() == Data(bare.utf8))
+            fixture.send(.left, modifiers: .control)
+            fixture.send(.left, modifiers: .option)
+            fixture.send(.left, modifiers: [.control, .option])
+            fixture.send(.up, modifiers: .shift)
+            fixture.send(.left, modifiers: [.control, .option, .shift])
+            #expect(try await fixture.drain() == Data(
+                "\u{1B}[1;5D\u{1B}[1;3D\u{1B}[1;7D\u{1B}[1;2A\u{1B}[1;8D".utf8))
         }
     }
 
-    @Test func fullKeyboardSendsToTerminalAndConsumesModifiersBeforeNextCharacter() async {
-        var sent = Data()
-        let terminal = TerminalScreenView.makeConfiguredTerminal(onSend: { sent.append($0) })
-        terminal.setLocalInputEnabled(false)
-        let control = TerminalKeyboardControl()
-        control.terminal = terminal
-        control.toggleModifier(.control)
-        control.sendQuickKey(.character("c"))
-        #expect(control.pendingModifiers.isEmpty)
-        control.sendQuickKey(.character("c"))
-        control.toggleModifier(.shift)
-        control.sendQuickKey(.character("a"))
-        #expect(control.pendingModifiers.isEmpty)
-        control.toggleModifier(.control)
-        control.toggleModifier(.option)
-        control.toggleModifier(.shift)
-        control.sendQuickKey(.character(" "))
-        #expect(control.pendingModifiers.isEmpty)
-        control.sendQuickKey(.character("b"))
-        await Task.yield()
-        #expect(sent == Data([3, 99, 65, Self.esc, 0, 98]))
-        #expect(!terminal.isLocalInputEnabled)
+    @Test func appearanceChangesKeepRemoteKeyRouting() async throws {
+        let fixture = try await Fixture.make()
+        defer { fixture.close() }
+        // Configuration updates replace Ghostty's overrides. Zoom and font
+        // changes must keep desktop bindings disabled and preserve each other.
+        #expect(fixture.terminal.applyFontSize(18))
+        _ = try await fixture.drain()
+        fixture.send(.left, modifiers: .option)
+        fixture.send(.character("c"), modifiers: [.control, .shift])
+        #expect(try await fixture.drain() == Data("\u{1B}[1;3D\u{1B}[99;6u".utf8))
+
+        #expect(fixture.terminal.applyFontFamily("Menlo"))
+        _ = try await fixture.drain()
+        fixture.send(.left, modifiers: .option)
+        fixture.send(.character("j"), modifiers: [.control, .shift])
+        #expect(try await fixture.drain() == Data("\u{1B}[1;3D\u{1B}[106;6u".utf8))
+        #expect(fixture.terminal.appliedFontSize == 18)
+        #expect(fixture.terminal.appliedFontFamily == "Menlo")
     }
 
-    @Test func characterWithoutATerminalKeepsPendingModifiers() {
-        let control = TerminalKeyboardControl()
-        control.toggleModifier(.shift)
-        control.sendQuickKey(.character("a"))
-        #expect(control.pendingModifiers == .shift)
-        control.toggleModifier(.shift)
-        #expect(control.pendingModifiers.isEmpty)
+    @Test func editingKeysAndRepeatedBackspaceSendOnePressPerInvocation() async throws {
+        let fixture = try await Fixture.make()
+        defer { fixture.close() }
+        for key: AgentQuickKey in [.insert, .forwardDelete, .pageUp, .pageDown] {
+            fixture.control.sendQuickKey(key)
+        }
+        fixture.send(.forwardDelete, modifiers: [.control, .option])
+        fixture.send(.pageUp, modifiers: [.control, .shift])
+        #expect(try await fixture.drain() == Data(
+            "\u{1B}[2~\u{1B}[3~\u{1B}[5~\u{1B}[6~\u{1B}[3;7~\u{1B}[5;6~".utf8))
+        for _ in 0..<5 { fixture.control.sendQuickKey(.backspace) }
+        #expect(try await fixture.drain() == Data(repeating: 127, count: 5))
     }
 
-    @Test func retappingAnArmedModifierDisarmsIt() {
-        let control = TerminalKeyboardControl()
-        control.toggleModifier(.control)
-        #expect(control.pendingModifiers == .control)
-        control.toggleModifier(.control)
-        #expect(control.pendingModifiers.isEmpty)
-    }
-
-    @Test func editingKeysRespectCursorModeAndModifiers() {
-        #expect(AgentQuickKey.home.bytes(applicationCursor: false) == Array("\u{1B}[H".utf8))
-        #expect(AgentQuickKey.home.bytes(applicationCursor: true) == Array("\u{1B}OH".utf8))
-        #expect(AgentQuickKey.end.bytes(applicationCursor: true) == Array("\u{1B}OF".utf8))
-        #expect(AgentQuickKey.insert.bytes(applicationCursor: false) == Array("\u{1B}[2~".utf8))
-        #expect(AgentQuickKey.forwardDelete.bytes(applicationCursor: false) == Array("\u{1B}[3~".utf8))
-        #expect(
-            AgentQuickKey.forwardDelete.bytes(applicationCursor: true, modifiers: [.control, .option])
-                == Array("\u{1B}[3;7~".utf8))
-    }
-
-    @Test func functionKeysUsePcSequencesAndConsumeModifiersThroughTheControl() async {
+    @Test func functionKeysSendF1ThroughF12AndConsumeModifiers() async throws {
+        let fixture = try await Fixture.make()
+        defer { fixture.close() }
         let expected = [
             "\u{1B}OP", "\u{1B}OQ", "\u{1B}OR", "\u{1B}OS",
             "\u{1B}[15~", "\u{1B}[17~", "\u{1B}[18~", "\u{1B}[19~",
             "\u{1B}[20~", "\u{1B}[21~", "\u{1B}[23~", "\u{1B}[24~",
         ]
         for (key, sequence) in zip(TerminalFunctionKey.allCases, expected) {
-            #expect(AgentQuickKey.function(key).bytes(applicationCursor: false) == Array(sequence.utf8))
+            fixture.control.sendQuickKey(.function(key))
+            #expect(try await fixture.drain() == Data(sequence.utf8), "\(key)")
+        }
+        fixture.send(.function(.f1), modifiers: [.control, .option])
+        #expect(fixture.control.pendingModifiers.isEmpty)
+        fixture.send(.function(.f12), modifiers: .shift)
+        #expect(fixture.control.pendingModifiers.isEmpty)
+        #expect(try await fixture.drain() == Data("\u{1B}[1;7P\u{1B}[24;2~".utf8))
+    }
+
+    @Test func reverseTabAndMultilineEnterKeepAgentActions() async throws {
+        let fixture = try await Fixture.make()
+        defer { fixture.close() }
+        fixture.control.sendQuickKey(.tab)
+        fixture.send(.tab, modifiers: .shift)
+        fixture.control.sendQuickKey(.shiftTab)
+        #expect(try await fixture.drain() == Data("\t\u{1B}[Z\u{1B}[Z".utf8))
+        fixture.control.sendQuickKey(.enter)
+        fixture.control.sendQuickKey(.shiftEnter)
+        fixture.send(.enter, modifiers: .shift)
+        fixture.send(.shiftEnter, modifiers: .shift)
+        fixture.send(.enter, modifiers: [.option, .shift])
+        #expect(try await fixture.drain() == Data([13, 10, 10, 10, 0x1B, 10]))
+    }
+
+    @Test func quickKeysConsumeModifiersOnceWithoutEnablingComposerInput() async throws {
+        let fixture = try await Fixture.make()
+        defer { fixture.close() }
+        fixture.terminal.setLocalInputEnabled(false)
+        fixture.send(.character("c"), modifiers: .control)
+        #expect(fixture.control.pendingModifiers.isEmpty)
+        fixture.control.sendQuickKey(.character("c"))
+        fixture.send(.character("a"), modifiers: .shift)
+        #expect(fixture.control.pendingModifiers.isEmpty)
+        fixture.control.sendQuickKey(.character("b"))
+        #expect(try await fixture.drain() == Data([3, 99, 65, 98]))
+        #expect(!fixture.terminal.isLocalInputEnabled)
+        #expect(!fixture.terminal.isFirstResponder)
+    }
+
+    @Test func shellKeysRequireLocalInputAndFollowTerminalReplacement() async throws {
+        let fixture = try await Fixture.make()
+        defer { fixture.close() }
+        fixture.terminal.setLocalInputEnabled(false)
+        fixture.control.toggleModifier(.control)
+        fixture.control.sendTerminalKey(.character("c"))
+        #expect(fixture.control.pendingModifiers == .control)
+        #expect(try await fixture.drain().isEmpty)
+        fixture.terminal.setLocalInputEnabled(true)
+        fixture.control.sendTerminalKey(.character("c"))
+        #expect(fixture.control.pendingModifiers.isEmpty)
+        #expect(try await fixture.drain() == Data([3]))
+
+        let replacement = try await Fixture.make()
+        defer { replacement.close() }
+        replacement.terminal.setLocalInputEnabled(true)
+        fixture.control.terminal = replacement.terminal
+        fixture.control.toggleModifier(.shift)
+        fixture.control.sendTerminalKey(.character("a"))
+        #expect(try await replacement.drain() == Data("A".utf8))
+        #expect(try await fixture.drain().isEmpty)
+        #expect(fixture.control.pendingModifiers.isEmpty)
+    }
+
+    @Test func missingTerminalOrSurfaceRetainsPendingModifiers() {
+        let control = TerminalKeyboardControl()
+        control.toggleModifier(.shift)
+        control.sendQuickKey(.character("a"))
+        #expect(control.pendingModifiers == .shift)
+        control.sendTerminalKey(.character("a"))
+        #expect(control.pendingModifiers == .shift)
+
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        terminal.setLocalInputEnabled(true)
+        control.terminal = terminal
+        control.sendQuickKey(.character("a"))
+        #expect(control.pendingModifiers == .shift)
+        control.sendTerminalKey(.character("a"))
+        #expect(control.pendingModifiers == .shift)
+    }
+
+    @Test func retappingArmedModifiersDisarmsThem() {
+        let control = TerminalKeyboardControl()
+        for modifier: TerminalKeyModifiers in [.control, .option, .shift] {
+            control.toggleModifier(modifier)
+            #expect(control.pendingModifiers == modifier)
+            control.toggleModifier(modifier)
+            #expect(control.pendingModifiers.isEmpty)
+        }
+    }
+
+    @Test func kittyProtocolReportsPressAndReleaseWithoutPasteFraming() async throws {
+        let fixture = try await Fixture.make()
+        defer { fixture.close() }
+        // Disambiguate, report event types, and report all keys. Bracketed paste
+        // must not turn Enter or a character into pasted text.
+        fixture.receive("\u{1B}[?2004h\u{1B}[>11u")
+        fixture.control.sendQuickKey(.enter)
+        fixture.send(.character("c"), modifiers: .control)
+        fixture.control.sendQuickKey(.character("a"))
+        #expect(try await fixture.drain() == Data(
+            "\u{1B}[13u\u{1B}[13;1:3u\u{1B}[99;5u\u{1B}[99;5:3u\u{1B}[97u\u{1B}[97;1:3u".utf8))
+        #expect(fixture.control.pendingModifiers.isEmpty)
+        fixture.receive("\u{1B}[<u")
+        fixture.control.sendQuickKey(.enter)
+        #expect(try await fixture.drain() == Data([13]))
+    }
+
+    @MainActor
+    private final class Fixture {
+        let terminal: HeelerTerminalView
+        let control = TerminalKeyboardControl()
+        private var sent = Data()
+        private var window: UIWindow?
+
+        private init() {
+            terminal = TerminalScreenView.makeConfiguredTerminal()
+            terminal.updateCallbacks(
+                onSizeChanged: nil,
+                onViewportTextChanged: nil,
+                onSend: { [weak self] bytes in self?.sent.append(bytes) },
+                onScroll: nil,
+                onPaste: nil)
+            control.terminal = terminal
         }
 
-        var sent = Data()
-        let terminal = TerminalScreenView.makeConfiguredTerminal(onSend: { sent.append($0) })
-        terminal.setLocalInputEnabled(false)
-        let control = TerminalKeyboardControl()
-        control.terminal = terminal
-        control.toggleModifier(.control)
-        control.toggleModifier(.option)
-        control.sendQuickKey(.function(.f1))
-        #expect(control.pendingModifiers.isEmpty)
-        control.sendQuickKey(.function(.f12))
-        await Task.yield()
-        #expect(sent == Data("\u{1B}[1;7P\u{1B}[24~".utf8))
-    }
+        static func make() async throws -> Fixture {
+            let fixture = Fixture()
+            let controller = UIViewController()
+            controller.view = fixture.terminal
+            fixture.window = try await makeTestWindow(
+                frame: CGRect(x: 0, y: 0, width: 402, height: 600),
+                rootViewController: controller)
+            controller.view.layoutIfNeeded()
+            // A terminal reply proves the surface exists and callbacks can reach
+            // the host before the test starts sending keys.
+            _ = try await fixture.drain()
+            return fixture
+        }
 
-    @Test func shellKeysRespectLocalInputAndFollowTerminalReplacement() async {
-        let control = TerminalKeyboardControl()
-        control.toggleModifier(.control)
-        control.sendTerminalKey(.character("c"))
-        #expect(control.pendingModifiers == .control)
+        func close() {
+            window?.isHidden = true
+            window?.rootViewController = nil
+            window = nil
+        }
 
-        var firstSent = Data()
-        let first = TerminalScreenView.makeConfiguredTerminal(onSend: { firstSent.append($0) })
-        first.setLocalInputEnabled(false)
-        control.terminal = first
-        control.sendTerminalKey(.character("c"))
-        #expect(control.pendingModifiers == .control)
-        first.setLocalInputEnabled(true)
-        control.sendTerminalKey(.character("c"))
-        #expect(control.pendingModifiers.isEmpty)
+        func send(_ key: AgentQuickKey, modifiers: TerminalKeyModifiers) {
+            for modifier: TerminalKeyModifiers in [.control, .option, .shift] where modifiers.contains(modifier) {
+                control.toggleModifier(modifier)
+            }
+            control.sendQuickKey(key)
+        }
 
-        var replacementSent = Data()
-        let replacement = TerminalScreenView.makeConfiguredTerminal(onSend: { replacementSent.append($0) })
-        control.terminal = replacement
-        replacement.setLocalInputEnabled(true)
-        control.toggleModifier(.shift)
-        control.sendTerminalKey(.character("a"))
-        await Task.yield()
-        #expect(firstSent == Data([3]))
-        #expect(replacementSent == Data("A".utf8))
-        #expect(control.pendingModifiers.isEmpty)
-    }
+        func receive(_ output: String) {
+            terminal.receive(Data(output.utf8))
+            // Ghostty processes incoming mode changes off the main actor.
+            // A task yield cannot establish that the encoder has seen them.
+            terminal.terminalSession.waitForPendingOutput()
+        }
 
-    @Test func sendingAQuickKeyConsumesTheArmedModifiers() {
-        let terminal = TerminalScreenView.makeConfiguredTerminal(
-            notificationCenter: NotificationCenter())
-        let control = TerminalKeyboardControl()
-        control.terminal = terminal
-        control.toggleModifier(.control)
-        control.toggleModifier(.option)
-        #expect(control.pendingModifiers == [.control, .option])
-        control.sendQuickKey(.left)
-        #expect(control.pendingModifiers.isEmpty)
+        func drain() async throws -> Data {
+            // DA is ordered behind prior keys. Wait for its response as a
+            // positive completion signal, including for an expected empty send.
+            receive("\u{1B}[c")
+            let marker = Data("\u{1B}[?62;22".utf8)
+            let deadline = ContinuousClock.now + .seconds(2)
+            while sent.range(of: marker) == nil, ContinuousClock.now < deadline {
+                await Task.yield()
+            }
+            let reply = try #require(sent.range(of: marker), "Ghostty device attributes reply did not arrive")
+            let result = Data(sent[..<reply.lowerBound])
+            sent.removeAll(keepingCapacity: true)
+            return result
+        }
     }
 }

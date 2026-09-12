@@ -93,8 +93,7 @@ final class TerminalKeyboardControl {
     }
 
     func sendQuickKey(_ key: AgentQuickKey) {
-        guard let terminal else { return }
-        terminal.sendQuickKey(key, modifiers: pendingModifiers)
+        guard let terminal, terminal.sendQuickKey(key, modifiers: pendingModifiers) else { return }
         pendingModifiers = []
     }
 
@@ -113,14 +112,6 @@ final class TerminalKeyboardControl {
 
     func setKeyboardMode(_ mode: TerminalKeyboardMode) {
         terminal?.setKeyboardMode(mode)
-    }
-
-    func sendControlKey(_ key: TerminalControlKey) {
-        guard let terminal else { return }
-        // Consume the armed modifiers only on an actual send: a send
-        // dropped by the local-input gate leaves them armed for the next key.
-        guard terminal.sendControlKey(key, modifiers: pendingModifiers) else { return }
-        pendingModifiers = []
     }
 
     func sendNewLine() {
@@ -915,7 +906,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         let clampedFontSize = TerminalZoomSettings.clamped(fontSize)
         terminalController = TerminalController(
             theme: theme,
-            terminalConfiguration: Self.fontConfiguration(
+            terminalConfiguration: Self.terminalConfiguration(
                 size: clampedFontSize, family: fontFamily))
         appliedTheme = theme
         appliedFontSize = clampedFontSize
@@ -975,7 +966,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         let clamped = TerminalZoomSettings.clamped(fontSize)
         guard clamped != appliedFontSize,
             terminalController.setTerminalConfiguration(
-                TerminalConfiguration().fontSize(clamped))
+                Self.terminalConfiguration(size: clamped, family: appliedFontFamily))
         else {
             return false
         }
@@ -987,7 +978,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     func applyFontFamily(_ family: String?) -> Bool {
         guard family != appliedFontFamily,
             terminalController.setTerminalConfiguration(
-                Self.fontConfiguration(size: nil, family: family))
+                Self.terminalConfiguration(size: appliedFontSize, family: family))
         else {
             return false
         }
@@ -998,12 +989,14 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// ghostty treats `font-family` as a set that repeated values append to,
     /// so switching fonts has to clear it with an empty value first or the
     /// old family stays in the fallback chain ahead of the new one.
-    private static func fontConfiguration(size: Float?, family: String?) -> TerminalConfiguration {
+    private static func terminalConfiguration(size: Float, family: String?) -> TerminalConfiguration {
+        // These surfaces forward keys to a remote application. Host shortcuts
+        // (paste, zoom, selection) are handled by UIKit/Heeler, so Ghostty's
+        // desktop bindings must not intercept the shared keyboard's chords.
         var configuration = TerminalConfiguration()
-        if let size {
-            configuration = configuration.fontSize(size)
-        }
-        configuration = configuration.fontFamily("")
+            .custom("keybind", "clear")
+            .fontSize(size)
+            .fontFamily("")
         if let family {
             configuration = configuration.fontFamily(family)
         }
@@ -1177,7 +1170,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
 
     /// Soft-keyboard Return arrives here as `"\n"` (UIKeyInput). Direct Input
     /// and Shell treat Enter as PTY CR (`0x0D`), matching shortcut Enter and
-    /// `TerminalControlKey.enter` — not LF.
+    /// `AgentQuickKey.enter` — not LF.
     override func insertText(_ text: String) {
         guard isLocalInputEnabled else { return }
         if text == "\n" {

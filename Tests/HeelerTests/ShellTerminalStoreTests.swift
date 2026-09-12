@@ -120,7 +120,9 @@ struct ShellTerminalStoreTests {
         // No Snippets or Skills on a shell terminal: its Keys dock offers the
         // full keyboard and Appearance alone.
         #expect(ShellTerminalKeysDock.tabs == [.controls, .appearance])
-        terminal.sendControlKey(.enter)
+        let keyboard = TerminalKeyboardControl()
+        keyboard.terminal = terminal
+        keyboard.sendTerminalKey(.enter)
         try #require(
             await eventually {
                 await transport.attachInputs.contains(.keystrokes(Data([0x0D])))

@@ -22,6 +22,12 @@ struct TerminalAttachTests {
         case rejectedWrite
     }
 
+    @MainActor
+    private final class KeyboardFinger: UITouch {
+        var point = CGPoint.zero
+        override func location(in view: UIView?) -> CGPoint { point }
+    }
+
     private struct ReportedGrid: Equatable {
         let columns: Int
         let rows: Int
@@ -783,23 +789,22 @@ struct TerminalAttachTests {
         var sent = Data()
         let terminal = TerminalScreenView.makeConfiguredTerminal(
             onSend: { sent.append($0) })
+        let window = try await Self.host(terminal)
+        defer { window.isHidden = true }
         let control = TerminalKeyboardControl()
         control.terminal = terminal
 
         control.sendNewLine()
-        await Task.yield()
-        #expect(sent == Data([0x0A]))
+        await Self.expectOutput(Data([0x0A]), received: { sent })
 
         sent.removeAll()
         terminal.setKeyboardMode(.controls)
         control.sendNewLine()
-        await Task.yield()
-        #expect(sent == Data([0x0A]))
+        await Self.expectOutput(Data([0x0A]), received: { sent })
 
         terminal.setLocalInputEnabled(false)
         control.sendNewLine()
-        await Task.yield()
-        #expect(sent == Data([0x0A]))
+        await Self.expectOutput(Data([0x0A]), received: { sent })
     }
 
     @MainActor
@@ -918,13 +923,17 @@ struct TerminalAttachTests {
     }
 
     @MainActor
-    @Test func pausedTerminalControlsDoNotEmitInput() async {
+    @Test func pausedTerminalControlsDoNotEmitInput() async throws {
         var sent = Data()
         let terminal = TerminalScreenView.makeConfiguredTerminal(
             onSend: { sent.append($0) })
 
+        let window = try await Self.host(terminal)
+        defer { window.isHidden = true }
         terminal.setLocalInputEnabled(false)
-        terminal.sendControlKey(.enter)
+        terminal.sendNewLine()
+        terminal.insertText("\n")
+        terminal.terminalSession.waitForPendingOutput()
         await Task.yield()
 
         #expect(sent.isEmpty)
@@ -2104,9 +2113,16 @@ struct TerminalAttachTests {
                 .frame(width: size.width, height: size.height)
                 .ignoresSafeArea())
         let bounds = CGRect(origin: .zero, size: size)
+        // The key API needs a live Ghostty surface. Keep it behind the dock
+        // so the fixture still measures only the existing keyboard layout.
+        terminal.frame = bounds
+        terminal.isUserInteractionEnabled = false
+        terminal.accessibilityElementsHidden = true
+        controller.view.insertSubview(terminal, at: 0)
         let window = try await makeTestWindow(frame: bounds, rootViewController: controller)
         defer { window.isHidden = true }
         controller.view.layoutIfNeeded()
+        try await waitForGhosttyContentLayer(in: terminal)
         #expect(controller.view.bounds == bounds)
         guard #available(iOS 27, *) else { return }
 
@@ -2138,6 +2154,35 @@ struct TerminalAttachTests {
         }
         #expect(sent == expected)
         #expect(control.pendingModifiers.isEmpty)
+
+        // A held key must continue reaching Ghostty after the first send
+        // updates the keyboard's one-shot modifier state.
+        sent.removeAll()
+        let backspace = try #require(
+            Self.firstAccessible(in: controller.view, labeled: "Backspace")
+                as? TerminalRepeatingBackspaceButton)
+        let finger = KeyboardFinger()
+        finger.point = CGPoint(x: backspace.bounds.midX, y: backspace.bounds.midY)
+        let event = UIEvent()
+        for recognizer in backspace.gestureRecognizers ?? [] {
+            recognizer.touchesBegan([finger], with: event)
+        }
+        let repeatDeadline = ContinuousClock.now + .seconds(1)
+        while sent.count < 3, ContinuousClock.now < repeatDeadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(backspace.isHighlighted)
+        #expect(sent.count >= 3)
+        #expect(sent.allSatisfy { $0 == 0x7F })
+        for recognizer in backspace.gestureRecognizers ?? [] {
+            recognizer.touchesEnded([finger], with: event)
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        let releasedOutput = sent
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(sent == releasedOutput)
+        #expect(!backspace.isHighlighted)
+
         try Self.activateToolsControl(labeled: "Terminal Appearance", in: controller.view)
         let appearance = try await Self.waitForToolsFrames(
             in: controller.view, labels: ["Terminal Appearance"], selectedPage: "Terminal Appearance")
@@ -2190,33 +2235,69 @@ struct TerminalAttachTests {
         #expect(TerminalKeyboardInset.insetHeight(covered: 20, bottomSafeArea: 34) == 0)
     }
 
-    @Test func terminalControlKeysEncodeExpectedBytes() {
-        #expect(TerminalControlKey.escape.bytes(applicationCursor: false) == [0x1B])
-        #expect(TerminalControlKey.tab.bytes(applicationCursor: false) == [0x09])
-        #expect(TerminalControlKey.controlC.bytes(applicationCursor: false) == [0x03])
-        #expect(TerminalControlKey.controlD.bytes(applicationCursor: false) == [0x04])
-        #expect(TerminalControlKey.controlZ.bytes(applicationCursor: false) == [0x1A])
-        #expect(TerminalControlKey.backspace.bytes(applicationCursor: false) == [0x7F])
-        #expect(TerminalControlKey.enter.bytes(applicationCursor: false) == [0x0D])
-        #expect(TerminalControlKey.up.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x41])
-        #expect(TerminalControlKey.up.bytes(applicationCursor: true) == [0x1B, 0x4F, 0x41])
-        #expect(
-            TerminalControlKey.pageUp.bytes(applicationCursor: false) == [
-                0x1B, 0x5B, 0x35, 0x7E,
-            ])
+    @MainActor
+    private static func host(_ terminal: HeelerTerminalView) async throws -> UIWindow {
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
+        let controller = UIViewController()
+        controller.view = terminal
+        let window = try await makeTestWindow(
+            frame: terminal.bounds, rootViewController: controller)
+        try await waitForGhosttyContentLayer(in: terminal)
+        return window
     }
 
-    @Test func agentQuickKeysEncodeExpectedBytes() {
-        #expect(AgentQuickKey.escape.bytes(applicationCursor: false) == [0x1B])
-        #expect(AgentQuickKey.tab.bytes(applicationCursor: false) == [0x09])
-        #expect(AgentQuickKey.shiftTab.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x5A])
-        #expect(AgentQuickKey.shiftEnter.bytes(applicationCursor: false) == [0x0A])
-        #expect(AgentQuickKey.left.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x44])
-        #expect(AgentQuickKey.up.bytes(applicationCursor: true) == [0x1B, 0x4F, 0x41])
-        #expect(AgentQuickKey.down.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x42])
-        #expect(AgentQuickKey.right.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x43])
-        #expect(AgentQuickKey.enter.bytes(applicationCursor: false) == [0x0D])
-        #expect(AgentQuickKey.backspace.bytes(applicationCursor: false) == [0x7F])
+    @MainActor
+    private static func expectOutput(
+        _ expected: Data, received: () -> Data
+    ) async {
+        let deadline = ContinuousClock.now + .seconds(1)
+        while received() != expected, ContinuousClock.now < deadline {
+            await Task.yield()
+        }
+        #expect(received() == expected)
+    }
+
+    /// These are observed session bytes, rather than a second implementation
+    /// of the encoder. Both Agent and Shell controls use this key path.
+    @MainActor
+    @Test func terminalQuickKeysFlowThroughTheGhosttySession() async throws {
+        var sent = Data()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSend: { sent.append($0) })
+        let window = try await Self.host(terminal)
+        defer { window.isHidden = true }
+        let cases: [(AgentQuickKey, TerminalKeyModifiers, Data)] = [
+            (.escape, [], Data([0x1B])),
+            (.tab, [], Data([0x09])),
+            (.shiftTab, [], Data("\u{1B}[Z".utf8)),
+            (.shiftEnter, [], Data([0x0A])),
+            (.character("c"), .control, Data([0x03])),
+            (.character("d"), .control, Data([0x04])),
+            (.character("z"), .control, Data([0x1A])),
+            (.backspace, [], Data([0x7F])),
+            (.enter, [], Data([0x0D])),
+            (.left, [], Data("\u{1B}[D".utf8)),
+            (.up, [], Data("\u{1B}[A".utf8)),
+            (.down, [], Data("\u{1B}[B".utf8)),
+            (.right, [], Data("\u{1B}[C".utf8)),
+            (.pageUp, [], Data("\u{1B}[5~".utf8)),
+            (.character("a"), .shift, Data("A".utf8)),
+            (.function(.f12), .option, Data("\u{1B}[24;3~".utf8)),
+        ]
+        for (key, modifiers, expected) in cases {
+            sent.removeAll()
+            terminal.sendQuickKey(key, modifiers: modifiers)
+            await Self.expectOutput(expected, received: { sent })
+        }
+
+        sent.removeAll()
+        terminal.receive(Data("\u{1B}[?1h".utf8))
+        terminal.terminalSession.waitForPendingOutput()
+        terminal.sendQuickKey(.up)
+        await Self.expectOutput(Data("\u{1B}OA".utf8), received: { sent })
+    }
+
+    @Test func agentQuickKeysKeepTheirLabels() {
         #expect(AgentQuickKey.shiftEnter.title == "⇧Enter")
         #expect(AgentQuickKey.enter.title == "Enter")
         #expect(AgentQuickKey.backspace.title == "Backspace")
@@ -2225,36 +2306,23 @@ struct TerminalAttachTests {
     }
 
     @MainActor
-    @Test func agentQuickKeysBypassDisplayOnlyInputWithoutEnablingTyping() async {
+    @Test func agentQuickKeysBypassDisplayOnlyInputWithoutEnablingTyping() async throws {
         var sent = Data()
         let terminal = TerminalScreenView.makeConfiguredTerminal(
             onSend: { sent.append($0) })
+        let window = try await Self.host(terminal)
+        defer { window.isHidden = true }
         terminal.setLocalInputEnabled(false)
 
-        terminal.sendControlKey(.enter)
+        terminal.insertText("\n")
         terminal.sendQuickKey(.shiftTab)
+        await Self.expectOutput(Data("\u{1B}[Z".utf8), received: { sent })
         terminal.receive(Data("\u{1B}[?1h".utf8))
+        terminal.terminalSession.waitForPendingOutput()
         terminal.sendQuickKey(.up)
-        await Task.yield()
-
-        #expect(sent == Data([0x1B, 0x5B, 0x5A, 0x1B, 0x4F, 0x41]))
-    }
-
-    @MainActor
-    @Test func terminalControlKeysFlowThroughTheGhosttySession() async {
-        var sent = Data()
-        let terminal = TerminalScreenView.makeConfiguredTerminal(
-            onSend: { sent.append($0) })
-
-        terminal.sendControlKey(.controlC)
-        await Task.yield()
-        #expect(sent == Data([0x03]))
-
-        sent.removeAll()
-        terminal.receive(Data("\u{1B}[?1h".utf8))
-        terminal.sendControlKey(.up)
-        await Task.yield()
-        #expect(sent == Data([0x1B, 0x4F, 0x41]))
+        await Self.expectOutput(Data("\u{1B}[Z\u{1B}OA".utf8), received: { sent })
+        #expect(!terminal.isLocalInputEnabled)
+        #expect(!terminal.isFirstResponder)
     }
 
     @Test func terminalModeTrackerHandlesSplitAndRepeatedModeChanges() {

@@ -51,7 +51,9 @@ struct AgentSurfaceReplacementTests {
         let terminal = try #require(Self.terminals(in: controller.view).first)
         #expect(!terminal.isLocalInputEnabled)
         terminal.requestKeyboard()
-        terminal.sendControlKey(.enter)
+        let keyboard = TerminalKeyboardControl()
+        keyboard.terminal = terminal
+        keyboard.sendTerminalKey(.enter)
         await Task.yield()
         #expect(!terminal.isFirstResponder)
         #expect(
