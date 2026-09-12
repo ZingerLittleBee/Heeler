@@ -101,10 +101,36 @@ enum TerminalKeyboardMode: Int {
     case controls
 }
 
+/// PC-style function keys in the terminal's existing xterm encoding.
+enum TerminalFunctionKey: Int, CaseIterable, Hashable {
+    case f1 = 1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12
+
+    var title: String { "F\(rawValue)" }
+
+    func bytes(modifiers: TerminalKeyModifiers) -> [UInt8] {
+        let bare: [UInt8]
+        switch self {
+        case .f1: bare = Array("\u{1B}OP".utf8)
+        case .f2: bare = Array("\u{1B}OQ".utf8)
+        case .f3: bare = Array("\u{1B}OR".utf8)
+        case .f4: bare = Array("\u{1B}OS".utf8)
+        case .f5: bare = Array("\u{1B}[15~".utf8)
+        case .f6: bare = Array("\u{1B}[17~".utf8)
+        case .f7: bare = Array("\u{1B}[18~".utf8)
+        case .f8: bare = Array("\u{1B}[19~".utf8)
+        case .f9: bare = Array("\u{1B}[20~".utf8)
+        case .f10: bare = Array("\u{1B}[21~".utf8)
+        case .f11: bare = Array("\u{1B}[23~".utf8)
+        case .f12: bare = Array("\u{1B}[24~".utf8)
+        }
+        return modifiers.applied(to: bare, shape: .csiSuffixed)
+    }
+}
+
 /// The small set of terminal controls exposed by Composer's tools keyboard.
 /// These are explicit actions rather than authored text, so they bypass the
 /// draft while the Ghostty surface itself remains display-only.
-enum AgentQuickKey: CaseIterable, Hashable {
+enum AgentQuickKey: Hashable {
     case escape
     case tab
     case shiftTab
@@ -116,6 +142,15 @@ enum AgentQuickKey: CaseIterable, Hashable {
     case enter
     case backspace
 
+    case controlC
+    case controlA
+    case controlE
+    case home
+    case end
+    case insert
+    case forwardDelete
+    case function(TerminalFunctionKey)
+
     var title: String? {
         switch self {
         case .escape: "Esc"
@@ -124,6 +159,14 @@ enum AgentQuickKey: CaseIterable, Hashable {
         case .shiftEnter: "⇧Enter"
         case .enter: "Enter"
         case .backspace: "Backspace"
+        case .controlC: "Ctrl+C"
+        case .controlA: "Ctrl+A"
+        case .controlE: "Ctrl+E"
+        case .home: "Home"
+        case .end: "End"
+        case .insert: "Insert"
+        case .forwardDelete: "Forward Delete"
+        case .function(let key): key.title
         case .left, .up, .down, .right: nil
         }
     }
@@ -134,7 +177,7 @@ enum AgentQuickKey: CaseIterable, Hashable {
         case .up: "arrow.up"
         case .down: "arrow.down"
         case .right: "arrow.right"
-        case .escape, .tab, .shiftTab, .shiftEnter, .enter, .backspace: nil
+        default: nil
         }
     }
 
@@ -150,6 +193,14 @@ enum AgentQuickKey: CaseIterable, Hashable {
         case .right: "Right Arrow"
         case .enter: "Enter"
         case .backspace: "Backspace"
+        case .controlC: "Control C"
+        case .controlA: "Control A"
+        case .controlE: "Control E"
+        case .home: "Home"
+        case .end: "End"
+        case .insert: "Insert"
+        case .forwardDelete: "Forward Delete"
+        case .function(let key): key.title
         }
     }
 
@@ -186,6 +237,18 @@ enum AgentQuickKey: CaseIterable, Hashable {
         case .backspace:
             TerminalControlKey.backspace.bytes(
                 applicationCursor: applicationCursor, modifiers: modifiers)
+        case .controlC: modifiers.applied(to: [0x03], shape: .escPrefixed)
+        case .controlA: modifiers.applied(to: [0x01], shape: .escPrefixed)
+        case .controlE: modifiers.applied(to: [0x05], shape: .escPrefixed)
+        case .home: TerminalControlKey.home.bytes(
+            applicationCursor: applicationCursor, modifiers: modifiers)
+        case .end: TerminalControlKey.end.bytes(
+            applicationCursor: applicationCursor, modifiers: modifiers)
+        case .insert: modifiers.applied(
+            to: Array("\u{1B}[2~".utf8), shape: .csiSuffixed)
+        case .forwardDelete: modifiers.applied(
+            to: Array("\u{1B}[3~".utf8), shape: .csiSuffixed)
+        case .function(let key): key.bytes(modifiers: modifiers)
         }
     }
 }

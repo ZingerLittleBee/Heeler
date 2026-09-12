@@ -1994,11 +1994,6 @@ struct TerminalAttachTests {
     }
 
     @Test func agentQuickKeysEncodeExpectedBytes() {
-        #expect(
-            AgentQuickKey.allCases == [
-                .escape, .tab, .shiftTab, .shiftEnter, .left, .up, .down, .right,
-                .enter, .backspace,
-            ])
         #expect(AgentQuickKey.escape.bytes(applicationCursor: false) == [0x1B])
         #expect(AgentQuickKey.tab.bytes(applicationCursor: false) == [0x09])
         #expect(AgentQuickKey.shiftTab.bytes(applicationCursor: false) == [0x1B, 0x5B, 0x5A])

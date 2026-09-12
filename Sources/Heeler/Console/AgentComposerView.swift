@@ -111,9 +111,23 @@ struct AgentComposerView: View {
     /// An explicit dismissal hides suggestions for the current trigger token;
     /// removing the token arms them again.
     @State private var isSuggestionsDismissed = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var isToolsKeyboardPresented: Bool {
         keyboardPresentation == .tools
+    }
+
+    private var isCompactComposer: Bool {
+        isToolsKeyboardPresented && store.draft.isEmpty && latestFailure == nil
+            && linkPresentation == nil && !dynamicTypeSize.isAccessibilitySize
+    }
+
+    // Switching layout preserves the UITextView and its first responder,
+    // including while the tools keyboard replaces the system keyboard.
+    private var draftLayout: AnyLayout {
+        isCompactComposer
+            ? AnyLayout(HStackLayout(spacing: 8))
+            : AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
     }
 
     var body: some View {
@@ -125,7 +139,7 @@ struct AgentComposerView: View {
                     chromeColorScheme: chromeColorScheme)
 
                 VStack(spacing: 0) {
-                    VStack(alignment: .leading, spacing: 8) {
+                    draftLayout {
                         if let skills, let trigger = suggestionTrigger,
                             isInputFocused, !isSuggestionsDismissed
                         {
@@ -156,7 +170,7 @@ struct AgentComposerView: View {
                                     .allowsHitTesting(false)
                             }
                         }
-                        .frame(minHeight: 36, alignment: .topLeading)
+                        .frame(maxWidth: .infinity, minHeight: 36, alignment: .topLeading)
                         .accessibilityElement(children: .contain)
 
                         if let failure = latestFailure {
@@ -231,14 +245,17 @@ struct AgentComposerView: View {
                                 .accessibilityValue(links.accessibilityValue)
                             }
 
-                            Spacer(minLength: 0)
-                            AgentComposerSendButton(isEnabled: store.canSend) {
-                                Task { await deliverDraft { await store.send() } }
+                            if !isCompactComposer {
+                                Spacer(minLength: 0)
+                                AgentComposerSendButton(isEnabled: store.canSend) {
+                                    Task { await deliverDraft { await store.send() } }
+                                }
                             }
                         }
+                        .fixedSize(horizontal: isCompactComposer, vertical: false)
                     }
                     .padding(.horizontal, 12)
-                    .padding(.top, 12)
+                    .padding(.top, isCompactComposer ? 8 : 12)
                     .padding(.bottom, 8)
 
                     TerminalAgentSwitcherRow(
@@ -794,75 +811,111 @@ private struct AgentQuickKeyPad: View {
     let keyboardControl: TerminalKeyboardControl
     let send: (AgentQuickKey) -> Void
 
-    private static let rows: [[AgentQuickKey]] = [
-        [.escape, .tab, .shiftTab],
-        [.left, .up, .right],
-        [.backspace, .down, .enter],
+    private static let navigationRows: [[AgentQuickKey]] = [
+        [.home, .up, .end, .backspace],
+        [.left, .down, .right, .enter],
     ]
 
     var body: some View {
-        VStack(spacing: 8) {
-            modifierRow
-            ForEach(Self.rows.indices, id: \.self) { rowIndex in
-                HStack(spacing: 8) {
-                    ForEach(Self.rows[rowIndex], id: \.self) { key in
-                        Button {
-                            send(key)
-                        } label: {
-                            keyLabel(for: key)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .contentShape(.rect)
+        GeometryReader { geometry in
+            ScrollView(.vertical) {
+                VStack(spacing: 8) {
+                    Text("Remote Controls")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityAddTraits(.isHeader)
+
+                    HStack(spacing: 6) {
+                        modifierCap(title: "Ctrl", modifier: .control)
+                        modifierCap(title: "Alt", modifier: .option)
+                        keyButton(.escape)
+                        keyButton(.tab)
+                        keyButton(.shiftTab)
+                    }
+                    .frame(height: 44)
+
+                    HStack(spacing: 6) {
+                        keyButton(.controlC)
+                        keyButton(.controlA)
+                        keyButton(.controlE)
+                        moreKeys
+                    }
+                    .frame(height: 44)
+
+                    ForEach(Self.navigationRows.indices, id: \.self) { rowIndex in
+                        HStack(spacing: 6) {
+                            ForEach(Self.navigationRows[rowIndex], id: \.self) { key in
+                                keyButton(key)
+                            }
                         }
-                        .buttonStyle(.plain)
-                        .background(
-                            Color(uiColor: .secondarySystemFill),
-                            in: .rect(cornerRadius: 8))
-                        .disabled(!isEnabled)
-                        .opacity(isEnabled ? 1 : 0.45)
-                        .accessibilityLabel(key.accessibilityLabel)
-                        .accessibilityHint("Sends this key directly to the Agent")
+                        .frame(minHeight: 44, maxHeight: .infinity)
                     }
                 }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .frame(minHeight: geometry.size.height)
             }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-    }
-
-    /// One-shot sticky ⌃/⌥ modifiers (#270). Each cap arms its modifier for
-    /// the next key's bytes; the armed state consumes on send and highlights
-    /// until then, matching the Shell pad's caps.
-    private var modifierRow: some View {
-        HStack(spacing: 8) {
-            modifierCap(
-                title: "⌃",
-                label: "Control modifier",
-                armed: keyboardControl.pendingModifiers.contains(.control)
-            ) {
-                keyboardControl.toggleModifier(.control)
-            }
-            modifierCap(
-                title: "⌥",
-                label: "Option modifier",
-                armed: keyboardControl.pendingModifiers.contains(.option)
-            ) {
-                keyboardControl.toggleModifier(.option)
-            }
+            .scrollBounceBehavior(.basedOnSize)
         }
     }
 
-    private func modifierCap(
-        title: String,
-        label: String,
-        armed: Bool,
-        toggle: @escaping () -> Void
-    ) -> some View {
+    private func keyButton(_ key: AgentQuickKey) -> some View {
         Button {
-            toggle()
+            send(key)
+        } label: {
+            keyLabel(for: key)
+                .frame(maxWidth: .infinity, minHeight: 44, maxHeight: .infinity)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .background(Color(uiColor: .secondarySystemFill), in: .rect(cornerRadius: 8))
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.45)
+        .accessibilityLabel(key.accessibilityLabel)
+        .accessibilityHint("Sends this key directly to the Agent")
+    }
+
+    private var moreKeys: some View {
+        Menu {
+            Section("Editing") {
+                menuKey(.insert)
+                menuKey(.forwardDelete)
+            }
+            Menu("Function Keys") {
+                ForEach(TerminalFunctionKey.allCases, id: \.self) { key in
+                    menuKey(.function(key))
+                }
+            }
+        } label: {
+            Label("More", systemImage: "ellipsis")
+                .font(.caption.weight(.medium))
+                .frame(maxWidth: .infinity, minHeight: 44, maxHeight: .infinity)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .background(Color(uiColor: .secondarySystemFill), in: .rect(cornerRadius: 8))
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.45)
+        .accessibilityLabel("More remote keys")
+    }
+
+    private func menuKey(_ key: AgentQuickKey) -> some View {
+        Button(key.title ?? key.accessibilityLabel) {
+            send(key)
+        }
+        .accessibilityLabel(key.accessibilityLabel)
+        .accessibilityHint("Sends this key directly to the Agent")
+    }
+
+    private func modifierCap(title: String, modifier: TerminalKeyModifiers) -> some View {
+        let armed = keyboardControl.isModifierArmed(modifier)
+        return Button {
+            keyboardControl.toggleModifier(modifier)
         } label: {
             Text(title)
-                .font(.title3)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .font(.caption.weight(armed ? .semibold : .medium))
+                .frame(maxWidth: .infinity, minHeight: 44, maxHeight: .infinity)
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -870,15 +923,18 @@ private struct AgentQuickKeyPad: View {
             armed ? Color.accentColor : Color(uiColor: .secondarySystemFill),
             in: .rect(cornerRadius: 8))
         .foregroundStyle(armed ? Color.white : Color.primary)
-        .accessibilityLabel(label)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.45)
+        .accessibilityLabel(modifier == .control ? "Control modifier" : "Option modifier")
         .accessibilityValue(armed ? "Armed" : "Not armed")
+        .accessibilityHint("Applies to the next remote key; tap again to cancel")
     }
 
     @ViewBuilder
     private func keyLabel(for key: AgentQuickKey) -> some View {
         if let systemImageName = key.systemImageName {
             Image(systemName: systemImageName)
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: 15, weight: .medium))
         } else if let title = key.title {
             Text(title)
                 .font(.caption.weight(.medium))

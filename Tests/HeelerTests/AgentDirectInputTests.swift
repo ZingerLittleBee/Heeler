@@ -483,6 +483,66 @@ struct AgentDirectInputTests {
         await owner.leave().value
     }
 
+    @Test func compactToolsPreserveTheEditorAndSendShortcutsWithoutChangingTheDraft() async throws {
+        // Real SwiftUI actions require the hosted accessibility support in iOS 27.
+        guard #available(iOS 27, *) else { return }
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
+        let transport = ScriptedTransport()
+        let composer = AgentComposerStore(target: "w1:p1") { params in
+            try await transport.promptAgent(params)
+        }
+        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let (inputMode, cleanup) = try Self.makeInputMode()
+        defer { cleanup() }
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                attachStore: owner, composer: composer, inputMode: inputMode,
+                keyboardInset: inset))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        let editor = try #require(Self.firstView(in: controller.view) {
+            $0 is UITextView && $0.accessibilityLabel == "Message the Agent"
+        } as? UITextView)
+        editor.becomeFirstResponder()
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey:
+                CGRect(x: 0, y: 500, width: 402, height: 370)])
+        try #require(await Self.eventually { editor.isFirstResponder && inset.height == 336 })
+        try #require(try await Self.activateControl(
+            labeled: "Show tools keyboard", in: controller.view, probe: { false }))
+        try #require(await Self.eventually {
+            Self.firstAccessible(labeled: "Control A", in: controller.view) != nil
+                && Self.firstAccessible(labeled: "Send", in: controller.view) == nil
+        })
+        #expect(editor.isFirstResponder)
+        #expect(Self.firstView(in: controller.view) {
+            $0 is UITextView && $0.accessibilityLabel == "Message the Agent"
+        } === editor)
+
+        composer.replaceDraft(with: "keep this local")
+        try #require(await Self.eventually {
+            editor.text == "keep this local"
+                && Self.firstAccessible(labeled: "Send", in: controller.view) != nil
+        })
+        #expect(editor.isFirstResponder)
+        #expect(Self.firstView(in: controller.view) {
+            $0 is UITextView && $0.accessibilityLabel == "Message the Agent"
+        } === editor)
+        try #require(try await Self.activateControl(
+            labeled: "Control A", in: controller.view, probe: { false }))
+        try #require(await Self.eventually {
+            await transport.attachInputs.contains(.keystrokes(Data([0x01])))
+        })
+        #expect(composer.draft == "keep this local")
+        #expect(await transport.agentPromptParams.isEmpty)
+        await owner.leave().value
+    }
+
     @Test func coldPersistedDirectDoesNotRaiseKeyboard() async throws {
         let center = NotificationCenter()
         let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
