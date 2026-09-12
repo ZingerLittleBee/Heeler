@@ -1870,6 +1870,7 @@ struct TerminalAttachTests {
                         fonts: TerminalFontSettings(defaults: defaults),
                         snippets: SnippetStore(defaults: defaults)),
                     manageSnippets: {}),
+                keyboardControl: TerminalKeyboardControl(),
                 height: height,
                 quickKeysEnabled: true,
                 sendQuickKey: { _ in }

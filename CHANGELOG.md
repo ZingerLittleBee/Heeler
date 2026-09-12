@@ -19,6 +19,11 @@ Entries reference the issue that motivated them.
   directory or title text, combines with the Host filter, and hides empty
   Host sections in grouped mode only while their Host is nominal; a
   reconnecting or failed Host keeps its section. (#292)
+- Sticky one-shot Ctrl and Option modifier keys on the terminal key surfaces
+  (Shell Controls pad, Agent quick-key rows, Direct Input shortcut row).
+  Tap ⌃ or ⌥ to arm it for the next key, which sends xterm modifier
+  sequences; the armed state consumes on send, and tapping again disarms.
+  Tab-panel shortcuts stay deferred as follow-up work. (#270)
 
 ### Fixed
 

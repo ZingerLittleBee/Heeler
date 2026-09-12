@@ -22,6 +22,79 @@ private enum TerminalEscapeSequences {
     static let rightApplication: [UInt8] = [0x1B, 0x4F, 0x43]
     static let enter: [UInt8] = [0x0D]
 }
+/// One-shot sticky modifiers for the terminal key surfaces (issue #270).
+/// Standard iOS terminal behavior (Blink/Termius): tapping ⌃ or ⌥ arms the
+/// modifier for the next key only; firing any key consumes and clears it.
+/// There is deliberately no lock mode.
+struct TerminalKeyModifiers: OptionSet, Sendable, Hashable {
+    let rawValue: UInt8
+
+    /// Ctrl: xterm modifier parameter 5 (1 + 4).
+    static let control = Self(rawValue: 1 << 0)
+    /// Option/Alt: xterm modifier parameter 3 (1 + 2).
+    static let option = Self(rawValue: 1 << 1)
+}
+
+/// Tells the shared modifier encoding how a key's bare bytes accept modifiers.
+enum TerminalKeyModifierShape: Sendable {
+    /// Arrows, Home/End, PgUp/PgDn, Shift-Tab: xterm CSI `1;<m><final>`
+    /// (or `<params>;<m><final>` for `~`-terminated sequences).
+    case csiSuffixed
+    /// Tab/Enter/Esc/Backspace, Shift-Enter, dedicated ⌃C/⌃D/⌃Z: an armed
+    /// Option prefixes ESC; an armed Ctrl is a no-op because the bare byte
+    /// is already a control character (Tab is Ctrl-I, Enter is Ctrl-M,
+    /// LF is Ctrl-J, ⌃C/⌃D/⌃Z are control bytes by definition).
+    case escPrefixed
+}
+
+extension TerminalKeyModifiers {
+    /// Pure shared encoding used by both key enums: maps a key's bare bytes
+    /// plus its modifier shape to the bytes to send. Empty modifiers return
+    /// the bare bytes unchanged.
+    func applied(to bare: [UInt8], shape: TerminalKeyModifierShape) -> [UInt8] {
+        guard !isEmpty else { return bare }
+        switch shape {
+        case .escPrefixed:
+            guard contains(.option) else { return bare }
+            return TerminalEscapeSequences.escape + bare
+        case .csiSuffixed:
+            return Self.csiWithModifiers(bare: bare, modifiers: self)
+        }
+    }
+
+    /// xterm modifier parameter: 5 for Ctrl, 3 for Alt/Option, 7 for both
+    /// (1 + shift(1) + alt(2) + ctrl(4), with shift never set here).
+    /// Returned as the ASCII digit byte for direct CSI emission.
+    private var xtermParameterByte: UInt8 {
+        var parameter: UInt8 = 1
+        if contains(.option) { parameter += 2 }
+        if contains(.control) { parameter += 4 }
+        return UInt8(ascii: "0") + parameter
+    }
+
+    private static func csiWithModifiers(
+        bare: [UInt8], modifiers: TerminalKeyModifiers
+    ) -> [UInt8] {
+        let parameter = modifiers.xtermParameterByte
+        // Application-cursor SS3 (`ESC O <final>`) always falls back to the
+        // CSI form when modifiers are present, matching xterm behavior.
+        if bare.count == 3, bare[0] == 0x1B, bare[1] == 0x4F {
+            return [0x1B, 0x5B, UInt8(ascii: "1"), UInt8(ascii: ";"), parameter, bare[2]]
+        }
+        // CSI form: insert `;<m>` before the final byte, defaulting empty
+        // params to `1` (`ESC[H` -> `ESC[1;5H`, `ESC[5~` -> `ESC[5;5~`).
+        guard bare.count >= 3, bare[0] == 0x1B, bare[1] == 0x5B else { return bare }
+        let final = bare[bare.count - 1]
+        var encoded = Array(bare.dropLast())
+        if bare.count == 3 {
+            encoded.append(UInt8(ascii: "1"))
+        }
+        encoded.append(UInt8(ascii: ";"))
+        encoded.append(parameter)
+        encoded.append(final)
+        return encoded
+    }
+}
 
 enum TerminalKeyboardMode: Int {
     case text
@@ -81,20 +154,38 @@ enum AgentQuickKey: CaseIterable, Hashable {
     }
 
     func bytes(applicationCursor: Bool) -> [UInt8] {
+        bytes(applicationCursor: applicationCursor, modifiers: [])
+    }
+
+    /// Modifier-aware overload for the one-shot sticky ⌃/⌥ keys (#270).
+    /// Delegates to the matching `TerminalControlKey` encoding so both
+    /// surfaces share one xterm mapping; only Shift-Tab/Shift-Enter encode
+    /// directly (CSI `1;<m>Z`, ESC-prefixed LF).
+    func bytes(applicationCursor: Bool, modifiers: TerminalKeyModifiers) -> [UInt8] {
         switch self {
-        case .escape: TerminalControlKey.escape.bytes(applicationCursor: applicationCursor)
-        case .tab: TerminalControlKey.tab.bytes(applicationCursor: applicationCursor)
-        case .shiftTab: TerminalEscapeSequences.shiftTab
+        case .escape: TerminalControlKey.escape.bytes(
+            applicationCursor: applicationCursor, modifiers: modifiers)
+        case .tab: TerminalControlKey.tab.bytes(
+            applicationCursor: applicationCursor, modifiers: modifiers)
+        case .shiftTab: modifiers.applied(
+            to: TerminalEscapeSequences.shiftTab, shape: .csiSuffixed)
         // LF / Ctrl-J keeps the multiline action distinct from Enter's CR
         // without depending on a negotiated enhanced-keyboard protocol.
-        case .shiftEnter: TerminalEscapeSequences.newLine
-        case .left: TerminalControlKey.left.bytes(applicationCursor: applicationCursor)
-        case .up: TerminalControlKey.up.bytes(applicationCursor: applicationCursor)
-        case .down: TerminalControlKey.down.bytes(applicationCursor: applicationCursor)
-        case .right: TerminalControlKey.right.bytes(applicationCursor: applicationCursor)
-        case .enter: TerminalControlKey.enter.bytes(applicationCursor: applicationCursor)
+        case .shiftEnter: modifiers.applied(
+            to: TerminalEscapeSequences.newLine, shape: .escPrefixed)
+        case .left: TerminalControlKey.left.bytes(
+            applicationCursor: applicationCursor, modifiers: modifiers)
+        case .up: TerminalControlKey.up.bytes(
+            applicationCursor: applicationCursor, modifiers: modifiers)
+        case .down: TerminalControlKey.down.bytes(
+            applicationCursor: applicationCursor, modifiers: modifiers)
+        case .right: TerminalControlKey.right.bytes(
+            applicationCursor: applicationCursor, modifiers: modifiers)
+        case .enter: TerminalControlKey.enter.bytes(
+            applicationCursor: applicationCursor, modifiers: modifiers)
         case .backspace:
-            TerminalControlKey.backspace.bytes(applicationCursor: applicationCursor)
+            TerminalControlKey.backspace.bytes(
+                applicationCursor: applicationCursor, modifiers: modifiers)
         }
     }
 }
@@ -182,7 +273,15 @@ enum TerminalControlKey: Equatable, CaseIterable {
     }
 
     func bytes(applicationCursor: Bool) -> [UInt8] {
-        switch self {
+        bytes(applicationCursor: applicationCursor, modifiers: [])
+    }
+
+    /// Modifier-aware overload for the one-shot sticky ⌃/⌥ keys (#270).
+    /// Ctrl+arrows/Home/End/PgUp/PgDn emit CSI `1;5X`, Option+those emit
+    /// CSI `1;3X`; Option+Tab/Enter/Esc/Backspace prefix ESC; Ctrl on keys
+    /// whose bare byte is already a control character is byte-identical.
+    func bytes(applicationCursor: Bool, modifiers: TerminalKeyModifiers) -> [UInt8] {
+        let bare: [UInt8] = switch self {
         case .escape: TerminalEscapeSequences.escape
         case .tab: TerminalEscapeSequences.tab
         case .controlC: [0x03]
@@ -211,6 +310,16 @@ enum TerminalControlKey: Equatable, CaseIterable {
                 ? TerminalEscapeSequences.rightApplication : TerminalEscapeSequences.rightNormal
         case .enter: TerminalEscapeSequences.enter
         }
+        return modifiers.applied(to: bare, shape: modifierShape)
+    }
+
+    private var modifierShape: TerminalKeyModifierShape {
+        switch self {
+        case .home, .pageUp, .up, .pageDown, .end, .left, .down, .right:
+            .csiSuffixed
+        case .escape, .tab, .controlC, .controlD, .controlZ, .backspace, .enter:
+            .escPrefixed
+        }
     }
 }
 
@@ -229,9 +338,22 @@ final class TerminalSuppressedSoftKeyboardView: UIView {
 /// so the app-side dock can outlive any one terminal surface.
 final class TerminalControlPadView: UIView {
     private let send: (TerminalControlKey) -> Void
+    private let toggleModifier: (TerminalKeyModifiers) -> Void
+    private var modifierButtons: [TerminalKeyModifiers: UIButton] = [:]
 
-    init(send: @escaping (TerminalControlKey) -> Void) {
+    /// Mirrors `TerminalKeyboardControl.pendingModifiers`, pushed from
+    /// `TerminalControlPadRepresentable.updateUIView` so the ⌃/⌥ caps stay
+    /// highlighted while armed, including arms set from another surface.
+    var armedModifiers = TerminalKeyModifiers() {
+        didSet { guard armedModifiers != oldValue else { return }; refreshModifierButtons() }
+    }
+
+    init(
+        send: @escaping (TerminalControlKey) -> Void,
+        toggleModifier: @escaping (TerminalKeyModifiers) -> Void = { _ in }
+    ) {
         self.send = send
+        self.toggleModifier = toggleModifier
         super.init(frame: .zero)
         configureKeys()
     }
@@ -249,6 +371,7 @@ final class TerminalControlPadView: UIView {
         rows.spacing = 8
         addSubview(rows)
 
+        rows.addArrangedSubview(makeModifierRow())
         for keys in TerminalControlKey.rows {
             let row = UIStackView()
             row.axis = .horizontal
@@ -266,6 +389,61 @@ final class TerminalControlPadView: UIView {
             rows.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
             rows.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
         ])
+    }
+
+    /// One-shot sticky modifiers: tap ⌃ or ⌥ to arm it for the next key only;
+    /// tapping the armed cap again disarms. Firing any key consumes the arm.
+    private func makeModifierRow() -> UIStackView {
+        let row = UIStackView()
+        row.axis = .horizontal
+        row.distribution = .fillEqually
+        row.spacing = 8
+        for modifier in [TerminalKeyModifiers.control, .option] {
+            let button = makeModifierButton(for: modifier)
+            modifierButtons[modifier] = button
+            row.addArrangedSubview(button)
+        }
+        return row
+    }
+
+    private func makeModifierButton(for modifier: TerminalKeyModifiers) -> UIButton {
+        let button = UIButton(type: .system)
+        button.configuration = modifierConfiguration(armed: false, modifier: modifier)
+        button.addAction(UIAction { [weak self] _ in
+            UIDevice.current.playInputClick()
+            self?.toggleModifier(modifier)
+        }, for: .touchUpInside)
+        button.accessibilityLabel =
+            modifier == .control ? "Control modifier" : "Option modifier"
+        button.accessibilityValue = "Not armed"
+        return button
+    }
+
+    private func refreshModifierButtons() {
+        for (modifier, button) in modifierButtons {
+            let armed = armedModifiers.contains(modifier)
+            button.configuration = modifierConfiguration(armed: armed, modifier: modifier)
+            button.accessibilityValue = armed ? "Armed" : "Not armed"
+        }
+    }
+
+    private func modifierConfiguration(
+        armed: Bool, modifier: TerminalKeyModifiers
+    ) -> UIButton.Configuration {
+        var configuration = armed ? UIButton.Configuration.filled() : UIButton.Configuration.gray()
+        configuration.title = modifier == .control ? "⌃" : "⌥"
+        configuration.baseForegroundColor = .label
+        if !armed {
+            configuration.baseBackgroundColor = .secondarySystemFill
+        }
+        configuration.cornerStyle = .medium
+        configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
+            incoming in
+            var outgoing = incoming
+            outgoing.font = .preferredFont(forTextStyle: .body)
+            return outgoing
+        }
+        return configuration
     }
 
     private func makeButton(for key: TerminalControlKey) -> TerminalKeyButton {
@@ -430,16 +608,33 @@ extension HeelerTerminalView {
     }
 
     func sendControlKey(_ key: TerminalControlKey) {
-        guard isLocalInputEnabled else { return }
+        sendControlKey(key, modifiers: [])
+    }
+
+    /// Modifier-aware overload for the one-shot sticky ⌃/⌥ keys (#270).
+    /// Returns whether the bytes were actually sent so the caller can
+    /// consume the armed modifiers only on a real send: a send dropped by
+    /// the local-input gate must leave the armed state untouched.
+    @discardableResult
+    func sendControlKey(_ key: TerminalControlKey, modifiers: TerminalKeyModifiers) -> Bool {
+        guard isLocalInputEnabled else { return false }
         terminalSession.sendInput(
-            Data(key.bytes(applicationCursor: usesApplicationCursorKeys)))
+            Data(key.bytes(
+                applicationCursor: usesApplicationCursorKeys, modifiers: modifiers)))
+        return true
     }
 
     /// Composer quick keys are explicit terminal actions. They remain usable
     /// while ordinary local terminal input is disabled.
     func sendQuickKey(_ key: AgentQuickKey) {
+        sendQuickKey(key, modifiers: [])
+    }
+
+    /// Modifier-aware overload for the one-shot sticky ⌃/⌥ keys (#270).
+    func sendQuickKey(_ key: AgentQuickKey, modifiers: TerminalKeyModifiers) {
         terminalSession.sendInput(
-            Data(key.bytes(applicationCursor: usesApplicationCursorKeys)))
+            Data(key.bytes(
+                applicationCursor: usesApplicationCursorKeys, modifiers: modifiers)))
     }
 
     func sendNewLine() {

@@ -820,6 +820,7 @@ struct AgentTerminalView: View {
             AgentToolsKeyboard(
                 store: composer,
                 context: terminalKeysContext,
+                keyboardControl: keyboardControl,
                 height: composerKeyboardLayout.availableToolsHeight,
                 quickKeysEnabled: true,
                 sendQuickKey: sendAgentQuickKey)
@@ -891,6 +892,7 @@ struct AgentTerminalView: View {
     private var directInputChrome: some View {
         AgentDirectInputChrome(
             context: AgentDirectInputChromeContext(
+                keyboardControl: keyboardControl,
                 presentation: .init(
                     status: agent.agent.status,
                     hostTelemetry: hostTelemetry,
@@ -989,8 +991,11 @@ struct AgentTerminalView: View {
     }
 
     /// Esc is a known key, not a raw `0x1B` that might start CSI/SS3.
+    /// With no modifiers armed this stays on the attach fast path
+    /// byte-for-byte; armed ⌃/⌥ (#270) routes through the control so the
+    /// next key's bytes carry the xterm modifier and consume the one-shot.
     private func sendAgentQuickKey(_ key: AgentQuickKey) {
-        if key == .escape {
+        if key == .escape, keyboardControl.pendingModifiers.isEmpty {
             keyboardControl.noteReliableInputBegan()
             attach.sendEscapeKey()
             return

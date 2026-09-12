@@ -71,11 +71,18 @@ struct TerminalKeysKeyboardTests {
         #expect(sent == [.escape])
     }
 
+    /// Every control key is reachable, with the sticky modifier caps beside
+    /// them. Asserted as containment rather than set equality: the pad is the
+    /// place non-key controls live too, so equality made adding one fail a test
+    /// about key coverage.
     @Test func controlPadCoversEveryControlKey() {
         let pad = TerminalControlPadView { _ in }
         let labels = Set(Self.buttons(in: pad).compactMap(\.accessibilityLabel))
 
-        #expect(labels == Set(TerminalControlKey.allCases.map(\.accessibilityLabel)))
+        #expect(
+            labels.isSuperset(of: Set(TerminalControlKey.allCases.map(\.accessibilityLabel))))
+        #expect(labels.contains("Control modifier"))
+        #expect(labels.contains("Option modifier"))
     }
 
     /// Skills sits right beside the control keys when the agent has a skills
