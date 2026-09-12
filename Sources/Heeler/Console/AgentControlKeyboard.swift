@@ -38,20 +38,24 @@ struct AgentControlKeyboard: View {
                             .accessibilityElement(children: .contain)
                             .accessibilityHidden(page != .agent)
                             .allowsHitTesting(page == .agent)
+                            .disabled(horizontalDrag != 0)
                         TerminalFullKeyboard(
                             isEnabled: isEnabled, keyboardControl: keyboardControl, send: send)
                             .frame(width: viewport.size.width, height: viewport.size.height)
                             .accessibilityElement(children: .contain)
                             .accessibilityHidden(page != .terminal)
                             .allowsHitTesting(page == .terminal)
+                            .disabled(horizontalDrag != 0)
                     }
                     .offset(x: pageOffset(width: viewport.size.width))
                     .frame(width: viewport.size.width, height: viewport.size.height, alignment: .leading)
                     .contentShape(.rect)
                     .clipped()
-                    // Once a horizontal swipe wins, it must cancel the key
-                    // underneath it rather than type while changing pages.
-                    .highPriorityGesture(
+                    // A high-priority drag makes repeating buttons wait for
+                    // it to fail, blocking Backspace repeats while held.
+                    // Recognize alongside the buttons and disable the keys
+                    // once horizontal movement starts to cancel their press.
+                    .simultaneousGesture(
                         DragGesture(minimumDistance: 16)
                             .updating($horizontalDrag) { value, translation, _ in
                                 guard abs(value.translation.width) > abs(value.translation.height)

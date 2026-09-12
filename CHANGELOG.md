@@ -39,6 +39,8 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Holding Backspace also repeats in the Agent tools' Terminal page, where
+  the swipe gesture previously blocked it. (PR #302)
 - Modifier and keyboard layer keys keep their selection color while pressed,
   without flashing gray or shrinking. (PR #302)
 - Fixed missed taps on terminal controls near the left edge, where the
