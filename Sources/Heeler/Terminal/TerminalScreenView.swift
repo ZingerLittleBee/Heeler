@@ -538,6 +538,11 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private let callbackBridge: TerminalSessionCallbackBridge
     private let terminalController: TerminalController
     private let clipboard: TerminalClipboard
+    /// Remembers an allowed OSC 52 write for this view's lifetime (view
+    /// lifetime == surface lifetime). Deny is never remembered. `refs #243`.
+    private var osc52WriteApproved = false
+    /// Guards against stacking confirmation alerts; extras are denied.
+    private var clipboardConfirmationPending = false
     let terminalSession: InMemoryTerminalSession
     private(set) var appliedTheme: TerminalTheme
     private(set) var appliedFontSize: Float
@@ -1760,7 +1765,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
 
 extension HeelerTerminalView: TerminalSurfaceOpenURLDelegate,
     TerminalSurfaceTextSelectionRequestDelegate, TerminalSurfaceLifecycleDelegate,
-    TerminalSurfaceGridResizeDelegate
+    TerminalSurfaceGridResizeDelegate, TerminalSurfaceClipboardConfirmationDelegate
 {
     func terminalDidRequestOpenURL(_ url: String, kind _: TerminalOpenURLKind) {
         guard let url = TerminalLinkPolicy.url(for: url) else { return }
@@ -1786,6 +1791,26 @@ extension HeelerTerminalView: TerminalSurfaceOpenURLDelegate,
 
     func terminalDidRequestTextSelection(_ request: TerminalTextSelectionRequest) {
         TerminalTextSelectionPresenter.present(request, from: self)
+    }
+
+    func terminalDidRequestClipboardConfirmation(_ request: TerminalClipboardConfirmationRequest) {
+        if !TerminalClipboardConfirmationPolicy.requiresPrompt(
+            for: request.kind, osc52WriteApproved: osc52WriteApproved)
+        {
+            request.respond(allow: true)
+            return
+        }
+        guard !clipboardConfirmationPending else {
+            request.respond(allow: false)
+            return
+        }
+        clipboardConfirmationPending = true
+        TerminalClipboardConfirmationPresenter.present(request, from: self) { [weak self] allowed in
+            if allowed, request.kind == .osc52Write {
+                self?.osc52WriteApproved = true
+            }
+            self?.clipboardConfirmationPending = false
+        }
     }
 
     func terminalDidAttachSurface(_: TerminalSurface) {}

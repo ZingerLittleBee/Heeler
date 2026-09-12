@@ -19,6 +19,9 @@ Entries reference the issue that motivated them.
   directory or title text, combines with the Host filter, and hides empty
   Host sections in grouped mode only while their Host is nominal; a
   reconnecting or failed Host keeps its section. (#292)
+- The terminal now asks before letting programs touch the clipboard: pasting
+  text with control characters names them for review, clipboard reads always
+  prompt, and clipboard writes prompt once per terminal. (#243)
 
 ### Fixed
 
