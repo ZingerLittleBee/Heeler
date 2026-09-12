@@ -606,41 +606,49 @@ struct TerminalAttachTests {
 
     @MainActor
     private static func firstAccessibleFrame(in root: UIView, labeled label: String) -> CGRect? {
-        // SwiftUI hosting nests accessibility containers arbitrarily deep, and
-        // which runtime wraps a control in how many containers varies by OS
-        // release — recurse through every container shape, not just UIViews.
-        func visit(_ node: NSObject) -> CGRect? {
-            if let view = node as? UIView {
-                if view.accessibilityLabel == label, view.bounds.width > 0, view.bounds.height > 0 {
-                    return view.convert(view.bounds, to: root)
-                }
-            } else if node.accessibilityLabel == label {
-                let frame = node.accessibilityFrame
-                if frame.width > 0, frame.height > 0 {
-                    return root.convert(frame, from: nil)
-                }
+        guard let element = firstAccessible(in: root, labeled: label) else { return nil }
+        return accessibleFrame(of: element, in: root)
+    }
+
+    @MainActor
+    private static func accessibleFrame(of element: NSObject, in root: UIView) -> CGRect {
+        if let view = element as? UIView {
+            return view.convert(view.bounds, to: root)
+        }
+        return root.convert(element.accessibilityFrame, from: nil)
+    }
+
+    @MainActor
+    private static func firstAccessible(in root: UIView, labeled label: String) -> NSObject? {
+        // Hosted SwiftUI can expose different children through its array and
+        // indexed accessibility APIs. Visit both, without revisiting objects.
+        var visited = Set<ObjectIdentifier>()
+        func visit(_ node: NSObject) -> NSObject? {
+            guard visited.insert(ObjectIdentifier(node)).inserted,
+                  !node.accessibilityElementsHidden else { return nil }
+            if node.accessibilityLabel == label {
+                let frame = accessibleFrame(of: node, in: root)
+                if frame.width > 0, frame.height > 0 { return node }
             }
             if let elements = node.accessibilityElements {
                 for element in elements {
-                    if let object = element as? NSObject, let frame = visit(object) {
-                        return frame
+                    if let object = element as? NSObject, let match = visit(object) {
+                        return match
                     }
                 }
-            } else {
-                let count = node.accessibilityElementCount()
-                if count > 0, count != NSNotFound {
-                    for index in 0..<count {
-                        if let object = node.accessibilityElement(at: index) as? NSObject,
-                            let frame = visit(object)
-                        {
-                            return frame
-                        }
+            }
+            let count = node.accessibilityElementCount()
+            if count > 0, count != NSNotFound {
+                for index in 0..<count {
+                    if let object = node.accessibilityElement(at: index) as? NSObject,
+                       let match = visit(object) {
+                        return match
                     }
                 }
             }
             if let view = node as? UIView {
                 for subview in view.subviews {
-                    if let frame = visit(subview) { return frame }
+                    if let match = visit(subview) { return match }
                 }
             }
             return nil
@@ -1857,26 +1865,8 @@ struct TerminalAttachTests {
         let suiteName = "cold-tools-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
-        let composer = AgentComposerStore(target: "w1:p1") { _ in
-            throw TransportError.cancelled
-        }
-        let controller = UIHostingController(
-            rootView: AgentToolsKeyboard(
-                store: composer,
-                context: TerminalKeysContext(
-                    settings: TerminalSettings(
-                        themes: TerminalThemeSettings(defaults: defaults),
-                        zoom: TerminalZoomSettings(defaults: defaults),
-                        fonts: TerminalFontSettings(defaults: defaults),
-                        snippets: SnippetStore(defaults: defaults)),
-                    manageSnippets: {}),
-                keyboardControl: TerminalKeyboardControl(),
-                height: height,
-                quickKeysEnabled: true,
-                sendQuickKey: { _ in }
-            )
-            .frame(width: width, height: height)
-            .ignoresSafeArea())
+        let controller = Self.makeToolsKeyboardController(
+            size: CGSize(width: width, height: height), defaults: defaults)
         let bounds = CGRect(x: 0, y: 0, width: width, height: height)
         controller.view.frame = bounds
         let window = try await makeTestWindow(
@@ -1911,6 +1901,136 @@ struct TerminalAttachTests {
             let visible = controller.view.bounds.intersection(frame)
             #expect(visible.height >= 44, "\(label) frame was \(frame)")
             #expect(visible.width >= 44, "\(label) frame was \(frame)")
+        }
+    }
+
+    @MainActor
+    private static func makeToolsKeyboardController(
+        size: CGSize, defaults: UserDefaults
+    ) -> UIViewController {
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            throw TransportError.cancelled
+        }
+        let controller = UIHostingController(
+            rootView: AgentToolsKeyboard(
+                store: composer,
+                context: TerminalKeysContext(
+                    settings: TerminalSettings(
+                        themes: TerminalThemeSettings(defaults: defaults),
+                        zoom: TerminalZoomSettings(defaults: defaults),
+                        fonts: TerminalFontSettings(defaults: defaults),
+                        snippets: SnippetStore(defaults: defaults)),
+                    manageSnippets: {}),
+                keyboardControl: TerminalKeyboardControl(),
+                height: size.height,
+                quickKeysEnabled: true,
+                sendQuickKey: { _ in }
+            )
+            .frame(width: size.width, height: size.height)
+            .transaction { transaction in
+                transaction.animation = nil
+                transaction.disablesAnimations = true
+            }
+            .ignoresSafeArea())
+        controller.view.frame = CGRect(origin: .zero, size: size)
+        return controller
+    }
+
+    @MainActor
+    private static func waitForToolsFrames(
+        in root: UIView, labels: [String], selectedPage: String
+    ) async throws -> [String: CGRect] {
+        for _ in 0..<40 {
+            root.layoutIfNeeded()
+            let selected = firstAccessible(in: root, labeled: selectedPage)?
+                .accessibilityTraits.contains(.selected) == true
+            var frames: [String: CGRect] = [:]
+            if selected {
+                for label in labels {
+                    if let frame = firstAccessibleFrame(in: root, labeled: label),
+                       root.bounds.intersection(frame).width > 0,
+                       root.bounds.intersection(frame).height > 0 {
+                        frames[label] = frame
+                    }
+                }
+                if frames.count == labels.count { return frames }
+            }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        Issue.record("Tools keyboard did not present \(labels) on \(selectedPage)")
+        return [:]
+    }
+
+    @MainActor
+    private static func activateToolsControl(labeled label: String, in root: UIView) throws {
+        let element = try #require(firstAccessible(in: root, labeled: label))
+        if let control = element as? UIControl {
+            control.sendActions(for: .touchUpInside)
+        } else {
+            #expect(element.accessibilityActivate(), "Could not activate \(label)")
+        }
+    }
+
+    /// Both pages and their terminal layers must fit the measured keyboard
+    /// footprint, including a compact landscape keyboard below the fallback.
+    @MainActor
+    @Test(.serialized, arguments: [
+        CGSize(width: 402, height: 224),
+        CGSize(width: 402, height: 260),
+        CGSize(width: 402, height: 336),
+        CGSize(width: 700, height: 224),
+        CGSize(width: 768, height: 402),
+    ])
+    func toolsKeyboardPagesAndLayersKeepTheMeasuredFootprint(size: CGSize) async throws {
+        let suiteName = "tools-paging-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let controller = Self.makeToolsKeyboardController(size: size, defaults: defaults)
+        let bounds = CGRect(origin: .zero, size: size)
+        let window = try await makeTestWindow(frame: bounds, rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        #expect(controller.view.bounds == bounds)
+        // As with the cold-dock probe, hosted AX only materializes reliably
+        // on iOS 27. Older runtimes still check the supplied dock footprint.
+        guard #available(iOS 27, *) else { return }
+
+        let agentPage = "Agent controls page"
+        let terminalPage = "Terminal keyboard page"
+        let footerLabel = "Control Keys"
+        let initial = try await Self.waitForToolsFrames(
+            in: controller.view,
+            labels: [footerLabel, agentPage, terminalPage, "Escape", "Enter"],
+            selectedPage: agentPage)
+        let footer = try #require(initial[footerLabel])
+        let header = try #require(initial[agentPage])
+        let dockFrame = controller.view.frame
+
+        let stages: [(action: String, page: String, keys: [String])] = [
+            (terminalPage, terminalPage, ["q", "a", "z", "Space", "Enter", "Function key layer", "Symbol key layer"]),
+            ("Function key layer", terminalPage, ["F1", "F12", "a", "Space", "Enter", "Symbol key layer"]),
+            ("Symbol key layer", terminalPage, ["F12", "/", "[", "Space", "Enter", "Function key layer"]),
+            ("Function key layer", terminalPage, ["Insert", "/", "[", "Space", "Enter"]),
+            (agentPage, agentPage, ["Escape", "Tab", "Shift Tab", "Backspace", "Enter"]),
+        ]
+        for stage in stages {
+            try Self.activateToolsControl(labeled: stage.action, in: controller.view)
+            let frames = try await Self.waitForToolsFrames(
+                in: controller.view, labels: [footerLabel, stage.page] + stage.keys,
+                selectedPage: stage.page)
+            #expect(controller.view.bounds == bounds)
+            #expect(controller.view.frame == dockFrame)
+            #expect(frames[footerLabel] == footer, "\(stage.action) moved or resized the footer at \(size)")
+            #expect(frames[stage.page]?.minY == header.minY)
+            #expect(frames[stage.page]?.height == header.height)
+            for label in stage.keys {
+                let frame = try #require(frames[label], "\(label) is missing at \(size)")
+                #expect(frame.width > 0 && frame.height > 0)
+                #expect(frame.minX >= bounds.minX - 1 && frame.maxX <= bounds.maxX + 1,
+                        "\(label) escaped the dock horizontally: \(frame) at \(size)")
+                #expect(frame.minY >= header.maxY - 1 && frame.maxY <= footer.minY + 1,
+                        "\(label) escaped the available key region: \(frame) at \(size)")
+            }
         }
     }
 

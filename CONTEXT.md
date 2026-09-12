@@ -119,9 +119,10 @@ _Avoid_: favorite, star, bookmark
 **Composer**:
 The local input control below the Agent's live terminal: a native draft field
 that composes a message entirely on device and delivers it in one piece. Its
-tools keyboard sends explicit terminal controls directly to the Agent without
-editing the draft, while its Snippet and Skill tools insert into that draft. A
-draft insertion edits the draft and nothing more; delivery is a separate,
+tools keyboard sends explicit keys, including characters on its Terminal page,
+directly to the Agent without editing the draft, while its Snippet and Skill
+tools insert into that draft. A draft insertion edits the draft and nothing
+more; delivery is a separate,
 explicit act.
 Authored delivery is one `agent.prompt` request, except when Agent Status is
 Blocked: Send then inserts the draft into Attach without Enter, and the tools
@@ -178,8 +179,12 @@ _Avoid_: Keys mode, terminal mode, raw input, Attach mode
 The two keyboard modes below Composer, swapped in place at one shared measured
 height. The standard iOS keyboard edits the draft with composition,
 autocorrection, dictation, and language switching. The tools keyboard replaces
-it with a tabbed pad: Agent controls send key sequences directly to the pane,
-while Skills, Snippets, and terminal appearance edit the draft or the terminal
+it with a tabbed pad. Its controls tab pages horizontally between large Agent
+controls and a full Terminal keyboard (characters, Ctrl/Alt/Shift, and function
+keys), both sending directly to the pane without changing the Composer draft.
+Paging and key layers always share the measured iOS keyboard height;
+they never resize the dock or the Composer. Skills, Snippets, and terminal
+appearance edit the draft or the terminal
 and never touch the pane. Direct Input reuses the same measured footprint for
 an optional tools dock, but its primary shortcuts persist in an app-content
 row above the Agent switcher strip rather than replacing the system keyboard.

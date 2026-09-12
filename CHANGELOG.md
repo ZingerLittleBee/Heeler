@@ -20,9 +20,9 @@ Entries reference the issue that motivated them.
   Tap ⌃ or ⌥ to arm it for the next key, which sends xterm modifier
   sequences; the armed state consumes on send, and tapping again disarms.
   Tab-panel shortcuts stay deferred as follow-up work. (#270)
-- Agent tools group Ctrl/Alt with navigation keys and add Ctrl+C, Ctrl+A,
-  Ctrl+E, Home, and End. More remote keys includes Insert, Forward Delete,
-  and F1–F12. (#302)
+- Swipe between large Agent controls and a full terminal keyboard with letters,
+  numbers, symbols, Ctrl/Alt/Shift, and F1–F12. Both pages keep the measured
+  iOS keyboard height and leave the Composer draft unchanged. (#302)
 
 ### Fixed
 

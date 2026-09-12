@@ -23,8 +23,8 @@ private enum TerminalEscapeSequences {
     static let enter: [UInt8] = [0x0D]
 }
 /// One-shot sticky modifiers for the terminal key surfaces (issue #270).
-/// Standard iOS terminal behavior (Blink/Termius): tapping ⌃ or ⌥ arms the
-/// modifier for the next key only; firing any key consumes and clears it.
+/// Tapping Ctrl, Alt, or Shift arms the modifier for the next key only;
+/// firing any key consumes and clears it.
 /// There is deliberately no lock mode.
 struct TerminalKeyModifiers: OptionSet, Sendable, Hashable {
     let rawValue: UInt8
@@ -33,6 +33,8 @@ struct TerminalKeyModifiers: OptionSet, Sendable, Hashable {
     static let control = Self(rawValue: 1 << 0)
     /// Option/Alt: xterm modifier parameter 3 (1 + 2).
     static let option = Self(rawValue: 1 << 1)
+    /// Shift: xterm modifier parameter 2 (1 + 1).
+    static let shift = Self(rawValue: 1 << 2)
 }
 
 /// Tells the shared modifier encoding how a key's bare bytes accept modifiers.
@@ -62,14 +64,59 @@ extension TerminalKeyModifiers {
         }
     }
 
-    /// xterm modifier parameter: 5 for Ctrl, 3 for Alt/Option, 7 for both
-    /// (1 + shift(1) + alt(2) + ctrl(4), with shift never set here).
+    /// xterm modifier parameter: 1 + shift(1) + alt(2) + ctrl(4).
+    /// https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-PC-Style-Function-Keys
     /// Returned as the ASCII digit byte for direct CSI emission.
     private var xtermParameterByte: UInt8 {
         var parameter: UInt8 = 1
+        if contains(.shift) { parameter += 1 }
         if contains(.option) { parameter += 2 }
         if contains(.control) { parameter += 4 }
         return UInt8(ascii: "0") + parameter
+    }
+
+    /// The full keyboard uses a US layout; visible caps and emitted text share
+    /// this mapping. Ctrl is applied after Shift, and Alt prefixes the result.
+    func characterText(_ character: Character) -> String {
+        guard contains(.shift) else { return String(character) }
+        let unshifted = Array("`1234567890-=[]\\;',./")
+        let shifted = Array("~!@#$%^&*()_+{}|:\"<>?")
+        if let index = unshifted.firstIndex(of: character) {
+            return String(shifted[index])
+        }
+        return String(character).uppercased()
+    }
+
+    func characterBytes(_ character: Character) -> [UInt8] {
+        let text = characterText(character)
+        var bytes = Array(text.utf8)
+        if contains(.control), let byte = text.utf8.first, text.utf8.count == 1 {
+            if (0x40...0x5F).contains(byte) || (0x61...0x7D).contains(byte) {
+                bytes = [byte & 0x1F]
+            } else {
+                // Conventional ASCII control aliases used by xterm's US keys.
+                // https://github.com/ThomasDickey/xterm-snapshots/blob/master/input.c
+                switch byte {
+                case 0x20, 0x32, 0x60: bytes = [0x00] // Space, 2, backtick
+                case 0x33: bytes = [0x1B] // 3
+                case 0x34: bytes = [0x1C] // 4
+                case 0x35: bytes = [0x1D] // 5
+                case 0x36, 0x7E: bytes = [0x1E] // 6, tilde
+                case 0x37, 0x2F: bytes = [0x1F] // 7, slash
+                case 0x38, 0x3F: bytes = [0x7F] // 8, question mark
+                default: break
+                }
+            }
+        }
+        return contains(.option) ? TerminalEscapeSequences.escape + bytes : bytes
+    }
+
+    /// Reverse-tab already includes Shift; union prevents counting it twice.
+    var reverseTabBytes: [UInt8] {
+        let combined = union(.shift)
+        return combined == .shift
+            ? TerminalEscapeSequences.shiftTab
+            : combined.applied(to: TerminalEscapeSequences.shiftTab, shape: .csiSuffixed)
     }
 
     private static func csiWithModifiers(
@@ -127,7 +174,7 @@ enum TerminalFunctionKey: Int, CaseIterable, Hashable {
     }
 }
 
-/// The small set of terminal controls exposed by Composer's tools keyboard.
+/// Terminal controls and characters exposed by Composer's tools keyboard.
 /// These are explicit actions rather than authored text, so they bypass the
 /// draft while the Ghostty surface itself remains display-only.
 enum AgentQuickKey: Hashable {
@@ -142,14 +189,14 @@ enum AgentQuickKey: Hashable {
     case enter
     case backspace
 
-    case controlC
-    case controlA
-    case controlE
     case home
     case end
     case insert
     case forwardDelete
     case function(TerminalFunctionKey)
+    case character(Character)
+    case pageUp
+    case pageDown
 
     var title: String? {
         switch self {
@@ -159,14 +206,14 @@ enum AgentQuickKey: Hashable {
         case .shiftEnter: "⇧Enter"
         case .enter: "Enter"
         case .backspace: "Backspace"
-        case .controlC: "Ctrl+C"
-        case .controlA: "Ctrl+A"
-        case .controlE: "Ctrl+E"
         case .home: "Home"
         case .end: "End"
         case .insert: "Insert"
         case .forwardDelete: "Forward Delete"
         case .function(let key): key.title
+        case .character(let character): character == " " ? "Space" : String(character)
+        case .pageUp: "PgUp"
+        case .pageDown: "PgDn"
         case .left, .up, .down, .right: nil
         }
     }
@@ -193,14 +240,14 @@ enum AgentQuickKey: Hashable {
         case .right: "Right Arrow"
         case .enter: "Enter"
         case .backspace: "Backspace"
-        case .controlC: "Control C"
-        case .controlA: "Control A"
-        case .controlE: "Control E"
         case .home: "Home"
         case .end: "End"
         case .insert: "Insert"
         case .forwardDelete: "Forward Delete"
         case .function(let key): key.title
+        case .character(let character): character == " " ? "Space" : String(character)
+        case .pageUp: "Page Up"
+        case .pageDown: "Page Down"
         }
     }
 
@@ -208,18 +255,15 @@ enum AgentQuickKey: Hashable {
         bytes(applicationCursor: applicationCursor, modifiers: [])
     }
 
-    /// Modifier-aware overload for the one-shot sticky ⌃/⌥ keys (#270).
-    /// Delegates to the matching `TerminalControlKey` encoding so both
-    /// surfaces share one xterm mapping; only Shift-Tab/Shift-Enter encode
-    /// directly (CSI `1;<m>Z`, ESC-prefixed LF).
+    /// Shares the control-key xterm mapping, with ASCII character encoding
+    /// for the full keyboard. Shift-Enter preserves the explicit LF action.
     func bytes(applicationCursor: Bool, modifiers: TerminalKeyModifiers) -> [UInt8] {
         switch self {
         case .escape: TerminalControlKey.escape.bytes(
             applicationCursor: applicationCursor, modifiers: modifiers)
         case .tab: TerminalControlKey.tab.bytes(
             applicationCursor: applicationCursor, modifiers: modifiers)
-        case .shiftTab: modifiers.applied(
-            to: TerminalEscapeSequences.shiftTab, shape: .csiSuffixed)
+        case .shiftTab: modifiers.reverseTabBytes
         // LF / Ctrl-J keeps the multiline action distinct from Enter's CR
         // without depending on a negotiated enhanced-keyboard protocol.
         case .shiftEnter: modifiers.applied(
@@ -237,9 +281,6 @@ enum AgentQuickKey: Hashable {
         case .backspace:
             TerminalControlKey.backspace.bytes(
                 applicationCursor: applicationCursor, modifiers: modifiers)
-        case .controlC: modifiers.applied(to: [0x03], shape: .escPrefixed)
-        case .controlA: modifiers.applied(to: [0x01], shape: .escPrefixed)
-        case .controlE: modifiers.applied(to: [0x05], shape: .escPrefixed)
         case .home: TerminalControlKey.home.bytes(
             applicationCursor: applicationCursor, modifiers: modifiers)
         case .end: TerminalControlKey.end.bytes(
@@ -249,6 +290,11 @@ enum AgentQuickKey: Hashable {
         case .forwardDelete: modifiers.applied(
             to: Array("\u{1B}[3~".utf8), shape: .csiSuffixed)
         case .function(let key): key.bytes(modifiers: modifiers)
+        case .character(let character): modifiers.characterBytes(character)
+        case .pageUp: TerminalControlKey.pageUp.bytes(
+            applicationCursor: applicationCursor, modifiers: modifiers)
+        case .pageDown: TerminalControlKey.pageDown.bytes(
+            applicationCursor: applicationCursor, modifiers: modifiers)
         }
     }
 }
@@ -344,6 +390,12 @@ enum TerminalControlKey: Equatable, CaseIterable {
     /// CSI `1;3X`; Option+Tab/Enter/Esc/Backspace prefix ESC; Ctrl on keys
     /// whose bare byte is already a control character is byte-identical.
     func bytes(applicationCursor: Bool, modifiers: TerminalKeyModifiers) -> [UInt8] {
+        if self == .tab, modifiers.contains(.shift) {
+            return modifiers.reverseTabBytes
+        }
+        if self == .enter, modifiers.contains(.shift) {
+            return modifiers.applied(to: TerminalEscapeSequences.newLine, shape: .escPrefixed)
+        }
         let bare: [UInt8] = switch self {
         case .escape: TerminalEscapeSequences.escape
         case .tab: TerminalEscapeSequences.tab

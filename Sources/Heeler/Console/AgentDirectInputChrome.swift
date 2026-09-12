@@ -231,7 +231,8 @@ struct AgentDirectInputChrome: View {
             30
         case .backspace:
             72
-        case .controlC, .controlA, .controlE, .home, .end, .insert, .forwardDelete, .function:
+        case .home, .end, .pageUp, .pageDown,
+            .insert, .forwardDelete, .function, .character:
             72
         }
     }

@@ -515,8 +515,10 @@ struct AgentDirectInputTests {
         try #require(await Self.eventually { editor.isFirstResponder && inset.height == 336 })
         try #require(try await Self.activateControl(
             labeled: "Show tools keyboard", in: controller.view, probe: { false }))
+        try #require(try await Self.activateControl(
+            labeled: "Terminal keyboard page", in: controller.view, probe: { false }))
         try #require(await Self.eventually {
-            Self.firstAccessible(labeled: "Control A", in: controller.view) != nil
+            Self.firstAccessible(labeled: "a", in: controller.view) != nil
                 && Self.firstAccessible(labeled: "Send", in: controller.view) != nil
         })
         #expect(editor.isFirstResponder)
@@ -534,7 +536,9 @@ struct AgentDirectInputTests {
             $0 is UITextView && $0.accessibilityLabel == "Message the Agent"
         } === editor)
         try #require(try await Self.activateControl(
-            labeled: "Control A", in: controller.view, probe: { false }))
+            labeled: "Control modifier", in: controller.view, probe: { false }))
+        try #require(try await Self.activateControl(
+            labeled: "a", in: controller.view, probe: { false }))
         try #require(await Self.eventually {
             await transport.attachInputs.contains(.keystrokes(Data([0x01])))
         })

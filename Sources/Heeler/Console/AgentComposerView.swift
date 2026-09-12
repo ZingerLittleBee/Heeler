@@ -726,7 +726,7 @@ struct AgentToolsKeyboard: View {
             Group {
                 switch selectedTab {
                 case .controls:
-                    AgentQuickKeyPad(
+                    AgentControlKeyboard(
                         isEnabled: quickKeysEnabled,
                         keyboardControl: keyboardControl,
                         send: sendQuickKey)
@@ -781,146 +781,11 @@ struct AgentToolsKeyboard: View {
             .padding(.vertical, 2)
         }
         .frame(height: height)
+        .clipped()
         .background(Color(uiColor: .systemBackground).ignoresSafeArea(edges: .bottom))
         .onChange(of: selectedTab) { _, tab in
             guard tab == .skills, let skills = context.skills else { return }
             Task { await skills.store.loadIfNeeded() }
-        }
-    }
-}
-
-private struct AgentQuickKeyPad: View {
-    let isEnabled: Bool
-    let keyboardControl: TerminalKeyboardControl
-    let send: (AgentQuickKey) -> Void
-
-    private static let navigationRows: [[AgentQuickKey]] = [
-        [.home, .up, .end, .backspace],
-        [.left, .down, .right, .enter],
-    ]
-
-    var body: some View {
-        GeometryReader { geometry in
-            ScrollView(.vertical) {
-                VStack(spacing: 8) {
-                    Text("Remote Controls")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityAddTraits(.isHeader)
-
-                    HStack(spacing: 6) {
-                        modifierCap(title: "Ctrl", modifier: .control)
-                        modifierCap(title: "Alt", modifier: .option)
-                        keyButton(.escape)
-                        keyButton(.tab)
-                        keyButton(.shiftTab)
-                    }
-                    .frame(height: 44)
-
-                    HStack(spacing: 6) {
-                        keyButton(.controlC)
-                        keyButton(.controlA)
-                        keyButton(.controlE)
-                        moreKeys
-                    }
-                    .frame(height: 44)
-
-                    ForEach(Self.navigationRows.indices, id: \.self) { rowIndex in
-                        HStack(spacing: 6) {
-                            ForEach(Self.navigationRows[rowIndex], id: \.self) { key in
-                                keyButton(key)
-                            }
-                        }
-                        .frame(minHeight: 44, maxHeight: .infinity)
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .frame(minHeight: geometry.size.height)
-            }
-            .scrollBounceBehavior(.basedOnSize)
-        }
-    }
-
-    private func keyButton(_ key: AgentQuickKey) -> some View {
-        Button {
-            send(key)
-        } label: {
-            keyLabel(for: key)
-                .frame(maxWidth: .infinity, minHeight: 44, maxHeight: .infinity)
-                .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .background(Color(uiColor: .secondarySystemFill), in: .rect(cornerRadius: 8))
-        .disabled(!isEnabled)
-        .opacity(isEnabled ? 1 : 0.45)
-        .accessibilityLabel(key.accessibilityLabel)
-        .accessibilityHint("Sends this key directly to the Agent")
-    }
-
-    private var moreKeys: some View {
-        Menu {
-            Section("Editing") {
-                menuKey(.insert)
-                menuKey(.forwardDelete)
-            }
-            Menu("Function Keys") {
-                ForEach(TerminalFunctionKey.allCases, id: \.self) { key in
-                    menuKey(.function(key))
-                }
-            }
-        } label: {
-            Label("More", systemImage: "ellipsis")
-                .font(.caption.weight(.medium))
-                .frame(maxWidth: .infinity, minHeight: 44, maxHeight: .infinity)
-                .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .background(Color(uiColor: .secondarySystemFill), in: .rect(cornerRadius: 8))
-        .disabled(!isEnabled)
-        .opacity(isEnabled ? 1 : 0.45)
-        .accessibilityLabel("More remote keys")
-    }
-
-    private func menuKey(_ key: AgentQuickKey) -> some View {
-        Button(key.title ?? key.accessibilityLabel) {
-            send(key)
-        }
-        .accessibilityLabel(key.accessibilityLabel)
-        .accessibilityHint("Sends this key directly to the Agent")
-    }
-
-    private func modifierCap(title: String, modifier: TerminalKeyModifiers) -> some View {
-        let armed = keyboardControl.isModifierArmed(modifier)
-        return Button {
-            keyboardControl.toggleModifier(modifier)
-        } label: {
-            Text(title)
-                .font(.caption.weight(armed ? .semibold : .medium))
-                .frame(maxWidth: .infinity, minHeight: 44, maxHeight: .infinity)
-                .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .background(
-            armed ? Color.accentColor : Color(uiColor: .secondarySystemFill),
-            in: .rect(cornerRadius: 8))
-        .foregroundStyle(armed ? Color.white : Color.primary)
-        .disabled(!isEnabled)
-        .opacity(isEnabled ? 1 : 0.45)
-        .accessibilityLabel(modifier == .control ? "Control modifier" : "Option modifier")
-        .accessibilityValue(armed ? "Armed" : "Not armed")
-        .accessibilityHint("Applies to the next remote key; tap again to cancel")
-    }
-
-    @ViewBuilder
-    private func keyLabel(for key: AgentQuickKey) -> some View {
-        if let systemImageName = key.systemImageName {
-            Image(systemName: systemImageName)
-                .font(.system(size: 15, weight: .medium))
-        } else if let title = key.title {
-            Text(title)
-                .font(.caption.weight(.medium))
         }
     }
 }
