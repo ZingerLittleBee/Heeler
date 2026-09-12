@@ -709,7 +709,8 @@ final class AgentComposerUITextView: UITextView {
 }
 
 struct AgentToolsKeyboard: View {
-    let store: AgentComposerStore
+    /// The screen routes authored text according to the active input mode.
+    let insertText: (String) -> Void
     let context: TerminalKeysContext
     let keyboardControl: TerminalKeyboardControl
     let height: CGFloat
@@ -735,7 +736,7 @@ struct AgentToolsKeyboard: View {
                         SkillsKeyboardPane(
                             store: skills.store,
                             onInsert: { skill in
-                                store.insertIntoDraft(skill.insertionText)
+                                insertText(skill.insertionText)
                                 selectedTab = .controls
                             },
                             onViewContent: skills.viewContent)
@@ -744,7 +745,7 @@ struct AgentToolsKeyboard: View {
                     SnippetsKeyboardPane(
                         store: context.settings.snippets,
                         onSend: { snippet in
-                            store.insertIntoDraft(snippet.body)
+                            insertText(snippet.body)
                             selectedTab = .controls
                         },
                         onManage: context.manageSnippets)

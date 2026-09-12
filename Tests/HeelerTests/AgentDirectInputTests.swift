@@ -547,6 +547,87 @@ struct AgentDirectInputTests {
         await owner.leave().value
     }
 
+    @Test(arguments: [AgentInputMode.composer, .direct], [false, true])
+    func toolsSnippetsInsertIntoTheActiveInputWithoutSubmitting(
+        mode: AgentInputMode, bracketed: Bool
+    ) async throws {
+        guard #available(iOS 27, *) else { return }
+        let suiteName = "tools-insertion-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let snippets = SnippetStore(defaults: defaults)
+        let snippet = try Snippet.make(title: "Insert test phrase", body: "first\nsecond")
+        try snippets.add(snippet)
+        let settings = TerminalSettings(
+            themes: TerminalThemeSettings(defaults: defaults),
+            zoom: TerminalZoomSettings(defaults: defaults),
+            fonts: TerminalFontSettings(defaults: defaults), snippets: snippets)
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
+        let transport = ScriptedTransport()
+        let composer = AgentComposerStore(target: "w1:p1") { params in
+            try await transport.promptAgent(params)
+        }
+        composer.replaceDraft(with: "keep this local: ")
+        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let (inputMode, cleanup) = try Self.makeInputMode(initial: mode)
+        defer { cleanup() }
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                attachStore: owner, composer: composer, inputMode: inputMode,
+                keyboardInset: inset, terminalSettings: settings))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        let terminal = try #require(Self.terminals(in: controller.view).first)
+        terminal.receive(Data((bracketed ? "\u{1B}[?2004h" : "\u{1B}[?2004l").utf8))
+        #expect(terminal.usesBracketedPaste == bracketed)
+        if mode == .direct {
+            terminal.requestKeyboard()
+        } else {
+            let editor = try #require(Self.firstView(in: controller.view) {
+                $0 is UITextView && $0.accessibilityLabel == "Message the Agent"
+            } as? UITextView)
+            editor.becomeFirstResponder()
+        }
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey:
+                CGRect(x: 0, y: 500, width: 402, height: 370)])
+        try #require(await Self.eventually { inset.height == 336 })
+        try #require(try await Self.activateControl(
+            labeled: "Show tools keyboard", in: controller.view, probe: { false }))
+        for label in ["Skills", "Snippets", "Terminal Appearance"] {
+            try #require(try await Self.waitForAccessible(labeled: label, in: controller.view) != nil)
+        }
+        try #require(try await Self.activateControl(
+            labeled: "Snippets", in: controller.view, probe: { false }))
+        try #require(try await Self.activateControl(
+            labeled: snippet.displayTitle, in: controller.view, probe: { false }))
+        if mode == .composer {
+            try #require(await Self.eventually { composer.draft == "keep this local: " + snippet.body })
+        } else {
+            let expected = Data((bracketed ? "\u{1B}[200~first\nsecond\u{1B}[201~" : snippet.body).utf8)
+            try #require(await Self.eventually {
+                await transport.attachInputs.contains(.keystrokes(expected))
+            })
+            #expect(composer.draft == "keep this local: ")
+        }
+        let bytes = await transport.attachInputs.reduce(into: Data()) { output, input in
+            if case .keystrokes(let data) = input { output.append(data) }
+        }
+        let expected = mode == .composer ? Data() :
+            Data((bracketed ? "\u{1B}[200~first\nsecond\u{1B}[201~" : snippet.body).utf8)
+        #expect(bytes == expected)
+        #expect(inputMode.mode == mode)
+        #expect(inset.lastPresentedHeight == 336)
+        #expect(owner.pendingPaste == nil)
+        #expect(await transport.agentPromptParams.isEmpty)
+        await owner.leave().value
+    }
+
     @Test func coldPersistedDirectDoesNotRaiseKeyboard() async throws {
         let center = NotificationCenter()
         let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
@@ -1247,7 +1328,7 @@ struct AgentDirectInputTests {
         await owner.leave().value
     }
 
-    @Test func directToolsContextHidesDraftInsertTabs() throws {
+    @Test func toolsContextExposesInsertTabsWhenSkillsAreSupported() throws {
         let suiteName = "direct-tabs-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -1258,19 +1339,11 @@ struct AgentDirectInputTests {
             snippets: SnippetStore(defaults: defaults))
         let skills = TerminalSkillsContext(
             store: SkillsPaneStore(commandPrefixes: ["/"]) { _ in [] })
-        let direct = TerminalKeysContext(
-            settings: settings,
-            skills: skills,
-            includesDraftTools: false,
-            manageSnippets: {})
-        #expect(direct.tabs == [.controls, .appearance])
-
-        let composer = TerminalKeysContext(
-            settings: settings,
-            skills: skills,
-            includesDraftTools: true,
-            manageSnippets: {})
-        #expect(composer.tabs == [.controls, .skills, .snippets, .appearance])
+        let context = TerminalKeysContext(
+            settings: settings, skills: skills, manageSnippets: {})
+        #expect(context.tabs == [.controls, .skills, .snippets, .appearance])
+        let withoutSkills = TerminalKeysContext(settings: settings, manageSnippets: {})
+        #expect(withoutSkills.tabs == [.controls, .snippets, .appearance])
     }
 
     private static func makeInputMode(
@@ -1323,7 +1396,8 @@ struct AgentDirectInputTests {
         inputMode: AgentInputModeSettings,
         keyboardHandoff: TerminalKeyboardHandoff = TerminalKeyboardHandoff(),
         keyboardInset: TerminalKeyboardInset = TerminalKeyboardInset(),
-        interactionProbe: AgentTerminalInteractionProbe? = nil
+        interactionProbe: AgentTerminalInteractionProbe? = nil,
+        terminalSettings: TerminalSettings? = nil
     ) -> AgentTerminalView {
         let defaults = UserDefaults(suiteName: "direct-detail-\(UUID())") ?? .standard
         let console = ConsoleStore(snapshotRetryDelay: .seconds(30)) { _, subscriptions in
@@ -1333,7 +1407,7 @@ struct AgentDirectInputTests {
                 reconnectPolicy: .default,
                 keepalive: .default)
         }
-        let terminal = TerminalSettings(
+        let terminal = terminalSettings ?? TerminalSettings(
             themes: TerminalThemeSettings(defaults: defaults),
             zoom: TerminalZoomSettings(defaults: defaults),
             fonts: TerminalFontSettings(defaults: defaults),

@@ -23,7 +23,9 @@ Entries reference the issue that motivated them.
 - Swipe between large Agent controls and a full terminal keyboard with letters,
   numbers, symbols, Ctrl/Alt/Shift, and F1–F12. Both pages keep the measured
   iOS keyboard height and leave the Composer draft unchanged. The Direct Input
-  shortcut row omits duplicate Ctrl/Alt buttons. (#302)
+  shortcut row omits duplicate Ctrl/Alt buttons. Skills and Snippets remain
+  available in Direct Input and insert into the active input surface without
+  adding Enter. (#302)
 
 ### Fixed
 

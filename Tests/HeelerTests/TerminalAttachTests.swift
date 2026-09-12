@@ -1913,7 +1913,7 @@ struct TerminalAttachTests {
         }
         let controller = UIHostingController(
             rootView: AgentToolsKeyboard(
-                store: composer,
+                insertText: composer.insertIntoDraft,
                 context: TerminalKeysContext(
                     settings: TerminalSettings(
                         themes: TerminalThemeSettings(defaults: defaults),

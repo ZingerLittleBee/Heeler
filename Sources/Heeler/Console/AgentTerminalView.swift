@@ -693,8 +693,7 @@ struct AgentTerminalView: View {
                 TerminalSkillsContext(store: store) { skill in
                     viewingSkill = skill
                 }
-            },
-            includesDraftTools: !isDirectInput
+            }
         ) {
             isManagingSnippets = true
         }
@@ -823,7 +822,7 @@ struct AgentTerminalView: View {
         // candidate row, so no intermediate gap is ever exposed.
         .overlay(alignment: .bottom) {
             AgentToolsKeyboard(
-                store: composer,
+                insertText: insertToolsText,
                 context: terminalKeysContext,
                 keyboardControl: keyboardControl,
                 height: composerKeyboardLayout.availableToolsHeight,
@@ -989,6 +988,18 @@ struct AgentTerminalView: View {
         composerKeyboardLayout.availableToolsHeight > 0
             || keyboardInset.lastPresentedHeight > 0
             || keyboardControl.isKeyboardUp
+    }
+
+    /// Tools author into the active input surface without adding Enter or
+    /// restoring the hidden Composer. Reuse Snippet validation and paste framing.
+    private func insertToolsText(_ text: String) {
+        if isDirectInput {
+            guard let terminal = keyboardControl.terminal else { return }
+            keyboardControl.noteReliableInputBegan()
+            attach.insertSnippet(text, bracketedPaste: terminal.usesBracketedPaste)
+        } else {
+            composer.insertIntoDraft(text)
+        }
     }
 
     /// Esc is a known key, not a raw `0x1B` that might start CSI/SS3.

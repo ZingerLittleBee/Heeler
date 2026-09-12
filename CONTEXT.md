@@ -169,8 +169,9 @@ terminal pane view
 **Direct Input**:
 The opt-in Agent-detail mode that hides the Composer card and routes the
 system keyboard plus a compact app-owned shortcut row (Esc, Tab, Shift-Tab,
-Enter) into the live Attach PTY. The draft stays in `AgentComposerStore`
-untouched. Mode preference is app-wide, default off. Distinct from Shell
+Enter) into the live Attach PTY. Its tools keyboard also exposes Skills and
+Snippets, inserting their text into Attach without adding Enter. The draft
+stays in `AgentComposerStore` untouched. Mode preference is app-wide, default off. Distinct from Shell
 Terminal (ordinary shell, no Agent semantics) and from Terminal Keyboard (the
 iOS/tools swap under Composer).
 _Avoid_: Keys mode, terminal mode, raw input, Attach mode
@@ -183,9 +184,10 @@ it with a tabbed pad. Its controls tab pages horizontally between large Agent
 controls and a full Terminal keyboard (characters, Ctrl/Alt/Shift, and function
 keys), both sending directly to the pane without changing the Composer draft.
 Paging and key layers always share the measured iOS keyboard height;
-they never resize the dock or the Composer. Skills, Snippets, and terminal
-appearance edit the draft or the terminal
-and never touch the pane. Direct Input reuses the same measured footprint for
+they never resize the dock or the Composer. Skills and Snippets insert into the
+Composer draft or directly into Attach in Direct Input, without adding Enter;
+appearance changes only the terminal rendering. Direct Input reuses the same
+measured footprint for
 an optional tools dock, but its primary shortcuts persist in an app-content
 row above the Agent switcher strip rather than replacing the system keyboard.
 _Avoid_: desktop keyboard, reply keyboard, Keys mode (the direct-input predecessor)
