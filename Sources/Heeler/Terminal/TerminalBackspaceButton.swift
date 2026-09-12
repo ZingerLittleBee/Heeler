@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UIKit.UIGestureRecognizerSubclass
 
 /// Backspace has an explicit hold delay shared by every keyboard surface.
 struct TerminalBackspaceButton: UIViewRepresentable {
@@ -24,8 +25,8 @@ struct TerminalBackspaceButton: UIViewRepresentable {
     }
 }
 
-/// UIKit tracking cancels a hold when a scroll view or the keyboard pager
-/// takes the touch. Release after a repeated or cancelled hold sends no key.
+/// Observe touches before ancestor gestures can delay UIButton's control events.
+/// Release after a repeated or cancelled hold sends no additional key.
 final class TerminalRepeatingBackspaceButton: UIButton {
     var keyAction: () -> Void
     var reduceMotion = false
@@ -62,9 +63,12 @@ final class TerminalRepeatingBackspaceButton: UIButton {
         accessibilityLabel = "Backspace"
         accessibilityHint = "Tap to delete once; hold to keep deleting"
         isExclusiveTouch = true
-        addTarget(self, action: #selector(pressed), for: .touchDown)
-        addTarget(self, action: #selector(released), for: .touchUpInside)
-        addTarget(self, action: #selector(cancelHold), for: [.touchUpOutside, .touchCancel, .touchDragExit])
+        let touchObserver = TerminalBackspaceTouchRecognizer()
+        touchObserver.button = self
+        touchObserver.cancelsTouchesInView = false
+        touchObserver.delaysTouchesBegan = false
+        touchObserver.delaysTouchesEnded = false
+        addGestureRecognizer(touchObserver)
         NotificationCenter.default.addObserver(
             self, selector: #selector(applicationWillResignActive(_:)),
             name: UIApplication.willResignActiveNotification, object: nil)
@@ -120,10 +124,11 @@ final class TerminalRepeatingBackspaceButton: UIButton {
         return true
     }
 
-    @objc private func pressed() {
+    fileprivate func pressed() {
         cancelHold()
         guard isEnabled else { return }
         holdState = .pressed
+        isHighlighted = true
         schedule(after: 0.3)
     }
 
@@ -145,20 +150,87 @@ final class TerminalRepeatingBackspaceButton: UIButton {
         if holdState == .repeating, isEnabled, window != nil { schedule(after: 0.075) }
     }
 
-    @objc private func released() {
-        let shouldSend = isEnabled && (holdState == .idle || holdState == .pressed)
+    fileprivate func released() {
+        let shouldSend = isEnabled && holdState == .pressed
         cancelHold()
         holdState = .idle
         if shouldSend { keyAction() }
     }
 
-    @objc func cancelHold() {
+    func cancelHold() {
         holdTimer?.invalidate()
         holdTimer = nil
         holdState = .cancelled
+        isHighlighted = false
     }
 
     @objc private func applicationWillResignActive(_ notification: Notification) {
         cancelHold()
+    }
+}
+
+/// A passive observer never claims the gesture, leaving paging and scrolling
+/// available. Its touch callbacks precede delayed UIView/control delivery.
+private final class TerminalBackspaceTouchRecognizer: UIGestureRecognizer {
+    weak var button: TerminalRepeatingBackspaceButton?
+    private var finger: UITouch?
+    private var origin = CGPoint.zero
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard finger == nil, touches.count == 1, let touch = touches.first,
+              let button, button.isEnabled,
+              button.bounds.contains(touch.location(in: button)) else {
+            cancel()
+            return
+        }
+        finger = touch
+        origin = touch.location(in: button)
+        button.pressed()
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let finger, touches.contains(finger), let button else { return }
+        let point = finger.location(in: button)
+        // Match the pager's drag threshold, including swipes within a large key.
+        guard button.isEnabled, button.point(inside: point, with: event),
+              abs(point.x - origin.x) < 16, abs(point.y - origin.y) < 16 else {
+            cancel()
+            return
+        }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let finger, touches.contains(finger), let button else { return }
+        if button.point(inside: finger.location(in: button), with: event) {
+            button.released()
+        } else {
+            button.cancelHold()
+        }
+        self.finger = nil
+        state = .failed
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        cancel()
+    }
+
+    override func reset() {
+        super.reset()
+        finger = nil
+        button?.cancelHold()
+    }
+
+    override func canPrevent(_ preventedGestureRecognizer: UIGestureRecognizer) -> Bool { false }
+
+    override func canBePrevented(by preventingGestureRecognizer: UIGestureRecognizer) -> Bool {
+        // Native scroll views cancel holds as soon as their pan takes over.
+        // SwiftUI paging also cancels through the button's isEnabled gate.
+        preventingGestureRecognizer is UIPanGestureRecognizer
+    }
+
+    private func cancel() {
+        finger = nil
+        button?.cancelHold()
+        state = .failed
     }
 }

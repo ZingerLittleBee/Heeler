@@ -42,8 +42,9 @@ Entries reference the issue that motivated them.
 
 - Backspace keeps its full touch area while pressed and tolerates small finger
   movements, so holding near an edge no longer cancels deletion. (PR #302)
-- Holding Backspace also repeats in the Agent tools' Terminal page, where
-  the swipe gesture previously blocked it. (PR #302)
+- Backspace highlights and repeats while held, even when surrounding gestures
+  delay button events until release. This applies to Agent controls, the
+  Direct Input shortcut row, and the Terminal keyboard. (PR #302)
 - Modifier and keyboard layer keys keep their selection color while pressed,
   without flashing gray or shrinking. (PR #302)
 - Fixed missed taps on terminal controls near the left edge, where the
