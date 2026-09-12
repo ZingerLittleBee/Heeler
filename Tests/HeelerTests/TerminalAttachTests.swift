@@ -2073,7 +2073,7 @@ struct TerminalAttachTests {
             selectedPage: footerLabel)
         let footer = try #require(initial[footerLabel])
         for label in ["Control modifier", "c", "Shift modifier", "A", "Function key layer",
-                      "Option modifier", "F12", "Symbol key layer", "[", "Enter"] {
+                      "Option modifier", "F12", "Symbol key layer", "[", "Backspace", "Enter"] {
             _ = try await Self.waitForToolsFrames(
                 in: controller.view, labels: [label], selectedPage: footerLabel)
             try Self.activateToolsControl(labeled: label, in: controller.view)
@@ -2087,7 +2087,7 @@ struct TerminalAttachTests {
                 #expect(frame.minY >= -1 && frame.maxY <= footer.minY + 1)
             }
         }
-        let expected = Data([3, 65]) + Data("\u{1B}[24;3~[\r".utf8)
+        let expected = Data([3, 65]) + Data("\u{1B}[24;3~[\u{7F}\r".utf8)
         for _ in 0..<40 where sent != expected {
             try await Task.sleep(for: .milliseconds(10))
         }

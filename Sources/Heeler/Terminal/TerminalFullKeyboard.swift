@@ -33,6 +33,7 @@ struct TerminalFullKeyboard: View {
                         characterKey(character)
                     }
                     key(.backspace, image: "delete.left")
+                        .buttonRepeatBehavior(.enabled)
                 }
                 .frame(height: rowHeight)
                 HStack(spacing: 4) {
