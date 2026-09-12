@@ -32,6 +32,13 @@ Entries reference the issue that motivated them.
   Four three-row cards exceed ActivityKit's 160 pt limit, so four rows remain
   only for two-row layouts. (#281)
 
+- The Console keeps a last-known Agent cache, so a launch that has not
+  synced yet shows the previous snapshot's Agents as disabled rows with a
+  "waiting for an update" notice instead of claiming the Console is empty.
+  Live Agents always replace their Host's cached rows, an authoritative
+  empty snapshot clears them, and taps on ended Agents land back on the
+  Console. (#237)
+
 ## [0.1.6] - 2026-09-09
 
 ### Added

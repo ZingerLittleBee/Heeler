@@ -78,17 +78,23 @@ final class ConsoleStore {
     let pins: PinnedAgentsStore
     let rowLayouts: AgentRowLayoutStore
     let sidebarSnapshots = HerdrSidebarSnapshotStore()
+    /// Last-known Agent inventory (#237): stale rows for Hosts with no live
+    /// Agents yet. Replaced only from authoritative snapshots in rebuild(),
+    /// so every mutation still flows through the projection thunks.
+    let lastKnown: LastKnownAgentsStore
 
     init(
         snapshotRetryDelay: Duration = .seconds(2),
         pins: PinnedAgentsStore = PinnedAgentsStore(),
         rowLayouts: AgentRowLayoutStore = AgentRowLayoutStore(),
+        lastKnown: LastKnownAgentsStore = LastKnownAgentsStore(),
         makeSession: @escaping @Sendable (Host, [EventSubscription]) -> EventsSession =
             ConsoleStore.sshSessionFactory()
     ) {
         self.snapshotRetryDelay = snapshotRetryDelay
         self.pins = pins
         self.rowLayouts = rowLayouts
+        self.lastKnown = lastKnown
         self.makeSession = makeSession
     }
 
@@ -103,6 +109,8 @@ final class ConsoleStore {
     /// projection because its connection coordinates may have changed.
     func setHosts(_ hosts: [Host]) {
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
+        // Removing a Host removes its cache (#237): dropped Hosts never show stale rows.
+        lastKnown.removeHosts(notIn: Set(incoming.keys))
         composerStores = composerStores.filter { incoming[$0.key.hostID] != nil }
         for (id, projection) in projections where incoming[id] != projection.host {
             sidebarSnapshots.invalidate(id)
@@ -521,6 +529,7 @@ final class ConsoleStore {
             self?.rebuildAgentOrder()
         }
         rebuildAgentOrder()
+        persistLastKnownAgents()
         publishAgentStatuses()
     }
 
@@ -561,6 +570,33 @@ final class ConsoleStore {
         agents = unsorted.consoleSorted(sortByHost: sorts) { pinRanks[$0.id] }
     }
 
+
+    /// Last-known rows for Hosts with no live Agents (#237): cold-launch and
+    /// reconnect content until each Host's first current snapshot replaces
+    /// its cache. The Console renders these disabled; live Agents always win.
+    var staleAgentsByHost: [Host.ID: [LastKnownAgentsStore.CachedAgent]] {
+        let liveHosts = Set(agents.map(\.hostID))
+        return lastKnown.agentsByHost.filter { hostID, rows in
+            projections[hostID] != nil && !liveHosts.contains(hostID) && !rows.isEmpty
+        }
+    }
+
+    /// Persists the last-known inventory (#237): every Host whose connection
+    /// is current and past its first snapshot replaces its cache atomically —
+    /// even with an empty list, so a known-empty snapshot clears stale rows
+    /// instead of leaving them beside "No Agents". Hosts still connecting,
+    /// awaiting their snapshot, or failed keep their cache for stale rows.
+    private func persistLastKnownAgents() {
+        let liveByHost = Dictionary(grouping: agents, by: \.hostID)
+        for projection in projections.values {
+            let hostID = projection.host.id
+            guard projection.status == .connected, !projection.isAwaitingSnapshot else { continue }
+            lastKnown.replace(
+                hostID: hostID,
+                hostName: projection.host.displayName,
+                rows: (liveByHost[hostID] ?? []).map(LastKnownAgentsStore.CachedAgent.init(from:)))
+        }
+    }
     private func publishAgentStatuses() {
         for (id, observers) in agentStatusObservers {
             let update = agentStatusUpdate(for: id)

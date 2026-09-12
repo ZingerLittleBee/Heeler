@@ -123,7 +123,8 @@ enum ConsoleAgentsSurface: Equatable {
         visibleIssueCount: Int,
         presentationMode: ConsoleListPresentationMode = .flat,
         projectedSectionCount: Int = 0,
-        searchQuery: String = ""
+        searchQuery: String = "",
+        staleAgentCount: Int = 0
     ) {
         let isSearching = !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if hostCount == 0 {
@@ -136,10 +137,14 @@ enum ConsoleAgentsSurface: Equatable {
             } else {
                 self = .noHosts
             }
-        } else if filteredAgentCount == 0 && visibleIssueCount == 0 {
-            if isSearching {
-                self = .noSearchResults
-            } else if let filteredHostName {
+        } else if isSearching && filteredAgentCount == 0 && visibleIssueCount == 0 {
+            // A query that matches nothing answers with the search surface.
+            // Cached rows are filtered per Host rather than by the query, so
+            // showing them here would read as results that do not match what
+            // was typed.
+            self = .noSearchResults
+        } else if filteredAgentCount == 0 && staleAgentCount == 0 && visibleIssueCount == 0 {
+            if let filteredHostName {
                 self = .noAgentsOnHost(filteredHostName)
             } else {
                 self = .noAgents
