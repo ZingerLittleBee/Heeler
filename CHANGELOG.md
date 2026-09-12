@@ -37,6 +37,8 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Modifier and keyboard layer keys keep their selection color while pressed,
+  without flashing gray or shrinking. (PR #302)
 - Fixed missed taps on terminal controls near the left edge, where the
   swipe-back gesture could intercept them. (PR #302)
 - New Agent now discovers agents installed through mise. The discovery PATH
