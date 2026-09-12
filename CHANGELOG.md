@@ -26,7 +26,7 @@ Entries reference the issue that motivated them.
   shortcut row omits duplicate Ctrl/Alt buttons. Skills and Snippets remain
   available in Direct Input and insert into the active input surface without
   adding Enter. Agent controls place Backspace at the top right and Shift+Tab
-  at the bottom left, with a clear pressed highlight and light haptic feedback. (#302)
+  at the bottom left, with a soft gray pressed highlight and light haptic feedback. (#302)
 
 ### Fixed
 

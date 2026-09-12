@@ -158,9 +158,9 @@ private struct AgentQuickKeyButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(configuration.isPressed ? Color.white : .primary)
+            .foregroundStyle(Color.primary)
             .background(
-                configuration.isPressed ? Color.accentColor : Color(uiColor: .secondarySystemFill),
+                Color(uiColor: configuration.isPressed ? .systemGray3 : .secondarySystemFill),
                 in: .rect(cornerRadius: 7))
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
             .animation(
