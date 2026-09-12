@@ -36,7 +36,6 @@ Entries reference the issue that motivated them.
 - Custom keyboards now use Ghostty's key encoding, which distinguishes more
   Ctrl/Shift combinations and supports enhanced keyboard reporting. Layouts
   and controls stay the same. (PR #298)
-
 - Terminal character keys use larger labels and uppercase letter keycaps.
   Function key labels keep their existing size. (PR #302)
 - Direct Input's tools dock opens the full Terminal keyboard without the
