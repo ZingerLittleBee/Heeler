@@ -7,6 +7,8 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-09-12
+
 ### Added
 
 - Muse appears in Start Agent when the Host has `muse` on PATH. Notifications
