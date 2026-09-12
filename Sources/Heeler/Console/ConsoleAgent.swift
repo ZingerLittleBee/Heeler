@@ -100,6 +100,29 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         if let checkoutPath, !checkoutPath.isEmpty { return checkoutPath }
         return agent.cwd.isEmpty ? nil : agent.cwd
     }
+
+    /// Client-side Agents search (#292): a trimmed, case-insensitive
+    /// substring match over the working directory and the title/visible
+    /// text. An empty query matches every agent.
+    func matchesAgentSearch(_ query: String) -> Bool {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return true }
+        let candidates: [String?] = [
+            agent.cwd,
+            workspaceLabel,
+            tabLabel,
+            paneLabel,
+            agent.title,
+            agent.paneTitle,
+            agent.displayName,
+            agent.terminalTitle,
+            agent.terminalTitleStripped,
+        ]
+        return candidates.contains {
+            guard let field = $0, !field.isEmpty else { return false }
+            return field.range(of: needle, options: .caseInsensitive) != nil
+        }
+    }
 }
 
 /// The snapshot's exact git checkout identity for one workspace. Workspace
