@@ -6,7 +6,6 @@ import UIKit
 /// one typed model instead of a flat fourteen-argument surface.
 @MainActor
 struct AgentDirectInputChromeContext {
-    let keyboardControl: TerminalKeyboardControl
     struct Presentation {
         let status: AgentStatus
         let hostTelemetry: HostTelemetryPresentation?
@@ -101,7 +100,6 @@ struct AgentDirectInputChrome: View {
 
     private var shortcutRow: some View {
         HStack(spacing: 0) {
-            modifierCaps
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 4) {
                     ForEach(Self.shortcutKeys, id: \.self) { key in
@@ -122,46 +120,6 @@ struct AgentDirectInputChrome: View {
                 .frame(height: 1 / max(displayScale, 1))
         }
         .background(Color(uiColor: .secondarySystemBackground))
-    }
-
-    /// One-shot sticky ⌃/⌥ modifiers (#270). Each cap arms its modifier for
-    /// the next key's bytes; the armed state consumes on send and highlights
-    /// until then, matching the Shell pad's caps.
-    private var modifierCaps: some View {
-        HStack(spacing: 4) {
-            modifierCap(
-                title: "⌃", label: "Control modifier",
-                armed: context.keyboardControl.pendingModifiers.contains(.control)
-            ) {
-                context.keyboardControl.toggleModifier(.control)
-            }
-            modifierCap(
-                title: "⌥", label: "Option modifier",
-                armed: context.keyboardControl.pendingModifiers.contains(.option)
-            ) {
-                context.keyboardControl.toggleModifier(.option)
-            }
-        }
-        .padding(.leading, 8)
-    }
-
-    private func modifierCap(
-        title: String, label: String, armed: Bool, toggle: @escaping () -> Void
-    ) -> some View {
-        Button {
-            UIDevice.current.playInputClick()
-            toggle()
-        } label: {
-            shortcutKeyCap(minWidth: 30, armed: armed) {
-                Text(title)
-                    .font(.system(size: 15, weight: armed ? .semibold : .regular))
-            }
-        }
-        .frame(height: 44)
-        .contentShape(.rect)
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-        .accessibilityValue(armed ? "Armed" : "Not armed")
     }
 
     private var fixedShortcutButtons: some View {
@@ -250,15 +208,14 @@ struct AgentDirectInputChrome: View {
 
     private func shortcutKeyCap<Content: View>(
         minWidth: CGFloat,
-        armed: Bool = false,
         @ViewBuilder content: () -> Content
     ) -> some View {
         content()
             .frame(minWidth: minWidth, minHeight: 30)
             .background(
-                armed ? Color.accentColor : Color(uiColor: .secondarySystemFill),
+                Color(uiColor: .secondarySystemFill),
                 in: .rect(cornerRadius: 7))
-            .foregroundStyle(armed ? Color.white : Color.primary)
+            .foregroundStyle(Color.primary)
     }
 
     private var moreMenu: some View {

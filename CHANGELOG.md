@@ -16,13 +16,14 @@ Entries reference the issue that motivated them.
   an Agent no longer needs a hardware keyboard. The text goes through the
   same paste review as ⌘V. (#307)
 - Sticky one-shot Ctrl and Option modifier keys on the terminal key surfaces
-  (Shell Controls pad, Agent quick-key rows, Direct Input shortcut row).
+  (Shell Controls pad and Agent Terminal keyboard).
   Tap ⌃ or ⌥ to arm it for the next key, which sends xterm modifier
   sequences; the armed state consumes on send, and tapping again disarms.
   Tab-panel shortcuts stay deferred as follow-up work. (#270)
 - Swipe between large Agent controls and a full terminal keyboard with letters,
   numbers, symbols, Ctrl/Alt/Shift, and F1–F12. Both pages keep the measured
-  iOS keyboard height and leave the Composer draft unchanged. (#302)
+  iOS keyboard height and leave the Composer draft unchanged. The Direct Input
+  shortcut row omits duplicate Ctrl/Alt buttons. (#302)
 
 ### Fixed
 

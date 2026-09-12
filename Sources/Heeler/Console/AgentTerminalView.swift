@@ -894,7 +894,6 @@ struct AgentTerminalView: View {
     private var directInputChrome: some View {
         AgentDirectInputChrome(
             context: AgentDirectInputChromeContext(
-                keyboardControl: keyboardControl,
                 presentation: .init(
                     status: agent.agent.status,
                     hostTelemetry: hostTelemetry,
