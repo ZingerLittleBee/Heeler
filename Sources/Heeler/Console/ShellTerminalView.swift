@@ -91,6 +91,13 @@ struct ShellTerminalView: View {
         terminalScreen
             .id(store.terminalID)
             .overlay { statusOverlay }
+            // The input row and controls dock must stay above the edge
+            // gesture's hit region, including their leftmost buttons.
+            .overlay(alignment: .leading) {
+                ShellTerminalEdgeBackGesture(isEnabled: !isReturning) {
+                    await onBack()
+                }
+            }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if keyboardPresentation != .hidden {
                     ShellTerminalInputRow(
@@ -166,11 +173,6 @@ struct ShellTerminalView: View {
                 Text(
                     "This closes the tab on the Host, ending anything running in it. "
                         + "Going Back instead leaves it for desktop handoff.")
-            }
-            .overlay(alignment: .leading) {
-                ShellTerminalEdgeBackGesture(isEnabled: !isReturning) {
-                    await onBack()
-                }
             }
             .sheet(
                 isPresented: Binding(

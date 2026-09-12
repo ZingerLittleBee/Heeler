@@ -797,6 +797,11 @@ struct AgentTerminalView: View {
             attachLinksChrome
         }
         .overlay { statusOverlay }
+        // Keep the edge gesture below the input chrome and tools dock so
+        // its transparent hit region cannot intercept their leading keys.
+        .overlay(alignment: .leading) {
+            AgentEdgeBackGesture { dismiss() }
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             attachmentStatus
         }
@@ -836,9 +841,6 @@ struct AgentTerminalView: View {
             terminal.themes.selection(for: colorScheme)
                 .surfaceBackground(for: colorScheme))
         .ignoresSafeArea(.container, edges: .top)
-        .overlay(alignment: .leading) {
-            AgentEdgeBackGesture { dismiss() }
-        }
         .toolbarColorScheme(
             terminal.themes.selection(for: colorScheme)
                 .chromeColorScheme(for: colorScheme),

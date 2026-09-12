@@ -23,6 +23,8 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Terminal controls near the left edge respond across their full button area
+  instead of losing taps to the swipe-back gesture. (#302)
 - New Agent now discovers agents installed through mise. The discovery PATH
   includes mise's shims directory, resolved from `MISE_DATA_DIR` or
   `XDG_DATA_HOME` when either reaches the non-interactive SSH environment,
