@@ -19,6 +19,11 @@ Entries reference the issue that motivated them.
   directory or title text, combines with the Host filter, and hides empty
   Host sections in grouped mode only while their Host is nominal; a
   reconnecting or failed Host keeps its section. (#292)
+- Rename a session from the Agent card's menu using herdr's own pane name
+  (`pane.rename`). The name lives on the Host, so it follows the session to
+  every attached client instead of staying on one device, and it names the
+  card, the keyboard switcher chip, and the detail title. Clearing it returns
+  the row to the workspace/tab/kind chain. (#290)
 
 ### Fixed
 

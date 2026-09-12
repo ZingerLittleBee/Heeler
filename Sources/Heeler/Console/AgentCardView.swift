@@ -98,7 +98,21 @@ struct AgentCardPresentation: Equatable, Sendable {
 
     init(agent: ConsoleAgent, layout: AgentRowLayout = .heelerDefault) {
         let rendered = AgentRowRenderer.render(layout: layout, agent: agent)
-        if rendered.isEmpty {
+        // A pane named through `pane.rename` (#290) is the session's name, so
+        // the card leads with it: the row that already renders the pane field
+        // moves to the top, and a layout without one gets a pane row of its
+        // own. The name then titles the card and the switcher chip alike,
+        // while no configured field and no value is dropped or repeated.
+        if let label = agent.sessionLabel {
+            if let paneRow = rendered.firstIndex(where: { row in
+                row.contains { $0.token == .pane }
+            }) {
+                rows = [rendered[paneRow]] + rendered[..<paneRow] + rendered[(paneRow + 1)...]
+            } else {
+                rows = [[RenderedToken(
+                    token: .pane, text: label, fg: nil, bold: nil, dim: nil)]] + rendered
+            }
+        } else if rendered.isEmpty {
             let name = agent.agent.displayName
             rows = [[RenderedToken(
                 token: .agent,

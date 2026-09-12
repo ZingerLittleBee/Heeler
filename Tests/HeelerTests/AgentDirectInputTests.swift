@@ -110,7 +110,7 @@ struct AgentDirectInputTests {
                 == [.openTerminal, .newAgent, .skills, .snippets])
         #expect(
             AgentActionMenuSection.agentLifecycle.items
-                == [.worktreeDetails, .renameAgent, .renameWorkspace, .closeAgent])
+                == [.worktreeDetails, .renameAgent, .renamePane, .renameWorkspace, .closeAgent])
         #expect(
             AgentActionMenuItem.allCases
                 == AgentActionMenuSection.allCases.flatMap(\.items))
@@ -124,6 +124,7 @@ struct AgentDirectInputTests {
             (.snippets, "Snippets", "quote.bubble", false, true),
             (.worktreeDetails, "Worktree Details", "arrow.triangle.branch", false, false),
             (.renameAgent, "Rename Agent", "pencil", false, false),
+            (.renamePane, "Rename Pane", "rectangle.and.pencil.and.ellipsis", false, false),
             (.renameWorkspace, "Rename Workspace", "pencil.line", false, false),
             (.closeAgent, "Close Agent", "trash", true, false),
         ]
@@ -138,7 +139,7 @@ struct AgentDirectInputTests {
     @Test func sharedActionMenuAvailabilityAndDispatchCoverAllGates() {
         enum Event: Equatable {
             case addImage, addFile, openTerminal, startAgent, skills, snippets
-            case worktree, renameAgent, renameWorkspace, closeAgent
+            case worktree, renameAgent, renamePane, renameWorkspace, closeAgent
         }
         var events: [Event] = []
         let gated = AgentComposerActions(
@@ -154,6 +155,7 @@ struct AgentDirectInputTests {
             showSkills: nil,
             showWorktreeDetails: nil,
             renameAgent: { events.append(.renameAgent) },
+            renamePane: { events.append(.renamePane) },
             renameWorkspace: { events.append(.renameWorkspace) },
             closeAgent: { events.append(.closeAgent) })
         let busy = AgentComposerActions(
@@ -169,6 +171,7 @@ struct AgentDirectInputTests {
             showSkills: { events.append(.skills) },
             showWorktreeDetails: { events.append(.worktree) },
             renameAgent: { events.append(.renameAgent) },
+            renamePane: { events.append(.renamePane) },
             renameWorkspace: { events.append(.renameWorkspace) },
             closeAgent: { events.append(.closeAgent) })
         let ready = AgentComposerActions(
@@ -184,6 +187,7 @@ struct AgentDirectInputTests {
             showSkills: { events.append(.skills) },
             showWorktreeDetails: { events.append(.worktree) },
             renameAgent: { events.append(.renameAgent) },
+            renamePane: { events.append(.renamePane) },
             renameWorkspace: { events.append(.renameWorkspace) },
             closeAgent: { events.append(.closeAgent) })
 
@@ -200,6 +204,7 @@ struct AgentDirectInputTests {
             (.worktreeDetails, gated, false, true),
             (.worktreeDetails, ready, true, true),
             (.renameAgent, ready, true, true),
+            (.renamePane, ready, true, true),
             (.renameWorkspace, ready, true, true),
             (.closeAgent, ready, true, true),
         ]
@@ -214,7 +219,7 @@ struct AgentDirectInputTests {
         #expect(
             events == [
                 .addImage, .addFile, .openTerminal, .startAgent, .skills, .snippets,
-                .worktree, .renameAgent, .renameWorkspace, .closeAgent,
+                .worktree, .renameAgent, .renamePane, .renameWorkspace, .closeAgent,
             ])
     }
 
@@ -237,6 +242,7 @@ struct AgentDirectInputTests {
             showSkills: { steps.append(.action(.skills)) },
             showWorktreeDetails: { steps.append(.action(.worktreeDetails)) },
             renameAgent: { steps.append(.action(.renameAgent)) },
+            renamePane: { steps.append(.action(.renamePane)) },
             renameWorkspace: { steps.append(.action(.renameWorkspace)) },
             closeAgent: { steps.append(.action(.closeAgent)) })
         let restoreComposerThen: (@escaping () -> Void) -> Void = { action in
@@ -261,6 +267,7 @@ struct AgentDirectInputTests {
                 .restore, .action(.snippets),
                 .action(.worktreeDetails),
                 .action(.renameAgent),
+                .action(.renamePane),
                 .action(.renameWorkspace),
                 .action(.closeAgent),
             ])
