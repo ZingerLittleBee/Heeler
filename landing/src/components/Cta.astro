@@ -1,27 +1,49 @@
 ---
-import Button from './Button.astro';
+// Written as markup so the pre keeps its exact line breaks and token colours.
+const buildCommands = [
+  '<span class="tk-comment"># run it on the simulator</span>',
+  '<span class="tk-fn">brew</span> install xcodegen',
+  '<span class="tk-fn">git</span> clone <span class="tk-string">https://github.com/ZingerLittleBee/Heeler</span>',
+  '<span class="tk-fn">cd</span> Heeler &amp;&amp; <span class="tk-fn">make</span> sim',
+].join('\n');
 ---
 
 <section class="section">
   <div class="container layout">
-    <div>
-      <h2 class="section-title heading">Beta. Testers welcome.</h2>
-      <p class="section-lede lede">Join the beta on TestFlight, or clone it and build it yourself. Early reports on transport and terminal behaviour are the most useful thing right now.</p>
+    <div class="intro">
+      <div class="eyebrow">Source</div>
+      <h2 class="section-title heading">Open source, Apache-2.0.</h2>
+      <p class="section-lede lede">Heeler is built in public and shaped by daily driving. Clone it, run it on the simulator, and send back what breaks: reports on transport and terminal behaviour are the most useful thing you can file.</p>
+      <div class="repo-links">
+        <a class="repo-link" href="https://github.com/ZingerLittleBee/Heeler">
+          Star on GitHub <span class="arrow" aria-hidden="true">&rarr;</span>
+        </a>
+        <a class="repo-link" href="https://github.com/ZingerLittleBee/Heeler/issues">
+          Open an issue <span class="arrow" aria-hidden="true">&rarr;</span>
+        </a>
+        <a class="repo-link" href="https://github.com/ZingerLittleBee/Heeler/blob/main/CONTRIBUTING.md">
+          Contributing guide <span class="arrow" aria-hidden="true">&rarr;</span>
+        </a>
+      </div>
     </div>
-    <div class="actions">
-      <Button href="https://testflight.apple.com/join/aXSxRn4r">Join the beta</Button>
-      <Button href="https://github.com/ZingerLittleBee/Heeler" variant="secondary">Star on GitHub</Button>
-      <Button href="https://github.com/ZingerLittleBee/Heeler/issues" variant="secondary">Open an issue</Button>
+    <div class="build">
+      <div class="code">
+        <div class="card-bar">
+          <span class="eyebrow">Build</span>
+          <span class="card-lang">bash</span>
+        </div>
+        <pre set:html={buildCommands}></pre>
+      </div>
     </div>
   </div>
 </section>
 
 <style>
   .layout {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 520px;
+    gap: 80px;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--sp-12);
   }
 
   .heading {
@@ -30,27 +52,74 @@ import Button from './Button.astro';
 
   .lede {
     margin-top: var(--sp-4);
-    max-width: 520px;
+    max-width: 480px;
   }
 
-  .actions {
+  .build {
     display: flex;
-    gap: var(--sp-3);
-    flex: none;
+    flex-direction: column;
+    gap: var(--sp-4);
+    min-width: 0;
   }
 
-  @media (max-width: 900px) {
+  .code {
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-card);
+    overflow: hidden;
+    background: var(--surface-code);
+  }
+
+  .card-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 40px;
+    padding: 0 var(--sp-4);
+    border-bottom: 1px solid var(--border-hairline);
+  }
+
+  .card-lang {
+    font: var(--type-mono-sm);
+    letter-spacing: var(--tr-mono);
+    color: var(--text-muted);
+  }
+
+  pre {
+    margin: 0;
+    padding: var(--sp-5);
+    font: var(--type-mono);
+    letter-spacing: var(--tr-mono);
+    color: var(--syn-plain);
+    overflow-x: auto;
+  }
+
+  .repo-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-3) var(--sp-6);
+    margin-top: var(--sp-8);
+  }
+
+  .repo-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    font: var(--type-label);
+    color: var(--text-secondary);
+  }
+
+  .repo-link:hover {
+    color: var(--text-primary);
+  }
+
+  .repo-link .arrow {
+    color: var(--text-muted);
+  }
+
+  @media (max-width: 1060px) {
     .layout {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: var(--sp-8);
-    }
-  }
-
-  @media (max-width: 560px) {
-    .actions {
-      flex-direction: column;
-      align-self: stretch;
+      grid-template-columns: 1fr;
+      gap: 48px;
     }
   }
 </style>
