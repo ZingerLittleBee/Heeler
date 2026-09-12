@@ -27,8 +27,9 @@ Entries reference the issue that motivated them.
 - Skills and Snippets are available in Direct Input as well as Compose.
   Selecting one inserts it into the active input without pressing Enter.
   (PR #302)
-- Hold Backspace to keep deleting; release to stop. This works in the Agent
-  controls, Direct Input shortcut row, and full Terminal keyboard. (PR #302)
+- Hold Backspace for 0.3 seconds to keep deleting; release to stop. This works
+  in the Agent controls, Direct Input shortcut row, and full Terminal keyboard.
+  (PR #302)
 
 ### Changed
 

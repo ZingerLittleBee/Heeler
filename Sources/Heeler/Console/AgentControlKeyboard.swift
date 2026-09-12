@@ -38,14 +38,14 @@ struct AgentControlKeyboard: View {
                             .accessibilityElement(children: .contain)
                             .accessibilityHidden(page != .agent)
                             .allowsHitTesting(page == .agent)
-                            .disabled(horizontalDrag != 0)
+                            .disabled(page != .agent || horizontalDrag != 0)
                         TerminalFullKeyboard(
                             isEnabled: isEnabled, keyboardControl: keyboardControl, send: send)
                             .frame(width: viewport.size.width, height: viewport.size.height)
                             .accessibilityElement(children: .contain)
                             .accessibilityHidden(page != .terminal)
                             .allowsHitTesting(page == .terminal)
-                            .disabled(horizontalDrag != 0)
+                            .disabled(page != .terminal || horizontalDrag != 0)
                     }
                     .offset(x: pageOffset(width: viewport.size.width))
                     .frame(width: viewport.size.width, height: viewport.size.height, alignment: .leading)
@@ -122,25 +122,17 @@ private struct AgentQuickKeyPad: View {
             ForEach(Self.rows.indices, id: \.self) { row in
                 HStack(spacing: 8) {
                     ForEach(Self.rows[row], id: \.self) { key in
-                        Button {
-                            // A cancelled swipe must never confirm a key press.
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            send(key)
-                        } label: {
-                            Group {
-                                if let image = key.systemImageName {
-                                    Image(systemName: image)
-                                } else {
-                                    Text(key.title ?? "")
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.7)
+                        Group {
+                            if key == .backspace {
+                                TerminalBackspaceButton {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    send(key)
                                 }
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            } else {
+                                keyButton(key)
                             }
-                            .font(.system(size: 13, weight: .medium))
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
-                        .buttonStyle(TerminalKeyboardButtonStyle())
-                        .buttonRepeatBehavior(key == .backspace ? .enabled : .disabled)
                         .disabled(!isEnabled)
                         .opacity(isEnabled ? 1 : 0.45)
                         .accessibilityLabel(key.accessibilityLabel)
@@ -153,5 +145,26 @@ private struct AgentQuickKeyPad: View {
         .padding(.horizontal, 10)
         .padding(.top, 4)
         .padding(.bottom, 8)
+    }
+
+    private func keyButton(_ key: AgentQuickKey) -> some View {
+        Button {
+            // A cancelled swipe must never confirm a key press.
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            send(key)
+        } label: {
+            Group {
+                if let image = key.systemImageName {
+                    Image(systemName: image)
+                } else {
+                    Text(key.title ?? "")
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+            }
+            .font(.system(size: 13, weight: .medium))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .buttonStyle(TerminalKeyboardButtonStyle())
     }
 }

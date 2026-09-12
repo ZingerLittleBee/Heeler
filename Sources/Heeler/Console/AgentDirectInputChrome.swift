@@ -143,22 +143,31 @@ struct AgentDirectInputChrome: View {
         }
     }
 
+    @ViewBuilder
     private func shortcutKeyButton(_ key: AgentQuickKey) -> some View {
-        Button {
-            UIDevice.current.playInputClick()
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            interactions.sendQuickKey(key)
-        } label: {
-            shortcutKeyCap(minWidth: keyCapWidth(for: key)) {
-                shortcutKeyLabel(key)
+        if key == .backspace {
+            TerminalBackspaceButton(isToolbar: true) { sendShortcutKey(key) }
+                .frame(width: keyCapWidth(for: key), height: 44)
+        } else {
+            Button {
+                sendShortcutKey(key)
+            } label: {
+                shortcutKeyCap(minWidth: keyCapWidth(for: key)) {
+                    shortcutKeyLabel(key)
+                }
             }
+            .frame(height: 44)
+            .contentShape(.rect)
+            .buttonStyle(TerminalKeyboardButtonStyle())
+            .accessibilityLabel(key.accessibilityLabel)
+            .accessibilityHint("Sends this key directly to the Agent")
         }
-        .frame(height: 44)
-        .contentShape(.rect)
-        .buttonStyle(TerminalKeyboardButtonStyle())
-        .buttonRepeatBehavior(key == .backspace ? .enabled : .disabled)
-        .accessibilityLabel(key.accessibilityLabel)
-        .accessibilityHint("Sends this key directly to the Agent")
+    }
+
+    private func sendShortcutKey(_ key: AgentQuickKey) {
+        UIDevice.current.playInputClick()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        interactions.sendQuickKey(key)
     }
 
     /// A system paste control, so a tap needs no Allow Paste prompt. Below

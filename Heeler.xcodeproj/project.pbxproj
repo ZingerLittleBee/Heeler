@@ -215,6 +215,7 @@
 		8BC6A5F3341FEE8734ECB0B0 /* HerdrWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30FA0CFA49274EB428AD3E0 /* HerdrWireTests.swift */; };
 		8C7337318B1B3271FD4E85A6 /* AgentActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2E7BAE850794FFCE32E0062 /* AgentActivityAttributes.swift */; };
 		8C92D59797AB4EAB9C01F6DD /* SecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55D2BCB4E4038F510852F71C /* SecretStore.swift */; };
+		8D6A528175FA0AFF0E7C8616 /* TerminalBackspaceButtonTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79E03FBDF372AA6DB7BC7F62 /* TerminalBackspaceButtonTests.swift */; };
 		8D9ED28E1DB5A72B471CBD45 /* AppAppearanceSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAEAF21DF91A1BCE4C9F79A3 /* AppAppearanceSettings.swift */; };
 		8DF7095F918DBDA5B76F24F1 /* HeelerSSH in Frameworks */ = {isa = PBXBuildFile; productRef = 13CFA5F5C15E83F411CC03BA /* HeelerSSH */; };
 		8E205B2A9767D2C9538C6D39 /* HerdrHostPath.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7D28071688F3A69201EEE7 /* HerdrHostPath.swift */; };
@@ -326,6 +327,7 @@
 		DB28307A5B8386139CA7EDEE /* TerminalKeyboardInset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CF0F9F0EDF8757DC1D275D2 /* TerminalKeyboardInset.swift */; };
 		DB3815F790623647C0050290 /* PairingScanStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45DB60007029322902FD1AFF /* PairingScanStore.swift */; };
 		DC580B52C0F6509F92BB289C /* PinnedAgentsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 768235F2FBD7790800281BC3 /* PinnedAgentsStoreTests.swift */; };
+		DCF17C97836787E5481B5673 /* TerminalBackspaceButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DA84C4B51C260DD5CE80ECE /* TerminalBackspaceButton.swift */; };
 		DDD5A27BA1126296E5AF7EAA /* PinnedAgentsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2437B1D6B97638031514C0F /* PinnedAgentsStore.swift */; };
 		DE020395E7459D508F0CC401 /* NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDC98A5038CD109556BE903F /* NotificationSettingsView.swift */; };
 		DED05CBB7CDC71B3D92B7B36 /* AttachUserMessageIndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE9AF5C6F7066900959E7E10 /* AttachUserMessageIndexTests.swift */; };
@@ -578,6 +580,7 @@
 		7780BE78D868DB0A8275E6FB /* Heeler.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Heeler.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		78F85C588963C3CE948AA9E4 /* AgentNotificationBannerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationBannerStore.swift; sourceTree = "<group>"; };
 		79662827F6A91D8EFBF112F7 /* HostListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostListView.swift; sourceTree = "<group>"; };
+		79E03FBDF372AA6DB7BC7F62 /* TerminalBackspaceButtonTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalBackspaceButtonTests.swift; sourceTree = "<group>"; };
 		7A8ED9AD5019F303932B0F9C /* ImageStagingE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStagingE2ETests.swift; sourceTree = "<group>"; };
 		7B0A5D6A13F3F940E50EDCFD /* DemoScreenshotMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoScreenshotMode.swift; sourceTree = "<group>"; };
 		7BE9C95E2AC313465A7B38FD /* SealedEnvelopeCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SealedEnvelopeCodec.swift; sourceTree = "<group>"; };
@@ -631,6 +634,7 @@
 		9CFA2284DB622A6EB63D2F85 /* HerdrWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrWire.swift; sourceTree = "<group>"; };
 		9D55C5296892657D59171DFE /* NotificationKeyMirrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationKeyMirrorTests.swift; sourceTree = "<group>"; };
 		9D5CBA3E14F186170A2EF2CA /* AgentNotificationRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationRendererTests.swift; sourceTree = "<group>"; };
+		9DA84C4B51C260DD5CE80ECE /* TerminalBackspaceButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalBackspaceButton.swift; sourceTree = "<group>"; };
 		9ED544C5E701A1ACD12C6F79 /* live-activity-content-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "live-activity-content-v1.json"; sourceTree = "<group>"; };
 		9F979754410821940D0C4DEC /* SolvingOrbRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolvingOrbRendererTests.swift; sourceTree = "<group>"; };
 		A03953ADE9FBC5162FBFF29F /* NotificationRegistrationCeremony.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRegistrationCeremony.swift; sourceTree = "<group>"; };
@@ -917,6 +921,7 @@
 				84DA8573DB6A7EBC95A57F2F /* StartAgentStoreTests.swift */,
 				DA59306306EAEAA6DA78E337 /* TerminalAgentSwitcherTests.swift */,
 				07528112F1EC851708049E85 /* TerminalAttachTests.swift */,
+				79E03FBDF372AA6DB7BC7F62 /* TerminalBackspaceButtonTests.swift */,
 				427512344847A84699F819A0 /* TerminalFontSettingsTests.swift */,
 				05AD61D4FA60884234EA856C /* TerminalInputControllerTests.swift */,
 				1B99CB61015DC220A2D9306A /* TerminalKeyModifiersTests.swift */,
@@ -959,6 +964,7 @@
 			children = (
 				85BEE99E7BEFA0D0D985162C /* AttachUserMessageIndex.swift */,
 				DD8509C4FD5C50A0D7AFEC1A /* TerminalAgentSwitcher.swift */,
+				9DA84C4B51C260DD5CE80ECE /* TerminalBackspaceButton.swift */,
 				C681336687D32709DA583BCC /* TerminalByteFeed.swift */,
 				0F0729017FD662311E56B376 /* TerminalFullKeyboard.swift */,
 				A1E30B96F852EFC3C322C9EB /* TerminalInputController.swift */,
@@ -1728,6 +1734,7 @@
 				A000D3550C034E2978E8B485 /* TerminalAppearancePane.swift in Sources */,
 				1566E45603CB8F83337BD9C3 /* TerminalAppearanceSettingsView.swift in Sources */,
 				959E4E2F852C4CCF7A9770AA /* TerminalAttach.swift in Sources */,
+				DCF17C97836787E5481B5673 /* TerminalBackspaceButton.swift in Sources */,
 				C99BC52057BA048DDC4DE046 /* TerminalByteFeed.swift in Sources */,
 				C1B2B4664800E7E80FB02EBD /* TerminalFontSettings.swift in Sources */,
 				444BB2CD46ED2175D8993860 /* TerminalFullKeyboard.swift in Sources */,
@@ -1910,6 +1917,7 @@
 				3ECC4677BDBD122A9ABF9CAF /* StartAgentStoreTests.swift in Sources */,
 				AFA3583DF83EFBAFEEE91E28 /* TerminalAgentSwitcherTests.swift in Sources */,
 				D5750879A465E0B27C9B4431 /* TerminalAttachTests.swift in Sources */,
+				8D6A528175FA0AFF0E7C8616 /* TerminalBackspaceButtonTests.swift in Sources */,
 				E521D6779F4C453B6E098F14 /* TerminalFontSettingsTests.swift in Sources */,
 				845B6E45C06C55CCC011D6F0 /* TerminalGridReportPhaseRecorder.swift in Sources */,
 				31E4ADB22D4D655E7CFDB749 /* TerminalInputControllerTests.swift in Sources */,

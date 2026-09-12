@@ -829,6 +829,7 @@ struct AgentTerminalView: View {
                 quickKeysEnabled: true,
                 sendQuickKey: sendAgentQuickKey)
             .opacity(activeKeyboardPresentation == .tools ? 1 : 0)
+            .disabled(activeKeyboardPresentation != .tools)
             .allowsHitTesting(activeKeyboardPresentation == .tools)
             .accessibilityHidden(activeKeyboardPresentation != .tools)
         }

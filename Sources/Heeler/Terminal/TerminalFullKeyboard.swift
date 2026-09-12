@@ -32,8 +32,13 @@ struct TerminalFullKeyboard: View {
                     ForEach(Array(showsSymbols ? ".,?!'`" : "zxcvbnm"), id: \.self) { character in
                         characterKey(character)
                     }
-                    key(.backspace, image: "delete.left")
-                        .buttonRepeatBehavior(.enabled)
+                    TerminalBackspaceButton(usesSymbol: true) {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        send(.backspace)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .disabled(!isEnabled)
+                    .opacity(isEnabled ? 1 : 0.45)
                 }
                 .frame(height: rowHeight)
                 HStack(spacing: 4) {

@@ -1964,10 +1964,12 @@ struct TerminalAttachTests {
     @MainActor
     private static func activateToolsControl(labeled label: String, in root: UIView) throws {
         let element = try #require(firstAccessible(in: root, labeled: label))
-        if let control = element as? UIControl {
+        if element.accessibilityActivate() {
+            return
+        } else if let control = element as? UIControl {
             control.sendActions(for: .touchUpInside)
         } else {
-            #expect(element.accessibilityActivate(), "Could not activate \(label)")
+            Issue.record("Could not activate \(label)")
         }
     }
 
@@ -2007,7 +2009,7 @@ struct TerminalAttachTests {
         let dockFrame = controller.view.frame
 
         let stages: [(action: String, page: String, keys: [String])] = [
-            (terminalPage, terminalPage, ["q", "a", "z", "Space", "Enter", "Function key layer", "Symbol key layer"]),
+            (terminalPage, terminalPage, ["q", "a", "z", "Space", "Enter", "Backspace", "Function key layer", "Symbol key layer"]),
             ("Function key layer", terminalPage, ["F1", "F12", "a", "Space", "Enter", "Symbol key layer"]),
             ("Symbol key layer", terminalPage, ["F12", "/", "[", "Space", "Enter", "Function key layer"]),
             ("Function key layer", terminalPage, ["Insert", "/", "[", "Space", "Enter"]),
@@ -2078,10 +2080,10 @@ struct TerminalAttachTests {
                 in: controller.view, labels: [label], selectedPage: footerLabel)
             try Self.activateToolsControl(labeled: label, in: controller.view)
             let frames = try await Self.waitForToolsFrames(
-                in: controller.view, labels: [footerLabel, "Space", "Enter"], selectedPage: footerLabel)
+                in: controller.view, labels: [footerLabel, "Space", "Enter", "Backspace"], selectedPage: footerLabel)
             #expect(controller.view.bounds == bounds)
             #expect(frames[footerLabel] == footer)
-            for key in ["Space", "Enter"] {
+            for key in ["Space", "Enter", "Backspace"] {
                 let frame = try #require(frames[key])
                 #expect(frame.minX >= -1 && frame.maxX <= size.width + 1)
                 #expect(frame.minY >= -1 && frame.maxY <= footer.minY + 1)
