@@ -7,7 +7,8 @@ import liveActivityShot from '../assets/screens/live-activity-iphone.png';
 import skillsShot from '../assets/screens/skills-iphone.png';
 import terminalShot from '../assets/screens/terminal-iphone.png';
 import Badge from './Badge.astro';
-import Button from './Button.astro';
+import appStoreBadge from '../assets/badges/app-store-badge.svg';
+import testFlightBadge from '../assets/badges/testflight-badge.svg';
 
 const screens = [
   {
@@ -60,12 +61,27 @@ const screens = [
     <h1 class="headline">Every coding agent on your machines, sorted by who needs you.</h1>
     <p class="lede">Heeler is a native iOS companion for <a class="text-link" href="https://herdr.dev">herdr</a>, the agent-first terminal runtime. Read and steer a live terminal, draft with the full iOS keyboard, send the message once — all over plain SSH.</p>
     <div class="actions">
-      <Button href="https://testflight.apple.com/join/aXSxRn4r">Join the beta</Button>
-      <Button href="https://github.com/ZingerLittleBee/Heeler" variant="secondary">Star on GitHub</Button>
-      <Button
-        href="https://github.com/ZingerLittleBee/Heeler#adding-a-machine"
-        variant="secondary">Read the setup</Button
-      >
+      <div class="store-badges">
+        <a class="store-badge" href="https://apps.apple.com/us/app/heeler-for-herdr/id6797263135">
+          <img
+            src={appStoreBadge.src}
+            width={appStoreBadge.width}
+            height={appStoreBadge.height}
+            alt="Download on the App Store"
+          />
+        </a>
+        <a class="store-badge" href="https://testflight.apple.com/join/aXSxRn4r">
+          <img
+            src={testFlightBadge.src}
+            width={testFlightBadge.width}
+            height={testFlightBadge.height}
+            alt="Available on TestFlight"
+          />
+        </a>
+      </div>
+      <a class="setup-link" href="https://github.com/ZingerLittleBee/Heeler#adding-a-machine">
+        Read the setup guide <span class="arrow" aria-hidden="true">&rarr;</span>
+      </a>
     </div>
     <p class="stack">SwiftUI &nbsp;·&nbsp; libghostty-spm &nbsp;·&nbsp; libssh2 &nbsp;·&nbsp; herdr &gt;= 0.7.5</p>
 
@@ -138,12 +154,56 @@ const screens = [
     margin: var(--sp-6) auto 0;
   }
 
+  /* The store badges are the hero's whole call to action; the setup guide
+     is a quiet text link beneath them. GitHub lives in the header icon and
+     the closing CTA, so it does not compete here. */
   .actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-4);
+    margin-top: 36px;
+  }
+
+  /* Apple's badge artwork is fixed at 40px tall; scale it to the control
+     height so the pair reads as one set. */
+  .store-badges {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: var(--sp-3);
-    margin-top: 36px;
+  }
+
+  .store-badge {
+    display: inline-flex;
+    height: var(--h-control-lg);
+    border-radius: 6px;
+  }
+
+  .store-badge img {
+    height: 100%;
+    width: auto;
+  }
+
+  .store-badge:hover {
+    opacity: 0.9;
+  }
+
+  .setup-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    padding: var(--sp-1) var(--sp-0-5);
+    font: var(--type-label);
+    color: var(--text-secondary);
+  }
+
+  .setup-link:hover {
+    color: var(--text-primary);
+  }
+
+  .setup-link .arrow {
+    color: var(--text-muted);
   }
 
   .stack {
@@ -232,11 +292,6 @@ const screens = [
 
     .frame :global(img) {
       border-radius: 30px;
-    }
-
-    .actions {
-      flex-direction: column;
-      align-items: stretch;
     }
   }
 </style>
