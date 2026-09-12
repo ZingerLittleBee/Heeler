@@ -32,10 +32,10 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
-- Agent and Terminal keys use a soft gray highlight and light haptic feedback
-  when tapped. Agent controls put Backspace at the top right and Shift+Tab at
-  the bottom left. The Direct Input shortcut row no longer duplicates the
-  Terminal keyboard's Ctrl/Alt buttons. (PR #302)
+- Agent, Terminal, and Direct Input toolbar keys use a soft gray highlight
+  and light haptic feedback when tapped. Agent controls put Backspace at the
+  top right and Shift+Tab at the bottom left. The Direct Input shortcut row
+  no longer duplicates the Terminal keyboard's Ctrl/Alt buttons. (PR #302)
 
 ### Fixed
 

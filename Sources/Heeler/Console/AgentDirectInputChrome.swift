@@ -146,6 +146,7 @@ struct AgentDirectInputChrome: View {
     private func shortcutKeyButton(_ key: AgentQuickKey) -> some View {
         Button {
             UIDevice.current.playInputClick()
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
             interactions.sendQuickKey(key)
         } label: {
             shortcutKeyCap(minWidth: keyCapWidth(for: key)) {
@@ -154,7 +155,7 @@ struct AgentDirectInputChrome: View {
         }
         .frame(height: 44)
         .contentShape(.rect)
-        .buttonStyle(.plain)
+        .buttonStyle(TerminalKeyboardButtonStyle())
         .buttonRepeatBehavior(key == .backspace ? .enabled : .disabled)
         .accessibilityLabel(key.accessibilityLabel)
         .accessibilityHint("Sends this key directly to the Agent")
@@ -166,6 +167,7 @@ struct AgentDirectInputChrome: View {
     private var pasteKeyButton: some View {
         KeyCapPasteControl { text in
             UIDevice.current.playInputClick()
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
             interactions.paste(text)
         }
         // The control resolves its colors once, when it is created.
@@ -213,10 +215,6 @@ struct AgentDirectInputChrome: View {
     ) -> some View {
         content()
             .frame(minWidth: minWidth, minHeight: 30)
-            .background(
-                Color(uiColor: .secondarySystemFill),
-                in: .rect(cornerRadius: 7))
-            .foregroundStyle(Color.primary)
     }
 
     private var moreMenu: some View {
@@ -230,10 +228,10 @@ struct AgentDirectInputChrome: View {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 12, weight: .semibold))
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(.rect)
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(.rect)
+        .buttonStyle(TerminalKeyboardButtonStyle())
         .accessibilityLabel("More")
         .accessibilityHint("Opens Agent actions")
     }
