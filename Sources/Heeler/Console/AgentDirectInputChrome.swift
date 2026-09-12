@@ -155,6 +155,7 @@ struct AgentDirectInputChrome: View {
         .frame(height: 44)
         .contentShape(.rect)
         .buttonStyle(.plain)
+        .buttonRepeatBehavior(key == .backspace ? .enabled : .disabled)
         .accessibilityLabel(key.accessibilityLabel)
         .accessibilityHint("Sends this key directly to the Agent")
     }

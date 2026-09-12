@@ -140,6 +140,7 @@ private struct AgentQuickKeyPad: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
                         .buttonStyle(TerminalKeyboardButtonStyle())
+                        .buttonRepeatBehavior(key == .backspace ? .enabled : .disabled)
                         .disabled(!isEnabled)
                         .opacity(isEnabled ? 1 : 0.45)
                         .accessibilityLabel(key.accessibilityLabel)
