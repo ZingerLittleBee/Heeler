@@ -16,9 +16,18 @@ final class AgentRowLayoutStore {
     /// Earlier version-1 catalogs also carried a `globalLayout`. It is
     /// ignored on load and dropped by the next write, so a hidden legacy
     /// choice can never override a Host's herdr fields.
-    private struct PersistedCatalog: Codable {
+    private struct PersistedCatalog: Encodable {
         let version: Int
         let hostLayouts: [Host.ID: AgentRowLayout]
+    }
+
+    /// Field names come from whichever build last saved on this device, so a
+    /// name this build does not know is dropped on load and by the next
+    /// write rather than making the catalog unreadable (#320). Structural
+    /// problems still do: they keep the original bytes and refuse writes.
+    private struct LoadedCatalog: Decodable {
+        let version: Int
+        let hostLayouts: [Host.ID: AgentRowLayout.Lenient]
     }
 
     private(set) var hostLayouts: [Host.ID: AgentRowLayout] = [:]
@@ -29,14 +38,24 @@ final class AgentRowLayoutStore {
         self.defaults = defaults
         guard let data = defaults.data(forKey: Self.defaultsKey) else { return }
         do {
-            let catalog = try JSONDecoder().decode(PersistedCatalog.self, from: data)
+            let catalog = try JSONDecoder().decode(LoadedCatalog.self, from: data)
             guard catalog.version == Self.catalogVersion else {
                 throw AgentRowLayoutStoreError.catalogUnreadable
             }
-            hostLayouts = catalog.hostLayouts
+            hostLayouts = catalog.hostLayouts.mapValues(\.layout)
         } catch {
             catalogLoadError = .catalogUnreadable
         }
+    }
+
+    /// Discards an unreadable catalog so every Host follows its herdr fields
+    /// again and writes are accepted. The only way out of `catalogLoadError`;
+    /// a readable catalog is left alone.
+    func resetUnreadableCatalog() {
+        guard catalogLoadError != nil else { return }
+        defaults.removeObject(forKey: Self.defaultsKey)
+        hostLayouts = [:]
+        catalogLoadError = nil
     }
 
     /// nil removes this Host's choice so its herdr fields apply again.

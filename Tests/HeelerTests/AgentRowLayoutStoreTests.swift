@@ -78,7 +78,8 @@ struct AgentRowLayoutStoreTests {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
         for json in ["not json", #"{"version":2,"hostLayouts":[]}"#,
-                     #"{"version":1,"hostLayouts":["\#(UUID().uuidString)",{"rows":[[{"token":"future"}]],"rowGap":0,"rowsByAgent":{}}]}"#] {
+                     #"{"version":1,"hostLayouts":["\#(UUID().uuidString)",{"rows":"nope"}]}"#,
+                     #"{"version":1,"hostLayouts":["\#(UUID().uuidString)",{"rows":[],"row_gap":-1}]}"#] {
             let corrupt = Data(json.utf8)
             defaults.set(corrupt, forKey: "agent-row-layouts")
             let store = AgentRowLayoutStore(defaults: defaults)
@@ -108,5 +109,49 @@ struct AgentRowLayoutStoreTests {
         }
         #expect(store.hostLayouts == [host: .heelerDefault])
         #expect(defaults.data(forKey: "agent-row-layouts") == before)
+    }
+    /// Captured from a device that had run the unmerged PR #312 build, which
+    /// knew herdr's `machine` field (#320). Names this build does not know
+    /// and invalid colors drop individually; everything else survives.
+    @Test func unknownFieldNamesDropOnLoadAndByTheNextWrite() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let host = try #require(UUID(uuidString: "F75B1706-8EAC-4641-AC08-1F9FF038A1F1"))
+        let captured = ##"{"hostLayouts":["F75B1706-8EAC-4641-AC08-1F9FF038A1F1",{"rows":[[{"token":"terminal_title_stripped","fg":"#6c7086","dim":false}],[{"token":"$pin_icon"},{"token":"workspace","fg":"#45475a","dim":false},{"token":"agent"}],[{"token":"machine"},{"token":"tab","fg":"nothex"}]],"row_gap":0,"rows_by_agent":{"claude":[[{"token":"future"},{"token":"pane"}]]}}],"version":1}"##
+        defaults.set(Data(captured.utf8), forKey: "agent-row-layouts")
+        let store = AgentRowLayoutStore(defaults: defaults)
+        #expect(store.catalogLoadError == nil)
+        let expected = AgentRowLayout(rows: [
+            [.init(.terminalTitleStripped, fg: HexColor("#6c7086"), dim: false)],
+            [.init(.custom("pin_icon")), .init(.workspace, fg: HexColor("#45475a"), dim: false), .init(.agent)],
+            [.init(.tab)],
+        ], rowsByAgent: ["claude": [[.init(.pane)]]])
+        #expect(store.hostLayouts == [host: expected])
+
+        let other = UUID()
+        try store.setLayout(.heelerDefault, for: other)
+        let written = try #require(defaults.data(forKey: "agent-row-layouts"))
+        #expect(String(decoding: written, as: UTF8.self).contains("machine") == false)
+        #expect(AgentRowLayoutStore(defaults: defaults).hostLayouts == [host: expected, other: .heelerDefault])
+    }
+
+    @Test func resetDiscardsOnlyAnUnreadableCatalog() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let host = UUID()
+        let readable = AgentRowLayoutStore(defaults: defaults)
+        try readable.setLayout(.heelerDefault, for: host)
+        readable.resetUnreadableCatalog()
+        #expect(readable.hostLayouts == [host: .heelerDefault])
+        #expect(defaults.data(forKey: "agent-row-layouts") != nil)
+
+        defaults.set(Data("not json".utf8), forKey: "agent-row-layouts")
+        let store = AgentRowLayoutStore(defaults: defaults)
+        #expect(store.catalogLoadError == .catalogUnreadable)
+        store.resetUnreadableCatalog()
+        #expect(store.catalogLoadError == nil && store.hostLayouts.isEmpty)
+        #expect(defaults.data(forKey: "agent-row-layouts") == nil)
+        try store.setLayout(.heelerDefault, for: host)
+        #expect(AgentRowLayoutStore(defaults: defaults).hostLayouts == [host: .heelerDefault])
     }
 }

@@ -135,10 +135,12 @@ struct AgentListFieldsAddFieldSheet: View {
         .accessibilityAddTraits(.isButton)
     }
 
+    /// Closes after a saved change and after a refused one, whose message
+    /// waits on the page behind the sheet; a no-op keeps the sheet open.
     private func add(_ token: AgentRowToken) {
-        if AgentLayoutTokensEditing.add(
+        let added = AgentLayoutTokensEditing.add(
             token, editor: editor, hostID: destination.hostID, rowIndex: destination.rowIndex)
-        {
+        if added || editor.errorMessage != nil {
             dismiss()
         }
     }

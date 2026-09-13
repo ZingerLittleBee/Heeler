@@ -178,7 +178,7 @@ struct AgentListFieldsHostDetailView: View {
         let slotRows = AgentRowSlot.slotRows(layout.rows)
         ForEach(Array(slotRows.enumerated()), id: \.offset) { index, row in
             AgentListFieldsRowEditor(
-                index: index, row: row, isEnabled: !isSyncing,
+                index: index, row: row, isEnabled: !isSyncing && !editor.isCatalogUnreadable,
                 onAdd: {
                     addingField = AgentListFieldsEditorDestination(hostID: host.id, rowIndex: index)
                 },
@@ -244,6 +244,7 @@ struct AgentListFieldsHostDetailView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .disabled(editor.isCatalogUnreadable)
         .listRowInsets(AgentListFieldsChrome.syncInsets)
         .listRowSeparator(.hidden)
         .agentListHostSurface(isFirst: false, isLast: true)
@@ -260,10 +261,13 @@ struct AgentListFieldsHostDetailView: View {
                     .font(.subheadline.weight(.medium))
                 Text("Sync from plugin")
             }
-            .foregroundStyle(.tint)
+            // An explicit tint would override the dimming a disabled button
+            // gets, so the unreadable-catalog state picks the style itself.
+            .foregroundStyle(
+                editor.isCatalogUnreadable ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.tint))
         }
         .buttonStyle(.borderless)
-        .disabled(isSyncing)
+        .disabled(isSyncing || editor.isCatalogUnreadable)
         .accessibilityIdentifier(identifier)
     }
 
@@ -447,7 +451,7 @@ private struct AgentListFieldsChipWrap: Layout {
     }
 }
 
-private struct AgentListFieldsHostSurface: View {
+struct AgentListFieldsHostSurface: View {
     var isFirst: Bool
     var isLast: Bool
     var fill: Color
@@ -464,7 +468,7 @@ private struct AgentListFieldsHostSurface: View {
     }
 }
 
-private extension View {
+extension View {
     func agentListHostSurface(
         isFirst: Bool, isLast: Bool, fill: Color = AgentListFieldsChrome.cardFill
     ) -> some View {
@@ -472,7 +476,7 @@ private extension View {
     }
 }
 
-private enum AgentListFieldsChrome {
+enum AgentListFieldsChrome {
     static let pageInset: CGFloat = 16
     static let hostSpacing: CGFloat = 18
     static let hostCornerRadius: CGFloat = 12
@@ -497,6 +501,7 @@ private enum AgentListFieldsChrome {
     static let rowInsets = EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16)
     static let slotsNoteInsets = EdgeInsets(top: 10, leading: 16, bottom: 6, trailing: 16)
     static let syncInsets = EdgeInsets(top: 8, leading: 16, bottom: 14, trailing: 16)
+    static let noticeInsets = EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16)
 }
 
 /// Identity for an Add Field sheet. Row slots are fixed, so the slot index
@@ -531,6 +536,14 @@ enum AgentListFieldsCopy {
         "Tap a field to change its style, move it, or remove it. Tap + to add one. Changes save right away."
     static let syncConfirmation =
         "This Host's rows are replaced with its herdr fields and saved right away."
+    static let unreadableCatalogTitle = "Saved fields can’t be read"
+    static let unreadableCatalog =
+        "Heeler kept the saved data untouched. Every Host follows its herdr fields, and editing "
+        + "is paused until you reset."
+    static let unreadableCatalogEdit =
+        "The saved Agent List Fields could not be read. Nothing was changed. Reset Saved Fields to start over."
+    static let resetConfirmation =
+        "The unreadable saved fields are deleted. Every Host returns to its herdr fields and can be edited again."
     static let rowSlots =
         "Row 1 and Row 2 start from herdr's sidebar fields; Sync from plugin refills them. "
         + "Row 3 is Heeler's own row. Any row can use herdr and Heeler fields. "

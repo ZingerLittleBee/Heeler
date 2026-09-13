@@ -386,6 +386,56 @@ struct AgentListFieldsEditorTests {
             self.value = value
         }
     }
+
+    /// Catalog captured from a device that had run the unmerged PR #312
+    /// build, which knew herdr's `machine` field (#320). The control case
+    /// isolates that token.
+    private nonisolated static let savedCatalogs: [(label: String, json: String)] = [
+        ("simulator catalog", ##"{"hostLayouts":["F75B1706-8EAC-4641-AC08-1F9FF038A1F1",{"rows":[[{"token":"terminal_title_stripped","fg":"#6c7086","dim":false}],[{"token":"$pin_icon"},{"token":"workspace","fg":"#45475a","dim":false},{"token":"agent"}],[{"token":"machine"}]],"row_gap":0,"rows_by_agent":{}}],"version":1}"##),
+        ("machine only", ##"{"hostLayouts":["F75B1706-8EAC-4641-AC08-1F9FF038A1F1",{"rows":[[{"token":"machine"}]]}],"version":1}"##),
+        ("control: host instead of machine", ##"{"hostLayouts":["F75B1706-8EAC-4641-AC08-1F9FF038A1F1",{"rows":[[{"token":"terminal_title_stripped","fg":"#6c7086","dim":false}],[{"token":"$pin_icon"},{"token":"workspace","fg":"#45475a","dim":false},{"token":"agent"}],[{"token":"host"}]],"row_gap":0,"rows_by_agent":{}}],"version":1}"##),
+    ]
+
+    @Test(arguments: savedCatalogs)
+    func savedCatalogFromAnotherBuildDoesNotBlockEdits(label: String, json: String) throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        defaults.set(Data(json.utf8), forKey: "agent-row-layouts")
+        let layouts = AgentRowLayoutStore(defaults: defaults)
+        let editor = AgentListFieldsEditor(
+            layouts: layouts, snapshots: HerdrSidebarSnapshotStore(), fetch: { _ in nil })
+        let hostID = try #require(UUID(uuidString: "F75B1706-8EAC-4641-AC08-1F9FF038A1F1"))
+        let rows: [AgentRow] = [[.init(.agent)], [], [.init(.directory)]]
+        let committed = editor.commit(hostID) { $0.rows = rows }
+        #expect(editor.errorMessage == nil, "\(label): \(editor.errorMessage ?? "")")
+        #expect(committed, "\(label)")
+    }
+
+    @Test func resetSavedFieldsClearsAnUnreadableCatalogAndEndsTheSession() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        defaults.set(Data("not json".utf8), forKey: "agent-row-layouts")
+        let layouts = AgentRowLayoutStore(defaults: defaults)
+        let editor = AgentListFieldsEditor(
+            layouts: layouts, snapshots: HerdrSidebarSnapshotStore(), fetch: { _ in nil })
+        let hostID = UUID()
+        let rows: [AgentRow] = [[.init(.agent)]]
+        #expect(editor.isCatalogUnreadable)
+        let refused = editor.commit(hostID) { $0.rows = rows }
+        #expect(refused == false)
+        #expect(editor.errorMessage == AgentListFieldsCopy.unreadableCatalogEdit)
+        #expect(editor.isEditing == false && editor.drafts.isEmpty)
+        #expect(editor.layout(for: hostID) == .consoleDefault)
+        #expect(defaults.data(forKey: "agent-row-layouts") == Data("not json".utf8))
+
+        editor.resetSavedFields()
+        #expect(editor.isCatalogUnreadable == false)
+        #expect(editor.errorMessage == nil && editor.isEditing == false && editor.drafts.isEmpty)
+        #expect(editor.layout(for: hostID) == .consoleDefault)
+        let committed = editor.commit(hostID) { $0.rows = rows }
+        #expect(committed)
+        #expect(layouts.hostLayouts[hostID]?.rows == rows)
+    }
 }
 
 @MainActor
@@ -416,6 +466,26 @@ struct AgentListFieldsInlineEditingTests {
         let suite = "fields-inline-\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         return (defaults, { defaults.removePersistentDomain(forName: suite) })
+    }
+
+    /// A field added through the sheet against an unreadable catalog must
+    /// not linger as a draft that the rows then display as if saved (#320).
+    @Test func inlineEditAgainstAnUnreadableCatalogLeavesNoDraftBehind() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        defaults.set(Data("not json".utf8), forKey: "agent-row-layouts")
+        let layouts = AgentRowLayoutStore(defaults: defaults)
+        let editor = AgentListFieldsEditor(
+            layouts: layouts, snapshots: HerdrSidebarSnapshotStore(), fetch: { _ in nil })
+        let hostID = UUID()
+        #expect(editor.isCatalogUnreadable)
+        let added = AgentLayoutTokensEditing.add(.host, editor: editor, hostID: hostID, rowIndex: 2)
+        #expect(added == false)
+        #expect(editor.errorMessage == AgentListFieldsCopy.unreadableCatalogEdit)
+        #expect(editor.isEditing == false && editor.drafts.isEmpty)
+        #expect(editor.layout(for: hostID) == .consoleDefault)
+        #expect(AgentLayoutTokensEditing.availableHeelerFields(in: editor.layout(for: hostID).rows[2]) == [.host, .status])
+        #expect(defaults.data(forKey: "agent-row-layouts") == Data("not json".utf8))
     }
 
     @Test func commitValidatesAndPersistsOneChangeWithoutLeavingASessionOpen() throws {
