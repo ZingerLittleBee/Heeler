@@ -451,7 +451,7 @@ private struct AgentListFieldsChipWrap: Layout {
     }
 }
 
-private struct AgentListFieldsHostSurface: View {
+struct AgentListFieldsHostSurface: View {
     var isFirst: Bool
     var isLast: Bool
     var fill: Color
@@ -468,7 +468,7 @@ private struct AgentListFieldsHostSurface: View {
     }
 }
 
-private extension View {
+extension View {
     func agentListHostSurface(
         isFirst: Bool, isLast: Bool, fill: Color = AgentListFieldsChrome.cardFill
     ) -> some View {
@@ -476,7 +476,7 @@ private extension View {
     }
 }
 
-private enum AgentListFieldsChrome {
+enum AgentListFieldsChrome {
     static let pageInset: CGFloat = 16
     static let hostSpacing: CGFloat = 18
     static let hostCornerRadius: CGFloat = 12
@@ -501,6 +501,7 @@ private enum AgentListFieldsChrome {
     static let rowInsets = EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16)
     static let slotsNoteInsets = EdgeInsets(top: 10, leading: 16, bottom: 6, trailing: 16)
     static let syncInsets = EdgeInsets(top: 8, leading: 16, bottom: 14, trailing: 16)
+    static let noticeInsets = EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16)
 }
 
 /// Identity for an Add Field sheet. Row slots are fixed, so the slot index
@@ -535,9 +536,10 @@ enum AgentListFieldsCopy {
         "Tap a field to change its style, move it, or remove it. Tap + to add one. Changes save right away."
     static let syncConfirmation =
         "This Host's rows are replaced with its herdr fields and saved right away."
+    static let unreadableCatalogTitle = "Saved fields can’t be read"
     static let unreadableCatalog =
-        "The saved Agent List Fields could not be read, so every Host shows its herdr fields and "
-        + "changes are not saved. The original data has been kept. Reset Saved Fields discards it."
+        "Heeler kept the saved data untouched. Every Host follows its herdr fields, and editing "
+        + "is paused until you reset."
     static let unreadableCatalogEdit =
         "The saved Agent List Fields could not be read. Nothing was changed. Reset Saved Fields to start over."
     static let resetConfirmation =
