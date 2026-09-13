@@ -424,6 +424,8 @@ struct AgentListFieldsEditorTests {
         let refused = editor.commit(hostID) { $0.rows = rows }
         #expect(refused == false)
         #expect(editor.errorMessage == AgentListFieldsCopy.unreadableCatalogEdit)
+        #expect(editor.isEditing == false && editor.drafts.isEmpty)
+        #expect(editor.layout(for: hostID) == .consoleDefault)
         #expect(defaults.data(forKey: "agent-row-layouts") == Data("not json".utf8))
 
         editor.resetSavedFields()
@@ -464,6 +466,26 @@ struct AgentListFieldsInlineEditingTests {
         let suite = "fields-inline-\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         return (defaults, { defaults.removePersistentDomain(forName: suite) })
+    }
+
+    /// A field added through the sheet against an unreadable catalog must
+    /// not linger as a draft that the rows then display as if saved (#320).
+    @Test func inlineEditAgainstAnUnreadableCatalogLeavesNoDraftBehind() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        defaults.set(Data("not json".utf8), forKey: "agent-row-layouts")
+        let layouts = AgentRowLayoutStore(defaults: defaults)
+        let editor = AgentListFieldsEditor(
+            layouts: layouts, snapshots: HerdrSidebarSnapshotStore(), fetch: { _ in nil })
+        let hostID = UUID()
+        #expect(editor.isCatalogUnreadable)
+        let added = AgentLayoutTokensEditing.add(.host, editor: editor, hostID: hostID, rowIndex: 2)
+        #expect(added == false)
+        #expect(editor.errorMessage == AgentListFieldsCopy.unreadableCatalogEdit)
+        #expect(editor.isEditing == false && editor.drafts.isEmpty)
+        #expect(editor.layout(for: hostID) == .consoleDefault)
+        #expect(AgentLayoutTokensEditing.availableHeelerFields(in: editor.layout(for: hostID).rows[2]) == [.host, .status])
+        #expect(defaults.data(forKey: "agent-row-layouts") == Data("not json".utf8))
     }
 
     @Test func commitValidatesAndPersistsOneChangeWithoutLeavingASessionOpen() throws {

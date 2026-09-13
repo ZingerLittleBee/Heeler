@@ -178,7 +178,7 @@ struct AgentListFieldsHostDetailView: View {
         let slotRows = AgentRowSlot.slotRows(layout.rows)
         ForEach(Array(slotRows.enumerated()), id: \.offset) { index, row in
             AgentListFieldsRowEditor(
-                index: index, row: row, isEnabled: !isSyncing,
+                index: index, row: row, isEnabled: !isSyncing && !editor.isCatalogUnreadable,
                 onAdd: {
                     addingField = AgentListFieldsEditorDestination(hostID: host.id, rowIndex: index)
                 },
@@ -244,6 +244,7 @@ struct AgentListFieldsHostDetailView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .disabled(editor.isCatalogUnreadable)
         .listRowInsets(AgentListFieldsChrome.syncInsets)
         .listRowSeparator(.hidden)
         .agentListHostSurface(isFirst: false, isLast: true)

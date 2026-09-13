@@ -131,10 +131,12 @@ final class AgentListFieldsEditor {
         }
     }
 
-    /// One inline change, validated and persisted at once. A no-op or invalid
-    /// change writes nothing and returns false; an invalid one keeps its
-    /// message in `errorMessage`. Inside an open draft session the change
-    /// joins that session and `save` writes every dirty Host.
+    /// One inline change, validated and persisted at once. A no-op, invalid,
+    /// or unsaveable change writes nothing and returns false, keeping its
+    /// message in `errorMessage` and no draft behind: the screens show what
+    /// is persisted, never a change that failed to save. Inside an open draft
+    /// session the change joins that session and `save` writes every dirty
+    /// Host; a failed save then keeps the session, as `save` documents.
     @discardableResult
     func commit(_ hostID: Host.ID, _ edit: (inout AgentRowLayout) -> Void) -> Bool {
         let wasEditing = isEditing
@@ -150,6 +152,10 @@ final class AgentListFieldsEditor {
             return false
         }
         save()
+        if isEditing, !wasEditing {
+            discardKeepingError()
+            return false
+        }
         return !isEditing
     }
 
