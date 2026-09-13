@@ -7,6 +7,13 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- The Console gains a Sessions switcher: it lists the herdr sessions each Host
+  reports over its existing connection and selecting one rewrites that Host's
+  stored session, so reaching a second session no longer means duplicating the
+  Host. Stopped named sessions stay unselectable. (#269)
+
 ## [0.1.8] - 2026-09-13
 
 ### Added
