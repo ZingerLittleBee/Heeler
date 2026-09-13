@@ -261,10 +261,13 @@ struct AgentListFieldsHostDetailView: View {
                     .font(.subheadline.weight(.medium))
                 Text("Sync from plugin")
             }
-            .foregroundStyle(.tint)
+            // An explicit tint would override the dimming a disabled button
+            // gets, so the unreadable-catalog state picks the style itself.
+            .foregroundStyle(
+                editor.isCatalogUnreadable ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.tint))
         }
         .buttonStyle(.borderless)
-        .disabled(isSyncing)
+        .disabled(isSyncing || editor.isCatalogUnreadable)
         .accessibilityIdentifier(identifier)
     }
 
