@@ -7,6 +7,14 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Fixed
+
+- Agent List Fields no longer refuses every edit after a build with a
+  different field set saved on the same device: field names this build does
+  not know are dropped on load instead of making the whole saved catalog
+  unreadable. When the saved fields truly cannot be read, both Agent List
+  Fields screens say so before any edit and offer Reset Saved Fields. (#320)
+
 ## [0.1.7] - 2026-09-12
 
 ### Added

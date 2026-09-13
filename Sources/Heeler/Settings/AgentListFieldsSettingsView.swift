@@ -531,6 +531,13 @@ enum AgentListFieldsCopy {
         "Tap a field to change its style, move it, or remove it. Tap + to add one. Changes save right away."
     static let syncConfirmation =
         "This Host's rows are replaced with its herdr fields and saved right away."
+    static let unreadableCatalog =
+        "The saved Agent List Fields could not be read, so every Host shows its herdr fields and "
+        + "changes are not saved. The original data has been kept. Reset Saved Fields discards it."
+    static let unreadableCatalogEdit =
+        "The saved Agent List Fields could not be read. Nothing was changed. Reset Saved Fields to start over."
+    static let resetConfirmation =
+        "The unreadable saved fields are deleted. Every Host returns to its herdr fields and can be edited again."
     static let rowSlots =
         "Row 1 and Row 2 start from herdr's sidebar fields; Sync from plugin refills them. "
         + "Row 3 is Heeler's own row. Any row can use herdr and Heeler fields. "

@@ -208,6 +208,19 @@ final class AgentListFieldsEditor {
         errorMessage = nil
     }
 
+    /// True while the saved catalog cannot be read: edits are refused until
+    /// `resetSavedFields` discards it.
+    var isCatalogUnreadable: Bool {
+        layouts.catalogLoadError != nil
+    }
+
+    /// Discards the unreadable catalog together with any draft session, so
+    /// the screens return to each Host's herdr fields.
+    func resetSavedFields() {
+        layouts.resetUnreadableCatalog()
+        cancel()
+    }
+
     private func discardKeepingError() {
         let message = errorMessage
         cancel()
@@ -223,7 +236,7 @@ final class AgentListFieldsEditor {
 
     private func report(_ error: any Error) {
         errorMessage = error is AgentRowLayoutStoreError
-            ? "The saved Agent List Fields could not be read. Nothing was changed."
+            ? AgentListFieldsCopy.unreadableCatalogEdit
             : "This layout could not be saved. Use at most 3 rows and 16 fields per row, with valid field names."
     }
 }

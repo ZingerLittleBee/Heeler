@@ -271,8 +271,8 @@ enum AgentPanelSort: String, Codable, Sendable {
 }
 
 /// Read-only normalized plugin snapshot. Unknown token names are removed
-/// individually; malformed structure or an unsupported version is absent.
-/// Local persisted layouts use stricter Codable decoding to protect edits.
+/// individually (`AgentRowLayout.Lenient`); malformed structure or an
+/// unsupported version is absent.
 struct AgentRowLayoutSnapshot: Equatable, Sendable {
     let layout: AgentRowLayout
     let agentPanelSort: AgentPanelSort
@@ -287,11 +287,11 @@ struct AgentRowLayoutSnapshot: Equatable, Sendable {
     static func decode(_ data: Data?) -> Self? {
         guard let data,
             let snapshot = try? JSONDecoder().decode(WireSnapshot.self, from: data),
-            snapshot.v == 1,
-            let layout = try? (snapshot.sidebar?.agents?.layout() ?? AgentRowLayout.heelerDefault)
+            snapshot.v == 1
         else { return nil }
         return Self(
-            layout: layout, agentPanelSort: snapshot.agentPanelSort ?? .spaces,
+            layout: snapshot.sidebar?.agents?.layout ?? AgentRowLayout.heelerDefault,
+            agentPanelSort: snapshot.agentPanelSort ?? .spaces,
             diagnostics: snapshot.diagnostics ?? [])
     }
 
@@ -308,22 +308,36 @@ struct AgentRowLayoutSnapshot: Equatable, Sendable {
     }
 
     private struct Sidebar: Decodable {
-        let agents: WireLayout?
+        let agents: AgentRowLayout.Lenient?
     }
+}
 
-    private struct WireLayout: Decodable {
-        let rowGap: Int?
-        let rows: [[WireToken]]?
-        let rowsByAgent: [String: [[WireToken]]]?
+extension AgentRowLayout {
+    /// Tolerant decoding for layouts written by something other than this
+    /// build: herdr plugin snapshots and the persisted catalog after a build
+    /// with a different field set ran on the same device. Unknown token
+    /// names and invalid colors are dropped individually so one unfamiliar
+    /// field never discards a whole layout. Structure and limits stay
+    /// strict: wrong types, too many rows, or too many fields still fail.
+    struct Lenient: Decodable {
+        let layout: AgentRowLayout
 
-        enum CodingKeys: String, CodingKey {
+        private struct Token: Decodable {
+            let token: String
+            let fg: String?
+            let bold: Bool?
+            let dim: Bool?
+        }
+
+        private enum CodingKeys: String, CodingKey {
             case rowGap = "row_gap"
             case rows
             case rowsByAgent = "rows_by_agent"
         }
 
-        func layout() throws -> AgentRowLayout {
-            func convert(_ rows: [[WireToken]]) throws -> [AgentRow] {
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            func convert(_ rows: [[Token]]) throws -> [AgentRow] {
                 guard rows.count <= AgentRowLayout.maximumRows else { throw AgentRowLayoutError.tooManyRows }
                 return try rows.map { row in
                     guard row.count <= AgentRowLayout.maximumTokensPerRow else {
@@ -338,18 +352,13 @@ struct AgentRowLayoutSnapshot: Equatable, Sendable {
                 }
             }
             let layout = AgentRowLayout(
-                rows: try rows.map(convert) ?? AgentRowLayout.heelerDefault.rows,
-                rowGap: rowGap ?? 0,
-                rowsByAgent: try (rowsByAgent ?? [:]).mapValues(convert))
+                rows: try container.decodeIfPresent([[Token]].self, forKey: .rows).map(convert)
+                    ?? AgentRowLayout.heelerDefault.rows,
+                rowGap: try container.decodeIfPresent(Int.self, forKey: .rowGap) ?? 0,
+                rowsByAgent: try (container.decodeIfPresent([String: [[Token]]].self, forKey: .rowsByAgent) ?? [:])
+                    .mapValues(convert))
             try layout.validate()
-            return layout
+            self.layout = layout
         }
-    }
-
-    private struct WireToken: Decodable {
-        let token: String
-        let fg: String?
-        let bold: Bool?
-        let dim: Bool?
     }
 }
