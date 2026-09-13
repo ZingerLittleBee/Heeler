@@ -14,7 +14,7 @@ Entries reference the issue that motivated them.
   not know are dropped on load instead of making the whole saved catalog
   unreadable. When the saved fields truly cannot be read, both Agent List
   Fields screens say so before any edit, keep the fields read-only, and offer
-  Reset Saved Fields. (#320)
+  Reset Saved Fields. (#320; PR #321)
 
 ## [0.1.7] - 2026-09-12
 
