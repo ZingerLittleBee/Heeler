@@ -211,6 +211,12 @@ protocol Transport: Sendable {
     /// as `listSkills`.
     func readSkillFile(atPath path: String) async throws -> String
 
+    /// Reads one byte range of a Host file. A file that only ever grows — an
+    /// Agent's session transcript — is followed by asking for what has not
+    /// been read yet, so a screen can show a running figure without pulling
+    /// the whole file on every look.
+    func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice
+
     /// Whether the underlying connection to the Host is still alive. The
     /// reconnect machinery (#18) decides "re-subscribe on this connection or
     /// re-establish it" from this flag.
@@ -244,6 +250,14 @@ extension Transport {
     func readSkillFile(atPath path: String) async throws -> String {
         throw TransportError.channelFailed(
             detail: "This transport cannot read skill files.")
+    }
+
+    /// Test doubles and alternative transports without Host files can decline
+    /// without emulating an SSH library; a follower then shows only what the
+    /// Host reports elsewhere.
+    func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        throw TransportError.channelFailed(
+            detail: "This transport cannot read Host files.")
     }
 
     /// Non-SSH test doubles and alternative transports can state that SFTP is
@@ -442,6 +456,36 @@ struct SkillListQuery: Sendable, Equatable {
     }
 }
 
+/// A byte range of one Host file, addressed from its start.
+struct RemoteFileRange: Sendable, Equatable {
+    let path: String
+    let offset: UInt64
+    let maxBytes: Int
+
+    init(path: String, offset: UInt64, maxBytes: Int) {
+        self.path = path
+        self.offset = offset
+        self.maxBytes = maxBytes
+    }
+}
+
+/// One ranged read's answer: the bytes that range holds, and the file's size
+/// at that moment. `length` is nil only when the file is absent, which is how
+/// a follower tells "nothing appended yet" from "the file is gone".
+struct RemoteFileSlice: Sendable, Equatable {
+    let data: Data
+    let length: UInt64?
+
+    init(data: Data, length: UInt64?) {
+        self.data = data
+        self.length = length
+    }
+}
+
+/// A late-bound ranged read. Resolved per call rather than captured, so a
+/// reconnect cannot leave a follower reading through a dead transport.
+typealias SessionFileReader = @Sendable (RemoteFileRange) async throws -> RemoteFileSlice
+
 /// App-domain refinements for the fresh-worktree launch variant (#97). Nil
 /// fields use herdr's defaults, verified live against 0.7.5: branch
 /// `worktree/<generated-name>` off HEAD, checkout under herdr's worktree
@@ -566,6 +610,9 @@ struct Agent: Sendable, Equatable {
     let terminalTitleStripped: String?
     /// Pane presentation/manual title (`AgentInfo.title`), not a pane id.
     let paneTitle: String?
+    /// Where herdr says this Agent's own session lives, when it detects one.
+    /// For `omp` that is the session transcript (#325).
+    let agentSession: AgentSessionInfo?
     let tokens: [String: String]
     let stateLabels: [String: String]
     /// Snapshot ordering metadata for Agent panel sort consumers.
@@ -589,7 +636,8 @@ struct Agent: Sendable, Equatable {
         workspaceID: String, tabID: String, paneID: String, cwd: String, revision: Int,
         name: String? = nil,
         terminalTitle: String? = nil, terminalTitleStripped: String? = nil,
-        paneTitle: String? = nil, tokens: [String: String] = [:],
+        paneTitle: String? = nil, agentSession: AgentSessionInfo? = nil,
+        tokens: [String: String] = [:],
         stateLabels: [String: String] = [:], stateChangeSeq: Int? = nil
     ) {
         self.terminalID = terminalID
@@ -600,6 +648,7 @@ struct Agent: Sendable, Equatable {
         self.terminalTitleStripped = terminalTitleStripped
             ?? terminalTitle.map(Self.strippedSidebarTitle)
         self.paneTitle = paneTitle
+        self.agentSession = agentSession
         self.tokens = tokens
         self.stateLabels = stateLabels
         self.stateChangeSeq = stateChangeSeq
@@ -630,6 +679,7 @@ struct Agent: Sendable, Equatable {
             terminalTitle: info.terminalTitle,
             terminalTitleStripped: info.terminalTitleStripped,
             paneTitle: info.title,
+            agentSession: info.agentSession,
             tokens: info.tokens ?? [:],
             stateLabels: info.stateLabels ?? [:],
             stateChangeSeq: info.stateChangeSeq
