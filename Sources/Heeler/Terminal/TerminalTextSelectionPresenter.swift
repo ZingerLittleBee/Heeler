@@ -89,7 +89,9 @@ final class TerminalTextSelectionViewController: UIViewController {
 }
 
 extension UIView {
-    fileprivate var nearestPresentingViewController: UIViewController? {
+    /// Shared by the terminal's modal presenters: the topmost controller able
+    /// to take a presentation from this view.
+    var nearestPresentingViewController: UIViewController? {
         var responder: UIResponder? = self
         while let current = responder {
             if let viewController = current as? UIViewController {

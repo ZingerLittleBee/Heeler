@@ -656,6 +656,12 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private let callbackBridge: TerminalSessionCallbackBridge
     private let terminalController: TerminalController
     private let clipboard: TerminalClipboard
+    /// The unsafe-paste alert awaiting an answer, held weakly. Its presence is
+    /// the in-flight guard: a second request that arrives while one is up is
+    /// refused rather than stacked, and a presenter torn down mid-alert clears
+    /// the guard by releasing it instead of leaving later pastes muted.
+    /// `refs #243`
+    private weak var pendingUnsafePasteAlert: UIAlertController?
     let terminalSession: InMemoryTerminalSession
     private(set) var appliedTheme: TerminalTheme
     private(set) var appliedFontSize: Float
@@ -2243,7 +2249,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
 
 extension HeelerTerminalView: TerminalSurfaceOpenURLDelegate,
     TerminalSurfaceTextSelectionRequestDelegate, TerminalSurfaceLifecycleDelegate,
-    TerminalSurfaceGridResizeDelegate
+    TerminalSurfaceGridResizeDelegate, TerminalSurfaceClipboardConfirmationDelegate
 {
     func terminalDidRequestOpenURL(_ url: String, kind _: TerminalOpenURLKind) {
         guard let url = TerminalLinkPolicy.url(for: url) else { return }
@@ -2269,6 +2275,42 @@ extension HeelerTerminalView: TerminalSurfaceOpenURLDelegate,
 
     func terminalDidRequestTextSelection(_ request: TerminalTextSelectionRequest) {
         TerminalTextSelectionPresenter.present(request, from: self)
+    }
+
+    /// herdr's own emulation answers two of these before Heeler can see them:
+    /// it consumes OSC 52 writes from the pane child and forwards them only to
+    /// its foreground TUI client — never to a `terminal attach` client — and it
+    /// registers no OSC 52 read callback at all. libghostty then consults this
+    /// delegate for writes only under `clipboard-write = ask`, where its default
+    /// `allow` writes the pasteboard directly. The answers live in
+    /// ``TerminalClipboardRequestDecision`` so they stay pinned by tests.
+    func terminalDidRequestClipboardConfirmation(_ request: TerminalClipboardConfirmationRequest) {
+        switch TerminalClipboardRequestDecision.decision(for: request.kind) {
+        case .allow:
+            request.respond(allow: true)
+        case .deny:
+            request.respond(allow: false)
+        case .askUser:
+            presentUnsafePasteConfirmation(request)
+        }
+    }
+
+    /// The one reachable case: dictation or an IME commits text carrying a
+    /// newline, the package routes it through `ghostty_surface_text`, and the
+    /// target program has bracketed paste off — so it arrives here to be
+    /// reviewed instead of dropped.
+    private func presentUnsafePasteConfirmation(
+        _ request: TerminalClipboardConfirmationRequest
+    ) {
+        // A request that answers itself (no presenter able to take the alert)
+        // returns nil and never occupies the guard, so the next paste still
+        // gets its chance.
+        guard pendingUnsafePasteAlert == nil else {
+            request.respond(allow: false)
+            return
+        }
+        pendingUnsafePasteAlert = TerminalUnsafePasteAlertPresenter.present(
+            request, from: self)
     }
 
     func terminalDidAttachSurface(_: TerminalSurface) {}
