@@ -443,6 +443,7 @@
         }
 
         func closePane(_ params: PaneTarget) async throws {}
+        func renamePane(_ params: PaneRenameParams) async throws {}
         func renameAgent(_ params: AgentRenameParams) async throws {}
         func renameWorkspace(_ params: WorkspaceRenameParams) async throws {}
 

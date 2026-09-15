@@ -457,6 +457,12 @@ final class ConsoleStore {
         try await projection(for: hostID).renameWorkspace(workspaceID, label: label)
     }
 
+    func renamePane(
+        _ paneID: String, label: String?, on hostID: Host.ID
+    ) async throws {
+        try await projection(for: hostID).renamePane(paneID, label: label)
+    }
+
     private func startProjection(for host: Host) {
         let session = makeSession(
             host,

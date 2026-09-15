@@ -68,6 +68,16 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
 
     var repoName: String? { repositoryCheckout?.repoName }
 
+    /// The pane's own herdr label (#290), trimmed, when it is set and not
+    /// blank. This is the name the user gave the session through
+    /// `pane.rename`, so it leads the row headline, the switcher chip, and the
+    /// detail title; nil falls back to the workspace/tab/kind chain.
+    var sessionLabel: String? {
+        guard let paneLabel else { return nil }
+        let trimmed = paneLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     /// Protocol 20 has no custom-name bit. A manual name equal to the
     /// automatic position cannot be distinguished from an automatic name.
     var showsTabLabel: Bool {
