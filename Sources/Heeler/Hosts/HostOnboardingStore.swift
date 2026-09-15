@@ -123,7 +123,7 @@ final class HostOnboardingStore {
     /// onboarding and immediately checks the selected socket.
     func selectSession(_ session: HerdrSession, in catalog: HostStore) throws {
         var updated = host
-        updated.sessionName = session.isDefault ? "" : session.name
+        updated.sessionName = HerdrSessionSelection.sessionName(for: session)
         try catalog.update(updated)
     }
 

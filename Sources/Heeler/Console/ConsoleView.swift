@@ -25,6 +25,7 @@ struct ConsoleView: View {
     @State private var hostSheet: HostSheet?
     @State private var isStartingAgent = false
     @State private var isShowingSettings = false
+    @State private var isShowingSessions = false
     /// Hosts whose Host-detail Reconnect request is in flight, including the
     /// 1.2 s visual-feedback hold after `retryHost` returns. Distinct from
     /// `EventsSessionStatus.reconnecting`.
@@ -123,6 +124,14 @@ struct ConsoleView: View {
                                 .accessibilityValue(listPresentation.mode.title)
                             }
                         }
+                        if !hosts.hosts.isEmpty {
+                            ToolbarItem(placement: .primaryAction) {
+                                Button("Sessions", systemImage: "rectangle.stack") {
+                                    isShowingSessions = true
+                                }
+                                .hoverEffect(.highlight)
+                            }
+                        }
                         ToolbarItem(placement: .primaryAction) {
                             Button("Hosts", systemImage: "server.rack") {
                                 presentHosts()
@@ -189,6 +198,20 @@ struct ConsoleView: View {
                 liveActivities: liveActivities,
                 console: console,
                 hosts: hosts.hosts)
+            .modifier(ConsoleSheetPresentationModifier(
+                presentation: ConsoleSheetPresentation(
+                    horizontalSizeClass: horizontalSizeClass)))
+        }
+        .sheet(isPresented: $isShowingSessions) {
+            // HostSessionSwitcherView brings its own NavigationStack.
+            HostSessionSwitcherView(
+                catalog: hosts,
+                hostFilter: hostFilter,
+                listSessions: { hostID in
+                    try await console.withNotificationTransport(for: hostID) {
+                        try await $0.listSessions()
+                    }
+                })
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(
                     horizontalSizeClass: horizontalSizeClass)))
