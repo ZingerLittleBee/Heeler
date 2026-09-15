@@ -1976,7 +1976,7 @@ if [[ "$password_fixture_available" == "1" ]]; then
 fi
 run_suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 \
     HeelerSSHDirectStreamLocalE2ETests
-run_suite SharedFixtureE2ETests 104 6 0 \
+run_suite SharedFixtureE2ETests 106 6 0 \
     HeelerSSHPTYE2ETests \
     HeelerSSHJumpHostGateE2ETests \
     HeelerSSHTransportBehaviorE2ETests \
@@ -2044,6 +2044,10 @@ assert_behavior "agent rename clear omission" HeelerSSHTransportBehaviorE2ETests
     '"agent rename omits name when clearing a custom name"'
 assert_behavior "workspace rename params" HeelerSSHTransportBehaviorE2ETests \
     '"workspace rename sends its label and workspace id exactly"'
+assert_behavior "pane rename params" HeelerSSHTransportBehaviorE2ETests \
+    '"pane rename sends its label and pane id exactly"'
+assert_behavior "pane rename clear omission" HeelerSSHTransportBehaviorE2ETests \
+    '"pane rename omits label when clearing the pane name"'
 assert_behavior "pane read params and result" HeelerSSHTransportBehaviorE2ETests \
     '"pane read sends exact params and round trips the result"'
 assert_behavior "worktree remove params" HeelerSSHTransportBehaviorE2ETests \

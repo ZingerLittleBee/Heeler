@@ -7,6 +7,14 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- Rename a session from the Agent card's menu using herdr's own pane name
+  (`pane.rename`). The name lives on the Host, so it follows the session to
+  every attached client instead of staying on one device, and it names the
+  card, the keyboard switcher chip, and the detail title. Clearing it returns
+  the row to the workspace/tab/kind chain. (#290)
+
 ### Fixed
 
 - Pairing names Tailscale SSH when it answers the Pairing Code's port
@@ -18,132 +26,6 @@ Entries reference the issue that motivated them.
   hiccup. (#358; PR #376)
 
 ## [0.1.10] - 2026-09-23
-
-### Added
-
-- Swipe an Agent row left to close it or right to pin it; a full swipe
-  acts at once. Closing always asks first and takes only the Agent's
-  pane when its tab holds others. (#366; PR #374)
-- The New Agent sheet can create a Workspace from a name alone. A
-  name-only launch defaults the directory to the Host's home and the
-  workspace label is now a field on the form; a browsed directory still
-  overrides it. (#362)
-- The Agent terminal shows the session's model, prompt size (as a share of
-  the model's context window, `11.0%`, once omp on the Host has named it),
-  and spend in a strip above the terminal. These are the figures the Agent's own status line
-  prints, but a phone-width terminal runs out of room for them and drops the
-  last ones first. Heeler reads them from the Agent's session file on the Host,
-  following only what the file gained since the last look, and the strip wears
-  the terminal's theme. Only omp reports such a file today; a figure that
-  cannot be read is left out rather than shown as a placeholder. When omp's
-  own `tok/s` readout is on (`composer.tokenRate`), the strip shows the last
-  turn's generation rate too. (#325)
-- Pairing Codes can advertise a non-default SSH port via `pair.json`
-  (`ssh_port`) in the plugin config directory, so OpenSSH can share a Host
-  with Tailscale SSH on port 22. A `pair.json` the plugin cannot honor is
-  named in the pair checklist instead of quietly reverting to 22, and a
-  checked tailnet address on a Host that is serving Tailscale SSH is called
-  out there too — before the QR appears, rather than as a failure on the
-  phone. (#355)
-
-### Fixed
-
-- New Agent tabs take the agent's name. `tab.create` now carries it as
-  the tab's label, and after a workspace or worktree launch the fresh
-  tab is renamed once the agent is running, so the tab bar shows names
-  instead of herdr's automatic "Tab N". An optional Tab Name field on
-  the form overrides that default with free text, since herdr limits
-  agent names to a lowercase slug but not tab labels. (#362)
-- Pairing no longer defaults to a Docker bridge address when the Host's
-  primary interface has no suitable private or VPN address. Docker bridge
-  and veth addresses remain available for manual selection at the end of
-  the checklist, without being pre-checked. Normal LAN bridges keep their
-  existing selection behavior. (PR #357, refs #356)
-- A message sent to an Agent the app had just launched no longer fails with
-  "herdr rejected the message: agent wX:pY is not an active named agent".
-  herdr 0.8.0+ answers `agent.start` while the pane's agent is still booting,
-  and the Console's post-start wait only checks that the Agent's row exists —
-  so the first prompt typed into the fresh Agent's tab could beat the agent's
-  registration on the Host, and herdr refused the send even though the pane
-  id was correct; leaving the Agent and returning was what made sending work.
-  The composer now treats that rejection as the launch race it is and waits
-  it out at a fixed pace inside the same bounded budget the transport already
-  uses for a fresh pane's booting shell, still surfacing herdr's refusal once
-  the budget is spent and never retrying a genuinely absent Agent
-  (`agent_not_found`). (#368)
-- A message sent to an Agent the app had just launched no longer fails with
-  "The Host is not connected." Launching an Agent — a new Workspace's Agent in
-  particular — makes the Console subscribe to that pane's status events, and
-  when the Host's connection has gone quiet or degraded during the launch,
-  that subscription swap silently replaces the SSH transport. The Console kept
-  reporting the Host as connected while every Host-scoped request — the
-  composer's send included — was refused for the seconds the replacement dial
-  took, and the first message typed into the fresh Agent's tab died inside
-  that window; leaving the Agent and returning was what made sending work.
-  Host-scoped requests now wait for the replacement transport instead of
-  failing against a gap the connection status never announced, and still fail
-  at once with the real cause when the session is suspended, stopped on an
-  action-required failure, or visibly reconnecting. A caller that reaches the
-  degraded transport before the session notices also gets one redial-and-retry
-  instead of a phantom "The Host is not connected." — the case the launch
-  window kept producing. (#368)
-- Manually adding a Host (or finishing Scan to Pair) no longer loses the
-  "Trust this Host?" alert. Navigation into onboarding waits until the add
-  sheet has finished dismissing, so preflight's TOFU prompt is not dropped
-  mid-transition. (#359)
-- Typing into an Agent with Direct Input no longer sends a word twice. The
-  iOS keyboard no longer offers autocorrect or QuickType suggestions there or
-  in Composer, so pressing Space cannot add a suggested word after the letters
-  already typed. Chinese and other input methods keep their candidate bar.
-  (PR #349)
-
-## [0.1.9] - 2026-09-19
-
-### Added
-
-- Browse every terminal in the Workspace from a drawer docked to the edge of
-  Agent detail. The list groups by Host and Workspace and shows Tab titles,
-  paths, and which panes run Agents. A terminal you have opened keeps its
-  connection and screen for five idle minutes, up to five per Host; the least
-  recently viewed idle one gives way when a sixth is needed. New Terminal
-  opens a fresh shell tab in the Workspace. Output stays readable under the
-  drawer handle and the message-jump tabs. (#333)
-
-- Choose an existing Workspace or New Workspace from the same dropdown in
-  New Agent. New Workspace opens a remote directory browser. The latest directory stays at the
-  bottom of the dropdown, with its name and full path shown when selected. (PR #305)
-- Hosts can authenticate with a device-generated RSA Key using RSA-SHA2-512,
-  including connections through a Jump Host. The private key remains in the
-  Keychain and the public key can be copied from Host settings. (PR #347)
-
-### Changed
-
-- The message-jump buttons dock flush against the terminal's edge as a tab,
-  matching the Workspace drawer handle. Long-press either to slide it along
-  the edge; each stays where you leave it. (#333)
-- The Shell Terminal drops its title bar so output runs up to the status bar.
-  Back and Close Terminal moved into the More menu on its input row, which now
-  stays visible while the keyboard is down. The row's Insert New Line button
-  is gone; Shift+Enter on the Keys keyboard sends the same line break. (#333)
-- The keyboard follows you between Agent detail and a Shell Terminal: up or
-  down, it is the same on the other side, and it stays on screen through the
-  switch instead of dropping and rising again. The terminal's Text/Keys row
-  sits above it from the first frame, and the two screens dissolve into each
-  other instead of cutting. (#333)
-- Make the remote directory browser more compact, with full-row folder navigation,
-  native filtering, empty states, and retry for failed navigation. (PR #305)
-
-### Fixed
-
-- Connecting to a Host no longer fails intermittently during post-quantum key
-  exchange. Roughly one handshake in 256 was rejected by a defect in the SSH
-  library, and about twice as often for a Host behind a Jump Host; the app now
-  redials once. (#332)
-- A saved Host with an authentication method this build does not understand is
-  skipped without making the rest of the Host catalog unreadable. (PR #347)
-- Show the directory browser on the first New Workspace tap. (PR #305)
-- Viewing a Done Agent marks it seen on its Host and refreshes Console and
-  Live Activity status, including other Agents in the same Tab. (#314)
 
 ## [0.1.8] - 2026-09-13
 

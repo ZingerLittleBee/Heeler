@@ -71,6 +71,7 @@ struct AgentComposerActions {
     let showSkills: (() -> Void)?
     let showWorktreeDetails: (() -> Void)?
     let renameAgent: () -> Void
+    let renamePane: () -> Void
     let renameWorkspace: () -> Void
     let closeAgent: () -> Void
 }

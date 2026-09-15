@@ -208,7 +208,33 @@ struct AgentCardPresentationTests {
         #expect(AgentCardPresentation(agent: agent()).headline == "reviewer")
     }
 
-    private func agent(workspace: String? = nil) -> ConsoleAgent {
+    @Test func paneLabelNamesTheSessionAndLeadsACardWithNoPaneRow() {
+        // pane.rename (#290) names the session itself, so the card leads with
+        // it and the switcher chip reads the same. `.heelerDefault` renders no
+        // `.pane` token, so a pane row is added in front and the rows it
+        // already rendered stay in place.
+        let card = AgentCardPresentation(
+            agent: agent(workspace: "Project", paneLabel: "sidecar logs"))
+        #expect(card.headline == "sidecar logs")
+        #expect(card.switcherTitle == "sidecar logs")
+        #expect(card.additionalRows == ["Project", "reviewer"])
+    }
+
+    @Test func paneLabelTakesOverThePaneRowALayoutAlreadyRenders() {
+        // A layout that does render the pane field has that row promoted to
+        // the top — a second pane row would repeat the name — and the row
+        // keeps its configured styling.
+        let layout = AgentRowLayout(rows: [
+            [.init(.workspace)], [.init(.pane, bold: true)], [.init(.agent)],
+        ])
+        let card = AgentCardPresentation(
+            agent: agent(workspace: "Project", paneLabel: "sidecar logs"), layout: layout)
+        #expect(card.headline == "sidecar logs")
+        #expect(card.additionalRows == ["Project", "reviewer"])
+        #expect(card.rows.first?.first?.bold == true)
+    }
+
+    private func agent(workspace: String? = nil, paneLabel: String? = nil) -> ConsoleAgent {
         ConsoleAgent(
             hostID: UUID(), hostName: "devbox",
             agent: Agent(
@@ -216,6 +242,6 @@ struct AgentCardPresentationTests {
                 workspaceID: "w", tabID: "t", paneID: "p", cwd: "/work/project", revision: 1,
                 name: "reviewer", terminalTitle: "◑ Task title", terminalTitleStripped: "Task title",
                 tokens: ["note": "**literal** [link](url)"]),
-            workspaceLabel: workspace, repositoryCheckout: nil)
+            workspaceLabel: workspace, repositoryCheckout: nil, paneLabel: paneLabel)
     }
 }
