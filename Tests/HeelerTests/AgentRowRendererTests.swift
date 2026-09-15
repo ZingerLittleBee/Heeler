@@ -5,7 +5,8 @@ import Testing
 
 @Suite("Agent row renderer")
 struct AgentRowRendererTests {
-    private func agent(tabLabel: String? = "1", tabPosition: Int? = 1, tabCount: Int = 1) -> ConsoleAgent {
+    private func agent(tabLabel: String? = "1", tabPosition: Int? = 1, tabCount: Int = 1,
+                       paneLabel: String? = nil) -> ConsoleAgent {
         ConsoleAgent(
             hostID: UUID(), hostName: "Host",
             agent: Agent(AgentInfo(
@@ -16,7 +17,8 @@ struct AgentRowRendererTests {
                 terminalTitleStripped: "Fix the build", title: "Manual pane",
                 tokens: ["pin_icon": "📌", "markup": "**literal**", "empty": "", "spaces": " \n"])),
             workspaceLabel: "Heeler", repositoryCheckout: nil,
-            tabLabel: tabLabel, tabPosition: tabPosition, workspaceTabCount: tabCount)
+            tabLabel: tabLabel, tabPosition: tabPosition, workspaceTabCount: tabCount,
+            paneLabel: paneLabel)
     }
 
     @Test func defaultElidesAutomaticSingleTabAndStatusFields() {
@@ -93,6 +95,21 @@ struct AgentRowRendererTests {
             workspaceLabel: nil, repositoryCheckout: nil)
         #expect(AgentRowRenderer.render(layout: layout, agent: empty).map { $0.map(\.text).joined() }
                 == ["Working"])
+    }
+
+    @Test func paneLabelOutranksTheManualPaneTitle() {
+        // pane.rename (#290) names the session itself, so the `.pane` token
+        // renders that name; the manual pane title is only the fallback for a
+        // pane that was never named.
+        let layout = AgentRowLayout(rows: [[.init(.pane), .init(.terminalTitle)]])
+        #expect(AgentRowRenderer.render(layout: layout, agent: agent()).map { $0.map(\.text).joined() }
+                == ["Manual pane · ◑ Fix the build"])
+        #expect(AgentRowRenderer.render(layout: layout, agent: agent(paneLabel: "sidecar logs"))
+                .map { $0.map(\.text).joined() } == ["sidecar logs · ◑ Fix the build"])
+        for blank in ["", "  ", "\n"] {
+            #expect(AgentRowRenderer.render(layout: layout, agent: agent(paneLabel: blank))
+                .map { $0.map(\.text).joined() } == ["Manual pane · ◑ Fix the build"])
+        }
     }
 
     @Test func missingTitlesAndWorkspaceNeverRenderOpaqueIDs() {

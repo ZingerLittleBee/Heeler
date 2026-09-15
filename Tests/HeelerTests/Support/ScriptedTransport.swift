@@ -38,9 +38,11 @@ final actor ScriptedTransport: Transport {
     private var worktreeRemoveFailure: (any Error)?
     private var worktreeRemoveResponsePath: String?
     private var nextWorktreeAuthorizationGate: ScriptedTransportCallGate?
-    /// Every `agent.rename` / `workspace.rename` received, in order; the
-    /// rename flows (#98) assert on the params they forwarded.
+    /// Every `agent.rename` / `pane.rename` / `workspace.rename` received, in
+    /// order; the rename flows (#98, #290) assert on the params they
+    /// forwarded.
     private(set) var agentRenames: [AgentRenameParams] = []
+    private(set) var paneRenames: [PaneRenameParams] = []
     private(set) var workspaceRenames: [WorkspaceRenameParams] = []
     private var renameFailure: TransportError?
     private var startFailure: TransportError?
@@ -534,6 +536,11 @@ final actor ScriptedTransport: Transport {
         agentRenames.append(params)
     }
 
+    func renamePane(_ params: PaneRenameParams) async throws {
+        if let renameFailure { throw renameFailure }
+        paneRenames.append(params)
+    }
+
     func renameWorkspace(_ params: WorkspaceRenameParams) async throws {
         if let renameFailure { throw renameFailure }
         workspaceRenames.append(params)
@@ -799,10 +806,11 @@ actor ScriptedTransportCallGate {
 
 extension SessionSnapshot {
     static func fixture(
-        agents: [AgentInfo] = [], workspaces: [WorkspaceInfo] = [], protocolVersion: Int = 17
+        agents: [AgentInfo] = [], workspaces: [WorkspaceInfo] = [], panes: [PaneInfo] = [],
+        protocolVersion: Int = 17
     ) -> SessionSnapshot {
         SessionSnapshot(
-            agents: agents, layouts: [], panes: [], protocolVersion: protocolVersion, tabs: [],
+            agents: agents, layouts: [], panes: panes, protocolVersion: protocolVersion, tabs: [],
             version: "0.7.5-fake", workspaces: workspaces)
     }
 }

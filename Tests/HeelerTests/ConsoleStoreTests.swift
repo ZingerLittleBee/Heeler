@@ -225,7 +225,11 @@ struct ConsoleStoreTests {
         #expect(multi.snapshotOrder == 1)
         let paneLayout = AgentRowLayout(rows: [[.init(.pane)]])
         #expect(AgentRowRenderer.render(layout: paneLayout, agent: multi).first?.first?.text == "Manual label")
-        #expect(AgentRowRenderer.render(layout: paneLayout, agent: row).first?.first?.text == "Pane title")
+        // The pane's own label names the session (#290), so it outranks the
+        // manual pane title on the one pane that carries both.
+        #expect(AgentRowRenderer.render(layout: paneLayout, agent: row).first?.first?.text == "Fallback")
+        // Both names are present on this row, so the pane label is what wins.
+        #expect(row.agent.paneTitle != nil && row.paneLabel != nil)
         #expect(projection.agentsByPane["named:p"]?.showsTabLabel == true)
         #expect(projection.agentsByPane["missing:p"]?.tabLabel == nil)
         #expect(projection.agentsByPane["missing:p"]?.showsTabLabel == false)
@@ -1304,6 +1308,76 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    @Test func renamePaneForwardsItsParamsAndResnapshots() async throws {
+        // pane.rename (#290): the label reaches the Host's transport and the
+        // renamed pane lands via one explicit resync, exactly like
+        // agent.rename — the name a client writes is herdr's own pane label,
+        // so every other client converges on the same name.
+        let host = Host.fixture()
+        func pane(_ label: String?) -> PaneInfo {
+            PaneInfo(
+                agentStatus: .idle, focused: false, paneID: "w1:p1", revision: 1, tabID: "w1:t1",
+                terminalID: "term_w1:p1", workspaceID: "w1", label: label)
+        }
+        let transport = ScriptedTransport(
+            snapshot: .fixture(
+                agents: [.fixture(paneID: "w1:p1", status: .idle)], panes: [pane(nil)]))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the agent should arrive") { store.agents.count == 1 }
+        #expect(store.agents.first?.sessionLabel == nil)
+
+        await transport.setSnapshot(
+            .fixture(
+                agents: [.fixture(paneID: "w1:p1", status: .idle)],
+                panes: [pane("sidecar logs")]))
+        try await store.renamePane("w1:p1", label: "sidecar logs", on: host.id)
+
+        let renames = await transport.paneRenames
+        #expect(renames == [PaneRenameParams(paneID: "w1:p1", label: "sidecar logs")])
+        try await waitUntil("the resync should surface the new label") {
+            store.agents.map(\.sessionLabel) == ["sidecar logs"]
+        }
+
+        store.setHosts([])
+    }
+
+    @Test func renamePaneForwardsANilLabelAsTheClear() async throws {
+        // `PaneRenameParams.label` is optional and not required by the schema,
+        // so a nil clears through the same omission agent.rename uses. The
+        // transport must see the nil, not an empty string or whitespace.
+        let host = Host.fixture()
+        func pane(_ label: String?) -> PaneInfo {
+            PaneInfo(
+                agentStatus: .idle, focused: false, paneID: "w1:p1", revision: 1, tabID: "w1:t1",
+                terminalID: "term_w1:p1", workspaceID: "w1", label: label)
+        }
+        let transport = ScriptedTransport(
+            snapshot: .fixture(
+                agents: [.fixture(paneID: "w1:p1", status: .idle)], panes: [pane("sidecar logs")]))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the named agent should arrive") {
+            store.agents.map(\.sessionLabel) == ["sidecar logs"]
+        }
+
+        await transport.setSnapshot(
+            .fixture(agents: [.fixture(paneID: "w1:p1", status: .idle)], panes: [pane(nil)]))
+        try await store.renamePane("w1:p1", label: nil, on: host.id)
+
+        let renames = await transport.paneRenames
+        #expect(renames == [PaneRenameParams(paneID: "w1:p1", label: nil)])
+        try await waitUntil("the resync should clear the label") {
+            store.agents.allSatisfy { $0.sessionLabel == nil }
+        }
+
+        store.setHosts([])
+    }
+
     @Test func renameWorkspaceForwardsItsParamsAndResnapshots() async throws {
         // workspace.rename (#98): the params reach the Host's transport and
         // the relabeled workspace lands via one explicit resync rather than
@@ -1342,6 +1416,9 @@ struct ConsoleStoreTests {
         await #expect(throws: TransportError.self) {
             try await store.renameWorkspace("w1", label: "x", on: host.id)
         }
+        await #expect(throws: TransportError.self) {
+            try await store.renamePane("w1:p1", label: "x", on: host.id)
+        }
     }
 
     @Test func renameFailurePropagatesAndLeavesTheAgentsUntouched() async throws {
@@ -1360,6 +1437,11 @@ struct ConsoleStoreTests {
         }
         #expect(store.agents.map(\.agent.displayName) == ["claude"])
         #expect(await transport.agentRenames.isEmpty)
+
+        await #expect(throws: TransportError.timedOut) {
+            try await store.renamePane("w1:p1", label: "x", on: host.id)
+        }
+        #expect(await transport.paneRenames.isEmpty)
 
         store.setHosts([])
     }

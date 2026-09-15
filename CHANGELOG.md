@@ -7,6 +7,14 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- Rename a session from the Agent card's menu using herdr's own pane name
+  (`pane.rename`). The name lives on the Host, so it follows the session to
+  every attached client instead of staying on one device, and it names the
+  card, the keyboard switcher chip, and the detail title. Clearing it returns
+  the row to the workspace/tab/kind chain. (#290)
+
 ## [0.1.8] - 2026-09-13
 
 ### Added

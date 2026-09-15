@@ -1056,6 +1056,40 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(recorded == [#"agent.rename {"target":"\#(token)"}"#])
     }
 
+    /// The pane label is herdr's own pane name (#290), so it reaches the Pane
+    /// the `pane_id` names. Pin the exact params and the snake-cased key at
+    /// the socket boundary.
+    @Test("pane rename sends its label and pane id exactly")
+    func paneRenameSendsItsLabelAndPaneIDExactly() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("wire")
+        try await transport.renamePane(PaneRenameParams(paneID: token, label: "sidecar logs"))
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        #expect(recorded == [#"pane.rename {"label":"sidecar logs","pane_id":"\#(token)"}"#])
+    }
+
+    /// The schema marks only `pane_id` required, so a nil label leaves the key
+    /// out — the same clear `agent.rename` uses. This assertion distinguishes
+    /// an absent key from a present null.
+    @Test("pane rename omits label when clearing the pane name")
+    func paneRenameOmitsLabelWhenClearingThePaneName() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("wire")
+        try await transport.renamePane(PaneRenameParams(paneID: token))
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        #expect(recorded == [#"pane.rename {"pane_id":"\#(token)"}"#])
+    }
+
     /// Workspace labels accept a wider grammar than Agent names. Pin both the
     /// label and snake-cased workspace id at the real Transport boundary.
     @Test("workspace rename sends its label and workspace id exactly")

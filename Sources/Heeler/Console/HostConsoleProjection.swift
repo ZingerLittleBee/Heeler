@@ -494,6 +494,17 @@ final class HostConsoleProjection {
         scheduleResync()
     }
 
+    /// Names a pane (#290); a nil label clears back to the layout's own chain.
+    /// Shares the resync contract with `renameAgent`: the name is not carried
+    /// by a resync-triggering event, so the post-RPC resync is what surfaces
+    /// our own rename.
+    func renamePane(_ paneID: String, label: String?) async throws {
+        try await session.withTransport { transport in
+            try await transport.renamePane(PaneRenameParams(paneID: paneID, label: label))
+        }
+        scheduleResync()
+    }
+
     private func handle(_ update: EventsSessionUpdate) {
         guard !hasEnded else { return }
         switch update {

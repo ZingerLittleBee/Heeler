@@ -12,6 +12,7 @@ enum AgentActionMenuItem: Equatable, Hashable, Sendable, CaseIterable {
     case snippets
     case worktreeDetails
     case renameAgent
+    case renamePane
     case renameWorkspace
     case closeAgent
 
@@ -25,6 +26,7 @@ enum AgentActionMenuItem: Equatable, Hashable, Sendable, CaseIterable {
         case .snippets: "Snippets"
         case .worktreeDetails: "Worktree Details"
         case .renameAgent: "Rename Agent"
+        case .renamePane: "Rename Pane"
         case .renameWorkspace: "Rename Workspace"
         case .closeAgent: "Close Agent"
         }
@@ -40,6 +42,7 @@ enum AgentActionMenuItem: Equatable, Hashable, Sendable, CaseIterable {
         case .snippets: "quote.bubble"
         case .worktreeDetails: "arrow.triangle.branch"
         case .renameAgent: "pencil"
+        case .renamePane: "rectangle.and.pencil.and.ellipsis"
         case .renameWorkspace: "pencil.line"
         case .closeAgent: "trash"
         }
@@ -59,7 +62,7 @@ enum AgentActionMenuItem: Equatable, Hashable, Sendable, CaseIterable {
         case .addImage, .addFile, .skills, .snippets:
             true
         case .openTerminal, .newAgent, .worktreeDetails, .renameAgent,
-            .renameWorkspace, .closeAgent:
+            .renamePane, .renameWorkspace, .closeAgent:
             false
         }
     }
@@ -80,7 +83,7 @@ enum AgentActionMenuSection: Equatable, Hashable, Sendable, CaseIterable {
         case .sessionTools:
             [.openTerminal, .newAgent, .skills, .snippets]
         case .agentLifecycle:
-            [.worktreeDetails, .renameAgent, .renameWorkspace, .closeAgent]
+            [.worktreeDetails, .renameAgent, .renamePane, .renameWorkspace, .closeAgent]
         }
     }
 }
@@ -146,6 +149,8 @@ enum AgentActionMenuPolicy {
             actions.showWorktreeDetails?()
         case .renameAgent:
             actions.renameAgent()
+        case .renamePane:
+            actions.renamePane()
         case .renameWorkspace:
             actions.renameWorkspace()
         case .closeAgent:
