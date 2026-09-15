@@ -7,6 +7,15 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- A Shell Terminal asks before pasting text that dictation or an IME commits
+  with a newline into a program without bracketed paste, instead of dropping it
+  silently since GhosttyTerminal 1.4.0. The review names the control characters
+  it found and shows the text, with control characters spelled out. Clipboard
+  requests the app cannot receive are answered without a prompt — OSC 52 writes
+  allowed, reads refused — matching herdr's own terminal emulation. (#243)
+
 ## [0.1.8] - 2026-09-13
 
 ### Added
