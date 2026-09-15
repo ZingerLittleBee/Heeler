@@ -330,6 +330,12 @@ actor HeelerSSHTransport: Transport {
     private var nextTerminalReaderID: UInt64 = 0
     private var imageStageClients: [UUID: SSHSFTPClient] = [:]
     private var notificationFileClients: [UUID: SSHSFTPClient] = [:]
+    /// One SFTP channel held for ranged Host-file reads (#325). Sessions are
+    /// followed, not staged, so this one outlives any single request — and so
+    /// does its admission lease, which is what keeps the server-side channel
+    /// budget honest.
+    private var sessionFileClient: SSHSFTPClient?
+    private var sessionFileClientLease: SSHChannelAdmissionLease?
     private var notificationTemporaryPaths: [UUID: String] = [:]
 #if DEBUG
     private var stagingPhaseHoldsForTesting:
@@ -608,6 +614,53 @@ actor HeelerSSHTransport: Transport {
     func listAgents() async throws -> [Agent] {
         try await request(method: "agent.list", decoding: AgentListResponse.self)
             .agents.map(Agent.init)
+    }
+
+    /// Reads one range of a Host file over a channel kept for exactly that.
+    ///
+    /// The holder is deliberate: a screen that looks every few seconds would
+    /// otherwise allocate and release an SFTP subsystem channel on every tick.
+    /// The lease is held for as long as the channel is (ADR 0011, #148): an
+    /// app-side counter that ignored a channel still open would let the
+    /// server's `MaxSessions` be spent while admission looked free. Any
+    /// failure drops both, so the next look opens a fresh one rather than
+    /// reading through a corpse.
+    func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        do {
+            let client = try await sessionFileClientForReading()
+            let slice = try await client.readFileRange(
+                at: range.path,
+                offset: range.offset,
+                maxBytes: range.maxBytes,
+                timeout: requestTimeout)
+            return RemoteFileSlice(data: slice.data, length: slice.length)
+        } catch {
+            await releaseSessionFileClient()
+            throw await mapOperationError(error)
+        }
+    }
+
+    private func sessionFileClientForReading() async throws -> SSHSFTPClient {
+        if let sessionFileClient { return sessionFileClient }
+        let lease = try await channelAdmission.acquire(.ordinarySession)
+        do {
+            let client = try await connection.openSFTP(timeout: requestTimeout)
+            sessionFileClient = client
+            sessionFileClientLease = lease
+            return client
+        } catch {
+            await lease.release()
+            throw error
+        }
+    }
+
+    private func releaseSessionFileClient() async {
+        guard let client = sessionFileClient else { return }
+        sessionFileClient = nil
+        let lease = sessionFileClientLease
+        sessionFileClientLease = nil
+        try? await client.close(timeout: .seconds(2))
+        await lease?.release()
     }
 
     func sessionSnapshot() async throws -> SessionSnapshot {
@@ -1534,12 +1587,20 @@ actor HeelerSSHTransport: Transport {
         imageStageClients.removeAll()
         let notificationClients = Array(notificationFileClients.values)
         notificationFileClients.removeAll()
+        let fileReader = sessionFileClient
+        sessionFileClient = nil
+        let fileReaderLease = sessionFileClientLease
+        sessionFileClientLease = nil
         for sftp in stagingClients {
             try? await sftp.close(timeout: .seconds(2))
         }
         for sftp in notificationClients {
             try? await sftp.close(timeout: .seconds(2))
         }
+        if let fileReader {
+            try? await fileReader.close(timeout: .seconds(2))
+        }
+        await fileReaderLease?.release()
         do {
             try await connection.close(timeout: .seconds(2))
         } catch {

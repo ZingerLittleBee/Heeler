@@ -189,7 +189,10 @@ struct AgentTerminalView: View {
     private let openTerminal: () -> Void
     private let composer: AgentComposerStore
     private let interactionProbe: WeakAgentTerminalInteractionProbe?
+    /// Follows the Agent's own session file for the usage strip (#325).
+    @State private var sessionUsage = AgentSessionUsageStore()
     @State private var attach: AgentAttachStore
+
     /// Nil for agent kinds without a skills source catalog; the Keys
     /// keyboard hides the Skills tab in that case.
     @State private var skills: SkillsPaneStore?
@@ -338,6 +341,30 @@ struct AgentTerminalView: View {
         }
     }
 
+    /// Follows the Agent's session file for the usage strip (#325).
+    ///
+    /// The interval is deliberately unhurried: the figures are a running total
+    /// a reader glances at, not a live meter, and every refresh costs a round
+    /// trip. An Agent with no session file on the Host clears the strip and
+    /// stops, so nothing polls for a figure that cannot arrive.
+    private func followSessionUsage() async {
+        guard let path = agent.sessionFilePath else {
+            sessionUsage.clear()
+            return
+        }
+        let read = console.sessionFileReader(for: agent.hostID)
+        while !Task.isCancelled {
+            await sessionUsage.refresh(path: path, read: read)
+            do {
+                try await Task.sleep(for: .seconds(Self.sessionUsageInterval))
+            } catch {
+                return
+            }
+        }
+    }
+
+    private static let sessionUsageInterval: Double = 5
+
     private var terminalScreen: TerminalScreenView {
         var screen = TerminalScreenView(feed: attach.terminalFeed)
         #if DEBUG
@@ -450,6 +477,10 @@ struct AgentTerminalView: View {
         // otherwise replacing the system keyboard changes the proposal that
         // reaches Ghostty even when our explicit inset is unchanged.
         .ignoresSafeArea(.keyboard, edges: .bottom)
+        // Keyed on the path, not the Agent: herdr hands a pane a new session
+        // file when the Agent starts a fresh session, and the loop must follow
+        // it instead of re-reading a file nothing writes to any more.
+        .task(id: agent.sessionFilePath) { await followSessionUsage() }
         .modifier(ConsoleTerminalCommandRegistration(
             agentID: agent.id,
             isFocused: keyboardControl.isFirstResponder,
@@ -920,6 +951,14 @@ struct AgentTerminalView: View {
             .disabled(activeKeyboardPresentation != .tools)
             .allowsHitTesting(activeKeyboardPresentation == .tools)
             .accessibilityHidden(activeKeyboardPresentation != .tools)
+        }
+        // Above the status-bar padding, so the strip lands just below the
+        // clock and the terminal keeps the offset it already had (#325).
+        .safeAreaInset(edge: .top, spacing: 0) {
+            AgentUsageStrip(
+                model: sessionUsage.usage.model,
+                contextText: sessionUsage.usage.contextText,
+                costText: sessionUsage.usage.costText)
         }
         // The navigation bar remains present only as the owner of the status
         // bar appearance. Its content stays hidden, while this inset keeps

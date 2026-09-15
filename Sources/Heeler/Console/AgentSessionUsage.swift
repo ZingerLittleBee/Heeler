@@ -1,0 +1,151 @@
+import Foundation
+
+/// Running totals for one Agent session, folded from the session file the way
+/// the Agent itself accounts for them. Pure, so it stays testable without a
+/// transport. `refs #325`
+///
+/// Cost and context do not come from the same place, and neither is a sum of
+/// "every usage you can find":
+///
+/// * **Cost** is billed per assistant turn — plus the spend of any subagent a
+///   `task` tool result reports, which belongs to the parent session. Any
+///   other tool result bills nothing. Recursing into nested usage objects, or
+///   counting every tool result, reports money the Agent never spent.
+/// * **Context** is what the provider measured for the prompt of one turn, not
+///   the sum of tokens a turn consumed. An entry reports it as
+///   `contextSnapshot.promptTokens` minus any history a rewrite removed; only
+///   a turn that actually reached a provider anchors it, so an aborted or
+///   failed turn must be passed over rather than allowed to blank the figure.
+struct AgentSessionUsage: Equatable, Sendable {
+    /// Session spend so far. `nil` until an entry carries a billed total, so a
+    /// caller can tell "nothing billed yet" from "nothing to bill".
+    private(set) var cost: Double?
+    /// Prompt size the provider last measured. A snapshot of one request, not
+    /// an accumulation: a later qualifying turn replaces it wholesale.
+    private(set) var contextTokens: Int?
+    /// Model named by the last assistant turn that anchored the context.
+    private(set) var model: String?
+
+    init() {}
+
+    /// Folds one line of the session file. Unknown entry kinds, malformed JSON,
+    /// and entries without billing leave the totals untouched.
+    mutating func fold(line: Data) {
+        guard let entry = Self.object(from: line) else { return }
+        let kind = entry["type"] as? String
+        let message = entry["message"] as? [String: Any]
+
+        let usage: [String: Any]?
+        if kind == "model_usage" {
+            usage = entry["usage"] as? [String: Any]
+        } else if kind == "message", message?["role"] as? String == "assistant" {
+            usage = message?["usage"] as? [String: Any]
+            adoptContext(from: message, usage: usage)
+        } else if kind == "message", message?["role"] as? String == "toolResult",
+            message?["toolName"] as? String == "task"
+        {
+            usage = (message?["details"] as? [String: Any])?["usage"] as? [String: Any]
+        } else {
+            usage = nil
+        }
+
+        guard let total = Self.costTotal(in: usage) else { return }
+        // Guard the sum, not just the addend: two enormous bills of the same
+        // sign would otherwise overflow a running total to infinity, which
+        // would then render as "$inf".
+        let sum = (cost ?? 0) + total
+        guard sum.isFinite else { return }
+        cost = sum
+    }
+
+    /// Adopts the model, and the prompt size, of the newest turn that has
+    /// something to say.
+    ///
+    /// A turn that aborted or failed never reached the provider, so its
+    /// numbers describe a prompt that was never sent. A turn that reported no
+    /// usage at all is likewise silent. Neither may blank what an earlier turn
+    /// established — but a turn that did report usage names the model even
+    /// when it measured no prompt, so the strip does not lose the model merely
+    /// because one turn could not size its prompt.
+    private mutating func adoptContext(from message: [String: Any]?, usage: [String: Any]?) {
+        guard let message, let usage, !usage.isEmpty else { return }
+        if let stop = message["stopReason"] as? String, stop == "aborted" || stop == "error" {
+            return
+        }
+        if let name = message["model"] as? String, !name.isEmpty { model = name }
+        if let measured = Self.contextTokens(in: message, usage: usage) {
+            contextTokens = measured
+        }
+    }
+
+    /// The prompt size the provider measured for this turn: the recorded
+    /// snapshot minus any history a rewrite removed, falling back to the
+    /// prompt-side usage counters when no snapshot was recorded.
+    private static func contextTokens(
+        in message: [String: Any], usage: [String: Any]
+    ) -> Int? {
+        let snapshot = message["contextSnapshot"] as? [String: Any]
+        if let prompt = int(snapshot?["promptTokens"]) {
+            return max(0, prompt - (int(snapshot?["historyRewriteTokensRemoved"]) ?? 0))
+        }
+        if let context = int(usage["contextTokens"]) { return context }
+        let counters = ["input", "cacheRead", "cacheWrite"].compactMap { int(usage[$0]) }
+        guard !counters.isEmpty else { return nil }
+        return counters.reduce(0, +)
+    }
+
+    /// `$1.50`, or `nil` while nothing has been billed.
+    var costText: String? {
+        guard let cost else { return nil }
+        return String(format: "$%.2f", cost)
+    }
+
+    /// `248K`, or `nil` while no turn has measured the prompt.
+    var contextText: String? {
+        guard let contextTokens else { return nil }
+        return Self.compact(contextTokens)
+    }
+
+    /// The shape an Agent's own status line uses: one decimal below ten
+    /// thousand and from one million up, whole thousands in between, rounding
+    /// rather than truncating.
+    private static func compact(_ value: Int) -> String {
+        if value < 1_000 { return "\(value)" }
+        if value < 10_000 { return "\(trimmed(Double(value) / 1_000))K" }
+        if value < 1_000_000 { return "\(Int((Double(value) / 1_000).rounded()))K" }
+        if value < 10_000_000 { return "\(trimmed(Double(value) / 1_000_000))M" }
+        return "\(Int((Double(value) / 1_000_000).rounded()))M"
+    }
+
+    /// One decimal place, dropping a trailing zero.
+    private static func trimmed(_ value: Double) -> String {
+        let text = String(format: "%.1f", value)
+        return text.hasSuffix(".0") ? String(text.dropLast(2)) : text
+    }
+
+    /// `usage.cost.total`, when it is a finite number.
+    private static func costTotal(in usage: [String: Any]?) -> Double? {
+        guard let cost = usage?["cost"] as? [String: Any] else { return nil }
+        return number(cost["total"])
+    }
+
+    private static func number(_ value: Any?) -> Double? {
+        guard let value = value as? NSNumber else { return nil }
+        let number = value.doubleValue
+        return number.isFinite ? number : nil
+    }
+
+    private static func int(_ value: Any?) -> Int? {
+        guard let number = number(value) else { return nil }
+        // A session file is remote input: `Int(_: Double)` traps on a value it
+        // cannot represent, and the fold runs on the main actor. Refuse the
+        // value instead of letting it end the app.
+        guard number >= Double(Int.min), number <= Double(Int.max) else { return nil }
+        return Int(number)
+    }
+
+    private static func object(from line: Data) -> [String: Any]? {
+        guard !line.isEmpty else { return nil }
+        return (try? JSONSerialization.jsonObject(with: line)) as? [String: Any]
+    }
+}

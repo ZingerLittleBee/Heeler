@@ -1222,6 +1222,100 @@ actor SessionDriver {
         }
     }
 
+    /// Reads up to `maxBytes` starting at `offset`, so a follower of a file
+    /// that only ever grows can ask for the tail it has not folded yet.
+    ///
+    /// `length` is the file's own reported size, and `nil` only when the file
+    /// is absent — the follower's signal to drop what it had. It is the raw
+    /// size rather than the byte count this call happened to read, because a
+    /// follower compares it against its own offset to notice that the path now
+    /// holds a different, shorter file; reporting the read count instead would
+    /// hide exactly that case.
+    func readSFTPFileRange(
+        id: UInt64,
+        path: String,
+        offset: UInt64,
+        maxBytes: Int,
+        timeout: Duration
+    ) async throws -> SSHSFTPFileSlice {
+        guard Self.isValidSFTPPath(path), maxBytes >= 0 else { throw SSHError.channelFailed }
+        // Asked for by path, before the ranged read claims the subsystem:
+        // `sftpAttributes` waits for the subsystem to be idle, so it cannot run
+        // inside the read's own use.
+        let reportedSize: UInt64?
+        do {
+            reportedSize = try await sftpAttributes(id: id, path: path, timeout: timeout).size
+        } catch {
+            // A file that is not there is an answer, not a failure: it is how
+            // the follower learns to stop showing figures nothing backs.
+            if case SSHError.sftpFailure(let status) = error,
+                status == UInt64(LIBSSH2_FX_NO_SUCH_FILE)
+            {
+                return SSHSFTPFileSlice(data: Data(), length: nil)
+            }
+            throw error
+        }
+
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        let data: Data? = try await withSFTPUse(id: id, deadline: deadline) {
+            guard
+                let fileID = try await openSFTPFileForReadingIfPresent(
+                    sftpID: id,
+                    path: path,
+                    deadline: deadline)
+            else { return nil }
+
+            do {
+                if offset > 0 {
+                    try await seekSFTPFileToStart(sftpID: id, fileID: fileID, offset: offset)
+                }
+                var contents = Data()
+                while contents.count < maxBytes {
+                    guard
+                        let chunk = try await readSFTPFileChunk(
+                            sftpID: id,
+                            fileID: fileID,
+                            deadline: deadline)
+                    else { break }
+                    contents.append(chunk.prefix(maxBytes - contents.count))
+                }
+                try await closeSFTPFileWithinUse(
+                    sftpID: id,
+                    fileID: fileID,
+                    timeout: timeout)
+                return contents
+            } catch {
+                try? await closeSFTPFileWithinUse(
+                    sftpID: id,
+                    fileID: fileID,
+                    timeout: .seconds(2))
+                throw normalize(error)
+            }
+        }
+        // Gone between the size check and the open.
+        guard let data else { return SSHSFTPFileSlice(data: Data(), length: nil) }
+        // A server that reports no size at all leaves the bytes read as the
+        // only floor available.
+        return SSHSFTPFileSlice(
+            data: data,
+            length: reportedSize ?? offset + UInt64(data.count))
+    }
+
+    /// Moves an open read handle to `offset`. Local to the handle — the next
+    /// read is what travels — so it takes no send admission of its own.
+    private func seekSFTPFileToStart(
+        sftpID: UInt64,
+        fileID: UInt64,
+        offset: UInt64
+    ) async throws {
+        await acquireOperation()
+        defer { releaseOperation() }
+        guard valid, let state = sftpClients[sftpID], let file = state.files[fileID] else {
+            throw SSHError.connectionInvalidated
+        }
+        libssh2_sftp_seek64(file, offset)
+    }
+
     private func openSFTPFileForReadingIfPresent(
         sftpID: UInt64,
         path: String,

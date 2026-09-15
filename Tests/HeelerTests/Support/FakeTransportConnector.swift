@@ -25,6 +25,23 @@ final actor FakeTransport: Transport {
         []
     }
 
+    /// Ranged Host-file reads (#325): scripted answers, in order.
+    private var scriptedFileSlices: [RemoteFileSlice] = []
+    private(set) var fileRanges: [RemoteFileRange] = []
+
+    func setFileSlices(_ slices: [RemoteFileSlice]) {
+        scriptedFileSlices = slices
+    }
+
+    func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        fileRanges.append(range)
+        guard !scriptedFileSlices.isEmpty else {
+            throw TransportError.channelFailed(
+                detail: "FakeTransport does not script file slices")
+        }
+        return scriptedFileSlices.removeFirst()
+    }
+
     func sessionSnapshot() async throws -> SessionSnapshot {
         SessionSnapshot(
             agents: [], layouts: [], panes: [], protocolVersion: 17, tabs: [],
